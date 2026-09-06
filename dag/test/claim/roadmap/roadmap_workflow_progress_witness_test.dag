@@ -1,5 +1,6 @@
 module test.claim.roadmap_workflow_progress_witness_test
 
+import gunbc.roadmap.roadmap_review_function { review_report_absent, review_plan, review_aggregate, review_subject_id, ReviewSubject, ReviewObservation }
 import gunbc.roadmap.roadmap_review_role { ReviewReceiptAbsent, ReviewReceiptPresent, CriterionReviewEvidence }
 import std.types { Bool, List, NonEmptyStr }
 import extdeps.languages.json.emit { serialize_json }
@@ -144,7 +145,7 @@ fn fixture_evidence(
       },
     },
     publication_source: ReceiptSourceAbsent,
-    review: [],
+    review: review_report_absent(reason: "fixture"),
     goal_audit: [],
   }
 }
@@ -475,7 +476,7 @@ test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
       },
     },
     publication_source: ReceiptSourceAbsent,
-    review: [],
+    review: review_report_absent(reason: "fixture"),
     goal_audit: [],
   })
   match progress.provider {
@@ -671,7 +672,7 @@ fn publication_segment_of(
     verification_source: base.verification_source,
     publication_subject: subject,
     publication_source: source,
-    review: [],
+    review: review_report_absent(reason: "fixture"),
     goal_audit: [],
   })
   fold(progress.segments, init: WorkflowSegment {
@@ -795,15 +796,17 @@ test fn the_publication_readings_are_distinct_states() -> Bool {
 
 // DISCRIMINATING: before the head is verified the review segment is pending on that fact; after it,
 // the segment is the reconciliation of the per-criterion verdicts.
-test fn the_review_segment_waits_for_verification_then_reconciles_the_criteria() -> Bool {
+test fn the_review_segment_waits_for_verification_then_carries_the_review_report() -> Bool {
   let verified = WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "passed" }
   let unverified = WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "not yet" }
-  let approved = CriterionReviewEvidence { criterion_key: "goal", source: ReviewReceiptPresent { text: "{\"schema\":\"roadmap-review-verdict/v1\",\"verdict\":\"approve\",\"summary\":\"fits the goal\"}" }, process: WorkerProcessAbsent }
-  let running = CriterionReviewEvidence { criterion_key: "fail-closed", source: ReviewReceiptAbsent, process: WorkerProcessRunning { command: "gunbc" as NonEmptyStr } }
-  let done = review_segment(verification: verified, review: [approved])
-  let active = review_segment(verification: verified, review: [approved, running])
-  let early = review_segment(verification: unverified, review: [approved])
-  (match done.state { WorkflowSegmentComplete => true  _ => false }) && string_contains(s: done.detail, pattern: "goal: approved")
+  let plan = review_plan(subject: ReviewSubject { node_id: "n1", headline: "H", boundary: "B", out_of_scope: "O", red_control: "R", acceptance_command: "c", base_sha: "aaa", head_sha: "bbb", verification_detail: "passed" })
+  let approve = "{\"schema\":\"roadmap-review-verdict/v1\",\"verdict\":\"approve\",\"summary\":\"fits\"}"
+  let all = map(plan.calls, c => ReviewObservation { call_id: c.id, subject_id: review_subject_id(s: plan.subject), plan_revision: plan.revision, source: ReviewReceiptPresent { text: approve }, process: WorkerProcessAbsent })
+  let one_running = map(plan.calls, c => ReviewObservation { call_id: c.id, subject_id: review_subject_id(s: plan.subject), plan_revision: plan.revision, source: if c.id == "fail-closed" { ReviewReceiptAbsent } else { ReviewReceiptPresent { text: approve } }, process: if c.id == "fail-closed" { WorkerProcessRunning { command: "gunbc" as NonEmptyStr } } else { WorkerProcessAbsent } })
+  let done = review_segment(verification: verified, review: review_aggregate(plan: plan, observations: all))
+  let active = review_segment(verification: verified, review: review_aggregate(plan: plan, observations: one_running))
+  let early = review_segment(verification: unverified, review: review_aggregate(plan: plan, observations: all))
+  (match done.state { WorkflowSegmentComplete => true  _ => false }) && string_contains(s: done.detail, pattern: "fail-closed: approved")
     && (match active.state { WorkflowSegmentActive => true  _ => false })
     && (match early.state { WorkflowSegmentPending => true  _ => false }) && string_contains(s: early.detail, pattern: "passed verification")
 }

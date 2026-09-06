@@ -1,0 +1,248 @@
+module gunbc.roadmap.roadmap_review_function
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural }
+import gunbc.roadmap.roadmap_review_criteria { ReviewCriterion, review_criteria }
+import gunbc.roadmap.roadmap_review_role {
+  CriterionReviewEvidence, CriterionStanding, CriterionAwaitingReviewer, criterion_standing,
+  ReviewReceiptSource, ReviewReconciliation, WorkerFeedback,
+  review_brief, review_reconcile_standings, review_feedback_standings, review_feedback_text,
+}
+import gunbc.roadmap_workflow_stage { WorkflowSegmentRefused, WorkflowSegmentComplete, WorkflowSegmentPending, WorkflowSegmentFailed, WorkflowSegmentActive, WorkflowSegmentStopped }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, json_array }
+import gunbc.worker_lifecycle { WorkerProcessEvidence }
+
+// REVIEW IS A FUNCTION, AND PRODUCTION CONSUMES IT: review(subject) = aggregate(plan, observations)
+// where plan = review_plan(subject) and observations are what the belt read back for plan.calls.
+//
+// The decomposition (operator, 2026-09-06): one pure function per criterion, each grounded on one
+// design proposition and mutually independent, whose only shared input is the subject. This module
+// is the parent. It PLANS the calls (one per criterion, under a revision that is the content of the
+// roster, so the plan a belt realizes and the plan a fold judges are the same object), it JOINS the
+// observations to the plan exactly (unknown, duplicate, other-subject and other-revision observations
+// refuse; missing ones stay in the denominator as awaiting), and it FOLDS to one verdict for the belt
+// and one piece of feedback for the worker. The belt realizes plan.calls and hands back observations;
+// it never reconstructs the roster and never calls a lower fold (review 5125854144 on the first cut,
+// which modeled this beside production instead of as it).
+
+type ReviewSubject {
+  node_id: String
+  headline: String
+  boundary: String
+  out_of_scope: String
+  red_control: String
+  acceptance_command: String
+  base_sha: String
+  head_sha: String
+  verification_detail: String
+}
+
+// The subject's identity for binding: which node's which head. Everything else in the subject is
+// context the calls read; two plans over the same node and head review the same thing.
+fn review_subject_id(s: ReviewSubject) -> String {
+  join([s.node_id, "@", s.head_sha], "")
+}
+
+// One planned call: its identity is the criterion key (unique by review_criterion_identities_are_unique),
+// its brief is its whole semantic input. Where the verdict is written is not here; the realization
+// appends review_verdict_instruction with the path it mints.
+type ReviewCall {
+  id: String
+  criterion: ReviewCriterion
+  brief: String
+}
+
+type ReviewPlan {
+  revision: String
+  subject: ReviewSubject
+  calls: List<ReviewCall>
+}
+
+// THE REVISION IS THE ROSTER'S CONTENT, not a counter: any change to a criterion's key, question or
+// tells changes it, so an observation produced under an older roster cannot be joined to a newer plan
+// by accident, and an attempt whose review began under another revision is explicitly superseded.
+fn review_plan_revision_of(criteria: List<ReviewCriterion>) -> String {
+  content_hash_tagged_structural(
+    tag: "roadmap-review-plan-v1" as NonEmptyStr,
+    payload: content_hash_atom(value: join(map(criteria, c => join([c.key, "|", c.question, "|", join(c.tells, "|")], "")), "\n") as NonEmptyStr),
+  ).digest as String
+}
+
+fn review_plan_revision() -> String {
+  review_plan_revision_of(criteria: review_criteria)
+}
+
+fn criterion_review(criterion: ReviewCriterion, subject: ReviewSubject) -> ReviewCall {
+  ReviewCall {
+    id: criterion.key,
+    criterion: criterion,
+    brief: review_brief(
+      criterion: criterion,
+      node_id: subject.node_id,
+      headline: subject.headline,
+      boundary: subject.boundary,
+      out_of_scope: subject.out_of_scope,
+      red_control: subject.red_control,
+      acceptance_command: subject.acceptance_command,
+      base_sha: subject.base_sha,
+      head_sha: subject.head_sha,
+      verification_detail: subject.verification_detail,
+    ),
+  }
+}
+
+// THE MAP.
+fn review_plan(subject: ReviewSubject) -> ReviewPlan {
+  ReviewPlan {
+    revision: review_plan_revision(),
+    subject: subject,
+    calls: map(review_criteria, c => criterion_review(criterion: c, subject: subject)),
+  }
+}
+
+fn review_call_by_id(plan: ReviewPlan, id: String) -> ReviewCall? {
+  (filter(plan.calls, c => c.id == id)).first()
+}
+
+// One observation the realization hands back, bound to the call, the subject and the plan revision it
+// was produced under. The belt derives all three from where it read the verdict (a path minted from
+// the same identities), never from the reviewer's text.
+type ReviewObservation {
+  call_id: String
+  subject_id: String
+  plan_revision: String
+  source: ReviewReceiptSource
+  process: WorkerProcessEvidence
+}
+
+type ReviewJoinRefusal
+  = ReviewObservationForUnknownCall { call_id: String }
+  | ReviewObservationDuplicated { call_id: String }
+  | ReviewObservationForOtherSubject { call_id: String, expected: String, observed: String }
+  | ReviewObservationForOtherRevision { call_id: String, expected: String, observed: String }
+
+type ReviewJoin
+  = ReviewJoined { standings: List<CriterionStanding> }
+  | ReviewJoinRefused { cause: ReviewJoinRefusal }
+
+fn review_join_refusal_text(r: ReviewJoinRefusal) -> String {
+  match r {
+    ReviewObservationForUnknownCall { call_id } => join(["an observation names call ", call_id, ", which this plan does not contain"], "")
+    ReviewObservationDuplicated { call_id } => join(["call ", call_id, " has more than one observation"], "")
+    ReviewObservationForOtherSubject { call_id, expected, observed } => join(["call ", call_id, " was observed for subject ", observed, ", not ", expected], "")
+    ReviewObservationForOtherRevision { call_id, expected, observed } => join(["call ", call_id, " was observed under plan revision ", observed, ", not ", expected], "")
+  }
+}
+
+fn observations_for(observations: List<ReviewObservation>, call_id: String) -> List<ReviewObservation> {
+  filter(observations, o => o.call_id == call_id)
+}
+
+// THE EXACT JOIN. Every observation must name a planned call, this subject and this revision, at most
+// once; every planned call yields exactly one standing, an unobserved call as awaiting. Refusals are
+// typed and name the call, so a belt that hands back the wrong thing is told which thing.
+fn review_join(plan: ReviewPlan, observations: List<ReviewObservation>) -> ReviewJoin {
+  let subject_id = review_subject_id(s: plan.subject)
+  let unknown = filter(observations, o => !any(plan.calls, c => c.id == o.call_id))
+  let other_subject = filter(observations, o => o.subject_id != subject_id)
+  let other_revision = filter(observations, o => o.plan_revision != plan.revision)
+  let duplicated = filter(plan.calls, c => count(observations_for(observations: observations, call_id: c.id)) > 1)
+  match unknown.first() {
+    Present { value: o } => ReviewJoinRefused { cause: ReviewObservationForUnknownCall { call_id: o.call_id } }
+    Absent =>
+      match other_subject.first() {
+        Present { value: o } => ReviewJoinRefused { cause: ReviewObservationForOtherSubject { call_id: o.call_id, expected: subject_id, observed: o.subject_id } }
+        Absent =>
+          match other_revision.first() {
+            Present { value: o } => ReviewJoinRefused { cause: ReviewObservationForOtherRevision { call_id: o.call_id, expected: plan.revision, observed: o.plan_revision } }
+            Absent =>
+              match duplicated.first() {
+                Present { value: c } => ReviewJoinRefused { cause: ReviewObservationDuplicated { call_id: c.id } }
+                Absent =>
+                  ReviewJoined { standings: map(plan.calls, c =>
+                    match (observations_for(observations: observations, call_id: c.id)).first() {
+                      Present { value: o } => criterion_standing(e: CriterionReviewEvidence { criterion_key: c.id, source: o.source, process: o.process })
+                      Absent => CriterionAwaitingReviewer { key: c.id }
+                    }) }
+              }
+          }
+      }
+  }
+}
+
+// THE FOLD, over the joined standings: the belt's verdict and the worker's feedback from one roster
+// whose denominator is the plan. A refused join is a refused review naming its cause, with every call
+// reported incomplete, never a verdict over the observations that happened to fit.
+type ReviewReport {
+  plan_revision: String
+  reconciliation: ReviewReconciliation
+  feedback: WorkerFeedback
+}
+
+fn review_aggregate(plan: ReviewPlan, observations: List<ReviewObservation>) -> ReviewReport {
+  match review_join(plan: plan, observations: observations) {
+    ReviewJoined { standings } =>
+      ReviewReport {
+        plan_revision: plan.revision,
+        reconciliation: review_reconcile_standings(standings: standings),
+        feedback: review_feedback_standings(standings: standings),
+      }
+    ReviewJoinRefused { cause } =>
+      ReviewReport {
+        plan_revision: plan.revision,
+        reconciliation: ReviewReconciliation { state: WorkflowSegmentRefused, detail: join(["the review observations do not join to the plan: ", review_join_refusal_text(r: cause)], "") },
+        feedback: WorkerFeedback { must_fix: [], could_not_judge: [], approved: [], incomplete: map(plan.calls, c => c.id), overlap_count: 0 },
+      }
+  }
+}
+
+// NO OBSERVATION AT ALL (the head is unobserved, or the plan could not be built): a pending report
+// naming why, with every call incomplete -- never an empty roster that a fold could read as done.
+fn review_report_absent(reason: String) -> ReviewReport {
+  ReviewReport {
+    plan_revision: review_plan_revision(),
+    reconciliation: ReviewReconciliation { state: WorkflowSegmentPending, detail: join(["no review observation yet: ", reason], "") },
+    feedback: WorkerFeedback { must_fix: [], could_not_judge: [], approved: [], incomplete: map(review_criteria, c => c.key), overlap_count: 0 },
+  }
+}
+
+fn review_report_refused(reason: String) -> ReviewReport {
+  ReviewReport {
+    plan_revision: review_plan_revision(),
+    reconciliation: ReviewReconciliation { state: WorkflowSegmentRefused, detail: reason },
+    feedback: WorkerFeedback { must_fix: [], could_not_judge: [], approved: [], incomplete: map(review_criteria, c => c.key), overlap_count: 0 },
+  }
+}
+
+fn review_report_approved(report: ReviewReport) -> Bool {
+  match report.reconciliation.state { WorkflowSegmentComplete => true  _ => false }
+}
+
+fn review_report_state_word(report: ReviewReport) -> String {
+  match report.reconciliation.state {
+    WorkflowSegmentComplete => "complete"
+    WorkflowSegmentFailed => "failed"
+    WorkflowSegmentRefused => "refused"
+    WorkflowSegmentActive => "active"
+    WorkflowSegmentPending => "pending"
+    WorkflowSegmentStopped => "stopped"
+  }
+}
+
+fn review_report_json(report: ReviewReport) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "roadmap-review-report/v1")),
+    json_kv(key: "plan_revision", value: json_string(s: report.plan_revision)),
+    json_kv(key: "state", value: json_string(s: review_report_state_word(report: report))),
+    json_kv(key: "detail", value: json_string(s: report.reconciliation.detail)),
+    json_kv(key: "approved", value: json_array(elements: map(report.feedback.approved, k => json_string(s: k)))),
+    json_kv(key: "incomplete", value: json_array(elements: map(report.feedback.incomplete, k => json_string(s: k)))),
+    json_kv(key: "could_not_judge", value: json_array(elements: map(report.feedback.could_not_judge, k => json_string(s: k)))),
+    json_kv(key: "overlap_count", value: json_int(n: report.feedback.overlap_count)),
+    json_kv(key: "worker_feedback", value: json_string(s: review_feedback_text(f: report.feedback))),
+  ])
+}
+
+fn review_report_worker_text(report: ReviewReport) -> String {
+  review_feedback_text(f: report.feedback)
+}
