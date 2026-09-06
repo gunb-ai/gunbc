@@ -2050,6 +2050,14 @@ fn process_workspace_root() -> PathBuf {
 }
 
 fn resolve_process_workspace_root() -> PathBuf {
+    // Env override for workspaces (like ctrl) where the gunbc submodule's
+    // Cargo.toml + dag/ tree is not at the git root and not an ancestor of cwd.
+    if let Ok(root) = std::env::var("GUNBC_WORKSPACE_ROOT") {
+        let candidate = PathBuf::from(&root);
+        if candidate.join("Cargo.toml").is_file() && candidate.join("dag").is_dir() {
+            return candidate;
+        }
+    }
     if let Ok(output) = std::process::Command::new("git")
         .args(["rev-parse", "--show-toplevel"])
         .output()
