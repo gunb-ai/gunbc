@@ -1927,14 +1927,23 @@ type UniquePublishingRelocateOutcome
   | UniquePublishingPlaceholderNotEmpty
   | UniquePublishingRelocateRefused
 
-// THE ELEVEN DISCARDED SWEEP OUTCOMES IN THIS MODULE ARE EXPLICITLY BEST-EFFORT, and the
-// discriminator is stated once here rather than left to be re-adjudicated at each `let _ =`
-// (19-candidate discarded-effect census, the out-of-scope remainder of #10574's printer scope).
+// THE SEVEN DISCARDED SWEEP OUTCOMES IN THIS MODULE ARE EXPLICITLY BEST-EFFORT, and the
+// discriminator is stated once here rather than left to be re-adjudicated at each `let _ =`.
 // The sites: the failed-move sweep in relocate_build_root_to_unique_publishing; the reused-release
 // build_root sweep and the three publishing-staging sweeps in
-// release_codex_runtime_bundle_immutable; the staging_dir and cache_dir sweeps on the
-// materialization success arm; and the four staging sweeps in
-// materialize_spark_serving_ollama_runtime_bundle.
+// release_codex_runtime_bundle_immutable; and the staging_dir and cache_dir sweeps on the
+// materialization success arm.
+//
+// THE COUNT IS A MEASUREMENT AND CARRIES THE REF IT WAS TAKEN AGAINST, because a bare number is
+// not re-derivable and cannot tell a real change from a stale citation. The census that opened
+// this classification -- the out-of-scope remainder of #10574's printer scope -- measured 19
+// across four modules at 1ae18027, of which 11 were here. It is 15 and 7 as of the merge of
+// origin/main that this classification lands over: main independently deleted
+// materialize_spark_serving_ollama_runtime_bundle with its whole spark-serving archive-admission
+// block, and its four staging sweeps went with the function rather than being consumed. So four
+// members left this population by DELETION OF THE SUBJECT, which retires them without
+// contradicting their classification, and this sentence is what lets the next reader tell that
+// from a miscount. The other three modules are unchanged at 5 / 2 / 1.
 //
 // WHAT MAKES DISCARDING LAWFUL, in one property that holds at every one of them: the swept path is
 // a `mktemp -d` directory minted for THIS run -- unique by construction, never re-derived by a
@@ -1946,12 +1955,11 @@ type UniquePublishingRelocateOutcome
 // credential was gone.
 //
 // CHECKED BY CONSTRUCTION SITE, NOT BY NAME, because the name is what nearly defeated it. Every
-// binding these eleven sweeps reach is a `shell.Mktemp.*` call in this module and there is no
+// binding these seven sweeps reach is a `shell.Mktemp.*` call in this module and there is no
 // other origin and no shadowing: `staged` (DirWithTemplate, in relocate_build_root_to_unique_
 // publishing, which is also where `publishing` comes from via UniquePublishingRelocateReady), and
-// `staging`, `cache`, `build` (Mktemp.Dir, at both the codex-runtime and spark-serving
-// construction sites), with build_root reaching release_codex_runtime_bundle_immutable from that
-// same `build`.
+// `staging`, `cache`, `build` (Mktemp.Dir, at both codex-runtime construction sites), with
+// build_root reaching release_codex_runtime_bundle_immutable from that same `build`.
 //
 // `cache_dir` IS THE MEMBER THAT LOOKS LIKE AN EXCEPTION AND IS NOT. A cache is normally the one
 // object here whose purpose is to outlive the run, which would make "left behind" observable by

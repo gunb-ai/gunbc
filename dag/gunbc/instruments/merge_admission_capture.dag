@@ -56,14 +56,16 @@ import gunbc.merge_admission_subject {
 // callers while the modules around them are referenced and one exported constant is under live
 // test.
 //
-// SECOND, THE GUARANTEE DEPENDS ON A DISCARDED OUTCOME. capture_tested_subject binds the clearing
+// SECOND, THE GUARANTEE DEPENDS ON A DISCARDED OUTCOME. (Census scale, carried with its ref: 19
+// candidate sites across four modules at 1ae18027, 15 after main deleted a function in
+// gunbc.package_delivery; this module's one is unchanged across that move.) capture_tested_subject binds the clearing
 // sweep's outcome to `_`, so "the wire was cleared" and "the clear failed and a prior attempt's
 // cause survived" are spelled identically -- which is exactly the state the sentence above promises
 // cannot occur. The same holds for the refusal write, whose Bool is also discarded: a write that
 // FAILED is then indistinguishable from the child dying before writing, collapsing two of the three
-// states this wire exists to separate. This is the census's OutcomeSemanticallyRequired class, and
-// it is the only member of it outside the printer scope, together with its two siblings in
-// tools.merge_admission_walk.
+// states this wire exists to separate. This is the census's OutcomeSemanticallyRequired class: this
+// site and its two siblings in tools.merge_admission_walk are its only members outside the printer
+// scope, and every other candidate classified as explicitly best-effort.
 //
 // THE REMEDY IS NOT TO CONSUME THOSE TWO BOOLS. Presence-and-freshness of a file cannot be made
 // sound by a best-effort sweep; the wire must carry the walk attempt identity it is about, so a

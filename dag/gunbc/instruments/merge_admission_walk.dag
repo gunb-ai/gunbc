@@ -204,8 +204,11 @@ data merge_admission_refresh_refusal_wire_relpath: String = "target/merge-admiss
 // target/merge-admission-refresh-refusal.txt before returning false. The fetch and target-tree arms
 // carry the operation's own stderr/cause so a runner-side git failure names itself.
 //
-// THE TWO DISCARDED OUTCOMES IN refresh_current_target_and_gate ARE THE REQUIRED CLASS (19-candidate
-// discarded-effect census, #10574's out-of-scope remainder). The pre-clear sweep and the refusal
+// THE TWO DISCARDED OUTCOMES IN refresh_current_target_and_gate ARE THE REQUIRED CLASS of the
+// discarded-effect census #10574 opened over its own out-of-scope remainder (19 across four
+// modules at 1ae18027, 15 after main deleted a function in gunbc.package_delivery; this module's
+// two are unchanged across that move, and the required class is these two plus the one in
+// tools.merge_admission_capture). The pre-clear sweep and the refusal
 // write both bind their outcome to `_`, so "the wire names THIS attempt" is spelled identically to
 // "the clear failed and a prior attempt's cause survived", and "the cause was recorded" identically
 // to "the write refused and the cause was lost" -- the two distinctions the wire exists to create,
