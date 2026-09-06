@@ -224,6 +224,7 @@ fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
+            module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
         })]),
         connective: Connective::NoConnective,
@@ -238,6 +239,7 @@ fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
+        module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
     })
 }
@@ -274,7 +276,7 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
                 match_pattern: None,
-                expr_data: Rc::new(ExprData::NoExprData),
+                module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem, expr_data: Rc::new(ExprData::NoExprData),
             }),
             Rc::new(Node {
                 occurrence_identity: Rc::new(v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
@@ -295,7 +297,7 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
                 match_pattern: None,
-                expr_data: Rc::new(ExprData::NoExprData),
+                module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem, expr_data: Rc::new(ExprData::NoExprData),
             }),
         ]),
         connective: Connective::NoConnective,
@@ -310,7 +312,7 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: Rc::new(ExprData::NoExprData),
+        module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem, expr_data: Rc::new(ExprData::NoExprData),
     })
 }
 
@@ -388,6 +390,7 @@ fn sum_node(name: &str, variants: Vec<Rc<Node>>, cardinality: Cardinality) -> Rc
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
+        module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
     })
 }
@@ -833,6 +836,7 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
+            module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
         })]),
         connective: Connective::Conj,
@@ -847,6 +851,7 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
+        module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
     });
     let optional_inner_sum = Rc::new(Node {
@@ -870,6 +875,7 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
+        module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
     });
     let subject = v1_compiler_infer_patterns::pattern_subject_from_node(optional_inner_sum);
@@ -952,6 +958,7 @@ fn applied_generic_type_node(type_name: &str, type_arg: Rc<Node>) -> Rc<Node> {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
+        module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
     })
 }
@@ -1256,6 +1263,7 @@ fn resolve_node_uses_node_name_for_lookup() {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
+        module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
     });
     let user_intern = v1_compiler::v1_std_core::intern(
@@ -1965,6 +1973,7 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
+        module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
     });
     let box_decl = Rc::new(Node {
@@ -1988,6 +1997,7 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
+        module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
     });
     let box_intern = intern(empty_intern_table(), "Box".to_string());
@@ -2043,8 +2053,85 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
     );
 }
 
+// THE SCOPE-MAP DISAGREEMENT IS AUTHORABLE HERE EVEN THOUGH IT IS UNWRITABLE IN THE CORPUS.
+//
+// `locals` and `body_locals` are populated in lockstep by build_params_scope and
+// extend_scope_with_params, so no accepted .dag program can put a name in one and not the other.
+// That made the earlier claim "no discriminating RED is authorable" look true -- but DESIGN §4b
+// says the question is what a FIXTURE can hand the compiler, not what the accepted corpus
+// contains, and this harness constructs an InferScope with the two maps as INDEPENDENT fields.
+// So the state the sixth constructor exists for is authorable exactly here, one level below the
+// source boundary, and the wall is testable rather than decorative.
+fn call_target_scope_map_disagreement_is_classified_as_missing_binding() {
+    let mut body_locals = im::HashMap::new();
+    body_locals.insert("phantom_callee".to_string(), true);
+    // locals deliberately left EMPTY -- this is the contradiction under test.
+    let scope = Rc::new(InferScope {
+        body_locals: Rc::new(body_locals),
+        ..(*empty_infer_scope()).clone()
+    });
+
+    let outcome = v1_compiler::v1_compiler_infer::call_target_for_direct_call(
+        scope,
+        "phantom_callee".to_string(),
+    );
+
+    // The discriminating assertion: this state must NOT be classified as an ordinary
+    // non-declared callee. Before the partition it was indistinguishable from one.
+    match &*outcome {
+        v1_compiler::v1_compiler_infer_sigs::CallTargetOutcome::LocallyBoundBindingMissing {
+            name,
+        } => assert_eq!(name, "phantom_callee"),
+        other => panic!(
+            "a name in body_locals with no binding in locals must classify as \
+             LocallyBoundBindingMissing, not {other:?}"
+        ),
+    }
+}
+
+// POSITIVE CONTROL. The same seam, with the two maps AGREEING, must classify as an ordinary
+// locally-bound callee -- otherwise the check above would pass by refusing everything.
+fn call_target_agreeing_scope_maps_are_locally_bound() {
+    let mut body_locals = im::HashMap::new();
+    body_locals.insert("real_callee".to_string(), true);
+    let mut locals = im::HashMap::new();
+    locals.insert(
+        "real_callee".to_string(),
+        Rc::new(v1_compiler::v1_compiler_infer_env::TypeBinding {
+            name: "real_callee".to_string(),
+            resolved: leaf_node("Int".to_string()),
+            provenance: Rc::new(v1_compiler::std_induction::SubValueRelation::PreservedValue),
+        }),
+    );
+    let scope = Rc::new(InferScope {
+        body_locals: Rc::new(body_locals),
+        locals: Rc::new(locals),
+        ..(*empty_infer_scope()).clone()
+    });
+
+    let outcome = v1_compiler::v1_compiler_infer::call_target_for_direct_call(
+        scope,
+        "real_callee".to_string(),
+    );
+
+    match &*outcome {
+        v1_compiler::v1_compiler_infer_sigs::CallTargetOutcome::LocallyBoundCallee {
+            name, ..
+        } => assert_eq!(name, "real_callee"),
+        other => panic!("agreeing scope maps must classify as LocallyBoundCallee, not {other:?}"),
+    }
+}
+
 fn main() -> ExitCode {
     let tests: &[(&str, fn())] = &[
+        (
+            "call_target_scope_map_disagreement_is_classified_as_missing_binding",
+            call_target_scope_map_disagreement_is_classified_as_missing_binding,
+        ),
+        (
+            "call_target_agreeing_scope_maps_are_locally_bound",
+            call_target_agreeing_scope_maps_are_locally_bound,
+        ),
         (
             "m1_brand_twins_over_refined_base_remain_distinct_in_infer_representation",
             m1_brand_twins_over_refined_base_remain_distinct_in_infer_representation,

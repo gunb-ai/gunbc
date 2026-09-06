@@ -1,0 +1,85 @@
+module gunbc.roadmap.roadmap_event_cli
+
+import std.types { String, Bool, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.algebra { trim }
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap_dashboard_instance { dashboard_instance_for_repo_root, DashboardInstanceResolved, DashboardInstanceRootUnknown }
+import gunbc.roadmap.roadmap_event_log {
+  RoadmapEvent, RoadmapEventKind, Claimed, Released, Progress, Blocked, HandedBack,
+  roadmap_node_standing, roadmap_node_standing_text, roadmap_node_standing_key,
+}
+import gunbc.roadmap.roadmap_event_carrier {
+  roadmap_event_carrier_layout_for_instance, roadmap_event_append, roadmap_events_read,
+  EventAppended, EventAlreadyPresent, EventAppendRefused, EventsRead, EventsReadRefused,
+}
+
+// THE ONE WRITER. A session, an operator or a harness worker records a fact about a node with
+//   gunbc run --entry dag/gunbc/roadmap/roadmap_event_cli.dag --function roadmap_event_record_cli \
+//     --arg repo_root=<instance repo> --arg node=<id> --arg kind=claim|release|progress|block|handback \
+//     --arg text=<note or reason> --arg author=<who>
+// and reads a node's standing with roadmap_event_standing_cli. The instance is resolved from the
+// repository root the caller stands in, exactly as the belt resolves its own, so the same command on
+// srv1 and srv2 writes to the same shared branch and reads the same events. The parent of the new
+// event is the current head of the node's history when there is exactly one; a fork or an incomplete
+// history refuses the write, because recording on top of a state the writer could not read is how a
+// fork becomes three.
+fn roadmap_event_kind_from_words(kind: String, text: String) -> RoadmapEventKind? {
+  let t = trim(text)
+  if kind == "claim" { Present { value: Claimed } }
+  else if kind == "release" { Present { value: Released } }
+  else if kind == "progress" { if t == "" { none } else { Present { value: Progress { note: t as NonEmptyStr } } } }
+  else if kind == "block" { if t == "" { none } else { Present { value: Blocked { reason: t as NonEmptyStr } } } }
+  else if kind == "handback" { if t == "" { none } else { Present { value: HandedBack { reason: t as NonEmptyStr } } } }
+  else { none }
+}
+
+fn roadmap_event_record_cli(repo_root: String, node: String, kind: String, text: String, author: String) -> ProcessExit {
+  match dashboard_instance_for_repo_root(repo_root: repo_root) {
+    DashboardInstanceRootUnknown { repo_root: w } => ExitFailure { code: 1, reason: join(["roadmap_event_record_cli: no dashboard instance is rooted at ", w], "") }
+    DashboardInstanceResolved { instance } =>
+      match roadmap_event_kind_from_words(kind: kind, text: text) {
+        Absent => ExitFailure { code: 1, reason: join(["roadmap_event_record_cli: kind must be claim|release|progress|block|handback, and progress/block/handback need text; got kind=", kind], "") }
+        Present { value: k } => {
+          if trim(author) == "" { ExitFailure { code: 1, reason: "roadmap_event_record_cli: author is empty" } } else {
+          let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
+          let node_id = node as NonEmptyStr as RoadmapNodeId
+          match roadmap_events_read(layout: layout, node: node_id) {
+            EventsReadRefused { node: _, step, reason } => ExitFailure { code: 1, reason: join(["roadmap_event_record_cli: could not read the node's history (", step, "): ", reason], "") }
+            EventsRead { node: _, envelopes } => {
+              let standing = roadmap_node_standing(envs: envelopes)
+              let key = roadmap_node_standing_key(s: standing)
+              if key == "forked" || key == "history_incomplete" {
+                ExitFailure { code: 1, reason: join(["roadmap_event_record_cli: refusing to record on a history that is ", key, ": ", roadmap_node_standing_text(s: standing)], "") }
+              } else {
+                let heads = filter(envelopes, e => !any(envelopes, o => match o.event.parent { Present { value: p } => (p as String) == (e.id as String)  Absent => false }))
+                let parent = match heads.first() { Present { value: h } => Present { value: h.id }  Absent => none }
+                let at = match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
+                match roadmap_event_append(layout: layout, event: RoadmapEvent { node: node_id, author: trim(author) as NonEmptyStr, parent: parent, kind: k, recorded_at: at }) {
+                  EventAppended { id } => ExitSuccess
+                  EventAlreadyPresent { id } => ExitSuccess
+                  EventAppendRefused { id: _, step, reason } => ExitFailure { code: 1, reason: join(["roadmap_event_record_cli: append refused at ", step, ": ", reason], "") }
+                }
+              }
+            }
+          }
+          }
+        }
+      }
+  }
+}
+
+// THE STANDING IS A REPORT, SO IT IS A STRING: `gunbc run` prints a String return inside its typed
+// envelope, which is the sanctioned way to read a value out of a run (a ProcessExit carries no
+// stdout, and an ExitFailure with code 0 is refused by the host as a status that contradicts itself).
+fn roadmap_event_standing_report(repo_root: String, node: String) -> String {
+  match dashboard_instance_for_repo_root(repo_root: repo_root) {
+    DashboardInstanceRootUnknown { repo_root: w } => join(["roadmap_event_standing_report: no dashboard instance is rooted at ", w], "")
+    DashboardInstanceResolved { instance } =>
+      match roadmap_events_read(layout: roadmap_event_carrier_layout_for_instance(instance: instance), node: node as NonEmptyStr as RoadmapNodeId) {
+        EventsReadRefused { node: _, step, reason } => join(["roadmap_event_standing_report: read refused at ", step, ": ", reason], "")
+        EventsRead { node: _, envelopes } => join([node, ": ", roadmap_node_standing_text(s: roadmap_node_standing(envs: envelopes)), " (", to_string(value: count(envelopes)), " events)"], "")
+      }
+  }
+}

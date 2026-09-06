@@ -29,7 +29,10 @@ import gunbc.scm.repository_envelope {
   RepositoryFormatUnrecognized,
 }
 import gunbc.scm.authoring { empty_proposal }
+import gunbc.scm.staging { NoCandidateAndNoBase }
 import gunbc.scm.status {
+  CorpusStage,
+  CorpusStageReadable,
   repository_status,
   render_repository_status,
   RepositoryStatus,
@@ -71,6 +74,13 @@ fn render_witness_atom(name: Symbol) -> Node {
 // SemanticNodeObjectRef and only the store mints one; a fixture that could invent one would be the
 // forge the seal exists to prevent. The arm is unreachable -- the store is empty -- and it now says
 // so by producing the no-checkout status instead of a plausible-looking identity.
+// THE CORPUS FIELD HERE IS THE MINIMAL RENDERABLE VALUE AND IS NOT A MODEL CLAIM. This fixture's
+// subject is the WIRE ENCODING -- control bytes, exit codes, the terminal projection -- and it
+// constructs a RepositoryStatus directly rather than deriving one, so its fields are chosen to render
+// stably rather than to be a state the producer reaches. `repository_status` over a repository with a
+// checked-out commit would answer StageMatchesBase or an unreadable corpus, never
+// NoCandidateAndNoBase; nothing here should be read as evidence that it can. The same caveat already
+// governs the checkout field above, for the reason its own note gives.
 fn render_witness_checked_out(message: String) -> RepositoryStatus {
   match store_node(store: empty_store(), n: render_witness_atom(name: ^r1)) {
     Stored { store: _, node: node } =>
@@ -78,9 +88,15 @@ fn render_witness_checked_out(message: String) -> RepositoryStatus {
         checkout: CheckedOutCommit { root: node, message: message },
         commit_count: 1,
         staged: [],
+        corpus: CorpusStageReadable { standing: NoCandidateAndNoBase, paths: [] },
       }
     LocatorCollision { identity: _, existing: _, incoming: _ } =>
-      RepositoryStatus { checkout: NothingCheckedOut, commit_count: 1, staged: [] }
+      RepositoryStatus {
+        checkout: NothingCheckedOut,
+        commit_count: 1,
+        staged: [],
+        corpus: CorpusStageReadable { standing: NoCandidateAndNoBase, paths: [] },
+      }
   }
 }
 
@@ -90,6 +106,7 @@ fn render_witness_empty_repository() -> RepositoryEnvelope {
     commits: [],
     commit_allocator: MintedIdAllocator { next_ordinal: 0 },
     checked_out: none,
+    staged: none,
   }
 }
 
@@ -127,8 +144,8 @@ test fn status_document_does_not_fork_the_verb_modules_text() -> Bool {
 // The empty repository still SAYS something. A read that succeeded and found nothing is not the same
 // event as a read that produced no output, and a reader cannot tell them apart if the second is how
 // the first looks.
-test fn an_empty_repository_status_renders_its_three_lines() -> Bool {
-  serialized_status() == "nothing checked out\n0 commits\n  nothing staged"
+test fn an_empty_repository_status_renders_its_lines() -> Bool {
+  serialized_status() == "nothing checked out\n0 commits\nno corpus staged\n  no roles staged"
 }
 
 // NO COMMITS IS AN ANSWER. Same distinction, on the log verb.
@@ -298,7 +315,7 @@ test fn the_same_answered_read_without_a_control_byte_prints_and_succeeds() -> B
   match control_byte_response(message: "release") {
     CliWireUnprintable { cause: _ } => false
     CliWirePrintable { bytes: b, exit: e } =>
-      b == "on commit: release\n1 commit\n  nothing staged\n"
+      b == "on commit: release\n1 commit\nno corpus staged\n  no roles staged\n"
         && match e {
              ExitSuccess => true
              ExitFailure { code: _, reason: _ } => false

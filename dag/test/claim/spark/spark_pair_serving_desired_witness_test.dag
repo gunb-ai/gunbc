@@ -1,0 +1,101 @@
+module test.claim.spark.spark_pair_serving_desired_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { token_count_value, percent_count }
+import product.placement_supply { host_identity_eq }
+import extdeps.network.ipv4 { ipv4_address_eq }
+import extdeps.vllm.engine_args { vllm_kv_cache_dtype_wire, vllm_distributed_executor_backend_wire }
+import gunbc.spark.serving_engine { VllmServing, OllamaServing }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv9 }
+import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
+import gunbc.spark.fabric_rail_desired { fabric_rail_address }
+import gunbc.spark.pair_serving_desired {
+  spark_pair_serving_engine_args,
+  spark_pair_serving_unit, spark_pair_serving_unit_with,
+  SparkPairServingUnit, SparkPairServingUnitReady, SparkPairServingUnitRefused,
+  SparkPairServingSeqCapacity, SeqCapacityMeasured, SeqCapacityUnmeasured,
+  spark_pair_serving_seq_capacity, spark_pair_serving_seq_capacity_for, spark_pair_serving_groups, spark_pair_serving_desired_hosts,
+  spark_pair_serving_unit_wire,
+}
+
+// THE TUPLE IS THE OPERATOR'S, READ BACK OFF THE ROW, WITH N FROM THE GROUP: 82% of the unified
+// pool, 1M context, the DeepSeek MLA fp8 KV layout, Ray as the executor; nothing here is re-derived.
+test fn the_group_engine_tuple_is_the_observed_safe_tuple_at_the_groups_degree() -> Bool {
+  let a = spark_pair_serving_engine_args(tensor_parallel: 4, max_num_seqs: 32)
+  a.tensor_parallel_size == 4
+    && percent_count(p: a.gpu_memory_utilization.fraction) == 82
+    && token_count_value(t: a.max_model_len) == 1048576
+    && (vllm_kv_cache_dtype_wire(request: a.kv_cache_dtype) as String) == "fp8_ds_mla"
+    && (vllm_distributed_executor_backend_wire(backend: a.distributed_executor_backend) as String) == "ray"
+}
+
+fn w_refused_naming(unit: SparkPairServingUnit, fragment: String) -> Bool {
+  match unit {
+    SparkPairServingUnitReady { group: _, engine: _, head: _, workers: _ } => false
+    SparkPairServingUnitRefused { group: _, cause: c } => string_contains(s: c as String, pattern: fragment)
+  }
+}
+
+// AN UNMEASURED POOL REFUSES THE UNIT INSTEAD OF INVENTING A SEQUENCE COUNT.
+test fn an_unmeasured_pool_refuses_the_unit_for_that_reason_alone() -> Bool {
+  w_refused_naming(unit: spark_pair_serving_unit_with(group: FabricGroupA, capacity: SeqCapacityUnmeasured), fragment: "max-num-seqs")
+    && (match spark_pair_serving_seq_capacity {
+          SeqCapacityUnmeasured => false
+          SeqCapacityMeasured { max_num_seqs: n, basis: _ } => n == 32
+        })
+}
+
+// EACH PROMOTED GROUP'S CAPACITY IS GROUNDED IN ITS OWN LAUNCH LINE, not the first pair's, and
+// the count is the operator-observed 32 on both.
+test fn each_groups_capacity_cites_its_own_pool_and_carries_the_observed_count() -> Bool {
+  (match spark_pair_serving_seq_capacity_for(group: FabricGroupA) {
+     SeqCapacityUnmeasured => false
+     SeqCapacityMeasured { max_num_seqs: n, basis: b } => n == 32 && string_contains(s: b as String, pattern: "pool of 11767856 tokens read from this group's own head stdout")
+   })
+    && (match spark_pair_serving_seq_capacity_for(group: FabricGroupB) {
+         SeqCapacityUnmeasured => false
+         SeqCapacityMeasured { max_num_seqs: n, basis: b } => n == 32 && string_contains(s: b as String, pattern: "pool of 11952124 tokens") && !string_contains(s: b as String, pattern: "inherited")
+       })
+}
+
+// GROUP A IS srv6 AT THE HEAD WITH srv5, srv7 AND srv8 AS WORKERS, EVERY RANK AT ITS RAIL ADDRESS,
+// tensor-parallel four, and the engine is vLLM.
+test fn group_a_is_four_ranks_headed_by_srv6_at_their_rail_addresses() -> Bool {
+  match spark_pair_serving_unit(group: FabricGroupA) {
+    SparkPairServingUnitRefused { group: _, cause: _ } => false
+    SparkPairServingUnitReady { group: _, engine: e, head: h, workers: ws } =>
+      host_identity_eq(a: h.host, b: operator_host_srv6)
+        && length(ws) == 3
+        && any(ws, w => host_identity_eq(a: w.host, b: operator_host_srv5)) && any(ws, w => host_identity_eq(a: w.host, b: operator_host_srv7)) && any(ws, w => host_identity_eq(a: w.host, b: operator_host_srv8))
+        && (match e { VllmServing { args: a } => a.tensor_parallel_size == 4  OllamaServing { profile: _ } => false })
+        && (match fabric_rail_address(host: h.host) { Present { value: a } => ipv4_address_eq(a: a, b: h.host_ip)  Absent => false })
+        && all(ws, w => match fabric_rail_address(host: w.host) { Present { value: a } => ipv4_address_eq(a: a, b: w.host_ip)  Absent => false })
+  }
+}
+
+// BOTH GROUPS ARE PROMOTED: group B resolves as srv9 head with three workers, and the desired host
+// projection carries exactly the ready units' hosts — all eight fabric hosts.
+test fn both_groups_are_promoted_and_every_fabric_host_reaches_the_desired_hosts() -> Bool {
+  (match spark_pair_serving_unit(group: FabricGroupB) {
+     SparkPairServingUnitRefused { group: _, cause: _ } => false
+     SparkPairServingUnitReady { group: _, engine: _, head: h, workers: ws } =>
+       length(ws) == 3 && host_identity_eq(a: h.host, b: operator_host_srv9)
+   })
+    && length(spark_pair_serving_groups) == 2
+    && length(spark_pair_serving_desired_hosts()) == 8
+    && any(spark_pair_serving_desired_hosts(), h => host_identity_eq(a: h, b: operator_host_srv6))
+    && any(spark_pair_serving_desired_hosts(), h => host_identity_eq(a: h, b: operator_host_srv9))
+}
+
+test fn the_group_b_wire_names_srv9_at_its_rail_address() -> Bool {
+  let w = spark_pair_serving_unit_wire(unit: spark_pair_serving_unit(group: FabricGroupB))
+  string_contains(s: w, pattern: "group group-b tp=4 head=srv9@192.168.110.17 workers=")
+    && string_contains(s: w, pattern: "srv12@192.168.110.16")
+}
+
+test fn the_wire_names_the_group_its_degree_and_every_rank() -> Bool {
+  let w = spark_pair_serving_unit_wire(unit: spark_pair_serving_unit(group: FabricGroupA))
+  string_contains(s: w, pattern: "group group-a tp=4 head=srv6@192.168.110.14 workers=")
+    && string_contains(s: w, pattern: "srv5@192.168.110.11")
+}

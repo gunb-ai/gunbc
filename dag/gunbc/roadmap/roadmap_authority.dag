@@ -56,6 +56,8 @@ import gunbc.roadmap_acceptance_history_observation {
   acceptance_history_integrity_verdict_from_prior_observation,
 }
 import gunbc.roadmap_execution_contract {
+  GunbcClaimValidation,
+  ExecutionContract,
   ExecutionContractUnspecified,
   contract_has_closing_validation,
   closing_contract_authoring_contract,
@@ -361,10 +363,30 @@ fn superseded(identity: String,
 // the live tree (SubstrateInputsOnly), so it is a statement about the repository rather than a
 // fixture — a raw shell literal reappearing in that transport module reds it for real.
 
+// THE BINDING NOW DISCRIMINATES, which is the half observation_raw_print_retirement_contract_note
+// records this contract as deliberately not supplying. It named
+// corpus_dag_compile_clean_transport_clean_holds -- an ALREADY-GREEN validation -- so Verify proved
+// only that the path RUNS: admission, argv derivation, receipt production. A verifier that returned
+// green unconditionally was indistinguishable from a working one, because nothing it ran could
+// return anything else.
+//
+// It now names a validation that FAILS TODAY. usb_gadget_setup_script prefixes "set -e" and joins
+// rendered shell lines, so the witness asserting no shell control word is red, and the red is this
+// node's own acceptance condition rather than a planted fixture: the node asks for a described
+// operation instead of written shell text, and the witness asserts exactly that no shell text is
+// produced. The transition red -> green IS the work being finished.
+//
+// THE WITNESS IS ENROLLED IN floor_expected_red, NOT QuarantineProbeExpectRed, and the difference
+// is executional rather than stylistic. The sibling note above recommends the quarantine cadence,
+// and that recommendation is STALE: std.witness_admission records that falsifier.yml -- the
+// workflow scheduling QuarantineProbeExpectRed -- was deleted at 611fd02770 (#8283), so every row
+// classified into that cadence "has read as covered ever since despite executing nowhere".
+// Enrolling here would have put a deliberately-red acceptance test somewhere it never runs, which
+// is the failure that note itself documents. The floor executes.
 fn shell_typed_invocation_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "src/v2/test/claim/host_language_transport_script/corpus/migrated_transports_clean_test.dag" as FilePath,
-    function: "corpus_dag_compile_clean_transport_clean_holds" as NonEmptyStr,
+    entry: "dag/test/claim/shell_to_dag_stub_witness_test.dag" as FilePath,
+    function: "usb_gadget_setup_emits_no_shell_control_word" as NonEmptyStr,
   )
 }
 
@@ -1246,35 +1268,17 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The exact bytes produced in both terminal and piped modes, from a real run."
       )
     ),
-    active_large(
+    superseded(
       identity: "rn_CYFS96A1S7K88Y1JDCDCG9N6KC",
       id: "observation-ci-event-grouping",
-      owner: "ci-observation",
-      path: "docs/plans/progress-observation-design.md",
-      t: fields(
-        headline: "Group the build output into things a person recognises",
-        boundary: "Each piece of work announces a stable name and its start and end. Grouping comes from those names, not from which lines happen to be next to each other.",
-        displaced_cost: "The build log is an undifferentiated stream, so finding which part failed means reading all of it.",
-        first_slice: "Group one real family of build work with its results.",
-        red_control: "Shuffling the order events arrive keeps the grouping correct, and a mismatched name does not join the wrong group.",
-        out_of_scope: "No stored display state and no fake percentage bar.",
-        handback: "The grouping working on real build output."
-      )
+      by: "DESIGN.md Building & checks (the 2026-08-15 floor cut), the required run's own [floor-phase] rows",
+      content: "The build output these rows grouped and collapsed was the deleted ci.yml job log. The required run emits [floor-phase] rows and the compiler's compile.frontend/normalize/reconcile/analyses lines from one process; grouping and collapsing that stream is a property of that emission, and honest progress for a running command stays on observation-scoped-run-consumer."
     ),
-    active(
+    superseded(
       identity: "rn_JV9JZNAZDQCB041MSNKCW0FSEW",
       id: "observation-collapse-watchdog-restatement",
-      owner: "ci-observation",
-      path: "docs/plans/progress-observation-design.md",
-      t: fields(
-        headline: "Hide what passed, keep what failed, and never claim success we did not see",
-        boundary: "Finished-and-passing groups collapse, failures stay visible, and work that started but never reported an ending is shown as stalled rather than assumed fine.",
-        displaced_cost: "Cuts the noise so failures cannot scroll away, and a hung step stops looking like a successful one.",
-        first_slice: "Apply all three behaviours to one group.",
-        red_control: "Work that never finishes visibly times out, and a failed child keeps its group open and red.",
-        out_of_scope: "No guessing that something succeeded because the process exited or went quiet.",
-        handback: "All three behaviours demonstrated."
-      )
+      by: "DESIGN.md Building & checks (the 2026-08-15 floor cut), the required run's own [floor-phase] rows",
+      content: "The build output these rows grouped and collapsed was the deleted ci.yml job log. The required run emits [floor-phase] rows and the compiler's compile.frontend/normalize/reconcile/analyses lines from one process; grouping and collapsing that stream is a property of that emission, and honest progress for a running command stays on observation-scoped-run-consumer."
     ),
     with_execution(
       e: observation_raw_print_retirement_execution_contract(),
@@ -1296,214 +1300,103 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
 
     active_large(
+      identity: "rn_RSPTW7T9VRES9F7FHCP08QFGX5",
+      id: "ci-required-run-cost",
+      owner: "ci-cost",
+      path: "src/v2/workflow/required_floor.dag",
+      t: fields(
+        headline: "Make the required run cost what its inputs require, measured on the run that owns the number",
+        boundary: "The required run is one claim_executor --required-ci process with four phases (parse, regen, v2-emission, floor). Its cost is read from that run's own [floor-phase] rows and compile.frontend/normalize/reconcile/analyses lines, never transcribed. Work under this row attributes wall time to a phase by instrument, then removes computation whose inputs did not change, one phase at a time, with the attribution re-read from the run after each change.",
+        displaced_cost: "Every PR waits for the whole run (about thirty minutes at the 2026-08-22 measurement, from the run named in DESIGN.md Building & checks); the fifteen rows this replaces optimised a plan, a scheduler and a scoped worker that no longer exist, so they could only be closed by re-creating what the floor cut deleted.",
+        first_slice: "One row per phase in a receipt the run emits: phase name, wall time, and the subject size it ran over (modules parsed, entries emitted, witnesses routed), so a later change can be judged against the same instrument rather than a remembered number.",
+        red_control: "A change that claims to cut a phase's time without the run's own receipt moving refuses review; a receipt whose phase list differs from the run's printed roster (phases_run) is a defect, not a report.",
+        out_of_scope: "No return of batches, plan entries, selection flags or a second worker process; no corpus-denominated fallback; the tokenizer escape-scan row stays separate.",
+        handback: "The per-phase receipt on the required run, and the first phase attribution read from it."
+      )
+    ),
+    superseded(
       identity: "rn_8QK2M5F7V3N9P1R4T6W0X2Y5Z8A",
       id: "five-minute-ci-gate",
-      owner: "ci-cost",
-      path: "docs/plans/five-minute-ci-gate-design.md",
-      t: fields(
-        headline: "Serve every required CI operation with the bare minimum computation; five minutes is the distress ceiling, not the contract",
-        boundary: "Every required operation performs only the computation its inputs require — no semantic fact recomputed whose inputs did not change (re-anchored by operator ruling 2026-08-02: five minutes is the distress ceiling — the Stage C checkpoint bound, not the contract). Sub-lanes (unordered roster — dispatch order follows the graph edges): #7522 warm-merge-admission net receipt; #7534 materialization substrate; union closed → per-entry assembly; the mechanism chain (discovery snapshot, scoped substrate, early selection, streaming); this registration. THE NATIVE ROW NO LONGER PRECEDES THIS GATE (2026-08-10): that edge is deleted, so this gate is schedulable without waiting on a self-host frontier.",
-        displaced_cost: "MEASURED DECOMPOSITION, which relocates the whole lane: a 3,290s floor is 1,422s discovery/setup, 690s scoped worker, and 97s of actual witness evaluation. CI is not running tests — it is repeatedly reconstructing an understanding of the repository so that millisecond tests can run. Three consequences follow and each is a row rather than an opinion: ordinary and scoped discovery duplicate the same walk at 295.7s + 284.3s; selection is sharp about meaning and blunt about cost, deciding what matters only AFTER roster, index and closure are already paid for; and cache hits are effectively all-or-nothing, one missing typed key costing 82-96 percent of a full cold symbol-index build. The unit being reused is too small — values are cached while the world that gives them meaning is rebuilt.",
-        first_slice: "Register sequence and staged expectations in authority; land no implementation under the parent id — the native cutover's whole implementation belongs to the CI-0 child row.",
-        red_control: "A sub-lane that widens to whole-corpus work, silently falls through from an incomplete materialization artifact to cold recompute, or claims the five-minute envelope without Stage C fleet receipts refuses rather than greens.",
-        out_of_scope: "No single PR closes the parent; placement/build-flake cap-first work, tokenizer escape scan, and closed entry-graph-union stay outside.",
-        handback: "Sequence graph, staged expectations, six sub-lane rows, and design note in docs/plans/five-minute-ci-gate-design.md."
-      )
+      by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
-    active(
+    superseded(
       identity: "rn_1H4J6L8N0P2Q5S7U9V1W3X6Y8Z0B",
       id: "warm-merge-admission",
-      owner: "ci-cost",
-      path: "docs/plans/five-minute-ci-gate-design.md",
-      t: fields(
-        headline: "Admit merges from warm stamped receipts, not cold recomputation",
-        boundary: "#7522 in flight (dispatch order follows the graph edges): fold resolve and materialization receipt gates into merge admission so the pull-request path stamps once and admits from warm receipts. Operator expectation: probable net recovery ~1–1.5 min (not ~3 min) — final-head run decides; not transcribed as receipt until measured.",
-        displaced_cost: "Merge admission and the floor tail currently pay separate cold paths for facts already fixed when the run started.",
-        first_slice: "Finish #7522 with real net wall receipt and stage profile.",
-        red_control: "A stale base-tree or stale gate-roster receipt blocks merge; a missing or invalid receipt refuses rather than widening to a full rerun.",
-        out_of_scope: "No change to main-push cold controls or the falsifier cadence.",
-        handback: "One admission path with discriminating stale-base, stale-roster, and fresh controls executed."
-      )
+      by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
-    active_large(
+    superseded(
       identity: "rn_2I5K7M9O1Q3R6T8V0W2X4Y7Z9A1C",
       id: "native-selected-witness-bundle",
-      owner: "ci-cost",
-      path: "docs/plans/five-minute-ci-gate-design.md",
-      t: fields(
-        headline: "Name the v2 self-host frontier that native witness execution actually requires, and close it stage by stage",
-        boundary: "STOPPED AND RE-CUT (operator ruling 2026-08-10, superseding the 2026-08-08 one-PR mandate this row carried). #8043/#8080 attempted the complete cutover in one PR and is closed as quarry; the row survives because the CAPABILITY is real and the SCOPE was wrong. Root, in the operator's words: v2 native execution entails a real self-host frontier and must be named as such, not carried as a CI-performance step. The frontier is gunbc.roadmap_authority native_selected_witness_bundle_frontier_note (historical) and native_selected_witness_bundle_exact_head_recut_note (current).",
-        displaced_cost: "The stopped lane still paid for itself twice. It produced two merged frontend repairs (#8114: arrow-lambda grammar admission, and the graft dissolution guard — main accepted hollow-shell modules until it landed, proven by reverting only namespace_graft.dag and watching both RED witnesses fail), and it produced the frontier table that replaced an eleven-item guess with a three-item program — a table since superseded by the 2026-08-11 exact-head re-observation, under which the split is four normalize members and two independent lex walls, not five and three. What it disproved is equally load-bearing: this row no longer parents five-minute-ci-gate, because witness EVALUATION is 97s of a 3,290s floor — an infinitely fast evaluator leaves 97 percent of the floor standing, so native execution was never the CI-cost lever and CI cost must not wait on a self-host frontier.",
-        first_slice: "Superseded by exact-head re-observation (2026-08-11): neither half is a bounded repair. Sequence, and the full re-cut with its three time grains, is gunbc.roadmap_authority native_selected_witness_bundle_exact_head_recut_note — honest body-lowering frontier, then the resolve-ready normalized-tree construction boundary, then the retained population reaching zero, then the frontend syntax population.",
-        red_control: "A member reported as a frontend GAP whose refusal is actually normalize's own retention contradicting itself refuses the classification — the two populations are separated by reading the rejection reason as a containment read, never by the first reason rendered, because rejected_with_pending prepends accepted-carrier diagnostics to a later rejection and the FIRST reason is systematically wrong. A cohort claimed as reaching Accepted whose closure contains no Accepted member refuses. A repair asserted separable from a description, without a cherry-pick onto main executed green, refuses.",
-        out_of_scope: "No CI wall-clock claim of any kind is made or scheduled here — that dependency is deleted (see displaced_cost). No second body-lowering, resolution, or classification authority beside the existing ones. No Interpreted execution route — InterpreterSubjectTest describes the subject under test and never grants v1 the scheduler. Not the complete-cutover-in-one-PR shape: it was attempted, and the cohort was empty at the real frontier.",
-        handback: "Reported by time grain, never as one population: pre-repair partial observation, post-repair executed, post-repair unknown. The three grains and what each contains are gunbc.roadmap_authority native_selected_witness_bundle_exact_head_recut_note. Native witness execution is complete only when it stops being a self-host question, measured by the frontier reaching zero, never by a wall-clock reading."
-      )
+      by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
-    active_large(
+    superseded(
       identity: "rn_7Q2W4E6R8T1Y3V5P9A2S4D6F8G1H",
       id: "v2-lens-suite-execution",
-      owner: "ci-cost",
-      path: "docs/plans/five-minute-ci-gate-design.md",
-      t: fields(
-        headline: "V2-LENS-0: every registered v2 lens executes over one exact corpus subject through the CI2 route",
-        boundary: "BLOCKED, AND THE BLOCK IS HONEST (2026-08-10): the former trigger, CI2-0 terminal acceptance, is unreachable because that lane is stopped and its one-PR shape retired. This row keeps its dependency on the native row deliberately rather than being re-anchored around it: its own handback demands ZERO v1 lens-body executions, which is native execution by definition, so relaxing the trigger would only move the frontier into the handback. The underlying concern is DESIGN section 6's and does not expire with the lane: an inert lens is coverage by illusion. Residue, roster derivation and the per-lens execution contract are gunbc.roadmap_authority v2_lens_suite_execution_block_note.",
-        displaced_cost: "Registry completeness proves metadata coherence, not execution: many LensContract rows carry NoConsumerWitness, and an inert lens is coverage by illusion. Binary acquisition, not lens logic, was the recurring execution failure; #8054 proved a whole-corpus query executes and its expense is corpus-fact construction, not lens evaluation.",
-        first_slice: "Dispatch trigger (operator 2026-08-09): one ordinary NON-FIXTURE test declaration completes canonical parse-normalize-resolve-infer-realize-execute in #8043, with the removed parser diagnostic named, a planted nearby syntax RED still refusing, and the roster identity joined. Checkpoint A: one deliberately boring lens selected MECHANICALLY from the registry (deterministic, hermetic, no host effect, no base-revision graph, small fact input) — a checkpoint, never a completed capsule. Checkpoint B: derive the complete roster, execute all through one shared fact pack, one LensSuiteReceipt. Checkpoint C: enroll the suite permanently in gunbc test.",
-        red_control: "Permanence laws: registering a lens AUTO-ENROLLS it (a registry row without an executable body reds gunbc test; a deleted lens leaving a row reds the roster join); executing zero lenses can never produce a successful suite verdict; registered = planned = terminal outcomes with zero duplicates and zero unaccounted; ordinary v1 lens-body executions and fallback are zero. A missing input yields Partial, Unavailable, or Refused — never an empty success. Fact-pack construction is once per process, a second query constructs zero, warm execution within five seconds. The delivery/consumption question returns as ONE lens here (advisory until declaration grain), never a standalone workflow.",
-        out_of_scope: "No new universal lens ontology, no separate lens scheduler, no report-only successor PRs. Host or v1-produced input facts may remain explicit temporary bridges but may not decide a lens answer.",
-        handback: "One LensSuiteReceipt on one exact corpus subject with zero v1 lens-body executions and at least one real downstream consumer — initially gunbc test — reading it."
-      )
+      by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
-    active_large(
+    superseded(
       identity: "rn_4K7M9O1Q3S5T8V1W3X4Y7Z9A1B3E",
       id: "module-grain-materialization",
-      owner: "ci-cost",
-      path: "docs/plans/five-minute-ci-gate-design.md",
-      t: fields(
-        headline: "Recompute only the edited module and its semantic dependents",
-        boundary: "NEXT (sequence step 4, #7534 continues): shared materialization substrate — hierarchy module parse/type/interface → resolved entry → selected native witness bundle. No default CI savings credited until ordinary invocations consume hits. FIRST RUNG: exact-tree cross-process cache (#7534, opt-in) — verified serve, not default CI activation.",
-        displaced_cost: "Cross-entry typed-module work is repeated today even when module inputs are byte-identical across entries in one process.",
-        first_slice: "Continue #7534 provider; land module-grain typed memo with byte-identical cached-vs-cold oracle on a representative edit.",
-        red_control: "A cache hit with divergent corpus or emit fingerprints refuses; incomplete materialization artifacts refuse rather than falling through to cold recompute.",
-        out_of_scope: "Not pre-index lookup before corpus-scale index construction.",
-        handback: "Module-grain key authority, exact-tree provider receipts, and cached-vs-cold oracle green on the edit cone."
-      )
+      by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
-    active(
+    superseded(
       identity: "rn_5L8N0P2R4T6U9W2X4Y8Z0A2B4C6D",
       id: "pre-index-materialization-lookup",
-      owner: "ci-cost",
-      path: "docs/plans/five-minute-ci-gate-design.md",
-      t: fields(
-        headline: "Probe materialization before corpus-scale index construction",
-        boundary: "NEXT: a small persistent manifest lets a warm materialization hit occur before building the shared entry index and source-loading closure — serve and dashboard currently construct the index first and only then discover the cache.",
-        displaced_cost: "Warm hits that still pay corpus index construction reproduce the measured startup outage on real dashboard entries.",
-        first_slice: "Record on the actual dashboard entry: cold and warm time-to-listener-bind, time before cache probe, time in index construction, and time in provider validation — then land manifest lookup ahead of index build.",
-        red_control: "A warm hit that still builds the full corpus index on the serve path refuses as a regression; manifest mismatch refuses rather than silently rebuilding.",
-        out_of_scope: "Not the exact-tree provider itself; not module-grain keys.",
-        handback: "Dashboard timing receipt and manifest-first serve path with warm-hit control."
-      )
+      by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
-    active_large(
+    superseded(
       identity: "rn_6M9N1Q3S5U7W0X2Y4Z6A8B0C2D4E",
       id: "phased-single-process-ci",
-      owner: "ci-cost",
-      path: "docs/plans/five-minute-ci-gate-design.md",
-      t: fields(
-        headline: "Share one initialized substrate across regen, floor, and admission",
-        boundary: "NEXT: regen, floor, and admission run in one initialized process with phase boundaries and separate verdicts — regen still gates floor. NOT flattening into ordinary batches; duplicate prelude work is the target.",
-        displaced_cost: "Each phase currently cold-starts its own substrate — paying resolve, index construction, and discovery more than once per pull request.",
-        first_slice: "Model phase boundaries with separate verdict stamps on one shared materialization provider; measure prelude duplication on a representative PR.",
-        red_control: "A phase that silently reruns full discovery or resolve when the prior phase already fixed those facts refuses as a regression.",
-        out_of_scope: "Not removing regen-before-floor ordering; not merging verdict semantics.",
-        handback: "Phased walk plan with shared substrate receipts and prelude-duplication attribution."
-      )
+      by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
-    active_large(
+    superseded(
       identity: "rn_7N0O2R4T6V8X1Y5Z7A9B1C3D5E6F",
       id: "per-entry-assembly-decomposition",
-      owner: "ci-cost",
-      path: "docs/plans/five-minute-ci-gate-design.md",
-      t: fields(
-        headline: "Decompose per-entry assembly after the shared-typecheck hypothesis closed",
-        boundary: "NEXT (sequence step 5, narrow lane): after #7533 closed entry-graph-union on zero repeated typecheck misses, attribute and reduce per-entry assembly/reconcile work — the remaining compiler term on the floor path.",
-        displaced_cost: "Assembly and reconcile rows still scale with entry count even when typecheck is already shared across entries in one index.",
-        first_slice: "Measure per-entry assembly attribution against one shared environment; report repeated assembly compute / total assembly compute before any implementation.",
-        red_control: "Attribution must reconcile on one exclusive basis and must not infer computation from closure membership alone.",
-        out_of_scope: "No union-graph construction — that hypothesis is closed.",
-        handback: "Repeated-assembly attribution receipt; implementation proposal only if the receipt justifies one."
-      )
+      by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
-    active(
+    superseded(
       identity: "rn_9WQ3ZB6HTKX2LNVR40PDGY7CJM",
       id: "ci-cost-arc-reconciliation",
-      owner: "ci-cost",
-      path: "docs/plans/ci-performance-tanking-evidence.md",
-      t: fields(
-        headline: "One ledger for what the CI-speed work actually bought",
-        boundary: "One row per attempt made across this arc: what it predicted, what it changed, the exact subject it was measured on, the movement inside its own segment, the movement in the whole required path, whether memory stayed inside the fixed envelope, and a typed result — delivered, partial, falsified, confounded by infrastructure, or evidence invalid — with what each one implies next. Rows are read out of receipts that already exist; nothing is re-measured to fill this in.",
-        displaced_cost: "Weeks of work bought real causal knowledge and several correctly killed hypotheses, but the required path is not meaningfully shorter. Without this ledger the next programme re-runs the attempts already falsified, and re-argues the ones that were only confounded by a machine failure.",
-        first_slice: "Fill the ledger from the receipts already landed, and state the whole-path movement the arc actually achieved.",
-        red_control: "An attempt whose claimed movement cannot be tied to an executed receipt is recorded as evidence invalid, never as delivered. A win inside one segment with no movement in the whole path is partial, never delivered. A result from a run the machine killed is confounded, not falsified — collapsing those two loses the distinction the ledger exists to make.",
-        out_of_scope: "No new measurement programme and no new optimisation. This row explains the arc; it does not extend it.",
-        handback: "The ledger with every attempt classified, and the next mechanisms it justifies, each named with the cost it is expected to remove."
-      )
+      by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
-    active_large(
+    superseded(
       identity: "rn_5TDM8PXW1QKZ0HRB37NVLYG6CA",
       id: "ci-build-once-per-subject",
-      owner: "ci-cost",
-      path: "docs/plans/ci-performance-tanking-evidence.md",
-      t: fields(
-        headline: "Compile the compiler once per change, not once per job",
-        boundary: "One expensive compiler build per change under test. Small checks stop dragging the whole compiler into a second build profile in order to run a few milliseconds of assertions: work that only observes the tree gets a small target that does not rebuild the monolith.",
-        displaced_cost: "Building and testing is now the largest single cost of getting a change in, and a measured run spent minutes of compiler builds to execute a fraction of a second of checks.",
-        first_slice: "Count the expensive compilations one pull request actually performs, then remove the second profile.",
-        red_control: "A change that adds a second expensive compilation to the required path refuses. A small check that pulls the compiler into its own build is rejected even where it is fast today, because the cost is in the build and not in the check.",
-        out_of_scope: "Not the shared-substrate work — that is a different duplicate, owned above. Not local developer builds.",
-        handback: "The per-change compilation count before and after, and the whole-path movement it produced."
-      )
+      by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
-    active_large(
+    superseded(
       identity: "rn_4RTVN0BQKZ8XWM2CDPHJLG7Y36",
       id: "ci-floor-discovery-snapshot",
-      owner: "ci-cost",
-      path: "docs/plans/cross-worker-typecheck-share-design.md",
-      t: fields(
-        headline: "Walk the corpus once and let both workers read the same result",
-        boundary: "One complete discovery result is produced once and consumed by the second worker, instead of the same walk happening again in another process. It carries the whole typed result, never a pass-or-fail flag. A consumer that finds it absent, damaged, or belonging to a different subject refuses; it never quietly recomputes.",
-        displaced_cost: "The ordinary worker and the scoped worker each perform effectively the same full walk in separate processes, and the second one measures around 284 seconds. It is the clearest several-minute target on the required path, and it is the first real use of computing something once and reusing it rather than a description of one.",
-        first_slice: "Produce the complete result once and have the second consumer read it, with the recompute path removed rather than left sitting behind it as a fallback.",
-        red_control: "A missing, damaged, or wrong-subject result refuses rather than falling back to a fresh walk. A consumer that recomputes anything the result already fixed reds. The benefit is stated as measured displacement on the required path, never as a win inside one segment.",
-        out_of_scope: "Not the cross-phase sharing above, which removes a different duplicate. Not width two, which stays parked until private worlds stop being rebuilt per process. Not what the corpus contains or how it is selected.",
-        handback: "The result produced once, both consumers reading it, the three refusals, and the measured displacement on the whole path."
-      )
+      by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
-    active_large(
+    superseded(
       identity: "rn_8QDBM3ZVKT5XWN0RCPHJLG2764",
       id: "ci-scoped-worker-shared-substrate",
-      owner: "ci-cost",
-      path: "docs/plans/cross-worker-typecheck-share-design.md",
-      t: fields(
-        headline: "Stop building a second compiler world in order to run twenty-seven witnesses",
-        boundary: "The scoped worker consumes an already-initialised substrate, or runs as a later stage inside the ordinary one, rather than constructing its own sources, indexes and environments. Staying in its own process remains allowed: isolation means separate mutable scratch and its own lifetime, never recomputing facts that are already fixed and immutable.",
-        displaced_cost: "The scoped worker executes twenty-seven witnesses and pays for a whole second world to do it. The process boundary is being used as a way of handing memory back, and a cold start is the price currently paid for that.",
-        first_slice: "Run the scoped population against the ordinary world's initialised substrate while keeping its own scratch.",
-        red_control: "STRUCTURAL, NOT A STOPWATCH. No second source loading, no second index construction, no second initialised semantic world, the same exact witness population with the same outcomes and effects, worker-private scratch still bounded, and no path back to cold construction. Wall, CPU and memory before and after are recorded as observations beside that verdict — a timer moving cannot stand in for a duplicate that is still reachable, and a duplicate genuinely removed is not disqualified by a noisy host.",
-        out_of_scope: "Not sharing the discovery walk, which the row above owns. Not widening to two workers — that stays parked until private worlds stop being rebuilt.",
-        handback: "The same population and outcomes, no second construction, and the measured segment reduction."
-      )
+      by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
-    active(
+    superseded(
       identity: "rn_2VNCX7QBZK9TWM4RDPHJLG0538",
       id: "ci-selection-before-preparation",
-      owner: "ci-cost",
-      path: "docs/plans/ci-selection-vs-scheduling.md",
-      t: fields(
-        headline: "Decide what matters before paying to prepare everything",
-        boundary: "Which computations a change affects is decided from source and module facts, ahead of broad roster, index, grouping and closure preparation. Only the views that decision actually needs are then prepared.",
-        displaced_cost: "Selection is already sharp about meaning and blunt about cost: it can correctly conclude that most of the corpus is irrelevant, but only after the corpus has been discovered, named, rostered and indexed. The saving it reports is real while the work it claims to have avoided has largely already been done.",
-        first_slice: "Move the affected-computation decision ahead of broad preparation on one required path, and prepare only what it selected.",
-        red_control: "A selection that still needs whole-corpus preparation to reach its answer reds. Preparing anything the selection did not ask for reds. A provenance gap in selection still refuses rather than widening to everything, exactly as it does today.",
-        out_of_scope: "Not what the selection decides — its correctness is owned elsewhere and does not change here. Not the discovery result itself.",
-        handback: "The reordered path, the prepared population matching the selected one, and the measured displacement."
-      )
+      by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
-    active_large(
+    superseded(
       identity: "rn_4XKBW0ZQNV6TCM2RDPHJLG7135",
       id: "ci-streaming-realization",
-      owner: "ci-cost",
-      path: "docs/plans/floor-prep-tax-program.md",
-      t: fields(
-        headline: "Start running as soon as the first thing is ready",
-        boundary: "Preparation stops being a barrier standing in front of execution. A module's facts becoming ready makes an entry view ready, which makes a witness ready, which runs — while everything else is still being prepared.",
-        displaced_cost: "Several hundred seconds are currently spent preparing every selected entry before the first one executes. That is a barrier, not work that had to finish first.",
-        first_slice: "Let one family execute as it becomes ready, rather than after the whole selected population has been prepared.",
-        red_control: "The first witness executes before the last selected entry has finished being prepared — the property this row exists for, measured rather than asserted. Outcomes and the order they are reported in stay stable however the readiness order falls out. A failure during preparation still refuses rather than surfacing as a witness that passed.",
-        out_of_scope: "Not running more things at once — this overlaps preparation with execution, it widens neither.",
-        handback: "The measured overlap, the stable outcomes under reordering, and the reduction in time before first execution."
-      )
+      by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
 
     active_small(
@@ -1521,95 +1414,41 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The migrated function, the cost separation on the discriminating literal, and the corpus showing identical tokens."
       )
     ),
-    active_large(
+    superseded(
       identity: "rn_9WD4YB1TQK6RXA0PJM7N5GHVC2",
       id: "entry-graph-union-construction",
-      owner: "ci-cost",
-      path: "docs/plans/entry-graph-union-slice2-typecheck-attribution.md",
-      t: fields(
-        headline: "Repeated typecheck attribution adjudicated — union construction no-go at N≤50",
-        boundary: "CLOSED (operator adjudication 2026-08-01, PR #7533). Slice 1 (#7483) eliminated loading as the union-graph target. Slice 2 measured per-entry typecheck attribution against one shared typed cache at N≤50 across disjoint production windows: decision_ratio=0 at every cell — the existing typed cache already enforces once-per-content-key, so a union/shared typed-computation graph is not justified by this hypothesis. Do not begin union construction. Per-entry assembly decomposition is a separate hypothesis with a new denominator.",
-        displaced_cost: "Across six entries sharing one index, typecheck_compute grew 2.86x while the fixed loading row grew only 1.08x; selected closures repeat membership 35.9–38.4x by module count and 43.0–49.3x by bytes. Slice 2 converted that membership duplication into a decision ratio and found zero repeated typecheck compute at every measured cell — the priced benefit of union construction is absent at N≤50.",
-        first_slice: "Delivered: slice-2 attribution matrix, controls in docs/plans/entry-graph-union-slice2-typecheck-attribution.md §C–F, operator no-go verdict §F.",
-        red_control: "Satisfied by execution: attribution reconciles on exclusive (entry,module_key) basis without inferring computation from closure membership; reorder preserves the distinct-compute set; decision_ratio=0 at every measured N≤50 cell. The durable post-instrument witness is shared_typecheck_distinct_compute_count_is_order_invariant.",
-        out_of_scope: "No union graph implementation, no eviction redesign, and no forking of the entry-closure memo already in flight — sharing more while holding more live collides with retention.",
-        handback: "docs/plans/entry-graph-union-slice2-typecheck-attribution.md §F verdict plus committed measurement receipts under docs/plans/receipts/entry-graph-union-slice2/; no implementation proposal (no-go)."
-      )
+      by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
-    active_small(
+    superseded(
       identity: "rn_6JR237TB4G7T9S52M93JCP3PK7",
       id: "placement-live-roster-preflight",
-      owner: "ci-placement",
-      path: "docs/plans/ci-two-tier-placement-redesign.md",
-      t: fields(
-        headline: "Get the full list of build jobs before deciding where they run",
-        boundary: "Assemble all 48 jobs by stable identity and refuse if any is missing, duplicated, or has never been measured.",
-        displaced_cost: "Deciding placement from a partial list produces a confident answer to the wrong question.",
-        first_slice: "Derive the full list and its inputs in one run.",
-        red_control: "Dropping or duplicating one job refuses the whole check.",
-        out_of_scope: "No hand-typed count standing in for the real list.",
-        handback: "The derived list with each job's identity."
-      )
+      by: "DESIGN.md Building & checks (the 2026-08-15 floor cut)",
+      content: "The 48-job ci.yml and its two-host runner placement no longer exist; the required run is one process on one runner. There is no placement decision left to inventory, qualify, shadow or flip, and a compile-pool envelope per machine is the live-deploy remodel's fact (gunbc.live_deploy), not a CI one."
     ),
-    active(
+    superseded(
       identity: "rn_9MFAAQX8CWS2ZTGFZ1BZGTAR38",
       id: "placement-two-host-warm-qualification",
-      owner: "ci-placement",
-      path: "docs/plans/ci-two-tier-placement-redesign.md",
-      t: fields(
-        headline: "Measure both machines instead of assuming they are alike",
-        boundary: "Each kind of job earns the right to run on a machine by being measured there, warmed up, with its time and resource use recorded.",
-        displaced_cost: "Assuming the two machines are interchangeable is how work lands on the one that cannot do it well.",
-        first_slice: "Run the same set of jobs on both machines.",
-        red_control: "A missing, stale, or over-budget measurement leaves that machine unqualified.",
-        out_of_scope: "No guessing one machine's numbers from the other, and no cold-start-only timings.",
-        handback: "The measurements from both machines."
-      )
+      by: "DESIGN.md Building & checks (the 2026-08-15 floor cut)",
+      content: "The 48-job ci.yml and its two-host runner placement no longer exist; the required run is one process on one runner. There is no placement decision left to inventory, qualify, shadow or flip, and a compile-pool envelope per machine is the live-deploy remodel's fact (gunbc.live_deploy), not a CI one."
     ),
-    active(
+    superseded(
       identity: "rn_KM2MW4V0T1NY4CNCAJ066P7NPZ",
       id: "placement-shadow-equality",
-      owner: "ci-placement",
-      path: "docs/plans/ci-two-tier-placement-redesign.md",
-      t: fields(
-        headline: "Run the new placement alongside the old one and compare",
-        boundary: "Both make a decision for the same jobs; they must agree before the new one takes over. The new one does not control anything yet.",
-        displaced_cost: "Finds disagreements while they are harmless instead of after they have moved real work.",
-        first_slice: "Shadow one full real run.",
-        red_control: "Any disagreement on a job, machine, or tier is reported with its location.",
-        out_of_scope: "The shadow decision cannot route anything.",
-        handback: "Agreement on every job, or an explanation for each difference."
-      )
+      by: "DESIGN.md Building & checks (the 2026-08-15 floor cut)",
+      content: "The 48-job ci.yml and its two-host runner placement no longer exist; the required run is one process on one runner. There is no placement decision left to inventory, qualify, shadow or flip, and a compile-pool envelope per machine is the live-deploy remodel's fact (gunbc.live_deploy), not a CI one."
     ),
-    active_large(
+    superseded(
       identity: "rn_XA5X71V90AVWZZ6BSKYH6MG0Q4",
       id: "placement-atomic-authority-flip",
-      owner: "ci-placement",
-      path: "docs/plans/ci-two-tier-placement-redesign.md",
-      t: fields(
-        headline: "Switch over in one step and delete the old path",
-        boundary: "A single change makes the new placement the only one and removes the shadow and the old selector together.",
-        displaced_cost: "Ends the period where two things decide placement and nobody is sure which one acted.",
-        first_slice: "Switch all 48 jobs once both machines are qualified and the two agree.",
-        red_control: "A half-old, half-new decision surface is rejected.",
-        out_of_scope: "No job-by-job or machine-by-machine switch.",
-        handback: "A real run afterwards showing only one decision-maker left."
-      )
+      by: "DESIGN.md Building & checks (the 2026-08-15 floor cut)",
+      content: "The 48-job ci.yml and its two-host runner placement no longer exist; the required run is one process on one runner. There is no placement decision left to inventory, qualify, shadow or flip, and a compile-pool envelope per machine is the live-deploy remodel's fact (gunbc.live_deploy), not a CI one."
     ),
-    active_large(
+    superseded(
       identity: "rn_6BXPK1RV9ZTNQ3WD8HGYM40CFJ",
       id: "placement-compile-pool-envelope",
-      owner: "ci-placement",
-      path: "docs/plans/srvn-buildcache-provisioning-design.md",
-      t: fields(
-        headline: "Derive the process, compiler and memory limits from one envelope per machine",
-        boundary: "Shared compilation runs in its own managed place rather than inside whichever job slot happened to start it. How many processes a slot may hold, how wide the compiler may fan out, and how much memory the shared pool may take are all derived from one declared envelope for that machine instead of being three numbers anyone can set independently. Every limit is read back as the machine actually holds it.",
-        displaced_cost: "The immediate outage — jobs unable to start processes against a cap far below the packaged one — and the fault behind it, where every machine's cache-miss compiles are charged to one job slot's budget and on one machine a retired slot's, are both consequences of these limits being separately writable. Two distinct failure kinds were charged to whatever code happened to be under test for a whole day: jobs dying unable to start a process at all, and jobs killed from an outer budget while sitting far under their own — across four independent measurements at 8.8 percent of the visible limit, with the peak identical on every attempt. Neither is a defect in any change under review, and both arrive looking exactly like one.",
-        first_slice: "Restore the affected machine's process limit and read back the value the kernel actually holds, then move shared compilation into its own place with a stated admission bound.",
-        red_control: "The acceptance classes are typed and separately named, never one generic death: a process-count exhaustion reports ProcessAdmissionExhausted; a kill imposed from an outer budget reports OuterResourceEnvelopeKilled, and the two must reproduce as two different things; a command that exits successfully while the machine's effective limit is unchanged reports EffectiveLimitMismatch — a failed read-back, not a success; a cache server whose place cannot be established reports CompilePoolPlacementRefused rather than being assumed to be ours. A pool whose effective limits differ from the envelope refuses. Widening the compiler's fan-out past the envelope refuses. An envelope that grows because more work arrived, rather than because the budget was raised deliberately, refuses.",
-        out_of_scope: "A larger machine or a raised memory cap is not the remedy — the envelope is fixed and the mechanism fits inside it. Not routing jobs between machines, which the rows above own.",
-        handback: "The derived envelope, the read-back limits from every machine, and the previously failing build run again."
-      )
+      by: "DESIGN.md Building & checks (the 2026-08-15 floor cut)",
+      content: "The 48-job ci.yml and its two-host runner placement no longer exist; the required run is one process on one runner. There is no placement decision left to inventory, qualify, shadow or flip, and a compile-pool envelope per machine is the live-deploy remodel's fact (gunbc.live_deploy), not a CI one."
     ),
 
     active_large(
@@ -1750,11 +1589,139 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
-    active(
+    sign(    with_execution(active_small(
+            identity: "rn_7K3QH2M9XWP4NVB8RD6TSCA5EJ",
+            id: "harness-thinking-and-write-briefs",
+            owner: "harness",
+            path: "dag/gunbc/harness/harness_cli.dag",
+            t: fields(
+              headline: "Run the worker on DeepSeek V4 Flash with thinking on, straight at the engines, from briefs it can finish",
+              boundary: "The harness posts to the Spark vLLM engines directly on the chat-completions shape with Think Max as the request switch, decodes inline reasoning client-side, replays it, and derives its deadline from the engine's own decode rate. A write brief names files small enough to hold whole and the decisions already made.",
+              displaced_cost: "A day of runs with 0 files changed: briefs naming one file when the change spans its importers, a co-tenanted router killing every long step, a deadline that could not cover max_tokens, and agents deliberating modeling decisions a brief should have made.",
+              first_slice: "Engine roster and replica pick, Think Max kwargs, client decode and replay, engine-derived floor; witnesses on each; one mechanical brief green first try (roadmap_belt_commit).",
+              red_control: "A worker whose request goes through any process other than an engine refuses; a deadline shorter than max_tokens at the declared floor is a witness failure; a brief that makes the agent decide a modeling question is a research brief, not a write brief.",
+              out_of_scope: "No research phase in the workflow yet, no transport retry, no per-round source recording.",
+              handback: "The harness config rows, the engine roster, the brief-sizing rule recorded in memory, and the measured runs t08a/t09a1/t09b2 as receipts."
+            )
+          ), e: gunbc_claim_execution_contract(
+            entry: "dag/test/claim/harness_chat_shape_test.dag" as FilePath,
+            function: "the_replica_roster_derives_from_the_pair_heads" as NonEmptyStr,
+          )), s: signed(
+      by: "operator curation 2026-09-06 (session 019iXPtAqzPaNBZbaaM5rxrY)",
+      works: RedControlExecuted { witness_module: "test.claim.harness_chat_shape" as NonEmptyStr, witness_fn: "the_replica_roster_derives_from_the_pair_heads" as NonEmptyStr, executed_on: "PR #10627 run 34001335672 (2026-09-06); thinking-on wire and Spark engines merged in gunbc#10443" as NonEmptyStr },
+      scope_equivalent: HandbackDelivered { first_artifact: "gunbc#10443" as NonEmptyStr, further_artifacts: ["gunbc#10617" as NonEmptyStr, "gunbc#10627" as NonEmptyStr] },
+      as_expected: true,
+    )),
+
+    sign(    with_execution(active_small(
+            identity: "rn_2XG8VDT4MJQ7BWN5HRC3PYE6KA",
+            id: "roadmap-verify-to-publish-phase",
+            owner: "roadmap",
+            path: "dag/gunbc/roadmap/roadmap_publish_admission.dag",
+            t: fields(
+              headline: "The roadmap commits, verifies, and opens the pull request itself once verification passes",
+              boundary: "After the provider completes, the belt commits the attempt worktree, verifies the committed head in a detached checkout, admits publication only on a ValidationPassed receipt for that exact head, and the token-holding helper pushes the branch and opens the pull request, then answers with what GitHub shows.",
+              displaced_cost: "Verification was checking out an uncommitted worktree's head, publication never consulted the verdict, and no operation existed to push or create a pull request, so every attempt stalled in the Agent segment and a human harvested by hand.",
+              first_slice: "One real attempt through the belt on the srv2 instance that ends with a bound pull request receipt.",
+              red_control: "A head whose verification receipt is absent, unreadable, failed, or legacy is deferred with a named reason and never pushed; a rejected push is a typed refusal and never forced; the helper never composes a bound receipt from the create call without observing GitHub again.",
+              out_of_scope: "No research/write/verify/diagnose phase iteration yet; the side measurement harness is not yet retired into dispatch.",
+              handback: "The commit pass, admission module, actuation module and helper wiring on srv2-deploy, each witnessed, and the first bound receipt."
+            )
+          ), e: gunbc_claim_execution_contract(
+            entry: "dag/test/claim/roadmap/roadmap_publish_admission_witness_test.dag" as FilePath,
+            function: "a_passed_verdict_admits_publication" as NonEmptyStr,
+          )), s: signed(
+      by: "operator curation 2026-09-06 (session 019iXPtAqzPaNBZbaaM5rxrY)",
+      works: RedControlExecuted { witness_module: "test.claim.roadmap.roadmap_publish_admission_witness_test" as NonEmptyStr, witness_fn: "a_passed_verdict_admits_publication" as NonEmptyStr, executed_on: "main floor run 33999810591 (2026-09-05)" as NonEmptyStr },
+      scope_equivalent: HandbackDelivered { first_artifact: "gunbc#10443" as NonEmptyStr, further_artifacts: ["gunbc#10546 (first PR opened by the belt itself)" as NonEmptyStr] },
+      as_expected: true,
+    )),
+
+    sign(    with_execution(active_small(
+            identity: "rn_5MRT8VKC2XNQ4WHJ7PBD3ZGE9A",
+            id: "roadmap-round-strip-pulse-follows-the-worker",
+            owner: "dashboard",
+            path: "dag/gunbc/roadmap/roadmap_presentation.dag",
+            t: fields(
+              headline: "The round strip's pulse follows the worker process, not the row's open state",
+              boundary: "WorkRowView carries worker_alive: Bool, true only when the attempt's WorkerProcessEvidence is WorkerProcessRunning; the page passes it as the strip's live flag so a finished attempt's last segment stops pulsing while its row still has open obligations.",
+              displaced_cost: "The first belt-dispatched attempt kept pulsing after its worker exited, because live was read from ActiveWork (the row still has verify and publish ahead) rather than from the process; a viewer cannot tell a working attempt from a dead one, which is the one thing the strip exists to show.",
+              first_slice: "In gunbc.roadmap_presentation: add worker_alive: Bool as the last field of WorkRowView; add fn worker_alive_from_process(process: WorkerProcessEvidence) -> Bool matching WorkerProcessRunning { command: _ } => true, WorkerProcessExited { exit_code: _, last_command: _ } => false, WorkerProcessAbsent => false, WorkerProcessUnobserved { reason: _ } => false (import WorkerProcessEvidence and the four variants from gunbc.worker_lifecycle); add a worker_alive: Bool parameter to work_row_view and set the field; copy the field in family_subject_row. In gunbc.roadmap_page: activity_region_nodes gains a third parameter live: Bool and passes it to round_strip_nodes instead of the literal true; its caller passes view.worker_alive. Beside daily_row_rounds add fn daily_row_worker_alive(node_id, attempts, attempts_refused) -> Bool built exactly the way daily_row_rounds is built: attempts refused => false, no attempt => false, Present { value: p } => worker_alive_from_process(process: p.process); the daily row builder passes worker_alive: daily_row_worker_alive(...) and node_work_row_view passes worker_alive: false. Every other WorkRowView constructor (gunbc.roadmap_sandbox fixture_specimen_view and fixture_ready_view; test.claim.roadmap.roadmap_presentation_witness_test fx_row and fx_family_member_row; test.claim.long.roadmap_page_witness_test parity_specimen_view) gets worker_alive: false, except the sandbox fixture_active_view which passes worker_alive: true so the lab's active specimen still pulses. The oracle already exists and is red: dag/test/claim/roadmap/roadmap_worker_alive_witness_test.dag declares the_pulse_follows_the_worker_process over worker_alive_from_process; do not edit that file, make it green.",
+              red_control: "A row whose worker has exited renders no activity-round-live class; worker_alive_from_process(WorkerProcessAbsent) is false; the witness fails if any arm is missing.",
+              out_of_scope: "No change to how liveness is observed (the process evidence stays as the belt reports it); no live re-render.",
+              handback: "The field, the fold, the page flag, the fixtures updated, and the witness green."
+            )
+          ), e: ExecutionContract {
+            validations: [
+              GunbcClaimValidation {
+                entry: "dag/test/claim/roadmap/roadmap_worker_alive_witness_test.dag" as FilePath,
+                function: "the_pulse_follows_the_worker_process" as NonEmptyStr,
+              },
+              GunbcClaimValidation {
+                entry: "dag/test/claim/roadmap/roadmap_sandbox_render_witness_test.dag" as FilePath,
+                function: "the_sandbox_page_renders_with_its_strip_lab" as NonEmptyStr,
+              },
+            ],
+            extra_capabilities: [],
+          }), s: signed(
+      by: "operator curation 2026-09-06 (session 019iXPtAqzPaNBZbaaM5rxrY)",
+      works: RedControlExecuted { witness_module: "test.claim.roadmap.roadmap_worker_alive_witness_test" as NonEmptyStr, witness_fn: "the_pulse_follows_the_worker_process" as NonEmptyStr, executed_on: "main floor run 33999810591 (2026-09-05)" as NonEmptyStr },
+      scope_equivalent: HandbackDelivered { first_artifact: "gunbc#10443" as NonEmptyStr, further_artifacts: [] },
+      as_expected: true,
+    )),
+
+    sign(    with_execution(active_small(
+            identity: "rn_2CTLBL7QKX4MWN8VRZ5HYD3JPE",
+            id: "roadmap-continuation-turn-label",
+            owner: "dashboard",
+            path: "dag/gunbc/roadmap/roadmap_attempt_continuation.dag",
+            t: fields(
+              headline: "One function names a continuation turn, and the brief prefix uses it",
+              boundary: "gunbc.roadmap.roadmap_attempt_continuation gains fn continuation_turn_label(turn: Int) -> String returning the text turn <turn> of <continuation_turn_cap>, for example turn 2 of 3; continuation_brief_prefix builds its opening from that function instead of joining the pieces itself, so the row and the brief will name the turn with one authority.",
+              displaced_cost: "The dashboard cannot yet say which turn of a lineage a row is on, and the brief prefix already spells the phrase inline; a second spelling on the row would be the nicknaming DESIGN section 3 forbids, so the label is made once before the row consumes it.",
+              first_slice: "In dag/gunbc/roadmap/roadmap_attempt_continuation.dag only: add fn continuation_turn_label(turn: Int) -> String { join([\"turn \", to_string(value: turn), \" of \", to_string(value: continuation_turn_cap)], \"\") } beside continuation_turn_cap; then in continuation_brief_prefix replace the four joined pieces \"CONTINUATION: this is turn \", to_string(value: turn), \" of \", to_string(value: continuation_turn_cap) with the two pieces \"CONTINUATION: this is \", continuation_turn_label(turn: turn). Nothing else changes. The oracle already exists and is red: dag/test/claim/roadmap/roadmap_continuation_turn_label_witness_test.dag declares the_turn_label_names_the_turn_and_the_cap over continuation_turn_label; do not edit that file, make it green. The existing witness a_failed_verdict_continues_on_the_prior_branch_with_the_verdict_in_the_brief in dag/test/claim/roadmap/roadmap_attempt_continuation_witness_test.dag must stay green (it looks for the text turn 2 of 3 in the prefix).",
+              red_control: "continuation_turn_label(turn: 2) is exactly turn 2 of 3; a prefix that stops containing turn 2 of 3 turns the existing continuation witness red.",
+              out_of_scope: "No change to the row rendering yet; no change to the cap; no other file.",
+              handback: "The function, the prefix using it, and both witnesses green."
+            )
+          ), e: gunbc_claim_execution_contract(
+            entry: "dag/test/claim/roadmap/roadmap_continuation_turn_label_witness_test.dag" as FilePath,
+            function: "the_turn_label_names_the_turn_and_the_cap" as NonEmptyStr,
+          )), s: signed(
+      by: "operator curation 2026-09-06 (session 019iXPtAqzPaNBZbaaM5rxrY)",
+      works: RedControlExecuted { witness_module: "test.claim.roadmap.roadmap_continuation_turn_label_witness_test" as NonEmptyStr, witness_fn: "the_turn_label_names_the_turn_and_the_cap" as NonEmptyStr, executed_on: "main floor run 33999810591 (2026-09-05)" as NonEmptyStr },
+      scope_equivalent: HandbackDelivered { first_artifact: "gunbc#10546" as NonEmptyStr, further_artifacts: ["gunbc#10443" as NonEmptyStr] },
+      as_expected: true,
+    )),
+
+    sign(    with_execution(active_small(
+            identity: "rn_9PZ4WQ6CTNH2LMK7VXB3SRD8FG",
+            id: "roadmap-round-strip-percolator",
+            owner: "dashboard",
+            path: "dag/gunbc/harness/harness_throughput.dag",
+            t: fields(
+              headline: "Show an attempt's rounds filling in like a commit graph, at a fixed playback length however long the run",
+              boundary: "Each attempt row carries a strip of time-proportional round segments (read, write, unmeasured) that replays in 2.4 seconds regardless of round count, with the live segment pulsing; the design material gains keyframed ambient motion as a modeled rule, silenced under reduced motion.",
+              displaced_cost: "The dashboard showed no sign that a worker was alive or how it spent its time, so a stalled attempt and a working one looked the same.",
+              first_slice: "AmbientRule in the design material, the playback schedule with its floor, the sandbox lab with replay and slow controls; next, per-round sources read and the connection arcs.",
+              red_control: "A 40ms write round stays visible at the floor; a 300-round run does not overflow the strip; the last segment pulses only for an active row.",
+              out_of_scope: "No live re-render without reload; no per-file read diversity yet.",
+              handback: "The strip on every active row, the lab on /sandbox, and the playback witness."
+            )
+          ), e: gunbc_claim_execution_contract(
+            entry: "dag/test/claim/harness_throughput_test.dag" as FilePath,
+            function: "playback_compresses_the_run_into_a_fixed_window_with_a_floor" as NonEmptyStr,
+          )), s: signed(
+      by: "operator curation 2026-09-06 (session 019iXPtAqzPaNBZbaaM5rxrY)",
+      works: RedControlExecuted { witness_module: "test.claim.harness_throughput" as NonEmptyStr, witness_fn: "playback_compresses_the_run_into_a_fixed_window_with_a_floor" as NonEmptyStr, executed_on: "main floor run 33999810591 (2026-09-05)" as NonEmptyStr },
+      scope_equivalent: HandbackDelivered { first_artifact: "gunbc#10443" as NonEmptyStr, further_artifacts: [] },
+      as_expected: true,
+    )),
+
+    ticket_row(
       identity: "rn_0PJXVP9KNDXZFHXMDM9XQ7TTSX",
       id: "commit-writer-admission",
-      owner: "generated-artifact",
-      path: "docs/plans/generated-file-conflict-policy.md",
+      done: false,
       t: fields(
         headline: "One admission predicate that every commit writer must pass before it may write",
         boundary: "Admission consumes a complete staged-index observation whose population must equal the exact staged index, never a caller-selected list, with two independent refusal arms: any unmerged index stage refuses typed and located with the affected path, and the staged blobs are inspected for the complete conflict-marker grammar, so a file collapsed to stage zero with markers inside refuses. Text classification is observed, never caller-declared; a fixture exemption is a provenance receipt bound to the same staged path and blob, never a path allowlist. The pre-commit hook stays fast local feedback; the predicate at the writer's boundary is the enforcement.",
@@ -2199,80 +2166,35 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
-    active_large(
+    superseded(
       identity: "rn_E8Y0PHW82DNMMYZ6SB2KKX2K76",
       id: "roadmap-runtime-identity-join",
-      owner: "roadmap-runtime",
-      path: "docs/plans/roadmap-workspace-ux-plan.md",
-      t: fields(
-        headline: "Connect a roadmap item to its branch, pull request, and working session properly",
-        boundary: "One typed relationship links the item, branch, pull request, attempt, and session. Matching by title or by what happened most recently is not allowed.",
-        displaced_cost: "The dashboard currently guesses these connections from strings, so it shows lights that contradict each other.",
-        first_slice: "Connect one real attempt all the way through.",
-        red_control: "Missing, duplicated, expired, or mismatched links stay unconnected rather than being confidently guessed.",
-        out_of_scope: "Live status never gets written back into the roadmap itself.",
-        handback: "The connection working, plus the mismatch and expiry cases."
-      )
+      by: "gunbc.roadmap.roadmap_event_log (#10597), gunbc.roadmap_launch_admission LaunchIdentity, gunbc.roadmap.roadmap_attempt_continuation",
+      content: "A node, its branch, pull request and session are joined by the launch identity and the attempt directory the belt writes, and live standing is the roadmap event log; the remaining work (workers writing events, the belt recording receipts into the log) is event-log rows, not a separate join."
     ),
-    active(
+    superseded(
       identity: "rn_YXN9NF28719TKA46VYQ5JA9ZP9",
       id: "roadmap-runtime-ready-override",
-      owner: "roadmap-runtime",
-      path: "docs/plans/roadmap-workspace-ux-plan.md",
-      t: fields(
-        headline: "Let a person start something early, deliberately and visibly",
-        boundary: "Once everything an item depends on is accepted and the connections above hold, a person may explicitly move a queued item into the running set.",
-        displaced_cost: "Stops a click in the interface from quietly unblocking work, while still leaving room for a deliberate human decision.",
-        first_slice: "Apply an override to one queued item whose dependencies are already accepted.",
-        red_control: "An unaccepted dependency, a broken connection, or a stale, wrong, or withdrawn override leaves the item blocked.",
-        out_of_scope: "An override never bypasses a dependency or a refusal; merged code and a green build are not overrides.",
-        handback: "The override working plus every refusal case."
-      )
+      by: "gunbc.roadmap_belt ManualReady and gunbc.roadmap_launch_admission launch_gate_cause",
+      content: "Landed: ManualReady is the production spawn mode, the operator cause starts a Ready node through the shared launch admission (the board button and POST /dispatch/<node>), and the timer may not start new work in that mode."
     ),
-    active(
+    superseded(
       identity: "rn_S6E48C3P7A3GCT4D12Y4M095EQ",
       id: "roadmap-runtime-dispatch-consumer",
-      owner: "roadmap-runtime",
-      path: "docs/plans/roadmap-workspace-ux-plan.md",
-      t: fields(
-        headline: "Only start work from those verified connections",
-        boundary: "Starting work requires an item whose dependencies are accepted, an optional explicit override, and an attempt ID that makes a repeated request harmless.",
-        displaced_cost: "Prevents two workers starting on the same thing, and prevents work starting from a shelved item.",
-        first_slice: "Start one eligible item and submit the same request twice.",
-        red_control: "Unaccepted dependencies, no override, shelved, blocked, duplicate, and mismatched items all refuse to start.",
-        out_of_scope: "The roadmap itself stores no session or attempt state.",
-        handback: "The start working, the repeat being harmless, and the refusals."
-      )
+      by: "gunbc.roadmap_dispatch_actuator dispatch_harness_selection and gunbc.harness.harness_backend (operator ruling 2026-09-04: gunbc must not touch ctrl)",
+      content: "Codex is no longer the provider. The harness posts to the Spark vLLM engines directly and reports its own standing from the engines' /v1/models, so bundling Codex 0.146, reading back a PRESS vertical, and gating dispatch on verified Codex connections have no subject."
     ),
-    active(
+    superseded(
       identity: "rn_C0D3XAPP5RV3RT1CALP0D1460",
       id: "codex-app-server-press-vertical",
-      owner: "roadmap-runtime",
-      path: "docs/plans/provider-control-interface-audit.md",
-      t: fields(
-        headline: "Bundle exact Codex 0.146 runtime and observe typed account standing",
-        boundary: "Owns exact Codex package materialization (lock admit with package/version/optional/os-cpu gates → offline install → host-owned content-addressed release with full tree+native reuse read-back) and provider-scoped account preflight (CodexAccountPreflightSubject: runtime×interface×probe_key — not AttemptKey). Typed JSON-RPC id 1/2/3 with duplicate refusal, structured result bodies, SHA-512 private wire evidence. Does NOT own WorkerTurn, thread/start, turn/start, OAuth, production dispatch, or UI.",
-        displaced_cost: "Replaces /tmp pathname trust, dual initialize sessions, substring standing classification, and attempt-keyed readiness that looked like item progress.",
-        first_slice: "Closed artifact chain + CodexRuntimeBundleReceipt + observe_codex_account_preflight with wet Ready|Login|quota and incomplete/duplicate RED. Account standing is wet/provider-readiness only.",
-        red_control: "Wrong package/version/optional/os-cpu refuses; admitted lock/manifest bytes bind npm execution; reuse without tree identity match refuses; duplicate JSON-RPC ids refuse; empty rateLimits objects are not AuthenticatedRateLimitsReadable; whole-stream substring cannot reclassify; account_authenticated_rate_limits_readable never labeled turn_started; production dispatch does not mint attempts for readiness.",
-        out_of_scope: "No thread/start or turn/start, no device-code/Secret Manager enrollment, no WorkerTurn persistence, no Check/Connect production UI, no srv1 exec/tmux removal.",
-        handback: "Exact admitted Codex runtime + typed provider-account preflight under gunbc.package_delivery / gunbc.codex_app_server_press — ready for stacked WorkerTurn PR, not a completed press vertical."
-      )
+      by: "gunbc.roadmap_dispatch_actuator dispatch_harness_selection and gunbc.harness.harness_backend (operator ruling 2026-09-04: gunbc must not touch ctrl)",
+      content: "Codex is no longer the provider. The harness posts to the Spark vLLM engines directly and reports its own standing from the engines' /v1/models, so bundling Codex 0.146, reading back a PRESS vertical, and gating dispatch on verified Codex connections have no subject."
     ),
-    active_small(
+    superseded(
       identity: "rn_WJDVJZSNQSWQ3XS55NM5VXV18R",
       id: "roadmap-runtime-readback",
-      owner: "roadmap-runtime",
-      path: "docs/plans/roadmap-workspace-ux-plan.md",
-      t: fields(
-        headline: "Generalize press read-back after the Codex specimen closes",
-        boundary: "CHILD OF codex-app-server-press-vertical — not a sibling owner of the click-with-no-work defect. After the Codex press trip lands a subjectful Start + terminal turn receipt as the first closing specimen, generalize observation across providers: session existence, tool readiness, attempt terminal, and Publication/PR appearance as independent facts. Do not start this row while the Codex vertical is open; do not build a parallel session-debris path that competes with app-server turn receipts.",
-        displaced_cost: "Prevents a second worker from implementing competing read-back around old session observations while the Codex vertical already closes the same incident with provider-turn receipts.",
-        first_slice: "After Codex press green: project the four observation axes from the turn-receipt contract onto one non-Codex provider or a synthetic second specimen.",
-        red_control: "An accepted request with no observed provider turn (and no typed refusal) never displays as running or finished; a session-only acknowledgement without turn receipt is not success.",
-        out_of_scope: "Observation never changes the roadmap. Does not reopen a second press path. Publication/PR facts remain owned by Publication obligations.",
-        handback: "Generalized observation axes with the Codex turn receipt as the positive control and a no-turn accepted-request RED."
-      )
+      by: "gunbc.roadmap_dispatch_actuator dispatch_harness_selection and gunbc.harness.harness_backend (operator ruling 2026-09-04: gunbc must not touch ctrl)",
+      content: "Codex is no longer the provider. The harness posts to the Spark vLLM engines directly and reports its own standing from the engines' /v1/models, so bundling Codex 0.146, reading back a PRESS vertical, and gating dispatch on verified Codex connections have no subject."
     ),
 
     with_execution(active_sized(
@@ -2458,20 +2380,11 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The counted receipts, the split by cause, and the named condition under which this timer is deleted."
       )
     ),
-    active(
+    superseded(
       identity: "rn_HYV4E84MRC1MJ73EDJZYXP89S8",
       id: "fleet-spark-host-enrollment",
-      owner: "fleet",
-      path: "dag/gunbc/spark/dgx_procurement.dag",
-      t: fields(
-        headline: "Turn the two Spark machines from hand-managed boxes into exact fleet members",
-        boundary: "srv5 and srv6 become fleet members: enrollment intents carrying InferenceServingParticipation, with endpoint rows derived downstream from the assigned reservation rows — re-typing the address literal refuses, a reverse import into the network intent refuses, and the join is a projection between the two existing authorities, never a second host-identity authority. Enrollment constructs their four required lifecycle cells — identity converge, reach, compute-fabric enrolment, assimilation complete — and every cell stays honestly Unobserved until an observation producer answers it. Enrolled is not converged: no identity convergence, reach satisfaction, capacity acceptance, or serving claim lives here.",
-        displaced_cost: "Two machines are reserved, physically bound, and answerable by nobody: no fleet row knows they exist, so their state is whatever hands left there. The stale count witnesses still encode enrolled-hosts-times-whole-spine — every enrolled host presumed a runner, wrong since participation scoping landed and exposed by srv5. And the endpoint-derivation question already burned a session against an import cycle because the projection layer this row creates did not exist.",
-        first_slice: "Diagnose the cli_run.rs:1577 compiler panic as its own exact defect — never a spelling that dodges it — then the per-enrollment participation-derived cell population replacing the cross-product witnesses, the two enrollment rows, and the endpoint projection.",
-        red_control: "A count witness multiplying enrolled hosts by the whole spine refuses — expected cells are the duplicate-free identity join of each enrollment's participation-derived program, and runner plus inference union exactly with no duplicated cell. An inference enrollment carrying BMC, OS-install, runner-slot, or build-cache obligations refuses. Changing one participation changes only the obligations that participation owns. An endpoint row re-typing the reserved address literal refuses; a reverse import into the network intent refuses. Any Spark cell presented as observed without a producer refuses.",
-        out_of_scope: "No convergence, no serving: identity converge and reach are the convergence lane's observation seam; GB10 compute enrollment, collector facts, runtime, model revision, and auth are the serving row's. No build or runner role, ever.",
-        handback: "Both machines enrolled with exactly four obligations each, the stale cross-product witnesses replaced by the identity join, the endpoint projection landed, and eight Spark cells visible as honestly unobserved."
-      )
+      by: "gunbc.fleet_intent_network srv5..srv12 identity and endpoint rows (#10512, #10517) and gunbc.spark.pair_serving_desired (#10540)",
+      content: "The Sparks are enrolled: identity slots, LAN endpoint rows and router bindings in the fleet topology, and the serving desired state is the pair model with attributable heads. What remains is bringing the pairs to the desired serving state, which is fleet-spark-inference-serving."
     ),
     active_large(
       identity: "rn_3JQZN7WVPD1KXCB0RTMG84LHY6",
@@ -2489,11 +2402,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
-    active_large(
+    ticket_row(
       identity: "rn_RPKBFCD41FZGDV48TJKRJYQ8J2",
       id: "confidence-semantic-impact-query",
-      owner: "confidence",
-      path: "src/v2/lens/module_graph.dag",
+      done: false,
       t: fields(
         headline: "Ask what depends on this exact thing, and get an explained, honest answer",
         boundary: "Given an exact graph subject and one or more semantic node identities, return direct and transitive dependencies or dependents, explanation paths, production and test consumers, and an explicit completeness standing. Git diffs, paths, line and column coordinates, and natural-language questions are adapters into this semantic query — they are not its identity grain. The reading consumes the existing single edge authority as data and never grows a second edge producer; where the finest grain is unavailable, the standing says so with its trigger rather than answering coarser and calling it fine.",
@@ -2519,35 +2431,17 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The candidate reading with its named-lens vocabulary, the three controls demonstrated on real corpus subjects, and one accepted candidate applied end to end — consumer migrated, duplicate deleted, receipts equal."
       )
     ),
-    active(
+    superseded(
       identity: "rn_JDGMNTM0D3LS3L3CTNTUN1NGX7Q",
       id: "judgment-model-selection-and-specialization",
-      owner: "judgment",
-      path: "docs/plans/enforcement-intent-design.md",
-      t: fields(
-        headline: "Pick and tune the judgment model against held-out historical rulings, as a derived artifact with staleness",
-        boundary: "Given an exact base-model artifact, prompt and context policies, a provenance-bound corpus of accepted and rejected repository-modeling rulings, a training recipe, and a compiler-and-authority snapshot: compare untuned, prompt-only, and tuned realizations on temporally held-out cases. A tuned artifact is admitted only when it improves the SEMANTIC RESIDUE without worsening false consolidation, citation grounding, or unknown-and-refusal behavior. A changed base model, compiler revision, authority snapshot, corpus, or recipe makes the artifact stale — staleness is derived, never asserted.",
-        displaced_cost: "Without this row, tuning either hides inside serving (coupling infrastructure acceptance to model quality) or inside judgment (letting the judged system pick its own judge) — both forks the operator amendment forbids. And an untuned baseline never measured means every tuning claim is unfalsifiable.",
-        first_slice: "Three arms on one held-out ruling set: A full current prompt on the untuned base; B reduced prompt, untuned; C reduced prompt with a tuned adapter — reported as the per-class vector, never one score.",
-        red_control: "Training and evaluation examples overlapping refuses. An example with no exact pre-ruling repository subject refuses. A tuned model improving only on mechanically decidable cases is a failed admission, not a win. Increased false consolidation or over-collapse refuses. Unresolved citations counted as correct refuses. A tuned artifact against an old substrate served as current refuses, and a base-model update silently inheriting the old adapter's admission refuses. Promotion from training loss without repository-level evaluation refuses.",
-        out_of_scope: "No serving infrastructure (that is fleet-spark-inference-serving, whose acceptance is independent of model promotion in both directions). No judgment semantics — this row selects and specializes the model the judgment row consumes.",
-        handback: "The A/B/C comparison on held-out rulings with its per-class vector, the admission decision with its receipt, and the staleness derivation demonstrated on one changed input."
-      )
+      by: "gunbc.roadmap.roadmap_review_role, gunbc.roadmap.roadmap_review_criteria and gunbc.roadmap.roadmap_goal_audit_role (#10443)",
+      content: "Review is six criterion reviewers, one per DESIGN proposition from gunbc.design_argument, plus a goal auditor, all on the harness's one fixed engine (gunbc.harness.harness_wire harness_engine_model); a proposal-mode judgment service over an evidence index and a separately tuned judgment model are not on the path."
     ),
-    active_large(
+    superseded(
       identity: "rn_0PGYW4KDNQ2BXR9TVCM6HJ3LZ5",
       id: "judgment-mechanical-review-service",
-      owner: "judgment",
-      path: "docs/plans/enforcement-intent-design.md",
-      t: fields(
-        headline: "Make the repetitive review and abstraction judgements something a machine can propose — two question modes over one evidence substrate",
-        boundary: "ONE service, TWO question modes over the same evidence packet and ruling vocabulary (operator amendment 2026-08-08): FORWARD — given an exact repository subject and a desired-concept intent, where does this belong (existing-authority, projection-missing, candidate-new-abstraction, reprime-candidate, keep-distinct, missing-consumer/actuator/readback, unknown); INVERSE — given candidate dual representations, should they de-fork (likely-duplicate, existing-authority, projection-missing, keep-distinct, over-collapse-risk, demand-absent, unknown). Every declaration it cites must resolve in the exact reviewed subject; selected subjects come only from the bounded searched universe; anything it cannot ground is unknown, never a plausible sentence. Never a second repository-mapping service.",
-        displaced_cost: "These judgements are the throughput limit on the whole board, they are all made by one person, and they are mechanical enough to describe — which is precisely why they are being repeated by hand rather than encoded. The attempt-receipt lesson binds here: an LlmAttemptReceipt proves a model RAN, not what it returned — so the handback requires a semantic judgment receipt binding raw-output identity, decoder identity, evidence-packet identity, exact repository subject, searched-universe identity, resolved model and runtime as observations, decoded judgment, cited declarations, and their citation-resolution receipt; malformed output refuses, an invented authority refuses, and incomplete evidence yields only unknown or a located qualified answer.",
-        first_slice: "Three executed request shapes, smallest label family: one FORWARD mapping (a desired concept lands on an existing authority, a missing projection, or unknown); one INVERSE historical de-fork case classified against a known consolidation ruling; one keep-distinct negative — a similar-looking pair with a load-bearing distinction that must NOT be recommended for consolidation. No patch generation, no coding loop, no automatic commit.",
-        red_control: "A cited declaration that does not exist is refused, never returned. A judgement with nothing resolvable behind it is unknown. A planted duplicate must be found; a genuinely new concept must not report as duplicate; the keep-distinct negative must hold. Raw output that does not belong to the recorded attempt, decodes ambiguously, or cites outside the bounded universe refuses at admission. Evaluation reports a per-class vector (recovered / wrong-consolidation / projection-missing-correct / keep-distinct-correct / citations-resolved / unknown-when-incomplete / operator-verdict), never one score, and never claims general recall — unknown forks have no observable denominator. A model that merely repeats what the deterministic detector already decided has not demonstrated useful inference.",
-        out_of_scope: "Not a coding agent, and never authority — the answer is input to a person or to a check, not the decision. A rule that can be decided outright belongs in a check, not here; a mechanically decidable case is never delegated to the model merely because the model can answer it. A future .dag coding workflow is a NAMED DOWNSTREAM CONSUMER of these receipts, not a node here — patch production, iterative agent sessions, and merge authority are outside this requirement. Model selection and tuning live in the judgment-model-selection-and-specialization successor, never here.",
-        handback: "The service answering both modes with grounded receipts over real subjects, the three executed shapes demonstrated, the per-class evaluation vector against historical rulings, and the measured share of judgements it can actually take."
-      )
+      by: "gunbc.roadmap.roadmap_review_role, gunbc.roadmap.roadmap_review_criteria and gunbc.roadmap.roadmap_goal_audit_role (#10443)",
+      content: "Review is six criterion reviewers, one per DESIGN proposition from gunbc.design_argument, plus a goal auditor, all on the harness's one fixed engine (gunbc.harness.harness_wire harness_engine_model); a proposal-mode judgment service over an evidence index and a separately tuned judgment model are not on the path."
     ),
 
     active(
@@ -3414,9 +3308,21 @@ fn ticket_red_control_of(n: RoadmapNode) -> String {
 // worth enforcing would be enforced at MINT time by construction, not by editing identities already
 // in the graph.
 
+fn node_sizing_is_declared(n: RoadmapNode) -> Bool {
+  match n.sizing {
+    Unsized => false
+    Sized { intricacy: _, volume: _, repo: _, acceptance: _ } => true
+  }
+}
+
+// AN UNSIZED NODE IS UNPLANNED, AND NOTHING ABOUT IT IS SCHEDULED -- including the task to write its
+// closing check. Before this filter a ticket_row (Unsized) still minted a Sized closing-contract task
+// that sat in Ready, so parking a node by unsizing it moved the node out of Ready and put a task
+// for it straight back in (operator observation, 2026-09-04).
 fn startable_nodes_missing_closing_contract_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapNode> {
   declared_roadmap_nodes()
     |> filter(n => !(accepted |> any(a => a == n.node)))
+    |> filter(n => node_sizing_is_declared(n: n))
     |> filter(n => node_lacks_closing_validation(n: n))
     |> filter(n => node_is_startable_for_accepted(n: n, accepted: accepted))
 }
@@ -3584,8 +3490,8 @@ fn preamble() -> List<MarkdownBlock> {
 // hidden lane as retained and unexplained rather than as decided.
 
 data roadmap_focus_selection: RoadmapFocus = FocusOnOwners {
-  label: "the compute fabric + the infrastructure stabilisation lanes + fleet convergence from main",
-  owners: ["compute", "fleet", "ci-placement", "ci-control", "generated-artifact", "ci-cost", "confidence"],
+  label: "the compute fabric + the infrastructure stabilisation lanes + fleet convergence from main + the harness, roadmap workflow and dashboard lanes",
+  owners: ["compute", "fleet", "ci-placement", "ci-control", "generated-artifact", "ci-cost", "confidence", "harness", "roadmap", "dashboard"],
 }
 
 fn projected_roadmap_nodes_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapNode> {

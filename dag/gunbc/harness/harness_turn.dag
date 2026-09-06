@@ -1,0 +1,1014 @@
+module gunbc.harness.harness_turn
+
+import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
+import std.measure { TokenCount, token_count_value, Second, second, second_count }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.languages.json.emit {
+  JsonValue, JsonKeyValue, JsonBool, json_kv, json_string, json_int, json_array, json_object, serialize_json,
+}
+import extdeps.deepseek.deepseek_v4 {
+  DeepseekV4ReasoningMode, DeepseekV4NonThink, DeepseekV4ThinkHigh, DeepseekV4ThinkMax,
+  deepseek_v4_reasoning_mode_wire, deepseek_v4_vllm_thinking_kwarg, deepseek_v4_vllm_reasoning_effort_kwarg,
+  deepseek_v4_thinking_end_token, deepseek_v4_chat_reasoning_field,
+}
+import extdeps.clock { ClockUnixMillisRead, ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read }
+import extdeps.http.client
+import extdeps.git.inspect
+import extdeps.filesystem.filesystem_io
+import gunbc.harness.harness_guidance {
+  HarnessPremise, RoundsRemaining, EarlierRoundsDropped, harness_premise_text,
+  HarnessConclusion, ActBeforeTheRoundsRun, ReRunForDroppedOutput, harness_conclusion_text,
+}
+import gunbc.harness.harness_wire {
+  HarnessWireShape, AnthropicMessagesShape, OpenAiChatCompletionsShape, harness_decode_for_shape,
+  HarnessWireBlock, WireTextBlock, WireThinkingBlock, WireToolUseBlock,
+  HarnessResponseRead, HarnessResponseParsed, HarnessResponseUnreadable,
+  harness_decode_response, harness_stop_reason_wire, harness_tool_result_block,
+}
+import gunbc.harness.harness_tool {
+  HarnessToolEnvironment, HarnessToolOutcome, ToolCompleted, ToolRefused,
+  harness_execute_tool_use, harness_outcome_text, harness_outcome_is_error,
+  harness_run_command_schema,
+}
+import extdeps.llm.anthropic_messages_api {
+  AnthropicStopReason, EndTurn, MaxTokens, StopSequence, ToolUse, PauseTurn, Refusal,
+  ModelContextWindowExceeded,
+}
+
+// THE TURN LOOP: post a request, and while the response stops on tool use, execute the tools and
+// post the results back. Everything else in this module exists to make that sentence honest.
+//
+// THE LOOP IS BOUNDED AND THE BOUND IS AN ARGUMENT. Execution here is forward and terminating by
+// construction (DESIGN section 4), so the recursion carries a step budget that strictly decreases
+// and the exhausted case is a NAMED terminal, not a silent stop. An unbounded "while tool_use"
+// would be a program whose termination depends on the remote model's behaviour, which is precisely
+// the fact we are least entitled to assume.
+
+type HarnessTurnConfig {
+  backend_url: String
+  model: String
+  max_tokens: Int
+  reasoning_mode: DeepseekV4ReasoningMode
+  wire_shape: HarnessWireShape
+  system_prompt: String
+  request_scratch_path: FilePath
+  events_path: FilePath
+  context_budget: TokenCount
+  request_deadline: Second
+  environment: HarnessToolEnvironment
+}
+
+// THE WINDOW THE HARNESS WORKS IN AND THE WINDOW THE ENGINE ADMITS ARE ONE NUMBER, and this field
+// is how the second reaches the first. gunbc.spark.serving_desired declares the roster ceiling the
+// serving units are launched with; a harness that carried its own literal would be a second
+// spelling of that ceiling, free to drift the moment the serving row moves -- and the drift would
+// be silent in the worst direction, because a harness budget ABOVE the engine cap does not refuse,
+// it produces a request the engine rejects mid-run with the turn's work already spent.
+//
+// THE MEASUREMENT IS THE RUNTIME'S OWN, NOT AN ESTIMATE. gunbc.model.choice already rules on this
+// for the serving side -- an observation's point is derived from an execution receipt, the prompt
+// token count the runtime reported back -- and the same rule applies here: the response carries
+// usage.input_tokens, so the check compares a counted fact against a declared budget rather than
+// dividing bytes by an assumed characters-per-token. A chars-per-token factor would be exactly the
+// heuristic DESIGN section 4 says is never necessary when the richer source exists, and here the
+// richer source is already parsed and already discarded.
+//
+// The check fires AFTER a response rather than before a request because that is when a counted
+// input size exists. It bounds the NEXT turn: this turn's input plus its tool results is a lower
+// bound on what the next request carries, so a turn that already sits at the budget cannot make
+// another one.
+fn harness_context_exhausted(input_tokens: Int, budget: TokenCount) -> Bool {
+  input_tokens >= token_count_value(t: budget)
+}
+
+// THE HARNESS EMITS THE PROVIDER EVENT SCHEMA ITSELF, rather than having its liveness reconstructed
+// from outside. gunbc.roadmap_provider_events already declares what an attempt's event stream is --
+// turn.started, item.started, item.completed, turn.completed, turn.budget_exhausted, turn.failed, error, read line by line
+// through jq -- and every consumer of agent evidence is written against it. A second stream shape
+// for this one provider would be the section 3 fork; emitting the existing one makes the harness a
+// first-class provider on a contract that already has readers.
+//
+// IT IS EMITTED BY THE TURN, NOT OBSERVED FROM THE PROCESS, and that is the load-bearing choice. An
+// external observer can see that a process exists and can see that it stopped; only the turn knows
+// whether it stopped having COMPLETED or having run out of steps, and only the turn knows a tool
+// round happened at all. A terminal event written here is the completion receipt that separates
+// done from crashed -- the distinction an outside observation of a vanished process cannot make,
+// whatever container is holding it.
+//
+// THE WHOLE FILE IS REWRITTEN EACH STEP because Filesystem.Write is the modeled write and it is a
+// replace. That is not a workaround: the event list is the fold's own accumulator, so rewriting it
+// is a projection of state the loop already carries, and it means a reader sees progress DURING the
+// turn rather than only at exit -- which a block-buffered stdout capture cannot offer.
+type HarnessEventWrite
+  = HarnessEventsWritten
+  | HarnessEventsUnwritable { detail: String }
+
+fn harness_event_type_only(event_type: String) -> String {
+  serialize_json(v: json_object([json_kv(key: "type", value: json_string(s: event_type))]))
+}
+
+fn harness_event_item(event_type: String, item_type: String) -> String {
+  serialize_json(v: json_object([
+    json_kv(key: "type", value: json_string(s: event_type)),
+    json_kv(key: "item", value: json_object([
+      json_kv(key: "type", value: json_string(s: item_type)),
+    ])),
+  ]))
+}
+
+fn harness_event_agent_message(message: String) -> String {
+  serialize_json(v: json_object([
+    json_kv(key: "type", value: json_string(s: "item.completed")),
+    json_kv(key: "item", value: json_object([
+      json_kv(key: "type", value: json_string(s: "agent_message")),
+      json_kv(key: "message", value: json_string(s: message)),
+    ])),
+  ]))
+}
+
+// PER-ROUND USAGE, WRITTEN RATHER THAN DECODED AND DROPPED. input_tokens and output_tokens have
+// always been parsed -- the compaction gate reads the first and the terminal line prints both --
+// but nothing persisted them, so the context size at each round and the tokens produced for it were
+// observable only while the turn was still in memory. Reconstructing a rate afterwards meant
+// pairing assistant-message CHARACTER counts against durations the host log rounds to the nearest
+// minute, which answers "roughly" and cannot answer "did this round decode slowly or wait in a
+// queue". Both are now recorded at the round that produced them.
+//
+// THE CLOCK IS READ THROUGH ITS TYPED SURFACE AND ITS REFUSAL IS CARRIED, not defaulted. A failed
+// clock read emits clock_refused with the detail instead of an epoch_ms, so "the clock did not
+// answer" and "this round happened at time T" are different states in the stream. Writing a zero
+// would fabricate an instant, and a consumer differencing two of them would compute a plausible
+// interval from an event that never had a time -- the fabricated-plausible-output failure applied
+// to a measurement, which is the one place it is hardest to notice.
+// HOW MANY TOOL CALLS THE ROUND CARRIED, COUNTED FROM THE RESPONSE BLOCKS. Zero is a round the model
+// spent entirely on reasoning or prose, which the strip paints as its own kind: a worker that thinks
+// for four rounds and reads for none is a different shape from one that reads for four, and a count
+// of the model's tool_use blocks is a fact the harness holds, not a parse of a shell string.
+fn harness_event_round_usage(
+  step: Int,
+  input_tokens: Int,
+  output_tokens: Int,
+  clock: ClockUnixMillisRead,
+  tool_calls: Int,
+  files_changed: Int?,
+) -> String {
+  serialize_json(v: json_object(concat([
+    json_kv(key: "type", value: json_string(s: "round.usage")),
+    json_kv(key: "step", value: json_int(n: step)),
+    json_kv(key: "input_tokens", value: json_int(n: input_tokens)),
+    json_kv(key: "output_tokens", value: json_int(n: output_tokens)),
+    json_kv(key: "tool_calls", value: json_int(n: tool_calls)),
+    match clock {
+      ClockUnixMillisObserved { millis: m } => json_kv(key: "epoch_ms", value: json_int(n: m))
+      ClockUnixMillisRefused { detail: d } =>
+        json_kv(key: "clock_refused", value: json_string(s: d))
+    },
+  ], match files_changed {
+    Present { value: n } => [json_kv(key: "files_changed", value: json_int(n: n))]
+    Absent => []
+  })))
+}
+
+// HOW MANY PATHS THE WORKTREE REPORTS AS CHANGED, READ AFTER THE ROUND'S TOOLS RAN. This is the
+// fact the dashboard strip paints a write round with, and it is an OBSERVATION of the tree rather
+// than a classification of the command that ran -- parsing a shell string for a redirect or a
+// heredoc would be a heuristic where a fact is available. The git op is repository-addressed and
+// pointed at the attempt worktree explicitly; the ambient form would have counted the harness's
+// own checkout, which is the wrong tree and would have reported a clean run on every round.
+//
+// A FAILED READ IS ABSENT, NOT ZERO. "git did not answer" and "git answered zero" have opposite
+// meanings for the strip, and the ledger's files_changed is optional for exactly this case.
+fn harness_worktree_files_changed(environment: HarnessToolEnvironment) -> Int? {
+  let status = git.Inspect.WorkingTreeStatus(repository_path: environment.working_directory as String)
+  if !status.success {
+    none
+  } else {
+    Present { value: list_length(items: split(s: status.entries_nul, delimiter: from_code_point(0)) |> filter(e => e != "")) }
+  }
+}
+
+// A SPENT STEP BUDGET IS ITS OWN TERMINAL, NOT A FAILURE. The budget is the harness's construction --
+// the bound that makes the loop total -- so reaching it is the loop ending exactly as designed, with
+// whatever work the rounds produced sitting in the worktree for the belt to commit and judge. It was
+// written as turn.failed until 2026-09-05, and the dashboard duly read "Agent failed" beside
+// "Verification passed" on the same row, which the operator could not reconcile: the agent had not
+// failed, it had been stopped. A consumer that wants the two conflated can join them; one that wants
+// them apart could not split a single event type, so the split is made where the fact is known.
+fn harness_event_turn_budget_exhausted(steps_taken: Int) -> String {
+  serialize_json(v: json_object([
+    json_kv(key: "type", value: json_string(s: "turn.budget_exhausted")),
+    json_kv(key: "steps_taken", value: json_int(n: steps_taken)),
+  ]))
+}
+
+fn harness_event_turn_failed(message: String) -> String {
+  serialize_json(v: json_object([
+    json_kv(key: "type", value: json_string(s: "turn.failed")),
+    json_kv(key: "error", value: json_object([
+      json_kv(key: "message", value: json_string(s: message)),
+    ])),
+  ]))
+}
+
+fn harness_tool_round_events(uses: List<HarnessWireBlock>) -> List<String> {
+  fold(
+    uses,
+    init: [],
+    f: (acc, u) => concat(acc, [
+      harness_event_item(event_type: "item.started", item_type: "command_execution"),
+      harness_event_item(event_type: "item.completed", item_type: "command_execution"),
+    ]),
+  )
+}
+
+fn harness_events_body(events: List<String>) -> String {
+  concat(join(events, "\n"), "\n")
+}
+
+fn harness_write_events(config: HarnessTurnConfig, events: List<String>) -> HarnessEventWrite {
+  let written = Filesystem.Write(
+    path: config.events_path as String,
+    content: harness_events_body(events: events),
+  )
+  if written.success {
+    HarnessEventsWritten
+  } else {
+    HarnessEventsUnwritable { detail: written.error }
+  }
+}
+
+// A TERMINAL IS A PROVIDER OBSERVATION OR A HARNESS REFUSAL, and neither of them is "the task is
+// done". That separation is the whole of DCH-2's ruling on stop reasons, and it is structural here:
+// there is no TurnSucceeded constructor to reach for.
+//
+// The reason is measured rather than cautious. On this transport at least two upstream causes
+// produce the same observed end_turn -- a model genuinely finishing, and a serving package whose
+// configured stop string collides with ordinary content, which DCH-0p reproduced with a tiny prompt
+// and removed by rebuilding the package. The wire label cannot distinguish them, so the harness
+// reports the label and says so, and whether the WORK was done is decided by external pinned
+// verification against the attempt head -- never here.
+type HarnessTurnOutcome
+  = TurnProviderStopped {
+      wire_stop_reason: String
+      assistant_text: String
+      steps_taken: Int
+      input_tokens: Int
+      output_tokens: Int
+    }
+  | TurnStepBudgetExhausted { steps_taken: Int }
+  | TurnTransportRefused { detail: String }
+  | TurnResponseUnreadable { cause: String }
+  | TurnRequestUnwritable { path: String, detail: String }
+  | TurnContextWindowExhausted { input_tokens: Int, budget: Int, steps_taken: Int }
+  | TurnTruncatedMidToolCall { output_tokens: Int, ceiling: Int, steps_taken: Int }
+  | TurnThinkingFormatInvalid { cause: String, steps_taken: Int }
+
+fn harness_outcome_label(outcome: HarnessTurnOutcome) -> String {
+  match outcome {
+    TurnProviderStopped { wire_stop_reason: r, assistant_text: _, steps_taken: _, input_tokens: _, output_tokens: _ } =>
+      join(["provider-stopped:", r], "")
+    TurnStepBudgetExhausted { steps_taken: _ } => "step-budget-exhausted"
+    TurnTransportRefused { detail: _ } => "transport-refused"
+    TurnResponseUnreadable { cause: _ } => "response-unreadable"
+    TurnRequestUnwritable { path: _, detail: _ } => "request-unwritable"
+    TurnContextWindowExhausted { input_tokens: _, budget: _, steps_taken: _ } =>
+      "context-window-exhausted"
+    TurnTruncatedMidToolCall { output_tokens: _, ceiling: _, steps_taken: _ } =>
+      "truncated-mid-tool-call"
+    TurnThinkingFormatInvalid { cause: _, steps_taken: _ } => "thinking-format-invalid"
+  }
+}
+
+fn harness_outcome_detail(outcome: HarnessTurnOutcome) -> String {
+  match outcome {
+    TurnProviderStopped { wire_stop_reason: r, assistant_text: t, steps_taken: n, input_tokens: i, output_tokens: o } =>
+      join([
+        "stop_reason=", r,
+        " steps=", to_string(value: n),
+        " input_tokens=", to_string(value: i),
+        " output_tokens=", to_string(value: o),
+        "\n--- assistant text ---\n", t,
+        "\n--- end ---\n",
+        "NOTE: the wire stop reason is a provider observation, not a claim that the task was done.",
+      ], "")
+    TurnStepBudgetExhausted { steps_taken: n } =>
+      join([
+        "the turn used its whole step budget of ", to_string(value: n),
+        " tool rounds without the provider reaching a terminal stop reason",
+      ], "")
+    TurnContextWindowExhausted { input_tokens: i, budget: b, steps_taken: n } =>
+      join([
+        "the backend counted ", to_string(value: i),
+        " input tokens after ", to_string(value: n),
+        " tool rounds, against a declared budget of ", to_string(value: b),
+        "; the turn stopped rather than issuing a request the engine would refuse mid-run",
+      ], "")
+    TurnTruncatedMidToolCall { output_tokens: o, ceiling: c, steps_taken: n } =>
+      join([
+        "the provider stopped at the max_tokens ceiling of ", to_string(value: c),
+        " after ", to_string(value: n), " tool rounds, having emitted ", to_string(value: o),
+        " output tokens, with a tool call still open. Its arguments are truncated, so the command was",
+        " NOT executed: this harness writes files by heredoc, and running a cut-off command would",
+        " have written a partial file and returned success. Raise the ceiling if the work genuinely",
+        " needs a longer single call; the refusal is not evidence that it does.",
+      ], "")
+    TurnThinkingFormatInvalid { cause: c, steps_taken: n } =>
+      join(["after ", to_string(value: n), " tool rounds: ", c], "")
+    TurnTransportRefused { detail: d } => d
+    TurnResponseUnreadable { cause: c } => c
+    TurnRequestUnwritable { path: p, detail: d } =>
+      join(["could not write the request body to ", p, ": ", d], "")
+  }
+}
+
+// REQUEST CONSTRUCTION. The message list is carried as already-encoded JSON values rather than as
+// modelled AnthropicChatMessage values, and that is a deliberate narrowing for this slice: the loop
+// appends an assistant turn it received as JSON and a user turn of tool results it just built, so
+// round-tripping both through the modelled type and back would add a decode it does not need and a
+// re-encode that could differ from the bytes the provider actually sent. The DCH-2 requirement to
+// echo an assistant turn back VERBATIM, thinking blocks included, is exactly the property that
+// re-encoding puts at risk.
+fn harness_request_json(
+  config: HarnessTurnConfig,
+  messages: List<JsonValue>,
+) -> JsonValue {
+  match config.wire_shape {
+    AnthropicMessagesShape => harness_messages_request_json(config: config, messages: messages)
+    OpenAiChatCompletionsShape => harness_chat_request_json(config: config, messages: messages)
+  }
+}
+
+fn harness_messages_request_json(
+  config: HarnessTurnConfig,
+  messages: List<JsonValue>,
+) -> JsonValue {
+  json_object(concat([
+    json_kv(key: "model", value: json_string(s: config.model)),
+    json_kv(key: "max_tokens", value: json_int(n: config.max_tokens)),
+    json_kv(key: "system", value: json_string(s: config.system_prompt)),
+    json_kv(key: "messages", value: json_array(elements: messages)),
+    json_kv(key: "tools", value: json_array(elements: [
+      json_object([
+        json_kv(key: "name", value: json_string(s: "run_command")),
+        json_kv(key: "description", value: json_string(
+          s: "Run a shell command in the attempt's working directory and return its combined output and exit code.",
+        )),
+        json_kv(key: "input_schema", value: harness_run_command_schema()),
+      ]),
+    ])),
+  ], harness_reasoning_kwargs(mode: config.reasoning_mode)))
+}
+
+// THE CHAT SHAPE: the system prompt is the first message, and a tool is a function whose parameters
+// are the same schema the messages shape sends as input_schema -- one schema, two envelopes.
+fn harness_chat_request_json(
+  config: HarnessTurnConfig,
+  messages: List<JsonValue>,
+) -> JsonValue {
+  json_object(concat([
+    json_kv(key: "model", value: json_string(s: config.model)),
+    json_kv(key: "max_tokens", value: json_int(n: config.max_tokens)),
+    json_kv(key: "messages", value: json_array(elements: concat([
+      json_object([
+        json_kv(key: "role", value: json_string(s: "system")),
+        json_kv(key: "content", value: json_string(s: config.system_prompt)),
+      ]),
+    ], messages))),
+    json_kv(key: "tools", value: json_array(elements: [
+      json_object([
+        json_kv(key: "type", value: json_string(s: "function")),
+        json_kv(key: "function", value: json_object([
+          json_kv(key: "name", value: json_string(s: "run_command")),
+          json_kv(key: "description", value: json_string(
+            s: "Run a shell command in the attempt's working directory and return its combined output and exit code.",
+          )),
+          json_kv(key: "parameters", value: harness_run_command_schema()),
+        ])),
+      ]),
+    ])),
+  ], harness_reasoning_kwargs(mode: config.reasoning_mode)))
+}
+
+// THE REASONING SWITCH, AS THE CHAT TEMPLATE RECOGNISES IT. Non-think sends nothing: on vLLM that
+// IS the non-think mode, and sending thinking=false would assert a key whose absence already means
+// the same thing. The kwarg names and the effort labels are the extdeps module's, not spelled here.
+// THINK HIGH IS THINKING WITH NO PREAMBLE, so it sends the thinking switch alone. The canonical
+// encoder (encoding_dsv4.py) carries a preamble string only for "max"; "high" is the thinking
+// mode's own default, and measured on the live artifact an effort key of "high" renders nothing
+// (prompt_tokens unchanged). Sending it would be a second spelling of a fact the absence already
+// states. Only Think Max carries the effort key.
+fn harness_reasoning_kwargs(mode: DeepseekV4ReasoningMode) -> List<JsonKeyValue> {
+  match mode {
+    DeepseekV4NonThink => []
+    DeepseekV4ThinkHigh =>
+      [json_kv(key: "chat_template_kwargs", value: json_object([
+        json_kv(key: deepseek_v4_vllm_thinking_kwarg as String, value: JsonBool { value: true }),
+      ]))]
+    DeepseekV4ThinkMax =>
+      [json_kv(key: "chat_template_kwargs", value: json_object([
+        json_kv(key: deepseek_v4_vllm_thinking_kwarg as String, value: JsonBool { value: true }),
+        json_kv(key: deepseek_v4_vllm_reasoning_effort_kwarg as String,
+                value: json_string(s: deepseek_v4_reasoning_mode_wire(mode: mode) as String)),
+      ]))]
+  }
+}
+
+// INLINE REASONING IS DECODED, NOT REFUSED. When the serving unit carries no reasoning parser, a
+// thinking-mode completion arrives as one text block: reasoning, the end token, then speech. That
+// is the encoder's documented completion format, and the vendor ships the decoder for it
+// (parse_message_from_completion_text); splitting it here is the harness realizing that parse, the
+// same parse a runtime reasoning parser would realize server-side, where one exists for the model
+// -- this fleet's build reportedly has none for v4, so the client parse is the only one available. What the encoder calls
+// invalid -- thinking requested and no closer, or more than one closer -- refuses below.
+// THE SPLIT IS ON THE FIRST CLOSER, AND ONLY THE FIRST. parse_message_from_completion_text reads
+// until the end token once and treats everything after it as speech; a later occurrence of the same
+// string is content -- the model quoting the token, or writing a file that mentions it -- and the
+// encoder never asserts on it. An earlier revision of this arm refused a second closer as an invalid
+// format; that rule was this harness's invention, and it stopped a sixteen-round Think Max run that
+// had done nothing wrong. The encoder's one assertion, a MISSING closer under thinking, stands.
+fn harness_split_text_block(text: String) -> List<HarnessWireBlock> {
+  let parts = split(s: text, delimiter: deepseek_v4_thinking_end_token as String)
+  match parts.first() {
+    Absent => [WireTextBlock { text: text }]
+    Present { value: reasoning } =>
+      if list_length(items: parts) < 2 {
+        [WireTextBlock { text: text }]
+      } else {
+        let speech = join(parts.skip(n: 1), deepseek_v4_thinking_end_token as String)
+        concat(
+          if reasoning == "" { [] } else { [WireThinkingBlock { thinking: reasoning }] },
+          if speech == "" { [] } else { [WireTextBlock { text: speech }] },
+        )
+      }
+  }
+}
+
+fn harness_split_inline_reasoning(blocks: List<HarnessWireBlock>) -> List<HarnessWireBlock> {
+  flat_map(blocks, b => match b {
+    WireTextBlock { text } => if text.contains(deepseek_v4_thinking_end_token as String) { harness_split_text_block(text: text) } else { [b] }
+    WireThinkingBlock { thinking: _ } => [b]
+    WireToolUseBlock { id: _, name: _, input: _ } => [b]
+  })
+}
+
+fn harness_has_thinking_block(blocks: List<HarnessWireBlock>) -> Bool {
+  any(blocks, b => match b {
+    WireThinkingBlock { thinking: _ } => true
+    WireTextBlock { text: _ } => false
+    WireToolUseBlock { id: _, name: _, input: _ } => false
+  })
+}
+
+fn harness_thinking_requested(mode: DeepseekV4ReasoningMode) -> Bool {
+  match mode {
+    DeepseekV4NonThink => false
+    DeepseekV4ThinkHigh => true
+    DeepseekV4ThinkMax => true
+  }
+}
+
+fn harness_assistant_message_json(shape: HarnessWireShape, blocks: List<HarnessWireBlock>) -> JsonValue {
+  match shape {
+    AnthropicMessagesShape =>
+      json_object([
+        json_kv(key: "role", value: json_string(s: "assistant")),
+        json_kv(key: "content", value: json_array(elements: map(blocks, b => harness_wire_block_json(block: b)))),
+      ])
+    OpenAiChatCompletionsShape => harness_chat_assistant_message_json(blocks: blocks)
+  }
+}
+
+// THE CHAT SHAPE'S ASSISTANT REPLAY carries the model's speech as content, its reasoning as the
+// guide's reasoning_content -- the field the encoder re-renders when tools are defined -- and its
+// tool calls with their arguments serialized back to the JSON string they arrived as.
+fn harness_chat_assistant_message_json(blocks: List<HarnessWireBlock>) -> JsonValue {
+  let speech = join(flat_map(blocks, b => match b { WireTextBlock { text } => [text]  _ => [] }), "")
+  let reasoning = join(flat_map(blocks, b => match b { WireThinkingBlock { thinking } => [thinking]  _ => [] }), "")
+  let calls = flat_map(blocks, b => match b {
+    WireToolUseBlock { id, name, input } => [json_object([
+      json_kv(key: "id", value: json_string(s: id)),
+      json_kv(key: "type", value: json_string(s: "function")),
+      json_kv(key: "function", value: json_object([
+        json_kv(key: "name", value: json_string(s: name)),
+        json_kv(key: "arguments", value: json_string(s: serialize_json(v: input))),
+      ])),
+    ])]
+    _ => []
+  })
+  json_object(concat(concat(
+    [json_kv(key: "role", value: json_string(s: "assistant")),
+     json_kv(key: "content", value: json_string(s: speech))],
+    if reasoning == "" { [] } else { [json_kv(key: deepseek_v4_chat_reasoning_field as String, value: json_string(s: reasoning))] }),
+    if list_length(items: calls) == 0 { [] } else { [json_kv(key: "tool_calls", value: json_array(elements: calls))] }))
+}
+
+// A THINKING BLOCK REPLAYS AS A THINKING BLOCK. Until 2026-09-04 this arm re-labelled the model's
+// reasoning as a text block on the next turn, which never mattered because no thinking block had
+// ever arrived. With the reasoning switch declared and a parser-equipped server, they will -- and
+// the official guide requires prior turns' reasoning to be passed back AS reasoning, concatenated
+// into the context. Replaying it as speech hands the model a transcript in which it said aloud what
+// it had only thought, and then asks it to continue from there. extdeps records the requirement
+// (deepseek_v4_tool_use_requires_reasoning_replay); this arm is the harness honoring it.
+fn harness_wire_block_json(block: HarnessWireBlock) -> JsonValue {
+  match block {
+    WireTextBlock { text } =>
+      json_object([
+        json_kv(key: "type", value: json_string(s: "text")),
+        json_kv(key: "text", value: json_string(s: text)),
+      ])
+    WireThinkingBlock { thinking } =>
+      json_object([
+        json_kv(key: "type", value: json_string(s: "thinking")),
+        json_kv(key: "thinking", value: json_string(s: thinking)),
+      ])
+    WireToolUseBlock { id, name, input } =>
+      json_object([
+        json_kv(key: "type", value: json_string(s: "tool_use")),
+        json_kv(key: "id", value: json_string(s: id)),
+        json_kv(key: "name", value: json_string(s: name)),
+        json_kv(key: "input", value: input),
+      ])
+  }
+}
+
+// ALL TOOL RESULTS FOR ONE TURN GO BACK IN ONE USER MESSAGE. Treated as a hypothesis with a
+// predicted failure rather than as a fact inherited from prior art: if this transport does not
+// require the batching, nothing breaks; if it does, splitting them is the failure that presents as
+// the model losing track of what it asked for.
+// THE WORKER IS TOLD WHAT IT IS SPENDING, because until now it was not and it behaved exactly like
+// something with no budget. Transcripts show the failure precisely: on t08 the worker reached a
+// correct and complete plan at round six -- "I need to: 1. Delete roadmap_site_readback_script
+// 2. Delete roadmap_site_digest_readback_script ..." -- and then spent rounds seven through
+// twenty-one re-checking imports it had already read. It never acted, and nothing ever told it that
+// deferring had a cost.
+//
+// THE ROUND COUNT IS A FACT THE HARNESS ALREADY HOLDS, so surfacing it is not a prompt trick: the
+// loop carries steps_remaining and the worker cannot see it. A budget the executor knows and the
+// actor does not is the same asymmetry harness_tool's own annotation objects to -- "the harness knew
+// the limit and the caller could not see it" -- written one layer up.
+//
+// It rides on the tool-result message rather than a new message because the pairing after the
+// opening brief must stay assistant/user: an extra turn between them would break the alternation
+// the compaction logic depends on.
+fn harness_budget_notice_text(steps_remaining: Int) -> String {
+  join([
+    harness_premise_text(p: RoundsRemaining { rounds: steps_remaining }), " ",
+    harness_conclusion_text(c: ActBeforeTheRoundsRun { rounds: steps_remaining }),
+  ], "")
+}
+
+fn harness_budget_notice_block(steps_remaining: Int) -> JsonValue {
+  json_object([
+    json_kv(key: "type", value: json_string(s: "text")),
+    json_kv(key: "text", value: json_string(s: harness_budget_notice_text(steps_remaining: steps_remaining))),
+  ])
+}
+
+fn harness_tool_result_messages_json(
+  shape: HarnessWireShape,
+  results: List<HarnessToolResult>,
+  steps_remaining: Int,
+) -> List<JsonValue> {
+  match shape {
+    AnthropicMessagesShape =>
+      [json_object([
+        json_kv(key: "role", value: json_string(s: "user")),
+        json_kv(key: "content", value: json_array(
+          elements: concat(
+            map(results, r => harness_tool_result_block(tool_use_id: r.tool_use_id, text: r.text, is_error: r.is_error)),
+            [harness_budget_notice_block(steps_remaining: steps_remaining)],
+          ),
+        )),
+      ])]
+    OpenAiChatCompletionsShape =>
+      concat(
+        map(results, r => json_object([
+          json_kv(key: "role", value: json_string(s: "tool")),
+          json_kv(key: "tool_call_id", value: json_string(s: r.tool_use_id)),
+          json_kv(key: "content", value: json_string(s: r.text)),
+        ])),
+        [json_object([
+          json_kv(key: "role", value: json_string(s: "user")),
+          json_kv(key: "content", value: json_string(s: harness_budget_notice_text(steps_remaining: steps_remaining))),
+        ])],
+      )
+  }
+}
+
+fn harness_user_text_message_json(shape: HarnessWireShape, text: String) -> JsonValue {
+  match shape {
+    AnthropicMessagesShape =>
+      json_object([
+        json_kv(key: "role", value: json_string(s: "user")),
+        json_kv(key: "content", value: json_array(elements: [
+          json_object([
+            json_kv(key: "type", value: json_string(s: "text")),
+            json_kv(key: "text", value: json_string(s: text)),
+          ]),
+        ])),
+      ])
+    OpenAiChatCompletionsShape =>
+      json_object([
+        json_kv(key: "role", value: json_string(s: "user")),
+        json_kv(key: "content", value: json_string(s: text)),
+      ])
+  }
+}
+
+fn harness_blocks_text(blocks: List<HarnessWireBlock>) -> String {
+  join(
+    map(blocks, b => match b {
+      WireTextBlock { text } => text
+      WireThinkingBlock { thinking: _ } => ""
+      WireToolUseBlock { id: _, name: n, input: _ } => join(["[tool_use ", n, "]"], "")
+    }),
+    "",
+  )
+}
+
+fn harness_tool_use_blocks(blocks: List<HarnessWireBlock>) -> List<HarnessWireBlock> {
+  filter(blocks, b => match b {
+    WireToolUseBlock { id: _, name: _, input: _ } => true
+    _ => false
+  })
+}
+
+fn harness_tool_use_id(block: HarnessWireBlock) -> String {
+  match block {
+    WireToolUseBlock { id, name: _, input: _ } => id
+    _ => ""
+  }
+}
+
+// A TOOL RESULT IS ONE FACT, ENCODED TWO WAYS. The execution yields a neutral record; the messages
+// shape wraps it as a tool_result content block inside a user message, the chat shape sends it as
+// its own role=tool message keyed by the call id. Neither encoder is the result.
+type HarnessToolResult {
+  tool_use_id: String
+  text: String
+  is_error: Bool
+}
+
+fn harness_execute_tool(
+  environment: HarnessToolEnvironment,
+  block: HarnessWireBlock,
+) -> HarnessToolResult {
+  let outcome = harness_execute_tool_use(environment: environment, block: block)
+  HarnessToolResult {
+    tool_use_id: harness_tool_use_id(block: block),
+    text: harness_outcome_text(outcome: outcome),
+    is_error: harness_outcome_is_error(outcome: outcome),
+  }
+}
+
+// THE RESPONSE IS KEPT BESIDE THE REQUEST, EVERY ROUND. A refusal raised on a completion used to
+// destroy its own evidence: the request was on disk, the body that triggered the refusal was not,
+// and the first over-strict refusal this harness raised in production was therefore undiagnosable
+// after the fact. The body is written before it is decoded, so whatever the decoder says about it
+// can be checked against the bytes it said it about.
+// ONE ROUND: write the request, post it, decode the answer.
+// A TOOL CALL THAT RAN OUT OF TOKENS IS NOT A TOOL CALL. The provider reports max_tokens when it
+// stopped because the ceiling was reached rather than because the answer ended, and a tool_use block
+// cut off at that boundary is TRUNCATED -- its arguments are whatever fitted. This harness's one
+// tool runs a shell command, and its declared write forms are heredoc and in-place edit, so a
+// truncated command is a PARTIAL FILE WRITE that returns exit 0. The loop would then continue
+// against a tree it had silently corrupted, which is the fabricated-plausible-output failure DESIGN
+// section 5 forbids, arrived at through a hole nobody opened deliberately: the round arm branched on
+// whether tool calls were PRESENT and never asked whether they were COMPLETE.
+//
+// THE REFUSAL IS NOT A SMALLER CEILING. Raising max_tokens moves the boundary; it does not remove
+// it, and a ceiling large enough for every possible file is not a thing that exists. The wall is
+// that a truncated call must not execute at all.
+fn harness_stop_reason_truncated(reason: AnthropicStopReason) -> Bool {
+  match reason {
+    MaxTokens => true
+    EndTurn => false
+    ToolUse => false
+    StopSequence => false
+    PauseTurn => false
+    Refusal => false
+    ModelContextWindowExceeded => false
+  }
+}
+
+
+// THE ENCODER'S TWO INVALID SHAPES, as a located cause; empty means the completion is well-formed.
+// Checked on the RAW blocks so a multiple-closer text is judged before any split could hide it, and
+// only when thinking was requested: a non-think completion never carries a closer and is not asked
+// to. A thinking block already present (a parser-equipped server) satisfies the requirement.
+fn harness_thinking_format_cause(blocks: List<HarnessWireBlock>, mode: DeepseekV4ReasoningMode) -> String {
+  if harness_thinking_requested(mode: mode) && !harness_has_thinking_block(blocks: harness_split_inline_reasoning(blocks: blocks)) {
+    "invalid thinking format: thinking was requested and the completion carries no end-of-thinking closer and no thinking block; the encoder asserts on this shape, and a truncated chain of thought must not be transcribed as speech"
+  } else {
+    ""
+  }
+}
+
+fn harness_post_round(
+  config: HarnessTurnConfig,
+  messages: List<JsonValue>,
+) -> HarnessResponseRead {
+  let body = serialize_json(v: harness_request_json(config: config, messages: messages))
+  let written = Filesystem.Write(path: config.request_scratch_path as String, content: body)
+  if !written.success {
+    HarnessResponseUnreadable {
+      cause: join([
+        "request body could not be written to ", config.request_scratch_path as String,
+        ": ", written.error,
+      ], ""),
+    }
+  } else {
+    let posted = http.Client.PostJsonFromFile(
+      url: config.backend_url as NonEmptyStr,
+      request_body_file: config.request_scratch_path as String as NonEmptyStr,
+      max_seconds: to_string(value: second_count(s: config.request_deadline)) as NonEmptyStr,
+    )
+    let kept = Filesystem.Write(
+      path: join([config.request_scratch_path as String, ".response.json"], ""),
+      content: posted.body,
+    )
+    if !posted.success {
+      HarnessResponseUnreadable {
+        cause: join([
+          "the backend refused the request or the transport failed; body was: ", posted.body,
+        ], ""),
+      }
+    } else if !kept.success {
+      HarnessResponseUnreadable {
+        cause: join(["the response could not be kept beside the request: ", kept.error, "; refusing to decode a body no one can re-read"], ""),
+      }
+    } else {
+      harness_decode_for_shape(shape: config.wire_shape, body: posted.body)
+    }
+  }
+}
+
+// THE LOOP. Each round either reaches a provider terminal, or executes the tool calls and recurses
+// with a strictly smaller budget. There is no arm that continues without either consuming a step or
+// terminating, which is what makes the descent argument readable rather than asserted.
+// COMPACTION, AT ITS MOST BASIC: A SLIDING WINDOW WITH A PINNED HEAD.
+//
+// The loop grows `messages` monotonically -- concat(messages, [assistant, tool_results]) -- so every
+// turn re-sends the whole history and nothing is ever dropped. That is why one 162KB tool result
+// poisoned an entire turn: the cap added to harness_tool bounds what ENTERS history and can do
+// nothing about what is already in it.
+//
+// WHOLE PAIRS ARE DROPPED, NEVER SINGLE MESSAGES, and that is a correctness constraint rather than
+// tidiness. After the opening brief the list alternates assistant(tool_use) / user(tool_result), and
+// a tool_result whose matching tool_use has been dropped is a malformed request the backend rejects
+// outright. Dropping an even count starting at index 1 preserves the pairing by construction.
+//
+// THE BRIEF IS PINNED because it is the only message that says what the task IS. A window that
+// dropped it would leave a worker executing tool calls with no statement of purpose -- which is the
+// failure this is supposed to prevent, arrived at from the other side.
+//
+// WHAT THIS IS NOT: summarization. Nothing is read, condensed or re-stated; the dropped rounds are
+// simply gone, and the model is told so. That is deliberate for a first cut -- a summarizer is a
+// second model call whose output is unverified text entering the context that the real work depends
+// on, and it should not land before there is a measurement saying the window is the binding
+// constraint. Today's measurement says it is not: peak context is roughly 78KB against a 1M budget.
+//
+// SO THIS WILL NOT FIRE IN NORMAL OPERATION, and that is the honest state rather than a defect. It
+// is a bound on pathological growth, not the compaction strategy -- the trigger worth building is
+// task-oriented (a repeated command, a round that changed nothing), and this is the mechanism such
+// a trigger would eventually drive.
+// THE TRIGGER IS THE MEASURED INPUT, NOT A ROUND COUNT, and the first cut got this exactly wrong.
+// It retained a fixed six rounds, which fires at about thirteen messages REGARDLESS OF SIZE -- so on
+// a run using 40k tokens of a 1048576-token window, roughly 4% of the budget, the worker had its own
+// working history discarded about once per round. Measured on t01: 25 rounds executed, 14 messages
+// retained, compaction notice present, nothing near the window. A worker that repeatedly forgets
+// what it just learned is a plausible cause of the non-convergence this was meant to measure.
+//
+// So compaction now fires only when the backend's own counted input crosses a share of the budget.
+// Below that the history is kept whole, which is the right default when the window is three orders
+// of magnitude larger than the conversation. The share is three quarters: high enough that ordinary
+// runs never compact, low enough that the drop happens before the context refusal rather than at it.
+data harness_compaction_input_share_numerator: Int = 3
+
+data harness_compaction_input_share_denominator: Int = 4
+
+data harness_retained_tool_rounds: Int = 24
+
+fn harness_compaction_due(input_tokens: Int, budget: TokenCount) -> Bool {
+  input_tokens * harness_compaction_input_share_denominator
+    >= token_count_value(t: budget) * harness_compaction_input_share_numerator
+}
+
+fn harness_compaction_notice(shape: HarnessWireShape, dropped_rounds: Int) -> JsonValue {
+  harness_user_text_message_json(
+    shape: shape,
+    text: join([
+      harness_premise_text(p: EarlierRoundsDropped { rounds: dropped_rounds }), " ",
+      harness_conclusion_text(c: ReRunForDroppedOutput { rounds: dropped_rounds }),
+    ], ""),
+  )
+}
+
+fn harness_compact_messages(
+  messages: List<JsonValue>,
+  input_tokens: Int,
+  budget: TokenCount,
+ shape: HarnessWireShape) -> List<JsonValue> {
+  if !harness_compaction_due(input_tokens: input_tokens, budget: budget) {
+    messages
+  } else {
+    harness_compact_messages_now(shape: shape, messages: messages)
+  }
+}
+
+fn harness_compact_messages_now(messages: List<JsonValue>, shape: HarnessWireShape) -> List<JsonValue> {
+  let total = list_length(items: messages)
+  let retained = harness_retained_tool_rounds * 2
+  if total <= retained + 1 {
+    messages
+  } else {
+    let dropped = total - retained - 1
+    concat(
+      concat(messages.take(n: 1), [harness_compaction_notice(shape: shape, dropped_rounds: dropped / 2)]),
+      messages.skip(n: total - retained),
+    )
+  }
+}
+
+fn harness_event_write_refusal(config: HarnessTurnConfig, detail: String) -> HarnessTurnOutcome {
+  TurnRequestUnwritable {
+    path: config.events_path as String,
+    detail: join(["provider event stream could not be written: ", detail], ""),
+  }
+}
+
+fn harness_turn_loop(
+  config: HarnessTurnConfig,
+  messages: List<JsonValue>,
+  steps_remaining: Int,
+  steps_taken: Int,
+  events: List<String>,
+) -> HarnessTurnOutcome {
+  if steps_remaining <= 0 {
+    let exhausted = concat(events, [harness_event_turn_budget_exhausted(steps_taken: steps_taken)])
+    match harness_write_events(config: config, events: exhausted) {
+      HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+      HarnessEventsWritten => TurnStepBudgetExhausted { steps_taken: steps_taken }
+    }
+  } else {
+    match harness_post_round(config: config, messages: messages) {
+      HarnessResponseUnreadable { cause: c } => {
+        let failed = concat(events, [harness_event_turn_failed(message: c)])
+        match harness_write_events(config: config, events: failed) {
+          HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+          HarnessEventsWritten => TurnResponseUnreadable { cause: c }
+        }
+      }
+      HarnessResponseParsed { blocks: raw_blocks, stop_reason, input_tokens, output_tokens } => {
+        let blocks = harness_split_inline_reasoning(blocks: raw_blocks)
+        let clock = clock_unix_millis_read()
+        let uses = harness_tool_use_blocks(blocks: blocks)
+        let usage = harness_event_round_usage(
+          step: steps_taken + 1,
+          input_tokens: input_tokens,
+          output_tokens: output_tokens,
+          clock: clock,
+          tool_calls: list_length(items: uses),
+          files_changed: none,
+        )
+        if harness_thinking_format_cause(blocks: blocks, mode: config.reasoning_mode) != "" {
+          let invalid = concat(events, [
+            usage,
+            harness_event_turn_failed(message: harness_thinking_format_cause(blocks: blocks, mode: config.reasoning_mode)),
+          ])
+          match harness_write_events(config: config, events: invalid) {
+            HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+            HarnessEventsWritten =>
+              TurnThinkingFormatInvalid {
+                cause: harness_thinking_format_cause(blocks: blocks, mode: config.reasoning_mode),
+                steps_taken: steps_taken + 1,
+              }
+          }
+        } else if list_length(items: uses) > 0 && harness_stop_reason_truncated(reason: stop_reason) {
+          let truncated = concat(events, [
+            usage,
+            harness_event_turn_failed(
+              message: join([
+                "the provider stopped at the max_tokens ceiling of ",
+                to_string(value: config.max_tokens),
+                " with a tool call still open, so its arguments are truncated; refusing to execute a",
+                " partial command rather than write an incomplete file and continue",
+              ], ""),
+            ),
+          ])
+          match harness_write_events(config: config, events: truncated) {
+            HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+            HarnessEventsWritten =>
+              TurnTruncatedMidToolCall {
+                output_tokens: output_tokens,
+                ceiling: config.max_tokens,
+                steps_taken: steps_taken + 1,
+              }
+          }
+        } else if list_length(items: uses) == 0 {
+          let text = harness_blocks_text(blocks: blocks)
+          let completed = concat(events, [
+            usage,
+            harness_event_agent_message(message: text),
+            harness_event_type_only(event_type: "turn.completed"),
+          ])
+          match harness_write_events(config: config, events: completed) {
+            HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+            HarnessEventsWritten =>
+              TurnProviderStopped {
+                wire_stop_reason: harness_stop_reason_wire(reason: stop_reason),
+                assistant_text: text,
+                steps_taken: steps_taken + 1,
+                input_tokens: input_tokens,
+                output_tokens: output_tokens,
+              }
+          }
+        } else if harness_context_exhausted(
+          input_tokens: input_tokens,
+          budget: config.context_budget,
+        ) {
+          let exhausted = concat(events, [
+            usage,
+            harness_event_turn_failed(
+              message: join([
+                "context window exhausted: the backend counted ", to_string(value: input_tokens),
+                " input tokens against a declared budget of ",
+                to_string(value: token_count_value(t: config.context_budget)),
+                "; this turn cannot make another request",
+              ], ""),
+            ),
+          ])
+          match harness_write_events(config: config, events: exhausted) {
+            HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+            HarnessEventsWritten =>
+              TurnContextWindowExhausted {
+                input_tokens: input_tokens,
+                budget: token_count_value(t: config.context_budget),
+                steps_taken: steps_taken + 1,
+              }
+          }
+        } else {
+          let results = map(uses, u => harness_execute_tool(
+            environment: config.environment,
+            block: u,
+          ))
+          let usage_after_tools = harness_event_round_usage(
+            step: steps_taken + 1,
+            input_tokens: input_tokens,
+            output_tokens: output_tokens,
+            clock: clock,
+            tool_calls: list_length(items: uses),
+            files_changed: harness_worktree_files_changed(environment: config.environment),
+          )
+          let stepped = concat(concat(events, [usage_after_tools]), harness_tool_round_events(uses: uses))
+          match harness_write_events(config: config, events: stepped) {
+            HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+            HarnessEventsWritten =>
+              harness_turn_loop(
+                config: config,
+                messages: harness_compact_messages(shape: config.wire_shape, 
+                  messages: concat(
+                    messages,
+                    concat(
+                      [harness_assistant_message_json(shape: config.wire_shape, blocks: blocks)],
+                      harness_tool_result_messages_json(
+                        shape: config.wire_shape,
+                        results: results,
+                        steps_remaining: steps_remaining - 1,
+                      ),
+                    ),
+                  ),
+                  input_tokens: input_tokens,
+                  budget: config.context_budget,
+                ),
+                steps_remaining: steps_remaining - 1,
+                steps_taken: steps_taken + 1,
+                events: stepped,
+              )
+          }
+        }
+      }
+    }
+  }
+}
+
+// turn.started IS WRITTEN BEFORE THE FIRST POST, NOT CARRIED UNTIL THE FIRST WRITE POINT. The loop
+// only writes when a round resolves, and the first round is the slowest thing in the turn -- a cold
+// model call runs one to two minutes here. Seeding the accumulator without flushing it left the
+// event stream EMPTY for exactly that window, so an observer polling during the longest part of the
+// turn saw an initialized-but-silent stream and could not distinguish it from a worker that never
+// started. Writing here makes "the agent began" observable at the moment it becomes true.
+fn harness_run_turn(config: HarnessTurnConfig, prompt: String, step_budget: Int) -> HarnessTurnOutcome {
+  let started = [harness_event_type_only(event_type: "turn.started")]
+  match harness_write_events(config: config, events: started) {
+    HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+    HarnessEventsWritten =>
+      harness_turn_loop(
+        config: config,
+        messages: [harness_user_text_message_json(shape: config.wire_shape, text: prompt)],
+        steps_remaining: step_budget,
+        steps_taken: 0,
+        events: started,
+      )
+  }
+}

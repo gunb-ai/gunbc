@@ -42,8 +42,20 @@ import gunbc.fleet_main_revision {
 // refs/fleet/desired was inexpressible: nothing could say "the remote does not have this ref"
 // as a claim rather than as a failure to look. Exit 0 with an empty advertisement IS that
 // claim, and it is now the only thing that produces it.
-fn observe_fleet_desired_revision(repo: FilePath) -> FleetDesiredRevision {
-  let read = git.Core.LsRemoteRefInRepo(repo: repo, remote: "origin", ref_name: fleet_desired_ref_name)
+// WHICH REF ADMITS A REVISION IS A PARAMETER; WHAT AN ADMITTED REVISION MEANS IS NOT.
+//
+// The advertisement read, the decode, and the three answers an observation can honestly support are
+// invariant. The (remote, ref) pair is not: refs/fleet/desired on origin is the authority for a
+// FLEET host, and a checkout that is not a fleet member has no honest answer from that ref at all.
+//
+// The alternative was to let a non-fleet instance skip the revision gate, and that is the escape
+// hatch DESIGN 5 forbids in its exact shape -- a toggle whose only effect is to proceed as if the
+// refusal had not fired. Parameterizing the SOURCE keeps the gate's form intact: a revision is
+// still admitted by a named ref, the comparison is still HEAD against that ref, and drift still
+// refuses. What changes is only which authority is asked, which is a real per-instance fact rather
+// than a permission.
+fn observe_admitted_revision(repo: FilePath, remote: String, ref_name: GitRef) -> FleetDesiredRevision {
+  let read = git.Core.LsRemoteRefInRepo(repo: repo, remote: remote, ref_name: ref_name)
   if read.exit_code == 0 {
     let line = trim(s: read.advertised)
     if line == "" {
@@ -56,7 +68,10 @@ fn observe_fleet_desired_revision(repo: FilePath) -> FleetDesiredRevision {
     }
   } else {
     FleetDesiredUnobserved {
-      cause: concat("fleet_desired_observe: ls-remote refused: ", read.stderr),
+      cause: join([
+        "fleet_desired_observe: ls-remote of ", ref_name as String, " on remote ", remote,
+        " refused: ", read.stderr,
+      ], ""),
     }
   }
 }
@@ -154,15 +169,33 @@ fn observe_fleet_revision_relation(
   )
 }
 
-// The local half of the comparison: what revision THIS host's deployed tree is at.
-// Absent (typed, located in the cause the caller renders) when the repo path is not a
-// git repository or HEAD does not decode — never a fabricated revision.
-fn observe_local_tree_revision(repo: FilePath) -> GitObjectId? {
+// THE DEPLOYED TREE'S OWN REVISION, read locally and compared to nothing: which software is acting.
+// This is the fact the roadmap consumes -- a launch identity names the code that dispatched it, a
+// tick receipt names the code that ticked -- and it is NOT convergence. Whether this revision equals
+// the admitted fleet ref is the deploy path's question, answered by FleetRevisionStanding below for
+// the converge CLI and the deployed-tree report. Dispatch and the belt do not consult it (operator
+// ruling, 2026-09-05): desired advances on every green merge and a deploy takes minutes, so a gate
+// demanding equality was satisfiable only in the gap between two merges, and the tick refusing
+// under drift turned every merge into a pipeline outage on the host. Unreadable still refuses: a
+// dispatch that cannot name the code it runs has no identity to bind.
+type LocalTreeRevision
+  = LocalTreeRevisionObserved { revision: GitObjectId }
+  | LocalTreeRevisionUnobserved { cause: String }
+
+fn local_tree_revision(repo: FilePath) -> LocalTreeRevision {
   let read = git.Core.RevParseInRepo(repo: repo, target: "HEAD" as GitRef)
   if read.exit_code == 0 {
-    git_object_id_from_untagged_hex(hex: trim(s: read.revision))
+    match git_object_id_from_untagged_hex(hex: trim(s: read.revision)) {
+      Present { value: oid } => LocalTreeRevisionObserved { revision: oid }
+      Absent =>
+        LocalTreeRevisionUnobserved {
+          cause: concat("fleet_desired_observe: HEAD is not a decodable object id: ", trim(s: read.revision)),
+        }
+    }
   } else {
-    none
+    LocalTreeRevisionUnobserved {
+      cause: "fleet_desired_observe: local tree revision unreadable (not a git repository, or HEAD undecodable)",
+    }
   }
 }
 
@@ -177,28 +210,31 @@ type FleetRevisionStanding
   | RevisionDrifted { desired: GitObjectId, local: GitObjectId }
   | RevisionUnobserved { cause: String }
 
-fn fleet_revision_standing(repo: FilePath) -> FleetRevisionStanding {
-  let observed = observe_fleet_desired_revision(repo: repo)
+fn observe_fleet_desired_revision(repo: FilePath) -> FleetDesiredRevision {
+  observe_admitted_revision(repo: repo, remote: "origin", ref_name: fleet_desired_ref_name)
+}
+
+fn admitted_revision_standing(repo: FilePath, remote: String, ref_name: GitRef) -> FleetRevisionStanding {
+  let observed = observe_admitted_revision(repo: repo, remote: remote, ref_name: ref_name)
   match converge_target_revision(observed: observed) {
     Present { value: desired } =>
-      match observe_local_tree_revision(repo: repo) {
-        Present { value: local } =>
+      match local_tree_revision(repo: repo) {
+        LocalTreeRevisionObserved { revision: local } =>
           if git_object_id_eq(left: desired, right: local) {
             RevisionConverged { revision: desired }
           } else {
             RevisionDrifted { desired: desired, local: local }
           }
-        Absent =>
-          RevisionUnobserved {
-            cause: "fleet_desired_observe: local tree revision unreadable (not a git repository, or HEAD undecodable)",
-          }
+        LocalTreeRevisionUnobserved { cause } => RevisionUnobserved { cause: cause }
       }
     Absent =>
       match observed {
         FleetDesiredUnobserved { cause: c } => RevisionUnobserved { cause: c }
         FleetDesiredAbsent =>
           RevisionUnobserved {
-            cause: concat("fleet_desired_observe: origin advertises no ", fleet_desired_ref_name),
+            cause: join([
+              "fleet_desired_observe: remote ", remote, " advertises no ", ref_name as String,
+            ], ""),
           }
         FleetDesiredUndecodable { advertised: line } =>
           RevisionUnobserved {
@@ -210,4 +246,8 @@ fn fleet_revision_standing(repo: FilePath) -> FleetRevisionStanding {
           }
       }
   }
+}
+
+fn fleet_revision_standing(repo: FilePath) -> FleetRevisionStanding {
+  admitted_revision_standing(repo: repo, remote: "origin", ref_name: fleet_desired_ref_name)
 }

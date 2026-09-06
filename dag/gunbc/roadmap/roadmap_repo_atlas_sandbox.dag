@@ -436,7 +436,7 @@ data repo_atlas_comparison_base: String = "HEAD^"
 data repo_atlas_comparison_head: String = "HEAD"
 
 fn repo_atlas_observe_changes() -> AtlasChangeObservation {
-  let status = git.Inspect.WorkingTreeStatus()
+  let status = git.Inspect.WorkingTreeStatus(repository_path: git.Inspect.Toplevel().path as String)
   if status.success == false {
     AtlasComparisonUnavailable {
       cause: ComparisonReadFailed { detail: concat("git status did not succeed — ", status.stderr) }

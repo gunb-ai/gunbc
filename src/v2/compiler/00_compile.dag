@@ -1,5 +1,6 @@
 module v2.compiler.compile
 
+import std.compiler_entry { CompilerEntryDriver, DirectIngestDriver }
 import v2.compiler.emit { emit }
 import v2.compiler.eval { eval_node, inputs_root_only }
 import v2.compiler.infer { infer, InferredTree }
@@ -25,7 +26,7 @@ import v2.std.grammar { ParseTree }
 import v2.std.language_model { LanguageModel }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.compilers.target_model { TargetModel }
-import v2.extdeps.languages.dag { dag_language_model }
+import v2.extdeps.languages.dag { dag_language_model, dag_target_model }
 import v2.lens.complexity_accumulator_copy.compile_gate { accumulator_copy_compile_gate }
 import v2.lens.determinism { determinism_compile_gate }
 import v2.lens.machine_shape { machine_shape_compile_gate }
@@ -57,6 +58,19 @@ import v2.std.diagnostic {
 import v2.std.node { Edge, Node, NodeFold, Symbol, fold_node }
 import v2.std.text { String }
 import v2.std.witness { Holds, Violates, Witness }
+
+// THIS MODULE IS THE COMPILER PIPELINE ENTRY. It carries the fact rather than being recognised
+// by name: the emitter selected its entry-point arm by matching "v1.compiler.compile", a
+// literal this module could never satisfy, so a crate emitted from this corpus was rendered
+// with the no-entry-point refusal main no matter what it contained.
+//
+// DirectIngestDriver rather than RetainedHostCliKernel, and the difference is not a preference:
+// a crate emitted from this corpus does not contain v1_compiler.cli_run, so the retained-host
+// driver would name a module that is not there. The driver reaches compile_ingest_with_admission
+// below -- source text and a target in, emitted text out -- which is the entry a command line
+// can be wired to. compile() is not that entry: it takes an already-parsed CoreNode.
+
+data compiler_pipeline_entry: CompilerEntryDriver = DirectIngestDriver
 
 type CoreNode = Node
 
@@ -451,6 +465,34 @@ fn compile_ingest_with_admission(
           )
         }
       )
+    }
+  )
+}
+
+
+// THE ENTRY A COMMAND LINE CAN BE WIRED TO, MODELLED HERE RATHER THAN AUTHORED IN THE EMITTER.
+//
+// compile_ingest_with_admission is the transaction a compiler driver wants -- source text and a
+// target in, emitted text out -- but it takes four arguments whose values are facts about HOW a
+// driver is admitting a single standalone source, not facts a command line supplies. Modelling
+// that binding here keeps the emitted `main` a thin argv shim: DESIGN section 6 lists a
+// hand-authored projection the model should generate as a scaffold tell, and every line of driver
+// logic authored as Rust string literals in the emitter is seed that has to shrink later.
+//
+// ONE SOURCE, NO PEERS, AND THE SUBJECT IS THIS DRIVER'S OWN. peer_roots is Empty because a
+// standalone source has no sibling roots admitted alongside it; widening that later is a change to
+// this function, not to the emitted main.
+
+fn compile_dag_source_to_target_text(source_text: String) -> Outcome<Medium<String>> {
+  compile_ingest_with_admission(
+    source: Medium { carried: source_text, fidelity: Lossless },
+    target: dag_target_model(),
+    peer_roots: Empty,
+    admission: Admission {
+      subject: ResolutionSubject {
+        name: Cons { head: ^compile_driver_subject, tail: Empty }
+      },
+      imports: Empty
     }
   )
 }

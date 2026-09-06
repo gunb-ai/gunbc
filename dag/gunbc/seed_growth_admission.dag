@@ -28,6 +28,8 @@ import gunbc.generated_artifact_boundary_seed_growth { generated_artifact_bounda
 import gunbc.regen_convergence_seed_growth { regen_convergence_seed_growth_justification }
 import gunbc.witness_runtime_cause_seed_growth { witness_runtime_cause_seed_growth_justification }
 import gunbc.required_lane_judgment_seed_growth { required_lane_judgment_seed_growth_justification }
+import gunbc.data_eval_counters_seed_growth { data_eval_counters_seed_growth_justification }
+import gunbc.param_binder_seed_growth { param_binder_seed_growth_justification }
 import gunbc.rust_item_host_observation {
   ItemDeclarationRefProjection,
   LiveHandRustObservation,
@@ -62,6 +64,7 @@ import gunbc.cross_claim_pure_share_seed_growth { cross_claim_pure_share_seed_gr
 import gunbc.cross_claim_demand_census_seed_growth { cross_claim_demand_census_seed_growth_justification }
 import gunbc.frame_independent_symbol_seed_growth { frame_independent_symbol_seed_growth_justification }
 import gunbc.floor_cost_debt_seed_growth { floor_cost_debt_seed_growth_justification }
+import gunbc.listing_completeness_seed_growth { listing_completeness_seed_growth_justification }
 import gunbc.floor_cost_debt_standing_seed_growth { floor_cost_debt_standing_seed_growth_justification }
 import gunbc.floor_population_projection_seed_growth { floor_population_projection_seed_growth_justification }
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_seed_growth_justification }
@@ -202,6 +205,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     floor_non_verdict_seed_growth_justification,
     floor_route_gap_seed_growth_justification,
     floor_cost_debt_seed_growth_justification,
+    listing_completeness_seed_growth_justification,
     cross_claim_pure_share_seed_growth_justification,
     cross_claim_demand_census_seed_growth_justification,
     frame_independent_symbol_seed_growth_justification,
@@ -220,6 +224,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     claim_batch_entry_closure_preflight_seed_growth_justification,
     shared_fill_attribution_seed_growth_justification,
     census_memo_seed_growth_justification,
+    data_eval_counters_seed_growth_justification,
     declaration_index_seed_growth_justification,
     emitted_closure_compile_seed_growth_justification,
     evaluation_budget_falsifier_seed_growth_justification,
@@ -235,7 +240,8 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     decl_facts_shared_memo_seed_growth_justification,
     cli_wire_host_seed_growth_justification,
     filesystem_create_new_seed_growth_justification,
-    required_lane_judgment_seed_growth_justification
+    required_lane_judgment_seed_growth_justification,
+    param_binder_seed_growth_justification
   ]
 }
 

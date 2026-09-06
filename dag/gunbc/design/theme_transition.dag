@@ -88,6 +88,7 @@ fn themed_props_of(decls: List<CssDecl>) -> List<String> {
 fn rule_selector(rule: BuildRule) -> String {
   match rule {
     StaticRule { selector, decls: _ } => selector_subject_wire(s: selector)
+    AmbientRule { selector, cycle: _, timing: _, repeat: _ } => selector_subject_wire(s: selector)
     ResponseRule { subject, shape, trigger: _, transition_props: _, timing: _, base_decls: _, response_decls: _ } =>
       response_base_selector(subject: subject, shape: shape)
   }
@@ -96,6 +97,7 @@ fn rule_selector(rule: BuildRule) -> String {
 fn rule_decls(rule: BuildRule) -> List<CssDecl> {
   match rule {
     StaticRule { selector: _, decls } => decls
+    AmbientRule { selector: _, cycle, timing: _, repeat: _ } => fold(cycle.frames, init: [], f: (acc, k) => concat(acc, k.decls))
     ResponseRule { subject: _, shape: _, trigger: _, transition_props: _, timing: _, base_decls, response_decls } =>
       concat(base_decls, response_decls)
   }

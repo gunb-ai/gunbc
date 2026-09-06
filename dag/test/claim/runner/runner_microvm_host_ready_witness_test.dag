@@ -1,0 +1,94 @@
+module test.claim.runner_microvm_host_ready_witness
+
+import gunbc.executor_privileged_operation { EnsureSupplementaryGroupMembership, executor_privileged_operation_argv, executor_privileged_operation_sudoers_line }
+import gunbc.runner_host_grants { runner_host_privileged_operations }
+import gunbc.runner_host_deploy { srv2_runner_host_deploy }
+import std.types { String, Bool, List }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.virtualization.firecracker {
+  firecracker_release_aarch64, firecracker_release_download_url, firecracker_release_tarball_filename,
+  firecracker_release_binary_path_in_tarball, firecracker_release_aarch64_tarball_sha256, firecracker_version_line,
+}
+import gunbc.runner_microvm_host_ready {
+  KvmDeviceStanding, KvmDeviceWritable, KvmDevicePresentNotWritable, KvmDeviceAbsent,
+  FirecrackerBinaryStanding, FirecrackerInstalled, FirecrackerVersionMismatch, FirecrackerBinaryAbsent,
+  FirecrackerHostStanding,
+  kvm_standing_of, binary_standing_of, firecracker_host_ready, firecracker_host_standing_text,
+  firecracker_fetch_commands, firecracker_install_commands, firecracker_installed_binary, firecracker_install_root,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn the_release_artifact_is_identified_by_version_arch_and_digest() -> Bool {
+  firecracker_release_tarball_filename(rel: firecracker_release_aarch64) == "firecracker-v1.16.1-aarch64.tgz"
+    && firecracker_release_download_url(rel: firecracker_release_aarch64) == "https://github.com/firecracker-microvm/firecracker/releases/download/v1.16.1/firecracker-v1.16.1-aarch64.tgz"
+    && firecracker_release_binary_path_in_tarball(rel: firecracker_release_aarch64) == "release-v1.16.1-aarch64/firecracker-v1.16.1-aarch64"
+    && string_length(s: firecracker_release_aarch64_tarball_sha256 as String) == 64
+    && firecracker_version_line(rel: firecracker_release_aarch64) == "Firecracker v1.16.1"
+}
+
+// The standing folds two facts; readiness needs both, and each refusal names what it lacks.
+test fn readiness_needs_a_writable_kvm_device_and_the_modeled_version() -> Bool {
+  let ready = FirecrackerHostStanding { kvm: KvmDeviceWritable, binary: FirecrackerInstalled { binary: "/x/firecracker", version_line: "Firecracker v1.16.1" } }
+  let no_kvm = FirecrackerHostStanding { kvm: KvmDeviceAbsent, binary: ready.binary }
+  let unwritable = FirecrackerHostStanding { kvm: KvmDevicePresentNotWritable, binary: ready.binary }
+  let absent = FirecrackerHostStanding { kvm: KvmDeviceWritable, binary: FirecrackerBinaryAbsent { binary: "/x/firecracker" } }
+  firecracker_host_ready(standing: ready)
+    && !firecracker_host_ready(standing: no_kvm)
+    && !firecracker_host_ready(standing: unwritable)
+    && !firecracker_host_ready(standing: absent)
+    && string_contains(s: firecracker_host_standing_text(s: unwritable), pattern: "kvm group membership is a runner-host grant")
+    && string_contains(s: firecracker_host_standing_text(s: ready), pattern: "standing=ready")
+}
+
+// RED control: a binary that answers another version is a mismatch, never installed.
+test fn a_binary_answering_another_version_is_a_mismatch() -> Bool {
+  (match binary_standing_of(binary: "/x/firecracker", executable: true, version_output: "Firecracker v1.16.1\n", rel: firecracker_release_aarch64) {
+    FirecrackerInstalled { binary: _, version_line: v } => v == "Firecracker v1.16.1"
+    _ => false
+  })
+    && (match binary_standing_of(binary: "/x/firecracker", executable: true, version_output: "Firecracker v1.15.0\n", rel: firecracker_release_aarch64) {
+    FirecrackerVersionMismatch { binary: _, observed: o } => o == "Firecracker v1.15.0"
+    _ => false
+  })
+    && (match binary_standing_of(binary: "/x/firecracker", executable: false, version_output: "", rel: firecracker_release_aarch64) {
+    FirecrackerBinaryAbsent { binary: b } => b == "/x/firecracker"
+    _ => false
+  })
+    && (match kvm_standing_of(exists: true, writable: false) { KvmDevicePresentNotWritable => true  _ => false })
+    && (match kvm_standing_of(exists: false, writable: false) { KvmDeviceAbsent => true  _ => false })
+}
+
+// The install is a typed command list in two halves around the digest verdict: fetch (mkdir, mkdir,
+// curl), then only after Sha256Matches, install (tar, cp); the digest rides no argv; the install dir
+// is executor-owned.
+test fn the_install_fetches_then_verifies_then_extracts_and_never_passes_the_digest_on_argv() -> Bool {
+  let root = firecracker_install_root(executor_home: "/home/x")
+  let fetch = firecracker_fetch_commands(root: root, rel: firecracker_release_aarch64, scratch: "/home/x/s")
+  let install = firecracker_install_commands(root: root, rel: firecracker_release_aarch64, scratch: "/home/x/s")
+  map(fetch, c => c.program as String) == ["/usr/bin/mkdir", "/usr/bin/mkdir", "curl"]
+    && map(install, c => c.program as String) == ["tar", "cp"]
+    && !any(concat(fetch, install), c => any(c.arguments, a => string_contains(s: a, pattern: firecracker_release_aarch64_tarball_sha256 as String)))
+    && firecracker_installed_binary(root: root, rel: firecracker_release_aarch64) == "/home/x/.local/share/gunbc-firecracker/v1.16.1-aarch64/firecracker"
+    && starts_with(s: root, prefix: "/home/x/")
+}
+
+// THE KVM GRANT IS ONE EXACT COMMAND ON EVERY RUNNER HOST. usermod is a whole-binary sudo grant, so
+// what keeps it narrow is the rendered argv: append one group to one login and nothing else, and the
+// sudoers line carries exactly that argv. The srv2 deploy is the host the readiness observation
+// measured the missing membership on.
+test fn the_kvm_grant_appends_one_group_to_the_executor_and_nothing_else() -> Bool {
+  let op = EnsureSupplementaryGroupMembership { login: "gunbc-ci" as NonEmptyStr, group: "kvm" as NonEmptyStr }
+  map(executor_privileged_operation_argv(op: op), w => w as String) == ["/usr/sbin/usermod", "-aG", "kvm", "gunbc-ci"]
+    && (executor_privileged_operation_sudoers_line(grantee: "gunbc-ci" as NonEmptyStr, op: op) as String) == "gunbc-ci ALL=(root) NOPASSWD: /usr/sbin/usermod -aG kvm gunbc-ci"
+}
+
+test fn every_runner_host_deploy_grants_the_executor_kvm_membership() -> Bool {
+  let job = srv2_runner_host_deploy.job_user
+  length(filter(runner_host_privileged_operations(deploy: srv2_runner_host_deploy), op =>
+    match op {
+      EnsureSupplementaryGroupMembership { login: l, group: g } => (l as String) == (job as String) && (g as String) == "kvm"
+      _ => false
+    })) == 1
+}

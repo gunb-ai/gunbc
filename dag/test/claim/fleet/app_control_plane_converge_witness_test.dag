@@ -1,0 +1,319 @@
+module test.claim.app_control_plane_converge_witness
+
+import std.types { Bool, Int, String, NonEmptyStr, List }
+import extdeps.uri { Uri, Http, Https, uri_wire }
+import extdeps.github.app {
+  GitHubAppHookConfig,
+  HookContentTypeJson,
+  HookContentTypeForm,
+  HookSecretConfigured,
+  HookSecretAbsent,
+  HookTlsVerified,
+  HookTlsVerificationDisabled,
+}
+import gunbc.auth.github_apps {
+  gunbai_ci_declared,
+  gunbai_bot_declared,
+  AppRegistrationReadback,
+  AppRegistrationReadbackUnavailable,
+}
+import gunbc.fleet.app_control_plane_converge {
+  HookConfigDecode, HookConfigDecoded, HookConfigDecodeRefused, decode_hook_config_json,
+  HookUrlDecode, HookUrlDecoded, HookUrlRefused, decode_hook_url,
+  RegistrationDecode, RegistrationDecoded, RegistrationDecodeRefused, decode_registration_json,
+  HookConfigObservation, HookConfigRead,
+  HookDeliveryDecode, HookDeliveriesDecoded, HookDeliveryDecodeRefused, decode_deliveries_json,
+  HookDeliveryStanding, DeliveriesAccepted, DeliveriesRejected, DeliveriesUnobserved,
+  delivery_standing,
+  AppHookConfigStanding, HookConfigConverged, HookConfigDiverged, HookConfigUnobserved,
+  app_hook_config_standing, app_control_plane_receipt_text,
+  registration_observed_app_id,
+}
+
+// THE FOUR REPAIRS, each with the control that reds if the repair is reverted. Every hook-config
+// claim goes through decode_hook_config_json over RAW JSON rather than a hand-built record: the
+// defects being fenced here were all decoder defects, and a test that constructs
+// HookSecretConfigured directly cannot see any of them.
+
+// ---------------------------------------------------------------------------------------------
+// R1 - the registration readback is READ, and its identity is joined to the selected App.
+// ---------------------------------------------------------------------------------------------
+
+data registration_gunbai_ci_json: String = "{\"id\": 2653532, \"slug\": \"gunbai-ci\", \"permissions\": {\"metadata\": \"read\", \"organization_self_hosted_runners\": \"write\"}}"
+
+// Byte-identical to the row above except for the id: the App the JWT actually authenticated as.
+data registration_other_app_json: String = "{\"id\": 3909950, \"slug\": \"gunbai\", \"permissions\": {\"metadata\": \"read\", \"organization_self_hosted_runners\": \"write\"}}"
+
+data registration_no_id_json: String = "{\"slug\": \"gunbai-ci\", \"permissions\": {}}"
+
+data registration_bad_access_json: String = "{\"id\": 2653532, \"permissions\": {\"metadata\": \"admin\"}}"
+
+test fn witness_registration_decodes_the_selected_app() -> Bool {
+  match decode_registration_json(body: registration_gunbai_ci_json, expected: gunbai_ci_declared) {
+    RegistrationDecoded { registration } =>
+      registration_observed_app_id(r: registration) == 2653532
+    RegistrationDecodeRefused { reason: _ } => false
+  }
+}
+
+// THE DISCRIMINATING RED FOR R1. Before the repair the response body was discarded, so this
+// document -- a perfectly successful readback for a DIFFERENT App -- produced a receipt labelled
+// gunbai-ci. Deleting the id comparison in decode_registration_json makes this arm return
+// RegistrationDecoded and this test go red.
+test fn witness_registration_for_another_app_refuses() -> Bool {
+  match decode_registration_json(body: registration_other_app_json, expected: gunbai_ci_declared) {
+    RegistrationDecodeRefused { reason: _ } => true
+    RegistrationDecoded { registration: _ } => false
+  }
+}
+
+// The same document is legitimately DECODED when the selected App is the one it names, so the
+// refusal above is the identity join and not a blanket rejection of that body.
+test fn witness_registration_admits_the_app_it_names() -> Bool {
+  match decode_registration_json(body: registration_other_app_json, expected: gunbai_bot_declared) {
+    RegistrationDecoded { registration } => registration_observed_app_id(r: registration) == 3909950
+    RegistrationDecodeRefused { reason: _ } => false
+  }
+}
+
+test fn witness_registration_without_id_refuses() -> Bool {
+  match decode_registration_json(body: registration_no_id_json, expected: gunbai_ci_declared) {
+    RegistrationDecodeRefused { reason: _ } => true
+    RegistrationDecoded { registration: _ } => false
+  }
+}
+
+// An access word this repository does not model must refuse rather than drop the axis: a silently
+// dropped permission reads downstream as "not requested".
+test fn witness_registration_unmodeled_access_refuses() -> Bool {
+  match decode_registration_json(body: registration_bad_access_json, expected: gunbai_ci_declared) {
+    RegistrationDecodeRefused { reason: _ } => true
+    RegistrationDecoded { registration: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// R2 - secret PRESENCE is established, not inferred from a key existing.
+// ---------------------------------------------------------------------------------------------
+
+fn hook_json(secret_member: String) -> String {
+  join(["{\"url\": \"https://example.invalid/hook\", \"content_type\": \"json\", \"insecure_ssl\": \"0\"", secret_member, "}"], "")
+}
+
+fn decoded_secret_is_configured(body: String) -> Bool {
+  match decode_hook_config_json(body: body) {
+    HookConfigDecoded { config } => match config.secret {
+      HookSecretConfigured => true
+      HookSecretAbsent => false
+    }
+    HookConfigDecodeRefused { reason: _ } => false
+  }
+}
+
+fn decode_refuses(body: String) -> Bool {
+  match decode_hook_config_json(body: body) {
+    HookConfigDecodeRefused { reason: _ } => true
+    HookConfigDecoded { config: _ } => false
+  }
+}
+
+// The positive control: GitHub's masked form is what a configured secret looks like on readback.
+test fn witness_masked_secret_is_configured() -> Bool {
+  decoded_secret_is_configured(body: hook_json(secret_member: ", \"secret\": \"********\""))
+}
+
+test fn witness_absent_secret_member_is_established_absence() -> Bool {
+  match decode_hook_config_json(body: hook_json(secret_member: "")) {
+    HookConfigDecoded { config } => match config.secret {
+      HookSecretAbsent => true
+      HookSecretConfigured => false
+    }
+    HookConfigDecodeRefused { reason: _ } => false
+  }
+}
+
+// THE DISCRIMINATING RED FOR R2. Each of these reached HookSecretConfigured under the original
+// wildcard arm, and the null case additionally produced HookConfigConverged -- an unsigned webhook
+// reported as converged. Restoring `JsonMemberFound { value: _ } => HookSecretConfigured` makes
+// every arm here go red.
+test fn witness_malformed_secret_values_refuse() -> Bool {
+  decode_refuses(body: hook_json(secret_member: ", \"secret\": null"))
+    && decode_refuses(body: hook_json(secret_member: ", \"secret\": \"\""))
+    && decode_refuses(body: hook_json(secret_member: ", \"secret\": false"))
+    && decode_refuses(body: hook_json(secret_member: ", \"secret\": []"))
+    && decode_refuses(body: hook_json(secret_member: ", \"secret\": {}"))
+}
+
+// A duplicated member is AMBIGUOUS, not absent. The original code routed it to the wildcard and
+// answered HookSecretAbsent, converting an unreadable response into a confident negative.
+test fn witness_duplicated_secret_member_refuses_rather_than_reads_absent() -> Bool {
+  decode_refuses(body: hook_json(secret_member: ", \"secret\": \"********\", \"secret\": \"********\""))
+}
+
+// ---------------------------------------------------------------------------------------------
+// R3 - the observed URL is PARSED; scheme and locator are not fused.
+// ---------------------------------------------------------------------------------------------
+
+// THE DISCRIMINATING RED FOR R3, and the one the live receipt already evidenced: uri_https stamps
+// a scheme and keeps the locator verbatim, so an absolute URL round-tripped through uri_wire as
+// `https://https://...`. Round-tripping is the check, because it fails exactly when locator
+// carries a scheme it should not.
+test fn witness_https_url_round_trips_without_doubling_the_scheme() -> Bool {
+  match decode_hook_url(raw: "https://example.invalid/hook") {
+    HookUrlDecoded { url } => uri_wire(uri: url) == "https://example.invalid/hook"
+    HookUrlRefused { reason: _ } => false
+  }
+}
+
+// An http observation must not acquire https merely by being decoded: the axis reports what IS
+// configured, and silently upgrading it would misreport an unencrypted delivery endpoint.
+test fn witness_http_url_keeps_its_observed_scheme() -> Bool {
+  match decode_hook_url(raw: "http://example.invalid/hook") {
+    HookUrlDecoded { url } => uri_wire(uri: url) == "http://example.invalid/hook"
+    HookUrlRefused { reason: _ } => false
+  }
+}
+
+test fn witness_relative_and_unknown_urls_refuse() -> Bool {
+  match decode_hook_url(raw: "/hook") {
+    HookUrlRefused { reason: _ } => true
+    HookUrlDecoded { url: _ } => false
+  } && match decode_hook_url(raw: "ftp://example.invalid/hook") {
+    HookUrlRefused { reason: _ } => true
+    HookUrlDecoded { url: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// R4 - the receipt retains what the verdict was computed from.
+// ---------------------------------------------------------------------------------------------
+
+data converged_config: GitHubAppHookConfig = GitHubAppHookConfig {
+  url: Uri { scheme: Https, locator: "example.invalid/hook" },
+  content_type: HookContentTypeJson,
+  secret: HookSecretConfigured,
+  tls: HookTlsVerified,
+}
+
+// Differs from the row above on EXACTLY one policy axis.
+data tls_disabled_config: GitHubAppHookConfig = GitHubAppHookConfig {
+  url: Uri { scheme: Https, locator: "example.invalid/hook" },
+  content_type: HookContentTypeJson,
+  secret: HookSecretConfigured,
+  tls: HookTlsVerificationDisabled,
+}
+
+data observed_registration_row: AppRegistrationReadback = AppRegistrationReadback {
+  app_id: gunbai_ci_declared.app_id,
+  requested_permissions: [],
+}
+
+fn receipt_for(config: GitHubAppHookConfig) -> String {
+  app_control_plane_receipt_text(
+    registration: observed_registration_row,
+    config: config,
+    standing: app_hook_config_standing(obs: HookConfigRead { config: config, observed_on: "2026-09-05" }),
+    deliveries: DeliveriesAccepted { sampled: 3 },
+    observed_on: "2026-09-05"
+  )
+}
+
+// THE DISCRIMINATING RED FOR R4. Holding App, URL and timestamp fixed, the original receipt was
+// byte-identical for a converged run and one refused for disabled TLS verification, so the
+// artifact could not explain its own verdict. Dropping the axis or standing fields from
+// app_control_plane_receipt_text makes these two strings equal again and reds this test.
+test fn witness_receipts_differ_on_a_single_policy_axis() -> Bool {
+  receipt_for(config: converged_config) != receipt_for(config: tls_disabled_config)
+}
+
+// And the retained values are the ones the verdict actually consulted, not merely any difference.
+test fn witness_receipt_carries_the_standing_and_both_sides_of_each_axis() -> Bool {
+  let converged = receipt_for(config: converged_config)
+  let diverged = receipt_for(config: tls_disabled_config)
+  contains(converged, "standing=converged")
+    && contains(diverged, "standing=diverged:hook_tls_verification")
+    && contains(converged, "observed_secret=configured")
+    && contains(converged, "desired_secret=configured")
+    && contains(converged, "observed_insecure_ssl=0")
+    && contains(diverged, "observed_insecure_ssl=1")
+    && contains(converged, "desired_insecure_ssl=0")
+    && contains(converged, "observed_app_id=2653532")
+    && contains(converged, "hook_url_scheme=https://")
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// REACHABILITY - the axis that was missing, and the live state that proved it missing.
+// ---------------------------------------------------------------------------------------------
+
+// The shape GitHub returns for deliveries its receiver ACCEPTED.
+data deliveries_accepted_json: String = "[{\"guid\": \"a-1\", \"event\": \"workflow_job\", \"status_code\": 200}, {\"guid\": \"a-2\", \"event\": \"workflow_job\", \"status_code\": 202}]"
+
+// THE MEASURED LIVE STATE, 2026-09-05: the configured endpoint named a Cloud Run service that no
+// longer exists, so every delivery came back 404. This is the document the repaired axis must
+// refuse, and the original three axes could not see at all.
+data deliveries_dead_endpoint_json: String = "[{\"guid\": \"d-1\", \"event\": \"workflow_job\", \"status_code\": 404}, {\"guid\": \"d-2\", \"event\": \"workflow_job\", \"status_code\": 404}]"
+
+data deliveries_empty_json: String = "[]"
+
+data deliveries_malformed_json: String = "[{\"guid\": \"m-1\", \"event\": \"workflow_job\"}]"
+
+test fn witness_accepted_deliveries_establish_reachability() -> Bool {
+  match delivery_standing(decode: decode_deliveries_json(body: deliveries_accepted_json)) {
+    DeliveriesAccepted { sampled } => sampled == 2
+    _ => false
+  }
+}
+
+// THE DISCRIMINATING RED FOR THE WHOLE REPAIR. Before the delivery axis existed, a webhook whose
+// endpoint returned 404 to every delivery was reported CONVERGED, because TLS verification,
+// content type and secret presence are configuration properties that stay well-formed after the
+// thing they point at is deleted. Removing the DeliveriesRejected arm makes this pass and reds.
+test fn witness_dead_endpoint_deliveries_are_rejected_not_healthy() -> Bool {
+  match delivery_standing(decode: decode_deliveries_json(body: deliveries_dead_endpoint_json)) {
+    DeliveriesRejected { failing, sampled } => failing == 2 && sampled == 2
+    _ => false
+  }
+}
+
+// AN EMPTY WINDOW IS UNOBSERVED, NEVER HEALTHY. Upstream retains deliveries for a bounded period,
+// so "none" is exactly the state of a webhook nobody has ever exercised. Reading it as accepted
+// would rebuild the vacuous green one layer up, which is why it is its own arm and the diff
+// refuses on it.
+test fn witness_empty_delivery_window_is_unobserved_not_accepted() -> Bool {
+  match delivery_standing(decode: decode_deliveries_json(body: deliveries_empty_json)) {
+    DeliveriesUnobserved { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_malformed_delivery_refuses() -> Bool {
+  match delivery_standing(decode: decode_deliveries_json(body: deliveries_malformed_json)) {
+    DeliveriesUnobserved { reason: _ } => true
+    _ => false
+  }
+}
+
+// The receipt must retain the reachability verdict too: a configuration-converged run over a live
+// endpoint and one over a dead endpoint differ ONLY on this axis, so identical bytes here would be
+// the same evidence gap R4 repaired for the configuration axes.
+test fn witness_receipt_retains_the_reachability_verdict() -> Bool {
+  let live = app_control_plane_receipt_text(
+    registration: observed_registration_row,
+    config: converged_config,
+    standing: app_hook_config_standing(obs: HookConfigRead { config: converged_config, observed_on: "2026-09-05" }),
+    deliveries: DeliveriesAccepted { sampled: 2 },
+    observed_on: "2026-09-05"
+  )
+  let dead = app_control_plane_receipt_text(
+    registration: observed_registration_row,
+    config: converged_config,
+    standing: app_hook_config_standing(obs: HookConfigRead { config: converged_config, observed_on: "2026-09-05" }),
+    deliveries: DeliveriesRejected { failing: 2, sampled: 2 },
+    observed_on: "2026-09-05"
+  )
+  live != dead
+    && contains(live, "deliveries=accepted:2")
+    && contains(dead, "deliveries=rejected:2/2")
+    && contains(dead, "standing=converged")
+}

@@ -33,7 +33,7 @@ import gunbc.host_converge_slice1 {
 }
 import gunbc.host_runner_memory_provision { runner_memory_host_converge }
 import gunbc.host_runner_memory_cap_verify { runner_memory_cap_verify_run }
-import gunbc.host_converge { fleet_converge_policy, find_by_identity, converge_verdict, converge_verdict_label, converge_verdict_meet, codex_runtime_bundle_knob }
+import gunbc.host_converge { fleet_converge_policy, host_converge_for_identity, converge_verdict, converge_verdict_label, converge_verdict_meet, codex_runtime_bundle_knob }
 import gunbc.host_effect {
   HostOs,
   ProvisionCodexRuntime,
@@ -287,10 +287,6 @@ fn converge_cli_codex_runtime_knob_registered_for_host(host: HostIdentity) -> Bo
       }
     ConvergePolicyUnsound { reason: _ } => false
   }
-}
-
-fn host_converge_for_identity(hosts: List<HostConverge>, identity: HostIdentity) -> HostConverge? {
-  find_by_identity(hosts, identity: identity, key: fn(h) { h.identity })
 }
 
 fn converge_cli_routes_to_slice1(host: String) -> Bool {

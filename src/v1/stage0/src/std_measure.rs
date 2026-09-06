@@ -410,6 +410,8 @@ pub type Millivolt = Rc<Measure<ElectricPotentialDifference, Milli, i64>>;
 
 pub type Ampere = Rc<Measure<ElectricCurrent, One, i64>>;
 
+pub type Nanometer = Rc<Measure<Length, Nano, i64>>;
+
 pub type Micrometer = Rc<Measure<Length, Micro, i64>>;
 
 pub type Millimeter = Rc<Measure<Length, Milli, i64>>;
@@ -742,6 +744,21 @@ pub fn ampere(count: Nat) -> Ampere {
 
 pub fn ampere_count(a: Ampere) -> Nat {
     measure_count(a.clone())
+}
+
+pub fn nanometer(count: Nat) -> Nanometer {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn nanometer_count(n: Nanometer) -> Nat {
+    measure_count(n.clone())
+}
+
+pub fn micrometer_to_nanometer(m: Micrometer) -> Nanometer {
+    nanometer((micrometer_count(m.clone()) * 1000))
 }
 
 pub fn micrometer(count: Nat) -> Micrometer {
@@ -1154,6 +1171,19 @@ pub fn packet_rate(count: Nat) -> PacketRate {
 }
 
 pub fn packet_rate_count(r: PacketRate) -> Nat {
+    measure_count(r.clone())
+}
+
+pub type SymbolRate = Rc<Measure<Frequency, One, i64>>;
+
+pub fn symbol_rate(count: Nat) -> SymbolRate {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn symbol_rate_count(r: SymbolRate) -> Nat {
     measure_count(r.clone())
 }
 

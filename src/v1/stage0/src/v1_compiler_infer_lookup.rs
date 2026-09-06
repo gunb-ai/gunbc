@@ -48,6 +48,8 @@ pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
 pub use crate::v1_compiler_infer_resolve::{fn_type_param_names, peel_nominal_alias_identity};
 pub use crate::v1_compiler_infer_service::check_service_method_call_node;
 pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult};
+pub use crate::v1_compiler_infer_sigs::CallTargetOutcome;
+use crate::v1_compiler_infer_sigs::CallTargetOutcome::*;
 use crate::v1_compiler_infer_sigs::CallableIdentity::{BuiltinCallable, DeclaredCallable};
 use crate::v1_compiler_infer_sigs::FuncSigLookup::{
     FuncSigAmbiguous, FuncSigResolved, FuncSigUnresolved,
@@ -243,6 +245,34 @@ pub fn resolved_declaration_call_target(
             owner_module_path: declared.owner_module_path.clone(),
             decl_name: declared.decl_name.clone(),
         }),
+    }
+}
+
+pub fn resolved_plain_call_target_for_outcome(
+    outcome: Rc<CallTargetOutcome>,
+) -> Rc<CallTargetIdentity> {
+    match (*outcome.clone()).clone() {
+        CallTargetOutcome::DeclaredCallableResolved { declared: d, .. } => {
+            resolved_declaration_call_target(d.clone())
+        }
+        CallTargetOutcome::BuiltinCallableResolved {
+            primitive_name: n, ..
+        } => Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
+            primitive_name: n.clone(),
+            projected_from: std::option::Option::None,
+        }),
+        CallTargetOutcome::LocallyBoundCallee { .. } => {
+            Rc::new(CallTargetIdentity::CallableTargetUndetermined)
+        }
+        CallTargetOutcome::CallableUnresolved { name: _, .. } => {
+            Rc::new(CallTargetIdentity::CallableTargetUndetermined)
+        }
+        CallTargetOutcome::CallableAmbiguous { candidates: _, .. } => {
+            Rc::new(CallTargetIdentity::CallableTargetUndetermined)
+        }
+        CallTargetOutcome::LocallyBoundBindingMissing { name: _, .. } => {
+            Rc::new(CallTargetIdentity::CallableTargetUndetermined)
+        }
     }
 }
 

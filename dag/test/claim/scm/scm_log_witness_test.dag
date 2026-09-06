@@ -1,6 +1,6 @@
 module test.claim.scm_log_witness
 
-import std.types { Bool, Int, String, List }
+import std.types { Bool, Int, String, List, NonEmptyStr }
 import std.minted_identity { MintedId, MintedIdAllocator }
 import v2.std.node { Node, Symbol, TypeNode, Atom, node_synthetic }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -12,6 +12,17 @@ import gunbc.scm.object_store {
   Stored,
   LocatorCollision,
   SemanticNodeTarget,
+  CorpusManifestTarget,
+  CorpusManifestEntry,
+  CorpusManifestStored,
+  CorpusManifestDuplicatePath,
+  CorpusManifestLocatorCollision,
+  store_corpus_manifest,
+  SourceStored,
+  SourceLocatorCollision,
+  store_authored_source,
+  authored_source_target_of,
+  authored_source_target_locator,
 }
 import gunbc.scm.ancestry { RepositoryCommitRef }
 import gunbc.scm.repository_envelope {
@@ -19,7 +30,7 @@ import gunbc.scm.repository_envelope {
   RepositoryCommitMinted,
   RepositoryCommitMintAllocatorInvalid,
   RepositoryCommitMintRootIsAuthoredSource,
-  RepositoryCommitMintRootIsCorpusManifest,
+  RepositoryCommitMintRootIsSemanticNode,
   RepositoryCommitMintRootMissing,
   RepositoryCommitMintParentMissing,
   mint_repository_commit,
@@ -31,9 +42,9 @@ import gunbc.scm.log {
   NoCommitsYet,
   CommitLogRows,
   CommitLogRow,
-  LoggedCommitRootHeld,
+  LoggedCommitManifestHeld,
   LoggedCommitRootIsAuthoredSource,
-  LoggedCommitRootIsCorpusManifest,
+  LoggedCommitRootIsSemanticNode,
   LoggedCommitRootMissingFromStore,
 }
 
@@ -48,6 +59,37 @@ fn log_witness_atom(name: Symbol) -> Node {
 type LogWitnessStored {
   store: ObjectStore
   identity: SemanticNodeTarget
+}
+
+// A COMMIT ROOT IS NOW AN AUTHORED SNAPSHOT, so the fixture stores one instead of branding a node.
+// It stores REAL authored bytes and a REAL manifest naming them, rather than a manifest over a
+// dangling locator, because the log's standing arms discriminate on what the store actually holds
+// and a fixture built over an absent source would make the held arm unreachable.
+type LogWitnessSnapshot {
+  store: ObjectStore
+  identity: CorpusManifestTarget
+}
+
+fn log_witness_store_snapshot(store: ObjectStore, path: NonEmptyStr, text: String) -> LogWitnessSnapshot {
+  match store_authored_source(store: store, text: text) {
+    SourceLocatorCollision { identity: id, existing: _, incoming: _ } =>
+      LogWitnessSnapshot { store: store, identity: CorpusManifestTarget { locator: id } }
+    SourceStored { store: with_source, source: source } =>
+      match store_corpus_manifest(
+        store: with_source,
+        entries: [CorpusManifestEntry { path: path, source: authored_source_target_of(reference: source) }]
+      ) {
+        CorpusManifestDuplicatePath { path: _ } =>
+          LogWitnessSnapshot {
+            store: with_source,
+            identity: CorpusManifestTarget { locator: authored_source_target_locator(target: authored_source_target_of(reference: source)) },
+          }
+        CorpusManifestLocatorCollision { identity: id, existing: _, incoming: _ } =>
+          LogWitnessSnapshot { store: with_source, identity: CorpusManifestTarget { locator: id } }
+        CorpusManifestStored { store: next, manifest: manifest } =>
+          LogWitnessSnapshot { store: next, identity: CorpusManifestTarget { locator: manifest.locator } }
+      }
+  }
 }
 
 fn log_witness_store_one(store: ObjectStore, name: Symbol) -> LogWitnessStored {
@@ -69,23 +111,24 @@ fn log_witness_empty(store: ObjectStore) -> RepositoryEnvelope {
     commits: [],
     commit_allocator: MintedIdAllocator { next_ordinal: 0 },
     checked_out: none,
+    staged: none,
   }
 }
 
-fn log_witness_mint(repo: RepositoryEnvelope, root: SemanticNodeTarget, message: String, parent: RepositoryCommitRef?) -> RepositoryEnvelope {
+fn log_witness_mint(repo: RepositoryEnvelope, root: CorpusManifestTarget, message: String, parent: RepositoryCommitRef?) -> RepositoryEnvelope {
   match mint_repository_commit(repository: repo, root: root, message: message, parent: parent) {
     RepositoryCommitMinted { repository: minted, reference: _ } => minted
     RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => repo
     RepositoryCommitMintRootMissing { root: _ } => repo
     RepositoryCommitMintRootIsAuthoredSource { root: _ } => repo
-    RepositoryCommitMintRootIsCorpusManifest { root: _ } => repo
+    RepositoryCommitMintRootIsSemanticNode { root: _ } => repo
     RepositoryCommitMintParentMissing { parent: _ } => repo
   }
 }
 
 fn log_witness_two_commit_repository() -> RepositoryEnvelope {
-  let a = log_witness_store_one(store: empty_store(), name: ^a)
-  let b = log_witness_store_one(store: a.store, name: ^b)
+  let a = log_witness_store_snapshot(store: empty_store(), path: "a.dag" as NonEmptyStr, text: "module a")
+  let b = log_witness_store_snapshot(store: a.store, path: "b.dag" as NonEmptyStr, text: "module b")
   let first = log_witness_mint(repo: log_witness_empty(store: b.store), root: a.identity, message: "first", parent: none)
   log_witness_mint(
     repo: first,
@@ -98,9 +141,9 @@ fn log_witness_two_commit_repository() -> RepositoryEnvelope {
 // A commit whose root was never stored. The envelope's encoder refuses on
 // RepositoryCommitRootNotInStore, so this is a state the model already recognises.
 fn log_witness_repository_with_unheld_root() -> RepositoryEnvelope {
-  let a = log_witness_store_one(store: empty_store(), name: ^a)
-  let orphan = log_witness_store_one(store: empty_store(), name: ^never_stored)
-  let both = log_witness_store_one(store: a.store, name: ^never_stored)
+  let a = log_witness_store_snapshot(store: empty_store(), path: "a.dag" as NonEmptyStr, text: "module a")
+  let orphan = log_witness_store_snapshot(store: empty_store(), path: "gone.dag" as NonEmptyStr, text: "module never_stored")
+  let both = log_witness_store_snapshot(store: a.store, path: "gone.dag" as NonEmptyStr, text: "module never_stored")
   let held = log_witness_mint(repo: log_witness_empty(store: both.store), root: a.identity, message: "held", parent: none)
   let minted = log_witness_mint(repo: held, root: orphan.identity, message: "not held", parent: none)
   RepositoryEnvelope {
@@ -108,6 +151,7 @@ fn log_witness_repository_with_unheld_root() -> RepositoryEnvelope {
     commits: minted.commits,
     commit_allocator: minted.commit_allocator,
     checked_out: none,
+    staged: none,
   }
 }
 
@@ -135,6 +179,7 @@ test fn a_fresh_repository_logs_no_commits_yet_rather_than_no_rows() -> Bool {
     commits: [],
     commit_allocator: MintedIdAllocator { next_ordinal: 0 },
     checked_out: none,
+    staged: none,
   }) {
     NoCommitsYet => true
     CommitLogRows { rows: _ } => false
@@ -164,7 +209,7 @@ test fn row_references_are_the_commits_intrinsic_keys() -> Bool {
 // the first row's reference and the second commit would be unreachable through its own row's
 // identifier.
 test fn two_commits_sharing_a_root_still_get_distinct_references() -> Bool {
-  let a = log_witness_store_one(store: empty_store(), name: ^shared)
+  let a = log_witness_store_snapshot(store: empty_store(), path: "shared.dag" as NonEmptyStr, text: "module shared")
   let first = log_witness_mint(repo: log_witness_empty(store: a.store), root: a.identity, message: "relabelled once", parent: none)
   let repo = log_witness_mint(repo: first, root: a.identity, message: "relabelled twice", parent: none)
   log_witness_row_references(log: repository_log(envelope: repo))
@@ -181,10 +226,10 @@ test fn a_commit_whose_root_is_not_held_is_marked_rather_than_listed_as_ordinary
     NoCommitsYet => false
     CommitLogRows { rows: rows } =>
       map(rows, r => match r.standing {
-        LoggedCommitRootHeld => "held"
+        LoggedCommitManifestHeld => "held"
         LoggedCommitRootMissingFromStore => "missing"
         LoggedCommitRootIsAuthoredSource => "source"
-        LoggedCommitRootIsCorpusManifest => "manifest"
+        LoggedCommitRootIsSemanticNode => "semantic_node"
       }) == ["held", "missing"]
   }
 }
@@ -199,6 +244,7 @@ test fn fully_held_distinguishes_an_unheld_root_from_a_healthy_or_empty_log() ->
       commits: [],
       commit_allocator: MintedIdAllocator { next_ordinal: 0 },
       checked_out: none,
+      staged: none,
     }))
     && !commit_log_is_fully_held(
       log: repository_log(envelope: log_witness_repository_with_unheld_root())

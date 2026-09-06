@@ -3,14 +3,14 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.measure { Micrometer, micrometer, micrometer_count }
 import product.printed_chassis.coupon { CouponOperation, OpThroughHole, PlateDimensions }
 import product.printed_chassis.fan_mount {
-  FanMountAdmission, FanMountAdmitted, FanMountBoreReachesMountingHoles,
+  FanMountAdmission, FanMountGeometry, FanMountAdmitted, FanMountBoreReachesMountingHoles,
   FanMountBoreNotEnclosedByPlate, FanMountPlateSmallerThanPattern,
-  arctic_p8_fan_mount, fan_mount_plate,
+  arctic_p8_fan_mount, fan_mount_plate, fan_mount_bore, fan_mount_mounting_holes,
 }
 import product.printed_chassis.standoff_gauge {
-  StandoffGaugeAdmission, GaugeAdmitted, GaugeLocationNotEnumerated, GaugeLocationDuplicated,
+  StandoffGaugeAdmission, StandoffGaugeGeometry, GaugeAdmitted, GaugeLocationNotEnumerated, GaugeLocationDuplicated,
   GaugeLocationsCoincide, GaugeExceedsBuildEnvelope,
-  altrad8ud_standoff_gauge, standoff_gauge_plate,
+  altrad8ud_standoff_gauge, standoff_gauge_plate, standoff_gauge_holes,
 }
 import product.printed_chassis.cadquery_realization {
   CadQueryEmission, CadQueryEmitted, CadQueryDimensionUnrenderable,
@@ -51,6 +51,28 @@ fn hole_fragment(op: CouponOperation) -> String {
       ], "")
   }
 }
+// The RED's contrast derived from the authority, not copied as literals: a real feature's centre
+// combined with a DIFFERENT real feature's radius. Hardcoding 46000/4400 would stay absent while
+// silently ceasing to be the claimed contrast the moment the fan geometry moved.
+fn bore_centre_x(g: FanMountGeometry) -> Micrometer {
+  match fan_mount_bore(g: g) { OpThroughHole { diameter: _, center_x: cx, center_y: _ } => cx }
+}
+fn bore_centre_y(g: FanMountGeometry) -> Micrometer {
+  match fan_mount_bore(g: g) { OpThroughHole { diameter: _, center_x: _, center_y: cy } => cy }
+}
+fn bore_diameter(g: FanMountGeometry) -> Micrometer {
+  match fan_mount_bore(g: g) { OpThroughHole { diameter: d, center_x: _, center_y: _ } => d }
+}
+fn any_mounting_hole_diameter(g: FanMountGeometry) -> Micrometer {
+  fold(fan_mount_mounting_holes(g: g), init: micrometer(count: 0), f: fn(acc, op) {
+    match op { OpThroughHole { diameter: d, center_x: _, center_y: _ } => d }
+  })
+}
+// The fan mount's holes AS THE SUBJECT DECLARES THEM -- bore first, then the mounting pattern --
+// read from FanMountGeometry and never through plate_part_from_fan_mount, which is under test.
+fn fan_mount_subject_holes(g: FanMountGeometry) -> List<CouponOperation> {
+  concat([fan_mount_bore(g: g)], fan_mount_mounting_holes(g: g))
+}
 // The WHOLE program rebuilt from the model: plate line, then one cut line per admitted hole.
 fn expected_program(plate: PlateDimensions, holes: List<CouponOperation>) -> String {
   let ov = micrometre_millimetre_wire(m: cut_overtravel)
@@ -84,9 +106,9 @@ fn expected_program(plate: PlateDimensions, holes: List<CouponOperation>) -> Str
 // combinations of two values, so deleting one cut leaves both of its coordinates present in the
 // survivors and the hole still appeared to trace. The pair must be bound in ONE substring, with the
 // radius, or the assertion cannot see a dropped cut at all.
-fn part_traces_every_hole(p: AdmittedPlatePartV0) -> Bool {
+fn part_traces_every_hole(p: AdmittedPlatePartV0, subject_holes: List<CouponOperation>) -> Bool {
   let src = source_of(p: p)
-  fold(admitted_plate_part_holes(p: p), init: src != "", f: fn(acc, op) {
+  subject_holes.length() > 0 && fold(subject_holes, init: src != "", f: fn(acc, op) {
     acc && src.contains(hole_fragment(op: op))
   })
 }
@@ -98,8 +120,7 @@ test fn w_the_fan_mount_traces_every_admitted_hole() -> Bool {
     FanMountPlateSmallerThanPattern { plate_edge: _, required_edge: _ } => false
     FanMountAdmitted { geometry: g } => {
       let p = plate_part_from_fan_mount(g: g)
-      part_traces_every_hole(p: p)
-        && admitted_plate_part_holes(p: p).length() == 5
+      part_traces_every_hole(p: p, subject_holes: fan_mount_subject_holes(g: g))
     }
   }
 }
@@ -112,8 +133,7 @@ test fn w_the_standoff_gauge_traces_every_admitted_hole() -> Bool {
     GaugeExceedsBuildEnvelope { fit: _ } => false
     GaugeAdmitted { geometry: g } => {
       let p = plate_part_from_standoff_gauge(g: g)
-      part_traces_every_hole(p: p)
-        && admitted_plate_part_holes(p: p).length() == 2
+      part_traces_every_hole(p: p, subject_holes: standoff_gauge_holes(g: g))
     }
   }
 }
@@ -149,11 +169,14 @@ test fn w_a_fragment_the_model_does_not_declare_is_absent_from_the_program() -> 
     FanMountAdmitted { geometry: g } => {
       let src = source_of(p: plate_part_from_fan_mount(g: g))
       let absent = hole_fragment(op: OpThroughHole {
-        diameter: micrometer(count: 4400),
-        center_x: micrometer(count: 46000),
-        center_y: micrometer(count: 46000),
+        diameter: any_mounting_hole_diameter(g: g),
+        center_x: bore_centre_x(g: g),
+        center_y: bore_centre_y(g: g),
       })
-      src != "" && absent != "" && !src.contains(absent)
+      src != "" && absent != ""
+        && micrometer_count(m: any_mounting_hole_diameter(g: g)) > 0
+        && any_mounting_hole_diameter(g: g) != bore_diameter(g: g)
+        && !src.contains(absent)
     }
   }
 }
@@ -166,7 +189,21 @@ test fn w_the_fan_mount_program_is_exactly_what_the_model_declares() -> Bool {
     FanMountAdmitted { geometry: g } => {
       let p = plate_part_from_fan_mount(g: g)
       let src = source_of(p: p)
-      src != "" && src == expected_program(plate: fan_mount_plate(g: g), holes: admitted_plate_part_holes(p: p))
+      src != "" && src == expected_program(plate: fan_mount_plate(g: g), holes: fan_mount_subject_holes(g: g))
+    }
+  }
+}
+
+// The SECOND subject's whole program, so the conversion seam is proven for both, not just one.
+test fn w_the_standoff_gauge_program_is_exactly_what_the_model_declares() -> Bool {
+  match altrad8ud_standoff_gauge {
+    GaugeLocationNotEnumerated { requested: _ } => false
+    GaugeLocationDuplicated { requested: _, count: _ } => false
+    GaugeLocationsCoincide { requested: _ } => false
+    GaugeExceedsBuildEnvelope { fit: _ } => false
+    GaugeAdmitted { geometry: g } => {
+      let src = source_of(p: plate_part_from_standoff_gauge(g: g))
+      src != "" && src == expected_program(plate: standoff_gauge_plate(g: g), holes: standoff_gauge_holes(g: g))
     }
   }
 }

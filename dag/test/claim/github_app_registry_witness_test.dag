@@ -399,7 +399,7 @@ test fn witness_unobserved_readback_never_authorizes() -> Bool {
 }
 
 test fn witness_operator_action_waits_for_a_bound_observation_producer() -> Bool {
-  match control_plane_next_action(state: observed_grant(perms: [metadata_read_perm, contents_write_perm])) {
+  match control_plane_next_action(state: observed_grant(perms: [metadata_read_perm, contents_write_perm]), producers: no_bound_observations) {
     MachineActionRequired { action } => match action {
       BindObservationProducer { required_observation } => match required_observation {
         InstallationReadbackObservation => true
@@ -409,7 +409,7 @@ test fn witness_operator_action_waits_for_a_bound_observation_producer() -> Bool
     }
     _ => false
   } && match next_action_owner(
-    action: control_plane_next_action(state: observed_grant(perms: [metadata_read_perm, contents_write_perm]))
+    action: control_plane_next_action(state: observed_grant(perms: [metadata_read_perm, contents_write_perm]), producers: no_bound_observations)
   ) {
     MachineOwner => true
     OperatorOwner => false
@@ -453,21 +453,22 @@ test fn witness_unobserved_states_are_machine_owned_not_operator_owned() -> Bool
     required: full_workflow_grant,
     reason: "heal branch advance"
   )
-  match control_plane_next_action(state: unobserved) {
+  match control_plane_next_action(state: unobserved, producers: no_bound_observations) {
     MachineActionRequired { action } => match action {
       ReadBackInstallation { app } => app.app_id.value == 3909950
       _ => false
     }
     _ => false
   } && match control_plane_next_action(
-    state: observed_grant(perms: [metadata_read_perm, contents_write_perm])
+    state: observed_grant(perms: [metadata_read_perm, contents_write_perm]),
+    producers: no_bound_observations
   ) {
     MachineActionRequired { action } => match action {
       BindObservationProducer { required_observation: _ } => true
       _ => false
     }
     _ => false
-  } && match next_action_owner(action: control_plane_next_action(state: unobserved)) {
+  } && match next_action_owner(action: control_plane_next_action(state: unobserved, producers: no_bound_observations)) {
     MachineOwner => true
     OperatorOwner => false
   }
@@ -480,10 +481,10 @@ test fn witness_live_control_plane_starts_at_material_discovery() -> Bool {
       _ => false
     }
     _ => false
-  } && match next_action_owner(action: control_plane_next_action(state: live_heal_control_plane)) {
+  } && match next_action_owner(action: control_plane_next_action(state: live_heal_control_plane, producers: gunbai_bot_observations)) {
     MachineOwner => true
     OperatorOwner => false
-  } && match control_plane_next_action(state: live_heal_control_plane) {
+  } && match control_plane_next_action(state: live_heal_control_plane, producers: gunbai_bot_observations) {
     MachineActionRequired { action } => match action {
       DiscoverSignerMaterial { app } => app.app_id.value == 3909950
       _ => false
@@ -501,10 +502,10 @@ test fn witness_key_generation_is_operator_work_only_after_discovery_fails() -> 
     required: full_workflow_grant,
     reason: "heal branch advance"
   )
-  match next_action_owner(action: control_plane_next_action(state: must_generate)) {
+  match next_action_owner(action: control_plane_next_action(state: must_generate, producers: no_bound_observations)) {
     MachineOwner => true
     OperatorOwner => false
-  } && match control_plane_next_action(state: must_generate) {
+  } && match control_plane_next_action(state: must_generate, producers: no_bound_observations) {
     MachineActionRequired { action } => match action {
       BindObservationProducer { required_observation } => match required_observation {
         SignerFingerprintObservation => true
@@ -545,7 +546,7 @@ test fn witness_importable_signer_material_is_machine_work() -> Bool {
     required: full_workflow_grant,
     reason: "heal branch advance"
   )
-  match next_action_owner(action: control_plane_next_action(state: importable)) {
+  match next_action_owner(action: control_plane_next_action(state: importable, producers: no_bound_observations)) {
     MachineOwner => true
     OperatorOwner => false
   }
@@ -852,5 +853,39 @@ test fn witness_unresolved_migration_target_yields_no_credential() -> Bool {
       effect: workflow_advance_effect
     )
     Absent => false
+  }
+}
+
+// DISCRIMINATING RED for the per-App producer grain. Before AppObservationProducers, the
+// three bindings were module-level data read directly by control_plane_next_action, so a
+// single bound producer answered for EVERY App. This arm passes a fully bound set for one
+// App and the all-absent set for another AT THE SAME STATE: if the binding ever collapses
+// back to a module global, both calls agree and this test reds.
+data fully_bound_observations: AppObservationProducers = AppObservationProducers {
+  app_registration: ObservationProducerBound {
+    bound: BoundObservationProducer { producer: control_plane_probe_ref }
+  },
+  installation: ObservationProducerBound {
+    bound: BoundObservationProducer { producer: control_plane_probe_ref }
+  },
+  signer_fingerprint: ObservationProducerBound {
+    bound: BoundObservationProducer { producer: control_plane_probe_ref }
+  },
+}
+
+test fn witness_producer_binding_is_per_app_not_module_wide() -> Bool {
+  let pending = observed_grant(perms: [metadata_read_perm, contents_write_perm])
+  let bound_owner = next_action_owner(
+    action: control_plane_next_action(state: pending, producers: fully_bound_observations)
+  )
+  let absent_owner = next_action_owner(
+    action: control_plane_next_action(state: pending, producers: no_bound_observations)
+  )
+  match bound_owner {
+    OperatorOwner => match absent_owner {
+      MachineOwner => true
+      OperatorOwner => false
+    }
+    MachineOwner => false
   }
 }

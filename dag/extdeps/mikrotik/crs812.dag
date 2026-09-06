@@ -1,0 +1,92 @@
+module extdeps.mikrotik.crs812
+
+import std.types { String, Bool, List, NonEmptyStr, Int }
+import std.nat { Nat }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "mikrotik.com/product/crs812_8ds_2dq_2ddq_rm"
+  },
+}
+
+data routeros_rest_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "help.mikrotik.com/docs/spaces/ROS/pages/47579162/REST+API"
+  },
+}
+
+// CRS812-8DS-2DQ-2DDQ-RM as RouterOS 7.20.8 (long-term) presents it, read back over the REST API on
+// 2026-09-05 (board-name CRS812-8DS-2DQ-2DDQ, architecture arm64). The two 400G QSFP56-DD cages are
+// exposed as EIGHT 50G lane interfaces each; the two 200G QSFP56 cages as four each; the eight SFP56
+// cages as one interface each; plus ether1/ether2 (ether1 is the MGMT/BOOT copper port). A breakout
+// leg is a LANE PAIR: a 100G-baseCR2 or 50G-baseCR2 leg is configured on the odd lane and owns the
+// following even one, so the even lane interfaces are disabled rather than configured.
+data crs812_board_name: NonEmptyStr = "CRS812-8DS-2DQ-2DDQ" as NonEmptyStr
+data crs812_routeros_version_observed: NonEmptyStr = "7.20.8 (long-term)" as NonEmptyStr
+data crs812_management_interface: NonEmptyStr = "ether1" as NonEmptyStr
+data crs812_default_bridge: NonEmptyStr = "bridge" as NonEmptyStr
+data crs812_factory_address: NonEmptyStr = "192.168.88.1/24" as NonEmptyStr
+
+type Crs812CagePort {
+  prefix: NonEmptyStr
+  cage_count: Nat
+  lanes_per_cage: Nat
+  lane_speed_gbps: Nat
+}
+
+data crs812_qsfp56_dd_ports: Crs812CagePort = Crs812CagePort { prefix: "qsfp56-dd" as NonEmptyStr, cage_count: 2, lanes_per_cage: 8, lane_speed_gbps: 50 }
+data crs812_qsfp56_ports: Crs812CagePort = Crs812CagePort { prefix: "qsfp56" as NonEmptyStr, cage_count: 2, lanes_per_cage: 4, lane_speed_gbps: 50 }
+data crs812_sfp56_ports: Crs812CagePort = Crs812CagePort { prefix: "sfp56" as NonEmptyStr, cage_count: 8, lanes_per_cage: 1, lane_speed_gbps: 50 }
+
+fn crs812_lane_interface(port: Crs812CagePort, cage: Nat, lane: Nat) -> NonEmptyStr {
+  join([port.prefix as String, "-", to_string(cage), "-", to_string(lane)], "") as NonEmptyStr
+}
+
+// THE FACTORY ADMIN PASSWORD IS PRINTED ON THE LABEL ON THE UNDERSIDE OF THE UNIT, beside the serial
+// number. Recent RouterOS devices ship with a per-unit password rather than an empty one, and the
+// REST API answers 401 to the empty password. This row records WHERE the recovery credential lives;
+// its value is a Secret Manager reference in gunbc.spark.fabric_switch_desired, never text here.
+data crs812_factory_credential_location: NonEmptyStr = "printed on the product label on the underside of the chassis, beside the serial number; user admin" as NonEmptyStr
+
+// Speed wire values RouterOS accepts on a lane interface, cited from the observed `advertise` list.
+type Crs812LaneSpeed = Lane50GCr2 | Lane100GCr2 | Lane100GCr4 | Lane200GCr4 | Lane400GCr8
+
+fn crs812_lane_speed_wire(s: Crs812LaneSpeed) -> NonEmptyStr {
+  match s {
+    Lane50GCr2 => "50G-baseCR2" as NonEmptyStr
+    Lane100GCr2 => "100G-baseCR2" as NonEmptyStr
+    Lane100GCr4 => "100G-baseCR4" as NonEmptyStr
+    Lane200GCr4 => "200G-baseCR4" as NonEmptyStr
+    Lane400GCr8 => "400G-baseCR8" as NonEmptyStr
+  }
+}
+
+type Crs812FecMode = FecAuto | FecOff | Fec74 | Fec91
+
+fn crs812_fec_mode_wire(f: Crs812FecMode) -> NonEmptyStr {
+  match f {
+    FecAuto => "auto" as NonEmptyStr
+    FecOff => "off" as NonEmptyStr
+    Fec74 => "fec74" as NonEmptyStr
+    Fec91 => "fec91" as NonEmptyStr
+  }
+}
+
+// RouterOS logged "module auto-initialization failed, try forced-mode" for the FS passive breakout;
+// with auto-negotiation on, every lane stayed in "initializing / autoneg failed". Forced speed with
+// RS-FEC linked immediately. Recorded as the cable class's requirement, not a tuning preference.
+data crs812_passive_dac_requires_forced_mode: Bool = true
+
+// REST resources the convergence touches, so the actuator names the same paths a reader would.
+data crs812_rest_ethernet_path: NonEmptyStr = "/rest/interface/ethernet" as NonEmptyStr
+data crs812_rest_bridge_path: NonEmptyStr = "/rest/interface/bridge" as NonEmptyStr
+data crs812_rest_bridge_port_path: NonEmptyStr = "/rest/interface/bridge/port" as NonEmptyStr
+data crs812_rest_dhcp_client_path: NonEmptyStr = "/rest/ip/dhcp-client" as NonEmptyStr
+data crs812_rest_neighbor_path: NonEmptyStr = "/rest/ip/neighbor" as NonEmptyStr
+data crs812_rest_discovery_settings_path: NonEmptyStr = "/rest/ip/neighbor/discovery-settings" as NonEmptyStr
+data crs812_rest_identity_path: NonEmptyStr = "/rest/system/identity" as NonEmptyStr
+data crs812_rest_monitor_path: NonEmptyStr = "/rest/interface/ethernet/monitor" as NonEmptyStr

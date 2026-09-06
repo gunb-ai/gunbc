@@ -1,0 +1,56 @@
+{
+  "attach": {
+    "body": {
+      "image_index": 0,
+      "image_name": "memtest86-iso.iso",
+      "image_redirection": 1,
+      "image_type": 1
+    },
+    "configurations_after": {
+      "image_name": "memtest86-iso.iso",
+      "redirection_status": 100
+    },
+    "endpoint": "POST /api/settings/media/remote/start-media",
+    "http": 200
+  },
+  "backing_share": {
+    "arm64_payload": "EFI/BOOT/BOOTAA64.efi present inside memtest.img ESP",
+    "export": "/srv/bmc 192.168.1.228(ro,sync,no_subtree_check,insecure,no_root_squash)",
+    "image": "memtest86-iso.iso"
+  },
+  "boot_drive": {
+    "operations": [
+      "diagnostic.ipmi.Tool.ChassisBootDev",
+      "diagnostic.ipmi.Tool.ChassisBootParamGet",
+      "diagnostic.ipmi.Tool.ChassisPowerControl"
+    ],
+    "performed_by": "gunbc.machine_intake_mtcollins1_actuate mtcollins1_cdrom_handoff",
+    "precondition": "boot parameter 5 reset to 'No override' before the run, so the result discriminates"
+  },
+  "capture_subject": "mtcollins1-virtual-media-boot",
+  "controller_media_capability_as_reported": {
+    "local_media_support": 0,
+    "note": "local_media_support 0 and sd_media 0 are the controller's own answers: this firmware does not expose BMC-resident image storage, so the board's eMMC cannot hold a boot image for virtual media. remote_media_support 1 is what makes the route below possible.",
+    "remote_media_support": 1,
+    "sd_media": 0
+  },
+  "delivery_route": "NFS share on 192.168.1.188:/srv/bmc -> MegaRAC remote-media client -> virtual CD -> host UEFI",
+  "host_side_acceptance_marker": {
+    "lines": [
+      "Getting SMBIOS details...",
+      "Initializing display...",
+      "PassMark MemTest86 V11.7 Free"
+    ],
+    "reported_by_the_booted_program": {
+      "architecture": "ARM",
+      "clock_mhz": 2800,
+      "l1_cache": "128 KB",
+      "l2_cache": "1 MB",
+      "memory": "254.7 GB",
+      "running": "Test 0 [Address test, walking ones, 1 CPU]"
+    },
+    "source": "serial-over-LAN console, not redirection_status",
+    "why_this_is_the_marker": "a nonzero redirection_status proves a media session; only output from the booted program proves the artifact executed on the host"
+  },
+  "observed_at_utc": "2026-09-05T15:20Z"
+}

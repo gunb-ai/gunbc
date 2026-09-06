@@ -11,14 +11,14 @@ on:
         options: [srv1, srv2, srv3, srv4]
         type: choice
       mode:
-        description: plan shows membership hunks; spark_serving_plan freezes typed Spark rows for the selected target; apply executes a prior plan artifact (Spark rows over FleetSsh); org_actions_observe validates the org credential and refuses on runner-group drift; spark modes observe or converge the selected Spark
+        description: plan shows membership hunks; spark_serving_plan freezes typed Spark rows for the selected target; apply executes a prior plan artifact (Spark rows over FleetSsh); org_actions_observe validates the org credential and refuses on runner-group drift; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; microvm_host_converge installs the cited Firecracker release on the selected host and refuses the kvm grant by name; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark modes observe or converge the selected Spark
         required: true
-        options: [plan, launch_environment_plan, spark_serving_plan, allocation_store_plan, apply, org_actions_observe, spark_linger, spark_observe, spark_reboot, spark_grants, spark_durability, dashboard_deploy, rlm_launch_deployment_receipt]
+        options: [plan, launch_environment_plan, spark_serving_plan, allocation_store_plan, apply, org_actions_observe, app_control_plane_observe, microvm_host_converge, guest_image_observe, guest_image_converge, microvm_boot_probe, spark_linger, spark_observe, spark_reboot, spark_grants, spark_bootstrap, spark_durability, dashboard_deploy, rlm_launch_deployment_receipt]
         type: choice
       target:
-        description: Spark target host for spark_serving_plan and the spark_* modes (srv5 or srv6); apply reads the subject off the plan artifact
+        description: Spark target host for spark_serving_plan and the spark_* modes (any rostered Spark, srv5..srv11); apply reads the subject off the plan artifact
         required: false
-        options: [srv5, srv6]
+        options: [srv5, srv6, srv7, srv8, srv9, srv10, srv11, srv12]
         type: choice
       plan_artifact_hash:
         description: Fnv1a64Structural bundle digest of plan.txt + apply.sh + spark_serving_typed_actions.wire — required for apply (printed by plan step). A plan artifact minted before the typed-actions wire joined the bundle will not match.
@@ -341,6 +341,118 @@ jobs:
           retention-days: 30
         if: github.event.inputs.mode == 'org_actions_observe'
         timeout-minutes: 10
+      - name: "GitHub App control plane: registration + webhook config observation"
+        id: app_control_plane_observe
+        run: |
+          set -euo pipefail
+          umask 077
+          APP_KEY_FILE="$RUNNER_TEMP/app-jwt-key"
+          APP_SM_HDR="$RUNNER_TEMP/app-jwt-sm-header"
+          APP_SM_BODY="$RUNNER_TEMP/app-jwt-sm-body"
+          GUNBC_APP_JWT_HEADER_FILE="$RUNNER_TEMP/app-jwt-header"
+          app_jwt_cleanup() { rm -f "$APP_KEY_FILE" "$APP_SM_HDR" "$APP_SM_BODY" "$GUNBC_APP_JWT_HEADER_FILE"; unset GUNBC_APP_JWT_HEADER_FILE; }
+          trap app_jwt_cleanup EXIT
+          printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$APP_SM_HDR"
+          APP_SM_CODE="$(curl -sS -o "$APP_SM_BODY" -w '%{http_code}' -H @"$APP_SM_HDR" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/ci-github-app-private-key/versions/latest:access")"
+          rm -f "$APP_SM_HDR"
+          if [ "$APP_SM_CODE" -ne 200 ]; then
+          rm -f "$APP_SM_BODY"
+          echo "AppJwtKeyUnreadable: Secret Manager answered HTTP $APP_SM_CODE for projects/gunbai-secrets/secrets/ci-github-app-private-key/versions/latest to the fleet-cloud-convergence principal. 403 means the version exists and is not readable OR does not exist -- REMEDY: run org_admin_app_key_access_converge_with_supplied_token (gunbc.fleet.org_actions_converge) with a control-plane token to bind roles/secretmanager.secretAccessor. Minting NO App JWT." >&2
+          exit 1
+          fi
+          python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$APP_SM_BODY" > "$APP_KEY_FILE"
+          rm -f "$APP_SM_BODY"
+          chmod 600 "$APP_KEY_FILE"
+          APP_NOW=$(date +%s)
+          app_b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }
+          APP_JWT_HEADER=$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | app_b64url)
+          APP_JWT_PAYLOAD=$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' "$((APP_NOW-60))" "$((APP_NOW+540))" "2653532" | app_b64url)
+          APP_JWT_SIG=$(printf '%s.%s' "$APP_JWT_HEADER" "$APP_JWT_PAYLOAD" | openssl dgst -sha256 -sign "$APP_KEY_FILE" | app_b64url)
+          rm -f "$APP_KEY_FILE"
+          printf 'Authorization: Bearer %s.%s.%s\n' "$APP_JWT_HEADER" "$APP_JWT_PAYLOAD" "$APP_JWT_SIG" > "$GUNBC_APP_JWT_HEADER_FILE"
+          chmod 600 "$GUNBC_APP_JWT_HEADER_FILE"
+          unset APP_JWT_HEADER APP_JWT_PAYLOAD APP_JWT_SIG
+          export GUNBC_APP_JWT_HEADER_FILE
+          echo "app-control-plane: short-lived App JWT minted in-run for app gunbai-ci (540s lifetime; key wiped; header file 0600, path exported, contents never in argv or environment)"
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/app_control_plane_converge.dag --function app_control_plane_converge_wet
+          cat "$ROOT/target/app-control-plane-observation-receipt.txt"
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+        if: github.event.inputs.mode == 'app_control_plane_observe'
+        timeout-minutes: 5
+      - name: Upload GitHub App control plane observation receipt
+        id: app_control_plane_receipt_upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-control-plane-observation
+          path: target/app-control-plane-observation-receipt.txt
+          if-no-files-found: error
+          retention-days: 30
+        if: always() && github.event.inputs.mode == 'app_control_plane_observe'
+        timeout-minutes: 10
+      - name: "Runner micro-VM guest image: observe base artifacts and their digests"
+        id: guest_image_observe
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/runner/runner_guest_image.dag --function runner_guest_image_observe_wet
+          cat "$ROOT/target/runner-guest-image-standing.txt"
+        if: github.event.inputs.mode == 'guest_image_observe'
+        timeout-minutes: 30
+      - name: "Runner micro-VM guest image: build the image and digest what was built"
+        id: guest_image_converge
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/runner/runner_guest_image.dag --function runner_guest_image_converge_wet
+          cat "$ROOT/target/runner-guest-image-standing.txt"
+        if: github.event.inputs.mode == 'guest_image_converge'
+        timeout-minutes: 30
+      - name: Upload runner micro-VM guest image standing receipt
+        id: guest_image_receipt_upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: runner-guest-image-standing
+          path: target/runner-guest-image-standing.txt
+          if-no-files-found: error
+          retention-days: 30
+        if: always() && (github.event.inputs.mode == 'guest_image_observe' || github.event.inputs.mode == 'guest_image_converge')
+        timeout-minutes: 10
+      - name: "Runner micro-VM host: install the cited Firecracker release and re-observe"
+        id: microvm_host_converge
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/runner/runner_microvm_host_ready.dag --function runner_microvm_host_converge_wet
+          cat "$ROOT/target/runner-microvm-host-standing.txt"
+        if: github.event.inputs.mode == 'microvm_host_converge'
+        timeout-minutes: 30
+      - name: Upload runner micro-VM host standing receipt
+        id: microvm_host_standing_upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: runner-microvm-host-standing
+          path: target/runner-microvm-host-standing.txt
+          if-no-files-found: error
+          retention-days: 30
+        if: always() && (github.event.inputs.mode == 'microvm_host_converge')
+        timeout-minutes: 10
+      - name: "Runner micro-VM: boot the guest image and read the serial console"
+        id: microvm_boot_probe
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/runner/runner_microvm_boot_probe.dag --function runner_microvm_boot_probe_wet
+          cat "$ROOT/target/runner-microvm-boot-probe.txt"
+        if: github.event.inputs.mode == 'microvm_boot_probe'
+        timeout-minutes: 30
+      - name: Upload runner micro-VM boot probe console receipt
+        id: microvm_boot_probe_receipt_upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: runner-microvm-boot-probe
+          path: target/runner-microvm-boot-probe.txt
+          if-no-files-found: error
+          retention-days: 30
+        if: always() && (github.event.inputs.mode == 'microvm_boot_probe')
+        timeout-minutes: 10
       - name: Spark serving linger converge (executor→target FleetSsh typed argv)
         id: spark_linger
         run: |
@@ -362,16 +474,17 @@ jobs:
           HDR_FILE="$RUNNER_TEMP/spark-administrator-auth-header"
           trap 'rm -f "$CRED_FILE" "$RESP_FILE" "$HDR_FILE"' EXIT
           printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
-          HTTP_CODE="$(curl -sS -o "$RESP_FILE" -w '%{http_code}' -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access" || echo 000)"
-          if [ "$HTTP_CODE" = 403 ]; then echo "SparkAdministratorCredentialUnreadable: projects/gunbai-secrets/secrets/spark-administrator-password/versions/1 answered 403 to serviceAccount:fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com. Secret Manager returns 403 both when a version exists and is not readable AND when it does not exist, so this run cannot tell those apart -- REMEDY EITHER WAY: confirm the version exists and grant that principal roles/secretmanager.secretAccessor on it. Contacting NO host." >&2; exit 1; fi
-          if [ "$HTTP_CODE" = 404 ]; then echo "SparkAdministratorCredentialAbsent: projects/gunbai-secrets/secrets/spark-administrator-password/versions/1 answered 404; the modeled reference names a version Secret Manager does not hold. Contacting NO host." >&2; exit 1; fi
-          if [ "$HTTP_CODE" != 200 ]; then echo "SparkAdministratorCredentialFetchFailed: HTTP $HTTP_CODE from projects/gunbai-secrets/secrets/spark-administrator-password/versions/1; contacting NO host." >&2; exit 1; fi
+          case "${SPARK_CONVERGE_TARGET:-}" in srv5) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv6) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv7) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv8) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv9) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv10) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv11) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv12) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; *) echo "SparkAdministratorCredentialHostUnrostered: SPARK_CONVERGE_TARGET='${SPARK_CONVERGE_TARGET:-}' names no host in the administrator credential roster; contacting NO host" >&2; exit 1 ;; esac
+          HTTP_CODE="$(curl -sS -o "$RESP_FILE" -w '%{http_code}' -H @"$HDR_FILE" "$SM_URL" || echo 000)"
+          if [ "$HTTP_CODE" = 403 ]; then echo "SparkAdministratorCredentialUnreadable: $SM_RES answered 403 to serviceAccount:fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com. Secret Manager returns 403 both when a version exists and is not readable AND when it does not exist, so this run cannot tell those apart -- REMEDY EITHER WAY: confirm the version exists and grant that principal roles/secretmanager.secretAccessor on it. Contacting NO host." >&2; exit 1; fi
+          if [ "$HTTP_CODE" = 404 ]; then echo "SparkAdministratorCredentialAbsent: $SM_RES answered 404; the modeled reference names a version Secret Manager does not hold. Contacting NO host." >&2; exit 1; fi
+          if [ "$HTTP_CODE" != 200 ]; then echo "SparkAdministratorCredentialFetchFailed: HTTP $HTTP_CODE from $SM_RES; contacting NO host." >&2; exit 1; fi
           python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$CRED_FILE"
           rm -f "$RESP_FILE"
           chmod 600 "$CRED_FILE"
-          if [ ! -s "$CRED_FILE" ]; then echo "SparkAdministratorCredentialEmpty: projects/gunbai-secrets/secrets/spark-administrator-password/versions/1 returned 200 with an empty payload, which is an enrolled-but-blank secret and never a blank password; contacting NO host" >&2; exit 1; fi
+          if [ ! -s "$CRED_FILE" ]; then echo "SparkAdministratorCredentialEmpty: $SM_RES returned 200 with an empty payload, which is an enrolled-but-blank secret and never a blank password; contacting NO host" >&2; exit 1; fi
           export GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE="$CRED_FILE"
-          echo "spark-admin-credential: materialized from projects/gunbai-secrets/secrets/spark-administrator-password/versions/1 to a 0600 run-local file, consumed and removed within this one step"
+          echo "spark-admin-credential: materialized from $SM_RES to a 0600 run-local file, consumed and removed within this one step"
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/managed_grant_install.dag --function spark_grant_install_ci_wet
           cat "$ROOT/target/spark-grant-install-receipt.txt"
@@ -379,6 +492,35 @@ jobs:
           SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
         if: github.event.inputs.mode == 'spark_grants'
+        timeout-minutes: 60
+      - name: Spark managed-access bootstrap (creates gunbc-automation, installs the fleet key, proves key-only auth, lays the narrow grants; one target per run)
+        id: spark_bootstrap
+        run: |
+          set -euo pipefail
+          umask 077
+          CRED_FILE="$RUNNER_TEMP/spark-administrator-credential"
+          RESP_FILE="$RUNNER_TEMP/spark-administrator-response.json"
+          HDR_FILE="$RUNNER_TEMP/spark-administrator-auth-header"
+          trap 'rm -f "$CRED_FILE" "$RESP_FILE" "$HDR_FILE"' EXIT
+          printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          case "${SPARK_CONVERGE_TARGET:-}" in srv5) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv6) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv7) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv8) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv9) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv10) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv11) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv12) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; *) echo "SparkAdministratorCredentialHostUnrostered: SPARK_CONVERGE_TARGET='${SPARK_CONVERGE_TARGET:-}' names no host in the administrator credential roster; contacting NO host" >&2; exit 1 ;; esac
+          HTTP_CODE="$(curl -sS -o "$RESP_FILE" -w '%{http_code}' -H @"$HDR_FILE" "$SM_URL" || echo 000)"
+          if [ "$HTTP_CODE" = 403 ]; then echo "SparkAdministratorCredentialUnreadable: $SM_RES answered 403 to serviceAccount:fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com. Secret Manager returns 403 both when a version exists and is not readable AND when it does not exist, so this run cannot tell those apart -- REMEDY EITHER WAY: confirm the version exists and grant that principal roles/secretmanager.secretAccessor on it. Contacting NO host." >&2; exit 1; fi
+          if [ "$HTTP_CODE" = 404 ]; then echo "SparkAdministratorCredentialAbsent: $SM_RES answered 404; the modeled reference names a version Secret Manager does not hold. Contacting NO host." >&2; exit 1; fi
+          if [ "$HTTP_CODE" != 200 ]; then echo "SparkAdministratorCredentialFetchFailed: HTTP $HTTP_CODE from $SM_RES; contacting NO host." >&2; exit 1; fi
+          python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$CRED_FILE"
+          rm -f "$RESP_FILE"
+          chmod 600 "$CRED_FILE"
+          if [ ! -s "$CRED_FILE" ]; then echo "SparkAdministratorCredentialEmpty: $SM_RES returned 200 with an empty payload, which is an enrolled-but-blank secret and never a blank password; contacting NO host" >&2; exit 1; fi
+          export GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE="$CRED_FILE"
+          echo "spark-admin-credential: materialized from $SM_RES to a 0600 run-local file, consumed and removed within this one step"
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/managed_access_apply.dag --function spark_managed_access_bootstrap_ci_wet
+          cat "$ROOT/target/spark-managed-access-apply-receipt.txt"
+        env:
+          SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+        if: github.event.inputs.mode == 'spark_bootstrap'
         timeout-minutes: 60
       - name: "Spark serving observation (read-only: unit state, runtime version, model tags, driver)"
         id: spark_observe

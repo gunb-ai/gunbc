@@ -25,7 +25,7 @@ import gunbc.roadmap_belt {
 import gunbc.roadmap_dispatch_actuator {
   DispatchLiveSession,
   CodexDispatchProvider,
-  dispatch_provider_instance_for,
+  dispatch_provider_instance_for_kind,
 }
 import gunbc.worker_lifecycle { worker_observation_without_provider_probe }
 import std.upsert_decision {
@@ -61,7 +61,7 @@ fn live_session(node_id: String, verdict: ObservationVerdict) -> DispatchLiveSes
     windows: 1,
     lease_verdict: verdict,
     worker: worker_observation_without_provider_probe(
-      instance: dispatch_provider_instance_for(provider: CodexDispatchProvider),
+      instance: dispatch_provider_instance_for_kind(kind: extdeps.llm.cli_lifecycle.CodexCliProvider),
     ),
   }
 }

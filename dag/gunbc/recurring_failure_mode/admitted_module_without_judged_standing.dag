@@ -41,6 +41,20 @@ data admitted_module_without_judged_standing: RecurringFailureMode = RecurringFa
 
     "That empty column is a control for the unarmed premise, NOT evidence that the provenance split is exercised by required CI. ",
 
+    "**A SECOND CONFIRMED MEMBER, AND UNLIKE THE FIRST IT WAS NOT PLANTED** (2026-09-05, jolly-badger-374; REPAIRED ON MAIN by gunbc#10608, so the state described here is PAST and a reader reproducing against current main will not find it). The specimen above is a deliberately constructed undeclared field; A ROW WHOSE ONLY CONFIRMED MEMBER IS AUTHORED IS SAMPLING ITS AUTHOR, which is why a naturally-occurring member is a categorically different receipt rather than one more of the same. ",
+
+    "WHAT WAS TRUE, so the claim can be evaluated after the repair: `gunbc.guarantee_stall.floor_cost_basis_boundedness_stall` spelled `next_rung_trigger` as a bare `String` while 31 of the 33 rows in its directory used the `climbs_when(capability: ...)` product constructor the carrier requires, and the closure enumerating them refused with `type mismatch: expected 'Product(NextRungTrigger)', got 'Primitive(String)'`. ",
+
+    "WHEN: the carrier landed FIRST, 86be37f355 (gunbc#10582) at 17:21:02; the old-format row landed 45074b4e9c (gunbc#10281) at 18:35:47, SEVENTY-FOUR MINUTES LATER, and `git merge-base --is-ancestor` answers YES carrier-before-row and NO the other way. It then sat on main undetected until 2026-09-05. ",
+
+    "THE COST, which is what distinguishes this member from an Undecided one: every branch merging main paid for it, two were blocked outright, and it was found by a session doing unrelated work rather than by any mechanism. ",
+
+    "**IT WAS INVISIBLE TO THE REQUIRED LANES IN EXACTLY THIS ROW'S WAY, established by the refusal that did not happen rather than by a list.** The error was LIVE ON MAIN while all required lanes were GREEN -- `required-witnesses-build` at 2f8819b891 reported success with it present. Any lane that had content-judged that initializer would have REFUSED, because the roster closure does not resolve; therefore no lane judged it. The build lane's own census agrees: `gunbc.guarantee_stall`, the TYPE CARRIER, is in `judged-module-identities`, while the CHANGED INITIALIZER and `gunbc.guarantee_stall.roster` are absent. Compiling the DECLARATION of a type does not establish that an INITIALIZER using it was checked. ",
+
+    "This is the row's stated mechanism seen up close and is NOT a finer narrowing: a module sitting one import edge from a judged module is what `outside every required closure` looks like at close range, and this row already records that inbound imports neither prove nor disprove judgment. ",
+
+    "The repair was established by a paired local receipt at the real subject -- a compiler built from the candidate source, the same argv on both arms, an entry folding `all_guarantee_stalls` so it reached the actual roster closure -- with the bad construction refused at file, line and column and the repaired one resolving. THE GREEN REQUIRED LANES WERE CONSISTENT WITH THE REPAIR RATHER THAN EVIDENCE FOR IT, which is this row's whole point restated from the fixing end. ",
+
     "**CEILING: decidable but waiting on a single standing authority.** A wall now would either false-red legitimate importer-free subjects or grandfather opaque debt. ",
 
     "The next rung requires four capabilities together: (1) one typed standing registry exhaustively binds every first-party ingest identity to required judgment, a verified executing consumer, typed fixture/generated/exclusion, retirement, or orphan standing; (2) each executing-consumer binding is checked against the named consumer's actual roster and execution receipt, so a hollow alias cannot admit it; (3) a changed retained identity resolves only through its named consumer from materialized facts within the required floor's 8-second wall and 500-millisecond CPU envelopes, never by whole-corpus compilation; and (4) the two-direction matched undeclared-field control remains executable. ",

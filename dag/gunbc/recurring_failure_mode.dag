@@ -22,22 +22,23 @@ module gunbc.recurring_failure_mode
 // rewriting inside a structural cut and has no oracle. They land in a follow-up where each class is
 // a readable diff.
 //
-// WHY `evidence` STAYS EMPTY ON EVERY ROW, recorded so the next author does not fill in seventeen
-// empty lists and call it citation hygiene. The field is a typed `DeclarationRef` list and a typed
-// citation is genuinely better than a symbol spelled inside `authored` -- but measured today,
-// nothing resolves it and nobody reads it. `v2.lens.cited_symbol_resolution` takes its population
-// from `hand_authored_production_doc_declaration_refs` (HandAuthoredDocBind primary_work plus
-// additional_works) and this carrier is not in it; `gunbc.design_document` projects `.authored`
-// alone, so a populated `evidence` renders nowhere; and that lens has not executed on a push since
-// the 2026-08-23 directive deleted its job, which its own `cited_symbol_required_check_note`
-// records as a declared rung drop to mitigatable. A citation that no resolver covers and no reader
-// sees is not partial coverage -- it is the decoration DESIGN section 4b calls worse than absent,
-// because it will be cited as coverage. THE OCCASION MATTERS: this was decided in the diff that
-// repaired a specimen whose whole defect was three symbols nothing ever checked, and populating an
-// unchecked field there would have reproduced the finding inside its own repair.
-// dissolve-on: the cited-symbol law's own trigger -- enrollment widens to every structural
-// DeclarationRef carrier when the Node-tree reader lands. At that point these rows carry resolvable
-// evidence and the symbols in `authored` become the redundant half.
+// WHY CHECKED EVIDENCE IS NOT YET A RENDERED CITATION. The earlier decision to leave this field
+// empty relied on the enrollment limit of the now-deleted `v2.lens.cited_symbol_resolution`.
+// Its retirement is recorded by `gunbc.rung_drop.cited_symbol_census`; the replacement is the parse-phase
+// `v1_compiler.declaration_index` check in `v1_compiler.bin.claim_executor`. It harvests literal
+// DeclarationRef records and constructors in non-fixture modules across carriers, including this
+// one, and indexes test declarations too. Computed references remain a separate coverage boundary. A target outside the indexed namespace roots, including the Rust seed, is
+// accounted as outside_index rather than resolved; that boundary shrinks with seed migration.
+//
+// Checking and publishing remain different capabilities: `gunbc.design_ledgers` renders `authored`,
+// whose fold consumes receipts alone. Copying a citation from receipt prose into `evidence` would
+// therefore leave a checked but invisible copy beside a visible but unchecked one (DESIGN sections
+// 2 and 3). Nor is this field a general citation bucket: the distinction recorded by
+// `gunbc.recurring_failure_mode.unlanded_citation_indistinguishable_at_the_citing_end` is that
+// evidence witnesses the class, while a sibling-boundary citation names a different relation.
+// NEXT CAPABILITY: one role-preserving citation authority rendered inline through the authored
+// fold, with the existing byte-identity oracle preserved. Wider resolver enrollment has already
+// arrived; it is no longer the trigger for that rendering cut.
 //
 // WHY A ROW IS A LIST OF RECEIPTS, AND THE TWO REPAIRS THIS SUPERSEDES.
 //
@@ -93,8 +94,10 @@ module gunbc.recurring_failure_mode
 // why the wording above says SEVERABLE.
 //
 // WHY CLASSIFICATION IS NOT DONE HERE, since a gap named without a reason is just an excuse. The
-// carrier holds 1,837 receipts across 83 rows; classifying them is an authored judgement per
-// receipt, not a derivation, so it cannot ride in on a re-derivation the way this split does and it
+// population is derivable from `gunbc.recurring_failure_mode.roster::recurring_failure_mode_roster`
+// and the receipts lists of its row declarations, rather than a count transcribed here. Classifying
+// each receipt is an authored judgement, not a derivation, so it cannot ride in on a re-derivation
+// the way this split does and it
 // cannot be verified by the content-hash identity that makes this change safe. Attempting both at
 // once would give up the one property that lets this land at all: that every carried byte is
 // provably unchanged. NEXT-RUNG TRIGGER, a capability rather than an artifact: a receipt variant

@@ -1358,28 +1358,184 @@ pub struct TransitionAdmission {
 /// toll proportional to how long it stays open, and the honest way to shrink that toll is to keep
 /// branches short rather than to defer the payment.
 ///
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "gunbc#10300 param_names_of grounding: the last duplicated fn-arrow helper joins v2.std.fn_index (effect_reach)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "flows_from_reachable_decls",
-            spelling: "param_names_of",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
+/// THIRTY-FOURTH DISSOLUTION (2026-09-05, gunbc#10324), PAID BECAUSE THIS CHANGE TOUCHES THE
+/// ROSTER. Both `gunbc#10300 param_names_of grounding` rows are deleted. gunbc#10300 merged, so its
+/// rows were consumed by their own merge and their deletion falls to this roster's next touch.
+///
+/// ADJUDICATED BY THE DECLARING-MODULE JOIN AGAINST MAIN'S OWN BLOBS, NOT AGAINST THIS WORKTREE.
+/// The first run of this join read the working tree and answered NOT DECLARED, which would have
+/// kept two consumed rows alive; the working tree was the PRE-MERGE tree, so it was answering about
+/// a base the wall does not compare. Re-asked against `origin/main`, `param_names_of` IS declared in
+/// `v2.std.fn_index`, and NEITHER `v2.lens.effect_reach` NOR `v2.lens.live_read_classification`
+/// still declares its own copy -- so base and head bind the spelling identically and no run can
+/// produce these deltas. CALIBRATED IN BOTH DIRECTIONS: a fabricated spelling answers NOT DECLARED
+/// against the same module, and real neighbours in that module answer DECLARED, so neither a
+/// uniform "found" nor a uniform "missing" was available to the join. THE FIRST READING IS RECORDED
+/// RATHER THAN QUIETLY CORRECTED, because a join that silently answers about the wrong tree is the
+/// same defect class as an edit pass that matches nothing: well-formed, plausible, and about a
+/// subject that is not the one under adjudication.
+///
+/// THIS BRANCH'S OWN THIRTY-THIRD DISSOLUTION IS DROPPED, NOT RENUMBERED -- the fourth time this has
+/// happened here. gunbc#10300 landed its own THIRTY-THIRD DISSOLUTION deleting the identical 22
+/// gunbc#10445 rows this branch had just deleted. The deletion happened ONCE; two entries would
+/// leave two authorities describing one event.
+///
+/// FIFTH OBLIGATION, 62 ROWS, NONE AUTHORED HERE: 30 gunbc#10355, 2 gunbc#10350, 6 gunbc#10439, 22
+/// gunbc#10445, and now 2 gunbc#10300. FOUR OF THE FIVE WERE ALSO PAID INDEPENDENTLY BY THE BRANCH
+/// THAT LANDED FIRST, which is why four dissolution entries written here are dropped rather than
+/// renumbered. The rate is the observation: this roster is a serialization point every merging
+/// branch must pass through, and the debt attaches to arrival order, not to authorship.
+
+/// TWENTY-SIXTH TRANSITION (2026-09-05, gunbc#10324). `host_converge_for_identity` moves out of
+/// `gunbc.fleet_converge_cli` and lands beside the type it looks up, in `gunbc.host_converge`. Two
+/// bindings in `gunbc.fleet_converge_cli` therefore resolve to a new target, which is
+/// `TargetChanged` and is not auto-admitted.
+///
+/// WHY THE MOVE, because a relocation with no reason is the one a reader cannot check: the generic
+/// `find_by_identity` returns `T?` and the Optional does not survive inference, so a `match` over
+/// its result reads as the bare element type and reports `Present` as a missing variant of it, at
+/// that type's declaration, in another file. Two callers had each privately worked around this with
+/// their own monomorphic wrapper and a third site was about to author the same one. Promoting ONE
+/// wrapper to the module that declares `HostConverge` deletes the fork rather than widening it.
+///
+/// THE ORDINAL IS TWENTY-SIXTH AND IT STILL STANDS. It has already moved five times -- TWENTY-FIRST,
+/// TWENTY-THIRD, TWENTY-FOURTH, TWENTY-FIFTH, TWENTY-SIXTH -- each time because a base that changed
+/// underneath had minted the number first. This merge is the first that did NOT force a renumber:
+/// gunbc#10300 took TWENTY-FIRST, which was vacated by this entry long ago and is NOT reclaimed by
+/// it here either. THE VACATED NUMBERS ARE NOT RECLAIMED BY ANYONE is the stronger reading of that
+/// rule, and main just demonstrated the weaker one; the ordinals are a naming scheme, so what the
+/// discipline protects is that a citation resolves to ONE row across time, which reuse defeats.
+///
+/// THIS ENTRY AND ITS ROWS WERE RE-APPLIED ACROSS THE MERGE, NOT CARRIED, for the fifth time and for
+/// the same cause each time: the conflict is a misaligned array head, aligning this branch's rows
+/// against the other cohort's, so hand-editing the markers would splice one cohort's label onto the
+/// other's body. Main's file is taken WHOLE and this delta re-derived at ROW IDENTITY grain.
+///
+/// TRIGGER: gunbc#10324 MERGING. After that, main carries the wrapper in `gunbc.host_converge`, so
+/// base and head agree and no run can produce these deltas. They will then report CONSUMED, not
+/// stale, and their deletion is owed by whoever next touches this roster.
+/// DISSOLUTION PAID BY THIS CHANGE (2026-09-05, gunbc#10324). Both `host_converge_for_identity`
+/// rows are deleted, and `HOST_CONVERGE_LOOKUP_MOVE_LABEL` with them. The entry above named its own
+/// trigger -- gunbc#10324 MERGING -- and that has happened: 3a1ee654d4 is in this branch's history,
+/// so main carries the wrapper in `gunbc.host_converge`, base and head bind the spelling
+/// identically, and no run can produce these deltas.
+///
+/// ADJUDICATED BY A RUN, NOT BY THE TRIGGER SENTENCE. The required namespace-wave phase reported
+/// both rows as `CONSUMED ADMISSION` by identity, 2 of 2, and refused this change until they were
+/// removed -- which is the standard the entry above sets for itself and the reason the sentence
+/// alone was never sufficient.
+///
+/// THIRD COHORT PAID BY THIS BRANCH FOR WORK IT DID NOT DO, after gunbc#10439's six (paid by
+/// gunbc#10445 before this branch reached them) and gunbc#10300's two (paid concurrently by
+/// gunbc#10324). The toll is proportional to how long a branch stays open, which is an argument for
+/// shorter branches rather than against the rule: the roster is small precisely because the
+/// deletion comes due on touch.
+
+/// DISSOLUTION PAID BY THIS CHANGE (2026-09-05, gunbc#10459). All seven parsed-item-kind
+/// vocabulary rows are deleted, and `PARSED_ITEM_KIND_VOCABULARY_LABEL` with them. No ordinal is
+/// claimed, for the reason the entry below gives.
+///
+/// ADJUDICATED BY A RUN, NOT BY THE TRIGGER SENTENCE, which is the standard that entry set for
+/// itself: it asked for the deletion to be decided by joining each row against main's tree on its
+/// own (module, in_declaration, spelling, target) tuple rather than by trusting its own prose. The
+/// required namespace-wave phase did exactly that and reported all seven as CONSUMED ADMISSION by
+/// identity, 7 of 7, refusing this change until they were removed. gunbc#10459 is in main, so base
+/// and head bind each spelling to `v1.std.core` identically and no run can produce those deltas.
+///
+/// FOURTH COHORT PAID BY THIS BRANCH FOR WORK IT DID NOT DO, after gunbc#10439's six, gunbc#10300's
+/// two, and gunbc#10324's two. The roster's own note that the toll is proportional to how long a
+/// branch stays open is not an observation this branch can dispute: it has now paid on two separate
+/// touches, and the second cohort came due only because the first merge conflict held it open long
+/// enough for gunbc#10459 to land.
+
+/// SECRET MANAGER ACCESS ENSURE MOVES TO THE AUTH LAYER (2026-09-05, gunbc#10514). No ordinal is
+/// claimed, following the entry above and for the reason it gives: the numbered entries count
+/// against a sequence other lanes append to concurrently, so a number picked on this branch is
+/// wrong by the time it merges. This branch proved that empirically -- it authored a
+/// TWENTY-SEVENTH TRANSITION, and main had moved underneath it before the merge, which is the
+/// third such renumber this roster records rather than the first.
+///
+/// Eight bindings across two modules resolve to a new target, which is `TargetChanged` and is not
+/// auto-admitted. `secret_access_ensure_for`, `read_supplied_access_token`, `SuppliedTokenReady`
+/// and `SuppliedTokenUnavailable` move from `gunbc.spark.secret_access_ensure` to
+/// `gunbc.auth.gcp_secret_access`.
+///
+/// WHY THE MOVE, because a relocation with no reason is the one a reader cannot check: the module
+/// path named the reconciler's FIRST CONSUMER rather than the fact it owns. That held while
+/// spark-administrator-password was the only secret it bound, and stopped holding when the
+/// gunbai-ci App key became a second caller in a different domain and had to reach into the spark
+/// namespace for a fact that was never about spark. DESIGN section 3 homes a fact by its LAYER, so
+/// the reconciler lands in the auth layer and the spark module keeps a wrapper naming its own
+/// target.
+///
+/// THE LEAF IS UNCHANGED AND THE DECLARER MOVED, which is the shape this roster exists to
+/// adjudicate rather than auto-admit. Every one of those spellings is identical on both sides; only
+/// the declaring module differs. The wall keys on the leaf segment, sees the target move, and
+/// refuses -- correctly, because a symbol changing modules is real membership motion and not the
+/// requalification the leaf key is invariant under.
+///
+/// ONE CHANGE CLASS, NOT TWO. The standing rule is that a wave which both requalifies and moves a
+/// symbol is two classes in one diff. This is the second alone: nothing here is requalified, every
+/// spelling is imported under the leaf it always had, and what moved is the declaration behind it.
+///
+/// THIS BRANCH'S OWN DISSOLUTION ENTRY FOR THE gunbc#10324 ROWS IS DROPPED, NOT RENUMBERED, the
+/// same disposition the entries above record for four earlier collisions. This branch had authored
+/// one (numbered thirty-fifth at the time) deleting both `host_converge_for_identity` rows,
+/// adjudicated by its own required run reporting them CONSUMED, 2 of 2. Main discharged that
+/// deletion first. It happened ONCE, and two entries would leave two authorities for one event.
+///
+/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10514 merges. Main then carries the
+/// reconciler in `gunbc.auth.gcp_secret_access`, base and head bind each spelling identically, no
+/// run can produce these deltas, and all eight report CONSUMED rather than stale -- coming due on
+/// this roster's next touch. Adjudicate that deletion by joining each row against main's tree on its
+/// own (module, in_declaration, spelling, target) tuple rather than trusting this sentence, because
+/// a trigger sentence is not evidence that the trigger fired.
+/// THE gunbc#10514 SECRET-ACCESS ROWS DISSOLVED HERE (2026-09-05), BY THEIR OWN TRIGGER AND ON THE
+/// ROSTER TOUCH THEY NAMED. Their entry said they came due on this roster's next touch, and this is
+/// it: adding the row below made the required run report `0 unadjudicated delta(s), 0 stale
+/// admission(s), 8 consumed admission(s) due for deletion on this roster-touching change` (run
+/// 33998369913, `required-witnesses-floor`), which BLOCKS -- a consumed row left standing is the
+/// same debt a stale one is, and this is the seventh time this ledger has recorded that shape.
+///
+/// ADJUDICATED BY THE JOIN THEY DEMANDED RATHER THAN BY THEIR OWN SENTENCE, which is exactly what
+/// that entry asked of whoever deleted them. On main, `gunbc.auth.gcp_secret_access` declares all
+/// four spellings -- `secret_access_ensure_for`, `read_supplied_access_token`, `SuppliedTokenReady`
+/// and `SuppliedTokenUnavailable` -- and both consumers name that module in their import:
+/// `gunbc.fleet.org_actions_converge` on one line, `gunbc.spark.secret_access_ensure` in a braced
+/// list. `gunbc.spark.secret_access_ensure` no longer declares any of them. So base and head bind
+/// each spelling identically, no run can produce those deltas, and CONSUMED is the correct reading.
+/// That join is the positive, decidable fact the entry named as separating a consumed row from an
+/// author-error row; the trigger sentence alone was not taken as evidence that the trigger fired.
+///
+/// gunbc#10602, ONE ROW, ONE SUBJECT: `repository_status_lines` un-forked. `gunbc.scm.render`
+/// declared its own `repository_status_lines` that independently re-assembled the status line
+/// order already decided by `gunbc.scm.status` -- two authorities for one document's composition
+/// (DESIGN.md §3), which the repository's own
+/// `status_document_does_not_fork_the_verb_modules_text` witness exists to catch. The render copy
+/// is DELETED and `scm_status_document` now imports the status module's declaration. The spelling
+/// is unchanged on both sides and the declarer moved, so it arrives as `TargetChanged` -- the wall
+/// working on a deliberate deletion-and-repoint, not a requalification. Blast radius 0: the row
+/// names the exact (module, declaration, spelling) triple and admits nothing else.
+///
+/// TRIGGER, WHICH IS THIS ROW'S OWN DEATH: gunbc#10602 merging. Main then carries the un-fork,
+/// base and head both bind the spelling to `gunbc.scm.status`, no run can produce this delta, and
+/// the row reports CONSUMED rather than unadjudicated -- due for deletion on this roster's next
+/// touch. Adjudicate that deletion by joining the row against main's tree on its own
+/// (module, in_declaration, spelling, target) tuple, not by trusting this sentence.
+const SCM_STATUS_LINES_UNFORK_LABEL: &str =
+    "gunbc#10602 status composition un-fork: repository_status_lines is declared once, in \
+     gunbc.scm.status, and gunbc.scm.render's forked copy is deleted";
+
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission {
+    label: SCM_STATUS_LINES_UNFORK_LABEL,
+    subject: AdmissionSubject::Binding {
+        module: "gunbc.scm.render",
+        in_declaration: "scm_status_document",
+        spelling: "repository_status_lines",
+        target: "gunbc.scm.status",
     },
-    TransitionAdmission {
-        label: "gunbc#10300 param_names_of grounding: the last duplicated fn-arrow helper joins v2.std.fn_index (live_read_classification)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "carriers_from_reachable_decls",
-            spelling: "param_names_of",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-];
+    disposition: NamespaceDeltaDisposition::TargetChanged,
+}];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.

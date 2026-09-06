@@ -2,17 +2,24 @@ module test.claim.live_deploy.operations_witness
 
 import std.logic { Bool }
 import std.types { String, List, NonEmptyStr }
-import extdeps.apt { package_nodejs, package_tailscale, apt_install_argv }
-import extdeps.dpkg { dpkg_status_argv }
+import extdeps.apt { package_nodejs, package_tailscale }
+import extdeps.sudo.elevation { sudo_elevate_argv }
 import extdeps.systemd.systemctl {
   systemctl_daemon_reload_argv,
   systemctl_enable_argv,
   systemctl_restart_argv,
   systemctl_disable_now_argv,
 }
+import gunbc.live_deploy.effect_leaf {
+  deploy_effect_command,
+  systemctl_daemon_reload_effect,
+  systemctl_enable_effect,
+  systemctl_restart_effect,
+  apt_install_effect,
+  apt_install_unelevated_effect,
+  dpkg_status_effect,
+}
 import gunbc.live_deploy.operations {
-  dpkg_status_command,
-  apt_install_command,
   systemctl_daemon_reload_command,
   systemctl_enable_command,
   systemctl_restart_command,
@@ -20,7 +27,8 @@ import gunbc.live_deploy.operations {
 }
 import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.operation_argv { operation_argv_bind_text, operation_argv_tokens_or_refusal_label }
+import v2.std.operation_argv { OperationRef, operation_argv_bind_text, operation_argv_tokens_or_refusal_label }
+import v2.workflow.effect_plan_bash_materialize { bash_bind_operation_invocation }
 import extdeps.posix.shell_command_language { posix_single_quote }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -44,37 +52,7 @@ fn quoted_command(argv: List<String>) -> String {
 }
 
 fn quoted_privileged_command(argv: List<String>) -> String {
-  quoted_command(argv: concat(["sudo", "-n"], argv))
-}
-
-test fn witness_dpkg_status_argv_matches_transport_row() -> Bool {
-  let helper = dpkg_status_argv(package: package_tailscale)
-  let transport = operation_argv_tokens_or_refusal_label(
-    m: shell_materialize_operation_argv(
-      "dag/extdeps/package_managers/dpkg.dag",
-      "dpkg.Package",
-      "Status",
-      [
-        operation_argv_bind_text(name: "package", text: package_tailscale as String)
-      ]
-    )
-  )
-  argv_join(argv: helper) == argv_join(argv: transport)
-}
-
-test fn witness_apt_install_argv_matches_transport_row() -> Bool {
-  let helper = apt_install_argv(package: package_nodejs)
-  let transport = operation_argv_tokens_or_refusal_label(
-    m: shell_materialize_operation_argv(
-      apt_install_path,
-      apt_install_service,
-      apt_install_operation,
-      [
-        operation_argv_bind_text(name: "package", text: package_nodejs as String)
-      ]
-    )
-  )
-  argv_join(argv: helper) == argv_join(argv: transport)
+  quoted_command(argv: sudo_elevate_argv(command: argv))
 }
 
 test fn witness_systemctl_restart_argv_matches_transport_row() -> Bool {
@@ -142,19 +120,34 @@ test fn witness_systemctl_enable_argv_matches_transport_row() -> Bool {
 // Stated because this one was a transcribed literal until it went red in CI, and a transcribed
 // expectation under a "matches transport" name is the worst of both — it looks like coherence
 // and asserts a byte string nobody derived.
-test fn witness_dpkg_status_command_matches_transport() -> Bool {
-  dpkg_status_command(package: package_tailscale)
-    == quoted_command(argv: dpkg_status_argv(package: package_tailscale))
+// THE PACKAGE LEAVES NO LONGER HAVE AN ARGV BUILDER TO COMPARE AGAINST, AND THAT IS THE CLIMB.
+// The two witnesses that stood here compared gunbc's own dpkg_status_argv / apt_install_argv
+// against the materialized transport row for equality -- a check that can only ever report that a
+// fork is still in sync, never that the fork is gone. Both builders are deleted; the emitted text
+// is now derived from the declaration in one step, so what is left to pin is that step's OUTPUT
+// against the POSIX quoting authority, and its REFUSAL when the binding does not name a real row.
+test fn witness_dpkg_status_effect_emits_declared_argv() -> Bool {
+  deploy_effect_command(inv: dpkg_status_effect(package: package_tailscale))
+    == quoted_command(argv: ["dpkg", "-s", package_tailscale as String])
 }
 
-test fn witness_apt_install_command_matches_transport() -> Bool {
-  apt_install_command(package: package_nodejs, privileged: false)
-    == quoted_command(argv: apt_install_argv(package: package_nodejs))
+test fn witness_apt_install_effect_emits_declared_argv() -> Bool {
+  deploy_effect_command(inv: apt_install_unelevated_effect(package: package_nodejs))
+    == quoted_command(argv: ["apt-get", "install", "--yes", package_nodejs as String])
 }
 
-test fn witness_privileged_apt_install_command() -> Bool {
-  apt_install_command(package: package_tailscale, privileged: true)
-    == quoted_privileged_command(argv: apt_install_argv(package: package_tailscale))
+test fn witness_privileged_apt_install_effect_elevates() -> Bool {
+  deploy_effect_command(inv: apt_install_effect(package: package_tailscale))
+    == quoted_privileged_command(argv: ["apt-get", "install", "--yes", package_tailscale as String])
+}
+
+test fn witness_systemctl_effects_emit_declared_argv() -> Bool {
+  deploy_effect_command(inv: systemctl_daemon_reload_effect())
+    == quoted_privileged_command(argv: ["systemctl", "daemon-reload"])
+    && deploy_effect_command(inv: systemctl_enable_effect(unit: gunbc_roadmap_unit_name))
+      == quoted_privileged_command(argv: ["systemctl", "enable", gunbc_roadmap_unit_name as String])
+    && deploy_effect_command(inv: systemctl_restart_effect(unit: gunbc_roadmap_unit_name))
+      == quoted_privileged_command(argv: ["systemctl", "restart", gunbc_roadmap_unit_name as String])
 }
 
 test fn witness_systemctl_restart_command_matches_transport() -> Bool {
@@ -178,8 +171,8 @@ test fn witness_systemctl_daemon_reload_command_privileged() -> Bool {
 }
 
 test fn live_deploy_operations_RED_apt_install_wrong_package_golden() -> Bool {
-  apt_install_command(package: package_tailscale, privileged: false)
-    != quoted_command(argv: apt_install_argv(package: package_nodejs))
+  deploy_effect_command(inv: apt_install_unelevated_effect(package: package_tailscale))
+    != quoted_command(argv: ["apt-get", "install", "--yes", package_nodejs as String])
 }
 
 // RED discriminators against the former `join(argv, " ")` spelling returning. Under it an argv
@@ -189,12 +182,66 @@ data spacey_package: NonEmptyStr = "tail scale"
 
 test fn operations_RED_argv_element_with_a_space_keeps_its_boundary() -> Bool {
   string_contains(
-    s: apt_install_command(package: spacey_package, privileged: false),
+    s: deploy_effect_command(inv: apt_install_unelevated_effect(package: spacey_package)),
     pattern: posix_single_quote(spelling: spacey_package as String),
   )
 }
 
 test fn operations_RED_command_is_not_a_bare_space_join() -> Bool {
-  apt_install_command(package: spacey_package, privileged: false)
-    != argv_join(argv: apt_install_argv(package: spacey_package))
+  deploy_effect_command(inv: apt_install_unelevated_effect(package: spacey_package))
+    != argv_join(argv: ["apt-get", "install", "--yes", spacey_package as String])
+}
+
+// ── THE REFUSAL ARM, WHICH IS WHAT MAKES THE TYPED LEAF SAFER THAN THE STRING IT REPLACED ────────
+//
+// A String leaf could not be wrong about anything: whatever an author typed WAS the command. A
+// leaf that names an operation can be wrong in ways the substrate decides -- a row that does not
+// exist, an input the row does not declare, a declared input left unbound -- and DESIGN section 5
+// requires each of those to stop the line rather than emit something plausible. These are the
+// discriminating REDs: they FAIL if deploy_effect_command ever answers a shell command for a
+// binding the declaration does not admit, and they stay enrolled after the climb because they are
+// the executing evidence that the refusal is real rather than declared.
+data live_deploy_effect_refusal_marker: String = "__GUNBC_EFFECT_PLAN_BASH_REFUSED__"
+
+fn apt_install_ref() -> OperationRef {
+  OperationRef {
+    path: apt_install_path,
+    service: apt_install_service,
+    operation: apt_install_operation,
+  }
+}
+
+test fn live_deploy_effect_RED_undeclared_input_refuses_and_is_not_shell() -> Bool {
+  let emitted = deploy_effect_command(inv: bash_bind_operation_invocation(
+    at: apt_install_ref(),
+    bindings: [
+      operation_argv_bind_text(name: "package", text: package_nodejs as String),
+      operation_argv_bind_text(name: "no_such_input", text: "x"),
+    ],
+  ))
+  string_contains(s: emitted, pattern: live_deploy_effect_refusal_marker)
+    && string_contains(s: emitted, pattern: "UndeclaredInputBound")
+    && !string_contains(s: emitted, pattern: "apt-get")
+}
+
+test fn live_deploy_effect_RED_unbound_declared_input_refuses() -> Bool {
+  let emitted = deploy_effect_command(inv: bash_bind_operation_invocation(
+    at: apt_install_ref(),
+    bindings: [],
+  ))
+  string_contains(s: emitted, pattern: live_deploy_effect_refusal_marker)
+    && !string_contains(s: emitted, pattern: "apt-get")
+}
+
+test fn live_deploy_effect_RED_unknown_operation_row_refuses() -> Bool {
+  let emitted = deploy_effect_command(inv: bash_bind_operation_invocation(
+    at: OperationRef {
+      path: apt_install_path,
+      service: apt_install_service,
+      operation: "NoSuchOperation",
+    },
+    bindings: [operation_argv_bind_text(name: "package", text: package_nodejs as String)],
+  ))
+  string_contains(s: emitted, pattern: live_deploy_effect_refusal_marker)
+    && !string_contains(s: emitted, pattern: "apt-get")
 }

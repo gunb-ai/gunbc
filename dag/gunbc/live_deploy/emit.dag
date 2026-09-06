@@ -34,6 +34,7 @@ import gunbc.live_deploy.repository_convergence_placement {
 }
 import extdeps.version.semver { semver_version_label }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.dissolution { DissolutionCondition, retires_dissolution, unbound_dissolution }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.layout {
   Doc,
@@ -63,7 +64,7 @@ import gunbc.live_deploy.spec {
   DeploymentDependencyStep,
   EnsuredSubject, EnsuredPackage, EnsuredHostDirectory, ensured_subject_identity,
   DeploymentArtifactStep,
-  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit,
+  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit,
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
   deployment_belt_timer_unit_name,
@@ -119,11 +120,6 @@ import gunbc.live_deploy.operations {
   rm_force_recursive_command,
   install_directory_owned_command,
   install_file_owned_command,
-  dpkg_status_command,
-  apt_install_command,
-  systemctl_daemon_reload_command,
-  systemctl_enable_command,
-  systemctl_restart_command,
 }
 import gunbc.live_deploy.intent { live_deploy_unit_status_tail_command }
 import v2.std.orchestration {
@@ -154,6 +150,17 @@ import gunbc.ci_deploy_access {
   deploy_access_job_principal_refused_emit_poison,
 }
 import gunbc.ci_deploy_sudoers { deploy_sudoers_install_shell }
+import extdeps.sudo.elevation { sudo_elevate_argv }
+import v2.workflow.effect_plan_bash_materialize { BashBoundOperationInvocation }
+import gunbc.live_deploy.effect_leaf {
+  deploy_effect_command,
+  systemctl_daemon_reload_effect,
+  systemctl_enable_effect,
+  systemctl_restart_effect,
+  apt_install_effect,
+  apt_install_unelevated_effect,
+  dpkg_status_effect,
+}
 
 data live_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 
@@ -165,6 +172,30 @@ data live_deploy_ensure_dep_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REF
 
 data live_deploy_systemd_retirement_emit_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ systemd runtime-retirement intent was rejected by v2.workflow.bash_command_fold_serialize; this marker is not valid deploy shell, so the committed retract artifact drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)"
 
+// WHAT IS LEFT IN THIS FUNCTION IS THE COUNTED RESIDUAL, and it is named here rather than left to
+// a reader to infer from call sites. Every leaf whose words are an extdeps operation row now goes
+// through deploy_effect instead: systemd.Systemctl DaemonReload/Enable/Restart, apt.PackageManager
+// Install, dpkg.Package Status. What still arrives as a String does so for one of four reasons,
+// and each names a different missing capability rather than a shared "not done yet":
+//
+//   1. NO OPERATION ROW EXISTS for the program -- install(1), rm(1), printf(1), tailscale serve.
+//      These are already argv-derived (gunbc.live_deploy.operations, extdeps.tools.gnu_coreutils),
+//      so the gap is an extdeps service surface, not a spelling.
+//   2. THE COMMAND IS NOT ONE INVOCATION -- the staged writes carry a redirection to a word built
+//      from a variable reference, and the tree-sync restart carries a `|| { ...; exit 1; }`
+//      diagnosis tail. BoundOperationInvocation names an operation and its inputs; it cannot carry
+//      a redirect, a word with an expansion in it, or a failure branch.
+//   3. THE LINE IS NOT A COMMAND AT ALL -- `set -euo pipefail`, the EXIT trap, and the
+//      __GUNBC_*_REFUSED__ poison markers, which are deliberately not valid shell.
+//   4. THE BODY IS HAND-AUTHORED SHELL from another module (the sudoers install, the memory-cap
+//      block, the receipt echo), which is that module's own census row, not this one's.
+//
+// 🟡 dissolve-on: class 1 dissolves when the coreutils/tailscale surfaces carry shell-transport
+// operation rows this leaf can bind against; class 2 dissolves when the effect-plan band can carry
+// a redirect target and a failure arm on a Do-effect leaf, which is the same capability
+// effect_plan_bash_materialize's UnsupportedEffectPlanStep arms currently refuse; class 3 has no
+// dissolution -- a marker that must not parse as shell is correctly a String; class 4 is owned by
+// the module that authors the body.
 fn deploy_raw(command: String) -> PipelineStep {
   Do {
     run: Run {
@@ -176,9 +207,26 @@ fn deploy_raw(command: String) -> PipelineStep {
   }
 }
 
+// The PipelineStep wrapper is all that stays here: the one-step EffectPlan and the operation
+// constructors live in gunbc.live_deploy.effect_leaf because EffectPlanStep and PipelineStep both
+// declare Do/If/For/While/Retry/Let/Call, and variant names resolve corpus-wide -- a module holding
+// both coproducts does not resolve. The split is forced by the substrate, not a layering choice.
+fn deploy_effect_run(inv: BashBoundOperationInvocation) -> Run {
+  Run {
+    command: deploy_effect_command(inv: inv),
+    env: Empty,
+    redirect: Absent,
+    capture: Absent
+  }
+}
+
+fn deploy_effect(inv: BashBoundOperationInvocation) -> PipelineStep {
+  Do { run: deploy_effect_run(inv: inv) }
+}
+
 fn systemctl_disable_now_argv_for_deploy(unit: NonEmptyStr, privileged: Bool) -> List<String> {
   if privileged {
-    concat(["sudo", "-n"], systemctl_disable_now_argv(unit: unit))
+    sudo_elevate_argv(command: systemctl_disable_now_argv(unit: unit))
   } else {
     systemctl_disable_now_argv(unit: unit)
   }
@@ -242,14 +290,18 @@ fn ensure_apt_package_step(pkg: NonEmptyStr, privileged: Bool) -> PipelineStep {
   If {
     cond: Not { inner: ExitZero {
       run: Run {
-        command: dpkg_status_command(package: pkg),
+        command: deploy_effect_command(inv: dpkg_status_effect(package: pkg)),
         env: Empty,
         redirect: Present { value: DiscardAll },
         capture: Absent
       }
     } },
     then_: Pipeline {
-      steps: [deploy_raw(command: apt_install_command(package: pkg, privileged: privileged))],
+      steps: [deploy_effect(inv: if privileged {
+        apt_install_effect(package: pkg)
+      } else {
+        apt_install_unelevated_effect(package: pkg)
+      })],
       on_failure: FailFast
     },
     else_: Absent
@@ -267,14 +319,6 @@ fn deploy_stage_directory_let_step() -> PipelineStep {
   }
 }
 
-// THE TRAP LINE IS STILL A STRING, AND IT IS THE ONLY REMAINING ONE IN EITHER PREAMBLE.
-// v2.extdeps.languages.bash_build has no trap node and PipelineStep has no trap variant, so
-// there is nothing to build it from. It is left as authored text rather than approximated:
-// every nearby shape (a Do-run of `trap`, a subshell) either re-assembles the same quoting by
-// hand or changes what the trap does. Adding the grammar row is the fix and it is out of this
-// PR's scope; naming the gap here is what keeps the next reader from reaching for the
-// approximation. See also the brace-group gap at tree_sync_restart_step_with_diagnosis.
-data deploy_stage_trap_is_unmodelled_note: String = "trap 'rm -rf \"$_gunbc_stage\"' EXIT has no grammar row in v2.extdeps.languages.bash_build and no PipelineStep variant. It stays authored text until one exists."
 
 // The end-of-fold receipt line, named once for both folds. Its fields are argv elements rather
 // than a sentence assembled by concat, so a host identity carrying a space cannot split
@@ -299,8 +343,6 @@ fn emit_pipeline_or_poison(p: Pipeline, refused: String) -> String {
     Rejected { diagnostics: _ } => refused
   }
 }
-
-data emit_systemd_unit_serve_note: String = "The belt-B unit: ExecStart is `gunbc serve` (the seed binary answering every request through the ONE .dag entry gunbc.roadmap_serve.roadmap_serve_handle — no emitted JS, no subprocess dispatch). User=briansrls, NOT root: claude auth exists only under briansrls on srv1 (parent lane verification 2026-07-20), so a root-run belt would spawn unauthed dead sessions; port 8080 is non-privileged so briansrls binds it. WorkingDirectory = the repo root — the source roots and entry are relative to it, and the belt's spawn workdir projects the same gunbc.host_layout fact."
 
 // WHERE THE LAUNCH REVISION COMES FROM IS ITSELF A MODELED FACT, AND THERE ARE EXACTLY TWO ARMS
 // BECAUSE ONLY TWO ARE HONEST. RevisionBoundAtEmission is the production apply: the launcher
@@ -376,6 +418,25 @@ fn emit_slice_unit_doc(spec: DeploymentSpec) -> Doc {
   doc_text(text: serialize_systemd_unit_file(file: live_deploy_slice_unit_file(spec: spec)))
 }
 
+// THE USER-MANAGER ENVIRONMENT FOR UNITS THAT START OR OBSERVE USER UNITS. Both the serve unit (POST
+// /dispatch starts a worker) and the belt unit (spawns reviewers and auditors, reads every attempt
+// unit's SubState and ExecMainStatus) run as system services under the service principal; the user
+// manager they must reach is addressed by the principal's uid (gunbc.live_deploy.spec
+// gunbc_service_uid). Emitted as two Environment= lines rather than resolved at runtime because the
+// unit file is the authority the deploy installs and the oracle witness pins.
+fn user_manager_environment_directives(uid: Int) -> List<SystemdServiceDirective> {
+  [
+    Environment { assignment: join(["XDG_RUNTIME_DIR=/run/user/", to_string(uid)], "") as NonEmptyStr },
+    Environment { assignment: join(["DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/", to_string(uid), "/bus"], "") as NonEmptyStr },
+  ]
+}
+
+// The belt-B unit: ExecStart is `gunbc serve` (the seed binary answering every request through the
+// ONE .dag entry gunbc.roadmap_serve.roadmap_serve_handle — no emitted JS, no subprocess dispatch).
+// User=briansrls, NOT root: claude auth exists only under briansrls on srv1 (parent lane
+// verification 2026-07-20), so a root-run belt would spawn unauthed dead sessions; port 8080 is
+// non-privileged so briansrls binds it. WorkingDirectory = the repo root — the source roots and
+// entry are relative to it, and the belt's spawn workdir projects the same gunbc.host_layout fact.
 fn live_deploy_serve_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile {
   let svc = spec.service
   let port = to_string(svc.listen.port)
@@ -386,12 +447,13 @@ fn live_deploy_serve_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBi
       After { target: "network-online.target tailscaled.service" as NonEmptyStr },
       Wants { target: "network-online.target" as NonEmptyStr },
     ],
-    service: [
+    service: concat([
       ServiceType { mode: "simple" as NonEmptyStr },
       ServiceUser { name: svc.service_user },
       ServiceGroup { name: svc.service_user },
       ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
       WorkingDirectory { path: svc.repo_root },
+    ], concat(user_manager_environment_directives(uid: svc.service_uid), [
       ExecStart { command: join([
         svc.serve_binary as String,
         " serve --source-root dag --source-root src/v2",
@@ -402,7 +464,7 @@ fn live_deploy_serve_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBi
         eval_budget_flag_text(flag: "--eval-budget-wall-ms", limit: svc.serve_wall_limit),
       ], "") as NonEmptyStr },
       Restart { policy: "on-failure" as NonEmptyStr },
-    ],
+    ])),
     install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
   }
 }
@@ -411,7 +473,26 @@ fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding)
   doc_text(text: serialize_systemd_unit_file(file: live_deploy_serve_unit_file(spec: spec, revision: revision)))
 }
 
-data belt_tick_cadence_note: String = "OnUnitInactiveSec, NOT OnUnitActiveSec, and the difference is a fail-closed choice rather than a formatting one. OnUnitActiveSec measures from when the tick STARTED, so a tick that runs longer than the cadence schedules its successor while it is still running and ticks pile up back-to-back — for a unit whose job is spawning agent sessions, that converts a slow tick into overlapping spawns. OnUnitInactiveSec measures from when the previous tick FINISHED, so the gap is real regardless of how long a tick takes and the belt can never outrun itself. systemd additionally refuses to start a Type=oneshot unit that is already active, so the two together make overlap unwritable rather than unlikely.\\n\\n60s is the operator's stated default for this lane and is deliberately not tuned against anything: a tick against an unchanged frontier is an idempotent reconcile that observes live tmux sessions and does nothing (belt_run_once_note), so the cost of a too-fast cadence is an observation, not an action. AccuracySec=5s keeps systemd from coalescing the timer into a distant wakeup window, which is the default behavior and would otherwise make the effective cadence unpredictable.\\n\\nOnBootSec=2min rather than firing immediately: at boot the tree sync, the serve unit and tailscale are all converging, and a belt tick that spawns before the repo tree is in place produces SpawnFailed rows for a condition that resolves itself within seconds. The delay costs one cadence period and removes a class of self-inflicted refusals from the receipt."
+// OnUnitInactiveSec, NOT OnUnitActiveSec, and the difference is a fail-closed choice rather than a
+// formatting one. OnUnitActiveSec measures from when the tick STARTED, so a tick that runs longer
+// than the cadence schedules its successor while it is still running and ticks pile up back-to-back
+// — for a unit whose job is spawning agent sessions, that converts a slow tick into overlapping
+// spawns. OnUnitInactiveSec measures from when the previous tick FINISHED, so the gap is real
+// regardless of how long a tick takes and the belt can never outrun itself. systemd additionally
+// refuses to start a Type=oneshot unit that is already active, so the two together make overlap
+// unwritable rather than unlikely.
+//
+// 60s is the operator's stated default for this lane and is deliberately not tuned against
+// anything: a tick against an unchanged frontier is an idempotent reconcile that observes live tmux
+// sessions and does nothing (belt_run_once_note), so the cost of a too-fast cadence is an
+// observation, not an action. AccuracySec=5s keeps systemd from coalescing the timer into a distant
+// wakeup window, which is the default behavior and would otherwise make the effective cadence
+// unpredictable.
+//
+// OnBootSec=2min rather than firing immediately: at boot the tree sync, the serve unit and
+// tailscale are all converging, and a belt tick that spawns before the repo tree is in place
+// produces SpawnFailed rows for a condition that resolves itself within seconds. The delay costs
+// one cadence period and removes a class of self-inflicted refusals from the receipt.
 
 data belt_tick_cadence: String = "60s"
 
@@ -423,7 +504,7 @@ fn live_deploy_belt_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
       After { target: "network-online.target" as NonEmptyStr },
       Wants { target: "network-online.target" as NonEmptyStr },
     ],
-    service: [
+    service: concat([
       ServiceType { mode: "oneshot" as NonEmptyStr },
       ServiceUser { name: svc.service_user },
       ServiceGroup { name: svc.service_user },
@@ -432,12 +513,13 @@ fn live_deploy_belt_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
       Environment { assignment: join([
         belt_spawn_workdir_env_var as String, "=", svc.repo_root as String,
       ], "") as NonEmptyStr },
+    ], concat(user_manager_environment_directives(uid: svc.service_uid), [
       ExecStart { command: join([
         svc.serve_binary as String,
         " run --source-root dag --source-root src/v2",
         " --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function belt_run_once_cli",
       ], "") as NonEmptyStr },
-    ],
+    ])),
     install: NotInstallable,
   }
 }
@@ -494,7 +576,7 @@ fn emit_publication_service_unit_doc(spec: DeploymentSpec) -> Doc {
 // compose into the latency an operator actually sees. Equal periods make that one tick of extra
 // latency; a slower helper would make the belt's own cadence meaningless for this pass.
 //
-// OnUnitInactiveSec for the same reason belt_tick_cadence_note gives: it measures from when the
+// OnUnitInactiveSec for the same reason belt_tick_cadence's annotation gives: it measures from when the
 // previous run FINISHED, so a run that outlasts the period cannot schedule its own successor. A
 // helper run performs one network read per unanswered request, so that property matters here for
 // the same reason it matters there.
@@ -539,8 +621,8 @@ fn apply_publication_timer_unit_write_step(spec: DeploymentSpec) -> PipelineStep
 // GitHub had been asked, which is the fabricated-plausible-output failure with a filesystem write
 // standing in for a network read.
 //
-// THE MODE IS STATED RATHER THAN DERIVED, and install_d_mode_undeviated_note already records that
-// this is the open frontier: a member's mode should be derived from which principals need which
+// THE MODE IS STATED RATHER THAN DERIVED, and install_d_shared_mode's annotation already records
+// that this is the open frontier: a member's mode should be derived from which principals need which
 // verbs on it. These two are the first members in this emitter whose modes are NOT the shared 0755
 // constant, and they are stated here with the dependents that force them written above -- which is
 // the input that derivation will eventually consume, not a second convention beside it.
@@ -597,7 +679,8 @@ fn emit_belt_timer_unit_doc(spec: DeploymentSpec) -> Doc {
 // answer an observation the belt makes every sixty seconds (srv1, measured 2026-08-18).
 //
 // WHY A UNIT AND NOT AN APPLY STEP: the tree is service-user-owned and the deploy principal is the
-// unprivileged ci-runner holding six sudo grants, none of them git (emit_deploy_principal_note), so
+// unprivileged ci-runner, whose NOPASSWD roster (gunbc.fleet_posix_accounts
+// fleet_posix_ci_runner_sudo_grants) contains no git, so
 // `git config` from the apply is refused on one side and EACCES on the other. The same reasoning
 // that produced gunbc-tree-sync.service produces this one -- the owner writes its own tree.
 //
@@ -650,8 +733,8 @@ fn apply_belt_service_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
 // b1 fix (CONVERGE close): the fleet-converge unit runs `gunbc converge --host self`, whose
 // first act is `git ls-remote origin refs/fleet/desired` inside WorkingDirectory=svc.repo_root
 // (/opt/gunbc/gunbc on srv1). That tree is owned by svc.service_user (briansrls), and the
-// private-remote credential exists ONLY under that principal on srv1 (emit_systemd_unit_serve_note:
-// "claude auth exists only under briansrls"). A root run therefore hits git dubious-ownership
+// private-remote credential exists ONLY under that principal on srv1 (live_deploy_serve_unit_file's
+// annotation: "claude auth exists only under briansrls"). A root run therefore hits git dubious-ownership
 // AND has no credential, so the desired ref is never observed and every cadence renders
 // verdict=absent (fleet_converge_cli converge_cli_revision_verdict RevisionUnobserved). Running
 // as the repo owner is exactly what the sibling serve/belt/tree-sync units already do
@@ -662,7 +745,7 @@ fn apply_belt_service_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
 // here: this member's apply arm is a retirement poison (the cadence is on-demand via
 // fleet-converge.yml plan/apply, sleek-heron-218), so the bootstrap it used to carry has not run
 // on any fresh instance root since that retirement. It rides BeltTimerUnit apply against the
-// per-instance receipts directory instead — see belt_receipt_dir_bootstrap_note. Publication and
+// per-instance receipts directory instead — see the annotation on emit_artifact_upsert. Publication and
 // bootstrap remain orthogonal problems; only the bootstrap's home moved.
 fn emit_fleet_converge_service_unit_doc(spec: DeploymentSpec) -> Doc {
   let svc = spec.service
@@ -871,7 +954,7 @@ fn apply_tree_sync_unit_write_step(spec: DeploymentSpec, tree_path: String) -> P
 // escape hatch (DESIGN 5 forbids proceeding as if the refusal had not fired).
 fn tree_sync_restart_step_with_diagnosis(spec: DeploymentSpec) -> PipelineStep {
   deploy_raw(command: join([
-    systemctl_restart_command(unit: spec.names.tree_sync_unit_name, privileged: true),
+    deploy_effect_command(inv: systemctl_restart_effect(unit: spec.names.tree_sync_unit_name)),
     " || { echo '--- gunbc-tree-sync.service control-process diagnosis ---' >&2; ",
     live_deploy_unit_status_tail_command(unit: spec.names.tree_sync_unit_name),
     " >&2; exit 1; }",
@@ -902,9 +985,24 @@ fn tailscale_serve_teardown_step(spec: DeploymentSpec) -> PipelineStep {
   ))
 }
 
-data emit_deploy_principal_note: String = "The deploy principal on srv1 is the UNPRIVILEGED CI-runner account — DeployRunnerPrincipal.job_user grounds on gunbc.fleet_posix_accounts FleetAccountCiRunner (ghrunner, uid 1001); unit_user=root is NOT the authorization principal. Exactly the seven NOPASSWD sudo grants that fleet_posix_ci_runner_sudo_grants() enumerates (apt-get, install, visudo, systemctl, tailscale, rm, useradd -- the last joined 2026-09-04 for the publication principal) — NOT root, and no blessed-helper grant (#7011 realization). The prior note here claimed ROOT from a hand ssh verification (parent lane 2026-07-20) that CONTRADICTED the repo's own single authority (fleet_posix_accounts, probed 2026-07-02) — a DESIGN 3 fork of the principal fact — and reality sided with the authority: the first flip deploy (run 29822498755, 2026-07-21) died on bare-rsync EACCES/chgrp-EPERM into the service-user-owned tree. The corrected realization stays INSIDE the granted set: directories and the binary install with -o/-g service-user via the granted install (ownership at creation, never a chown fixup — the root-writes-then-chown two-step is dissolved, the wrongly-owned intermediate state unwritable); the tree sync runs AS the service user through gunbc-tree-sync.service (a oneshot unit, User=service-user, installed and started via the granted install+systemctl — the owner writes its own tree); teardown rm goes through the granted rm. Deploy authorization is runtime-present: live_deploy_fold runs deploy_mutation_gate before host_effect_apply, and the gate observes ReadEffectivePosixPrincipal plus SudoNopasswdExecuteProbe / SudoNopasswdGrantListProbe through typed service-op argv transports. The roster selects grant-list verification for package-managed tailscale, whose binary may be absent before ensure. The former gunbc.ci_deploy_access_emit in-script duplicate is deleted; these committed scripts are HostReconciler projections, not standalone authorization entrypoints. Their shared preamble only installs the roster-derived /etc/sudoers.d/gunbc-deploy after the typed gate has permitted execution. RESIDUE (named): emit-construction refusal of bare rsync/chown outside the granted set rides the effect-namespace-grants lane. The former install_d_shared_setup_latent_coupling marker fired as designed: /opt/gunbc now has MULTIPLE owned writers, so the shared-prefix `install -d /opt/gunbc` rides the FIRST owned writer in apply order (GunbcSourceTree) once, and each deeper parent (/opt/gunbc/bin) rides its own writer."
-
-data serve_binary_parent_was_a_literal_note: String = "THE BINARY PATH BECAME A PARAMETER AND ITS PARENT DIRECTORY DID NOT (review 45197). This PR derives serve_binary from the instance root, so a twin installs to its own tree — but the step that CREATES the destination directory still read `sudo -n install -d -m 0755 /opt/gunbc/bin`, production's literal. `install` does not create missing parents, so a twin apply reaches the copy with no `<instance-root>/bin` to copy into and fails on a path that looks like a permissions problem.\\n\\nThat is the same half-parameterization the placement de-fork exists to remove, surviving one level down: the value moved to the argument and the directory that has to exist for the value to be writable stayed behind. Nothing caught it because production's parent and the literal agree, which is exactly the condition that made every srv1-only gap in this lane invisible until a second instance existed.\\n\\nDeriving the parent FROM the path being installed is what keeps them from drifting again — there is no second literal to update, and the emitted command for srv1-live is byte-identical because the derivation of /opt/gunbc/bin/gunbc is /opt/gunbc/bin. The mode and ownership are deliberately unchanged: production's bin directory is root-owned, and switching this to the service-user-owned install_d_owned_command would silently re-own a live directory to satisfy a twin."
+// THE BINARY PATH BECAME A PARAMETER AND ITS PARENT DIRECTORY DID NOT (review 45197). This PR
+// derives serve_binary from the instance root, so a twin installs to its own tree — but the step
+// that CREATES the destination directory still read `sudo -n install -d -m 0755 /opt/gunbc/bin`,
+// production's literal. `install` does not create missing parents, so a twin apply reaches the copy
+// with no `<instance-root>/bin` to copy into and fails on a path that looks like a permissions
+// problem.
+//
+// That is the same half-parameterization the placement de-fork exists to remove, surviving one
+// level down: the value moved to the argument and the directory that has to exist for the value to
+// be writable stayed behind. Nothing caught it because production's parent and the literal agree,
+// which is exactly the condition that made every srv1-only gap in this lane invisible until a
+// second instance existed.
+//
+// Deriving the parent FROM the path being installed is what keeps them from drifting again — there
+// is no second literal to update, and the emitted command for srv1-live is byte-identical because
+// the derivation of /opt/gunbc/bin/gunbc is /opt/gunbc/bin. The mode and ownership are deliberately
+// unchanged: production's bin directory is root-owned, and switching this to the service-user-owned
+// install_d_owned_command would silently re-own a live directory to satisfy a twin.
 
 fn path_parent_dir(path: String) -> String {
   match list_tail(xs: reverse(split(s: path, delimiter: "/"))) {
@@ -912,19 +1010,68 @@ fn path_parent_dir(path: String) -> String {
     TailFound { tail: rest } => join(reverse(rest), "/")
   }
 }
-data install_d_mode_undeviated_note: String = "🟡 dissolve-on — FRONTIER, 1 of 4 directory members migrated (attempt-state-root derives its mode through install_d_managed_command; gunbc-source-tree, serve-binary-dir, and dispatch-worktree-root still inherit the constant below). The 0755 here is a SHARED CONSTANT, not a derived fact, and every member still on it inherits it regardless of what that member's readers and writers actually need. That is why /opt/gunbc/attempt-state converges world-readable while the per-attempt directories the belt creates under it are 0700 (attempt_state_prepare_argv_for_instance) — the leaf states its requirement, the root cannot, so the root is loose by default rather than by decision. Ownership is already derived (-o/-g project the service user from the spec, emit_deploy_principal_note); the mode is the one field on the triple still hand-picked. The FIX IS NOT A TIGHTER LITERAL — replacing 0755 with 0700 would move the same undeclared number, and a member whose dependents genuinely need traversal would then break with no statement of why. The mode must be DERIVED FROM THE MEMBER'S DECLARED DEPENDENTS: which principals need which verbs on that position, folded into extdeps.access.posix.FilePermissions (PermissionBits per owner/group/other class, cited to Open Group sys/stat.h) — the same requirement rows std.effect_grant already carries as (verb x subtree x principal) for the execute direction, read here to construct the permission instead of to admit against it. Once a member carries its dependents, an over-permissive mode is unwritable rather than merely unreviewed, and this helper loses its mode argument entirely. DISSOLVES WHEN a footprint member carries FilePermissions derived from its declared dependents; until then the constant is marked, not silently inherited (operator direction 2026-07-30: precise, and derived from the needs/dependents)."
+// THE 0755 IS A SHARED CONSTANT, NOT A DERIVED FACT, and every member still on it inherits it
+// regardless of what that member's readers and writers actually need. That is why
+// /opt/gunbc/attempt-state converges world-readable while the per-attempt directories the belt
+// creates under it are 0700 (attempt_state_prepare_argv_for_instance) — the leaf states its
+// requirement, the root cannot, so the root is loose by default rather than by decision. Ownership
+// is already derived (-o/-g project the service user from the spec, install_d_owned_command); the
+// mode is the one field on the triple still hand-picked.
+//
+// THE FIX IS NOT A TIGHTER LITERAL — replacing 0755 with 0700 would move the same undeclared
+// number, and a member whose dependents genuinely need traversal would then break with no statement
+// of why. The mode must be DERIVED FROM THE MEMBER'S DECLARED DEPENDENTS: which principals need
+// which verbs on that position, folded into extdeps.access.posix.FilePermissions (PermissionBits
+// per owner/group/other class, cited to Open Group sys/stat.h) — the same requirement rows
+// std.effect_grant already carries as (verb x subtree x principal) for the execute direction, read
+// here to construct the permission instead of to admit against it. Once a member carries its
+// dependents, an over-permissive mode is unwritable rather than merely unreviewed, and this helper
+// loses its mode argument entirely (operator direction 2026-07-30: precise, and derived from the
+// needs/dependents).
+//
+// The retirement itself is carried by install_d_mode_derivation_dissolution below rather than by
+// this paragraph. How far the migration has got is deliberately NOT written here either: a count
+// copied out of the current tree is an oracle for nothing, and it goes stale in the one direction
+// nobody notices.
 
 // The three mode literals this module installs with, named once each. They were previously
-// spelled inline at ten call sites, which is what let install_d_mode_undeviated_note's shared
-// 0755 look like ten independent decisions rather than one constant inherited ten times. Naming
+// spelled inline at ten call sites, which is what let the shared 0755 look like ten independent
+// decisions rather than one constant inherited ten times. Naming
 // them changes no emitted byte and does not derive them — that derivation is exactly what the
-// note above says is still owed — but it makes the inheritance visible to the reader and gives
+// paragraph above says is still owed — but it makes the inheritance visible to the reader and gives
 // the eventual derivation one place to land per class.
 data install_d_shared_mode: NonEmptyStr = "0755"
 
 data install_file_shared_mode: NonEmptyStr = "0644"
 
 data install_executable_shared_mode: NonEmptyStr = "0755"
+
+// THE MODE DEBT ENDS WHEN THE SHARED CONSTANT DOES. A member carrying FilePermissions derived from
+// its declared dependents has no use for a hand-picked 0755 to inherit, so install_d_shared_mode
+// going away IS the discharge — which makes the trigger a retirement over a declaration that
+// exists today rather than a forward reference to a carrier nobody has written.
+data install_d_mode_derivation_dissolution: DissolutionCondition = retires_dissolution(
+  ref: DeclarationRef {
+    module_path: "gunbc.live_deploy.emit",
+    decl_name: "install_d_shared_mode",
+    field: WholeDeclaration,
+  }
+)
+
+// THE BELT'S RECEIPT WRITE IS NOT CRASH-SAFE, AND THAT IS ADMITTED RATHER THAN OVERLOOKED. The tick
+// writes its receipt in place instead of through the same-directory staging + rename that
+// gunbc.fleet_converge_cli uses. In-place is correct on ownership grounds — the directory is
+// service-user-owned and the file is not a stale root-owned artifact — but a tick interrupted
+// mid-write leaves a truncated receipt, which renders as BeltPassOutcomeUnreadable rather than as a
+// wrong verdict. Adopting the atomic publish is the strictly better construction and is not done
+// here, so the weaker one is a decision on the record.
+//
+// The trigger is UNBOUND deliberately. The discharge is the belt tick adopting the atomic publish,
+// and no declaration carries that today — binding forward to a name nobody has written is the §3
+// fabricated-citation class std.dissolution refuses by name.
+data belt_receipt_in_place_write_residue_dissolution: DissolutionCondition = unbound_dissolution(
+  description: "dissolves-on: the belt tick publishes its receipt through the same-directory staging + rename gunbc.fleet_converge_cli uses, so an interrupted tick cannot leave a truncated receipt behind." as NonEmptyStr
+)
 
 fn install_d_owned_for_user(user: NonEmptyStr, path: String) -> String {
   install_directory_owned_command(
@@ -935,6 +1082,30 @@ fn install_d_owned_for_user(user: NonEmptyStr, path: String) -> String {
   )
 }
 
+// WHY THIS INSTALLS WITH -o/-g RATHER THAN WRITING AS ROOT AND FIXING UP, and the history is the
+// irreducible part. The principal itself is not stated here: gunbc.fleet_posix_accounts owns it —
+// FleetAccountCiRunner is the deploy principal (unit_user=root is NOT the authorization principal)
+// and fleet_posix_ci_runner_sudo_grants() enumerates its NOPASSWD roster. Reading it from there is
+// the point of this paragraph; an earlier revision spelled the roster and its size inline and went
+// stale twice.
+//
+// AN EARLIER NOTE HERE CLAIMED ROOT, on the strength of a hand ssh verification (parent lane,
+// 2026-07-20) that CONTRADICTED the repo's own single authority (fleet_posix_accounts, probed
+// 2026-07-02). That is a §3 fork of the principal fact, and reality sided with the authority: the
+// first flip deploy (run 29822498755, 2026-07-21) died on bare-rsync EACCES and chgrp EPERM into
+// the service-user-owned tree. So the corrected realization stays INSIDE the granted set, and each
+// arm is shaped by which grant it has rather than by what would be convenient: directories and the
+// binary install with -o/-g service-user through the granted install, which puts ownership at
+// CREATION and dissolves the root-writes-then-chown two-step — the wrongly-owned intermediate state
+// is unwritable rather than merely repaired; the tree sync runs AS the service user through a
+// oneshot unit, because the owner writing its own tree is what install+systemctl compose into when
+// no `sudo -u` form is granted; teardown rm goes through the granted rm.
+//
+// RESIDUE, NAMED: emit-construction refusal of bare rsync/chown outside the granted set is not
+// built here and rides the effect-namespace-grants lane. And the former
+// install_d_shared_setup_latent_coupling marker fired as designed — /opt/gunbc now has MULTIPLE
+// owned writers, so the shared-prefix `install -d /opt/gunbc` rides the FIRST owned writer in apply
+// order (GunbcSourceTree) once, and each deeper parent (/opt/gunbc/bin) rides its own writer.
 fn install_d_owned_command(spec: DeploymentSpec, path: String) -> String {
   install_d_owned_for_user(user: spec.service.service_user, path: path)
 }
@@ -1019,8 +1190,46 @@ fn deploy_memory_cap_apply_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   }
 }
 
-data apply_tree_split_sync_note: String = "GunbcSourceTree stages working bytes with rsync --delete while excluding .git, then the ServeBinary step replaces the owner-run oneshot with Git-native repository convergence. Repository metadata is never transported as files: git imports the candidate objects from the runner checkout, compare-and-swaps the base ref, resets the index/worktree, and the deploy reads back its receipt before continuing. Target-local worktree registrations, session refs and unrelated refs are preserved by the convergence adjudication rather than by an additive file copy. Flags are -rlpt, not -a: the sync principal is the service user (emit_deploy_principal_note), so -a's owner/group replication would chgrp toward the runner's group and fail EPERM — ownership is the destination principal's by construction, never replicated from the source."
+// GunbcSourceTree stages working bytes with rsync --delete while excluding .git, then the
+// ServeBinary step replaces the owner-run oneshot with Git-native repository convergence.
+// Repository metadata is never transported as files: git imports the candidate objects from the
+// runner checkout, compare-and-swaps the base ref, resets the index/worktree, and the deploy reads
+// back its receipt before continuing. Target-local worktree registrations, session refs and
+// unrelated refs are preserved by the convergence adjudication rather than by an additive file
+// copy. Flags are -rlpt, not -a: the sync principal is the service user
+// (gunbc.fleet_posix_accounts FleetAccountCiRunner is the deploy principal, not the tree's owner),
+// so -a's owner/group replication would chgrp toward the runner's
+// group and fail EPERM — ownership is the destination principal's by construction, never replicated
+// from the source.
 
+// THE BELT MEMBER CARRIES THE install -d FOR THE DIRECTORY ITS TICK WRITES INTO, which is the
+// orchestration-is-derived-from-the-member rule emit_deploy_member_effect_note already states (a
+// ServerScript carries the install -d it writes into). The belt tick publishes its receipt to
+// instance_receipts_dir(instance_root) and the workflow UI reads that receipt to answer whether a
+// tick ran; with no directory owned by the service principal the write is EACCES, which is what
+// every instance was in fact doing — belt-last-tick.json was absent from BOTH srv1 roots when read
+// on 2026-08-19, so this receipt has never been written anywhere, not merely on the new slot.
+//
+// THIS ALSO RESTORES A BOOTSTRAP THAT WENT DEAD RATHER THAN ADDING A NEW ONE.
+// fleet_converge_receipt_atomic_publish_note FORMERLY named the deploy install-d on
+// fleet_converge_receipt_dir as riding FleetConvergeTimerUnit apply (that clause is itself now
+// corrected in gunbc.host_layout, so this sentence describes the prior revision rather than the
+// current text), and that member is a retired refusal poison (the cadence moved to on-demand
+// plan/apply, sleek-heron-218), so nothing has bootstrapped a receipts directory on any fresh
+// instance root since. Green has no receipts directory at all; production's exists only because it
+// predates the retirement. Riding the belt member is correct rather than convenient: the belt is
+// the consumer that needs the directory on every instance it is installed on, so the bootstrap
+// travels with a member that is unconditionally present wherever a receipt gets written.
+//
+// THERE IS DELIBERATELY NO TEARDOWN ARM. Receipts are produced artifacts, and
+// devboot_root_realization_note draws exactly this line — a deploy must never delete what it
+// produced — so the directory is bootstrapped and never removed, and a retract that also destroyed
+// the converge receipts sharing the directory would be the failure that note exists to prevent.
+// install -d is idempotent, so converging an existing correctly-owned directory (production's)
+// emits the same command and changes nothing.
+//
+// The in-place-write residue this member leaves is carried by
+// belt_receipt_in_place_write_residue_dissolution rather than by this paragraph.
 fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   match art.kind {
     GunbcSourceTree => [
@@ -1051,7 +1260,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         mode: install_file_shared_mode,
         dest: tree_sync_unit_path(names: spec.names) as String,
       )),
-      deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+      deploy_effect(inv: systemctl_daemon_reload_effect()),
       tree_sync_restart_step_with_diagnosis(spec: spec),
     ]
     ServeBinary => [
@@ -1077,7 +1286,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         mode: install_file_shared_mode,
         dest: tree_sync_unit_path(names: spec.names) as String,
       )),
-      deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+      deploy_effect(inv: systemctl_daemon_reload_effect()),
       tree_sync_restart_step_with_diagnosis(spec: spec),
       deploy_raw(command: repository_convergence_readback_command(spec: spec)),
     ]
@@ -1089,6 +1298,9 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         dir: attempt_state_directory_at(path: art.path as String as FilePath),
       )),
     ]
+    ComputeRoot => [
+      deploy_raw(command: install_d_owned_command(spec: spec, path: art.path as String)),
+    ]
     SystemdUnit => [
       apply_systemd_unit_write_step(spec: spec, revision: revision),
       deploy_raw(command: deploy_stage_install_command(
@@ -1096,9 +1308,9 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         mode: install_file_shared_mode,
         dest: art.path as String,
       )),
-      deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
-      deploy_raw(command: systemctl_enable_command(unit: spec.service.unit_name, privileged: true)),
-      deploy_raw(command: systemctl_restart_command(unit: spec.service.unit_name, privileged: true)),
+      deploy_effect(inv: systemctl_daemon_reload_effect()),
+      deploy_effect(inv: systemctl_enable_effect(unit: spec.service.unit_name)),
+      deploy_effect(inv: systemctl_restart_effect(unit: spec.service.unit_name)),
     ]
     PublicationHelperTimerUnit => concat(
       apply_publication_spool_steps(spec: spec),
@@ -1115,9 +1327,9 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
           mode: install_file_shared_mode,
           dest: art.path as String,
         )),
-        deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
-        deploy_raw(command: systemctl_enable_command(unit: deployment_publication_timer_unit_name(names: spec.names), privileged: true)),
-        deploy_raw(command: systemctl_restart_command(unit: deployment_publication_timer_unit_name(names: spec.names), privileged: true)),
+        deploy_effect(inv: systemctl_daemon_reload_effect()),
+        deploy_effect(inv: systemctl_enable_effect(unit: deployment_publication_timer_unit_name(names: spec.names))),
+        deploy_effect(inv: systemctl_restart_effect(unit: deployment_publication_timer_unit_name(names: spec.names))),
       ]
     )
     BeltTimerUnit => [
@@ -1137,9 +1349,9 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         mode: install_file_shared_mode,
         dest: art.path as String,
       )),
-      deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
-      deploy_raw(command: systemctl_enable_command(unit: deployment_belt_timer_unit_name(names: spec.names), privileged: true)),
-      deploy_raw(command: systemctl_restart_command(unit: deployment_belt_timer_unit_name(names: spec.names), privileged: true)),
+      deploy_effect(inv: systemctl_daemon_reload_effect()),
+      deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_timer_unit_name(names: spec.names))),
+      deploy_effect(inv: systemctl_restart_effect(unit: deployment_belt_timer_unit_name(names: spec.names))),
     ]
     FleetConvergeTimerUnit => [
       deploy_raw(command: "__GUNBC_FLEET_CONVERGE_REFUSED__ FleetConvergeTimerUnit retired from deployment membership — timer cadence is on-demand via fleet-converge.yml plan/apply, not live_deploy apply (sleek-heron-218)"),
@@ -1154,8 +1366,8 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         mode: install_file_shared_mode,
         dest: art.path as String,
       )),
-      deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
-      deploy_raw(command: systemctl_restart_command(unit: deployment_tree_remote_unit_name(names: spec.names), privileged: true)),
+      deploy_effect(inv: systemctl_daemon_reload_effect()),
+      deploy_effect(inv: systemctl_restart_effect(unit: deployment_tree_remote_unit_name(names: spec.names))),
     ]
   }
 }
@@ -1178,8 +1390,12 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
 // remove this store even by mistake -- the property the previous `rm -d` arm tried to approximate
 // by refusing on a non-empty directory is now structural, and the awkward consequence that arm
 // carried (a full retract could never complete once the store existed) simply does not arise.
-data belt_receipt_dir_bootstrap_note: String = "THE BELT MEMBER CARRIES THE install -d FOR THE DIRECTORY ITS TICK WRITES INTO, which is the orchestration-is-derived-from-the-member rule emit_deploy_member_effect_note already states (a ServerScript carries the install -d it writes into). The belt tick publishes its receipt to instance_receipts_dir(instance_root) and the workflow UI reads that receipt to answer whether a tick ran; with no directory owned by the service principal the write is EACCES, which is what every instance was in fact doing — belt-last-tick.json was absent from BOTH srv1 roots when read on 2026-08-19, so this receipt has never been written anywhere, not merely on the new slot.\n\nTHIS ALSO RESTORES A BOOTSTRAP THAT WENT DEAD RATHER THAN ADDING A NEW ONE. fleet_converge_receipt_atomic_publish_note FORMERLY named the deploy install-d on fleet_converge_receipt_dir as riding FleetConvergeTimerUnit apply (that clause is itself now corrected in gunbc.host_layout, so this sentence describes the prior revision rather than the current text), and that member is a retired refusal poison (the cadence moved to on-demand plan/apply, sleek-heron-218), so nothing has bootstrapped a receipts directory on any fresh instance root since. Green has no receipts directory at all; production's exists only because it predates the retirement. Riding the belt member is correct rather than convenient: the belt is the consumer that needs the directory on every instance it is installed on, so the bootstrap travels with a member that is unconditionally present wherever a receipt gets written.\n\nTHERE IS DELIBERATELY NO TEARDOWN ARM. Receipts are produced artifacts, and devboot_root_realization_note draws exactly this line — a deploy must never delete what it produced — so the directory is bootstrapped and never removed, and a retract that also destroyed the converge receipts sharing the directory would be the failure that note exists to prevent. install -d is idempotent, so converging an existing correctly-owned directory (production's) emits the same command and changes nothing.\n\nRESIDUE, NAMED: the belt writes its receipt in place rather than through the same-directory staging + rename that gunbc.fleet_converge_cli uses. In-place write is correct here because the directory is service-user-owned and the file is not a stale root-owned artifact, but it is NOT crash-safe — a tick interrupted mid-write leaves a truncated receipt, which renders as BeltPassOutcomeUnreadable rather than as a wrong verdict. Adopting the atomic publish is the strictly better construction and is not done here; it is stated so the weaker one is a decision on the record rather than an oversight."
-data teardown_worktree_rmdir_note: String = "DispatchWorktreeRoot teardown is rm -d (empty-directory removal via the granted rm — the unprivileged principal has no rmdir grant and no write on the root-owned parent), NEVER rm -rf: a non-empty worktree root means live agent worktrees exist, so the retract FAILS LOUDLY there instead of silently destroying sessions (DESIGN 5 — the refusal is the empty-dir precondition itself, identical to the former rmdir). GunbcSourceTree teardown runs AFTER the worktree rm -d succeeds, so the repo the worktrees are registered in is never deleted from under them."
+// DispatchWorktreeRoot teardown is rm -d (empty-directory removal via the granted rm — the
+// unprivileged principal has no rmdir grant and no write on the root-owned parent), NEVER rm -rf: a
+// non-empty worktree root means live agent worktrees exist, so the retract FAILS LOUDLY there
+// instead of silently destroying sessions (DESIGN 5 — the refusal is the empty-dir precondition
+// itself, identical to the former rmdir). GunbcSourceTree teardown runs AFTER the worktree rm -d
+// succeeds, so the repo the worktrees are registered in is never deleted from under them.
 
 fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> List<PipelineStep> {
   match art.kind {
@@ -1190,7 +1406,7 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
       systemctl_disable_now_if_present_steps(unit: spec.service.unit_name, privileged: true),
       [
         deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
-        deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+        deploy_effect(inv: systemctl_daemon_reload_effect()),
       ]
     )
     BeltTimerUnit => concat(
@@ -1200,7 +1416,7 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
           art.path as String,
           deployment_belt_service_unit_path(names: spec.names) as String,
         ])),
-        deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+        deploy_effect(inv: systemctl_daemon_reload_effect()),
       ]
     )
     FleetConvergeTimerUnit => concat(
@@ -1210,7 +1426,7 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
           art.path as String,
           deployment_fleet_converge_service_unit_path(names: spec.names) as String,
         ])),
-        deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+        deploy_effect(inv: systemctl_daemon_reload_effect()),
       ]
     )
     PublicationHelperTimerUnit => concat(
@@ -1220,14 +1436,14 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
           art.path as String,
           deployment_publication_service_unit_path(names: spec.names) as String,
         ])),
-        deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+        deploy_effect(inv: systemctl_daemon_reload_effect()),
       ]
     )
     DeployedTreeRemoteUnit => concat(
       systemctl_disable_now_if_present_steps(unit: deployment_tree_remote_unit_name(names: spec.names), privileged: true),
       [
         deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
-        deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+        deploy_effect(inv: systemctl_daemon_reload_effect()),
       ]
     )
     DispatchWorktreeRoot => [
@@ -1235,6 +1451,9 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
     ]
     AttemptStateRoot => [
       deploy_raw(command: rm_empty_directory_command(path: art.path as String)),
+    ]
+    ComputeRoot => [
+      deploy_raw(command: rm_force_recursive_command(path: art.path as String)),
     ]
     ServeBinary => [
       deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
@@ -1245,7 +1464,7 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
         spec.names.tree_sync_env_path as String,
         deployment_slice_unit_path(names: spec.names) as String,
       ])),
-      deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+      deploy_effect(inv: systemctl_daemon_reload_effect()),
       deploy_raw(command: rm_force_recursive_command(path: art.path as String)),
     ]
   }
@@ -1295,6 +1514,13 @@ fn emit_deploy_member_effect(effect: MemberEffect<DeploymentStep>, spec: Deploym
   }
 }
 
+// THE TRAP LINE IS STILL A STRING, AND IT IS THE ONLY REMAINING ONE IN EITHER PREAMBLE.
+// v2.extdeps.languages.bash_build has no trap node and PipelineStep has no trap variant, so
+// there is nothing to build it from. It is left as authored text rather than approximated:
+// every nearby shape (a Do-run of `trap`, a subshell) either re-assembles the same quoting by
+// hand or changes what the trap does. Adding the grammar row is the fix and it is out of this
+// PR's scope; naming the gap here is what keeps the next reader from reaching for the
+// approximation. See also the brace-group gap at tree_sync_restart_step_with_diagnosis.
 fn apply_intent_from_effects(
   spec: DeploymentSpec,
   effects: List<MemberEffect<DeploymentStep>>,
