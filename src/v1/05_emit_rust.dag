@@ -4861,6 +4861,19 @@ type ReferenceDerivedUseLinePlan {
 // (gunbc compile --source-root src/v1 --source-root dag --entry src/v1/compile.dag). The predicate
 // is unchanged: emitted_source_token_set holds exactly the tokens the list holds, so emit_map_has
 // answers what `any` answered, for the same names in the same order.
+// THE PROVIDER DECISION IS CARRIED, NOT REDISCOVERED FROM THE SPELLING.
+// The planner used to resolve each surviving candidate to a provider, throw that answer away, and
+// then ask the registry for the same name AGAIN to group names under each provider. The second ask
+// was keyed on the bare leaf, which is not a key once the registry is keyed on identity, so it
+// answered Absent and the filter answered false -- and a name whose provider had just been decided
+// correctly was dropped from every group. Nothing said so: a grouping miss is a false, not a
+// refusal, and not an export-proof failure either. One decision, carried to the place that consumes
+// it, is both the repair and the reason the second lookup cannot drift from the first again.
+type ReferenceDerivedProviderBinding {
+  name: String
+  provider_module: String
+}
+
 fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> ReferenceDerivedUseLinePlan {
   {
     let module_source = match typed_modules |> filter(tm => authored_name_at(source_indices: source_indices, node: tm.module) == this_module_name) |> first {
@@ -4919,19 +4932,15 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
     let unlisted = rows
       |> filter(r => reference_derived_candidate_survived(disposition: r.disposition))
       |> map(r => r.name)
-    let providers = unique_strings(items: unlisted |> flat_map(name =>
+    let resolved = unlisted |> flat_map(name =>
       match lookup_item_by_leaf(leaf: name, registry: registry, emit_info: emit_info) {
-        Present { value: info } => [info.module_name]
+        Present { value: info } => [ReferenceDerivedProviderBinding { name: name, provider_module: info.module_name }]
         Absent => []
       }
-    ))
+    )
+    let providers = unique_strings(items: resolved |> map(b => b.provider_module))
     let lines = providers |> flat_map(provider =>
-      let names = unlisted |> filter(name =>
-        match map_get(registry, name) {
-          Present { value: info } => info.module_name == provider
-          Absent => false
-        }
-      )
+      let names = resolved |> filter(b => b.provider_module == provider) |> map(b => b.name)
       let plan_module_env = match map_get(module_index.by_name, this_module_name) {
         Present { value: tm } => Present { value: tm.type_env }
         Absent => none
