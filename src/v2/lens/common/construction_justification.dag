@@ -103,13 +103,6 @@ fn wall_now_total_projection_forbids_outside_modeled_guarantee(
   }
 }
 
-fn construction_class_is_outside_modeled_guarantee(class: ConstructionClass) -> Bool {
-  match class {
-    OutsideModeledGuarantee { boundary: _ } => true
-    _ => false
-  }
-}
-
 fn construction_class_outside_boundary_still_outside(class: ConstructionClass) -> Bool {
   match class {
     OutsideModeledGuarantee { boundary: b } => guarantee_boundary_still_outside(boundary: b)
