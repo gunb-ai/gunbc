@@ -4,7 +4,7 @@ import std.types { NonEmptyStr, String, List, Bool, Int }
 import std.measure { ByteSize, byte_size_count, HardwareThreadCount, hardware_thread_count_value }
 import extdeps.systemd {
   SystemdUnitProperty,
-  MemoryMax, MemoryHigh, MemorySwapMax, TasksMax, CPUWeight,
+  MemoryMax, MemoryHigh, MemorySwapMax, TasksMax, CPUWeight, CPUQuota,
   systemd_unit_property_wire,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -437,11 +437,15 @@ type SystemdSliceDirective sole_constructor {
 // unwritable state writable again to buy reuse. The memory half of the filing stays open and keeps its
 // own trigger.
 //
-// There is deliberately no `slice_cpu_quota` mint beside slice_cpu_weight. One was written and
-// deleted unused (review 57699): the live CPU-quota producer is gunbc.host_converge
-// runner_cpu_boundary_knobs, which reaches the property-generic PerSlotMemoryCap target directly, so
-// a slice-directive mint would have been set-completion with no caller -- the residue DESIGN 6 names.
-// It costs one line to add when a slice-directive consumer exists.
+// `slice_cpu_quota` NOW EXISTS BECAUSE ITS CONSUMER DOES, which is the condition the deletion named
+// rather than a reversal of it. One was written and deleted unused (review 57699) because the only
+// live CPU-quota producer was gunbc.host_converge runner_cpu_boundary_knobs, which reaches the
+// property-generic PerSlotMemoryCap target directly -- so a slice-directive mint was set-completion
+// with no caller, the residue DESIGN 6 names. gunbc.fabric_cell_effect is now that caller: a microVM
+// guest's topology has to be derived from a quantity the CELL enforces, and the cell carried
+// CPUWeight alone, which guarantees no amount of anything. The quota the fleet already declares
+// lands on the runner UNIT, a different systemd object from the cell slice, so the cell had no
+// absolute entitlement to derive from until this directive existed.
 type SystemdDirectiveValue
   = DirectiveByteCount { bytes: ByteSize }
   | DirectiveCardinal { count: Int }
@@ -511,6 +515,14 @@ fn slice_tasks_max_unlimited() -> SystemdSliceDirective {
 // `ServiceNice`'s -20..19 above.
 fn slice_cpu_weight(weight: Int) -> SystemdSliceDirective {
   SystemdSliceDirective { property: CPUWeight, value: DirectiveWeight { weight: weight } }
+}
+
+// `CPUQuota=` IS AN ABSOLUTE CEILING AND IS NOT A SECOND SPELLING OF `slice_cpu_weight` ABOVE. The
+// weight decides who yields first under contention and promises no quantity; this promises CPU time
+// per wall second, where 100% is one CPU by definition. A consumer that needs a number a guest can
+// be sized against needs this one; a consumer that only needs fair sharing needs the other.
+fn slice_cpu_quota(threads: HardwareThreadCount) -> SystemdSliceDirective {
+  SystemdSliceDirective { property: CPUQuota, value: DirectiveCpuTime { threads: threads } }
 }
 
 // The directive names are systemd's, spelled once here. A consumer never writes the literal

@@ -14,8 +14,17 @@ import extdeps.systemd {
   MemoryLimitAbsent,
   parse_systemd_memory_limit_show,
   systemd_memory_limit_wire_label,
+  SystemdCpuQuotaPerSec,
+  CpuQuotaUnbounded,
+  CpuQuotaPerSec,
+  CpuQuotaAbsent,
+  CpuQuotaUndecodable,
+  parse_systemd_cpu_quota_per_sec_show,
+  systemd_cpu_quota_per_sec_identity,
+  systemd_cpu_quota_per_sec_of_threads,
+  microseconds_per_second,
 }
-import std.measure { byte_size, byte_size_count }
+import std.measure { byte_size, byte_size_count, microsecond_count, hardware_thread_count, HardwareThreadCount }
 import gunbc.ci_floor_measurement { gunbc_ci_runner_cgroup_memory_cap }
 import std.types { NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -51,5 +60,115 @@ test fn witness_memory_limit_bytes_roundtrip() -> Bool {
     MemoryLimitBytes { bytes: b } =>
       systemd_memory_limit_wire_label(lim: MemoryLimitBytes { bytes: b }) == raw
     _ => false
+  }
+}
+
+
+// THE READBACK CENSUS, DRIVEN AS FIXTURES, BECAUSE THE FORMS ARE AN OBSERVED FACT ABOUT SYSTEMD AND
+// NOT A GUESS. Each row below was read from systemd 255 by setting CPUQuota= on a transient unit and
+// showing CPUQuotaPerSecUSec back. The producer is `systemd-run --property=CPUQuota=N%` followed by
+// `systemctl show -p CPUQuotaPerSecUSec --value`; these rows are what it printed.
+fn quota_reads_usec(raw: String, usec: Int) -> Bool {
+  match parse_systemd_cpu_quota_per_sec_show(raw: raw) {
+    CpuQuotaPerSec { usec: u } => microsecond_count(m: u) == usec
+    CpuQuotaUnbounded => false
+    CpuQuotaAbsent => false
+    CpuQuotaUndecodable { raw: _ } => false
+  }
+}
+
+fn quota_is_undecodable(raw: String) -> Bool {
+  match parse_systemd_cpu_quota_per_sec_show(raw: raw) {
+    CpuQuotaUndecodable { raw: r } => r == raw
+    CpuQuotaPerSec { usec: _ } => false
+    CpuQuotaUnbounded => false
+    CpuQuotaAbsent => false
+  }
+}
+
+// THE WHOLE-SECOND AND SUB-SECOND FORMS DECODE, and 600% -- the shape a six-thread cell asks for --
+// is the row this fleet actually depends on.
+test fn the_simple_readback_forms_decode_to_their_magnitudes() -> Bool {
+  quota_reads_usec(raw: "100ms", usec: 100000)
+    && quota_reads_usec(raw: "250ms", usec: 250000)
+    && quota_reads_usec(raw: "500ms", usec: 500000)
+    && quota_reads_usec(raw: "1s", usec: 1000000)
+    && quota_reads_usec(raw: "6s", usec: 6000000)
+    && quota_reads_usec(raw: "12s", usec: 12000000)
+    && quota_reads_usec(raw: "59s", usec: 59000000)
+}
+
+// PAST SIXTY CPU-SECONDS PER SECOND SYSTEMD SWITCHES TO A COMPOUND SPAN, and this is the row that
+// would have caught the original defect. A host with sixty or more cores under a full-machine quota
+// prints `1min`, not `60s`; a reader that handles only the simple forms is correct on every small
+// host and wrong on exactly the large ones.
+test fn the_compound_readback_forms_decode_to_their_magnitudes() -> Bool {
+  quota_reads_usec(raw: "1min", usec: 60000000)
+    && quota_reads_usec(raw: "2min", usec: 120000000)
+    && quota_reads_usec(raw: "1min 30s", usec: 90000000)
+    && quota_reads_usec(raw: "1min 500ms", usec: 60500000)
+}
+
+// ONE MAGNITUDE, TWO SPELLINGS, ONE ANSWER -- which is the reason this compares magnitudes instead
+// of strings at all. A cell configured at 6000% reads back as `1min` on one host and could be
+// written `60s` by hand on another; as strings those are two different states and the cell drifts
+// for a formatting reason that has nothing to do with its ceiling.
+test fn one_minute_and_sixty_seconds_are_the_same_quota() -> Bool {
+  quota_reads_usec(raw: "1min", usec: 60000000) && quota_reads_usec(raw: "60s", usec: 60000000)
+}
+
+// THREE ANSWERS, NOT TWO, AND THE CENSUS DECIDES WHICH IS WHICH. An unset quota reads back
+// `infinity`, so unbounded -- not empty -- is the host affirmatively reporting no ceiling. Empty is
+// the property not being reported at all. Undecodable is a reading this module cannot interpret,
+// which says nothing about the host. This row keeps the fail-open direction closed by refusing to
+// let any of the three collapse into another.
+test fn absence_unbounded_and_undecodable_stay_three_answers() -> Bool {
+  match parse_systemd_cpu_quota_per_sec_show(raw: "") {
+    CpuQuotaAbsent => true
+    CpuQuotaUnbounded => false
+    CpuQuotaPerSec { usec: _ } => false
+    CpuQuotaUndecodable { raw: _ } => false
+  }
+    && match parse_systemd_cpu_quota_per_sec_show(raw: "infinity") {
+      CpuQuotaUnbounded => true
+      CpuQuotaAbsent => false
+      CpuQuotaPerSec { usec: _ } => false
+      CpuQuotaUndecodable { raw: _ } => false
+    }
+    && quota_is_undecodable(raw: "1.500000s")
+    && quota_is_undecodable(raw: "wat")
+}
+
+// THE FRACTIONAL SPELLING REFUSES RATHER THAN TRUNCATING, and it is a real systemd output -- 150%
+// prints `1.500000s`. Refusing loses the reading; truncating to `1s` would report a cell ceilinged
+// at one CPU when the host ceilinged it at one and a half, which is a wrong answer rather than a
+// missing one. gunbc's own quotas are whole threads and never reach this spelling.
+test fn the_fractional_second_spelling_refuses_with_its_text() -> Bool {
+  quota_is_undecodable(raw: "1.500000s")
+    && quota_is_undecodable(raw: "2.500000s")
+    && quota_is_undecodable(raw: "33.330000s")
+}
+
+// A DESIRED THREAD COUNT AND THE HOST'S OWN PRINTING MEET AT THE SAME IDENTITY, which is the join
+// the boundary digest depends on. Six threads is 600%, the host prints `6s`, and both sides render
+// the same string -- so an unchanged cell compares equal instead of drifting forever.
+test fn the_desired_threads_and_the_observed_span_share_one_identity() -> Bool {
+  match systemd_cpu_quota_per_sec_identity(q: systemd_cpu_quota_per_sec_of_threads(threads: Present { value: hardware_thread_count(count: 6) })) {
+    Absent => false
+    Present { value: desired } =>
+      match systemd_cpu_quota_per_sec_identity(q: parse_systemd_cpu_quota_per_sec_show(raw: "6s")) {
+        Absent => false
+        Present { value: observed } => desired == observed && desired == "6000000"
+      }
+  }
+}
+
+// AN UNDECODABLE READING HAS NO IDENTITY TO COMPARE, so it cannot reach a digest and cannot compare
+// equal to anything. Without this the refusal arm would exist and still fail open at the one place
+// it matters.
+test fn an_undecodable_reading_yields_no_identity() -> Bool {
+  match systemd_cpu_quota_per_sec_identity(q: parse_systemd_cpu_quota_per_sec_show(raw: "1.500000s")) {
+    Absent => true
+    Present { value: _ } => false
   }
 }
