@@ -1,0 +1,120 @@
+module v2.compiler.self_host.candidate_generation_stage_verdicts
+
+import v2.compiler.infer { infer }
+import v2.compiler.self_host.candidate_generation { generate_translate_self_emit_candidate }
+import v2.std.algebra { Cons, Empty, fold_list, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostics,
+  NonEmptyDiagnostics,
+  None,
+  Rejected,
+  Some
+}
+import v2.std.node { Node, Symbol }
+
+// THE PER-STAGE VERDICT INSTRUMENT `v2.workflow.floor_expected_red` NAMES AS THE REPRODUCIBLE
+// PRODUCER of its add-slice receipt. That receipt was measured once, at main 3a8344b5c, by a
+// throwaway probe: `infer(dag_add_emitted_root)` answered `infer_accepted` while
+// `generate_translate_self_emit_candidate` over the same root and `dag_add_target_model` refused
+// headed by `infer_grounding_not_derived`. No `.dag` entry re-derived it, so a reader could not
+// re-run it; this module is the standing entry, parameterized over the one root and target so
+// the seam is measured, never transcribed (DESIGN section 6).
+//
+// THE VERDICT VOCABULARY IS THE RECEIPT'S. `infer_verdict` is `infer_accepted` or
+// `infer_rejected`. `composition_verdict` is `candidate_accepted` when the infer-then-translate
+// composition accepts, and otherwise the rejection's head reason -- today
+// `infer_grounding_not_derived`, the typed frontier `v2.compiler.infer`
+// `node_grounding_frontier_note` declares: infer derives grounding for four of the closed
+// vocabulary's twelve kinds and records GroundingNotDerived for the rest, which
+// `translate_grounding_derived_gate_subtree` then refuses.
+//
+// THE CARRIED-REASONS FIELDS ARE THE LOAD-BEARING HALF THE VERDICT SYMBOLS CANNOT SAY. Infer
+// ACCEPTS this root while CARRYING the frontier diagnostic on its accepted path, so the enrolled
+// witness's `d == None` conjunct fails even where the composition reaches acceptance -- the
+// roster note's "both conjuncts fail for the one cause". `infer_carried_reasons` surfaces what
+// infer carried; `composition_carried_reasons` is the composition's accepted-path diagnostics or,
+// on refusal, the full rejection chain head-first (which bind_outcome prefixes with infer's
+// pending diagnostics, so today it is the one frontier reason repeated).
+//
+// THIS INSTRUMENT DOES NOT RETIRE WHEN THE ADD-SLICE STALL
+// (`gunbc.guarantee_stall.self_host_candidate_generation_add_slice_stall`) DISSOLVES. It is the
+// standing measurement of a production seam, and its verdicts flipping to
+// `candidate_accepted` with empty carried lists is the signal the stall's trigger fired. It
+// retires only if the `generate_translate_self_emit_candidate` seam itself dissolves.
+
+type CandidateGenerationStageVerdicts {
+  infer_verdict: Symbol
+  infer_carried_reasons: List<Symbol>
+  composition_verdict: Symbol
+  composition_carried_reasons: List<Symbol>
+}
+
+fn non_empty_diagnostic_reasons(d: NonEmptyDiagnostics) -> List<Symbol> {
+  Cons {
+    head: d.head.reason,
+    tail: fold_list(
+      xs: d.tail,
+      empty: Empty,
+      cons: fn(acc, diag) { list_snoc_item(xs: acc, item: diag.reason) }
+    )
+  }
+}
+
+fn diagnostics_carried_reasons(d: Diagnostics) -> List<Symbol> {
+  match d {
+    None => Empty
+    Some { diagnostics: ne } => non_empty_diagnostic_reasons(d: ne)
+  }
+}
+
+fn candidate_generation_composition_verdicts(
+  resolved_module: Node,
+  dag_target: TargetModel,
+  infer_verdict: Symbol,
+  infer_carried_reasons: List<Symbol>
+) -> CandidateGenerationStageVerdicts {
+  match generate_translate_self_emit_candidate(
+    resolved_module: resolved_module,
+    dag_target: dag_target
+  ) {
+    Accepted { value: _, diagnostics: d } =>
+      CandidateGenerationStageVerdicts {
+        infer_verdict: infer_verdict,
+        infer_carried_reasons: infer_carried_reasons,
+        composition_verdict: ^candidate_accepted,
+        composition_carried_reasons: diagnostics_carried_reasons(d: d)
+      }
+    Rejected { diagnostics: d } =>
+      CandidateGenerationStageVerdicts {
+        infer_verdict: infer_verdict,
+        infer_carried_reasons: infer_carried_reasons,
+        composition_verdict: d.head.reason,
+        composition_carried_reasons: non_empty_diagnostic_reasons(d: d)
+      }
+  }
+}
+
+fn candidate_generation_stage_verdicts(
+  resolved_module: Node,
+  dag_target: TargetModel
+) -> CandidateGenerationStageVerdicts {
+  match infer(tree: resolved_module) {
+    Accepted { value: _, diagnostics: d } =>
+      candidate_generation_composition_verdicts(
+        resolved_module: resolved_module,
+        dag_target: dag_target,
+        infer_verdict: ^infer_accepted,
+        infer_carried_reasons: diagnostics_carried_reasons(d: d)
+      )
+    Rejected { diagnostics: d } =>
+      candidate_generation_composition_verdicts(
+        resolved_module: resolved_module,
+        dag_target: dag_target,
+        infer_verdict: ^infer_rejected,
+        infer_carried_reasons: non_empty_diagnostic_reasons(d: d)
+      )
+  }
+}
