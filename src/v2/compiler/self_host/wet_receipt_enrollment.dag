@@ -108,6 +108,11 @@ data falsifier_self_host_wet_template_entries: List<ScheduleWitnessEntry> = [
 // witness_cadence_has_scheduled_route). The flag stood at true, so dropping the conjunct changes no
 // result today; it separates the state-space, per DESIGN's state-space-conflation failure mode.
 
+// Returns false: the R1 bijection identity has been rehomed from FalsifierSelfHostWet to
+// LocalRepoWetLane (2026-09-06, dashboard node adhoc-cf84ab88-8dc). It is no longer on
+// falsifier_self_host_wet_template_entries and is instead enrolled in
+// v2.workflow.local_repo_wet_terminal local_repo_wet_schedule. The fold below returns false
+// because the entry was removed from the roster — this is computed from the data, not hardcoded.
 fn dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet() -> Bool {
   fold(
     falsifier_self_host_wet_template_entries,
