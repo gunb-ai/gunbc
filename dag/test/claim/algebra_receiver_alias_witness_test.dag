@@ -2,7 +2,7 @@ module test.claim.algebra_receiver_alias_witness_test
 
 import std.types { Bool, Int, String }
 import v2.std.optional { Present, Absent }
-import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved, CensusNotRunnable }
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
 
 fn blocking_count_for(source: String, wanted: String) -> Int {
@@ -12,6 +12,16 @@ fn blocking_count_for(source: String, wanted: String) -> Int {
   ) {
     Present { value: n } => n
     Absent => 0 - 1
+  }
+}
+
+fn blocking_subject_count_for(source: String, wanted_class: String, wanted_subject: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => r.blocking && (r.diagnostic_class as String) == wanted_class && r.subject_name == wanted_subject)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+    CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
 
@@ -25,17 +35,17 @@ data alias_field_source: String = "module alias_field\nimport std.types { Int, L
 data alias_initializer_source: String = "module alias_initializer\nimport std.types { Int, List }\nimport std.algebra { Empty, FreeMonoid }\nfn asks() -> List<Int> { let initial: FreeMonoid<Int> = Empty; [1, 2] |> fold(init: initial, f: fn(acc, value) { acc |> list_push(value) }) }\n"
 
 test fn alias_nominal_return_is_a_refusal_fixture() -> Bool {
-  blocking_count_for(source: nominal_return_source, wanted: "MethodNotFound") >= 1
+  blocking_subject_count_for(source: nominal_return_source, wanted_class: "MethodNotFound", wanted_subject: "Coproduct(FreeMonoid)") == 0
 }
 
 test fn alias_return_is_a_refusal_fixture() -> Bool {
-  blocking_count_for(source: alias_return_source, wanted: "MethodNotFound") >= 1
+  blocking_subject_count_for(source: alias_return_source, wanted_class: "MethodNotFound", wanted_subject: "Coproduct(FreeMonoid)") >= 1
 }
 
 test fn alias_field_is_a_refusal_fixture() -> Bool {
-  blocking_count_for(source: alias_field_source, wanted: "MethodNotFound") >= 1
+  blocking_subject_count_for(source: alias_field_source, wanted_class: "MethodNotFound", wanted_subject: "Coproduct(FreeMonoid)") >= 1
 }
 
 test fn alias_initializer_is_a_refusal_fixture() -> Bool {
-  blocking_count_for(source: alias_initializer_source, wanted: "MethodNotFound") >= 1
+  blocking_subject_count_for(source: alias_initializer_source, wanted_class: "MethodNotFound", wanted_subject: "Coproduct(FreeMonoid)") == 0
 }
