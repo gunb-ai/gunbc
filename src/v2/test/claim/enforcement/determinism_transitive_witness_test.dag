@@ -74,12 +74,13 @@ import v2.std.text { String }
 // that a stamp is checked by nothing, so a silent row and a lying row are indistinguishable.
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data determinism_live_subject_roots: List<String> = ["src/v2/lens/affected_set"]
+data determinism_live_subject_roots: List<String> = ["src/v2/lens"]
 
-// Directory grain: this subject is a directory; the main affected_set.dag
-// still carries function declarations (the fn-arrow composition was the
-// corpus_dependency_view submodule, which is deleted). entry_selection.dag
-// under this root is a data-only module with no fn declarations.
+// Directory grain: walk the whole lens directory for fn-arrow declarations.
+// The entry module is v2.lens.affected_set (the affected-set lens functions
+// are still the determinism call-graph root; the fn-arrow selection composition
+// under corpus_dependency_view is deleted but the main affected_set.dag module
+// still carries 78 function declarations).
 data determinism_live_subject_files: List<String> = []
 
 data determinism_live_entry_module: String = "v2.lens.affected_set"
