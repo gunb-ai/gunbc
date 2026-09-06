@@ -292,7 +292,7 @@ test fn witness_unknown_method_refuses() -> Bool {
 // two arms must stay distinct statuses; collapsing them reds this row.
 
 test fn witness_unknown_method_folds_501_response() -> Bool {
-  let r = roadmap_serve_respond(method_label: "BREW", path: "/", body: "", release_revision: deploy_witness_release_revision)
+  let r = roadmap_serve_respond(method_label: "BREW", path: "/", body: "", tailscale_identity: "", release_revision: deploy_witness_release_revision)
   r.status == 501 && string_contains(s: r.body, pattern: "BREW")
 }
 
