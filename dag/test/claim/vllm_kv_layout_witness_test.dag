@@ -3,7 +3,8 @@ module test.claim.vllm_kv_layout_witness
 import std.types { Bool, String, Int, NonEmptyStr, List }
 import v2.std.optional { Present, Absent }
 import std.nat { Nat }
-import std.measure { TokenCount, ByteSize, token_count, byte_size }
+import std.measure { TokenCount, token_count, token_count_value }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision, vllm_source_revision_read }
 import extdeps.vllm.log_lines { VllmStartupReading, vllm_startup_reading, GpuKvCacheSize }
 import extdeps.vllm.kv_cache {
   VllmObservedKvPool, VllmKvPoolAdmission, KvPoolAdmitted, KvPoolRefused,
@@ -12,14 +13,15 @@ import extdeps.vllm.kv_cache {
   vllm_pool_reconstruction_is_authoritative,
 }
 import extdeps.vllm.kv_layout {
-  KvBlockSize, KvGroupKind, FullAttention, SlidingWindowAttention, MambaState,
+  KvBlockSize, KvLayerCount, KvGroupKind, FullAttention, SlidingWindowAttention, MambaState,
   KvGroupLayout, ResolvedKvLayout, resolved_kv_layout,
   VllmReportedCapacity, vllm_reported_capacity,
   BlocksPerRequest, BlocksPerRequestRecovered, BlocksPerRequestUnrecoverable,
   recovered_blocks_per_max_length_request,
   PrintedLinesAgreement, PrintedLinesAgree, PrintedLinesDisagree, PrintedLinesUncheckable, printed_lines_agree,
   AdmissionCost, AdmissionCostBlocks, AdmissionCostUnestablished, cold_admission_blocks,
-  AllocatorUsage, allocator_usage, allocator_usage_is_occupancy,
+  AllocatorUsage, UsageReading, UsageRead, FreeCountImpossible, allocator_usage, allocator_usage_is_occupancy,
+  group_blocks_for,
 }
 
 // The group A head's own two startup lines, 2026-09-05T20:43:56Z.
@@ -35,7 +37,7 @@ fn w_pool() -> VllmObservedKvPool {
     KvPoolRefused { cause: _ } =>
       match vllm_observed_kv_pool_from_reading(
         tokens: token_count(count: 0),
-        reading: vllm_startup_reading(line: GpuKvCacheSize, captured_text: "x" as NonEmptyStr),
+        reading: vllm_startup_reading(line: GpuKvCacheSize, captured_text: "x" as NonEmptyStr, observed_at_revision: vllm_source_revision_read),
       ) {
         KvPoolAdmitted { pool: q } => q
         KvPoolRefused { cause: _ } => w_pool()
@@ -106,12 +108,12 @@ test fn a_mistranscribed_concurrency_line_breaks_the_printed_line_check() -> Boo
   }
 }
 
-fn w_full(layers: Nat, block: KvBlockSize) -> KvGroupLayout {
-  KvGroupLayout { kind: FullAttention, layer_count: layers, block_size: block, page_size_bytes: byte_size(count: 32768), sliding_window: none }
+fn w_full(layers: KvLayerCount, block: KvBlockSize) -> KvGroupLayout {
+  KvGroupLayout { kind: FullAttention, layer_count: layers, block_size: block }
 }
 
-fn w_window(layers: Nat, block: KvBlockSize, window: Int) -> KvGroupLayout {
-  KvGroupLayout { kind: SlidingWindowAttention, layer_count: layers, block_size: block, page_size_bytes: byte_size(count: 32768), sliding_window: Present { value: token_count(count: window) } }
+fn w_window(layers: KvLayerCount, block: KvBlockSize, window: Int) -> KvGroupLayout {
+  KvGroupLayout { kind: SlidingWindowAttention { window: token_count(count: window) }, layer_count: layers, block_size: block }
 }
 
 // THE DISCRIMINATING ROW FOR THE WHOLE MODULE: two layouts with the SAME allocator inventory and the
@@ -156,7 +158,30 @@ test fn an_unobserved_group_layout_refuses_the_admission_cost() -> Bool {
 test fn neither_reconstruction_is_authoritative_and_usage_is_not_occupancy() -> Bool {
   !vllm_pool_reconstruction_is_authoritative(r: BlockCountTimesBlockSize)
     && !vllm_pool_reconstruction_is_authoritative(r: UtilizationTimesTotalMemory)
-    && !allocator_usage_is_occupancy(usage: allocator_usage(layout: w_layout(groups: []), free_blocks: 545))
-    && allocator_usage(layout: w_layout(groups: []), free_blocks: 545).referenced_or_retained_blocks == 53930
-    && allocator_usage(layout: w_layout(groups: []), free_blocks: 99999).referenced_or_retained_blocks == 0
+    && (match allocator_usage(layout: w_layout(groups: []), free_blocks: 545) {
+          UsageRead { usage: u } => u.referenced_or_retained_blocks == 53930 && !allocator_usage_is_occupancy(usage: u)
+          FreeCountImpossible { free_blocks: _, allocator_blocks: _ } => false
+        })
+}
+
+// A FREE COUNT LARGER THAN THE INVENTORY REFUSES. It was clamped to zero-free, which is the most
+// alarming answer available and reached by fabrication -- an impossible reading rendered as a
+// saturated engine, indistinguishable from a real one. The two numbers came from different launches
+// and the only honest output says so.
+test fn a_free_count_exceeding_the_inventory_refuses_rather_than_reading_as_saturated() -> Bool {
+  match allocator_usage(layout: w_layout(groups: []), free_blocks: 99999) {
+    FreeCountImpossible { free_blocks: f, allocator_blocks: a } => f == 99999 && a == 54475
+    UsageRead { usage: _ } => false
+  }
+}
+
+// A WINDOWED GROUP WITH NO WINDOW IS NOT WRITABLE. The window used to sit beside the kind as an
+// optional field, so that state typechecked and the cost function charged it as full attention --
+// a malformed layout yielding a plausible number instead of a refusal. The constructor below is the
+// only way to build a windowed group, and it demands the window.
+test fn a_windowed_group_carries_its_window_by_construction() -> Bool {
+  let g = w_window(layers: 1, block: 16, window: 128)
+  (match g.kind { SlidingWindowAttention { window: w } => token_count_value(t: w) == 128  _ => false })
+    && group_blocks_for(group: g, sequence: token_count(count: 1048576)) == 8
+    && group_blocks_for(group: w_full(layers: 1, block: 16), sequence: token_count(count: 1048576)) == 65536
 }
