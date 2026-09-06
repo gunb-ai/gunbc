@@ -114,7 +114,7 @@ fn harness_try_group(acc: SeatBindFold, group: FabricGroup, layout: EventLogLayo
                   term_seconds: policy.maximum_duration_seconds,
                 }
                 match fabric_seat_acquire(layout: layout, partition: partition, root: root, actor: actor, request: request, policy: policy, attempts: 3, budget: 4096) {
-                  SeatGranted { grant: g, generation: _ } =>
+                  SeatGranted { grant: g, generation: _, attempts_used: _ } =>
                     SeatBindFold { bound: Present { value: HarnessSeatBound { url: harness_backend_url_for_address(shape: shape, address: address as String), grant: g, partition: partition, group_wire: fabric_group_wire(g: group) as String, layout: layout } }, details: acc.details }
                   other => SeatBindFold { bound: none, details: concat(acc.details, [seat_bind_detail(group: group, text: seat_acquisition_wire(a: other))]) }
                 }

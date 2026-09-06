@@ -87,26 +87,26 @@ fn fabric_event_log_probe_step(root: NonEmptyStr) -> Int {
                               ChainWalked { oldest_first: xs } =>
                                 if !(length(xs) == 2 && (match first(xs) { Present { value: x } => (x.id as String) == (first_id as String)  Absent => false })) { 6 } else {
                                   match fabric_seat_acquire(layout: layout, partition: probe_partition(), root: probe_root_pool(), actor: probe_actor(), request: SeatRequest { reference: "turn-a" as NonEmptyStr, amount: 1, at: 2000, term_seconds: 300 }, policy: probe_policy(), attempts: 3, budget: 16) {
-                                    SeatFull { wire: _ } => 7
+                                    SeatFull { wire: _, attempts_used: _ } => 7
                                     SeatContended { attempts: _ } => 7
-                                    SeatAcquireRefused { step: _, reason: _ } => 7
-                                    SeatGranted { grant: ga, generation: gen_a } =>
+                                    SeatAcquireRefused { step: _, reason: _, attempts_used: _ } => 7
+                                    SeatGranted { grant: ga, generation: gen_a, attempts_used: _ } =>
                                       if !(gen_a == 3 && ga.expires_at == 2300) { 7 } else {
                                         match fabric_seat_acquire(layout: layout, partition: probe_partition(), root: probe_root_pool(), actor: probe_actor(), request: SeatRequest { reference: "turn-b" as NonEmptyStr, amount: 1, at: 2001, term_seconds: 300 }, policy: probe_policy(), attempts: 3, budget: 16) {
-                                          SeatGranted { grant: _, generation: _ } => 8
+                                          SeatGranted { grant: _, generation: _, attempts_used: _ } => 8
                                           SeatContended { attempts: _ } => 8
-                                          SeatAcquireRefused { step: _, reason: _ } => 8
-                                          SeatFull { wire: w } =>
+                                          SeatAcquireRefused { step: _, reason: _, attempts_used: _ } => 8
+                                          SeatFull { wire: w, attempts_used: _ } =>
                                             if w != "pool-full" { 8 } else {
                                               match event_log_append(layout: layout, partition: probe_partition(), event: probe_event(parent: HeadAt { id: ga.fence.grant as String as EventId }, at: 2002, payload: PoolReleased { reference: "turn-a" as NonEmptyStr, reason: "done" as NonEmptyStr }), expected: HeadAt { id: ga.fence.grant as String as EventId }) {
                                                 EventAppendRefused { step: _, reason: _ } => 9
                                                 EventAppendStale { expected: _, observed: _ } => 9
                                                 EventAppended { id: _ } =>
                                                   match fabric_seat_acquire(layout: layout, partition: probe_partition(), root: probe_root_pool(), actor: probe_actor(), request: SeatRequest { reference: "turn-c" as NonEmptyStr, amount: 1, at: 2003, term_seconds: 300 }, policy: probe_policy(), attempts: 3, budget: 16) {
-                                                    SeatGranted { grant: _, generation: gen_c } => if gen_c == 5 { 0 } else { 9 }
-                                                    SeatFull { wire: _ } => 9
+                                                    SeatGranted { grant: _, generation: gen_c, attempts_used: _ } => if gen_c == 5 { 0 } else { 9 }
+                                                    SeatFull { wire: _, attempts_used: _ } => 9
                                                     SeatContended { attempts: _ } => 9
-                                                    SeatAcquireRefused { step: _, reason: _ } => 9
+                                                    SeatAcquireRefused { step: _, reason: _, attempts_used: _ } => 9
                                                   }
                                               }
                                             }

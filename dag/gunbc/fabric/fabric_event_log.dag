@@ -286,37 +286,41 @@ fn event_log_append(layout: EventLogLayout, partition: PartitionId, event: Chain
 // THE SEAT TRANSACTION, WET AND BOUNDED: read, fold, propose, append; a stale append re-reads and
 // decides again, at most `attempts` times, and exhaustion is its own typed outcome rather than a
 // seat. The grant is minted only from an admitted append.
+// EVERY OUTCOME CARRIES THE ATTEMPT IT LANDED ON, so a receipt can say whether the writer won its
+// first compare-and-set or re-folded after a stale one: the difference between "nobody else was
+// there" and "someone was, and the fence held".
 type SeatAcquisition
-  = SeatGranted { grant: LeaseGrant, generation: Nat }
-  | SeatFull { wire: String }
+  = SeatGranted { grant: LeaseGrant, generation: Nat, attempts_used: Nat }
+  | SeatFull { wire: String, attempts_used: Nat }
   | SeatContended { attempts: Nat }
-  | SeatAcquireRefused { step: String, reason: String }
+  | SeatAcquireRefused { step: String, reason: String, attempts_used: Nat }
 
 type SeatAttemptState {
   done: SeatAcquisition?
+  attempted: Nat
 }
 
-fn seat_attempt(layout: EventLogLayout, partition: PartitionId, root: Pool<Count, One>, actor: NonEmptyStr, request: SeatRequest, policy: LeasePolicy, budget: Nat) -> SeatAcquisition? {
+fn seat_attempt(layout: EventLogLayout, partition: PartitionId, root: Pool<Count, One>, actor: NonEmptyStr, request: SeatRequest, policy: LeasePolicy, budget: Nat, attempt: Nat) -> SeatAcquisition? {
   match event_log_read_partition(layout: layout, partition: partition, budget: budget) {
-    PartitionReadRefused { step: s, reason: why } => Present { value: SeatAcquireRefused { step: s, reason: why } }
+    PartitionReadRefused { step: s, reason: why } => Present { value: SeatAcquireRefused { step: s, reason: why, attempts_used: attempt } }
     PartitionReadOk { head: head, walk: walk } =>
       match walk {
-        ChainIncomplete { missing: m, newest_first_so_far: _ } => Present { value: SeatAcquireRefused { step: "chain", reason: join(["partition chain is missing event ", m as String], "") } }
-        ChainBudgetExhausted { at: a } => Present { value: SeatAcquireRefused { step: "chain", reason: join(["partition chain exceeded the read budget at ", a as String], "") } }
+        ChainIncomplete { missing: m, newest_first_so_far: _ } => Present { value: SeatAcquireRefused { step: "chain", reason: join(["partition chain is missing event ", m as String], ""), attempts_used: attempt } }
+        ChainBudgetExhausted { at: a } => Present { value: SeatAcquireRefused { step: "chain", reason: join(["partition chain exceeded the read budget at ", a as String], ""), attempts_used: attempt } }
         ChainWalked { oldest_first: xs } =>
           match pool_fold(root: root, oldest_first: xs) {
-            PoolFoldRefused { at_event: e, wire: w } => Present { value: SeatAcquireRefused { step: "fold", reason: join(["event ", e as String, " refused: ", w], "") } }
+            PoolFoldRefused { at_event: e, wire: w } => Present { value: SeatAcquireRefused { step: "fold", reason: join(["event ", e as String, " refused: ", w], ""), attempts_used: attempt } }
             PoolFolded { pool: p, generation: g } =>
               match propose_acquire(pool: p, generation: g, head: head, partition: partition, actor: actor, request: request) {
-                SeatRefused { wire: w } => Present { value: SeatFull { wire: w } }
+                SeatRefused { wire: w } => Present { value: SeatFull { wire: w, attempts_used: attempt } }
                 SeatProposed { event: e, expected_head: x } =>
                   match event_log_append(layout: layout, partition: partition, event: e, expected: x) {
-                    EventAppendRefused { step: s, reason: why } => Present { value: SeatAcquireRefused { step: s, reason: why } }
+                    EventAppendRefused { step: s, reason: why } => Present { value: SeatAcquireRefused { step: s, reason: why, attempts_used: attempt } }
                     EventAppendStale { expected: _, observed: _ } => none
                     EventAppended { id: h } =>
                       match grant_from_admission(request: request, admission: AppendAdmitted { new_head: h, generation: g + 1 }, policy: policy) {
-                        Absent => Present { value: SeatAcquireRefused { step: "grant", reason: "an admitted append minted no grant" } }
-                        Present { value: grant } => Present { value: SeatGranted { grant: grant, generation: g + 1 } }
+                        Absent => Present { value: SeatAcquireRefused { step: "grant", reason: "an admitted append minted no grant", attempts_used: attempt } }
+                        Present { value: grant } => Present { value: SeatGranted { grant: grant, generation: g + 1, attempts_used: attempt } }
                       }
                   }
               }
@@ -326,10 +330,10 @@ fn seat_attempt(layout: EventLogLayout, partition: PartitionId, root: Pool<Count
 }
 
 fn fabric_seat_acquire(layout: EventLogLayout, partition: PartitionId, root: Pool<Count, One>, actor: NonEmptyStr, request: SeatRequest, policy: LeasePolicy, attempts: Nat, budget: Nat) -> SeatAcquisition {
-  let st = fold(nat_range_inclusive(lo: 1, hi: attempts), init: SeatAttemptState { done: none }, f: (acc, _i) =>
+  let st = fold(nat_range_inclusive(lo: 1, hi: attempts), init: SeatAttemptState { done: none, attempted: 0 }, f: (acc, i) =>
     match acc.done {
       Present { value: _ } => acc
-      Absent => SeatAttemptState { done: seat_attempt(layout: layout, partition: partition, root: root, actor: actor, request: request, policy: policy, budget: budget) }
+      Absent => SeatAttemptState { done: seat_attempt(layout: layout, partition: partition, root: root, actor: actor, request: request, policy: policy, budget: budget, attempt: i), attempted: i }
     })
   match st.done {
     Present { value: d } => d
@@ -339,10 +343,10 @@ fn fabric_seat_acquire(layout: EventLogLayout, partition: PartitionId, root: Poo
 
 fn seat_acquisition_wire(a: SeatAcquisition) -> String {
   match a {
-    SeatGranted { grant: g, generation: gen } => join(["granted ", g.reference as String, " fence=", g.fence.grant as String, "@", to_string(gen), " expires_at=", to_string(g.expires_at)], "")
-    SeatFull { wire: w } => join(["full ", w], "")
+    SeatGranted { grant: g, generation: gen, attempts_used: n } => join(["granted ", g.reference as String, " fence=", g.fence.grant as String, "@", to_string(gen), " expires_at=", to_string(g.expires_at), " attempt=", to_string(n)], "")
+    SeatFull { wire: w, attempts_used: n } => join(["full ", w, " attempt=", to_string(n)], "")
     SeatContended { attempts: n } => join(["contended after ", to_string(n), " attempts"], "")
-    SeatAcquireRefused { step: s, reason: why } => join(["refused at ", s, ": ", why], "")
+    SeatAcquireRefused { step: s, reason: why, attempts_used: n } => join(["refused at ", s, ": ", why, " attempt=", to_string(n)], "")
   }
 }
 
