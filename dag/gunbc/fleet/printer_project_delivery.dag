@@ -218,6 +218,8 @@ type ProjectDelivery
   | ProjectDeliveryUnattempted { printer: PhysicalAssetIdentity, cause: NonEmptyStr }
   | ProjectTransferredCleanupRefused { receipt: ProjectUploadReceipt, cause: NonEmptyStr }
   | ProjectDeliveryRefusedResidueRemains { printer: PhysicalAssetIdentity, cause: NonEmptyStr }
+  | ProjectDeliveryUnattemptedResidueRemains { printer: PhysicalAssetIdentity, cause: NonEmptyStr }
+  | ProjectDeliveryProvisionRequiredResidueRemains { printer: PhysicalAssetIdentity, desired: SecretRef, cause: NonEmptyStr }
   | ProjectDeliveryProvisionRequired { printer: PhysicalAssetIdentity, desired: SecretRef }
 
 // THE ENDPOINT THE MACHINE ACTUALLY PRESENTS, recorded as an observation of THIS device rather than
@@ -408,13 +410,45 @@ fn printer_endpoint_address(printer: PhysicalAssetIdentity) -> PrinterAddressLoo
 // evaluation left by an arm that had no cleanup on it, and a 226915-byte copy stayed in /tmp -- one
 // per attempt, indefinitely. Cleanup that only runs after a transfer is attempted is cleanup that
 // does not run on the paths most likely to be taken.
+// THE REMOVAL RESULT WAS BOUND TO `_`, WHICH IS THE SAME DELETION THIS FILE ARGUES AGAINST TWICE
+// ABOVE. The annotation over this function was written to add cleanup to a path that had none, and
+// in adding it introduced a fresh dropped signal: a refusal whose payload removal failed was
+// spelled exactly like one whose removal succeeded. The residue is a SECOND fact with a different
+// remedy on every path that can produce it, so it is named on every such path rather than only on
+// the one a review happened to look at.
+// CALLERS THAT ABANDON A PAYLOAD BEFORE DELIVERY IS ENTERED NEED THIS BRACKET, because the private
+// copy is made by identify_project_payload and every exit between there and here leaks one per
+// attempt. It returns whether the removal succeeded rather than swallowing it: a caller that cannot
+// clean up must be able to say so, which is the whole point of the arms above.
+fn abandon_payload(payload: IdentifiedProjectPayload) -> Bool {
+  shell.Remove.FileForce(path: payload.realization.path).success
+}
+
 fn refuse_and_drop(
   printer: PhysicalAssetIdentity,
   payload: IdentifiedProjectPayload,
   cause: NonEmptyStr,
 ) -> ProjectDelivery {
-  let _ = shell.Remove.FileForce(path: payload.realization.path)
-  ProjectDeliveryUnattempted { printer: printer, cause: cause }
+  let removed = shell.Remove.FileForce(path: payload.realization.path).success
+  unattempted_delivery(printer: printer, cause: cause, removed: removed)
+}
+
+// THE RESIDUE MESSAGE HAS ONE AUTHORITY. Three paths can now leave a payload copy or a credential
+// on disk, and writing the sentence three times would fork it on the next edit.
+fn residue_cause(what_failed: NonEmptyStr) -> NonEmptyStr {
+  concat(what_failed as String, ", so material may remain on disk") as NonEmptyStr
+}
+
+fn unattempted_delivery(printer: PhysicalAssetIdentity, cause: NonEmptyStr, removed: Bool) -> ProjectDelivery {
+  if removed {
+    ProjectDeliveryUnattempted { printer: printer, cause: cause }
+  } else {
+    ProjectDeliveryUnattemptedResidueRemains {
+      printer: printer,
+      cause: residue_cause(
+        what_failed: concat(cause as String, " -- and the payload copy could not be removed") as NonEmptyStr),
+    }
+  }
 }
 
 fn delivered_receipt(
@@ -436,7 +470,8 @@ fn delivered_receipt(
   } else {
     ProjectTransferredCleanupRefused {
       receipt: receipt,
-      cause: "the transfer completed but the credential shred or the payload removal did not, so material may remain on disk",
+      cause: residue_cause(
+        what_failed: "the transfer completed but the credential shred or the payload removal did not"),
     }
   }
 }
@@ -454,9 +489,10 @@ fn refused_delivery(printer: PhysicalAssetIdentity, stderr: String, cleaned: Boo
   } else {
     ProjectDeliveryRefusedResidueRemains {
       printer: printer,
-      cause: concat(
-        "the transfer did not complete AND the credential shred or payload removal did not, so material may remain on disk: ",
-        stderr) as NonEmptyStr,
+      cause: residue_cause(
+        what_failed: concat(
+          "the transfer did not complete AND the credential shred or payload removal did not: ",
+          stderr) as NonEmptyStr),
     }
   }
 }
@@ -495,8 +531,15 @@ func deliver_project_to_printer(
       refuse_and_drop(printer: p, payload: payload,
         cause: concat(concat("this printer's access code secret exists at ", c), " but no provisioning receipt records which version holds it, so delivery refuses rather than guessing a version or re-provisioning a code that is already there") as NonEmptyStr)
     PrinterCredentialProvisionRequired { printer: p, desired: d } => {
-      let _ = shell.Remove.FileForce(path: payload.realization.path)
-      ProjectDeliveryProvisionRequired { printer: p, desired: d }
+      let removed = shell.Remove.FileForce(path: payload.realization.path).success
+      if removed {
+        ProjectDeliveryProvisionRequired { printer: p, desired: d }
+      } else {
+        ProjectDeliveryProvisionRequiredResidueRemains {
+          printer: p, desired: d,
+          cause: residue_cause(what_failed: "provisioning is required and the payload copy could not be removed"),
+        }
+      }
     }
     PrinterCredentialProvisionAmbiguous { printer: p, matches: _ } =>
       refuse_and_drop(printer: p, payload: payload,

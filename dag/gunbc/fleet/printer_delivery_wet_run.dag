@@ -13,6 +13,8 @@ import gunbc.fleet.printer_project_delivery {
   PrinterProjectPayload, PayloadIdentification, PayloadIdentified, PayloadIdentificationRefused,
   ProjectDelivery, ProjectDelivered, ProjectDeliveryRefused, ProjectDeliveryUnattempted,
   ProjectTransferredCleanupRefused, ProjectDeliveryProvisionRequired, ProjectDeliveryRefusedResidueRemains,
+  ProjectDeliveryUnattemptedResidueRemains, ProjectDeliveryProvisionRequiredResidueRemains,
+  abandon_payload,
   identify_project_payload, deliver_project_to_printer, receipt_remote_name,
 }
 import extdeps.cloud.gcp.secret_ref { secret_ref_secret_resource }
@@ -72,7 +74,12 @@ func run() -> ProcessExit uses net: Network {
     PayloadIdentified { payload: identified } =>
       match read_supplied_access_token() {
         SuppliedTokenUnavailable { cause: cause } =>
-          exit_failure(reason: concat("NO TOKEN: ", cause as String))
+          if abandon_payload(payload: identified) {
+            exit_failure(reason: concat("NO TOKEN: ", cause as String))
+          } else {
+            exit_failure(reason: concat(concat("NO TOKEN: ", cause as String),
+              " -- AND the private payload copy could not be removed, so material may remain on disk"))
+          }
         SuppliedTokenReady { token: operator_token } =>
       match deliver_project_to_printer(
         printer: printer_01,
@@ -85,6 +92,12 @@ func run() -> ProcessExit uses net: Network {
           exit_failure(reason: concat("REFUSED: ", cause as String))
         ProjectDeliveryRefusedResidueRemains { printer: _, cause: cause } =>
           exit_failure(reason: concat("REFUSED, RESIDUE MAY REMAIN ON DISK: ", cause as String))
+        ProjectDeliveryUnattemptedResidueRemains { printer: _, cause: cause } =>
+          exit_failure(reason: concat("UNATTEMPTED, RESIDUE MAY REMAIN ON DISK: ", cause as String))
+        ProjectDeliveryProvisionRequiredResidueRemains { printer: _, desired: d, cause: cause } =>
+          exit_failure(reason: concat(concat(
+            concat("PROVISION REQUIRED at ", secret_ref_secret_resource(ref: d)),
+            ", RESIDUE MAY REMAIN ON DISK: "), cause as String))
         ProjectDeliveryProvisionRequired { printer: _, desired: d } =>
           exit_failure(reason: concat(
             "PROVISION REQUIRED: no access code has been materialized at ",
