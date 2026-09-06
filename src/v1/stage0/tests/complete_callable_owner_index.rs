@@ -136,6 +136,15 @@ fn a_call_to_a_nonexistent_callee_is_an_error() {
         "BLIND CHANNEL: a call to a callee that exists nowhere produced no error diagnostic, so \
          this file's `errors.is_empty()` assertions measure nothing"
     );
+    // WHICH refusal matters, not merely that something refused. An unrelated diagnostic would
+    // make this control pass while the callee was quietly absorbed by the builtin bridge, which
+    // is the state that would mean the cut's census UNDERCOUNTS rather than merely that this
+    // file's observable is wrong.
+    assert!(
+        errors.iter().any(|e| e.contains("no_such_function")),
+        "the refusal must NAME the missing callee -- otherwise a missing cross-module callee is \
+         being absorbed and something else is refusing: {errors:?}"
+    );
 }
 
 // THE DISCRIMINATING ARM.
