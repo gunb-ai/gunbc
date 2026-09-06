@@ -67,7 +67,15 @@ fn cable_leg_observation(
 // be routed through a canonical accessor. The coverage census is a fold producing the list of
 // UNREAD fields, and every coverage question is asked of that one list -- so a new field is one row
 // here rather than a new predicate at every call site.
-type CableLegField = SecondaryComplianceField
+// THE FIELDS THIS OBSERVATION CAN CARRY, named so the coverage census reports WHICH one is missing
+// rather than a bare count. Only the secondary compliance byte is optional in the carrier today --
+// the others are required to construct an observation at all -- so the census reports only that one
+// now, and a field that becomes optional later is a row here rather than a new predicate.
+type CableLegField
+  = SecondaryComplianceField
+  | PrimaryComplianceField
+  | EncodingField
+  | NominalRateField
 
 fn cable_leg_unread_fields(obs: CableLegObservation) -> List<CableLegField> {
   match obs.secondary_compliance {

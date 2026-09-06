@@ -194,6 +194,7 @@ test fn an_unreadable_code_blocks_the_contradiction_claim() -> Bool {
 test fn the_interpretation_is_derived_from_the_byte() -> Bool {
   match sff8636_interpret_extended_compliance(code: 11) {
     ComplianceUnderstood { code: c, modes: ms } => c == 11 && count(ms) == 3
+    ComplianceUnspecified { code: c } => false
     ComplianceCodeUnmodelled { code: c } => false
   }
 }
@@ -201,6 +202,7 @@ test fn the_interpretation_is_derived_from_the_byte() -> Bool {
 test fn an_unknown_byte_interprets_to_unknown_not_to_an_empty_attestation() -> Bool {
   match sff8636_interpret_extended_compliance(code: 254) {
     ComplianceCodeUnmodelled { code: c } => c == 254
+    ComplianceUnspecified { code: c } => false
     ComplianceUnderstood { code: c, modes: ms } => false
   }
 }
@@ -222,6 +224,7 @@ fn consistency_cause_is_unread(c: ProfileConsistency) -> Bool {
     ConsistencyUndecidable { cause: cz } =>
       match cz {
         ConsistencyFieldUnread { field: f } => true
+        ConsistencyInterpretationGap { gap: g } => false
         ConsistencyInterfaceScopeUnestablished => false
       }
   }
