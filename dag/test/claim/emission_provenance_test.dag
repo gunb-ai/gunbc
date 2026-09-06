@@ -15,7 +15,7 @@ import std.emission_provenance {
   EmissionOriginsObserved, EmissionOriginsIncomplete,
   emission_declaration_correspondence,
   emission_resolution_correspondence,
-  emission_contribution_source, emission_contribution_origins, emission_contribution_unobserved
+  emission_contribution_read, emission_contribution_source, emission_contribution_origins, emission_contribution_unobserved
 }
 
 test fn emission_module_loss_is_separate_from_declaration_loss() -> Bool {
@@ -147,4 +147,41 @@ test fn emission_nested_unobserved_producer_remains_named() -> Bool {
         (observed |> count == 1) && declaration_ref_eq(a: gaps.head.producer, b: unknown)
       _ => false
     }
+}
+
+
+test fn emission_combined_read_preserves_content_order_and_origin_multiplicity() -> Bool {
+  let root = decl_ref(module_path: "fixture.runtime", decl_name: "root")
+  let empty = decl_ref(module_path: "fixture.runtime", decl_name: "empty")
+  let leaf = decl_ref(module_path: "fixture.runtime", decl_name: "leaf")
+  let nested = decl_ref(module_path: "fixture.runtime", decl_name: "nested")
+  let unknown = decl_ref(module_path: "fixture.runtime", decl_name: "unknown")
+  let contribution = EmissionSourceComposition {
+    origin: root,
+    parts: [
+      EmissionSourceComposition { origin: empty, parts: [] },
+      EmissionAuthoredFragment { origin: leaf, source: "A" },
+      EmissionSourceComposition {
+        origin: nested,
+        parts: [
+          EmissionUnobservedFragment { producer: unknown, cause: "first" as NonEmptyStr, source: "B" },
+          EmissionAuthoredFragment { origin: leaf, source: "C" }
+        ]
+      },
+      EmissionUnobservedFragment { producer: unknown, cause: "second" as NonEmptyStr, source: "D" }
+    ]
+  }
+  let result = emission_contribution_read(contribution: contribution)
+  result.source == emission_contribution_source(contribution: contribution)
+    && result.origins == emission_contribution_origins(contribution: contribution)
+    && result.source == "ABCD" && match result.origins {
+    EmissionOriginsIncomplete { observed, missing } =>
+      (observed |> map(origin => origin.decl_name) |> join(separator: "|")) == "root|empty|leaf|nested|leaf"
+        && declaration_ref_eq(a: missing.head.producer, b: unknown)
+        && missing.head.cause == ("first" as NonEmptyStr)
+        && (missing.tail |> count == 1)
+        && (missing.tail |> all(gap => declaration_ref_eq(a: gap.producer, b: unknown)
+          && gap.cause == ("second" as NonEmptyStr)))
+    _ => false
+  }
 }
