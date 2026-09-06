@@ -4591,7 +4591,7 @@ type ReferenceDerivedCandidateRow {
 // emitted before; the census takes the same rows and counts them. Byte-identity of the emitted crate
 // is therefore STRUCTURAL rather than asserted: the emitted use-lines cannot move unless this
 // function's answer moves, because there is no second copy of the decision to drift from.
-fn reference_derived_candidate_disposition(emit_info: emit_info, name: String, this_module_name: String, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, type_summaries: Map<String, TypeSummary>, variant_to_enum: Map<String, String>, in_type_position: Bool) -> ReferenceDerivedCandidateDisposition {
+fn reference_derived_candidate_disposition(name: String, this_module_name: String, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, type_summaries: Map<String, TypeSummary>, variant_to_enum: Map<String, String>, in_type_position: Bool) -> ReferenceDerivedCandidateDisposition {
   if is_known_variant(type_summaries: type_summaries, name: name) && !in_type_position {
     match map_get(variant_to_enum, name) {
       Present { value: parent } =>
@@ -4861,7 +4861,7 @@ type ReferenceDerivedUseLinePlan {
 // (gunbc compile --source-root src/v1 --source-root dag --entry src/v1/compile.dag). The predicate
 // is unchanged: emitted_source_token_set holds exactly the tokens the list holds, so emit_map_has
 // answers what `any` answered, for the same names in the same order.
-fn reference_derived_use_line_plan(emit_info: emit_info, items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> ReferenceDerivedUseLinePlan {
+fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> ReferenceDerivedUseLinePlan {
   {
     let module_source = match typed_modules |> filter(tm => authored_name_at(source_indices: source_indices, node: tm.module) == this_module_name) |> first {
       Present { value: tm } => module_authored_source_text(module: tm.module, source_indices: source_indices)
@@ -4979,7 +4979,7 @@ fn reference_derived_use_line_plan(emit_info: emit_info, items: List<Node>, unli
 // the named qualifier before any line is synthesized; every other qualified name is the value
 // route's, and this route says nothing about it. Each decision this route does take is a census row
 // beside the bare-name rows -- the qualified spelling is the row's name, so the two never collide.
-fn qualified_type_reference_rows(emit_info: emit_info, names: List<String>, this_module_name: String, emit_info: EmitGraphInfo, already: Map<String, Bool>, names_already_in_lines: List<String>, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<ReferenceDerivedCandidateRow> {
+fn qualified_type_reference_rows(names: List<String>, this_module_name: String, emit_info: EmitGraphInfo, already: Map<String, Bool>, names_already_in_lines: List<String>, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<ReferenceDerivedCandidateRow> {
   let leaves_done = names_already_in_lines |> fold(init: empty_map(), f: (acc, nm) => map_insert(acc, nm, true))
   names |> flat_map(name =>
     if !string_contains(s: name, pattern: ".") { [] } else {
@@ -5010,7 +5010,7 @@ fn registry_row_is_type_declared_in(info: ItemInfo, module_name: String) -> Bool
   if info.module_name != module_name { false } else { match info.kind { TypeItem => true  _ => false } }
 }
 
-fn qualified_type_reference_use_lines(emit_info: emit_info, rows: List<ReferenceDerivedCandidateRow>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> List<String> {
+fn qualified_type_reference_use_lines(rows: List<ReferenceDerivedCandidateRow>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> List<String> {
   unique_strings(items: rows |> flat_map(r =>
     match r.disposition {
       CandidateSurvived { provider_module: provider } =>
@@ -5193,7 +5193,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   }
 }
 
-fn emit_import_name(emit_info: emit_info, n: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> String {
+fn emit_import_name(n: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> String {
   let is_data = match lookup_item_by_leaf(leaf: n, registry: registry, emit_info: emit_info) {
     Present { value: info } => info.kind == DataItem
     Absent => false

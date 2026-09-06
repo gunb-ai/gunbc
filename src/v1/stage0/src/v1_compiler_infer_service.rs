@@ -23,6 +23,8 @@ use crate::v1_std_core::ExprData::{
     ExprCall, ExprFieldAccess, ExprMethodCall, ExprVar, NoExprData,
 };
 use crate::v1_std_core::InferredNode::Resolved;
+pub use crate::v1_std_core::ParsedModuleItemKind;
+use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
     authored_name_at, call_semantics_target, callable_identity, expr_call_func_at,
     expr_var_name_at, field_access_base, field_access_field_at, method_receiver, no_span,

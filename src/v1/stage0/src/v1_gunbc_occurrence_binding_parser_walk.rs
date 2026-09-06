@@ -8,6 +8,8 @@ pub use crate::std_occurrence_binding_candidates::{
     AuthoredOrderRow, DeclarationExposureGrounding, DeclarationExposureRow,
     OccurrenceBindingCandidateInputs, OccurrenceModulePathRow,
 };
+pub use crate::std_occurrence_identity::OccurrenceCategory;
+use crate::std_occurrence_identity::OccurrenceCategory::*;
 pub use crate::std_occurrence_identity::{
     AuthoredTokenOrdinal, DeclarationOccurrence, OccurrenceId, OccurrenceIndexEntry,
     OccurrenceTransport, ReferenceOccurrence,
