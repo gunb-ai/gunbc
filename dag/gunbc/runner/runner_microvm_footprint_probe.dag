@@ -1,0 +1,104 @@
+module gunbc.runner_microvm_footprint_probe
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.disposition { Disposition, SingleAuthority }
+import std.measure { ByteSize, byte_size, byte_size_count, Second, second, mebibyte }
+
+data runner_microvm_footprint_probe_disposition: Disposition = SingleAuthority
+
+// WHAT THIS MEASURES, AND THE ONE THING IT DOES NOT ESTABLISH.
+//
+// gunbc.runner_microvm refuses every launch because its realization reserve is ReserveUnmodeled: no
+// VMM resident footprint is a cited quantity, and inventing one would be a fabricated plausible
+// output. This probe produces the observation that could retire that refusal -- and it produces a
+// RELATIONSHIP OVER SIZES rather than a constant, because the model's own reasoning is that the
+// overhead is not constant: it scales with guest size, device model and host page size, so upstream
+// documents a measured overhead for one configuration rather than a property of the realization.
+//
+// THE GUEST'S RAM IS LAZILY FAULTED, AND THAT IS WHY ONE SAMPLE WOULD MISLEAD. Firecracker maps the
+// guest's memory, and a page enters the VMM's resident set only when the guest TOUCHES it. A guest
+// that boots, prints and powers off touches a small and roughly size-independent amount, so a single
+// peak read at one declared size is dominated by that workload rather than by the declared size.
+// Sampling several declared sizes under one workload is what separates the two: a peak that stays
+// flat as the declared size rises says the declared size is not committed, and a peak that tracks it
+// says it is. Those are different worlds for an admission rule, and one sample cannot tell them apart.
+//
+// SO THIS PROBE DOES NOT ESTABLISH A WORST CASE, and no reader may treat its output as one. A
+// worst-case reserve is what a guest costs when it USES its declared memory, which needs a guest
+// workload that touches all of it -- a different probe with a different guest. Reporting these
+// numbers as if they bounded that case would be the fabricated plausible output this whole refusal
+// exists to prevent, arriving by way of a measurement instead of a guess.
+
+type FootprintInstrument
+  = GnuTimeMaxRss
+  | SystemdMemoryPeak
+
+fn footprint_instrument_name(i: FootprintInstrument) -> String {
+  match i {
+    GnuTimeMaxRss => "gnu-time-max-rss"
+    SystemdMemoryPeak => "systemd-memory-peak"
+  }
+}
+
+type VmmFootprintSample {
+  guest_memory: ByteSize
+  instrument: FootprintInstrument
+  vmm_peak: ByteSize
+}
+
+// EVERY FAILING ARM CARRIES THE SIZE IT WAS MEASURING, because a receipt listing four sizes and
+// three outcomes is unreadable without it, and the missing row is exactly the one a reader needs.
+type FootprintSampleOutcome
+  = FootprintSampled { sample: VmmFootprintSample }
+  | FootprintBootRefused { guest_memory: ByteSize, detail: String }
+  | FootprintMeasurementUnreadable { guest_memory: ByteSize, instrument: FootprintInstrument, cause: String }
+
+// THE SIZES ARE DECLARED HERE AND SPAN AN OCTAVE-AND-A-HALF ON PURPOSE. Two adjacent sizes cannot
+// distinguish a flat relationship from a rising one within measurement noise; a 512 MiB to 4096 MiB
+// spread makes the two hypotheses produce visibly different receipts.
+data runner_microvm_footprint_sample_sizes: List<ByteSize> = [
+  mebibyte(count: 512),
+  mebibyte(count: 1024),
+  mebibyte(count: 2048),
+  mebibyte(count: 4096),
+]
+
+// GNU time's %M IS KILOBYTES, and this is the one place that fact is converted. extdeps.tools.gnu_time
+// deliberately does not convert -- it reports what upstream documents -- so the consumer that knows
+// what it measured owns the conversion.
+data gnu_time_max_rss_unit_bytes: Int = 1024
+
+fn gnu_time_max_rss_bytes(kilobytes: Int) -> ByteSize {
+  byte_size(kilobytes * gnu_time_max_rss_unit_bytes)
+}
+
+fn footprint_sample_text(o: FootprintSampleOutcome) -> String {
+  match o {
+    FootprintSampled { sample: s } =>
+      join([
+        "sample guest_bytes=", to_string(byte_size_count(b: s.guest_memory)),
+        " instrument=", footprint_instrument_name(i: s.instrument),
+        " vmm_peak_bytes=", to_string(byte_size_count(b: s.vmm_peak)),
+      ], "")
+    FootprintBootRefused { guest_memory: g, detail: d } =>
+      join(["sample guest_bytes=", to_string(byte_size_count(b: g)), " REFUSED boot: ", d], "")
+    FootprintMeasurementUnreadable { guest_memory: g, instrument: i, cause: c } =>
+      join([
+        "sample guest_bytes=", to_string(byte_size_count(b: g)),
+        " instrument=", footprint_instrument_name(i: i),
+        " UNREADABLE: ", c,
+      ], "")
+  }
+}
+
+// A RECEIPT THAT LOST A SAMPLE MUST NOT READ AS A COMPLETE ONE. The reserve decision reads the
+// relationship across sizes, so a run that measured three of four sizes has not measured the
+// relationship -- it has measured three points and left the reader to assume the fourth. This says
+// so in the receipt rather than printing the rows that happened to work.
+fn footprint_receipt_is_complete(outcomes: List<FootprintSampleOutcome>) -> Bool {
+  count(outcomes) == count(runner_microvm_footprint_sample_sizes)
+    && fold(outcomes, init: true, f: (ok, o) => ok && match o {
+         FootprintSampled { sample: _ } => true
+         _ => false
+       })
+}

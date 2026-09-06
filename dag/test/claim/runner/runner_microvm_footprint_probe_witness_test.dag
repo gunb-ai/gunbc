@@ -1,0 +1,105 @@
+module gunbc.test.claim.runner.runner_microvm_footprint_probe_witness_test
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.measure { ByteSize, byte_size, byte_size_count, mebibyte }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.runner_microvm_footprint_probe {
+  FootprintInstrument, GnuTimeMaxRss, SystemdMemoryPeak,
+  VmmFootprintSample, FootprintSampleOutcome, FootprintSampled,
+  FootprintBootRefused, FootprintMeasurementUnreadable,
+  gnu_time_max_rss_bytes, footprint_receipt_is_complete, footprint_sample_text,
+  runner_microvm_footprint_sample_sizes,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn sampled(mib: Int, peak_kb: Int) -> FootprintSampleOutcome {
+  FootprintSampled {
+    sample: VmmFootprintSample {
+      guest_memory: mebibyte(count: mib),
+      instrument: GnuTimeMaxRss,
+      vmm_peak: gnu_time_max_rss_bytes(kilobytes: peak_kb),
+    },
+  }
+}
+
+// THE UNIT CONVERSION IS ASSERTED EXACTLY, not merely as "returns something". %M is kilobytes and a
+// consumer that forgot the conversion would be wrong by 1024x in the direction that UNDER-reserves,
+// which is the direction that kills a guest rather than wasting memory.
+test fn gnu_time_kilobytes_become_bytes() -> Bool {
+  byte_size_count(b: gnu_time_max_rss_bytes(kilobytes: 1)) == 1024
+    && byte_size_count(b: gnu_time_max_rss_bytes(kilobytes: 204800)) == 209715200
+    && byte_size_count(b: gnu_time_max_rss_bytes(kilobytes: 0)) == 0
+}
+
+// A RECEIPT IS COMPLETE ONLY IF EVERY DECLARED SIZE PRODUCED A SAMPLE, and the two ways it can fail
+// are distinct: a size that never ran, and a size that ran but could not be read. Both must answer
+// incomplete, because the reserve decision reads a RELATIONSHIP and three points do not establish
+// the one a reader would assume.
+test fn a_receipt_missing_any_size_is_not_complete() -> Bool {
+  let full = [sampled(mib: 512, peak_kb: 200000), sampled(mib: 1024, peak_kb: 201000),
+              sampled(mib: 2048, peak_kb: 202000), sampled(mib: 4096, peak_kb: 203000)]
+  let short = [sampled(mib: 512, peak_kb: 200000), sampled(mib: 1024, peak_kb: 201000),
+               sampled(mib: 2048, peak_kb: 202000)]
+  let unreadable = [sampled(mib: 512, peak_kb: 200000), sampled(mib: 1024, peak_kb: 201000),
+                    sampled(mib: 2048, peak_kb: 202000),
+                    FootprintMeasurementUnreadable {
+                      guest_memory: mebibyte(count: 4096),
+                      instrument: GnuTimeMaxRss,
+                      cause: "the measurement file was empty",
+                    }]
+  let refused = [sampled(mib: 512, peak_kb: 200000), sampled(mib: 1024, peak_kb: 201000),
+                 sampled(mib: 2048, peak_kb: 202000),
+                 FootprintBootRefused { guest_memory: mebibyte(count: 4096), detail: "vmm exited 1" }]
+  footprint_receipt_is_complete(outcomes: full)
+    && !footprint_receipt_is_complete(outcomes: short)
+    && !footprint_receipt_is_complete(outcomes: unreadable)
+    && !footprint_receipt_is_complete(outcomes: refused)
+}
+
+// THIS PROTECTS THE EXPERIMENT, NOT THE CODE, and it is the control most likely to be deleted by
+// someone who reads it as redundant.
+//
+// The probe exists to tell a flat relationship from a rising one -- whether a guest's DECLARED size
+// is committed to the VMM's resident set or only its TOUCHED pages are. Collapsing the sample sizes
+// to one value, or to two adjacent ones, leaves every function here working perfectly while the
+// receipt can no longer distinguish those two worlds. Nothing else in this module would go red, and
+// the reserve would then be declared from a measurement that could not have found the alternative.
+fn sizes_span_enough(sizes: List<ByteSize>) -> Bool {
+  let counts = map(sizes, s => byte_size_count(b: s))
+  let spans = fold(counts, init: false, f: (found, a) =>
+    found || fold(counts, init: false, f: (inner, b) => inner || a >= b * 4))
+  count(sizes) >= 3 && spans
+}
+
+test fn the_sample_sizes_span_enough_to_discriminate() -> Bool {
+  sizes_span_enough(sizes: runner_microvm_footprint_sample_sizes)
+}
+
+// THE NEGATIVE ARM, WRITTEN AS A FIXTURE RATHER THAN LEFT TO A FUTURE MUTATION RUN.
+//
+// The check above is only worth having if it can go RED, and "it obviously would" is exactly the
+// reasoning that leaves a permanently-green check standing as coverage. Rather than prove that by
+// mutating the production list once and throwing the evidence away, the same predicate is driven
+// here over the two collapses that would actually happen -- a single size, and two adjacent sizes --
+// so the discriminating power is asserted on every run instead of on the day someone remembered to
+// test it.
+test fn the_span_check_rejects_the_collapses_it_exists_to_catch() -> Bool {
+  !sizes_span_enough(sizes: [mebibyte(count: 4096)])
+    && !sizes_span_enough(sizes: [mebibyte(count: 2048), mebibyte(count: 4096)])
+    && !sizes_span_enough(sizes: [mebibyte(count: 2048), mebibyte(count: 3072), mebibyte(count: 4096)])
+    && sizes_span_enough(sizes: [mebibyte(count: 512), mebibyte(count: 1024), mebibyte(count: 4096)])
+}
+
+// THE FAILING ARMS MUST RENDER THEIR SIZE. A receipt whose failure rows do not say which size failed
+// leaves a reader unable to tell WHICH point of the relationship is missing.
+test fn every_outcome_renders_the_size_it_measured() -> Bool {
+  string_contains(s: footprint_sample_text(o: sampled(mib: 2048, peak_kb: 202000)), pattern: "guest_bytes=2147483648")
+    && string_contains(
+         s: footprint_sample_text(o: FootprintBootRefused { guest_memory: mebibyte(count: 1024), detail: "vmm exited 1" }),
+         pattern: "guest_bytes=1073741824")
+    && string_contains(
+         s: footprint_sample_text(o: FootprintMeasurementUnreadable {
+              guest_memory: mebibyte(count: 512), instrument: SystemdMemoryPeak, cause: "empty" }),
+         pattern: "guest_bytes=536870912")
+}
