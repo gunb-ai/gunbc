@@ -399,8 +399,7 @@ pub fn admit_source_annotations(
                 .cloned()
                 .fold(
                     Rc::new(vec![]),
-                    |acc: Rc<Vec<Rc<CompilerDiagnostic>>>,
-                     refusal: Rc<AnnotationAttachmentRefusal>| {
+                    |acc: _, refusal: Rc<AnnotationAttachmentRefusal>| {
                         v1_rt::rc_list_push(
                             acc,
                             Rc::new(CompilerDiagnostic::SourceAnnotationRefused {

@@ -96,7 +96,7 @@ pub fn module_filename_collision_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec
                 owners: v1_rt::rc_empty_map::<String, String>(),
                 diagnostics: Rc::new(vec![]),
             }),
-            |acc: Rc<ModuleFilenameOwners>, tm: _| {
+            |acc: _, tm: _| {
                 let module_name = crate::v1_std_core::authored_name_at(
                     tm.type_env.clone().source_indices.clone(),
                     tm.module.clone(),

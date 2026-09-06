@@ -2594,13 +2594,13 @@ pub fn emit_from_artifact_plan(
 }
 
 pub fn collect_diagnostics(parse_results: Rc<Vec<Rc<ParseResult>>>) -> Rc<Vec<Rc<ErrorNode>>> {
-    parse_results.iter().cloned().fold(
-        Rc::new(vec![]),
-        |acc: Rc<Vec<Rc<ErrorNode>>>, pr: Rc<ParseResult>| match pr.error.clone() {
+    parse_results
+        .iter()
+        .cloned()
+        .fold(Rc::new(vec![]), |acc: _, pr: _| match pr.error.clone() {
             Some(diag) => v1_rt::rc_list_push(acc.clone(), diag.clone()),
             std::option::Option::None => acc.clone(),
-        },
-    )
+        })
 }
 
 pub fn resolve_frontend_occurrence_transport(
@@ -2670,7 +2670,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                 annotations: crate::std_source_annotation::source_annotation_graph_empty(),
                 annotation_diagnostics: Rc::new(vec![]),
             }),
-            |acc: Rc<FrontendAccum>, p: _| {
+            |acc: _, p: _| {
                 let parsed = crate::v1_compiler_parse::parse_with_table_in_occurrence_scope(
                     p.tokens.clone(),
                     v1_rt::rc_map_insert(
@@ -2811,7 +2811,7 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
                 annotations: crate::std_source_annotation::source_annotation_graph_empty(),
                 annotation_diagnostics: Rc::new(vec![]),
             }),
-            |acc: Rc<FrontendAccum>, p: _| {
+            |acc: _, p: _| {
                 let parsed = crate::v1_compiler_parse::parse_with_table_in_occurrence_scope(
                     p.tokens.clone(),
                     v1_rt::rc_map_insert(

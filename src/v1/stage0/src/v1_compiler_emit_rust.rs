@@ -5988,11 +5988,7 @@ pub fn group_unlisted_type_names(
 ) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     diags.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
-        |acc: Rc<HashMap<String, Rc<Vec<String>>>>, en: Rc<ErrorNode>| match (*en
-            .diagnostic
-            .clone())
-        .clone()
-        {
+        |acc: Rc<HashMap<String, Rc<Vec<String>>>>, en: _| match (*en.diagnostic.clone()).clone() {
             CompilerDiagnostic::UnlistedImportUse { name: nm, .. } => {
                 let existing = match v1_rt::map_get(&acc, en.module_name.clone()) {
                     Some(v) => v.clone(),

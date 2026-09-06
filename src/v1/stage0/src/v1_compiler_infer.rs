@@ -8723,7 +8723,7 @@ pub fn infer_call_arguments_generic_pass(
             results: Rc::new(vec![]),
             subst: init_subst.clone(),
         }),
-        |st: Rc<ArgGenericFoldState>, pair: (i64, Rc<Node>)| {
+        |st: _, pair: (i64, Rc<Node>)| {
             let a = pair.1.clone();
             let formal_selection = select_formal_for_call_argument(
                 a.clone(),
@@ -9883,7 +9883,7 @@ Rc::new(InferResult {
                                         subst: v1_rt::rc_empty_map::<String, Rc<Node>>(),
                                         results: Rc::new(vec![]),
                                     }),
-                                    |st: Rc<ArgGenericFoldState>, a: Rc<Node>| {
+                                    |st: _, a: Rc<Node>| {
                                         let st = v1_rt::take_owned(st);
                                         {
                                             let ar = infer_expr(
@@ -10049,6 +10049,43 @@ Rc::new(InferResult {
                             } else {
                                 Rc::new(vec![])
                             };
+                            let classifier_unresolved_diags = match (*call_target.clone()).clone() {
+                                CallTargetOutcome::CallableUnresolved { name: n, .. } => {
+                                    Rc::new(vec![crate::v1_std_core::make_error_node(
+                                        Rc::new(
+                                            CompilerDiagnostic::DirectCallClassifierUnresolved {
+                                                name: n.clone(),
+                                                declared_leaf_correlated: v1_rt::map_has(
+                                                    &scope
+                                                        .type_env
+                                                        .clone()
+                                                        .symbol_index
+                                                        .clone()
+                                                        .global_bare
+                                                        .clone(),
+                                                    n.clone(),
+                                                ),
+                                                span: span.clone(),
+                                            },
+                                        ),
+                                        scope.module_name.clone(),
+                                    )])
+                                }
+                                CallTargetOutcome::DeclaredCallableResolved { .. } => {
+                                    Rc::new(vec![])
+                                }
+                                CallTargetOutcome::BuiltinCallableResolved {
+                                    primitive_name: _,
+                                    ..
+                                } => Rc::new(vec![]),
+                                CallTargetOutcome::LocallyBoundCallee { .. } => Rc::new(vec![]),
+                                CallTargetOutcome::CallableAmbiguous { candidates: _, .. } => {
+                                    Rc::new(vec![])
+                                }
+                                CallTargetOutcome::LocallyBoundBindingMissing {
+                                    name: _, ..
+                                } => Rc::new(vec![]),
+                            };
                             let typed_arg_nodes = typed_args.clone();
                             if (sig.clone() != std::option::Option::None) {
                                 if declared_formal_authority_failed.clone() {
@@ -10068,8 +10105,11 @@ Rc::new(InferResult {
                                             crate::v1_std_core::node_name_span(texpr.clone()),
                                         ),
                                         diagnostics: v1_rt::concat(
-                                            formal_authority_diags.clone(),
-                                            arg_diags.clone(),
+                                            classifier_unresolved_diags.clone(),
+                                            v1_rt::concat(
+                                                formal_authority_diags.clone(),
+                                                arg_diags.clone(),
+                                            ),
                                         ),
                                     })
                                 } else {
@@ -10134,7 +10174,7 @@ Rc::new(InferResult {
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: resolved_type.clone(),
 })), span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
-    diagnostics: v1_rt::concat(formal_authority_diags.clone(), v1_rt::concat(arg_diags.clone(), v1_rt::concat(arg_shape_diags.clone(), v1_rt::concat(arg_compat_diags.clone(), v1_rt::concat(structured_arg_diags.clone(), v1_rt::concat(inhabitance_arg_diags.clone(), generic_type_argument_inhabitance_diags.clone())))))),
+    diagnostics: v1_rt::concat(classifier_unresolved_diags.clone(), v1_rt::concat(formal_authority_diags.clone(), v1_rt::concat(arg_diags.clone(), v1_rt::concat(arg_shape_diags.clone(), v1_rt::concat(arg_compat_diags.clone(), v1_rt::concat(structured_arg_diags.clone(), v1_rt::concat(inhabitance_arg_diags.clone(), generic_type_argument_inhabitance_diags.clone()))))))),
 })
                                     }
                                 }
@@ -23962,9 +24002,11 @@ pub fn bind_coproduct_item_arms(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_name: String,
 ) -> Rc<VariantFoldState> {
-    item.children.clone().iter().cloned().fold(
-        state.clone(),
-        |vacc: Rc<VariantFoldState>, child: Rc<Node>| {
+    item.children
+        .clone()
+        .iter()
+        .cloned()
+        .fold(state.clone(), |vacc: _, child: Rc<Node>| {
             insert_variant_owner_checked(
                 vacc,
                 crate::v1_std_core::authored_name_at(source_indices.clone(), child.clone()),
@@ -23972,8 +24014,7 @@ pub fn bind_coproduct_item_arms(
                 source_indices.clone(),
                 module_name.clone(),
             )
-        },
-    )
+        })
 }
 
 pub fn build_local_variants(
@@ -23985,7 +24026,7 @@ pub fn build_local_variants(
     items
         .iter()
         .cloned()
-        .fold(init.clone(), |acc: Rc<VariantFoldState>, item: Rc<Node>| {
+        .fold(init.clone(), |acc: _, item: Rc<Node>| {
             let item_is_coproduct = (item.connective.clone() == Connective::Disj);
             if item_is_coproduct.clone() {
                 bind_coproduct_item_arms(
@@ -24258,7 +24299,7 @@ pub fn build_imported_variants(
     resolved_imports
         .iter()
         .cloned()
-        .fold(init.clone(), |acc: Rc<VariantFoldState>, imp: _| {
+        .fold(init.clone(), |acc: _, imp: _| {
             let with_glob = if imp.is_all.clone() {
                 {
                     let source_items = match v1_rt::map_get(&parent_index, imp.module_path.clone())
@@ -24266,9 +24307,10 @@ pub fn build_imported_variants(
                         Some(parent_tm) => parent_tm.items.clone(),
                         std::option::Option::None => Rc::new(vec![]),
                     };
-                    source_items.iter().cloned().fold(
-                        acc.clone(),
-                        |iacc: Rc<VariantFoldState>, item: Rc<Node>| {
+                    source_items
+                        .iter()
+                        .cloned()
+                        .fold(acc.clone(), |iacc: _, item: Rc<Node>| {
                             let item_is_coproduct = (item.connective.clone() == Connective::Disj);
                             if item_is_coproduct.clone() {
                                 bind_coproduct_item_arms(
@@ -24280,15 +24322,14 @@ pub fn build_imported_variants(
                             } else {
                                 iacc.clone()
                             }
-                        },
-                    )
+                        })
                 }
             } else {
                 acc.clone()
             };
             imp.specific_names.clone().iter().cloned().fold(
                 with_glob.clone(),
-                |nacc: Rc<VariantFoldState>, name: String| {
+                |nacc: _, name: String| {
                     let surface = match v1_rt::map_get(&variant_surfaces, imp.module_path.clone()) {
                         Some(s) => s.clone(),
                         std::option::Option::None => empty_variant_export_surface(),
@@ -24963,7 +25004,7 @@ pub fn topo_resolve_types(
     str_bindings: env.str_bindings.clone(),
     unit_variant_index: env.unit_variant_index.clone(),
     diagnostics: Rc::new(vec![]),
-}), |acc: Rc<BindingsAccum>, name: String| {
+}), |acc: _, name: String| {
                     let ident = crate::v1_std_core::intern(env.intern_table.clone(), name.clone()).id.clone();
 match v1_rt::map_get(&env.bindings.clone(), ident.clone()) {
     Some(binding) => {
@@ -25012,7 +25053,7 @@ bindings_accum_insert(acc.clone(), ident.clone(), updated_binding.clone(), env.p
                 unit_variant_index: env.unit_variant_index.clone(),
                 diagnostics: Rc::new(vec![]),
             }),
-            |acc: Rc<BindingsAccum>, name: String| {
+            |acc: _, name: String| {
                 let ident = crate::v1_std_core::intern(env.intern_table.clone(), name.clone())
                     .id
                     .clone();

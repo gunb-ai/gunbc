@@ -666,6 +666,11 @@ pub enum CompilerDiagnostic {
         name: String,
         span: Rc<SourceSpan>,
     },
+    DirectCallClassifierUnresolved {
+        name: String,
+        declared_leaf_correlated: bool,
+        span: Rc<SourceSpan>,
+    },
     ReferenceDerivedImportProviderUnknown {
         name: String,
         referencing_module: String,
@@ -901,6 +906,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::DeclaredTypeNotInhabited { span: s, .. } => s.clone(),
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnlistedImportUse { span: s, .. } => s.clone(),
+        CompilerDiagnostic::DirectCallClassifierUnresolved { span: s, .. } => s.clone(),
         CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { span: s, .. } => s.clone(),
         CompilerDiagnostic::ReferenceDerivedImportExportUnproven { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnlistedVariantValueUse { span: s, .. } => s.clone(),
@@ -966,6 +972,11 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::DeclaredTypeNotInhabited { position: pos, expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("value does not inhabit its declared type at the ".to_string(), pos.clone()), ": declared '".to_string()), e.clone()), "', produced '".to_string()), g.clone()), "'".to_string()),
     CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { position: pos, reason: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("declared-type inhabitance is undecidable at the ".to_string(), pos.clone()), " (".to_string()), r.clone()), "): the modeled facts do not settle whether the produced value inhabits its declared type, so no verdict is asserted in either direction".to_string()),
     CompilerDiagnostic::UnlistedImportUse { name: n, .. } => v1_rt::concat(v1_rt::concat("unlisted import use '".to_string(), n.clone()), "' (referenced but not in any import's name list)".to_string()),
+    CompilerDiagnostic::DirectCallClassifierUnresolved { name: n, declared_leaf_correlated: d, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the direct-call classifier did not resolve '".to_string(), n.clone()), "'".to_string()), if d.clone() {
+        ", and some declaration shares that leaf name in the compiled pool".to_string()
+    } else {
+        ", and no declaration shares that leaf name in the compiled pool".to_string()
+    }), ". THIS IS AN OBSERVATION, NOT A VERDICT, AND THE FIELD IS CORRELATION RATHER THAN ENTITLEMENT. Reaching this state does not establish the call is unanswerable: method, constructor and builtin-adjacent paths may still answer it. And a shared leaf name does not establish that THIS occurrence is entitled to THAT declaration -- the field is read from the whole-pool census, so it says a name coincides, never that an authority answers. Deciding entitlement requires the containment join, which this diagnostic deliberately does not perform".to_string()),
     CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { name: n, referencing_module: rm, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("no provider is present for '".to_string(), n.clone()), "', referenced by module '".to_string()), rm.clone()), "': the compile closure carries no module that declares the name, so no use-line can be synthesized and the emitted Rust references a name it never imported. The remedy is to AUTHOR AN IMPORT -- closure membership is driven by imports, so a name the module never imported is a name the closure was never asked to supply".to_string()),
     CompilerDiagnostic::ReferenceDerivedImportExportUnproven { name: n, referencing_module: rm, provider_module: p, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the provider of '".to_string(), n.clone()), "' is present but its export could not be established: module '".to_string()), rm.clone()), "' references the name, the registry maps it to '".to_string()), p.clone()), "', and that module's transitive export surface does not establish it. The remedy is NOT an import -- the provider is already in the closure -- it is that the emitter cannot prove an export the provider may well hold".to_string()),
     CompilerDiagnostic::UnlistedVariantValueUse { name: n, .. } => v1_rt::concat(v1_rt::concat("unlisted variant value use '".to_string(), n.clone()), "' (a coproduct arm referenced but not in any import's name list)".to_string()),
@@ -1192,6 +1203,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
 }),
     CompilerDiagnostic::UnlistedImportUse { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityNonError,
+    gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
+}),
+    CompilerDiagnostic::DirectCallClassifierUnresolved { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityNonError,
     gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
 }),
