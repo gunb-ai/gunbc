@@ -1,0 +1,344 @@
+module test.claim.approval_capability_witness_test
+
+import gunbc.auth.approval_capability {
+  ApprovalCapability, ApprovalCapabilityClaims, CapabilityExpectation,
+  CapabilityVerification, CapabilityAuthentic, CapabilityRefused,
+  CapabilityMacRefused, CapabilityProtocolUnknown, CapabilityIssuerUnexpected,
+  CapabilityAudienceUnexpected, CapabilityAuthorityUnexpected,
+  CapabilityExpired, CapabilityNotYetValid, CapabilityTimestampNotCanonical,
+  ProposeApprove, ProposeDeny,
+  approval_capability_protocol, verify_capability, capability_refusal_reason,
+  utc_instant_is_canonical,
+}
+import extdeps.crypto.mac {
+  MacVerification, MacVerified, MacTagMismatch, HmacSha256, MacKeyId,
+}
+import std.scoped_authorization { AttemptIdentity }
+import std.types { NonEmptyStr, Timestamp }
+import std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_issuer: NonEmptyStr = "gunbc-approval-broker" as NonEmptyStr
+data witness_audience: NonEmptyStr = "srv1" as NonEmptyStr
+data witness_authority: NonEmptyStr = "gcp.secret_manager" as NonEmptyStr
+data witness_key_id: MacKeyId = "broker-2026-09" as MacKeyId
+
+data witness_expectation: CapabilityExpectation = CapabilityExpectation {
+  issuer: witness_issuer,
+  audience: witness_audience,
+  authority: witness_authority,
+  suite: HmacSha256,
+}
+
+data witness_issued_at: Timestamp = "2026-09-06T00:00:00Z"
+data witness_expires_at: Timestamp = "2026-09-06T00:15:00Z"
+data witness_inside: Timestamp = "2026-09-06T00:07:00Z"
+
+data mac_ok: MacVerification = MacVerified { key_id: witness_key_id }
+data mac_bad: MacVerification = MacTagMismatch { key_id: witness_key_id }
+
+fn claims_with(
+  protocol: NonEmptyStr,
+  issuer: NonEmptyStr,
+  audience: NonEmptyStr,
+  authority: NonEmptyStr,
+  issued_at: Timestamp,
+  expires_at: Timestamp,
+) -> ApprovalCapabilityClaims {
+  ApprovalCapabilityClaims {
+    protocol: protocol,
+    issuer: issuer,
+    audience: audience,
+    authority: authority,
+    escalation_id: "org-actions-secret-access-1" as NonEmptyStr,
+    request_revision: "rev-1" as NonEmptyStr,
+    decision: ProposeApprove,
+    attempt: "attempt-1" as AttemptIdentity,
+    issued_at: issued_at,
+    expires_at: expires_at,
+    key_id: witness_key_id,
+  }
+}
+
+fn good_claims() -> ApprovalCapabilityClaims {
+  claims_with(
+    protocol: approval_capability_protocol,
+    issuer: witness_issuer,
+    audience: witness_audience,
+    authority: witness_authority,
+    issued_at: witness_issued_at,
+    expires_at: witness_expires_at,
+  )
+}
+
+fn capability_of(claims: ApprovalCapabilityClaims) -> ApprovalCapability {
+  ApprovalCapability { claims: claims, tag_b64url: "dGFn" as NonEmptyStr }
+}
+
+fn verify_at(
+  claims: ApprovalCapabilityClaims,
+  mac: MacVerification,
+  observed_at: Timestamp,
+) -> CapabilityVerification {
+  verify_capability(
+    capability: capability_of(claims: claims),
+    expectation: witness_expectation,
+    mac_result: mac,
+    observed_at: observed_at,
+  )
+}
+
+fn refusal_is_mac(v: CapabilityVerification) -> Bool {
+  match v {
+    CapabilityRefused { cause: c } =>
+      match c {
+        CapabilityMacRefused { verification: _ } => true
+        _ => false
+      }
+    CapabilityAuthentic { claims: _ } => false
+  }
+}
+
+fn is_authentic(v: CapabilityVerification) -> Bool {
+  match v {
+    CapabilityAuthentic { claims: _ } => true
+    CapabilityRefused { cause: _ } => false
+  }
+}
+
+// ── The positive control comes first, because every refusal below is only informative if the
+// same shape with the defect removed is actually accepted. ───────────────────────────────────
+test fn a_well_formed_capability_inside_its_window_is_authentic() -> Bool {
+  is_authentic(v: verify_at(claims: good_claims(), mac: mac_ok, observed_at: witness_inside))
+}
+
+// ── The MAC is checked before any claim is read for meaning ──────────────────────────────────
+// THE DISCRIMINATING RED FOR THE ORDERING. This capability is wrong in two independent ways: the
+// tag does not verify AND the audience names another deployment. If claim checks ran first the
+// report would name the audience -- which tells a forger which audiences are interesting, and
+// means claims were interpreted before they were authenticated. The refusal must name the MAC.
+test fn an_unauthentic_capability_reports_the_mac_not_the_first_wrong_claim() -> Bool {
+  refusal_is_mac(
+    v: verify_at(
+      claims: claims_with(
+        protocol: approval_capability_protocol,
+        issuer: witness_issuer,
+        audience: "srv1-lab" as NonEmptyStr,
+        authority: witness_authority,
+        issued_at: witness_issued_at,
+        expires_at: witness_expires_at,
+      ),
+      mac: mac_bad,
+      observed_at: witness_inside,
+    )
+  )
+}
+
+// THE CONTROL ON THAT ORDERING TEST. With the SAME wrong audience and a GOOD tag, the audience is
+// what gets reported -- so the test above passes because the MAC ran first, not because a wrong
+// audience is ignored.
+test fn an_authentic_capability_for_another_audience_is_refused_by_audience() -> Bool {
+  match verify_at(
+    claims: claims_with(
+      protocol: approval_capability_protocol,
+      issuer: witness_issuer,
+      audience: "srv1-lab" as NonEmptyStr,
+      authority: witness_authority,
+      issued_at: witness_issued_at,
+      expires_at: witness_expires_at,
+    ),
+    mac: mac_ok,
+    observed_at: witness_inside,
+  ) {
+    CapabilityRefused { cause: c } =>
+      match c {
+        CapabilityAudienceUnexpected { declared: d, expected: e } =>
+          d == "srv1-lab" && e == witness_audience
+        _ => false
+      }
+    CapabilityAuthentic { claims: _ } => false
+  }
+}
+
+// ── Each bound context refuses its own substitution ──────────────────────────────────────────
+test fn a_capability_from_another_issuer_is_refused() -> Bool {
+  match verify_at(
+    claims: claims_with(
+      protocol: approval_capability_protocol,
+      issuer: "some-other-service" as NonEmptyStr,
+      audience: witness_audience,
+      authority: witness_authority,
+      issued_at: witness_issued_at,
+      expires_at: witness_expires_at,
+    ),
+    mac: mac_ok,
+    observed_at: witness_inside,
+  ) {
+    CapabilityRefused { cause: c } =>
+      match c {
+        CapabilityIssuerUnexpected { declared: _, expected: _ } => true
+        _ => false
+      }
+    CapabilityAuthentic { claims: _ } => false
+  }
+}
+
+// AUTHORITY SUBSTITUTION IS THE ONE THAT MATTERS MOST AT N AUTHORITIES. An approval the operator
+// gave for a Secret Manager grant must not be redeemable at the sudoers authority, and the only
+// thing standing between those two is this field being bound and checked.
+test fn an_approval_for_another_authority_is_refused() -> Bool {
+  match verify_at(
+    claims: claims_with(
+      protocol: approval_capability_protocol,
+      issuer: witness_issuer,
+      audience: witness_audience,
+      authority: "host.sudoers" as NonEmptyStr,
+      issued_at: witness_issued_at,
+      expires_at: witness_expires_at,
+    ),
+    mac: mac_ok,
+    observed_at: witness_inside,
+  ) {
+    CapabilityRefused { cause: c } =>
+      match c {
+        CapabilityAuthorityUnexpected { declared: d, expected: e } =>
+          d == "host.sudoers" && e == witness_authority
+        _ => false
+      }
+    CapabilityAuthentic { claims: _ } => false
+  }
+}
+
+test fn a_capability_declaring_another_protocol_is_refused() -> Bool {
+  match verify_at(
+    claims: claims_with(
+      protocol: "gunbc.approval-capability.v2" as NonEmptyStr,
+      issuer: witness_issuer,
+      audience: witness_audience,
+      authority: witness_authority,
+      issued_at: witness_issued_at,
+      expires_at: witness_expires_at,
+    ),
+    mac: mac_ok,
+    observed_at: witness_inside,
+  ) {
+    CapabilityRefused { cause: c } =>
+      match c {
+        CapabilityProtocolUnknown { declared: _, expected: _ } => true
+        _ => false
+      }
+    CapabilityAuthentic { claims: _ } => false
+  }
+}
+
+// ── The expiry boundary instant ──────────────────────────────────────────────────────────────
+// THE BOUNDARY IS THE WHOLE TEST. std.scoped_authorization grant_not_expired_at uses `<=` and so
+// INCLUDES the expiry instant; this module deliberately uses a strict comparison, because
+// expires_at on a link is the instant it stops being redeemable. Observing exactly AT expires_at
+// must refuse. A test one second either side of the boundary cannot see which comparison is in use.
+test fn a_capability_observed_exactly_at_its_expiry_is_refused() -> Bool {
+  match verify_at(claims: good_claims(), mac: mac_ok, observed_at: witness_expires_at) {
+    CapabilityRefused { cause: c } =>
+      match c {
+        CapabilityExpired { expires_at: _, observed_at: _ } => true
+        _ => false
+      }
+    CapabilityAuthentic { claims: _ } => false
+  }
+}
+
+// THE OTHER SIDE OF THE SAME BOUNDARY, asserted separately: issuance is INCLUSIVE, so a link
+// redeemed at the instant it was minted is live. If both boundaries were strict a link would be
+// dead at issuance; if both were inclusive it would outlive its window by an instant.
+test fn a_capability_observed_exactly_at_its_issuance_is_authentic() -> Bool {
+  is_authentic(v: verify_at(claims: good_claims(), mac: mac_ok, observed_at: witness_issued_at))
+}
+
+test fn a_capability_observed_before_its_issuance_is_refused_as_not_yet_valid() -> Bool {
+  match verify_at(claims: good_claims(), mac: mac_ok, observed_at: "2026-09-05T23:59:59Z") {
+    CapabilityRefused { cause: c } =>
+      match c {
+        CapabilityNotYetValid { issued_at: _, observed_at: _ } => true
+        _ => false
+      }
+    CapabilityAuthentic { claims: _ } => false
+  }
+}
+
+// ── The timestamp comparison contract ────────────────────────────────────────────────────────
+// WHY A NON-CANONICAL STAMP MUST REFUSE RATHER THAN BE ORDERED. Timestamp is a String alias, so
+// `<` is lexicographic. "2026-9-06T00:07:00Z" is the same instant as the canonical form and sorts
+// AFTER "2026-10-01T..."; a stamp carrying a local offset compares as though the offset were not
+// there. Under a permissive verifier those compare as times and silently answer wrongly, which is
+// the fabricated-plausible-output arm DESIGN section 5 forbids. So the shape is required.
+test fn a_non_canonical_observation_time_refuses_rather_than_being_ordered() -> Bool {
+  match verify_at(claims: good_claims(), mac: mac_ok, observed_at: "2026-9-06T00:07:00Z") {
+    CapabilityRefused { cause: c } =>
+      match c {
+        CapabilityTimestampNotCanonical { field: f, value: _ } => f == "observed_at"
+        _ => false
+      }
+    CapabilityAuthentic { claims: _ } => false
+  }
+}
+
+// THE CLAIMS ARE CHECKED TOO, not just the observation. A broker bug that minted an offset-bearing
+// expires_at would otherwise produce a link whose expiry compares wrongly for its whole life.
+test fn a_non_canonical_expiry_claim_refuses() -> Bool {
+  match verify_at(
+    claims: claims_with(
+      protocol: approval_capability_protocol,
+      issuer: witness_issuer,
+      audience: witness_audience,
+      authority: witness_authority,
+      issued_at: witness_issued_at,
+      expires_at: "2026-09-06T00:15:00+00:00",
+    ),
+    mac: mac_ok,
+    observed_at: witness_inside,
+  ) {
+    CapabilityRefused { cause: c } =>
+      match c {
+        CapabilityTimestampNotCanonical { field: f, value: _ } => f == "expires_at"
+        _ => false
+      }
+    CapabilityAuthentic { claims: _ } => false
+  }
+}
+
+// THE CANONICALITY PREDICATE'S OWN CONTROL. Without this the rule could be "nothing is canonical"
+// and every test above would still pass, while the whole loop refused every link it ever minted.
+test fn the_canonical_form_is_accepted_and_near_misses_are_not() -> Bool {
+  utc_instant_is_canonical(t: "2026-09-06T00:00:00Z")
+    && !utc_instant_is_canonical(t: "2026-9-06T00:00:00Z")
+    && !utc_instant_is_canonical(t: "2026-09-06T00:00:00+00:00")
+    && !utc_instant_is_canonical(t: "2026-09-06T00:00:00.500Z")
+    && !utc_instant_is_canonical(t: "2026-09-06 00:00:00Z")
+    && !utc_instant_is_canonical(t: "")
+}
+
+// ── The decision is part of what is signed ───────────────────────────────────────────────────
+// A leaked approve link must not be convertible into a deny, or the reverse. The binding is that
+// the verb lives in the authenticated claims rather than arriving beside them at redemption, so
+// what the verifier returns names the decision the operator was shown.
+test fn the_verified_claims_carry_the_decision_that_was_signed() -> Bool {
+  match verify_at(claims: good_claims(), mac: mac_ok, observed_at: witness_inside) {
+    CapabilityAuthentic { claims: c } =>
+      match c.decision {
+        ProposeApprove => true
+        ProposeDeny => false
+      }
+    CapabilityRefused { cause: _ } => false
+  }
+}
+
+// The rendered refusal must say which check failed; an operator reading an incident needs the
+// distinction between "someone forged this" and "this was for the lab".
+test fn the_refusal_reason_names_the_failing_check() -> Bool {
+  match verify_at(claims: good_claims(), mac: mac_bad, observed_at: witness_inside) {
+    CapabilityRefused { cause: c } =>
+      string_contains(s: capability_refusal_reason(r: c), pattern: "does not verify")
+    CapabilityAuthentic { claims: _ } => false
+  }
+}
