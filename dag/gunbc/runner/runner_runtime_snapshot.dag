@@ -1,0 +1,103 @@
+module gunbc.runner.runner_runtime_snapshot
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import gunbc.build_cache_instance { ProcessIdentity }
+
+// WHAT A RUNNING HOST ACTUALLY IS, recorded before anything decides whether it is correct. This
+// module is deliberately only the OBSERVATION half: it carries what /proc said and takes no view on
+// whether any of it was expected. gunbc.runner.runner_host_surface declares what may exist; the
+// comparator below joins the two.
+//
+// THE SPLIT IS NOT TIDINESS. An earlier shape let an observation carry `role_claimed`, which invites
+// the producer to label a process with the role it was looking for -- so a firecracker running as
+// root would be recorded as the attempt-execution role and compared against the declaration it was
+// supposed to be tested against. A role must be DERIVED from executable identity, invocation,
+// attempt and phase, never asserted by the thing doing the looking.
+
+// ── privilege ───────────────────────────────────────────────────────────────────────────────────
+
+// A UID IS NOT A PRIVILEGE STANDING. Linux authority is the five capability sets plus no_new_privs
+// and seccomp mode, and a process can hold a nonzero uid with a full effective set. All seven are
+// carried so a receipt can never again say "unprivileged" on the strength of a uid alone.
+type LinuxProcessPrivilege {
+  uid_real: Int
+  uid_effective: Int
+  gid_real: Int
+  gid_effective: Int
+  supplementary_groups: List<Int>
+  cap_inheritable: NonEmptyStr
+  cap_permitted: NonEmptyStr
+  cap_effective: NonEmptyStr
+  cap_bounding: NonEmptyStr
+  cap_ambient: NonEmptyStr
+  no_new_privs: Bool
+  seccomp_mode: Int
+}
+
+// ── namespaces ──────────────────────────────────────────────────────────────────────────────────
+
+// AN INODE, NOT A BOOLEAN. "Namespaced" collapses seven independent questions into one, and the
+// interesting answer is usually which ones are SHARED with the supervisor -- that is what
+// establishes no unrequested namespace was introduced, which a boolean cannot say at all.
+type NamespaceRelation = NamespaceShared | NamespaceDistinct | NamespaceUnreadable
+
+type NamespaceObservation {
+  namespace_kind: NonEmptyStr
+  supervisor_inode: NonEmptyStr
+  observed_inode: NonEmptyStr
+  relation: NamespaceRelation
+}
+
+// ── cgroup ──────────────────────────────────────────────────────────────────────────────────────
+
+// PLACEMENT IS BIDIRECTIONAL OR IT IS NOT ESTABLISHED. /proc/<pid>/cgroup naming a path and that
+// path's cgroup.procs containing the pid are two different readings, and a receipt that takes only
+// the first can be satisfied by a stale or root placement. Carrying both is what lets the
+// comparator tell placement from its absence.
+type CgroupObservation
+  = CgroupPlacementRead { path: NonEmptyStr, membership_confirmed: Bool }
+  | CgroupPlacementUnreadable { detail: String }
+
+// ── descriptors ─────────────────────────────────────────────────────────────────────────────────
+
+type FileDescriptorObservation {
+  number: Int
+  target: NonEmptyStr
+}
+
+// ── one observed process, as read ───────────────────────────────────────────────────────────────
+
+type RawProcessObservation {
+  identity: ProcessIdentity
+  parent_pid: Int
+  executable_path: NonEmptyStr
+  command_name: NonEmptyStr
+  root_path: NonEmptyStr
+  privilege: LinuxProcessPrivilege
+  namespaces: List<NamespaceObservation>
+  cgroup: CgroupObservation
+  file_descriptors: List<FileDescriptorObservation>
+}
+
+// ── the snapshot, with its own completeness ─────────────────────────────────────────────────────
+
+// /proc IS NOT ATOMIC, so a snapshot has to know whether it raced the population it was
+// enumerating. The producer enumerates, reads, enumerates again, and refuses if the set or any
+// identity moved -- because a snapshot that silently lost a process reports agreement it did not
+// observe. An unreadable member makes the WHOLE observation incomplete rather than being skipped
+// and later read as absence.
+type RuntimeSnapshot
+  = RuntimeSnapshotTaken {
+      taken_at: NonEmptyStr
+      phase: NonEmptyStr
+      processes: List<RawProcessObservation>
+      host_tcp_listener_count: Int
+      host_unix_socket_count: Int
+    }
+  | RuntimeSnapshotRaced { detail: String }
+  | RuntimeSnapshotUnreadable { detail: String }
+
+// THE OBSERVER IS PART OF THE SURFACE IT OBSERVES, which is why runner_host_surface declares a
+// RuntimeSurfaceObserver role. A census process that is not itself declared is the unexplained
+// process the census exists to find, and it would report itself as a finding on every run.
+data observer_is_declared: NonEmptyStr = "the process taking a snapshot is itself declared as RuntimeSurfaceObserver; an undeclared observer would report itself as an unexpected process forever"
