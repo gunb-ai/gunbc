@@ -922,7 +922,13 @@ mod affected_select_discriminating_red_controls {
     /// whose body is a name reference (not a string literal), so `item_kind` classifies it as
     /// `DataItem` -> the edit routes to `overlapping_data_items`. A string-literal-only data decl
     /// (e.g. `scope_shared_marker`) is NOT classified as `DataItem` because the parsed node has
-    /// `body = None` for string literal values -- it falls through to `OtherItem` -> `touched_entry_files`.
+    /// the touched set came back empty, and the command printed "0 selected" for a
+    /// real change inside the import closure of live witnesses.
+    ///
+    /// Targets `scope_shared.dag` line 9 -- the `data scope_shared_marker` declaration line,
+    /// NOT line 7 (a comment). Line 7 is pre-first-declaration and routes to touched_entry_files;
+    /// line 9 hits the DataItem classification and routes to overlapping_data_items.
+    /// A diff on a comment or string-literal-only data line is NOT a data-row test.
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     #[test]
     fn data_row_only_diff_selects_through_overlapping_data_items() {
@@ -932,18 +938,16 @@ mod affected_select_discriminating_red_controls {
         let index = build_multi_entry_index(&roots);
         let facts = index.module_graph_facts();
         let declared = facts.declared_paths.clone();
-        // Touch a data-declaration line at scope_importer.dag line 8
-        // (data scope_importer_marker: String = scope_shared_marker).
-        // This uses a NAME REFERENCE as the body, so the parsed node has body != None,
-        // and item_kind classifies it as DataItem -> overlapping_data_items.
-        let diff = diff_at(SCOPE_IMPORTER, 8);
+        // Touch scope_shared.dag at line 9 -- the data declaration line,
+        // not line 7 (a comment before first_decl_line).
+        let diff = diff_at(SCOPE_SHARED, 9);
         let edits = floor_diff_edits_from_diff_text(&index, &diff).expect("diff parse");
-        // Verify the edit lands in overlapping_data_items specifically, NOT touched_entry_files.
-        // This is the discriminating RED: if the item_kind classifier changes or the
-        // three-bucket union drops overlapping_data_items, this assertion goes red.
+        // Verify the edit lands in overlapping_data_items specifically.
+        // Before the fix, test_affected_select read only touched_entry_files;
+        // this assertion proves the data-row path selects through overlapping_data_items.
         assert!(
             !edits.overlapping_data_items.is_empty(),
-            "data-row diff (non-literal body) must populate overlapping_data_items: touched_entry_files={}, overlapping_data_items={}, edited_test_fns={}",
+            "data-row diff (scope_shared line 9) must populate overlapping_data_items: touched_entry_files={}, overlapping_data_items={}, edited_test_fns={}",
             edits.touched_entry_files.len(),
             edits.overlapping_data_items.len(),
             edits.edited_test_fns.len(),
@@ -964,7 +968,7 @@ mod affected_select_discriminating_red_controls {
                 &touched,
             )
             .expect("entry_file_touched_via_import_closure"),
-            "data-row-only diff in scope_importer must select scope_importer (self-selection)"
+            "data-row diff in scope_shared must select scope_importer (direct dependency)"
         );
     }
 }
