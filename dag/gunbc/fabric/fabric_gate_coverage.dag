@@ -196,7 +196,14 @@ fn gate_declares_mutation(gates: List<FabricCiGate>, gate: NonEmptyStr, mutation
 // others. Site 2 already has a three-element specimen (the empty-enrolment control) that could pin
 // its order. Site 3 has an authorable one: quiet Direction One with complete enrolments, then two
 // distinct foreign rows in known order. Site 1 needs the two-distinct-duplicate case described
-// above. Site 4's order is its input order and is pinned by any rendered-output witness.
+// above. Site 4 preserves input order TODAY, and NO CURRENT WITNESS ESTABLISHES THAT. An earlier
+// version of this line said its order was "pinned by any rendered-output witness", which asserted
+// coverage that does not exist: the unwell-formed arm is collapsed by cause_labels to the singleton
+// ["standing-refused-unwell-formed"], discarding the refusal list before any rendering is observed,
+// so no assertion in the suite reads a line lines_of emitted. Its discriminator is authorable --
+// construct at least two refusal lines and observe their relative position in the rendered text --
+// but it is not written. A WITNESS THAT READS SOME RENDERED OUTPUT IS NOT A WITNESS OF ORDERING; it
+// has to observe the component the rewrite can change.
 //
 // Deliberately OUT of scope: duplicate_authority_identities composes these populations through an
 // ordered `concat`, and no test pins relative CATEGORY order; a change confined to any one site
