@@ -5,9 +5,17 @@ import std.process { ExitSuccess, ProcessExit, exit_failure }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
 import gunbc.machine_intake_megarac_media_attach {
   MegaRacAttachOutcome,
+  MegaRacAttachResult,
+  SessionRelease,
+  SessionReleaseNotAttempted,
+  SessionReleaseRefused,
+  SessionReleased,
   MegaRacAttachUnconfirmed,
   MegaRacAttached,
+  MegaRacAlreadyAttached,
+  MegaRacConfigurationsUnreadable,
   MegaRacImageListingEmpty,
+  MegaRacImageListingUnparseable,
   MegaRacImageNotEnumerated,
   MegaRacImagesUnreadable,
   MegaRacSessionRefused,
@@ -21,17 +29,27 @@ import gunbc.machine_intake_megarac_media_attach {
 // operation stays reusable by the next controller without carrying anyone's choices.
 data mtcollins1_diskless_image_name: NonEmptyStr = "ubuntu-24.04.3-live-server-arm64.iso"
 
-data mtcollins1_media_cookie_jar: NonEmptyStr = "/tmp/gunbc-mtcollins1-megarac-jar"
+// THE JAR IS ATTEMPT-OWNED, AND A FIXED LITERAL HERE WAS THE DEFECT. extdeps.bmc.megarac's note
+// once claimed that making the jar a parameter meant an attempt owned its own — it does not: a
+// parameter PERMITS a per-attempt path and this wrapper passed a constant, so two concurrent
+// attempts shared one bearer file. The attempt identifier is now part of the path, so the caller
+// establishes the ownership the operation cannot.
+fn mtcollins1_media_cookie_jar(attempt: NonEmptyStr) -> NonEmptyStr {
+  join(["/tmp/gunbc-mtcollins1-megarac-jar-", attempt as String], "") as NonEmptyStr
+}
 
 data mtcollins1_media_username: NonEmptyStr = "admin"
 
-// EACH OUTCOME RENDERS ITS OWN REASON because they have different remedies, and two of them are
-// easy to confuse in a way that sends an operator to the wrong place.
+// EACH OUTCOME RENDERS ITS OWN REASON because they have different remedies, and the remedies are
+// what an operator acts on — which is why one of these messages previously had to be retracted
+// rather than reworded. It advised re-asserting mount_cd to fix an "empty" listing. That detaches
+// every presented image, so on a host booted from the medium the advice destroys the running root.
+// The listing was never stale; the image was simply attached, and attached images leave the
+// available listing. See gunbc.machine_intake_megarac_media_attach for the measurement.
 //
-// MegaRacImageListingEmpty means the CONTROLLER'S CACHE went stale — measured on this unit after a
-// new file appeared in the export, when it stopped enumerating even a file it had listed before.
-// The remedy is to re-assert mount_cd, not to look for the missing file. Reading it as "the share
-// is empty" sends someone to inspect an export that is fine.
+// MegaRacAlreadyAttached IS A SUCCESS AND IS RENDERED AS ONE. Converge is run repeatedly by
+// construction, so the second run finding the desired state already held is the normal case, not an
+// exception to it — and no write is performed on that path.
 //
 // MegaRacAttachUnconfirmed is the one state where waiting is right: start-media was accepted and
 // the configurations listing does not name the image yet. The controller's mount daemon is
@@ -40,6 +58,9 @@ data mtcollins1_media_username: NonEmptyStr = "admin"
 fn mtcollins1_render_attach(outcome: MegaRacAttachOutcome) -> ProcessExit {
   match outcome {
     MegaRacAttached { image_name: _, image_index: _ } => ExitSuccess
+    MegaRacAlreadyAttached { image_name: _ } => ExitSuccess
+    MegaRacConfigurationsUnreadable { detail: d } =>
+      exit_failure(reason: concat("mtcollins1 media attach: the presented-media listing could not be read, so whether anything is attached is UNKNOWN; refusing rather than attaching over an unknown state: ", d))
     MegaRacSessionRefused { detail: d } =>
       exit_failure(reason: concat("mtcollins1 media attach: session refused: ", d))
     MegaRacSessionTokenUnreadable { detail: d } =>
@@ -47,9 +68,11 @@ fn mtcollins1_render_attach(outcome: MegaRacAttachOutcome) -> ProcessExit {
     MegaRacImagesUnreadable { detail: d } =>
       exit_failure(reason: concat("mtcollins1 media attach: images listing unreadable: ", d))
     MegaRacImageListingEmpty =>
-      exit_failure(reason: "mtcollins1 media attach: the controller enumerated NO images; that listing is a cache and has gone stale, so re-assert mount_cd rather than concluding the share is empty")
+      exit_failure(reason: "mtcollins1 media attach: the image is not presented AND the controller offers no image available to attach; check that the export is reachable from the controller and holds the file. Do NOT toggle mount_cd to 'refresh' this — that detaches presented media, which on a host booted from it removes the running root")
+    MegaRacImageListingUnparseable { detail: d } =>
+      exit_failure(reason: concat("mtcollins1 media attach: the images listing was not valid JSON, which is a protocol failure rather than the stale-cache case above: ", d))
     MegaRacImageNotEnumerated { image_name: n } =>
-      exit_failure(reason: concat("mtcollins1 media attach: the controller enumerated images but not '", n as String, "'"))
+      exit_failure(reason: concat("mtcollins1 media attach: the image is not presented, and the controller offers other images but not '", n as String, "' — so it is absent from the share as the controller sees it, rather than already in use"))
     MegaRacStartRefused { detail: d } =>
       exit_failure(reason: concat("mtcollins1 media attach: start-media refused AND the configurations listing does not name the image: ", d))
     MegaRacAttachUnconfirmed { image_name: n, configurations: c } =>
@@ -57,19 +80,72 @@ fn mtcollins1_render_attach(outcome: MegaRacAttachOutcome) -> ProcessExit {
   }
 }
 
-func mtcollins1_attach_diskless_image(password_raw: String) -> ProcessExit
+// A LEAKED SESSION IS REPORTED EVEN WHEN THE ATTACH SUCCEEDED, and it does not turn a success into
+// a failure. The controller's session table is finite and this lane exhausted one service's
+// sessions by never closing any; a caller that reads "attached" and ignores an unreleased session
+// will keep attaching until the table fills, which presents as an unrelated 403 much later. The
+// release is therefore surfaced in the reason text rather than folded into the verdict.
+fn mtcollins1_render_release(standing: SessionRelease) -> String {
+  match standing {
+    SessionReleased => ""
+    SessionReleaseNotAttempted => " (session was never opened, so nothing to release)"
+    SessionReleaseRefused { detail: d } => concat(" WARNING: the session was NOT released and remains allocated on the controller: ", d)
+  }
+}
+
+// THE DISCRIMINATING CONTROL, and it is the arm this operation most needs one for. Every other
+// refusal here is reachable only by breaking the controller or the network; this one is reachable
+// on a healthy unit and it is the arm that decides whether a name that is NOT present can be
+// reported as attached. Without it, "the attach succeeded" is a claim about a run in which nothing
+// could have failed — the specification-without-execution shape DESIGN §5 names.
+//
+// IT RUNS AGAINST THE SAME LIVE CONTROLLER AS THE POSITIVE PATH, differing in exactly one input,
+// so a green positive and a red control together establish that the confirmation reads the name
+// rather than reporting whatever the controller happens to be presenting. Running it costs one
+// session and performs no write: the absent name is refused after the two reads, before start.
+func mtcollins1_attach_absent_image_control(password_raw: String, attempt: String) -> ProcessExit
+  uses net: std.resources.Network
+{
+  if password_raw == "" {
+    return exit_failure(reason: "mtcollins1 media attach control: no controller password supplied; refusing before any request")
+  }
+  return mtcollins1_render_attach_result(
+    result: megarac_attach_remote_image(
+      bmc_host: mtcollins1_endpoint.host,
+      username: mtcollins1_media_username,
+      password: password_raw as NonEmptyStr,
+      cookie_jar: mtcollins1_media_cookie_jar(attempt: attempt as NonEmptyStr),
+      image_name: "gunbc-absent-control-image.iso",
+    )
+  )
+}
+
+func mtcollins1_attach_diskless_image(password_raw: String, attempt: String) -> ProcessExit
   uses net: std.resources.Network
 {
   if password_raw == "" {
     return exit_failure(reason: "mtcollins1 media attach: no controller password supplied; refusing before any request")
   }
-  return mtcollins1_render_attach(
-    outcome: megarac_attach_remote_image(
-      bmc_host: mtcollins1_endpoint.host,
-      username: mtcollins1_media_username,
-      password: password_raw as NonEmptyStr,
-      cookie_jar: mtcollins1_media_cookie_jar,
-      image_name: mtcollins1_diskless_image_name,
-    )
+  if attempt == "" {
+    return exit_failure(reason: "mtcollins1 media attach: no attempt identifier supplied; the cookie jar is attempt-owned and a shared jar is what lets two runs consume one session")
+  }
+  let result = megarac_attach_remote_image(
+    bmc_host: mtcollins1_endpoint.host,
+    username: mtcollins1_media_username,
+    password: password_raw as NonEmptyStr,
+    cookie_jar: mtcollins1_media_cookie_jar(attempt: attempt as NonEmptyStr),
+    image_name: mtcollins1_diskless_image_name,
   )
+  return mtcollins1_render_attach_result(result: result)
+}
+
+fn mtcollins1_render_attach_result(result: MegaRacAttachResult) -> ProcessExit {
+  match mtcollins1_render_attach(outcome: result.outcome) {
+    ExitSuccess =>
+      match result.session_release {
+        SessionReleased => ExitSuccess
+        _ => exit_failure(reason: concat("mtcollins1 media attach: the image attached, but the session was not released.", mtcollins1_render_release(standing: result.session_release)))
+      }
+    other => other
+  }
 }

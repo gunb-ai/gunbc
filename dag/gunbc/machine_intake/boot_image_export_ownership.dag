@@ -26,10 +26,24 @@ import gunbc.fleet_posix_accounts {
 // This lane spent its effort making the control half admit, verify and refuse; leaving the payload
 // half as "whatever can write the directory" would secure one end of a chain.
 //
-// THE MEASURED STATE IS ROOT-OWNED AND UNWRITABLE BY THE CONVERGE IDENTITY. /srv/bmc on srv2 is
-// drwxr-xr-x root root, gunbc runs as uid 1000, and the modeled fetch consequently verifies an
-// artifact correctly and then cannot publish it — BootImagePublishFailed, measured 2026-09-06.
-// That refusal is accurate rather than a defect, and it is what this row exists to resolve.
+// THE STATE THIS ROW WAS WRITTEN AGAINST HAS SINCE CHANGED, and saying so is the point rather than
+// an afterthought. When it was authored /srv/bmc on srv2 was drwxr-xr-x root root, so the modeled
+// fetch verified an artifact correctly and then could not publish it. The directory was
+// subsequently chowned to gunbc-fleet:gunbc-fleet mode 0755, which satisfies the ownership half of
+// the requirement below.
+//
+// THE PUBLICATION STILL REFUSES FROM AN OPERATOR SESSION, and for a different reason than before:
+// gunbc runs as uid 1000 while the export now belongs to 1001. That is the requirement working — it
+// says the AUTOMATION principal owns the export, so converge should run as that principal — rather
+// than the earlier state, which was simply that nobody but root could write there.
+//
+// WHAT THIS ROW DOES NOT YET DO, stated because the gap is easy to miss under a page of prose about
+// authority: NOTHING CONSUMES IT AT THE WRITE BOUNDARY. publish_verified_boot_image calls mv
+// directly and never asks export_ownership_standing anything, so the policy below has no causal
+// position — the program publishes whenever the operating system's permissions happen to allow it,
+// including under root or a world-writable export. The requirement is currently a description of
+// what ought to hold, checked by a probe against fixtures, not a wall. Closing that needs a real
+// stat plus effective-principal observation bound to the path, admitted before the move.
 //
 // ROOT IS THE WRONG ANSWER EVEN THOUGH IT WOULD WORK. Escalating the publish step means converge
 // acquires privilege for a file write, and a grant that broad is not proportionate to "put a

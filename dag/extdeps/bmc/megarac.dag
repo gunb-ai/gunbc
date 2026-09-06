@@ -165,9 +165,18 @@ fn megarac_image_redirection_wire(r: MegaRacImageRedirectionRequired) -> NonEmpt
 //
 // SESSION AUTH IS COOKIE-AND-HEADER, NOT netrc, which is why these cannot reuse the redfish.Http
 // shape beside them. POST /api/session returns a CSRFToken in its body and sets a session cookie;
-// every subsequent request must present BOTH the cookie jar and an X-CSRFTOKEN header. The jar path
-// is a parameter rather than a fixed location so an attempt owns its own jar and two concurrent
-// attempts cannot share one session.
+// every subsequent request must present BOTH the cookie jar and an X-CSRFTOKEN header.
+//
+// THE JAR PATH BEING A PARAMETER DOES NOT MAKE AN ATTEMPT OWN ITS JAR, and an earlier revision of
+// this note claimed it did. A parameter permits a per-attempt path; it does not require one, and
+// the first production caller passed a fixed literal — so two concurrent attempts shared one bearer
+// file, which is the opposite of what the note asserted. Ownership is a property of the CALLER's
+// allocation, and the caller is where it has to be established.
+//
+// A SESSION THAT IS NEVER CLOSED IS A LEAKED REMOTE RESOURCE. CloseSession exists because the
+// controller's session table is finite and this lane exhausted a service's sessions by opening one
+// per probe and closing none. Every operation sequence that opens a session owes a close on every
+// exit, including refusals — an operation that failed still allocated the session that carried it.
 //
 // THE CREDENTIAL IS FORM-ENCODED IN THE SESSION CALL AND NOWHERE ELSE. It reaches argv there, which
 // is a real weakness and is stated rather than hidden: curl offers no netrc equivalent for a
@@ -258,6 +267,18 @@ service megarac.Media {
     exit {
       0 => Unit
       nonzero => String "megarac stop-media POST failed"
+    }
+  }
+
+  operation CloseSession {
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-X", "DELETE", "https://{bmc_host}/api/session"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "megarac session DELETE failed"
     }
   }
 }

@@ -18,11 +18,37 @@ import std.process { ExitSuccess, ProcessExit, exit_failure }
 // twice, on 09/04 and 09/05 controller time, meaning this predates the netboot work rather than
 // being caused by it.
 //
-// WHY IT IS RANKED ABOVE THE CLOCK SKEW ALSO RECORDED IN THIS LANE: a wrong clock makes receipts
-// unjoinable and is fixed by one write. A single-corded machine has no redundancy at all, cannot be
-// fixed by any write, and this lane is actively making that machine something the fleet depends on
-// for boot. The remedy is physical — a cord, an outlet, or a PDU port — and belongs to whoever is
-// in the room.
+// THE OPERATOR HAS ACCEPTED THIS STATE, and the row records the acceptance so the finding does not
+// decay into noise. Left as a bare observation it reads as an unaddressed defect and the next
+// reader re-raises it; recorded as accepted, with its consequence named, it stays useful.
+//
+// WHAT WAS ACCEPTED, precisely: the unit runs on ONE AC path. That is not an electrical problem —
+// PSU1 carries 160 W and these supplies are rated far above it, so nothing is stressed. What is
+// given up is redundancy: a failure anywhere in that single path, supply or cord or breaker or PDU
+// outlet, powers the host off immediately rather than degrading. For a machine being developed
+// against, that is a reasonable trade and the operator made it deliberately on 2026-09-06.
+//
+// THE CONDITION UNDER WHICH IT SHOULD BE REVISITED IS NOT A DATE BUT A ROLE CHANGE. This lane is
+// making Mt. Collins bootable out of band; if it becomes a boot dependency for other machines, its
+// availability becomes theirs, and a single-corded dependency is a different proposition from a
+// single-corded development target. That is the trigger — the machine acquiring dependents — and it
+// is stated here rather than left to be re-derived.
+//
+// AND A SECOND CORD IS NOT AUTOMATICALLY THE REMEDY. If both inlets land on one PDU or one breaker,
+// connecting the second removes the supply as a single point of failure while keeping the feed, so
+// the redundancy gained is smaller than it appears. Independent A/B feeds are where it actually
+// lives.
+type AcceptedPowerRisk {
+  accepted_at: NonEmptyStr
+  accepted_condition: NonEmptyStr
+  revisit_trigger: NonEmptyStr
+}
+
+data mtcollins1_single_ac_path_accepted: AcceptedPowerRisk = AcceptedPowerRisk {
+  accepted_at: "2026-09-06",
+  accepted_condition: "the unit runs on one AC path; PSU2 is installed with no AC input and contributes nothing",
+  revisit_trigger: "this unit acquiring dependents — becoming a boot or serving dependency for other machines, at which point its availability becomes theirs",
+}
 type PowerSupplyStanding {
   sensor_name: NonEmptyStr
   present: Bool

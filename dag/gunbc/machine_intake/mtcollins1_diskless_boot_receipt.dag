@@ -13,10 +13,25 @@ import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 // carried GRUB 2.12, "EFI stub: Booting Linux Kernel...", "Linux version 6.8.0-71-generic" on
 // aarch64, "squashfs: version 4.0", an overlayfs upper, and systemd 255.4 as PID 1.
 //
-// WHAT MAKES IT DISKLESS RATHER THAN MERELY BOOTED: the kernel command line is
-// BOOT_IMAGE=/casper/vmlinuz, and casper mounts the squashfs read-only under a tmpfs overlay, so
-// the running root is in RAM. The unit reported 261972592 KiB available, which is why a
-// RAM-resident root is unremarkable here rather than a constraint.
+// WHAT IS ESTABLISHED IS DISKLESS, NOT RAM-RESIDENT, and an earlier revision of this row said the
+// running root was in RAM. It does not follow from what was observed. The kernel command line is
+// BOOT_IMAGE=/casper/vmlinuz and casper mounts a squashfs read-only under a tmpfs overlay — which
+// establishes that the WRITABLE layer is memory-backed and that no local disk was involved, and
+// says nothing about where the read-only lower layer is read from. Casper's `toram` option is
+// specifically what copies the read-only medium into memory before mounting the root; it is absent
+// from the observed command line, so the lower layer is presumed to be read from the presented
+// media on demand.
+//
+// THE DIFFERENCE IS LOAD-BEARING FOR THE COLO CASE, which is why it is corrected rather than left
+// as a wording nicety. A RAM-resident root would mean the boot server is needed for the duration of
+// the boot and can then vanish; a root still read from the virtual CD means the host depends on the
+// controller's media session, and through it on the NFS export, for as long as it runs. This lane
+// has not measured which of those is true — no detach-and-continue test was performed — so the
+// defensible statement is the narrower one, and the colo argument cannot rest on the wider one
+// until someone runs that test.
+//
+// The unit reported 261972592 KiB available, so a RAM-resident root would be unremarkable here if
+// it were arranged; the memory is not the obstacle.
 data mtcollins1_diskless_boot_capture_digest: ContentHash = Sha256Hash(Sha256Digest {
   hex: "cefdf6c063544a08c937770f9450ce0d0ee15a06bab2bf35af9f5eaadcda7681",
 })
