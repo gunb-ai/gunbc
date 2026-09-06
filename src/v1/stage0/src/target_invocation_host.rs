@@ -917,6 +917,12 @@ mod affected_select_discriminating_red_controls {
     /// only `touched_entry_files` — a data-row edit routed to `overlapping_data_items`,
     /// the touched set came back empty, and the command printed "0 selected" for a
     /// real change inside the import closure of live witnesses.
+    ///
+    /// Uses `scope_importer.dag` line 8 (`data scope_importer_marker: String = scope_shared_marker`),
+    /// whose body is a name reference (not a string literal), so `item_kind` classifies it as
+    /// `DataItem` -> the edit routes to `overlapping_data_items`. A string-literal-only data decl
+    /// (e.g. `scope_shared_marker`) is NOT classified as `DataItem` because the parsed node has
+    /// `body = None` for string literal values -- it falls through to `OtherItem` -> `touched_entry_files`.
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     #[test]
     fn data_row_only_diff_selects_through_overlapping_data_items() {
@@ -926,25 +932,23 @@ mod affected_select_discriminating_red_controls {
         let index = build_multi_entry_index(&roots);
         let facts = index.module_graph_facts();
         let declared = facts.declared_paths.clone();
-        // Touch a data-declaration line — editing the value of `data scope_shared_marker`
-        // on line 7 of scope_shared.dag. Depending on how item_kind classifies the decl,
-        // this routes to overlapping_data_items or touched_entry_files — whichever bucket,
-        // touched_paths_from_diff_edits must include the file path.
-        let diff = diff_at(SCOPE_SHARED, 7);
+        // Touch a data-declaration line at scope_importer.dag line 8
+        // (data scope_importer_marker: String = scope_shared_marker).
+        // This uses a NAME REFERENCE as the body, so the parsed node has body != None,
+        // and item_kind classifies it as DataItem -> overlapping_data_items.
+        let diff = diff_at(SCOPE_IMPORTER, 8);
         let edits = floor_diff_edits_from_diff_text(&index, &diff).expect("diff parse");
-        // Verify at least one bucket carries the file path (the exact classification
-        // depends on how item_kind treats `data` declarations and is not what we test).
-        let at_least_one_bucket = !edits.touched_entry_files.is_empty()
-            || !edits.overlapping_data_items.is_empty()
-            || !edits.edited_test_fns.is_empty();
+        // Verify the edit lands in overlapping_data_items specifically, NOT touched_entry_files.
+        // This is the discriminating RED: if the item_kind classifier changes or the
+        // three-bucket union drops overlapping_data_items, this assertion goes red.
         assert!(
-            at_least_one_bucket,
-            "data-row-only diff must populate at least one bucket: touched_entry_files={}, overlapping_data_items={}, edited_test_fns={}",
+            !edits.overlapping_data_items.is_empty(),
+            "data-row diff (non-literal body) must populate overlapping_data_items: touched_entry_files={}, overlapping_data_items={}, edited_test_fns={}",
             edits.touched_entry_files.len(),
             edits.overlapping_data_items.len(),
             edits.edited_test_fns.len(),
         );
-        // Consume the SINGLE AUTHORITY: touched_paths_from_diff_edits — the same
+        // Consume the SINGLE AUTHORITY: touched_paths_from_diff_edits -- the same
         // function test_affected_select calls. If the union logic regresses (e.g.
         // dropping overlapping_data_items), this test goes RED.
         let touched = touched_paths_from_diff_edits(&edits);
@@ -960,7 +964,7 @@ mod affected_select_discriminating_red_controls {
                 &touched,
             )
             .expect("entry_file_touched_via_import_closure"),
-            "data-row-only diff in scope_shared must select scope_importer (direct dependency)"
+            "data-row-only diff in scope_importer must select scope_importer (self-selection)"
         );
     }
 }
