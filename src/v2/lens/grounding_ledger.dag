@@ -1,8 +1,13 @@
 module v2.lens.grounding_ledger
 
+import v2.lens.common.construction_justification {
+  ConstructionJustification,
+  RatchetForever,
+  ReferenceGroundingVerdict
+}
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: RatchetForever
+  class: RatchetForever { basis: ReferenceGroundingVerdict }
 }
 
 type ResidueReason

@@ -1,5 +1,6 @@
 module v2.lens.complexity
-import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
 
 import v2.lens.cost {
   AsymptoticClass,
@@ -268,6 +269,9 @@ fn complexity_bound_dominates(a: ComplexityBound, b: ComplexityBound) -> Bool {
   }
 }
 
+// asymptotic_projection is a total match over Witness<SymbolicCost> from cost_lens (WallNow).
+// UnknownComplexity is the cost fold's Violates diagnostic carried through — a modeling gap,
+// not a permanent undecidability bound. Global optimality stays on complexity_optimality_boundary.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: RatchetForever
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

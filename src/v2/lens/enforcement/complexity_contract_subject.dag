@@ -3,7 +3,8 @@ module v2.lens.enforcement.complexity_contract_subject
 import v2.lens.common.construction_justification {
   ConstructionJustification,
   WallAfterGrounding,
-  RatchetForever
+  RatchetForever,
+  RiceGlobalOptimality
 }
 import std.disposition { SingleAuthority }
 import v2.std.collection { List }
@@ -187,7 +188,7 @@ data complexity_derived_kernel_boundary: ConstructionJustification = Constructio
 }
 
 data complexity_optimality_boundary: ConstructionJustification = ConstructionJustification {
-  class: RatchetForever
+  class: RatchetForever { basis: RiceGlobalOptimality }
 }
 
 fn complexity_mixed_row_claim_belongs_to_subject(
@@ -330,7 +331,7 @@ fn complexity_derived_kernel_boundary_is_wall_after_grounding() -> Bool {
 
 fn complexity_optimality_boundary_is_ratchet_forever() -> Bool {
   match complexity_optimality_boundary.class {
-    RatchetForever => true
+    RatchetForever { basis: RiceGlobalOptimality } => true
     _ => false
   }
 }

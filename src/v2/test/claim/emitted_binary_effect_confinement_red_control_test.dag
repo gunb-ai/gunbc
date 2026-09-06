@@ -80,6 +80,6 @@ test fn emitted_binary_effect_confinement_authority_points_at_host_transport() -
           NamedField { field_name: _ } => false
         })
     WallAfterGrounding { dissolves_to: _ } => false
-    RatchetForever => false
+    RatchetForever { basis: _ } => false
   }
 }

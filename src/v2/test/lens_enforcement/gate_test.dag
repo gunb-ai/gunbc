@@ -27,7 +27,7 @@ data synthetic_contract: LensContract = {
   claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: NoConsumerWitness,
   exemptions: [],
-  boundary: ConstructionJustification { class: RatchetForever }
+  boundary: ConstructionJustification { class: RatchetForever { basis: RiceGlobalOptimality } }
 }
 
 data synthetic_contract_audit_only: LensContract = {
@@ -36,7 +36,7 @@ data synthetic_contract_audit_only: LensContract = {
   claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: NoConsumerWitness,
   exemptions: [],
-  boundary: ConstructionJustification { class: RatchetForever }
+  boundary: ConstructionJustification { class: RatchetForever { basis: RiceGlobalOptimality } }
 }
 
 data synthetic_receipt_good: EnrollmentDiscoveryReceipt = {

@@ -1,0 +1,53 @@
+module v2.test.claim.construction_justification.ratchet_forever_permanence_witness_test
+
+import v2.lens.common.construction_justification {
+  RatchetForever,
+  RiceGlobalOptimality,
+  wall_now_total_projection_forbids_ratchet_forever,
+  construction_class_is_ratchet_forever
+}
+import v2.lens.complexity { construction_justification as complexity_construction_justification }
+import v2.lens.cost {
+  construction_justification as cost_construction_justification,
+  cost_lattice_top_diagnostic,
+  symbolic_cost_witness,
+  unknown_cost
+}
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.node { Atom, Node, TypeNode }
+import v2.std.witness { Holds, Violates }
+
+// THE ORIGINAL DEFECT: complexity_lens is asymptotic_projection(cost_lens(n)), a total read of a
+// WallNow value, yet the module carried bare RatchetForever. Revert complexity to that shape and
+// this test must red.
+test fn complexity_lens_reclassified_off_ratchet_forever_holds() -> Bool {
+  !construction_class_is_ratchet_forever(class: complexity_construction_justification.class)
+}
+
+// Discriminating control: a WallNow upstream with a RatchetForever downstream on a total projection
+// is exactly the defect shape and must refuse.
+test fn wall_now_total_projection_ratchet_forever_red() -> Bool {
+  !wall_now_total_projection_forbids_ratchet_forever(
+    upstream: cost_construction_justification.class,
+    downstream: RatchetForever { basis: RiceGlobalOptimality }
+  )
+}
+
+// UnknownCost must never present as Holds — a fail-open arm would let a truncated fold look finished.
+data unknown_cost_probe_node: Node = Node {
+  kind: TypeNode {
+    connective: Atom { identity: ^ratchet_forever_unknown_cost_probe }
+  },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+test fn unknown_cost_witness_refuses_not_holds() -> Bool {
+  match symbolic_cost_witness(
+    c: unknown_cost(diagnostic: cost_lattice_top_diagnostic),
+    n: unknown_cost_probe_node
+  ) {
+    Violates { diagnostic: _ } => true
+    Holds { value: _ } => false
+  }
+}
