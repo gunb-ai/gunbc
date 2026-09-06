@@ -287,7 +287,64 @@ fn llama_cpp_rpc_internal_participant_reservation(
 // The reservations no release receipt has cleared. Every internal participant of a positively
 // observed deployment mints one; nothing in this module can clear one, because a release requires
 // evidence this module does not hold.
+// THE RELEASE RECEIPT. A reservation clears only against a host-level observation that positively
+// excludes the host from the current internal-participant population, and this is that record:
+// per host, the front-door and RPC process population, the supervisor units present, the listeners,
+// and the memory state, each named as read. It is not an admission that the host may load anything;
+// it says only that the llama.cpp deployment no longer has this host.
+type LlamaCppRpcReleaseReceipt {
+  host: HostIdentity
+  observed_on: NonEmptyStr
+  observed_by: NonEmptyStr
+  front_door_processes: NonEmptyStr
+  rpc_server_processes: NonEmptyStr
+  supervisor_units: NonEmptyStr
+  listeners: NonEmptyStr
+  memory_state: NonEmptyStr
+}
+
+// 2026-09-05, read over the administrator session after the direct pair cables came out: neither
+// srv7 nor srv8 runs llama-server or rpc-server; the only supervisors are the hand-authored
+// spark-vllm.service (srv7) and spark-ray-worker.service (srv8) of the later vLLM pair, whose Ray
+// session is retrying against the dead 192.168.100.x rail; nothing listens on 30000 or 50052; each
+// host sits at 4 GB used of 121, so no weights are resident on either.
+data llama_cpp_rpc_release_receipts: List<LlamaCppRpcReleaseReceipt> = [
+  LlamaCppRpcReleaseReceipt {
+    host: operator_host_srv8,
+    observed_on: "2026-09-05" as NonEmptyStr,
+    observed_by: "ps/ss/systemctl/free over the administrator session from srv2" as NonEmptyStr,
+    front_door_processes: "none (no llama-server; ray start --address=192.168.100.10:6379 retrying under spark-ray-worker.service)" as NonEmptyStr,
+    rpc_server_processes: "none" as NonEmptyStr,
+    supervisor_units: "spark-ray-worker.service only; no llama or ggml-rpc unit" as NonEmptyStr,
+    listeners: "none on 30000 or 50052" as NonEmptyStr,
+    memory_state: "4 GB used of 121 GB, 116 GB free" as NonEmptyStr,
+  },
+  LlamaCppRpcReleaseReceipt {
+    host: operator_host_srv7,
+    observed_on: "2026-09-05" as NonEmptyStr,
+    observed_by: "ps/ss/systemctl/free over the administrator session from srv2" as NonEmptyStr,
+    front_door_processes: "none (no llama-server; ray start --head on the dead 192.168.100.10 under spark-vllm.service, gcs_server defunct every cycle)" as NonEmptyStr,
+    rpc_server_processes: "none" as NonEmptyStr,
+    supervisor_units: "spark-vllm.service only; no llama or ggml-rpc unit" as NonEmptyStr,
+    listeners: "6379 only (Ray GCS); none on 30000 or 50052" as NonEmptyStr,
+    memory_state: "4 GB used of 121 GB, 116 GB free" as NonEmptyStr,
+  },
+]
+
+fn llama_cpp_rpc_host_has_release_receipt(host: HostIdentity) -> Bool {
+  any(llama_cpp_rpc_release_receipts, r => host_identity_eq(a: r.host, b: host))
+}
+
+// The reservations no release receipt has cleared: every internal participant of a positively
+// observed deployment mints one, and only a receipt above clears it.
 fn llama_cpp_rpc_undischarged_peer_reservations() -> List<LlamaCppRpcInternalParticipantReservation> {
+  filter(
+    map(llama_cpp_rpc_observed_units(), d => llama_cpp_rpc_internal_participant_reservation(origin: d)),
+    r => !llama_cpp_rpc_host_has_release_receipt(host: r.host),
+  )
+}
+
+fn llama_cpp_rpc_minted_peer_reservations() -> List<LlamaCppRpcInternalParticipantReservation> {
   map(llama_cpp_rpc_observed_units(), d => llama_cpp_rpc_internal_participant_reservation(origin: d))
 }
 
