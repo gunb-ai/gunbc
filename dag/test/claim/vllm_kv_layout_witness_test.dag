@@ -4,6 +4,7 @@ import std.types { Bool, String, Int, NonEmptyStr, List }
 import v2.std.optional { Present, Absent }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision, vllm_source_revision_read }
 import extdeps.vllm.log_lines { VllmStartupReading, vllm_startup_reading, GpuKvCacheSize }
 import extdeps.vllm.kv_cache {
   VllmObservedKvPool, VllmKvPoolAdmission, KvPoolAdmitted, KvPoolRefused,
@@ -36,7 +37,7 @@ fn w_pool() -> VllmObservedKvPool {
     KvPoolRefused { cause: _ } =>
       match vllm_observed_kv_pool_from_reading(
         tokens: token_count(count: 0),
-        reading: vllm_startup_reading(line: GpuKvCacheSize, captured_text: "x" as NonEmptyStr),
+        reading: vllm_startup_reading(line: GpuKvCacheSize, captured_text: "x" as NonEmptyStr, observed_at_revision: vllm_source_revision_read),
       ) {
         KvPoolAdmitted { pool: q } => q
         KvPoolRefused { cause: _ } => w_pool()

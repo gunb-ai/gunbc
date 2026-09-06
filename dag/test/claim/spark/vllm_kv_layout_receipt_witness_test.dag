@@ -4,14 +4,16 @@ import std.types { Bool, String, Int, NonEmptyStr, List, EpochSecs }
 import v2.std.optional { Present, Absent }
 import std.nat { Nat }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
-import std.measure { TokenCount, token_count, byte_size }
+import std.measure { TokenCount, token_count }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
-import extdeps.vllm.log_lines { vllm_startup_reading, GpuKvCacheSize }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision, vllm_source_revision_read }
+import extdeps.vllm.log_lines { VllmStartupReading, vllm_startup_reading, GpuKvCacheSize }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision, vllm_source_revision_read }
 import extdeps.vllm.kv_cache { VllmObservedKvPool, VllmKvPoolAdmission, KvPoolAdmitted, KvPoolRefused, vllm_observed_kv_pool_from_reading }
 import extdeps.vllm.kv_layout {
-  KvBlockSize, KvGroupLayout, FullAttention, SlidingWindowAttention,
+  KvBlockSize, KvLayerCount, KvGroupLayout, FullAttention, SlidingWindowAttention,
   ResolvedKvLayout, resolved_kv_layout,
   VllmReportedCapacity, vllm_reported_capacity,
 }
@@ -44,7 +46,7 @@ fn w_launch_id(invocation: String) -> VllmServingLaunch {
 fn w_pool(tokens: Int) -> VllmObservedKvPool {
   match vllm_observed_kv_pool_from_reading(
     tokens: token_count(count: tokens),
-    reading: vllm_startup_reading(line: GpuKvCacheSize, captured_text: "GPU KV cache size: n tokens" as NonEmptyStr),
+    reading: vllm_startup_reading(line: GpuKvCacheSize, captured_text: "GPU KV cache size: n tokens" as NonEmptyStr, observed_at_revision: vllm_source_revision_read),
   ) {
     KvPoolAdmitted { pool: p } => p
     KvPoolRefused { cause: _ } => w_pool(tokens: tokens)
@@ -70,8 +72,8 @@ fn w_layout_with(blocks: Nat, groups: List<KvGroupLayout>) -> ResolvedKvLayout {
   )
 }
 
-fn w_full(layers: Nat, block: KvBlockSize) -> KvGroupLayout {
-  KvGroupLayout { kind: FullAttention, layer_count: layers, block_size: block, page_size_bytes: byte_size(count: 32768), sliding_window: none }
+fn w_full(layers: KvLayerCount, block: KvBlockSize) -> KvGroupLayout {
+  KvGroupLayout { kind: FullAttention, layer_count: layers, block_size: block }
 }
 
 // TODAY'S REAL EVIDENCE LANDS INCONSISTENT, WHICH IS THE POINT. The group A head's own two startup
@@ -164,4 +166,49 @@ test fn garbled_lines_and_a_contradicting_layout_are_different_refusals() -> Boo
   )
   (match garbled { KvLayoutInconsistent { incarnation: _, cause: c } => string_contains(s: c as String, pattern: "disagree with each other")  _ => false })
     && (match contradicting { KvLayoutInconsistent { incarnation: _, cause: c } => string_contains(s: c as String, pattern: "different engines")  _ => false })
+}
+
+// A READING FROM ANOTHER vLLM REVISION REFUSES INSTEAD OF BEING COMPARED, and this row is only
+// authorable because the reading now OBSERVES its revision rather than stamping the modelled one.
+// While the constructor asserted the constant, the mismatch had no constructor anywhere, so a guard
+// against it would have been permanently green — a decoration cited as coverage rather than a wall.
+//
+// The pool and concurrency lines are derived output, exactly what an upstream refactor moves. A
+// layout checked against them under a revision this repository never read is asserting a law about
+// code nobody looked at, and it would pass or fail for reasons unrelated to the engine's capacity.
+test fn a_reading_from_another_revision_refuses_instead_of_being_compared() -> Bool {
+  let foreign_pool = match vllm_observed_kv_pool_from_reading(
+    tokens: token_count(count: 1048576),
+    reading: vllm_startup_reading(
+      line: GpuKvCacheSize,
+      captured_text: "GPU KV cache size: 1,048,576 tokens" as NonEmptyStr,
+      observed_at_revision: vllm_source_revision(
+        repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+        full_revision: "0000000000000000000000000000000000000000" as NonEmptyStr,
+      ),
+    ),
+  ) {
+    KvPoolAdmitted { pool: p } => p
+    KvPoolRefused { cause: _ } => w_pool(tokens: 1048576)
+  }
+  let r = admit_kv_layout(
+    incarnation: w_launch_id(invocation: "inv-20-43"),
+    layout: w_layout_with(blocks: 65536, groups: [w_full(layers: 1, block: 16)]),
+    reported: vllm_reported_capacity(pool: foreign_pool, max_concurrency_hundredths: 100),
+    source_capture_digest: w_digest(hex: w_capture),
+  )
+  match r {
+    KvLayoutInconsistent { incarnation: _, cause: c } =>
+      string_contains(s: c as String, pattern: "not valid across revisions")
+    _ => false
+  }
+}
+
+// THE CONTROL: the same layout and the same numbers, read at the revision the laws were established
+// against, is observed. So the refusal above is about the revision and nothing else.
+test fn the_same_evidence_at_the_modelled_revision_is_observed() -> Bool {
+  match w_reproducing_receipt(invocation: "inv-20-43") {
+    KvLayoutObserved { incarnation: _, layout: _, reported: _, blocks_per_max_request: b, source_capture_digest: _ } => b == 65536
+    _ => false
+  }
 }

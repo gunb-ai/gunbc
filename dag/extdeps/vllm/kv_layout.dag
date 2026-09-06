@@ -291,43 +291,66 @@ fn min_nat(a: Nat, b: Nat) -> Nat {
   if a < b { a } else { b }
 }
 
-// ── THE ONE NON-CIRCULAR CHECK: THE GROUPS MUST REPRODUCE THE PRINTED COST ────────────────────
+// ── THE ONE NON-CIRCULAR CHECK: THE GROUPS MUST REPRODUCE THE PRINTED CONCURRENCY ─────────────
 //
 // printed_lines_agree cannot see the inventory, because the inventory cancels out of it. THIS check
-// can, and it is the reason the group layout is worth instrumenting at all.
+// can, and it is the reason the group layout is worth instrumenting at all: the per-group sum knows
+// nothing about the printed lines, and the printed concurrency knows nothing about the groups, so
+// agreement between them is evidence and disagreement is located -- either the layout was read from
+// a different launch than the lines, or the group metadata is wrong, or the engine's arithmetic is
+// not what this module models.
 //
-// Two independent routes reach the same quantity -- the blocks one full-context request costs:
-//
-//   RECOVERED   allocator_blocks * max_model_len / reported_pool_tokens, inverted out of the two
-//               printed lines. Knows nothing about groups.
-//   DERIVED     the per-group sum at max_model_len. Knows nothing about the printed lines.
-//
-// They share no input but the context cap, so agreement is evidence and disagreement is a located
-// contradiction: either the layout was read from a different launch than the lines, or the group
-// metadata is wrong, or the engine's arithmetic is not what this module models. That is a wall whose
-// RED is authorable -- a witness can hand it a layout whose groups do not sum to the printed cost --
-// which is exactly what the printed-line check could not offer.
-//
-// IT IS UNAVAILABLE TODAY, and says so rather than passing. With `groups` empty the derived route
-// does not exist, so the check refuses; it does not read an absent second opinion as agreement.
+// IT IS UNAVAILABLE TODAY, and says so rather than passing. With `groups` empty there is nothing to
+// push forward, so the check refuses; it does not read an absent second opinion as agreement.
 type LayoutReproduction
   = LayoutReproducesReported { blocks_per_max_request: Nat }
-  | LayoutContradictsReported { derived: Nat, recovered: Nat }
+  | LayoutContradictsReported { predicted_hundredths: Nat, reported_hundredths: Nat }
   | LayoutReproductionUnavailable { cause: NonEmptyStr }
 
+// THE CHECK RUNS FORWARD, NOT AS AN EQUALITY BETWEEN TWO INVERSIONS.
+//
+// The first version compared the group-derived cost to a cost inverted out of the printed pool line
+// and demanded they be EQUAL AS INTEGERS. That is a knife edge on rounded inputs: the pool figure is
+// printed as a whole number of tokens after a float multiply, so the inversion lands a block or two
+// away from the engine's real divisor and a perfectly correct layout FAILS. A wall a correct input
+// cannot pass is not a strong wall; it is a broken one, and it would have been read as evidence that
+// the group metadata was wrong.
+//
+// So the derived cost is pushed FORWARD through the engine's own last step and compared against the
+// figure the engine printed, at the precision it printed it: concurrency = inventory / cost, to two
+// decimal places. Both sides are integers the engine committed to, the inventory participates (so
+// this is not the tautology printed_lines_agree turned out to be), and the tolerance is not invented
+// — it is exactly the precision of the published figure.
+//
+// AND IT IS BOUND TO THE REVISION IT WAS ESTABLISHED AGAINST. The arithmetic modelled here is one
+// vLLM revision's; applying it to a reading taken from another asserts a law about code nobody read,
+// and the pool and concurrency lines are exactly the kind of derived output an upstream refactor
+// moves. The reported capacity carries the revision of its own reading, so the mismatch is decidable
+// and refuses rather than silently comparing across versions.
 fn layout_reproduces_reported(layout: ResolvedKvLayout, reported: VllmReportedCapacity) -> LayoutReproduction {
-  match cold_admission_blocks(layout: layout, sequence_budget: layout.max_model_len) {
-    AdmissionCostUnestablished { cause: c } => LayoutReproductionUnavailable { cause: c }
-    AdmissionCostBlocks { blocks: derived } =>
-      match recovered_blocks_per_max_length_request(layout: layout, reported: reported) {
-        BlocksPerRequestUnrecoverable { cause: c } => LayoutReproductionUnavailable { cause: c }
-        BlocksPerRequestRecovered { blocks: recovered } =>
-          if derived == recovered {
+  if (reported.observed_at_revision.full_revision as String) != (vllm_source_revision_read.full_revision as String) {
+    LayoutReproductionUnavailable {
+      cause: join([
+        "the reading was taken at vLLM revision ", reported.observed_at_revision.full_revision as String,
+        " but the capacity arithmetic modelled here was established against ", vllm_source_revision_read.full_revision as String,
+        "; the reproduction is not valid across revisions",
+      ], "") as NonEmptyStr,
+    }
+  } else {
+    match cold_admission_blocks(layout: layout, sequence_budget: layout.max_model_len) {
+      AdmissionCostUnestablished { cause: c } => LayoutReproductionUnavailable { cause: c }
+      AdmissionCostBlocks { blocks: derived } =>
+        if derived == 0 {
+          LayoutReproductionUnavailable { cause: "the groups sum to no blocks for a full-context request, so no concurrency can be predicted from them" as NonEmptyStr }
+        } else {
+          let predicted = (layout.allocator_blocks * 100) / derived
+          if predicted == reported.max_concurrency_hundredths {
             LayoutReproducesReported { blocks_per_max_request: derived }
           } else {
-            LayoutContradictsReported { derived: derived, recovered: recovered }
+            LayoutContradictsReported { predicted_hundredths: predicted, reported_hundredths: reported.max_concurrency_hundredths }
           }
-      }
+        }
+    }
   }
 }
 
