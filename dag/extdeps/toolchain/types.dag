@@ -65,3 +65,23 @@ type ToolchainRequirement {
   name: NonEmptyStr
   version: NonEmptyStr
 }
+
+// THE aarch64 PREDICATE, here rather than at each consumer. A consumer asking "is this arm64"
+// had been hand-enumerating all eleven variants to answer one bit, which is a second and
+// silently-driftable copy of this coproduct's shape: add a variant and every such match must be
+// found and edited, while this one function is the only place the question is answered.
+fn architecture_is_aarch64(a: Architecture) -> Bool {
+  match a {
+    Aarch64 => true
+    X86_64 => false
+    X86 => false
+    Arm => false
+    Armv7 => false
+    Mips => false
+    Mipsel => false
+    Mips64 => false
+    Mips64el => false
+    Riscv64 => false
+    Wasm32 => false
+  }
+}

@@ -1,0 +1,300 @@
+module product.capacity.pool_events
+
+import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
+import std.nat { Nat }
+import std.measure { Measure }
+import extdeps.languages.json.emit { JsonValue, JsonString, JsonNumber, JsonKeyValue, json_object, json_kv, json_string, json_int, serialize_json }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  json_object_unique_member, JsonMemberFound,
+}
+import product.capacity.pool {
+  Pool, PoolOutcome, PoolAdvanced, PoolRefused, PoolRefusal, LedgerRefusal,
+  PoolReading, PoolRead, PoolReadingRefused,
+  pool_acquire, pool_settle, pool_release, lapse_pass, observe_upstream_remaining, pool_reading_at, pool_refusal_wire,
+}
+import extdeps.accounting.encumbrance { EncumbranceRefusal, ExceedsAppropriation }
+import product.capacity.event_chain {
+  PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, HeadAbsent, HeadAt,
+  AppendDecision, AppendAdmitted, AppendStale,
+}
+import product.capacity.lease { LeasePolicy, LeaseGrant, lease_grant, lease_fence_of }
+
+// THE EVENTS A POOL'S PARTITION CARRIES, AND THE FOLD THAT TURNS A CHAIN OF THEM BACK INTO A POOL.
+// Every transition of product.capacity.pool is one event kind; the fold applies them oldest first
+// from a root pool that is convergence-written authority (identity, ceiling, law). Occupancy is
+// never an event -- it is exactly what the fold derives (operator ruling 2026-09-06). The instant an
+// event speaks at is the chain event's recorded_at, so a payload carries no clock of its own.
+//
+// A CHAIN THAT DOES NOT FOLD IS REFUSED AT THE EVENT THAT BROKE IT. Every event was admitted
+// against its parent's state, so a refusal in the fold means the chain is corrupt or the root the
+// reader supplied is not the root the writers used; either way there is no pool to report.
+
+data pool_event_schema: String = "capacity-pool-event/v1"
+
+type PoolEvent
+  = PoolAcquired { reference: NonEmptyStr, amount: Nat, term_seconds: Nat }
+  | PoolSettled { reference: NonEmptyStr, actual: Nat }
+  | PoolReleased { reference: NonEmptyStr, reason: NonEmptyStr }
+  | PoolLapsed
+  | PoolUpstreamObserved { remaining: Nat, term_seconds: Nat }
+
+fn pool_event_kind_word(e: PoolEvent) -> String {
+  match e {
+    PoolAcquired { reference: _, amount: _, term_seconds: _ } => "acquired"
+    PoolSettled { reference: _, actual: _ } => "settled"
+    PoolReleased { reference: _, reason: _ } => "released"
+    PoolLapsed => "lapsed"
+    PoolUpstreamObserved { remaining: _, term_seconds: _ } => "upstream-observed"
+  }
+}
+
+fn pool_event_kind_members(e: PoolEvent) -> List<JsonKeyValue> {
+  match e {
+    PoolAcquired { reference: r, amount: a, term_seconds: t } => [
+      json_kv(key: "reference", value: json_string(s: r as String)),
+      json_kv(key: "amount", value: json_int(n: a)),
+      json_kv(key: "term_seconds", value: json_int(n: t)),
+    ]
+    PoolSettled { reference: r, actual: a } => [
+      json_kv(key: "reference", value: json_string(s: r as String)),
+      json_kv(key: "actual", value: json_int(n: a)),
+    ]
+    PoolReleased { reference: r, reason: why } => [
+      json_kv(key: "reference", value: json_string(s: r as String)),
+      json_kv(key: "reason", value: json_string(s: why as String)),
+    ]
+    PoolLapsed => []
+    PoolUpstreamObserved { remaining: n, term_seconds: t } => [
+      json_kv(key: "remaining", value: json_int(n: n)),
+      json_kv(key: "term_seconds", value: json_int(n: t)),
+    ]
+  }
+}
+
+// THE WIRE IS THE EVENT'S CANONICAL TEXT AND NOTHING ELSE. The id is not inside it: the store's
+// content address of these bytes IS the id, so carrying it inside would make the bytes depend on
+// their own hash.
+fn pool_event_canonical_json(e: ChainEvent<PoolEvent>) -> JsonValue {
+  json_object(members: concat([
+    json_kv(key: "schema", value: json_string(s: pool_event_schema)),
+    json_kv(key: "partition", value: json_string(s: e.partition as String)),
+    json_kv(key: "parent", value: json_string(s: match e.parent { Present { value: p } => p as String  Absent => "" })),
+    json_kv(key: "recorded_at", value: json_int(n: e.recorded_at)),
+    json_kv(key: "actor", value: json_string(s: e.actor as String)),
+    json_kv(key: "kind", value: json_string(s: pool_event_kind_word(e: e.payload))),
+  ], pool_event_kind_members(e: e.payload)))
+}
+
+fn pool_event_wire_text(event: ChainEvent<PoolEvent>) -> String {
+  serialize_json(v: pool_event_canonical_json(e: event))
+}
+
+type PoolEventDecode
+  = PoolEventDecoded { event: ChainEvent<PoolEvent> }
+  | PoolEventUndecodable { reason: String }
+
+fn member_string(doc: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: JsonString { value: s } } => Present { value: s }
+    _ => none
+  }
+}
+
+fn member_nonempty(doc: JsonValue, key: String) -> NonEmptyStr? {
+  match member_string(doc: doc, key: key) {
+    Present { value: s } => if s == "" { none } else { Present { value: s as NonEmptyStr } }
+    Absent => none
+  }
+}
+
+fn member_nat(doc: JsonValue, key: String) -> Nat? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: JsonNumber { lexeme: lex } } =>
+      match parse_int(s: lex as String) {
+        Present { value: n } => if n < 0 { none } else { Present { value: n } }
+        Absent => none
+      }
+    _ => none
+  }
+}
+
+fn pool_event_kind_decode(doc: JsonValue, word: String) -> PoolEvent? {
+  if word == "acquired" {
+    match member_nonempty(doc: doc, key: "reference") {
+      Absent => none
+      Present { value: r } =>
+        match member_nat(doc: doc, key: "amount") {
+          Absent => none
+          Present { value: a } =>
+            match member_nat(doc: doc, key: "term_seconds") {
+              Absent => none
+              Present { value: t } => Present { value: PoolAcquired { reference: r, amount: a, term_seconds: t } }
+            }
+        }
+    }
+  } else if word == "settled" {
+    match member_nonempty(doc: doc, key: "reference") {
+      Absent => none
+      Present { value: r } =>
+        match member_nat(doc: doc, key: "actual") {
+          Absent => none
+          Present { value: a } => Present { value: PoolSettled { reference: r, actual: a } }
+        }
+    }
+  } else if word == "released" {
+    match member_nonempty(doc: doc, key: "reference") {
+      Absent => none
+      Present { value: r } =>
+        match member_nonempty(doc: doc, key: "reason") {
+          Absent => none
+          Present { value: why } => Present { value: PoolReleased { reference: r, reason: why } }
+        }
+    }
+  } else if word == "lapsed" {
+    Present { value: PoolLapsed }
+  } else if word == "upstream-observed" {
+    match member_nat(doc: doc, key: "remaining") {
+      Absent => none
+      Present { value: n } =>
+        match member_nat(doc: doc, key: "term_seconds") {
+          Absent => none
+          Present { value: t } => Present { value: PoolUpstreamObserved { remaining: n, term_seconds: t } }
+        }
+    }
+  } else {
+    none
+  }
+}
+
+fn pool_event_decode(text: String) -> PoolEventDecode {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap } => PoolEventUndecodable { reason: join(["not JSON: ", json_document_gap_text(gap: gap)], "") }
+    JsonDocumentParsed { value: doc } =>
+      match member_string(doc: doc, key: "schema") {
+        Present { value: s } =>
+          if s != pool_event_schema {
+            PoolEventUndecodable { reason: join(["schema ", s, " is not ", pool_event_schema], "") }
+          } else {
+            match member_nonempty(doc: doc, key: "partition") {
+              Absent => PoolEventUndecodable { reason: "partition missing" }
+              Present { value: part } =>
+                match member_nat(doc: doc, key: "recorded_at") {
+                  Absent => PoolEventUndecodable { reason: "recorded_at missing or not a non-negative integer" }
+                  Present { value: at } =>
+                    match member_nonempty(doc: doc, key: "actor") {
+                      Absent => PoolEventUndecodable { reason: "actor missing" }
+                      Present { value: actor } =>
+                        match member_string(doc: doc, key: "kind") {
+                          Absent => PoolEventUndecodable { reason: "kind missing" }
+                          Present { value: kind } =>
+                            match pool_event_kind_decode(doc: doc, word: kind) {
+                              Absent => PoolEventUndecodable { reason: join(["kind ", kind, " did not decode"], "") }
+                              Present { value: payload } =>
+                                PoolEventDecoded { event: ChainEvent {
+                                  partition: (part as String) as PartitionId,
+                                  parent: match member_string(doc: doc, key: "parent") { Present { value: p } => if p == "" { none } else { Present { value: p as EventId } }  Absent => none },
+                                  recorded_at: at,
+                                  actor: actor,
+                                  payload: payload,
+                                } }
+                            }
+                        }
+                    }
+                }
+            }
+          }
+        Absent => PoolEventUndecodable { reason: "schema missing" }
+      }
+  }
+}
+
+// APPLYING ONE EVENT IS THE POOL TRANSITION IT NAMES, at the instant the chain recorded it.
+fn pool_apply_event<Q, S>(pool: Pool<Q, S>, env: ChainEnvelope<PoolEvent>) -> PoolOutcome<Q, S> {
+  let at = env.event.recorded_at
+  match env.event.payload {
+    PoolAcquired { reference: r, amount: a, term_seconds: t } => pool_acquire(pool: pool, reference: r, amount: Measure { count: a }, at: at, term_seconds: t)
+    PoolSettled { reference: r, actual: a } => pool_settle(pool: pool, reference: r, actual: Measure { count: a }, at: at)
+    PoolReleased { reference: r, reason: why } => pool_release(pool: pool, reference: r, reason: why, at: at)
+    PoolLapsed => PoolAdvanced { pool: lapse_pass(pool: pool, at: at).pool }
+    PoolUpstreamObserved { remaining: n, term_seconds: t } => observe_upstream_remaining(pool: pool, remaining: Measure { count: n }, at: at, term_seconds: t)
+  }
+}
+
+type PoolFold<Q, S>
+  = PoolFolded { pool: Pool<Q, S>, generation: Nat }
+  | PoolFoldRefused { at_event: EventId, wire: String }
+
+type FoldAcc<Q, S> {
+  pool: Pool<Q, S>
+  generation: Nat
+  refused: PoolFold<Q, S>?
+}
+
+fn pool_fold<Q, S>(root: Pool<Q, S>, oldest_first: List<ChainEnvelope<PoolEvent>>) -> PoolFold<Q, S> {
+  let acc = fold(oldest_first, init: FoldAcc { pool: root, generation: 0, refused: none }, f: (st, env) =>
+    match st.refused {
+      Present { value: _ } => st
+      Absent =>
+        match pool_apply_event(pool: st.pool, env: env) {
+          PoolAdvanced { pool: p } => FoldAcc { pool: p, generation: st.generation + 1, refused: none }
+          PoolRefused { refusal: r } => FoldAcc { pool: st.pool, generation: st.generation, refused: Present { value: PoolFoldRefused { at_event: env.id, wire: pool_refusal_wire(r: r) } } }
+        }
+    })
+  match acc.refused {
+    Present { value: r } => r
+    Absent => PoolFolded { pool: acc.pool, generation: acc.generation }
+  }
+}
+
+// THE SEAT TRANSACTION, PURE: fold the partition, decide against the folded pool, and propose the
+// event with the head it was decided against. The carrier performs the compare-and-set; a stale
+// answer sends the caller back through this function with the new head. A full pool is a typed
+// refusal, never a queue.
+type SeatRequest {
+  reference: NonEmptyStr
+  amount: Nat
+  at: EpochSecs
+  term_seconds: Nat
+}
+
+type SeatProposal
+  = SeatProposed { event: ChainEvent<PoolEvent>, expected_head: HeadExpectation }
+  | SeatRefused { wire: String }
+
+fn seat_refusal_wire<Q, S>(r: PoolRefusal<Q, S>) -> String {
+  match r {
+    LedgerRefusal { refusal: lr } =>
+      match lr {
+        ExceedsAppropriation { requested: _, committed: _, ceiling: _ } => "pool-full"
+        _ => pool_refusal_wire(r: r)
+      }
+    _ => pool_refusal_wire(r: r)
+  }
+}
+
+fn propose_acquire<Q, S>(pool: Pool<Q, S>, generation: Nat, head: HeadExpectation, partition: PartitionId, actor: NonEmptyStr, request: SeatRequest) -> SeatProposal {
+  match pool_acquire(pool: pool, reference: request.reference, amount: Measure { count: request.amount }, at: request.at, term_seconds: request.term_seconds) {
+    PoolRefused { refusal: r } => SeatRefused { wire: seat_refusal_wire(r: r) }
+    PoolAdvanced { pool: _ } => SeatProposed {
+      event: ChainEvent {
+        partition: partition,
+        parent: match head { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
+        recorded_at: request.at,
+        actor: actor,
+        payload: PoolAcquired { reference: request.reference, amount: request.amount, term_seconds: request.term_seconds },
+      },
+      expected_head: head,
+    }
+  }
+}
+
+// THE GRANT IS MINTED FROM THE ADMISSION, never from the proposal: a proposal that lost the
+// compare-and-set mints nothing.
+fn grant_from_admission(request: SeatRequest, admission: AppendDecision, policy: LeasePolicy) -> LeaseGrant? {
+  match admission {
+    AppendStale { expected: _, observed: _ } => none
+    AppendAdmitted { new_head: h, generation: g } =>
+      Present { value: lease_grant(reference: request.reference, fence: lease_fence_of(admitting_event: h, generation: g), granted_at: request.at, policy: policy) }
+  }
+}

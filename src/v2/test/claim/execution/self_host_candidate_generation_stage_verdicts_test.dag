@@ -1,0 +1,110 @@
+module v2.test.execution.self_host_candidate_generation_stage_verdicts
+
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import v2.compiler.self_host.candidate_generation_stage_verdicts {
+  CandidateGenerationStageVerdicts,
+  candidate_generation_stage_verdicts
+}
+import v2.test.execution.dag_add_emit_round_trip {
+  dag_add_emitted_root,
+  dag_add_target_model
+}
+import v2.std.algebra { Empty, fold_list, is_empty, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String, string_join }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ADD-SLICE BINDING OF `v2.compiler.self_host.candidate_generation_stage_verdicts` -- the
+// instrument the `v2.workflow.floor_expected_red` add-slice roster note names as the producer of
+// its per-stage receipt. `add_slice_stage_verdicts` is the pure entry over the slice's own
+// fixture (`dag_add_emitted_root`, `dag_add_target_model`); `add_slice_stage_verdicts_entry` is
+// the runnable `gunbc run --function` form, exiting nonzero with the verdicts rendered while the
+// composition refuses, and ExitSuccess only when infer accepts clean and the composition accepts
+// clean -- the enrolled witness's green state.
+//
+// THE TWO WITNESSES ARE DELIBERATELY ASYMMETRIC. `add_slice_infer_accepts_holds` is a PERMANENT
+// positive control: infer accepting this root is the fact the roster note's structural account
+// could not establish, and it stays true after the repair lands.
+// `add_slice_composition_refuses_at_the_grounding_frontier_holds` pins TODAY's frontier state --
+// composition refusal headed by `infer_grounding_not_derived`, with infer carrying that same
+// reason and nothing else -- so the instrument's composition arm has a discriminating consumer
+// (DESIGN section 5). It is expected to RED on the day
+// `gunbc.guarantee_stall.self_host_candidate_generation_add_slice_stall`'s trigger lands; the
+// repair rewrites it to assert `candidate_accepted` with empty carried lists -- the DESIGN 4b(4)
+// flip from frontier guard to permanent regression control -- in the same change that removes the
+// roster row.
+
+fn add_slice_stage_verdicts() -> CandidateGenerationStageVerdicts {
+  candidate_generation_stage_verdicts(
+    resolved_module: dag_add_emitted_root,
+    dag_target: dag_add_target_model
+  )
+}
+
+fn symbol_list_text(xs: List<Symbol>) -> String {
+  string_join(
+    fields: fold_list(
+      xs: xs,
+      empty: Empty,
+      cons: fn(acc, sym) { list_snoc_item(xs: acc, item: symbol_lexeme(sym: sym)) }
+    ),
+    separator: ", "
+  )
+}
+
+fn add_slice_stage_verdicts_text(v: CandidateGenerationStageVerdicts) -> String {
+  concat(
+    "add-slice per-stage verdicts: infer=",
+    concat(
+      symbol_lexeme(sym: v.infer_verdict),
+      concat(
+        " infer_carried=[",
+        concat(
+          symbol_list_text(xs: v.infer_carried_reasons),
+          concat(
+            "] composition=",
+            concat(
+              symbol_lexeme(sym: v.composition_verdict),
+              concat(
+                " composition_carried=[",
+                concat(symbol_list_text(xs: v.composition_carried_reasons), "]")
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+fn add_slice_stage_verdicts_entry() -> ProcessExit {
+  let verdicts = add_slice_stage_verdicts()
+  if (verdicts.infer_verdict == ^infer_accepted)
+    && is_empty(xs: verdicts.infer_carried_reasons)
+    && (verdicts.composition_verdict == ^candidate_accepted)
+    && is_empty(xs: verdicts.composition_carried_reasons) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: add_slice_stage_verdicts_text(v: verdicts))
+  }
+}
+
+test fn add_slice_infer_accepts_holds() -> Bool {
+  add_slice_stage_verdicts().infer_verdict == ^infer_accepted
+}
+
+test fn add_slice_composition_refuses_at_the_grounding_frontier_holds() -> Bool {
+  let verdicts = add_slice_stage_verdicts()
+  (verdicts.composition_verdict == ^infer_grounding_not_derived)
+    && !is_empty(xs: verdicts.infer_carried_reasons)
+    && fold_list(
+      xs: verdicts.infer_carried_reasons,
+      empty: true,
+      cons: fn(acc, reason) { acc && (reason == ^infer_grounding_not_derived) }
+    )
+}

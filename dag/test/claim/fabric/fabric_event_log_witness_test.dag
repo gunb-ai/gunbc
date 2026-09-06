@@ -1,0 +1,40 @@
+module test.claim.fabric_event_log_witness
+
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
+import product.capacity.event_chain { PartitionId, EventId, HeadExpectation, HeadAbsent, HeadAt }
+import gunbc.fabric_event_log {
+  FabricEventLogPlacement, EventLogUnplaced, EventLogPlaced, fabric_event_log_placement,
+  EventLogRemote, RemoteLocalPath, RemoteOverFleetSsh, RemoteUnplaced, event_log_remote_for, event_log_remote_word,
+  partition_ref, partition_push_refspec, partition_push_lease, advertised_oid,
+}
+
+// THE PLACEMENT IS A HOST AND A PATH, AND THE REMOTE IS DERIVED FROM WHERE THE EXECUTOR STANDS: the
+// placed host reaches the log by path, every other host over the fleet principal's SSH, and an
+// unplaced log yields no remote word at all rather than a default.
+test fn the_remote_is_a_path_on_the_placed_host_and_fleet_ssh_elsewhere_and_nothing_when_unplaced() -> Bool {
+  (match event_log_remote_for(placement: fabric_event_log_placement, executor: operator_host_srv1) {
+     RemoteLocalPath { path: p } => (p as String) == "/opt/gunbc/fabric-event-log.git"
+     RemoteOverFleetSsh { url: _ } => false
+     RemoteUnplaced => false
+   })
+    && (match event_log_remote_for(placement: fabric_event_log_placement, executor: operator_host_srv2) {
+         RemoteOverFleetSsh { url: u } => (u as String) == "ssh://briansrls@srv1/opt/gunbc/fabric-event-log.git"
+         RemoteLocalPath { path: _ } => false
+         RemoteUnplaced => false
+       })
+    && (match event_log_remote_word(remote: event_log_remote_for(placement: EventLogUnplaced, executor: operator_host_srv2)) { Absent => true  Present { value: _ } => false })
+}
+
+// THE REF, REFSPEC AND LEASE ARE ONE RENDERING EACH: the partition names its ref, the push publishes
+// the object to it, and the lease names the expected head, spelled empty for absent so git reads
+// "must not exist".
+test fn the_partition_ref_refspec_and_lease_render_from_the_partition_and_the_expected_head() -> Bool {
+  let p = "group-a-seats" as PartitionId
+  partition_ref(partition: p) == "refs/fabric/group-a-seats"
+    && partition_push_refspec(oid: "abc123", partition: p) == "abc123:refs/fabric/group-a-seats"
+    && partition_push_lease(partition: p, expected: HeadAbsent) == "--force-with-lease=refs/fabric/group-a-seats:"
+    && partition_push_lease(partition: p, expected: HeadAt { id: "abc123" as EventId }) == "--force-with-lease=refs/fabric/group-a-seats:abc123"
+    && advertised_oid(advertised: "abc123\trefs/fabric/group-a-seats\n") == "abc123"
+    && advertised_oid(advertised: "") == ""
+}
