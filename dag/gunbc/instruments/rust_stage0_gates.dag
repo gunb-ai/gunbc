@@ -49,9 +49,12 @@ data declared_consumed_input_units: List<ConsumedInputUnit> = [
 // enrolled a whole-corpus dependency walk in a per-PR gate that has never run one.
 //
 // Must-run is also the DECLARED default here, not a convenience: unit_must_run_failclosed_note
-// states absent declaration = must-run. Enabling per-PR selection is the subject of
+// states absent declaration = must-run. Per-PR selection was the subject of
 // v2.lens.affected_set.corpus_dependency_view corpus_dependency_view_per_pr_execution_gate, which
-// still stands; it is not this change's to discharge and is not discharged by it.
+// is DELETED as part of the §3 consolidation (the fn-arrow mechanism #2 is removed;
+// module-graph import-closure mechanism #3 is the survivor). Enabling per-PR selection
+// is now a matter of wiring entry_affected_by_touched_paths into this gate's callers,
+// not re-creating the deleted corpus_dependency_view module.
 fn unit_is_affected(_u: ConsumedInputUnit, _paths: List<String>) -> Bool {
   true
 }
