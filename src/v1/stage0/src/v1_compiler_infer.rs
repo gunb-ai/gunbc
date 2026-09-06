@@ -10087,7 +10087,7 @@ Rc::new(InferResult {
                                 } => Rc::new(vec![]),
                             };
                             let typed_arg_nodes = typed_args.clone();
-                            if (sig.clone() != std::option::Option::None) {
+                            let call_arm_result = if (sig.clone() != std::option::Option::None) {
                                 if declared_formal_authority_failed.clone() {
                                     Rc::new(InferResult {
                                         typed: crate::v1_std_core::make_named_expr_node(
@@ -10105,11 +10105,8 @@ Rc::new(InferResult {
                                             crate::v1_std_core::node_name_span(texpr.clone()),
                                         ),
                                         diagnostics: v1_rt::concat(
-                                            classifier_unresolved_diags.clone(),
-                                            v1_rt::concat(
-                                                formal_authority_diags.clone(),
-                                                arg_diags.clone(),
-                                            ),
+                                            formal_authority_diags.clone(),
+                                            arg_diags.clone(),
                                         ),
                                     })
                                 } else {
@@ -10174,7 +10171,7 @@ Rc::new(InferResult {
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: resolved_type.clone(),
 })), span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
-    diagnostics: v1_rt::concat(classifier_unresolved_diags.clone(), v1_rt::concat(formal_authority_diags.clone(), v1_rt::concat(arg_diags.clone(), v1_rt::concat(arg_shape_diags.clone(), v1_rt::concat(arg_compat_diags.clone(), v1_rt::concat(structured_arg_diags.clone(), v1_rt::concat(inhabitance_arg_diags.clone(), generic_type_argument_inhabitance_diags.clone()))))))),
+    diagnostics: v1_rt::concat(formal_authority_diags.clone(), v1_rt::concat(arg_diags.clone(), v1_rt::concat(arg_shape_diags.clone(), v1_rt::concat(arg_compat_diags.clone(), v1_rt::concat(structured_arg_diags.clone(), v1_rt::concat(inhabitance_arg_diags.clone(), generic_type_argument_inhabitance_diags.clone())))))),
 })
                                     }
                                 }
@@ -10698,7 +10695,14 @@ Rc::new(InferResult {
                                         }
                                     }
                                 }
-                            }
+                            };
+                            Rc::new(InferResult {
+                                typed: call_arm_result.typed.clone(),
+                                diagnostics: v1_rt::concat(
+                                    classifier_unresolved_diags.clone(),
+                                    call_arm_result.diagnostics.clone(),
+                                ),
+                            })
                         }
                     }
                 }
