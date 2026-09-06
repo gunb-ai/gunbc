@@ -20,6 +20,7 @@ import v1.compiler.infer_occurrence_binding {
 }
 
 import std.induction { SubValueRelation }
+import v1.compiler.infer_env { TypeBinding }
 
 type ResolvedFuncSig {
   name: String
