@@ -39242,6 +39242,15 @@ pub fn assemble_prepared_subject_closure(
     // The constraint is decidable from data preparation already holds -- the retained sources and
     // their import headers -- so it is a wall here and not a note beside the list. The import
     // extractor is the same one `import_resolution_facts` folds, never a second reader.
+    //
+    // ITS DISCRIMINATING RED IS AUTHORABLE AND WAS EXECUTED, not merely available: add a row for a
+    // module the corpus imports and nobody changed (`v2/lens/complexity_accumulator_copy/analyze.dag`
+    // was the specimen) and run `claim_executor --required-ci --source-root dag --source-root src/v2
+    // --required-lane witnesses`. What has to hold in that receipt is not that something refused --
+    // the old shape refused too -- but that the refusal names the EXCLUSION ROW beside each importer,
+    // which is the half that was missing when the same situation was diagnosed twice as a module
+    // having been moved. The positive control is every ordinary required-floor run: with no orphaning
+    // row the preparation is admitted and the floor proceeds to its own phases.
     if !discovery_exclusions.is_empty() {
         let excluded_modules: HashSet<&str> =
             discovery_exclusions.keys().map(|m| m.as_str()).collect();

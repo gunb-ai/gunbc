@@ -108,6 +108,32 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // below names a real discovered population small enough to execute, and the corpus form stays a run
 // of census_for_root until its cost dissolves.
 //
+// THE NEXT-RUNG TRIGGER FOR THIS CLASS, AND WHAT IT MUST BE SUFFICIENT FOR. Enrolled in nothing is
+// the honest standing for these entry points today, and it is also the standing that rots without a
+// red ever appearing, so DESIGN section 4b's second meta-obligation applies: this is can-climb-
+// after-one-grounding, not cannot-climb, and the grounding is named here rather than left as "when
+// someone runs it".
+//
+// TRIGGER: an ingest realization for the accumulator-copy lens that does not re-parse source in the
+// interpreter -- native ingest, or a lens that reads the compile graph the floor has already built.
+//
+// SUFFICIENT FOR, stated because a trigger naming less than the capability it restores is satisfied
+// while the capability stays dead, and because the loss here is CORPUS-grain while the tempting
+// trigger is per-subject: the capability is corpus_gate returning a verdict over the DISCOVERED
+// population -- every module the module index yields, not a sample and not a subtree -- inside one
+// required-lane budget and inside one process. Both halves are load-bearing and neither implies the
+// other. A tenfold speedup per subject satisfies a per-subject reading of the trigger and still
+// leaves the sweep hours long; and a sweep that fits the budget still dies with SIGSEGV around the
+// twentieth subject, which is a failure carrying no cause, no locus and no count, so it cannot be
+// enrolled at any speed. An artifact that delivers only one half CONTRIBUTES to this trigger and
+// does not retire it.
+//
+// UNTIL THEN the claim this lane makes is the cheap pair in
+// claim/complexity/accumulator_copy_corpus_path_test.dag, and it is stated at that grain: the lens
+// catches a planted copied accumulator and leaves a clean fold alone, over a population corpus_gate
+// discovers. What is NOT claimed is that the tracked corpus is free of copied accumulators. Reading
+// the absence of a red here as that verdict is the specific misreading this row exists to refuse.
+
 // THE THREE INSTRUMENTS BELOW ARE ENTRY POINTS, NOT RESULTS. DESIGN section 6 asks that a
 // measurement be cited by naming the producer that re-derives it. population_for_root answers how
 // many subjects a root contributes; census_for_root and census_for_paths answer what the lens finds
