@@ -1,0 +1,155 @@
+module test.claim.fabric_m0_commit_witness
+
+import std.types { Bool, List }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.durable_compare_and_set { CasStoreRefused, CasUnreadableReadRefused }
+import gunbc.fabric_m0_completion {
+  AttemptId,
+  RequiredArtifactId,
+  RequiredReceiptId,
+  ArtifactObligationsDeclared,
+  ReceiptObligationsDeclared,
+  ComputationSucceeded,
+  CommittedArtifact,
+  CommittedReceipt,
+  ManifestMember,
+  ReadbackConfirmed,
+  JobPublication,
+  PublishSuccess,
+  PublishFinalizationFailed,
+  PublishPendingReconciliation,
+}
+import gunbc.fabric_m0_commit {
+  CommitTransportOutcome,
+  StoreAnswered,
+  StoreDidNotAnswer,
+  ManifestReadbackObservation,
+  ManifestRead,
+  ManifestNotFound,
+  ManifestReadUnavailable,
+  publish_after_commit,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn digest_a() -> Sha256Digest {
+  Sha256Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as Sha256DigestHex }
+}
+
+fn the_attempt() -> AttemptId {
+  "attempt-1" as AttemptId
+}
+
+fn members() -> List<ManifestMember> {
+  [
+    ManifestMember { subject: "build-output", content: digest_a() },
+    ManifestMember { subject: "execution-receipt", content: digest_a() },
+  ]
+}
+
+fn arts() -> List<CommittedArtifact> {
+  [
+    CommittedArtifact {
+      id: "build-output" as RequiredArtifactId,
+      attempt: the_attempt(),
+      recorded_digest: digest_a(),
+      readback: ReadbackConfirmed { observed_digest: digest_a() },
+    },
+  ]
+}
+
+fn recs() -> List<CommittedReceipt> {
+  [
+    CommittedReceipt {
+      id: "execution-receipt" as RequiredReceiptId,
+      attempt: the_attempt(),
+      recorded_digest: digest_a(),
+      readback: ReadbackConfirmed { observed_digest: digest_a() },
+    },
+  ]
+}
+
+fn commit(transport: CommitTransportOutcome, observed: ManifestReadbackObservation) -> JobPublication {
+  publish_after_commit(
+    attempt: the_attempt(),
+    computation: ComputationSucceeded,
+    artifacts: ArtifactObligationsDeclared { required: ["build-output" as RequiredArtifactId] },
+    receipts: ReceiptObligationsDeclared { required: ["execution-receipt" as RequiredReceiptId] },
+    committed_artifacts: arts(),
+    committed_receipts: recs(),
+    manifest_digest: digest_a(),
+    members: members(),
+    transport: transport,
+    observed: observed,
+  )
+}
+
+fn store_refused() -> CommitTransportOutcome {
+  StoreAnswered { outcome: CasStoreRefused { cause: CasUnreadableReadRefused { detail: "read refused" } } }
+}
+
+// THE POSITIVE CONTROL: a store that answered and a read that found the intended manifest.
+test fn an_answered_commit_confirmed_by_readback_publishes_success() -> Bool {
+  match commit(transport: store_refused(), observed: ManifestRead { observed_digest: digest_a() }) {
+    PublishSuccess { attempt: _, manifest_digest: _ } => true
+    other => false
+  }
+}
+
+// THE RULE WITH TEETH. A write whose acknowledgement never arrived, with the object not yet visible,
+// is PENDING -- not a failure. Rendering it absent would re-execute work that may already be
+// committed, and rendering it success would green over bytes nobody read.
+test fn an_unanswered_write_with_no_object_yet_is_pending() -> Bool {
+  match commit(
+    transport: StoreDidNotAnswer { cause: "commit acknowledgement lost" },
+    observed: ManifestNotFound,
+  ) {
+    PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => true
+    other => false
+  }
+}
+
+// AND THE SAME UNANSWERED WRITE RECONCILES once an independent read finds the intended manifest, so
+// the pending arm above is a state that resolves rather than a dead end.
+test fn an_unanswered_write_reconciles_when_the_object_is_read_back() -> Bool {
+  match commit(
+    transport: StoreDidNotAnswer { cause: "commit acknowledgement lost" },
+    observed: ManifestRead { observed_digest: digest_a() },
+  ) {
+    PublishSuccess { attempt: _, manifest_digest: _ } => true
+    other => false
+  }
+}
+
+// A READ THAT COULD NOT RUN IS ALSO UNKNOWN, never absence: not reaching the store says nothing
+// about what the store holds.
+test fn an_unavailable_readback_is_pending_not_absent() -> Bool {
+  match commit(transport: store_refused(), observed: ManifestReadUnavailable { cause: "origin unreachable" }) {
+    PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => true
+    other => false
+  }
+}
+
+// AN OBJECT THE READER LOOKED FOR AND DID NOT FIND, after a store that DID answer, is decided
+// against us -- this is the arm that must not be confused with the two above.
+test fn an_answered_commit_with_no_object_prevents_success() -> Bool {
+  match commit(transport: store_refused(), observed: ManifestNotFound) {
+    PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => true
+    other => false
+  }
+}
+
+// THE DOUBLE UNKNOWN, and the arm a mutation proved nothing covered: the write was never
+// acknowledged AND the confirming read could not run. Neither observation says the object is
+// absent, so this is the case where collapsing to absence would re-execute committed work while
+// looking maximally conservative. It is a separate witness from the store-answered one above
+// because they are different branches, and covering one left the other free to lie.
+test fn an_unanswered_write_with_an_unavailable_read_is_pending() -> Bool {
+  match commit(
+    transport: StoreDidNotAnswer { cause: "commit acknowledgement lost" },
+    observed: ManifestReadUnavailable { cause: "origin unreachable" },
+  ) {
+    PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => true
+    other => false
+  }
+}

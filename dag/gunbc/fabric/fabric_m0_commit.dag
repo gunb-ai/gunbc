@@ -1,0 +1,136 @@
+module gunbc.fabric_m0_commit
+
+import std.types { List, NonEmptyStr }
+import std.content_hash { Sha256Digest }
+import std.durable_compare_and_set {
+  CasOutcome,
+  CasCommitted,
+  CasPreconditionFailed,
+  CasStoreRefused,
+}
+import gunbc.fabric_m0_completion {
+  AttemptId,
+  ArtifactObligations,
+  ReceiptObligations,
+  ComputationOutcome,
+  CommittedArtifact,
+  CommittedReceipt,
+  CommitManifest,
+  ManifestMember,
+  OriginReadback,
+  ReadbackConfirmed,
+  ReadbackAbsent,
+  ReadbackUnknown,
+  JobPublication,
+  admit_job_publication,
+}
+
+// The commit boundary: it turns what the STORE said about the manifest slot into the readback the
+// completion authority consumes, and it is the only place allowed to make that translation.
+//
+// WHY THIS LAYER EXISTS AT ALL rather than the caller handing a readback straight to
+// admit_job_publication: the completion authority takes an OriginReadback as a given, so somebody
+// has to derive one honestly from a real conditional write. Doing that at the call site would put
+// the timeout rule below in every caller, which is the second-representation failure -- and the
+// arm most likely to be got wrong is the one that costs nothing to get wrong locally.
+
+// A store answer and the ABSENCE of a store answer are different facts.
+//
+// std.durable_compare_and_set's CasOutcome distinguishes committed, precondition-failed and
+// store-refused, and every one of those is something the store SAID. A request that timed out or
+// whose acknowledgement was lost obtained none of them, so rendering it as any CasOutcome would
+// manufacture a store verdict to fit the branches available -- fabricating the one fact the caller
+// most needs to not be invented. It is a sibling of the outcome, never an arm of it.
+type CommitTransportOutcome
+  = StoreAnswered { outcome: CasOutcome<Sha256Digest> }
+  | StoreDidNotAnswer { cause: NonEmptyStr }
+
+// What an independent reader saw at the manifest slot afterwards, kept separate from what the write
+// call returned. A write that reported success and a read that confirms the intended bytes are two
+// observations, and only the second establishes the object is there to be recovered.
+type ManifestReadbackObservation
+  = ManifestRead { observed_digest: Sha256Digest }
+  | ManifestNotFound
+  | ManifestReadUnavailable { cause: NonEmptyStr }
+
+// THE TRANSLATION, and the only rule in this module with teeth.
+//
+// An unanswered write yields Unknown, NOT absent: "we stopped waiting" and "we observed
+// non-commitment" are different facts, and collapsing them either re-executes work that may already
+// be committed or publishes over bytes nobody read. A precondition failure is the one arm that is
+// decided against us -- another writer holds the slot -- so it refuses rather than waiting.
+// Everything else defers to what the independent reader actually saw.
+fn manifest_readback(transport: CommitTransportOutcome, observed: ManifestReadbackObservation) -> OriginReadback {
+  match transport {
+    StoreDidNotAnswer { cause: c } =>
+      match observed {
+        ManifestRead { observed_digest: d } => ReadbackConfirmed { observed_digest: d }
+        ManifestNotFound => ReadbackUnknown { cause: c }
+        ManifestReadUnavailable { cause: rc } => ReadbackUnknown { cause: rc }
+      }
+    StoreAnswered { outcome: o } =>
+      match o {
+        CasPreconditionFailed { expected: _, observed: _ } => ReadbackAbsent
+        CasStoreRefused { cause: _ } =>
+          match observed {
+            ManifestRead { observed_digest: d } => ReadbackConfirmed { observed_digest: d }
+            ManifestNotFound => ReadbackAbsent
+            ManifestReadUnavailable { cause: rc } => ReadbackUnknown { cause: rc }
+          }
+        CasCommitted { committed: _ } =>
+          match observed {
+            ManifestRead { observed_digest: d } => ReadbackConfirmed { observed_digest: d }
+            ManifestNotFound => ReadbackAbsent
+            ManifestReadUnavailable { cause: rc } => ReadbackUnknown { cause: rc }
+          }
+      }
+  }
+}
+
+// A store that says committed is still not a recovered result: the manifest is only confirmed by an
+// independent read of the intended object, so the manifest handed to the completion authority
+// carries the READ's verdict, never the write's.
+fn commit_manifest(
+  attempt: AttemptId,
+  manifest_digest: Sha256Digest,
+  members: List<ManifestMember>,
+  transport: CommitTransportOutcome,
+  observed: ManifestReadbackObservation
+) -> CommitManifest {
+  CommitManifest {
+    attempt: attempt,
+    manifest_digest: manifest_digest,
+    members: members,
+    readback: manifest_readback(transport: transport, observed: observed),
+  }
+}
+
+// The consumer: one call from a real commit attempt to a published outcome.
+fn publish_after_commit(
+  attempt: AttemptId,
+  computation: ComputationOutcome,
+  artifacts: ArtifactObligations,
+  receipts: ReceiptObligations,
+  committed_artifacts: List<CommittedArtifact>,
+  committed_receipts: List<CommittedReceipt>,
+  manifest_digest: Sha256Digest,
+  members: List<ManifestMember>,
+  transport: CommitTransportOutcome,
+  observed: ManifestReadbackObservation
+) -> JobPublication {
+  admit_job_publication(
+    attempt: attempt,
+    computation: computation,
+    artifacts: artifacts,
+    receipts: receipts,
+    committed_artifacts: committed_artifacts,
+    committed_receipts: committed_receipts,
+    manifest: commit_manifest(
+      attempt: attempt,
+      manifest_digest: manifest_digest,
+      members: members,
+      transport: transport,
+      observed: observed
+    )
+  )
+}
