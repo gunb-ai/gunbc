@@ -5,6 +5,7 @@ import std.types { Bool, FilePath, String, NonEmptyStr, List }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import extdeps.languages.json.parse {
+  JsonArray,
   JsonDocumentParsed,
   JsonDocumentUnreadable,
   JsonMemberFound,
@@ -507,4 +508,256 @@ func megarac_release_session(scope: MegaRacSessionScope) -> MegaRacSessionReleas
 
   removed = shell.Remove.RecursiveForce(path: scope.scratch_dir as FilePath)
   return verdict
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// REMOTE MEDIA, OVER AN ACQUIRED SESSION
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+// THE THREE MEDIA OPERATIONS, rationale hoisted for the module-item grain rule (DESIGN section 4c).
+//
+// Images: THIS LISTING ENUMERATES WHAT IS AVAILABLE TO ATTACH, NOT WHAT THE SHARE HOLDS. Measured
+// on a Mt. Collins unit 2026-09-06 with two ISOs exported: the listing named both; after start-media
+// attached one it returned ONLY THE OTHER, and the survivor's image_index moved from 1 to 0. The
+// attached image had not vanished -- it had moved to Configurations, which is where a presented
+// image lives. An earlier reading of this as a stale cache produced the operator-facing remedy
+// "re-assert mount_cd", which appears to work only because toggling mount_cd DETACHES EVERYTHING,
+// returning the image to the available pool. That remedy is retracted: it repairs a listing by
+// undoing the attachment the caller asked for.
+//
+// Configurations: THE PRESENTED SET, and the authority for whether an attach is done. It is read
+// BEFORE anything is written, so the converged case performs no write at all -- start-media against
+// an already-presented image is a write whose effect on a booted host is unmodelled, and reading
+// first is how that write is avoided rather than merely made idempotent.
+//
+// StartMedia: image_redirection MUST be 1 or the firmware refuses with opaque codes 13410/13460,
+// recovered from the firmware's own UI bundle rather than from documentation. The body is rendered
+// inside this module so a caller cannot omit it.
+service megarac.Media {
+  operation Images {
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}",
+             "https://{bmc_host}/api/settings/media/remote/images"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "curl could not read the remote image listing"
+    }
+  }
+
+  operation Configurations {
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}",
+             "https://{bmc_host}/api/settings/media/remote/configurations"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "curl could not read the presented media configurations"
+    }
+  }
+
+  operation Start {
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, json_body: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["curl", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}",
+             "-H", "Content-Type: application/json", "-X", "POST", "-d", "{json_body}",
+             "https://{bmc_host}/api/settings/media/remote/start-media"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "curl could not reach the start-media endpoint"
+    }
+  }
+}
+
+// THERE IS NO REFUSED ARM FOR THE START, AND ITS ABSENCE IS THE POINT. The previous version returned
+// MegaRacStartRefused whenever start-media exited non-zero and the configurations did not yet name
+// the image -- while its own prose said that exact combination is PENDING. This firmware answers
+// HTTP 500 on writes that take effect (measured twice: PUT media/general code 16425 with the share
+// re-mounting anyway, stop-media code 1411 with the following attach succeeding), and the session
+// work in this module has now confirmed the same for DELETE. A terminal refusal derived from that
+// status is a fabricated negative, and the specific harm is that it invites a caller to retry a
+// write whose effect is already underway.
+//
+// SO THE STATUS BECOMES EVIDENCE, NOT A VERDICT. It rides inside the indeterminate arm for a human
+// to read; nothing branches on it. What decides is the read-back, and when the read-back does not
+// yet confirm, the honest answer is that the outcome is unknown.
+//
+// MegaRacPresentationUnreadable EXISTS SO NO WRITE FOLLOWS AN UNREADABLE READ. Previously a
+// malformed configurations body folded to an empty row list, which is indistinguishable from "not
+// attached", after which the code issued start-media. That is a write chosen on the basis of a state
+// nobody could read.
+type MegaRacAttachOutcome
+  = MegaRacAlreadyPresented { image_name: NonEmptyStr }
+  | MegaRacAttached { image_name: NonEmptyStr, image_index: String }
+  | MegaRacPresentationUnreadable { detail: String }
+  | MegaRacImagesUnreadable { detail: String }
+  | MegaRacImageListingUnparseable { detail: String }
+  | MegaRacImageListingEmpty
+  | MegaRacImageNotEnumerated { image_name: NonEmptyStr }
+  | MegaRacAttachIndeterminate { image_name: NonEmptyStr, start_reached: Bool, evidence: String }
+
+fn megarac_start_body(image_name: NonEmptyStr, image_index: String) -> NonEmptyStr {
+  join([
+    "{\"image_name\":\"", image_name as String,
+    "\",\"image_type\":1,\"image_index\":", image_index,
+    ",\"image_redirection\":", megarac_image_redirection_wire(r: MegaRacImageRedirectionOn) as String,
+    "}"
+  ], "") as NonEmptyStr
+}
+
+fn megarac_json_elements(body: String) -> List<JsonValue>? {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: _ } => none
+    JsonDocumentParsed { value: v } =>
+      match v {
+        JsonArray { elements: es } => Present { value: es }
+        _ => none
+      }
+  }
+}
+
+// THE INDEX IS DELIBERATELY NOT COMPARED against the configurations row. An earlier check read
+// image_index there, which is absent, so every genuine attachment reported unconfirmed -- caught
+// only because the check failed closed. Re-reading it as media_index passed and was still wrong:
+// media_index is the virtual CD DEVICE SLOT, beside session_index, not a position in the image
+// enumeration. It agreed with the resolved image_index only because this unit presents a single CD
+// device, so both are 0. Joining them is nicknaming, and it would begin refusing on any controller
+// offering a second slot while blaming the image.
+fn megarac_row_presents(row: JsonValue, image_name: NonEmptyStr) -> Bool {
+  let name_ok = match json_string_member(doc: row, key: "image_name") {
+    Absent => false
+    Present { value: n } => n == (image_name as String)
+  }
+  let active = match json_number_member(doc: row, key: "redirection_status") {
+    Absent => false
+    Present { value: st } => st != "0"
+  }
+  let cd_media = match json_number_member(doc: row, key: "media_type") {
+    Absent => false
+    Present { value: mt } => mt == "1"
+  }
+  name_ok && active && cd_media
+}
+
+fn megarac_index_of_named(elements: List<JsonValue>, image_name: String) -> String? {
+  fold(elements, init: none, f: (acc, element) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match json_string_member(doc: element, key: "image_name") {
+          Absent => none
+          Present { value: found } =>
+            if found == image_name {
+              json_number_member(doc: element, key: "image_index")
+            } else {
+              none
+            }
+        }
+    }
+  )
+}
+
+func megarac_attach_image(session: MegaRacSession, image_name: NonEmptyStr) -> MegaRacAttachOutcome
+  uses net: std.resources.Network
+{
+  presented = megarac.Media.Configurations(
+    bmc_host: session.scope.bmc_host,
+    cookie_jar: session.scope.cookie_jar,
+    csrf_token: session.csrf_token,
+  )
+  if presented.success == false {
+    return MegaRacPresentationUnreadable { detail: "the presented-media listing could not be read, so whether anything is attached is unknown; refusing to write over an unknown state" }
+  }
+  match megarac_json_elements(body: presented.body) {
+    Absent =>
+      return MegaRacPresentationUnreadable { detail: concat("the presented-media listing was not a JSON array: ", presented.body) }
+    Present { value: rows } =>
+      if rows |> any(r => megarac_row_presents(row: r, image_name: image_name)) {
+        return MegaRacAlreadyPresented { image_name: image_name }
+      } else {
+        return megarac_resolve_then_start(session: session, image_name: image_name)
+      }
+  }
+}
+
+// REACHABLE ONLY WHEN THE PRESENTED SET WAS READ AND DID NOT CONTAIN THE IMAGE, which is what keeps
+// the write behind a successful read rather than merely after one.
+func megarac_resolve_then_start(session: MegaRacSession, image_name: NonEmptyStr) -> MegaRacAttachOutcome
+  uses net: std.resources.Network
+{
+  images = megarac.Media.Images(
+    bmc_host: session.scope.bmc_host,
+    cookie_jar: session.scope.cookie_jar,
+    csrf_token: session.csrf_token,
+  )
+  if images.success == false {
+    return MegaRacImagesUnreadable { detail: "the available-image listing could not be read" }
+  }
+  match megarac_json_elements(body: images.body) {
+    Absent => return MegaRacImageListingUnparseable { detail: images.body }
+    Present { value: elements } =>
+      if (elements |> count) == 0 {
+        return MegaRacImageListingEmpty
+      } else {
+        match megarac_index_of_named(elements: elements, image_name: image_name as String) {
+          Absent => return MegaRacImageNotEnumerated { image_name: image_name }
+          Present { value: idx } =>
+            return megarac_start_then_confirm(session: session, image_name: image_name, image_index: idx)
+        }
+      }
+  }
+}
+
+func megarac_start_then_confirm(
+  session: MegaRacSession,
+  image_name: NonEmptyStr,
+  image_index: String,
+) -> MegaRacAttachOutcome
+  uses net: std.resources.Network
+{
+  started = megarac.Media.Start(
+    bmc_host: session.scope.bmc_host,
+    cookie_jar: session.scope.cookie_jar,
+    csrf_token: session.csrf_token,
+    json_body: megarac_start_body(image_name: image_name, image_index: image_index),
+  )
+
+  confirmed = megarac.Media.Configurations(
+    bmc_host: session.scope.bmc_host,
+    cookie_jar: session.scope.cookie_jar,
+    csrf_token: session.csrf_token,
+  )
+  if confirmed.success == false {
+    return MegaRacAttachIndeterminate {
+      image_name: image_name,
+      start_reached: started.success,
+      evidence: "start-media was issued and the confirming read could not be taken",
+    }
+  }
+  match megarac_json_elements(body: confirmed.body) {
+    Absent =>
+      return MegaRacAttachIndeterminate {
+        image_name: image_name,
+        start_reached: started.success,
+        evidence: concat("start-media was issued and the confirming listing was unreadable: ", confirmed.body),
+      }
+    Present { value: rows } =>
+      if rows |> any(r => megarac_row_presents(row: r, image_name: image_name)) {
+        return MegaRacAttached { image_name: image_name, image_index: image_index }
+      } else {
+        return MegaRacAttachIndeterminate {
+          image_name: image_name,
+          start_reached: started.success,
+          evidence: concat("start-media was issued and the image is not yet presented; the mount daemon is asynchronous so this may still be settling. start body: ", started.body, " | configurations: ", confirmed.body),
+        }
+      }
+  }
 }
