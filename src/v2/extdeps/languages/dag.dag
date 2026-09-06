@@ -4109,6 +4109,23 @@ fn dag_int_type_binding() -> Symbol {
   ^dag_binding_type_int
 }
 
+// THE BINDING→DENOTATION JOIN, declared once at the language authority. The resolver binds the
+// surface spelling "Int" to the canonical binding symbol (dag_binding_spellings); what that
+// binding DENOTES is the Int inhabitant declared at dag_declared_inhabitants_core. Every
+// hand-rolled fixture facts lookup re-authors this join (dag_add_canonical_grounding_for,
+// record_construct_canonical_grounding_for); the authority declares it once and infer consumes it
+// (v2.compiler.infer infer_node_facts). Specimen-scope interim in the same frame as
+// infer_node_declared_in_dag_inhabitants: deletes in favor of consuming resolution output when
+// the resolver hands infer declaration-resolved identities directly (the namespace migration's
+// completed state).
+fn dag_binding_denotation(sym: Symbol) -> Optional<Node> {
+  if sym == dag_int_type_binding() {
+    optional_present(value: dag_int_inhabitant_node())
+  } else {
+    optional_absent()
+  }
+}
+
 fn dag_binding_branded_atom_identity(node: Node) -> Optional<Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>

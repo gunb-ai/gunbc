@@ -1,0 +1,150 @@
+module v2.test.execution.dag_binding_denotation
+
+import v2.compiler.infer {
+  DerivedGrounding,
+  GroundingNotDerived,
+  InferredTree,
+  infer
+}
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.self_host.direct_rust_door_fixture {
+  direct_rust_door_admission,
+  direct_rust_door_ingest
+}
+import v2.extdeps.languages.dag {
+  dag_int_inhabitant_node,
+  dag_int_type_binding,
+  dag_language_model
+}
+import v2.std.algebra { fold_list }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.integer { Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, TypeNode, node_subtree_nodes }
+import v2.std.optional { Absent, Present }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ENROLLED CONTROLS FOR THE BINDING-DENOTATION DERIVATION (`v2.compiler.infer`
+// infer_node_facts consulting `v2.extdeps.languages.dag` dag_binding_denotation). The specimen
+// is the direct-rust-door fixture's ingest -- the corpus's smallest real-ingest dag module whose
+// resolved tree carries canonical binding atoms (`dag_binding_type_int`, the resolver's binding
+// of the surface spelling "Int"). The positive control pins both the derivation and its evidence:
+// every canonical Int binding atom carries DerivedGrounding whose structural evidence is the dag
+// authority's Int inhabitant, and the census count (4) pins that the witness actually saw them.
+// The boundary control pins the rule's edge in the same tree: the bare operand atoms `x`/`y`,
+// which no authority declares a denotation for, remain GroundingNotDerived. Deleting the rule
+// reddens the positive control; widening the rule to unbound atoms reddens the boundary control.
+
+type BindingDenotationCensus {
+  int_atoms: Int
+  int_atoms_derived: Int
+  operand_atoms: Int
+  operand_atoms_frontier: Int
+}
+
+fn binding_denotation_specimen_inferred() -> Outcome<InferredTree> {
+  match assemble_program_from_ingest(
+    ingest: direct_rust_door_ingest(),
+    admission: direct_rust_door_admission(),
+    lm: dag_language_model()
+  ) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: resolved, diagnostics: _ } => infer(tree: resolved)
+  }
+}
+
+fn is_int_binding_atom(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => id == dag_int_type_binding()
+    _ => false
+  }
+}
+
+fn is_bare_operand_atom(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => (id == ^x) || (id == ^y)
+    _ => false
+  }
+}
+
+fn int_binding_atom_derived(inferred: InferredTree, n: Node) -> Bool {
+  match inferred.facts.lookup(n) {
+    Absent => false
+    Present { value: facts } =>
+      match facts.grounding {
+        GroundingNotDerived { node: _ } => false
+        DerivedGrounding { grounding: g } =>
+          g.witness.structural.evidence == dag_int_inhabitant_node()
+      }
+  }
+}
+
+fn bare_operand_atom_stays_frontier(inferred: InferredTree, n: Node) -> Bool {
+  match inferred.facts.lookup(n) {
+    Absent => false
+    Present { value: facts } =>
+      match facts.grounding {
+        GroundingNotDerived { node: _ } => true
+        DerivedGrounding { grounding: _ } => false
+      }
+  }
+}
+
+fn binding_denotation_census_step(
+  inferred: InferredTree,
+  acc: BindingDenotationCensus,
+  n: Node
+) -> BindingDenotationCensus {
+  if is_int_binding_atom(n: n) {
+    BindingDenotationCensus {
+      int_atoms: acc.int_atoms + 1,
+      int_atoms_derived: acc.int_atoms_derived + (if int_binding_atom_derived(inferred: inferred, n: n) { 1 } else { 0 }),
+      operand_atoms: acc.operand_atoms,
+      operand_atoms_frontier: acc.operand_atoms_frontier
+    }
+  } else {
+    if is_bare_operand_atom(n: n) {
+      BindingDenotationCensus {
+        int_atoms: acc.int_atoms,
+        int_atoms_derived: acc.int_atoms_derived,
+        operand_atoms: acc.operand_atoms + 1,
+        operand_atoms_frontier: acc.operand_atoms_frontier + (if bare_operand_atom_stays_frontier(inferred: inferred, n: n) { 1 } else { 0 })
+      }
+    } else {
+      acc
+    }
+  }
+}
+
+fn binding_denotation_census(inferred: InferredTree) -> BindingDenotationCensus {
+  fold_list(
+    xs: node_subtree_nodes(root: inferred.root),
+    empty: BindingDenotationCensus {
+      int_atoms: 0,
+      int_atoms_derived: 0,
+      operand_atoms: 0,
+      operand_atoms_frontier: 0
+    },
+    cons: fn(acc, n) { binding_denotation_census_step(inferred: inferred, acc: acc, n: n) }
+  )
+}
+
+test fn dag_binding_denotation_derives_int_binding_atoms_holds() -> Bool {
+  match binding_denotation_specimen_inferred() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      let census = binding_denotation_census(inferred: inferred)
+      (census.int_atoms == 4) && (census.int_atoms_derived == 4)
+  }
+}
+
+test fn dag_binding_denotation_leaves_unbound_operand_atoms_on_the_frontier_holds() -> Bool {
+  match binding_denotation_specimen_inferred() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      let census = binding_denotation_census(inferred: inferred)
+      (census.operand_atoms == 2) && (census.operand_atoms_frontier == 2)
+  }
+}
