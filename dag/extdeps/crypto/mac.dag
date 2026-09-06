@@ -103,6 +103,41 @@ type MacVerification
   | MacSuiteMismatch { expected: MacSuite, key_suite: MacSuite }
   | MacTagMalformed { octets_declared: Int, octets_expected: Int }
 
+// ── The realization seam ─────────────────────────────────────────────────────────────────────
+// VerifiedMessage is sole_constructor, so nothing outside this module can mint one -- which is the
+// point, and which also means this module must expose the ONE way evidence comes into existence.
+// This is it: the bound implementation performs the constant-time comparison over (key, message,
+// tag) and reports its verdict here, and the evidence is assembled around THE MESSAGE IT WAS GIVEN.
+//
+// What that makes structural, and what it does not:
+//
+//   structural -- evidence cannot exist without naming a message. There is no way to obtain a
+//     MacVerified and then decide what it authenticated, because the message is a parameter of the
+//     only constructor. That is the substitution this seam closes.
+//
+//   NOT structural -- that the implementation actually ran HMAC over those bytes. A caller passing
+//     `true` here is asserting the comparison succeeded, and this module cannot check that. The
+//     realization is the trusted party for that half, exactly as it is for any host effect, and it
+//     is why this function is named for the boundary it sits on rather than being spelled as an
+//     ordinary constructor a caller might reach for casually.
+//
+// A verdict of false becomes MacTagMismatch rather than a bare absence, because "the tag did not
+// verify" is the incident worth naming.
+fn mac_verification_from_implementation(
+  key_id: MacKeyId,
+  suite: MacSuite,
+  message: NonEmptyStr,
+  implementation_verified: Bool,
+) -> MacVerification {
+  if implementation_verified {
+    MacVerified {
+      verified: VerifiedMessage { key_id: key_id, suite: suite, message: message }
+    }
+  } else {
+    MacTagMismatch { key_id: key_id }
+  }
+}
+
 fn mac_verification_ok(v: MacVerification) -> Bool {
   match v {
     MacVerified { verified: _ } => true

@@ -12,7 +12,8 @@ import gunbc.auth.approval_capability {
   utc_instant_is_canonical, approval_capability_signing_input,
 }
 import extdeps.crypto.mac {
-  MacVerification, MacVerified, MacTagMismatch, HmacSha256, MacKeyId, VerifiedMessage,
+  MacVerification, MacVerified, MacTagMismatch, HmacSha256, MacKeyId,
+  mac_verification_from_implementation,
 }
 import std.scoped_authorization { AttemptIdentity }
 import std.types { NonEmptyStr, Timestamp }
@@ -40,16 +41,22 @@ data witness_inside: Timestamp = "2026-09-06T00:07:00Z"
 // message it carries is the signing input of the claims it authenticates. A helper that took no
 // claims would reproduce the defect these tests exist to catch.
 fn mac_ok_for(c: ApprovalCapabilityClaims) -> MacVerification {
-  MacVerified {
-    verified: VerifiedMessage {
-      key_id: witness_key_id,
-      suite: HmacSha256,
-      message: approval_capability_signing_input(c: c),
-    }
-  }
+  mac_verification_from_implementation(
+    key_id: witness_key_id,
+    suite: HmacSha256,
+    message: approval_capability_signing_input(c: c),
+    implementation_verified: true,
+  )
 }
 
-data mac_bad: MacVerification = MacTagMismatch { key_id: witness_key_id }
+// The failing verdict comes through the same seam, so the negative specimen is produced the way a
+// real one would be rather than hand-built into the shape the test expects to see.
+data mac_bad: MacVerification = mac_verification_from_implementation(
+  key_id: witness_key_id,
+  suite: HmacSha256,
+  message: "any-message" as NonEmptyStr,
+  implementation_verified: false,
+)
 
 fn claims_with(
   protocol: NonEmptyStr,

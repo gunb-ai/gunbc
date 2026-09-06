@@ -1,0 +1,123 @@
+module gunbc.auth.access_request
+
+import std.types { NonEmptyStr, String, Int, Timestamp, Seconds }
+import std.logic { Bool }
+import std.scoped_authorization { AttemptIdentity }
+
+// ── What an operator is asked to approve ─────────────────────────────────────────────────────
+// The brief's shape, made typed. Each field is here because a request missing it is one the
+// operator cannot actually decide:
+//
+//   originating_refusal -- the located refusal that caused this. Without it, "grant X to Y" is a
+//     request to take somebody's word that it is needed. With it, the operator can read what
+//     stopped and check that this grant is what unblocks it.
+//   justification -- the sentence a person reads. std.scoped_authorization already requires
+//     `purpose` for the same reason and this carries into it.
+//   requested_lifetime -- see the ceiling below.
+//   dissolution -- what would make this grant unnecessary. A standing grant with no answer here
+//     is permanent access nobody has scheduled a review of.
+type AccessRequestJustification {
+  originating_refusal: NonEmptyStr
+  justification: NonEmptyStr
+  dissolution: NonEmptyStr
+}
+
+// ── The lifetime ceiling ─────────────────────────────────────────────────────────────────────
+// A REQUESTED LIFETIME IS AN INPUT, AND INPUTS ARE BOUNDED AT THE BOUNDARY, NOT AT THE OPERATOR.
+// The operator is the last line and the worst place to enforce an arithmetic bound: a request for
+// 3650 days rendered on a phone reads almost exactly like one for 30, and the difference is one
+// digit in a notification a person approves while walking. So the ceiling refuses before the
+// notification is ever composed -- the operator is never shown a choice the policy would not have
+// permitted them to make.
+data default_access_lifetime_seconds: Seconds = 86400 as Seconds
+data maximum_access_lifetime_seconds: Seconds = 2592000 as Seconds
+
+data lifetime_ceiling_note: NonEmptyStr = "24 hours default, 30 days maximum, per the brief. The ceiling is enforced when the request is built rather than when the operator reads it, because a refusal the operator has to notice is not a wall -- it is a request that a tired person spot a wrong number in a push notification."
+
+// ZERO AND NEGATIVE ARE NOT SHORT GRANTS. A lifetime of zero produces a grant that expires at the
+// instant it is created, which is not "no access" -- it is a grant whose behavior depends on
+// whether the consumer's comparison is inclusive, exactly the boundary this codebase has already
+// had to pin twice. It refuses rather than being clamped, because clamping would silently answer a
+// question the requester got wrong.
+type AccessLifetime
+  = LifetimeSeconds { seconds: Seconds }
+  | LifetimeStanding
+
+type LifetimeAdmission
+  = LifetimeAdmitted { lifetime: AccessLifetime }
+  | LifetimeExceedsCeiling { requested: Seconds, ceiling: Seconds }
+  | LifetimeNotPositive { requested: Seconds }
+  | LifetimeStandingNotJustified
+
+// A STANDING GRANT IS A DIFFERENT PRODUCT, NOT A LONG ONE. The brief's ceiling is about temporary
+// access; an ongoing service binding is a legitimate thing to ask for and a different question to
+// put to a person. It is admitted only when the request states it EXPLICITLY, never as what
+// happens when a bounded request could not be honoured -- an automatic fall back from "24 hours"
+// to "forever" is the absorbing fallback in its most expensive form.
+fn admit_lifetime(requested: AccessLifetime, standing_requested: Bool) -> LifetimeAdmission {
+  match requested {
+    LifetimeStanding =>
+      if standing_requested {
+        LifetimeAdmitted { lifetime: LifetimeStanding }
+      } else {
+        LifetimeStandingNotJustified
+      }
+    LifetimeSeconds { seconds: s } =>
+      if (s as Int) <= 0 {
+        LifetimeNotPositive { requested: s }
+      } else if (s as Int) > (maximum_access_lifetime_seconds as Int) {
+        LifetimeExceedsCeiling { requested: s, ceiling: maximum_access_lifetime_seconds }
+      } else {
+        LifetimeAdmitted { lifetime: LifetimeSeconds { seconds: s } }
+      }
+  }
+}
+
+fn lifetime_admission_reason(a: LifetimeAdmission) -> String {
+  match a {
+    LifetimeAdmitted { lifetime: _ } => "access lifetime admitted"
+    LifetimeExceedsCeiling { requested: r, ceiling: c } =>
+      concat("requested access lifetime ", concat(to_string(n: r as Int), concat("s exceeds the ceiling of ", concat(to_string(n: c as Int), "s"))))
+    LifetimeNotPositive { requested: r } =>
+      concat("requested access lifetime must be positive, got ", to_string(n: r as Int))
+    LifetimeStandingNotJustified =>
+      "a standing (never-expiring) grant must be requested explicitly; it is not what a bounded request degrades to"
+  }
+}
+
+// ── Three deadlines that are not the same deadline ───────────────────────────────────────────
+// The loop carries three, and conflating any two produces a wrong sentence in the notification
+// the operator reads:
+//
+//   link expiry      -- how long the approval URL stays redeemable. Short: minutes.
+//   execution expiry -- how long an approved decision may still be acted on.
+//   access lifetime  -- how long the granted access itself lasts. This is the one the operator
+//                       cares about, and the only one enforced by the provider.
+//
+// "Access expires when this link expires" is the specific false sentence: a link that dies in
+// fifteen minutes may authorize a binding that outlives it by a month, or forever. The renderer
+// that composes the notification must state the ACCESS lifetime, and a temporary grant must carry
+// a provider-enforced condition rather than a promise to come back and revoke it.
+type RequestDeadlines {
+  link_expires_at: Timestamp
+  execution_expires_at: Timestamp
+  access_lifetime: AccessLifetime
+}
+
+data three_deadlines_note: NonEmptyStr = "Link expiry, execution expiry and access lifetime are three different facts. The operator-facing sentence must state the ACCESS lifetime; saying access ends when the link expires is false whenever the granted binding outlives the URL, which is every case. A bounded access lifetime must be enforced by a provider-side condition, because an unconditioned binding plus an intention to revoke later is a standing grant with extra steps."
+
+// The request as a whole. `revision` is what the capability envelope binds: an operator's approval
+// is consent to a specific STATEMENT of the request, so any change to the terms must produce a new
+// revision and invalidate approvals in flight for the old one.
+type AccessRequest<Subject> {
+  escalation_id: NonEmptyStr
+  revision: NonEmptyStr
+  authority: NonEmptyStr
+  subject: Subject
+  beneficiary: NonEmptyStr
+  attempt: AttemptIdentity
+  justification: AccessRequestJustification
+  deadlines: RequestDeadlines
+}
+
+data revision_binds_consent_note: NonEmptyStr = "An approval is consent to the request AS STATED. revision is carried into the signed capability so that changing the beneficiary, the resource, the lifetime or the justification after a notification has gone out cannot be answered by the approval already in flight -- the operator consented to text they would no longer recognize."

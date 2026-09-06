@@ -1,0 +1,154 @@
+module extdeps.ntfy.ntfy
+
+import std.types { NonEmptyStr, String, Int, Secret, List, Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import v2.std.network { POST }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.ntfy.sh/publish/"
+  }
+}
+
+// ── What ntfy is, and the one property a reader must not assume ──────────────────────────────
+// ntfy is a pub-sub notification service: a publisher POSTs to a TOPIC and every subscriber to
+// that topic receives it. The topic name IS the address, and on a default deployment it is also
+// the entire access control -- ntfy documents its default access as `read-write`, meaning anyone
+// who knows or guesses a topic name may both read and publish to it.
+//
+// So an unprotected topic is a PUBLIC BROADCAST with an obscure name, and configuring
+// authentication does not by itself change that: private use requires a deny-by-default access
+// policy plus explicit rules. This module models the auth inputs as REQUIRED rather than optional
+// for that reason -- a publish that can be spelled without credentials is one an author will
+// eventually spell that way, and the failure is silent because an unprotected topic accepts the
+// message exactly as a protected one does.
+data ntfy_default_access_is_read_write_note: NonEmptyStr = "ntfy's documented default access is read-write: knowing a topic name is sufficient to publish to it AND to subscribe to it. A private deployment needs deny-by-default plus explicit access rules; enabling authentication alone does not make existing topics private. This module therefore makes the credential a required input on every operation, so an unauthenticated publish is not expressible here."
+
+// The subscriber side is not modelled as an operation because this repository does not consume
+// it: the operator's phone is the subscriber, through the ntfy app. What IS load-bearing here is
+// that the subscription is the other half of the access policy -- a topic that anyone may read is
+// a topic on which any approval link is public, whatever the publisher's credentials are.
+data subscription_is_half_the_boundary_note: NonEmptyStr = "Publisher authentication protects who may SEND. The confidentiality of an approval link depends on who may READ, which is the subscribe-side rule on the same topic, enforced by the deployment and not by anything this module can express. A gunbc workflow consuming this service owes evidence about both halves."
+
+type NtfyPriority
+  = PriorityMin
+  | PriorityLow
+  | PriorityDefault
+  | PriorityHigh
+  | PriorityMax
+
+fn ntfy_priority_wire(p: NtfyPriority) -> Int {
+  match p {
+    PriorityMin => 1
+    PriorityLow => 2
+    PriorityDefault => 3
+    PriorityHigh => 4
+    PriorityMax => 5
+  }
+}
+
+// ── Cache and delivery ───────────────────────────────────────────────────────────────────────
+// ntfy caches messages server-side so a subscriber that was offline receives them on reconnect.
+// `Cache: no` suppresses that, which is the obvious reflex for a message carrying a credential --
+// and it is the wrong remedy taken alone, because ntfy documents that disabling the cache LOSES
+// delivery to temporarily disconnected subscribers. A phone with a flaky connection is exactly the
+// subscriber in question.
+//
+// The honest shape is that cache policy is a delivery-durability choice, not the request
+// lifecycle: the pending request is durable in the broker regardless, so a lost notification costs
+// a re-notification and never a lost decision. Both settings are therefore representable, and the
+// consumer states which it chose and why.
+type NtfyCachePolicy
+  = CacheServerSide
+  | CacheDisabled
+
+fn ntfy_cache_wire(c: NtfyCachePolicy) -> NonEmptyStr {
+  match c {
+    CacheServerSide => "yes" as NonEmptyStr
+    CacheDisabled => "no" as NonEmptyStr
+  }
+}
+
+data cache_no_is_not_the_remedy_note: NonEmptyStr = "ntfy documents that Cache: no drops delivery to subscribers who are temporarily disconnected. Disabling the cache to keep a credential out of server-side history therefore trades a confidentiality improvement for a delivery loss, and it is not a substitute for a protected topic -- an attacker who can read the topic reads the message live. Protected delivery plus a durable pending request in the broker is the requirement; the cache setting is a separate, stated choice."
+
+type NtfyTopic = NonEmptyStr where brand("NtfyTopic")
+
+// A published message. `click` is the action URL the notification opens; on the approval loop it
+// carries the capability, which is why this type's consumers treat the whole message as secret.
+type NtfyMessage {
+  topic: NtfyTopic
+  title: NonEmptyStr
+  body: NonEmptyStr
+  priority: NtfyPriority
+  click: NonEmptyStr
+  cache: NtfyCachePolicy
+}
+
+type NtfyPublishOutcome
+  = NtfyPublished { message_id: NonEmptyStr }
+  | NtfyPublishRefused { status: Int, detail: String }
+
+fn ntfy_publish_succeeded(o: NtfyPublishOutcome) -> Bool {
+  match o {
+    NtfyPublished { message_id: _ } => true
+    NtfyPublishRefused { status: _, detail: _ } => false
+  }
+}
+
+// A SUCCESSFUL PUBLISH IS NOT AN APPROVAL, AND IT IS NOT EVEN DELIVERY. It establishes that the
+// server accepted the message. Whether the operator's phone received it, whether they saw it, and
+// whether they acted are three further facts this outcome does not carry -- so nothing downstream
+// may treat a publish receipt as consent, as read-receipt, or as a reason to advance a deadline.
+data publish_is_not_consent_note: NonEmptyStr = "NtfyPublished establishes server acceptance only. It is not delivery, not a read receipt, and never approval. A notification retry re-asks the SAME question under the same request identity and must not reset the request's expiry, because a re-notification is not a new request and an operator who ignores three reminders has not consented three times."
+
+service ntfy.Publish {
+  config {
+    endpoint: "https://ntfy.sh"
+    auth: Bearer
+    auth_input: access_token
+  }
+
+  operation PublishMessage {
+    input {
+      access_token: Secret
+      topic: NtfyTopic
+      title: NonEmptyStr
+      body: NonEmptyStr
+      priority: Int
+      click: NonEmptyStr
+      cache: NonEmptyStr
+    }
+    output {
+      message_id: String from "id"
+    }
+    transport rest {
+      method: POST,
+      path: "/\{topic\}",
+      headers: {
+        "X-Title": title,
+        "X-Priority": priority,
+        "X-Click": click,
+        "Cache": cache
+      },
+      body: body
+    }
+    response {
+      200 => NtfyPublishReceipt
+      401 => NtfyErrorShape
+      403 => NtfyErrorShape
+      429 => NtfyErrorShape
+      5xx => NtfyErrorShape
+    }
+  }
+}
+
+type NtfyPublishReceipt {
+  id: String
+}
+
+type NtfyErrorShape {
+  code: Int
+  error: String
+}
