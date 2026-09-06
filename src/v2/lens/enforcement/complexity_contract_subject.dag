@@ -6,7 +6,8 @@ import v2.lens.common.construction_justification {
   OutsideModeledGuarantee,
   CandidateDomainNotClosed,
   modeled_outside_boundary,
-  guarantee_boundary_still_outside
+  guarantee_boundary_still_outside,
+  modeled_guarantee_capability_inventory_ref
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { SingleAuthority }
@@ -205,6 +206,7 @@ data complexity_optimality_boundary: ConstructionJustification = ConstructionJus
         decl_name: "GlobalOptimality",
         field: WholeDeclaration
       },
+      capability_inventory_authority: modeled_guarantee_capability_inventory_ref,
       boundary_kind: CandidateDomainNotClosed {
         domain: DeclarationRef {
           module_path: "v2.lens.enforcement.complexity_contract_subject",

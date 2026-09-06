@@ -4,7 +4,8 @@ import v2.lens.common.construction_justification {
   ConstructionJustification,
   OutsideModeledGuarantee,
   CandidateDomainNotClosed,
-  modeled_outside_boundary
+  modeled_outside_boundary,
+  modeled_guarantee_capability_inventory_ref
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -48,6 +49,7 @@ data synthetic_contract: LensContract = {
           decl_name: "GlobalOptimality",
           field: WholeDeclaration
         },
+        capability_inventory_authority: modeled_guarantee_capability_inventory_ref,
         boundary_kind: CandidateDomainNotClosed {
           domain: DeclarationRef {
             module_path: "v2.lens.enforcement.complexity_contract_subject",
@@ -79,6 +81,7 @@ data synthetic_contract_audit_only: LensContract = {
           decl_name: "GlobalOptimality",
           field: WholeDeclaration
         },
+        capability_inventory_authority: modeled_guarantee_capability_inventory_ref,
         boundary_kind: CandidateDomainNotClosed {
           domain: DeclarationRef {
             module_path: "v2.lens.enforcement.complexity_contract_subject",

@@ -12,10 +12,12 @@ import std.decl_ref {
 import v2.std.collection { List }
 
 // DESIGN section 4b column beside the ladder. The field that matters is a REQUIRED CAPABILITY
-// joined against a closed inventory: subject needs X; inventory I does not provide X; therefore
-// the subject is outside the guarantee I represents. If X later appears in I, the classification
-// becomes false and the corpus reds. boundary_kind is explanatory; each arm still carries the
-// authority, capability, or domain whose standing is checked.
+// joined against the inventory named by capability_inventory_authority: subject needs X; that
+// inventory I does not provide X; therefore the subject is outside the guarantee I represents.
+// If X later appears in THAT I, the classification becomes false and the corpus reds.
+// Joining a grounding stamp against the cost inventory cannot red: X was never a candidate there.
+// boundary_kind is explanatory; each arm still carries the authority, capability, or domain
+// whose standing is checked.
 type GuaranteeBoundaryKind
   = CapabilityNotRepresented { required: DeclarationRef }
   | CandidateDomainNotClosed { domain: DeclarationRef }
@@ -42,10 +44,6 @@ type ConstructionJustification {
   class: ConstructionClass
 }
 
-// Provided capabilities of the modeled guarantee, authored. Demanded X on an
-// OutsideModeledGuarantee stamp is NOT listed here; adding that X to this list is
-// what reds the live join. These two rows are the cost/complexity projection that
-// is already inside the guarantee — they are not a census of live stamps.
 data modeled_guarantee_capability_inventory: List<DeclarationRef> = [
   DeclarationRef {
     module_path: "v2.lens.cost",
@@ -65,31 +63,77 @@ data modeled_guarantee_capability_inventory_ref: DeclarationRef = DeclarationRef
   field: WholeDeclaration
 }
 
+data grounding_modeled_capability_inventory: List<DeclarationRef> = []
+
+data grounding_modeled_capability_inventory_ref: DeclarationRef = DeclarationRef {
+  module_path: "v2.lens.common.construction_justification",
+  decl_name: "grounding_modeled_capability_inventory",
+  field: WholeDeclaration
+}
+
+data unit_modeling_modeled_capability_inventory: List<DeclarationRef> = []
+
+data unit_modeling_modeled_capability_inventory_ref: DeclarationRef = DeclarationRef {
+  module_path: "v2.lens.common.construction_justification",
+  decl_name: "unit_modeling_modeled_capability_inventory",
+  field: WholeDeclaration
+}
+
+data testgen_modeled_capability_inventory: List<DeclarationRef> = []
+
+data testgen_modeled_capability_inventory_ref: DeclarationRef = DeclarationRef {
+  module_path: "v2.lens.common.construction_justification",
+  decl_name: "testgen_modeled_capability_inventory",
+  field: WholeDeclaration
+}
+
 fn modeled_outside_boundary(
   subject: DeclarationRef,
   required_capability: DeclarationRef,
+  capability_inventory_authority: DeclarationRef,
   boundary_kind: GuaranteeBoundaryKind
 ) -> GuaranteeBoundary {
   GuaranteeBoundary {
     subject: subject,
     required_capability: required_capability,
-    capability_inventory_authority: modeled_guarantee_capability_inventory_ref,
+    capability_inventory_authority: capability_inventory_authority,
     boundary_kind: boundary_kind
   }
 }
 
-fn guarantee_boundary_uses_modeled_inventory(boundary: GuaranteeBoundary) -> Bool {
-  declaration_ref_eq(
-    a: boundary.capability_inventory_authority,
-    b: modeled_guarantee_capability_inventory_ref
-  )
+fn guarantee_boundary_inventory_authority_is_closed(authority: DeclarationRef) -> Bool {
+  declaration_ref_eq(a: authority, b: modeled_guarantee_capability_inventory_ref)
+    || declaration_ref_eq(a: authority, b: grounding_modeled_capability_inventory_ref)
+    || declaration_ref_eq(a: authority, b: unit_modeling_modeled_capability_inventory_ref)
+    || declaration_ref_eq(a: authority, b: testgen_modeled_capability_inventory_ref)
+}
+
+fn guarantee_boundary_inventory_rows(authority: DeclarationRef) -> List<DeclarationRef> {
+  if declaration_ref_eq(a: authority, b: modeled_guarantee_capability_inventory_ref) {
+    modeled_guarantee_capability_inventory
+  } else if declaration_ref_eq(a: authority, b: grounding_modeled_capability_inventory_ref) {
+    grounding_modeled_capability_inventory
+  } else if declaration_ref_eq(a: authority, b: unit_modeling_modeled_capability_inventory_ref) {
+    unit_modeling_modeled_capability_inventory
+  } else if declaration_ref_eq(a: authority, b: testgen_modeled_capability_inventory_ref) {
+    testgen_modeled_capability_inventory
+  } else {
+    []
+  }
+}
+
+fn guarantee_boundary_capability_absent_from(
+  capability: DeclarationRef,
+  rows: List<DeclarationRef>
+) -> Bool {
+  !declaration_ref_in_list(target: capability, refs: rows)
 }
 
 fn guarantee_boundary_still_outside(boundary: GuaranteeBoundary) -> Bool {
-  guarantee_boundary_uses_modeled_inventory(boundary: boundary)
-    && !declaration_ref_in_list(
-      target: boundary.required_capability,
-      refs: modeled_guarantee_capability_inventory
+  guarantee_boundary_inventory_authority_is_closed(authority: boundary.capability_inventory_authority)
+    && guarantee_boundary_capability_absent_from(
+      capability: boundary.required_capability,
+      rows: guarantee_boundary_inventory_rows(authority: boundary.capability_inventory_authority)
     )
 }
 

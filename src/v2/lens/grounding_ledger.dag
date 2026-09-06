@@ -4,7 +4,8 @@ import v2.lens.common.construction_justification {
   ConstructionJustification,
   OutsideModeledGuarantee,
   PolicyJudgmentRequired,
-  modeled_outside_boundary
+  modeled_outside_boundary,
+  grounding_modeled_capability_inventory_ref
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -21,6 +22,7 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
         decl_name: "GroundingVerdict",
         field: WholeDeclaration
       },
+      capability_inventory_authority: grounding_modeled_capability_inventory_ref,
       boundary_kind: PolicyJudgmentRequired {
         judgment: DeclarationRef {
           module_path: "v2.lens.grounding_ledger",

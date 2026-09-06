@@ -72,7 +72,10 @@ import v2.lens.common.construction_justification {
   OutsideModeledGuarantee,
   PolicyJudgmentRequired,
   CandidateDomainNotClosed,
-  modeled_outside_boundary
+  modeled_outside_boundary,
+  modeled_guarantee_capability_inventory_ref,
+  grounding_modeled_capability_inventory_ref,
+  unit_modeling_modeled_capability_inventory_ref
 }
 import std.disposition { SingleAuthority, RealizationDispatch, SubstrateMandatoryTag }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -322,6 +325,7 @@ data lens_contract_grounding: LensContract = {
           decl_name: "GroundingVerdict",
           field: WholeDeclaration
         },
+        capability_inventory_authority: grounding_modeled_capability_inventory_ref,
         boundary_kind: PolicyJudgmentRequired {
           judgment: DeclarationRef {
             module_path: "v2.lens.grounding_ledger",
@@ -527,6 +531,7 @@ data lens_contract_synthesis: LensContract = {
           decl_name: "GlobalOptimality",
           field: WholeDeclaration
         },
+        capability_inventory_authority: modeled_guarantee_capability_inventory_ref,
         boundary_kind: CandidateDomainNotClosed {
           domain: DeclarationRef {
             module_path: "v2.lens.enforcement.complexity_contract_subject",
@@ -567,6 +572,7 @@ data lens_contract_unit_modeling: LensContract = {
           decl_name: "field_name_has_known_carrier",
           field: WholeDeclaration
         },
+        capability_inventory_authority: unit_modeling_modeled_capability_inventory_ref,
         boundary_kind: CandidateDomainNotClosed {
           domain: DeclarationRef {
             module_path: "v2.lens.unit_modeling",
