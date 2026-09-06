@@ -333,6 +333,16 @@ type TextFile {
 // declared partition are in gunbc.recurring_failure_mode
 // `unresolved_callee_conflated_with_dispatched_elsewhere`.
 //
+// MEASURED STATE, 2026-09-06, AND IT IS NOT WORKING YET: THIS DIAGNOSTIC EMITS ZERO TIMES OVER THE
+// WHOLE CORPUS. A region-entry marker shows the emission site is reached 21017 times, 1365 of them
+// with the CallableUnresolved outcome -- exactly the construction-site count -- so the diagnostic
+// list IS built 1365 times and then DISCARDED, because the two result assemblies it is threaded
+// into are not the ones returned on the path that outcome actually takes. That is this row's own
+// invalid state, a value derived at the seam and thrown away, authored into the instrument built to
+// measure it. IT IS RECORDED HERE RATHER THAN IN A COMMIT MESSAGE BECAUSE AN INERT DIAGNOSTIC THAT
+// LOOKS WIRED IS WORSE THAN AN ABSENT ONE: anyone reading the variant, its disposition row and its
+// emission site would conclude the census exists. No census may be reported from it until it fires.
+//
 // DISSOLVE-ON: the seam REFUSING for the population this instrument exists to size. Once a call
 // that cannot be answered produces a located refusal, that population is visible in the ordinary
 // diagnostic stream and needs no census beside it -- this variant, its disposition row and its

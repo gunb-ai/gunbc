@@ -736,6 +736,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
     use crate::v1_std_core::CompilerDiagnostic;
     let class = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { .. } => "UnresolvedImport",
+        CompilerDiagnostic::DirectCallClassifierUnresolved { .. } => {
+            "DirectCallClassifierUnresolved"
+        }
         CompilerDiagnostic::MissingExport { .. } => "MissingExport",
         CompilerDiagnostic::ImportShadowedByLocalDefinition { .. } => {
             "ImportShadowedByLocalDefinition"
@@ -819,6 +822,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
     };
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
+        CompilerDiagnostic::DirectCallClassifierUnresolved { name, .. } => name.clone(),
         CompilerDiagnostic::MissingExport { name, .. } => name.clone(),
         CompilerDiagnostic::ImportShadowedByLocalDefinition { name, .. } => name.clone(),
         CompilerDiagnostic::UnresolvedType { name, .. } => name.clone(),
