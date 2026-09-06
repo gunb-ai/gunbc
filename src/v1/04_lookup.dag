@@ -292,6 +292,24 @@ fn resolved_declaration_call_target(declared: DeclaredCallableIdentity) -> CallT
 // same registry the ExprCall arm already routes such calls through -- and anything else is
 // genuinely undetermined. Ambiguity is refused upstream and carries no single target, so it is
 // Undetermined here rather than a guess at which candidate emission should prefer.
+// THE SAME MAPPING resolved_plain_call_target MAKES, READ OFF THE PARTITIONED OUTCOME.
+//
+// Behaviour is identical by construction: FuncSigResolved answered the declaration target and
+// still does; FuncSigUnresolved consulted builtin_call_target_or_undetermined, and the builtin
+// half of that question is now decided one seam earlier by infer_builtin_call_type -- THE SAME
+// AUTHORITY, asked once instead of twice -- so BuiltinCallableResolved answers the primitive and
+// the states that were "no builtin either" answer undetermined, exactly as before.
+fn resolved_plain_call_target_for_outcome(outcome: CallTargetOutcome) -> CallTargetIdentity {
+  match outcome {
+    DeclaredCallableResolved { sig: _, declared: d } => resolved_declaration_call_target(declared: d)
+    BuiltinCallableResolved { primitive_name: n } => RuntimePrimitiveCall { primitive_name: n, projected_from: none }
+    LocallyBoundCallee { name: _, binding: _ } => CallableTargetUndetermined
+    CallableUnresolved { name: _ } => CallableTargetUndetermined
+    CallableAmbiguous { candidates: _ } => CallableTargetUndetermined
+    LocallyBoundBindingMissing { name: _ } => CallableTargetUndetermined
+  }
+}
+
 fn resolved_plain_call_target(func_name: String, sig_lookup: FuncSigLookup) -> CallTargetIdentity {
   match sig_lookup {
     FuncSigResolved { sig: _, declared: declared } =>

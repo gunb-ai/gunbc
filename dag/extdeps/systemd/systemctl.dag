@@ -66,6 +66,15 @@ data systemctl_enable_verb: NonEmptyStr = "enable" as NonEmptyStr
 
 data systemctl_start_verb: NonEmptyStr = "start" as NonEmptyStr
 
+// RELOAD IS A THIRD TRANSITION, NOT A GENTLER RESTART, and the distinction is the reason it is
+// here rather than spelled as `restart` at a call site. reload runs the unit's own ExecReload and
+// the process NEVER dies, so a daemon holding state across the call keeps it -- systemd-networkd
+// re-reads .network and .netdev files without tearing down a single configured link. `restart`
+// would drop every link the daemon manages, including the host's own uplink, which on a remote
+// machine is indistinguishable from the host going away. A unit with no ExecReload REFUSES the
+// verb rather than silently restarting, so this cannot degrade into that.
+data systemctl_reload_verb: NonEmptyStr = "reload" as NonEmptyStr
+
 fn systemctl_enable_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", systemctl_enable_verb as String, unit as String]
 }

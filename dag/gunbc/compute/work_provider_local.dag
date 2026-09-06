@@ -14,6 +14,7 @@ import extdeps.cache.sccache { sccache_installed_binary_path }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance, dashboard_instance_for_repo_root, DashboardInstanceResolved, DashboardInstanceRootUnknown,
+  dashboard_instance_compute_root,
 }
 import gunbc.roadmap_dispatch_actuator { dispatch_capability_program }
 import gunbc.roadmap_execution_contract {
@@ -58,7 +59,7 @@ type ComputeLayout {
 }
 
 fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> ComputeLayout {
-  let root = join([instance.instance_root as String, "/compute"], "")
+  let root = dashboard_instance_compute_root(instance: instance) as String
   let work_dir = join([root, "/work/", identity_hex], "")
   ComputeLayout {
     root: root,
