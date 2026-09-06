@@ -39,7 +39,7 @@ import std.types { Bool, List, String, NonEmptyStr }
 import gunbc.scm.object_store {
   AuthoredSourceTarget,
   CorpusManifestEntry,
-  canonical_manifest_entries,
+  CorpusManifestRecord,
   object_id_eq,
 }
 
@@ -64,23 +64,6 @@ fn path_state_eq(left: PathState, right: PathState) -> Bool {
         PathPresent { source: r } => object_id_eq(left: l.locator, right: r.locator)
       }
   }
-}
-
-// A manifest holds at most one entry per path -- store_corpus_manifest refuses a duplicate before an
-// identity is derived -- so the first match is THE match and no ambiguity rule is needed here. That
-// is a property of the carrier this reads, not an assumption this module makes.
-fn path_state_in(entries: List<CorpusManifestEntry>, path: String) -> PathState {
-  fold(entries, init: PathAbsent, f: fn(found, e) {
-    match found {
-      PathPresent { source: _ } => found
-      PathAbsent =>
-        if (e.path as String) == path {
-          PathPresent { source: e.source }
-        } else {
-          found
-        }
-    }
-  })
 }
 
 // THE CONFLICT CARRIES ALL THREE STATES, INCLUDING EXPLICIT ABSENCE, AND THAT IS NOT DIAGNOSTIC
@@ -156,68 +139,153 @@ fn admit_state(acc: MergeAcc, path: NonEmptyStr, state: PathState) -> MergeAcc {
 // the merge must decide. Taking the base's paths alone would silently drop every addition; taking the
 // target's would silently drop every source addition.
 //
-// THE UNION IS DERIVED THROUGH THE MANIFEST'S OWN CANONICAL ORDER rather than through an order this
-// module invents, so the conflict population and the merged entries are both reported in the order
-// the carrier already uses. Deduplication is against the IMMEDIATELY PRECEDING path and not against
-// every earlier one -- the quadratic scan a membership test would need is bought by the sort that has
-// already happened, which is the same trade `a_duplicated_manifest_path` makes one module over.
-type PathUnionAcc {
-  previous: String?
-  paths: List<NonEmptyStr>
+// THE UNION IS TAKEN BY A SORTED GROUPING JOIN, IN ONE PASS. A first derivation of this module built
+// the union and then asked each of the three manifests for its state at every path in it, which is a
+// fold over all three inputs per union path -- quadratic in the manifest size, and quadratic even
+// when the three sides are identical and nothing conflicts. DESIGN section 6 makes that
+// unconditional: a proven cost-shape defect is always fixed regardless of the realized n, because n
+// is not a time-stable fact about a compiler's corpus manifest.
+//
+// The replacement tags each entry with the side it came from, sorts the three streams together by
+// path, and folds ONCE: entries sharing a path are adjacent by construction, so a group is closed
+// when the path changes. The union, the three lookups, and the decision are then the same traversal
+// rather than three -- which is also why `path_state_in` no longer exists. It was not made faster;
+// there is nothing left for it to answer.
+//
+// ASSIGNING A GROUP MEMBER TO ITS SIDE IS TOTAL ONLY BECAUSE OF THE OPERAND ABOVE. Two entries from
+// one side sharing a path would make "the source's state at this path" ambiguous, and a raw list can
+// hold exactly that; `CorpusManifestRecord` cannot. The two corrections are one correction.
+type ManifestSide
+  = ManifestBaseSide
+  | ManifestSourceSide
+  | ManifestTargetSide
+
+type SidedEntry {
+  side: ManifestSide
+  path: NonEmptyStr
+  source: AuthoredSourceTarget
 }
 
-fn path_union_step(acc: PathUnionAcc, entry: CorpusManifestEntry) -> PathUnionAcc {
-  match acc.previous {
-    Present { value: p } =>
-      if p == (entry.path as String) {
-        acc
-      } else {
-        PathUnionAcc {
-          previous: Present { value: entry.path as String },
-          paths: concat([entry.path], acc.paths),
-        }
+fn sided_entries(side: ManifestSide, entries: List<CorpusManifestEntry>) -> List<SidedEntry> {
+  map(entries, e => SidedEntry { side: side, path: e.path, source: e.source })
+}
+
+// A SLOT OPENS AT FULL ABSENCE. A side that never appears in the group is absent at this path, which
+// is the state the law reads -- not a missing observation to be filled in later.
+type PathSlot {
+  path: NonEmptyStr
+  base: PathState
+  source: PathState
+  target: PathState
+}
+
+fn empty_slot(path: NonEmptyStr) -> PathSlot {
+  PathSlot { path: path, base: PathAbsent, source: PathAbsent, target: PathAbsent }
+}
+
+fn slot_admit(slot: PathSlot, entry: SidedEntry) -> PathSlot {
+  match entry.side {
+    ManifestBaseSide =>
+      PathSlot {
+        path: slot.path,
+        base: PathPresent { source: entry.source },
+        source: slot.source,
+        target: slot.target,
       }
-    Absent =>
-      PathUnionAcc {
-        previous: Present { value: entry.path as String },
-        paths: concat([entry.path], acc.paths),
+    ManifestSourceSide =>
+      PathSlot {
+        path: slot.path,
+        base: slot.base,
+        source: PathPresent { source: entry.source },
+        target: slot.target,
+      }
+    ManifestTargetSide =>
+      PathSlot {
+        path: slot.path,
+        base: slot.base,
+        source: slot.source,
+        target: PathPresent { source: entry.source },
       }
   }
 }
 
-fn merged_path_union(
-  base: List<CorpusManifestEntry>,
-  source: List<CorpusManifestEntry>,
-  target: List<CorpusManifestEntry>,
-) -> List<NonEmptyStr> {
-  reverse(
-    fold(
-      canonical_manifest_entries(entries: concat(base, concat(source, target))),
-      init: PathUnionAcc { previous: none, paths: [] },
-      f: fn(acc, e) { path_union_step(acc: acc, entry: e) },
-    ).paths
+fn decide_slot(acc: MergeAcc, slot: PathSlot) -> MergeAcc {
+  merge_path(
+    acc: acc,
+    path: slot.path,
+    base: slot.base,
+    source: slot.source,
+    target: slot.target,
   )
+}
+
+type GroupAcc {
+  open: PathSlot?
+  decided: MergeAcc
+}
+
+fn group_step(acc: GroupAcc, entry: SidedEntry) -> GroupAcc {
+  match acc.open {
+    Present { value: slot } =>
+      if (slot.path as String) == (entry.path as String) {
+        GroupAcc { open: Present { value: slot_admit(slot: slot, entry: entry) }, decided: acc.decided }
+      } else {
+        GroupAcc {
+          open: Present { value: slot_admit(slot: empty_slot(path: entry.path), entry: entry) },
+          decided: decide_slot(acc: acc.decided, slot: slot),
+        }
+      }
+    Absent =>
+      GroupAcc {
+        open: Present { value: slot_admit(slot: empty_slot(path: entry.path), entry: entry) },
+        decided: acc.decided,
+      }
+  }
+}
+
+// THE LAST GROUP IS CLOSED BY THE CALLER, NOT BY THE FOLD. A fold closes a group when it sees the
+// next path, and the final group has no next path -- so an implementation that forgot this line would
+// silently drop the alphabetically last path from every merge, and would still return a well-formed
+// manifest. The claim that reds on it is the union claim.
+fn close_groups(acc: GroupAcc) -> MergeAcc {
+  match acc.open {
+    Present { value: slot } => decide_slot(acc: acc.decided, slot: slot)
+    Absent => acc.decided
+  }
 }
 
 // THE CONFLICT CHECK IS ON THE POPULATION, NOT ON A FLAG. A Bool set beside the accumulator would be
 // a second authority for "did anything conflict", free to disagree with the list it describes.
+//
+// THE OPERANDS ARE STORE-CONSTRUCTED RECORDS, NOT RAW LISTS. `CorpusManifestRecord` is
+// sole_constructor and `store_corpus_manifest` refuses a duplicate path before an identity is
+// derived, so no caller can hand this function a manifest holding two entries for one path. A first
+// derivation took `List<CorpusManifestEntry>` and carried an annotation asserting that uniqueness
+// held -- an assertion about a guarantee the SIGNATURE did not carry, which is validation-by-comment
+// standing where construction was available. Under raw lists, a source of [a -> X, a -> Y] merged
+// successfully by silently selecting the first, and reversing that list changed the answer: the
+// fabricated plausible output DESIGN section 5 forbids outright.
 fn merge_manifests(
-  base: List<CorpusManifestEntry>,
-  source: List<CorpusManifestEntry>,
-  target: List<CorpusManifestEntry>,
+  base: CorpusManifestRecord,
+  source: CorpusManifestRecord,
+  target: CorpusManifestRecord,
 ) -> ManifestMergeOutcome {
-  let decided = fold(
-    merged_path_union(base: base, source: source, target: target),
-    init: MergeAcc { entries: [], conflicts: [] },
-    f: fn(acc, path) {
-      merge_path(
-        acc: acc,
-        path: path,
-        base: path_state_in(entries: base, path: path as String),
-        source: path_state_in(entries: source, path: path as String),
-        target: path_state_in(entries: target, path: path as String),
-      )
-    },
+  let joined = sort_by(
+    concat(
+      sided_entries(side: ManifestBaseSide, entries: base.entries),
+      concat(
+        sided_entries(side: ManifestSourceSide, entries: source.entries),
+        sided_entries(side: ManifestTargetSide, entries: target.entries),
+      ),
+    ),
+    fn(e) { e.path as String },
+  )
+  let decided = close_groups(
+    acc: fold(
+      joined,
+      init: GroupAcc { open: none, decided: MergeAcc { entries: [], conflicts: [] } },
+      f: fn(acc, e) { group_step(acc: acc, entry: e) },
+    )
   )
   if count(decided.conflicts) > 0 {
     ManifestConflicted { conflicts: reverse(decided.conflicts) }
