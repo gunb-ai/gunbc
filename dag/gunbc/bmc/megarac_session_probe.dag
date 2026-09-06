@@ -8,12 +8,17 @@ import extdeps.bmc.megarac {
   MegaRacSessionAcquisition,
   MegaRacSessionDenied,
   MegaRacSessionNeverOpened,
+  MegaRacScratchCleanup,
+  MegaRacScratchDiscardFailed,
+  MegaRacScratchDiscarded,
+  MegaRacScratchRetained,
   MegaRacSessionRelease,
   MegaRacSessionReleaseConfirmed,
   MegaRacSessionReleaseUnverifiable,
   MegaRacSessionScope,
   MegaRacSessionStagingFailed,
   MegaRacSessionStillLive,
+  MegaRacSessionTeardown,
   MegaRacSessionUnusable,
   megarac_acquire_session,
   megarac_release_session,
@@ -29,14 +34,31 @@ import extdeps.bmc.megarac {
 // are actually paired on a live controller, and that release is CONFIRMED rather than assumed --
 // the probe re-reads with the same cookie after teardown and refuses unless the controller has
 // stopped honouring it.
-fn render_release(standing: MegaRacSessionRelease) -> ProcessExit {
-  match standing {
-    MegaRacSessionReleaseConfirmed => ExitSuccess
-    MegaRacSessionNeverOpened => ExitSuccess
-    MegaRacSessionStillLive { detail: d } =>
-      exit_failure(reason: concat("megarac session probe: LEAK -- ", d))
-    MegaRacSessionReleaseUnverifiable { detail: d } =>
-      exit_failure(reason: concat("megarac session probe: release could not be verified, so a session may be stranded: ", d))
+fn render_cleanup(cleanup: MegaRacScratchCleanup) -> String {
+  match cleanup {
+    MegaRacScratchDiscarded => ""
+    MegaRacScratchRetained { scratch_dir: d, reason: r } =>
+      concat(" SCRATCH RETAINED at ", d as String, " (holds a live cookie jar; ", r, ")")
+    MegaRacScratchDiscardFailed { scratch_dir: d } =>
+      concat(" SCRATCH NOT REMOVED at ", d as String, " -- a credential or cookie jar may remain on disk")
+  }
+}
+
+fn render_release(teardown: MegaRacSessionTeardown) -> ProcessExit {
+  match teardown.standing {
+    MegaRacSessionReleaseConfirmed => render_cleanup_only(cleanup: teardown.cleanup)
+    MegaRacSessionNeverOpened => render_cleanup_only(cleanup: teardown.cleanup)
+    MegaRacSessionStillLive { scope: _, detail: d } =>
+      exit_failure(reason: concat("megarac session probe: LEAK -- ", d, render_cleanup(cleanup: teardown.cleanup)))
+    MegaRacSessionReleaseUnverifiable { scope: _, detail: d } =>
+      exit_failure(reason: concat("megarac session probe: release could not be verified, so a session may be stranded: ", d, render_cleanup(cleanup: teardown.cleanup)))
+  }
+}
+
+fn render_cleanup_only(cleanup: MegaRacScratchCleanup) -> ProcessExit {
+  match cleanup {
+    MegaRacScratchDiscarded => ExitSuccess
+    _ => exit_failure(reason: concat("megarac session probe: the session was released but the local scratch was not discarded.", render_cleanup(cleanup: cleanup)))
   }
 }
 
@@ -65,20 +87,20 @@ func megarac_session_lifecycle_probe(
     MegaRacSessionDenied { detail: d } =>
       exit_failure(reason: concat("megarac session probe: the controller denied the login, so no session exists to release: ", d))
     MegaRacSessionUnusable { scope: sc, detail: d } =>
-      render_unusable_after_release(detail: d, standing: megarac_release_session(scope: sc))
+      render_unusable_after_release(detail: d, teardown: megarac_release_session(scope: sc))
     MegaRacSessionAcquired { session: s } =>
-      render_release(standing: megarac_release_session(scope: s.scope))
+      render_release(teardown: megarac_release_session(scope: s.scope))
   }
 }
 
 // AN UNUSABLE SESSION IS A FAILURE EVEN WHEN ITS CLEANUP SUCCEEDS, and the cleanup verdict is
 // reported beside it rather than replacing it. Those are two facts with different owners: whether
 // this attempt can proceed, and whether it left anything behind.
-fn render_unusable_after_release(detail: String, standing: MegaRacSessionRelease) -> ProcessExit {
-  match standing {
+fn render_unusable_after_release(detail: String, teardown: MegaRacSessionTeardown) -> ProcessExit {
+  match teardown.standing {
     MegaRacSessionReleaseConfirmed =>
-      exit_failure(reason: concat("megarac session probe: the login succeeded but the session was unusable (", detail, "); it WAS released and verified, so nothing is stranded"))
+      exit_failure(reason: concat("megarac session probe: the login succeeded but the session was unusable (", detail, "); it WAS released and verified, so nothing is stranded.", render_cleanup(cleanup: teardown.cleanup)))
     _ =>
-      exit_failure(reason: concat("megarac session probe: the login succeeded but the session was unusable (", detail, ") AND its release could not be confirmed; a session may be stranded on the controller"))
+      exit_failure(reason: concat("megarac session probe: the login succeeded but the session was unusable (", detail, ") AND its release could not be confirmed; a session may be stranded on the controller.", render_cleanup(cleanup: teardown.cleanup)))
   }
 }

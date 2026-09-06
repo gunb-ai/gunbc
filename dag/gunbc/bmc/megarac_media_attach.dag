@@ -1,7 +1,7 @@
 module gunbc.bmc.megarac_media_attach
 
 import std.types { Bool, NonEmptyStr, String }
-import std.process { ExitSuccess, ProcessExit, exit_failure }
+import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
 import extdeps.bmc.megarac {
   MegaRacAlreadyPresented,
   MegaRacAttachIndeterminate,
@@ -14,9 +14,17 @@ import extdeps.bmc.megarac {
   MegaRacPresentationUnreadable,
   MegaRacSessionAcquired,
   MegaRacSessionDenied,
+  MegaRacScratchCleanup,
+  MegaRacScratchDiscardFailed,
+  MegaRacScratchDiscarded,
+  MegaRacScratchRetained,
   MegaRacSessionRelease,
   MegaRacSessionReleaseConfirmed,
+  MegaRacSessionReleaseUnverifiable,
+  MegaRacSessionStillLive,
+  MegaRacSessionTeardown,
   MegaRacSessionStagingFailed,
+  MegaRacSessionNeverOpened,
   MegaRacSessionUnusable,
   megarac_acquire_session,
   megarac_attach_image,
@@ -50,25 +58,79 @@ fn render_attach(outcome: MegaRacAttachOutcome) -> ProcessExit {
   }
 }
 
-fn render_session_release(standing: MegaRacSessionRelease) -> String {
+// ALL THREE AXES ARE RENDERED, ALWAYS, and the previous version is why this is stated as a rule.
+// It examined the release standing only when the attach had rendered success and returned the attach
+// failure otherwise, so on every refusal the stranded-session signal vanished behind the first
+// error -- while the annotation directly above it claimed a stranded session is "reported beside the
+// attach verdict, never folded into it". The prose was right and the code did the opposite.
+fn render_session_standing(standing: MegaRacSessionRelease) -> String {
   match standing {
     MegaRacSessionReleaseConfirmed => ""
-    _ => " WARNING: the controller session was NOT confirmed released, so one may be stranded."
+    MegaRacSessionNeverOpened => ""
+    MegaRacSessionStillLive { scope: _, detail: d } =>
+      concat(" SESSION STRANDED: ", d)
+    MegaRacSessionReleaseUnverifiable { scope: _, detail: d } =>
+      concat(" SESSION RELEASE UNVERIFIED: ", d)
   }
 }
 
-// A STRANDED SESSION IS REPORTED BESIDE THE ATTACH VERDICT, never folded into it. Whether the image
-// attached and whether the session was released are different facts with different owners: a
-// successful attach that stranded a session is still a successful attach, and reporting it as a
-// failure would hide the thing that worked while a caller retried it and stranded another.
-fn render_attach_and_release(outcome: MegaRacAttachOutcome, standing: MegaRacSessionRelease) -> ProcessExit {
+// A RETAINED SCRATCH DIRECTORY IS REPORTED RATHER THAN PASSED OVER, because it holds a live cookie
+// jar on local disk. It is deliberate -- it is the bearer that can retry the teardown -- but a
+// deliberate secret left on disk that nobody is told about is the same as an accidental one.
+fn render_scratch_cleanup(cleanup: MegaRacScratchCleanup) -> String {
+  match cleanup {
+    MegaRacScratchDiscarded => ""
+    MegaRacScratchRetained { scratch_dir: d, reason: r } =>
+      concat(" SCRATCH RETAINED at ", d as String, " (holds a live cookie jar; ", r, ")")
+    MegaRacScratchDiscardFailed { scratch_dir: d } =>
+      concat(" SCRATCH NOT REMOVED at ", d as String, " -- a credential or cookie jar may remain on disk")
+  }
+}
+
+fn teardown_is_clean(teardown: MegaRacSessionTeardown) -> Bool {
+  let released = match teardown.standing {
+    MegaRacSessionReleaseConfirmed => true
+    MegaRacSessionNeverOpened => true
+    _ => false
+  }
+  let discarded = match teardown.cleanup {
+    MegaRacScratchDiscarded => true
+    _ => false
+  }
+  released && discarded
+}
+
+fn render_teardown(teardown: MegaRacSessionTeardown) -> String {
+  concat(
+    render_session_standing(standing: teardown.standing),
+    render_scratch_cleanup(cleanup: teardown.cleanup),
+  )
+}
+
+// THE ATTACH VERDICT AND THE TEARDOWN VERDICT ARE BOTH REPORTED, AND EITHER CAN FAIL THE RUN. A
+// successful attach that stranded a session is still a successful attach -- but it is not a clean
+// run, and the caller has to be told which of the two happened.
+fn render_attach_and_teardown(outcome: MegaRacAttachOutcome, teardown: MegaRacSessionTeardown) -> ProcessExit {
   match render_attach(outcome: outcome) {
     ExitSuccess =>
-      match standing {
-        MegaRacSessionReleaseConfirmed => ExitSuccess
-        _ => exit_failure(reason: concat("megarac attach: the image is presented, but the session release could not be confirmed.", render_session_release(standing: standing)))
+      if teardown_is_clean(teardown: teardown) {
+        ExitSuccess
+      } else {
+        exit_failure(reason: concat("megarac attach: the image is presented, but the session did not tear down cleanly.", render_teardown(teardown: teardown)))
       }
-    other => other
+    other => render_failed_attach_with_teardown(attach_exit: other, teardown: teardown)
+  }
+}
+
+fn render_failed_attach_with_teardown(attach_exit: ProcessExit, teardown: MegaRacSessionTeardown) -> ProcessExit {
+  if teardown_is_clean(teardown: teardown) {
+    attach_exit
+  } else {
+    match attach_exit {
+      ExitSuccess => attach_exit
+      ExitFailure { reason: r } =>
+        exit_failure(reason: concat(r, " |", render_teardown(teardown: teardown)))
+    }
   }
 }
 
@@ -97,15 +159,15 @@ func megarac_attach_remote_media(
     MegaRacSessionDenied { detail: d } =>
       exit_failure(reason: concat("megarac attach: the controller denied the login: ", d))
     MegaRacSessionUnusable { scope: sc, detail: d } =>
-      render_unusable(detail: d, standing: megarac_release_session(scope: sc))
+      render_unusable(detail: d, teardown: megarac_release_session(scope: sc))
     MegaRacSessionAcquired { session: s } =>
-      render_attach_and_release(
+      render_attach_and_teardown(
         outcome: megarac_attach_image(session: s, image_name: image_name as NonEmptyStr),
-        standing: megarac_release_session(scope: s.scope),
+        teardown: megarac_release_session(scope: s.scope),
       )
   }
 }
 
-fn render_unusable(detail: String, standing: MegaRacSessionRelease) -> ProcessExit {
-  exit_failure(reason: concat("megarac attach: the login succeeded but the session was unusable (", detail, "), so no attach was attempted.", render_session_release(standing: standing)))
+fn render_unusable(detail: String, teardown: MegaRacSessionTeardown) -> ProcessExit {
+  exit_failure(reason: concat("megarac attach: the login succeeded but the session was unusable (", detail, "), so no attach was attempted.", render_teardown(teardown: teardown)))
 }
