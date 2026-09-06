@@ -320,12 +320,38 @@ fn emission_contribution_fold<R>(
   read(contribution, children)
 }
 
-fn emission_source_read_layer(contribution: EmissionContribution, children: FreeMonoid<String>) -> String {
+type EmissionSourceBuilder {
+  append_fragments: fn(FreeMonoid<String>) -> FreeMonoid<String>
+}
+
+type EmissionContributionBuild {
+  source: EmissionSourceBuilder
+  origins: EmissionOriginRead
+}
+
+fn emission_source_builder_identity(fragments: FreeMonoid<String>) -> FreeMonoid<String> { fragments }
+
+fn emission_source_builders_compose(left: EmissionSourceBuilder, right: EmissionSourceBuilder) -> EmissionSourceBuilder {
+  EmissionSourceBuilder {
+    append_fragments: fn(fragments) { right.append_fragments(left.append_fragments(fragments)) }
+  }
+}
+
+fn emission_source_fragment(source: String) -> EmissionSourceBuilder {
+  EmissionSourceBuilder { append_fragments: fn(fragments) { fragments.append(source) } }
+}
+
+// Composition builds append operations, never descendant text. The single materialization
+// boundary below invokes those operations and joins their ordered fragments once.
+fn emission_source_read_layer(contribution: EmissionContribution, children: FreeMonoid<EmissionSourceBuilder>) -> EmissionSourceBuilder {
   match contribution {
-    EmissionAuthoredFragment { origin: _, source } => source
-    EmissionSourceComposition { origin: _, parts: _ } => children |> join(separator: "")
-    EmissionDerivedFragment { producer: _, source } => source
-    EmissionUnobservedFragment { producer: _, cause: _, source } => source
+    EmissionAuthoredFragment { origin: _, source } => emission_source_fragment(source: source)
+    EmissionSourceComposition { origin: _, parts: _ } => children |> fold(
+      init: EmissionSourceBuilder { append_fragments: emission_source_builder_identity },
+      f: emission_source_builders_compose
+    )
+    EmissionDerivedFragment { producer: _, source } => emission_source_fragment(source: source)
+    EmissionUnobservedFragment { producer: _, cause: _, source } => emission_source_fragment(source: source)
   }
 }
 
@@ -343,19 +369,24 @@ fn emission_origin_read_layer(contribution: EmissionContribution, children: Free
 
 // Product algebra: reuse the same source and origin layer meanings over the paired child results.
 // It has no independent variant interpretation that could diverge from either standalone reader.
-fn emission_combined_read_layer(contribution: EmissionContribution, children: FreeMonoid<EmissionContributionRead>) -> EmissionContributionRead {
-  EmissionContributionRead {
+fn emission_combined_read_layer(contribution: EmissionContribution, children: FreeMonoid<EmissionContributionBuild>) -> EmissionContributionBuild {
+  EmissionContributionBuild {
     source: emission_source_read_layer(contribution: contribution, children: children |> map(child => child.source)),
     origins: emission_origin_read_layer(contribution: contribution, children: children |> map(child => child.origins))
   }
 }
 
 fn emission_contribution_read(contribution: EmissionContribution) -> EmissionContributionRead {
-  emission_contribution_fold(contribution: contribution, read: emission_combined_read_layer)
+  let built = emission_contribution_fold(contribution: contribution, read: emission_combined_read_layer)
+  EmissionContributionRead { source: emission_source_materialize(builder: built.source), origins: built.origins }
 }
 
 fn emission_contribution_source(contribution: EmissionContribution) -> String {
-  emission_contribution_fold(contribution: contribution, read: emission_source_read_layer)
+  emission_source_materialize(builder: emission_contribution_fold(contribution: contribution, read: emission_source_read_layer))
+}
+
+fn emission_source_materialize(builder: EmissionSourceBuilder) -> String {
+  builder.append_fragments([]) |> join(separator: "")
 }
 
 // This result algebra retains incomplete coverage without materializing the unrequested source.
