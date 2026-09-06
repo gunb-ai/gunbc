@@ -294,8 +294,18 @@ fn dashboard_serve_cpu_limit() -> EvaluationLimit {
   LimitSet { limit: positive_millisecond(count: positive_measure_count(predecessor: 29999)) }
 }
 
+// THE WALL CAP WAS RAISED TO 120 S ON A SECOND MEASUREMENT (2026-09-06, srv1 serve journal at
+// 03:57Z, three POST /dispatch requests refused at 30.06-30.21 s). The dispatch route is not a
+// render: it observes every current attempt's session through host processes (about twenty
+// gunbc.WitnessBin.Run steps at roughly 0.8 s each in that journal), observes both engine replicas
+// twice (six http.Client.Get at about 0.5 s), and prepares a worktree -- all wait, almost no CPU,
+// which is exactly the clock this cap exists to bound. The 30 s basis above was a page render; a
+// dispatch is an operator click that may take a minute, and refusing it at 30 s spawned nothing
+// while still paying the whole cost. The CPU cap stays at 30 s: a spin is still a spin. The route's
+// per-step cost (a host process spawn near 0.8 s) is the thing to shrink; this row is the cap that
+// lets the click complete meanwhile, and it is falsifiable against the journal that set it.
 fn dashboard_serve_wall_limit() -> EvaluationLimit {
-  LimitSet { limit: positive_millisecond(count: positive_measure_count(predecessor: 29999)) }
+  LimitSet { limit: positive_millisecond(count: positive_measure_count(predecessor: 119999)) }
 }
 
 // THE SPEC ANSWERS WHERE, THE CANDIDATE ANSWERS WHAT, AND THE FIELD THAT FUSED THEM IS GONE.
