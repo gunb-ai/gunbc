@@ -856,6 +856,9 @@ fn floor_route_gap_expectation_chunk_06() -> List<FloorRouteGapExpectation> {
 // Authored as an expectation rather than a bare identity because floor_route_gap_roster calls the
 // bare chunks `legacy`: the expectation form pins the operation and the ground, so a gap that
 // moves to a different operation stops matching instead of staying quietly enrolled.
+// My entry: enrolled beside a real executing route (WetScheduledClaim in
+// local_repo_wet_terminal.dag). Not a burial — the identity executes on the
+// wet lane and held wet. This records only the hermetic unreachability.
 fn floor_route_gap_expectation_chunk_07() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.eval_model_probe.and_demands_right_even_when_left_false", operation: "Dir", ground: NoMockResponse {} },
