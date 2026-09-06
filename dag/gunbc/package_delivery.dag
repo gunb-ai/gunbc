@@ -1934,8 +1934,14 @@ type UniquePublishingRelocateOutcome
 // release_codex_runtime_bundle_immutable; and the staging_dir and cache_dir sweeps on the
 // materialization success arm.
 //
-// THE COUNT IS A MEASUREMENT AND CARRIES THE REF IT WAS TAKEN AGAINST, because a bare number is
-// not re-derivable and cannot tell a real change from a stale citation. The census that opened
+// THE COUNT IS A MEASUREMENT AND CARRIES ITS SELECTOR AND ITS REF, because a bare number is not
+// re-derivable and cannot tell a real change from a stale citation. THE SELECTOR is `let _ =
+// shell.<Op>` OR `let _ = Filesystem.<Op>` -- the wider of the two that were run, because the
+// defect is an IGNORED EFFECT OUTCOME and not a property of which service produced it; the narrow
+// shell-only reading drops tools.merge_admission_walk's Filesystem.Write and understates by one.
+// MEMBERSHIP IS BY IDENTITY -- module, enclosing declaration, and the arm each sweep follows --
+// never by line and never by count alone: all five provider_wire_evidence members share ONE
+// declaration, so declaration grain alone would make four of them invisible. THE REF follows. The census that opened
 // this classification -- the out-of-scope remainder of #10574's printer scope -- measured 19
 // across four modules at 1ae18027, of which 11 were here. It is 15 and 7 as of the merge of
 // origin/main that this classification lands over: main independently deleted

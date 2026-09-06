@@ -135,8 +135,13 @@ fn publish_evidence_object_exclusive(
 // THE FIVE DISCARDED STAGING SWEEPS BELOW ARE EXPLICITLY BEST-EFFORT. They are five of the
 // discarded-effect census that #10574 opened over its own out-of-scope remainder -- 19 across four
 // modules measured at 1ae18027, 15 once main deleted a whole function in gunbc.package_delivery,
-// with this module's five unchanged across that move. The count is carried with its ref because a
-// bare number cannot tell a real change from a stale citation. This module gets the statement
+// with this module's five unchanged across that move. The count is carried with its ref and its
+// selector -- `let _ = shell.<Op>` OR `let _ = Filesystem.<Op>` -- because a bare number cannot
+// tell a real change from a stale citation, and the narrow shell-only reading understates by one.
+// ALL FIVE MEMBERS HERE SHARE THIS ONE DECLARATION, so they are identified by the arm each follows
+// -- staging write failed; staging digest observation refused; destination exists with its digest
+// unreadable; destination exists and digests compared; exclusive publish lost the race -- and a
+// roster at declaration grain alone would collapse them to one. This module gets the statement
 // in its own right rather than a pointer to the package_delivery block, because it is the one
 // census member whose subject IS confidentiality, and "the sweep result is ignored" is precisely
 // the sentence that needs a reason here.
