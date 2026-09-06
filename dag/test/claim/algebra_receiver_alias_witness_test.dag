@@ -1,6 +1,6 @@
 module test.claim.algebra_receiver_alias_witness_test
 
-import std.types { Bool, Int, String }
+import std.types { Bool, Int, String, List }
 import v2.std.optional { Present, Absent }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved, CensusNotRunnable, census_blocking_rows, census_total_count }
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }

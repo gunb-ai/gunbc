@@ -657,7 +657,7 @@ fn variant_reference_inferred_node(expected: Node?, name: String, owner_name: St
   match expected {
     Present { value: exp } =>
       if exp.return_cardinality == Required
-        && authored_name_at(source_indices: scope.type_env.source_indices, node: exp) == owner_name {
+        && owner_name != "" {
         match expected_variant_owner_instantiation(expected: expected, name: name, scope: scope) {
           Present { value: _ } => exp
           Absent => fallback
