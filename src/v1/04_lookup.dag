@@ -41,7 +41,7 @@ import v1.compiler.infer_types {
   normalize_access_type_node, node_is_keyed_collection, node_is_set_collection,
   method_receiver_element_node,
   emit_map_has,
-  enrich_kernel_type, is_declared_container_alias_spelling, reground_alias_carrier_identity,
+  instantiate_algebra_field, enrich_base_with_fields, is_declared_container_alias_spelling, reground_alias_carrier_identity,
   kernel_profile_lookup,
   instantiate_algebra_type
 }
@@ -995,28 +995,29 @@ fn lookup_structural_method(receiver_type: Node, method_name: String, source_ind
     let direct = lookup_field_in_product(product: receiver_type, method_name: method_name, source_indices: source_indices)
     StructuralMethodLookup { resolution: direct, kernel_diagnostics: [] }
   } else {
-    let enriched = enrich_kernel_type(name: authored_name_at(source_indices: source_indices, node: receiver_type), base: receiver_type, source_indices: source_indices)
-    if enriched.diagnostics |> count == 0 && enriched.ty.connective == Conj && enriched.ty.children |> count > 0 {
-      let base_result = lookup_field_in_product(product: enriched.ty, method_name: method_name, source_indices: source_indices)
-      match base_result {
-        Present { value: mfr } =>
-          let profile = kernel_profile_lookup(name: authored_name_at(source_indices: source_indices, node: receiver_type))
-          let template_match = match profile {
-            Present { value: p } =>
-              let templates = algebra_templates_for_profile(profile: p)
-              templates |> filter(t => t.name == method_name) |> first
+    let receiver_name = authored_name_at(source_indices: source_indices, node: receiver_type)
+    let profile = kernel_profile_lookup(name: receiver_name)
+    let template_match = match profile {
+      Present { value: p } =>
+        let templates = algebra_templates_for_profile(profile: p)
+        templates |> filter(t => t.name == method_name) |> first
+      Absent => none
+    }
+    match template_match {
+      Present { value: template } =>
+        let field = instantiate_algebra_field(template: template, base: receiver_type, source_indices: source_indices)
+        if field.diagnostics |> count == 0 {
+          let product = enrich_base_with_fields(name: receiver_name, base: receiver_type, fields: [field.ty])
+          let resolution = match lookup_field_in_product(product: product, method_name: method_name, source_indices: source_indices) {
+            Present { value: mfr } =>
+              Present { value: MethodFieldResult { field_node: mfr.field_node, result_type: mfr.result_type, size_effect: template.size_effect, cost_shape: template.cost_shape, algebra_template: Present { value: template } } }
             Absent => none
           }
-          let resolution = match template_match {
-            Present { value: t } =>
-              Present { value: MethodFieldResult { field_node: mfr.field_node, result_type: mfr.result_type, size_effect: t.size_effect, cost_shape: t.cost_shape, algebra_template: Present { value: t } } }
-            Absent => base_result
-          }
-          StructuralMethodLookup { resolution: resolution, kernel_diagnostics: enriched.diagnostics }
-        Absent => StructuralMethodLookup { resolution: none, kernel_diagnostics: enriched.diagnostics }
-      }
-    } else {
-      StructuralMethodLookup { resolution: none, kernel_diagnostics: enriched.diagnostics }
+          StructuralMethodLookup { resolution: resolution, kernel_diagnostics: field.diagnostics }
+        } else {
+          StructuralMethodLookup { resolution: none, kernel_diagnostics: field.diagnostics }
+        }
+      Absent => StructuralMethodLookup { resolution: none, kernel_diagnostics: [] }
     }
   }
 }

@@ -14,8 +14,7 @@ import std.algebra {
   AlgebraTypeTemplate, ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue,
   NamedTemplate, ContainerOf, ContainerSource, SameAsReceiver, Named, OptionalOf, WitnessOf, TupleOf, AlgebraTypeVariable,
   AlgebraFieldTemplate,
-  kernel_algebra_profile,
-  algebra_templates_for_profile
+  kernel_algebra_profile
 }
 
 import std.syntax { AlgAdd, AlgebraFieldKind, BinOp, LitStr, LiteralValue }
@@ -513,18 +512,6 @@ fn instantiate_algebra_field(template: AlgebraFieldTemplate, base: Node, source_
     algebra_value_field(name: template.name, type_node: return_b.ty)
   }
   KernelTypeBuild { ty: field_ty, diagnostics: concat(param_diags, return_b.diagnostics) }
-}
-
-fn enrich_kernel_type(name: String, base: Node, source_indices: Map<String, NewlineIndex>) -> KernelTypeBuild {
-  let profile = kernel_profile_lookup(name: name)
-  match profile {
-    Present { value: p } =>
-      let field_bs = algebra_templates_for_profile(profile: p) |> map(template => instantiate_algebra_field(template: template, base: base, source_indices: source_indices))
-      let fields = field_bs |> map(b => b.ty)
-      let field_diags = field_bs |> flat_map(b => b.diagnostics)
-      KernelTypeBuild { ty: enrich_base_with_fields(name: name, base: base, fields: fields), diagnostics: field_diags }
-    Absent => KernelTypeBuild { ty: base, diagnostics: [] }
-  }
 }
 
 fn unify_template(template: AlgebraTypeTemplate, concrete: Node, receiver: Node, subst: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, Node> {

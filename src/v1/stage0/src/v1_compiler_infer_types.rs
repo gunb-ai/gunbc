@@ -2,6 +2,7 @@
 // Source module: v1.compiler.infer_types
 
 use self::TypeResolutionVerdict::*;
+pub use crate::std_algebra::kernel_algebra_profile;
 use crate::std_algebra::AlgebraProfile::{
     ApproximateFieldProfile, BooleanAlgebraProfile, FinitePowerSetProfile,
     FinitelySupportedFunctionProfile, FreeMonoidCollectionProfile, FreeMonoidScalarProfile,
@@ -12,7 +13,6 @@ use crate::std_algebra::AlgebraTypeTemplate::{
     ReceiverSelf, ReceiverValue, TupleOf, WitnessOf,
 };
 use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
-pub use crate::std_algebra::{algebra_templates_for_profile, kernel_algebra_profile};
 pub use crate::std_algebra::{
     AlgebraFieldTemplate, AlgebraProfile, AlgebraTypeTemplate, ContainerSource,
 };
@@ -1307,56 +1307,6 @@ pub fn instantiate_algebra_field(
             ty: field_ty.clone(),
             diagnostics: v1_rt::concat(param_diags.clone(), return_b.diagnostics.clone()),
         })
-    }
-}
-
-pub fn enrich_kernel_type(
-    name: String,
-    base: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<KernelTypeBuild> {
-    {
-        let profile = kernel_profile_lookup(name.clone());
-        match profile.clone() {
-            Some(p) => {
-                let field_bs = Rc::new({
-                    let mut __result = Vec::new();
-                    for template in crate::std_algebra::algebra_templates_for_profile(p.clone())
-                        .iter()
-                        .cloned()
-                    {
-                        __result.push(instantiate_algebra_field(
-                            template.clone(),
-                            base.clone(),
-                            source_indices.clone(),
-                        ));
-                    }
-                    __result
-                });
-                let fields = Rc::new({
-                    let mut __result = Vec::new();
-                    for b in field_bs.iter().cloned() {
-                        __result.push(b.ty.clone());
-                    }
-                    __result
-                });
-                let field_diags = Rc::new({
-                    let mut __result = Vec::new();
-                    for b in field_bs.iter().cloned() {
-                        __result.extend((*b.diagnostics.clone()).iter().cloned());
-                    }
-                    __result
-                });
-                Rc::new(KernelTypeBuild {
-                    ty: enrich_base_with_fields(name.clone(), base.clone(), fields.clone()),
-                    diagnostics: field_diags.clone(),
-                })
-            }
-            std::option::Option::None => Rc::new(KernelTypeBuild {
-                ty: base.clone(),
-                diagnostics: Rc::new(vec![]),
-            }),
-        }
     }
 }
 

@@ -8951,6 +8951,56 @@ pub fn qualified_value_projection(
     }
 }
 
+pub fn qualified_or_service_projection(
+    texpr: Rc<Node>,
+    scope: Rc<InferScope>,
+    span: Rc<SourceSpan>,
+) -> Option<Rc<InferResult>> {
+    match qualified_value_projection(texpr.clone(), scope.clone(), span.clone()) {
+        Some(proj) => Some(proj.clone()),
+        std::option::Option::None => match service_spine_projection(texpr.clone(), scope.clone()) {
+            std::option::Option::None => std::option::Option::None,
+            Some(svc_type) => {
+                let svc_name = crate::v1_std_core::authored_name_at(
+                    scope.type_env.clone().source_indices.clone(),
+                    svc_type.clone(),
+                );
+                Some(ok_infer(crate::v1_std_core::make_named_expr_node(
+                    texpr.occurrence_identity.clone(),
+                    svc_name.clone(),
+                    Rc::new(ExprData::ExprVar {
+                        binding_kind: Some(Rc::new(VarBindingKind::ServiceValueBinding)),
+                    }),
+                    Rc::new(vec![]),
+                    Some(Rc::new(InferredNode::Resolved {
+                        node: svc_type.clone(),
+                    })),
+                    span.clone(),
+                    kernel_span(svc_name.clone()),
+                )))
+            }
+        },
+    }
+}
+
+pub fn service_spine_projection(texpr: Rc<Node>, scope: Rc<InferScope>) -> Option<Rc<Node>> {
+    match crate::v1_std_core::field_access_spine(
+        texpr.clone(),
+        scope.type_env.clone().source_indices.clone(),
+    ) {
+        std::option::Option::None => std::option::Option::None,
+        Some(spine) => match spine_root_is_shadowed(scope.clone(), spine.root.clone()) {
+            true => std::option::Option::None,
+            false => match v1_rt::map_get(&scope.service_registry.clone(), spine.dotted.clone()) {
+                std::option::Option::None => std::option::Option::None,
+                Some(_) => Some(crate::v1_compiler_infer_types::nominal_type_ref(
+                    spine.dotted.clone(),
+                )),
+            },
+        },
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum LiteralBoundary {
@@ -9495,7 +9545,7 @@ Rc::new(InferResult {
             );
             let span = texpr.span.clone();
             let base_expr = crate::v1_std_core::field_access_base(texpr.clone());
-            match qualified_value_projection(texpr.clone(), scope.clone(), span.clone()) {
+            match qualified_or_service_projection(texpr.clone(), scope.clone(), span.clone()) {
                 Some(proj) => proj.clone(),
                 std::option::Option::None => {
                     let base_result =
@@ -23521,6 +23571,61 @@ pub fn build_type_env_unresolved(
     }
 }
 
+pub fn refresh_one_item_service_names(
+    acc: Rc<HashMap<String, Rc<ItemInfo>>>,
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: String,
+) -> Rc<HashMap<String, Rc<ItemInfo>>> {
+    {
+        let item_name = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
+        match v1_rt::map_get(&acc, item_name.clone()) {
+            std::option::Option::None => acc.clone(),
+            Some(info) => {
+                if (info.module_name.clone() != module_name.clone()) {
+                    acc.clone()
+                } else {
+                    if (item.body.clone() == std::option::Option::None) {
+                        acc.clone()
+                    } else {
+                        v1_rt::rc_map_insert(
+                            acc.clone(),
+                            item_name.clone(),
+                            Rc::new(ItemInfo {
+                                service_names:
+                                    crate::v1_compiler_infer_service::collect_typed_service_calls(
+                                        item.body.clone().clone().unwrap(),
+                                        source_indices.clone(),
+                                    ),
+                                ..(*info.clone()).clone()
+                            }),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn refresh_direct_service_names(
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    typed_items: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: String,
+) -> Rc<HashMap<String, Rc<ItemInfo>>> {
+    typed_items
+        .iter()
+        .cloned()
+        .fold(registry.clone(), |acc: _, item: Rc<Node>| {
+            refresh_one_item_service_names(
+                acc,
+                item.clone(),
+                source_indices.clone(),
+                module_name.clone(),
+            )
+        })
+}
+
 pub fn build_item_info(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -24737,7 +24842,12 @@ pub fn typecheck_module(
                     source_indices.clone(),
                 ),
                 func_env: updated_func_env.clone(),
-                item_registry: ctx.item_registry.clone(),
+                item_registry: refresh_direct_service_names(
+                    ctx.item_registry.clone(),
+                    reannotated_items.clone(),
+                    source_indices.clone(),
+                    resolved_module_name.clone(),
+                ),
                 occurrence_transport: Some(resolved.occurrence_transport.clone()),
             }),
             diagnostics: frontier_occurrence_budget_checked(

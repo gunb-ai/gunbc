@@ -1,7 +1,7 @@
 module v1.tests.claim.algebra_application_refusal_test
 
 import std.types { Bool }
-import std.algebra { ReceiverValue }
+import std.algebra { ReceiverValue, IdentityEffect, ShapeLinearScan }
 import v1.std.core { AlgebraApplicationEvidenceUnavailable, is_error_diagnostic }
 import v1.compiler.infer_types { instantiate_algebra_type }
 import v1.compiler.infer_lookup { lookup_structural_method }
@@ -21,10 +21,27 @@ test fn structural_receiver_without_application_refuses_at_requested_position() 
   }
 }
 
+test fn structural_receiver_self_method_uses_only_its_profile_template() -> Bool {
+  let result = lookup_structural_method(receiver_type: evidence_expansion(), method_name: "reverse", source_indices: empty_map())
+  result.kernel_diagnostics |> count == 0 && match result.resolution {
+    Present { value: method } =>
+      method.size_effect == Present { value: IdentityEffect }
+        && method.cost_shape == Present { value: ShapeLinearScan }
+        && match method.algebra_template {
+          Present { value: template } => template.name == "reverse" && template.size_effect == method.size_effect && template.cost_shape == method.cost_shape
+          Absent => false
+        }
+    Absent => false
+  }
+}
+
 test fn missing_application_diagnostic_prevents_method_resolution() -> Bool {
-  let result = lookup_structural_method(receiver_type: evidence_expansion(), method_name: "any", source_indices: empty_map())
-  result.resolution == none && (result.kernel_diagnostics |> any(error => match error.diagnostic {
-    AlgebraApplicationEvidenceUnavailable { receiver_type: _, argument_index: _, span: _ } => true
-    _ => false
-  }))
+  let expanded = evidence_expansion()
+  let result = lookup_structural_method(receiver_type: expanded, method_name: "any", source_indices: empty_map())
+  result.resolution == none && (result.kernel_diagnostics |> count > 0)
+    && (result.kernel_diagnostics |> all(error => is_error_diagnostic(d: error.diagnostic) && match error.diagnostic {
+      AlgebraApplicationEvidenceUnavailable { receiver_type, argument_index, span } =>
+        receiver_type == expanded.name && argument_index == 0 && span == expanded.span
+      _ => false
+    }))
 }
