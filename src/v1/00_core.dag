@@ -764,7 +764,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     MethodNotFound { method: _, receiver_type: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     MethodExistenceUndecided { method: _, receiver_type: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
-    AlgebraApplicationEvidenceUnavailable { receiver_type: _, argument_index: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    AlgebraApplicationEvidenceUnavailable { receiver_type: _, argument_index: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateAdvisoryTypecheck }
     ReceiverTypeUnestablished { method: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     FrontierOccurrenceBudgetExceeded { method: _, receiver_type: _, declared: _, observed: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     MissingField { field: _, type_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }

@@ -1,0 +1,46 @@
+module test.claim.algebra_receiver_alias_witness_test
+
+import std.types { Bool, Int }
+import std.algebra { FreeMonoid, Empty }
+
+fn collected_nominal_return() -> FreeMonoid<Int> {
+  [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) })
+}
+
+fn collected_alias_return() -> List<Int> {
+  [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) })
+}
+
+type CollectedAliasField {
+  values: List<Int>
+}
+
+fn collected_alias_field() -> List<Int> {
+  let result = CollectedAliasField {
+    values: [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) })
+  }
+  result.values
+}
+
+fn collected_nominal_initializer() -> List<Int> {
+  let initial: FreeMonoid<Int> = Empty
+  [1, 2] |> fold(init: initial, f: fn(acc, value) { acc |> list_push(value) })
+}
+
+// All four paths carry Int application evidence. An alias must not change the
+// owner selected for Empty, and the accumulator must actually collect the values.
+test fn fold_nominal_return_retains_application() -> Bool {
+  collected_nominal_return() == [1, 2]
+}
+
+test fn fold_alias_return_retains_application() -> Bool {
+  collected_alias_return() == [1, 2]
+}
+
+test fn fold_record_field_retains_application() -> Bool {
+  collected_alias_field() == [1, 2]
+}
+
+test fn fold_nominal_initializer_retains_application() -> Bool {
+  collected_nominal_initializer() == [1, 2]
+}

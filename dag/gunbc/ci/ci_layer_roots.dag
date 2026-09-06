@@ -534,6 +534,36 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: unbound_dissolution(description: "witness-cost-locality admission or native routing enrolls rows per-family; the dir row deletes")
   },
   WitnessExclusionRow {
+    pattern: "algebra_receiver_application_witness_test.dag",
+    classification: OfflineLocalRecipe,
+    reason: "local algebra-evidence control: authored and executable as branch-local evidence, but the required floor cannot gate on the dominant declared container-alias spelling until owner identity is carried to variant_reference_inferred_node",
+    dissolution: unbound_dissolution(description: "the owner-resolution capability carries declared container-alias identity to variant_reference_inferred_node; re-enroll these controls through the floor owner")
+  },
+  WitnessExclusionRow {
+    pattern: "algebra_receiver_callable_witness_test.dag",
+    classification: OfflineLocalRecipe,
+    reason: "local algebra-evidence control: authored and executable as branch-local evidence, but the required floor cannot gate on the dominant declared container-alias spelling until owner identity is carried to variant_reference_inferred_node",
+    dissolution: unbound_dissolution(description: "the owner-resolution capability carries declared container-alias identity to variant_reference_inferred_node; re-enroll these controls through the floor owner")
+  },
+  WitnessExclusionRow {
+    pattern: "algebra_receiver_forwarding_witness_test.dag",
+    classification: OfflineLocalRecipe,
+    reason: "local algebra-evidence control: authored and executable as branch-local evidence, but the required floor cannot gate on the dominant declared container-alias spelling until owner identity is carried to variant_reference_inferred_node",
+    dissolution: unbound_dissolution(description: "the owner-resolution capability carries declared container-alias identity to variant_reference_inferred_node; re-enroll these controls through the floor owner")
+  },
+  WitnessExclusionRow {
+    pattern: "algebra_receiver_self_witness_test.dag",
+    classification: OfflineLocalRecipe,
+    reason: "local algebra-evidence control: authored and executable as branch-local evidence, but the required floor cannot gate on the dominant declared container-alias spelling until owner identity is carried to variant_reference_inferred_node",
+    dissolution: unbound_dissolution(description: "the owner-resolution capability carries declared container-alias identity to variant_reference_inferred_node; re-enroll these controls through the floor owner")
+  },
+  WitnessExclusionRow {
+    pattern: "algebra_receiver_alias_witness_test.dag",
+    classification: OfflineLocalRecipe,
+    reason: "local alias-boundary controls: retained as discriminating evidence, but excluded from the required floor while declared container-alias owner identity is absent at variant_reference_inferred_node",
+    dissolution: unbound_dissolution(description: "the owner-resolution capability carries declared container-alias identity to variant_reference_inferred_node; re-enroll these controls through the floor owner")
+  },
+  WitnessExclusionRow {
     pattern: "claim/complexity/accumulator_copy_roster_gate",
     classification: OfflineLocalRecipe,
     reason: "operator-ruled OFFLINE roster gate (~15m serial interpreted resolve; runtime filesystem_read data deps invisible to closure attribution — see accumulator_copy_roster_gate_exclusion_note)",
