@@ -508,15 +508,13 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
   ]
 }
 
-fn stage0_module_dag() -> ModuleDag {
-  ModuleDag {
+data stage0_module_dag: ModuleDag = ModuleDag {
     modules: stage0_all_partitioned_modules()
       |> map(basename => stage0_module_id(basename: basename)),
     edges: stage0_cross_unit_import_edges(),
     exports: stage0_module_dag_exports_map(),
     type_definitions: stage0_module_dag_type_definitions_map(),
   }
-}
 
 fn resolve_partition_outcome(
   parameter: PartitionParameter,
@@ -532,22 +530,26 @@ fn resolve_partition_outcome(
   }
 }
 
-fn stage0_partition_receipt_outcome() -> Stage0PartitionReceiptOutcome {
-  let dag = stage0_module_dag()
-  match resolve_partition_outcome(
-    parameter: stage0_partition_parameter(),
-    module_dag: dag
-  ) {
-    ResolvePartitionOk { assignment: assignment } =>
-      match partition_fold_outcome(module_dag: dag, assignment: assignment) {
-        PartitionFoldOk { units: units } =>
-          Stage0PartitionReceiptOk { units: units }
-        PartitionFoldRefused { cause: cause } =>
-          Stage0PartitionReceiptFoldRefused { cause: cause }
-      }
-    ResolvePartitionRefused { cause: cause } =>
-      Stage0PartitionReceiptResolveRefused { cause: cause }
-  }
+// THE RESOLVE IS ONE FACT, SO IT IS ONE BINDING. Both the receipt below and
+// stage0_partition_r4_valid need the assignment this produces, and they are two demands with a
+// shared-state least common ancestor -- DESIGN section 2 calls that authored duplication, not a
+// caching opportunity, and says to carry the first value rather than let the second recompute it.
+// Binding it here is the same move this change makes for stage0_module_dag one declaration up.
+data stage0_resolve_partition_outcome: ResolvePartitionOutcome = resolve_partition_outcome(
+  parameter: stage0_partition_parameter(),
+  module_dag: stage0_module_dag
+)
+
+data stage0_partition_receipt_outcome: Stage0PartitionReceiptOutcome = match stage0_resolve_partition_outcome {
+  ResolvePartitionOk { assignment: assignment } =>
+    match partition_fold_outcome(module_dag: stage0_module_dag, assignment: assignment) {
+      PartitionFoldOk { units: units } =>
+        Stage0PartitionReceiptOk { units: units }
+      PartitionFoldRefused { cause: cause } =>
+        Stage0PartitionReceiptFoldRefused { cause: cause }
+    }
+  ResolvePartitionRefused { cause: cause } =>
+    Stage0PartitionReceiptResolveRefused { cause: cause }
 }
 
 fn module_dag_reaches(
@@ -639,9 +641,8 @@ fn stage0_single_crate_assignment() -> Map<ModuleId, CompilationUnitId> {
 }
 
 fn stage0_single_crate_fold_outcome() -> PartitionFoldOutcome {
-  let dag = stage0_module_dag()
   partition_fold_outcome(
-    module_dag: dag,
+    module_dag: stage0_module_dag,
     assignment: stage0_single_crate_assignment()
   )
 }
@@ -801,26 +802,27 @@ fn stage0_partition_row_lookups_resolved() -> Bool {
 }
 
 fn stage0_partition_r4_valid() -> Bool {
-  let dag = stage0_module_dag()
-  match resolve_partition_outcome(
-    parameter: stage0_partition_parameter(),
-    module_dag: dag
-  ) {
-    ResolvePartitionOk { assignment: assignment } =>
-      match partition_fold_outcome(module_dag: dag, assignment: assignment) {
-        PartitionFoldOk { units: units } =>
-          match validate_partition_r4(module_dag: dag, assignment: assignment, units: units) {
+  match stage0_partition_receipt_outcome {
+    Stage0PartitionReceiptOk { units: units } =>
+      match stage0_resolve_partition_outcome {
+        ResolvePartitionOk { assignment: assignment } =>
+          match validate_partition_r4(
+            module_dag: stage0_module_dag,
+            assignment: assignment,
+            units: units
+          ) {
             PartitionR4Valid => true
             PartitionR4Refused { cause: _ } => false
           }
-        PartitionFoldRefused { cause: _ } => false
+        ResolvePartitionRefused { cause: _ } => false
       }
-    ResolvePartitionRefused { cause: _ } => false
+    Stage0PartitionReceiptResolveRefused { cause: _ } => false
+    Stage0PartitionReceiptFoldRefused { cause: _ } => false
   }
 }
 
 fn stage0_partition_fold_ok() -> Bool {
-  match stage0_partition_receipt_outcome() {
+  match stage0_partition_receipt_outcome {
     Stage0PartitionReceiptOk { units: units } =>
       (units |> count) == stage0_module_bearing_unit_count()
     Stage0PartitionReceiptResolveRefused { cause: _ } => false

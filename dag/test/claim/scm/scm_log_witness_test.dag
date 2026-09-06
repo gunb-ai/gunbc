@@ -24,6 +24,7 @@ import gunbc.scm.object_store {
   authored_source_target_of,
   authored_source_target_locator,
 }
+import gunbc.scm.integration { CommitIntegration, NoSquashIntegration, SquashIntegrated }
 import gunbc.scm.ancestry { RepositoryCommitRef }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
@@ -33,6 +34,7 @@ import gunbc.scm.repository_envelope {
   RepositoryCommitMintRootIsSemanticNode,
   RepositoryCommitMintRootMissing,
   RepositoryCommitMintParentMissing,
+  RepositoryCommitMintIntegrationSourceMissing,
   mint_repository_commit,
 }
 import gunbc.scm.log {
@@ -116,13 +118,14 @@ fn log_witness_empty(store: ObjectStore) -> RepositoryEnvelope {
 }
 
 fn log_witness_mint(repo: RepositoryEnvelope, root: CorpusManifestTarget, message: String, parent: RepositoryCommitRef?) -> RepositoryEnvelope {
-  match mint_repository_commit(repository: repo, root: root, message: message, parent: parent) {
+  match mint_repository_commit(repository: repo, root: root, message: message, parent: parent, integration: NoSquashIntegration) {
     RepositoryCommitMinted { repository: minted, reference: _ } => minted
     RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => repo
     RepositoryCommitMintRootMissing { root: _ } => repo
     RepositoryCommitMintRootIsAuthoredSource { root: _ } => repo
     RepositoryCommitMintRootIsSemanticNode { root: _ } => repo
     RepositoryCommitMintParentMissing { parent: _ } => repo
+    RepositoryCommitMintIntegrationSourceMissing { source: _ } => repo
   }
 }
 

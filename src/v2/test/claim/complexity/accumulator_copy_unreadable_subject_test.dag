@@ -1,0 +1,72 @@
+module v2.test.claim.complexity.accumulator_copy_unreadable_subject
+
+import extdeps.filesystem.filesystem_io {
+  FilesystemReadRefused,
+  FilesystemReadSucceeded,
+  filesystem_read_outcome
+}
+import v2.lens.common.source_analysis_standing { SourceUnreadable }
+import v2.lens.complexity_accumulator_copy.roster_gate {
+  GateClean,
+  GateNotEstablished,
+  GateRefusalBudgetExceeded,
+  GateSuspectObserved,
+  file_gate_disposition
+}
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE RED CONTROL FOR A DEFECT THAT DID NOT RETURN A WRONG ANSWER -- IT ENDED THE RUN. file_gate's
+// subject used to be read by the `filesystem_read` intrinsic, whose result type carries `content`
+// and no success channel, so a path that does not exist raised an interpreter type error and took
+// the whole process down with it. On a nine-row roster that reads as one red test; on a corpus
+// sweep it is an absorbing failure -- every subject after the missing one is never asked.
+//
+// The receipt is not hypothetical: src/v2/workflow/glob_discovery_law.dag moved to
+// src/v2/test/workflow/ in the #9637 directory reorganisation, the roster row naming it was not
+// repointed, and because the roster gate is offline nothing executed it. It crashed rather than
+// refused for as long as that row stood.
+//
+// This witness fails on the pre-fix build with a runtime error rather than a false, which is the
+// discrimination: it cannot pass by accident, and it cannot pass while the read is untyped.
+test fn an_unreadable_subject_is_refused_with_its_cause() -> Bool {
+  match file_gate_disposition(
+    path: "src/v2/workflow/this_path_is_deliberately_absent.dag",
+    refusal_ceiling: 0
+  ) {
+    GateNotEstablished { cause: cause } => cause == SourceUnreadable
+    GateClean => false
+    GateSuspectObserved { suspects: _ } => false
+    GateRefusalBudgetExceeded { refusals: _, ceiling: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL ON THE SAME PATH. Without it, a read that refused every subject would
+// satisfy the claim above while establishing nothing -- the arm would be permanently green for the
+// wrong reason. A green here says the typed read still reaches real bytes and the lens still
+// answers over them.
+//
+// THE POSITIVE CONTROL, AND ITS SUBJECT IS THE TYPED READ RATHER THAN THE WHOLE LENS -- A COST
+// DECISION MADE FROM MEASUREMENT, NOT A CONVENIENCE. What the red above can fail open into is a
+// read arm that refuses EVERY subject: then "not established with cause SourceUnreadable" is the
+// answer for a present file too, and the red passes while establishing nothing. So the control has
+// to show the refusing arm is not universal, and the read is exactly the mechanism that decides
+// that -- one channel, two arms, both reachable.
+//
+// Reaching it through file_gate_disposition on a real subject would establish the same thing and
+// cost several times the floor's per-witness CPU line in interpreted ingest, so it would be
+// enrolled in nothing and would take this red down with it (measured: the required floor reported
+// exactly that, interrupted_before_verdict, for every ingest-priced witness in this lane). The
+// deeper form -- a readable subject reaching the lens and coming back clean -- is kept as the entry
+// point a_readable_subject_still_reaches_the_lens in
+// v2.lens.complexity_accumulator_copy.corpus_census, priced with the rest of the ingest-bound
+// evidence and carrying the same trigger.
+test fn a_present_subject_is_read_rather_than_refused() -> Bool {
+  let read = Filesystem.Read(path: "test/fixture_roots/complexity_accumulator_copy/clean_linear.dag")
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadSucceeded { content: _ } => true
+    FilesystemReadRefused { error: _ } => false
+  }
+}

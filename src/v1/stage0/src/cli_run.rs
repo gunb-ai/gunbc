@@ -6075,20 +6075,22 @@ fn repo_paths_match_touched(closure_path: &str, touched_path: &str) -> bool {
 /// Production `entry_file_touched` decision for the discovery corpus: is any touched
 /// entry file inside this entry's transitive import closure?
 ///
-/// GRAIN (declared interim, operator fork (c) 2026-07-10): the module-graph import-closure
-/// relation — the same host-realized facts (`import_resolution_facts`/`module_declaration_facts`
-/// → `facts.adjacency`) the `.dag` authority `v2.lens.module_graph.entry_affected_by_touched_paths`
-/// reads through its `_live` builtins. The `.dag` lens stays the modeled authority; THIS
-/// realization is certified against it by execution on real merged diffs by the module-grain
-/// receipt harness (`affected_decision_module_grain` section below). This unwinds one piece of
-/// #6335 ("reground selection on DependencyView") for this channel only: the fn-arrow
-/// output-grain chain both silently widened (substrate-not-whole-tree → touched=true for every
-/// row; probe receipt 2026-07-10) and conflates decl identity with output type (a touched file's
-/// test fns put the shared `Bool` node in the edit locus set). The fn-arrow machinery remains in
-/// tree as the decl-level candidate. Dissolve-on: the namespace-only resolution terminal step
-/// replaces import edges with `container.member` reference edges — the closure query above the
-/// edge source is grain-stable and survives; the grain re-decides then (see
-/// `entry_file_touched_grain_interim` in `v2.lens.affected_set.entry_selection`).
+/// AUTHORITY: `v2.lens.module_graph.entry_affected_by_touched_paths` — the consolidated §3
+/// survivor per the 2026-09-05 replacement migration (see
+/// `v2.lens.affected_set.entry_selection`). This host rendering is certified against the
+/// `.dag` authority by execution on real merged diffs via the module-grain receipt harness
+/// (`affected_decision_module_grain` section below).
+///
+/// The fn-arrow DependencyView composition (fork (c) 2026-07-10, #6335 unwind) is DELETED
+/// — `v2.lens.affected_set.corpus_dependency_view` removed outright (the fn-arrow
+/// selection mechanism #2). The surviving authority is this host rendering of
+/// `v2.lens.module_graph.entry_affected_by_touched_paths` (import-closure, mechanism #3).
+/// The §3 fork where three mechanisms answered "which tests are affected?" is resolved:
+/// two parallel mechanisms deleted or consolidated onto the survivor.
+///
+/// Dissolve-on: the namespace-only resolution terminal step replaces import edges with
+/// `container.member` reference edges — the closure query above the edge source is
+/// grain-stable and survives.
 ///
 /// Refusal, never widen: an entry absent from the facts' declared-module set is a provenance
 /// gap the relation cannot answer for, and returns a typed error that fails the batch (the §5
@@ -6271,17 +6273,14 @@ mod live_read_carrier_home_roster_drift_gate_tests {
     }
 }
 
-// SCAFFOLD (§7 HAND-RUST — `cli_run_discovery_skip_before_resolve`):
-// ROADMAP lane `2-provenance-ingest` (gunbc.roadmap_authority / ROADMAP.md;
-// affected-set-precompute-pruning (plan doc deleted 2026-08-28) Step 4 migrate floor) — host-side
-// per-entry cold-resolve elision under SelectionApplied before `floor_kernel_would_skip`.
-// Unblock: modeled `floor_kernel_precompute_would_skip` / skip-before-resolve arm on
-// `v2.workflow.affected_set_floor_runner` realizes the same decision in `.dag` (N→1 with
-// the Rust `NodeFrontierSeeds` parallel deleted per the de-fork plan).
-// DELETE WHEN dissolved: `entry_eligible_for_discovery_skip_before_resolve`,
-// `collect_import_closure_module_names_from_facts`, `resolve_discovery_entry_for_corpus_row`
-// lazy-resolve arm, and the `SKIP-RESOLVE` / `ctx.is_none()` loop in `run_discovery_rows`
-// (~120 LOC).
+// HAND-RUST HOST PER-ENTRY COLD-RESOLVE ELISION — `cli_run_discovery_skip_before_resolve`.
+// The entry_file_touched axis uses `entry_file_touched_via_import_closure` (host rendering
+// of `v2.lens.module_graph.entry_affected_by_touched_paths`), which is the consolidated §3
+// authority per the 2026-09-05 replacement migration. The skip-before-resolve logic itself
+// is a PERFORMANCE optimization (eliding cold resolve for entries the diff cannot affect),
+// not a selection mechanism. Its dissolve-on is the modeled `floor_kernel_precompute_would_skip`
+// in `.dag` (ROADMAP `2-provenance-ingest`), which is separate from the §3 consolidation and
+// is not discharged by this change.
 // Receipt: `rg cli_run_discovery_skip_before_resolve src/v1/stage0/src/cli_run.rs` == 1 until
 // deletion; not a compiler_frontier `.dag` row (seed-Rust, counted here not in module census).
 pub(crate) const CLI_RUN_DISCOVERY_SKIP_BEFORE_RESOLVE_SCAFFOLD_MARKER: &str =
@@ -6309,9 +6308,12 @@ fn entry_has_edited_test_fn_in_entry(diff_edits: &FloorDiffEdits, entry_path: &s
 /// host-scaffold entry file — elide the cold entry resolve and treat every kernel witness
 /// row as assumed-green.
 ///
-/// INTERIM hand-Rust scaffold (`CLI_RUN_DISCOVERY_SKIP_BEFORE_RESOLVE_SCAFFOLD_MARKER` / §7):
-/// dissolves under ROADMAP `2-provenance-ingest` when `floor_kernel_precompute_would_skip` in
-/// `v2.workflow.affected_set_floor_runner` is the general per-entry authority.
+/// The entry_file_touched axis delegates to `entry_file_touched_via_import_closure`
+/// (host rendering of `v2.lens.module_graph.entry_affected_by_touched_paths`), which is
+/// the consolidated §3 authority for the "which tests are affected?" question per the
+/// 2026-09-05 replacement migration. The skip-before-resolve logic is a PERFORMANCE
+/// optimization (not a selection mechanism) and dissolves when `floor_kernel_precompute_would_skip`
+/// in `.dag` (ROADMAP `2-provenance-ingest`) is the general per-entry authority.
 fn entry_eligible_for_discovery_skip_before_resolve(
     skip_enabled: bool,
     reads_live_tree: bool,
@@ -24271,19 +24273,13 @@ fn collect_sorted_decl_lines_for_file(
 // realization until provenance ingest lands. Skip/precompute **verdicts** read `.dag`
 // via `floor_kernel_would_skip` / `floor_kernel_precompute_would_skip`; the
 // `entry_file_touched` axis is decided by `entry_file_touched_via_import_closure`
-// (module-graph import-closure grain over `facts.adjacency` — the `.dag` authority is
-// `v2.lens.module_graph.entry_affected_by_touched_paths` and the module-grain receipt
-// harness certifies the pair by execution; declared interim, dissolves at the
-// namespace-only terminal step where the grain re-decides — see
-// `entry_file_touched_grain_interim` in `v2.lens.affected_set.entry_selection`).
+// (host rendering of `v2.lens.module_graph.entry_affected_by_touched_paths` — the
+// consolidated §3 survivor per the 2026-09-05 replacement migration).
 // Dissolve-on: `affected_set_reading_from_git_diff_provenance` + floor-runtime provenance ingest
 // expose edit-locus → delete `floor_diff_edits_from_line_ranges`, `rerun_frontier_nodes_for_entry`,
 // `entry_touches_rerun_frontier`, and the inline floor-runner `resolve_entry_with_index` (census:
 // `rg 'floor_diff_edits_from_line_ranges|rerun_frontier_nodes_for_entry' src/v1/stage0/src/cli_run.rs`
 // must be empty).
-//
-// Host-side diff→declaration attribution only (line-range I/O). Skip verdicts live in
-// `v2.workflow.affected_set_floor_runner` — the executor reads `.dag`, never recomputes frontier.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct FloorDiffEdits {
     overlapping_data_items: HashSet<(String, String)>,
@@ -39226,6 +39222,64 @@ pub fn assemble_prepared_subject_closure(
             source: sf.clone(),
         });
         sources.push(sf.clone());
+    }
+    // AN EXCLUSION MAY NOT ORPHAN AN IMPORTER, AND THIS IS THE WALL THAT SAYS SO.
+    //
+    // The list reads like "skip these witnesses" and is not: a matched path is dropped from the
+    // prepared graph outright, so any module that still imports it refuses with `unresolved
+    // import` and the WHOLE subject refuses before a single witness runs. The refusal that
+    // reaches the operator then names the IMPORTER -- a file nobody touched -- while the row that
+    // caused it is somewhere else entirely, so the evidence points away from the cause. Measured
+    // as exactly that, twice in one hour: required-floor run 34016411960 refused at
+    // src/v2/test/claim/long/live_read_classification_test.dag:46 for an exclusion added to
+    // `floor_prepared_subject_exclusions`, and the first two diagnoses of it both concluded the
+    // imported module had been moved or renamed. It had not.
+    //
+    // The constraint is decidable from data preparation already holds -- the retained sources and
+    // their import headers -- so it is a wall here and not a note beside the list. The import
+    // extractor is the same one `import_resolution_facts` folds, never a second reader.
+    //
+    // ITS DISCRIMINATING RED IS AUTHORABLE AND WAS EXECUTED, not merely available: add a row for a
+    // module the corpus imports and nobody changed (`v2/lens/complexity_accumulator_copy/analyze.dag`
+    // was the specimen) and run `claim_executor --required-ci --source-root dag --source-root src/v2
+    // --required-lane witnesses`. What has to hold in that receipt is not that something refused --
+    // the old shape refused too -- but that the refusal names the EXCLUSION ROW beside each importer,
+    // which is the half that was missing when the same situation was diagnosed twice as a module
+    // having been moved. The positive control is every ordinary required-floor run: with no orphaning
+    // row the preparation is admitted and the floor proceeds to its own phases.
+    if !discovery_exclusions.is_empty() {
+        let excluded_modules: HashSet<&str> =
+            discovery_exclusions.keys().map(|m| m.as_str()).collect();
+        let mut orphaned: Vec<String> = Vec::new();
+        for (module_path, sf) in index.iter() {
+            if discovery_exclusions.contains_key(module_path) {
+                continue;
+            }
+            for imported in extract_import_paths(&sf.content) {
+                if excluded_modules.contains(imported.as_str()) {
+                    let matched = &discovery_exclusions[&imported];
+                    orphaned.push(format!(
+                        "  {} imports '{}', excluded by row '{}'",
+                        workspace_relative_repo_path(&sf.path),
+                        imported,
+                        matched
+                    ));
+                }
+            }
+        }
+        if !orphaned.is_empty() {
+            orphaned.sort();
+            orphaned.dedup();
+            return Err(format!(
+                "PREPARED-SUBJECT REFUSAL cause=ExclusionOrphansImporter — {} retained module(s) \
+                 import a module this preparation excluded. An exclusion row removes the path \
+                 from the prepared graph, so the importer cannot resolve and the whole subject \
+                 would refuse naming the importer rather than the row. Only a module nothing \
+                 imports may be excluded.\n{}",
+                orphaned.len(),
+                orphaned.join("\n")
+            ));
+        }
     }
     if sources.is_empty() {
         return Err("whole-tree corpus is empty (no .dag modules under source roots)".to_string());
