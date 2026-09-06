@@ -1,7 +1,19 @@
 module extdeps.bmc.megarac
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.types { String, NonEmptyStr, List }
+import std.types { Bool, FilePath, String, NonEmptyStr, List }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import extdeps.languages.json.parse {
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  JsonMemberFound,
+  JsonNumber,
+  JsonString,
+  JsonValue,
+  json_object_unique_member,
+  parse_json_document,
+}
 import std.credentials { FactoryLogin }
 import extdeps.bmc.endpoint { BmcProtocol, Ipmi }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -155,4 +167,344 @@ fn megarac_image_redirection_wire(r: MegaRacImageRedirectionRequired) -> NonEmpt
   match r {
     MegaRacImageRedirectionOn => "1"
   }
+}
+
+// THE TWO JSON READERS THIS MODULE NEEDS, over the repository's single recognition authority rather
+// than a regex against a response body. A document the parser cannot read is unreadable rather than
+// partially believed, which is what lets the session folds below distinguish "the controller said
+// no" from "the controller said something we do not understand".
+fn json_string_member(doc: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonString { value: s } => Present { value: s }
+        _ => none
+      }
+    _ => none
+  }
+}
+
+fn json_number_member(doc: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonNumber { lexeme: n } => Present { value: n }
+        _ => none
+      }
+    _ => none
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// THE SESSION, AS A SCOPE RATHER THAN THREE LOOSE STRINGS
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+// A SESSION IS A RESOURCE WITH A LIFETIME, and the first modeled caller of this API treated it as a
+// bag of parameters — a host, a jar path and a token passed separately to every operation. That
+// shape has no place to put acquisition or release, so both ended up as the caller's problem, and
+// the caller got them wrong in the specific way this section exists to prevent: a login that
+// SUCCEEDED and then failed to yield a readable CSRF token returned an outcome named
+// "release not attempted", which asserts no session exists while one is open on the controller.
+// The session table is finite and this lane has already exhausted one service's share of it.
+//
+// SO THE SCOPE IS THE UNIT, NOT THE TOKEN. Everything an acquisition creates — the scratch
+// directory holding the credential, the cookie jar that is the actual bearer, the host it was
+// obtained against — is carried in one value that release consumes. There is no arm of acquisition
+// that creates state and returns a value which cannot release it.
+type MegaRacSessionScope sole_constructor {
+  bmc_host: NonEmptyStr
+  scratch_dir: NonEmptyStr
+  cookie_jar: NonEmptyStr
+}
+
+type MegaRacSession sole_constructor {
+  scope: MegaRacSessionScope
+  csrf_token: NonEmptyStr
+}
+
+// MegaRacSessionUnusable CARRIES THE SCOPE, and that is the whole point of its existence. It is the
+// login-succeeded-token-unreadable case, which is a session that exists and cannot be used — so it
+// must still be released, and it can be: the release measurement below shows teardown does not
+// require the token. Modelling it as a plain refusal would drop the jar on the floor.
+type MegaRacSessionAcquisition
+  = MegaRacSessionAcquired { session: MegaRacSession }
+  | MegaRacSessionDenied { detail: String }
+  | MegaRacSessionUnusable { scope: MegaRacSessionScope, detail: String }
+  | MegaRacSessionStagingFailed { detail: String }
+
+// THE RELEASE OUTCOME IS DECIDED BY A PROBE, NEVER BY THE DELETE'S STATUS, and that is a measured
+// requirement rather than belt-and-braces. Controlled runs against this controller on 2026-09-06,
+// each with a positive control confirming the session answered 200 before teardown:
+//
+//   DELETE carrying the CSRF header   -> HTTP 200, session subsequently 401  (released)
+//   DELETE with no CSRF header        -> HTTP 401, session subsequently 401  (RELEASED ANYWAY)
+//
+// The second row is the finding. A 401 on the teardown request accompanied a teardown that took
+// effect, which is the same status-is-not-outcome behaviour this firmware already shows on writes,
+// now confirmed for session lifetime. Keying release on the DELETE's exit would have reported a leak
+// that did not happen — and, worse, would have taught a caller to retry a teardown that had already
+// succeeded.
+//
+// IT ALSO SETTLES WHETHER THE UNUSABLE ARM CAN CLEAN UP: the no-CSRF row released, so a session
+// whose token could not be read is recoverable rather than a permanent leak.
+//
+// MegaRacSessionStillLive IS THE LOUD ONE. It means the probe authenticated AFTER teardown, so a
+// session really is stranded on the controller. That is the state the finite session table cares
+// about, and it is reported as its own arm rather than folded into an unverified outcome, because
+// the two license opposite actions: one is "look at the controller", the other is "look at the
+// probe".
+type MegaRacSessionRelease
+  = MegaRacSessionReleaseConfirmed
+  | MegaRacSessionStillLive { detail: String }
+  | MegaRacSessionReleaseUnverifiable { detail: String }
+  | MegaRacSessionNeverOpened
+
+// THE THREE SESSION OPERATIONS, WITH THEIR RATIONALE HOISTED HERE because an operation lives inside
+// a service body and only module-item grain is modeled (DESIGN section 4c) -- the same placement
+// extdeps.filesystem.filesystem_io records for its own operation rows.
+//
+// Open: THE CREDENTIAL REACHES CURL THROUGH A FILE, NOT ARGV. The earlier form spelled
+// -d "username=...&password=..." which puts the secret in the process table for every local reader,
+// and hand-concatenates a form body -- so a password containing & or = would silently change the
+// fields being submitted rather than failing. --data-urlencode reads the password from a file and
+// percent-encodes both fields, fixing the exposure and the encoding together.
+//
+// -k IS STILL HERE AND IT IS A DECLARED GAP, not an oversight. The controller presents a
+// self-signed certificate and this repository has no pinned trust anchor for it, so the endpoint's
+// TLS identity is UNVERIFIED: a LAN-position attacker could answer for it. The credential is no
+// longer in argv, but it is still handed to whoever terminates that connection. This dissolves when
+// a controller certificate is enrolled the way host keys are.
+//
+// Close: NO CSRF HEADER, because the measurement recorded at MegaRacSessionRelease shows teardown
+// does not require one, and because omitting it is what lets the token-unreadable acquisition arm
+// clean up after itself. The response status is deliberately not consulted by the fold; the probe
+// decides.
+//
+// Probe: IT READS A BODY RATHER THAN A STATUS CODE, for a mechanical reason. curl spells the status
+// with --write-out '%{http_code}', whose braces collide with this transport's own argv substitution
+// syntax; reading the body avoids inventing an escape for one call site, and the two shapes are
+// unambiguous and already measured -- an unauthenticated read answers
+// { "cc": 7, "error": "Invalid Authentication" } and an authenticated one answers the settings
+// object carrying id. --fail was rejected for the same job because it collapses every non-2xx to
+// one exit: a 500 would then read as "released" while the session was still live, under-reporting
+// exactly the leak this probe exists to find.
+service megarac.Session {
+  operation Open {
+    input {
+      bmc_host: NonEmptyStr
+      username: NonEmptyStr
+      password_file: NonEmptyStr
+      cookie_jar: NonEmptyStr
+    }
+    output {
+      body: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    transport shell {
+      argv: [
+        "curl", "-sS", "-k",
+        "-c", "{cookie_jar}",
+        "--data-urlencode", "username={username}",
+        "--data-urlencode", "password@{password_file}",
+        "https://{bmc_host}/api/session"
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "curl could not reach the controller session endpoint"
+    }
+  }
+
+  operation Close {
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["curl", "-sS", "-k", "-b", "{cookie_jar}", "-X", "DELETE", "https://{bmc_host}/api/session"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "curl could not reach the controller session endpoint to close"
+    }
+  }
+
+  operation Probe {
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "-sS", "-k", "-b", "{cookie_jar}", "https://{bmc_host}/api/settings/media/general"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "curl could not reach the controller to probe session validity"
+    }
+  }
+}
+
+// THE COOKIE JAR IS PRE-CREATED OWNER-ONLY, and measuring the first version is what showed why.
+// curl creates a jar it is given with -c under the ambient umask, which on this host produced mode
+// 0664 -- group and world readable. The jar IS the bearer once login succeeds, so that is the same
+// disclosure as a readable password file, and the 0600 spent on the credential beside it bought
+// nothing. Writing the path owner-only first means curl truncates an existing 0600 file rather than
+// creating a new one, so the mode is established before any secret reaches it.
+//
+// THE ENCLOSING DIRECTORY IS 0700 AND THAT IS NOT THE ARGUMENT. It does contain the exposure today,
+// which is why this is a hardening rather than an incident -- but a mode that is correct only
+// because of its parent is correct by coincidence, and this lane has already shipped one guarantee
+// that held by coincidence.
+//
+// THE ACQUISITION OWNS THE CREDENTIAL'S WHOLE LIFETIME ON DISK. mktemp -d creates the directory
+// 0700, and WriteOwnerOnly writes the secret 0600 inside it, so the credential is never readable by
+// another account and never appears in a process argument. The cookie jar is placed in that same
+// directory rather than at a shared path: the jar IS the bearer once login succeeds, so a
+// world-readable jar is the same disclosure as a world-readable password, and an attempt-owned
+// directory makes two concurrent attempts unable to share one — which a fixed /tmp path allowed.
+func megarac_acquire_session(
+  bmc_host: NonEmptyStr,
+  username: NonEmptyStr,
+  password: NonEmptyStr,
+) -> MegaRacSessionAcquisition
+  uses net: std.resources.Network
+{
+  scratch = shell.Mktemp.Dir()
+  if scratch.success == false {
+    return MegaRacSessionStagingFailed { detail: "mktemp -d failed; refusing to place a credential at a predictable path" }
+  }
+
+  let dir = scratch.path as String
+  let password_file = join([dir, "/credential"], "") as NonEmptyStr
+  let cookie_jar = join([dir, "/jar"], "") as NonEmptyStr
+
+  wrote = Filesystem.WriteOwnerOnly(path: password_file as String, content: password as String)
+  if wrote.success == false {
+    cleaned = shell.Remove.RecursiveForce(path: scratch.path)
+    return MegaRacSessionStagingFailed { detail: concat("could not stage the credential owner-only: ", wrote.error) }
+  }
+
+  jarred = Filesystem.WriteOwnerOnly(path: cookie_jar as String, content: "")
+  if jarred.success == false {
+    cleaned_jar = shell.Remove.RecursiveForce(path: scratch.path)
+    return MegaRacSessionStagingFailed { detail: concat("could not pre-create the cookie jar owner-only: ", jarred.error) }
+  }
+
+  let scope = MegaRacSessionScope {
+    bmc_host: bmc_host,
+    scratch_dir: dir as NonEmptyStr,
+    cookie_jar: cookie_jar,
+  }
+
+  opened = megarac.Session.Open(
+    bmc_host: bmc_host,
+    username: username,
+    password_file: password_file,
+    cookie_jar: cookie_jar,
+  )
+
+  return megarac_discard_scratch_when_terminal(
+    acquisition: megarac_classify_acquisition(scope: scope, body: opened.body, reached: opened.success),
+    scratch_dir: scratch.path,
+  )
+}
+
+// AN ARM THAT WILL NEVER BE RELEASED CLEANS UP HERE, because nothing else can. Release owns the
+// scratch directory for every arm that hands one out, but MegaRacSessionDenied deliberately carries
+// no scope -- there is no controller session to tear down -- and the first version of this fold
+// therefore returned it with the staged credential still on disk. Measured: a wrong-password run
+// left /tmp/tmp.XXXX/credential in place, correctly 0600 and indefinitely.
+//
+// STAGING FAILURES ARE NOT ROUTED HERE because they clean up at their own site, before this point is
+// reached; adding them would be a second removal of a directory already gone.
+func megarac_discard_scratch_when_terminal(
+  acquisition: MegaRacSessionAcquisition,
+  scratch_dir: FilePath,
+) -> MegaRacSessionAcquisition
+  uses net: std.resources.Network
+{
+  match acquisition {
+    MegaRacSessionDenied { detail: _ } => {
+      discarded = shell.Remove.RecursiveForce(path: scratch_dir)
+      return acquisition
+    }
+    _ => return acquisition
+  }
+}
+
+// THE CLASSIFICATION IS SEPARATE FROM THE EFFECT so the three outcomes can be reasoned about
+// without a controller. The distinction that matters is between DENIED and UNUSABLE: denied means
+// no session was created and there is nothing to release, unusable means one was created and its
+// token could not be read. Collapsing them is precisely the defect this replaces — the earlier form
+// reported the second as "release not attempted", a phrase that reads as "nothing to clean up".
+fn megarac_classify_acquisition(
+  scope: MegaRacSessionScope,
+  body: String,
+  reached: Bool,
+) -> MegaRacSessionAcquisition {
+  if reached == false {
+    MegaRacSessionUnusable { scope: scope, detail: "the session request did not complete; a session may or may not have been created, so the jar is carried for teardown" }
+  } else {
+    match parse_json_document(s: body) {
+      JsonDocumentUnreadable { gap: _ } =>
+        MegaRacSessionUnusable { scope: scope, detail: concat("the session response was not JSON: ", body) }
+      JsonDocumentParsed { value: doc } =>
+        match json_string_member(doc: doc, key: "CSRFToken") {
+          Present { value: token } =>
+            if token.length() == 0 {
+              MegaRacSessionUnusable { scope: scope, detail: "the session response carried an empty CSRFToken" }
+            } else {
+              MegaRacSessionAcquired {
+                session: MegaRacSession { scope: scope, csrf_token: token as NonEmptyStr },
+              }
+            }
+          Absent =>
+            match json_string_member(doc: doc, key: "error") {
+              Present { value: e } => MegaRacSessionDenied { detail: e }
+              Absent => MegaRacSessionUnusable { scope: scope, detail: concat("the session response carried neither a CSRFToken nor an error: ", body) }
+            }
+        }
+    }
+  }
+}
+
+// AN UNREACHED PROBE IS UNVERIFIABLE, NOT RELEASED. The probe is the only thing that decides this
+// outcome, so a probe that did not happen decides nothing — reporting release on a failed probe
+// would make a network partition look like successful cleanup, which is the absorbing arm that
+// destroys the signal the finite session table depends on.
+fn megarac_classify_release(body: String, reached: Bool) -> MegaRacSessionRelease {
+  if reached == false {
+    MegaRacSessionReleaseUnverifiable { detail: "the validity probe did not complete, so whether the session was released is unknown" }
+  } else {
+    match parse_json_document(s: body) {
+      JsonDocumentUnreadable { gap: _ } =>
+        MegaRacSessionReleaseUnverifiable { detail: concat("the validity probe returned a body that is not JSON: ", body) }
+      JsonDocumentParsed { value: doc } =>
+        match json_string_member(doc: doc, key: "error") {
+          Present { value: _ } => MegaRacSessionReleaseConfirmed
+          Absent =>
+            match json_number_member(doc: doc, key: "id") {
+              Present { value: _ } =>
+                MegaRacSessionStillLive { detail: "the cookie still authenticates after teardown; a session is stranded on the controller" }
+              Absent =>
+                MegaRacSessionReleaseUnverifiable { detail: concat("the validity probe returned a body matching neither the authenticated nor the unauthenticated shape: ", body) }
+            }
+        }
+    }
+  }
+}
+
+// RELEASE RUNS THE TEARDOWN, VERIFIES IT, AND THEN REMOVES THE LOCAL SCRATCH in that order. The
+// removal is last because the jar is the probe's input: deleting it first would leave the
+// verification unable to run, which is how a cleanup step ends up destroying its own evidence. The
+// scratch removal is not consulted for the verdict — a released session with a stale temp directory
+// is a released session, and conflating the two would let a local filesystem hiccup masquerade as a
+// controller-side leak.
+func megarac_release_session(scope: MegaRacSessionScope) -> MegaRacSessionRelease
+  uses net: std.resources.Network
+{
+  closed = megarac.Session.Close(bmc_host: scope.bmc_host, cookie_jar: scope.cookie_jar)
+
+  probed = megarac.Session.Probe(bmc_host: scope.bmc_host, cookie_jar: scope.cookie_jar)
+  let verdict = megarac_classify_release(body: probed.body, reached: probed.success)
+
+  removed = shell.Remove.RecursiveForce(path: scope.scratch_dir as FilePath)
+  return verdict
 }

@@ -1,0 +1,84 @@
+module gunbc.bmc.megarac_session_probe
+
+import std.types { NonEmptyStr, String }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import extdeps.bmc.megarac {
+  MegaRacSession,
+  MegaRacSessionAcquired,
+  MegaRacSessionAcquisition,
+  MegaRacSessionDenied,
+  MegaRacSessionNeverOpened,
+  MegaRacSessionRelease,
+  MegaRacSessionReleaseConfirmed,
+  MegaRacSessionReleaseUnverifiable,
+  MegaRacSessionScope,
+  MegaRacSessionStagingFailed,
+  MegaRacSessionStillLive,
+  MegaRacSessionUnusable,
+  megarac_acquire_session,
+  megarac_release_session,
+}
+
+// THE EXECUTING EVIDENCE FOR THE SESSION SCOPE, and it is host-parametric on purpose. The lane this
+// replaces wrote a per-unit wrapper for every operation, which is how a generic namespace came to
+// hold seven modules named after one machine. The controller endpoint and credential are arguments,
+// so this probe runs against any MegaRAC controller and there is nothing about it to duplicate when
+// a second one arrives.
+//
+// WHAT IT ESTABLISHES BY RUNNING is the property the type alone cannot: that acquisition and release
+// are actually paired on a live controller, and that release is CONFIRMED rather than assumed --
+// the probe re-reads with the same cookie after teardown and refuses unless the controller has
+// stopped honouring it.
+fn render_release(standing: MegaRacSessionRelease) -> ProcessExit {
+  match standing {
+    MegaRacSessionReleaseConfirmed => ExitSuccess
+    MegaRacSessionNeverOpened => ExitSuccess
+    MegaRacSessionStillLive { detail: d } =>
+      exit_failure(reason: concat("megarac session probe: LEAK -- ", d))
+    MegaRacSessionReleaseUnverifiable { detail: d } =>
+      exit_failure(reason: concat("megarac session probe: release could not be verified, so a session may be stranded: ", d))
+  }
+}
+
+// EVERY ACQUISITION ARM THAT CREATED STATE RELEASES IT, including the two that failed. That is the
+// defect this whole scope exists to close: an acquisition that succeeded and then could not be used
+// previously returned an outcome named "release not attempted", which asserts nothing was created
+// while a session sat open on a controller whose session table is finite.
+func megarac_session_lifecycle_probe(
+  bmc_host: String,
+  username: String,
+  password: String,
+) -> ProcessExit
+  uses net: std.resources.Network
+{
+  if password == "" {
+    return exit_failure(reason: "megarac session probe: no controller password supplied; refusing before any request")
+  }
+  let acquired = megarac_acquire_session(
+    bmc_host: bmc_host as NonEmptyStr,
+    username: username as NonEmptyStr,
+    password: password as NonEmptyStr,
+  )
+  return match acquired {
+    MegaRacSessionStagingFailed { detail: d } =>
+      exit_failure(reason: concat("megarac session probe: credential staging failed, no request was made: ", d))
+    MegaRacSessionDenied { detail: d } =>
+      exit_failure(reason: concat("megarac session probe: the controller denied the login, so no session exists to release: ", d))
+    MegaRacSessionUnusable { scope: sc, detail: d } =>
+      render_unusable_after_release(detail: d, standing: megarac_release_session(scope: sc))
+    MegaRacSessionAcquired { session: s } =>
+      render_release(standing: megarac_release_session(scope: s.scope))
+  }
+}
+
+// AN UNUSABLE SESSION IS A FAILURE EVEN WHEN ITS CLEANUP SUCCEEDS, and the cleanup verdict is
+// reported beside it rather than replacing it. Those are two facts with different owners: whether
+// this attempt can proceed, and whether it left anything behind.
+fn render_unusable_after_release(detail: String, standing: MegaRacSessionRelease) -> ProcessExit {
+  match standing {
+    MegaRacSessionReleaseConfirmed =>
+      exit_failure(reason: concat("megarac session probe: the login succeeded but the session was unusable (", detail, "); it WAS released and verified, so nothing is stranded"))
+    _ =>
+      exit_failure(reason: concat("megarac session probe: the login succeeded but the session was unusable (", detail, ") AND its release could not be confirmed; a session may be stranded on the controller"))
+  }
+}
