@@ -72,12 +72,22 @@ fn work_default_build() -> WorkOperation {
   BuildGunbcBinaries { profile: CargoRelease, bins: work_default_bins }
 }
 
-// The outputs an operation declares, as paths relative to the checkout. Checking operations declare
+// The outputs an operation declares, each relative to a named root: cargo writes binaries under the
+// TARGET root the provider shares per host (CARGO_TARGET_DIR), not under the checkout -- the first wet
+// run declared them under the checkout and reported a mismatch on a build that had succeeded, which
+// is the mismatch arm doing its job and the declaration being wrong. Checking operations declare
 // none: their result is the verdict.
-fn work_declared_outputs(op: WorkOperation) -> List<String> {
+type WorkOutputRoot = CheckoutRoot | TargetRoot
+
+type DeclaredOutput {
+  root: WorkOutputRoot
+  path: String
+}
+
+fn work_declared_outputs(op: WorkOperation) -> List<DeclaredOutput> {
   match op {
     BuildGunbcBinaries { profile, bins } =>
-      map(bins, b => join(["target/", cargo_profile_wire(p: profile), "/", b as String], ""))
+      map(bins, b => DeclaredOutput { root: TargetRoot, path: join([cargo_profile_wire(p: profile), "/", b as String], "") })
     CompileEntry { entry: _ } => []
     RunClaims { entry: _, functions: _, hermetic: _ } => []
   }

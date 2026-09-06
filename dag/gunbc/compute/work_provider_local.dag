@@ -22,10 +22,11 @@ import gunbc.roadmap_execution_contract {
 import gunbc.compute.work_request {
   WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
   WorkToolchainIdentity, work_identity, work_identity_hex, work_default_build, work_declared_outputs,
+  DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
   WorkInfrastructureRefusal, ProducerInFlight, HostAtColdBuildCap, CheckoutUnavailable, StoreUnavailable,
   ToolchainUnobserved, DependencyNotSucceeded, SubjectUnresolved,
-  work_outcome_wire, work_outcome_ending, StoredOutcomeRead, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_decode,
+  work_outcome_wire, work_outcome_ending, StoredOutcomeRead, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_decode, stored_outcome_is_success,
 }
 
 // THE LOCAL PROVIDER: one of N behind the exact work contract, serving the host it runs on. It is a
@@ -230,12 +231,13 @@ type OutputsReturn
   = OutputsReturned { outputs: List<WorkOutput> }
   | OutputsMismatch { detail: String }
 
-fn compute_return_outputs(instance: HostDashboardInstance, layout: ComputeLayout, declared: List<String>) -> OutputsReturn {
-  fold(declared, init: OutputsReturned { outputs: [] }, f: (acc, rel) =>
+fn compute_return_outputs(instance: HostDashboardInstance, layout: ComputeLayout, declared: List<DeclaredOutput>) -> OutputsReturn {
+  fold(declared, init: OutputsReturned { outputs: [] }, f: (acc, d) =>
     match acc {
       OutputsMismatch { detail } => OutputsMismatch { detail: detail }
       OutputsReturned { outputs } => {
-        let src = join([layout.checkout, "/", rel], "")
+        let rel = d.path
+        let src = join([match d.root { CheckoutRoot => layout.checkout  TargetRoot => layout.target_dir }, "/", rel], "")
         let dst = join([layout.store_dir, "/", compute_basename(path: rel)], "")
         match compute_exec(program: compute_program(instance: instance, cap: GitWorkspaceCapability), workdir: layout.checkout, args: ["hash-object", src]) {
           ComputeExecFailed { exit_code: _, stdout: _, stderr } => OutputsMismatch { detail: join(["declared output ", rel, " could not be hashed: ", stderr], "") }
@@ -255,7 +257,9 @@ fn compute_basename(path: String) -> String {
 }
 
 // PROVIDE ONE OPERATION whose dependency (if any) is already satisfied. The order is the contract's:
-// attach if an outcome is stored; refuse at the cap or behind a lease; take the lease; check out;
+// attach if a SUCCEEDED outcome is stored (a stored failure, mismatch or refusal is a record, and a
+// new request for the same identity produces again -- the same tree fails the same way, and sccache
+// makes the retry cheap; what must never happen is a caller attaching to a failure it did not ask for); refuse at the cap or behind a lease; take the lease; check out;
 // run; return outputs; write the outcome; release the lease. A refusal before the lease leaves no
 // state; a refusal after it leaves the lease released and the outcome written.
 fn compute_provide_leaf(
@@ -269,11 +273,11 @@ fn compute_provide_leaf(
   let identity = work_identity_hex(id: work_identity(subject: subject, op: op, toolchain: toolchain))
   let layout = compute_layout(instance: instance, identity_hex: identity)
   let stored = Filesystem.Read(path: layout.outcome_path)
-  if stored.success {
-    match stored_outcome_decode(text: stored.content) {
+  let attached = if stored.success { stored_outcome_decode(text: stored.content) } else { StoredOutcomeUnreadable { reason: "no stored outcome" } }
+  if stored_outcome_is_success(r: attached) {
+    match attached {
       StoredOutcomeFound { ending, identity: stored_identity, document } => ProvideAttached { identity: stored_identity, ending: ending, document: document }
-      StoredOutcomeUnreadable { reason } =>
-        compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: join(["stored outcome unreadable: ", reason], "") } }, subject: subject, op: op)
+      StoredOutcomeUnreadable { reason } => compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: reason } }, subject: subject, op: op)
     }
   } else if !(compute_ensure_dir(instance: instance, path: layout.work_dir) && compute_ensure_dir(instance: instance, path: layout.leases_dir) && compute_ensure_dir(instance: instance, path: layout.store_dir) && compute_ensure_dir(instance: instance, path: layout.target_dir)) {
     compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: join(["could not create the compute directories under ", layout.root], "") } }, subject: subject, op: op)

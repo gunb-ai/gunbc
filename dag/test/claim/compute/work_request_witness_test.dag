@@ -5,6 +5,7 @@ import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
 import gunbc.compute.work_request {
   WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoRelease, CargoDebug,
   WorkToolchainIdentity, work_identity, work_identity_hex, work_default_build, work_declared_outputs,
+  DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, HostAtColdBuildCap,
   work_outcome_wire, stored_outcome_decode, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_is_success,
 }
@@ -43,11 +44,16 @@ test fn identical_requests_share_an_identity_and_every_difference_separates_them
     && base.length() == 16
 }
 
-// Declared outputs follow the operation: a build names its binaries under the profile directory,
-// checking operations declare none, so an absent binary is a mismatch and an absent nothing is not.
+// Declared outputs follow the operation: a build names its binaries under the profile directory of
+// the TARGET root (the shared per-host CARGO_TARGET_DIR, not the checkout -- the first wet run
+// declared the checkout and mismatched a build that had succeeded); checking operations declare
+// none, so an absent binary is a mismatch and an absent nothing is not.
 test fn declared_outputs_follow_the_operation() -> Bool {
-  work_declared_outputs(op: work_default_build()) == ["target/release/gunbc", "target/release/claim_batch"]
-    && work_declared_outputs(op: BuildGunbcBinaries { profile: CargoDebug, bins: ["gunbc" as NonEmptyStr] }) == ["target/debug/gunbc"]
+  let build = work_declared_outputs(op: work_default_build())
+  let debug = work_declared_outputs(op: BuildGunbcBinaries { profile: CargoDebug, bins: ["gunbc" as NonEmptyStr] })
+  map(build, d => d.path) == ["release/gunbc", "release/claim_batch"]
+    && all(build, d => match d.root { TargetRoot => true  CheckoutRoot => false })
+    && map(debug, d => d.path) == ["debug/gunbc"]
     && count(work_declared_outputs(op: CompileEntry { entry: "dag/x.dag" as FilePath })) == 0
     && count(work_declared_outputs(op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true })) == 0
 }
