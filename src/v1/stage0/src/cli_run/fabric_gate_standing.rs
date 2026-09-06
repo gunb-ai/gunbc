@@ -77,25 +77,78 @@ fn read_report(ctx: &InterpContext, value: &Value) -> Result<StandingReport, Str
             value.type_label_public()
         ));
     };
-    let mut holds: Option<bool> = None;
-    let mut text: Option<String> = None;
+    // PRESENCE IS READ SEPARATELY FROM SHAPE, so that a field carrying the WRONG TYPE is a
+    // different located cause than a field that is ABSENT. The earlier form matched
+    // `if let Value::Bool(b) = field`, which left `holds` as `None` for both, and reported one
+    // cause naming neither field: a caller was told the report "did not carry a readable `holds`
+    // and `text`" whether it had shipped a String for `holds`, omitted it, or both. The refusal
+    // was correct -- the line stopped -- but §5 asks the diagnostic to be TYPED and LOCATED, and a
+    // cause that cannot distinguish "you sent the wrong type" from "you sent nothing" tells the
+    // author which line to look at and not what is wrong with it.
+    let mut holds_field: Option<&Value> = None;
+    let mut text_field: Option<&Value> = None;
     for (sym, field) in fields.iter() {
         if ctx.sym_eq(*sym, "holds") {
-            if let Value::Bool(b) = field {
-                holds = Some(*b);
-            }
+            holds_field = Some(field);
         } else if ctx.sym_eq(*sym, "text") {
-            if let Value::Str(s) = field {
-                text = Some(s.to_string());
-            }
+            text_field = Some(field);
         }
     }
+    report_from_fields(holds_field, text_field)
+}
+
+/// Decide the report from the two located fields. PURE, and separated from `read_report` for
+/// exactly one reason: the field LOOKUP needs an `InterpContext` (symbol comparison) while the
+/// DECISION does not, and an `InterpContext` cannot be built without a prepared corpus. Leaving
+/// them fused would have made the distinction this function exists to draw -- absent versus
+/// wrong-type -- reachable only through a whole compiled scope, which is why it went unwitnessed
+/// long enough for a reviewer to find it by reading. The split is not scaffolding: the loop above
+/// keeps the only part that genuinely needs the context.
+fn report_from_fields(
+    holds_field: Option<&Value>,
+    text_field: Option<&Value>,
+) -> Result<StandingReport, String> {
+    let holds = match holds_field {
+        Some(Value::Bool(b)) => Some(*b),
+        _ => None,
+    };
+    let text = match text_field {
+        Some(Value::Str(s)) => Some(s.to_string()),
+        _ => None,
+    };
     match (holds, text) {
         (Some(holds), Some(text)) => Ok(StandingReport { holds, text }),
-        _ => Err(
-            "FABRIC-STANDING REFUSAL cause=ReportFieldsUnreadable — FabricStandingReport did not \
-             carry a readable `holds` and `text`."
-                .to_string(),
+        // EVERY unreadable field is reported, not just the first: an author fixing one and
+        // re-running to discover the next pays a round trip per field, and the second field's
+        // state is already known right here.
+        (holds, text) => {
+            let mut causes: Vec<String> = Vec::new();
+            if holds.is_none() {
+                causes.push(field_cause("holds", "Bool", holds_field));
+            }
+            if text.is_none() {
+                causes.push(field_cause("text", "Str", text_field));
+            }
+            Err(format!(
+                "FABRIC-STANDING REFUSAL cause=ReportFieldsUnreadable {} — FabricStandingReport \
+                 did not carry a readable `holds` and `text`.",
+                causes.join(" ")
+            ))
+        }
+    }
+}
+
+/// Locate one unreadable report field: absent, or present carrying the wrong type.
+///
+/// The two are separate causes because they have separate remedies -- add the field, or change
+/// what is written into it -- and collapsing them costs the reader exactly the distinction that
+/// decides which one to make.
+fn field_cause(name: &str, expected: &str, found: Option<&Value>) -> String {
+    match found {
+        None => format!("field={name}:absent expected={expected}"),
+        Some(v) => format!(
+            "field={name}:wrong-type expected={expected} got={}",
+            v.type_label_public()
         ),
     }
 }
@@ -197,4 +250,58 @@ pub fn head_commit_of_worktree() -> Result<String, String> {
         );
     }
     Ok(commit)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Matched rather than `unwrap_err`, which would require `Debug` on `StandingReport` -- a
+    // production derive added for a test's convenience. The test bends, not the subject.
+    fn refusal(r: Result<StandingReport, String>) -> String {
+        match r {
+            Ok(_) => panic!("expected a refusal, got a report"),
+            Err(e) => e,
+        }
+    }
+
+    // THE DISCRIMINATING PAIR the reviewer's note asks for: the SAME missing `holds` reached two
+    // ways must not produce the same cause. Before the split these were one string.
+    #[test]
+    fn a_wrong_typed_field_is_a_different_cause_than_an_absent_one() {
+        let text = Value::Str("ok".into());
+        let wrong = Value::Str("true".into());
+
+        let absent = refusal(report_from_fields(None, Some(&text)));
+        let mistyped = refusal(report_from_fields(Some(&wrong), Some(&text)));
+
+        assert!(absent.contains("field=holds:absent"), "{absent}");
+        assert!(mistyped.contains("field=holds:wrong-type"), "{mistyped}");
+        assert_ne!(absent, mistyped);
+        // Both remain refusals: the fail-closed property is what this change must NOT alter.
+        assert!(absent.contains("cause=ReportFieldsUnreadable"));
+        assert!(mistyped.contains("cause=ReportFieldsUnreadable"));
+    }
+
+    // Both unreadable fields are located in one refusal, so fixing them is one round trip.
+    #[test]
+    fn every_unreadable_field_is_located_not_only_the_first() {
+        let err = refusal(report_from_fields(None, None));
+        assert!(err.contains("field=holds:absent"), "{err}");
+        assert!(err.contains("field=text:absent"), "{err}");
+    }
+
+    // THE POSITIVE CONTROL, without which the two refusals above are indistinguishable from a
+    // function that refuses unconditionally.
+    #[test]
+    fn a_well_formed_report_is_read() {
+        let holds = Value::Bool(true);
+        let text = Value::Str("standing".into());
+        let report = match report_from_fields(Some(&holds), Some(&text)) {
+            Ok(r) => r,
+            Err(e) => panic!("well-formed report refused: {e}"),
+        };
+        assert!(report.holds);
+        assert_eq!(report.text, "standing");
+    }
 }
