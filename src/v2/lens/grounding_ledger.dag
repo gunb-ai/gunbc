@@ -8,6 +8,9 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
+// NEXT-RUNG TRIGGER (DESIGN 4b): GroundingVerdict already exists; existence is not the climb.
+// Sufficient for: ResidueReason uninhabited — DecodeReturnedNone and UnrecognizedSiblingArm
+// have no remaining constructor path, so every ledger row is a GroundingVerdict.
 data grounding_ledger_climbs_when: DeclarationRef = DeclarationRef {
   module_path: "v2.lens.grounding_ledger",
   decl_name: "GroundingVerdict",

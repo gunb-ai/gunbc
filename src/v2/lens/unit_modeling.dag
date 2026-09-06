@@ -146,6 +146,9 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
+// NEXT-RUNG TRIGGER (DESIGN 4b): field_name_has_known_carrier already exists; existence is not the climb.
+// Sufficient for: unit_field_rows total over every numeric-looking field name in the corpus, so a
+// leaf like 4926 cannot be a bare String without a known carrier.
 data unit_modeling_climbs_when: DeclarationRef = DeclarationRef {
   module_path: "v2.lens.unit_modeling",
   decl_name: "field_name_has_known_carrier",

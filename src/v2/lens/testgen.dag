@@ -2162,6 +2162,9 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
+// NEXT-RUNG TRIGGER (DESIGN 4b): generator_id_for_claim_anchor already exists; existence is not the climb.
+// Sufficient for: every enrolled ClaimAnchorKey mapping to a GeneratorId, so a claim with no
+// generator is unwritable.
 data testgen_climbs_when: DeclarationRef = DeclarationRef {
   module_path: "v2.lens.testgen",
   decl_name: "generator_id_for_claim_anchor",

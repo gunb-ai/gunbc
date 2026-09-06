@@ -21,9 +21,9 @@ import v2.std.integer { Int }
 // NOT an in-place class flip; each subject has its own LensContract row and LensIdV0. Dissolution
 // for derived-kernel: ParityC2 ComplexitySummary restored on v2.lens.cost (SingleAuthority wall
 // once the summary carrier exists and a live consumer is enrolled). Optimality is
-// AuditOnly / WallAfterGrounding over OptimalityResidue: the subject split remains, but
-// GlobalOptimality is a named claim in this module, not an unrepresented capability, so it
-// sits on the ladder with a next-rung trigger rather than an inventory miss.
+// AuditOnly / WallAfterGrounding over OptimalityResidue: attainable ceiling is catalog-bounded
+// lowering (`complexity_optimality_climbs_when` → `catalog_is_sound`). Rice-complete global
+// optimality is not that ceiling; it remains residue on the claim roster.
 
 // Scope, stated so the partition witness cannot overclaim. PROVEN by this carrier and
 // complexity_contract_subjects_partition_legacy_mixed_row: DerivedKernel and OptimalityResidue are
@@ -188,13 +188,19 @@ data complexity_derived_kernel_boundary: ConstructionJustification = Constructio
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
+// ATTAINABLE CEILING (DESIGN 4b): catalog-bounded lowering, not Rice-complete
+// "is there ANY cheaper equivalent?". GlobalOptimality / UnrestrictedSemanticComplexityEquivalence
+// stay on the claim roster as residue; this class does not assert they become walls.
 data complexity_optimality_boundary: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
+// NEXT-RUNG TRIGGER (DESIGN 4b): catalog_is_sound already exists; existence is not the climb.
+// Sufficient for: this subject's constructors equal the closed lowering catalog (every rule
+// strictly lowers ComplexityBound), so GlobalOptimality is unwritable here.
 data complexity_optimality_climbs_when: DeclarationRef = DeclarationRef {
-  module_path: "v2.lens.enforcement.complexity_contract_subject",
-  decl_name: "ComplexityOptimalityClaim",
+  module_path: "v2.lens.complexity_lowering",
+  decl_name: "catalog_is_sound",
   field: WholeDeclaration
 }
 
