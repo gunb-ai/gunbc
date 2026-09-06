@@ -1,0 +1,40 @@
+module gunbc.recurring_failure_mode.instrument_unobservable_as_its_subject_grows
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data instrument_unobservable_as_its_subject_grows: RecurringFailureMode = RecurringFailureMode {
+  identity: "instrument_unobservable_as_its_subject_grows" as NonEmptyStr,
+
+  receipts: [
+    "**an instrument becomes unobservable as its subject grows** (INVALID STATE: a measurement's only write is a rendering whose SIZE IS PROPORTIONAL TO THE POPULATION IT REPORTS, on a channel with a size limit. The instrument is therefore LEAST readable exactly when its subject is largest, which is when it is worth reading. ",
+
+    "This is not a logging defect and must not be filed as one: it is the same shape as a check that greens by construction, one layer out -- an instrument that reports faithfully on every small subject and silently stops reporting on the only subjects that would have changed a decision. ",
+
+    "WHY NOBODY CATCHES IT: every small run reports fine, so the instrument accumulates a history of working, and the failure begins precisely where no one has a baseline to compare against. ",
+
+    "**SPECIMEN, 2026-09-05/06 (jolly-badger-374), MEASURED ON A REQUIRED RUN RATHER THAN A FIXTURE.** `v1.compiler.claim_executor`'s required-ci block emits a module census with `eprintln!` and `{:?}` over identity vectors. On run 33990451798 the BUILD lane's `judged-module-identities` line is 44,727 bytes and SURVIVED intact -- it closes its bracket at 1224 identities, and the next largest line in that job is 790 bytes. The capture then STOPS. The FLOOR lane (`lane=witnesses`) shows no census line at all: its last captured line is the `phases_run` announcement, the `eprintln!` immediately before the census. ",
+
+    "So the threshold is BRACKETED rather than named: above 44,727 bytes and at or below the floor lane's own judged line. The line that never appears in the build job is `admitted-module-identities`, roughly three and a half times the surviving one. ",
+
+    "**TWO MECHANISMS PROPOSED AND BOTH REFUTED BY MEASUREMENT, recorded because a finding that rules out its own alternatives is worth more than one that asserts a cause.** PER-LINE DROP is refuted: neither job SKIPS the oversized line and continues -- both stop at the census position and nothing follows. CUMULATIVE OUTPUT CAP is refuted: the floor job captured 781,698 bytes in 3,727 lines against the build's 160,305 in 917, so a global cap would have cut the floor long before, and the two jobs stop at the same PLACE rather than the same SIZE. ",
+
+    "**THE CONTROL THAT LOCATES IT, same run and same runner, discriminated by which binary executes.** `heal-generated-artifacts` (146,093 bytes) and `witnesses` (5,009 bytes) BOTH end with the ordinary `Cleaning up orphan processes` completion line. The two `claim_executor` lanes emit no completion line at all. So it is not only the census that is lost: THE REMAINDER OF THE STEP'S CAPTURED OUTPUT GOES WITH IT. ",
+
+    "**A THIRD HYPOTHESIS WAS NAMED AND REFUTED, AND IT IS THE ONE THAT WOULD HAVE MADE THIS A CORRECTNESS DEFECT** -- the process dying while formatting a multi-hundred-kilobyte string, with the step still reporting success. In `claim_executor` the order is census, then the `FAILED PHASE` loop, then the measurement-receipt write; and THAT RECEIPT EXISTS AS A PUBLISHED ARTIFACT FOR THE SAME RUN, standing `measurement_completed`. A process killed while formatting could not have written it. The process ran past the census, past the failure loop, and wrote its receipt. ",
+
+    "**SEVERITY, STATED DOWN RATHER THAN UP.** Losing the `FAILED PHASE` lines DOES NOT LOSE THE FAILURE: the lane's verdict rides the exit code and the check conclusion, not the log. A failing phase still fails the job with its log gone. WHAT IS DESTROYED IS THE DIAGNOSIS, NOT THE REFUSAL -- a red that cannot be READ, never a red that reads GREEN. This row explicitly forecloses the stronger reading. ",
+
+    "**RUNG FOUND AT: mitigatable.** The verdict is intact and the census is recomputed on every run, so nothing is silently wrong; what is lost is the ability to read it. ",
+
+    "**CEILING: structurally impossible for this class of write, and the construction ALREADY EXISTS IN THE SAME BINARY.** A measurement whose destination is a published artifact rather than a size-limited rendering cannot become unreadable by growing. The census does not need a new mechanism invented for it: the measurement-receipt path already works, is written by the same process a few statements later, and survived the very run whose census did not. ",
+
+    "**NEXT-RUNG TRIGGER, NAMED AS A CAPABILITY:** every required-lane census emitted to the receipt/artifact route that its own measurement receipt already travels, with any stdout rendering reduced to a bounded summary that names the artifact, sufficient that a census's readability is INDEPENDENT OF ITS POPULATION SIZE. A larger corpus must not be able to make a required lane's own measurement disappear. ",
+
+    "**WHAT IS NOT CLAIMED, and the boundary is deliberate.** WHERE the loss occurs -- inside `claim_executor`, inside the runner's log uploader, or in the stream between them -- is UNDETERMINED. The capture cannot distinguish them, and naming one would be a fabricated mechanism attached to a real measurement. The cheap discriminator, unrun: emit the census to a file and a one-line summary to stdout, then check whether the completion lines return, capturing the process exit code alongside. ",
+
+    "**BOUNDARY AGAINST `empty_observation_narrow` and `selection_view_read_as_population`:** there the instrument reports about a narrowed subject and a reader over-reads it. Here the instrument's subject is correct and complete, and its REPORT does not arrive at all -- the reader has nothing to over-read. The two compound where a census that would have exposed a narrowing is itself the line that vanishes.)",
+  ],
+
+  evidence: [],
+}
