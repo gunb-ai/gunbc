@@ -1,6 +1,6 @@
 module test.claim.self_host_logic_seed_unavailable_check_fixture
 
-// Fixture test for the transport's slbu_check_no_v1_rt_calls function --
+// Fixture test for the transport's slbu_check_no_seed_crate_refs function --
 // proves the v1_compiler:: seed-linkage check CAN red (DESIGN section 5: a discriminating
 // input that goes red when the check is wrong). Operates on synthetic file contents
 // via the REAL transport function over a temp directory, not a re-implementation.
@@ -14,7 +14,7 @@ import std.logic { Bool }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import tools.self_host_logic_seed_unavailable_transport {
-  slbu_check_no_v1_rt_calls
+  slbu_check_no_seed_crate_refs
 }
 
 // GREEN: a directory with no v1_compiler:: references should pass
@@ -29,7 +29,7 @@ test fn clean_directory_passes_v1_rt_check() -> Bool {
     content: "// Runtime shim\npub fn lookup(key: String) -> String { unimplemented!() }\n"
   )
   let result = clean_file.success && rt_file.success
-    && slbu_check_no_v1_rt_calls(src_dir: dir.path, writes_ok: true)
+    && slbu_check_no_seed_crate_refs(src_dir: dir.path, writes_ok: true)
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && result && cleaned.success
 }
@@ -44,7 +44,7 @@ test fn directory_with_v1_compiler_ref_fails_check() -> Bool {
     content: "pub fn do_lookup(key: String) -> String { v1_compiler::lookup(key) }\n"
   )
   let result = bad_file.success
-    && !slbu_check_no_v1_rt_calls(src_dir: dir.path, writes_ok: true)
+    && !slbu_check_no_seed_crate_refs(src_dir: dir.path, writes_ok: true)
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && result && cleaned.success
 }
@@ -63,7 +63,7 @@ test fn directory_with_v1_rt_containing_calls_passes() -> Bool {
     content: "pub enum Foo { A, B }\n"
   )
   let result = rt_file.success && clean_subject.success
-    && slbu_check_no_v1_rt_calls(src_dir: dir.path, writes_ok: true)
+    && slbu_check_no_seed_crate_refs(src_dir: dir.path, writes_ok: true)
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && result && cleaned.success
 }

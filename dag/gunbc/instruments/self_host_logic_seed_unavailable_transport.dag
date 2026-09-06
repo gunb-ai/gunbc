@@ -70,7 +70,7 @@ fn slbu_repo_path(root: String, rel: String) -> String {
 // order and a forward reference is unbound). The fixture passes writes_ok: true as a literal
 // because the writes are a deployment guarantee tested by the wet lane, not by the fixture —
 // the fixture CANNOT detect an ordering regression, which is deliberate.
-fn slbu_check_no_v1_rt_calls(src_dir: String, writes_ok: Bool) -> Bool {
+fn slbu_check_no_seed_crate_refs(src_dir: String, writes_ok: Bool) -> Bool {
   let found = shell.Find.FilesByNameSorted(root: src_dir, name_glob: "*.rs" as NonEmptyStr)
   let ok = found.success
   let files = filter(split(s: found.stdout, delimiter: "\n"), p: fn(s) { s != "" })
@@ -183,7 +183,7 @@ fn slbu_seed_unavailable_receipt() -> Bool {
     content: slbu_driver_main_source
   )
 
-  let no_v1_rt_calls = slbu_check_no_v1_rt_calls(src_dir: emitted_src_dir, writes_ok: cargo_toml.success && main_rs.success)
+  let no_seed_crate_refs = slbu_check_no_seed_crate_refs(src_dir: emitted_src_dir, writes_ok: cargo_toml.success && main_rs.success)
 
   let build = cargo.Build.BuildManifest(
     workdir: out_dir.path,
@@ -202,7 +202,7 @@ fn slbu_seed_unavailable_receipt() -> Bool {
     && cargo_toml.success && main_rs.success
 
   let verdict = staged
-    && no_v1_rt_calls
+    && no_seed_crate_refs
     && build.success
     && string_contains(s: pass_run.stdout, pattern: slbu_cases_marker())
     && pass_run.success
