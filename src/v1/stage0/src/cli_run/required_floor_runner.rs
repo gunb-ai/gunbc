@@ -2856,44 +2856,18 @@ pub fn floor_prepared_subject_exclusions() -> Vec<String> {
         // is not observable hermetically. Enrolling it would assert the mock rather than the
         // behaviour -- specification without execution.
         "test/manual/command_runner_local_argv_receipt_test.dag".to_string(),
-        // COST, MEASURED PER WITNESS, NOT A CLASS JUDGEMENT. The accumulator-copy lens re-ingests
-        // each subject through tokenize/parse/normalize in the interpreter, and that cost scales
-        // with subject size superlinearly: a five-line fixture is ~4.7s, a 186-line module ~50s, and
-        // the 874-line analyze.dag ~1272s. The floor budgets an ENTRY rather than a witness, so one
-        // expensive member reports every sibling in its file as interrupted_before_verdict --
-        // which is how this entry first announced itself, taking cheap evidence down
-        // with it. The cheap discriminating witnesses were split OUT (the corpus-path
-        // pair, the population-floor control and the typed-read pair now live under
-        // claim/complexity/ and are deliberately NOT excluded, so the class keeps executing
-        // evidence on every push). What is excluded here is only the corpus-grain work whose price
-        // is the corpus.
+        // A ROW HERE MAY NOT NAME A MODULE ANYTHING IMPORTS. An exclusion is not "skip this
+        // witness": prepare_repository_closure drops the path from the prepared graph, so an
+        // importer cannot resolve and the whole subject refuses. That constraint is enforced --
+        // `assemble_prepared_subject_closure` refuses with cause=ExclusionOrphansImporter, naming
+        // the row beside each importer -- rather than asked for here.
         //
-        // The entry also carries a gunbc.ci_layer_roots exclusion, and that row governs DISCOVERY
-        // ONLY -- run_required_floor consults THIS list and nothing else, as the note above
-        // records. The census entry needed both.
-        //
-        // AN EXCLUSION HERE IS NOT "SKIP THIS WITNESS": prepare_repository_closure drops the path
-        // from the prepared graph entirely, so every module that IMPORTS the excluded one refuses
-        // with `unresolved import` and the floor refuses the WHOLE subject before any witness runs
-        // (measured: run 34016411960, modules_resolved=2591, refused at
-        // src/v2/test/claim/long/live_read_classification_test.dag:46, which imports the roster
-        // gate entry by name for its ReadsLiveTree classification). That is the mechanism working
-        // -- the deletion is the census -- and it is the standing constraint on this list: a module
-        // with importers may not be excluded, only one nothing names. accumulator_copy_corpus_census
-        // has no importer, which is why it is the only row here.
-        //
-        // The roster-gate entry was excluded in the same change and is NOT excluded now, because
-        // the exclusion was priced against the wrong number. Its own note says ~15m serial; the
-        // measured cost of the one changed witness on this branch is 22.2s wall (claim_batch
-        // --entry accumulator_copy_roster_gate_test.dag --functions
-        // roster_glob_discovery_zero_suspects_within_ratchet), of which 22.1s is entry resolve.
-        // It reported interrupted_before_verdict alongside the two corpus-grain witnesses that
-        // really were expensive, and was excluded on that association rather than on its own price.
-        //
-        // TRIGGER, naming the capability rather than an artifact: ingest that does not re-parse
-        // source in the interpreter (native ingest, or a lens reading the compile graph). At that
-        // point the corpus-grain witnesses are affordable and this row deletes.
-        "test/claim/long/accumulator_copy_corpus_census_test.dag".to_string(),
+        // A row may also not be the way a CHANGED witness gets out of running. The floor admits a
+        // changed witness regardless of any exclusion (cause=ChangedWitnessOutsidePreparedSubject),
+        // which is what stops this list being an escape hatch a witness can opt into on the commit
+        // that introduces it. A corpus-priced assertion therefore is not authored as a witness at
+        // all; v2.lens.complexity_accumulator_copy.corpus_census is the worked example, and it
+        // carries its own next-rung trigger.
     ]
 }
 

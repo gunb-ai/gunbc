@@ -21,9 +21,9 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // THIS FILE IS THE ONLY EXECUTING EVIDENCE FOR THE CORPUS PATH, AND IT IS THE WHOLE OF IT.
 // Everything here reads a five-line fixture or nothing at all, so it is seconds. The corpus-grain
 // forms -- a census over a discovered root, over an explicit batch, and the subtree predicate --
-// are ENTRY POINTS, not witnesses, in v2.lens.complexity_accumulator_copy.corpus_census: at roughly
-// eighty seconds per subject they cannot be enrolled, and a witness that cannot run is a roster row
-// standing in for a verdict. So the claim this lane makes is scoped to what runs: the planted
+// are ENTRY POINTS, not witnesses, in v2.lens.complexity_accumulator_copy.corpus_census: their
+// per-subject price is minutes, so they cannot be enrolled, and a witness that cannot run is a
+// roster row standing in for a verdict. census_for_paths re-derives that price on the host asking. So the claim this lane makes is scoped to what runs: the planted
 // copied accumulator below is caught through corpus_gate and the clean fold beside it stays clean,
 // over a population the gate discovers rather than a hand-list. The corpus-wide verdict is a run,
 // and it is named where the instruments live.

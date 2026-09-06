@@ -65,8 +65,10 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // THE COST IS THE REASON THIS FILE IS OFFLINE, AND IT IS THE LENS'S OWN SUBJECT MATTER. The
 // corpus consumer re-ingests every subject through tokenize -> parse_production -> normalize in the
-// interpreter, measured on this session's host at roughly eighty seconds per subject against 5007
-// tracked .dag files. That is not a scheduling inconvenience to be waited out; it is the same
+// interpreter, and the per-subject price is minutes rather than milliseconds against a corpus of
+// thousands. The figure is not written here: census_for_paths below re-derives it on the host that
+// asks, and population_for_root re-derives the denominator, which is what a reader needs rather
+// than a digit that decays. That is not a scheduling inconvenience to be waited out; it is the same
 // displaced cost DESIGN section 1 prices, and it is why the lens has stood roster-bound rather than
 // corpus-bound since it was written.
 //
@@ -88,8 +90,9 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // and these entry points become witnesses.
 //
 // ONE PROCESS CANNOT CARRY THE CORPUS, AND THE FAILURE IS A SEGMENTATION FAULT RATHER THAN A
-// DIAGNOSTIC. Measured twice with census_for_paths over a stratified sample of the tracked corpus:
-// the run dies with SIGSEGV around the twentieth subject, and the subject it dies ON analyses
+// DIAGNOSTIC. Reproduced twice with census_for_paths over a stratified sample of the tracked
+// corpus, which is the instrument to re-run rather than a batch size to copy from here: the run
+// dies with SIGSEGV a few tens of subjects in, and the subject it dies ON analyses
 // cleanly when handed to the same instrument alone -- so the cause is accumulation across subjects
 // within a process, not any one subject's shape. That is worse than the cost: it means the
 // whole-population form of corpus_gate is unreachable by construction and not merely slow, and the
@@ -123,10 +126,12 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // population -- every module the module index yields, not a sample and not a subtree -- inside one
 // required-lane budget and inside one process. Both halves are load-bearing and neither implies the
 // other. A tenfold speedup per subject satisfies a per-subject reading of the trigger and still
-// leaves the sweep hours long; and a sweep that fits the budget still dies with SIGSEGV around the
-// twentieth subject, which is a failure carrying no cause, no locus and no count, so it cannot be
-// enrolled at any speed. An artifact that delivers only one half CONTRIBUTES to this trigger and
-// does not retire it.
+// leaves the sweep hours long; and a sweep that fits the budget still dies with SIGSEGV partway
+// through, a failure carrying no cause, no locus and no count, so it cannot be enrolled at any
+// speed. That second half is filed as its own class --
+// gunbc.recurring_failure_mode.sweep_terminated_by_process_death_rather_than_a_typed_refusal --
+// because it outlives this lens: any single-process fold over a discovered population has it. An
+// artifact that delivers only one half CONTRIBUTES to this trigger and does not retire it.
 //
 // UNTIL THEN the claim this lane makes is the cheap pair in
 // claim/complexity/accumulator_copy_corpus_path_test.dag, and it is stated at that grain: the lens

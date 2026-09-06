@@ -1,0 +1,36 @@
+module gunbc.recurring_failure_mode.sweep_terminated_by_process_death_rather_than_a_typed_refusal
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data sweep_terminated_by_process_death_rather_than_a_typed_refusal: RecurringFailureMode = RecurringFailureMode {
+  identity: "sweep_terminated_by_process_death_rather_than_a_typed_refusal" as NonEmptyStr,
+
+  receipts: [
+    "**a corpus sweep ends by process death, so it reports less than it measured and looks like it stopped for a reason** (INVALID STATE: an instrument folds over a population one subject at a time, and the process is killed by the host -- SIGSEGV from unbounded native recursion in the interpreter -- partway through the fold. DESIGN section 5 admits two arms, succeed fully or fail with a typed located diagnostic, and this is neither: the run produces no cause, no locus and no count, because the code that would have produced them is not running any more. ",
+
+    "HARM, AND IT IS THE SELF-CONCEALING KIND. Nothing can enroll the class, because there is no diagnostic to key on; nothing can attribute it, because there is no locus; and nothing can bound it, because there is no count of what was skipped. Worse than either, the survivors are indistinguishable from a complete answer at the only grain anyone reads: a sweep that died at the twentieth of five thousand subjects and a sweep that finished clean both present as a list of findings and an absence of alarms. Whoever reads it learns that no suspect was found, which is true, and infers that the population was examined, which is false. The exit status is the only channel carrying the difference, and it is the one channel a person reading a report does not see. ",
+
+    "THE SPECIMEN (2026-09-06, complexity-lens lane): v2.lens.complexity_accumulator_copy.corpus_census census_for_paths over a stratified sample of the tracked corpus dies with SIGSEGV around the twentieth subject, reproduced twice. The subject it dies ON analyses cleanly when handed to the same instrument alone, so the cause is accumulation across subjects within one process and not any one subject's shape -- which is what makes it a property of the SWEEP rather than of a datum, and therefore invisible to every per-subject control. ",
+
+    "WHY IT IS NOT ONE OF THE ROWS BESIDE IT, checked at identity grain over gunbc.recurring_failure_mode.roster rather than by memory. ",
+
+    "It is not `absorbing_fallback`: that class has a failure arm that WIDENS -- it computes a superset and calls it an answer, so the deficit is concealed by a value the program chose to produce. Here no arm executes at all. The two are opposite ends of the same obligation: an absorbing arm answers when it should refuse, and this one cannot reach the point of refusing. A repair for one does nothing for the other, because a typed cause added downstream of the death is never reached. ",
+
+    "It is not `absent_reads_identically_to_never_looked`, which is the nearest and the tempting one. There the instrument RAN over its whole subject and the absence of a record is what carries no distinction. Here the instrument did not run over its whole subject, and the missing records were never attempted. That difference decides the repair: the other class is fixed by recording the looked-at set, and doing that here records a set that is itself truncated by the same defect -- the receipt would be short and would say so about nothing. ",
+
+    "It is not `roster_is_its_own_denominator`: that class is a hand-authored list unjoined to any statement of what it should cover. This population IS derived -- corpus_gate discovers its subjects from the module index -- so the denominator is known and correct, and the defect is that the fold over it terminates early. A correct denominator makes this class MORE legible, not less: it is what would let a survivor count be compared against an expected one, which is the mitigation available before the wall lands. ",
+
+    "RUNG FOUND AT: below the ladder. This is not the bottom rung, it is silent wrongness, which DESIGN section 5 places outside the ladder and forbids outright -- a run that dies is consumed as a run that finished, and no modeled machinery contains the harm. Calling it mitigatable would be inflation: nothing today bounds, counts or types it. ",
+
+    "CEILING: structurally guaranteed, and the reason it is not merely mitigatable is that the property is decidable rather than a fact about external reality. Native stack exhaustion in the interpreter is not an undecidable predicate about the analysed program; it is the absence of a bound on the interpreter's own recursion. A depth-bounded or explicitly-stacked walk converts an unbounded native recursion into a typed refusal that carries its locus and its depth, which is a wall available now with no missing grounding. It is not structurally impossible, because the walk depth remains representable -- the refusal is derived, not constructed away. ",
+
+    "NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the interpreter's node walk carries an explicit stack or an explicit depth bound, so exceeding it raises a located typed diagnostic instead of terminating the process. It must be SUFFICIENT FOR the general case rather than for the specimen: any traversal deep enough to exhaust the native stack refuses with a cause and a locus, whichever entry point reached it -- not a per-instrument guard around census_for_paths, and not a larger stack, which moves the cliff without typing it. A batching driver for one sweep CONTRIBUTES to living with the class and does not retire it. ",
+
+    "AN INTERIM MITIGATION EXISTS AND IS NOT THE CLIMB, recorded so it is not mistaken for one: a sweep whose derived population is known can compare the count of subjects it reported against the count it discovered and refuse on a shortfall. That is rung 1 -- the harm is contained, the run stops looking finished -- and it leaves the invalid state entirely writable. ",
+
+    "RECOGNITION RULE: when an instrument folds over a population in one process, ask what its output looks like if the process dies at subject k. If the answer is 'the same shape as a complete run, one page shorter', the sweep has no completion channel and its report is an unstated assumption about its own exit status.)",
+  ],
+
+  evidence: [],
+}
