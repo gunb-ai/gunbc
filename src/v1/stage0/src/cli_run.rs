@@ -24289,8 +24289,8 @@ fn collect_sorted_decl_lines_for_file(
 // must be empty).
 #[derive(Clone, Debug, Default)]
 pub(crate) struct FloorDiffEdits {
-    overlapping_data_items: HashSet<(String, String)>,
-    edited_test_fns: HashSet<(String, String)>,
+    pub(crate) overlapping_data_items: HashSet<(String, String)>,
+    pub(crate) edited_test_fns: HashSet<(String, String)>,
     /// `.dag` files with a non-data, non-test-fn declaration touched — run that entry's roster.
     pub(crate) touched_entry_files: HashSet<String>,
 }

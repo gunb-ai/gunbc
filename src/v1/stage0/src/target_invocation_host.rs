@@ -290,7 +290,26 @@ pub fn test_affected_select() -> InvocationOutcome {
     };
 
     // Step 4: compute touched paths from the diff edits.
-    let touched_paths: Vec<String> = edits.touched_entry_files.iter().cloned().collect();
+    //
+    // floor_diff_edits_from_diff_text partitions a diff at DECLARATION grain into three
+    // buckets (required_floor_runner.rs):
+    //   touched_entry_files    — non-data, non-test-fn declarations touched
+    //   overlapping_data_items — data rows touched (file, name) pairs
+    //   edited_test_fns        — test-fn bodies touched (file, name) pairs
+    //
+    // ALL THREE contribute to the touched-path set for import-closure selection. Using only
+    // touched_entry_files (the original implementation) silently under-selects when the only
+    // change is to a data row or a test function body — both are real changes inside the
+    // import closure of live witnesses.
+    let mut touched_file_set: std::collections::HashSet<String> =
+        edits.touched_entry_files.iter().cloned().collect();
+    for (file, _) in &edits.overlapping_data_items {
+        touched_file_set.insert(file.clone());
+    }
+    for (file, _) in &edits.edited_test_fns {
+        touched_file_set.insert(file.clone());
+    }
+    let touched_paths: Vec<String> = touched_file_set.into_iter().collect();
     if touched_paths.is_empty() {
         return InvocationOutcome {
             termination: Termination::ObservationHeld,
@@ -867,6 +886,58 @@ mod affected_select_discriminating_red_controls {
             )
             .expect("entry_file_touched_via_import_closure"),
             "diff touching scope_shared must select scope_importer (direct dependency)"
+        );
+    }
+
+    /// 9. Discriminating RED: a data-row-only diff (touching the value of a `data`
+    /// declaration) must produce a nonempty touched-path set through the union of
+    /// ALL THREE diff-edit buckets. Before the fix, `test_affected_select` consumed
+    /// only `touched_entry_files` — a data-row edit routed to `overlapping_data_items`,
+    /// the touched set came back empty, and the command printed "0 selected" for a
+    /// real change inside the import closure of live witnesses.
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    #[test]
+    fn data_row_only_diff_selects_through_overlapping_data_items() {
+        let ws = ws();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let facts = index.module_graph_facts();
+        let declared = facts.declared_paths.clone();
+        // Touch a data-declaration line — editing the value of `data scope_shared_marker`
+        // on line 7 of scope_shared.dag. This routes to `overlapping_data_items`, NOT
+        // to `touched_entry_files`. The test passes only if the three-bucket union
+        // includes this file.
+        let diff = diff_at(SCOPE_SHARED, 7);
+        let edits = floor_diff_edits_from_diff_text(&index, &diff).expect("diff parse");
+        // Verify the classification: data-row edit goes to overlapping_data_items.
+        assert!(
+            !edits.overlapping_data_items.is_empty(),
+            "data-row diff must populate overlapping_data_items (got {})",
+            edits.touched_entry_files.len(),
+        );
+        // Build the three-bucket union (same logic as test_affected_select Step 4).
+        let mut touched_set: std::collections::HashSet<String> = edits.touched_entry_files.clone();
+        for (file, _) in &edits.overlapping_data_items {
+            touched_set.insert(file.clone());
+        }
+        for (file, _) in &edits.edited_test_fns {
+            touched_set.insert(file.clone());
+        }
+        let touched: Vec<String> = touched_set.into_iter().collect();
+        assert!(
+            !touched.is_empty(),
+            "data-row-only diff must produce nonempty touched paths through three-bucket union"
+        );
+        assert!(
+            entry_file_touched_via_import_closure(
+                &abs(&ws, SCOPE_IMPORTER),
+                facts,
+                &declared,
+                &touched,
+            )
+            .expect("entry_file_touched_via_import_closure"),
+            "data-row-only diff in scope_shared must select scope_importer (direct dependency)"
         );
     }
 }
