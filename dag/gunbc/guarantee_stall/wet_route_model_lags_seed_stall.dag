@@ -3,24 +3,18 @@ module gunbc.guarantee_stall.wet_route_model_lags_seed_stall
 import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
 import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
 
-// THIS ROW IS THE REFERENT THE TWO CITING 4b TRIGGERS NAME, not a reconstruction of a module that
-// never merged. `gunbc.recurring_failure_mode.content_digest_makes_annotations_semantically_load_bearing`
-// and `gunbc.recurring_failure_mode.subject_and_its_digest_as_independent_parameters` both retire
-// against `gunbc.guarantee_stall` `wet_route_model_lags_seed_stall`. The first landing of this
-// symbol listed `v2.workflow.floor_wet_route` and three of its declarations. Those names do not
-// resolve on this tree -- #9725 closed unmerged -- so a population of them is not countable debt
-// (DESIGN section 3: a stale name is decidable). This file keeps the cited identity and replaces
-// the members with what grep still finds of the classes those two rows measured.
+// THIS ROW IS THE REFERENT FOR THE CONTENT-DIGEST CLASS ONLY. `gunbc.recurring_failure_mode`
+// `content_digest_makes_annotations_semantically_load_bearing` names it as the remaining live
+// producer. It does not enumerate the peer-parameter class: that row's next-rung trigger used to
+// retire against this identity, which would be satisfied by repairing `closure_content_digest`
+// while a value and its digest could still be accepted as peers -- DESIGN section 4b(3).
 //
 // WHAT STILL STANDS. `v1_compiler.resolved_graph_cache` `closure_content_digest` still folds each
-// source's raw `content`, so an annotation edit still moves a digest those rows call a semantic
-// subject. The independent `envelope` / `envelope_digest` signature they demonstrated is not a
-// declaration here: no `wet_route_gate_disposition_for_receipt` exists, and the successor
-// `v2.workflow.wet_evidence` does not take those two as peer parameters. A trigger that waited on
-// authoring the three rules inside `floor_wet_route` would never fire, which is the class this
-// row's first landing reproduced.
+// source's raw `content`, so an annotation edit still moves a digest that row calls a semantic
+// subject. The independent `envelope` / `envelope_digest` signature is not a member here, because
+// it is not a declaration on this tree.
 data wet_route_model_lags_seed_stall: GuaranteeStall = GuaranteeStall {
-  subject: "a wet-lane semantic subject digest is still taken over raw file content by v1_compiler.resolved_graph_cache closure_content_digest, so an annotation edit moves the digest DESIGN section 4c says cannot move; the two citing failure-mode triggers retire this remaining member, not the unmerged floor_wet_route symbols",
+  subject: "a wet-lane semantic subject digest is still taken over raw file content by v1_compiler.resolved_graph_cache closure_content_digest, so an annotation edit moves the digest DESIGN section 4c says cannot move",
   current: Mitigatable,
   ceiling: StructurallyImpossible,
   blocker: ClimbableButUnbuilt,
@@ -29,5 +23,5 @@ data wet_route_model_lags_seed_stall: GuaranteeStall = GuaranteeStall {
       "v1_compiler.resolved_graph_cache closure_content_digest",
     ]
   },
-  next_rung_trigger: climbs_when(capability: "a subject digest folded over the annotation-erased projection that semantic compiler passes already receive, so the digest is invariant under comment edits by construction -- SUFFICIENT FOR the two citing failure-mode triggers to retire this rostered member. NOT satisfied by restoring a floor_wet_route spelling, by the seed remaining stricter than a model that is not on this tree, or by this declaration existing")
+  next_rung_trigger: climbs_when(capability: "a subject digest folded over the annotation-erased projection that semantic compiler passes already receive, so the digest is invariant under comment edits by construction -- SUFFICIENT FOR gunbc.recurring_failure_mode.content_digest_makes_annotations_semantically_load_bearing's next-rung trigger to retire this rostered member. NOT sufficient for subject_and_its_digest_as_independent_parameters, which is a different class, and not satisfied by restoring a floor_wet_route spelling or by this declaration existing")
 }
