@@ -33,7 +33,7 @@ test fn groups_derive_from_the_cage_and_a_host_off_the_fabric_has_none() -> Bool
 // desired state carries is the one the leg actually linked at.
 test fn the_link_speed_is_the_cable_codings_ceiling_and_forced_mode_is_required() -> Bool {
   fabric_leg_cable_observed.linked_speed_gbps == 50
-    && fabric_leg_cable_observed.nominal_rate_mbps == 25500
+    && fabric_leg_cable_observed.nominal_rate_reported_mbps == 25500
     && (crs812_lane_speed_wire(s: Lane50GCr2) as String) == "50G-baseCR2"
     && crs812_passive_dac_requires_forced_mode
 }

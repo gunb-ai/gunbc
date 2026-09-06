@@ -1,0 +1,145 @@
+module test.claim.cable_plant_converge_witness
+
+import std.types { Bool, List, NonEmptyStr }
+import extdeps.ethernet.link_mode { ieee_100gbase_cr2 }
+import extdeps.transceiver.sff_8636 {
+  sff8636_nominal_rate_from_byte140,
+  transceiver_identifier_from_byte, sff8636_encoding_from_byte,
+}
+import product.cable_leg_observation {
+  CableLegObservation, SecondaryNotObserved, SecondaryObserved, cable_leg_observation,
+}
+import product.cable_plant_converge {
+  CablePlant, cable_plant, CableLegReading, LegNeverRead, LegReadingTaken,
+  CablePlantObserved, CablePlantReceipt, CableLegOutcome,
+  PlantLegNeverRead, PlantHoldsNoLegs, PlantCodingCannotBeActuatedHere,
+  WorldConverged, WorldNotConverged,
+  converge_cable_plant,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// GREEN BY EXECUTION FOR THE INSTALLED PLANT. The order gates answer "should this be bought"; this
+// answers "is what is in the racks still what we need", and on this fleet today the honest answer
+// is no. The witness holds that no, so a later change cannot quietly turn the running fabric green.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The FS QDD-400G-4QPC015 leg as read off the delivered cable: SFF-8636 identifier 11h, primary
+// extended compliance 0Bh, byte 116 never read, encoding 8, byte 140 at the FFh escape.
+data delivered_fs_leg: CableLegObservation = cable_leg_observation(
+  identifier: transceiver_identifier_from_byte(code: 17),
+  primary_compliance_code: 11,
+  secondary_compliance: SecondaryNotObserved,
+  encoding: sff8636_encoding_from_byte(code: 8),
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
+
+// The same copper with the coding the rail actually needs: secondary 40h is SFF-8024's
+// 50GBASE-CR / 100GBASE-CR2 / 200GBASE-CR4 row.
+data correctly_coded_leg: CableLegObservation = cable_leg_observation(
+  identifier: transceiver_identifier_from_byte(code: 17),
+  primary_compliance_code: 11,
+  secondary_compliance: SecondaryObserved { code: 64 },
+  encoding: sff8636_encoding_from_byte(code: 8),
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
+
+data installed_plant: CablePlant = cable_plant(
+  plant: "spark fabric, CRS812 QSFP-DD breakout legs" as NonEmptyStr,
+  required_mode: ieee_100gbase_cr2,
+  readings: [
+    LegReadingTaken { endpoint: "qsfp56-dd-1-1" as NonEmptyStr, observation: delivered_fs_leg },
+    LegReadingTaken { endpoint: "qsfp56-dd-1-3" as NonEmptyStr, observation: delivered_fs_leg },
+  ],
+)
+
+data repaired_plant: CablePlant = cable_plant(
+  plant: "spark fabric, CRS812 QSFP-DD breakout legs" as NonEmptyStr,
+  required_mode: ieee_100gbase_cr2,
+  readings: [
+    LegReadingTaken { endpoint: "qsfp56-dd-1-1" as NonEmptyStr, observation: correctly_coded_leg },
+    LegReadingTaken { endpoint: "qsfp56-dd-1-3" as NonEmptyStr, observation: correctly_coded_leg },
+  ],
+)
+
+data partially_read_plant: CablePlant = cable_plant(
+  plant: "spark fabric, CRS812 QSFP-DD breakout legs" as NonEmptyStr,
+  required_mode: ieee_100gbase_cr2,
+  readings: [
+    LegReadingTaken { endpoint: "qsfp56-dd-1-1" as NonEmptyStr, observation: correctly_coded_leg },
+    LegNeverRead { endpoint: "qsfp56-dd-1-3" as NonEmptyStr },
+  ],
+)
+
+data empty_plant: CablePlant = cable_plant(
+  plant: "a rack nobody has cabled yet" as NonEmptyStr,
+  required_mode: ieee_100gbase_cr2,
+  readings: [],
+)
+
+// THE CENTRAL WITNESS: the fabric as it stands does not converge, and the refusal names the legs.
+test fn the_installed_plant_does_not_converge() -> Bool {
+  match converge_cable_plant(subject: installed_plant) {
+    WorldNotConverged { subject: s, refusal: r } =>
+      match r {
+        PlantCodingCannotBeActuatedHere { divergences: ds } => list_length(items: ds) == 2
+        PlantLegNeverRead { endpoint: e } => false
+        PlantHoldsNoLegs { plant: p } => false
+      }
+    WorldConverged { subject: s, observed: o, receipt: rc } => false
+  }
+}
+
+// THE POSITIVE CONTROL. Without it the refusal above could be produced by a plant that never
+// converges for any input, which would make the wall decoration rather than a check.
+test fn a_correctly_coded_plant_converges() -> Bool {
+  match converge_cable_plant(subject: repaired_plant) {
+    WorldConverged { subject: s, observed: o, receipt: rc } => rc.legs_read == 2
+    WorldNotConverged { subject: s, refusal: r } => false
+  }
+}
+
+// AN UNREAD LEG REFUSES THE WHOLE PLANT rather than being dropped from the population. This is the
+// discriminating input for the absorbing fallback: a plant reported over its read subset would
+// converge here, because the leg that WAS read is correctly coded.
+test fn one_unread_leg_refuses_the_plant() -> Bool {
+  match converge_cable_plant(subject: partially_read_plant) {
+    WorldNotConverged { subject: s, refusal: r } =>
+      match r {
+        PlantLegNeverRead { endpoint: e } => e == ("qsfp56-dd-1-3" as NonEmptyStr)
+        PlantCodingCannotBeActuatedHere { divergences: ds } => false
+        PlantHoldsNoLegs { plant: p } => false
+      }
+    WorldConverged { subject: s, observed: o, receipt: rc } => false
+  }
+}
+
+// A SUBJECT WITH NOTHING IN IT DOES NOT CONVERGE. Zero legs agree trivially, and a green derived
+// from an empty population is the vacuous pass DESIGN section 5 refuses.
+test fn an_empty_plant_does_not_converge() -> Bool {
+  match converge_cable_plant(subject: empty_plant) {
+    WorldNotConverged { subject: s, refusal: r } =>
+      match r {
+        PlantHoldsNoLegs { plant: p } => true
+        PlantLegNeverRead { endpoint: e } => false
+        PlantCodingCannotBeActuatedHere { divergences: ds } => false
+      }
+    WorldConverged { subject: s, observed: o, receipt: rc } => false
+  }
+}
+
+// THE REFUSAL CARRIES THE ENDPOINTS, not just a count: an operator reading this needs to know which
+// port to walk to. A refusal that said only "the plant diverges" would be a diagnostic without a
+// location, which is the half of fail-closed DESIGN section 5 asks for by name.
+test fn the_refusal_names_the_diverging_endpoints() -> Bool {
+  match converge_cable_plant(subject: installed_plant) {
+    WorldNotConverged { subject: s, refusal: r } =>
+      match r {
+        PlantCodingCannotBeActuatedHere { divergences: ds } =>
+          match ds.first() {
+            Present { value: d } => d.endpoint == ("qsfp56-dd-1-1" as NonEmptyStr)
+            Absent => false
+          }
+        PlantLegNeverRead { endpoint: e } => false
+        PlantHoldsNoLegs { plant: p } => false
+      }
+    WorldConverged { subject: s, observed: o, receipt: rc } => false
+  }
+}
