@@ -71,13 +71,23 @@ type VllmStartupReading sole_constructor {
   observed_at_revision: VllmSourceRevision
 }
 
+// THE REVISION IS OBSERVED, NOT STAMPED. This constructor used to fill observed_at_revision from
+// vllm_source_revision_read, the constant naming the revision the LAWS were read from -- so every
+// reading asserted it had been taken at the modelled revision no matter which build produced it,
+// and the field the carrier's own note calls load-bearing could not disagree with the model. Every
+// downstream revision comparison was therefore permanently green: not a weak wall, a decoration.
+//
+// A reading is evidence about the build that emitted it, so the caller that captured the text
+// supplies the revision it captured it from. Agreeing with the modelled revision is then a real
+// question a consumer can ask and get "no" to.
 fn vllm_startup_reading(
   line: VllmStartupLine,
   captured_text: NonEmptyStr,
+  observed_at_revision: VllmSourceRevision,
 ) -> VllmStartupReading {
   VllmStartupReading {
     line: line,
     captured_text: captured_text,
-    observed_at_revision: vllm_source_revision_read
+    observed_at_revision: observed_at_revision
   }
 }

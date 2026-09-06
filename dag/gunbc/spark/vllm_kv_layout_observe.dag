@@ -89,12 +89,12 @@ fn admit_kv_layout(
             incarnation: incarnation,
             cause: join(["the layout cannot be checked against the engine's own arithmetic: ", c as String], "") as NonEmptyStr,
           }
-        LayoutContradictsReported { derived: d, recovered: rec } =>
+        LayoutContradictsReported { predicted_hundredths: p, reported_hundredths: r } =>
           KvLayoutInconsistent {
             incarnation: incarnation,
             cause: join([
-              "the group layout and the printed lines describe different engines: the groups sum to ",
-              to_string(d), " blocks for a full-context request while the printed lines invert to ", to_string(rec),
+              "the group layout and the printed lines describe different engines: the groups predict a concurrency of ",
+              to_string(p), " hundredths while the engine printed ", to_string(r),
             ], "") as NonEmptyStr,
           }
         LayoutReproducesReported { blocks_per_max_request: b } =>
