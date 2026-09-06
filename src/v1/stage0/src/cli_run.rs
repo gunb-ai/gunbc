@@ -6081,12 +6081,12 @@ fn repo_paths_match_touched(closure_path: &str, touched_path: &str) -> bool {
 /// `.dag` authority by execution on real merged diffs via the module-grain receipt harness
 /// (`affected_decision_module_grain` section below).
 ///
-/// The fn-arrow DependencyView chain (fork (c) 2026-07-10, #6335 unwind) is no longer a
-/// parallel selection mechanism: `entry_affected_by_dependency_view` in
-/// `v2.lens.affected_set.entry_selection` now delegates to
-/// `entry_affected_by_touched_paths`. The fn-arrow primitives remain in the corpus as
-/// dead code (see the DELETE WHEN note in that module). This resolves the §3 fork where
-/// three mechanisms answered "which tests are affected?".
+/// The fn-arrow DependencyView composition (fork (c) 2026-07-10, #6335 unwind) is DELETED
+/// — `v2.lens.affected_set.corpus_dependency_view` removed outright (the fn-arrow
+/// selection mechanism #2). The surviving authority is this host rendering of
+/// `v2.lens.module_graph.entry_affected_by_touched_paths` (import-closure, mechanism #3).
+/// The §3 fork where three mechanisms answered "which tests are affected?" is resolved:
+/// two parallel mechanisms deleted or consolidated onto the survivor.
 ///
 /// Dissolve-on: the namespace-only resolution terminal step replaces import edges with
 /// `container.member` reference edges — the closure query above the edge source is
