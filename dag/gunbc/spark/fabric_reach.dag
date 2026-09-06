@@ -1,0 +1,93 @@
+module gunbc.spark.fabric_reach
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.algebra { trim }
+import std.resources { Network }
+import product.placement_supply { HostIdentity }
+import extdeps.network.ipv4 { render_ipv4_address }
+import extdeps.exec.command { LocalExec }
+import extdeps.tools.hostname { hostname_read_command }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.command_runner { run_shell_command_capture }
+import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet_host_key_enrollment { KnownHostKeyRow, fleet_host_key_enrollments }
+import gunbc.spark.fabric_switch_observed { FabricLaneObserved, fabric_lane_observations, fabric_lane_for_host }
+import gunbc.spark.fabric_rail_desired { fabric_rail_address_of }
+
+// A SPARK IS REACHABLE ON TWO NETWORKS AND THE CHOICE IS THE EXECUTOR'S POSITION, NOT A FALLBACK.
+// The management LAN (the CR1000A lease the procurement rows carry) is what a runner or the
+// operator workstation reaches. The switched fabric rail (gunbc.spark.fabric_rail_desired) is what
+// only another fabric host reaches. A leg executed from a fabric host takes the rail: it is the
+// network the serving group already depends on, and a management-LAN fault on a member then does
+// not block converging it. A leg executed from anywhere else takes the LAN. Neither arm tries the
+// other on failure; a refused leg is a refused leg, typed with the path it took.
+type SparkReachPath = ReachManagementLan | ReachFabricRail
+
+fn spark_reach_path_wire(p: SparkReachPath) -> String {
+  match p {
+    ReachManagementLan => "management-lan"
+    ReachFabricRail => "fabric-rail"
+  }
+}
+
+fn fabric_lane_for_spark_hostname(short_hostname: String) -> FabricLaneObserved? {
+  first(filter(fabric_lane_observations, o => (o.spark_hostname as String) == short_hostname))
+}
+
+// The executor's own short hostname decides the path: a Spark on the fabric is named by its lane
+// row (spark-xxxx), anything else is off the fabric.
+fn spark_reach_path_for_executor(executor_short_hostname: String) -> SparkReachPath {
+  match fabric_lane_for_spark_hostname(short_hostname: trim(s: executor_short_hostname)) {
+    Present { value: _ } => ReachFabricRail
+    Absent => ReachManagementLan
+  }
+}
+
+// The endpoint for one host on one path. Absent on the rail for a host with no lane: there is no
+// rail address to fabricate, and the LAN is a different path, not this one's second try.
+fn spark_reach_endpoint(host: HostIdentity, path: SparkReachPath) -> String? {
+  match path {
+    ReachManagementLan => Present { value: fleet_probe_endpoint_for(host: host as String) }
+    ReachFabricRail =>
+      match fabric_lane_for_host(host: host) {
+        Absent => none
+        Present { value: o } => Present { value: render_ipv4_address(addr: fabric_rail_address_of(o: o)) as String }
+      }
+  }
+}
+
+// THE SAME HOST KEY PINNED AT THE RAIL ADDRESS. sshd presents one host key on every interface, so
+// the enrolled key for a fabric host is valid at its rail endpoint; a row per lane host carries the
+// enrollment's key and provenance under the rail address, so a rail leg is anchored exactly as a
+// LAN leg is and is never trust-on-first-use.
+fn fabric_rail_known_host_rows() -> List<KnownHostKeyRow> {
+  flat_map(fleet_host_key_enrollments, k =>
+    match fabric_lane_for_host(host: k.host) {
+      Absent => [] as List<KnownHostKeyRow>
+      Present { value: o } => [KnownHostKeyRow {
+        host: k.host,
+        endpoint: render_ipv4_address(addr: fabric_rail_address_of(o: o)) as String,
+        key_type: k.key_type,
+        public_key_base64: k.public_key_base64,
+        sha256_fingerprint: k.sha256_fingerprint,
+        provenance: k.provenance,
+      }]
+    })
+}
+
+type ExecutorReach
+  = ExecutorReachKnown { short_hostname: String, path: SparkReachPath }
+  | ExecutorReachUnknown { cause: String }
+
+// Read once per run from the executing host, never from an environment variable or a flag: the
+// path is a fact about where the run is, and a caller-chosen path would be the fallback this module
+// refuses to have.
+func observe_executor_reach() -> ExecutorReach
+  uses net: Network
+{
+  match run_shell_command_capture(command: hostname_read_command(), transport: LocalExec) {
+    ProcessRefused { exit_code: _, stderr: e } => ExecutorReachUnknown { cause: join(["the executor's hostname could not be read: ", trim(s: e)], "") }
+    ProcessOutputAbsent => ExecutorReachUnknown { cause: "the executor's hostname read printed nothing" }
+    ProcessOutputPresent { text: t } => ExecutorReachKnown { short_hostname: trim(s: t), path: spark_reach_path_for_executor(executor_short_hostname: t) }
+  }
+}

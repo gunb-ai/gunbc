@@ -388,6 +388,25 @@ test fn effects_post_parent_path_witnesses() -> Bool {
     )
 }
 
+test fn pulls_create_derives_a_post_to_the_pulls_collection() -> Bool {
+  derived_raw_is_create(name: "CreateSecret", method: POST, raw: "/v1/projects/\{project_id\}/secrets")
+    && derived_raw_is_create(
+      name: "CreateComment",
+      method: POST,
+      raw: "/repos/\{owner\}/\{repo\}/issues/\{issue_number\}/comments"
+    )
+    && derived_raw_is_create(
+      name: "CreateReview",
+      method: POST,
+      raw: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}/reviews"
+    )
+    && derived_raw_is_create(
+      name: "Create",
+      method: POST,
+      raw: "/repos/\{owner\}/\{repo\}/pulls"
+    )
+}
+
 test fn effects_create_if_absent_dedup_witnesses() -> Bool {
   let key = InputField { field: "id" }
   let shape = CreateEffect { cause: CreateIfAbsent { key_source: key } }

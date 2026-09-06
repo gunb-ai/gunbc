@@ -1269,10 +1269,6 @@ pub struct TransitionAdmission {
 /// next roster-touching change -- adjudicated by the declaring-module join the THIRTIETH
 /// DISSOLUTION describes, never by this sentence, and confirmable only by the wall's own run at
 /// the exact head.
-const SCM_OBJECT_TABLE_CODEC_MOVE_LABEL: &str =
-    "gunbc#10445 SCM object-table codec move: the mixed-table encoder, decoder and their positions \
-     move from gunbc.scm.commit_closure_json_v2 to gunbc.scm.object_table_json";
-
 /// THERE IS NO MANIFEST-VOCABULARY LABEL, AND THE 38 ROWS THAT CARRIED ONE ARE DELETED. An earlier
 /// head of this branch authored one row per newly authored manifest spelling, each reported as a
 /// `NewPoolCoincidenceResolution` binding delta by the wall at that base. Against the merged base
@@ -1288,228 +1284,579 @@ const SCM_OBJECT_TABLE_CODEC_MOVE_LABEL: &str =
 /// introduced when the untyped locator was split so an authored-source identity can no longer
 /// inhabit a semantic child position. These fixtures could previously write a bare `ObjectId`
 /// there; they now name the constructor, which is a name the base corpus did not declare.
-const SCM_NODE_TARGET_CONSTRUCTOR_LABEL: &str =
-    "gunbc#10445 SCM semantic-target constructor: node_target_of is newly authored in \
-     gunbc.scm.object_store and had no base declaration";
+/// TWENTY-FIRST TRANSITION (2026-09-04, gunbc#10300). `param_names_of` stood twice, byte-identical,
+/// in `v2.lens.effect_reach` and `v2.lens.live_read_classification`, and it is the last duplicated
+/// fn-arrow helper: both copies are deleted and both lenses now read the one declaration in
+/// `v2.std.fn_index`, where `callees_from_node` already needed it to exclude a declaration's own
+/// parameter names from its callee set. Two `TargetChanged` deltas follow, one per consuming lens,
+/// enumerated by identity rather than admitted by a spelling wildcard, because a wildcard would also
+/// admit a THIRD consumer nobody reviewed.
+///
+/// ITS CONSUMPTION IS DECIDABLE ON THE ORDINARY RULE: once this merges, the base binds the spelling
+/// to `v2.std.fn_index` in both modules, the deltas stop being producible, and these two rows are
+/// owed deletion by the next roster-touching change -- the same rule the two dissolutions below were
+/// paid on.
+///
+/// THIRTIETH DISSOLUTION (2026-09-04, gunbc#10300). All 30 `gunbc#10355` SCM proposal-vocabulary
+/// rows are deleted, and `SCM_PROPOSAL_VOCABULARY_LABEL` with them. This is not a judgement call:
+/// the required namespace-wave-admission phase reported them by identity as `CONSUMED ADMISSION`,
+/// 30 of 30, on this branch's own head -- #10355 has merged, the base now binds each spelling to
+/// `gunbc.scm.proposal`, and the deltas have stopped being producible.
+///
+/// THE DELETION IS OWED BY THIS CHANGE AND NOT BY A LATER ONE, on the roster's own standing rule:
+/// a consumed row's deletion comes due on the roster's next touch, and this change touches the
+/// roster. That rule is what keeps the ledger from growing without bound, and it is why this
+/// dissolution is authored by a PR that has nothing to do with SCM vocabulary.
+///
+/// THIRTY-FIRST DISSOLUTION (2026-09-04, gunbc#10300). Both `gunbc#10350` kernel-identity
+/// predicate-relocation rows are deleted, and `KERNEL_IDENTITY_RELOCATION_LABEL` with them. Reported
+/// by identity as `CONSUMED ADMISSION`, 2 of 2, by the required phase on this branch's own head:
+/// #10350 has merged, `v1.compiler.infer::ancestry_binding_is_kernel_identity` and
+/// `v1.compiler.emit_rust::import_name_resolves_to_host_realized_kernel_scalar` both bind
+/// `resolved_node_is_kernel_identity_for_name` to `v1.std.core` at the base, and neither delta is
+/// producible any more.
+///
+/// THE SECOND SUCH PAYMENT ON THIS ONE BRANCH, which is worth recording rather than smoothing over.
+/// The THIRTIETH deleted 30 consumed `gunbc#10355` rows; a merge of main then brought in a fresh
+/// cohort whose own transition had merged in the meantime, and the phase came due again. That is the
+/// treadmill working as designed, not a defect: a long-lived branch touches the roster once per
+/// sync, and each touch pays whatever the base has since consumed. The alternative -- passing it on
+/// -- is what makes an append-only ledger grow without bound.
+///
+/// THIRTY-SECOND DISSOLUTION (2026-09-04, gunbc#10300). All six `gunbc#10439` serving-engine
+/// launch-vocabulary rows are deleted, and `SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL` with them.
+/// Reported by identity as `CONSUMED ADMISSION`, 6 of 6, by the required phase on this branch's own
+/// head: #10439 has merged and none of the six deltas is producible against the base any more.
+///
+/// THE THIRD PAYMENT ON THIS ONE BRANCH, AND THE PATTERN IS NOW THE POINT. The THIRTIETH cleared 30
+/// consumed `gunbc#10355` rows, the THIRTY-FIRST cleared 2 `gunbc#10350` rows, and this clears 6
+/// `gunbc#10439` rows -- three different cohorts, none of them this PR's, each consumed by a merge
+/// that happened while this branch was open. A branch that syncs with main N times touches the
+/// roster N times and owes the payment N times.
+///
+/// THAT IS THE RULE WORKING, NOT FRICTION TO ROUTE AROUND, and it is worth saying plainly because
+/// the tempting reading is the opposite. The alternative to paying on touch is a roster that only
+/// ever grows, where every stale row refuses unrelated changes and the cost lands on whoever is
+/// unlucky enough to touch the file last. Paying three times over one afternoon is the ledger
+/// staying small; it is not the ledger misbehaving.
+///
+/// THIRTY-THIRD DISSOLUTION (2026-09-05, gunbc#10300). All 22 `gunbc#10445` rows are deleted, and
+/// both `SCM_OBJECT_TABLE_CODEC_MOVE_LABEL` and `SCM_NODE_TARGET_CONSTRUCTOR_LABEL` with them --
+/// 17 object-table codec-move rows and 5 semantic-target constructor rows. Reported by identity as
+/// `CONSUMED ADMISSION`, 22 of 22, by the required phase on this branch's own head: #10445 has
+/// merged and none of the deltas is producible against the base any more.
+///
+/// FOURTH PAYMENT, FOURTH COHORT, NONE OF THEM THIS PR'S. The running total on one branch is 30
+/// (#10355) + 2 (#10350) + 6 (#10439) + 22 (#10445) = 60 rows dissolved for work this change has
+/// nothing to do with, because the roster's rule is that a consumed row's deletion comes due on the
+/// roster's next touch and every sync with main is a touch.
+///
+/// THE RATE IS THE OBSERVATION WORTH LEAVING HERE. Four cohorts became consumed inside one open
+/// branch's lifetime, which means main is landing roster-touching transitions faster than a branch
+/// can complete a CI cycle. That is not an argument against the rule -- the ledger is 2 rows rather
+/// than 62 precisely because it is paid on touch -- but it does mean a long-lived branch pays a
+/// toll proportional to how long it stays open, and the honest way to shrink that toll is to keep
+/// branches short rather than to defer the payment.
+///
+/// THIRTY-FOURTH DISSOLUTION (2026-09-05, gunbc#10324), PAID BECAUSE THIS CHANGE TOUCHES THE
+/// ROSTER. Both `gunbc#10300 param_names_of grounding` rows are deleted. gunbc#10300 merged, so its
+/// rows were consumed by their own merge and their deletion falls to this roster's next touch.
+///
+/// ADJUDICATED BY THE DECLARING-MODULE JOIN AGAINST MAIN'S OWN BLOBS, NOT AGAINST THIS WORKTREE.
+/// The first run of this join read the working tree and answered NOT DECLARED, which would have
+/// kept two consumed rows alive; the working tree was the PRE-MERGE tree, so it was answering about
+/// a base the wall does not compare. Re-asked against `origin/main`, `param_names_of` IS declared in
+/// `v2.std.fn_index`, and NEITHER `v2.lens.effect_reach` NOR `v2.lens.live_read_classification`
+/// still declares its own copy -- so base and head bind the spelling identically and no run can
+/// produce these deltas. CALIBRATED IN BOTH DIRECTIONS: a fabricated spelling answers NOT DECLARED
+/// against the same module, and real neighbours in that module answer DECLARED, so neither a
+/// uniform "found" nor a uniform "missing" was available to the join. THE FIRST READING IS RECORDED
+/// RATHER THAN QUIETLY CORRECTED, because a join that silently answers about the wrong tree is the
+/// same defect class as an edit pass that matches nothing: well-formed, plausible, and about a
+/// subject that is not the one under adjudication.
+///
+/// THIS BRANCH'S OWN THIRTY-THIRD DISSOLUTION IS DROPPED, NOT RENUMBERED -- the fourth time this has
+/// happened here. gunbc#10300 landed its own THIRTY-THIRD DISSOLUTION deleting the identical 22
+/// gunbc#10445 rows this branch had just deleted. The deletion happened ONCE; two entries would
+/// leave two authorities describing one event.
+///
+/// FIFTH OBLIGATION, 62 ROWS, NONE AUTHORED HERE: 30 gunbc#10355, 2 gunbc#10350, 6 gunbc#10439, 22
+/// gunbc#10445, and now 2 gunbc#10300. FOUR OF THE FIVE WERE ALSO PAID INDEPENDENTLY BY THE BRANCH
+/// THAT LANDED FIRST, which is why four dissolution entries written here are dropped rather than
+/// renumbered. The rate is the observation: this roster is a serialization point every merging
+/// branch must pass through, and the debt attaches to arrival order, not to authorship.
+
+/// TWENTY-SIXTH TRANSITION (2026-09-05, gunbc#10324). `host_converge_for_identity` moves out of
+/// `gunbc.fleet_converge_cli` and lands beside the type it looks up, in `gunbc.host_converge`. Two
+/// bindings in `gunbc.fleet_converge_cli` therefore resolve to a new target, which is
+/// `TargetChanged` and is not auto-admitted.
+///
+/// WHY THE MOVE, because a relocation with no reason is the one a reader cannot check: the generic
+/// `find_by_identity` returns `T?` and the Optional does not survive inference, so a `match` over
+/// its result reads as the bare element type and reports `Present` as a missing variant of it, at
+/// that type's declaration, in another file. Two callers had each privately worked around this with
+/// their own monomorphic wrapper and a third site was about to author the same one. Promoting ONE
+/// wrapper to the module that declares `HostConverge` deletes the fork rather than widening it.
+///
+/// THE ORDINAL IS TWENTY-SIXTH AND IT STILL STANDS. It has already moved five times -- TWENTY-FIRST,
+/// TWENTY-THIRD, TWENTY-FOURTH, TWENTY-FIFTH, TWENTY-SIXTH -- each time because a base that changed
+/// underneath had minted the number first. This merge is the first that did NOT force a renumber:
+/// gunbc#10300 took TWENTY-FIRST, which was vacated by this entry long ago and is NOT reclaimed by
+/// it here either. THE VACATED NUMBERS ARE NOT RECLAIMED BY ANYONE is the stronger reading of that
+/// rule, and main just demonstrated the weaker one; the ordinals are a naming scheme, so what the
+/// discipline protects is that a citation resolves to ONE row across time, which reuse defeats.
+///
+/// THIS ENTRY AND ITS ROWS WERE RE-APPLIED ACROSS THE MERGE, NOT CARRIED, for the fifth time and for
+/// the same cause each time: the conflict is a misaligned array head, aligning this branch's rows
+/// against the other cohort's, so hand-editing the markers would splice one cohort's label onto the
+/// other's body. Main's file is taken WHOLE and this delta re-derived at ROW IDENTITY grain.
+///
+/// TRIGGER: gunbc#10324 MERGING. After that, main carries the wrapper in `gunbc.host_converge`, so
+/// base and head agree and no run can produce these deltas. They will then report CONSUMED, not
+/// stale, and their deletion is owed by whoever next touches this roster.
+/// DISSOLUTION PAID BY THIS CHANGE (2026-09-05, gunbc#10324). Both `host_converge_for_identity`
+/// rows are deleted, and `HOST_CONVERGE_LOOKUP_MOVE_LABEL` with them. The entry above named its own
+/// trigger -- gunbc#10324 MERGING -- and that has happened: 3a1ee654d4 is in this branch's history,
+/// so main carries the wrapper in `gunbc.host_converge`, base and head bind the spelling
+/// identically, and no run can produce these deltas.
+///
+/// ADJUDICATED BY A RUN, NOT BY THE TRIGGER SENTENCE. The required namespace-wave phase reported
+/// both rows as `CONSUMED ADMISSION` by identity, 2 of 2, and refused this change until they were
+/// removed -- which is the standard the entry above sets for itself and the reason the sentence
+/// alone was never sufficient.
+///
+/// THIRD COHORT PAID BY THIS BRANCH FOR WORK IT DID NOT DO, after gunbc#10439's six (paid by
+/// gunbc#10445 before this branch reached them) and gunbc#10300's two (paid concurrently by
+/// gunbc#10324). The toll is proportional to how long a branch stays open, which is an argument for
+/// shorter branches rather than against the rule: the roster is small precisely because the
+/// deletion comes due on touch.
+
+/// DISSOLUTION PAID BY THIS CHANGE (2026-09-05, gunbc#10459). All seven parsed-item-kind
+/// vocabulary rows are deleted, and `PARSED_ITEM_KIND_VOCABULARY_LABEL` with them. No ordinal is
+/// claimed, for the reason the entry below gives.
+///
+/// ADJUDICATED BY A RUN, NOT BY THE TRIGGER SENTENCE, which is the standard that entry set for
+/// itself: it asked for the deletion to be decided by joining each row against main's tree on its
+/// own (module, in_declaration, spelling, target) tuple rather than by trusting its own prose. The
+/// required namespace-wave phase did exactly that and reported all seven as CONSUMED ADMISSION by
+/// identity, 7 of 7, refusing this change until they were removed. gunbc#10459 is in main, so base
+/// and head bind each spelling to `v1.std.core` identically and no run can produce those deltas.
+///
+/// FOURTH COHORT PAID BY THIS BRANCH FOR WORK IT DID NOT DO, after gunbc#10439's six, gunbc#10300's
+/// two, and gunbc#10324's two. The roster's own note that the toll is proportional to how long a
+/// branch stays open is not an observation this branch can dispute: it has now paid on two separate
+/// touches, and the second cohort came due only because the first merge conflict held it open long
+/// enough for gunbc#10459 to land.
+
+/// SECRET MANAGER ACCESS ENSURE MOVES TO THE AUTH LAYER (2026-09-05, gunbc#10514). No ordinal is
+/// claimed, following the entry above and for the reason it gives: the numbered entries count
+/// against a sequence other lanes append to concurrently, so a number picked on this branch is
+/// wrong by the time it merges. This branch proved that empirically -- it authored a
+/// TWENTY-SEVENTH TRANSITION, and main had moved underneath it before the merge, which is the
+/// third such renumber this roster records rather than the first.
+///
+/// Eight bindings across two modules resolve to a new target, which is `TargetChanged` and is not
+/// auto-admitted. `secret_access_ensure_for`, `read_supplied_access_token`, `SuppliedTokenReady`
+/// and `SuppliedTokenUnavailable` move from `gunbc.spark.secret_access_ensure` to
+/// `gunbc.auth.gcp_secret_access`.
+///
+/// WHY THE MOVE, because a relocation with no reason is the one a reader cannot check: the module
+/// path named the reconciler's FIRST CONSUMER rather than the fact it owns. That held while
+/// spark-administrator-password was the only secret it bound, and stopped holding when the
+/// gunbai-ci App key became a second caller in a different domain and had to reach into the spark
+/// namespace for a fact that was never about spark. DESIGN section 3 homes a fact by its LAYER, so
+/// the reconciler lands in the auth layer and the spark module keeps a wrapper naming its own
+/// target.
+///
+/// THE LEAF IS UNCHANGED AND THE DECLARER MOVED, which is the shape this roster exists to
+/// adjudicate rather than auto-admit. Every one of those spellings is identical on both sides; only
+/// the declaring module differs. The wall keys on the leaf segment, sees the target move, and
+/// refuses -- correctly, because a symbol changing modules is real membership motion and not the
+/// requalification the leaf key is invariant under.
+///
+/// ONE CHANGE CLASS, NOT TWO. The standing rule is that a wave which both requalifies and moves a
+/// symbol is two classes in one diff. This is the second alone: nothing here is requalified, every
+/// spelling is imported under the leaf it always had, and what moved is the declaration behind it.
+///
+/// THIS BRANCH'S OWN DISSOLUTION ENTRY FOR THE gunbc#10324 ROWS IS DROPPED, NOT RENUMBERED, the
+/// same disposition the entries above record for four earlier collisions. This branch had authored
+/// one (numbered thirty-fifth at the time) deleting both `host_converge_for_identity` rows,
+/// adjudicated by its own required run reporting them CONSUMED, 2 of 2. Main discharged that
+/// deletion first. It happened ONCE, and two entries would leave two authorities for one event.
+///
+/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10514 merges. Main then carries the
+/// reconciler in `gunbc.auth.gcp_secret_access`, base and head bind each spelling identically, no
+/// run can produce these deltas, and all eight report CONSUMED rather than stale -- coming due on
+/// this roster's next touch. Adjudicate that deletion by joining each row against main's tree on its
+/// own (module, in_declaration, spelling, target) tuple rather than trusting this sentence, because
+/// a trigger sentence is not evidence that the trigger fired.
+/// THE gunbc#10514 SECRET-ACCESS ROWS DISSOLVED HERE (2026-09-05), BY THEIR OWN TRIGGER AND ON THE
+/// ROSTER TOUCH THEY NAMED. Their entry said they came due on this roster's next touch, and this is
+/// it: adding the row below made the required run report `0 unadjudicated delta(s), 0 stale
+/// admission(s), 8 consumed admission(s) due for deletion on this roster-touching change` (run
+/// 33998369913, `required-witnesses-floor`), which BLOCKS -- a consumed row left standing is the
+/// same debt a stale one is, and this is the seventh time this ledger has recorded that shape.
+///
+/// ADJUDICATED BY THE JOIN THEY DEMANDED RATHER THAN BY THEIR OWN SENTENCE, which is exactly what
+/// that entry asked of whoever deleted them. On main, `gunbc.auth.gcp_secret_access` declares all
+/// four spellings -- `secret_access_ensure_for`, `read_supplied_access_token`, `SuppliedTokenReady`
+/// and `SuppliedTokenUnavailable` -- and both consumers name that module in their import:
+/// `gunbc.fleet.org_actions_converge` on one line, `gunbc.spark.secret_access_ensure` in a braced
+/// list. `gunbc.spark.secret_access_ensure` no longer declares any of them. So base and head bind
+/// each spelling identically, no run can produce those deltas, and CONSUMED is the correct reading.
+/// That join is the positive, decidable fact the entry named as separating a consumed row from an
+/// author-error row; the trigger sentence alone was not taken as evidence that the trigger fired.
+///
+/// gunbc#10602, ONE ROW, ONE SUBJECT: `repository_status_lines` un-forked. `gunbc.scm.render`
+/// declared its own `repository_status_lines` that independently re-assembled the status line
+/// order already decided by `gunbc.scm.status` -- two authorities for one document's composition
+/// (DESIGN.md §3), which the repository's own
+/// `status_document_does_not_fork_the_verb_modules_text` witness exists to catch. The render copy
+/// is DELETED and `scm_status_document` now imports the status module's declaration. The spelling
+/// is unchanged on both sides and the declarer moved, so it arrives as `TargetChanged` -- the wall
+/// working on a deliberate deletion-and-repoint, not a requalification. Blast radius 0: the row
+/// names the exact (module, declaration, spelling) triple and admits nothing else.
+///
+/// TRIGGER, WHICH IS THIS ROW'S OWN DEATH: gunbc#10602 merging. Main then carries the un-fork,
+/// base and head both bind the spelling to `gunbc.scm.status`, no run can produce this delta, and
+/// the row reports CONSUMED rather than unadjudicated -- due for deletion on this roster's next
+/// touch. Adjudicate that deletion by joining the row against main's tree on its own
+/// (module, in_declaration, spelling, target) tuple, not by trusting this sentence.
+/// THE gunbc#10602 ROW DISSOLVED HERE (2026-09-06), BY ITS OWN TRIGGER AND ON THE ROSTER TOUCH IT
+/// NAMED. gunbc#10602 merged as 136d1c0f716, which is an ancestor of this change's base. Adjudicated
+/// by the join the entry above asked for rather than by its sentence: on main, `gunbc.scm.render`
+/// declares no `repository_status_lines` and imports that spelling from `gunbc.scm.status` inside
+/// `scm_status_document`, so base and head bind it identically, no run can produce the delta, and
+/// the row is CONSUMED -- due on this touch, which is this change. The gunbc#10514 dissolution the
+/// entry above records happened once and is not re-recorded here: this branch had deleted the same
+/// eight rows independently, the two deletions agree, and main's entry is the one authority.
+///
+/// THE PROBE CAPTURE MOVES TO THE DECODER THAT READS IT (2026-09-06, gunbc#10639). No ordinal is
+/// claimed, for the reason the entries above give. The Ollama-era Spark serving tree is deleted at
+/// the root in that change, and `gunbc.spark.serving_terminal_health` went with it. One type it
+/// declared, `SparkServingProbeCapture` with its three arms `ProbeNeverRan`, `ProbeFailed` and
+/// `ProbeAnswered`, had a consumer outside the tree: `gunbc.spark.training_ready`, which decodes
+/// probe captures into retirement observations and pool readings. The type is rehomed there. It
+/// is not a serving fact; it is the shape of a probe result, and the decoder was its only reader.
+///
+/// THIRTY BINDINGS ACROSS TWO MODULES resolve to the new declarer, which is `TargetChanged` and is
+/// not auto-admitted: nine in `gunbc.spark.training_ready` (the three decoders that match on the
+/// capture) and twenty-one in `test.claim.spark.spark_training_ready_witness_test` (the fixture
+/// constructors and the claims that read them). Every spelling is identical on both sides; only
+/// the declaring module differs, which is the membership motion this roster exists to adjudicate.
+///
+/// ONE CHANGE CLASS. Nothing is requalified; every spelling is imported under the leaf it always
+/// had, and the declaration behind it moved. The twenty-one `NewUnresolvedness` deltas the same
+/// run reported are not admitted here: they came from `v2.test.claim.spark_observation_scope`,
+/// whose whole subject was a deleted module, and that test is deleted in the same change, so no
+/// run against its head can produce them.
+///
+/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10639 merges. Main then declares
+/// the capture in `gunbc.spark.training_ready`, base and head bind each spelling identically, and
+/// all thirty report CONSUMED, coming due on this roster's next touch. Adjudicate that deletion by
+/// joining each row against main's tree on its own tuple, not by trusting this sentence.
+const PROBE_CAPTURE_REHOME_LABEL: &str =
+    "gunbc#10639 serving-tree cut: SparkServingProbeCapture and its arms move from the deleted \
+     gunbc.spark.serving_terminal_health to their only reader, gunbc.spark.training_ready";
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: SCM_NODE_TARGET_CONSTRUCTOR_LABEL,
+        label: PROBE_CAPTURE_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_commit_closure_witness",
-            in_declaration: "build_full_store",
-            spelling: "node_target_of",
-            target: "gunbc.scm.object_store",
-        },
-        disposition: NamespaceDeltaDisposition::AuthoredReferenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_NODE_TARGET_CONSTRUCTOR_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_commit_closure_witness",
-            in_declaration: "build_two_child_store",
-            spelling: "node_target_of",
-            target: "gunbc.scm.object_store",
-        },
-        disposition: NamespaceDeltaDisposition::AuthoredReferenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_NODE_TARGET_CONSTRUCTOR_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_commit_closure_witness",
-            in_declaration: "closure_over_an_occupied_locator",
-            spelling: "node_target_of",
-            target: "gunbc.scm.object_store",
-        },
-        disposition: NamespaceDeltaDisposition::AuthoredReferenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_NODE_TARGET_CONSTRUCTOR_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_commit_closure_witness",
-            in_declaration: "permutation_fixture",
-            spelling: "node_target_of",
-            target: "gunbc.scm.object_store",
-        },
-        disposition: NamespaceDeltaDisposition::AuthoredReferenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_NODE_TARGET_CONSTRUCTOR_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_load_standing_witness",
-            in_declaration: "ls_full",
-            spelling: "node_target_of",
-            target: "gunbc.scm.object_store",
-        },
-        disposition: NamespaceDeltaDisposition::AuthoredReferenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.commit_closure_json_v2",
-            in_declaration: "an_uncontained_key",
-            spelling: "object_id_key",
-            target: "gunbc.scm.object_table_json",
+            module: "gunbc.spark.training_ready",
+            in_declaration: "spark_serving_absence_from_probe",
+            spelling: "ProbeAnswered",
+            target: "gunbc.spark.training_ready",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
+        label: PROBE_CAPTURE_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.commit_closure_json_v2",
-            in_declaration: "encoded_root_reference",
-            spelling: "EncodeAcc",
-            target: "gunbc.scm.object_table_json",
+            module: "gunbc.spark.training_ready",
+            in_declaration: "spark_serving_absence_from_probe",
+            spelling: "ProbeFailed",
+            target: "gunbc.spark.training_ready",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
+        label: PROBE_CAPTURE_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.commit_closure_json_v2",
-            in_declaration: "encoded_root_reference",
-            spelling: "encode_target",
-            target: "gunbc.scm.object_table_json",
+            module: "gunbc.spark.training_ready",
+            in_declaration: "spark_serving_absence_from_probe",
+            spelling: "ProbeNeverRan",
+            target: "gunbc.spark.training_ready",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
+        label: PROBE_CAPTURE_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "commit_root_standing",
-            spelling: "EncodeAcc",
-            target: "gunbc.scm.object_table_json",
+            module: "gunbc.spark.training_ready",
+            in_declaration: "spark_serving_absence_from_probe",
+            spelling: "SparkServingProbeCapture",
+            target: "gunbc.spark.training_ready",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
+        label: PROBE_CAPTURE_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "commit_root_standing",
-            spelling: "node_position_of",
-            target: "gunbc.scm.object_table_json",
+            module: "gunbc.spark.training_ready",
+            in_declaration: "spark_serving_retirement_observation_from_probes",
+            spelling: "SparkServingProbeCapture",
+            target: "gunbc.spark.training_ready",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
+        label: PROBE_CAPTURE_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "decode_commit_members",
-            spelling: "DecodePositions",
-            target: "gunbc.scm.object_table_json",
+            module: "gunbc.spark.training_ready",
+            in_declaration: "spark_unified_pool_observation_from_capture",
+            spelling: "ProbeAnswered",
+            target: "gunbc.spark.training_ready",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
+        label: PROBE_CAPTURE_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "decode_commit_members_after_reference",
-            spelling: "DecodePositions",
-            target: "gunbc.scm.object_table_json",
+            module: "gunbc.spark.training_ready",
+            in_declaration: "spark_unified_pool_observation_from_capture",
+            spelling: "ProbeFailed",
+            target: "gunbc.spark.training_ready",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
+        label: PROBE_CAPTURE_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "decode_commit_root",
-            spelling: "DecodePositions",
-            target: "gunbc.scm.object_table_json",
+            module: "gunbc.spark.training_ready",
+            in_declaration: "spark_unified_pool_observation_from_capture",
+            spelling: "ProbeNeverRan",
+            target: "gunbc.spark.training_ready",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
+        label: PROBE_CAPTURE_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "decode_commit_root",
-            spelling: "resolve_reference",
-            target: "gunbc.scm.object_table_json",
+            module: "gunbc.spark.training_ready",
+            in_declaration: "spark_unified_pool_observation_from_capture",
+            spelling: "SparkServingProbeCapture",
+            target: "gunbc.spark.training_ready",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
+        label: PROBE_CAPTURE_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "decode_commit_step",
-            spelling: "DecodePositions",
-            target: "gunbc.scm.object_table_json",
+            module: "test.claim.spark.spark_training_ready_witness_test",
+            in_declaration: "w_a_capture_whose_body_is_not_a_count_is_refused",
+            spelling: "ProbeAnswered",
+            target: "gunbc.spark.training_ready",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
+        label: PROBE_CAPTURE_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "decode_repository_body_with_allocator",
-            spelling: "DecodeAcc",
-            target: "gunbc.scm.object_table_json",
+            module: "test.claim.spark.spark_training_ready_witness_test",
+            in_declaration: "w_a_connect_failure_never_establishes_endpoint_absence",
+            spelling: "ProbeFailed",
+            target: "gunbc.spark.training_ready",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
+        label: PROBE_CAPTURE_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "decode_repository_body_with_allocator",
-            spelling: "decode_object_table",
-            target: "gunbc.scm.object_table_json",
+            module: "test.claim.spark.spark_training_ready_witness_test",
+            in_declaration: "w_a_pool_number_without_a_read_is_refused",
+            spelling: "ProbeNeverRan",
+            target: "gunbc.spark.training_ready",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
+        label: PROBE_CAPTURE_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "encode_commit_record",
-            spelling: "EncodeAcc",
-            target: "gunbc.scm.object_table_json",
+            module: "test.claim.spark.spark_training_ready_witness_test",
+            in_declaration: "w_a_pool_over_an_unestablished_retirement_is_refused",
+            spelling: "ProbeAnswered",
+            target: "gunbc.spark.training_ready",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
+        label: PROBE_CAPTURE_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "encode_commit_records",
-            spelling: "EncodeAcc",
-            target: "gunbc.scm.object_table_json",
+            module: "test.claim.spark.spark_training_ready_witness_test",
+            in_declaration: "w_a_still_serving_endpoint_refuses",
+            spelling: "ProbeAnswered",
+            target: "gunbc.spark.training_ready",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
+        label: PROBE_CAPTURE_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "unresolved_commit_root",
-            spelling: "EncodeAcc",
-            target: "gunbc.scm.object_table_json",
+            module: "test.claim.spark.spark_training_ready_witness_test",
+            in_declaration: "w_an_enumeration_that_never_ran_establishes_no_endpoint_absence",
+            spelling: "ProbeNeverRan",
+            target: "gunbc.spark.training_ready",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
+        label: PROBE_CAPTURE_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "unresolved_commit_root_step",
-            spelling: "EncodeAcc",
-            target: "gunbc.scm.object_table_json",
+            module: "test.claim.spark.spark_training_ready_witness_test",
+            in_declaration: "w_endpoint_absence",
+            spelling: "SparkServingProbeCapture",
+            target: "gunbc.spark.training_ready",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
+        label: PROBE_CAPTURE_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "encode_repository_checked",
-            spelling: "encode_object_table",
-            target: "gunbc.scm.object_table_json",
+            module: "test.claim.spark.spark_training_ready_witness_test",
+            in_declaration: "w_endpoint_absent_capture",
+            spelling: "ProbeAnswered",
+            target: "gunbc.spark.training_ready",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: PROBE_CAPTURE_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark.spark_training_ready_witness_test",
+            in_declaration: "w_endpoint_absent_capture",
+            spelling: "SparkServingProbeCapture",
+            target: "gunbc.spark.training_ready",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: PROBE_CAPTURE_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark.spark_training_ready_witness_test",
+            in_declaration: "w_only_a_completed_empty_enumeration_establishes_endpoint_absence",
+            spelling: "ProbeAnswered",
+            target: "gunbc.spark.training_ready",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: PROBE_CAPTURE_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark.spark_training_ready_witness_test",
+            in_declaration: "w_pool_or_refused",
+            spelling: "ProbeAnswered",
+            target: "gunbc.spark.training_ready",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: PROBE_CAPTURE_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark.spark_training_ready_witness_test",
+            in_declaration: "w_process_absent_capture",
+            spelling: "ProbeFailed",
+            target: "gunbc.spark.training_ready",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: PROBE_CAPTURE_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark.spark_training_ready_witness_test",
+            in_declaration: "w_process_absent_capture",
+            spelling: "SparkServingProbeCapture",
+            target: "gunbc.spark.training_ready",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: PROBE_CAPTURE_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark.spark_training_ready_witness_test",
+            in_declaration: "w_silent_capture",
+            spelling: "ProbeNeverRan",
+            target: "gunbc.spark.training_ready",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: PROBE_CAPTURE_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark.spark_training_ready_witness_test",
+            in_declaration: "w_silent_capture",
+            spelling: "SparkServingProbeCapture",
+            target: "gunbc.spark.training_ready",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: PROBE_CAPTURE_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark.spark_training_ready_witness_test",
+            in_declaration: "w_the_refusal_carries_a_cause_rather_than_a_bare_negative",
+            spelling: "ProbeFailed",
+            target: "gunbc.spark.training_ready",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: PROBE_CAPTURE_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark.spark_training_ready_witness_test",
+            in_declaration: "w_the_unit_axis_establishes_absence_by_answering_not_by_failing",
+            spelling: "ProbeAnswered",
+            target: "gunbc.spark.training_ready",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: PROBE_CAPTURE_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark.spark_training_ready_witness_test",
+            in_declaration: "w_the_unit_axis_establishes_absence_by_answering_not_by_failing",
+            spelling: "ProbeFailed",
+            target: "gunbc.spark.training_ready",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: PROBE_CAPTURE_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark.spark_training_ready_witness_test",
+            in_declaration: "w_unit_absence",
+            spelling: "SparkServingProbeCapture",
+            target: "gunbc.spark.training_ready",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: PROBE_CAPTURE_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark.spark_training_ready_witness_test",
+            in_declaration: "w_unit_absent_capture",
+            spelling: "ProbeAnswered",
+            target: "gunbc.spark.training_ready",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: PROBE_CAPTURE_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark.spark_training_ready_witness_test",
+            in_declaration: "w_unit_absent_capture",
+            spelling: "SparkServingProbeCapture",
+            target: "gunbc.spark.training_ready",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },

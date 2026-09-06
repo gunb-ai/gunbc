@@ -1,0 +1,168 @@
+module extdeps.printing.orca_slicer
+
+import std.types { String, NonEmptyStr, List }
+import extdeps.tools.sha256sum {
+  Sha256VerifyVerdict, Sha256Matches, Sha256Mismatch, Sha256VerifyInfraFailure,
+  sha256sum_verify_via_shell,
+}
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.gnu.libc { GlibcVersion, glibc_version }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/SoftFever/OrcaSlicer/releases/tag/v2.4.2"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.printing.orca_slicer",
+      decl_name: "orca_slicer_version",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// WHY THIS SLICER AND NOT A DEBIAN-PACKAGED ONE, which is a real choice with a real loser.
+//
+// Debian bookworm main carries prusa-slicer, cura-engine, slic3r and slic3r-prusa for arm64. Any of
+// them installs in one apt transaction. None of them can drive the machines this repository
+// actually owns: extdeps.printing.bambu_lab_a1_mini is a Bambu Lab printer, gunbc.fleet_printer_access
+// models it in LAN Mode with an MQTT control channel and an FTPS file channel, and that firmware
+// consumes a sliced Bambu project file. A generic slicer's g-code is not that artifact. Choosing the
+// easy install would have produced a toolchain that runs end to end and emits something the printer
+// does not accept -- the fabricated plausible output DESIGN section 5 forbids, arrived at by picking
+// the dependency that was convenient rather than the one that closes the loop.
+//
+// OrcaSlicer is a PrusaSlicer derivative that carries first-party Bambu machine profiles and can
+// export the project format, which is why it is the modelled dependency despite being the harder
+// one to obtain.
+
+data orca_slicer_version: NonEmptyStr = "2.4.2"
+
+// THE SELECTED ARTIFACT, AND THE CLAIM IS ABOUT THE APPIMAGE ROUTE ONLY. An earlier revision said
+// "aarch64 support appears at v2.4.0", which is false: upstream published an aarch64 FLATPAK at
+// v2.3.1. The narrow true statement is the one that bears on the choice made here -- the aarch64
+// AppImage, which is the no-root route, appears at v2.4.0, and every aarch64 AppImage upstream ships
+// is built on Ubuntu 24.04, so there is no AppImage built against an older toolchain to fall back
+// to. The flatpak does not help independently, because this environment has neither flatpak nor
+// bubblewrap; it is named so the census is not read as broader than it is.
+data orca_slicer_linux_aarch64_appimage: NonEmptyStr = "OrcaSlicer_Linux_AppImage_Ubuntu2404_aarch64_V2.4.2.AppImage"
+
+// THE CONTENT DIGEST OF THE ARTIFACT THAT WAS ACTUALLY FETCHED AND EXAMINED. A version alone does
+// not identify bytes: a release asset can be replaced in place, and every measurement recorded in
+// this module was made against THIS content and is a claim about nothing else.
+data orca_slicer_linux_aarch64_appimage_sha256: NonEmptyStr = "e1a07275a25f176626c55a5df39e91bc4476d8c28ee4a3192ff758e29dd5c3ba"
+
+// THE ABI FLOOR, MEASURED FROM THE ARTIFACT AND NOT INFERRED FROM ITS FILENAME.
+//
+// The AppImage was extracted and symbol versions read across its WHOLE ELF CLOSURE -- 150 objects,
+// executables and shared libraries alike -- not from the main binary alone. The highest versioned
+// reference is GLIBC_2.38. Censusing only the entry binary was the first shape of this measurement
+// and it is the wrong denominator: a bundled plugin may reference a newer symbol than the executable
+// that loads it, and the floor that decides executability is the maximum over the closure.
+//
+// The Ubuntu 24.04 in the asset name would have SUGGESTED 2.39, and that guess would have been WRONG
+// IN THE DIRECTION THAT REFUSES A WORKING HOST -- a build host's glibc is an upper bound on what a
+// binary may reference, never the floor it actually requires. extdeps.gnu.libc exists because a
+// target triple does not carry this fact; a codename in a filename does not carry it either.
+//
+// AND THE FLOOR IS NECESSARY, NOT SUFFICIENT. Meeting it says the loader will not reject the binary
+// for a missing glibc symbol. It says nothing about the rest of the artifact's runtime closure, and
+// this was demonstrated rather than reasoned: on a host at 2.39, well above the floor, the artifact
+// still refused to start for want of libOpenGL, libGLU, libEGL and WebKitGTK. Any model that treats
+// clearing the floor as "runs" is overstating its own measurement.
+data orca_slicer_required_glibc: GlibcVersion = glibc_version(major: 2, minor: 38)
+
+// THE EXECUTABLE IS ITS OWN SUBJECT, SEALED, AND THIS MODULE IS THE ONLY PLACE THAT CAN SAY WHAT
+// COUNTS AS ORCA. A consumer that took a bare ArgvCommand could run `true`, observe a genuine zero
+// exit, and carry the result forward as evidence that a slicer executes -- generic executability
+// read as ORCA executability. The subject was not substituted there and the receipt was not faked;
+// the executed thing was simply of the wrong kind, which no amount of care at the consumer can see.
+//
+// The kind is therefore constructional rather than checked. OrcaExecutable has one constructor, and
+// the only mints are in this module, so a caller cannot spell an Orca invocation over some other
+// program. That is DESIGN section 3 as much as section 5: what counts as this upstream product is a
+// fact this module owns, and a consumer comparing a program string to "orca-slicer" would be a
+// second authority for it -- and a string check besides, which the AppImage's own filename already
+// shows is unreliable.
+// AND THE MINT CONSUMES A VERIFIED DIGEST, NOT A STRING. Sealing the record while exporting
+// `orca_executable(program: NonEmptyStr)` would re-export the very authority the seal was meant to
+// hold: sole_constructor answers WHO MAY WRITE THE LITERAL, and an unrestricted wrapper hands that
+// answer back to every caller. `true --version` exits zero on every host, so a mint that blesses any
+// string reproduces the wrong-kind state one layer inside this module.
+//
+// Restricting the mint's CALLERS would not fix it either -- an admitted caller still receiving an
+// arbitrary program string moves the trust one function outward.
+//
+// THE VERIFICATION IS CONSUMED FROM extdeps.tools.sha256sum, NOT REBUILT HERE. That module already
+// owns the coreutils transport and, more importantly, already separates a digest MISMATCH from the
+// verification machinery itself breaking -- an infra failure recorded as a mismatch would report a
+// broken mktemp as a corrupted download. Re-deriving that distinction would have been a second
+// authority for it, and the wrong one, since this module has no reason to know how a digest is taken.
+//
+// THAT BINDING IS ALSO WHY THE MEASUREMENTS TRANSFER. The 2.38 floor was read from the ELF closure
+// of THIS content. Another genuinely-Orca binary of another version has its own floor and must not
+// inherit this one merely by being Orca, so identity here is the content digest rather than the
+// product name -- the same reason the floor was measured from the closure rather than read off the
+// filename.
+type OrcaExecutable sole_constructor { program: NonEmptyStr }
+
+fn orca_executable_program(e: OrcaExecutable) -> NonEmptyStr { e.program }
+
+type OrcaExecutableAdmission
+  = OrcaExecutableAdmitted { executable: OrcaExecutable }
+  | OrcaExecutableContentMismatch { program: NonEmptyStr }
+  | OrcaExecutableUnverifiable { program: NonEmptyStr, reason: NonEmptyStr }
+
+// THE ONLY MINT. A path on disk becomes an Orca executable exactly when its bytes are the selected
+// asset's bytes. The three outcomes stay distinct because they have different remedies: run it,
+// fetch the right asset, or fix the verification tooling.
+fn admit_orca_executable(program: NonEmptyStr) -> OrcaExecutableAdmission {
+  match sha256sum_verify_via_shell(
+    path: program,
+    expected_digest: orca_slicer_linux_aarch64_appimage_sha256,
+  ) {
+    Sha256Matches => OrcaExecutableAdmitted { executable: OrcaExecutable { program: program } }
+    Sha256Mismatch => OrcaExecutableContentMismatch { program: program }
+    Sha256VerifyInfraFailure { reason: r } =>
+      OrcaExecutableUnverifiable { program: program, reason: r }
+  }
+}
+
+// THE VERSION PROBE IS THE INVOCATION A CONSUMER USES TO ESTABLISH THAT THE BINARY RUNS. It is the
+// cheapest Orca-shaped command there is, it needs no display, and it exits zero only if the runtime
+// closure resolved -- which is exactly the fact a would-be slicer needs before a slice is planned.
+fn orca_version_probe_command(executable: OrcaExecutable) -> ArgvCommand {
+  argv_command(program: executable.program, arguments: ["--version"])
+}
+
+// THE CLI, WHICH IS THE ONLY INTERFACE THIS REPOSITORY USES. The desktop application is the same
+// binary; nothing here launches it, and nothing here needs a display.
+fn orca_slice_to_project_command(
+  executable: OrcaExecutable,
+  input_model: String,
+  output_project: String,
+  printer_profile: String,
+  filament_profile: String,
+  process_profile: String,
+) -> ArgvCommand {
+  argv_command(
+    program: executable.program,
+    arguments: [
+      "--slice", "0",
+      "--load-settings", concat(concat(printer_profile, ";"), process_profile),
+      "--load-filaments", filament_profile,
+      "--export-3mf", output_project,
+      input_model,
+    ],
+  )
+}

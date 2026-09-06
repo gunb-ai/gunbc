@@ -1,5 +1,6 @@
 module gunbc.roadmap_site_surface_observe
 
+import gunbc.roadmap.roadmap_event_log { StandingsUnobserved }
 import std.types { String, NonEmptyStr, List }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural }
 import gunbc.roadmap_authority {
@@ -94,6 +95,7 @@ fn render_roadmap_site_surface_bundle_for_projection(proj: RoadmapAuthorityProje
       proj: proj,
       attempts: [],
       attempts_refused: none,
+      standings: StandingsUnobserved { reason: "site surface observation renders the static page and does not consult the event carrier" },
       launch: launch_host_unobserved_static_render(),
     )
   )

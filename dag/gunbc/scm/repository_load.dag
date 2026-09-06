@@ -63,6 +63,11 @@ import gunbc.scm.repository_envelope {
   RepositoryDecoded,
   RepositoryDecodeRefused,
   RepositoryDecodeRefusal,
+  repository_document_protocol,
+  RepositoryProtocolRetiredFormat,
+  RepositoryProtocolUnrecognizedFormat,
+  RepositoryProtocolUnrecognizedIdentityRule,
+  RepositoryProtocolNotAProtocolRefusal,
 }
 
 // THE REFUSALS ARE THEIR OWN TYPE SO A CONSUMER CAN CARRY ONE WITHOUT BEING ABLE TO HOLD A SUCCESS.
@@ -163,7 +168,27 @@ fn repository_load_refusal_lines(cause: RepositoryLoadRefusal) -> List<String> {
       [concat("cannot read repository at ", path), concat("  ", error)]
     RepositoryDocumentUnparseable { path: path, gap: _ } =>
       [concat("repository document is not valid JSON: ", path)]
-    RepositoryDocumentRefused { path: path, cause: _ } =>
-      [concat("not a repository document: ", path)]
+    RepositoryDocumentRefused { path: path, cause: c } =>
+      match repository_document_protocol(cause: c) {
+        RepositoryProtocolRetiredFormat { found: f } =>
+          [
+            concat("the document declares retired repository format ", f),
+            concat("  at ", path),
+            "  this build has no reader for that format, so its contents were not validated",
+          ]
+        RepositoryProtocolUnrecognizedFormat { found: f } =>
+          [
+            concat("the document declares unrecognized repository format ", f),
+            concat("  at ", path),
+            "  this build has no reader for that format, so its contents were not validated",
+          ]
+        RepositoryProtocolUnrecognizedIdentityRule { found: f } =>
+          [
+            concat("the document declares unrecognized object identity rule ", f),
+            concat("  at ", path),
+            "  this build reads the format but not that identity rule, so its contents were not validated",
+          ]
+        RepositoryProtocolNotAProtocolRefusal => [concat("not a repository document: ", path)]
+      }
   }
 }

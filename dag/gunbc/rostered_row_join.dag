@@ -51,9 +51,15 @@ import std.types { String, List }
 // FIXTURE roster ranges over fixture declarations, which is what makes the control below executable
 // at all.
 //
-// THE CONTROL IS ENROLLED IN THE SAME LIST AS THE PRODUCTION ROWS, and per section 4b(4) it does not
-// retire when the wall lands. `test.fixture.rostered_row_join.omitted_control` declares two rows and
-// rosters one; the join must find exactly the omitted one. A fixture-homed enrolled type whose join
+// TWO CONTROLS ARE ENROLLED IN THE SAME LIST AS THE PRODUCTION ROWS, and per section 4b(4) neither
+// retires when the wall lands. `test.fixture.rostered_row_join.omitted_control` declares two rows
+// and rosters one; the join must find exactly the omitted one. The collision control is the SECOND
+// and it discriminates something the first cannot: two declarations sharing a BARE NAME in
+// different modules, only one rostered. A drop-one-row control passes whether membership is keyed
+// on a spelling or on a declaration identity -- the keys agree whenever names are distinct, which
+// they were across the whole corpus when this join landed -- so only a collision is evidence that
+// the module component is load-bearing. It is enrolled because the bare-name key was the shipped
+// behaviour and was found in review of gunbc#10496. A fixture-homed enrolled type whose join
 // finds NOTHING stops the line, because that is the state in which the check has gone green by
 // construction -- the only state a merge-blocking check cannot be allowed to reach quietly. The
 // accepting positive control is the production side of the same run: three rosters that must join
@@ -63,6 +69,7 @@ type RosteredRowType
   | RecurringFailureModeRows
   | RungDropRows
   | OmittedRowControl
+  | CollisionRowControl
 
 // One enrolled row type: the declared-type spelling `data_decl_type_facts` reports, and the
 // declaration that rosters it. The roster is named by MODULE AND DECLARATION rather than by path,
@@ -93,6 +100,12 @@ data rostered_row_joins: List<RosteredRowJoin> = [
     declared_type_name: "RungDrop",
     roster_module: "gunbc.rung_drop.roster",
     roster_declaration: "rung_drop_roster",
+  },
+  RosteredRowJoin {
+    row_type: CollisionRowControl,
+    declared_type_name: "CollisionControlRow",
+    roster_module: "test.fixture.rostered_row_join.collision_control_roster",
+    roster_declaration: "collision_control_roster",
   },
   RosteredRowJoin {
     row_type: OmittedRowControl,

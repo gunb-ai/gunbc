@@ -171,8 +171,23 @@ fn floor_route_gap_chunk_00() -> List<String> {
       tail: Cons {
       head: "test.claim.generated_artifact_merge_driver_real_execution.divergent_generated_artifact_merge_under_true_driver_silently_drops_theirs_red_control_by_real_execution",
       tail: Cons {
+      head: "test.claim.generated_artifact_merge_driver_real_execution.driver_printed_step_two_carries_the_row_extractor_by_real_execution",
+      tail: Cons {
       head: "test.claim.generated_artifact_merge_driver_real_execution.one_sided_generated_artifact_change_merges_clean_by_real_execution",
+      tail: Cons {
+      head: "test.claim.generated_artifact_merge_driver_real_execution.row_extractor_names_a_row_that_went_dark_by_real_execution",
+      tail: Cons {
+      head: "test.claim.generated_artifact_merge_driver_real_execution.row_extractor_reconciles_with_both_rosters_by_real_execution",
+      tail: Cons {
+      head: "test.claim.generated_artifact_merge_driver_real_execution.row_extractor_refuses_a_duplicated_identity_by_real_execution",
+      tail: Cons {
+      head: "test.claim.generated_artifact_merge_driver_real_execution.row_extractor_refuses_a_substituted_identity_by_real_execution",
       tail: Empty {}
+    }
+    }
+    }
+    }
+    }
     }
     }
     }
@@ -744,70 +759,133 @@ fn floor_route_gap_expectation_chunk_05() -> List<FloorRouteGapExpectation> {
   }
 }
 
+// THE STEP 0 CALIBRATION REPORT'S WET EVIDENCE, enrolled on the same basis as chunk_05 above and
+// measured the same way. Required-floor run 33978797098 at 06c7740cb1 executed all four
+// identities and observed the identical typed refusal for each: the hermetic route has no arm for
+// Dir, because shell.Mktemp.Dir declares no mock_response, so the claim refuses before a temporary
+// directory can exist. The operation and ground below are READ FROM THAT RUN, not inferred -- the
+// enrollment was deliberately withheld until the measurement existed, because a roster row written
+// from a guess is a transcribed number wearing a data row's clothes.
+//
+// WHAT DISCHARGES THE HOLD IS THE WET TERMINAL, NEVER THE ENROLLMENT. The same run recorded
+// [local-repo-wet] scheduled=22 admitted=22 refusals=0 with all four of these observed=passed, and
+// the changed-witness projection then read standing=hermetic-route-gap-held-and-wet-passed for
+// each. Enrollment alone would record a gap and prove nothing; the pair is what establishes that
+// the witness reached its subject somewhere.
+//
+// WHY THE WITNESS CANNOT BE MADE HERMETIC, stated because the diagnostic offers mocking as one of
+// its three remedies and it is the wrong one HERE. These four exist to prove that the REAL report
+// writes the REAL matrix to a REAL path before it refuses -- the defect they were written against
+// was a write arm that accepted a zero-byte file. A mocked Dir and a mocked Write would satisfy
+// every assertion while the operator still received nothing, which is the fabricated-plausible-
+// output failure the witnesses exist to catch. The route is supplied by the wet lane instead.
+//
+// THE ENROLLMENT IS NOT A PAIR BUT A TRIPLE, AND NOTHING ENFORCES IT; THIS PARAGRAPH IS PROSE,
+// WHICH CANNOT REFUSE. THREE ROWS ARE REQUIRED, IN THREE SEPARATE AUTHORITIES, AND NONE OF THEM
+// REFERENCES THE OTHERS: the expectation here in v2.workflow.floor_route_gap
+// floor_route_gap_expectation_chunk_06; the schedule row in
+// v2.workflow.local_repo_wet_terminal local_repo_wet_schedule; and the
+// gunbc.ci_layer_roots witness_exclusion_frontier row classifying the file LocalRepoWetLane.
+// NOTHING REFUSES A WITNESS THAT HAS SOME OF THE THREE AND NOT ALL. That is stated as a declared
+// boundary rather than as advice: the reader is being told what this text cannot do for them.
+// The carriers are named by SYMBOL and not by line, because a citation that decays under the next
+// edit above it is the failure this roster already carries a row for.
+//
+// AN EARLIER REVISION OF THIS PARAGRAPH SAID "PAIR" AND NAMED TWO OF THE THREE. It was written to
+// be the honest statement of the coupling and it understated the coupling, which is worse than
+// silence here: an author following it supplies two of three, gets a red floor, and is misled by
+// the sentence meant to save them -- and it will be TRUSTED, because it is a declared boundary in
+// the file they are already editing. It was caught by a reviewer counting the carriers, not by
+// its author, who had checked a DIFFERENT count in this same change an hour earlier and did not
+// check this one.
+//
+// THE EVIDENCE THAT PROSE CANNOT CARRY THIS IS THIS REPOSITORY'S OWN HISTORY, TWICE IN ONE DAY.
+// floor_prepared_subject_exclusions carries a comment reading "run_required_floor consults THIS
+// list and nothing else", written by an author who had just spent three CI cycles learning it; it
+// did not reach the next author, who spent more. chunk_05's header above states this same pairing
+// in this same file, and it did not reach the author of chunk_06, who supplied the schedule row
+// alone and learned the rest from five red floors. A comment is read by whoever already knew to
+// look for it.
+//
+// AND THE ONE WALL GUARDING THESE ROWS CANNOT FIRE FOR THE POPULATION THAT NEEDS IT.
+// floor_route_gap_expectation_mismatch refuses a WRONG operation or ground, but it returns early
+// on a missing expectation, so it fires only for an identity that is ALREADY ENROLLED. An
+// unenrolled identity -- the state every author is in while deciding what to write here --
+// produces no mismatch diagnostic at all and blocks as an unenrolled gap with nothing said about
+// what the right row would have been. A guard whose precondition is the state you are not yet in
+// protects the case that no longer needs it, and the shape occurs twice in this one mechanism:
+// once for the missing enrollment, once for the wrong one.
+fn floor_route_gap_expectation_chunk_06() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.provenance_calibration_report_real_execution.the_real_report_refuses_on_the_measured_matrix_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.provenance_calibration_report_real_execution.the_real_report_succeeds_on_a_sound_matrix_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.provenance_calibration_report_real_execution.the_refusing_report_still_wrote_the_matrix_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.provenance_calibration_report_real_execution.the_written_payload_is_the_measured_matrix_and_not_another_one", operation: "Dir", ground: NoMockResponse {} },
+    tail: Empty {}
+  }
+  }
+  }
+  }
+}
+
+// THE EVALUATION-MODEL PROBES EXECUTE ON THE LOCAL-REPO WET LANE, not through the hermetic floor.
+// Each writes a marker file into a throwaway temp directory, runs the operation under test, and
+// asks whether the marker survived, so the verdict rests on an observed effect rather than on a
+// reading of the source. shell.Mktemp.Dir declares no mock_response, which is why the operation
+// pinned below is Dir and the ground is NoMockResponse: the hermetic route refuses before any of
+// them reaches its subject.
+//
+// ENROLMENT HERE IS NOT THE ROUTE. The route is the WetScheduledClaim rows in
+// v2.workflow.local_repo_wet_terminal local_repo_wet_schedule, and the same required-floor run
+// that produced these five route gaps also observed all five executing and holding on that lane.
+// So this chunk records one measured boundary -- the HERMETIC path cannot reach them -- and makes
+// no claim that they are unverified. Enrolment WITHOUT that schedule would be the other thing
+// entirely: a subject that executes nowhere, with the roster standing in for its evidence.
+//
+// Authored as an expectation rather than a bare identity because floor_route_gap_roster calls the
+// bare chunks `legacy`: the expectation form pins the operation and the ground, so a gap that
+// moves to a different operation stops matching instead of staying quietly enrolled.
+fn floor_route_gap_expectation_chunk_07() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.eval_model_probe.and_demands_right_even_when_left_false", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.eval_model_probe.and_short_circuit_direct_probe", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.eval_model_probe.and_with_true_left_removes_file", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.eval_model_probe.let_is_eager_when_consumed", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.eval_model_probe.let_is_eager_when_unused", operation: "Dir", ground: NoMockResponse {} },
+    tail: Empty {}
+  }
+  }
+  }
+  }
+  }
+}
+
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
-  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Empty {} } } } } } }
+  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Empty {} } } } } } } } }
 }
 
 fn floor_route_gap_expectations() -> List<FloorRouteGapExpectation> {
   list_flat_map(xs: floor_route_gap_expectation_chunks(), f: fn(chunk) { chunk })
 }
 
-// CHUNK 04 -- THE SIXTEEN IDENTITIES SURFACED BY DELETING THE shell.Exec MOCK ARMS, measured on
-// this branch's own floor run 32670248426 (route_gap_unenrolled=16), not enumerated from call
-// sites. Every one reaches shell.Exec.Run hermetically and now receives
-// `HermeticEffectGround.NoMockResponse` where it previously received a fabricated success
-// (`{ exit_code: 0, success: true, stdout: "", stderr: "" }`); the class and its receipts are
-// gunbc.hermetic_mock_fidelity. Nine of the sixteen were simultaneously enrolled in
-// `v2.workflow.floor_expected_red` and are DELETED from it in the same change: they were held as
-// "runs and fails" while they never reached their subject at all, which is exactly the
-// reclassification this roster's header describes for the original 101.
-//
-// ALL SIXTEEN ARE PROVABLE IN A BOUNDED REAL-EFFECT LANE, and that is a measured claim rather
-// than an assumption, because the population divides into two kinds and only one of them is
-// work. A row is not-hermetic-in-principle when its subject is whether a transport was consulted
-// at all: no mock can honestly answer that, since consulting the transport is what hermetic mode
-// forbids, so the only dispositions are a real lane or a declared refusal. Checked at source,
-// fifteen name `transport: LocalShell` and assert an exit code, a captured stdout, or a
-// converge-policy decision; the sixteenth (`emit_host_gate_verdicts_test`) shells out a local
-// `printf` narration through the same seam. All are facts a lane that runs the effect
-// establishes locally, and none turns on a remote endpoint answering. The
-// SshShell-to-203.0.113.1 witnesses that WOULD be the second kind are not in this population at
-// all: they refuse earlier, at the fail-closed SshShell stub, so they never reach this seam and
-// remain where they were. No route is built here: this change enrolls and records the bucket.
+// This bucket originally held sixteen shell.Exec.Run refusals, measured by floor
+// run 32670248426 after deletion of its fabricated-success mock. ShellCommand's
+// dissolution changes fifteen of those subjects: explicit execution on 2026-09-05
+// produced eleven hermetic passes and four assertion-false outcomes on typed mocks.
+// The four answering false now belong to floor_expected_red; a stale shell route
+// gap is not evidence for either outcome. The unrelated narration row stays here.
 fn floor_route_gap_chunk_04() -> List<String> {
   Cons {
-      head: "test.claim.deploy_access_privilege_witness.witness_privileged_fixture_mutation_applies",
-      tail:   Cons {
-      head: "test.claim.deploy_access_privilege_witness.witness_privileged_fixture_surfaces_stdout",
-      tail:   Cons {
-      head: "test.claim.deploy_mutation_gate_witness.witness_right_host_privileged_may_apply",
-      tail:   Cons {
-      head: "test.claim.emit_host_gate_verdicts_test.gate_failure_exit_reason_carries_verdicts",
-      tail:   Cons {
-      head: "test.claim.host_effect_apply_witness.witness_converged_is_settled",
-      tail:   Cons {
-      head: "test.claim.host_effect_apply_witness.witness_converge_policy_redrives_not_converged",
-      tail:   Cons {
-      head: "test.claim.host_effect_apply_witness.witness_oneshot_policy_terminal_not_converged",
-      tail:   Cons {
-      head: "test.claim.host_effect_apply_witness.witness_shell_failure_surfaces_captured_stdout",
-      tail:   Cons {
-      head: "test.claim.host_effect_apply_witness.witness_shell_on_host_failure_fails_closed",
-      tail:   Cons {
-      head: "test.claim.host_effect_apply_witness.witness_shell_on_host_success_converges",
-      tail:   Cons {
-      head: "test.claim.host_effect_plan_real_execution.host_effect_plan_shell_failure_reason_carries_exit_code_by_real_execution",
-      tail:   Cons {
-      head: "test.claim.host_effect_plan_real_execution.host_effect_plan_shell_witness_holds_by_real_execution",
-      tail:   Cons {
-      head: "test.claim.host_identity_observation_witness.witness_host_effect_apply_failure_is_not_observation",
-      tail:   Cons {
-      head: "test.claim.srv3_host_effect_apply_witness.witness_srv3_apply_failure_no_fabricated_stdout",
-      tail:   Cons {
-      head: "test.claim.srv3_host_effect_apply_witness.witness_srv3_apply_failure_surfaces_captured_stdout_not_fabricated",
-      tail:   Cons {
-      head: "test.claim.srv3_host_effect_apply_witness.witness_srv3_apply_shell_failure_refuses_typed",
-      tail: Empty {} } } } } } } } } } } } } } } } }
+    head: "test.claim.emit_host_gate_verdicts_test.gate_failure_exit_reason_carries_verdicts",
+    tail: Empty {},
+  }
 }
 
 // REPOSITORY CONVERGENCE WET EVIDENCE EXECUTES ON ITS OWN REAL-SHELL LANE, not through the

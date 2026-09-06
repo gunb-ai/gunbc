@@ -1,10 +1,16 @@
 module extdeps.systemd.systemd_run
 
-import std.types { NonEmptyStr, String, List, Bool }
+import std.types { NonEmptyStr, String, List, Bool, Int }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
+import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire }
+
+type SystemdRunProperty {
+  property: SystemdUnitProperty,
+  value: NonEmptyStr,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -17,7 +23,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.systemd.systemd_run",
-      decl_name: "systemd_run_transient_unit_argv",
+      decl_name: "systemd.SystemdRun",
       field: WholeDeclaration
     }
   },
@@ -27,29 +33,134 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 data systemd_run_authority: ExternalAuthority = extdeps_external_authority_anchor
 
-fn systemd_run_transient_unit_argv(unit: NonEmptyStr, command_argv: List<String>) -> List<String> {
+// THE PROPERTY WORDS ARE RENDERED IN EXACTLY ONE PLACE, and that is the whole point of this
+// function existing beside the full-line authority rather than inside it. A systemd unit property
+// becomes an argv word here and nowhere else, so the operation's transport, the pure authority and
+// every caller are reading one spelling. The transport CANNOT carry the typed record itself:
+// push_shell_argv_tokens has arms for Str, List, ProcessArgvExpansion and a refusing arm for
+// ambiguous free monoids, and a record reaches none of them — it lands in the catch-all, which
+// Display-formats the value into a single argv word rather than refusing. So a record spliced into
+// argv would hand systemd-run a fabricated argument at the exact seam that decides whether a unit
+// is bounded. The typed population stays on this side of that boundary; only words cross it.
+fn systemd_run_property_argv(properties: List<SystemdRunProperty>) -> List<String> {
+  fold(
+    properties,
+    init: [],
+    f: (acc, setting) => list_push(
+      acc,
+      concat(
+        "--property=",
+        concat(systemd_unit_property_wire(property: setting.property) as String, concat("=", setting.value as String)),
+      ),
+    ),
+  )
+}
+
+// THE USER-MANAGER TRANSIENT UNIT, modelled beside the system-scope one above because the flags
+// systemd-run actually accepts are upstream's, not ours: --user selects the calling user's manager,
+// -p sets a unit property, and --setenv binds one environment variable in the started unit.
+//
+// NO --collect HERE, DELIBERATELY, and it is the difference that makes this worth a second
+// function. --collect unloads the unit as soon as it exits, which discards Result and
+// ExecMainStatus -- exactly the terminal state a caller starts a transient unit in order to be able
+// to read afterwards. A unit that lingers in `failed` is evidence; one that was garbage collected
+// is an absence indistinguishable from never having run. Callers that want no residue name a unit
+// per attempt and reset it explicitly, which is a decision about evidence rather than a flag.
+fn systemd_run_user_transient_arguments(
+  unit: NonEmptyStr,
+  properties: List<String>,
+  setenv_bindings: List<String>,
+  command_argv: List<String>,
+) -> List<String> {
+  let head = ["--user", concat("--unit=", unit as String)]
+  let with_properties = fold(
+    properties,
+    init: head,
+    f: (acc, p) => list_push(list_push(acc, "-p"), p),
+  )
+  let with_env = fold(
+    setenv_bindings,
+    init: with_properties,
+    f: (acc, b) => list_push(acc, concat("--setenv=", b)),
+  )
   fold(
     command_argv,
-    init: ["systemd-run", concat("--unit=", unit as String), "--collect", "--"],
+    init: list_push(with_env, "--"),
     f: (acc, arg) => list_push(acc, arg),
   )
 }
 
+// THE SYNCHRONOUS FORM: the caller blocks until the unit exits and receives its exit status and its
+// stdio (`--wait --pipe`), so a build or a check runs under the unit's resource bounds while the
+// process that asked for it observes the result directly. `--collect` unloads the unit afterwards
+// whatever its result, so a failed compute unit does not accumulate as a failed unit to reap.
+fn systemd_run_user_wait_arguments(
+  unit: NonEmptyStr,
+  properties: List<String>,
+  setenv_bindings: List<String>,
+  command_argv: List<String>,
+) -> List<String> {
+  concat(["--wait", "--pipe", "--collect"], systemd_run_user_transient_arguments(unit: unit, properties: properties, setenv_bindings: setenv_bindings, command_argv: command_argv))
+}
+
+fn systemd_run_property(name: String, value: String) -> String {
+  join([name, "=", value], "")
+}
+
+// The full invocation, and the authority the materialized operation argv is checked against. It
+// COMPOSES the property words rather than re-deriving them; if this fold and the transport template
+// ever disagree about word order, systemd_run_transient_operation_argv_matches_authority goes red.
+fn systemd_run_transient_unit_argv(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> List<String> {
+  let launcher = ["systemd-run", concat("--unit=", unit as String), "--collect"]
+  let with_properties = fold(systemd_run_property_argv(properties: properties), init: launcher, f: (acc, word) => list_push(acc, word))
+  let with_separator = list_push(with_properties, "--")
+  fold(command_argv, init: with_separator, f: (acc, arg) => list_push(acc, arg))
+}
+
+// Waiting is a different operation from starting. It owns the complete wait/quiet/collect
+// vocabulary and returns the process status as data: a nonzero child status is an observation,
+// not an operation refusal. Default transient service semantics are deliberate. Type=oneshot is
+// excluded because it collapses normal nonzero statuses to 1 (systemd issue 22812, observed on
+// systemd 245 / 245.4-4ubuntu3.15); the same report establishes that signal death is not reliably
+// recoverable as an exact child status through this boundary.
+fn systemd_run_transient_wait_unit_argv(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> List<String> {
+  let launcher = ["systemd-run", concat("--unit=", unit as String), "--wait", "--quiet", "--collect"]
+  let with_properties = fold(systemd_run_property_argv(properties: properties), init: launcher, f: (acc, word) => list_push(acc, word))
+  let with_separator = list_push(with_properties, "--")
+  fold(command_argv, init: with_separator, f: (acc, arg) => list_push(acc, arg))
+}
+
+
 service systemd.SystemdRun {
   operation RunTransient {
-    input { unit: NonEmptyStr, command_argv: List<String> }
+    input { unit: NonEmptyStr, property_argv: List<String>, command_argv: List<String> }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["systemd-run", "--unit={unit}", "--collect", "--", command_argv] }
+    transport shell { argv: ["systemd-run", "--unit={unit}", "--collect", property_argv, "--", command_argv] }
     exit {
       0 => Unit
       nonzero => String "systemd-run transient unit start failed"
     }
     mock_response {
       0 => { success: true, stdout: "Running as unit: demo.service", stderr: "" } "hermetic systemd.SystemdRun.RunTransient"
+    }
+  }
+
+
+  operation RunTransientAndWait {
+    input { unit: NonEmptyStr, property_argv: List<String>, command_argv: List<String> }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemd-run", "--unit={unit}", "--wait", "--quiet", "--collect", property_argv, "--", command_argv] }
+    exit {
+      0 => Unit
+      nonzero => Unit
     }
   }
 }

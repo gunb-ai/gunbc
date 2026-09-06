@@ -78,6 +78,15 @@ fn sudo_elevate(command: List<String>) -> ElevatedInvocation {
   }
 }
 
+// THE FLAT ARGV OF AN ELEVATED INVOCATION. ElevatedInvocation splits binary from tail because the
+// host-effect surface takes it that way; a shell transport wants one word list, and three callers
+// had each written the same [bin_path] ++ args append to get it. One row, so a future change to
+// how elevation renders reaches every shell caller at once.
+fn sudo_elevate_argv(command: List<String>) -> List<String> {
+  let elevated = sudo_elevate(command: command)
+  list_append(left: [elevated.bin_path], right: elevated.args)
+}
+
 // -E PRESERVES THE INVOKING ENVIRONMENT, and it is a SEPARATE row from sudo_elevate rather than a
 // flag on it, because the two make different security claims: the default drops the caller's
 // environment, and -E carries it across the privilege boundary. A caller that needs variables set

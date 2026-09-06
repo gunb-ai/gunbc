@@ -346,7 +346,7 @@ type HigherOrderMethodSpec {
 }
 
 data rust_higher_order_methods: List<HigherOrderMethodSpec> = [
-  { method_name: "filter", inline_template: "\{ let mut __result = Vec::new(); for \{param\} in \{iter\} \{ if \{body\} \{ __result.push(\{param\}); \} \} __result \}", fn_ref_template: "\{iter\}.filter(\{arg\}).collect::<Vec<_>>()", wraps_in_sharing: true },
+  { method_name: "filter", inline_template: "\{ let mut __result = Vec::new(); for \{param\} in \{iter\} \{ if \{body\} \{ __result.push(\{param\}); \} \} __result \}", fn_ref_template: "\{iter\}.filter(|__item| (\{arg\})((*__item).clone())).collect::<Vec<_>>()", wraps_in_sharing: true },
   { method_name: "any", inline_template: "\{ let mut __found = false; for \{param\} in \{iter\} \{ if \{body\} \{ __found = true; break; \} \} __found \}", fn_ref_template: "\{iter\}.any(\{arg\})", wraps_in_sharing: false },
   { method_name: "all", inline_template: "\{ let mut __all = true; for \{param\} in \{iter\} \{ if !(\{body\}) \{ __all = false; break; \} \} __all \}", fn_ref_template: "\{iter\}.all(\{arg\})", wraps_in_sharing: false },
   { method_name: "flat_map", inline_template: "\{ let mut __result = Vec::new(); for \{param\} in \{iter\} \{ __result.extend(\{inner_iter\}); \} __result \}", fn_ref_template: "\{iter\}.flat_map(\{arg\}).collect::<Vec<_>>()", wraps_in_sharing: true }

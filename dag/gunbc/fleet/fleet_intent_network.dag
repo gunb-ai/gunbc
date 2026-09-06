@@ -22,10 +22,14 @@ import product.network_topology {
   EndpointAsset,
   EndpointSubjectUnregistered,
   Lan,
+  Loopback,
+  Internet,
+  WslNat,
+  WslBridged,
   DockerBridge,
   TailscaleOverlay,
 }
-import product.placement_supply { HostIdentity }
+import product.placement_supply { HostIdentity, host_identity_eq }
 
 data operator_host_srv1: HostIdentity = "srv1"
 data operator_host_srv2: HostIdentity = "srv2"
@@ -56,6 +60,22 @@ data operator_host_srv8: HostIdentity = "srv8"
 
 data operator_host_srv5: HostIdentity = "srv5"
 data operator_host_srv6: HostIdentity = "srv6"
+
+// SPARK-BATCH-3 (2026-09-05). srv9/srv10/srv11 are the identity slots for the three DGX Spark units
+// the router table showed beside the two named pairs -- spark-0c75 at 192.168.1.236, spark-3336 at
+// .237, spark-b66c at .238 -- assigned in ascending address order, the same tie-break the first pair
+// recorded. Which two of them are cross-cabled and which stands alone is NOT asserted here: the
+// operator believes 0c75 and 3336 are a pair, and that belief becomes a fabric observation, not a
+// row. All five newer units are enrolled below at once (endpoints, router bindings, cell roles),
+// closing the naming-is-not-enrollment gap the srv7/srv8 note above left open.
+data operator_host_srv9: HostIdentity = "srv9"
+data operator_host_srv10: HostIdentity = "srv10"
+data operator_host_srv11: HostIdentity = "srv11"
+
+// SPARK-BATCH-4 (2026-09-05). An eighth unit, spark-2196 at 192.168.1.239, appeared in the router
+// lease table the day the fabric switch was cabled and landed on switch lane qsfp56-dd-2-3. srv12
+// is its identity slot, assigned by the same ascending-address rule.
+data operator_host_srv12: HostIdentity = "srv12"
 
 // 🟡 dissolve-on: the NetworkEndpoint.address / NetworkSegment.cidr / gateway literals in this file
 // are still bare `"192.168.1.x"` / CIDR strings even though this same lane grounded the address
@@ -231,6 +251,54 @@ data srv6_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
   locality: Lan,
 }
 
+data srv7_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv7-host-lan",
+  subject: EndpointHost { host: operator_host_srv7 },
+  address: "192.168.1.232",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
+data srv8_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv8-host-lan",
+  subject: EndpointHost { host: operator_host_srv8 },
+  address: "192.168.1.233",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
+data srv9_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv9-host-lan",
+  subject: EndpointHost { host: operator_host_srv9 },
+  address: "192.168.1.236",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
+data srv10_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv10-host-lan",
+  subject: EndpointHost { host: operator_host_srv10 },
+  address: "192.168.1.237",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
+data srv11_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv11-host-lan",
+  subject: EndpointHost { host: operator_host_srv11 },
+  address: "192.168.1.238",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
+data srv12_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv12-host-lan",
+  subject: EndpointHost { host: operator_host_srv12 },
+  address: "192.168.1.239",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
 data srv1_tailscale_endpoint: NetworkEndpoint = NetworkEndpoint {
   label: "srv1-tailscale",
   subject: EndpointHost { host: operator_host_srv1 },
@@ -313,6 +381,12 @@ data fleet_intent_network: NetworkTopology = NetworkTopology {
     srv4_host_lan_endpoint,
     srv5_host_lan_endpoint,
     srv6_host_lan_endpoint,
+    srv7_host_lan_endpoint,
+    srv8_host_lan_endpoint,
+    srv9_host_lan_endpoint,
+    srv10_host_lan_endpoint,
+    srv11_host_lan_endpoint,
+    srv12_host_lan_endpoint,
     srv1_bmc_endpoint,
     srv2_bmc_endpoint,
     srv3_bmc_endpoint,
@@ -326,4 +400,44 @@ data fleet_intent_network: NetworkTopology = NetworkTopology {
 
 fn fleet_intent_network_topology() -> NetworkTopology {
   fleet_intent_network
+}
+
+// A HOST'S LAN ADDRESS, READ FROM THE TOPOLOGY RATHER THAN NAMED BY A CONSUMER. The first consumer is
+// the harness replica roster (gunbc.harness.harness_wire), which used to carry a Spark address as a
+// bare literal and went stale when the pair heads moved; now it names hosts and asks here. Absent
+// when the host has no HostOperatingSystem endpoint on the LAN -- a typed hole the consumer refuses
+// on, never a fabricated address. This is a LAN answer, not a fabric one: which path a caller should
+// take to reach a host is the fabric's question (see the harness roster's annotation).
+fn host_lan_address(host: HostIdentity) -> NonEmptyStr? {
+  fold(fleet_intent_network.endpoints, init: none, f: (acc, e) =>
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent =>
+        match e.subject {
+          EndpointHost { host: h } =>
+            if host_identity_eq(a: h, b: host) && endpoint_is_host_lan(e: e) { Present { value: e.address } } else { none }
+          EndpointAsset { asset: _ } => none
+          EndpointSubjectUnregistered => none
+        }
+    })
+}
+
+fn endpoint_is_host_lan(e: NetworkEndpoint) -> Bool {
+  (match e.role {
+    HostOperatingSystem => true
+    BmcOutOfBand => false
+    ContainerBridgeDefault => false
+    ContainerBridgeSecondary => false
+    TailscaleEndpoint => false
+    LanGateway => false
+    FabricationAppliance => false
+  }) && (match e.locality {
+    Lan => true
+    Loopback => false
+    Internet => false
+    WslNat => false
+    WslBridged => false
+    DockerBridge => false
+    TailscaleOverlay => false
+  })
 }

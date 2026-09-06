@@ -123,6 +123,7 @@ pub use crate::v1_compiler_infer_items::{
     ItemInfo, ItemKind, ModuleInterface, ModuleTypecheckProgress, ResolvedGraph, TypedGraph,
     TypedModule,
 };
+pub use crate::v1_compiler_infer_lookup::resolved_plain_call_target_for_outcome;
 use crate::v1_compiler_infer_lookup::ConstructorDeclarationLookup::{
     AdmissionBearingDeclarationUnavailable, ExactConstructorDeclaration,
     NotAdmissionBearingReference,
@@ -164,6 +165,8 @@ pub use crate::v1_compiler_infer_service::{
     is_typed_service_call_receiver, service_op_entry,
 };
 pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult, UniqueAccum};
+pub use crate::v1_compiler_infer_sigs::CallTargetOutcome;
+use crate::v1_compiler_infer_sigs::CallTargetOutcome::*;
 use crate::v1_compiler_infer_sigs::CallableIdentity::{BuiltinCallable, DeclaredCallable};
 use crate::v1_compiler_infer_sigs::DerivedCalleeSig::{DerivedFromSig, NoDerivableSig};
 use crate::v1_compiler_infer_sigs::FuncSigLookup::{
@@ -174,6 +177,9 @@ use crate::v1_compiler_infer_sigs::NoDerivableSigReason::{
 };
 use crate::v1_compiler_infer_sigs::ResolvedFormals::{
     DeclarationBoundFormals, KernelGroundedFormals, LocalFormalsAwaitingModuleContext,
+};
+pub use crate::v1_compiler_infer_sigs::{
+    call_target_declared_sig, call_target_is_locally_bound, call_target_local_binding,
 };
 pub use crate::v1_compiler_infer_sigs::{
     callable_candidate_labels, callable_identity_label, flatten_parent_envs,
@@ -249,6 +255,8 @@ use crate::v1_std_core::MatchPattern::{Bind, VariantPattern, Wildcard};
 use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
 };
+pub use crate::v1_std_core::ParsedModuleItemKind;
+use crate::v1_std_core::ParsedModuleItemKind::*;
 use crate::v1_std_core::ServiceConfigField::{
     SvcAuth, SvcAuthInput, SvcAuthSource, SvcEndpoint, SvcRateLimit,
 };
@@ -813,6 +821,7 @@ pub fn nominal_ref_node(
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
+        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -1135,6 +1144,20 @@ pub fn ambiguous_reference_refusal(
             scope.module_name.clone(),
         )]),
     })
+}
+
+pub fn scope_map_disagreement_refusal(
+    name: String,
+    span: Rc<SourceSpan>,
+    scope: Rc<InferScope>,
+) -> Rc<InferResult> {
+    Rc::new(InferResult {
+    typed: semantic_expr_error_node(v1_rt::concat(v1_rt::concat("scope map disagreement for '".to_string(), name.clone()), "'".to_string()), span.clone()),
+    diagnostics: Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::InternalError {
+    message: v1_rt::concat(v1_rt::concat("scope construction defect: '".to_string(), name.clone()), "' is present in body_locals with no TypeBinding in scope.locals; the two maps are populated in lockstep and disagreeing is not a writable program state".to_string()),
+    span: span.clone(),
+}), scope.module_name.clone())]),
+})
 }
 
 pub fn constructor_reference_admission_enforced() -> bool {
@@ -2006,6 +2029,7 @@ match exp.children.clone().iter().cloned().skip(pair.0.clone() as usize).next() 
     is_self_recursive: sf.is_self_recursive.clone(),
     has_non_tail_self_call: sf.has_non_tail_self_call.clone(),
     match_pattern: sf.match_pattern.clone(),
+    module_item_kind: sf.module_item_kind.clone(),
     expr_data: sf.expr_data.clone(),
     ident: None,
 }));
@@ -7765,6 +7789,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
+        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -8488,6 +8513,7 @@ let fold_callable = Rc::new(Node {
     is_self_recursive: false,
     has_non_tail_self_call: false,
     match_pattern: std::option::Option::None,
+    module_item_kind: ParsedModuleItemKind::NotAModuleItem,
     expr_data: Rc::new(ExprData::NoExprData),
     ident: None,
 });
@@ -8945,6 +8971,56 @@ pub fn qualified_value_projection(
     }
 }
 
+pub fn qualified_or_service_projection(
+    texpr: Rc<Node>,
+    scope: Rc<InferScope>,
+    span: Rc<SourceSpan>,
+) -> Option<Rc<InferResult>> {
+    match qualified_value_projection(texpr.clone(), scope.clone(), span.clone()) {
+        Some(proj) => Some(proj.clone()),
+        std::option::Option::None => match service_spine_projection(texpr.clone(), scope.clone()) {
+            std::option::Option::None => std::option::Option::None,
+            Some(svc_type) => {
+                let svc_name = crate::v1_std_core::authored_name_at(
+                    scope.type_env.clone().source_indices.clone(),
+                    svc_type.clone(),
+                );
+                Some(ok_infer(crate::v1_std_core::make_named_expr_node(
+                    texpr.occurrence_identity.clone(),
+                    svc_name.clone(),
+                    Rc::new(ExprData::ExprVar {
+                        binding_kind: Some(Rc::new(VarBindingKind::ServiceValueBinding)),
+                    }),
+                    Rc::new(vec![]),
+                    Some(Rc::new(InferredNode::Resolved {
+                        node: svc_type.clone(),
+                    })),
+                    span.clone(),
+                    kernel_span(svc_name.clone()),
+                )))
+            }
+        },
+    }
+}
+
+pub fn service_spine_projection(texpr: Rc<Node>, scope: Rc<InferScope>) -> Option<Rc<Node>> {
+    match crate::v1_std_core::field_access_spine(
+        texpr.clone(),
+        scope.type_env.clone().source_indices.clone(),
+    ) {
+        std::option::Option::None => std::option::Option::None,
+        Some(spine) => match spine_root_is_shadowed(scope.clone(), spine.root.clone()) {
+            true => std::option::Option::None,
+            false => match v1_rt::map_get(&scope.service_registry.clone(), spine.dotted.clone()) {
+                std::option::Option::None => std::option::Option::None,
+                Some(_) => Some(crate::v1_compiler_infer_types::nominal_type_ref(
+                    spine.dotted.clone(),
+                )),
+            },
+        },
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum LiteralBoundary {
@@ -9054,6 +9130,7 @@ pub fn elaborated_expr_node(
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
+        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: expr_data.clone(),
         ident: None,
     })
@@ -9488,7 +9565,7 @@ Rc::new(InferResult {
             );
             let span = texpr.span.clone();
             let base_expr = crate::v1_std_core::field_access_base(texpr.clone());
-            match qualified_value_projection(texpr.clone(), scope.clone(), span.clone()) {
+            match qualified_or_service_projection(texpr.clone(), scope.clone(), span.clone()) {
                 Some(proj) => proj.clone(),
                 std::option::Option::None => {
                     let base_result =
@@ -9643,9 +9720,9 @@ Rc::new(InferResult {
             );
             let span = texpr.span.clone();
             let call_args = texpr.children.clone();
-            let call_sig_lookup = body_shadow_aware_func_sig(scope.clone(), func_name.clone());
-            match (*call_sig_lookup.clone()).clone() {
-                FuncSigLookup::FuncSigAmbiguous {
+            let call_target = call_target_for_direct_call(scope.clone(), func_name.clone());
+            match (*call_target.clone()).clone() {
+                CallTargetOutcome::CallableAmbiguous {
                     candidates: ambiguous_fn_candidates,
                     ..
                 } => ambiguous_reference_refusal(
@@ -9653,6 +9730,14 @@ Rc::new(InferResult {
                     crate::v1_compiler_infer_sigs::callable_candidate_labels(
                         ambiguous_fn_candidates.clone(),
                     ),
+                    span.clone(),
+                    scope.clone(),
+                ),
+                CallTargetOutcome::LocallyBoundBindingMissing {
+                    name: missing_local,
+                    ..
+                } => scope_map_disagreement_refusal(
+                    missing_local.clone(),
                     span.clone(),
                     scope.clone(),
                 ),
@@ -9664,16 +9749,7 @@ Rc::new(InferResult {
                     ) {
                         Some(refusal) => refusal.clone(),
                         std::option::Option::None => {
-                            let sig = match (*call_sig_lookup.clone()).clone() {
-                                FuncSigLookup::FuncSigResolved {
-                                    sig: resolved_call_sig,
-                                    ..
-                                } => Some(resolved_call_sig.clone()),
-                                FuncSigLookup::FuncSigUnresolved => std::option::Option::None,
-                                FuncSigLookup::FuncSigAmbiguous { candidates: _, .. } => {
-                                    std::option::Option::None
-                                }
-                            };
+                            let sig = call_target_declared_sig(call_target.clone());
                             let sig_params = match sig.clone() {
                                 Some(s) => s.params.clone(),
                                 std::option::Option::None => Rc::new(vec![]),
@@ -9698,28 +9774,41 @@ Rc::new(InferResult {
                                 },
                                 std::option::Option::None => Rc::new(vec![]),
                             };
-                            let formal_authority_available = match sig.clone() {
-                                Some(s) => match (*s.resolved_formals.clone()).clone() {
-                                    ResolvedFormals::DeclarationBoundFormals {
-                                        formals: formals,
-                                        ..
-                                    } => {
-                                        ((formals.clone().len() as i64)
-                                            == (call_sig_split.value_params.clone().len() as i64))
+                            let formal_authority_available = match (*call_target.clone()).clone() {
+                                CallTargetOutcome::DeclaredCallableResolved { sig: s, .. } => {
+                                    match (*s.resolved_formals.clone()).clone() {
+                                        ResolvedFormals::DeclarationBoundFormals {
+                                            formals: formals,
+                                            ..
+                                        } => {
+                                            ((formals.clone().len() as i64)
+                                                == (call_sig_split.value_params.clone().len()
+                                                    as i64))
+                                        }
+                                        ResolvedFormals::KernelGroundedFormals {
+                                            formals: formals,
+                                            ..
+                                        } => {
+                                            ((formals.clone().len() as i64)
+                                                == (call_sig_split.value_params.clone().len()
+                                                    as i64))
+                                        }
+                                        ResolvedFormals::LocalFormalsAwaitingModuleContext => false,
                                     }
-                                    ResolvedFormals::KernelGroundedFormals {
-                                        formals: formals,
-                                        ..
-                                    } => {
-                                        ((formals.clone().len() as i64)
-                                            == (call_sig_split.value_params.clone().len() as i64))
-                                    }
-                                    ResolvedFormals::LocalFormalsAwaitingModuleContext => false,
-                                },
-                                std::option::Option::None => true,
+                                }
+                                CallTargetOutcome::BuiltinCallableResolved {
+                                    primitive_name: _,
+                                    ..
+                                } => true,
+                                CallTargetOutcome::LocallyBoundCallee { .. } => true,
+                                CallTargetOutcome::CallableUnresolved { name: _, .. } => false,
+                                CallTargetOutcome::CallableAmbiguous { candidates: _, .. } => false,
+                                CallTargetOutcome::LocallyBoundBindingMissing {
+                                    name: _, ..
+                                } => false,
                             };
-                            let formal_authority_refusal_reason = match sig.clone() {
-    Some(s) => match (*s.resolved_formals.clone()).clone() {
+                            let formal_authority_refusal_reason = match (*call_target.clone()).clone() {
+    CallTargetOutcome::DeclaredCallableResolved { sig: s, .. } => match (*s.resolved_formals.clone()).clone() {
     ResolvedFormals::DeclarationBoundFormals { formals: formals, .. } => if ((formals.clone().len() as i64) == (call_sig_split.value_params.clone().len() as i64)) {
                 "".to_string()
             } else {
@@ -9732,7 +9821,11 @@ Rc::new(InferResult {
             },
     ResolvedFormals::LocalFormalsAwaitingModuleContext => "local declaration has not passed through build_module_context".to_string(),
 },
-    std::option::Option::None => "".to_string(),
+    CallTargetOutcome::BuiltinCallableResolved { primitive_name: _, .. } => "".to_string(),
+    CallTargetOutcome::LocallyBoundCallee { .. } => "".to_string(),
+    CallTargetOutcome::CallableUnresolved { name: n, .. } => v1_rt::concat("no declaration, builtin or local binding answers the call to ".to_string(), n.clone()),
+    CallTargetOutcome::CallableAmbiguous { candidates: _, .. } => "several declarations answer this call".to_string(),
+    CallTargetOutcome::LocallyBoundBindingMissing { name: n, .. } => v1_rt::concat(v1_rt::concat("scope construction defect: ".to_string(), n.clone()), " is a body local with no binding in scope.locals".to_string()),
 };
                             let has_lambda = {
                                 let mut __found = false;
@@ -9766,9 +9859,24 @@ Rc::new(InferResult {
                                 ),
                                 std::option::Option::None => error_type(),
                             };
-                            let arg_call = if ((sig.clone() != std::option::Option::None)
-                                && !formal_authority_available.clone())
+                            let declared_formal_authority_failed = match (*call_target.clone())
+                                .clone()
                             {
+                                CallTargetOutcome::DeclaredCallableResolved { .. } => {
+                                    !formal_authority_available.clone()
+                                }
+                                CallTargetOutcome::BuiltinCallableResolved {
+                                    primitive_name: _,
+                                    ..
+                                } => false,
+                                CallTargetOutcome::LocallyBoundCallee { .. } => false,
+                                CallTargetOutcome::CallableUnresolved { name: _, .. } => false,
+                                CallTargetOutcome::CallableAmbiguous { candidates: _, .. } => false,
+                                CallTargetOutcome::LocallyBoundBindingMissing {
+                                    name: _, ..
+                                } => false,
+                            };
+                            let arg_call = if declared_formal_authority_failed.clone() {
                                 call_args.iter().cloned().fold(
                                     Rc::new(ArgGenericFoldState {
                                         subst: v1_rt::rc_empty_map::<String, Rc<Node>>(),
@@ -9931,9 +10039,7 @@ Rc::new(InferResult {
                                     scope.locals.clone(),
                                 ),
                             );
-                            let formal_authority_diags = if ((sig.clone()
-                                != std::option::Option::None)
-                                && !formal_authority_available.clone())
+                            let formal_authority_diags = if declared_formal_authority_failed.clone()
                             {
                                 Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::InternalError {
     message: v1_rt::concat(v1_rt::concat(v1_rt::concat("resolved direct-call formal authority unavailable for ".to_string(), func_name.clone()), ": ".to_string()), formal_authority_refusal_reason.clone()),
@@ -9944,7 +10050,7 @@ Rc::new(InferResult {
                             };
                             let typed_arg_nodes = typed_args.clone();
                             if (sig.clone() != std::option::Option::None) {
-                                if !formal_authority_available.clone() {
+                                if declared_formal_authority_failed.clone() {
                                     Rc::new(InferResult {
                                         typed: crate::v1_std_core::make_named_expr_node(
                                             texpr.occurrence_identity.clone(),
@@ -10020,7 +10126,7 @@ Rc::new(InferResult {
                                         Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(Rc::new(CallSemantics::ResolvedDirectCallSemantics {
-    target: crate::v1_compiler_infer_lookup::resolved_plain_call_target(func_name.clone(), call_sig_lookup.clone()),
+    target: resolved_plain_call_target_for_outcome(call_target.clone()),
     application_plan: call_application_plan.clone(),
 })),
     descent_evidence: std::option::Option::None,
@@ -10095,10 +10201,8 @@ Rc::new(InferResult {
                             std::option::Option::None
                         }, scope.service_registry.clone(), scope.type_env.clone().source_indices.clone())
                     };
-                                    let callee_is_body_binding = v1_rt::map_has(
-                                        &scope.body_locals.clone(),
-                                        func_name.clone(),
-                                    );
+                                    let callee_is_body_binding =
+                                        call_target_is_locally_bound(call_target.clone());
                                     let is_known_method = (!callee_is_body_binding.clone()
                                         && (method_resolution.result_type.clone()
                                             != std::option::Option::None));
@@ -10196,6 +10300,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
     is_self_recursive: receiver.is_self_recursive.clone(),
     has_non_tail_self_call: receiver.has_non_tail_self_call.clone(),
     match_pattern: receiver.match_pattern.clone(),
+    module_item_kind: receiver.module_item_kind.clone(),
     expr_data: receiver.expr_data.clone(),
     ident: None,
 })
@@ -10359,7 +10464,7 @@ match bare_m.clone() {
                                         Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
-    target: crate::v1_compiler_infer_lookup::resolved_plain_call_target(func_name.clone(), call_sig_lookup.clone()),
+    target: resolved_plain_call_target_for_outcome(call_target.clone()),
 })),
     descent_evidence: std::option::Option::None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
@@ -10374,7 +10479,7 @@ match bare_s.clone() {
     Some(set_t) => Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
-    target: crate::v1_compiler_infer_lookup::resolved_plain_call_target(func_name.clone(), call_sig_lookup.clone()),
+    target: resolved_plain_call_target_for_outcome(call_target.clone()),
 })),
     descent_evidence: std::option::Option::None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
@@ -10385,7 +10490,7 @@ match bare_s.clone() {
     std::option::Option::None => Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
-    target: crate::v1_compiler_infer_lookup::resolved_plain_call_target(func_name.clone(), call_sig_lookup.clone()),
+    target: resolved_plain_call_target_for_outcome(call_target.clone()),
 })),
     descent_evidence: std::option::Option::None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::CompilerError {
@@ -10401,7 +10506,7 @@ match bare_s.clone() {
     Some(set_t) => Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
-    target: crate::v1_compiler_infer_lookup::resolved_plain_call_target(func_name.clone(), call_sig_lookup.clone()),
+    target: resolved_plain_call_target_for_outcome(call_target.clone()),
 })),
     descent_evidence: std::option::Option::None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
@@ -10412,7 +10517,7 @@ match bare_s.clone() {
     std::option::Option::None => Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
-    target: crate::v1_compiler_infer_lookup::resolved_plain_call_target(func_name.clone(), call_sig_lookup.clone()),
+    target: resolved_plain_call_target_for_outcome(call_target.clone()),
 })),
     descent_evidence: std::option::Option::None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::CompilerError {
@@ -10438,7 +10543,7 @@ let call_semantics = if (func_name.clone() == "lookup".to_string()) {
 }))
                                         } else {
                                             Some(Rc::new(CallSemantics::PlainCallSemantics {
-    target: crate::v1_compiler_infer_lookup::resolved_plain_call_target(func_name.clone(), call_sig_lookup.clone()),
+    target: resolved_plain_call_target_for_outcome(call_target.clone()),
 }))
                                         };
 Rc::new(InferResult {
@@ -10453,13 +10558,20 @@ Rc::new(InferResult {
 }
                                 } else {
                                     {
-                                        let callable_local = match v1_rt::map_get(&scope.locals.clone(), func_name.clone()) {
+                                        let callable_local = match call_target_local_binding(call_target.clone()) {
+    Some(carried) => if ((carried.resolved.clone().params.clone().len() as i64) > 0) {
+                                            Some(carried.resolved.clone())
+                                        } else {
+                                            std::option::Option::None
+                                        },
+    std::option::Option::None => match v1_rt::map_get(&scope.locals.clone(), func_name.clone()) {
     Some(binding) => if ((binding.resolved.clone().params.clone().len() as i64) > 0) {
                                             Some(binding.resolved.clone())
                                         } else {
                                             std::option::Option::None
                                         },
     std::option::Option::None => std::option::Option::None,
+},
 };
 if (callable_local.clone() != std::option::Option::None) {
                                             {
@@ -10477,7 +10589,7 @@ Rc::new(InferResult {
                                                     Rc::new(CallSemantics::FunctionValueCallSemantics)
                                                 } else {
                                                     Rc::new(CallSemantics::PlainCallSemantics {
-    target: crate::v1_compiler_infer_lookup::resolved_plain_call_target(func_name.clone(), call_sig_lookup.clone()),
+    target: resolved_plain_call_target_for_outcome(call_target.clone()),
 })
                                                 }),
     descent_evidence: std::option::Option::None,
@@ -10528,7 +10640,7 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
 Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
-    target: crate::v1_compiler_infer_lookup::resolved_plain_call_target(func_name.clone(), call_sig_lookup.clone()),
+    target: resolved_plain_call_target_for_outcome(call_target.clone()),
 })),
     descent_evidence: std::option::Option::None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
@@ -11850,6 +11962,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                             is_self_recursive: pn.is_self_recursive.clone(),
                             has_non_tail_self_call: pn.has_non_tail_self_call.clone(),
                             match_pattern: pn.match_pattern.clone(),
+                            module_item_kind: pn.module_item_kind.clone(),
                             expr_data: pn.expr_data.clone(),
                         })
                     });
@@ -13579,6 +13692,7 @@ Rc::new(FieldInferResult {
                             is_self_recursive: false,
                             has_non_tail_self_call: false,
                             match_pattern: std::option::Option::None,
+                            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
                         }));
@@ -13603,6 +13717,7 @@ Rc::new(FieldInferResult {
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
+                    module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -15953,6 +16068,7 @@ crate::v1_std_core::make_arg_node(child.occurrence_identity.clone(), crate::v1_s
                     is_self_recursive: body.is_self_recursive.clone(),
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
+                    module_item_kind: body.module_item_kind.clone(),
                     expr_data: Rc::new(ExprData::ExprCall {
                         call_semantics: cs.clone(),
                         descent_evidence: Some(evidence.clone()),
@@ -16265,6 +16381,7 @@ crate::v1_std_core::make_arm_node(arm_node.occurrence_identity.clone(), crate::v
                     is_self_recursive: body.is_self_recursive.clone(),
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
+                    module_item_kind: body.module_item_kind.clone(),
                     expr_data: body.expr_data.clone(),
                     ident: None,
                 })
@@ -16390,6 +16507,7 @@ crate::v1_std_core::make_arm_node(arm_node.occurrence_identity.clone(), crate::v
                     is_self_recursive: body.is_self_recursive.clone(),
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
+                    module_item_kind: body.module_item_kind.clone(),
                     expr_data: body.expr_data.clone(),
                     ident: None,
                 })
@@ -16481,6 +16599,7 @@ Rc::new(BlockAnnotateAcc {
                     is_self_recursive: body.is_self_recursive.clone(),
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
+                    module_item_kind: body.module_item_kind.clone(),
                     expr_data: body.expr_data.clone(),
                     ident: None,
                 })
@@ -16754,6 +16873,7 @@ Rc::new(BlockAnnotateAcc {
                             is_self_recursive: body.is_self_recursive.clone(),
                             has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                             match_pattern: body.match_pattern.clone(),
+                            module_item_kind: body.module_item_kind.clone(),
                             expr_data: body.expr_data.clone(),
                             ident: None,
                         })
@@ -16848,6 +16968,7 @@ Rc::new(BlockAnnotateAcc {
                     is_self_recursive: body.is_self_recursive.clone(),
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
+                    module_item_kind: body.module_item_kind.clone(),
                     expr_data: body.expr_data.clone(),
                     ident: None,
                 })
@@ -18708,6 +18829,7 @@ pub fn infer_property_values(
                             is_self_recursive: p.is_self_recursive.clone(),
                             has_non_tail_self_call: p.has_non_tail_self_call.clone(),
                             match_pattern: p.match_pattern.clone(),
+                            module_item_kind: p.module_item_kind.clone(),
                             expr_data: p.expr_data.clone(),
                             ident: None,
                         }),
@@ -18818,6 +18940,7 @@ Rc::new(PropertyInferenceResult {
     is_self_recursive: p.is_self_recursive.clone(),
     has_non_tail_self_call: p.has_non_tail_self_call.clone(),
     match_pattern: p.match_pattern.clone(),
+    module_item_kind: p.module_item_kind.clone(),
     expr_data: p.expr_data.clone(),
     ident: None,
 }),
@@ -18891,6 +19014,7 @@ pub fn infer_transport_node(
                     is_self_recursive: t.is_self_recursive.clone(),
                     has_non_tail_self_call: t.has_non_tail_self_call.clone(),
                     match_pattern: t.match_pattern.clone(),
+                    module_item_kind: t.module_item_kind.clone(),
                     expr_data: t.expr_data.clone(),
                     ident: None,
                 })),
@@ -18943,6 +19067,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
+                    module_item_kind: item.module_item_kind.clone(),
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 }),
@@ -19078,6 +19203,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                 scope.type_env.clone().source_indices.clone(),
                             ),
                             match_pattern: std::option::Option::None,
+                            module_item_kind: item.module_item_kind.clone(),
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
                         }),
@@ -19152,6 +19278,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                 is_self_recursive: false,
                                 has_non_tail_self_call: false,
                                 match_pattern: std::option::Option::None,
+                                module_item_kind: item.module_item_kind.clone(),
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
                             }),
@@ -19221,6 +19348,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                     is_self_recursive: false,
                                     has_non_tail_self_call: false,
                                     match_pattern: std::option::Option::None,
+                                    module_item_kind: item.module_item_kind.clone(),
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
                                 }),
@@ -19267,6 +19395,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                     is_self_recursive: false,
                                     has_non_tail_self_call: false,
                                     match_pattern: std::option::Option::None,
+                                    module_item_kind: item.module_item_kind.clone(),
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
                                 }),
@@ -19309,6 +19438,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                     is_self_recursive: false,
                                     has_non_tail_self_call: false,
                                     match_pattern: std::option::Option::None,
+                                    module_item_kind: item.module_item_kind.clone(),
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
                                 }),
@@ -19374,14 +19504,51 @@ pub struct SigParamSplit {
     pub generic_names: Rc<Vec<String>>,
 }
 
-pub fn body_shadow_aware_func_sig(scope: Rc<InferScope>, func_name: String) -> Rc<FuncSigLookup> {
+pub fn call_target_for_direct_call(
+    scope: Rc<InferScope>,
+    func_name: String,
+) -> Rc<CallTargetOutcome> {
     match v1_rt::map_get(&scope.body_locals.clone(), func_name.clone()) {
-        Some(_) => Rc::new(FuncSigLookup::FuncSigUnresolved),
-        std::option::Option::None => crate::v1_compiler_infer_lookup::lookup_func_sig(
+        Some(_) => match v1_rt::map_get(&scope.locals.clone(), func_name.clone()) {
+            Some(b) => Rc::new(CallTargetOutcome::LocallyBoundCallee {
+                name: func_name.clone(),
+                binding: b.clone(),
+            }),
+            std::option::Option::None => Rc::new(CallTargetOutcome::LocallyBoundBindingMissing {
+                name: func_name.clone(),
+            }),
+        },
+        std::option::Option::None => match (*crate::v1_compiler_infer_lookup::lookup_func_sig(
             scope.func_env.clone(),
             scope.type_env.clone(),
             func_name.clone(),
-        ),
+        ))
+        .clone()
+        {
+            FuncSigLookup::FuncSigResolved {
+                sig: s,
+                declared: d,
+                ..
+            } => Rc::new(CallTargetOutcome::DeclaredCallableResolved {
+                sig: s.clone(),
+                declared: d.clone(),
+            }),
+            FuncSigLookup::FuncSigAmbiguous { candidates: cs, .. } => {
+                Rc::new(CallTargetOutcome::CallableAmbiguous {
+                    candidates: cs.clone(),
+                })
+            }
+            FuncSigLookup::FuncSigUnresolved => {
+                match crate::v1_compiler_infer_method::infer_builtin_call_type(func_name.clone()) {
+                    Some(_) => Rc::new(CallTargetOutcome::BuiltinCallableResolved {
+                        primitive_name: func_name.clone(),
+                    }),
+                    std::option::Option::None => Rc::new(CallTargetOutcome::CallableUnresolved {
+                        name: func_name.clone(),
+                    }),
+                }
+            }
+        },
     }
 }
 
@@ -19790,6 +19957,7 @@ pub fn substitute_generics_apply(
                                 is_self_recursive: n.is_self_recursive.clone(),
                                 has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                                 match_pattern: n.match_pattern.clone(),
+                                module_item_kind: n.module_item_kind.clone(),
                                 expr_data: n.expr_data.clone(),
                                 ident: None,
                             })
@@ -20365,6 +20533,7 @@ pub fn local_binding_for_item(
                         is_self_recursive: false,
                         has_non_tail_self_call: false,
                         match_pattern: std::option::Option::None,
+                        module_item_kind: item.module_item_kind.clone(),
                         expr_data: Rc::new(ExprData::NoExprData),
                         ident: None,
                     });
@@ -20400,6 +20569,7 @@ pub fn local_binding_for_item(
                             is_self_recursive: false,
                             has_non_tail_self_call: false,
                             match_pattern: std::option::Option::None,
+                            module_item_kind: item.module_item_kind.clone(),
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
                         });
@@ -20436,6 +20606,7 @@ pub fn local_binding_for_item(
                                 is_self_recursive: false,
                                 has_non_tail_self_call: false,
                                 match_pattern: std::option::Option::None,
+                                module_item_kind: item.module_item_kind.clone(),
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
                             });
@@ -20495,6 +20666,7 @@ pub fn local_binding_for_item(
                                         is_self_recursive: false,
                                         has_non_tail_self_call: false,
                                         match_pattern: std::option::Option::None,
+                                        module_item_kind: item.module_item_kind.clone(),
                                         expr_data: Rc::new(ExprData::NoExprData),
                                         ident: None,
                                     });
@@ -22051,6 +22223,7 @@ pub fn kernel_bool_type_node() -> Rc<Node> {
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -22072,6 +22245,7 @@ pub fn kernel_bool_type_node() -> Rc<Node> {
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -22096,6 +22270,7 @@ pub fn kernel_bool_type_node() -> Rc<Node> {
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -22220,6 +22395,7 @@ pub fn build_type_env(
                                 is_self_recursive: false,
                                 has_non_tail_self_call: false,
                                 match_pattern: std::option::Option::None,
+                                module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
                             }),
@@ -22254,6 +22430,7 @@ pub fn build_type_env(
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
+                    module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 }),
@@ -22280,6 +22457,7 @@ pub fn build_type_env(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -22301,6 +22479,7 @@ pub fn build_type_env(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -22322,6 +22501,7 @@ pub fn build_type_env(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -22343,6 +22523,7 @@ pub fn build_type_env(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -22938,6 +23119,7 @@ pub fn build_type_env_unresolved(
                                 is_self_recursive: false,
                                 has_non_tail_self_call: false,
                                 match_pattern: std::option::Option::None,
+                                module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
                             }),
@@ -22966,6 +23148,7 @@ pub fn build_type_env_unresolved(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -22987,6 +23170,7 @@ pub fn build_type_env_unresolved(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -23008,6 +23192,7 @@ pub fn build_type_env_unresolved(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -23029,6 +23214,7 @@ pub fn build_type_env_unresolved(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -23138,6 +23324,7 @@ pub fn build_type_env_unresolved(
                                         is_self_recursive: false,
                                         has_non_tail_self_call: false,
                                         match_pattern: std::option::Option::None,
+                                        module_item_kind: item.module_item_kind.clone(),
                                         expr_data: Rc::new(ExprData::NoExprData),
                                         ident: None,
                                     });
@@ -23178,6 +23365,7 @@ pub fn build_type_env_unresolved(
                                             is_self_recursive: false,
                                             has_non_tail_self_call: false,
                                             match_pattern: std::option::Option::None,
+                                            module_item_kind: item.module_item_kind.clone(),
                                             expr_data: Rc::new(ExprData::NoExprData),
                                             ident: None,
                                         });
@@ -23412,6 +23600,61 @@ pub fn build_type_env_unresolved(
             binding_forks: Rc::new(vec![]),
         })
     }
+}
+
+pub fn refresh_one_item_service_names(
+    acc: Rc<HashMap<String, Rc<ItemInfo>>>,
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: String,
+) -> Rc<HashMap<String, Rc<ItemInfo>>> {
+    {
+        let item_name = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
+        match v1_rt::map_get(&acc, item_name.clone()) {
+            std::option::Option::None => acc.clone(),
+            Some(info) => {
+                if (info.module_name.clone() != module_name.clone()) {
+                    acc.clone()
+                } else {
+                    if (item.body.clone() == std::option::Option::None) {
+                        acc.clone()
+                    } else {
+                        v1_rt::rc_map_insert(
+                            acc.clone(),
+                            item_name.clone(),
+                            Rc::new(ItemInfo {
+                                service_names:
+                                    crate::v1_compiler_infer_service::collect_typed_service_calls(
+                                        item.body.clone().clone().unwrap(),
+                                        source_indices.clone(),
+                                    ),
+                                ..(*info.clone()).clone()
+                            }),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn refresh_direct_service_names(
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    typed_items: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: String,
+) -> Rc<HashMap<String, Rc<ItemInfo>>> {
+    typed_items
+        .iter()
+        .cloned()
+        .fold(registry.clone(), |acc: _, item: Rc<Node>| {
+            refresh_one_item_service_names(
+                acc,
+                item.clone(),
+                source_indices.clone(),
+                module_name.clone(),
+            )
+        })
 }
 
 pub fn build_item_info(
@@ -24587,6 +24830,7 @@ pub fn typecheck_module(
                             is_self_recursive: item.is_self_recursive.clone(),
                             has_non_tail_self_call: item.has_non_tail_self_call.clone(),
                             match_pattern: item.match_pattern.clone(),
+                            module_item_kind: item.module_item_kind.clone(),
                             expr_data: item.expr_data.clone(),
                             ident: None,
                         })
@@ -24629,7 +24873,12 @@ pub fn typecheck_module(
                     source_indices.clone(),
                 ),
                 func_env: updated_func_env.clone(),
-                item_registry: ctx.item_registry.clone(),
+                item_registry: refresh_direct_service_names(
+                    ctx.item_registry.clone(),
+                    reannotated_items.clone(),
+                    source_indices.clone(),
+                    resolved_module_name.clone(),
+                ),
                 occurrence_transport: Some(resolved.occurrence_transport.clone()),
             }),
             diagnostics: frontier_occurrence_budget_checked(
@@ -25827,6 +26076,7 @@ pub fn compiler_kernel_type_env(
                                 is_self_recursive: false,
                                 has_non_tail_self_call: false,
                                 match_pattern: std::option::Option::None,
+                                module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
                             }),
@@ -25861,6 +26111,7 @@ pub fn compiler_kernel_type_env(
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
+                    module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 }),
@@ -25887,6 +26138,7 @@ pub fn compiler_kernel_type_env(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -25908,6 +26160,7 @@ pub fn compiler_kernel_type_env(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -25929,6 +26182,7 @@ pub fn compiler_kernel_type_env(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -25950,6 +26204,7 @@ pub fn compiler_kernel_type_env(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });

@@ -41,10 +41,9 @@ data apt_get_binary_path: NonEmptyStr = "/usr/bin/apt-get"
 
 data apt_man_url: NonEmptyStr = "https://manpages.debian.org/testing/apt/apt.8.en.html"
 
-fn apt_install_argv(package: NonEmptyStr) -> List<String> {
-  ["apt-get", "install", "--yes", package as String]
-}
-
+// apt_install_argv was DELETED here for the reason dpkg.dag's Status row states: it was this
+// Install row's argv authored a second time, and its last consumer now binds `package` against
+// this declaration instead.
 service apt.PackageManager {
   operation Install {
     input { package: NonEmptyStr }

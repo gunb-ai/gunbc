@@ -8,7 +8,7 @@ import extdeps.shell.exec { TransportScript, transport_script_seal }
 // SCRIPT bodies not yet dissolved into typed argv/effects. It is a RECORD, not a brand — a bare
 // String cannot fill a RetainedShellScript position, so the 'build argv properly, then join it back
 // into a string' relocation class (bit twice: #7064, vivid-wolf) fails to compile on the
-// ShellOnHost realization edge. Every row carries a reason + a dissolve-on DeclarationRef; new rows
+// host_effect_realize.run_shell_transport edge. Every row carries a reason + a dissolve-on DeclarationRef; new rows
 // are a counted review event. The genuine compile-wall is the List<String> distinction (typed argv
 // edge); this record walls the residual script path. The `as TransportScript` cast-mint that sat in
 // retained_shell_script_to_transport is GONE: TransportScript is itself a sole_constructor record,
@@ -83,8 +83,8 @@ fn retained_foreign(body: String, reason: NonEmptyStr) -> TransportScript {
 
 // Counted bridge for runtime-present direct shell.Exec.Run sites (host converge, host identity,
 // srv3 install/diagnostic) whose dissolve-on is the same srvN-takeover typed effects as the
-// ShellOnHost edge. Returns TransportScript for the direct shell.Exec.Run position; the ShellOnHost
-// cell path uses retained_srvn (RetainedShellScript) instead.
+// host_effect_realize.run_shell_transport edge. Returns TransportScript for the direct
+// shell.Exec.Run position; retained realization bodies use retained_srvn instead.
 
 fn retained_runtime(body: String, reason: NonEmptyStr) -> TransportScript {
   retained_transport(body: body, reason: reason, dissolves_to: retained_srvn_takeover_ref)

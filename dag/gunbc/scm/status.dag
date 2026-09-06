@@ -21,10 +21,23 @@ module gunbc.scm.status
 // FACTS rather than parse prose back out of a terminal rendering, which would be a second authority
 // for one answer.
 
-import std.types { Bool, Int, List, String }
+import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.minted_identity { minted_id_ordinal }
 import v2.std.node { Symbol }
-import gunbc.scm.object_store { SemanticNodeObjectRef }
+import gunbc.scm.object_store { CorpusManifestObjectRef, CorpusManifestEntry }
+import gunbc.scm.staging {
+  StagingRefusal,
+  StageStanding,
+  StageMatchesBase,
+  StageDiffersFromBase,
+  StageWithNoBase,
+  NoCandidateAndNoBase,
+  StageStandingRefused,
+  StagedEntries,
+  StagedEntriesRefused,
+  staged_entries,
+  stage_standing,
+}
 import gunbc.scm.repository_envelope { RepositoryEnvelope, commit_at_reference }
 import gunbc.scm.proposal {
   Requirement,
@@ -44,9 +57,24 @@ import gunbc.scm.proposal {
 // refuses on RepositoryCheckoutNotInCommits, so "the selection names a commit this repository does
 // not have" is DECIDABLE here; reporting the selection as an ordinary checkout without deciding it
 // would state a commit exists when it may not.
+// THE ROOT FIELD CARRIES THE SNAPSHOT THE SELECTED COMMIT FREEZES, and it is a
+// CorpusManifestObjectRef because RepositoryCommit.root is. It was left declared as
+// SemanticNodeObjectRef when the commit root changed subject, and its producer went on constructing
+// from `c.root` -- so the declaration and the value it advertised named different kinds.
+//
+// NOTHING REFUSED, AND THE OBSERVATION IS NARROWER THAN THE FIRST WORDING OF THIS NOTE CLAIMED. What
+// was observed is ONE direction: a CorpusManifestObjectRef value flowed into a field declared
+// SemanticNodeObjectRef, on the route that resolves this module, with no diagnostic -- found by review
+// reading the source rather than by the build. The note first said the two brands were "mutually
+// assignable", which asserts the reverse direction as well; that was never observed and is withdrawn.
+//
+// Both are `sole_constructor` single-field records over ObjectId, and `sole_constructor` demonstrably
+// walls off CONSTRUCTION from other modules -- it broke three fixture call sites in gunbc#9891. Whether it
+// also separates these two as assignment SUBJECTS is exactly what this instance leaves open. The
+// checker's rule is not established here and no account of it is claimed.
 type StatusCheckout
   = NothingCheckedOut
-  | CheckedOutCommit { root: SemanticNodeObjectRef, message: String }
+  | CheckedOutCommit { root: CorpusManifestObjectRef, message: String }
   | CheckedOutCommitMissing { reference: RepositoryCommitRef }
 
 // THREE STATES, NOT TWO, AND THE THIRD IS THE ONE A SURFACE LOSES BY ACCIDENT. It is not enough that
@@ -77,10 +105,26 @@ type StagedRole
 // THE PENDING PROPOSAL IS IN STATUS RATHER THAN BEHIND ITS OWN VERB, because "what have I staged
 // that is not committed" is the primary question status exists to answer -- and given how little
 // else the envelope carries, status without it would be a near-empty surface.
+// THE AUTHORED-SOURCE STAGE IS A SEPARATE FIELD FROM THE ROLE PROPOSAL, AND FUSING THEM WAS THE
+// TEMPTING ERROR. Both answer "what have I staged", which is what makes the fusion look like
+// deduplication -- but a role requirement binds a ROLE and a corpus entry binds a PATH, and they are
+// staged by different verbs into different carriers with different laws. Translating a path into a
+// StagedRole to reuse the renderer below would put a filesystem path where a Symbol belongs and make
+// the two indistinguishable in the one surface whose job is to tell them apart.
+//
+// UNREADABLE IS NOT EMPTY, which is the whole reason this is a coproduct rather than a list. A stage
+// whose manifest the store does not hold is a fault; rendering it as "nothing staged" would tell an
+// author their work is not staged when in fact it is staged and lost, and they would stage it again
+// over a repository that is already broken.
+type CorpusStage
+  = CorpusStageReadable { standing: StageStanding, paths: List<NonEmptyStr> }
+  | CorpusStageUnreadable { cause: StagingRefusal }
+
 type RepositoryStatus {
   checkout: StatusCheckout
   commit_count: Int
   staged: List<StagedRole>
+  corpus: CorpusStage
 }
 
 // THE SELECTION RESOLVES BY REFERENCE, NOT BY ROOT (review 56230). Resolving by root returned the
@@ -112,11 +156,29 @@ fn staged_role_of(requirement: Requirement) -> StagedRole {
 // STATUS TAKES THE PENDING PROPOSAL EXPLICITLY rather than reaching for an ambient one, for the same
 // reason the repository root is an explicit argument at this stage: an implicit "current proposal"
 // is a second policy -- WHICH proposal is this invocation's -- that nothing here has to decide yet.
+// THE CORPUS STAGE IS READ FROM THE ENVELOPE, NOT PASSED IN, and that asymmetry with `pending` is the
+// carriers' rather than an inconsistency. A role proposal has no home in the repository document, so
+// status cannot reach one and takes it as an argument. The corpus stage DOES have a home -- it is a
+// locator in the envelope this function already holds -- so requiring it as a second argument would
+// invite a caller to supply a stage other than the repository's own, which is a state no document can
+// express and nothing here could detect.
+fn corpus_stage_of(envelope: RepositoryEnvelope) -> CorpusStage {
+  match staged_entries(repository: envelope) {
+    StagedEntriesRefused { cause: c } => CorpusStageUnreadable { cause: c }
+    StagedEntries { entries: entries } =>
+      CorpusStageReadable {
+        standing: stage_standing(repository: envelope),
+        paths: map(entries, e => e.path),
+      }
+  }
+}
+
 fn repository_status(envelope: RepositoryEnvelope, pending: Proposal) -> RepositoryStatus {
   RepositoryStatus {
     checkout: status_checkout_of(envelope: envelope),
     commit_count: count(envelope.commits),
     staged: map(pending.requirements, r => staged_role_of(requirement: r)),
+    corpus: corpus_stage_of(envelope: envelope),
   }
 }
 
@@ -133,8 +195,8 @@ fn status_checkout_is_resolvable(status: RepositoryStatus) -> Bool {
 
 fn render_staged_role(staged: StagedRole) -> String {
   match staged {
-    StagedBinding { role: role } => concat("  staged:  ", role as String)
-    StagedAbsence { role: role } => concat("  removed: ", role as String)
+    StagedBinding { role: role } => concat("  role staged:  ", role as String)
+    StagedAbsence { role: role } => concat("  role removed: ", role as String)
   }
 }
 
@@ -153,7 +215,7 @@ fn render_staged_role(staged: StagedRole) -> String {
 // a second naming scheme -- it repeats the one the model already publishes.
 //
 // THE SIBLING ARM IS DELIBERATELY UNCHANGED, and the asymmetry is the model's rather than this
-// function's. `CheckedOutCommit` carries a root node reference and NO commit reference, so the only identity in
+// function's. `CheckedOutCommit` carries a snapshot reference and NO commit reference, so the only identity in
 // reach is the content hash -- which `status_does_not_report_store_representation` states this
 // surface must not report, on the ground that below-boundary representation is opaque. Naming that
 // commit by its ordinal would require `StatusCheckout` to carry the reference, which is a change to
@@ -182,23 +244,134 @@ fn render_commit_count(commit_count: Int) -> String {
 // THE EMPTY STAGED LIST IS RENDERED EXPLICITLY, not left as blank space. "nothing staged" and "this
 // surface did not report staging" are different facts, and a surface that renders the first as
 // silence makes them identical to the reader -- the empty-observation narrow, carried to a human.
+//
+// AND IT NAMES ITS SUBJECT, BECAUSE THERE ARE NOW TWO THINGS A READER CALLS "STAGED". This line said
+// the unqualified "nothing staged" while it reports only the ROLE PROPOSAL, which is a different
+// subject from the corpus candidate rendered above it. The combined surface could therefore print
+// "changes staged relative to the checked-out commit" and "nothing staged" together, which is not
+// merely confusing -- it is two contradictory answers to what the reader takes to be one question.
+// The role lines carry the same qualification for the same reason.
+//
+// The wording is the cheap half of the repair; the load-bearing half is that these two subjects were
+// never fused into one list, which is what makes qualifying them possible at all.
 fn render_staged(staged: List<StagedRole>) -> List<String> {
   if count(staged) == 0 {
-    ["  nothing staged"]
+    ["  no roles staged"]
   } else {
     map(staged, s => render_staged_role(staged: s))
   }
 }
 
-fn render_repository_status(status: RepositoryStatus) -> String {
-  join(
+// THE STANDING IS RENDERED BEFORE THE PATHS BECAUSE IT IS THE ANSWER AND THEY ARE THE DETAIL. An
+// author asks status whether their work is committed; the list of staged paths is what to do about
+// the answer, not the answer itself.
+//
+// NO ARM SAYS "clean" OR "up to date". Every line below names the observed relation between two
+// locators, because "clean" is a summary that has already thrown away which of the states produced
+// it -- and one of those states, an unresolvable checkout, is a fault that a reassuring word would
+// bury.
+// THE WORDING SAYS WHAT DIFFERS, NOT WHAT THE CANDIDATE CONTAINS, and the first writing of these
+// lines got that backwards. It rendered a candidate that MATCHES its base as "corpus staged matches
+// the checked-out commit", which reads to an author as though they had staged something -- when under
+// the inheritance rule an untouched repository has a candidate simply because its base does. The
+// standing deliberately does not distinguish an inherited candidate from an explicitly selected one:
+// what an author asks status is whether there is anything to commit, and both of those answer no.
+fn render_stage_standing(standing: StageStanding) -> String {
+  match standing {
+    NoCandidateAndNoBase => "no corpus staged"
+    StageWithNoBase { candidate: _ } => "a corpus is staged and this repository has no commits yet"
+    StageMatchesBase { candidate: _ } => "no changes staged relative to the checked-out commit"
+    StageDiffersFromBase { candidate: _, committed: _ } =>
+      "changes staged relative to the checked-out commit"
+    StageStandingRefused { cause: _ } =>
+      "the staged corpus cannot be compared against the checked-out commit"
+  }
+}
+
+// THE CORPUS IS COUNTED, NOT ENUMERATED, AND LISTING IT WAS A CLAIM THIS SURFACE CANNOT MAKE.
+//
+// The first writing printed every bound path under a "path:" prefix beneath the staging standing.
+// Those paths are the CANDIDATE'S WHOLE CONTENTS, not the paths that differ from the base -- so a
+// repository with nothing staged at all listed its entire corpus directly under a staging heading,
+// telling the author that every file they had ever committed was pending. Each line was true and the
+// question they appeared to answer was a different one.
+//
+// WHICH PATHS DIFFER IS NOT COMPUTED HERE AND IS NOT APPROXIMATED. It needs a per-path comparison of
+// two manifests, which is a capability rather than a rendering choice, and printing the whole corpus
+// in its place is the shape of the right answer carrying the wrong content. Next-rung trigger: a
+// per-path manifest difference over the candidate and its base, at which point this reports what
+// actually changed.
+//
+// A COUNT IS REPORTED INSTEAD, because it is a fact about the candidate and does not pretend to be a
+// fact about the difference. The standing line above already carries the difference, as a yes or no.
+// THE LABEL SAYS CANDIDATE CORPUS SIZE, NOT A CHANGED-FILE COUNT, and the distinction is the whole
+// reason this line is a count at all. It reports how many paths the candidate BINDS; it says nothing
+// about how many differ from the base, which this surface has not computed. A reader who saw
+// "2 paths" beneath a line announcing staged changes would reasonably take it for the number of
+// changed files, so the label has to refuse that reading rather than rely on the reader not making
+// it.
+fn render_corpus_size(paths: List<NonEmptyStr>) -> String {
+  if count(paths) == 1 {
+    "  candidate corpus: 1 path"
+  } else {
+    concat("  candidate corpus: ", concat(to_string(value: count(paths)), " paths"))
+  }
+}
+
+// THE SIZE LINE IS GATED ON THE STANDING, NOT ON THE COUNT, and the difference is a state that must
+// stay expressible. A repository with no candidate at all reports "no corpus staged", and a size line
+// beneath it would be a second spelling of the same nothing. But an author who has explicitly
+// selected the EMPTY corpus -- a deletion of every tracked path -- also has zero paths, and that is
+// emphatically not nothing. Gating on `count(paths) == 0` would render those two identically, which
+// is the one collapse this surface cannot afford.
+fn corpus_size_lines(standing: StageStanding, paths: List<NonEmptyStr>) -> List<String> {
+  match standing {
+    NoCandidateAndNoBase => []
+    StageStandingRefused { cause: _ } => []
+    StageMatchesBase { candidate: _ } => [render_corpus_size(paths: paths)]
+    StageDiffersFromBase { candidate: _, committed: _ } => [render_corpus_size(paths: paths)]
+    StageWithNoBase { candidate: _ } => [render_corpus_size(paths: paths)]
+  }
+}
+
+fn render_corpus_stage(corpus: CorpusStage) -> List<String> {
+  match corpus {
+    CorpusStageUnreadable { cause: _ } =>
+      ["the staged corpus cannot be read from this repository's object store"]
+    CorpusStageReadable { standing: standing, paths: paths } =>
+      concat(
+        [render_stage_standing(standing: standing)],
+        corpus_size_lines(standing: standing, paths: paths),
+      )
+  }
+}
+
+// THE LINE COMPOSITION IS EXPORTED, AND THAT IS THE REPAIR OF A REAL FORK RATHER THAN A CONVENIENCE.
+//
+// gunbc.scm.render carried its own `repository_status_lines` that re-assembled these lines in its own
+// order, under a note saying "the status lines come from the verb module; only the document structure
+// is decided here". The individual line renderers were indeed shared; the ORDER was not, so the two
+// were one edit apart from disagreeing -- and they did disagree the moment this surface grew a corpus
+// section, because only one of them was updated.
+//
+// The composition now has one home, which is the verb module that owns what status SAYS, and the
+// renderer decides only how a line list becomes a document. render_repository_status is the same list
+// joined for a terminal. The anti-fork witness that measures their agreement is now measuring a
+// property that holds by construction rather than by two authors remembering the same thing -- which
+// is why it kept its teeth long enough to catch this.
+fn repository_status_lines(status: RepositoryStatus) -> List<String> {
+  concat(
     concat(
       [
         render_status_checkout(checkout: status.checkout),
         render_commit_count(commit_count: status.commit_count),
       ],
-      render_staged(staged: status.staged),
+      render_corpus_stage(corpus: status.corpus),
     ),
-    "\n",
+    render_staged(staged: status.staged),
   )
+}
+
+fn render_repository_status(status: RepositoryStatus) -> String {
+  join(repository_status_lines(status: status), "\n")
 }

@@ -28,6 +28,7 @@ import gunbc.srv3_bmc_credential_resolve {
 }
 import gunbc.auth.access_token_source { access_token_upsert_required_reason }
 import gunbc.bmc_onboarding { srv3_onboarding_plan }
+import gunbc.durable_cas_file_store { admit_cas_attempt, file_compare_and_set }
 import gunbc.tools.bmc_onboard {
   bmc_onboard_netrc_path,
   netrc_content,

@@ -66,6 +66,15 @@ data systemctl_enable_verb: NonEmptyStr = "enable" as NonEmptyStr
 
 data systemctl_start_verb: NonEmptyStr = "start" as NonEmptyStr
 
+// RELOAD IS A THIRD TRANSITION, NOT A GENTLER RESTART, and the distinction is the reason it is
+// here rather than spelled as `restart` at a call site. reload runs the unit's own ExecReload and
+// the process NEVER dies, so a daemon holding state across the call keeps it -- systemd-networkd
+// re-reads .network and .netdev files without tearing down a single configured link. `restart`
+// would drop every link the daemon manages, including the host's own uplink, which on a remote
+// machine is indistinguishable from the host going away. A unit with no ExecReload REFUSES the
+// verb rather than silently restarting, so this cannot degrade into that.
+data systemctl_reload_verb: NonEmptyStr = "reload" as NonEmptyStr
+
 fn systemctl_enable_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", systemctl_enable_verb as String, unit as String]
 }
@@ -127,6 +136,22 @@ fn systemctl_set_property_argv(unit: NonEmptyStr, property: NonEmptyStr, value: 
 
 fn systemctl_revert_memory_caps_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", "revert", unit as String, "MemoryMax", "MemoryHigh"]
+}
+
+// THE USER MANAGER IS A DIFFERENT MANAGER, NOT A FLAG ON THE SAME QUERY. `systemctl show` without
+// --user asks the SYSTEM manager, which knows nothing of a unit started by `systemd-run --user`:
+// the answer is not "inactive" but a successful read of a unit that manager never heard of, which
+// is why ShowUserProperty is a distinct operation rather than a boolean on the existing one. A
+// caller that asked the wrong manager would get a plausible empty answer instead of a refusal.
+fn systemctl_show_user_property_argv(unit: NonEmptyStr, property: SystemdUnitProperty) -> List<String> {
+  [
+    "systemctl",
+    "--user",
+    "show",
+    unit as String,
+    concat("--property=", systemd_unit_property_wire(property: property) as String),
+    "--value",
+  ]
 }
 
 fn systemctl_show_property_argv(unit: NonEmptyStr, property: SystemdUnitProperty) -> List<String> {
@@ -391,6 +416,23 @@ service systemd.Systemctl {
     }
   }
 
+  operation ShowUserProperty {
+    input { unit: NonEmptyStr, property: SystemdUnitProperty }
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["systemctl", "--user", "show", "{unit}", "--property={property}", "--value"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl --user show failed"
+    }
+    mock_response {
+      0 => { value: "active", success: true } "hermetic systemd.Systemctl.ShowUserProperty"
+    }
+  }
+
   operation ShowLoadState {
     input { unit: NonEmptyStr }
     output {
@@ -439,6 +481,39 @@ service systemd.Systemctl {
         stdout: "actions-runner@srv3-01.service loaded active running GitHub Actions Runner\nactions-runner@srv3-02.service loaded active running GitHub Actions Runner\n",
         success: true,
       } "hermetic systemd.Systemctl.ListUnits (multi-column rows — consumer must take first field only)"
+    }
+  }
+
+  operation ListUnitsAllLoaded {
+    input {
+      pattern: NonEmptyStr,
+      unit_type: String = "service",
+    }
+    output {
+      stdout: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "systemctl",
+        "list-units",
+        "--type={unit_type}",
+        "--all",
+        "--no-legend",
+        "--plain",
+        "{pattern}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl list-units --all failed"
+    }
+    mock_response {
+      0 => {
+        stdout: "actions-runner@srv3-01.service loaded active running GitHub Actions Runner\nactions-runner@srv3-02.service loaded inactive dead GitHub Actions Runner\n",
+        success: true,
+      } "hermetic systemd.Systemctl.ListUnitsAllLoaded (complete loaded-unit population)"
     }
   }
 

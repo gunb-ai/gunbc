@@ -54,9 +54,6 @@ import extdeps.tailscale.serve {
 }
 import extdeps.exec.command { shell_quote }
 import extdeps.posix.shell_command_language { posix_single_quote }
-import extdeps.apt { apt_install_argv }
-import extdeps.dpkg { dpkg_status_argv }
-import extdeps.systemd.systemctl { systemctl_restart_argv }
 import gunbc.shell_command_text { shell_privileged_command_text_of_argv }
 import gunbc.live_deploy.operations {
   install_directory_command,
@@ -68,9 +65,13 @@ import gunbc.live_deploy.operations {
   deploy_stage_write_expansion_command,
   install_directory_owned_command,
   install_file_owned_command,
-  dpkg_status_command,
-  apt_install_command,
-  systemctl_restart_command,
+}
+import gunbc.live_deploy.effect_leaf {
+  deploy_effect_command,
+  systemctl_restart_effect,
+  apt_install_effect,
+  apt_install_unelevated_effect,
+  dpkg_status_effect,
 }
 import gunbc.live_deploy.emit {
   deploy_receipt_command,
@@ -248,10 +249,10 @@ test fn witness_dependency_ensure_is_idempotent() -> Bool {
   let tmux = deployment_ensure_dependency_script(
     dep: DeploymentDependencyStep { kind: TmuxPackage, subject: EnsuredPackage { package: package_tmux } }
   )
-  string_contains(s: tailscale, pattern: dpkg_status_command(package: package_tailscale))
-    && string_contains(s: tailscale, pattern: apt_install_command(package: package_tailscale, privileged: false))
-    && string_contains(s: tmux, pattern: dpkg_status_command(package: package_tmux))
-    && string_contains(s: tmux, pattern: apt_install_command(package: package_tmux, privileged: false))
+  string_contains(s: tailscale, pattern: deploy_effect_command(inv: dpkg_status_effect(package: package_tailscale)))
+    && string_contains(s: tailscale, pattern: deploy_effect_command(inv: apt_install_unelevated_effect(package: package_tailscale)))
+    && string_contains(s: tmux, pattern: deploy_effect_command(inv: dpkg_status_effect(package: package_tmux)))
+    && string_contains(s: tmux, pattern: deploy_effect_command(inv: apt_install_unelevated_effect(package: package_tmux)))
 }
 
 test fn witness_apply_emits_no_embedded_preflight_and_only_sudoers() -> Bool {
@@ -281,14 +282,14 @@ test fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
     && string_contains(s: sh, pattern: deploy_stage_write_expansion_command(stage_name: "gunbc-tree-sync.env", format: "GUNBC_TREE_SRC=%s\n", expansion_var: "PWD"))
     && string_contains(s: sh, pattern: deploy_stage_install_command(stage_name: "gunbc-tree-sync.env", mode: "0644", dest: "/etc/gunbc-tree-sync.env"))
     && string_contains(s: sh, pattern: deploy_stage_install_command(stage_name: "gunbc-tree-sync.service", mode: "0644", dest: "/etc/systemd/system/gunbc-tree-sync.service"))
-    && string_contains(s: sh, pattern: systemctl_restart_command(unit: deployment_spec_srv1().names.tree_sync_unit_name, privileged: true))
+    && string_contains(s: sh, pattern: deploy_effect_command(inv: systemctl_restart_effect(unit: deployment_spec_srv1().names.tree_sync_unit_name)))
     && string_contains(s: sh, pattern: install_file_owned_command(mode: "0755", owner: gunbc_service_user, group: gunbc_service_user, source: "target/release/gunbc", dest: "/opt/gunbc/bin/gunbc"))
     && string_contains(s: sh, pattern: install_directory_owned_command(mode: "0755", owner: gunbc_service_user, group: gunbc_service_user, path: "/opt/gunbc/dispatch-worktrees"))
     && string_contains(s: sh, pattern: "[Service]")
-    && string_contains(s: sh, pattern: systemctl_restart_command(unit: gunbc_roadmap_unit_name, privileged: true))
+    && string_contains(s: sh, pattern: deploy_effect_command(inv: systemctl_restart_effect(unit: gunbc_roadmap_unit_name)))
     && string_contains(s: sh, pattern: tailscale_enable_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
-    && string_contains(s: sh, pattern: concat("if ! ", concat(dpkg_status_command(package: package_tailscale), concat(" >/dev/null 2>&1; then ", concat(apt_install_command(package: package_tailscale, privileged: true), "; fi")))))
-    && string_contains(s: sh, pattern: concat("if ! ", concat(dpkg_status_command(package: package_tmux), concat(" >/dev/null 2>&1; then ", concat(apt_install_command(package: package_tmux, privileged: true), "; fi")))))
+    && string_contains(s: sh, pattern: concat("if ! ", concat(deploy_effect_command(inv: dpkg_status_effect(package: package_tailscale)), concat(" >/dev/null 2>&1; then ", concat(deploy_effect_command(inv: apt_install_effect(package: package_tailscale)), "; fi")))))
+    && string_contains(s: sh, pattern: concat("if ! ", concat(deploy_effect_command(inv: dpkg_status_effect(package: package_tmux)), concat(" >/dev/null 2>&1; then ", concat(deploy_effect_command(inv: apt_install_effect(package: package_tmux)), "; fi")))))
     && string_contains(s: sh, pattern: deploy_receipt_command(host: deployment_plan_host_identity(spec: deployment_spec_srv1()), fold: "apply"))
 }
 
@@ -304,7 +305,7 @@ test fn witness_apply_script_wires_memory_cap_deploy_consumer() -> Bool {
     && string_contains(s: sh, pattern: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_max)))
 }
 
-data unprivileged_principal_witness_note: String = "Discriminating RED for the run-29822498755 regression class: the ci-runner principal (fleet_posix_accounts FleetAccountCiRunner) holds NO rsync/chown/rmdir grant and no write on the service-user-owned tree, so a bare rsync/chown/rmdir in either script is a deploy that fails on the host again. Working-byte rsync and repository convergence must instead ride the service-user oneshot unit (principal User=briansrls), and every mutation outside it must be one of the six roster-granted sudo -n commands. Post-hoc admission of each sudo -n command against the ci_deploy_access grant envelope is the named residue (emit_deploy_principal_note)."
+data unprivileged_principal_witness_note: String = "Discriminating RED for the run-29822498755 regression class: the ci-runner principal (fleet_posix_accounts FleetAccountCiRunner) holds NO rsync/chown/rmdir grant and no write on the service-user-owned tree, so a bare rsync/chown/rmdir in either script is a deploy that fails on the host again. Working-byte rsync and repository convergence must instead ride the service-user oneshot unit (principal User=briansrls), and every mutation outside it must be one of the roster-granted sudo -n commands (fleet_posix_ci_runner_sudo_grants). Post-hoc admission of each sudo -n command against the ci_deploy_access grant envelope is the named residue (carried by the annotation on gunbc.live_deploy.emit install_d_owned_command)."
 
 test fn retract_script_stays_within_ci_runner_grants() -> Bool {
   let retract = witness_retract_script()
@@ -403,7 +404,7 @@ test fn witness_tree_sync_restart_diagnoses_on_failure() -> Bool {
   string_contains(
     s: sh,
     pattern: concat(
-      systemctl_restart_command(unit: deployment_spec_srv1().names.tree_sync_unit_name, privileged: true),
+      deploy_effect_command(inv: systemctl_restart_effect(unit: deployment_spec_srv1().names.tree_sync_unit_name)),
       " || { echo '--- gunbc-tree-sync.service control-process diagnosis ---' >&2; systemctl status --no-pager --full gunbc-tree-sync.service 2>&1 | tail -n 40 >&2; exit 1; }",
     ),
   )
@@ -462,7 +463,7 @@ test fn witness_retract_owned_process_removes_serve_service() -> Bool {
     && !string_contains(s: sh, pattern: "tailscale serve reset")
     && string_contains(s: sh, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
     && string_contains(s: sh, pattern: "_gunbc_load_state=$('systemctl' 'show' 'gunbc-roadmap.service' '--property=LoadState' '--value')")
-    && string_contains(s: sh, pattern: "if '[' \"$_gunbc_load_state\" '!=' 'not-found' ']'; then 'sudo' '-n' 'systemctl' 'disable' '--now' 'gunbc-roadmap.service'; fi")
+    && string_contains(s: sh, pattern: "if '[' \"$_gunbc_load_state\" '!=' 'not-found' ']'; then '/usr/bin/sudo' '-n' 'systemctl' 'disable' '--now' 'gunbc-roadmap.service'; fi")
     && !string_contains(s: sh, pattern: "_gunbc_load_state=$(systemctl")
     && !string_contains(s: sh, pattern: "systemctl disable --now gunbc-roadmap.service 2>/dev/null || true")
     && string_contains(s: sh, pattern: deploy_receipt_command(host: deployment_plan_host_identity(spec: deployment_spec_srv1()), fold: "retract"))
@@ -492,7 +493,7 @@ test fn witness_execstart_carries_exactly_the_admitted_revision() -> Bool {
     " --host 0.0.0.0 --port 8080",
     " --release-revision ", deploy_witness_release_revision as String,
     " --eval-budget-cpu-ms 30000",
-    " --eval-budget-wall-ms 30000",
+    " --eval-budget-wall-ms 120000",
   ], "")
   string_contains(s: unit, pattern: expected)
     && !string_contains(s: unit, pattern: concat(expected, " --release-revision"))
@@ -728,7 +729,7 @@ test fn twin_apply_creates_its_own_binary_parent_directory_and_not_productions()
 // claim did until the emitter's quoting became the grammar's job — pinned a spelling, not the
 // fact: the discriminating half is the PATH differing between the two instances, and a literal
 // re-states production's path a second time, which is exactly the half-parameterization
-// serve_binary_parent_was_a_literal_note records the cost of.
+// gunbc.live_deploy.emit path_parent_dir's annotation records the cost of.
 fn serve_binary_parent_install_command(instance: HostDashboardInstance) -> String {
   install_directory_command(
     mode: install_d_shared_mode,

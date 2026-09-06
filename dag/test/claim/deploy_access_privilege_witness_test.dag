@@ -1,5 +1,7 @@
 module test.claim.deploy_access_privilege_witness
 
+// Denial subjects are real deployment mutations. The permit pole uses receipt
+// data so exercising authorization never tears down a live deployment.
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data privilege_mutation_marker: String = "host-mutation-privilege-marker-7f3a"
@@ -27,9 +29,7 @@ test fn witness_unprivileged_mutation_refused_before_shell() -> Bool {
   match host_effect_apply_gated(
     access: ci_deploy_srv1_access,
     target: host_os_target(),
-    effect: ShellCommand {
-      script: concat("echo ", privilege_mutation_marker, " && exit 99")
-    },
+    effect: LiveDeployRetract { spec: deployment_spec_srv1() },
     evidence: host_effect_identity_evidence,
     transport: LocalShell,
     fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() }
@@ -39,7 +39,8 @@ test fn witness_unprivileged_mutation_refused_before_shell() -> Bool {
         Present { value: d } =>
           match d {
             Deny { refusal: _ } =>
-              !string_contains(s: deploy_access_decision_reason(d: d), pattern: privilege_mutation_marker)
+              intent.effect == LiveDeployRetract { spec: deployment_spec_srv1() }
+                && string_contains(s: deploy_access_decision_reason(d: d), pattern: "principal mismatch")
             Permit => false
           }
         Absent => false
@@ -52,7 +53,7 @@ test fn witness_unprivileged_mutation_directive_is_refused_terminal() -> Bool {
   let r = host_effect_apply_gated(
     access: ci_deploy_srv1_access,
     target: host_os_target(),
-    effect: ShellCommand { script: concat("echo ", privilege_mutation_marker) },
+    effect: LiveDeployRetract { spec: deployment_spec_srv1() },
     evidence: host_effect_identity_evidence,
     transport: LocalShell,
     fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() }
@@ -71,11 +72,11 @@ test fn witness_unprivileged_mutation_directive_is_refused_terminal() -> Bool {
   }
 }
 
-test fn witness_privileged_fixture_mutation_applies() -> Bool {
+test fn witness_privileged_fixture_receipt_applies() -> Bool {
   reconciliation_converged(r: host_effect_apply_gated(
     access: ci_deploy_srv1_access,
     target: host_os_target(),
-    effect: ShellCommand { script: "true" },
+    effect: Srv3ReceiptEmit { lines: [privilege_mutation_marker] },
     evidence: host_effect_identity_evidence,
     transport: LocalShell,
     fixture_actor: Present {
@@ -88,9 +89,7 @@ test fn witness_privileged_fixture_surfaces_stdout() -> Bool {
   match host_effect_apply_gated(
     access: ci_deploy_srv1_access,
     target: host_os_target(),
-    effect: ShellCommand {
-      script: concat("echo ", privilege_mutation_marker)
-    },
+    effect: Srv3ReceiptEmit { lines: [privilege_mutation_marker] },
     evidence: host_effect_identity_evidence,
     transport: LocalShell,
     fixture_actor: Present {

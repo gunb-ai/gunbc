@@ -126,12 +126,44 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 //   risk every member of this lane already carries, and it is recorded here so a future red is read
 //   against the right axis.
 //
+//   FIVE EVALUATION-MODEL PROBE MEMBERS (added 2026-09-06, #10647). Their admitted effect is
+//   stated here on its own rather than folded into either sentence above, because they satisfy
+//   NEITHER exactly: they build no repository and reach no git plumbing, and unlike the host
+//   probes they are not read-only. They write. The effect is a THROWAWAY TEMP DIRECTORY plus a
+//   file inside it -- shell.Mktemp.Dir, Filesystem.Write, shell.Test.IsFile,
+//   shell.Remove.RecursiveForce -- and each fn removes its own directory before returning. No
+//   network, no cargo, no remote host, no install media, and nothing outside the directory it
+//   created. Filesystem.Write is the new admission and is why this paragraph exists.
+//
+//   WHAT THEY MEASURE, and why ExpectedToHold is the honest expectation for all five rather than
+//   the expectation that makes the lane green: they are effect-observing probes of the EVALUATION
+//   MODEL. Two ask whether a `let` performs its bound effect when its value is never consumed;
+//   three ask whether `&&` demands its right operand under a false left. Each answers by writing a
+//   marker file, running the operation under test, and then asking whether the marker survived --
+//   so the verdict rests on an observed effect and not on a reading of the source. The polarity
+//   was taken FROM the measurement: `and_short_circuit_direct_probe` asserts the marker is GONE
+//   after `false && shell.Remove.RecursiveForce(...)`, which is a claim that the right operand ran,
+//   and it holds. Had the substrate short-circuited, that fn would be ExpectedToRefuse and the
+//   disagreement among the five would itself have been the finding.
+//
 // EACH WAS MEASURED WET BEFORE BEING SCHEDULED, not assumed runnable from its exclusion note. A
 // member the executor cannot actually run would make this lane's route claim false, which is the
 // failure the ruling that ordered this lane forbids by name. The four contract-epoch members were
 // each run wet through `gunbc run` over this tree before this row was written: every one executed
 // its real host effects to completion and returned true. That measurement is the reason they are
 // here, and it is why an unmeasured member does not get added by analogy with a measured one.
+//
+// THE FIVE PROBE MEMBERS WERE MEASURED THE SAME WAY, on the same terms. The instrument is
+// `claim_batch --wet --source-root dag --source-root src/v2 --entry <entry> --functions <csv>`
+// over this tree; re-derive the verdicts by running it rather than reading a number here. Two
+// things about that run are worth recording because they are properties of the ROUTE and not of
+// the members, and a future reader hitting them should not mistake either for a defect in the
+// probes. First, the executor refuses at entry with `HostBudgetUnreadable` unless a cgroup
+// memory limit binds the process; `GUNBC_BIND_MEMORY_CGROUP_BYTES` is the modeled request that
+// supplies one, and the refusal is a missing binding rather than an unrunnable member. Second,
+// the resolve reaches its own peak well above a default remote runner's whole memory, so a
+// too-small host produces an OOM kill and not a verdict -- which is `SelectedButNotExecuted`,
+// carrying no evidence in either direction.
 //
 // THE ROWS NOW CARRY `WitnessIdentity` RATHER THAN A QUALIFIED STRING, and that removed a duplicated
 // fact rather than adding a field: every row's `identity` ended with "." plus its own `function`, so
@@ -140,6 +172,36 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 // of an identity already uses.
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "row_extractor_names_a_row_that_went_dark_by_real_execution" },
+      entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag",
+      function: "row_extractor_names_a_row_that_went_dark_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "row_extractor_reconciles_with_both_rosters_by_real_execution" },
+      entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag",
+      function: "row_extractor_reconciles_with_both_rosters_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "row_extractor_refuses_a_duplicated_identity_by_real_execution" },
+      entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag",
+      function: "row_extractor_refuses_a_duplicated_identity_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "row_extractor_refuses_a_substituted_identity_by_real_execution" },
+      entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag",
+      function: "row_extractor_refuses_a_substituted_identity_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "driver_printed_step_two_carries_the_row_extractor_by_real_execution" },
+      entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag",
+      function: "driver_printed_step_two_carries_the_row_extractor_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "divergent_generated_artifact_merge_refuses_by_real_execution" },
       entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag",
@@ -156,6 +218,30 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "one_sided_generated_artifact_change_merges_clean_by_real_execution" },
       entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag",
       function: "one_sided_generated_artifact_change_merges_clean_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.provenance_calibration_report_real_execution", function: "the_real_report_refuses_on_the_measured_matrix_by_real_execution" },
+      entry: "dag/test/claim/provenance_calibration_report_real_execution_witness_test.dag",
+      function: "the_real_report_refuses_on_the_measured_matrix_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.provenance_calibration_report_real_execution", function: "the_real_report_succeeds_on_a_sound_matrix_by_real_execution" },
+      entry: "dag/test/claim/provenance_calibration_report_real_execution_witness_test.dag",
+      function: "the_real_report_succeeds_on_a_sound_matrix_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.provenance_calibration_report_real_execution", function: "the_refusing_report_still_wrote_the_matrix_by_real_execution" },
+      entry: "dag/test/claim/provenance_calibration_report_real_execution_witness_test.dag",
+      function: "the_refusing_report_still_wrote_the_matrix_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.provenance_calibration_report_real_execution", function: "the_written_payload_is_the_measured_matrix_and_not_another_one" },
+      entry: "dag/test/claim/provenance_calibration_report_real_execution_witness_test.dag",
+      function: "the_written_payload_is_the_measured_matrix_and_not_another_one",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -216,6 +302,36 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.host_cli_dependency_wet_witness_test", function: "observe_npm_wet_posix_command_v_check_does_not_crash" },
       entry: "dag/test/claim/host/host_cli_dependency_wet_witness_test.dag",
       function: "observe_npm_wet_posix_command_v_check_does_not_crash",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.eval_model_probe", function: "let_is_eager_when_unused" },
+      entry: "dag/test/claim/eval_model_probe_test.dag",
+      function: "let_is_eager_when_unused",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.eval_model_probe", function: "let_is_eager_when_consumed" },
+      entry: "dag/test/claim/eval_model_probe_test.dag",
+      function: "let_is_eager_when_consumed",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.eval_model_probe", function: "and_demands_right_even_when_left_false" },
+      entry: "dag/test/claim/eval_model_probe_test.dag",
+      function: "and_demands_right_even_when_left_false",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.eval_model_probe", function: "and_short_circuit_direct_probe" },
+      entry: "dag/test/claim/eval_model_probe_test.dag",
+      function: "and_short_circuit_direct_probe",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.eval_model_probe", function: "and_with_true_left_removes_file" },
+      entry: "dag/test/claim/eval_model_probe_test.dag",
+      function: "and_with_true_left_removes_file",
       expectation: ExpectedToHold {}
     }
   ]

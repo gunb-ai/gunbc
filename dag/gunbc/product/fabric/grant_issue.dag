@@ -1,0 +1,438 @@
+module product.fabric.grant_issue
+
+import std.types { NonEmptyStr, List, Int, Timestamp }
+import std.measure { Measure }
+import std.nat { Nat }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+import product.fabric.identity {
+  fabric_identity_eq, FabricIdentity, WorkKey, GrantKey, OfferKey,
+  DemandKey, ExecutionAttemptKey,
+}
+import product.fabric.execution {
+  Attempt, ExecutionGrant, ReservationRef, LeaseIdentity,
+  FabricGrantObject, FabricGrantContext, FabricGrantEvidence,
+}
+import product.fabric.supply {
+  SupplierOffer, OfferFungibility, Fungible, TrustDomainMismatch,
+  CapabilitiesNotOffered, IsolationNotProvided, ShapeAxesNotCovered,
+  offer_fungibility_for,
+}
+import product.fabric.work { Work }
+import product.fabric.budget {
+  MoneyAccount, MoneyReservationRequest, MoneyRefusal,
+  AccountAdvanced, MoneyRefused, reserve_money,
+}
+import extdeps.accounting.encumbrance {
+  EncumbranceLedger, EncumbranceRefusal,
+  LedgerAdvanced, EncumbranceRefused, reserve_encumbrance,
+}
+
+// THE ONE PRODUCER OF AN ExecutionGrant. Before this module every production reference to
+// ExecutionGrant took one as a parameter or filtered a list of them, and the only three
+// construction sites in the tree were test fixtures. A carrier every consumer reads and nothing
+// mints is an authorization decision that has never been made: the grant existed as a shape for
+// consumers to agree about, while the question FCI-2 owns -- which sole grant authorizes this
+// Work -- was answered by whoever assembled the record.
+//
+// So issuance is confined here, and the confinement is the whole point rather than tidiness. The
+// grant's key is derived, never supplied; its principal is READ OFF the Work rather than accepted
+// as a parameter; and the reservations it carries can only be a value this module built from two
+// ledgers that both admitted.
+//
+// AN EARLIER REVISION OF THIS PARAGRAPH CLAIMED MORE THAN THE CODE ESTABLISHES AND THE CLAIM IS
+// WITHDRAWN HERE RATHER THAN QUIETLY DROPPED. It read that a caller holding an offer, an attempt
+// and a pile of strings cannot produce an ExecutionGrant this module did not issue. That is false:
+// ExecutionGrant is an ordinary record, not sole_constructor, so the record literal is writable by
+// anyone who can name its fields, and five test modules already write one. What this module
+// establishes is the NARROWER and still real claim: the tree now has ONE PRODUCTION ISSUER, and
+// within it the grantee principal is not a free parameter. It does NOT establish that every grant
+// reaching a production effect passed through here.
+//
+// That distinction is this repository's own permit rule turned on its author. A permit type
+// carries no safety property because one safe constructor exists; the property lives in the
+// absence of the unsafe ones. Sealing CommittedReservations protects the PRECONDITION along the
+// safe path, and leaves the permit itself unsealed.
+//
+// RUNG FOUND AT: mitigatable -- one issuer exists and a reviewer can read the call sites, which is
+// a lens over the current corpus rather than a construction. CEILING: structurally impossible; the
+// state is decidable and fully modeled. NEXT-RUNG TRIGGER, a CAPABILITY and not this module's
+// cleanup: the carrier a production effect ACCEPTS must be constructible only from a successful
+// issuance -- ExecutionGrant sealed, or an issuer-minted wrapper carrying an unforgeable issuance
+// proof -- SUFFICIENT FOR every effect-facing signature to name that carrier, at which point a
+// caller-selected grantee has no spelling anywhere rather than no spelling here. Test fixtures
+// then need an issuer-owned constructor or a synthetic carrier that cannot inhabit the production
+// input; that is why the seal is its own change and not a line in this one.
+
+// A PERMIT DECISION IS VALID ONLY AFTER THE EXACT WORK HAS BEEN JOINED TO THE PRINCIPAL WHOSE
+// POLICY GOVERNS IT.
+//
+// The dual failures are both authority failures and both arise the same way -- from a governing
+// principal that was implicit. Issuing without the join is unauthorized issuance; declining to
+// issue despite the join is an escalation of a decision the policy did not reserve. Neither is
+// prevented by a check, because a check runs after the parameter that carries the principal has
+// already been chosen by the caller. It is prevented by there being no such parameter: the
+// grantee principal is a field of the Work's own FabricIdentity, so a grant naming a principal
+// the Work does not name has no spelling here.
+//
+// FabricIdentity equality is over the PAIR, which is why the work-mismatch refusal below is also
+// the cross-principal refusal. Two tenants who chose the same work key are two identities, and
+// nothing in this module can compare the key half alone.
+
+type GrantIssueRefusal<P, Q, S>
+  = AttemptNamesAnotherWork {
+      attempt_work: FabricIdentity<P, WorkKey>,
+      subject_work: FabricIdentity<P, WorkKey>,
+    }
+  | AttemptPrincipalIsNotTheWorkPrincipal {
+      attempt: FabricIdentity<P, ExecutionAttemptKey>,
+      subject_work: FabricIdentity<P, WorkKey>,
+    }
+  | OfferNotFungibleForWork { fungibility: OfferFungibility }
+  | OfferCapacityExhausted {
+      offer: FabricIdentity<P, OfferKey>,
+      quantity_bound: Int,
+      grants_outstanding: Int,
+    }
+  | GrantAlreadyIssuedForAttempt { existing: FabricIdentity<P, GrantKey> }
+  | MoneyReservationRefused { refusal: MoneyRefusal }
+  | ResourceReservationRefused { refusal: EncumbranceRefusal<Q, S> }
+
+// BOTH LEDGERS ADMIT OR NEITHER COMMITMENT IS VISIBLE.
+//
+// product.fabric.execution states the requirement -- every reservation applied tentatively and
+// committed only if EVERY ledger admits, a partial commit unreachable only if the join is atomic
+// rather than sequential -- and with no grant producer it had never been executed.
+//
+// It is discharged by construction rather than by ordering. Both reservations are computed as
+// PURE VALUES, and the advanced money account and the advanced resource ledger appear together in
+// exactly one arm of one match. Money admitted with resource refused returns the resource
+// refusal and the advanced account is simply not a component of that arm, so it reaches no
+// caller and no ledger; the same holds mirrored. There is no compensating release, no undo log
+// and no two-phase protocol, because each of those makes the partial state REACHABLE and then
+// works to escape it. Here the partial state has no constructor.
+//
+// CommittedReservations is sole_constructor for the same reason: it is the evidence that the
+// join happened, and evidence a caller can author is not evidence. Section 4b's ceiling applies
+// unchanged -- this establishes that both ledger transitions were evaluated, and establishes
+// nothing about whether the appropriations they were evaluated against were honestly funded,
+// which stays a boundary obligation on whoever supplied them.
+type CommittedReservations sole_constructor {
+  money: ReservationRef
+  resources: List<ReservationRef>
+  lease: LeaseIdentity
+}
+
+type ReservationJoin<Q, S>
+  = ReservationsCommitted {
+      account: MoneyAccount,
+      ledger: EncumbranceLedger<Q, S>,
+      committed: CommittedReservations,
+    }
+  | MoneyLedgerRefused { refusal: MoneyRefusal }
+  | ResourceLedgerRefused { refusal: EncumbranceRefusal<Q, S> }
+
+fn commit_reservations<Q, S>(
+  account: MoneyAccount,
+  money_request: MoneyReservationRequest,
+  ledger: EncumbranceLedger<Q, S>,
+  resource_reference: ReservationRef,
+  resource_liability: Measure<Q, S, Nat>,
+  lease: LeaseIdentity,
+) -> ReservationJoin<Q, S> {
+  match reserve_money(a: account, request: money_request) {
+    MoneyRefused { refusal: r } => MoneyLedgerRefused { refusal: r }
+    AccountAdvanced { account: advanced } =>
+      match reserve_encumbrance(
+        ledger: ledger,
+        reference: resource_reference,
+        maximum_liability: resource_liability,
+      ) {
+        EncumbranceRefused { refusal: r } => ResourceLedgerRefused { refusal: r }
+        LedgerAdvanced { ledger: next } =>
+          ReservationsCommitted {
+            account: advanced,
+            ledger: next,
+            committed: CommittedReservations {
+              money: money_request.reference,
+              resources: [resource_reference],
+              lease: lease,
+            },
+          }
+      }
+  }
+}
+
+// THE KEY IS DERIVED FROM WHAT THE GRANT AUTHORIZES, AND FROM NOTHING ELSE.
+//
+// Two grants differing in any of these coordinates authorize different things, and two grants
+// agreeing on all of them are the same authorization presented twice -- which is exactly what
+// the duplicate refusal below has to be able to recognize. A supplied key would let a caller
+// name one authorization twice, or one twice as two, and no consumer downstream could tell.
+//
+// The material concatenates FIXED-WIDTH serialized hashes rather than raw components, so no
+// component can carry a payload that moves a boundary: a delimiter has nothing to collapse when
+// every field occupies the same width.
+//
+// EVERY COORDINATE ENTERS AS ITS WHOLE IDENTITY, NOT AS ITS KEY HALF. An earlier revision hashed
+// work.key, attempt.key, offer.key and lease.lease_key, and that projection contradicted the
+// identity authority it was built on: product.fabric.identity defines identity as the PAIR
+// (principal, key) precisely so that identical keys under different principals cannot collapse,
+// and the roles differ per carrier -- the Work principal is the accounting and security scope,
+// the SupplierOffer principal is the SUPPLIER. The grant's own FabricIdentity carries the
+// grantee principal and can account for the Work's; it cannot also carry the supplier's. So two
+// suppliers posting the same offer key derived ONE grant key, and the duplicate check would have
+// read two distinct authorizations as one authorization presented twice.
+//
+// The lease enters WHOLE for the same reason one layer down. LeaseIdentity is three fields and
+// receipt admission treats the resource fingerprint and the generation as load-bearing -- the
+// fingerprint names the exact reserved claim rather than the host, so two admitted slices of one
+// machine are distinguishable, and the generation is the fence. A projection to lease_key alone
+// gave one identity to a re-fenced lease and to a different slot.
+//
+// The attempt principal is NOT a free coordinate here, and that is a decision rather than an
+// omission: issuance refuses below when it disagrees with the Work's, so it is proven equal to a
+// principal already carried. It is hashed anyway, because a coordinate whose invariance depends
+// on a sibling refusal staying in place is one edit away from silently leaving the identity.
+fn grant_identity_material<P>(
+  work: FabricIdentity<P, WorkKey>,
+  attempt: FabricIdentity<P, ExecutionAttemptKey>,
+  offer: FabricIdentity<P, OfferKey>,
+  lease: LeaseIdentity,
+) -> NonEmptyStr {
+  fold(
+    [
+      content_hash_of_value(value: work.principal),
+      content_hash_of_value(value: work.key),
+      content_hash_of_value(value: attempt.principal),
+      content_hash_of_value(value: attempt.key),
+      content_hash_of_value(value: offer.principal),
+      content_hash_of_value(value: offer.key),
+      content_hash_of_value(value: lease.lease_key),
+      lease.resource_fingerprint,
+      content_hash_of_value(value: to_string(lease.generation) as NonEmptyStr),
+    ],
+    init: "gunbc.fabric.grant:",
+    f: (acc, part) => concat(acc, serialize_content_hash(hash: part)),
+  )
+}
+
+fn derive_grant_key<P>(
+  work: FabricIdentity<P, WorkKey>,
+  attempt: FabricIdentity<P, ExecutionAttemptKey>,
+  offer: FabricIdentity<P, OfferKey>,
+  lease: LeaseIdentity,
+) -> GrantKey {
+  serialize_content_hash(
+    hash: content_hash_of_value(
+      value: grant_identity_material(work: work, attempt: attempt, offer: offer, lease: lease)
+    )
+  )
+}
+
+// Outstanding claims against an offer are DERIVED from the grants that exist, which is what
+// product.fabric.supply says makes atomic issuance conserve supply: a stored remainder is a
+// second representation of the grant set, and it can disagree with the grants that actually
+// exist exactly when two have already been issued against capacity that existed only in a stale
+// field.
+fn grants_against_offer<P>(
+  grants: List<ExecutionGrant<P>>,
+  offer: FabricIdentity<P, OfferKey>,
+) -> List<ExecutionGrant<P>> {
+  grants |> filter(g => fabric_identity_eq(left: g.object.offer, right: offer))
+}
+
+fn grants_for_attempt<P>(
+  grants: List<ExecutionGrant<P>>,
+  attempt: FabricIdentity<P, ExecutionAttemptKey>,
+) -> List<ExecutionGrant<P>> {
+  grants |> filter(g => fabric_identity_eq(left: g.context.attempt, right: attempt))
+}
+
+type GrantIssue<P, Q, S>
+  = GrantCommitted {
+      grant: ExecutionGrant<P>,
+      account: MoneyAccount,
+      ledger: EncumbranceLedger<Q, S>,
+    }
+  | GrantRefused { refusal: GrantIssueRefusal<P, Q, S> }
+
+// THE DUPLICATE REFUSAL IS PER ATTEMPT, NOT PER WORK.
+//
+// More than one grant per Work is real and product.fabric.arbitration depends on it: a Work under
+// re-execution holds two grants under two attempts, and refusing the second would make the
+// caller's correct move unrepresentable. What may never exist twice is a grant for ONE attempt --
+// that is one try authorized twice, spending twice against one authorization, which is the
+// duplicate-grant mutation FCI-2 names.
+//
+// AN ATTEMPT CARRIES TWO PRINCIPAL RELATIONS AND MATCHING THE WORK CLOSES ONLY ONE OF THEM.
+//
+// attempt.work == work.id compares the Work identity an attempt names. It says nothing about the
+// principal on the ATTEMPT'S OWN identity, which product.fabric.identity defines as the account
+// the try is authorized and charged under. Those are separate fields, and Attempt is an ordinary
+// record, so an attempt naming the subject Work while carrying a foreign principal on its own id
+// passed the comparison. Issuance then produced a grant whose id and work were the owning
+// principal and whose context.attempt was the foreign one -- and receipt admission compares a
+// receipt's whole attempt identity against context.attempt, so a receipt under the foreign
+// principal matched a grant issued to the owner.
+//
+// THE SECOND RELATION IS THEREFORE REFUSED RATHER THAN LEFT UNADJUDICATED. Nothing in this
+// repository models delegated or sponsored execution: no relation says one principal may hold the
+// attempt for another's Work, and no policy witness exists to evaluate if it did. A
+// caller-selected attempt principal is not a delegation, it is an unadjudicated one, so the two
+// coherent readings -- must equal, or must present a delegation witness -- are not both open. The
+// second becomes available by MODELING the relation, at which point this refusal is replaced by a
+// check on that witness rather than deleted.
+//
+// This is principal selection before policy evaluation recurring one carrier down: the Work
+// principal was joined structurally by reading it off the Work, and the attempt principal entering
+// the same permit was still caller-chosen.
+//
+// WHAT THIS DOES NOT ESTABLISH, STATED SO NO READER BUDGETS FOR IT.
+//
+// THIS IS THE ISSUANCE KERNEL OF FCI-2 AND NOT THE WHOLE GATE. The gate's exit predicate reads
+// "SELECTION, RESERVATION and commitment yield exactly one fenced ExecutionGrant for the exact
+// Work", and of those three this module constructs COMMITMENT. Selection and reservation liveness
+// arrive here as caller-authored parameters, which is the same defect this module just repaired
+// for the grantee principal, one premise earlier: a caller-selected principal was closed by
+// reading it off the Work, and a caller-selected winning offer is still open.
+//
+// Three residual capabilities, each stated as what must EXIST rather than as an artifact:
+//
+// ONE -- A SEALED SELECTED OFFER. issue_grant takes a SupplierOffer and rechecks fungibility.
+// Fungibility is selection's FIRST screen, not its result: product.fabric.selection folds
+// affordability, commitment, availability, operating, opportunity and delay cost into a ranked
+// decision, and a raw fungible offer is not that decision. So the caller still picks which
+// fungible offer becomes the grant. CandidateOffer IS NOT THAT CAPABILITY, and naming it here would
+// be a trigger satisfied while the defect stood: bind_candidate seals only that an offer and its
+// dispatch observations name the SAME offer, so it constructs a CandidateOffer for ANY
+// identity-consistent candidate. It is the PRE-SELECTION BOUND INPUT to the fold, not its winner.
+// Pricing alone is insufficient for the same reason -- a PricedCandidate proves one candidate was
+// costed, never that it won comparison against the population. TRIGGER: a sealed selected-offer
+// capability constructible ONLY from the successful winner arm of the completed select_supply
+// population fold, SUFFICIENT FOR issuance to have no parameter by which a caller can name an offer
+// the ranking did not choose.
+//
+// TWO -- A LIFETIME-HELD RESERVATION. The lease and the resource reference are parameters, and
+// GrantIssueRefusal has no stale, expired or superseded arm, so THE GATE'S expired-reservation
+// MUTATION HAS NO SUBJECT HERE. Varying the lease generation changes the derived key, and that
+// proves two epochs have different IDENTITIES; it does not prove an expired epoch cannot
+// authorize. A DIFFERENT identity is not a CURRENTLY AUTHORITATIVE one, and the witness that
+// varies the generation must not be cited as covering this mutation. TRIGGER: FCI-1's cell
+// snapshot and lifetime verdict, joining canonical reservation generation to the cell substrate,
+// SUFFICIENT FOR issuance to receive a reservation that is held rather than described.
+//
+// THREE -- AN ATOMICALLY ADVANCED GRANT POPULATION. The duplicate and capacity checks read
+// `outstanding`, a caller-supplied list, and the committed arm returns advanced LEDGERS but no
+// advanced grant population. What is proved is: GIVEN A COMPLETE SUPPLIED ROSTER, this evaluation
+// refuses an attempt already represented in it. What the gate's duplicate-grant mutation demands
+// is that exactly one grant is atomically ADMITTED for an attempt, and two evaluations handed the
+// same stale empty list can each commit. TRIGGER: a grant registry advanced in the same successful
+// transition, SUFFICIENT FOR the census to stop being an argument.
+//
+// The five FabricGrantEvidence references are taken as a parameter and are NOT verified here.
+// product.fabric.demand states the reason in line: an observation reference is opaque provenance
+// the core never interprets, and inventing a verification of it at this layer would fabricate
+// exactly the external fact a boundary exists to refuse on. That is section 4b's
+// outside-the-modeled-guarantee column, not a rung.
+//
+// Release is also not here. product.fabric.arbitration produces a ReleaseDirective carrying
+// ReservationRefs while the cell actuator needs a slot key, and nothing relates the two. Issuance
+// does not need that relation -- it MINTS the reference rather than interpreting one -- which is
+// why the kernel could land without it.
+fn issue_grant<P, Q, S>(
+  work: Work<P>,
+  attempt: Attempt<P>,
+  offer: SupplierOffer<P>,
+  outstanding: List<ExecutionGrant<P>>,
+  account: MoneyAccount,
+  money_request: MoneyReservationRequest,
+  ledger: EncumbranceLedger<Q, S>,
+  resource_reference: ReservationRef,
+  resource_liability: Measure<Q, S, Nat>,
+  lease: LeaseIdentity,
+  demand: FabricIdentity<P, DemandKey>,
+  evidence: FabricGrantEvidence,
+  issued_at: Timestamp,
+) -> GrantIssue<P, Q, S> {
+  if !fabric_identity_eq(left: attempt.work, right: work.id) {
+    GrantRefused {
+      refusal: AttemptNamesAnotherWork { attempt_work: attempt.work, subject_work: work.id },
+    }
+  } else if attempt.id.principal != work.id.principal {
+    GrantRefused {
+      refusal: AttemptPrincipalIsNotTheWorkPrincipal { attempt: attempt.id, subject_work: work.id },
+    }
+  } else {
+    let fungibility = offer_fungibility_for(requirements: work.requirements, offer: offer)
+    match fungibility {
+      TrustDomainMismatch { required: _, offered: _ } =>
+        GrantRefused { refusal: OfferNotFungibleForWork { fungibility: fungibility } }
+      CapabilitiesNotOffered { required: _, offered: _ } =>
+        GrantRefused { refusal: OfferNotFungibleForWork { fungibility: fungibility } }
+      IsolationNotProvided { missing: _ } =>
+        GrantRefused { refusal: OfferNotFungibleForWork { fungibility: fungibility } }
+      ShapeAxesNotCovered { unmet: _ } =>
+        GrantRefused { refusal: OfferNotFungibleForWork { fungibility: fungibility } }
+      Fungible =>
+        match grants_for_attempt(grants: outstanding, attempt: attempt.id) {
+          Cons { head: existing, tail: _ } =>
+            GrantRefused { refusal: GrantAlreadyIssuedForAttempt { existing: existing.id } }
+          Empty {} => {
+            let claimed = grants_against_offer(grants: outstanding, offer: offer.id).length()
+            if claimed >= offer.quantity_bound {
+              GrantRefused {
+                refusal: OfferCapacityExhausted {
+                  offer: offer.id,
+                  quantity_bound: offer.quantity_bound,
+                  grants_outstanding: claimed,
+                },
+              }
+            } else {
+              match commit_reservations(
+                account: account,
+                money_request: money_request,
+                ledger: ledger,
+                resource_reference: resource_reference,
+                resource_liability: resource_liability,
+                lease: lease,
+              ) {
+                MoneyLedgerRefused { refusal: r } =>
+                  GrantRefused { refusal: MoneyReservationRefused { refusal: r } }
+                ResourceLedgerRefused { refusal: r } =>
+                  GrantRefused { refusal: ResourceReservationRefused { refusal: r } }
+                ReservationsCommitted { account: a, ledger: l, committed: c } =>
+                  GrantCommitted {
+                    account: a,
+                    ledger: l,
+                    grant: ExecutionGrant {
+                      id: FabricIdentity {
+                        principal: work.id.principal,
+                        key: derive_grant_key(
+                          work: work.id,
+                          attempt: attempt.id,
+                          offer: offer.id,
+                          lease: c.lease,
+                        ),
+                      },
+                      object: FabricGrantObject { offer: offer.id, quote: offer.quote },
+                      context: FabricGrantContext {
+                        demand: demand,
+                        work: work.id,
+                        attempt: attempt.id,
+                        executor: offer.executor,
+                        lease: c.lease,
+                        issued_at: issued_at,
+                        maximum_liability: money_request.maximum_liability,
+                      },
+                      evidence: evidence,
+                      resource_reservations: c.resources,
+                      money_reservation: c.money,
+                    },
+                  }
+              }
+            }
+          }
+        }
+    }
+  }
+}

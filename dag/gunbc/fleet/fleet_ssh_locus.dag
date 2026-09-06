@@ -10,7 +10,7 @@ module gunbc.fleet_ssh_locus
 // beside it (the fork §3 exists to prevent). A rename was the only move that violated nothing.
 //
 // ONE SPARK COUPLING SURVIVES AND IS NAMED RATHER THAN HIDDEN: `fleet_locus_ssh_target` still reads
-// the login principal from `gunbc.spark.serving_desired`. That principal resolves to the fleet
+// the login principal declared below. That principal resolves to the fleet
 // automation account and is almost certainly a second instance of the same nickname, but confirming
 // it is a separate reading and the honest state today is a fleet module importing a spark one. The
 // next step is to parameterize the principal at the locus rather than import a default, which turns
@@ -45,7 +45,6 @@ import gunbc.fleet_ssh_credential_verify {
 }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.host_effect { HostEffectTransport, FleetSsh }
-import gunbc.spark.serving_desired { spark_serving_automation_principal_login }
 import extdeps.shell
 import std.algebra { trim }
 
@@ -69,10 +68,16 @@ import std.algebra { trim }
 // With one arm left the coproduct itself was a nickname for `FleetSshExecutionContext`, so it is gone
 // too. The helpers below take the context directly.
 
+// THE FLEET AUTOMATION PRINCIPAL ON A SPARK: the dedicated login the grant rows are installed for,
+// and its home, which is the root every typed remote file write on a Spark is scoped under. Homed
+// here since the Ollama-era serving tree that used to declare it was retired.
+data fleet_automation_principal_login: NonEmptyStr = "gunbc-automation" as NonEmptyStr
+data fleet_automation_principal_home: NonEmptyStr = "/home/gunbc-automation" as NonEmptyStr
+
 fn fleet_locus_ssh_target(host: HostIdentity) -> SshTarget {
   SshTarget {
     endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
-    principal: spark_serving_automation_principal_login(),
+    principal: fleet_automation_principal_login,
   }
 }
 

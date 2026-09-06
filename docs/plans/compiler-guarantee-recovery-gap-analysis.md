@@ -1715,11 +1715,15 @@ enforces end to end.
    2026-08-20 on `stern-heron-695`'s reading; cross-tab by execution pending). The ten pairs are
    grouped by *formal ← actual*, and the failure class is not a type pair — it is which branch of
    `where_refinement_diags_for_predicate` the value lands in. **That axis was already in the data:**
-   `src/v1/00_core.dag` `WhereRefinementUnenforced` carries a `reason: String` that is a closed sum
-   of exactly five deferral strings, declared as such by
-   `where_refinement_deferral_reason_scaffold_note` — *"a closed-string sum enrolled in
-   `is_where_refinement_unenforced_advisory_reason`; any unlisted reason fails closed blocking."*
-   The diagnostic names its own class and the census grouped on the subject instead. **Why it
+   `src/v1/00_core.dag` `WhereRefinementUnenforced` carries a `reason: String` drawn from a closed
+   set, and the producer to read for its membership and count is
+   `is_where_refinement_unenforced_advisory_reason` — any unlisted reason fails closed to
+   blocking. The diagnostic names its own class and the census grouped on the subject instead.
+   (This sentence previously transcribed a count of *five* and quoted
+   `where_refinement_deferral_reason_scaffold_note`'s own wording back at it. The count was
+   wrong, and the quote outlived the declaration: that row changed type and dropped its count in
+   #10521, and a second copy of a declaration cannot know when the declaration moves — §2/§3. It
+   now names the producer instead of restating it.) **Why it
    matters more than a relabelling:** #8608's fix edits the literal-extraction arm, and the 21
    remaining rows are NON-literal expressions — parameters, field accesses, call results — so
    `expr_is_any_literal` is false and they never reach the extractor at all. A per-arm fallback

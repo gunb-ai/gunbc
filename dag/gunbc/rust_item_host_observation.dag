@@ -1,6 +1,7 @@
 module gunbc.rust_item_host_observation
 
 import extdeps.git
+import extdeps.git.inspect
 import gunbc.output_policy { ExpectSuccess }
 import gunbc.repo_identity { gunbc_merge_target_ref }
 import gunbc.generated_artifact { committed_generated_artifact_paths }

@@ -1,0 +1,39 @@
+module test.claim.spark.spark_fabric_switch_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import product.placement_supply { host_identity_eq }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv9, operator_host_srv12, operator_host_srv1 }
+import extdeps.mikrotik.crs812 { crs812_lane_speed_wire, Lane50GCr2, crs812_passive_dac_requires_forced_mode }
+import gunbc.spark.fabric_switch_observed {
+  fabric_lane_observations, fabric_lane_interface, fabric_lane_for_host, fabric_leg_cable_observed,
+  FabricGroup, FabricGroupA, FabricGroupB, fabric_group_hosts, fabric_group_of_host,
+}
+
+// EIGHT LANES, EIGHT DISTINCT HOSTS, ONE LEG EACH, all on odd lanes of the two 400G cages.
+test fn every_unit_has_exactly_one_leg_on_an_odd_lane() -> Bool {
+  length(fabric_lane_observations) == 8
+    && all(fabric_lane_observations, o => o.lane == 1 || o.lane == 3 || o.lane == 5 || o.lane == 7)
+    && all(fabric_lane_observations, o => length(filter(fabric_lane_observations, p => host_identity_eq(a: p.host, b: o.host))) == 1)
+    && (match fabric_lane_for_host(host: operator_host_srv6) { Present { value: o } => (fabric_lane_interface(o: o) as String) == "qsfp56-dd-1-7"  Absent => false })
+}
+
+// THE GROUPS ARE THE CAGES. srv5..srv8 share cage 1, srv9..srv12 share cage 2, and a host off the
+// fabric belongs to neither.
+test fn groups_derive_from_the_cage_and_a_host_off_the_fabric_has_none() -> Bool {
+  let a = fabric_group_hosts(g: FabricGroupA)
+  let b = fabric_group_hosts(g: FabricGroupB)
+  length(a) == 4 && length(b) == 4
+    && any(a, h => host_identity_eq(a: h, b: operator_host_srv5)) && any(a, h => host_identity_eq(a: h, b: operator_host_srv8))
+    && any(b, h => host_identity_eq(a: h, b: operator_host_srv9)) && any(b, h => host_identity_eq(a: h, b: operator_host_srv12))
+    && (match fabric_group_of_host(host: operator_host_srv7) { Present { value: FabricGroupA } => true  _ => false })
+    && (match fabric_group_of_host(host: operator_host_srv1) { Absent => true  Present { value: _ } => false })
+}
+
+// THE 50G CEILING IS THE CABLE'S CODING, RECORDED WITH ITS CAUSE, and the switch lane speed the
+// desired state carries is the one the leg actually linked at.
+test fn the_link_speed_is_the_cable_codings_ceiling_and_forced_mode_is_required() -> Bool {
+  fabric_leg_cable_observed.linked_speed_gbps == 50
+    && fabric_leg_cable_observed.nominal_rate_mbps == 25500
+    && (crs812_lane_speed_wire(s: Lane50GCr2) as String) == "50G-baseCR2"
+    && crs812_passive_dac_requires_forced_mode
+}

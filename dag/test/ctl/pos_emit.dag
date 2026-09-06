@@ -1,0 +1,33 @@
+module ctl.pos_emit
+
+import std.types { NonEmptyStr, String }
+import extdeps.bmc.ipmi
+
+// POSITIVE EMISSION CONTROL, three segments. A func that legitimately calls a service op must emit
+// with that service BOUND: named in the signature, typed, and referenced by the same identifier at
+// the call site. Direct service requirements are collected in build_item_info, which runs inside
+// analyze_item BEFORE infer_items — so a predicate that reads an inference-produced fact yields
+// nothing there, ItemInfo.service_names stays empty, and the emitter omits the import, the parameter
+// and the forwarding while still emitting the use.
+//
+// THIS CONTROL EXISTS BECAUSE NO OTHER INSTRUMENT CAN SEE THAT. Regen reaches a fixed point when
+// both the committed mirror and the fresh emit lack the binding identically; the whole-corpus
+// compile stays at its baseline because the defect produces no inference diagnostic; and the
+// refusal witness for a service op in a service-free fn passes for the OPPOSITE of its intended
+// reason, since an uncollected service means its expected refusal text is emitted unconditionally.
+func emits_a_service_call(host: String) -> String
+  uses net: std.resources.Network
+{
+  r = diagnostic.ipmi.Tool.SensorList(bmc_host: host as NonEmptyStr)
+  return r.stdout
+}
+
+// THE FORWARDER, which is the half a single caller does not test. A caller that reaches the service
+// only THROUGH another function must receive the dependency and pass it on, so this exercises the
+// transitive propagation rather than the direct collection alone. If propagation is broken while
+// direct collection works, this signature loses its parameter while the one above keeps it.
+func forwards_to_a_service_call(host: String) -> String
+  uses net: std.resources.Network
+{
+  return emits_a_service_call(host: host)
+}
