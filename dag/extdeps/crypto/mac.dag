@@ -138,6 +138,46 @@ fn mac_verification_from_implementation(
   }
 }
 
+// ── The bound implementation ─────────────────────────────────────────────────────────────────
+// THE ONE FUNCTION THAT ACTUALLY VERIFIES, and it is where this module stops being an interface.
+// `hmac_sha256_verify_hex` is a host primitive backed by RustCrypto's Hmac<Sha256> and its
+// `verify_slice`, which compares in CONSTANT TIME. That is not an optimization detail: an ordinary
+// equality over MAC bytes leaks, through timing, how many leading bytes of a forged tag were
+// correct, which reduces forging a 32-byte tag from infeasible to a few thousand requests. It is
+// the reason nothing in this module hands a caller a computed tag to compare for itself.
+//
+// It is a host primitive rather than a shell transport because every shell spelling of HMAC puts
+// the KEY IN THE ARGV, which gunbc.credential_argv_exposure forbids -- and with a symmetric MAC
+// the verification key is the signing key, so a leaked key forges approvals rather than merely
+// reading them.
+//
+// Hex rather than base64 for key and tag: the corpus already models digests as lowercase hex
+// (extdeps.crypto.hash Digest.hex), and hex has exactly one spelling per value where base64 has
+// several -- a decoder accepting more spellings than it should is how one envelope acquires two
+// representations, which is the ambiguity the signing input was shaped to avoid.
+//
+// Every malformed input answers false rather than raising, and the refusal a caller sees is
+// MacTagMismatch in all of those cases. A caller cannot distinguish a bad key encoding from a
+// wrong tag, which is correct: both mean the same thing to the only consumer -- this message is
+// not authenticated -- and reporting which would tell a prober whether their key guess was
+// well-formed.
+fn mac_verify(
+  key: MacKey,
+  message: NonEmptyStr,
+  tag_hex: NonEmptyStr,
+) -> MacVerification {
+  mac_verification_from_implementation(
+    key_id: key.id,
+    suite: key.suite,
+    message: message,
+    implementation_verified: hmac_sha256_verify_hex(
+      key.material as String,
+      message as String,
+      tag_hex as String,
+    ),
+  )
+}
+
 fn mac_verification_ok(v: MacVerification) -> Bool {
   match v {
     MacVerified { verified: _ } => true
