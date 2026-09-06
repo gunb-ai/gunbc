@@ -102,7 +102,17 @@ data jailed_probe_termination: TerminationEvidence = TerminationEvidence {
 // jailer at that moment regardless of any cleanup. The load-bearing postcondition is that no
 // process identity associated with the attempt remained -- which the census supports, since it was
 // enumerated rather than counted.
-data cleanup_claim_scope: NonEmptyStr = "no attempt-associated process identity remained; 'zero surviving jailer' is not independent evidence under in-place exec"
+// NARROWED 2026-09-06, because the later live census showed this claim outran its evidence. The
+// post-attempt capture read: init, and two busybox processes. The DEADLINE WATCHER IS ALSO BUSYBOX
+// -- the live census caught it as pid 1651, busybox, uid 0 -- so a census that distinguishes
+// processes only by name cannot tell two console helpers from one helper plus a surviving watcher.
+//
+// WHAT THE EVIDENCE ACTUALLY SUPPORTS is narrower than what was written: no process NAMED
+// firecracker or jailer, and no jail directory, were observed afterwards. That does not exclude a
+// surviving attempt-associated identity, because the one that could survive shares a name with the
+// processes that legitimately remain. Closing it needs an identity join over the launch/exec event
+// set rather than a name match.
+data cleanup_claim_scope: NonEmptyStr = "no process NAMED firecracker or jailer and no jail directory were observed afterwards; the two surviving busybox processes were not identified finely enough to exclude a surviving deadline watcher, which is also busybox"
 
 // ── the runtime root transition ─────────────────────────────────────────────────────────────────
 
@@ -175,7 +185,7 @@ data jailed_probe_closed: List<NonEmptyStr> = [
   "the jailer's device creation and permission setup sufficed for Firecracker to open KVM after dropping to a nonzero uid",
   "Firecracker ran under the jail id and started a guest kernel under KVM",
   "the host's bounded termination path ended the attempt",
-  "no attempt-associated process identity and no jail directory were observed afterwards",
+  "no process named firecracker or jailer, and no jail directory, were observed afterwards -- see cleanup_claim_scope for why this is weaker than 'no attempt identity remained'",
 ]
 
 data jailed_probe_open: List<NonEmptyStr> = [

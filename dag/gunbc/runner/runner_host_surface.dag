@@ -48,20 +48,53 @@ type ProcessCardinality
 //
 // THERE IS NO IDLE FIRECRACKER. A hypervisor process with no admitted attempt behind it is not a
 // warm pool, it is an unexplained process, and the population judgment treats it as one.
+// ONE ATTEMPT EXECUTION IDENTITY, NOT TWO PROCESSES. The roster used to name AttemptJailer and
+// AttemptFirecracker as separate classes with the second parented to the first, and a live census
+// disproved it directly: the pid launched as the jailer and the pid running Firecracker were the
+// SAME NUMBER (1649), with PPid 1. The jailer prepares and then execs, so the executable and the
+// role change while the process identity does not.
+//
+// FIXING ONLY THE COUNT LEFT THE MODEL SAYING TWO THINGS AT ONCE -- the arithmetic said one process
+// while this roster still declared two with a parent-child edge, so a consumer's answer depended on
+// which half it read. The roster is the authority a census compares against, so it is the half that
+// had to change.
+//
+// THE DEADLINE WATCHER IS A ROLE NOW BECAUSE IT IS A PROCESS. BusyBox timeout forks a watcher that
+// outlives its exec, and the same census saw it: pid 1651, busybox, uid 0, parented to init. It was
+// previously counted and unnamed, which is precisely the "exists only as a number" shape this
+// module rejects everywhere else.
 type HostProcessRole
   = HostSupervisor
   | ControlMaster
   | ControlSession
-  | AttemptJailer
-  | AttemptFirecracker
+  | AttemptExecution
+  | AttemptDeadlineWatcher
+  | RuntimeSurfaceObserver
 
 fn host_process_role_label(r: HostProcessRole) -> String {
   match r {
     HostSupervisor => "host-supervisor"
     ControlMaster => "control-master"
     ControlSession => "control-session"
-    AttemptJailer => "attempt-jailer"
-    AttemptFirecracker => "attempt-firecracker"
+    AttemptExecution => "attempt-execution"
+    AttemptDeadlineWatcher => "attempt-deadline-watcher"
+    RuntimeSurfaceObserver => "runtime-surface-observer"
+  }
+}
+
+// THE PHASE IS WHAT CHANGES, and it is modeled beside the role rather than as two roles. A snapshot
+// taken after the guest marker should find FirecrackerRunning; finding JailerPreparing there would
+// mean the exec never happened, which is a different failure from the process being absent.
+type AttemptExecutionPhase
+  = JailerPreparing
+  | FirecrackerRunning
+  | AttemptExecutionRetiring
+
+fn attempt_phase_label(p: AttemptExecutionPhase) -> String {
+  match p {
+    JailerPreparing => "jailer-preparing"
+    FirecrackerRunning => "firecracker-running"
+    AttemptExecutionRetiring => "attempt-execution-retiring"
   }
 }
 
@@ -138,7 +171,7 @@ data runner_host_production_processes: List<HostProcessClass> = [
     parent: ParentIsKernel,
     executable_digest: "unbound-until-image-build",
     runs_as: "root",
-    may_spawn: [ControlMaster, AttemptJailer],
+    may_spawn: [ControlMaster, AttemptExecution, AttemptDeadlineWatcher],
   },
   HostProcessClass {
     role: ControlMaster,
@@ -157,19 +190,11 @@ data runner_host_production_processes: List<HostProcessClass> = [
     may_spawn: [],
   },
   HostProcessClass {
-    role: AttemptJailer,
+    role: AttemptExecution,
     cardinality: ExactlyOnePerAdmittedAttempt,
     parent: ParentIsRole { role: HostSupervisor },
     executable_digest: "unbound-until-image-build",
-    runs_as: "root",
-    may_spawn: [AttemptFirecracker],
-  },
-  HostProcessClass {
-    role: AttemptFirecracker,
-    cardinality: ExactlyOnePerAdmittedAttempt,
-    parent: ParentIsRole { role: AttemptJailer },
-    executable_digest: "unbound-until-image-build",
-    runs_as: "attempt-scoped",
+    runs_as: "root during the jailer phase, then the attempt uid after the drop -- one identity, two executables",
     may_spawn: [],
   },
 ]
@@ -285,29 +310,61 @@ fn is_production_ready(purpose: HostBootPurpose) -> Bool {
 // became Firecracker, whether or not anything was cleaned up. The postcondition that carries weight
 // is that no process identity ASSOCIATED WITH THE ATTEMPT remains -- the deadline watcher and the
 // execution identity included.
-type JailerExecutionTopology
-  = JailerExecsFirecrackerInPlace
-  | JailerSpawnsFirecrackerInNewPidNamespace
-  | JailerDaemonizesFirecracker
-  | JailerTopologyUnobserved
+// THE TWO JAILER OPTIONS ARE ORTHOGONAL BOOLEANS, NOT ALTERNATIVES. --new-pid-ns and --daemonize
+// are independent fields in the jailer, so a coproduct of "in place OR new-pid-ns OR daemonized"
+// makes mutually exclusive what the invocation does not. They are two axes.
+//
+// AND NEITHER LEAVES TWO STEADY-STATE PROCESSES. With --new-pid-ns the jailer clones and the parent
+// exits; with --daemonize the parent and an intermediate exit and the daemon continues. Both have
+// transient extra identities during launch and ONE Firecracker execution process after settling.
+// What differs between them is which pid becomes Firecracker, whether a pid namespace exists,
+// whether the process is session-detached, and what parent relationship survives -- none of which
+// is a steady-state count.
+type JailerPidNamespace = JailerSharedPidNamespace | JailerNewPidNamespace
+type JailerSession = JailerForeground | JailerDaemonized
 
-fn attempt_execution_processes(topology: JailerExecutionTopology) -> Int {
-  match topology {
-    JailerExecsFirecrackerInPlace => 1
-    JailerSpawnsFirecrackerInNewPidNamespace => 2
-    JailerDaemonizesFirecracker => 2
-    JailerTopologyUnobserved => 0
-  }
+type JailerInvocationTopology {
+  pid_namespace: JailerPidNamespace
+  session: JailerSession
 }
 
-// THE DEADLINE WATCHER IS A REAL PROCESS AND WAS MISSING FROM THE MODEL. BusyBox timeout -- 1.36.1
-// in this image -- forks a watcher that outlives its exec and sends the signal when the bound
-// elapses, so a qualification attempt has an attempt-scoped process the surface never declared. It
-// belongs here for exactly as long as the deadline is realized that way; a supervisor that enforces
-// its own deadline internally has no such process and this term goes to zero.
+// THE DEADLINE MECHANISM AND THE JAILER TOPOLOGY ARE NOT INDEPENDENT, and treating them as two
+// separate count terms hid a correctness rule. An external watcher owns the lifetime of the pid it
+// was given -- which survives an in-place exec, so the watched pid becomes Firecracker and the
+// deadline still binds. It does NOT survive a fork: under --new-pid-ns the watched parent exits and
+// Firecracker continues as a child, and under --daemonize the watched process exits during
+// daemonization. In both cases the watcher would fire against a dead pid while the VM ran on.
+//
+// SO THE COMBINATION IS ADMITTED OR REFUSED, never merely counted. The production direction removes
+// the question: a supervisor holding a pidfd and enforcing its own deadline has no watcher process
+// and nothing to rebind after a fork.
 type DeadlineRealization
   = DeadlineByExternalWatcher
   | DeadlineBySupervisorInternal
+
+type DeadlineTopologyAdmission
+  = DeadlineBindingHolds
+  | DeadlineBindingLostOnFork { detail: String }
+
+fn deadline_topology_admission(
+  deadline: DeadlineRealization,
+  topology: JailerInvocationTopology,
+) -> DeadlineTopologyAdmission {
+  match deadline {
+    DeadlineBySupervisorInternal => DeadlineBindingHolds
+    DeadlineByExternalWatcher =>
+      match topology.pid_namespace {
+        JailerNewPidNamespace =>
+          DeadlineBindingLostOnFork { detail: "--new-pid-ns makes the jailer clone a child and the watched parent exit, so the watcher would fire against a dead pid while the VM continues" }
+        JailerSharedPidNamespace =>
+          match topology.session {
+            JailerDaemonized =>
+              DeadlineBindingLostOnFork { detail: "--daemonize makes the watched process exit during daemonization while the daemon continues" }
+            JailerForeground => DeadlineBindingHolds
+          }
+      }
+  }
+}
 
 fn deadline_watcher_processes(realization: DeadlineRealization) -> Int {
   match realization {
@@ -316,18 +373,40 @@ fn deadline_watcher_processes(realization: DeadlineRealization) -> Int {
   }
 }
 
-// THE EXPECTED POPULATION IS DERIVED FROM THE TOPOLOGY AND THE DEADLINE MECHANISM, not from a
-// constant. The previous constant read 2 + sessions + 2*attempts and was wrong on both attempt
-// terms at once.
+// AN UNRESOLVED EXPECTATION REFUSES RATHER THAN RETURNING ZERO. The previous form answered zero
+// processes for an unobserved topology, which is fail-open in the worst direction: for an ADMITTED
+// attempt, not knowing the topology does not establish that no attempt process should exist, and a
+// census comparing against zero would report every real process as unexpected -- or, worse, find
+// nothing and call it agreement.
+type AttemptProcessExpectation
+  = AttemptProcessExpectationResolved { processes: Int }
+  | AttemptProcessExpectationUnresolved { cause: String }
+
+fn attempt_process_expectation(
+  topology: JailerInvocationTopology,
+  deadline: DeadlineRealization,
+) -> AttemptProcessExpectation {
+  match deadline_topology_admission(deadline: deadline, topology: topology) {
+    DeadlineBindingLostOnFork { detail: d } =>
+      AttemptProcessExpectationUnresolved { cause: concat("the deadline mechanism does not bind under this topology: ", d) }
+    DeadlineBindingHolds =>
+      AttemptProcessExpectationResolved {
+        processes: 1 + deadline_watcher_processes(realization: deadline),
+      }
+  }
+}
+
 fn expected_process_count(
   admitted_attempts: Int,
   control_sessions: Int,
-  topology: JailerExecutionTopology,
+  topology: JailerInvocationTopology,
   deadline: DeadlineRealization,
-) -> Int {
-  let per_attempt = attempt_execution_processes(topology: topology)
-    + deadline_watcher_processes(realization: deadline)
-  2 + control_sessions + (per_attempt * admitted_attempts)
+) -> AttemptProcessExpectation {
+  match attempt_process_expectation(topology: topology, deadline: deadline) {
+    AttemptProcessExpectationUnresolved { cause: c } => AttemptProcessExpectationUnresolved { cause: c }
+    AttemptProcessExpectationResolved { processes: per } =>
+      AttemptProcessExpectationResolved { processes: 2 + control_sessions + (per * admitted_attempts) }
+  }
 }
 
 type ObservedProcess {
@@ -366,11 +445,34 @@ type RuntimeSurfaceStanding
 // expected and three observed is satisfied by three substitutions. The standing is an IDENTITY JOIN
 // over roles, lineage and executable digests; the count is a cheap precondition that can only ever
 // produce a finding, never discharge one.
-fn runtime_surface_standing(findings: List<RuntimeSurfaceFinding>) -> RuntimeSurfaceStanding {
-  if (findings |> count) == 0 {
-    RuntimeSurfaceHeld
-  } else {
-    RuntimeSurfaceViolated { findings: findings }
+// AN EMPTY FINDINGS LIST IS NOT AN OBSERVATION, and the previous form let a caller pass one and
+// receive RuntimeSurfaceHeld without having looked at a single process. That is the same fail-open
+// shape as an unobserved topology answering zero: absence of findings from an absent census is not
+// agreement.
+//
+// SO THE STANDING TAKES A COMPLETENESS WITNESS AS WELL. A snapshot that could not be taken, or that
+// raced the population it was enumerating, refuses -- and refusing is the whole point, because a
+// runner host that cannot account for itself must not admit work.
+type SnapshotCompleteness
+  = SnapshotComplete { processes_enumerated: Int }
+  | SnapshotRaced { detail: String }
+  | SnapshotUnreadable { detail: String }
+
+fn runtime_surface_standing(
+  completeness: SnapshotCompleteness,
+  findings: List<RuntimeSurfaceFinding>,
+) -> RuntimeSurfaceStanding {
+  match completeness {
+    SnapshotUnreadable { detail: d } =>
+      RuntimeSurfaceViolated { findings: [RuntimeSurfaceObservationUnreadable { detail: d }] }
+    SnapshotRaced { detail: d } =>
+      RuntimeSurfaceViolated { findings: [RuntimeSurfaceObservationUnreadable { detail: concat("the snapshot raced the process population it was enumerating: ", d) }] }
+    SnapshotComplete { processes_enumerated: _ } =>
+      if (findings |> count) == 0 {
+        RuntimeSurfaceHeld
+      } else {
+        RuntimeSurfaceViolated { findings: findings }
+      }
   }
 }
 
@@ -429,14 +531,22 @@ data runner_host_qualification_processes: List<HostProcessClass> = [
     parent: ParentIsKernel,
     executable_digest: "unbound-until-image-build",
     runs_as: "root",
-    may_spawn: [AttemptFirecracker],
+    may_spawn: [AttemptExecution],
   },
   HostProcessClass {
-    role: AttemptFirecracker,
+    role: AttemptExecution,
     cardinality: ExactlyOnePerAdmittedAttempt,
     parent: ParentIsRole { role: HostSupervisor },
     executable_digest: "unbound-until-image-build",
-    runs_as: "uid 1000 after the jailer's privilege drop; the same process identity that began as the jailer under in-place exec",
+    runs_as: "uid 1000 after the jailer's privilege drop; the same process identity that began as the jailer, measured as pid 1649 in both phases",
+    may_spawn: [],
+  },
+  HostProcessClass {
+    role: AttemptDeadlineWatcher,
+    cardinality: ExactlyOnePerAdmittedAttempt,
+    parent: ParentIsRole { role: HostSupervisor },
+    executable_digest: "unbound-until-image-build",
+    runs_as: "root",
     may_spawn: [],
   },
 ]
