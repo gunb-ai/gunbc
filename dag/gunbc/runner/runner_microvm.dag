@@ -4,6 +4,9 @@ import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import std.measure {
   Mebibyte,
   ByteSize,
+  Gibibyte,
+  gibibyte,
+  gibibyte_to_byte_size,
   HardwareThreadCount,
   byte_size_count,
   mebibyte,
@@ -240,19 +243,37 @@ fn guest_memory_fits(
   }
 }
 
-// WHY PRODUCTION REFUSES, AND WHY NO NUMBER APPEARS HERE.
+// THE RESERVE IS AN ALLOCATION THIS FLEET SETS ASIDE, NOT A MEASUREMENT IT RECOVERED.
 //
-// extdeps.virtualization.firecracker cites no VMM memory overhead. It models the config SHAPES --
-// FirecrackerMachineConfig { vcpu_count, mem_size_mib } and its neighbours -- plus the single-root
-// rule, and nothing about what the VMM process costs. And the quantity may not exist as a constant
-// at all: a VMM's resident footprint scales with guest size through page tables, with the device
-// model, and with host page size, so what upstream documents is a MEASURED overhead for one stated
-// configuration -- an observation about one boot rather than a property of the realization.
-// Inventing a subtrahend here would be a fabricated plausible output (DESIGN 5) wearing a
-// derivation's clothes.
+// The refusal this replaces was right about the quantity it could not find, and that reasoning is
+// preserved rather than overturned: extdeps.virtualization.firecracker cites no VMM memory
+// overhead, and the quantity may not exist as a constant at all -- a VMM's resident footprint
+// scales with guest size through page tables, with the device model, and with host page size, so
+// what upstream documents is a MEASURED overhead for one stated configuration. Waiting for that
+// number to become citable was waiting for a fact in a shape nothing produces.
+//
+// SO THE STANDING CHANGES AND THE NUMBER DOES NOT PRETEND TO BE DERIVED. This is the same move
+// gunbc_runner_microvm_declared_size already made for the guest's own size: a product decision
+// standing where no computation exists. It is an ALLOCATION the fleet reserves inside the cell so
+// the VMM has somewhere to live, and it is falsified by a guest that fits this policy and is still
+// OOM-killed -- never by a Firecracker release note. Inventing it as a SUBTRAHEND in a derivation
+// would still be the fabricated plausible output DESIGN 5 forbids; declaring it as policy, with the
+// containment check below still deciding fit, is not.
+//
+// WITHOUT IT NOTHING IS ADMISSIBLE, WHICH IS THE WHOLE REASON THIS ROW EXISTS. guest_memory_fits
+// returns MemoryFitUnresolved on an unmodeled reserve, so gunbc_runner_microvm_admission refused
+// EVERY configuration: production could reach a SIZED guest and still never an ADMITTED one. The
+// reserve was the last quantity between the two.
+//
+// THE CELL'S CPU AXIS IS DELIBERATELY UNTOUCHED HERE. The cell still grants only CPUWeight, so the
+// entitlement stays relative-only and the declared product size still answers -- which is exactly
+// what makes this row independently landable. Giving the cell an absolute ceiling is a real and
+// separate change with its own surface.
+data gunbc_runner_microvm_declared_realization_allowance: Gibibyte = gibibyte(count: 1)
+
 fn gunbc_runner_microvm_realization_reserve() -> RealizationReserve {
-  ReserveUnmodeled {
-    cause: "no VMM resident footprint is a cited quantity in extdeps.virtualization.firecracker, and it is not a constant -- it scales with guest size, device model and host page size, so upstream documents a measured overhead for one configuration rather than a property of the realization",
+  ReserveDeclared {
+    bytes: gibibyte_to_byte_size(gunbc_runner_microvm_declared_realization_allowance),
   }
 }
 

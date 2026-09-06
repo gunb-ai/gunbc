@@ -27,6 +27,12 @@ import gunbc.runner_microvm {
   MemoryFitUnresolved,
   guest_memory_fits,
   gunbc_runner_microvm_realization_reserve,
+  gunbc_runner_microvm_declared_realization_allowance,
+  gunbc_runner_microvm_vm_config,
+  gunbc_runner_microvm_admission,
+  MicroVmConfigResolved,
+  MicroVmConfigUnresolved,
+  GuestNetworkAbsent,
   gunbc_runner_microvm_cell_cpu_entitlement,
   CellCpuEntitlement,
   CpuEntitlementAbsolute,
@@ -60,8 +66,8 @@ import gunbc.runner_microvm {
   gunbc_runner_guest_image,
 }
 import extdeps.github.actions_runner { actions_runner_release_2_336_0 }
-import std.measure { hardware_thread_count_value, hardware_thread_count, byte_size }
-import gunbc.runner_slot_allocation { gunbc_runner_cores_per_slot, CoresPerSlotResolved, CoresPerSlotUnresolved }
+import std.measure { hardware_thread_count_value, hardware_thread_count, byte_size, gibibyte_to_byte_size }
+import gunbc.runner_slot_allocation { gunbc_runner_cores_per_slot, CoresPerSlotResolved, CoresPerSlotUnresolved, gunbc_runner_slot_desired }
 
 
 // THE srv4 MVP CONFIGURATION, RETAINED AS THE ENVELOPE WALL'S RED INPUT.
@@ -349,6 +355,13 @@ fn cause_mentions(cause: String, needle: String) -> Bool {
 // below asserts that it refuses; nothing here weakens that.
 data witness_reserve: RealizationReserve = ReserveDeclared { bytes: byte_size(count: 268435456) }
 
+// AN UNMODELED RESERVE IS NOW A FIXTURE TOO. Production declares an allowance, so the arm that
+// refuses for want of one is no longer reachable from the fleet's own row -- and a refusal arm with
+// no way to be driven is a decoration. This is what drives it.
+data witness_unmodeled_reserve: RealizationReserve = ReserveUnmodeled {
+  cause: "no VMM resident footprint is cited in extdeps.virtualization.firecracker",
+}
+
 // THE SAME CONFIGURATION, JUDGED UNDER THE PRODUCTION RESERVE, IS REFUSED -- AND THIS IS THE PAIR
 // THAT MATTERS MOST. The three admission witnesses above admit this exact guest under a DECLARED
 // reserve. Here the only thing that changes is the reserve, and the answer flips to a refusal
@@ -368,7 +381,7 @@ test fn the_same_guest_is_refused_under_the_production_reserve() -> Bool {
       listener_is_main_process: false,
       transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
       config: mvp_sized_config(),
-      reserve: gunbc_runner_microvm_realization_reserve(),
+      reserve: witness_unmodeled_reserve,
     ),
   )
 }
@@ -502,12 +515,47 @@ test fn a_reserve_larger_than_the_whole_envelope_admits_no_guest() -> Bool {
 // witness deleted in the previous revision: that one returned true from its unresolved arm without
 // reaching anything, so it could not fail. This one fails if the cause stops naming the authority
 // that owes the quantity.
-test fn the_production_reserve_is_unmodeled_and_says_where_it_is_owed() -> Bool {
+// PRODUCTION NOW DECLARES AN ALLOWANCE, AND THIS IS THE REGRESSION CONTROL FOR THAT CLIMB. It
+// previously asserted the reserve was unmodeled; that was an expecting-red probe whose wall landed,
+// so per DESIGN 4b(4) it flips rather than retires. It pins the VALUE, because an allowance that
+// silently became zero would still be ReserveDeclared and would admit a guest with nothing set
+// aside for the VMM -- the exact state the reserve exists to prevent.
+test fn the_production_reserve_is_the_declared_allowance() -> Bool {
   match gunbc_runner_microvm_realization_reserve() {
-    ReserveDeclared { bytes: _ } => false
-    ReserveUnmodeled { cause: c } =>
-      cause_mentions(cause: c, needle: "extdeps.virtualization.firecracker")
+    ReserveUnmodeled { cause: _ } => false
+    ReserveDeclared { bytes: b } =>
+      byte_size_count(b: b) == byte_size_count(b: gibibyte_to_byte_size(gunbc_runner_microvm_declared_realization_allowance))
+        && byte_size_count(b: b) > 0
   }
+}
+
+// THE PRODUCTION BINDING REACHES AN ADMITTED VM, AND THIS IS THE CLAIM THE CHANGE EXISTS TO MAKE.
+//
+// Every other admitted-arm control here drives a FIXTURE: a synthetic config and the witness_reserve
+// declared above. That was deliberate while production refused -- the reserve is a parameter
+// precisely so the accept arm stayed executed -- but it means none of them could tell whether
+// PRODUCTION could reach the arm, and until this change it could not: sizing resolved and admission
+// then refused on an unmodeled reserve. This substitutes nothing at any step.
+test fn the_production_binding_now_reaches_an_admitted_vm() -> Bool {
+  match gunbc_runner_microvm_vm_config(
+    rootfs_path: "/var/lib/gunbc/cell/rootfs.ext4",
+    jit_config_path: "/var/lib/gunbc/cell/jitcfg.ext4",
+    kernel_path: "/var/lib/gunbc/cell/vmlinux",
+    net: GuestNetworkAbsent { cause: "this control judges admission, not the per-slot tap" },
+  ) {
+    MicroVmConfigUnresolved { cause: _ } => false
+    MicroVmConfigResolved { config: c } =>
+      admission_is_admitted(a: gunbc_runner_microvm_admission(topology: VmmIsMainProcess, config: c))
+  }
+}
+
+// THE DECLARED GUEST PLUS ITS ALLOWANCE SITS UNDER THE CELL'S THROTTLE POINT, not merely under its
+// ceiling. MemoryMax is the hard limit but MemoryHigh is where reclaim begins, so a guest admitted
+// against the ceiling alone could be throttled from its first instant while still reporting success.
+test fn the_declared_guest_plus_allowance_sits_under_the_cell_throttle() -> Bool {
+  let guest = byte_size_count(b: mebibyte_to_byte_size(m: gunbc_runner_microvm_declared_size.memory))
+  let allowance = byte_size_count(b: gibibyte_to_byte_size(gunbc_runner_microvm_declared_realization_allowance))
+  guest + allowance <= byte_size_count(b: gunbc_runner_slot_desired().memory_high)
 }
 
 // THE CELL GRANTS NO ABSOLUTE CPU ENTITLEMENT, AND THE CAUSE SAYS WHICH DIRECTIVE IT DOES CARRY.
