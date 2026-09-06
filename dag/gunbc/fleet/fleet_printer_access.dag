@@ -196,6 +196,15 @@ type PrinterMaterializationRecord
   = NoRecordedMaterialization
   | RecordedMaterialization { exact_ref: SecretRef }
 
+// A CONFLICT IN OUR OWN RECORDS IS NOT A RECORD, so it does not travel as one.
+//
+// The classifier reasons about a remote container against what we recorded. "Two receipts claim this
+// secret" is neither -- it is a fault in the local roster, answerable before anything is dialled.
+// Keeping it out of PrinterMaterializationRecord is what lets that type stay exactly two arms.
+type PrinterMaterializationLookup
+  = MaterializationRecordFound { record: PrinterMaterializationRecord }
+  | MaterializationRecordConflict { matches: Int }
+
 type PrinterCredentialResolution
   = PrinterCredentialProvisioned { exact: SecretRef }
   | PrinterCredentialProvisionRequired { printer: PhysicalAssetIdentity, desired: SecretRef }
@@ -294,8 +303,14 @@ fn classify_container_observation(
   }
 }
 
-// THE TRANSPORT HALF: admit the printer against the declared roster, resolve a token, perform the
-// read, and hand the outcome to the classification above. It decides nothing itself, which is why
+// THE TRANSPORT HALF: admit the printer against the declared roster, look up what we recorded,
+// resolve a token, perform the read, and hand the outcome to the classification above.
+//
+// THE ORDER IS LOAD-BEARING AND WAS WRONG. The ambiguity check used to run AFTER the token was
+// resolved and AFTER GetSecret was dispatched, so duplicate local receipts plus an unavailable token
+// answered ObservationRefused -- a malformed LOCAL declaration hidden behind an unrelated EXTERNAL
+// failure, which is precisely the fault-class collapse the locus admission was repaired to prevent.
+// Everything answerable from our own records is now answered before anything is dialled. It decides nothing itself, which is why
 // every arm that could have widened lives next door under a witness.
 //
 // THE ROSTER IS AN UNAVOIDABLE INPUT, NOT A FUNCTION SOMETHING ELSE COULD HAVE CALLED. An earlier
@@ -322,6 +337,10 @@ func observe_printer_secret_container(
       PrinterCredentialLocusConflicted { printer: p, matches: m }
     PrinterAccessCodeDesiredLocusFound { locus: locus } => {
   let desired = locus.secret
+  match materialization_lookup_for(desired: desired) {
+    MaterializationRecordConflict { matches: m } =>
+      PrinterCredentialProvisionAmbiguous { printer: printer, matches: m }
+    MaterializationRecordFound { record: record } =>
   match ensure_access_token(source: token_source) {
     AccessTokenUpsertRequired { plan: upsert_plan } =>
       PrinterCredentialObservationRefused {
@@ -336,23 +355,15 @@ func observe_printer_secret_container(
         project_id: desired.project,
         secret: desired.secret,
       )
-      if recorded_materialization_is_ambiguous(desired: desired) {
-        PrinterCredentialProvisionAmbiguous {
-          printer: printer,
-          matches: printer_access_code_provision_receipts
-            |> filter(r => receipt_names_secret(receipt: r, desired: desired))
-            |> length,
-        }
-      } else {
-        classify_container_observation(
-          printer: printer,
-          desired: desired,
-          outcome: observed.outcome,
-          container_name: observed.name,
-          record: materialization_record_for(desired: desired),
-        )
-      }
+      classify_container_observation(
+        printer: printer,
+        desired: desired,
+        outcome: observed.outcome,
+        container_name: observed.name,
+        record: record,
+      )
     }
+  }
   }
     }
   }
@@ -380,28 +391,29 @@ fn receipt_names_secret(receipt: SecretProvisionReceipt, desired: SecretRef) -> 
 // rather than being carried into the classifier, because "two receipts claim this secret" is a fact
 // about our records and not about the remote container the classifier is reasoning over.
 //
+// IT IS ALSO THE ONLY READER OF THE RECEIPT POPULATION, WHICH IS THE WHOLE CLAIM. An earlier
+// revision said "one adapter" and shipped three readers: this function, a separate
+// recorded_materialization_is_ambiguous that filtered and counted the same roster, and an inline
+// filter in the observer to build the match count. A claim of single authority is falsified by any
+// second reader, and it was falsified by two.
+//
 // THIS IS THE SEAM WHERE B4 WILL LAND. What this function reads today is an ordinary authored list,
 // so RecordedMaterialization is currently only as trustworthy as the discipline described above the
 // roster. When the provisioning actuator becomes the sole minter of an effect-earned receipt, ONLY
 // THIS FUNCTION CHANGES: the classifier already speaks in records rather than in receipts, and the
 // witnesses already author records directly, so neither has to move. That is the whole reason the
 // narrow type exists before the actuator does.
-fn materialization_record_for(desired: SecretRef) -> PrinterMaterializationRecord {
+fn materialization_lookup_for(desired: SecretRef) -> PrinterMaterializationLookup {
   let matches = printer_access_code_provision_receipts
     |> filter(r => receipt_names_secret(receipt: r, desired: desired))
-  match matches |> first {
-    Absent => NoRecordedMaterialization
-    Present { value: found } =>
-      if (matches |> length) == 1 {
-        RecordedMaterialization { exact_ref: found.identity }
-      } else {
-        NoRecordedMaterialization
-      }
+  let count = matches |> length
+  if count > 1 {
+    MaterializationRecordConflict { matches: count }
+  } else {
+    match matches |> first {
+      Absent => MaterializationRecordFound { record: NoRecordedMaterialization }
+      Present { value: found } =>
+        MaterializationRecordFound { record: RecordedMaterialization { exact_ref: found.identity } }
+    }
   }
-}
-
-fn recorded_materialization_is_ambiguous(desired: SecretRef) -> Bool {
-  (printer_access_code_provision_receipts
-    |> filter(r => receipt_names_secret(receipt: r, desired: desired))
-    |> length) > 1
 }
