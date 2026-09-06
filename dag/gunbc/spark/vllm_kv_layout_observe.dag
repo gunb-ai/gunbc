@@ -1,0 +1,169 @@
+module gunbc.spark.vllm_kv_layout_observe
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import std.content_hash { ContentHash }
+import std.measure { TokenCount, token_count_value }
+import gunbc.spark.vllm_engine_incarnation {
+  VllmEngineIncarnation, IncarnationJoin, SameIncarnation, DifferentIncarnation, IncarnationContradiction,
+  same_incarnation, join_is_admissible, incarnation_join_wire, incarnation_wire,
+}
+import extdeps.vllm.kv_layout {
+  ResolvedKvLayout, VllmReportedCapacity,
+  LayoutReproduction, LayoutReproducesReported, LayoutContradictsReported, LayoutReproductionUnavailable,
+  layout_reproduces_reported,
+  PrintedLinesAgreement, PrintedLinesAgree, PrintedLinesDisagree, PrintedLinesUncheckable, printed_lines_agree,
+  AdmissionCost, AdmissionCostBlocks, AdmissionCostUnestablished, cold_admission_blocks,
+}
+
+// ── THE ACQUISITION BOUNDARY: A LAYOUT IS EVIDENCE ONLY WHEN IT IS BOUND TO A LAUNCH ───────────
+//
+// WHY THIS IS NOT A ROW IN gunbc.spark.vllm_observed. That module is a historical, route-local
+// investigation from 2026-09-03 whose cross-route joins were never established; its rows are a
+// record of what was seen once. Making it the live seating authority would promote a historical
+// fixture into current state, and the first stale row would then be authorizing admissions. Current
+// admission consumes a receipt bound to the CURRENTLY ACTIVE incarnation, which is a different
+// subject with a different lifetime, so it gets a different module.
+//
+// WHAT A RECEIPT HAS TO CARRY BEYOND THE NUMBERS. The incarnation, because a reading of one launch
+// is not evidence about its successor; and the digest of the captured text it was parsed from,
+// because a number authored beside a claim about where it came from is not the same as a number
+// traceable to bytes someone can re-read.
+//
+// THE ADMISSION IS NOT A CHOICE THE CALLER MAKES. KvLayoutObserved has no free constructor: it is
+// reachable only through the fold below, and only when the group layout independently reproduces the
+// per-request cost the engine printed. Every other outcome is a named refusal. This is the
+// difference between a receipt and a record: a record says what was seen, a receipt says what was
+// established.
+
+type VllmKvLayoutReceipt
+  = KvLayoutObserved {
+      incarnation: VllmEngineIncarnation,
+      layout: ResolvedKvLayout,
+      reported: VllmReportedCapacity,
+      blocks_per_max_request: Nat,
+      source_capture_digest: ContentHash,
+    }
+  | KvLayoutUnreadable { incarnation: VllmEngineIncarnation, cause: NonEmptyStr }
+  | KvLayoutInconsistent { incarnation: VllmEngineIncarnation, cause: NonEmptyStr }
+
+// THE REPORTED FIGURES ARE CARRIED AS THE UPSTREAM CARRIER, not re-spelled as two fields beside it.
+// An earlier shape of this type listed reported_equivalent_tokens and reported_max_concurrency
+// alongside the layout, which is the same pair of numbers in a second place -- and the pair is
+// exactly what the reproduction check reads, so a receipt whose copies drifted from its carrier
+// would check one and report the other.
+
+// ── ADMISSION ──────────────────────────────────────────────────────────────────────────────────
+//
+// The order is deliberate: the cheapest refusal that is definitely fatal comes first, so a receipt
+// never reports a downstream disagreement that an upstream one already explains.
+//
+//   1. the printed lines must be mutually consistent -- if the pool line and the concurrency line
+//      disagree, the capture is garbled and nothing derived from it means anything;
+//   2. the group layout must reproduce the printed per-request cost -- the one non-circular check,
+//      and the one that is unavailable until the engine emits group metadata.
+//
+// TODAY EVERY REAL CAPTURE LANDS ON (2) AS INCONSISTENT, because `groups` is empty and the derived
+// route does not exist. That is the honest state and not a bug in this fold: an absent second
+// opinion is not agreement.
+fn admit_kv_layout(
+  incarnation: VllmEngineIncarnation,
+  layout: ResolvedKvLayout,
+  reported: VllmReportedCapacity,
+  source_capture_digest: ContentHash,
+) -> VllmKvLayoutReceipt {
+  match printed_lines_agree(layout: layout, reported: reported) {
+    PrintedLinesUncheckable { cause: c } => KvLayoutUnreadable { incarnation: incarnation, cause: c }
+    PrintedLinesDisagree { implied_hundredths: i, reported_hundredths: r } =>
+      KvLayoutInconsistent {
+        incarnation: incarnation,
+        cause: join([
+          "the captured startup lines disagree with each other: the pool line implies a concurrency of ",
+          to_string(i), " hundredths while the concurrency line reports ", to_string(r),
+        ], "") as NonEmptyStr,
+      }
+    PrintedLinesAgree =>
+      match layout_reproduces_reported(layout: layout, reported: reported) {
+        LayoutReproductionUnavailable { cause: c } =>
+          KvLayoutInconsistent {
+            incarnation: incarnation,
+            cause: join(["the layout cannot be checked against the engine's own arithmetic: ", c as String], "") as NonEmptyStr,
+          }
+        LayoutContradictsReported { derived: d, recovered: rec } =>
+          KvLayoutInconsistent {
+            incarnation: incarnation,
+            cause: join([
+              "the group layout and the printed lines describe different engines: the groups sum to ",
+              to_string(d), " blocks for a full-context request while the printed lines invert to ", to_string(rec),
+            ], "") as NonEmptyStr,
+          }
+        LayoutReproducesReported { blocks_per_max_request: b } =>
+          KvLayoutObserved {
+            incarnation: incarnation,
+            layout: layout,
+            reported: reported,
+            blocks_per_max_request: b,
+            source_capture_digest: source_capture_digest,
+          }
+      }
+  }
+}
+
+// ── WHAT A RECEIPT AUTHORIZES, AND FOR WHICH LAUNCH ────────────────────────────────────────────
+//
+// A receipt is not a standing fact about a group. It is a fact about ONE incarnation, and the only
+// question a seat lease may ask of it is: does this receipt describe the engine I am about to send
+// a request to? Anything that answers that question by comparing groups or hosts has reintroduced
+// the co-location test gunbc.spark.vllm_engine_incarnation exists to displace.
+type SeatingAuthority
+  = SeatingAuthorized { blocks_available: Nat, blocks_per_request: Nat }
+  | SeatingRefused { cause: NonEmptyStr }
+
+fn seating_authority_for(
+  receipt: VllmKvLayoutReceipt,
+  serving: VllmEngineIncarnation,
+  sequence_budget: TokenCount,
+) -> SeatingAuthority {
+  match receipt {
+    KvLayoutUnreadable { incarnation: _, cause: c } =>
+      SeatingRefused { cause: join(["the layout capture was unreadable, so no capacity is established: ", c as String], "") as NonEmptyStr }
+    KvLayoutInconsistent { incarnation: _, cause: c } =>
+      SeatingRefused { cause: join(["the layout is inconsistent, so no capacity is established: ", c as String], "") as NonEmptyStr }
+    KvLayoutObserved { incarnation: observed, layout: layout, reported: _, blocks_per_max_request: _, source_capture_digest: _ } => {
+      let join_verdict = same_incarnation(a: observed, b: serving)
+      if !join_is_admissible(j: join_verdict) {
+        SeatingRefused {
+          cause: join([
+            "the receipt describes ", incarnation_wire(i: observed), " but the request would be served by ",
+            incarnation_wire(i: serving), ": ", incarnation_join_wire(j: join_verdict),
+          ], "") as NonEmptyStr,
+        }
+      } else {
+        match cold_admission_blocks(layout: layout, sequence_budget: sequence_budget) {
+          AdmissionCostUnestablished { cause: c } => SeatingRefused { cause: c }
+          AdmissionCostBlocks { blocks: cost } =>
+            SeatingAuthorized { blocks_available: layout.allocator_blocks, blocks_per_request: cost }
+        }
+      }
+    }
+  }
+}
+
+fn receipt_incarnation(r: VllmKvLayoutReceipt) -> VllmEngineIncarnation {
+  match r {
+    KvLayoutObserved { incarnation: i, layout: _, reported: _, blocks_per_max_request: _, source_capture_digest: _ } => i
+    KvLayoutUnreadable { incarnation: i, cause: _ } => i
+    KvLayoutInconsistent { incarnation: i, cause: _ } => i
+  }
+}
+
+fn receipt_wire(r: VllmKvLayoutReceipt) -> String {
+  match r {
+    KvLayoutObserved { incarnation: i, layout: _, reported: _, blocks_per_max_request: b, source_capture_digest: _ } =>
+      join(["observed ", incarnation_wire(i: i), ": ", to_string(b), " blocks per full-context request"], "")
+    KvLayoutUnreadable { incarnation: i, cause: c } =>
+      join(["unreadable ", incarnation_wire(i: i), ": ", c as String], "")
+    KvLayoutInconsistent { incarnation: i, cause: c } =>
+      join(["inconsistent ", incarnation_wire(i: i), ": ", c as String], "")
+  }
+}

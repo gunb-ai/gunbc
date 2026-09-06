@@ -281,6 +281,46 @@ fn min_nat(a: Nat, b: Nat) -> Nat {
   if a < b { a } else { b }
 }
 
+// ── THE ONE NON-CIRCULAR CHECK: THE GROUPS MUST REPRODUCE THE PRINTED COST ────────────────────
+//
+// printed_lines_agree cannot see the inventory, because the inventory cancels out of it. THIS check
+// can, and it is the reason the group layout is worth instrumenting at all.
+//
+// Two independent routes reach the same quantity -- the blocks one full-context request costs:
+//
+//   RECOVERED   allocator_blocks * max_model_len / reported_pool_tokens, inverted out of the two
+//               printed lines. Knows nothing about groups.
+//   DERIVED     the per-group sum at max_model_len. Knows nothing about the printed lines.
+//
+// They share no input but the context cap, so agreement is evidence and disagreement is a located
+// contradiction: either the layout was read from a different launch than the lines, or the group
+// metadata is wrong, or the engine's arithmetic is not what this module models. That is a wall whose
+// RED is authorable -- a witness can hand it a layout whose groups do not sum to the printed cost --
+// which is exactly what the printed-line check could not offer.
+//
+// IT IS UNAVAILABLE TODAY, and says so rather than passing. With `groups` empty the derived route
+// does not exist, so the check refuses; it does not read an absent second opinion as agreement.
+type LayoutReproduction
+  = LayoutReproducesReported { blocks_per_max_request: Nat }
+  | LayoutContradictsReported { derived: Nat, recovered: Nat }
+  | LayoutReproductionUnavailable { cause: NonEmptyStr }
+
+fn layout_reproduces_reported(layout: ResolvedKvLayout, reported: VllmReportedCapacity) -> LayoutReproduction {
+  match cold_admission_blocks(layout: layout, sequence_budget: layout.max_model_len) {
+    AdmissionCostUnestablished { cause: c } => LayoutReproductionUnavailable { cause: c }
+    AdmissionCostBlocks { blocks: derived } =>
+      match recovered_blocks_per_max_length_request(layout: layout, reported: reported) {
+        BlocksPerRequestUnrecoverable { cause: c } => LayoutReproductionUnavailable { cause: c }
+        BlocksPerRequestRecovered { blocks: recovered } =>
+          if derived == recovered {
+            LayoutReproducesReported { blocks_per_max_request: derived }
+          } else {
+            LayoutContradictsReported { derived: derived, recovered: recovered }
+          }
+      }
+  }
+}
+
 // ── THE USAGE GAUGE IS OVER THE INVENTORY, AND IT IS NOT OCCUPANCY ─────────────────────────────
 //
 // kv_cache_usage_perc is 1 - free_blocks / allocator_blocks, and a block holding a RETAINED

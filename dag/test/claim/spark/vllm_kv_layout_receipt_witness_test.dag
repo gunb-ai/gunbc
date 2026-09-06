@@ -1,0 +1,167 @@
+module test.claim.spark.vllm_kv_layout_receipt_witness
+
+import std.types { Bool, String, Int, NonEmptyStr, List, EpochSecs }
+import v2.std.optional { Present, Absent }
+import std.nat { Nat }
+import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
+import std.measure { TokenCount, token_count, byte_size }
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
+import gunbc.spark.vllm_engine_incarnation { VllmEngineIncarnation, vllm_engine_incarnation }
+import extdeps.vllm.log_lines { vllm_startup_reading, GpuKvCacheSize }
+import extdeps.vllm.kv_cache { VllmObservedKvPool, VllmKvPoolAdmission, KvPoolAdmitted, KvPoolRefused, vllm_observed_kv_pool_from_reading }
+import extdeps.vllm.kv_layout {
+  KvBlockSize, KvGroupLayout, FullAttention, SlidingWindowAttention,
+  ResolvedKvLayout, resolved_kv_layout,
+  VllmReportedCapacity, vllm_reported_capacity,
+}
+import gunbc.spark.vllm_kv_layout_observe {
+  VllmKvLayoutReceipt, KvLayoutObserved, KvLayoutUnreadable, KvLayoutInconsistent, admit_kv_layout,
+  SeatingAuthority, SeatingAuthorized, SeatingRefused, seating_authority_for,
+  receipt_wire,
+}
+
+fn w_digest(hex: String) -> ContentHash {
+  Sha256Hash(Sha256Digest { hex: hex as Sha256DigestHex })
+}
+
+data w_exe: String = "1111111111111111111111111111111111111111111111111111111111111111"
+data w_unit: String = "3333333333333333333333333333333333333333333333333333333333333333"
+data w_capture: String = "5555555555555555555555555555555555555555555555555555555555555555"
+
+fn w_incarnation(invocation: String) -> VllmEngineIncarnation {
+  vllm_engine_incarnation(
+    group: FabricGroupA,
+    head: spark_pair_serving_head(group: FabricGroupA),
+    systemd_invocation: invocation as NonEmptyStr,
+    container_id: "gunbc-spark-pair" as NonEmptyStr,
+    executable_digest: w_digest(hex: w_exe),
+    unit_digest: w_digest(hex: w_unit),
+    started_at: 1788000000,
+  )
+}
+
+fn w_pool(tokens: Int) -> VllmObservedKvPool {
+  match vllm_observed_kv_pool_from_reading(
+    tokens: token_count(count: tokens),
+    reading: vllm_startup_reading(line: GpuKvCacheSize, captured_text: "GPU KV cache size: n tokens" as NonEmptyStr),
+  ) {
+    KvPoolAdmitted { pool: p } => p
+    KvPoolRefused { cause: _ } => w_pool(tokens: tokens)
+  }
+}
+
+fn w_reported(tokens: Int, hundredths: Nat) -> VllmReportedCapacity {
+  vllm_reported_capacity(pool: w_pool(tokens: tokens), max_concurrency_hundredths: hundredths)
+}
+
+fn w_layout(groups: List<KvGroupLayout>) -> ResolvedKvLayout {
+  w_layout_with(blocks: 54475, groups: groups)
+}
+
+fn w_layout_with(blocks: Nat, groups: List<KvGroupLayout>) -> ResolvedKvLayout {
+  resolved_kv_layout(
+    allocator_blocks: blocks,
+    scheduler_block_size: token_count(count: 16),
+    hash_block_size: token_count(count: 16),
+    max_model_len: token_count(count: 1048576),
+    max_num_batched_tokens: token_count(count: 8192),
+    groups: groups,
+  )
+}
+
+fn w_full(layers: Nat, block: KvBlockSize) -> KvGroupLayout {
+  KvGroupLayout { kind: FullAttention, layer_count: layers, block_size: block, page_size_bytes: byte_size(count: 32768), sliding_window: none }
+}
+
+// TODAY'S REAL EVIDENCE LANDS INCONSISTENT, WHICH IS THE POINT. The group A head's own two startup
+// lines are mutually consistent, its inventory is real, and the receipt still refuses to be
+// observed -- because the engine emits no group metadata, so the one non-circular check has no
+// second opinion to compare against. An absent second opinion is not agreement.
+test fn a_real_capture_with_no_group_metadata_is_inconsistent_not_observed() -> Bool {
+  let r = admit_kv_layout(
+    incarnation: w_incarnation(invocation: "inv-20-43"),
+    layout: w_layout(groups: []),
+    reported: w_reported(tokens: 11767856, hundredths: 1122),
+    source_capture_digest: w_digest(hex: w_capture),
+  )
+  match r {
+    KvLayoutInconsistent { incarnation: _, cause: c } =>
+      string_contains(s: c as String, pattern: "cannot be checked")
+        && string_contains(s: c as String, pattern: "unobserved")
+    _ => false
+  }
+}
+
+// AND IT AUTHORIZES NOTHING. The refusal is not cosmetic: a receipt that is not observed cannot seat
+// a request even against the very engine it describes.
+test fn an_inconsistent_receipt_seats_nothing() -> Bool {
+  let r = admit_kv_layout(
+    incarnation: w_incarnation(invocation: "inv-20-43"),
+    layout: w_layout(groups: []),
+    reported: w_reported(tokens: 11767856, hundredths: 1122),
+    source_capture_digest: w_digest(hex: w_capture),
+  )
+  match seating_authority_for(receipt: r, serving: w_incarnation(invocation: "inv-20-43"), sequence_budget: token_count(count: 500000)) {
+    SeatingRefused { cause: c } => string_contains(s: c as String, pattern: "no capacity is established")
+    SeatingAuthorized { blocks_available: _, blocks_per_request: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL: a layout whose groups DO reproduce the printed cost is admitted, so the
+// refusals above are about the missing metadata and not about the fold being structurally unable to
+// say yes. One full-attention layer at block 16 costs 1048576/16 = 65,536 blocks for a full-context
+// request; an inventory of 65,536 against a pool line of 1,048,576 tokens inverts to exactly that,
+// and 1.00x is the concurrency those two lines imply.
+fn w_reproducing_receipt(invocation: String) -> VllmKvLayoutReceipt {
+  admit_kv_layout(
+    incarnation: w_incarnation(invocation: invocation),
+    layout: w_layout_with(blocks: 65536, groups: [w_full(layers: 1, block: 16)]),
+    reported: w_reported(tokens: 1048576, hundredths: 100),
+    source_capture_digest: w_digest(hex: w_capture),
+  )
+}
+
+test fn a_layout_whose_groups_reproduce_the_printed_cost_is_observed() -> Bool {
+  match w_reproducing_receipt(invocation: "inv-20-43") {
+    KvLayoutObserved { incarnation: _, layout: _, reported: _, blocks_per_max_request: b, source_capture_digest: _ } => b == 65536
+    _ => false
+  }
+}
+
+// THE DISCRIMINATING ROW FOR THE WHOLE RECEIPT: an OBSERVED receipt still refuses to seat a request
+// that a DIFFERENT launch will serve. This is the case that a group-keyed or host-keyed binding gets
+// wrong -- same group, same head, same image, same unit, and the engine has been restarted
+// underneath it. A grant taken on the strength of the old receipt would be admitted against an
+// engine whose pool it never measured.
+test fn an_observed_receipt_refuses_to_seat_a_request_a_later_launch_will_serve() -> Bool {
+  let r = w_reproducing_receipt(invocation: "inv-20-43")
+  let budget = token_count(count: 500000)
+  (match seating_authority_for(receipt: r, serving: w_incarnation(invocation: "inv-22-11"), sequence_budget: budget) {
+     SeatingRefused { cause: c } => string_contains(s: c as String, pattern: "different-incarnation")
+     SeatingAuthorized { blocks_available: _, blocks_per_request: _ } => false
+   })
+    && (match seating_authority_for(receipt: r, serving: w_incarnation(invocation: "inv-20-43"), sequence_budget: budget) {
+          SeatingAuthorized { blocks_available: a, blocks_per_request: p } => a == 65536 && p == 31250
+          SeatingRefused { cause: _ } => false
+        })
+}
+
+// A GARBLED CAPTURE IS ITS OWN REFUSAL, distinct from a layout that disagrees: the first says the
+// bytes cannot be trusted, the second says two trustworthy readings describe different engines.
+test fn garbled_lines_and_a_contradicting_layout_are_different_refusals() -> Bool {
+  let garbled = admit_kv_layout(
+    incarnation: w_incarnation(invocation: "inv-20-43"),
+    layout: w_layout(groups: []),
+    reported: w_reported(tokens: 11767856, hundredths: 440),
+    source_capture_digest: w_digest(hex: w_capture),
+  )
+  let contradicting = admit_kv_layout(
+    incarnation: w_incarnation(invocation: "inv-20-43"),
+    layout: w_layout_with(blocks: 65536, groups: [w_full(layers: 2, block: 16)]),
+    reported: w_reported(tokens: 1048576, hundredths: 100),
+    source_capture_digest: w_digest(hex: w_capture),
+  )
+  (match garbled { KvLayoutInconsistent { incarnation: _, cause: c } => string_contains(s: c as String, pattern: "disagree with each other")  _ => false })
+    && (match contradicting { KvLayoutInconsistent { incarnation: _, cause: c } => string_contains(s: c as String, pattern: "different engines")  _ => false })
+}
