@@ -64,7 +64,7 @@ import gunbc.live_deploy.spec {
   DeploymentDependencyStep,
   EnsuredSubject, EnsuredPackage, EnsuredHostDirectory, ensured_subject_identity,
   DeploymentArtifactStep,
-  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit,
+  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot, FabricEventLogRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit,
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
   deployment_belt_timer_unit_name,
@@ -1305,6 +1305,9 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
     ComputeRoot => [
       deploy_raw(command: install_d_owned_command(spec: spec, path: art.path as String)),
     ]
+    FabricEventLogRoot => [
+      deploy_raw(command: install_d_owned_command(spec: spec, path: art.path as String)),
+    ]
     SystemdUnit => [
       apply_systemd_unit_write_step(spec: spec, revision: revision),
       deploy_raw(command: deploy_stage_install_command(
@@ -1457,6 +1460,9 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
       deploy_raw(command: rm_empty_directory_command(path: art.path as String)),
     ]
     ComputeRoot => [
+      deploy_raw(command: rm_force_recursive_command(path: art.path as String)),
+    ]
+    FabricEventLogRoot => [
       deploy_raw(command: rm_force_recursive_command(path: art.path as String)),
     ]
     ServeBinary => [

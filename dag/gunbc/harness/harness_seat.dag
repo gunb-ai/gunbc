@@ -13,7 +13,7 @@ import gunbc.spark.pair_serving_desired {
   SparkPairServingUnit, SparkPairServingUnitReady, SparkPairServingUnitRefused,
 }
 import gunbc.spark.serving_engine { ServingEngine, VllmServing, OllamaServing }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, DashboardInstanceByHost, DashboardInstanceForHost, DashboardInstanceHostUnknown, dashboard_instance_for_host }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, DashboardInstanceByHost, DashboardInstanceForHost, DashboardInstanceHostUnknown, dashboard_instance_for_host, dashboard_instance_event_log_root }
 import product.capacity.pool { Pool, NoReplenishment, pool_of }
 import product.capacity.event_chain { PartitionId, HeadExpectation, HeadAbsent, HeadAt, ChainEvent }
 import product.capacity.pool_events { PoolEvent, PoolReleased, SeatRequest }
@@ -53,9 +53,6 @@ fn harness_seat_root_pool(group: FabricGroup) -> Pool<Count, One>? {
   }
 }
 
-fn harness_event_log_root(instance: HostDashboardInstance) -> FilePath {
-  join([instance.instance_root as String, "/fabric-event-log"], "") as FilePath
-}
 
 type HarnessEventLogLayout
   = HarnessLayoutResolved { layout: EventLogLayout, executor: HostIdentity }
@@ -66,7 +63,7 @@ fn harness_event_log_layout_for_host(short_hostname: String) -> HarnessEventLogL
     DashboardInstanceHostUnknown { host: h } => HarnessLayoutRefused { detail: join(["no dashboard instance is declared for host ", h], "") }
     DashboardInstanceForHost { instance: i } =>
       HarnessLayoutResolved {
-        layout: event_log_layout(root: harness_event_log_root(instance: i), remote: event_log_remote_for(placement: fabric_event_log_placement, executor: (i.host_identity as String) as HostIdentity)),
+        layout: event_log_layout(root: dashboard_instance_event_log_root(instance: i), remote: event_log_remote_for(placement: fabric_event_log_placement, executor: (i.host_identity as String) as HostIdentity)),
         executor: (i.host_identity as String) as HostIdentity,
       }
   }
