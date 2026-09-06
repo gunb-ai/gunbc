@@ -395,6 +395,15 @@ type RepositoryEnvelope {
 // -- an identity left as text is one nobody can resolve back); one concerns a commit root absent from
 // the store; and four concern the commit table (checkout selection, duplication, allocator range,
 // parent order), carrying RepositoryCommitRef for the same reason.
+//
+// THE INTEGRATION ARM IS NAMED FOR PRIOR ADMISSION, NOT FOR MEMBERSHIP, AND THE DISTINCTION IS THE
+// WHOLE INVARIANT. The rule producing it refuses an anchor that is not admitted BEFORE the row naming
+// it, so an anchor PRESENT in the commit table but listed later is refused too. A name saying
+// `NotInCommits` would describe a weaker check than the one that runs -- a reader deciding whether the
+// ordering case is covered would read the name and conclude it is not -- and the decode sibling
+// already carries the accurate spelling. One rule answering under two names is the meaning fork
+// DESIGN section 3 refuses. The neighbouring parent arm keeps its older membership spelling because
+// renaming it is a separate subject with its own consumers, not because the two are equivalent.
 type RepositoryEncodeRefusal
   = RepositoryEncodeUncontainedTarget { target: ObjectId }
   | RepositoryEncodeTargetIsAuthoredSource { target: ObjectId }
@@ -411,12 +420,6 @@ type RepositoryEncodeRefusal
   | RepositoryCommitReferenceDuplicated { reference: RepositoryCommitRef }
   | RepositoryCommitReferenceOutsideAllocator { reference: RepositoryCommitRef, next_ordinal: Int }
   | RepositoryCommitParentNotInCommits { parent: RepositoryCommitRef }
-// NAMED FOR PRIOR ADMISSION, NOT FOR MEMBERSHIP, AND THE DISTINCTION IS THE WHOLE INVARIANT. The
-// producing rule refuses an anchor that is not admitted BEFORE the row naming it, so an anchor
-// PRESENT in the table but listed later is refused too. A name saying `NotInCommits` would describe a
-// weaker check than the one that runs -- a reader deciding whether the ordering case is covered would
-// read the name and conclude it is not -- and the sibling arm on the decode side already carries the
-// accurate spelling. One rule answering under two names is the meaning fork DESIGN section 3 refuses.
   | RepositoryEncodeIntegrationSourceNotPreviouslyAdmitted { source: RepositoryCommitRef }
 
 // THE SAME MISATTRIBUTION THIS TYPE ALREADY CLOSED ONCE, CLOSED AGAIN ONE LAYER OVER. The
