@@ -16,7 +16,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn sampled(mib: Int, peak_kb: Int) -> FootprintSampleOutcome {
   FootprintSampled {
     sample: VmmFootprintSample {
-      guest_memory: mebibyte(count: mib),
+      guest_memory: mebibyte_to_byte_size(m: mebibyte(count: mib)),
       instrument: GnuTimeMaxRss,
       vmm_peak: gnu_time_max_rss_bytes(kilobytes: peak_kb),
     },
