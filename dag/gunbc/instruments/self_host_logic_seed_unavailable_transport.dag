@@ -216,11 +216,14 @@ fn slbu_seed_unavailable_receipt() -> Bool {
     && string_contains(s: pass_run.stdout, pattern: slbu_pass_marker)
 
   // Cleanup: temp directories are removed in declaration order after the build and run
-  // complete. The results are ANDed into the receipt. CAVEAT: under a lazy evaluation
-  // model with short-circuit &&, a false verdict never demands cleanup_out or cleanup_src,
-  // and the temp directories leak on the failure path. The house pattern used by every
-  // transport in this codebase relies on strict let evaluation, under which all effects
-  // fire at declaration time and cleanup always runs. See PR body for the gap.
+  // complete. The results are ANDed into the receipt. Measured (snappy-crane-234):
+  // let is eager (eval_let evaluates the bound expression unconditionally) and &&
+  // does NOT short-circuit (both operands always evaluate, left then right). Cleanup
+  // always runs regardless of verdict. CAVEAT: no DECLARED property of the substrate
+  // guarantees this -- it is a property of the current interpreter realization. If &&
+  // is ever given short-circuit semantics (classical_and already short-circuits
+  // internally), cleanup silently stops running without any test going red. Filed as
+  // its own 4b subject by snappy-crane-234.
   let cleanup_out = shell.Remove.RecursiveForce(path: out_dir.path).success
   let cleanup_src = shell.Remove.RecursiveForce(path: scratch_src.path).success
 
