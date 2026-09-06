@@ -178,12 +178,32 @@ fn gate_declares_mutation(gates: List<FabricCiGate>, gate: NonEmptyStr, mutation
 // produce a multi-element list, but through unanswered_mutations, NOT through this function, so
 // strengthening it would not discriminate this change.
 //
-// Two things stay out of scope of that obligation, deliberately. duplicate_authority_identities
-// composes populations through an ordered `concat`, and no test pins relative CATEGORY order; a
-// `Cons` change confined to this function does not move those outer positions, so that is a
-// broader contract gap rather than a prerequisite here. And unanswered_mutations carries the SAME
-// copied-accumulator shape in its own fold, which is a second site for the §6 cost rule and not a
-// reason to delay this one.
+// THE COPIED-ACCUMULATOR POPULATION FOR THIS MODULE IS FOUR SITES, AND THE ENUMERATION IS CLOSED.
+// It is closed because it was taken over the MECHANISM -- folds whose accumulator is rebuilt --
+// and not over function names or over one carrier's spelling. This module contains exactly six
+// folds. Two accumulate scalars (count_name_in's `acc + 1`, fabric_name_already_in's `acc`) and
+// are O(1) per step. The other four copy:
+//   1. fabric_duplicated_names   concat(acc, [n])              -- this function
+//   2. unanswered_mutations      concat(acc, [refusal])        -- DIRECTION ONE
+//   3. foreign_enrolments        concat(acc, [refusal])        -- DIRECTION TWO
+//   4. lines_of                  concat(acc, concat("\n", l))  -- RENDERING, a String accumulator
+// Site 4 is the one a List-shaped search misses: the defect is a property of REBUILDING AN
+// ACCUMULATOR, not of `List`, and searching for `concat(acc, [` is keyed on an incidental
+// spelling. That search returns three. Enumerating folds returns four. This note records the
+// enumeration rather than a count so a later reader can re-derive it instead of trusting it.
+//
+// Each site owes its OWN ordering evidence before its own rewrite; one test discharges none of the
+// others. Site 2 already has a three-element specimen (the empty-enrolment control) that could pin
+// its order. Site 3 has an authorable one: quiet Direction One with complete enrolments, then two
+// distinct foreign rows in known order. Site 1 needs the two-distinct-duplicate case described
+// above. Site 4's order is its input order and is pinned by any rendered-output witness.
+//
+// Deliberately OUT of scope: duplicate_authority_identities composes these populations through an
+// ordered `concat`, and no test pins relative CATEGORY order; a change confined to any one site
+// does not move those outer positions, so that is a broader contract gap rather than a
+// prerequisite here. And this enumeration is exhaustive for FOLDS in this module, which is not the
+// same as a cost proof of the complete command -- flat_map, nested roster scans and other
+// combinators carry costs this note does not measure. C2 was always broader than one shape.
 //
 // The repair is also not landed here because no module under dag/ currently constructs FreeMonoid
 // cells directly, and this branch has no way to execute a .dag witness to confirm either the
