@@ -1,0 +1,81 @@
+module test.claim.roadmap.roadmap_review_function_witness_test
+
+import std.types { Bool, String, List, NonEmptyStr }
+import gunbc.roadmap.roadmap_review_criteria { review_criteria, review_criteria_are_exclusive_parts, review_criterion_by_key, GroundedOnDesignProposition, GroundedOnTheNodeContract }
+import gunbc.roadmap.roadmap_review_role {
+  CriterionReviewEvidence, ReviewReceiptPresent, ReviewReceiptAbsent, review_feedback, review_feedback_text,
+}
+import gunbc.roadmap.roadmap_review_function { ReviewSubject, review_calls, criterion_review, review_aggregate, review_report_worker_text }
+import gunbc.roadmap_workflow_stage { WorkflowSegmentFailed }
+import gunbc.worker_lifecycle { WorkerProcessAbsent }
+
+fn subject() -> ReviewSubject {
+  ReviewSubject { node_id: "n1", headline: "H", boundary: "B", out_of_scope: "O", red_control: "R", acceptance_command: "gunbc run x", base_sha: "aaa", head_sha: "bbb", verification_detail: "passed" }
+}
+
+fn changes(key: String, path: String, reason: String) -> CriterionReviewEvidence {
+  CriterionReviewEvidence {
+    criterion_key: key,
+    source: ReviewReceiptPresent { text: join(["{\"schema\":\"roadmap-review-verdict/v1\",\"verdict\":\"request_changes\",\"reasons\":[{\"path\":\"", path, "\",\"reason\":\"", reason, "\"}]}"], "") },
+    process: WorkerProcessAbsent,
+  }
+}
+
+fn approve(key: String) -> CriterionReviewEvidence {
+  CriterionReviewEvidence { criterion_key: key, source: ReviewReceiptPresent { text: "{\"schema\":\"roadmap-review-verdict/v1\",\"verdict\":\"approve\",\"summary\":\"fits\"}" }, process: WorkerProcessAbsent }
+}
+
+fn cannot(key: String) -> CriterionReviewEvidence {
+  CriterionReviewEvidence { criterion_key: key, source: ReviewReceiptPresent { text: "{\"schema\":\"roadmap-review-verdict/v1\",\"verdict\":\"cannot_judge\",\"reason\":\"the check refused to start\"}" }, process: WorkerProcessAbsent }
+}
+
+// THE PARTS ARE EXCLUSIVE: distinct keys, distinct grounding propositions, and the new extdeps
+// placement criterion is one of them, grounded on the design's intersubjective-grounding proposition.
+test fn the_criteria_are_exclusive_parts_and_include_extdeps_placement() -> Bool {
+  review_criteria_are_exclusive_parts()
+    && count(review_criteria) >= 6
+    && (match review_criterion_by_key(key: "extdeps-placement") {
+      Present { value: c } => match c.ground { GroundedOnDesignProposition { proposition_id } => proposition_id == "s1.grounding-intersubjective"  GroundedOnTheNodeContract => false }
+      Absent => false
+    })
+}
+
+// THE MAP: one call per criterion, each call's brief names its own criterion and no other, and its
+// verdict path comes from the caller's minting function -- a reviewer is a pure function of its call.
+test fn review_calls_hand_each_criterion_only_its_own_question() -> Bool {
+  let calls = review_calls(subject: subject(), verdict_path_for: fn(k) { join(["/v/", k, ".json"], "") })
+  count(calls) == count(review_criteria)
+    && all(calls, call =>
+         string_contains(s: call.brief, pattern: join(["Criterion (", call.criterion.key, ","], ""))
+           && call.verdict_path == join(["/v/", call.criterion.key, ".json"], "")
+           && string_contains(s: call.brief, pattern: "git diff aaa..bbb")
+           && all(review_criteria, other => other.key == call.criterion.key || !string_contains(s: call.brief, pattern: join(["Criterion (", other.key, ","], ""))))
+}
+
+// THE FOLD: findings regroup by file for the worker, identical rows fold once, a file named by two
+// criteria is the counted residual, unjudged criteria are listed as not reviewed, and the belt's own
+// verdict is unchanged by the regrouping.
+test fn the_aggregate_regroups_by_file_counts_the_overlap_and_keeps_the_belt_verdict() -> Bool {
+  let evidence = [
+    changes(key: "fail-closed", path: "dag/x.dag", reason: "an arm widens"),
+    changes(key: "single-authority", path: "dag/x.dag", reason: "a second name for one concept"),
+    changes(key: "fail-closed", path: "dag/x.dag", reason: "an arm widens"),
+    changes(key: "redundancy", path: "dag/y.dag", reason: "a copied fold"),
+    approve(key: "grounding"),
+    cannot(key: "how-to-work"),
+  ]
+  let report = review_aggregate(evidence: evidence)
+  let f = report.feedback
+  let text = review_report_worker_text(report: report)
+  (match report.reconciliation.state { WorkflowSegmentFailed => true  _ => false })
+    && count(f.must_fix) == 2
+    && f.overlap_count == 1
+    && (match f.must_fix.first() { Present { value: g } => g.path == "dag/x.dag" && count(g.findings) == 2  Absent => false })
+    && f.approved == ["grounding"]
+    && count(f.could_not_judge) == 1
+    && string_contains(s: text, pattern: "Fix, by file: dag/x.dag — fail-closed: changes requested — an arm widens; single-authority: changes requested — a second name for one concept · dag/y.dag — redundancy: changes requested — a copied fold")
+    && string_contains(s: text, pattern: "1 file(s) were named by more than one criterion")
+    && string_contains(s: text, pattern: "Not reviewed (fix before claiming done): how-to-work: the check refused to start")
+    && !string_contains(s: text, pattern: "grounding")
+    && report.reconciliation.detail == text
+}

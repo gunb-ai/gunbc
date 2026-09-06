@@ -1,0 +1,92 @@
+module gunbc.roadmap.roadmap_review_function
+
+import std.types { String, Bool, Int, List }
+import gunbc.roadmap.roadmap_review_criteria { ReviewCriterion, review_criteria }
+import gunbc.roadmap.roadmap_review_role {
+  CriterionReviewEvidence, ReviewReconciliation, WorkerFeedback,
+  review_brief, review_reconcile, review_feedback, review_feedback_text,
+}
+
+// REVIEW IS A FUNCTION, WRITTEN AS ONE: review(subject) = aggregate(map(criteria, c => criterion_review(c, subject))).
+//
+// The decomposition (operator, 2026-09-06): a review is not one judgment over every concern, it is
+// one pure function per criterion, each a question grounded on one proposition of the design argument
+// and mutually exclusive with the others, whose only shared input is the subject. The parent is this
+// module: it hands each criterion its call, never lets two criteria see each other, and recomposes
+// their outputs into one verdict for the belt and one piece of feedback for the worker. Anything the
+// recomposition has to do beyond summing -- two criteria naming the same path -- is the residual, and
+// it is counted (WorkerFeedback.overlap_count) rather than smoothed away.
+//
+// Where the parts live and why: the criteria roster is gunbc.roadmap.roadmap_review_criteria (one
+// row per proposition, entailed by gunbc.design_argument); the per-criterion realization is a
+// reviewer harness process (gunbc.harness.harness_review_guidance) that receives exactly the call
+// built here; the verdict shape and the aggregation fold are gunbc.roadmap.roadmap_review_role. This
+// module owns no rule of its own; it owns the SHAPE of the composition so that adding a criterion is
+// a row, removing one is a row, and no belt code enumerates reviewers by hand.
+
+// The subject every criterion sees: the node's stated goal and bar, the change window, and what the
+// belt's own run of the acceptance command said about the head. Nothing else -- in particular not
+// another criterion's verdict and not the worker's transcript.
+type ReviewSubject {
+  node_id: String
+  headline: String
+  boundary: String
+  out_of_scope: String
+  red_control: String
+  acceptance_command: String
+  base_sha: String
+  head_sha: String
+  verification_detail: String
+}
+
+// One criterion's call: the criterion, the brief it is handed (its whole input), and where its
+// output is expected. A reviewer that receives this and nothing else is a pure function of it.
+type CriterionReviewCall {
+  criterion: ReviewCriterion
+  brief: String
+  verdict_path: String
+}
+
+fn criterion_review(criterion: ReviewCriterion, subject: ReviewSubject, verdict_path: String) -> CriterionReviewCall {
+  CriterionReviewCall {
+    criterion: criterion,
+    verdict_path: verdict_path,
+    brief: review_brief(
+      criterion: criterion,
+      node_id: subject.node_id,
+      headline: subject.headline,
+      boundary: subject.boundary,
+      out_of_scope: subject.out_of_scope,
+      red_control: subject.red_control,
+      acceptance_command: subject.acceptance_command,
+      base_sha: subject.base_sha,
+      head_sha: subject.head_sha,
+      verification_detail: subject.verification_detail,
+      verdict_path: verdict_path,
+    ),
+  }
+}
+
+// THE DECOMPOSITION: one call per criterion in the roster, verdict paths minted by the caller from
+// the criterion key (the belt owns attempt state; this module owns nothing on disk).
+fn review_calls(subject: ReviewSubject, verdict_path_for: fn(String) -> String) -> List<CriterionReviewCall> {
+  map(review_criteria, c => criterion_review(criterion: c, subject: subject, verdict_path: verdict_path_for(c.key)))
+}
+
+// THE RECOMPOSITION: the belt's verdict (dominance fold, unchanged) and the worker's feedback (the
+// same evidence grouped by path, with the overlap residual counted), from one evidence roster.
+type ReviewReport {
+  reconciliation: ReviewReconciliation
+  feedback: WorkerFeedback
+}
+
+fn review_aggregate(evidence: List<CriterionReviewEvidence>) -> ReviewReport {
+  ReviewReport {
+    reconciliation: review_reconcile(evidence: evidence),
+    feedback: review_feedback(evidence: evidence),
+  }
+}
+
+fn review_report_worker_text(report: ReviewReport) -> String {
+  review_feedback_text(f: report.feedback)
+}

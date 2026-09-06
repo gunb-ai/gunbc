@@ -228,13 +228,95 @@ type ReviewReconciliation {
   detail: String
 }
 
+// THE WORKER'S FEEDBACK IS THE SAME EVIDENCE RECOMPOSED FOR THE PERSON WHO HAS TO ACT ON IT. The belt
+// reads verdicts per criterion; a worker fixes files, so the findings are grouped by PATH, in the
+// criteria's own order within a path, with identical (criterion, path, reason) rows folded once. Two
+// criteria naming the same path is the recomposition's residual -- the split was not perfectly
+// exclusive there -- and it is counted rather than hidden. Criteria that could not judge are listed
+// so the worker knows what was NOT reviewed; approved criteria are listed by key only.
+type CriterionFinding {
+  criterion: String
+  reason: String
+}
+
+type FeedbackAtPath {
+  path: String
+  findings: List<CriterionFinding>
+}
+
+type WorkerFeedback {
+  must_fix: List<FeedbackAtPath>
+  could_not_judge: List<String>
+  approved: List<String>
+  overlap_count: Int
+}
+
+fn feedback_add(acc: List<FeedbackAtPath>, criterion: String, r: ReviewReason) -> List<FeedbackAtPath> {
+  if any(acc, g => g.path == r.path) {
+    map(acc, g =>
+      if g.path == r.path {
+        if any(g.findings, f => f.criterion == criterion && f.reason == r.reason) {
+          g
+        } else {
+          FeedbackAtPath { path: g.path, findings: concat(g.findings, [CriterionFinding { criterion: criterion, reason: r.reason }]) }
+        }
+      } else {
+        g
+      })
+  } else {
+    concat(acc, [FeedbackAtPath { path: r.path, findings: [CriterionFinding { criterion: criterion, reason: r.reason }] }])
+  }
+}
+
+fn feedback_path_criteria_count(g: FeedbackAtPath) -> Int {
+  count(fold(g.findings, init: [], f: (acc, f) => if any(acc, k => k == f.criterion) { acc } else { concat(acc, [f.criterion]) }))
+}
+
+fn review_feedback(evidence: List<CriterionReviewEvidence>) -> WorkerFeedback {
+  let standings = map(evidence, e => criterion_standing(e: e))
+  let must_fix = fold(standings, init: [], f: (acc, s) => match s {
+    CriterionChangesRequested { key, reasons } => fold(reasons, init: acc, f: (acc2, r) => feedback_add(acc: acc2, criterion: key, r: r))
+    _ => acc
+  })
+  WorkerFeedback {
+    must_fix: must_fix,
+    could_not_judge: flat_map(standings, s => match s {
+      CriterionCannotJudge { key, reason } => [join([key, ": ", reason], "")]
+      CriterionUndecodable { key, reason } => [join([key, ": verdict undecodable: ", reason], "")]
+      CriterionUnreadable { key, detail } => [join([key, ": verdict unreadable: ", detail], "")]
+      CriterionReviewerExitedWithoutVerdict { key, exit_code } => [join([key, ": reviewer exited ", to_string(value: exit_code), " without a verdict"], "")]
+      CriterionReviewerUnobserved { key, reason } => [join([key, ": reviewer unobserved: ", reason], "")]
+      _ => []
+    }),
+    approved: flat_map(standings, s => match s { CriterionApproved { key, summary: _ } => [key]  _ => [] }),
+    overlap_count: count(filter(must_fix, g => feedback_path_criteria_count(g: g) > 1)),
+  }
+}
+
+fn feedback_at_path_text(g: FeedbackAtPath) -> String {
+  join([
+    g.path, " — ",
+    join(map(g.findings, f => join([f.criterion, ": changes requested — ", f.reason], "")), "; "),
+  ], "")
+}
+
+fn review_feedback_text(f: WorkerFeedback) -> String {
+  join(concat(
+    concat(
+      if count(f.must_fix) == 0 { [] } else { [join(["Fix, by file: ", join(map(f.must_fix, g => feedback_at_path_text(g: g)), " · ")], "")] },
+      if f.overlap_count == 0 { [] } else { [join([to_string(value: f.overlap_count), " file(s) were named by more than one criterion; fix the file once, then re-read every reason on it."], "")] },
+    ),
+    if count(f.could_not_judge) == 0 { [] } else { [join(["Not reviewed (fix before claiming done): ", join(f.could_not_judge, " · ")], "")] },
+  ), "\n")
+}
+
 fn review_reconcile(evidence: List<CriterionReviewEvidence>) -> ReviewReconciliation {
   let standings = map(evidence, e => criterion_standing(e: e))
   let text = join(map(standings, s => criterion_standing_text(s: s)), " · ")
   if count(standings) == 0 {
     ReviewReconciliation { state: WorkflowSegmentRefused, detail: "no review criteria are declared, so nothing can approve this head" }
   } else if any(standings, s => standing_is_changes(s: s)) {
-    ReviewReconciliation { state: WorkflowSegmentFailed, detail: join(map(filter(standings, s => standing_is_changes(s: s)), s => criterion_standing_text(s: s)), " · ") }
+    ReviewReconciliation { state: WorkflowSegmentFailed, detail: review_feedback_text(f: review_feedback(evidence: evidence)) }
   } else if any(standings, s => standing_blocks(s: s)) {
     ReviewReconciliation { state: WorkflowSegmentRefused, detail: join(map(filter(standings, s => standing_blocks(s: s)), s => criterion_standing_text(s: s)), " · ") }
   } else if all(standings, s => standing_is_approved(s: s)) {

@@ -11,8 +11,9 @@ import gunbc.roadmap_spawner { node_title }
 import gunbc.roadmap.roadmap_review_role {
   ReviewReceiptSource, ReviewReceiptAbsent, ReviewReceiptPresent, ReviewReceiptUnreadable,
   CriterionReviewEvidence, criterion_standing, criterion_standing_text, review_all_approved, review_reconcile,
-  CriterionApproved, review_brief,
+  CriterionApproved,
 }
+import gunbc.roadmap.roadmap_review_function { ReviewSubject, criterion_review }
 import gunbc.roadmap.roadmap_review_criteria { ReviewCriterion, review_criteria, review_criterion_keys }
 import gunbc.roadmap.roadmap_goal_audit_role { goal_audit_criterion_key, goal_audit_approved, goal_audit_reconcile, goal_audit_brief }
 import gunbc.roadmap_dispatch_actuator {
@@ -6825,19 +6826,22 @@ fn belt_review_spawn(instance: HostDashboardInstance, progress: WorkflowAttemptP
             ExecRefused { program: _, reason } => ReviewDeferred { node_id: progress.node_id, criterion: criterion.key, reason: reason }
             ExecOk { stdout: base } => {
               let ticket = line_ticket(item: node.line)
-              let brief = review_brief(
+              let call = criterion_review(
                 criterion: criterion,
-                node_id: progress.node_id,
-                headline: node_title(item: node.line),
-                boundary: match ticket { Present { value: t } => t.brief  Absent => "" },
-                out_of_scope: match ticket { Present { value: t } => t.out_of_scope  Absent => "" },
-                red_control: match ticket { Present { value: t } => t.red_control  Absent => "" },
-                acceptance_command: execution_contract_validation_summary(contract: node.execution, environment: instance.execution_environment),
-                base_sha: trim(base),
-                head_sha: head,
-                verification_detail: verification_detail,
+                subject: ReviewSubject {
+                  node_id: progress.node_id,
+                  headline: node_title(item: node.line),
+                  boundary: match ticket { Present { value: t } => t.brief  Absent => "" },
+                  out_of_scope: match ticket { Present { value: t } => t.out_of_scope  Absent => "" },
+                  red_control: match ticket { Present { value: t } => t.red_control  Absent => "" },
+                  acceptance_command: execution_contract_validation_summary(contract: node.execution, environment: instance.execution_environment),
+                  base_sha: trim(base),
+                  head_sha: head,
+                  verification_detail: verification_detail,
+                },
                 verdict_path: dispatch_attempt_review_verdict_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, head_sha: head, criterion_key: criterion.key),
               )
+              let brief = call.brief
               let unit = dispatch_review_unit_name(node_id: progress.node_id, attempt_key: progress.attempt_key, criterion_key: criterion.key)
               match belt_exec(
                 cmd: dispatch_review_unit_argv(systemd_run_program: systemd_run, instance: instance, node_id: node_id, attempt_key: progress.attempt_key, worktree_path: worktree, brief: brief, head_sha: head, criterion_key: criterion.key),

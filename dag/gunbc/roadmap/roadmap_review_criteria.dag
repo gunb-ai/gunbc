@@ -74,6 +74,17 @@ data review_criteria: List<ReviewCriterion> = [
     ],
   },
   ReviewCriterion {
+    key: "extdeps-placement",
+    ground: GroundedOnDesignProposition { proposition_id: "s1.grounding-intersubjective" },
+    question: "Does the change carry a fact that other parties already agree on -- an upstream specification, a vendor's product, a protocol, a unit, a tool's interface -- without pointing at that shared authority, or does it put such a fact somewhere other than the layer that owns it: a cited upstream fact modeled inside a product or workflow module, or a product policy or observation authored inside extdeps?",
+    tells: [
+      "a new type, enum or constant that restates what a standard, vendor sheet, man page or API document already defines, with no extdeps module citing it",
+      "a value that is really an upstream fact (a port, a field name, a version, a limit, a wire shape) spelled as a literal in gunbc/ or a workflow module",
+      "an extdeps module that carries our own policy, an observation this repository made, a coverage state, or a product-specific dispatch among upstreams",
+      "a generic extdeps hub enumerating concrete products or versions instead of one module per independently versioned upstream",
+    ],
+  },
+  ReviewCriterion {
     key: "how-to-work",
     ground: GroundedOnDesignProposition { proposition_id: "s6.how-to-work" },
     question: "Does the change land temporary work, a workaround, or an unmarked scaffold without an operator's verdict, or a proven cost-shape defect left in place?",
@@ -96,6 +107,20 @@ fn review_criterion_proposition_ids() -> List<String> {
 // entailment the roster claims, checked against the argument rather than asserted beside it.
 fn review_criteria_grounded_in_the_argument() -> Bool {
   all(review_criterion_proposition_ids(), id => any(design_propositions, p => p.id == id))
+}
+
+// THE PARTS ARE EXCLUSIVE BY CONSTRUCTION OVER THE ARGUMENT: no two criteria share a key, and no two
+// are grounded on the same proposition, so a proposition is reviewed by exactly one function and a
+// verdict can always name the one concern it belongs to. The fold over them lives in
+// gunbc.roadmap.roadmap_review_function; this is the fact that makes that fold a sum.
+fn review_criteria_are_exclusive_parts() -> Bool {
+  let keys = review_criterion_keys()
+  let ids = review_criterion_proposition_ids()
+  count(keys) == count(distinct_strings(xs: keys)) && count(ids) == count(distinct_strings(xs: ids))
+}
+
+fn distinct_strings(xs: List<String>) -> List<String> {
+  fold(xs, init: [], f: (acc, x) => if any(acc, y => y == x) { acc } else { concat(acc, [x]) })
 }
 
 fn review_criterion_keys() -> List<String> {
