@@ -1,0 +1,109 @@
+module gunbc.bmc.megarac_session_probe
+
+import std.types { NonEmptyStr, String }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import gunbc.bmc.megarac_session {
+  MegaRacSession,
+  MegaRacSessionAcquired,
+  MegaRacSessionAllocationEffectUnresolved,
+  MegaRacSessionAcquisition,
+  MegaRacSessionDenied,
+  MegaRacSessionNeverOpened,
+  MegaRacScratchCleanup,
+  MegaRacScratchDiscardFailed,
+  MegaRacScratchDiscarded,
+  MegaRacScratchRetained,
+  MegaRacSessionRelease,
+  MegaRacSessionReleaseConfirmed,
+  MegaRacSessionReleaseUnverifiable,
+  MegaRacSessionScope,
+  MegaRacSessionStagingFailed,
+  MegaRacSessionStillLive,
+  MegaRacSessionTeardown,
+  MegaRacSessionUnusable,
+  megarac_acquire_session,
+  megarac_release_session,
+}
+
+// THE EXECUTING EVIDENCE FOR THE SESSION SCOPE, and it is host-parametric on purpose. The lane this
+// replaces wrote a per-unit wrapper for every operation, which is how a generic namespace came to
+// hold seven modules named after one machine. The controller endpoint and credential are arguments,
+// so this probe runs against any MegaRAC controller and there is nothing about it to duplicate when
+// a second one arrives.
+//
+// WHAT IT ESTABLISHES BY RUNNING is the property the type alone cannot: that acquisition and release
+// are actually paired on a live controller, and that release is CONFIRMED rather than assumed --
+// the probe re-reads with the same cookie after teardown and refuses unless the controller has
+// stopped honouring it.
+fn render_cleanup(cleanup: MegaRacScratchCleanup) -> String {
+  match cleanup {
+    MegaRacScratchDiscarded => ""
+    MegaRacScratchRetained { scratch_dir: d, reason: r } =>
+      concat(" SCRATCH RETAINED at ", d as String, " (holds a live cookie jar; ", r, ")")
+    MegaRacScratchDiscardFailed { scratch_dir: d } =>
+      concat(" SCRATCH NOT REMOVED at ", d as String, " -- a credential or cookie jar may remain on disk")
+  }
+}
+
+fn render_release(teardown: MegaRacSessionTeardown) -> ProcessExit {
+  match teardown.standing {
+    MegaRacSessionReleaseConfirmed => render_cleanup_only(cleanup: teardown.cleanup)
+    MegaRacSessionNeverOpened => render_cleanup_only(cleanup: teardown.cleanup)
+    MegaRacSessionStillLive { scope: _, detail: d } =>
+      exit_failure(reason: concat("megarac session probe: LEAK -- ", d, render_cleanup(cleanup: teardown.cleanup)))
+    MegaRacSessionReleaseUnverifiable { scope: _, detail: d } =>
+      exit_failure(reason: concat("megarac session probe: release could not be verified, so a session may be stranded: ", d, render_cleanup(cleanup: teardown.cleanup)))
+  }
+}
+
+fn render_cleanup_only(cleanup: MegaRacScratchCleanup) -> ProcessExit {
+  match cleanup {
+    MegaRacScratchDiscarded => ExitSuccess
+    _ => exit_failure(reason: concat("megarac session probe: the session was released but the local scratch was not discarded.", render_cleanup(cleanup: cleanup)))
+  }
+}
+
+// EVERY ACQUISITION ARM THAT CREATED STATE RELEASES IT, including the two that failed. That is the
+// defect this whole scope exists to close: an acquisition that succeeded and then could not be used
+// previously returned an outcome named "release not attempted", which asserts nothing was created
+// while a session sat open on a controller whose session table is finite.
+func megarac_session_lifecycle_probe(
+  bmc_host: String,
+  username: String,
+  password: String,
+) -> ProcessExit
+  uses net: std.resources.Network
+{
+  if password == "" {
+    return exit_failure(reason: "megarac session probe: no controller password supplied; refusing before any request")
+  }
+  let acquired = megarac_acquire_session(
+    bmc_host: bmc_host as NonEmptyStr,
+    username: username as NonEmptyStr,
+    password: password as NonEmptyStr,
+  )
+  return match acquired {
+    MegaRacSessionAllocationEffectUnresolved { attempted_endpoint: e, scratch_dir: sd, detail: d } =>
+      exit_failure(reason: concat("megarac session probe: ALLOCATION UNRESOLVED against ", e as String, ". No bearer was received, so nothing local can decide whether the controller allocated a session -- probing this jar would only prove the JAR does not authenticate. An orphan session may exist and can be discharged only by a server-side session census or a modeled expiry policy, neither of which this lane has. Scratch RETAINED at ", sd as String, " for correlation. Detail: ", d))
+    MegaRacSessionStagingFailed { detail: d } =>
+      exit_failure(reason: concat("megarac session probe: credential staging failed, no request was made: ", d))
+    MegaRacSessionDenied { detail: d } =>
+      exit_failure(reason: concat("megarac session probe: the controller denied the login, so no session exists to release: ", d))
+    MegaRacSessionUnusable { scope: sc, detail: d } =>
+      render_unusable_after_release(detail: d, teardown: megarac_release_session(scope: sc))
+    MegaRacSessionAcquired { session: s } =>
+      render_release(teardown: megarac_release_session(scope: s.scope))
+  }
+}
+
+// AN UNUSABLE SESSION IS A FAILURE EVEN WHEN ITS CLEANUP SUCCEEDS, and the cleanup verdict is
+// reported beside it rather than replacing it. Those are two facts with different owners: whether
+// this attempt can proceed, and whether it left anything behind.
+fn render_unusable_after_release(detail: String, teardown: MegaRacSessionTeardown) -> ProcessExit {
+  match teardown.standing {
+    MegaRacSessionReleaseConfirmed =>
+      exit_failure(reason: concat("megarac session probe: the login succeeded but the session was unusable (", detail, "); it WAS released and verified, so nothing is stranded.", render_cleanup(cleanup: teardown.cleanup)))
+    _ =>
+      exit_failure(reason: concat("megarac session probe: the login succeeded but the session was unusable (", detail, ") AND its release could not be confirmed; a session may be stranded on the controller.", render_cleanup(cleanup: teardown.cleanup)))
+  }
+}

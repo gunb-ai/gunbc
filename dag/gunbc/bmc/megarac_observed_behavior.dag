@@ -1,0 +1,78 @@
+module gunbc.bmc.megarac_observed_behavior
+
+import std.types { NonEmptyStr }
+
+// WHAT ONE MEGARAC BUILD ACTUALLY DID, kept in the observing layer rather than authored back into
+// the upstream module as a property of the firmware family. That rule is DESIGN section 3's external
+// decomposition, and gunbc.fleet.fleet_host_power states it for its own subject: an observation this
+// repository made about a machine it operates is a gunbc fact; the vendor's rated behaviour is
+// extdeps.
+//
+// THE FIRST VERSION OF THIS LANE BROKE THAT RULE IN THE MOST DIRECT WAY AVAILABLE. It put these
+// findings into extdeps.bmc.megarac and advertised them as the behaviour of "any MegaRAC
+// controller" -- while that module's own scope declaration says rows there answer at the FAMILY
+// grain, and that anything seen on one shipping build stays build-scoped and lives on the build's
+// binding. Every row below was measured on ONE controller over 2026-09-06. Promoting them turned one
+// unit's tactics into a firmware line's semantics, which is the same portability error as treating
+// "this BMC serves files" as a property of BMCs.
+//
+// THESE ROWS ARE READ BY PEOPLE, NOT BY THE FOLDS. They are the recorded basis for why the session
+// and media realizations are shaped as they are, and the place a second controller's disagreement
+// gets written down rather than silently overwriting the first. A fold that consumed them would make
+// them a dispatch table over a build population of one.
+type MegaRacObservedBehavior {
+  subject_build: NonEmptyStr
+  observed_at: NonEmptyStr
+  behavior: NonEmptyStr
+  consequence_for_realization: NonEmptyStr
+}
+
+data mtcollins1_megarac_build: NonEmptyStr = "AMI MegaRAC SP-X on the Foxconn Mt. Collins build (bmc-mtcollins1)"
+
+// THE CONTROLLED FORM MATTERS HERE AND IS PART OF THE ROW. Each teardown run carried a positive
+// control confirming the session answered 200 BEFORE the DELETE, because the first uncontrolled
+// attempt could not distinguish "the teardown released it" from "it was never valid".
+data megarac_teardown_ignores_csrf: MegaRacObservedBehavior = MegaRacObservedBehavior {
+  subject_build: "AMI MegaRAC SP-X on the Foxconn Mt. Collins build (bmc-mtcollins1)",
+  observed_at: "2026-09-06",
+  behavior: "DELETE /api/session released the session in both controlled runs: carrying the CSRF header it answered HTTP 200, and with no CSRF header it answered HTTP 401 and released anyway. Both runs confirmed a 200 authenticated read first, and a 401 read after.",
+  consequence_for_realization: "release standing is decided by re-probing with the same cookie, never by the DELETE's status; and the token-unreadable acquisition arm can still tear down, so it is recoverable rather than a permanent leak",
+}
+
+data megarac_non_2xx_accompanies_applied_writes: MegaRacObservedBehavior = MegaRacObservedBehavior {
+  subject_build: "AMI MegaRAC SP-X on the Foxconn Mt. Collins build (bmc-mtcollins1)",
+  observed_at: "2026-09-06",
+  behavior: "writes that took effect answered non-2xx: PUT /api/settings/media/general returned code 16425 while the share re-mounted, stop-media returned 1411 while the following attach succeeded, and DELETE /api/session returned 401 while releasing.",
+  consequence_for_realization: "no terminal refusal is derived from a write's status; the status is carried as evidence inside an indeterminate outcome and the read-back decides",
+}
+
+data megarac_images_listing_excludes_attached: MegaRacObservedBehavior = MegaRacObservedBehavior {
+  subject_build: "AMI MegaRAC SP-X on the Foxconn Mt. Collins build (bmc-mtcollins1)",
+  observed_at: "2026-09-06",
+  behavior: "with two ISOs exported, /api/settings/media/remote/images named both; after start-media attached one it named ONLY the other, and the survivor's image_index moved from 1 to 0. The attached image had moved to /api/settings/media/remote/configurations.",
+  consequence_for_realization: "configurations is the authority for whether an attach is done and is read first, so the converged case performs no write; the index is resolved by name on every attempt because indices move",
+}
+
+data megarac_unauthenticated_body_shape: MegaRacObservedBehavior = MegaRacObservedBehavior {
+  subject_build: "AMI MegaRAC SP-X on the Foxconn Mt. Collins build (bmc-mtcollins1)",
+  observed_at: "2026-09-06",
+  behavior: "an unauthenticated read answered exactly cc 7 with error 'Invalid Authentication'; an authenticated read of media/general answered the settings object carrying id.",
+  consequence_for_realization: "release confirmation requires that exact code and message AND the absence of an authenticated marker; any other body, including a 500 that happens to carry an error field, is unverifiable rather than confirmed",
+}
+
+// THE VALUE SPACE IS NOT DECODED AND THAT IS DELIBERATE. Two presenting values were seen and zero was
+// never seen on a presenting row; the vendor publishes no enumeration. A nonzero test would promote
+// every unseen value to active, which is an inference about a space nobody has read.
+data megarac_redirection_status_observed_values: MegaRacObservedBehavior = MegaRacObservedBehavior {
+  subject_build: "AMI MegaRAC SP-X on the Foxconn Mt. Collins build (bmc-mtcollins1)",
+  observed_at: "2026-09-06",
+  behavior: "a presented CD row carried redirection_status 100 shortly after start-media, and 1 when read later in the same presentation. 0 was never observed on a presented row, and no vendor decoding of the field is published.",
+  consequence_for_realization: "only the observed presenting values are read as presenting; any other value is unknown and refuses rather than being promoted to active by a nonzero test",
+}
+
+data megarac_local_media_unsupported_on_this_build: MegaRacObservedBehavior = MegaRacObservedBehavior {
+  subject_build: "AMI MegaRAC SP-X on the Foxconn Mt. Collins build (bmc-mtcollins1)",
+  observed_at: "2026-09-06",
+  behavior: "media/general reported local_media_support 0 with remote_media_support 1, and no Redfish surface answered on five probed paths while the controller web root answered 200.",
+  consequence_for_realization: "there is no controller-resident image path on this build, so media must be served from an export the controller mounts; and out-of-band converge here cannot be Redfish-shaped",
+}
