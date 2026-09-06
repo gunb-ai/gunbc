@@ -326,24 +326,6 @@ fn sff8636_profile_consistency(coding: Sff8636LegCoding) -> ProfileConsistency {
   }
 }
 
-// THE CONSTRUCTOR, because `sole_constructor` means this module owns construction and a consumer --
-// including a witness -- may not mint the type itself.
-fn sff8636_leg_coding(
-  identifier: TransceiverIdentifier,
-  primary_compliance_code: Nat,
-  secondary_compliance: SecondaryComplianceObservation,
-  encoding: Sff8636Encoding,
-  nominal_rate: Sff8636NominalRate,
-) -> Sff8636LegCoding {
-  Sff8636LegCoding {
-    identifier: identifier,
-    primary_compliance_code: primary_compliance_code,
-    secondary_compliance: secondary_compliance,
-    encoding: encoding,
-    nominal_rate: nominal_rate,
-  }
-}
-
 // ================= THE REQUESTED-MODE QUESTION =================
 //
 // Four findings, and no contradiction arm: this function answers only what the observed bytes
