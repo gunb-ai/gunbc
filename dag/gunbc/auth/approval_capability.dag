@@ -4,8 +4,8 @@ import std.types { NonEmptyStr, String, Int, Timestamp }
 import std.logic { Bool }
 import std.scoped_authorization { AttemptIdentity }
 import extdeps.crypto.mac {
-  MacSuite, MacKeyId, MacVerification,
-  mac_verification_ok, mac_verification_reason,
+  MacSuite, MacKeyId, MacVerification, MacVerified, VerifiedMessage,
+  mac_verification_reason, mac_suite_name,
 }
 
 // ── What a capability link is, and what it is not ────────────────────────────────────────────
@@ -102,6 +102,9 @@ type CapabilityRefusal
   | CapabilityExpired { expires_at: Timestamp, observed_at: Timestamp }
   | CapabilityNotYetValid { issued_at: Timestamp, observed_at: Timestamp }
   | CapabilityTimestampNotCanonical { field: NonEmptyStr, value: Timestamp }
+  | CapabilityEvidenceForAnotherMessage { verified_message: NonEmptyStr, presented_message: NonEmptyStr }
+  | CapabilitySuiteUnexpected { expected: MacSuite, verified_under: MacSuite }
+  | CapabilityKeyIdDisagrees { claimed: MacKeyId, verified_under: MacKeyId }
 
 type CapabilityVerification
   = CapabilityAuthentic { claims: ApprovalCapabilityClaims }
@@ -115,6 +118,38 @@ type CapabilityExpectation {
   audience: NonEmptyStr
   authority: NonEmptyStr
   suite: MacSuite
+}
+
+// ── One signed-byte representation ───────────────────────────────────────────────────────────
+// ISSUANCE, VERIFICATION AND THE DECISION MUST AGREE ON EXACTLY THESE BYTES. If the tag were
+// computed over one rendering and the claims read from another, an envelope could be authenticated
+// under one interpretation and acted upon under a second -- the duplicate-field and
+// alternative-decoding family that has repeatedly broken signed-token formats. So there is ONE
+// projection, every field appears exactly once in a fixed order, and the separator is a character
+// no field may contain.
+//
+// The fields are joined by a unit separator rather than a comma or a colon precisely so that no
+// value can forge a boundary: an escalation id containing a comma would otherwise let one envelope
+// serialize identically to a different one, which is a signature collision authored in the data.
+data signing_field_separator: String = from_code_point(cp: 31)
+
+fn approval_capability_signing_input(c: ApprovalCapabilityClaims) -> NonEmptyStr {
+  join(
+    [
+      approval_capability_protocol as String,
+      c.issuer as String,
+      c.audience as String,
+      c.authority as String,
+      c.escalation_id as String,
+      c.request_revision as String,
+      proposed_decision_name(d: c.decision) as String,
+      c.attempt as String,
+      c.issued_at,
+      c.expires_at,
+      c.key_id as String,
+    ],
+    signing_field_separator,
+  ) as NonEmptyStr
 }
 
 // ── The timestamp comparison contract ────────────────────────────────────────────────────────
@@ -132,14 +167,84 @@ type CapabilityExpectation {
 // widens). Refusing is not a limitation on the operator; the broker mints both stamps itself.
 data utc_instant_width: Int = 20
 
+// WIDTH AND PUNCTUATION ESTABLISH NEITHER DIGITS NOR CALENDARS. An earlier revision of this
+// predicate checked only the 20-character length and the six separator positions, which accepts
+// "2026-99-99T00:00:00Z", "2026-02-30T12:00:00Z", "2026-09-05T24:00:00Z" and "zzzz-zz-zzTzz:zz:zzZ".
+// That is not a reporting imperfection: an expires_at of 2026-99-99 passes the shape check and
+// sorts after every real instant, so it is a deadline that never arrives -- a link valid forever,
+// produced by a validator that believed it had bounded one. So the accepted domain is validated in
+// full: digits, then field ranges, then the calendar.
+fn is_digit(c: String) -> Bool {
+  c == "0" || c == "1" || c == "2" || c == "3" || c == "4"
+    || c == "5" || c == "6" || c == "7" || c == "8" || c == "9"
+}
+
+// The offsets are a LIST rather than a counted loop because every field in this format has a fixed
+// width and a fixed home: there is no arbitrary-length case to generalize over, and a loop would be
+// vocabulary invented for one caller.
+fn digits_at(t: Timestamp, offsets: List<Int>) -> Bool {
+  fold(offsets, init: true, f: (acc, i) => acc && is_digit(c: char_at(t, i)))
+}
+
+fn number_at(t: Timestamp, offsets: List<Int>) -> Int {
+  fold(offsets, init: 0, f: (acc, i) => acc * 10 + digit_value(c: char_at(t, i)))
+}
+
+data year_offsets: List<Int> = [0, 1, 2, 3]
+data month_offsets: List<Int> = [5, 6]
+data day_offsets: List<Int> = [8, 9]
+data hour_offsets: List<Int> = [11, 12]
+data minute_offsets: List<Int> = [14, 15]
+data second_offsets: List<Int> = [17, 18]
+
+fn digit_value(c: String) -> Int {
+  if c == "1" { 1 } else if c == "2" { 2 } else if c == "3" { 3 }
+  else if c == "4" { 4 } else if c == "5" { 5 } else if c == "6" { 6 }
+  else if c == "7" { 7 } else if c == "8" { 8 } else if c == "9" { 9 } else { 0 }
+}
+
+fn is_leap_year(y: Int) -> Bool {
+  (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+}
+
+fn days_in_month(y: Int, m: Int) -> Int {
+  if m == 1 || m == 3 || m == 5 || m == 7 || m == 8 || m == 10 || m == 12 {
+    31
+  } else if m == 4 || m == 6 || m == 9 || m == 11 {
+    30
+  } else if is_leap_year(y: y) {
+    29
+  } else {
+    28
+  }
+}
+
+// LEAP SECONDS ARE REFUSED RATHER THAN ACCEPTED OR SILENTLY REPAIRED. RFC 3339 admits :60 in a
+// positive leap second; this domain does not, because admitting a value we cannot order against
+// the neighbouring instant would put an unorderable point inside a comparison contract. A broker
+// that must mint a stamp during a leap second refuses and mints the next one, which is a bounded
+// and visible outcome rather than a wrong comparison.
 fn utc_instant_is_canonical(t: Timestamp) -> Bool {
-  length(s: t) == utc_instant_width
-    && char_at(t, 4) == "-"
-    && char_at(t, 7) == "-"
-    && char_at(t, 10) == "T"
-    && char_at(t, 13) == ":"
-    && char_at(t, 16) == ":"
-    && char_at(t, 19) == "Z"
+  if length(s: t) != utc_instant_width {
+    false
+  } else if !(char_at(t, 4) == "-" && char_at(t, 7) == "-" && char_at(t, 10) == "T"
+              && char_at(t, 13) == ":" && char_at(t, 16) == ":" && char_at(t, 19) == "Z") {
+    false
+  } else if !(digits_at(t: t, offsets: year_offsets) && digits_at(t: t, offsets: month_offsets)
+              && digits_at(t: t, offsets: day_offsets) && digits_at(t: t, offsets: hour_offsets)
+              && digits_at(t: t, offsets: minute_offsets) && digits_at(t: t, offsets: second_offsets)) {
+    false
+  } else {
+    let month = number_at(t: t, offsets: month_offsets)
+    let day = number_at(t: t, offsets: day_offsets)
+    let hour = number_at(t: t, offsets: hour_offsets)
+    let minute = number_at(t: t, offsets: minute_offsets)
+    let second = number_at(t: t, offsets: second_offsets)
+    let year = number_at(t: t, offsets: year_offsets)
+    month >= 1 && month <= 12
+      && day >= 1 && day <= days_in_month(y: year, m: month)
+      && hour <= 23 && minute <= 59 && second <= 59
+  }
 }
 
 // Defined ONLY on canonical pairs. The caller establishes canonicity first and refuses when it does
@@ -161,6 +266,24 @@ fn capability_live_at(claims: ApprovalCapabilityClaims, observed_at: Timestamp) 
     && !utc_instant_before(a: observed_at, b: claims.issued_at)
 }
 
+// THE AUTHENTICATION-TO-PAYLOAD JOIN, which is the correction that matters most in this module.
+//
+// An earlier shape took the MacVerification as an independent parameter and, on seeing a success,
+// proceeded to read `capability.claims`. Nothing related the two. A success obtained over envelope
+// A could be presented alongside envelope B -- different decision, different revision, different
+// attempt -- and the result was CapabilityAuthentic{B.claims}, with no MAC over B established
+// anywhere. Ordering the checks does not touch this: checking that SOME mac verified before reading
+// claims is not checking THIS message's mac.
+//
+// The repair is a join on the exact signed bytes. The verifier serializes the presented claims
+// itself and requires the evidence to carry that identical message; VerifiedMessage is
+// sole_constructor, so the only thing that can produce one is the bound implementation that
+// actually ran the comparison. Comparing key ids alone would not be enough -- that still admits the
+// same-key, different-message substitution -- so the message itself is the comparand.
+//
+// The suite and key id are checked too, and against the VERIFIED evidence rather than the claims:
+// the claims are attacker-chosen until the join succeeds, so a key_id read from them is only
+// meaningful once it agrees with the key the implementation actually used.
 fn verify_capability(
   capability: ApprovalCapability,
   expectation: CapabilityExpectation,
@@ -168,9 +291,41 @@ fn verify_capability(
   observed_at: Timestamp,
 ) -> CapabilityVerification {
   let c = capability.claims
-  if !mac_verification_ok(v: mac_result) {
-    CapabilityRefused { cause: CapabilityMacRefused { verification: mac_result } }
-  } else if c.protocol != approval_capability_protocol {
+  let presented = approval_capability_signing_input(c: c)
+  match mac_result {
+    MacVerified { verified: v } =>
+      if v.message != presented {
+        CapabilityRefused {
+          cause: CapabilityEvidenceForAnotherMessage {
+            verified_message: v.message,
+            presented_message: presented,
+          }
+        }
+      } else if v.suite != expectation.suite {
+        CapabilityRefused {
+          cause: CapabilitySuiteUnexpected { expected: expectation.suite, verified_under: v.suite }
+        }
+      } else if v.key_id != c.key_id {
+        CapabilityRefused {
+          cause: CapabilityKeyIdDisagrees { claimed: c.key_id, verified_under: v.key_id }
+        }
+      } else {
+        verify_authenticated_claims(claims: c, expectation: expectation, observed_at: observed_at)
+      }
+    _ => CapabilityRefused { cause: CapabilityMacRefused { verification: mac_result } }
+  }
+}
+
+// The claims policy, reachable only from the join above. It is a separate function so that the
+// order of the two stages is structural rather than a comment: nothing here can be reached with
+// claims whose bytes were not the ones authenticated.
+fn verify_authenticated_claims(
+  claims: ApprovalCapabilityClaims,
+  expectation: CapabilityExpectation,
+  observed_at: Timestamp,
+) -> CapabilityVerification {
+  let c = claims
+  if c.protocol != approval_capability_protocol {
     CapabilityRefused {
       cause: CapabilityProtocolUnknown { declared: c.protocol, expected: approval_capability_protocol }
     }
@@ -226,6 +381,12 @@ fn capability_refusal_reason(r: CapabilityRefusal) -> String {
       concat("approval capability expired at ", concat(x, concat(", observed at ", at)))
     CapabilityNotYetValid { issued_at: i, observed_at: at } =>
       concat("approval capability is not yet valid: issued at ", concat(i, concat(", observed at ", at)))
+    CapabilityEvidenceForAnotherMessage { verified_message: v, presented_message: p } =>
+      concat("approval capability authentication is for a different message: verified ", concat(v as String, concat(", presented ", p as String)))
+    CapabilitySuiteUnexpected { expected: e, verified_under: g } =>
+      concat("approval capability was verified under an unexpected suite: expected ", concat(mac_suite_name(s: e) as String, concat(", verified under ", mac_suite_name(s: g) as String)))
+    CapabilityKeyIdDisagrees { claimed: c2, verified_under: v } =>
+      concat("approval capability claims key ", concat(c2 as String, concat(" but was verified under ", v as String)))
     CapabilityTimestampNotCanonical { field: f, value: v } =>
       concat("approval capability ", concat(f as String, concat(" is not a canonical UTC instant (YYYY-MM-DDTHH:MM:SSZ): ", v)))
   }

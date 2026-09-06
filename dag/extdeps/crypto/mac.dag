@@ -70,12 +70,33 @@ type MacKey {
 data symmetric_verification_is_issuance_note: NonEmptyStr = "With HMAC the verifier's secret is the issuer's secret: anything that can check a tag can mint one. 'Verification-only' is therefore a POLICY state enforced by custody, never a cryptographic restriction, and a design that needs a genuinely non-issuing verifier needs an asymmetric construction instead. This note exists so that a later reader does not distribute a verification key on the assumption that it is the weaker half."
 
 // ── Verification ─────────────────────────────────────────────────────────────────────────────
+// WHAT A SUCCESS MUST CARRY, AND WHY IT IS NOT A FLAG.
+//
+// An earlier shape of this module returned MacVerified { key_id } and let the caller pair it with
+// whatever payload it liked. That is unsound for a reason no ordering of checks repairs: the
+// evidence said "a MAC verified" without saying WHICH MESSAGE it verified, so a success obtained
+// over envelope A could be presented alongside envelope B and the consumer would accept B. Checking
+// a success result before reading claims is not the same as checking THIS message's MAC.
+//
+// So the success arm carries the exact message the implementation verified, and it is
+// sole_constructor: only this module's bound realization can mint one. A consumer establishes the
+// join by comparing that message to the bytes it is about to act on -- an exact equality on the
+// signed input, not a hash and not a promise. Anything the consumer did not itself serialize
+// cannot match.
+type VerifiedMessage sole_constructor {
+  key_id: MacKeyId
+  suite: MacSuite
+  message: NonEmptyStr
+}
+
+data verified_message_is_the_join_note: NonEmptyStr = "VerifiedMessage.message is the authentication-to-payload join. A consumer must compare it to the exact bytes it serialized and is about to act on, and refuse otherwise; without that comparison a MacVerified obtained over any message authenticates every message. sole_constructor is what stops a consumer minting the evidence it is supposed to be checking -- on the source-to-.dag acceptance path; DESIGN records that the emitted-Rust mirror of a sole_constructor type is forgeable, and that gap is the wall's, not this carrier's."
+
 // The outcome is a coproduct rather than a Bool because the reasons a tag fails are not one fact,
 // and a caller that receives `false` cannot tell "someone tampered with this" from "we retired that
 // key last week" from "this message was built for a different service". Those are three different
 // incidents (§5: every failure located and typed), and only the first is an attack.
 type MacVerification
-  = MacVerified { key_id: MacKeyId }
+  = MacVerified { verified: VerifiedMessage }
   | MacTagMismatch { key_id: MacKeyId }
   | MacKeyUnknown { key_id: MacKeyId }
   | MacKeyRetired { key_id: MacKeyId, retired_at: NonEmptyStr }
@@ -84,7 +105,7 @@ type MacVerification
 
 fn mac_verification_ok(v: MacVerification) -> Bool {
   match v {
-    MacVerified { key_id: _ } => true
+    MacVerified { verified: _ } => true
     MacTagMismatch { key_id: _ } => false
     MacKeyUnknown { key_id: _ } => false
     MacKeyRetired { key_id: _, retired_at: _ } => false
@@ -102,7 +123,7 @@ data mac_verification_ok_exhaustive_note: NonEmptyStr = "mac_verification_ok enu
 
 fn mac_verification_reason(v: MacVerification) -> String {
   match v {
-    MacVerified { key_id: k } => concat("mac verified under key ", k as String)
+    MacVerified { verified: v } => concat("mac verified under key ", v.key_id as String)
     MacTagMismatch { key_id: k } => concat("mac tag does not verify under key ", k as String)
     MacKeyUnknown { key_id: k } => concat("mac key id is not in the configured keyring: ", k as String)
     MacKeyRetired { key_id: k, retired_at: t } =>
