@@ -24,7 +24,6 @@ pub use crate::v1_compiler_infer_types::{
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v1_std_core::divergent_type;
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
     ArityMismatch, InternalError, UnlistedImportUse, UnresolvedType,
@@ -39,8 +38,6 @@ use crate::v1_std_core::ExprData::{
 use crate::v1_std_core::ExprErrorKind::SemanticExprError;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 use crate::v1_std_core::MatchPattern::Wildcard;
-pub use crate::v1_std_core::ParsedModuleItemKind;
-use crate::v1_std_core::ParsedModuleItemKind::*;
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, default_ident_span,

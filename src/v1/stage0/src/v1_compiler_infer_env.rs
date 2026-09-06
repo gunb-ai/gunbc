@@ -33,8 +33,6 @@ use crate::v1_std_core::CompilerDiagnostic::{AmbiguousReference, UnresolvedType}
 use crate::v1_std_core::Connective::*;
 use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::InferredNode::Resolved;
-pub use crate::v1_std_core::ParsedModuleItemKind;
-use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
     authored_name_at, declaration_provenance_of, empty_intern_table, find_child_named, intern,
     intern_find, intern_str, kernel_span, merge_intern_tables, module_path_segments,

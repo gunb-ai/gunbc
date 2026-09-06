@@ -52,7 +52,6 @@ pub use crate::std_syntax::{
 pub use crate::std_types::{NonEmptyStr, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v1_std_core::make_file_span;
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{InternalError, ParseError};
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};

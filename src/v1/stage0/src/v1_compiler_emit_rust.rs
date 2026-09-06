@@ -54,20 +54,17 @@ pub use crate::gunbc_structural_realization_bindings::{
     structural_connective_rows, structural_ordering_rows,
 };
 pub use crate::std_algebra::trim;
-pub use crate::std_coercion::TypeCheckpoint;
 use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
 };
 use crate::std_coercion::TypeRealizationDecision::*;
 pub use crate::std_coercion::{TypeDeclarationProvenance, TypeRealizationDecision};
-pub use crate::std_content_hash::Fnv1a64Structural;
 pub use crate::std_decl_ref::decl_ref;
 use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 pub use crate::std_measure::millisecond_count;
-pub use crate::std_nat::Nat;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 use crate::std_operator_realization::HostRealizationReason::{
@@ -122,7 +119,6 @@ pub use crate::v1_compiler_coercion::{
 };
 pub use crate::v1_compiler_compiler_tests_rust::compiler_tests_source;
 pub use crate::v1_compiler_dag_collect_support::connective_name;
-pub use crate::v1_compiler_emit::render_target_name;
 use crate::v1_compiler_emit::BoundOperation::{
     BindingRefused, FileBound, LocalBound, RestBound, ShellBound,
 };
@@ -9072,7 +9068,7 @@ pub struct ReferenceDerivedCandidateRow {
     pub disposition: Rc<ReferenceDerivedCandidateDisposition>,
 }
 
-pub fn reference_derived_candidate_disposition<EmitInfo>(
+pub fn reference_derived_candidate_disposition(
     name: String,
     this_module_name: String,
     emit_info: Rc<EmitGraphInfo>,
@@ -9323,13 +9319,12 @@ pub struct ReferenceDerivedUseLinePlan {
     pub rows: Rc<Vec<Rc<ReferenceDerivedCandidateRow>>>,
 }
 
-pub fn reference_derived_use_line_plan<EmitInfo>(
+pub fn reference_derived_use_line_plan(
     items: Rc<Vec<Rc<Node>>>,
     unlisted_type_names: Rc<Vec<String>>,
     this_module_name: String,
     emit_info: Rc<EmitGraphInfo>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    emit_info: Rc<EmitGraphInfo>,
     local_type_names: Rc<Vec<String>>,
     already_imported_names: Rc<Vec<String>>,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
@@ -9730,7 +9725,7 @@ v1_rt::concat(block_lines.clone(), fallback.clone())
     }
 }
 
-pub fn qualified_type_reference_rows<EmitInfo>(
+pub fn qualified_type_reference_rows(
     names: Rc<Vec<String>>,
     this_module_name: String,
     emit_info: Rc<EmitGraphInfo>,
@@ -9855,7 +9850,7 @@ pub fn registry_row_is_type_declared_in(info: Rc<ItemInfo>, module_name: String)
     }
 }
 
-pub fn qualified_type_reference_use_lines<EmitInfo>(
+pub fn qualified_type_reference_use_lines(
     rows: Rc<Vec<Rc<ReferenceDerivedCandidateRow>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: Rc<EmitGraphInfo>,
@@ -10405,7 +10400,7 @@ pub fn emit_module_full(
     }
 }
 
-pub fn emit_import_name<EmitInfo>(
+pub fn emit_import_name(
     n: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: Rc<EmitGraphInfo>,

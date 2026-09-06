@@ -233,6 +233,30 @@ type ServiceSymbolOwners {
   diagnostics: List<ErrorNode>
 }
 
+// THE LEAF INDEX IS DERIVED FROM THE REGISTRY THAT EMISSION ACTUALLY HOLDS.
+// Building it from a module LIST makes its contents depend on which list reached the builder, and
+// emission has several: the whole graph, one partition, a single module. On the narrow ones a leaf
+// declared elsewhere is simply missing, the reverse lookup returns nothing, and a use-line the
+// emitted Rust needs is never synthesized -- the seed then fails to build on a function it cannot
+// name. The merged registry is the same object every consumer of this index is already reading, and
+// it holds one row per declaration identity, so deriving from it makes the index complete exactly
+// when the registry is. A leaf two modules declare gets the empty owner, which is not a legal module
+// path, so consumers refuse rather than taking whichever row was folded last.
+fn leaf_owner_modules_from_registry(registry: Map<String, ItemInfo>) -> Map<String, String> {
+  registry |> map_keys |> fold(init: empty_map(), f: (acc, key) =>
+    match map_get(registry, key) {
+      Present { value: info } =>
+        match map_get(acc, info.name) {
+          Present { value: prior } =>
+            if prior == info.module_name { acc }
+            else { map_insert(acc, info.name, "") }
+          Absent => map_insert(acc, info.name, info.module_name)
+        }
+      Absent => acc
+    }
+  )
+}
+
 fn capitalize_first(s: String) -> String {
   let chars_list = s |> chars
   if chars_list |> count == 0 {

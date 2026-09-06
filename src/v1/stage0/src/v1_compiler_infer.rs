@@ -15,7 +15,6 @@ pub use crate::extdeps_container_oci_digest::{
 };
 pub use crate::gunbc_structural_realization_bindings::literal_homomorphism_rows;
 pub use crate::std_algebra::carrier_container_equality_rows;
-pub use crate::std_algebra::AlgebraFieldTemplate;
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_algebra::{CollectionSizeEffect, FreeMonoid};
 pub use crate::std_coercion::{dag_can_cast, is_dag_cast_domain_type};
@@ -61,7 +60,6 @@ pub use crate::std_literal_elaboration::{
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
-pub use crate::std_occurrence_identity::OccurrenceId;
 pub use crate::std_operator_realization::OperandDeclaration;
 use crate::std_syntax::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
@@ -202,7 +200,6 @@ pub use crate::v1_compiler_infer_types::{
     structural_carrier_template_name, template_return_has_variables,
     template_return_is_receiver_self,
 };
-pub use crate::v1_compiler_ownership::fold_terminal_expr;
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_compiler_type_head_exposure::TypeHeadExposure::{
     ExposedTypeHead, MalformedApplicationHead, OpaqueTypeHead, StuckTypeHead,
@@ -255,8 +252,6 @@ use crate::v1_std_core::MatchPattern::{Bind, VariantPattern, Wildcard};
 use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
 };
-pub use crate::v1_std_core::ParsedModuleItemKind;
-use crate::v1_std_core::ParsedModuleItemKind::*;
 use crate::v1_std_core::ServiceConfigField::{
     SvcAuth, SvcAuthInput, SvcAuthSource, SvcEndpoint, SvcRateLimit,
 };
@@ -293,9 +288,6 @@ pub use crate::v1_std_core::{
     return_value, service_config_field_for_property_name, slice_base, slice_end, slice_start,
     string_type, type_name_compatible, type_reference_provenance, unaryop_operand, unit_type,
     with_optional_cardinality, with_required_cardinality,
-};
-pub use crate::v1_std_core::{
-    divergent_type, expr_is_any_literal, expr_literal_symbol_optional, module_path_segments,
 };
 pub use crate::v1_std_core::{
     AdmitCallersEntry, CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic,

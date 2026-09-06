@@ -256,7 +256,7 @@ import v1.compiler.emit_core_support {
   escape_json_string, module_to_filename, module_filename_collision_diagnostics, make_indent,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
   sanitize_service_name, capitalize_first, service_var_name, to_pascal,
-  service_symbol_collision_diagnostics,
+  service_symbol_collision_diagnostics, leaf_owner_modules_from_registry,
   escape_string_literal_body, unique_strings, to_string, to_string_helper,
   test_function_name,
   apply_type_template1, apply_type_template2, apply_type_template3,
@@ -3070,7 +3070,7 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     source_indices: merged_module_source_indices(modules: typed.modules)
   )
   let emit_info = EmitGraphInfo {
-    item_leaf_owner_modules: base_info.item_leaf_owner_modules,
+    item_leaf_owner_modules: leaf_owner_modules_from_registry(registry: typed.item_registry),
     type_summaries: base_info.type_summaries,
     type_decl_items: base_info.type_decl_items,
     fn_decl_items: base_info.fn_decl_items,
@@ -3702,7 +3702,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     source_indices: merged_module_source_indices(modules: [typed_module])
   )
   let emit_info = EmitGraphInfo {
-    item_leaf_owner_modules: base_info.item_leaf_owner_modules,
+    item_leaf_owner_modules: leaf_owner_modules_from_registry(registry: registry),
     type_summaries: base_info.type_summaries,
     type_decl_items: base_info.type_decl_items,
     fn_decl_items: base_info.fn_decl_items,
