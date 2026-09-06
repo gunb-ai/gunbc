@@ -1,6 +1,7 @@
 module gunbc.spark.pxe_rescue_observation
 
-import std.types { NonEmptyStr, Nat }
+import std.types { NonEmptyStr }
+import std.nat { Nat }
 import std.measure { Second, second }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import extdeps.systems.nvidia_dgx_spark_pxe {
