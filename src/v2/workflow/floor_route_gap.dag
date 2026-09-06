@@ -844,12 +844,13 @@ fn floor_route_gap_expectation_chunk_06() -> List<FloorRouteGapExpectation> {
 // unverified. Enrolment WITHOUT that schedule would be the other thing entirely: a subject that
 // executes nowhere, with the roster standing in for its evidence.
 //
-// The chunk carries SIX identities, and their evidence is NOT uniform, so the distinction is drawn
-// here rather than left to a reader counting rows. The five test.claim.eval_model_probe identities
-// were observed executing and holding on the wet lane by the same required-floor run that produced
-// their route gaps. The sixth, self_host_logic_seed_unavailable_receipt_holds, is enrolled beside
-// its own WetScheduledClaim row; its wet execution is established by whichever required-floor run
-// admits it, not by that earlier run, which predates it. Anyone adding a seventh owns this sentence:
+// The chunk carries NINE identities, and their evidence is NOT uniform, so the distinctions are
+// drawn here rather than left to a reader counting rows. The five test.claim.eval_model_probe
+// identities were observed executing and holding on the wet lane by the same required-floor run
+// that produced their route gaps. The sixth (self_host_logic_seed_unavailable_receipt_holds)
+// and seventh through ninth (the three self_host_logic_seed_unavailable_check_fixture identities)
+// are enrolled beside their own WetScheduledClaim rows, all observed passing in run 34050705404
+// (be79b78158). Anyone adding a tenth owns this sentence:
 // an annotation that describes a population is invalidated by the edit that changes the population,
 // and nothing in the substrate will ever red to tell you so.
 //
@@ -872,7 +873,16 @@ fn floor_route_gap_expectation_chunk_07() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.eval_model_probe.let_is_eager_when_unused", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.self_host_logic_seed_unavailable_witness.self_host_logic_seed_unavailable_receipt_holds", operation: "Parents", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.self_host_logic_seed_unavailable_check_fixture.clean_directory_passes_v1_rt_check", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.self_host_logic_seed_unavailable_check_fixture.directory_with_v1_compiler_ref_fails_check", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.self_host_logic_seed_unavailable_check_fixture.directory_with_v1_rt_containing_calls_passes", operation: "Dir", ground: NoMockResponse {} },
     tail: Empty {}
+  }
+  }
+  }
   }
   }
   }
