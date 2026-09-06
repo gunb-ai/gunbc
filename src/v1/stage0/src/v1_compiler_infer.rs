@@ -24415,6 +24415,30 @@ Rc::new(ResolvedFormal {
     }
 }
 
+pub fn module_local_callable_env(
+    contributions_local: Rc<LocalContributionState>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<ResolveFuncSigsResult> {
+    {
+        let resolve_result = crate::v1_compiler_infer_sigs::resolve_func_sigs(
+            contributions_local.func_sigs.clone(),
+            Rc::new(vec![]),
+            contributions_local.resolved_items.clone(),
+            module_name.clone(),
+            env.source_indices.clone(),
+        );
+        Rc::new(ResolveFuncSigsResult {
+            func_env: bind_local_func_conformance(
+                resolve_result.func_env.clone(),
+                env.clone(),
+                module_name.clone(),
+            ),
+            diagnostics: resolve_result.diagnostics.clone(),
+        })
+    }
+}
+
 pub fn build_module_context(
     contributions: Rc<Vec<Rc<ItemContribution>>>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
@@ -24535,13 +24559,16 @@ pub fn build_module_context(
                 env.source_indices.clone(),
             ),
         );
-        let resolve_result = crate::v1_compiler_infer_sigs::resolve_func_sigs(
-            local.func_sigs.clone(),
-            parent_envs.clone(),
-            local.resolved_items.clone(),
-            module_name.clone(),
-            env.source_indices.clone(),
-        );
+        let local_env_result =
+            module_local_callable_env(local.clone(), env.clone(), module_name.clone());
+        let resolve_result = Rc::new(ResolveFuncSigsResult {
+            func_env: Rc::new(ResolvedFuncEnv {
+                name: local_env_result.func_env.clone().name.clone(),
+                local: local_env_result.func_env.clone().local.clone(),
+                parents: crate::v1_compiler_infer_sigs::flatten_parent_envs(parent_envs.clone()),
+            }),
+            diagnostics: local_env_result.diagnostics.clone(),
+        });
         let all_locals = Rc::new(v1_rt::map_values(&merged_scope.svc_locals.clone()))
             .iter()
             .cloned()
@@ -24553,11 +24580,7 @@ pub fn build_module_context(
             );
         Rc::new(ModuleContext {
             resolved_items: local.resolved_items.clone(),
-            func_env: bind_local_func_conformance(
-                resolve_result.func_env.clone(),
-                env.clone(),
-                module_name.clone(),
-            ),
+            func_env: resolve_result.func_env.clone(),
             svc_registry: merged_scope.svc_registry.clone(),
             locals: all_locals.clone(),
             variant_locals: env_variant_locals.clone(),

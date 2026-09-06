@@ -13179,6 +13179,44 @@ fn bind_local_func_conformance(func_env: ResolvedFuncEnv, env: TypeEnv, module_n
 // reference nodes resolved against the containment index -- not from `resolved_imports`. See
 // `v1.compiler.infer_sigs` `reference_derived_parent_envs` for the rule, and why the 0/1/many
 // decision downstream is deliberately untouched by it.
+// PHASE 1b, AS A NAMED PRODUCER. This is the module-local callable construction: declared
+// signatures resolved, then bound to module context. It is extracted from build_module_context
+// unchanged so that 1c can invoke it over the WHOLE population before any body is inferred --
+// today it still runs per module inside the fold, and this commit reorders nothing.
+//
+// WHY IT CAN RUN WITHOUT ANY PARENT. `resolve_func_sigs` threads `parent_envs` through
+// `topo_resolve_loop` and lands it ONLY in the returned env's `parents` field: `local` is computed
+// from `declared_sigs`, `call_edges` and `local_func_set`, every one of them module-local. So the
+// SAME `local` map serves both the owner index and the module's own env, and passing `[]` here
+// changes nothing about it. That is what makes one authority possible instead of two resolutions.
+//
+// THE CALLER RE-FLATTENS, MATCHING resolve_func_sigs EXACTLY: that function stored
+// `flatten_parent_envs(direct_parents: parent_envs)` in the returned env, never the raw list, so
+// build_module_context applies the same flattening when it fills the field. Assigning the raw list
+// would have been a silent behaviour change wearing a refactor's clothes -- same field, same type,
+// same corpus behaviour in most cases, and wrong.
+//
+// THE PARENTS FIELD IS DELIBERATELY EMPTY here and is filled by the caller from the finished owner
+// index. Splitting the two is the point: `local` is a phase-1 fact about what a module DECLARES,
+// `parents` is a phase-2 fact about what it may REACH, and the traversal-prefix defect was these
+// being computed in one step against a partially-filled accumulator.
+fn module_local_callable_env(
+    contributions_local: LocalContributionState,
+    env: TypeEnv,
+    module_name: String) -> ResolveFuncSigsResult {
+  let resolve_result = resolve_func_sigs(
+    declared_sigs: contributions_local.func_sigs,
+    parent_envs: [],
+    items: contributions_local.resolved_items,
+    module_name: module_name,
+    source_indices: env.source_indices
+  )
+  ResolveFuncSigsResult {
+    func_env: bind_local_func_conformance(func_env: resolve_result.func_env, env: env, module_name: module_name),
+    diagnostics: resolve_result.diagnostics
+  }
+}
+
 fn build_module_context(contributions: List<ItemContribution>,
     parent_index: Map<String, TypedModule>,
     callable_owner_index: CallableOwnerIndex,
@@ -13252,19 +13290,21 @@ fn build_module_context(contributions: List<ItemContribution>,
     module_name: module_name,
     source_indices: env.source_indices
   ))
-  let resolve_result = resolve_func_sigs(
-    declared_sigs: local.func_sigs,
-    parent_envs: parent_envs,
-    items: local.resolved_items,
-    module_name: module_name,
-    source_indices: env.source_indices
-  )
+  let local_env_result = module_local_callable_env(contributions_local: local, env: env, module_name: module_name)
+  let resolve_result = ResolveFuncSigsResult {
+    func_env: ResolvedFuncEnv {
+      name: local_env_result.func_env.name,
+      local: local_env_result.func_env.local,
+      parents: flatten_parent_envs(direct_parents: parent_envs)
+    },
+    diagnostics: local_env_result.diagnostics
+  }
   let all_locals = fold(merged_scope.svc_locals |> map_values, init: env_variant_locals, f: (acc, binding) =>
     map_insert(acc, binding.name, binding)
   )
   ModuleContext {
     resolved_items: local.resolved_items,
-    func_env: bind_local_func_conformance(func_env: resolve_result.func_env, env: env, module_name: module_name),
+    func_env: resolve_result.func_env,
     svc_registry: merged_scope.svc_registry,
     locals: all_locals,
     variant_locals: env_variant_locals,
