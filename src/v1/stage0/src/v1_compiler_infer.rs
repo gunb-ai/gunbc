@@ -20061,7 +20061,7 @@ pub struct ParentCacheRow {
 
 pub fn union_parent_type_env_caches(
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
-    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    parent_index: Rc<HashMap<String, Rc<ModuleInterface>>>,
 ) -> Rc<GuardedTypeEnvCacheMerge> {
     {
         let parent_caches = Rc::new({
@@ -20071,7 +20071,7 @@ pub fn union_parent_type_env_caches(
                     (*match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
                         Some(parent) => Rc::new(vec![Rc::new(ParentCacheRow {
                             import_path: imp.module_path.clone(),
-                            cache: parent.interface.clone().cache.clone(),
+                            cache: parent.cache.clone(),
                         })]),
                         std::option::Option::None => Rc::new(vec![]),
                     })
@@ -22144,7 +22144,7 @@ pub fn overlay_skips_kernel_name(name: String) -> bool {
 pub fn overlay_direct_import_exports(
     ancestry_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
-    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    parent_index: Rc<HashMap<String, Rc<ModuleInterface>>>,
 ) -> Rc<HashMap<String, Rc<TypeBinding>>> {
     resolved_imports.iter().cloned().fold(
         ancestry_str_bindings.clone(),
@@ -22153,10 +22153,8 @@ pub fn overlay_direct_import_exports(
             imp.module_path.clone(),
         ) {
             Some(typed_parent) => {
-                let export_surface = interface_env_for_import(
-                    imp.module_path.clone(),
-                    typed_parent.interface.clone().env.clone(),
-                );
+                let export_surface =
+                    interface_env_for_import(imp.module_path.clone(), typed_parent.env.clone());
                 let selected = if imp.is_all.clone() {
                     Rc::new({
                         let mut __result = Vec::new();
@@ -22280,7 +22278,7 @@ pub fn kernel_bool_type_node() -> Rc<Node> {
 
 pub fn build_ancestry_precedence(
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
-    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    parent_index: Rc<HashMap<String, Rc<ModuleInterface>>>,
     kernel_cache: Rc<TypeEnvCache>,
 ) -> Rc<AncestryPrecedence> {
     {
@@ -22304,7 +22302,7 @@ pub fn build_ancestry_precedence(
 
 pub fn build_type_env(
     module: Rc<ResolvedModule>,
-    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    parent_index: Rc<HashMap<String, Rc<ModuleInterface>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     symbol_index: Rc<SymbolIndex>,
@@ -22613,7 +22611,7 @@ pub fn build_type_env(
                     (*match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
                         Some(typed_parent) => Rc::new(vec![interface_env_for_import(
                             imp.module_path.clone(),
-                            typed_parent.interface.clone().env.clone(),
+                            typed_parent.env.clone(),
                         )]),
                         std::option::Option::None => Rc::new(vec![]),
                     })
@@ -22937,13 +22935,7 @@ pub fn build_type_env(
                     match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
                         Some(parent_mod) => {
                             let a1 = Rc::new(v1_rt::map_keys(
-                                &parent_mod
-                                    .interface
-                                    .clone()
-                                    .env
-                                    .clone()
-                                    .str_bindings
-                                    .clone(),
+                                &parent_mod.env.clone().str_bindings.clone(),
                             ))
                             .iter()
                             .cloned()
@@ -22954,13 +22946,7 @@ pub fn build_type_env(
                                 },
                             );
                             Rc::new(v1_rt::map_keys(
-                                &parent_mod
-                                    .interface
-                                    .clone()
-                                    .env
-                                    .clone()
-                                    .ancestry_str_bindings
-                                    .clone(),
+                                &parent_mod.env.clone().ancestry_str_bindings.clone(),
                             ))
                             .iter()
                             .cloned()
@@ -23069,7 +23055,7 @@ pub fn build_type_env(
 
 pub fn build_type_env_unresolved(
     module: Rc<ResolvedModule>,
-    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    parent_index: Rc<HashMap<String, Rc<ModuleInterface>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<BuildTypeEnvResult> {
@@ -23273,7 +23259,7 @@ pub fn build_type_env_unresolved(
                     (*match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
                         Some(typed_parent) => Rc::new(vec![interface_env_for_import(
                             imp.module_path.clone(),
-                            typed_parent.interface.clone().env.clone(),
+                            typed_parent.env.clone(),
                         )]),
                         std::option::Option::None => Rc::new(vec![]),
                     })
@@ -24600,6 +24586,21 @@ pub struct TypecheckModuleResult {
     pub binding_forks: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
 }
 
+pub fn interface_index_of(
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+) -> Rc<HashMap<String, Rc<ModuleInterface>>> {
+    Rc::new(v1_rt::map_keys(&parent_index))
+        .iter()
+        .cloned()
+        .fold(
+            v1_rt::rc_empty_map::<String, Rc<ModuleInterface>>(),
+            |acc: _, name: String| match v1_rt::map_get(&parent_index, name.clone()) {
+                Some(tm) => v1_rt::rc_map_insert(acc.clone(), name.clone(), tm.interface.clone()),
+                std::option::Option::None => acc.clone(),
+            },
+        )
+}
+
 pub fn typecheck_module(
     resolved: Rc<ResolvedModule>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
@@ -24613,7 +24614,7 @@ pub fn typecheck_module(
     {
         let env_result = build_type_env(
             resolved.clone(),
-            parent_index.clone(),
+            interface_index_of(parent_index.clone()),
             source_indices.clone(),
             intern_table.clone(),
             symbol_index.clone(),

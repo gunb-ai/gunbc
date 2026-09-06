@@ -11198,11 +11198,11 @@ type ParentCacheRow {
 
 fn union_parent_type_env_caches(
   resolved_imports: List<ResolvedImport>,
-  parent_index: Map<String, TypedModule>
+  parent_index: Map<String, ModuleInterface>
 ) -> GuardedTypeEnvCacheMerge {
   let parent_caches = flat_map(resolved_imports, imp =>
     match map_get(parent_index, imp.module_path) {
-      Present { value: parent } => [ParentCacheRow { import_path: imp.module_path, cache: parent.interface.cache }]
+      Present { value: parent } => [ParentCacheRow { import_path: imp.module_path, cache: parent.cache }]
       Absent => []
     }
   )
@@ -12338,11 +12338,11 @@ fn overlay_skips_kernel_name(name: String) -> Bool {
     || name == "Absent"
 }
 
-fn overlay_direct_import_exports(ancestry_str_bindings: Map<String, TypeBinding>, resolved_imports: List<ResolvedImport>, parent_index: Map<String, TypedModule>) -> Map<String, TypeBinding> {
+fn overlay_direct_import_exports(ancestry_str_bindings: Map<String, TypeBinding>, resolved_imports: List<ResolvedImport>, parent_index: Map<String, ModuleInterface>) -> Map<String, TypeBinding> {
   fold(resolved_imports, init: ancestry_str_bindings, f: (acc, imp) =>
     match map_get(parent_index, imp.module_path) {
       Present { value: typed_parent } =>
-        let export_surface = interface_env_for_import(module_path: imp.module_path, parent_env: typed_parent.interface.env)
+        let export_surface = interface_env_for_import(module_path: imp.module_path, parent_env: typed_parent.env)
         let selected = if imp.is_all {
           export_surface.str_bindings |> map_keys |> filter(name => is_type_variable_name(name: name) == false)
         } else {
@@ -12388,7 +12388,7 @@ fn kernel_bool_type_node() -> Node {
 // shape special-cased a single import by skipping the kernel overlay entirely, so with exactly
 // one import the environment was that import's flattened cache alone -- kernel identity won or
 // lost by ancestry occupancy, resolution by accident rather than by the declared precedence.
-fn build_ancestry_precedence(resolved_imports: List<ResolvedImport>, parent_index: Map<String, TypedModule>, kernel_cache: TypeEnvCache) -> AncestryPrecedence {
+fn build_ancestry_precedence(resolved_imports: List<ResolvedImport>, parent_index: Map<String, ModuleInterface>, kernel_cache: TypeEnvCache) -> AncestryPrecedence {
   let import_union = union_parent_type_env_caches(resolved_imports: resolved_imports, parent_index: parent_index)
   let with_kernel = merge_type_env_cache(base: import_union.cache, overlay: kernel_cache)
   AncestryPrecedence {
@@ -12413,7 +12413,7 @@ fn build_ancestry_precedence(resolved_imports: List<ResolvedImport>, parent_inde
 // separately here rather than derived from the union. Type parameters are deliberately absent --
 // they are authored, but they are not imports, and that map answers "which declaration did an
 // import name", not "what is in lexical scope".
-fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex) -> BuildTypeEnvResult {
+fn build_type_env(module: ResolvedModule, parent_index: Map<String, ModuleInterface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex) -> BuildTypeEnvResult {
   let source_indices = fold(map_keys(kernel_type_set), init: source_indices, f: (acc, name) =>
     map_insert(acc, concat("<kernel:", name, ">"), build_newline_index(file: concat("<kernel:", name, ">"), source: name))
   )
@@ -12452,7 +12452,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let module_name_str = authored_name_at(source_indices: source_indices, node: module.module)
   let import_parents = flat_map(module.resolved_imports, imp =>
     match map_get(parent_index, imp.module_path) {
-      Present { value: typed_parent } => [interface_env_for_import(module_path: imp.module_path, parent_env: typed_parent.interface.env)]
+      Present { value: typed_parent } => [interface_env_for_import(module_path: imp.module_path, parent_env: typed_parent.env)]
       Absent => []
     }
   )
@@ -12546,8 +12546,8 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     if imp.is_all {
       match map_get(parent_index, imp.module_path) {
         Present { value: parent_mod } =>
-          let a1 = fold(map_keys(parent_mod.interface.env.str_bindings), init: acc, f: (x, n) => map_insert(x, n, true))
-          fold(map_keys(parent_mod.interface.env.ancestry_str_bindings), init: a1, f: (x, n) => map_insert(x, n, true))
+          let a1 = fold(map_keys(parent_mod.env.str_bindings), init: acc, f: (x, n) => map_insert(x, n, true))
+          fold(map_keys(parent_mod.env.ancestry_str_bindings), init: a1, f: (x, n) => map_insert(x, n, true))
         Absent => acc
       }
     } else {
@@ -12596,7 +12596,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   }
 }
 
-fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> BuildTypeEnvResult {
+fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, ModuleInterface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> BuildTypeEnvResult {
   let intern_table = fold(map_keys(kernel_type_set), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
   let intern_table = fold(["Optional"], init: intern_table, f: (t, name) => intern(table: t, s: name).table)
   let zero_span = no_span()
@@ -12617,7 +12617,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let module_name_str = authored_name_at(source_indices: source_indices, node: module.module)
   let import_parents = flat_map(module.resolved_imports, imp =>
     match map_get(parent_index, imp.module_path) {
-      Present { value: typed_parent } => [interface_env_for_import(module_path: imp.module_path, parent_env: typed_parent.interface.env)]
+      Present { value: typed_parent } => [interface_env_for_import(module_path: imp.module_path, parent_env: typed_parent.env)]
       Absent => []
     }
   )
@@ -13279,8 +13279,38 @@ type TypecheckModuleResult {
   binding_forks: List<TypeEnvCacheMergeConflict>
 }
 
+// THE PHASE SEAM, PROJECTED ONCE. Everything on the TYPE-RESOLUTION path -- build_type_env,
+// build_type_env_unresolved, build_ancestry_precedence, union_parent_type_env_caches and
+// overlay_direct_import_exports -- now takes Map<String, ModuleInterface> rather than
+// Map<String, TypedModule>, because reading the parent's ITEMS from any of them is a body
+// dependency and the whole point of delaying bodies is that no parent body exists yet.
+//
+// The retype is what makes that structural rather than conventional: those functions cannot
+// observe a body because a body is not reachable from what they are handed. An earlier proposal
+// passed a TypedModule with items: [] instead, which TypedModule's own model already refutes --
+// it distinguishes ItemsChecked from AbandonedBeforeItems precisely because items: [] cannot say
+// whether item analysis completed, so "interface exists, body analysis intentionally has not
+// happened" has NO CONSTRUCTOR and could only be faked.
+//
+// This projection is the transitional half. It exists because parents are still realized as whole
+// TypedModules upstream; when phase 1a produces the interface map itself, this fold is deleted and
+// the map arrives already at interface grain. ModuleInterface is not minted here -- it is the
+// carrier 04_items.dag already declares, and moving the cross-module type boundary onto it
+// ADVANCES typed_module_interface_body_dual_field_dissolution_trigger. It does not discharge it:
+// ResolvedFuncEnv is still a sibling field on TypedModule and CallableOwnerIndex is still a
+// separate cross-module surface, so "interface is the only cross-module export surface" stays
+// false for now.
+fn interface_index_of(parent_index: Map<String, TypedModule>) -> Map<String, ModuleInterface> {
+  fold(map_keys(parent_index), init: empty_map(), f: (acc, name) =>
+    match map_get(parent_index, name) {
+      Present { value: tm } => map_insert(acc, name, tm.interface)
+      Absent => acc
+    }
+  )
+}
+
 fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, callable_owner_index: CallableOwnerIndex, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex, global_variant_base: Map<String, TypeBinding>) -> TypecheckModuleResult {
-  let env_result = build_type_env(module: resolved, parent_index: parent_index, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index)
+  let env_result = build_type_env(module: resolved, parent_index: interface_index_of(parent_index: parent_index), source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index)
   let env = env_result.env
   let env_cache = env_result.cache
   let env_diags = env_result.diagnostics
