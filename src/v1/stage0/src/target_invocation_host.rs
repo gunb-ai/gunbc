@@ -374,6 +374,17 @@ pub fn test_affected_select() -> InvocationOutcome {
 
     let selected_count = selected_rows.len();
 
+    // Helper: build the selection receipt prefix (printed BEFORE execution so it
+    // survives a refusal in the runner). This is the one place the command answers
+    // "what did you select" — it must not be lost when execution fails.
+    fn selection_receipt(messages: &[String], selected_count: usize) -> String {
+        if messages.is_empty() {
+            format!("{selected_count} selected")
+        } else {
+            format!("{}\n{selected_count} selected", messages.join("\n"))
+        }
+    }
+
     // Step 7: prime witness execution legs — required before run_discovery_rows.
     // Without this, the first selected row panics ("entry was not primed").
     // Also arm the entry retention schedule for the filtered set.
@@ -401,9 +412,10 @@ pub fn test_affected_select() -> InvocationOutcome {
     })) {
         Ok(Ok(s)) => s,
         Ok(Err(err)) => {
+            let sel = selection_receipt(&messages, selected_count);
             return InvocationOutcome {
                 termination: Termination::Refused,
-                message: format!("affected-select: witness runner refused: {err}"),
+                message: format!("affected-select: witness runner refused\n{sel}\n{err}"),
             };
         }
         Err(panic_payload) => {
@@ -412,9 +424,10 @@ pub fn test_affected_select() -> InvocationOutcome {
                 .map(|s| s.clone())
                 .or_else(|| panic_payload.downcast_ref::<&str>().map(|s| s.to_string()))
                 .unwrap_or_else(|| "unknown panic".to_string());
+            let sel = selection_receipt(&messages, selected_count);
             return InvocationOutcome {
                 termination: Termination::Refused,
-                message: format!("affected-select: witness runner panicked — {msg}"),
+                message: format!("affected-select: witness runner panicked\n{sel}\n{msg}"),
             };
         }
     };
@@ -425,11 +438,11 @@ pub fn test_affected_select() -> InvocationOutcome {
     // selected rows, the accounting is inconsistent — refuse with a typed diagnostic
     // rather than computing a panicking unsigned underflow or a misleading negative.
     let failed = if skipped > selected_rows.len() || passed + skipped > selected_rows.len() {
+        let sel = selection_receipt(&messages, selected_count);
         return InvocationOutcome {
             termination: Termination::Refused,
             message: format!(
-                "affected-select: REFUSED — witness runner accounting mismatch: \
-                 selected={selected_count} passed={passed} skipped={skipped} violates passed+skipped ≤ selected"
+                "affected-select: REFUSED — witness runner accounting mismatch\n{sel}"
             ),
         };
     } else {
