@@ -2,6 +2,7 @@ module v2.test.claim.enforcement.determinism_transitive_witness
 
 import v2.lens.determinism {
   determinism_findings,
+  determinism_transitive_findings,
   determinism_transitive_holds
 }
 import v2.lens.module_graph { module_declaration_facts_live }
