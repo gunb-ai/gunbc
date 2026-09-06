@@ -14,6 +14,7 @@ import gunbc.harness.harness_turn {
   harness_run_turn, harness_outcome_label, harness_outcome_detail,
 }
 import gunbc.harness.harness_guidance { harness_worker_guidance_at, harness_guidance_prose, harness_worker_guidance, harness_probe_guidance }
+import gunbc.compute.test_run { test_process_command, test_process_receipt_path, test_process_pattern_placeholder }
 import gunbc.harness.harness_review_guidance { harness_reviewer_guidance_at, review_guidance_prose }
 import gunbc.harness.harness_goal_audit_guidance { harness_auditor_guidance_at, audit_guidance_prose }
 import gunbc.roadmap.roadmap_review_role { review_verdict_shape_text }
@@ -256,6 +257,8 @@ fn harness_worker_config(
   request_scratch_path: FilePath,
   events_path: FilePath,
   backend_url: String,
+  repo_root: String,
+  gunbc_program: String,
 ) -> HarnessTurnConfig {
   HarnessTurnConfig {
     backend_url: backend_url,
@@ -263,7 +266,7 @@ fn harness_worker_config(
     max_tokens: harness_default_max_tokens,
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
-    system_prompt: harness_worker_system_prompt_at(worktree: worktree as String),
+    system_prompt: harness_worker_system_prompt_at(worktree: worktree as String, repo_root: repo_root, gunbc_program: gunbc_program),
     request_scratch_path: request_scratch_path,
     events_path: events_path,
     context_budget: harness_context_budget,
@@ -276,8 +279,12 @@ fn harness_worker_config(
   }
 }
 
-fn harness_worker_system_prompt_at(worktree: String) -> String {
-  harness_guidance_prose(rows: harness_worker_guidance_at(worktree: worktree))
+fn harness_worker_system_prompt_at(worktree: String, repo_root: String, gunbc_program: String) -> String {
+  harness_guidance_prose(rows: harness_worker_guidance_at(
+    worktree: worktree,
+    test_command: test_process_command(gunbc_program: gunbc_program, repo_root: repo_root, worktree: worktree, pattern: test_process_pattern_placeholder),
+    test_receipt_path: test_process_receipt_path(worktree: worktree),
+  ))
 }
 
 // RAISED FROM 24 ON A MEASUREMENT. A mechanical four-file deletion, run under Think Max, spent its
@@ -297,6 +304,8 @@ fn harness_worker_cli(
   timeout_program: String,
   request_scratch_path: String,
   events_path: String,
+  repo_root: String,
+  gunbc_program: String,
 ) -> ProcessExit {
   match harness_serving_backend_url(shape: harness_default_wire_shape, seed: worktree) {
     BackendUrlRefused { detail } => harness_backend_refusal_exit(detail: detail)
@@ -308,6 +317,8 @@ fn harness_worker_cli(
           request_scratch_path: request_scratch_path as FilePath,
           events_path: events_path as FilePath,
           backend_url: url,
+          repo_root: repo_root,
+          gunbc_program: gunbc_program,
         ),
         prompt: brief,
         step_budget: harness_worker_step_budget,

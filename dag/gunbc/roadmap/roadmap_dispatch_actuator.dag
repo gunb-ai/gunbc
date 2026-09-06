@@ -1722,6 +1722,8 @@ fn gunbc_harness_spawn_argv(
     "--arg", join(["timeout_program=", timeout_program], ""),
     "--arg", join(["request_scratch_path=", request_scratch_path], ""),
     "--arg", join(["events_path=", events_path], ""),
+    "--arg", join(["repo_root=", repo_root], ""),
+    "--arg", join(["gunbc_program=", gunbc_program], ""),
   ]
 }
 

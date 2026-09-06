@@ -202,6 +202,32 @@ fn test_run_succeeded(r: TestRunReport) -> Bool {
   }
 }
 
+// THE COMMAND A WORKER RUNS, spelled once here so the guidance that tells the worker and the CLI that
+// answers it cannot disagree. The pattern is the worker's to choose: the package under dag/test/claim
+// that mirrors what it changed, as a subtree pattern.
+data test_process_entry: String = "dag/gunbc/compute/test_run.dag"
+data test_process_function: String = "test_pattern_cli"
+data test_process_receipt_name: String = ".gunbc-test-receipt.json"
+data test_process_pattern_placeholder: String = "//dag/test/claim/<package>/..."
+
+fn test_process_receipt_path(worktree: String) -> String {
+  join([worktree, "/", test_process_receipt_name], "")
+}
+
+fn test_process_command(gunbc_program: String, repo_root: String, worktree: String, pattern: String) -> String {
+  join([
+    gunbc_program, " run",
+    " --source-root ", repo_root, "/dag",
+    " --source-root ", repo_root, "/src/v2",
+    " --entry ", repo_root, "/", test_process_entry,
+    " --function ", test_process_function,
+    " --arg repo_root=", repo_root,
+    " --arg worktree=", worktree,
+    " --arg pattern=", pattern,
+    " --arg receipt_path=", test_process_receipt_path(worktree: worktree),
+  ], "")
+}
+
 // THE CLI. `pattern` is a bazel target pattern over witness modules (`//dag/test/claim/roadmap/...`,
 // `//dag/test/claim/roadmap:all`, `//dag/test/claim/roadmap:roadmap_launch_admission_witness_test`).
 // The report is written to receipt_path; the exit is zero only when at least one module was selected
