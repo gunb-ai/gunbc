@@ -30,6 +30,27 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // THE BODIES BELOW ARE AUTHORED, NOT CAPTURED, which is what makes them an oracle rather than a
 // snapshot of the current tree. Each is the smallest document that puts one decoder in one state.
+//
+// THESE EXECUTE, AND THE GRAIN OF THAT CLAIM IS NARROWER THAN IT LOOKS. A required-floor run reports
+// all nineteen planned-and-passed -- but with disposition `planned_as_changed_witness`, which is the
+// selection in v2.workflow.required_floor that plans a witness THIS CHANGE TOUCHED regardless of the
+// static gate. They are therefore executing evidence for the change that introduces them and NOT
+// standing regression controls: on a later run that does not touch this module, the ordinary
+// disposition applies, and because no rostered `required_gate_prefixes` row transitively imports
+// gunbc.bmc.megarac_*, that ordinary disposition is DeclinedOutsideGateClosure.
+//
+// THAT RESIDUAL IS AN EXISTING DECLARED DROP AND NOT A NEW GAP: gunbc.rung_drop
+// required_gate_bankruptcy names "every module OUTSIDE THE REQUIRED FLOOR GATE CLOSURE" in its
+// population, and its restoration trigger is a required run whose population is derived from the
+// change. Widening the static roster would move that population rather than retire it, and the
+// roster's own header excludes product and fleet witnesses by operator ruling -- so a row for this
+// lane is a wall-clock decision for the operator, not a repair an author may make here.
+//
+// AN EARLIER REVISION OF THIS BLOCK SAID THESE CLAIMS DO NOT RUN AT ALL. That was measured on a run
+// taken while this file was still untracked, and the floor discovers claims from tracked sources.
+// The reading offered for it -- gate closure -- was a real mechanism that was not the cause, which
+// is worth recording because a correct-sounding diagnosis attached to a real measurement is the
+// hardest kind to catch.
 
 fn rows(body: String) -> MegaRacPresentationReading {
   match megarac_json_elements(body: body) {
