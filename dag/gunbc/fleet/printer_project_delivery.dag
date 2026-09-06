@@ -34,11 +34,11 @@ import gunbc.auth.secret_ref_credential {
   fetch_secret_ref_credential,
 }
 import gunbc.auth.access_token_source { AccessTokenSource }
-import extdeps.network.ipv4 { render_ipv4_address }
-import gunbc.fleet.printer_lan_endpoint {
-  PrinterLanEndpoint, PrinterEndpointLookup, PrinterEndpointFound,
-  PrinterEndpointUnknown, PrinterEndpointConflict, printer_lan_endpoint,
+import product.network_topology {
+  NetworkEndpoint, NetworkEndpointSubject, EndpointAsset, EndpointHost,
+  EndpointSubjectUnregistered, NetworkTopology,
 }
+import gunbc.fleet_intent_network { fleet_intent_network_topology }
 import gunbc.fleet_printer_access {
   PrinterAccessCodeLocus, PrinterAccessCodeLocusLookup, PrinterAccessCodeLocusFound,
   PrinterAccessCodeLocusUnknown, PrinterAccessCodeLocusConflict,
@@ -109,21 +109,15 @@ type PayloadIdentification
   | PayloadIdentificationRefused { local_path: NonEmptyStr, cause: NonEmptyStr }
 
 func identify_project_payload(payload: PrinterProjectPayload) -> PayloadIdentification {
-  match private_scoped_materialization_root() {
-    Absent =>
-      PayloadIdentificationRefused {
-        local_path: payload.local_path,
-        cause: "no private materialization root could be established, so the payload could not be copied anywhere this run owns",
-      }
-    Present { value: root } =>
-      if ensure_gunbc_private_materialization_dir(root: root) == false {
-        PayloadIdentificationRefused {
-          local_path: payload.local_path,
-          cause: "the private materialization directory could not be created",
-        }
-      } else {
-        let destination =
-          concat(gunbc_private_materialization_dir(root: root) as String, "/project-payload") as FilePath
+  let created = shell.Mktemp.Dir()
+  if created.success == false {
+    PayloadIdentificationRefused {
+      local_path: payload.local_path,
+      cause: "no private directory could be created, so the payload could not be copied anywhere this run owns",
+    }
+  } else {
+      {
+        let destination = concat(created.path as String, "/project-payload") as FilePath
         if shell.Copy.File(
           source: payload.local_path as FilePath,
           destination: destination
@@ -196,10 +190,17 @@ fn receipt_printer(r: ProjectUploadReceipt) -> PhysicalAssetIdentity { r.printer
 fn receipt_uploaded_local_digest(r: ProjectUploadReceipt) -> Digest { r.uploaded_local_digest }
 fn receipt_remote_name(r: ProjectUploadReceipt) -> NonEmptyStr { r.remote_name }
 
+// ProjectTransferredCleanupRefused IS NEITHER SUCCESS NOR FAILURE AND IS NOT SPELLED AS EITHER.
+// Assigning the shred results to `_` meant a completed upload whose credential shred failed still
+// returned ProjectDelivered -- an access code left on disk, reported as a clean delivery. Collapsing
+// it into ProjectDeliveryRefused would be the opposite lie, since the bytes DID reach the printer and
+// a caller that retried would upload them twice. The transfer fact is preserved and the residue named:
+// MQTT must not consume that arm as ordinary readiness.
 type ProjectDelivery
   = ProjectDelivered { receipt: ProjectUploadReceipt }
   | ProjectDeliveryRefused { printer: PhysicalAssetIdentity, cause: NonEmptyStr }
   | ProjectDeliveryUnattempted { printer: PhysicalAssetIdentity, cause: NonEmptyStr }
+  | ProjectTransferredCleanupRefused { receipt: ProjectUploadReceipt, cause: NonEmptyStr }
 
 // THE ENDPOINT THE MACHINE ACTUALLY PRESENTS, recorded as an observation of THIS device rather than
 // a general claim about its model line. The A1 mini's LAN file channel is implicit FTPS on 990 with
@@ -291,6 +292,45 @@ data printer_netrc_path: FilePath = "/tmp/gunbc_printer_netrc" as FilePath
 // arms, and the empty/non-empty stdout split that separates them says nothing about whether the file
 // arrived, which is why both map to one receipt.
 //
+// THE ADDRESS COMES FROM THE PRINTER IDENTITY, NEVER FROM THE CALLER.
+//
+// An earlier draft took `host: NonEmptyStr` beside `printer: PhysicalAssetIdentity` and that was a
+// CREDENTIAL EXFILTRATION HOLE, not a tidiness problem: the Secret Manager locus was keyed on the
+// printer while the endpoint came from the caller, so `printer_01 + attacker-host` was spellable and
+// would fetch printer-01's access code and deliberately send it to a caller-chosen peer -- with peer
+// verification disabled, so nothing would object. Two facts that must agree were free to disagree.
+//
+// I ALSO WROTE A SECOND ENDPOINT AUTHORITY BEFORE FINDING THIS ONE. gunbc.fleet_intent_network
+// already carries printer_01_lan_endpoint and printer_02_lan_endpoint, transcribed from the
+// operator's reservation table, because my branch base predates them and I searched my own branch
+// rather than the authority surface. That duplicate is deleted; this consumes the existing rows.
+type PrinterAddressLookup
+  = PrinterAddressFound { address: NonEmptyStr }
+  | PrinterAddressUnknown { printer: PhysicalAssetIdentity }
+  | PrinterAddressAmbiguous { printer: PhysicalAssetIdentity }
+
+fn endpoint_names_printer(e: NetworkEndpoint, printer: PhysicalAssetIdentity) -> Bool {
+  match e.subject {
+    EndpointAsset { asset: a } => (a as String) == (printer as String)
+    EndpointHost { host: _ } => false
+    EndpointSubjectUnregistered => false
+  }
+}
+
+fn printer_endpoint_address(printer: PhysicalAssetIdentity) -> PrinterAddressLookup {
+  let matches = fleet_intent_network_topology().endpoints
+    |> filter(e => endpoint_names_printer(e: e, printer: printer))
+  match matches |> first {
+    Absent => PrinterAddressUnknown { printer: printer }
+    Present { value: found } =>
+      if (matches |> length) == 1 {
+        PrinterAddressFound { address: found.address }
+      } else {
+        PrinterAddressAmbiguous { printer: printer }
+      }
+  }
+}
+
 // ONE MINT, reached only from the admitted-exit arms of a real execution. Two inline copies of this
 // literal would be two places a receipt could be authored, and the point of sealing it is that there
 // is exactly one.
@@ -299,14 +339,21 @@ fn delivered_receipt(
   payload: IdentifiedProjectPayload,
   endpoint: FtpsEndpoint,
   credential_version: SmResolvedVersionIdentity,
+  cleaned: Bool,
 ) -> ProjectDelivery {
-  ProjectDelivered {
-    receipt: ProjectUploadReceipt {
+  let receipt = ProjectUploadReceipt {
       printer: printer,
       uploaded_local_digest: payload.content,
       remote_name: project_remote_name(payload: payload),
       endpoint_host: endpoint.host,
       resolved_credential_version: credential_version,
+  }
+  if cleaned {
+    ProjectDelivered { receipt: receipt }
+  } else {
+    ProjectTransferredCleanupRefused {
+      receipt: receipt,
+      cause: "the transfer completed but the credential shred or the payload removal did not, so material may remain on disk",
     }
   }
 }
@@ -319,18 +366,18 @@ func deliver_project_to_printer(
 ) -> ProjectDelivery
   uses net: Network
 {
-  match printer_lan_endpoint(printer: printer) {
-    PrinterEndpointUnknown { printer: p } =>
+  match printer_endpoint_address(printer: printer) {
+    PrinterAddressUnknown { printer: p } =>
       ProjectDeliveryUnattempted {
         printer: p,
-        cause: "no LAN endpoint is recorded for this printer in gunbc.fleet.printer_lan_endpoint",
+        cause: "no LAN endpoint is recorded for this printer in gunbc.fleet_intent_network",
       }
-    PrinterEndpointConflict { printer: p, matches: _ } =>
+    PrinterAddressAmbiguous { printer: p } =>
       ProjectDeliveryUnattempted {
         printer: p,
-        cause: "more than one LAN endpoint matches this printer; the roster is ambiguous and delivery refuses rather than picking one by list order",
+        cause: "more than one endpoint matches this printer; the roster is ambiguous and delivery refuses rather than picking one by list order",
       }
-    PrinterEndpointFound { endpoint: lan } =>
+    PrinterAddressFound { address: lan_address } =>
   match printer_access_code_locus(printer: printer) {
     PrinterAccessCodeLocusUnknown { printer: p } =>
       ProjectDeliveryUnattempted {
@@ -357,7 +404,7 @@ func deliver_project_to_printer(
         SecretCredentialFetchRefused { reason: reason } =>
           ProjectDeliveryUnattempted { printer: printer, cause: reason }
         SecretCredentialReady { credential: credential, resolved_version: credential_version } => {
-          endpoint = bambu_lan_endpoint(host: render_ipv4_address(addr: lan.address))
+          endpoint = bambu_lan_endpoint(host: lan_address)
           match place_netrc_binding(
             path: printer_netrc_path,
             machine: endpoint.host,
@@ -375,16 +422,25 @@ func deliver_project_to_printer(
               ),
               transport: transport
             )
-            let _ = shred_netrc_binding(binding: binding)
-            let _ = shell.Remove.FileForce(path: payload.realization.path)
+            let credential_shredded = shred_netrc_binding(binding: binding)
+            let realization_removed = shell.Remove.FileForce(path: payload.realization.path).success
+            let cleaned = credential_shredded && realization_removed
             match outcome {
               ProcessRefused { exit_code: _, stderr: stderr } =>
                 ProjectDeliveryRefused {
                   printer: printer,
                   cause: concat("the transfer did not complete: ", stderr) as NonEmptyStr,
                 }
-              ProcessOutputAbsent => delivered_receipt(printer: printer, payload: payload, endpoint: endpoint, credential_version: credential_version)
-              ProcessOutputPresent { text: _ } => delivered_receipt(printer: printer, payload: payload, endpoint: endpoint, credential_version: credential_version)
+              ProcessOutputAbsent =>
+                delivered_receipt(
+                  printer: printer, payload: payload, endpoint: endpoint,
+                  credential_version: credential_version, cleaned: cleaned
+                )
+              ProcessOutputPresent { text: _ } =>
+                delivered_receipt(
+                  printer: printer, payload: payload, endpoint: endpoint,
+                  credential_version: credential_version, cleaned: cleaned
+                )
             }
           }
         }

@@ -28,7 +28,9 @@ import gunbc.srv3_bmc_credential_resolve {
 }
 import gunbc.auth.access_token_source { access_token_upsert_required_reason }
 import gunbc.bmc_onboarding { srv3_onboarding_plan }
-import gunbc.auth.netrc_binding { netrc_content }
+import gunbc.auth.netrc_binding {
+  NetrcPlacement, NetrcBindingPlaced, NetrcBindingRefused, place_netrc_binding, netrc_content,
+}
 import gunbc.tools.bmc_onboard {
   bmc_onboard_netrc_path,
   boot_override_body,
@@ -235,12 +237,20 @@ func srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessE
       return exit_failure(reason: concat("boot-once-cd: ", reason as String))
   }
 
-  let netrc_write = Filesystem.Write(
-    path: bmc_onboard_netrc_path,
-    content: netrc_content(machine: host as NonEmptyStr, login: account as NonEmptyStr, password: password as Secret)
+  let netrc_placement = place_netrc_binding(
+    path: bmc_onboard_netrc_path as FilePath,
+    machine: host as NonEmptyStr,
+    login: account as NonEmptyStr,
+    password: password as Secret
   )
-  if netrc_write.success == false {
-    return exit_failure(reason: concat("boot-once-cd: netrc stage failed: ", netrc_write.error))
+  let netrc_placed = match netrc_placement {
+    NetrcBindingRefused { cause: _ } => false
+    NetrcBindingPlaced { binding: _ } => true
+  }
+  if netrc_placed == false {
+    return exit_failure(
+      reason: "boot-once-cd: netrc stage failed: the owner-only credential file could not be created"
+    )
   }
 
   match srv3_boot_cd_override_mode_refusal(mode: srv3_boot_cd_mode) {

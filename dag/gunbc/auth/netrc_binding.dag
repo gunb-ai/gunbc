@@ -82,6 +82,33 @@ func place_netrc_binding(
   }
 }
 
+// A PRIVATE DIRECTORY PER PLACEMENT, because a fixed path is a substitution race with no attacker in
+// it. The printer path previously used one process-global name, so two deliveries running together
+// would delete and replace each other's credentials between mint and use: place_netrc_binding does
+// remove-then-write, so delivery A's netrc can vanish after A minted its binding and before A's curl
+// reads it, and A then authenticates with B's access code or with nothing. mktemp -d creates a fresh
+// 0700 directory per call, which makes the collision unspellable rather than unlikely.
+func place_netrc_binding_privately(
+  machine: NonEmptyStr,
+  login: NonEmptyStr,
+  password: Secret,
+) -> NetrcPlacement
+{
+  let created = shell.Mktemp.Dir()
+  if created.success == false {
+    NetrcBindingRefused {
+      cause: "no private directory could be created for the credential, so none was placed",
+    }
+  } else {
+    place_netrc_binding(
+      path: concat(created.path as String, "/netrc") as FilePath,
+      machine: machine,
+      login: login,
+      password: password
+    )
+  }
+}
+
 // SHREDDING IS UNCONDITIONAL AT THE CALL SITE, INCLUDING ON THE FAILING ARM. A refused transfer that
 // leaves the credential on disk has converted a transient failure into a standing exposure, so the
 // consumer calls this on every path out of the bracket rather than only on success.
