@@ -26,6 +26,18 @@ import extdeps.cloud.gcp.secret_ref { secret_ref_secret_resource }
 // EVERY ARM IS SPELLED OUT so the run says WHICH leg answered. A single "it failed" would leave the
 // reader unable to tell a missing endpoint from a refused credential from a rejected transfer, and
 // those have entirely different remedies.
+//
+// SUCCESS EXITS ZERO, AND AN EARLIER REVISION DID NOT. The delivered arm returned exit_failure with a
+// "DELIVERED remote=..." reason, because exit_failure is the arm that carries a printable string and
+// this actuator exists to report which leg answered. That made a SUCCESSFUL delivery exit non-zero:
+// fabricated failure, which §5 forbids in the same breath as fabricated success, and worse here
+// because a caller wiring this into anything would read the exit code and conclude the transfer
+// failed while the file sat on the printer.
+//
+// NOTHING IS LOST BY DROPPING THE REPORTED NAME. The remote filename is remote_name_for_digest of the
+// payload content -- a pure function of the digest, so it is derivable from the payload at any time
+// rather than being a fact only this run knew. The refusal arms keep their reasons because a refusal
+// genuinely carries information the caller cannot re-derive: WHICH leg refused and why.
 // THE PAYLOAD IS NAMED BY THE INVOKER, NOT BY THIS FILE. An earlier revision carried one author's
 // scratchpad path as a literal, which is a machine fact wearing a module's name: it is false for
 // every other operator and it rots the moment a scratchpad is cleared. The variable is read rather
@@ -66,8 +78,8 @@ func run() -> ProcessExit uses net: Network {
           exit_failure(reason: concat(
             concat("TRANSFERRED BUT CLEANUP REFUSED, remote=", receipt_remote_name(r: r) as String),
             concat(": ", cause as String)))
-        ProjectDelivered { receipt: r } =>
-          exit_failure(reason: concat("DELIVERED remote=", receipt_remote_name(r: r) as String))
+        ProjectDelivered { receipt: _ } =>
+          ExitSuccess
       }
       }
   }

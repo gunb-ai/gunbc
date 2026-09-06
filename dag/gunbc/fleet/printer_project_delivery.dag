@@ -334,9 +334,14 @@ type PrinterAddressLookup
   | PrinterAddressAmbiguous { printer: PhysicalAssetIdentity }
   | PrinterAddressWrongClass { printer: PhysicalAssetIdentity }
 
+// IDENTITIES COMPARE AS IDENTITIES. This coerced both sides to String and compared the renderings,
+// which is an equality on the PROJECTION rather than on the subject: it holds for any two assets that
+// happen to render alike, and it silently survives a change to how an identity prints. The carrier
+// compares directly -- the same equality gunbc.fleet_printer_access already uses on this type when
+// matching a locus row to its printer.
 fn endpoint_names_printer(e: NetworkEndpoint, printer: PhysicalAssetIdentity) -> Bool {
   match e.subject {
-    EndpointAsset { asset: a } => (a as String) == (printer as String)
+    EndpointAsset { asset: a } => a == printer
     EndpointHost { host: _ } => false
     EndpointSubjectUnregistered => false
   }
