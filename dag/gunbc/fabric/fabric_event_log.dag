@@ -1,0 +1,335 @@
+module gunbc.fabric_event_log
+
+import std.types { String, Bool, Int, NonEmptyStr, List, FilePath, EpochSecs }
+import std.nat { Nat, nat_range_inclusive }
+import std.algebra { trim }
+import std.measure { Count, One }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import extdeps.filesystem.filesystem_io
+import extdeps.git
+import extdeps.git.plumbing
+import extdeps.git.plumbing { GitRepositoryAddress, GitWorktreeAt, GitDirectoryAt }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet_ssh_locus { fleet_automation_principal_login }
+import product.capacity.pool { Pool }
+import product.capacity.event_chain {
+  PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, HeadAbsent, HeadAt, head_expectation_eq,
+  event_parent_expectation, AppendDecision, AppendAdmitted, AppendStale, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted, chain_from_head,
+}
+import product.capacity.pool_events {
+  PoolEvent, pool_event_wire_text, pool_event_decode, PoolEventDecode, PoolEventDecoded, PoolEventUndecodable,
+  PoolFold, PoolFolded, PoolFoldRefused, pool_fold, SeatRequest, SeatProposal, SeatProposed, SeatRefused, propose_acquire, grant_from_admission,
+}
+import product.capacity.lease { LeasePolicy, LeaseGrant }
+
+// THE FABRIC EVENT LOG: THE CARRIER FOR EVERY CAPACITY TRANSACTION, REALIZED ON THE SCM SUBSTRATE.
+// One immutable object per event, addressed by its content; one ref per partition, advanced by a
+// compare-and-set on the expected head; no chain-wide ref. The store consumed is the minimum the
+// log needs -- blob objects, refs, and the leased push -- and nothing about commits, trees or
+// snapshots, because an event is not a source revision (operator ruling 2026-09-06).
+//
+// THE PLACEMENT IS A FABRIC CAPABILITY, NOT A HOST. The log has a logical remote whose current
+// placement is a host and a path; convergence may move it, and nothing downstream names the host.
+// A single writer placement is admitted for the first slice: when the placed host is unreachable,
+// acquisitions refuse rather than fall back to a second writable replica -- a lease needs exactly
+// one linearization point.
+
+type FabricEventLogPlacement
+  = EventLogUnplaced
+  | EventLogPlaced { host: HostIdentity, bare_path: FilePath }
+
+data fabric_event_log_placement: FabricEventLogPlacement = EventLogPlaced {
+  host: operator_host_srv1,
+  bare_path: "/var/lib/gunbc/fabric/event-log.git" as FilePath,
+}
+
+// The remote as the executor reaches it: a path when the executor is the placed host, the fleet
+// automation principal over SSH otherwise. The SSH session's key and known-hosts anchor come from
+// the fleet SSH context the executor already holds; git only learns the URL.
+type EventLogRemote
+  = RemoteLocalPath { path: FilePath }
+  | RemoteOverFleetSsh { url: NonEmptyStr }
+  | RemoteUnplaced
+
+fn event_log_remote_for(placement: FabricEventLogPlacement, executor: HostIdentity) -> EventLogRemote {
+  match placement {
+    EventLogUnplaced => RemoteUnplaced
+    EventLogPlaced { host: h, bare_path: p } =>
+      if host_identity_eq(a: h, b: executor) {
+        RemoteLocalPath { path: p }
+      } else {
+        RemoteOverFleetSsh { url: join(["ssh://", fleet_automation_principal_login as String, "@", fleet_probe_endpoint_for(host: h as String), p as String], "") as NonEmptyStr }
+      }
+  }
+}
+
+fn event_log_remote_word(remote: EventLogRemote) -> String? {
+  match remote {
+    RemoteLocalPath { path: p } => Present { value: p as String }
+    RemoteOverFleetSsh { url: u } => Present { value: u as String }
+    RemoteUnplaced => none
+  }
+}
+
+fn partition_ref(partition: PartitionId) -> String {
+  join(["refs/fabric/", partition as String], "")
+}
+
+// The leased push: the refspec publishes the object to the partition ref, and the lease names the
+// head the writer expects there. An absent expectation is spelled as an empty old value, which git
+// reads as "the ref must not exist".
+fn partition_push_refspec(oid: String, partition: PartitionId) -> String {
+  join([oid, ":", partition_ref(partition: partition)], "")
+}
+
+fn partition_push_lease(partition: PartitionId, expected: HeadExpectation) -> String {
+  join(["--force-with-lease=", partition_ref(partition: partition), ":", match expected { HeadAbsent => ""  HeadAt { id: h } => h as String }], "")
+}
+
+// The executor's layout: a bare mirror it writes objects into and pushes from, and a scratch
+// directory for the bytes being hashed. Both are the executor's, never the placement's.
+type EventLogLayout {
+  mirror: FilePath
+  scratch: FilePath
+  remote: EventLogRemote
+}
+
+fn event_log_layout(root: FilePath, remote: EventLogRemote) -> EventLogLayout {
+  EventLogLayout {
+    mirror: join([root as String, "/event-log-mirror.git"], "") as FilePath,
+    scratch: root,
+    remote: remote,
+  }
+}
+
+fn mirror_address(layout: EventLogLayout) -> GitRepositoryAddress {
+  GitDirectoryAt { path: layout.mirror, run_in: layout.scratch }
+}
+
+type CarrierStanding
+  = MirrorReady
+  | MirrorRefused { step: String, reason: String }
+
+fn event_log_ensure_mirror(layout: EventLogLayout) -> CarrierStanding {
+  let head = Filesystem.Read(path: join([layout.mirror as String, "/HEAD"], ""))
+  if head.success {
+    MirrorReady
+  } else {
+    let init = git.Plumbing.InitBareAt(address: GitWorktreeAt { path: layout.scratch }, path: layout.mirror)
+    if init.exit_code == 0 { MirrorReady } else { MirrorRefused { step: "init-bare", reason: join(["exit ", to_string(init.exit_code), ": ", trim(s: init.stderr)], "") } }
+  }
+}
+
+// HEAD OBSERVATION ASKS THE PLACEMENT, NOT THE MIRROR: ls-remote answers with the ref's object or
+// with nothing, and only a transport failure is a refusal. Absence is read from git's own arm for
+// absence (exit 0, empty advertisement), never inferred from a failed fetch.
+type HeadObservation
+  = HeadObserved { head: HeadExpectation }
+  | HeadObservationRefused { step: String, reason: String }
+
+fn advertised_oid(advertised: String) -> String {
+  let line = trim(s: advertised)
+  match first(split(line, separator: "\t")) { Present { value: w } => trim(s: w)  Absent => "" }
+}
+
+fn event_log_observe_head(layout: EventLogLayout, partition: PartitionId) -> HeadObservation {
+  match event_log_ensure_mirror(layout: layout) {
+    MirrorRefused { step: s, reason: why } => HeadObservationRefused { step: s, reason: why }
+    MirrorReady => event_log_observe_head_from_mirror(layout: layout, partition: partition)
+  }
+}
+
+fn event_log_observe_head_from_mirror(layout: EventLogLayout, partition: PartitionId) -> HeadObservation {
+  match event_log_remote_word(remote: layout.remote) {
+    Absent => HeadObservationRefused { step: "remote", reason: "the event log is unplaced" }
+    Present { value: remote } => {
+      let r = git.Core.LsRemoteRefInRepo(repo: layout.mirror, remote: remote, ref_name: partition_ref(partition: partition))
+      if r.exit_code != 0 {
+        HeadObservationRefused { step: "ls-remote", reason: join(["exit ", to_string(r.exit_code), ": ", trim(s: r.stderr)], "") }
+      } else {
+        let oid = advertised_oid(advertised: r.advertised)
+        if oid == "" { HeadObserved { head: HeadAbsent } } else { HeadObserved { head: HeadAt { id: oid as EventId } } }
+      }
+    }
+  }
+}
+
+// READING A PARTITION: fetch the head's objects into the mirror, then read each event by its
+// address following parents, bounded, and hand the collected envelopes to the pure walk so the
+// chain's shape is decided by one authority.
+type PartitionRead
+  = PartitionReadOk { head: HeadExpectation, walk: ChainWalk<PoolEvent> }
+  | PartitionReadRefused { step: String, reason: String }
+
+type CollectState {
+  current: HeadExpectation
+  collected: List<ChainEnvelope<PoolEvent>>
+  refused: String?
+}
+
+fn collect_step(layout: EventLogLayout, st: CollectState) -> CollectState {
+  match st.refused {
+    Present { value: _ } => st
+    Absent =>
+      match st.current {
+        HeadAbsent => st
+        HeadAt { id: h } => {
+          let r = git.Core.CatFileBlobInRepo(repo: layout.mirror, oid: h as String)
+          if !r.success {
+            CollectState { current: st.current, collected: st.collected, refused: Present { value: join(["cat-file ", h as String, " refused"], "") } }
+          } else {
+            match pool_event_decode(text: r.content) {
+              PoolEventUndecodable { reason: why } => CollectState { current: st.current, collected: st.collected, refused: Present { value: join(["event ", h as String, " undecodable: ", why], "") } }
+              PoolEventDecoded { event: e } => CollectState {
+                current: event_parent_expectation(e: e),
+                collected: concat(st.collected, [ChainEnvelope { id: h, event: e }]),
+                refused: none,
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn event_log_read_partition(layout: EventLogLayout, partition: PartitionId, budget: Nat) -> PartitionRead {
+  match event_log_ensure_mirror(layout: layout) {
+    MirrorRefused { step: s, reason: why } => PartitionReadRefused { step: s, reason: why }
+    MirrorReady =>
+      match event_log_observe_head(layout: layout, partition: partition) {
+        HeadObservationRefused { step: s, reason: why } => PartitionReadRefused { step: s, reason: why }
+        HeadObserved { head: HeadAbsent } => PartitionReadOk { head: HeadAbsent, walk: ChainWalked { oldest_first: [] } }
+        HeadObserved { head: HeadAt { id: h } } =>
+          match event_log_remote_word(remote: layout.remote) {
+            Absent => PartitionReadRefused { step: "remote", reason: "the event log is unplaced" }
+            Present { value: remote } => {
+              let f = git.Core.FetchForcedRefInRepo(repo: layout.mirror, remote: remote, refspec: join([partition_ref(partition: partition), ":", partition_ref(partition: partition)], ""))
+              if f.exit_code != 0 {
+                PartitionReadRefused { step: "fetch", reason: join(["exit ", to_string(f.exit_code), ": ", trim(s: f.stderr)], "") }
+              } else {
+                let st = fold(nat_range_inclusive(lo: 1, hi: budget), init: CollectState { current: HeadAt { id: h }, collected: [], refused: none }, f: (acc, _i) => collect_step(layout: layout, st: acc))
+                match st.refused {
+                  Present { value: why } => PartitionReadRefused { step: "read", reason: why }
+                  Absent => PartitionReadOk { head: HeadAt { id: h }, walk: chain_from_head(envs: st.collected, head: HeadAt { id: h }, budget: budget) }
+                }
+              }
+            }
+          }
+      }
+  }
+}
+
+// APPEND: publish the bytes as an object in the mirror, then advance the partition ref at the
+// placement with a lease on the expected head. A refused push is classified by re-observing the
+// head, because git's exit code cannot tell a lost race from an unreachable placement: the head
+// moved means stale, the head unchanged means the transport refused.
+type EventAppend
+  = EventAppended { id: EventId }
+  | EventAppendStale { expected: HeadExpectation, observed: HeadExpectation }
+  | EventAppendRefused { step: String, reason: String }
+
+fn event_log_append(layout: EventLogLayout, partition: PartitionId, event: ChainEvent<PoolEvent>, expected: HeadExpectation) -> EventAppend {
+  if !head_expectation_eq(a: event_parent_expectation(e: event), b: expected) {
+    EventAppendRefused { step: "parent", reason: "the event's parent is not the head the append expects" }
+  } else {
+    match event_log_ensure_mirror(layout: layout) {
+      MirrorRefused { step: s, reason: why } => EventAppendRefused { step: s, reason: why }
+      MirrorReady =>
+        match event_log_remote_word(remote: layout.remote) {
+          Absent => EventAppendRefused { step: "remote", reason: "the event log is unplaced" }
+          Present { value: remote } => {
+            let file = join([layout.scratch as String, "/event-", partition as String, ".json"], "")
+            let w = Filesystem.Write(path: file, content: pool_event_wire_text(event: event))
+            if !w.success {
+              EventAppendRefused { step: "write", reason: w.error }
+            } else {
+              let h = git.Plumbing.HashObjectWrite(address: mirror_address(layout: layout), path: file as FilePath)
+              if h.exit_code != 0 {
+                EventAppendRefused { step: "hash-object", reason: join(["exit ", to_string(h.exit_code), ": ", trim(s: h.stderr)], "") }
+              } else {
+                let oid = trim(s: h.oid)
+                let p = git.Core.PushRefWithLeaseInRepo(repo: layout.mirror, remote: remote, refspec: partition_push_refspec(oid: oid, partition: partition), lease: partition_push_lease(partition: partition, expected: expected))
+                if p.exit_code == 0 {
+                  EventAppended { id: oid as EventId }
+                } else {
+                  match event_log_observe_head(layout: layout, partition: partition) {
+                    HeadObservationRefused { step: s, reason: why } => EventAppendRefused { step: join(["push/", s], ""), reason: join(["push exit ", to_string(p.exit_code), ": ", trim(s: p.stderr), "; then ", why], "") }
+                    HeadObserved { head: observed } =>
+                      if head_expectation_eq(a: observed, b: expected) {
+                        EventAppendRefused { step: "push", reason: join(["exit ", to_string(p.exit_code), ": ", trim(s: p.stderr)], "") }
+                      } else {
+                        EventAppendStale { expected: expected, observed: observed }
+                      }
+                  }
+                }
+              }
+            }
+          }
+        }
+    }
+  }
+}
+
+// THE SEAT TRANSACTION, WET AND BOUNDED: read, fold, propose, append; a stale append re-reads and
+// decides again, at most `attempts` times, and exhaustion is its own typed outcome rather than a
+// seat. The grant is minted only from an admitted append.
+type SeatAcquisition
+  = SeatGranted { grant: LeaseGrant, generation: Nat }
+  | SeatFull { wire: String }
+  | SeatContended { attempts: Nat }
+  | SeatAcquireRefused { step: String, reason: String }
+
+type SeatAttemptState {
+  done: SeatAcquisition?
+}
+
+fn seat_attempt(layout: EventLogLayout, partition: PartitionId, root: Pool<Count, One>, actor: NonEmptyStr, request: SeatRequest, policy: LeasePolicy, budget: Nat) -> SeatAcquisition? {
+  match event_log_read_partition(layout: layout, partition: partition, budget: budget) {
+    PartitionReadRefused { step: s, reason: why } => Present { value: SeatAcquireRefused { step: s, reason: why } }
+    PartitionReadOk { head: head, walk: walk } =>
+      match walk {
+        ChainIncomplete { missing: m, newest_first_so_far: _ } => Present { value: SeatAcquireRefused { step: "chain", reason: join(["partition chain is missing event ", m as String], "") } }
+        ChainBudgetExhausted { at: a } => Present { value: SeatAcquireRefused { step: "chain", reason: join(["partition chain exceeded the read budget at ", a as String], "") } }
+        ChainWalked { oldest_first: xs } =>
+          match pool_fold(root: root, oldest_first: xs) {
+            PoolFoldRefused { at_event: e, wire: w } => Present { value: SeatAcquireRefused { step: "fold", reason: join(["event ", e as String, " refused: ", w], "") } }
+            PoolFolded { pool: p, generation: g } =>
+              match propose_acquire(pool: p, generation: g, head: head, partition: partition, actor: actor, request: request) {
+                SeatRefused { wire: w } => Present { value: SeatFull { wire: w } }
+                SeatProposed { event: e, expected_head: x } =>
+                  match event_log_append(layout: layout, partition: partition, event: e, expected: x) {
+                    EventAppendRefused { step: s, reason: why } => Present { value: SeatAcquireRefused { step: s, reason: why } }
+                    EventAppendStale { expected: _, observed: _ } => none
+                    EventAppended { id: h } =>
+                      match grant_from_admission(request: request, admission: AppendAdmitted { new_head: h, generation: g + 1 }, policy: policy) {
+                        Absent => Present { value: SeatAcquireRefused { step: "grant", reason: "an admitted append minted no grant" } }
+                        Present { value: grant } => Present { value: SeatGranted { grant: grant, generation: g + 1 } }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn fabric_seat_acquire(layout: EventLogLayout, partition: PartitionId, root: Pool<Count, One>, actor: NonEmptyStr, request: SeatRequest, policy: LeasePolicy, attempts: Nat, budget: Nat) -> SeatAcquisition {
+  let st = fold(nat_range_inclusive(lo: 1, hi: attempts), init: SeatAttemptState { done: none }, f: (acc, _i) =>
+    match acc.done {
+      Present { value: _ } => acc
+      Absent => SeatAttemptState { done: seat_attempt(layout: layout, partition: partition, root: root, actor: actor, request: request, policy: policy, budget: budget) }
+    })
+  match st.done {
+    Present { value: d } => d
+    Absent => SeatContended { attempts: attempts }
+  }
+}
+
+fn seat_acquisition_wire(a: SeatAcquisition) -> String {
+  match a {
+    SeatGranted { grant: g, generation: gen } => join(["granted ", g.reference as String, " fence=", g.fence.grant as String, "@", to_string(gen), " expires_at=", to_string(g.expires_at)], "")
+    SeatFull { wire: w } => join(["full ", w], "")
+    SeatContended { attempts: n } => join(["contended after ", to_string(n), " attempts"], "")
+    SeatAcquireRefused { step: s, reason: why } => join(["refused at ", s, ": ", why], "")
+  }
+}
