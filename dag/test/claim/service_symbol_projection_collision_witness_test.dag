@@ -25,6 +25,18 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // silently merged into one. service_var_name is the second channel, since to_snake of one symbol is
 // one symbol, so the collision reaches the parameter as well as the type.
 //
+// WHAT THESE TWO ASSERTIONS DO NOT ESTABLISH, stated here so the passes are not read for more than
+// they carry. tools.multi_module_compile_fixture is the v1 pipeline to the RUST render target, and
+// its completed payload carries emitted file NAMES and diagnostics -- not emitted contents and not a
+// rustc result. So: the refusal is wired into the Go and Python contexts as well, and that wiring is
+// structural rather than witnessed; these assertions say nothing about those targets, nothing about
+// whether the emitted Rust compiles, and nothing about service-argument forwarding. Under 4b(1) the
+// class rung is the MINIMUM across its in-scope paths, so this evidence sets the rung on the source
+// to Rust path alone. Nor do they cover the SECOND collision channel: service_var_name is
+// to_snake of this same symbol, and two service names could in principle collide after to_snake
+// without colliding before it. The wall keys on the pre-snake symbol, so that channel is argued,
+// not shown -- its trigger is a probe over to_snake's injectivity on the projection's own range.
+//
 // WHY THE FIXTURE AND NOT THE LIVE CORPUS. The class is LATENT: all 123 service names in the
 // checkout project to 123 distinct symbols today, so no live-tree probe can express the RED. The
 // forbidden state is perfectly authorable as source handed to the compiler, which is where the

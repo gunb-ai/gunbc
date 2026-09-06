@@ -12,9 +12,7 @@ pub use crate::v1_compiler_languages::{language_spec_for_target, test_convention
 pub use crate::v1_compiler_languages::{LanguageSpec, TestNameStyle};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::CompilerDiagnostic::{
-    ModuleFilenameCollision, ServiceSymbolProjectionCollision,
-};
+use crate::v1_std_core::CompilerDiagnostic::ModuleFilenameCollision;
 use crate::v1_std_core::Connective::NoConnective;
 use crate::v1_std_core::ParsedModuleItemKind::{
     ModuleItemDataValue, ModuleItemFunction, ModuleItemResource, ModuleItemService,
@@ -362,47 +360,6 @@ pub fn sanitize_service_name(name: String) -> String {
         });
         pascal_parts.clone().join(&"".to_string())
     }
-}
-
-pub fn service_symbol_collision_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<ErrorNode>>> {
-    {
-        let result = typed.modules.clone().iter().cloned().fold(Rc::new(ServiceSymbolOwners {
-    owners: v1_rt::rc_empty_map::<String, String>(),
-    diagnostics: Rc::new(vec![]),
-}), |acc: Rc<ServiceSymbolOwners>, tm: _| {
-            let module_name = crate::v1_std_core::authored_name_at(tm.type_env.clone().source_indices.clone(), tm.module.clone());
-Rc::new({ let mut __result = Vec::new(); for item in tm.items.clone().iter().cloned() { if (item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemService) { __result.push(item); } } __result }).iter().cloned().fold(acc, |inner: Rc<ServiceSymbolOwners>, svc: Rc<Node>| {
-                let service_name = crate::v1_std_core::authored_name_at(tm.type_env.clone().source_indices.clone(), svc.clone());
-let symbol = sanitize_service_name(service_name.clone());
-match v1_rt::map_get(&inner.owners.clone(), symbol.clone()) {
-    Some(owner) => if (owner.clone() == service_name.clone()) {
-                    inner.clone()
-                } else {
-                    Rc::new(ServiceSymbolOwners {
-    owners: inner.owners.clone(),
-    diagnostics: v1_rt::rc_list_push(inner.diagnostics.clone(), crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::ServiceSymbolProjectionCollision {
-    colliding_symbol: symbol.clone(),
-    first_service: owner.clone(),
-    second_service: service_name.clone(),
-    span: svc.span.clone(),
-}), module_name.clone())),
-})
-                },
-    std::option::Option::None => Rc::new(ServiceSymbolOwners {
-    owners: v1_rt::rc_map_insert(inner.owners.clone(), symbol.clone(), service_name.clone()),
-    diagnostics: inner.diagnostics.clone(),
-}),
-}
-})
-});
-        result.diagnostics.clone()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ServiceSymbolOwners {
-    pub owners: Rc<HashMap<String, String>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn capitalize_first(s: String) -> String {

@@ -4887,18 +4887,16 @@ fn import_module_paths_for_typed_module(tm: &Rc<TypedModule>) -> HashSet<String>
 }
 
 fn definer_module_for_name(graph: &ResolvedGraph, name: &str) -> Option<String> {
-    // The registry is keyed on `owner.decl`, so a qualified spelling is a direct hit and needs no
-    // fallback at all. A bare spelling names no owner, so it can only be answered by scanning for
-    // the leaf -- and this returns the first match, which is the same guess the leaf-keyed map
-    // used to make silently. It is a guess either way; it is now visible as one.
     if let Some(info) = graph.item_registry.get(name) {
         return Some(info.module_name.clone());
     }
-    graph
-        .item_registry
-        .values()
-        .find(|info| info.name == name)
-        .map(|info| info.module_name.clone())
+    if name.contains('.') {
+        let base = name.rsplit('.').next().unwrap_or(name);
+        if let Some(info) = graph.item_registry.get(base) {
+            return Some(info.module_name.clone());
+        }
+    }
+    None
 }
 
 /// Classify how a single `UnlistedImportUse` site obtained its binding.
@@ -15277,46 +15275,8 @@ fn finish_resolved_graph_assembly(
     });
     resolve_stage_slot_add(|s| s.assembly_registry += registry_started.elapsed().as_nanos());
     let services_started = std::time::Instant::now();
-    let effect_analysis =
+    let expanded_registry =
         v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry, 5);
-    // Mirrors typecheck_with_census_extra: the registry is reachable only through the complete arm,
-    // and an incomplete summary carries its causes onto the graph's diagnostics rather than being
-    // unwrapped into something indistinguishable from a fixed point.
-    let (expanded_registry, incompleteness_diagnostics): (
-        Rc<im::HashMap<String, Rc<ItemInfo>>>,
-        Vec<Rc<ErrorNode>>,
-    ) = match effect_analysis.as_ref() {
-        crate::v1_compiler_infer_service::ServiceEffectAnalysis::EffectsComplete { registry } => {
-            (registry.clone(), Vec::new())
-        }
-        crate::v1_compiler_infer_service::ServiceEffectAnalysis::EffectsIncomplete { partial, causes } => {
-            let diags = causes
-                .iter()
-                .map(|cause| match cause.as_ref() {
-                    crate::v1_compiler_infer_service::EffectIncompleteness::UnresolvedCalleeEdge {
-                        item_identity,
-                        spelling,
-                    } => v1_compiler_infer::inference_error(
-                        format!(
-                            "effect summary incomplete: call to '{}' in {} has no established callee identity, so its effects cannot be joined",
-                            spelling,
-                            crate::v1_std_core::callable_identity(item_identity.clone())
-                        ),
-                        crate::v1_std_core::no_span(),
-                        item_identity.owner_module_path.clone(),
-                    ),
-                    crate::v1_compiler_infer_service::EffectIncompleteness::ExpansionBudgetExhausted {
-                        remaining_delta: _,
-                    } => v1_compiler_infer::inference_error(
-                        "effect summary incomplete: transitive service expansion exhausted its pass budget while dependencies were still propagating, so the published summary is a truncation rather than a fixed point".to_string(),
-                        crate::v1_std_core::no_span(),
-                        String::new(),
-                    ),
-                })
-                .collect();
-            (partial.clone(), diags)
-        }
-    };
     resolve_stage_slot_add(|s| s.assembly_services += services_started.elapsed().as_nanos());
     let diagnostics_started = std::time::Instant::now();
     let diagnostics: Rc<im::Vector<Rc<ErrorNode>>> = Rc::new({
@@ -15324,7 +15284,6 @@ fn finish_resolved_graph_assembly(
         for chunk in &diag_chunks {
             acc.extend(chunk.iter().cloned());
         }
-        acc.extend(incompleteness_diagnostics.iter().cloned());
         acc
     });
     let total_fork_count = same_tree_fork_count + cross_tree_fork_count;
@@ -40059,14 +40018,7 @@ fn claim_scope_for_with_memos(
                 continue;
             };
             let authored = position < authored_region;
-            // The registry's KEY is now the declaration's identity (owner module path plus
-            // declared name). This scope index is deliberately keyed by BARE leaf name and
-            // resolved by the precedence order above, so it takes the leaf from the VALUE rather
-            // than from the key -- the leaf is still exactly one field away, and taking it from
-            // `info` keeps this subsystem's bare-name-with-precedence semantics unchanged while
-            // the registry underneath it stops being ambiguous.
-            for (_identity, info) in module.item_registry.iter() {
-                let name = &info.name;
+            for (name, info) in module.item_registry.iter() {
                 match winner_of.get(name) {
                     None => {
                         item_registry.insert(name.clone(), info.clone());

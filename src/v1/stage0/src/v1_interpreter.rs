@@ -4502,23 +4502,9 @@ impl InterpContext {
             .into_iter()
             .filter_map(|(name, count)| (count > 1).then_some(name))
             .collect();
-        // The graph registry is keyed on declaration identity (owner module path plus declared
-        // name). The interpreter resolves BARE names -- that is what a bare call or data reference
-        // in source is -- so it takes a leaf-keyed projection rather than the identity map. The
-        // projection reproduces exactly the map this field used to receive, since the graph
-        // registry itself was leaf-keyed with last-write-wins; the difference is that the
-        // ambiguity now lives in one derived index instead of in the authority every consumer
-        // shares.
-        let bare_item_registry: Rc<HashMap<String, Rc<ItemInfo>>> = Rc::new(
-            graph
-                .item_registry
-                .iter()
-                .map(|(_identity, info)| (info.name.clone(), info.clone()))
-                .collect(),
-        );
         Rc::new(PreparedScopeIndexes {
             modules: graph.modules.clone(),
-            item_registry: bare_item_registry,
+            item_registry: graph.item_registry.clone(),
             source_indices,
             emit_graph_info: graph.emit_graph_info.clone(),
             fn_nodes,
