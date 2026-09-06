@@ -1,0 +1,134 @@
+module test.claim.spark.pair_serving_launch_receipt_witness
+
+import std.types { Bool, String, Int, NonEmptyStr, List, EpochSecs }
+import v2.std.optional { Present, Absent }
+import std.nat { Nat }
+import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
+import gunbc.spark.vllm_engine_incarnation { VllmEngineIncarnation, vllm_engine_incarnation }
+import gunbc.spark.pair_serving_launch_receipt {
+  LaunchTerminal, LaunchServing, LaunchExited, LaunchKilled, LaunchReadinessTimedOut, LaunchTerminalUnobserved,
+  launch_terminal_from_exit, launch_terminal_wire,
+  PairServingLaunchAttempt,
+  OomEvidenceSource, KernelRingBuffer, CgroupMemoryEvent, SystemdOomResult,
+  OomObservation, OomAttribution, KilledByOom, OomUnattributed, attribute_oom,
+  ServingStanding, ServingOnFirstAttempt, ServingRecoveredAfterFailures, NotServing, ServingStandingUnobserved,
+  serving_standing, serving_standing_wire, bring_up_was_clean,
+}
+
+fn w_digest(hex: String) -> ContentHash {
+  Sha256Hash(Sha256Digest { hex: hex as Sha256DigestHex })
+}
+
+data w_exe: String = "1111111111111111111111111111111111111111111111111111111111111111"
+data w_unit: String = "3333333333333333333333333333333333333333333333333333333333333333"
+
+fn w_inc(invocation: String) -> VllmEngineIncarnation {
+  vllm_engine_incarnation(
+    group: FabricGroupA,
+    head: spark_pair_serving_head(group: FabricGroupA),
+    systemd_invocation: invocation as NonEmptyStr,
+    container_id: "gunbc-spark-pair" as NonEmptyStr,
+    executable_digest: w_digest(hex: w_exe),
+    unit_digest: w_digest(hex: w_unit),
+    started_at: 1788000000,
+  )
+}
+
+fn w_attempt(invocation: String, n: Nat, terminal: LaunchTerminal) -> PairServingLaunchAttempt {
+  PairServingLaunchAttempt {
+    incarnation: w_inc(invocation: invocation),
+    desired_digest: w_digest(hex: w_unit),
+    attempt_number: n,
+    started_at: 1788000000,
+    terminal: terminal,
+    layout_receipt: none,
+  }
+}
+
+// EXIT 137 IS A SIGKILL SHAPE. 128+n is the convention for "terminated by signal n", so the group A
+// head's status=137 classifies as signal 9 and NOT as an ordinary exit status.
+test fn exit_codes_above_128_classify_as_the_signal_they_encode() -> Bool {
+  (match launch_terminal_from_exit(code: 137) { LaunchKilled { signal: s } => s == 9  _ => false })
+    && (match launch_terminal_from_exit(code: 143) { LaunchKilled { signal: s } => s == 15  _ => false })
+    && (match launch_terminal_from_exit(code: 0) { LaunchServing => true  _ => false })
+    && (match launch_terminal_from_exit(code: 1) { LaunchExited { code: c } => c == 1  _ => false })
+}
+
+// THE DISCRIMINATING ROW: exit 137 ALONE DOES NOT ESTABLISH OOM. This is the inference the incident
+// invites and it is wrong -- signal 9 is delivered by the kernel's OOM killer, by `docker rm -f`
+// (which this very unit runs in its own ExecStartPre), by a stop timeout escalating, and by an
+// operator. A model that read the code as OOM would send someone to tune memory that was never the
+// cause. The refusal names all three alternatives rather than saying "unknown".
+test fn a_signal_kill_without_an_oom_observation_is_not_an_oom_kill() -> Bool {
+  let killed = w_attempt(invocation: "inv-15-42", n: 8, terminal: launch_terminal_from_exit(code: 137))
+  match attribute_oom(attempt: killed, observation: none) {
+    OomUnattributed { cause: c } =>
+      string_contains(s: c as String, pattern: "forced teardown")
+        && string_contains(s: c as String, pattern: "operator")
+    KilledByOom { source: _, detail: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL: a joined observation DOES promote it, so the refusal above is about missing
+// evidence and not about the attribution being unreachable.
+test fn a_joined_oom_observation_promotes_the_kill() -> Bool {
+  let killed = w_attempt(invocation: "inv-15-42", n: 8, terminal: launch_terminal_from_exit(code: 137))
+  let observed = OomObservation {
+    incarnation: w_inc(invocation: "inv-15-42"),
+    source: CgroupMemoryEvent,
+    detail: "memory.events oom_kill incremented" as NonEmptyStr,
+  }
+  match attribute_oom(attempt: killed, observation: Present { value: observed }) {
+    KilledByOom { source: s, detail: _ } => (match s { CgroupMemoryEvent => true  _ => false })
+    OomUnattributed { cause: _ } => false
+  }
+}
+
+// AND AN OOM OBSERVATION ABOUT ANOTHER LAUNCH DOES NOT COUNT. This is the case a host-keyed join
+// accepts: same host, same unit, same container name, a real OOM — belonging to a different start.
+test fn an_oom_observation_from_another_launch_does_not_attribute() -> Bool {
+  let killed = w_attempt(invocation: "inv-15-42", n: 8, terminal: launch_terminal_from_exit(code: 137))
+  let elsewhere = OomObservation {
+    incarnation: w_inc(invocation: "inv-15-35"),
+    source: KernelRingBuffer,
+    detail: "Out of memory: Killed process" as NonEmptyStr,
+  }
+  match attribute_oom(attempt: killed, observation: Present { value: elsewhere }) {
+    OomUnattributed { cause: c } => string_contains(s: c as String, pattern: "another launch")
+    KilledByOom { source: _, detail: _ } => false
+  }
+}
+
+// A UNIT THAT CAME UP ON THE NINTH TRY IS NOT A UNIT THAT CAME UP. This is the 2026-09-05 group A
+// bring-up: eight signal kills, then a start that stuck. To systemd and to the current apply path
+// the end state is indistinguishable from a first-attempt launch; here it is a different standing,
+// and the failed terminals travel with it.
+test fn a_recovered_bring_up_is_distinguishable_from_a_clean_one() -> Bool {
+  let flapped = concat(
+    map([1, 2, 3, 4, 5, 6, 7, 8], n => w_attempt(invocation: "inv-15-3", n: n, terminal: launch_terminal_from_exit(code: 137))),
+    [w_attempt(invocation: "inv-16-40", n: 9, terminal: LaunchServing)],
+  )
+  let clean = [w_attempt(invocation: "inv-16-40", n: 1, terminal: LaunchServing)]
+  (match serving_standing(attempts: flapped) {
+     ServingRecoveredAfterFailures { incarnation: _, failed_attempts: n, terminals: ts } =>
+       n == 8 && length(ts) == 8
+     _ => false
+   })
+    && (match serving_standing(attempts: clean) { ServingOnFirstAttempt { incarnation: _ } => true  _ => false })
+    && !bring_up_was_clean(s: serving_standing(attempts: flapped))
+    && bring_up_was_clean(s: serving_standing(attempts: clean))
+    && string_contains(s: serving_standing_wire(s: serving_standing(attempts: flapped)), pattern: "8 failed attempt")
+}
+
+// NO ATTEMPTS IS UNOBSERVED, NOT NOT-SERVING. An empty list is the absence of evidence, and reading
+// it as a failure would make an unconverged host indistinguishable from a broken one.
+test fn no_recorded_attempts_is_unobserved_rather_than_not_serving() -> Bool {
+  (match serving_standing(attempts: []) { ServingStandingUnobserved { cause: _ } => true  _ => false })
+    && (match serving_standing(attempts: [w_attempt(invocation: "inv-1", n: 1, terminal: LaunchReadinessTimedOut)]) {
+          NotServing { failed_attempts: n, terminals: _ } => n == 1
+          _ => false
+        })
+    && !bring_up_was_clean(s: serving_standing(attempts: []))
+}
