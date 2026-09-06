@@ -132,16 +132,18 @@ fn publish_evidence_object_exclusive(
   }
 }
 
-// THE FIVE DISCARDED STAGING SWEEPS BELOW ARE EXPLICITLY BEST-EFFORT. They are five of the
-// discarded-effect census that #10574 opened over its own out-of-scope remainder -- 19 across four
-// modules measured at 1ae18027, 15 once main deleted a whole function in gunbc.package_delivery,
-// with this module's five unchanged across that move. The count is carried with its ref and its
-// selector -- `let _ = shell.<Op>` OR `let _ = Filesystem.<Op>` -- because a bare number cannot
-// tell a real change from a stale citation, and the narrow shell-only reading understates by one.
-// ALL FIVE MEMBERS HERE SHARE THIS ONE DECLARATION, so they are identified by the arm each follows
-// -- staging write failed; staging digest observation refused; destination exists with its digest
-// unreadable; destination exists and digests compared; exclusive publish lost the race -- and a
-// roster at declaration grain alone would collapse them to one. This module gets the statement
+// THE DISCARDED STAGING SWEEPS BELOW ARE EXPLICITLY BEST-EFFORT. They are members of the
+// discarded-effect census #10574 opened over its own out-of-scope remainder, whose instrument is
+// the selector `let _ = shell.<Op>` OR `let _ = Filesystem.<Op>` -- the wider of the two readings,
+// since the defect is an ignored effect outcome and not a property of which service produced it.
+// No total is transcribed here (DESIGN §6): run the selector and the population re-derives at any
+// ref, where a copied number would rot independently of its subject.
+//
+// EVERY MEMBER IN THIS MODULE SHARES ONE DECLARATION, retain_private_evidence_bytes_detailed, so
+// they are identified by the arm each follows -- staging write failed; staging digest observation
+// refused; destination exists with its digest unreadable; destination exists and digests compared;
+// exclusive publish lost the race -- and a roster at declaration grain would collapse them to one.
+// This module gets the statement
 // in its own right rather than a pointer to the package_delivery block, because it is the one
 // census member whose subject IS confidentiality, and "the sweep result is ignored" is precisely
 // the sentence that needs a reason here.
@@ -156,7 +158,7 @@ fn publish_evidence_object_exclusive(
 // each retention outcome is already decided by the write, the digest, or the publish the sweep
 // follows.
 //
-// CHECKED BY CONSTRUCTION SITE, NOT BY NAME: all five reach the single `staging` binding, whose
+// CHECKED BY CONSTRUCTION SITE, NOT BY NAME: every member reaches the single `staging` binding, whose
 // only origin in this module is mktemp_file_in_dir's `shell.Mktemp.FileInDirectory`.
 //
 // WHAT WOULD FALSIFY THAT: a reader that LISTS the evidence root. An unreferenced staging file

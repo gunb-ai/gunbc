@@ -32,7 +32,7 @@ import gunbc.merge_admission_subject {
 // distinct reported state (child died before writing), never silently folded into a generic
 // failure.
 //
-// TWO CORRECTIONS TO THE PARAGRAPH ABOVE, both found by the 19-candidate discarded-effect census
+// TWO CORRECTIONS TO THE PARAGRAPH ABOVE, both found by the discarded-effect census
 // (#10574's out-of-scope remainder) and both left standing rather than quietly reworded, because
 // each is a claim this module was making and cannot make today.
 //
@@ -56,21 +56,18 @@ import gunbc.merge_admission_subject {
 // callers while the modules around them are referenced and one exported constant is under live
 // test.
 //
-// SECOND, THE GUARANTEE DEPENDS ON A DISCARDED OUTCOME. (Census scale, carried with its ref: 19
-// candidate sites across four modules at 1ae18027, 15 after main deleted a function in
-// gunbc.package_delivery; this module's one is unchanged across that move.) capture_tested_subject binds the clearing
+// SECOND, THE GUARANTEE DEPENDS ON A DISCARDED OUTCOME. capture_tested_subject binds the clearing
 // sweep's outcome to `_`, so "the wire was cleared" and "the clear failed and a prior attempt's
 // cause survived" are spelled identically -- which is exactly the state the sentence above promises
 // cannot occur. The same holds for the refusal write, whose Bool is also discarded: a write that
 // FAILED is then indistinguishable from the child dying before writing, collapsing two of the three
 // states this wire exists to separate. This is the census's OutcomeSemanticallyRequired class, and
-// its shape is THREE SITES CARRYING TWO DEFECTS ACROSS TWO MODULES -- a pre-clear here and a
-// pre-clear in tools.merge_admission_walk are the same defect at two sites, and the refusal write
-// in that module is the second. The three-versus-two distinction is written out because two
-// independent readers of this classification reported the class as two, which is the count of
-// defects and of modules but not of sites, and a census whose whole subject is that counts must be
-// re-derivable should not leave its own ambiguous. Every other candidate is explicitly
-// best-effort.
+// its members are NAMED rather than tallied: the pre-clear here, and the pre-clear plus the
+// refusal write in tools.merge_admission_walk. Two of those three sites carry the SAME defect --
+// a pre-clear whose failure lets a prior attempt's cause survive -- which is why two independent
+// readers of this classification reported the class as "two", counting defects where the roster
+// counts sites. Naming the members is what removes that ambiguity; a total would only have
+// relocated it. Every other candidate is explicitly best-effort.
 //
 // THE REMEDY IS NOT TO CONSUME THOSE TWO BOOLS. Presence-and-freshness of a file cannot be made
 // sound by a best-effort sweep; the wire must carry the walk attempt identity it is about, so a

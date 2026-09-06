@@ -1927,29 +1927,31 @@ type UniquePublishingRelocateOutcome
   | UniquePublishingPlaceholderNotEmpty
   | UniquePublishingRelocateRefused
 
-// THE SEVEN DISCARDED SWEEP OUTCOMES IN THIS MODULE ARE EXPLICITLY BEST-EFFORT, and the
-// discriminator is stated once here rather than left to be re-adjudicated at each `let _ =`.
-// The sites: the failed-move sweep in relocate_build_root_to_unique_publishing; the reused-release
-// build_root sweep and the three publishing-staging sweeps in
-// release_codex_runtime_bundle_immutable; and the staging_dir and cache_dir sweeps on the
-// materialization success arm.
+// THE DISCARDED SWEEP OUTCOMES IN THIS MODULE ARE EXPLICITLY BEST-EFFORT, and the discriminator
+// is stated once here rather than left to be re-adjudicated at each `let _ =`. THE MEMBERS ARE
+// NAMED, NOT COUNTED: the failed-move sweep in relocate_build_root_to_unique_publishing; the
+// reused-release build_root sweep and the three publishing-staging sweeps in
+// release_codex_runtime_bundle_immutable; and the staging_dir and cache_dir sweeps in
+// finish_codex_runtime_materialization_after_install.
 //
-// THE COUNT IS A MEASUREMENT AND CARRIES ITS SELECTOR AND ITS REF, because a bare number is not
-// re-derivable and cannot tell a real change from a stale citation. THE SELECTOR is `let _ =
-// shell.<Op>` OR `let _ = Filesystem.<Op>` -- the wider of the two that were run, because the
-// defect is an IGNORED EFFECT OUTCOME and not a property of which service produced it; the narrow
-// shell-only reading drops tools.merge_admission_walk's Filesystem.Write and understates by one.
+// NO TOTAL IS TRANSCRIBED HERE, and the omission is deliberate (DESIGN §6 -- name the instrument,
+// never copy its output). A census total copied into prose rots independently of its subject, and
+// a revision beside it makes it attributable without making it re-derivable; four modules each
+// holding a copy is four ledgers to maintain by hand. What a reader needs instead is the SELECTOR,
+// which is the instrument: `let _ = shell.<Op>` OR `let _ = Filesystem.<Op>`, the wider of the two
+// readings, because the defect is an IGNORED EFFECT OUTCOME and not a property of which service
+// produced it -- the narrow shell-only reading silently drops tools.merge_admission_walk's
+// Filesystem.Write. Run it and the population re-derives itself at any ref.
+//
 // MEMBERSHIP IS BY IDENTITY -- module, enclosing declaration, and the arm each sweep follows --
-// never by line and never by count alone: all five provider_wire_evidence members share ONE
-// declaration, so declaration grain alone would make four of them invisible. THE REF follows. The census that opened
-// this classification -- the out-of-scope remainder of #10574's printer scope -- measured 19
-// across four modules at 1ae18027, of which 11 were here. It is 15 and 7 as of the merge of
-// origin/main that this classification lands over: main independently deleted
+// never by line and never by count: every gunbc.provider_wire_evidence member shares ONE
+// declaration, so even declaration grain would collapse them into one, and a count cannot
+// distinguish a fixed member from a deleted one from a moved one. That is not hypothetical here:
+// while this classification was open, main deleted
 // materialize_spark_serving_ollama_runtime_bundle with its whole spark-serving archive-admission
-// block, and its four staging sweeps went with the function rather than being consumed. So four
-// members left this population by DELETION OF THE SUBJECT, which retires them without
-// contradicting their classification, and this sentence is what lets the next reader tell that
-// from a miscount. The other three modules are unchanged at 5 / 2 / 1.
+// block, and its staging sweeps left this population BY DELETION OF THE SUBJECT -- retired without
+// contradicting their classification, which is a different exit from being consumed, and only an
+// identity roster can tell those apart.
 //
 // WHAT MAKES DISCARDING LAWFUL, in one property that holds at every one of them: the swept path is
 // a `mktemp -d` directory minted for THIS run -- unique by construction, never re-derived by a
@@ -1961,8 +1963,8 @@ type UniquePublishingRelocateOutcome
 // credential was gone.
 //
 // CHECKED BY CONSTRUCTION SITE, NOT BY NAME, because the name is what nearly defeated it. Every
-// binding these seven sweeps reach is a `shell.Mktemp.*` call in this module and there is no
-// other origin and no shadowing: `staged` (DirWithTemplate, in relocate_build_root_to_unique_
+// binding every one of these sweeps reaches is a `shell.Mktemp.*` call in this module and there is
+// no other origin and no shadowing: `staged` (DirWithTemplate, in relocate_build_root_to_unique_
 // publishing, which is also where `publishing` comes from via UniquePublishingRelocateReady), and
 // `staging`, `cache`, `build` (Mktemp.Dir, at both codex-runtime construction sites), with
 // build_root reaching release_codex_runtime_bundle_immutable from that same `build`.
