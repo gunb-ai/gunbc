@@ -41,9 +41,20 @@ import gunbc.merge_admission_subject {
 // src/, claim_executor references no pre_walk_execution at all, and the five merge-admission phases
 // were deleted from required-CI by the 2026-08-21 ruling. Nor is there a producer -- no WalkPlan
 // literal in dag/ constructs a TypedClaimSubprocess, the floor plan that would have scheduled this
-// capture went with the 2026-08-15 floor cut, and capture_tested_subject has zero callers. So this
-// module is dormant at both ends, and a note asserting an executor consumes it was the
+// capture went with the 2026-08-15 floor cut, and capture_tested_subject has zero callers. A note
+// asserting an executor consumes this wire was therefore the
 // deleted-cadence-still-cited-as-enforcement shape.
+//
+// WHAT IS DORMANT IS THE ENTRY, NOT THE MODULE, and the difference is stated because the first
+// draft of this correction got it wrong in the direction that would have justified a cut. A
+// path-shaped grep (`instruments.merge_admission_walk`) answers a different question from a
+// module-shaped one (`tools.merge_admission_walk`), and only the second finds importers. What the
+// second finds, for this pair: capture_walk_attempt_id is imported and called twice by
+// tools.merge_admission_walk; merge_admission_fetch_stall_deadline_seconds is imported by
+// gunbc.instruments.merge_admission_current_context and by the enrolled witness
+// merge_admission_attempt_witness_test, which asserts its value. So the two Bool entries have no
+// callers while the modules around them are referenced and one exported constant is under live
+// test.
 //
 // SECOND, THE GUARANTEE DEPENDS ON A DISCARDED OUTCOME. capture_tested_subject binds the clearing
 // sweep's outcome to `_`, so "the wire was cleared" and "the clear failed and a prior attempt's

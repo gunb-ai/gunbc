@@ -183,6 +183,18 @@ data merge_admission_refresh_refusal_wire_relpath: String = "target/merge-admiss
 // a live obligation but a stale enforcement citation, kept visible rather than deleted because it
 // names what has to exist again before this wire means anything. Same standing as
 // floor-population-budget-refusal.txt, under walk_plan_run_stage_claim_executor_seed_deferral.
+//
+// THAT IS A STATEMENT ABOUT THE ENTRY, NOT ABOUT THIS MODULE, and the map is recorded here because
+// a future cut needs it and it is cheaper to write now than to re-derive. This module is
+// REFERENCED: merge_admission_fetch_stall_deadline_seconds is imported by
+// gunbc.instruments.merge_admission_current_context and asserted by the enrolled witness
+// merge_admission_attempt_witness_test, so deleting the module reds a live witness. Two of its
+// functions are also ENUMERATED SITES of a monotone debt roster --
+// extdeps.filesystem.filesystem_io filesystem_absence_establishment_adoption_standing names
+// read_tested_subject and read_floor_receipt for concluding absence from a failed read -- and that
+// roster permits a row to leave by deletion, so a cut would discharge two of its rows as a side
+// effect. Neither fact argues against cutting; both say a cut is its own change with its own
+// reviewer, not a cleanup a census lane performs in passing.
 
 // TYPED CAUSE FOR THE STAGE-2 CLAIM BOUNDARY (review 47542 finding 3, made blocking by CI run
 // 30764945450: refresh_current_target_and_gate returned bare Bool false on srv4-04 with all seven
