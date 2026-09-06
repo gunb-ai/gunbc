@@ -1,4 +1,5 @@
 module test.claim.instrument_motion_page_witness
+import extdeps.tailscale.identity { TailnetIdentityAbsent }
 
 import gunbc.roadmap_serve {
   RoadmapServeHandler, InstrumentMotionPageHandler, InstrumentMotionAssetHandler,

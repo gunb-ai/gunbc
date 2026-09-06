@@ -1,4 +1,5 @@
 module test.claim.long.instrument_sandbox_live_witness
+import extdeps.tailscale.identity { TailnetIdentityAbsent }
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool, Int, List }

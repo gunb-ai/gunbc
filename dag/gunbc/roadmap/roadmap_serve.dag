@@ -1,5 +1,6 @@
 module gunbc.roadmap_serve
 
+import extdeps.tailscale.identity { tailnet_identity_of }
 import std.types { String, Int, Bool, List, CommitSha, HttpMethod, GET, POST, HttpStatus }
 import extdeps.uri_path { PathParamBinding, path_param_value }
 import std.markup { Fragment }

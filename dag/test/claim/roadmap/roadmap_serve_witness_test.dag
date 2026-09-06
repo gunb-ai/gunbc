@@ -1,4 +1,5 @@
 module test.claim.roadmap_serve_witness
+import extdeps.tailscale.identity { TailnetIdentityAbsent }
 
 import gunbc.roadmap_serve {
   RoadmapServeHandler,

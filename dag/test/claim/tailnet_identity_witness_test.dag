@@ -1,4 +1,5 @@
 module test.claim.tailnet_identity_witness_test
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 import extdeps.tailscale.identity {
   TailnetIdentity, TailnetUser, TailnetIdentityAbsent,
