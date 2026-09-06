@@ -31,6 +31,7 @@ import gunbc.fabric_m0_commit {
   ManifestNotFound,
   ManifestReadUnavailable,
   publish_after_commit,
+  CommitNamespace,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -74,6 +75,7 @@ fn recs() -> List<CommittedReceipt> {
 
 fn commit(transport: CommitTransportOutcome, observed: ManifestReadbackObservation) -> JobPublication {
   publish_after_commit(
+    namespace: the_namespace(),
     attempt: the_attempt(),
     computation: ComputationSucceeded,
     artifacts: ArtifactObligationsDeclared { required: ["build-output" as RequiredArtifactId] },
@@ -87,8 +89,12 @@ fn commit(transport: CommitTransportOutcome, observed: ManifestReadbackObservati
   )
 }
 
+fn the_namespace() -> CommitNamespace {
+  "fabric-m0/v1/commit" as CommitNamespace
+}
+
 fn our_slot() -> NonEmptyStr {
-  "fabric-m0/commit/attempt-1"
+  "fabric-m0/v1/commit/attempt-1"
 }
 
 fn store_refused() -> CommitTransportOutcome {
@@ -167,7 +173,7 @@ test fn an_unanswered_write_with_an_unavailable_read_is_pending() -> Bool {
 test fn an_answer_about_a_foreign_slot_cannot_publish_success() -> Bool {
   match commit(
     transport: StoreAnswered {
-      slot: "fabric-m0/commit/attempt-9",
+      slot: "fabric-m0/v1/commit/attempt-9",
       outcome: CasStoreRefused { cause: CasUnreadableReadRefused { detail: "read refused" } },
     },
     observed: ManifestRead { observed_digest: digest_a(), source: DurableOriginRead },
@@ -181,7 +187,7 @@ test fn an_answer_about_a_foreign_slot_cannot_publish_success() -> Bool {
 // by an implementation that simply fails everything it cannot match.
 test fn a_foreign_slot_answer_is_not_reported_as_absence() -> Bool {
   match commit(
-    transport: StoreDidNotAnswer { slot: "fabric-m0/commit/attempt-9", cause: "commit acknowledgement lost" },
+    transport: StoreDidNotAnswer { slot: "fabric-m0/v1/commit/attempt-9", cause: "commit acknowledgement lost" },
     observed: ManifestNotFound,
   ) {
     PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => false
