@@ -758,6 +758,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     UnresolvedType { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     UnitVariantPhantomIdentityEvidenceUnavailable { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TypeMismatch { expected: _, got: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    CollectionElementTypeUndecided { receiver_type: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ArityMismatch { name: _, expected: _, got: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     VariantNotFound { variant: _, type_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     FieldNotFound { field: _, type_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
