@@ -31,6 +31,7 @@ import extdeps.ssh.client_options {
   ConnectTimeout,
 }
 import gunbc.fleet_host_key_enrollment { KnownHostKeyRow, fleet_host_key_enrollments, known_hosts_line, host_key_provenance_label }
+import gunbc.spark.fabric_reach { fabric_rail_known_host_rows }
 
 // THE TRUST ANCHOR AN SSH INVOCATION IS VERIFIED AGAINST, carried as a value rather than left as
 // ambient host state.
@@ -199,12 +200,19 @@ fn known_hosts_endpoint_conflict(rows: List<KnownHostKeyRow>) -> String? {
   })
 }
 
+// THE ANCHORED SET IS THE ENROLLMENTS PLUS THE SAME KEYS AT THE FABRIC RAIL ADDRESSES
+// (gunbc.spark.fabric_reach): a leg that reaches a Spark over the rail matches the same pinned key
+// at a second endpoint, so neither path is ever trust-on-first-use.
+fn fleet_known_hosts_rows() -> List<KnownHostKeyRow> {
+  concat(fleet_host_key_enrollments, fabric_rail_known_host_rows())
+}
+
 fn fleet_known_hosts_fragment() -> String {
-  canonical_known_hosts_fragment(rows: fleet_host_key_enrollments)
+  canonical_known_hosts_fragment(rows: fleet_known_hosts_rows())
 }
 
 fn fleet_known_hosts_registry_identity() -> ContentHash {
-  canonical_known_hosts_identity(rows: fleet_host_key_enrollments)
+  canonical_known_hosts_identity(rows: fleet_known_hosts_rows())
 }
 
 // The filename carries the registry digest, so the path is a claim the readback then verifies.
@@ -233,12 +241,12 @@ fn fleet_known_hosts_anchor_path(attempt: FleetSshAttemptIdentity) -> NonEmptySt
 func materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> KnownHostsMaterializationOutcome
   uses net: Network
 {
-  if length(fleet_host_key_enrollments) == 0 {
+  if length(fleet_known_hosts_rows()) == 0 {
     KnownHostsRefused {
       first: "known-hosts materialization refused: the enrollment registry is empty, so there is no host key to anchor to and every fleet SSH leg would be unverified",
       more: [],
     }
-  } else { match known_hosts_endpoint_conflict(rows: fleet_host_key_enrollments) {
+  } else { match known_hosts_endpoint_conflict(rows: fleet_known_hosts_rows()) {
     Present { value: conflict } => KnownHostsRefused {
       first: join(["known-hosts materialization refused: ", conflict], ""),
       more: [],

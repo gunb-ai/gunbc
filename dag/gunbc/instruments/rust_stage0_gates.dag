@@ -18,7 +18,7 @@ fn any_rust_monolith(paths: List<String>) -> Bool {
 }
 
 data consumed_input_closure_concept_note: Disposition = Terminal {
-  reason: "consume-input vs produce-artifact is a permanent §3 distinction (different direction + domain from NodeArtifactProvenance). The declared fact here is ENROLLMENT ONLY (unit + entry_path): the consumed .dag closure itself is DERIVED at read time from v2.lens.affected_set.entry_selection.entry_affected_by_dependency_view over gunbc.ci_layer_roots.witness_layer_roots (DependencyView reverse-reachability, replacing import_closure_live). Per-PR live execution gated on #6239 via corpus_dependency_view_per_pr_execution_gate. The former drift walls (src/v1 consumed_input_closure_drift_test.rs and the import_closure_completeness floor witness) were deleted with the hand-typed path list they guarded, not relocated"
+  reason: "consume-input vs produce-artifact is a permanent §3 distinction (different direction + domain from NodeArtifactProvenance). The declared fact here is ENROLLMENT ONLY (unit + entry_path): the consumed .dag closure is now DERIVED at read time from v2.lens.module_graph.entry_affected_by_touched_paths (the §3 consolidated survivor, per the 2026-09-05 replacement migration — v2.lens.affected_set.entry_selection). The earlier fn-arrow composition (v2.lens.affected_set.corpus_dependency_view corpus_dependency_views_live, gated via corpus_dependency_view_per_pr_execution_gate on #6239) is DELETED. The former drift walls (src/v1 consumed_input_closure_drift_test.rs and the import_closure_completeness floor witness) were deleted with the hand-typed path list they guarded, not relocated"
 }
 
 type ConsumedInputUnit {
@@ -49,9 +49,12 @@ data declared_consumed_input_units: List<ConsumedInputUnit> = [
 // enrolled a whole-corpus dependency walk in a per-PR gate that has never run one.
 //
 // Must-run is also the DECLARED default here, not a convenience: unit_must_run_failclosed_note
-// states absent declaration = must-run. Enabling per-PR selection is the subject of
+// states absent declaration = must-run. Per-PR selection was the subject of
 // v2.lens.affected_set.corpus_dependency_view corpus_dependency_view_per_pr_execution_gate, which
-// still stands; it is not this change's to discharge and is not discharged by it.
+// is DELETED as part of the §3 consolidation (the fn-arrow mechanism #2 is removed;
+// module-graph import-closure mechanism #3 is the survivor). Enabling per-PR selection
+// is now a matter of wiring entry_affected_by_touched_paths into this gate's callers,
+// not re-creating the deleted corpus_dependency_view module.
 fn unit_is_affected(_u: ConsumedInputUnit, _paths: List<String>) -> Bool {
   true
 }

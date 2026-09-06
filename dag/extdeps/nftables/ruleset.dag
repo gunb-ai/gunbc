@@ -1,0 +1,189 @@
+module extdeps.nftables.ruleset
+
+import std.types { String, NonEmptyStr, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "wiki.nftables.org/wiki-nftables/index.php/Main_Page",
+  }
+}
+
+// THE FRAGMENT OF nftables THIS FLEET USES, MODELED AS ROWS SO A RULESET IS DERIVED RATHER THAN
+// TYPED. nftables is far larger than this; what is here is what a micro-VM host needs, and the
+// refusal to model more is deliberate -- an unused arm is an unexercised one, and its first use
+// would be its first test.
+//
+// THE FAMILY AND THE HOOK ARE SEPARATE FACTS. A NAT rule and a forwarding rule live in different
+// chains with different hooks and different priorities, and collapsing them into one "firewall
+// rule" row would make an ordering mistake unrepresentable in review but perfectly writable.
+type NftFamily
+  = NftInet
+  | NftIp
+
+// THE CHAIN TYPE IS A FIELD BECAUSE nftables REFUSES THE COMBINATION, NOT BECAUSE IT VARIES.
+// A `masquerade` statement is only valid in a chain of type `nat`; nftables rejects it in a `filter`
+// chain and the WHOLE RULESET fails to load, taking the tap-to-tap drop down with the NAT rule that
+// was actually wrong. The previous renderer hardcoded `type filter` for every chain, so the
+// postrouting chain below -- whose only rule is a masquerade -- described a ruleset that could not
+// load on any host (review 61259, citing upstream's NAT page).
+//
+// The witnesses did not catch it because they asserted the TEXT contained the right words. A string
+// assertion over a config language cannot tell a valid ruleset from an invalid one, which is why
+// the type is now modeled and paired with its hook rather than checked for.
+type NftChainType
+  = NftTypeFilter
+  | NftTypeNat
+
+fn nft_chain_type_wire(t: NftChainType) -> String {
+  match t {
+    NftTypeFilter => "filter"
+    NftTypeNat => "nat"
+  }
+}
+
+type NftHook
+  = NftForward
+  | NftPostrouting
+
+// PRIORITY IS AN INTEGER WITH NAMED LANDMARKS, and the landmarks are the ones nftables itself
+// documents: filter is 0, srcnat is 100. They are named rather than written as literals at the call
+// site because a rule installed at the wrong priority still loads, still matches, and simply runs
+// on the wrong side of another subsystem's rules -- a silent misordering rather than a refusal.
+type NftChainPriority
+  = NftPriorityFilter
+  | NftPrioritySrcnat
+
+fn nft_chain_priority_wire(p: NftChainPriority) -> String {
+  match p {
+    NftPriorityFilter => "0"
+    NftPrioritySrcnat => "100"
+  }
+}
+
+fn nft_family_wire(f: NftFamily) -> String {
+  match f {
+    NftInet => "inet"
+    NftIp => "ip"
+  }
+}
+
+fn nft_hook_wire(h: NftHook) -> String {
+  match h {
+    NftForward => "forward"
+    NftPostrouting => "postrouting"
+  }
+}
+
+// THE POLICY IS THE CHAIN'S DEFAULT VERDICT AND IS NOT A RULE. A chain whose policy is drop refuses
+// everything no rule accepted; a chain whose policy is accept permits everything no rule dropped.
+// The distinction is the whole difference between a default-closed and a default-open host, so it
+// is a field on the chain rather than a rule someone remembers to append last.
+type NftPolicy
+  = NftPolicyAccept
+  | NftPolicyDrop
+
+fn nft_policy_wire(p: NftPolicy) -> String {
+  match p {
+    NftPolicyAccept => "accept"
+    NftPolicyDrop => "drop"
+  }
+}
+
+type NftVerdict
+  = NftAccept
+  | NftDrop
+  | NftMasquerade
+
+fn nft_verdict_wire(v: NftVerdict) -> String {
+  match v {
+    NftAccept => "accept"
+    NftDrop => "drop"
+    NftMasquerade => "masquerade"
+  }
+}
+
+// A MATCH IS A LIST OF EXPRESSIONS AND THE ORDER IS THE WIRE ORDER, because nftables evaluates them
+// left to right and a rule reads as its own sentence. The expressions here are the ones this fleet
+// matches on; each carries its operand rather than a pre-rendered string, so a device name or a
+// subnet cannot arrive already quoted or already wrong.
+type NftMatch
+  = NftInputInterface { device: NonEmptyStr }
+  | NftOutputInterface { device: NonEmptyStr }
+  | NftInputInterfaceWildcard { prefix: NonEmptyStr }
+  | NftOutputInterfaceWildcard { prefix: NonEmptyStr }
+  | NftSourceAddressPrefix { cidr: NonEmptyStr }
+  | NftConnectionTrackingEstablished
+
+fn nft_match_wire(m: NftMatch) -> String {
+  match m {
+    NftInputInterface { device: d } => join(["iifname \"", d as String, "\""], "")
+    NftOutputInterface { device: d } => join(["oifname \"", d as String, "\""], "")
+    NftInputInterfaceWildcard { prefix: p } => join(["iifname \"", p as String, "*\""], "")
+    NftOutputInterfaceWildcard { prefix: p } => join(["oifname \"", p as String, "*\""], "")
+    NftSourceAddressPrefix { cidr: c } => join(["ip saddr ", c as String], "")
+    NftConnectionTrackingEstablished => "ct state established,related"
+  }
+}
+
+type NftRule {
+  matches: List<NftMatch>
+  verdict: NftVerdict
+}
+
+fn nft_rule_wire(r: NftRule) -> String {
+  join([
+    join(map(r.matches, m => nft_match_wire(m: m)), " "),
+    " ",
+    nft_verdict_wire(v: r.verdict),
+  ], "")
+}
+
+type NftChain {
+  name: NonEmptyStr
+  chain_type: NftChainType
+  hook: NftHook
+  priority: NftChainPriority
+  policy: NftPolicy
+  rules: List<NftRule>
+}
+
+type NftTable {
+  family: NftFamily
+  name: NonEmptyStr
+  chains: List<NftChain>
+}
+
+// THE RULESET IS RENDERED WHOLE AND REPLACES ITS TABLE, WHICH IS WHAT MAKES APPLYING IT IDEMPOTENT.
+// `nft -f` on a file that begins by deleting its own table converges to exactly the rows below no
+// matter how many times it runs and no matter what the table held before -- including a half-applied
+// ruleset from an interrupted run. Appending rules instead would accumulate duplicates on every
+// converge, and the duplicates would be invisible because a doubled accept behaves like a single
+// one until the day one of them is a drop.
+//
+// `delete table` on a table that does not exist is an ERROR in nftables, not a no-op, so the
+// destroy-then-create form is guarded by `add table` first: adding an existing table is the no-op,
+// and after it the delete always has a target. That two-line preamble is load-bearing and is the
+// reason this renders a FILE rather than a sequence of nft commands.
+fn nft_table_wire(t: NftTable) -> String {
+  join([
+    "add table ", nft_family_wire(f: t.family), " ", t.name as String, "\n",
+    "delete table ", nft_family_wire(f: t.family), " ", t.name as String, "\n",
+    "table ", nft_family_wire(f: t.family), " ", t.name as String, " {\n",
+    join(map(t.chains, c => nft_chain_wire(family: t.family, c: c)), ""),
+    "}\n",
+  ], "")
+}
+
+fn nft_chain_wire(family: NftFamily, c: NftChain) -> String {
+  join([
+    "  chain ", c.name as String, " {\n",
+    "    type ", nft_chain_type_wire(t: c.chain_type), " hook ", nft_hook_wire(h: c.hook),
+    " priority ", nft_chain_priority_wire(p: c.priority),
+    "; policy ", nft_policy_wire(p: c.policy), ";\n",
+    join(map(c.rules, r => join(["    ", nft_rule_wire(r: r), "\n"], "")), ""),
+    "  }\n",
+  ], "")
+}

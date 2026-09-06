@@ -95,8 +95,8 @@ import extdeps.llm.cli_lifecycle {
   CursorCliProvider,
 }
 import gunbc.harness.harness_backend {
-  HarnessBackendRoster, HarnessRosterServing, HarnessRosterNoneServing,
-  harness_observe_roster, harness_declines_detail,
+  HarnessBackendRoster, HarnessRosterServing, HarnessRosterNoneServing, HarnessRosterUnresolved,
+  harness_observe_roster, harness_declines_detail, harness_roster_unresolved_detail,
 }
 import gunbc.dispatch_selection {
   ExecutionProfile,
@@ -305,6 +305,8 @@ fn dispatch_harness_selection() -> DispatchActuatorSelection {
       DispatchActuatorSelectionRefused {
         reason: join(["no harness replica serves ", m, ": ", harness_declines_detail(declined: declined)], "") as NonEmptyStr,
       }
+    HarnessRosterUnresolved { hosts } =>
+      DispatchActuatorSelectionRefused { reason: harness_roster_unresolved_detail(hosts: hosts) as NonEmptyStr }
   }
 }
 
@@ -1720,6 +1722,8 @@ fn gunbc_harness_spawn_argv(
     "--arg", join(["timeout_program=", timeout_program], ""),
     "--arg", join(["request_scratch_path=", request_scratch_path], ""),
     "--arg", join(["events_path=", events_path], ""),
+    "--arg", join(["repo_root=", repo_root], ""),
+    "--arg", join(["gunbc_program=", gunbc_program], ""),
   ]
 }
 

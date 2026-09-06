@@ -22,10 +22,14 @@ import product.network_topology {
   EndpointAsset,
   EndpointSubjectUnregistered,
   Lan,
+  Loopback,
+  Internet,
+  WslNat,
+  WslBridged,
   DockerBridge,
   TailscaleOverlay,
 }
-import product.placement_supply { HostIdentity }
+import product.placement_supply { HostIdentity, host_identity_eq }
 
 data operator_host_srv1: HostIdentity = "srv1"
 data operator_host_srv2: HostIdentity = "srv2"
@@ -396,4 +400,44 @@ data fleet_intent_network: NetworkTopology = NetworkTopology {
 
 fn fleet_intent_network_topology() -> NetworkTopology {
   fleet_intent_network
+}
+
+// A HOST'S LAN ADDRESS, READ FROM THE TOPOLOGY RATHER THAN NAMED BY A CONSUMER. The first consumer is
+// the harness replica roster (gunbc.harness.harness_wire), which used to carry a Spark address as a
+// bare literal and went stale when the pair heads moved; now it names hosts and asks here. Absent
+// when the host has no HostOperatingSystem endpoint on the LAN -- a typed hole the consumer refuses
+// on, never a fabricated address. This is a LAN answer, not a fabric one: which path a caller should
+// take to reach a host is the fabric's question (see the harness roster's annotation).
+fn host_lan_address(host: HostIdentity) -> NonEmptyStr? {
+  fold(fleet_intent_network.endpoints, init: none, f: (acc, e) =>
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent =>
+        match e.subject {
+          EndpointHost { host: h } =>
+            if host_identity_eq(a: h, b: host) && endpoint_is_host_lan(e: e) { Present { value: e.address } } else { none }
+          EndpointAsset { asset: _ } => none
+          EndpointSubjectUnregistered => none
+        }
+    })
+}
+
+fn endpoint_is_host_lan(e: NetworkEndpoint) -> Bool {
+  (match e.role {
+    HostOperatingSystem => true
+    BmcOutOfBand => false
+    ContainerBridgeDefault => false
+    ContainerBridgeSecondary => false
+    TailscaleEndpoint => false
+    LanGateway => false
+    FabricationAppliance => false
+  }) && (match e.locality {
+    Lan => true
+    Loopback => false
+    Internet => false
+    WslNat => false
+    WslBridged => false
+    DockerBridge => false
+    TailscaleOverlay => false
+  })
 }

@@ -6,7 +6,6 @@ import std.measure { Millisecond, millisecond, TokenCount, token_count }
 import product.placement_supply { HostIdentity }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
-import gunbc.spark.fabric_link_desired { SparkFabricPair, Srv5Srv6 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
 
 // THE FIRST PAIR AS IT ACTUALLY RUNS, READ ON 2026-09-05 FROM THE HOSTS, NOT FROM THE DESIRED ROW.
@@ -285,7 +284,6 @@ fn group_kv_pool_observed(group: FabricGroup) -> GroupKvPoolObserved? {
 // The head host of the first pair as observed: the unit and the serve process are on srv6, and the
 // Ray node address is srv6's rail-0 endpoint.
 data first_pair_observed_head: HostIdentity = operator_host_srv6
-data first_pair_observed_pair: SparkFabricPair = Srv5Srv6
 
 // DRIFT THE OBSERVATION SURFACED. Each row is a disagreement between two sources for one fact; the
 // render slice must resolve each explicitly rather than pick a side by accident.
