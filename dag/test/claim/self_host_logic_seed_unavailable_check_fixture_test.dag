@@ -26,7 +26,7 @@ test fn clean_directory_passes_v1_rt_check() -> Bool {
     content: "// Runtime shim\npub fn lookup(key: String) -> String { unimplemented!() }\n"
   )
   let result = clean_file.success && rt_file.success
-    && slbu_check_no_v1_rt_calls(src_dir: dir.path)
+    && slbu_check_no_v1_rt_calls(src_dir: dir.path, writes_ok: true)
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && result && cleaned.success
 }
@@ -41,7 +41,7 @@ test fn directory_with_v1_rt_call_fails_check() -> Bool {
     content: "pub fn do_lookup(key: String) -> String { v1_rt::lookup(key) }\n"
   )
   let result = bad_file.success
-    && !slbu_check_no_v1_rt_calls(src_dir: dir.path)
+    && !slbu_check_no_v1_rt_calls(src_dir: dir.path, writes_ok: true)
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && result && cleaned.success
 }
@@ -59,7 +59,7 @@ test fn directory_with_v1_rt_containing_calls_passes() -> Bool {
     content: "pub enum Foo { A, B }\n"
   )
   let result = rt_file.success && clean_subject.success
-    && slbu_check_no_v1_rt_calls(src_dir: dir.path)
+    && slbu_check_no_v1_rt_calls(src_dir: dir.path, writes_ok: true)
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && result && cleaned.success
 }

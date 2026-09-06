@@ -46,7 +46,15 @@ fn slbu_repo_path(root: String, rel: String) -> String {
 // v1_rt.rs (which defines the runtime functions -- its v1_rt:: tokens are definitions
 // rather than call sites). Returns true when NO non-v1_rt.rs file contains a v1_rt::
 // reference. Refuses on a failed find, an empty file list, or a missing subject module.
-fn slbu_check_no_v1_rt_calls(src_dir: String) -> Bool {
+//
+// writes_ok enforces structural ordering: the check must run AFTER the Cargo.toml and
+// main.rs writes, because what it scans must be the tree that cargo builds (not an
+// intermediate emit-only tree). By consuming cargo_toml.success && main_rs.success,
+// the scan cannot be evaluated until both writes have completed -- reordering the block
+// so the scan precedes either write would need a variable that is not yet bound at that
+// point (a compile-time refusal in this substrate, since let bindings are evaluated in
+// declaration order and a forward reference is unbound).
+fn slbu_check_no_v1_rt_calls(src_dir: String, writes_ok: Bool) -> Bool {
   let found = shell.Find.FilesByNameSorted(root: src_dir, name_glob: "*.rs" as NonEmptyStr)
   let ok = found.success
   let files = filter(split(s: found.stdout, delimiter: "\n"), p: fn(s) { s != "" })
@@ -62,7 +70,7 @@ fn slbu_check_no_v1_rt_calls(src_dir: String) -> Bool {
         ok && read.success && !string_contains(s: read.content, pattern: "v1_rt::")
       }
     }
-  ) && ok && subject_present
+  ) && writes_ok && ok && subject_present
 }
 
 // NO SEED CRATE DEPENDENCY. The emitted crate always includes v1_rt.rs (the v2 runtime
@@ -95,12 +103,12 @@ fn slbu_cargo_toml(root: String) -> String {
   )
 }
 
-// ORDERING IS LOAD-BEARING: The v1_rt:: call-site check (no_v1_rt_calls) must run AFTER
-// the Cargo.toml and main.rs writes that follow the emit step. This substrate evaluates
-// let bindings in BLOCK ORDER (eval_block iterates in declaration order, not by data
-// dependency), so the ordering guarantee is carried by LINE POSITION: placing the scan
-// textually after the writes means it evaluates after them. A future edit that moves the
-// scan above the writes reverts the ordering defect, even if no data dependency changes.
+// The ordering between the Cargo.toml and main.rs writes and the v1_rt:: call-site scan
+// is enforced structurally rather than by line order: the scan consumes writes_ok, which
+// is cargo_toml.success && main_rs.success, so the scan cannot be evaluated until both
+// writes have completed. Reordering the scan above either write would require referencing
+// a variable that is not yet bound at that point (a compile-time refusal, since let bindings
+// are evaluated in declaration order and a forward reference is unbound in this substrate).
 // The check scans what cargo actually builds — the final src/ tree with the transport's
 // own main.rs in place — not an intermediate tree from the emit step alone.
 fn slbu_seed_unavailable_receipt() -> Bool {
@@ -146,7 +154,7 @@ fn slbu_seed_unavailable_receipt() -> Bool {
     content: slbu_driver_main_source
   )
 
-  let no_v1_rt_calls = slbu_check_no_v1_rt_calls(src_dir: emitted_src_dir)
+  let no_v1_rt_calls = slbu_check_no_v1_rt_calls(src_dir: emitted_src_dir, writes_ok: cargo_toml.success && main_rs.success)
 
   let build = cargo.Build.BuildManifest(
     workdir: out_dir.path,
