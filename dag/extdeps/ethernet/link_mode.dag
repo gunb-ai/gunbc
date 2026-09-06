@@ -1,0 +1,242 @@
+module extdeps.ethernet.link_mode
+
+import std.nat { Nat }
+import std.types { Bool, String }
+import std.measure { Bandwidth, bandwidth, bandwidth_count, SymbolRate, symbol_rate, symbol_rate_count }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// AN ETHERNET LINK MODE IS A LANE COUNT, A PER-LANE RATE AND A MODULATION -- NEVER AN AGGREGATE.
+//
+// This module exists because of a measured loss. Two 400G QSFP-DD to 4x100G QSFP56 breakout cables
+// (FS order FS260902769849, part QDD-400G-4QPC015) were bought to carry 100G per leg between a
+// MikroTik CRS812 and ConnectX-7 NICs. Each leg links, is stable, passes a jumbo ping -- and runs at
+// HALF the purchased rate. The cause is that "100G" names two materially different link modes:
+//
+//   100GBASE-CR4 -- 4 lanes x 25G, NRZ
+//   100GBASE-CR2 -- 2 lanes x 50G, PAM4
+//
+// Both aggregate to 100 Gb/s. A model carrying only the aggregate cannot tell them apart, so it
+// cannot state what was bought, what arrived, or that the two disagree. That is the DESIGN section 3
+// meaning fork exactly: one spelling, two contracts, and the difference is invisible in the field
+// because the wrong one still links.
+//
+// SO THE AGGREGATE IS DERIVED AND NEVER AUTHORED. `link_mode_aggregate` is the only way to get a
+// total rate, which makes "100G" unsayable as a primitive fact. A consumer that wants to compare
+// capability must compare MODES; comparing aggregates is the defect this module makes unwritable.
+//
+// WHAT IS NOT ESTABLISHED, recorded rather than guessed: the per-mode IEEE clause attribution. The
+// CR4 and CR2 rows below are confidently 802.3bj Clause 92 and 802.3cd Clause 136 respectively, but
+// the remaining rows were not read against a copy of the standard in this lane, so NO row carries a
+// clause field at all -- an unread clause number is a fabricated citation. Binding each mode to its
+// clause is owed work and its trigger is one reading of IEEE 802.3.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "ieee802.org/3/"
+  }
+}
+
+// MODULATION, CLOSED. A third scheme is a row added here, and adding it makes every match below fail
+// to compile until the new case is answered.
+type Modulation = Nrz | Pam4
+
+// BITS PER SYMBOL IS WHAT MODULATION MEANS, and it is the reason a lane's data rate and its baud
+// rate are different numbers. A PAM4 lane carries two bits per symbol, so 50 Gb/s of data rides
+// ~26.5625 GBd; an NRZ lane at 25 Gb/s rides ~25.78125 GBd. The EEPROM field that started this
+// investigation reports a rate in Mb/s, so the modelled per-lane figure below is DATA rate.
+fn modulation_bits_per_symbol(m: Modulation) -> Nat {
+  match m {
+    Nrz => 1
+    Pam4 => 2
+  }
+}
+
+fn modulation_label(m: Modulation) -> String {
+  match m {
+    Nrz => "NRZ"
+    Pam4 => "PAM4"
+  }
+}
+
+fn modulation_eq(a: Modulation, b: Modulation) -> Bool {
+  match a {
+    Nrz => match b { Nrz => true, Pam4 => false }
+    Pam4 => match b { Nrz => false, Pam4 => true }
+  }
+}
+
+// LANE COUNT IS CLOSED, NOT A BARE INT. Ethernet copper PMDs are specified at 1, 2, 4 and 8 lanes;
+// a bare Int admits 3 and 7, which name nothing and would have to be validated after the fact rather
+// than refused by construction (DESIGN section 5).
+type LaneCount = Lanes1 | Lanes2 | Lanes4 | Lanes8
+
+fn lane_count_value(l: LaneCount) -> Nat {
+  match l {
+    Lanes1 => 1
+    Lanes2 => 2
+    Lanes4 => 4
+    Lanes8 => 8
+  }
+}
+
+fn lane_count_eq(a: LaneCount, b: LaneCount) -> Bool {
+  lane_count_value(l: a) == lane_count_value(l: b)
+}
+
+// A LANE CARRIES THREE DIFFERENT NUMBERS AND THEY MUST NOT BE ONE FIELD.
+//
+// The first version of this type had a single `per_lane_data_rate`, which is the very conflation the
+// module was written to prevent -- caught in review, not by me. For one 100GBASE-CR2 lane:
+//
+//   service rate   50 Gb/s      what the PMD is NAMED for, after FEC and encoding overhead
+//   encoded rate   53.125 Gb/s  bits actually on the wire, DERIVED below
+//   symbol rate    26.5625 GBd  what the EEPROM's byte 140 is denominated in
+//
+// Only the first two are bits; the third is baud. Carrying one field forced a choice between them
+// and silently made every consumer read whichever the author happened to mean. The symbol rate is
+// authored rather than derived because it is the figure the specification tabulates and the figure
+// the transceiver reports; deriving it would invert the direction of the citation.
+type LinkMode sole_constructor {
+  lane_count: LaneCount
+  per_lane_service_rate: Bandwidth
+  per_lane_symbol_rate: SymbolRate
+  modulation: Modulation
+}
+
+fn link_mode(
+  lane_count: LaneCount,
+  per_lane_service_rate: Bandwidth,
+  per_lane_symbol_rate: SymbolRate,
+  modulation: Modulation,
+) -> LinkMode {
+  LinkMode {
+    lane_count: lane_count,
+    per_lane_service_rate: per_lane_service_rate,
+    per_lane_symbol_rate: per_lane_symbol_rate,
+    modulation: modulation,
+  }
+}
+
+// THE ENCODED BIT RATE OF ONE LANE, derived from baud and modulation -- the bridge between the two
+// units, stated once so no consumer has to multiply by hand and get the modulation factor wrong.
+fn link_mode_lane_encoded_rate(m: LinkMode) -> Bandwidth {
+  bandwidth(symbol_rate_count(r: m.per_lane_symbol_rate)
+    * modulation_bits_per_symbol(m: m.modulation))
+}
+
+// THE DERIVED TOTAL. This is the only source of an aggregate rate in the corpus, and it is a
+// function rather than a field so that no row can carry an aggregate that disagrees with its lanes.
+fn link_mode_aggregate(m: LinkMode) -> Bandwidth {
+  bandwidth(lane_count_value(l: m.lane_count) * bandwidth_count(b: m.per_lane_service_rate))
+}
+
+// MODE EQUALITY IS ON ALL THREE AXES, WHICH IS THE WHOLE POINT. Two modes with the same aggregate
+// are not the same mode, and `link_mode_eq` is what a compatibility check must call. A check written
+// against `link_mode_aggregate` would pass the CR4-for-CR2 substitution that cost this fleet half its
+// fabric -- see `hundred_gig_aggregate_collision` below, which exists to make that concrete.
+fn link_mode_eq(a: LinkMode, b: LinkMode) -> Bool {
+  lane_count_eq(a: a.lane_count, b: b.lane_count)
+    && bandwidth_count(b: a.per_lane_service_rate) == bandwidth_count(b: b.per_lane_service_rate)
+    && symbol_rate_count(r: a.per_lane_symbol_rate) == symbol_rate_count(r: b.per_lane_symbol_rate)
+    && modulation_eq(a: a.modulation, b: b.modulation)
+}
+
+// ================= THE NAMED COPPER MODES =================
+//
+// Per-lane data rates are the nominal figures the PMDs are named for (25G, 50G), not the exact baud
+// rates. The exact signalling rates -- 25.78125 GBd, 26.5625 GBd -- belong with the clause binding
+// this module does not yet carry, and stating them as data rates here would conflate baud with bits.
+
+// SERVICE RATES: the figure the PMD name carries.
+data lane_rate_25g: Bandwidth = bandwidth(25000000000)
+data lane_rate_50g: Bandwidth = bandwidth(50000000000)
+
+// SYMBOL RATES: the figures the standard tabulates, exact rather than rounded. 25.78125 GBd is the
+// 25G NRZ lane; 26.5625 GBd is the 50G PAM4 lane, which at 2 bits per symbol is the 53.125 Gb/s
+// encoded rate. These are the numbers an EEPROM's byte 140 is expressing, and stating them exactly
+// is what lets a decoded byte be compared to a mode instead of eyeballed.
+data lane_baud_25g78125_nrz: SymbolRate = symbol_rate(25781250000)
+data lane_baud_26g5625_pam4: SymbolRate = symbol_rate(26562500000)
+
+// 25GBASE-CR: one NRZ lane. What the ConnectX-7 falls back to.
+data ieee_25gbase_cr: LinkMode = link_mode(
+  lane_count: Lanes1, per_lane_service_rate: lane_rate_25g,
+  per_lane_symbol_rate: lane_baud_25g78125_nrz, modulation: Nrz)
+
+// 50GBASE-CR2: two NRZ lanes. THIS IS THE MODE THE DELIVERED CABLE ACTUALLY NEGOTIATES, and it is
+// stable -- which is precisely why the defect is expensive: it links, it pings clean at MTU 9000,
+// and it tests green everywhere the fleet looks.
+//
+// WHAT THAT STABILITY DOES *NOT* ESTABLISH, corrected here after the claim was made too strongly
+// once: operating in this mode does not certify operation in 100GBASE-CR2. These are different
+// lanes at different bauds -- 25.78125 GBd NRZ against 26.5625 GBd PAM4 -- with a different
+// insertion-loss budget, so a working 50G link is evidence about 50G and nothing else. The
+// defensible record is that the tested configuration runs this mode and refuses the requested one;
+// EEPROM coding is a CANDIDATE explanation, and the higher-rate path has never been demonstrated on
+// this assembly. If the legs are recoded and still fail, this sentence is what stops that outcome
+// from being a surprise.
+data ieee_50gbase_cr2: LinkMode = link_mode(
+  lane_count: Lanes2, per_lane_service_rate: lane_rate_25g,
+  per_lane_symbol_rate: lane_baud_25g78125_nrz, modulation: Nrz)
+
+// 50GBASE-CR: one PAM4 lane. Same aggregate as 50GBASE-CR2, different mode -- the collision one
+// rung down from the 100G one, and the reason lane count is carried rather than inferred.
+data ieee_50gbase_cr: LinkMode = link_mode(
+  lane_count: Lanes1, per_lane_service_rate: lane_rate_50g,
+  per_lane_symbol_rate: lane_baud_26g5625_pam4, modulation: Pam4)
+
+// 100GBASE-CR4: four NRZ lanes. IEEE 802.3bj Clause 92. This is the mode the delivered cable's
+// EEPROM claims (extended compliance byte 192 = 0x0B).
+data ieee_100gbase_cr4: LinkMode = link_mode(
+  lane_count: Lanes4, per_lane_service_rate: lane_rate_25g,
+  per_lane_symbol_rate: lane_baud_25g78125_nrz, modulation: Nrz)
+
+// 100GBASE-CR2: two PAM4 lanes. IEEE 802.3cd Clause 136. This is the mode the breakout leg was
+// PURCHASED to provide and the mode the ConnectX-7 requires before it will enable 100G_2X.
+data ieee_100gbase_cr2: LinkMode = link_mode(
+  lane_count: Lanes2, per_lane_service_rate: lane_rate_50g,
+  per_lane_symbol_rate: lane_baud_26g5625_pam4, modulation: Pam4)
+
+// 200GBASE-CR4 and 400GBASE-CR8: the QSFP-DD trunk side of a breakout.
+data ieee_200gbase_cr4: LinkMode = link_mode(
+  lane_count: Lanes4, per_lane_service_rate: lane_rate_50g,
+  per_lane_symbol_rate: lane_baud_26g5625_pam4, modulation: Pam4)
+
+data ieee_400gbase_cr8: LinkMode = link_mode(
+  lane_count: Lanes8, per_lane_service_rate: lane_rate_50g,
+  per_lane_symbol_rate: lane_baud_26g5625_pam4, modulation: Pam4)
+
+// THE COLLISION, STATED AS A COMPUTATION RATHER THAN A COMMENT.
+//
+// A DESIGN section 4c annotation cannot be checked -- no Accepted program reads one -- so the claim
+// that these two modes collide on aggregate is made here as something a witness can execute. It is
+// true today and must stay true: it is the reason `link_mode_eq` compares three axes, and if it ever
+// went false the justification for this module's shape would have silently evaporated.
+fn hundred_gig_aggregate_collision() -> Bool {
+  bandwidth_count(b: link_mode_aggregate(m: ieee_100gbase_cr4))
+    == bandwidth_count(b: link_mode_aggregate(m: ieee_100gbase_cr2))
+    && !link_mode_eq(a: ieee_100gbase_cr4, b: ieee_100gbase_cr2)
+}
+
+fn render_link_mode(m: LinkMode) -> String {
+  to_string(lane_count_value(l: m.lane_count))
+    + "x"
+    + to_string(bandwidth_count(b: m.per_lane_service_rate))
+    + " "
+    + modulation_label(m: m.modulation)
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ethernet.link_mode",
+      decl_name: "LinkMode",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

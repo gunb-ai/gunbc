@@ -163,6 +163,8 @@ import gunbc.recurring_failure_mode.required_lane_green_over_a_population_it_nev
 import gunbc.recurring_failure_mode.modifier_accepted_on_a_shape_its_check_cannot_see { modifier_accepted_on_a_shape_its_check_cannot_see }
 import gunbc.recurring_failure_mode.setup_failure_substitutes_a_specimen_the_claim_still_admits { setup_failure_substitutes_a_specimen_the_claim_still_admits }
 
+import gunbc.recurring_failure_mode.binder_renaming_changes_variant_field_lookup { binder_renaming_changes_variant_field_lookup }
+
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry,
   censored_estimator_drops_its_own_tail,
@@ -314,5 +316,6 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   observer_inside_its_own_observed_population,
   required_lane_green_over_a_population_it_never_offered,
   modifier_accepted_on_a_shape_its_check_cannot_see,
+  binder_renaming_changes_variant_field_lookup,
   setup_failure_substitutes_a_specimen_the_claim_still_admits,
 ]

@@ -1135,6 +1135,27 @@ fn packet_rate_count(r: PacketRate) -> Nat {
   measure_count(r)
 }
 
+// A SYMBOL RATE (BAUD): SYMBOLS PER SECOND, NOT BITS PER SECOND. On the same Frequency axis as
+// PacketRate and at the same One scale, and distinct from Bandwidth for the reason the whole family
+// exists: a modulated lane carries more than one bit per symbol, so baud and bits/s are different
+// numbers about the same wire. A PAM4 lane at 26.5625 GBd carries 53.125 Gb/s; assigning one to the
+// other understates or overstates the link by the modulation factor.
+//
+// Added 2026-09-05 after that exact conflation was authored and caught in review: SFF-8636 specifies
+// transceiver EEPROM byte 140 in units of 100 MBd and byte 222 in units of 250 MBd, and the first
+// model of those fields typed them as Bandwidth. `ethtool -m` renders the field labelled "BR,
+// nominal" in Mb/s, so the conflation is partly upstream and a reader cannot rely on the tool's own
+// unit to be the specification's. First consumer: extdeps.transceiver.sff_8636.
+type SymbolRate = Measure<Frequency, One, Nat>
+
+fn symbol_rate(count: Nat) -> SymbolRate {
+  Measure { count: count }
+}
+
+fn symbol_rate_count(r: SymbolRate) -> Nat {
+  measure_count(r)
+}
+
 type Nanosecond = Measure<Time, Nano, Nat>
 
 fn nanosecond(count: Nat) -> Nanosecond {
