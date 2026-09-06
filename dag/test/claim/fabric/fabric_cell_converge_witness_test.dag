@@ -14,7 +14,9 @@ import gunbc.fabric_cell_observation_admission {
   FabricCellObservationNotApplicable,
   fabric_cell_observation_unobserved,
 }
+import gunbc.fabric_required_build_cell { members_owned }
 import gunbc.fabric_cell_converge {
+  fabric_cell_member_ownership,
   fabric_cell_observation_refusal_identity,
   StandingExplicitlyAbsent,
   StandingObservedDrift,
@@ -505,4 +507,58 @@ test fn witness_fabric_cell_duplicate_slot_readbacks_merge_rather_than_last_wins
   classification_refuses(readback: host_readback_of(entries: [converged_readback(), drifted_root_readback()]))
     && classification_refuses(readback: host_readback_of(entries: [drifted_root_readback(), converged_readback()]))
     && !classification_refuses(readback: host_readback_of(entries: [converged_readback()]))
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// MEMBERS_OWNED CANNOT CURRENTLY REFUSE, AND THAT IS THE POINT OF THIS WITNESS.
+//
+// fabric_cell_member_ownership derives ownership by building FabricCellSlotScope from the member's
+// own slot, and fabric_cell_subject_ownership answers Owned for every slot scope. A member carries
+// only a slot, so the Ensured arm is unreachable from a member and the Absent arm is never
+// constructed. members_owned therefore returns true for every input -- including the empty list,
+// where its fold seeds true and nothing can lower it.
+//
+// This is recorded as executing evidence rather than prose because a consumer reads members_owned
+// as a SAFETY PREDICATE: gunbc.runner_jit_mint refuses to mint a runner credential for a cell that
+// is not owned, and that refusal is real in the arm that receives the Bool while the Bool that
+// reaches it cannot presently be false. The guard that actually rejects a malformed cell today is
+// fabric_cell_shape's Incomplete arm, which runs BEFORE ownership is consulted -- a different
+// authority than the one the refusal names.
+//
+// So this is a decoration in DESIGN §4b's sense, and the honest rung for cell-ownership refusal is
+// therefore NOT structural: it is a wall whose RED is unauthorable on the production path. These
+// assertions pin the current behavior so the day ownership becomes variable -- a member scoped to a
+// host, a readback that can answer Absent -- this witness goes RED and the consumer's refusal has
+// to be re-examined rather than silently starting to fire.
+
+fn ownership_probe_member(address: FabricCellResourceAddress) -> FabricCellMember {
+  FabricCellMember {
+    slot: srv3_fabric_slot(),
+    address: address,
+    state_digest: "ownership-probe" as NonEmptyStr,
+  }
+}
+
+test fn a_member_ownership_readback_is_always_present_and_owned() -> Bool {
+  match fabric_cell_member_ownership(member: ownership_probe_member(address: FabricCellResourceBoundaryAddress)) {
+    Present { value: Owned } => true
+    _ => false
+  }
+}
+
+// THE EMPTY LIST IS "OWNED". A fold seeded true over no members cannot answer false, so a caller
+// that reached members_owned with an empty cell would be told the cell is owned.
+test fn members_owned_answers_true_for_an_empty_cell() -> Bool {
+  members_owned(members: [])
+}
+
+// AND IT ANSWERS TRUE FOR A POPULATED CELL, which together with the empty case is the whole range:
+// there is no input in the current model for which this predicate is false.
+test fn members_owned_answers_true_for_every_populated_cell() -> Bool {
+  members_owned(members: [ownership_probe_member(address: FabricCellResourceBoundaryAddress)])
+    && members_owned(members: [
+         ownership_probe_member(address: FabricCellResourceBoundaryAddress),
+         ownership_probe_member(address: FabricCellAttemptRootAddress),
+       ])
 }
