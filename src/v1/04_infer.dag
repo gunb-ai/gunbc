@@ -6233,19 +6233,15 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let span = texpr.span
       let call_args = texpr.children
 
-      let call_sig_lookup = body_shadow_aware_func_sig(scope: scope, func_name: func_name)
-      match call_sig_lookup {
-      FuncSigAmbiguous { candidates: ambiguous_fn_candidates } =>
+      let call_target = call_target_for_direct_call(scope: scope, func_name: func_name)
+      match call_target {
+      CallableAmbiguous { candidates: ambiguous_fn_candidates } =>
         ambiguous_reference_refusal(name: func_name, candidates: callable_candidate_labels(candidates: ambiguous_fn_candidates), span: span, scope: scope)
       _ =>
       match constructor_reference_admission_unshadowed(callee_name: func_name, span: span, scope: scope) {
         Present { value: refusal } => refusal
         Absent =>
-      let sig = match call_sig_lookup {
-        FuncSigResolved { sig: resolved_call_sig, declared: _ } => Present { value: resolved_call_sig }
-        FuncSigUnresolved => Absent
-        FuncSigAmbiguous { candidates: _ } => Absent
-      }
+      let sig = call_target_declared_sig(outcome: call_target)
       let sig_params = match sig {
         Present { value: s } => s.params
         Absent => []
@@ -6259,21 +6255,29 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         }
         Absent => []
       }
-      let formal_authority_available = match sig {
-        Present { value: s } => match s.resolved_formals {
+      let formal_authority_available = match call_target {
+        DeclaredCallableResolved { sig: s, declared: _ } => match s.resolved_formals {
           DeclarationBoundFormals { formals: formals } => (formals |> count) == (call_sig_split.value_params |> count)
           KernelGroundedFormals { formals: formals } => (formals |> count) == (call_sig_split.value_params |> count)
           LocalFormalsAwaitingModuleContext {} => false
         }
-        Absent => true
+        BuiltinCallableResolved { primitive_name: _ } => true
+        LocallyBoundCallee { name: _, binding: _ } => true
+        CallableUnresolved { name: _ } => false
+        CallableAmbiguous { candidates: _ } => false
+        LocallyBoundBindingMissing { name: _ } => false
       }
-      let formal_authority_refusal_reason = match sig {
-        Present { value: s } => match s.resolved_formals {
+      let formal_authority_refusal_reason = match call_target {
+        DeclaredCallableResolved { sig: s, declared: _ } => match s.resolved_formals {
           DeclarationBoundFormals { formals: formals } => if (formals |> count) == (call_sig_split.value_params |> count) { "" } else { "declaration-bound formal count does not match the declaration" }
           KernelGroundedFormals { formals: formals } => if (formals |> count) == (call_sig_split.value_params |> count) { "" } else { "kernel-grounded formal count does not match the primitive declaration" }
           LocalFormalsAwaitingModuleContext {} => "local declaration has not passed through build_module_context"
         }
-        Absent => ""
+        BuiltinCallableResolved { primitive_name: _ } => ""
+        LocallyBoundCallee { name: _, binding: _ } => ""
+        CallableUnresolved { name: n } => concat("no declaration, builtin or local binding answers the call to ", n)
+        CallableAmbiguous { candidates: _ } => "several declarations answer this call"
+        LocallyBoundBindingMissing { name: n } => concat("scope construction defect: ", n, " is a body local with no binding in scope.locals")
       }
       let has_lambda = call_args |> any(a => is_lambda_expr(e: arg_value(n: a)))
       let call_method_args = call_args |> skip(1)
@@ -6283,7 +6287,15 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Present { value: fi } => resolved_type(n: arg_value(n: fi.typed_arg))
         Absent => error_type
       }
-      let arg_call = if sig != none && !formal_authority_available {
+      let declared_formal_authority_failed = match call_target {
+        DeclaredCallableResolved { sig: _, declared: _ } => !formal_authority_available
+        BuiltinCallableResolved { primitive_name: _ } => false
+        LocallyBoundCallee { name: _, binding: _ } => false
+        CallableUnresolved { name: _ } => false
+        CallableAmbiguous { candidates: _ } => false
+        LocallyBoundBindingMissing { name: _ } => false
+      }
+      let arg_call = if declared_formal_authority_failed {
         fold(call_args, init: ArgGenericFoldState { subst: empty_map(), results: [] }, f: (st, a) =>
           let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: none)
           ArgGenericFoldState {
@@ -6335,12 +6347,12 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           locals: scope.locals
         )
       )
-      let formal_authority_diags = if sig != none && !formal_authority_available {
+      let formal_authority_diags = if declared_formal_authority_failed {
         [make_error_node(diagnostic: InternalError { message: concat("resolved direct-call formal authority unavailable for ", func_name, ": ", formal_authority_refusal_reason), span: span }, module_name: scope.module_name)]
       } else { [] }
       let typed_arg_nodes = typed_args
       if sig != none {
-        if !formal_authority_available {
+        if declared_formal_authority_failed {
           InferResult {
             typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
               name: func_name, expr_data: ExprCall { call_semantics: none, descent_evidence: none },
@@ -6396,7 +6408,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         )
         InferResult {
           typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-            name: func_name, expr_data: ExprCall { call_semantics: Present { value: ResolvedDirectCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup), application_plan: call_application_plan } }, descent_evidence: none },
+            name: func_name, expr_data: ExprCall { call_semantics: Present { value: ResolvedDirectCallSemantics { target: resolved_plain_call_target_for_outcome(outcome: call_target), application_plan: call_application_plan } }, descent_evidence: none },
             children: typed_arg_nodes,
             inferred: Present { value: Resolved { node: resolved_type } },
             span: span,
@@ -6572,7 +6584,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               if node_is_set_collection(n: exp, source_indices: scope.type_env.source_indices) {
                 InferResult {
                   typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-                    name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
+                    name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target_for_outcome(outcome: call_target) } }, descent_evidence: none },
                     children: typed_arg_nodes,
                     inferred: Present { value: Resolved { node: exp } },
                     span: span,
@@ -6586,7 +6598,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   Present { value: set_t } =>
                     InferResult {
                       typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
+                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target_for_outcome(outcome: call_target) } }, descent_evidence: none },
                         children: typed_arg_nodes,
                         inferred: Present { value: Resolved { node: set_t } },
                         span: span,
@@ -6597,7 +6609,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   Absent =>
                     InferResult {
                       typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
+                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target_for_outcome(outcome: call_target) } }, descent_evidence: none },
                         children: typed_arg_nodes,
                         inferred: Present { value: CompilerError { message: "empty_set(): Set kernel container profile missing (compiler misconfigured)", span: span } },
                         span: span,
@@ -6612,7 +6624,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 Present { value: set_t } =>
                   InferResult {
                     typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
+                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target_for_outcome(outcome: call_target) } }, descent_evidence: none },
                       children: typed_arg_nodes,
                       inferred: Present { value: Resolved { node: set_t } },
                       span: span,
@@ -6623,7 +6635,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 Absent =>
                   InferResult {
                     typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
+                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target_for_outcome(outcome: call_target) } }, descent_evidence: none },
                       children: typed_arg_nodes,
                       inferred: Present { value: CompilerError { message: "empty_set(): Set kernel container profile missing (compiler misconfigured)", span: span } },
                       span: span,
@@ -6639,7 +6651,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           let call_semantics = if func_name == "lookup" {
             Present { value: LookupCallSemantics { target: RuntimePrimitiveCall { primitive_name: func_name, projected_from: none } } }
           } else {
-            Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }
+            Present { value: PlainCallSemantics { target: resolved_plain_call_target_for_outcome(outcome: call_target) } }
           }
           InferResult {
             typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
@@ -6669,7 +6681,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             }
             InferResult {
               typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-                name: func_name, expr_data: ExprCall { call_semantics: Present { value: if callee_is_body_binding { FunctionValueCallSemantics } else { PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } } }, descent_evidence: none },
+                name: func_name, expr_data: ExprCall { call_semantics: Present { value: if callee_is_body_binding { FunctionValueCallSemantics } else { PlainCallSemantics { target: resolved_plain_call_target_for_outcome(outcome: call_target) } } }, descent_evidence: none },
                 children: typed_arg_nodes,
                 inferred: Present { value: Resolved { node: resolved_type } },
                 span: span,
@@ -6714,7 +6726,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               }
               InferResult {
                 typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-                  name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
+                  name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target_for_outcome(outcome: call_target) } }, descent_evidence: none },
                   children: typed_arg_nodes,
                   inferred: Present { value: Resolved { node: resolved_type } },
                   span: span,
@@ -10897,10 +10909,36 @@ type SigParamSplit {
   generic_names: List<String>
 }
 
-fn body_shadow_aware_func_sig(scope: InferScope, func_name: String) -> FuncSigLookup {
+// DISSOLVED body_shadow_aware_func_sig, WHICH LAUNDERED A SHADOW INTO "NO SIGNATURE".
+//
+// Its match answered FuncSigUnresolved for a body-local callee -- the same constructor the
+// lookup answers for a builtin and for a genuinely missing declaration -- so the one consumer it
+// had could not tell those apart and defaulted to "formal authority available". The distinction
+// is not recovered downstream; it is PRODUCED here, which is the only place it exists.
+//
+// The binding does NOT come from body_locals: that map is `Map<String, Bool>`, a presence set
+// whose values are always `true`. It comes from the sibling `locals`, which build_params_scope
+// and extend_scope_with_params populate over the SAME params with the SAME key function.
+// THOSE TWO MAPS ARE SEPARATE AUTHORITIES THAT AGREE BY CONSTRUCTION TODAY, so a name present in
+// one and absent from the other is a scope-construction defect rather than a case to absorb --
+// it REFUSES, and if that refusal ever fires it has found something real.
+fn call_target_for_direct_call(scope: InferScope, func_name: String) -> CallTargetOutcome {
   match map_get(scope.body_locals, func_name) {
-    Present { value: _ } => FuncSigUnresolved
-    Absent => lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: func_name)
+    Present { value: _ } =>
+      match map_get(scope.locals, func_name) {
+        Present { value: b } => LocallyBoundCallee { name: func_name, binding: b }
+        Absent => LocallyBoundBindingMissing { name: func_name }
+      }
+    Absent =>
+      match lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: func_name) {
+        FuncSigResolved { sig: s, declared: d } => DeclaredCallableResolved { sig: s, declared: d }
+        FuncSigAmbiguous { candidates: cs } => CallableAmbiguous { candidates: cs }
+        FuncSigUnresolved =>
+          match infer_builtin_call_type(name: func_name) {
+            Present { value: _ } => BuiltinCallableResolved { primitive_name: func_name }
+            Absent => CallableUnresolved { name: func_name }
+          }
+      }
   }
 }
 
