@@ -1,6 +1,7 @@
 module v2.lens.complexity
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SingleAuthority }
+import std.disposition { SubstrateMandatoryTag }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 import v2.lens.cost {
   AsymptoticClass,
@@ -273,5 +274,13 @@ fn complexity_bound_dominates(a: ComplexityBound, b: ComplexityBound) -> Bool {
 // UnknownComplexity is the cost fold's Violates diagnostic carried through — a modeling gap,
 // not a permanent undecidability bound. Global optimality stays on complexity_optimality_boundary.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+}
+
+// NEXT-RUNG TRIGGER (DESIGN 4b): the capability that dissolves UnknownComplexity. The residual
+// is not Rice; it is every Accepted node having a known SymbolicCost so cost_lens never Violates.
+data complexity_unknown_climbs_when: DeclarationRef = DeclarationRef {
+  module_path: "v2.lens.cost",
+  decl_name: "cost_lens",
+  field: WholeDeclaration
 }
