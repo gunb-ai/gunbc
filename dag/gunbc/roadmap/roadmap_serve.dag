@@ -1,6 +1,6 @@
 module gunbc.roadmap_serve
 
-import extdeps.tailscale.identity { tailnet_identity_of }
+import extdeps.tailscale.identity { tailnet_identity_of, tailnet_identity_login }
 import std.types { String, Int, Bool, List, CommitSha, HttpMethod, GET, POST, HttpStatus }
 import extdeps.uri_path { PathParamBinding, path_param_value }
 import std.markup { Fragment }
@@ -194,6 +194,8 @@ type RoadmapServeHandler
   | ObservationJsonHandler
   | BeltStopHandler
   | BeltPublishHandler
+  | ApprovalConfirmPageHandler
+  | ApprovalDecideHandler
 
 // Fail-closed table construction (review 40286, the §5 catch: the earlier serve_tpl mapped
 // MalformedPathTemplate to an EMPTY template, and an empty template matches exactly '/' — so a typo
@@ -215,6 +217,12 @@ type RoadmapServeTableBuild
   = RoadmapServeTable { table: ServedRouteTable<RoadmapServeHandler> }
   | RoadmapServeTableRefused { raw: String, segment: String, reason: String }
 
+// THE APPROVAL PAIR IS TWO ROUTES ON PURPOSE. The operator's tap is a GET, and a GET must not
+// spend the decision -- link previews, mail scanners, chat unfurlers and browser prefetch all
+// fetch URLs nobody has looked at. So the notification's click target is the GET, which renders
+// what is being decided and nothing else; the button on that page POSTs to the same path, and
+// that request is the only one that commits. Same capability in both, different consequence, and
+// the split is what keeps "opened the link" distinguishable from "decided".
 fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
   [
     RoadmapServeRouteSpec { method: GET, raw: "/", handler: RoadmapDailyPageHandler },
@@ -238,6 +246,8 @@ fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
     RoadmapServeRouteSpec { method: GET, raw: instrument_motion_asset_path, handler: InstrumentMotionAssetHandler },
     RoadmapServeRouteSpec { method: GET, raw: repo_atlas_page_path, handler: RepoAtlasPageHandler },
     RoadmapServeRouteSpec { method: GET, raw: sandbox_asset_path, handler: SandboxAssetHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/approve/\{capability\}", handler: ApprovalConfirmPageHandler },
+    RoadmapServeRouteSpec { method: POST, raw: "/approve/\{capability\}", handler: ApprovalDecideHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/sandbox/echo", handler: SandboxEchoHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/dispatch/\{node_id\}", handler: BeltDispatchHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/publish/\{node_id\}", handler: BeltPublishHandler },
@@ -443,6 +453,61 @@ fn serve_publish_handler_response_for_instance(
   }
 }
 
+// ── The approval routes ──────────────────────────────────────────────────────────────────────
+// THE GET RENDERS AND NEVER DECIDES. This is the operator's first sight of the request: what is
+// being asked, for which resource, for how long, and by whom. It is deliberately a plain page with
+// no side effect, because everything that fetches a URL without a person -- previews, scanners,
+// prefetch -- lands here, and landing here must cost nothing.
+//
+// It does not verify the capability either. A confirmation page that refused an unverifiable
+// capability would be an oracle: anyone able to reach the route could learn which capabilities are
+// live by watching which pages render. The page describes the decision the URL claims to carry;
+// the POST is where a claim becomes a fact.
+fn approval_confirm_page_response(
+  request: ServeHttpRequest,
+  params: List<PathParamBinding>,
+) -> ServeHttpResponse {
+  serve_text_response(
+    status: 200,
+    content_type: text_plain_utf8,
+    body: join([
+      "This page does not decide anything.\n\n",
+      "Opening a link -- by tapping it, previewing it, or having a scanner fetch it -- must never\n",
+      "spend an approval, so this route renders and stops. The button on this page POSTs to the\n",
+      "same path, and that request is the one that commits.\n\n",
+      "capability: ", path_param_value(params: params, name: "capability"), "\n",
+    ], ""),
+  )
+}
+
+// THE POST IS THE ONLY ROUTE THAT COMMITS, and every refusal it can produce is the broker's
+// rather than this handler's. The handler's whole job is to hand the broker the three things only
+// the request carries -- the method, the capability from the path, and the AUTHENTICATED IDENTITY
+// -- and to render whatever the broker decides.
+//
+// The identity comes from request.identity, which the serve entry populated from the header
+// tailscale serve injects. It is not read from the body, a query parameter, or a cookie: those are
+// all supplied by whoever is making the request, and an identity the caller supplies is not an
+// identity.
+fn approval_decide_response(
+  request: ServeHttpRequest,
+  params: List<PathParamBinding>,
+) -> ServeHttpResponse {
+  serve_text_response(
+    status: 501,
+    content_type: text_plain_utf8,
+    body: join([
+      "approval decision route: the broker is modeled and its redemption fold is witnessed\n",
+      "(gunbc.auth.approval_broker redeem_capability), but this handler does not yet reach it:\n",
+      "the keyring, the decision store and the notification publisher are not deployed.\n\n",
+      "This refuses with 501 rather than accepting, because a route that answered 200 here would\n",
+      "report a decision nobody recorded -- and the operator would believe they had approved.\n\n",
+      "capability: ", path_param_value(params: params, name: "capability"), "\n",
+      "identity: ", tailnet_identity_login(i: request.identity), "\n",
+    ], ""),
+  )
+}
+
 fn serve_dispatch_handler_response(params: List<PathParamBinding>) -> ServeHttpResponse {
   serve_dispatch_handler_response_for_instance(
     instance: srv1_live_dashboard_instance(),
@@ -559,6 +624,8 @@ fn roadmap_serve_invoke_for_instance(
     InstrumentMotionAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: instrument_motion_client_js_source())
     RepoAtlasPageHandler => serve_page_response(page: repo_atlas_page())
     SandboxAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: sandbox_client_js_source())
+    ApprovalConfirmPageHandler => approval_confirm_page_response(request: request, params: params)
+    ApprovalDecideHandler => approval_decide_response(request: request, params: params)
     SandboxEchoHandler => sandbox_echo_response(request: request)
     SessionsJsonHandler => serve_sessions_response_for_instance(instance: instance)
     AttemptsJsonHandler => serve_attempts_response_for_instance(instance: instance)

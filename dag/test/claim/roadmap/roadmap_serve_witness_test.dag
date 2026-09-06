@@ -318,3 +318,66 @@ test fn roadmap_serve_instance_keystone_holds() -> Bool {
     && witness_malformed_route_literal_refuses_table()
     && witness_unknown_method_folds_501_response()
 }
+
+// ── The approval routes: opening the link is not deciding ────────────────────────────────────
+// THE PAIR EXISTS SO THESE TWO ARE DISTINGUISHABLE. A GET at the approval URL must render and
+// stop; everything that fetches a URL without a person behind it -- link previews, mail scanners,
+// chat unfurlers, browser prefetch -- issues exactly that request, and if it decided, an approval
+// would be spent with an audit row naming the operator.
+
+test fn a_get_at_the_approval_url_renders_and_does_not_decide() -> Bool {
+  let r = roadmap_serve_respond(
+    method_label: "GET",
+    path: "/approve/abc123",
+    body: "",
+    tailscale_identity: "briansrls@github",
+    release_revision: deploy_witness_release_revision,
+  )
+  r.status == 200
+    && string_contains(s: r.body, pattern: "does not decide anything")
+    && string_contains(s: r.body, pattern: "abc123")
+}
+
+// THE POST IS A DIFFERENT ROUTE, and it must not answer 200 while the broker is undeployed: a
+// route that reported success here would tell the operator they had approved something no store
+// recorded. It refuses with 501 until the keyring, decision store and publisher exist.
+test fn a_post_at_the_approval_url_refuses_rather_than_reporting_a_decision() -> Bool {
+  let r = roadmap_serve_respond(
+    method_label: "POST",
+    path: "/approve/abc123",
+    body: "",
+    tailscale_identity: "briansrls@github",
+    release_revision: deploy_witness_release_revision,
+  )
+  r.status == 501
+    && !string_contains(s: r.body, pattern: "does not decide anything")
+}
+
+// THE IDENTITY REACHES THE HANDLER. This is the end-to-end assertion for the whole identity
+// change: a login supplied at the serve entry arrives at the route that will consume it. Without
+// this the plumbing could be silently dropping it and every unit-level identity witness would
+// still pass.
+test fn the_authenticated_identity_reaches_the_approval_handler() -> Bool {
+  let r = roadmap_serve_respond(
+    method_label: "POST",
+    path: "/approve/abc123",
+    body: "",
+    tailscale_identity: "briansrls@github",
+    release_revision: deploy_witness_release_revision,
+  )
+  string_contains(s: r.body, pattern: "identity: briansrls@github")
+}
+
+// AND ITS ABSENCE REACHES IT TOO, rather than becoming a default. A request that did not arrive
+// through the authenticating proxy carries no identity, and the handler must see exactly that.
+test fn an_absent_identity_arrives_at_the_handler_as_absent() -> Bool {
+  let r = roadmap_serve_respond(
+    method_label: "POST",
+    path: "/approve/abc123",
+    body: "",
+    tailscale_identity: "",
+    release_revision: deploy_witness_release_revision,
+  )
+  string_contains(s: r.body, pattern: "identity: \n")
+    && !string_contains(s: r.body, pattern: "briansrls")
+}
