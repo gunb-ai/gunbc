@@ -13202,10 +13202,6 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   }
 }
 
-fn typecheck_module_isolated(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypecheckModuleResult {
-  typecheck_module(resolved: resolved, parent_index: parent_index, callable_owner_index: callable_owner_index_from_envs(envs: parent_index |> map_values |> map(tm => tm.func_env)), variant_surfaces: empty_map(), source_indices: source_indices, intern_table: intern_table, symbol_index: empty_symbol_index(), global_variant_base: empty_map())
-}
-
 type EnvResolveResult {
   env: TypeEnv
   diagnostics: List<ErrorNode>
@@ -13914,9 +13910,12 @@ fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<
 //
 // This pass runs post-fold and on cache decode, so it is a SECOND, independent construction of
 // the callable parent population: a repoint covering only the typecheck-time assembly would
-// leave this one serving import-derived links to every decoded graph. It now builds the same
-// containment index over every module's own declarations and asks the same reference-derived
-// supply, so the two assembly points cannot disagree about what a module may call.
+// leave this one serving import-derived links to every decoded graph.
+//
+// THE TWO PATHS CALL THE SAME SUPPLY FROM DIFFERENT SEEDS, stated as a plain fact because no
+// executed evidence licenses a claim about them agreeing: this one builds its owner index from
+// every module at once, while the primary path grows its index inside the dependency-driven
+// realize fold, so the primary index holds only the modules realized before the module using it.
 fn rewire_func_env_parent_links(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
   let owner_index = callable_owner_index_from_envs(envs: modules |> map(m => m.func_env))
   map(modules, m =>
