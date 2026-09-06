@@ -1,0 +1,69 @@
+module test.claim.mt_collins_1u_brief_witness
+
+import std.types { Bool, Int }
+import std.measure {
+  bandwidth_count, bit_width_count, byte_size_count, hertz_count, millimeter_count,
+  rack_unit_count, watt_count,
+}
+import extdeps.ampere.mt_collins_1u_product_brief.specifications {
+  OcpSlotStanding, OcpMezzanineSlotPresent, NoOcpSlot,
+  mt_collins_1u_onboard_data_network, mt_collins_1u_bmc_manageability_network,
+  mt_collins_1u_ocp_slot, mt_collins_1u_has_onboard_ten_gigabit,
+  mt_collins_1u_ten_gigabit_requires_ocp_card,
+  mt_collins_1u_processors, mt_collins_1u_memory, mt_collins_1u_expansion,
+  mt_collins_1u_storage, mt_collins_1u_power, mt_collins_1u_dimensions,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DISCRIMINATING RED FOR THE CLAIM THAT WAS WRONG. This repository asserted that Mt. Collins
+// carries onboard 10GbE. It does not. If anyone re-authors the onboard controller as a
+// ten-gigabit part, or flips the derived predicate, this witness reds - which is what makes the
+// correction an executing fact rather than a paragraph someone can contradict later.
+test fn w_onboard_networking_is_one_gigabit_not_ten() -> Bool {
+  bandwidth_count(b: mt_collins_1u_onboard_data_network.per_port_bandwidth) == 1000000000
+    && mt_collins_1u_onboard_data_network.port_count == 2
+    && mt_collins_1u_has_onboard_ten_gigabit() == false
+}
+
+// TEN GIGABIT IS REACHED THROUGH THE SLOT, and the slot is stated while occupancy is not. The
+// second conjunct is the one that matters for procurement: a platform that HAS the slot still
+// needs a card bought for it.
+test fn w_ten_gigabit_requires_an_ocp_card() -> Bool {
+  mt_collins_1u_ten_gigabit_requires_ocp_card()
+    && mt_collins_1u_has_onboard_ten_gigabit() == false
+}
+
+test fn w_bmc_port_is_separate_from_the_data_ports() -> Bool {
+  mt_collins_1u_bmc_manageability_network.port_count == 1
+    && mt_collins_1u_onboard_data_network.port_count == 2
+}
+
+test fn w_processor_and_memory_match_the_brief() -> Bool {
+  mt_collins_1u_processors.socket_count == 2
+    && mt_collins_1u_processors.cores_per_socket == 80
+    && hertz_count(h: mt_collins_1u_processors.max_core_clock) == 3300000000
+    && mt_collins_1u_memory.channels_per_socket == 8
+    && mt_collins_1u_memory.max_dimms_per_socket == 16
+    && mt_collins_1u_memory.dimms_per_channel == 2
+    && bit_width_count(b: mt_collins_1u_memory.channel_width) == 72
+    && byte_size_count(b: mt_collins_1u_memory.max_capacity) == 4398046511104
+}
+
+test fn w_expansion_storage_and_power_match_the_brief() -> Bool {
+  mt_collins_1u_expansion.full_height_half_length_gen4_x16_slots == 2
+    && mt_collins_1u_storage.front_nvme_u2_bays == 12
+    && mt_collins_1u_storage.onboard_m2_nvme_slots == 1
+    && mt_collins_1u_power.psu_count == 2
+    && watt_count(w: mt_collins_1u_power.max_rated_output) == 2000
+}
+
+// THE HEIGHT IS THE FACT AND THE 2U LABEL IS NOT. 1.7 inches is 43mm is one rack unit, and the
+// 2U-titled brief states the same 1.7 inches. This witness pins the height so a later editor
+// cannot quietly reconcile the two documents by promoting this chassis to 2U.
+test fn w_height_is_one_rack_unit_and_depth_is_the_deep_chassis() -> Bool {
+  millimeter_count(m: mt_collins_1u_dimensions.height) == 43
+    && rack_unit_count(u: mt_collins_1u_dimensions.rack_units_from_height) == 1
+    && millimeter_count(m: mt_collins_1u_dimensions.length) == 847
+}

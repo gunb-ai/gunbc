@@ -1354,6 +1354,15 @@ service git.Core {
     }
     transport shell { argv: ["git", "-C", "{repo}", "push", "--quiet", "{remote}", "{refspec}"] }
   }
+  operation PushRefWithLeaseInRepo {
+    input { repo: FilePath, remote: String, refspec: String, lease: String }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-C", "{repo}", "push", "--quiet", "{lease}", "{remote}", "{refspec}"] }
+  }
 
   operation CatFileBlobInRepo {
     input { repo: FilePath, oid: String }

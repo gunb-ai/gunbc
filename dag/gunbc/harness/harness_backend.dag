@@ -10,7 +10,7 @@ import extdeps.languages.json.parse {
 import gunbc.harness.harness_wire {
   harness_engine_replica_roster, HarnessReplicaRoster, HarnessReplicasResolved, HarnessReplicasUnresolved,
   harness_engine_port, harness_engine_model,
-  HarnessWireShape, harness_replica_pick, harness_backend_url_for_address,
+  HarnessWireShape, harness_backend_url_for_address,
 }
 
 // THE HARNESS REPORTS ITS OWN STANDING, WHICH IS THE POINT RATHER THAN A CONVENIENCE.
@@ -185,12 +185,15 @@ type HarnessBackendUrl
   = BackendUrlBound { url: String, declined_count: Int }
   | BackendUrlRefused { detail: String }
 
-fn harness_serving_backend_url(shape: HarnessWireShape, seed: String) -> HarnessBackendUrl {
+// THE PROBE BINDS TO THE FIRST REPLICA OBSERVED SERVING. This is an observation entry, not a turn:
+// a turn takes its endpoint from a granted seat (gunbc.harness.harness_seat), and the seed hash
+// that used to spread turns here is gone with the picker it belonged to.
+fn harness_serving_backend_url(shape: HarnessWireShape) -> HarnessBackendUrl {
   match harness_observe_roster() {
     HarnessRosterServing { model: _, serving, declined } =>
-      BackendUrlBound {
-        url: harness_backend_url_for_address(shape: shape, address: harness_replica_pick(seed: seed, replicas: serving)),
-        declined_count: count(declined),
+      match first(serving) {
+        Present { value: a } => BackendUrlBound { url: harness_backend_url_for_address(shape: shape, address: a), declined_count: count(declined) }
+        Absent => BackendUrlRefused { detail: "the serving roster is empty" }
       }
     HarnessRosterNoneServing { model: m, declined } =>
       BackendUrlRefused { detail: join(["no harness replica serves ", m, ": ", harness_declines_detail(declined: declined)], "") }

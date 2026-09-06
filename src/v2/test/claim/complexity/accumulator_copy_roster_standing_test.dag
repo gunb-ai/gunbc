@@ -19,7 +19,8 @@ import v2.lens.common.source_analysis_standing {
   LanguageGrammarUnavailable,
   SourceNormalizationRejected,
   SourceParseRejected,
-  SourceTokenizationRejected
+  SourceTokenizationRejected,
+  SourceUnreadable
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
@@ -68,6 +69,11 @@ test fn not_established_cause_is_preserved_on_both_axes() -> Bool {
   }
 }
 
+// EVERY CAUSE IS WRITTEN OUT BELOW, INCLUDING ONE THIS CALL CANNOT PRODUCE. source_findings takes
+// the source text it is handed and never reads a file, so SourceUnreadable is unreachable here and
+// its arm answers false. The arm exists because the match is deliberately total with no wildcard,
+// and that totality is what made widening the cause coproduct fail LOUDLY at this consumer instead
+// of defaulting through a catch-all -- the wall doing its job on the change that added the variant.
 test fn malformed_source_reports_tokenization_rejection() -> Bool {
   match v2.lens.complexity_accumulator_copy.roster_gate.source_findings(source_text: "@@@ not dag source @@@ )( unterminated \"") {
     SourceFindingsNotEstablished { cause: SourceTokenizationRejected } => true
@@ -75,6 +81,7 @@ test fn malformed_source_reports_tokenization_rejection() -> Bool {
     SourceFindingsNotEstablished { cause: LanguageGrammarRejected } => false
     SourceFindingsNotEstablished { cause: SourceParseRejected } => false
     SourceFindingsNotEstablished { cause: SourceNormalizationRejected } => false
+    SourceFindingsNotEstablished { cause: SourceUnreadable } => false
     SourceFindingsEstablished { findings: _ } => false
   }
 }

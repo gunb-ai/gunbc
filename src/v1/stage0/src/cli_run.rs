@@ -39223,6 +39223,64 @@ pub fn assemble_prepared_subject_closure(
         });
         sources.push(sf.clone());
     }
+    // AN EXCLUSION MAY NOT ORPHAN AN IMPORTER, AND THIS IS THE WALL THAT SAYS SO.
+    //
+    // The list reads like "skip these witnesses" and is not: a matched path is dropped from the
+    // prepared graph outright, so any module that still imports it refuses with `unresolved
+    // import` and the WHOLE subject refuses before a single witness runs. The refusal that
+    // reaches the operator then names the IMPORTER -- a file nobody touched -- while the row that
+    // caused it is somewhere else entirely, so the evidence points away from the cause. Measured
+    // as exactly that, twice in one hour: required-floor run 34016411960 refused at
+    // src/v2/test/claim/long/live_read_classification_test.dag:46 for an exclusion added to
+    // `floor_prepared_subject_exclusions`, and the first two diagnoses of it both concluded the
+    // imported module had been moved or renamed. It had not.
+    //
+    // The constraint is decidable from data preparation already holds -- the retained sources and
+    // their import headers -- so it is a wall here and not a note beside the list. The import
+    // extractor is the same one `import_resolution_facts` folds, never a second reader.
+    //
+    // ITS DISCRIMINATING RED IS AUTHORABLE AND WAS EXECUTED, not merely available: add a row for a
+    // module the corpus imports and nobody changed (`v2/lens/complexity_accumulator_copy/analyze.dag`
+    // was the specimen) and run `claim_executor --required-ci --source-root dag --source-root src/v2
+    // --required-lane witnesses`. What has to hold in that receipt is not that something refused --
+    // the old shape refused too -- but that the refusal names the EXCLUSION ROW beside each importer,
+    // which is the half that was missing when the same situation was diagnosed twice as a module
+    // having been moved. The positive control is every ordinary required-floor run: with no orphaning
+    // row the preparation is admitted and the floor proceeds to its own phases.
+    if !discovery_exclusions.is_empty() {
+        let excluded_modules: HashSet<&str> =
+            discovery_exclusions.keys().map(|m| m.as_str()).collect();
+        let mut orphaned: Vec<String> = Vec::new();
+        for (module_path, sf) in index.iter() {
+            if discovery_exclusions.contains_key(module_path) {
+                continue;
+            }
+            for imported in extract_import_paths(&sf.content) {
+                if excluded_modules.contains(imported.as_str()) {
+                    let matched = &discovery_exclusions[&imported];
+                    orphaned.push(format!(
+                        "  {} imports '{}', excluded by row '{}'",
+                        workspace_relative_repo_path(&sf.path),
+                        imported,
+                        matched
+                    ));
+                }
+            }
+        }
+        if !orphaned.is_empty() {
+            orphaned.sort();
+            orphaned.dedup();
+            return Err(format!(
+                "PREPARED-SUBJECT REFUSAL cause=ExclusionOrphansImporter — {} retained module(s) \
+                 import a module this preparation excluded. An exclusion row removes the path \
+                 from the prepared graph, so the importer cannot resolve and the whole subject \
+                 would refuse naming the importer rather than the row. Only a module nothing \
+                 imports may be excluded.\n{}",
+                orphaned.len(),
+                orphaned.join("\n")
+            ));
+        }
+    }
     if sources.is_empty() {
         return Err("whole-tree corpus is empty (no .dag modules under source roots)".to_string());
     }
