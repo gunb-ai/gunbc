@@ -254,11 +254,21 @@ fn guest_memory_fits(
 //
 // SO THE STANDING CHANGES AND THE NUMBER DOES NOT PRETEND TO BE DERIVED. This is the same move
 // gunbc_runner_microvm_declared_size already made for the guest's own size: a product decision
-// standing where no computation exists. It is an ALLOCATION the fleet reserves inside the cell so
-// the VMM has somewhere to live, and it is falsified by a guest that fits this policy and is still
-// OOM-killed -- never by a Firecracker release note. Inventing it as a SUBTRAHEND in a derivation
-// would still be the fabricated plausible output DESIGN 5 forbids; declaring it as policy, with the
-// containment check below still deciding fit, is not.
+// standing where no computation exists. It is operator allocation policy, not a measured
+// Firecracker footprint. Inventing it as a SUBTRAHEND in a derivation would still be the fabricated
+// plausible output DESIGN 5 forbids; declaring it as policy, with the containment check below still
+// deciding fit, is not.
+//
+// WHAT WOULD REVISE IT, STATED CAREFULLY, BECAUSE AN OOM IS NOT ONE EVIDENCE CLASS. Its adequacy is
+// revised from host- or cell-boundary memory-pressure evidence attributable to the admitted
+// realization. A guest that exhausts its own 4 GiB workload OOMs INSIDE the guest and says nothing
+// about this allowance; only pressure at the cell boundary implicates it. No Firecracker release
+// note revises it either, because upstream does not publish the quantity.
+//
+// IT IS A MINIMUM RESERVED HEADROOM, NOT A CAP ON THE VMM. The containment check establishes
+// guest + allowance <= cell envelope. It does NOT establish VMM usage <= allowance, and nothing
+// here enforces that -- with the declared guest inside the cell there is materially more real slack
+// than this floor claims.
 //
 // WITHOUT IT NOTHING IS ADMISSIBLE, WHICH IS THE WHOLE REASON THIS ROW EXISTS. guest_memory_fits
 // returns MemoryFitUnresolved on an unmodeled reserve, so gunbc_runner_microvm_admission refused

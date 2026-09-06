@@ -529,14 +529,16 @@ test fn the_production_reserve_is_the_declared_allowance() -> Bool {
   }
 }
 
-// THE PRODUCTION BINDING REACHES AN ADMITTED VM, AND THIS IS THE CLAIM THE CHANGE EXISTS TO MAKE.
+// THE PRODUCTION CONFIGURATION REACHES MICROVM ADMISSION, AND THIS IS THE CLAIM THE CHANGE EXISTS
+// TO MAKE. It judges MODEL admission -- whether the fleet's own row is one this repository would
+// accept -- and boots nothing; no Firecracker process is involved at any step.
 //
 // Every other admitted-arm control here drives a FIXTURE: a synthetic config and the witness_reserve
 // declared above. That was deliberate while production refused -- the reserve is a parameter
 // precisely so the accept arm stayed executed -- but it means none of them could tell whether
 // PRODUCTION could reach the arm, and until this change it could not: sizing resolved and admission
 // then refused on an unmodeled reserve. This substitutes nothing at any step.
-test fn the_production_binding_now_reaches_an_admitted_vm() -> Bool {
+test fn the_production_configuration_now_reaches_microvm_admission() -> Bool {
   match gunbc_runner_microvm_vm_config(
     rootfs_path: "/var/lib/gunbc/cell/rootfs.ext4",
     jit_config_path: "/var/lib/gunbc/cell/jitcfg.ext4",
