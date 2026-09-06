@@ -63,9 +63,14 @@ import gunbc.merge_admission_subject {
 // cause survived" are spelled identically -- which is exactly the state the sentence above promises
 // cannot occur. The same holds for the refusal write, whose Bool is also discarded: a write that
 // FAILED is then indistinguishable from the child dying before writing, collapsing two of the three
-// states this wire exists to separate. This is the census's OutcomeSemanticallyRequired class: this
-// site and its two siblings in tools.merge_admission_walk are its only members outside the printer
-// scope, and every other candidate classified as explicitly best-effort.
+// states this wire exists to separate. This is the census's OutcomeSemanticallyRequired class, and
+// its shape is THREE SITES CARRYING TWO DEFECTS ACROSS TWO MODULES -- a pre-clear here and a
+// pre-clear in tools.merge_admission_walk are the same defect at two sites, and the refusal write
+// in that module is the second. The three-versus-two distinction is written out because two
+// independent readers of this classification reported the class as two, which is the count of
+// defects and of modules but not of sites, and a census whose whole subject is that counts must be
+// re-derivable should not leave its own ambiguous. Every other candidate is explicitly
+// best-effort.
 //
 // THE REMEDY IS NOT TO CONSUME THOSE TWO BOOLS. Presence-and-freshness of a file cannot be made
 // sound by a best-effort sweep; the wire must carry the walk attempt identity it is about, so a
