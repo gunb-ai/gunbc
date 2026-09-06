@@ -24,7 +24,7 @@ import v1.std.core {
   arg_name_at, arg_value, field_init_node_name_at, field_init_node_value, if_condition,
   if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body,
   field_access_base, method_receiver, lambda_body, cast_expr, cast_target, return_value,
-  binop_left, binop_right, foreach_variable_at, foreach_collection, foreach_body, index_base,
+  binop_left, binop_right, foreach_variable_at, foreach_collection, foreach_body, foreach_element_type, index_base,
   index_expr, slice_base, slice_start, slice_end, unaryop_operand, expr_has_self_call,
   expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport,
   is_file_transport, is_local_transport, TransportKind, RestTransport, ShellTransport,
@@ -37,7 +37,7 @@ import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_
 
 import std.induction { InductiveField, SubValueUnknown }
 
-import v1.compiler.infer_types { resolved_type, is_product_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, for_each_element_type_node, is_unit_like, is_declared_container_alias_spelling }
+import v1.compiler.infer_types { resolved_type, is_product_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, is_unit_like, is_declared_container_alias_spelling }
 
 import std.types { is_container_type }
 
@@ -269,7 +269,7 @@ fn empty_emit_scope() -> InferScope {
     module_name: "",
     service_registry: empty_map(),
     item_registry: empty_map(),
-    lambda_param_provenance: empty_map(),
+    lambda_receiver_provenance: SubValueUnknown,
     caller_decl_name: ""
   }
 }
@@ -284,7 +284,7 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
     module_name: authored_name_at(source_indices: typed_module.type_env.source_indices, node: typed_module.module),
     service_registry: empty_map(),
     item_registry: typed_module.item_registry,
-    lambda_param_provenance: empty_map(),
+    lambda_receiver_provenance: SubValueUnknown,
     caller_decl_name: ""
   }
 }
@@ -2960,10 +2960,9 @@ fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarg
   }
 }
 
-fn emit_typed_for_each_shared(variable: String, collection: Node, body: Node, target: RenderTarget, depth: Int, source_indices: Map<String, NewlineIndex>, recurse: fn(Node, InferScope, Int) -> String, scope: InferScope) -> String {
+fn emit_typed_for_each_shared(variable: String, collection: Node, body: Node, element_type: Node, target: RenderTarget, depth: Int, source_indices: Map<String, NewlineIndex>, recurse: fn(Node, InferScope, Int) -> String, scope: InferScope) -> String {
   let coll_str = recurse(collection, scope, depth)
-  let elem_type = for_each_element_type_node(n: resolved_type(n: collection), source_indices: source_indices)
-  let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type, provenance: SubValueUnknown)
+  let body_scope = extend_scope(scope: scope, name: variable, resolved: element_type, provenance: SubValueUnknown)
   let body_str = recurse(body, body_scope, depth + 1)
   let var_str = emit_ident(name: variable, target: target)
   let spec = language_spec(target: target)
@@ -3649,13 +3648,17 @@ fn emit_unified_typed_expr(texpr: Node, target: RenderTarget, registry: Map<Stri
         env: scope.type_env,
         source_indices: si),
     emit_for_each: expr =>
-      emit_typed_for_each_shared(
+      match foreach_element_type(texpr: expr) {
+        Absent => emit_error_expr(message: "typed foreach is missing its decided element type", target: target)
+        Present { value: element_type } => emit_typed_for_each_shared(
+        element_type: element_type,
         variable: foreach_variable_at(texpr: expr, source_indices: si),
         collection: foreach_collection(texpr: expr),
         body: foreach_body(texpr: expr),
         target: target, depth: depth, source_indices: si,
         recurse: (child, s, d) => emit_unified_typed_expr(texpr: child, target: target, registry: registry, scope: s, depth: d, fuel: 1024, render_pattern: render_pattern),
-        scope: scope),
+        scope: scope)
+      },
     emit_index: expr =>
       emit_typed_index_shared(base: index_base(texpr: expr), index: index_expr(texpr: expr), target: target,
         recurse: child => emit_unified_typed_expr(texpr: child, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern),

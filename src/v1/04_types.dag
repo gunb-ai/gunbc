@@ -38,7 +38,7 @@ import v1.std.core {
   error_type,
   default_ident_span, kernel_span,
   authored_name_at,
-  ErrorNode, make_error_node, InternalError,
+  ErrorNode, make_error_node, InternalError, CompilerDiagnostic, CollectionElementTypeUndecided,
   qualified_last_segment, type_name_compatible,
   ContainerSpellingVerdict, ContainerSpellingDeclared, NotAContainerSpelling,
   ContainerSpellingUnknown, authored_container_spelling_verdict
@@ -1283,20 +1283,56 @@ fn infer_binop_type_node(op: BinOp, left_type: Node, source_indices: Map<String,
   }
 }
 
-fn for_each_element_type_node(n: Node, source_indices: Map<String, NewlineIndex>) -> Node {
+// Compiler-local judgment: maintenance of the frozen v1 seed for the v2 host
+// closure cut. An undecidable receiver is NEVER its own element type. Keep the
+// decision until a consumer needs an element: a declared method contract may
+// supply its argument types without requiring this judgment at all.
+type CollectionElementTypeDecision
+  = CollectionElementTypeResolved { element: Node }
+  | CollectionElementTypeRefused { diagnostic: CompilerDiagnostic }
+
+// The realized FreeMonoid arm reads the instantiated Empty/Cons/head declaration;
+// a malformed realization does not acquire an element merely by containing a head.
+fn for_each_element_type_node(n: Node, source_indices: Map<String, NewlineIndex>, span: SourceSpan) -> CollectionElementTypeDecision {
   let normed = normalize_access_type_node(n: n)
-  let is_single_child = normed.connective == NoConnective && normed.children |> count == 1
-  let extracted = if is_single_child {
+  let extracted = if node_is_element_collection(n: normed, source_indices: source_indices) {
     match normed.children |> first {
       Present { value: ch } => Present { value: child_type_node(ch: ch) }
       Absent => none
     }
+  } else if normed.connective == NoConnective && normed.children |> count == 0 && normed.properties |> count == 0 && authored_name_at(source_indices: source_indices, node: normed) == "String" {
+    Present { value: string_type }
+  } else if canonical_template_name(n: normed, source_indices: source_indices) == "FreeMonoid" && normed.connective == Conj && normed.children |> count == 1 {
+    match normed.children |> first {
+      Present { value: ch } => Present { value: child_type_node(ch: ch) }
+      Absent => none
+    }
+  } else if normed.connective == Disj && canonical_template_name(n: normed, source_indices: source_indices) == "FreeMonoid" && normed.children |> count == 2 {
+    let empties = normed.children |> filter(v => authored_name_at(source_indices: source_indices, node: v) == "Empty" && v.connective == NoConnective && v.children |> count == 0)
+    let conses = normed.children |> filter(v => authored_name_at(source_indices: source_indices, node: v) == "Cons" && v.connective == Conj && v.children |> count == 2)
+    if empties |> count == 1 && conses |> count == 1 {
+      match conses |> first {
+        Present { value: cons } =>
+          let heads = cons.children |> filter(f => authored_name_at(source_indices: source_indices, node: f) == "head")
+          let tails = cons.children |> filter(f => authored_name_at(source_indices: source_indices, node: f) == "tail")
+          if heads |> count == 1 && tails |> count == 1 {
+            match heads |> first {
+              Present { value: head } => match head.inferred {
+                Present { value: Resolved { node: element } } => Present { value: element }
+                _ => none
+              }
+              Absent => none
+            }
+          } else { none }
+        Absent => none
+      }
+    } else { none }
   } else { none }
   match extracted {
-    Present { value: el } => el
-    Absent =>
-      if normed.connective == NoConnective && normed.children |> count == 0 && normed.properties |> count == 0 && authored_name_at(source_indices: source_indices, node: normed) == "String" { string_type }
-      else { normed }
+    Present { value: element } => CollectionElementTypeResolved { element: element }
+    Absent => CollectionElementTypeRefused { diagnostic: CollectionElementTypeUndecided {
+      receiver_type: node_type_shape(n: normed, source_indices: source_indices), span: span
+    } }
   }
 }
 
