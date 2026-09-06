@@ -2,7 +2,7 @@ module gunbc.roadmap.roadmap_review_function
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural }
-import gunbc.roadmap.roadmap_review_criteria { ReviewCriterion, review_criteria }
+import gunbc.roadmap.roadmap_review_criteria { ReviewCriterion, review_criteria, review_criterion_identity_text }
 import gunbc.roadmap.roadmap_review_role {
   CriterionReviewEvidence, CriterionStanding, CriterionAwaitingReviewer, criterion_standing,
   ReviewReceiptSource, ReviewReconciliation, WorkerFeedback,
@@ -64,7 +64,7 @@ type ReviewPlan {
 fn review_plan_revision_of(criteria: List<ReviewCriterion>) -> String {
   content_hash_tagged_structural(
     tag: "roadmap-review-plan-v1" as NonEmptyStr,
-    payload: content_hash_atom(value: join(map(criteria, c => join([c.key, "|", c.question, "|", join(c.tells, "|")], "")), "\n") as NonEmptyStr),
+    payload: content_hash_atom(value: join(map(criteria, c => review_criterion_identity_text(c: c)), "\n") as NonEmptyStr),
   ).digest as String
 }
 
