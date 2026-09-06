@@ -165,6 +165,7 @@ import gunbc.recurring_failure_mode.modifier_accepted_on_a_shape_its_check_canno
 import gunbc.recurring_failure_mode.setup_failure_substitutes_a_specimen_the_claim_still_admits { setup_failure_substitutes_a_specimen_the_claim_still_admits }
 
 import gunbc.recurring_failure_mode.binder_renaming_changes_variant_field_lookup { binder_renaming_changes_variant_field_lookup }
+import gunbc.recurring_failure_mode.permissiveness_promoted_into_a_higher_safety_rung { permissiveness_promoted_into_a_higher_safety_rung }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry,
@@ -320,4 +321,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   modifier_accepted_on_a_shape_its_check_cannot_see,
   binder_renaming_changes_variant_field_lookup,
   setup_failure_substitutes_a_specimen_the_claim_still_admits,
+  permissiveness_promoted_into_a_higher_safety_rung,
 ]
