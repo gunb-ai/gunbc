@@ -6,9 +6,9 @@ import std.decl_ref { decl_ref }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.toolchain.types { Architecture }
-import extdeps.currency.currency { CurrencyCode }
+import extdeps.currency.currency { CurrencyCode, Eur, Usd, currency_code_eq }
 import std.measure { ByteSize, HardwareThreadCount, MoneyAmountMicro, byte_size, hardware_thread_count, money_amount_micro }
-import std.types { List, NonEmptyStr }
+import std.types { Bool, Int, List, NonEmptyStr }
 
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -28,6 +28,28 @@ data hetzner_money_rate_frontier_rows: List<FrontierRow> = [
   )
 ]
 
+// A PRICE WITHOUT THE DATE IT APPLIES FROM IS NOT A PRICE, IT IS A PRICE-SHAPED HOLE. This field
+// was added after the row below was found carrying the SUPERSEDED tariff - cited, correctly, to a
+// document whose entire subject is that the figure changed. The citation was to the right page and
+// to the wrong column, and nothing in the type could tell the two apart, because the row recorded
+// WHAT the vendor charged and never WHEN.
+//
+// The damage was not the stale number itself. A consumer joined this row's EUR figure to a
+// separately observed USD figure and concluded the vendor charged about a third more in dollars
+// than its own euro price converted - a currency premium that does not exist. Old EUR against new
+// USD is not a currency comparison at all. Both tariffs are internally FX-consistent to within a
+// couple of per cent.
+type TariffStanding
+  = TariffEffectiveFrom { date: NonEmptyStr, citation: NonEmptyStr }
+  | TariffSuperseded { superseded_on: NonEmptyStr, successor: NonEmptyStr, citation: NonEmptyStr }
+
+fn tariff_is_current(t: TariffStanding) -> Bool {
+  match t {
+    TariffEffectiveFrom { date, citation } => true,
+    TariffSuperseded { superseded_on, successor, citation } => false,
+  }
+}
+
 type HetznerCloudServerCatalogRow {
   server_type: HetznerCloudServerType
   vcpus: HardwareThreadCount
@@ -36,11 +58,12 @@ type HetznerCloudServerCatalogRow {
   hourly: MoneyAmountMicro
   monthly_cap: MoneyAmountMicro
   currency: CurrencyCode
+  tariff: TariffStanding
   pricing_citation: NonEmptyStr
   cpu_architecture: Architecture
 }
 
-data cax41_catalog: HetznerCloudServerCatalogRow = HetznerCloudServerCatalogRow {
+data cax41_catalog_superseded: HetznerCloudServerCatalogRow = HetznerCloudServerCatalogRow {
   server_type: Cax41,
   vcpus: hardware_thread_count(16),
   memory_bytes: byte_size(34359738368),
@@ -48,6 +71,234 @@ data cax41_catalog: HetznerCloudServerCatalogRow = HetznerCloudServerCatalogRow 
   hourly: money_amount_micro(count: 50500),
   monthly_cap: money_amount_micro(count: 31490000),
   currency: Eur,
-  pricing_citation: "GE-D9256",
+  tariff: TariffSuperseded {
+    superseded_on: "2026-06-15 08:00 CEST",
+    successor: "cax41_catalog",
+    citation: "the same price-adjustment document this row already cited lists 0.0505 EUR hourly and 31.49 EUR monthly as the OLD prices and 0.0657 / 40.99 as the new ones",
+  },
+  pricing_citation: "GE-D9256 (old-price column)",
   cpu_architecture: Aarch64,
+}
+
+// THE CURRENT EUR TARIFF, and its USD sibling below, both read from the vendor's price-adjustment
+// document on 2026-09-06. Carrying both currencies as separate rows rather than one row plus a
+// conversion is the point: the vendor publishes each, so neither has to be derived, and a reader
+// wanting dollars is never handed an exchange-rate estimate labelled as a quote.
+data cax41_catalog: HetznerCloudServerCatalogRow = HetznerCloudServerCatalogRow {
+  server_type: Cax41,
+  vcpus: hardware_thread_count(16),
+  memory_bytes: byte_size(34359738368),
+  disk_bytes: byte_size(343597383680),
+  hourly: money_amount_micro(count: 65700),
+  monthly_cap: money_amount_micro(count: 40990000),
+  currency: Eur,
+  tariff: TariffEffectiveFrom {
+    date: "2026-06-15 08:00 CEST",
+    citation: "new-price column, price-adjustment document GE-D9256",
+  },
+  pricing_citation: "GE-D9256 (new-price column, EUR)",
+  cpu_architecture: Aarch64,
+}
+
+data cax41_catalog_usd: HetznerCloudServerCatalogRow = HetznerCloudServerCatalogRow {
+  server_type: Cax41,
+  vcpus: hardware_thread_count(16),
+  memory_bytes: byte_size(34359738368),
+  disk_bytes: byte_size(343597383680),
+  hourly: money_amount_micro(count: 77700),
+  monthly_cap: money_amount_micro(count: 48490000),
+  currency: Usd,
+  tariff: TariffEffectiveFrom {
+    date: "2026-06-15 08:00 CEST",
+    citation: "new-price column, price-adjustment document GE-D9256; agrees with the signed-in console reading of 2026-09-05",
+  },
+  pricing_citation: "GE-D9256 (new-price column, USD)",
+  cpu_architecture: Aarch64,
+}
+
+// THE TWO CURRENCIES ARE FX-CONSISTENT, which is the finding that retired a claim this repository
+// briefly held. 40.99 EUR at the ECB reference rate of 1.1622 is about 47.64 USD against a listed
+// 48.49 - under two per cent apart, and the superseded pair is consistent to the same order. So
+// this vendor does NOT charge a currency premium, and a model may not refuse FX valuation on the
+// grounds that it would. What it must refuse is labelling an FX-derived figure as the vendor's
+// quote in that currency, and joining two tariff VERSIONS across two currencies - which is the
+// arithmetic that manufactured the premium in the first place.
+data cax41_currency_consistency_note: NonEmptyStr = "Both published currencies move together across the 2026-06-15 adjustment: 31.49 to 40.99 EUR and 36.99 to 48.49 USD. The apparent thirty-per-cent dollar premium reported earlier was old EUR joined to new USD - a temporal-identity error wearing a currency-identity costume."
+
+
+// ---------------------------------------------------------------------------------------------
+// THE CLOUD LISTING AS OBSERVED FROM A SIGNED-IN CONSOLE ON 2026-09-05/06, carrying three facts
+// the cax41_catalog row above does not: the REGION the rate belongs to, the CURRENCY the console
+// quoted, and whether the product could actually be ORDERED.
+//
+// WHY CURRENCY IS PART OF THE OFFER AND NOT A UNIT TO CONVERT. The row above carries EUR 31.49 per
+// month for CAX41, cited from price document GE-D9256. The console quoted USD 48.49 for the same
+// SKU. At the ECB reference rate the euro figure converts to about USD 36.60, so the vendor's
+// dollar price stands roughly a third ABOVE its own euro price converted. These are therefore two
+// DIFFERENT OFFERS made to two different markets, not one magnitude in two units, and an exchange
+// rate cannot carry a reader from one to the other. A comparison that FX-converts a vendor's list
+// price produces a figure no buyer is ever quoted - which is the specific defect this section was
+// written to close, after the model briefly did exactly that.
+//
+// The consequence for consumers: pick the row whose currency and region match the market being
+// served. Do not convert. extdeps.currency.ecb_reference_rate remains correct for euros actually
+// SPENT, and is wrong for euros merely QUOTED.
+
+type HetznerCloudRegion
+  = Helsinki
+  | Nuremberg
+
+fn hetzner_cloud_region_label(r: HetznerCloudRegion) -> NonEmptyStr {
+  match r {
+    Helsinki => "Helsinki (hel1)",
+    Nuremberg => "Nuremberg (nbg1)",
+  }
+}
+
+// WHETHER THE THING CAN BE BOUGHT, which is a different question from what it costs and the one
+// that decides whether a rate bounds anything at all. A count is carried where a count was seen,
+// because "four units left" and "cannot be selected" are different strengths of evidence and
+// collapsing them into a boolean would discard the stronger one.
+type HetznerCloudAvailability
+  = UnitsAvailable { count: Int, observation: NonEmptyStr }
+  | NotOrderable { observation: NonEmptyStr }
+  | AvailabilityUnobserved { obligation: NonEmptyStr }
+
+fn availability_is_orderable(a: HetznerCloudAvailability) -> Bool {
+  match a {
+    UnitsAvailable { count, observation } => count > 0,
+    NotOrderable { observation } => false,
+    AvailabilityUnobserved { obligation } => false,
+  }
+}
+
+fn availability_is_observed(a: HetznerCloudAvailability) -> Bool {
+  match a {
+    UnitsAvailable { count, observation } => true,
+    NotOrderable { observation } => true,
+    AvailabilityUnobserved { obligation } => false,
+  }
+}
+
+type HetznerCloudListedRow {
+  wire_label: NonEmptyStr
+  cpu_architecture: Architecture
+  vcpus: HardwareThreadCount
+  memory_bytes: ByteSize
+  disk_bytes: ByteSize
+  hourly_micro: Int
+  monthly_micro: Int
+  currency: CurrencyCode
+  regions_observed: List<HetznerCloudRegion>
+  availability: HetznerCloudAvailability
+  observation: NonEmptyStr
+}
+
+data hetzner_cloud_console_observation: NonEmptyStr = "Operator reading of the signed-in Hetzner Cloud console, 2026-09-05 and 2026-09-06, relayed into session quiet-cat-23. Prices as displayed, excl. VAT. WHAT DETERMINED THE DISPLAY CURRENCY WAS NOT RECORDED - an account billing country, a console selector, or a region default would each produce a dollar figure and they are not the same fact. The rows are therefore carried as USD-quoted-to-this-account rather than as the vendor's universal dollar price, and a consumer serving a differently-billed market must re-read rather than reuse. Memory is recorded in GIBIBYTES following cax41_catalog above, which reads this vendor's GB suffix as binary; the vendor's own suffix is not repeated here so the two rows cannot drift apart on the byte basis."
+
+data hetzner_cax_line_unavailable: HetznerCloudAvailability = NotOrderable {
+  observation: "Operator, 2026-09-06: no CAX instance of any size could be ordered in Helsinki or Nuremberg. Read together with the 2026-09-05 observation that the arm COST OPTIMIZED tier rendered greyed out, and with the dedicated-server listing carrying no arm product at all, this is the same architecture unpurchasable across every surface this vendor offers, in two regions, on consecutive days. WHAT IS STILL NOT ESTABLISHED: this remains ONE account's view; a provisioning freeze, an account-tier gate, a quota, or a migration would each present identically to exhausted capacity, and none has been excluded.",
+}
+
+data hetzner_cx_larger_sizes_unavailable: HetznerCloudAvailability = NotOrderable {
+  observation: "Operator, 2026-09-06: of the CX line only cx23 could be ordered in either region.",
+}
+
+data hetzner_cx23_scarce: HetznerCloudAvailability = UnitsAvailable {
+  count: 4,
+  observation: "Operator, 2026-09-06: EXACTLY FOUR cx23 units available across Helsinki and Nuremberg - the operator's reading is that this is effectively zero and the remainder is permanently reserved. WHETHER THE FOUR ARE PER REGION OR SHARED ACROSS BOTH WAS NOT RECORDED, so the count is a lower bound on nothing and an upper bound of four per region. THIS IS THE MOST INFORMATIVE SUPPLY EVIDENCE IN THIS MODULE and the reason it is carried as a count rather than a flag - but it is evidence about the PURCHASING INTERFACE this account was shown, not directly about physical inventory, and the difference is not pedantic. A per-account or per-project QUOTA renders an exact remaining count just as readily as exhausted stock does, and so does a soft cap applied to new or unverified accounts. So the honest reading is that four units is what this account may currently order, which bounds what THIS buyer can purchase and does not by itself establish what the vendor has. It is still a stronger fact than a greyed control, because a greyed control carries no quantity at all. WHAT WOULD DISCRIMINATE: the same reading from a second, differently-provisioned account, or the vendor's own capacity or quota documentation.",
+}
+
+// THE ROWS. Helsinki and Nuremberg quoted IDENTICAL hourly and monthly figures on every size where
+// both were read, so each row carries the list of regions it was observed in rather than being
+// duplicated per region - two rows holding one price is the fork DESIGN section 3 forbids, and the
+// regions list keeps the observation's real breadth without inviting them to drift.
+data hetzner_regions_read: List<HetznerCloudRegion> = [Helsinki, Nuremberg]
+
+data cax11_listed: HetznerCloudListedRow = HetznerCloudListedRow {
+  wire_label: "cax11", cpu_architecture: Aarch64,
+  vcpus: hardware_thread_count(2), memory_bytes: byte_size(4294967296), disk_bytes: byte_size(42949672960),
+  hourly_micro: 11000, monthly_micro: 6990000, currency: Usd,
+  regions_observed: hetzner_regions_read, availability: hetzner_cax_line_unavailable,
+  observation: hetzner_cloud_console_observation,
+}
+
+data cax21_listed: HetznerCloudListedRow = HetznerCloudListedRow {
+  wire_label: "cax21", cpu_architecture: Aarch64,
+  vcpus: hardware_thread_count(4), memory_bytes: byte_size(8589934592), disk_bytes: byte_size(85899345920),
+  hourly_micro: 20000, monthly_micro: 12490000, currency: Usd,
+  regions_observed: hetzner_regions_read, availability: hetzner_cax_line_unavailable,
+  observation: hetzner_cloud_console_observation,
+}
+
+data cax31_listed: HetznerCloudListedRow = HetznerCloudListedRow {
+  wire_label: "cax31", cpu_architecture: Aarch64,
+  vcpus: hardware_thread_count(8), memory_bytes: byte_size(17179869184), disk_bytes: byte_size(171798691840),
+  hourly_micro: 40000, monthly_micro: 24990000, currency: Usd,
+  regions_observed: hetzner_regions_read, availability: hetzner_cax_line_unavailable,
+  observation: hetzner_cloud_console_observation,
+}
+
+data cax41_listed: HetznerCloudListedRow = HetznerCloudListedRow {
+  wire_label: "cax41", cpu_architecture: Aarch64,
+  vcpus: hardware_thread_count(16), memory_bytes: byte_size(34359738368), disk_bytes: byte_size(343597383680),
+  hourly_micro: 78000, monthly_micro: 48490000, currency: Usd,
+  regions_observed: hetzner_regions_read, availability: hetzner_cax_line_unavailable,
+  observation: "As hetzner_cloud_console_observation, with one narrowing: the HOURLY figure was read in both regions and agreed, but the MONTHLY cap was captured only from the Nuremberg listing - the Helsinki row was truncated at the hourly rate in the reading relayed. The monthly figure is therefore Nuremberg's, and the regions list is honest about where the hourly was seen rather than asserting the cap was checked twice. THIS ROW IS THE ONE THE COMPARISON TURNS ON: 48.49 USD per month against an hourly-times-730 extrapolation of 56.94, so this vendor's monthly cap sits about fifteen per cent below the extrapolation - which is exactly the correction the hourly_extrapolation_caveat in strategy.node_rental exists to force, and the reason a cap must be read rather than derived.",
+}
+
+data cx23_listed: HetznerCloudListedRow = HetznerCloudListedRow {
+  wire_label: "cx23", cpu_architecture: X86_64,
+  vcpus: hardware_thread_count(2), memory_bytes: byte_size(4294967296), disk_bytes: byte_size(42949672960),
+  hourly_micro: 10000, monthly_micro: 6490000, currency: Usd,
+  regions_observed: hetzner_regions_read, availability: hetzner_cx23_scarce,
+  observation: hetzner_cloud_console_observation,
+}
+
+data cx33_listed: HetznerCloudListedRow = HetznerCloudListedRow {
+  wire_label: "cx33", cpu_architecture: X86_64,
+  vcpus: hardware_thread_count(4), memory_bytes: byte_size(8589934592), disk_bytes: byte_size(85899345920),
+  hourly_micro: 16000, monthly_micro: 9990000, currency: Usd,
+  regions_observed: hetzner_regions_read, availability: hetzner_cx_larger_sizes_unavailable,
+  observation: hetzner_cloud_console_observation,
+}
+
+data cx43_listed: HetznerCloudListedRow = HetznerCloudListedRow {
+  wire_label: "cx43", cpu_architecture: X86_64,
+  vcpus: hardware_thread_count(8), memory_bytes: byte_size(17179869184), disk_bytes: byte_size(171798691840),
+  hourly_micro: 30000, monthly_micro: 18490000, currency: Usd,
+  regions_observed: hetzner_regions_read, availability: hetzner_cx_larger_sizes_unavailable,
+  observation: hetzner_cloud_console_observation,
+}
+
+data cx53_listed: HetznerCloudListedRow = HetznerCloudListedRow {
+  wire_label: "cx53", cpu_architecture: X86_64,
+  vcpus: hardware_thread_count(16), memory_bytes: byte_size(34359738368), disk_bytes: byte_size(343597383680),
+  hourly_micro: 56000, monthly_micro: 34990000, currency: Usd,
+  regions_observed: hetzner_regions_read, availability: hetzner_cx_larger_sizes_unavailable,
+  observation: hetzner_cloud_console_observation,
+}
+
+fn hetzner_cloud_listed_catalog() -> List<HetznerCloudListedRow> {
+  [ cax11_listed, cax21_listed, cax31_listed, cax41_listed,
+    cx23_listed, cx33_listed, cx43_listed, cx53_listed ]
+}
+
+fn hetzner_cloud_orderable_rows() -> List<HetznerCloudListedRow> {
+  filter(hetzner_cloud_listed_catalog(), r => availability_is_orderable(a: r.availability))
+}
+
+// A RATE BOUNDS A COMPETITOR'S COSTS ONLY IF THE CAPACITY CAN BE BOUGHT. This predicate is the
+// whole content of the supply observations above: every arm row in this module currently answers
+// false, so nothing may cite this vendor's arm pricing as a purchasable floor.
+fn admissible_as_purchasable_floor(r: HetznerCloudListedRow) -> Bool {
+  availability_is_orderable(a: r.availability)
+}
+
+fn hetzner_cloud_arm_rows_orderable() -> Bool {
+  any(hetzner_cloud_listed_catalog(), r => match r.cpu_architecture {
+    Aarch64 => availability_is_orderable(a: r.availability),
+    X86_64 => false, X86 => false, Arm => false, Armv7 => false, Mips => false,
+    Mipsel => false, Mips64 => false, Mips64el => false, Riscv64 => false, Wasm32 => false,
+  })
 }
