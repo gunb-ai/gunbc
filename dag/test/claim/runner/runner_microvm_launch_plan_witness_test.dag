@@ -166,3 +166,33 @@ test fn an_owned_cell_with_a_sufficient_credential_admits_and_carries_the_mint()
     _ => false
   }
 }
+
+// DIAGNOSTIC ARM PROBES. These name which arm the admitting fixture actually reaches, so one lane
+// run identifies it instead of one run per guess. They are deleted once the fixture is correct.
+test fn diag_admitting_fixture_is_refused_config() -> Bool {
+  match planned(owned: true, topology: VmmIsMainProcess, intent: cannot_orphan_intent, listener_is_main_process: true) {
+    LaunchRefusedConfig { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn diag_admitting_fixture_is_refused_admission() -> Bool {
+  match planned(owned: true, topology: VmmIsMainProcess, intent: cannot_orphan_intent, listener_is_main_process: true) {
+    LaunchRefusedAdmission { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn diag_admitting_fixture_is_refused_cell() -> Bool {
+  match planned(owned: true, topology: VmmIsMainProcess, intent: cannot_orphan_intent, listener_is_main_process: true) {
+    LaunchRefusedCell { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn diag_admitting_fixture_is_refused_credential() -> Bool {
+  match planned(owned: true, topology: VmmIsMainProcess, intent: cannot_orphan_intent, listener_is_main_process: true) {
+    LaunchRefusedCredential { organization: _, unsatisfied: _ } => true
+    _ => false
+  }
+}
