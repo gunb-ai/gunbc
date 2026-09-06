@@ -366,10 +366,45 @@ fn expand_transitive_services_loop(module_callees: List<ModuleCallees>, registry
   }
 }
 
-fn expand_transitive_services(modules: List<TypedModule>, registry: Map<String, ItemInfo>, remaining_passes: Int) -> ServiceEffectAnalysis {
+// THE BOUND IS DERIVED, BECAUSE A CHOSEN ONE TRUNCATES.
+//
+// This used to run a fixed five passes. Five is a guess about how deep a call chain gets, and a
+// chain deeper than the guess stopped mid-propagation -- so callers above the cut emitted without
+// the service parameter their callees required. The loop already checks CONVERGENCE before it
+// checks the budget, so the budget was never what made this terminate; it only decided when to
+// stop early.
+//
+// Termination does not need a guess. Each pass that does not converge strictly increases
+// total_service_count -- expand_transitive_services_once only ever adds names to an item's set,
+// never removes -- and that total is bounded above by (item count x distinct service count),
+// because an item's set holds distinct names drawn from that fixed alphabet. So a bound of that
+// product cannot be reached before the ascent has stopped growing, which is exactly what
+// convergence tests. The budget is now a TERMINATION GUARD over a monotone lattice ascent rather
+// than a cut across the answer.
+//
+// ExpansionBudgetExhausted therefore stays, and stays blocking, even though the argument above
+// says it cannot fire: it is the arm that refuses if that argument is ever wrong. Deleting it
+// would make a violated invariant silent, which is the state DESIGN section 5 forbids -- and the
+// bound is derived from data the caller supplies, so "cannot fire" is a proof about today's
+// producers, not a property of the type.
+fn expansion_pass_bound(registry: Map<String, ItemInfo>) -> Int {
+  let item_count = registry |> map_keys |> count
+  let distinct_services = registry |> map_keys |> fold(init: [], f: (acc, key) =>
+    match map_get(registry, key) {
+      Present { value: info } =>
+        info.service_names |> fold(init: acc, f: (inner, svc) =>
+          if inner |> any(s => s == svc) { inner } else { list_push(inner, svc) }
+        )
+      Absent => acc
+    }
+  )
+  item_count * (distinct_services |> count) + 1
+}
+
+fn expand_transitive_services(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> ServiceEffectAnalysis {
   let module_callees = build_module_callees(modules: modules)
   let unresolved = unresolved_callee_edges(module_callees: module_callees)
-  let closed = expand_transitive_services_loop(module_callees: module_callees, registry: registry, remaining_passes: remaining_passes)
+  let closed = expand_transitive_services_loop(module_callees: module_callees, registry: registry, remaining_passes: expansion_pass_bound(registry: registry))
   match closed {
     EffectsComplete { registry: closed_registry } =>
       if unresolved |> count == 0 { EffectsComplete { registry: closed_registry } }

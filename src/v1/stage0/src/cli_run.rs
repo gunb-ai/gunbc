@@ -13920,7 +13920,8 @@ pub struct ResolveStageNanos {
     pub assembly_diagnostics: u128,
     /// `item_registry` merge fold across the closure's typed modules.
     pub assembly_registry: u128,
-    /// `expand_transitive_services` (bounded 5-pass fixpoint over every bodied item).
+    /// `expand_transitive_services` (monotone fixpoint over every bodied item, under a bound
+    /// derived from the registry rather than a chosen pass count).
     pub assembly_services: u128,
     /// The three `rewire_*` passes (type-env parents, import-str identity, func-env parents).
     pub assembly_rewire: u128,
@@ -15280,7 +15281,7 @@ fn finish_resolved_graph_assembly(
     resolve_stage_slot_add(|s| s.assembly_registry += registry_started.elapsed().as_nanos());
     let services_started = std::time::Instant::now();
     let effect_analysis =
-        v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry, 5);
+        v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry);
     // Mirrors typecheck_with_census_extra: the registry is reachable only through the complete arm,
     // and an incomplete summary carries its causes onto the graph's diagnostics rather than being
     // unwrapped into something indistinguishable from a fixed point.

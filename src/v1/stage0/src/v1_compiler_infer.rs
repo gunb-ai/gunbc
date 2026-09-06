@@ -25659,7 +25659,6 @@ pub fn typecheck_with_census_extra(
         let analysis = crate::v1_compiler_infer_service::expand_transitive_services(
             modules.clone(),
             state.item_registry.clone(),
-            5,
         );
         let analysed_registry = match (*analysis.clone()).clone() {
             ServiceEffectAnalysis::EffectsComplete {

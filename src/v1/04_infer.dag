@@ -13760,7 +13760,7 @@ fn typecheck_with_census_extra(graph: ModuleGraph, source_indices: Map<String, N
       Absent => []
     }
   )
-  let analysis = expand_transitive_services(modules: modules, registry: state.item_registry, remaining_passes: 5)
+  let analysis = expand_transitive_services(modules: modules, registry: state.item_registry)
   let analysed_registry = match analysis {
     EffectsComplete { registry: registry } => registry
     EffectsIncomplete { partial: partial, causes: _ } => partial

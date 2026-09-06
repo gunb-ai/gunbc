@@ -10,9 +10,7 @@ import tools.multi_module_compile_fixture {
   FixtureCompileCompleted,
   FixtureSource,
   fixture_source,
-  compile_fixture,
-  fixture_blocking_rows,
-  fixture_has_class
+  compile_fixture
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -50,14 +48,6 @@ fn shallow_run() -> MultiModuleCompileFixtureOutcome {
   })
 }
 
-fn refused_blocking(o: MultiModuleCompileFixtureOutcome) -> Bool {
-  match o {
-    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
-      count(fixture_blocking_rows(rows)) > 0,
-    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
-    FixtureInstrumentRefused { cause: c } => false
-  }
-}
 
 fn completed(o: MultiModuleCompileFixtureOutcome) -> Bool {
   match o {
@@ -68,15 +58,34 @@ fn completed(o: MultiModuleCompileFixtureOutcome) -> Bool {
   }
 }
 
-// THE DISCRIMINATING RED. A call chain deeper than the pass budget refuses rather than publishing
-// the truncated summary. At the previous behaviour this same source compiled and emitted a panic
-// seam in the functions above the cut.
-test fn chain_deeper_than_the_pass_budget_refuses() -> Bool {
-  refused_blocking(deep_run())
+// WHAT THIS WITNESS ESTABLISHES NOW, AND WHAT IT DOES NOT.
+//
+// The pass budget used to be the literal 5. A chain deeper than that stopped mid-propagation and
+// the callers above the cut emitted without the service parameter their callees required. The
+// first repair made that exhaustion REFUSE, which replaced a silent truncation with a loud one --
+// and the loud one blocked the generated-artifact actuator, because the live corpus is deeper than
+// five. The budget is now DERIVED (expansion_pass_bound): the ascent is monotone, so a bound of
+// item count x distinct service count cannot be reached before convergence has already stopped it.
+// A chain deeper than any chosen number therefore converges rather than truncating or refusing.
+//
+// So the old RED is no longer authorable: there is no depth at which the budget cuts. Per DESIGN
+// section 4b(4) the probe does not retire -- it flips to a permanent regression control, which is
+// what these two tests are. Reintroducing a chosen pass count turns the deep one red again.
+//
+// THE CEILING, STATED BECAUSE IT IS NOT OBVIOUS. Neither test establishes that the service reached
+// the TOP of the chain. compile_fixture returns emitted file names and diagnostic census rows; it
+// returns no emitted contents and no rustc result, so the signature of f0 is not observable here
+// and the original defect -- which COMPLETED, emitting an unrealized-host-seam panic with no
+// diagnostic at all -- would satisfy `completed` exactly as the repair does. What these controls
+// discriminate is the refusing and the truncating-at-a-chosen-depth behaviours, not the emitted
+// parameter list. The next-rung trigger is a fixture instrument that can assert over emitted
+// content; until it exists this class is a regression control and is reported as one.
+test fn chain_deeper_than_any_chosen_pass_count_still_converges() -> Bool {
+  completed(deep_run())
 }
 
-// THE POSITIVE CONTROL. The same shape within the budget reaches its fixed point and emits.
-// Without this the RED above is satisfied by an analysis that reports incomplete for every chain.
-test fn chain_within_the_pass_budget_still_emits() -> Bool {
+// THE SHALLOW CONTROL. Without it the test above is satisfied by an analysis that never refuses
+// anything, including one that has stopped propagating altogether.
+test fn chain_within_a_single_pass_still_emits() -> Bool {
   completed(shallow_run())
 }
