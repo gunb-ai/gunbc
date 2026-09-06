@@ -49,6 +49,7 @@ import gunbc.runner_service_activation { runner_activation_reachability_stall, r
 import gunbc.declaration_index_seed_growth { declaration_index_fixture_exemption_classification_stall }
 import gunbc.guarantee_stall.floor_cost_basis_boundedness_stall { floor_cost_basis_boundedness_stall }
 import gunbc.guarantee_stall.algebra_application_owner_resolution_stall { algebra_application_owner_resolution_stall }
+import gunbc.guarantee_stall.lambda_pattern_parameter_binding_stall { lambda_pattern_parameter_binding_stall }
 
 // THE COHORT PROVENANCE NOTES BELOW WERE AUTHORED WHEN EVERY ROW SAT IN ONE FILE, and they are
 // carried here verbatim rather than split across the row modules they describe. Their membership
@@ -193,6 +194,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   floor_cost_basis_boundedness_stall,
   axis_list_re_enumerates_its_variant_type_stall,
   algebra_application_owner_resolution_stall,
+  lambda_pattern_parameter_binding_stall,
 ]
 
 // THE FOUR SUBJECTS RESTORED TO THE ROSTER, PINNED BY IDENTITY SO THEIR LOSS REFUSES.

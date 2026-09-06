@@ -1,0 +1,31 @@
+module gunbc.guarantee_stall.lambda_pattern_parameter_binding_stall
+
+import v2.std.algebra { Cons, Empty }
+import gunbc.guarantee_rung { OutsideTheLadder, StructurallyImpossible }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+
+// Pattern-bound collections and callables currently lose their lambda parameter before
+// member access or application.  The field and scope diagnostics are retained as specimens;
+// this row records the shared binding boundary without claiming that the two presentations
+// have already been proven identical.
+data lambda_pattern_parameter_binding_stall: GuaranteeStall = GuaranteeStall {
+  subject: "match-pattern-bound collections or callables consumed through lambda parameters",
+  current: OutsideTheLadder,
+  ceiling: StructurallyImpossible,
+  blocker: AwaitsOneGrounding {
+    grounding: "a collection or callable bound by a match pattern remains available through member access or application in the lambda body"
+  },
+  population: BoundedPopulation {
+    members: Cons {
+      head: "algebra_receiver_application_witness_test.dag and algebra_receiver_forwarding_witness_test.dag (field projection specimens)",
+      tail: Cons {
+        head: "algebra_receiver_callable_witness_test.dag (scope/application specimen; relationship to field projection remains unproven)",
+        tail: Cons {
+          head: "emission_provenance_test.dag:179 in the external provenance lane (decl_name-on-Empty specimen)",
+          tail: Empty {}
+        }
+      }
+    }
+  },
+  next_rung_trigger: climbs_when(capability: "a match-pattern-bound collection or callable survives into lambda-parameter member access or application, with the binding preserved at the consumer boundary")
+}
