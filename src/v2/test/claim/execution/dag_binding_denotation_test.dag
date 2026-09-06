@@ -12,6 +12,7 @@ import v2.compiler.self_host.direct_rust_door_fixture {
   direct_rust_door_ingest
 }
 import v2.extdeps.languages.dag {
+  dag_binding_denotation,
   dag_int_inhabitant_node,
   dag_int_type_binding,
   dag_language_model
@@ -33,9 +34,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // of the surface spelling "Int"). The positive control pins both the derivation and its evidence:
 // every canonical Int binding atom carries DerivedGrounding whose structural evidence is the dag
 // authority's Int inhabitant, and the census count (4) pins that the witness actually saw them.
-// The boundary control pins the rule's edge in the same tree: the bare operand atoms `x`/`y`,
-// which no authority declares a denotation for, remain GroundingNotDerived. Deleting the rule
-// reddens the positive control; widening the rule to unbound atoms reddens the boundary control.
+// The boundary control pins the rule's edge at the authority itself: dag_binding_denotation
+// declares no denotation for the operand bindings `x`/`y` -- the table is a lookup, not an
+// invention. (The operand atoms derive today, but by a different rule -- the binding-reference
+// derivation in infer_atom_grounding_rules_test.dag -- not by this one.) Deleting the rule
+// reddens the positive control; widening the table to operand bindings reddens the boundary
+// control.
 
 type BindingDenotationCensus {
   int_atoms: Int
@@ -140,11 +144,13 @@ test fn dag_binding_denotation_derives_int_binding_atoms_holds() -> Bool {
   }
 }
 
-test fn dag_binding_denotation_leaves_unbound_operand_atoms_on_the_frontier_holds() -> Bool {
-  match binding_denotation_specimen_inferred() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: inferred, diagnostics: _ } =>
-      let census = binding_denotation_census(inferred: inferred)
-      (census.operand_atoms == 2) && (census.operand_atoms_frontier == 2)
+test fn dag_binding_denotation_declares_no_denotation_for_operand_bindings_holds() -> Bool {
+  match dag_binding_denotation(sym: ^x) {
+    Present { value: _ } => false
+    Absent =>
+      match dag_binding_denotation(sym: ^y) {
+        Present { value: _ } => false
+        Absent => true
+      }
   }
 }

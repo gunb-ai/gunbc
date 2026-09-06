@@ -529,13 +529,16 @@ test fn ingested_classical_not_emit_source_arm_shape_holds() -> Bool {
   }
 }
 
-test fn ingested_classical_not_canonical_emit_refuses_underived_holds() -> Bool {
+test fn ingested_classical_not_canonical_emit_accepts_holds() -> Bool {
   match ingested_canonical_inferred_tree_from_source(source: ingested_classical_not_source) {
     Accepted { value: tree, diagnostics: _ } =>
       match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
-        Rejected { diagnostics: d } =>
-          d.head.reason == ^infer_grounding_not_derived
-        Accepted { value: _, diagnostics: _ } => false
+        Accepted { value: Medium { carried: source, fidelity: _ }, diagnostics: _ } =>
+          string_contains(s: source, pattern: "fn classical_not(x")
+            && string_contains(s: source, pattern: "!= ")
+            && string_contains(s: source, pattern: "true => 0")
+            && string_contains(s: source, pattern: "false => 1")
+        Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
   }
@@ -549,24 +552,25 @@ test fn ingested_classical_not_arrow_has_match_holds() -> Bool {
   ingested_arrow_has_match_body(source: ingested_classical_not_source)
 }
 
-fn ingested_classical_not_staging_emit_refuses_underived(source: String) -> Bool {
+fn ingested_classical_not_staging_emit_accepts(source: String) -> Bool {
   match ingested_staging_inferred_tree_from_source(source: source) {
     Accepted { value: tree, diagnostics: _ } =>
       match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
-        Rejected { diagnostics: d } =>
-          d.head.reason == ^infer_grounding_not_derived
-        Accepted { value: _, diagnostics: _ } => false
+        Accepted { value: Medium { carried: emitted, fidelity: _ }, diagnostics: _ } =>
+          string_contains(s: emitted, pattern: "fn classical_not(x")
+            && string_contains(s: emitted, pattern: "!= ")
+        Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn ingested_classical_not_staging_emit_refuses_underived_holds() -> Bool {
-  ingested_classical_not_staging_emit_refuses_underived(source: ingested_classical_not_source)
+test fn ingested_classical_not_staging_emit_accepts_holds() -> Bool {
+  ingested_classical_not_staging_emit_accepts(source: ingested_classical_not_source)
 }
 
-test fn ingested_classical_not_staging_swapped_emit_refuses_underived_holds() -> Bool {
-  ingested_classical_not_staging_emit_refuses_underived(source: ingested_classical_not_swapped_source)
+test fn ingested_classical_not_staging_swapped_emit_accepts_holds() -> Bool {
+  ingested_classical_not_staging_emit_accepts(source: ingested_classical_not_swapped_source)
 }
 
 test fn emit_host_classical_not_ingested_equals_eval_holds() -> Bool {
@@ -669,10 +673,15 @@ test fn ingested_classical_not_match_only_param_scrutinee_infer_refuses_holds() 
 // KERNEL-D TESTING RE-STEER (operator direction, 2026-07-24): per-PR layer-boundary mock proof for
 // the classical_not cutover's emit-to-text half — ingested_emit_shape_frontier_tree_from_source
 // (orch-emit-compatible empty facts map) -> assert emitted Rust TEXT (string compare, no compile).
-// ingested_canonical_inferred_tree_from_source is the pure infer carrier;
-// ingested_classical_not_canonical_emit_refuses_underived_holds and
-// ingested_classical_not_staging_emit_refuses_underived_holds witness translate refuses recorded
-// GroundingNotDerived. Wet/nightly emit-vs-eval legs use
+// ingested_canonical_inferred_tree_from_source is the pure infer carrier.
+// FRONTIER CLOSED (2026-09-06, grounding-frontier branch): the specimen's real-infer tree fully
+// derives — the grammar-production roster grounds the module identity atom, the binding-reference
+// rule grounds the parameter atom from the arrow domain, and the product rules compose the rest —
+// so ingested_classical_not_canonical_emit_accepts_holds and
+// ingested_classical_not_staging_emit_accepts_holds now witness that emit ACCEPTS the canonical
+// and staging trees and pins the emitted text's shape (the same shape the frontier-path witnesses
+// pin). The translate-refuses-underived behavior stays enrolled on hand-staged frontier fixtures
+// in translate_underived_refusal_test.dag. Wet/nightly emit-vs-eval legs use
 // ingested_wet_emit_eval_composed_tree_from_source (composed facts on every lookup — emit accepts,
 // eval admits); shape-frontier stays emit-only. Deliberately excludes wet legs from per-PR
 // CommitCheckEnrollment.

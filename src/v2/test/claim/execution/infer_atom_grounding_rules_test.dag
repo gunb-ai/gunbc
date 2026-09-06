@@ -34,7 +34,7 @@ import v2.std.optional { Absent, optional_present, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE ENROLLED CONTROLS FOR THE ATOM-GROUNDING ROSTER DERIVATIONS (`v2.compiler.infer`
+// THE ENROLLED CONTROLS FOR THE THREE ATOM-GROUNDING DERIVATIONS (`v2.compiler.infer`
 // infer_node_facts): each is a lookup into a declared authority, never an invention.
 //   - canonical-operations roster: the resolver canonicalizes surface operators to the
 //     target-model authority's declared operations; the wire atoms (the AlgebraPrimitive
@@ -43,13 +43,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //   - grammar-productions roster: the bridge projects a production's parse into (identity atom,
 //     captured content); the identity atom (dag_surface_module) is the production's declared
 //     emitted atom, and derives with the grammar roster root as evidence.
+//   - binding references: an operand atom (x, y) derives with the type its enclosing arrow's
+//     domain declares for its binding -- the declaration-site annotation, itself derived.
 // The specimen is the direct-rust-door fixture's ingest. Each control pins BOTH the derivation
 // and the evidence identity, and the census pins that the witness saw the population. The
-// boundary control pins that a bare atom with no authority membership stays on the frontier, and
-// the closing control pins the specimen state after these two rules: exactly two frontier nodes
-// of fifteen (the operand atoms, grounded by the binding-reference rule in a later change).
-// Deleting a rule reddens its control; widening a rule to non-members reddens the boundary
-// control.
+// boundary control pins that a bare atom with no authority membership and no domain declaration
+// stays on the frontier. The closing control pins the specimen's full closure: zero frontier
+// nodes of fifteen. Deleting a rule reddens its control; widening a rule to non-members reddens
+// the boundary control.
 
 fn atom_grounding_specimen_inferred() -> Outcome<InferredTree> {
   match assemble_program_from_ingest(
@@ -129,6 +130,43 @@ test fn grammar_productions_roster_grounds_module_atom_holds() -> Bool {
   }
 }
 
+fn is_domain_int_binding_evidence(inferred: InferredTree, n: Node) -> Bool {
+  match atom_grounding_node_evidence(inferred: inferred, n: n) {
+    Absent => false
+    Present { value: evidence } =>
+      match evidence.kind {
+        TypeNode { connective: Atom { identity: id } } => id == ^dag_binding_type_int
+        _ => false
+      }
+  }
+}
+
+fn is_operand_atom(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      (id == ^x) || (id == ^y)
+    _ => false
+  }
+}
+
+test fn binding_reference_derives_parameter_atoms_holds() -> Bool {
+  match atom_grounding_specimen_inferred() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      fold_list(
+        xs: node_subtree_nodes(root: inferred.root),
+        empty: 0,
+        cons: fn(acc, n) {
+          if is_operand_atom(n: n) && is_domain_int_binding_evidence(inferred: inferred, n: n) {
+            acc + 1
+          } else {
+            acc
+          }
+        }
+      ) == 2
+  }
+}
+
 test fn atom_rules_leave_unbound_atom_on_the_frontier_holds() -> Bool {
   let unbound = Node {
     kind: TypeNode { connective: Atom { identity: ^no_authority_declares_this_symbol } },
@@ -149,10 +187,10 @@ test fn atom_rules_leave_unbound_atom_on_the_frontier_holds() -> Bool {
   }
 }
 
-test fn atom_rules_leave_only_operand_atoms_on_the_door_frontier_holds() -> Bool {
+test fn door_specimen_fully_derives_holds() -> Bool {
   match atom_grounding_specimen_inferred() {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
-      atom_grounding_census_frontier(inferred: inferred) == 2
+      atom_grounding_census_frontier(inferred: inferred) == 0
   }
 }

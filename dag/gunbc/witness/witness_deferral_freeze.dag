@@ -549,7 +549,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     entry: "src/v2/test/claim/execution/long/emit_host_classical_not_ingested_equals_eval_test.dag",
     functions: [
       "ingested_classical_not_eval_subgraph_canonical_octet_zero_holds",
-      "ingested_classical_not_staging_swapped_emit_refuses_underived_holds",
+      "ingested_classical_not_staging_swapped_emit_accepts_holds",
       "emit_host_classical_not_ingested_swapped_refuses_holds",
       "ingested_classical_not_real_infer_holds",
       "ingested_classical_not_match_only_param_scrutinee_infer_refuses_holds",
