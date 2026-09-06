@@ -15,34 +15,35 @@ import v2.std.diagnostic {
 }
 import v2.std.node { Node, Symbol }
 
-// THE PER-STAGE VERDICT INSTRUMENT `v2.workflow.floor_expected_red` NAMES AS THE REPRODUCIBLE
-// PRODUCER of its add-slice receipt. That receipt was measured once, at main 3a8344b5c, by a
-// throwaway probe: `infer(dag_add_emitted_root)` answered `infer_accepted` while
+// THE PER-STAGE VERDICT INSTRUMENT `v2.workflow.floor_expected_red` NAMED AS THE REPRODUCIBLE
+// PRODUCER of its add-slice receipt, before that row greened and the note deleted itself per its
+// own dissolution statement. That receipt was measured once, at main 3a8344b5c, by a throwaway
+// probe: `infer(dag_add_emitted_root)` answered `infer_accepted` while
 // `generate_translate_self_emit_candidate` over the same root and `dag_add_target_model` refused
-// headed by `infer_grounding_not_derived`. No `.dag` entry re-derived it, so a reader could not
-// re-run it; this module is the standing entry, parameterized over the one root and target so
-// the seam is measured, never transcribed (DESIGN section 6).
+// headed by `infer_grounding_not_derived`. This module is the standing entry, parameterized over
+// the one root and target so the seam is measured, never transcribed (DESIGN section 6).
 //
 // THE VERDICT VOCABULARY IS THE RECEIPT'S. `infer_verdict` is `infer_accepted` or
 // `infer_rejected`. `composition_verdict` is `candidate_accepted` when the infer-then-translate
-// composition accepts, and otherwise the rejection's head reason -- today
+// composition accepts, and otherwise the rejection's head reason -- for the add slice that was
 // `infer_grounding_not_derived`, the typed frontier `v2.compiler.infer`
-// `node_grounding_frontier_note` declares: infer derives grounding for four of the closed
-// vocabulary's twelve kinds and records GroundingNotDerived for the rest, which
-// `translate_grounding_derived_gate_subtree` then refuses.
+// `node_grounding_frontier_note` declares, until the declared-inhabitant membership derivation
+// (`infer_node_declared_in_dag_inhabitants`) landed: the slice's ten type-spine nodes are all
+// declared in the dag language authority's declared-inhabitants roster, so they derive by lookup
+// and the composition accepts clean.
 //
-// THE CARRIED-REASONS FIELDS ARE THE LOAD-BEARING HALF THE VERDICT SYMBOLS CANNOT SAY. Infer
-// ACCEPTS this root while CARRYING the frontier diagnostic on its accepted path, so the enrolled
-// witness's `d == None` conjunct fails even where the composition reaches acceptance -- the
-// roster note's "both conjuncts fail for the one cause". `infer_carried_reasons` surfaces what
-// infer carried; `composition_carried_reasons` is the composition's accepted-path diagnostics or,
-// on refusal, the full rejection chain head-first (which bind_outcome prefixes with infer's
-// pending diagnostics, so today it is the one frontier reason repeated).
+// THE CARRIED-REASONS FIELDS ARE THE LOAD-BEARING HALF THE VERDICT SYMBOLS CANNOT SAY. Before the
+// membership derivation, infer ACCEPTED this root while CARRYING the frontier diagnostic on its
+// accepted path, so the enrolled witness's `d == None` conjunct failed even where the composition
+// reached acceptance. `infer_carried_reasons` surfaces what infer carried;
+// `composition_carried_reasons` is the composition's accepted-path diagnostics or, on refusal,
+// the full rejection chain head-first (which bind_outcome prefixes with infer's pending
+// diagnostics). For the add slice both are now empty, and the flipped witness pins that.
 //
-// THIS INSTRUMENT DOES NOT RETIRE WHEN THE ADD-SLICE STALL
-// (`gunbc.guarantee_stall.self_host_candidate_generation_add_slice_stall`) DISSOLVES. It is the
-// standing measurement of a production seam, and its verdicts flipping to
-// `candidate_accepted` with empty carried lists is the signal the stall's trigger fired. It
+// THIS INSTRUMENT DID NOT RETIRE WHEN THE ADD-SLICE STALL
+// (`gunbc.guarantee_stall.self_host_candidate_generation_add_slice_stall`) NARROWED. It is the
+// standing measurement of a production seam; its verdicts flipping to `candidate_accepted` with
+// empty carried lists was the signal the add-slice half of the stall's trigger had fired. It
 // retires only if the `generate_translate_self_emit_candidate` seam itself dissolves.
 
 type CandidateGenerationStageVerdicts {

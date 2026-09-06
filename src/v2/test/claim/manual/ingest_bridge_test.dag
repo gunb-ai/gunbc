@@ -10,7 +10,7 @@ import v2.compiler.ingest {
   parse_tree_to_target_model_bridge
 }
 import v2.compiler.infer { canonical_grounding_for_node, infer }
-import v2.compiler.translate { coerce_grounded_node }
+import v2.compiler.translate { coerce_grounded_node, target_serialize_source_from_model }
 import v2.compiler.parse {
   grammar_validate_for_parse,
   parse_production,
@@ -207,23 +207,33 @@ test fn ingest_bridge_to_canonical_holds() -> Bool {
   }
 }
 
-test fn ingest_identity_coercion_needs_roster_membership_not_derived_grounding() -> Bool {
+// FLIPPED 2026-09-06, in the change that landed the declared-inhabitant membership derivation
+// (v2.compiler.infer infer_node_declared_in_dag_inhabitants). Authored as
+// ingest_identity_coercion_needs_roster_membership_not_derived_grounding, it pinned that identity
+// coercion succeeds via the authored roster while canonical_grounding_for_node REJECTED the
+// roster member with infer_grounding_not_derived -- the isolation proving coercion does not read
+// derived grounding. That premise is gone: dag_fixture_emitted_add_fn is declared in the dag
+// authority's inhabitants roster, so its grounding now derives and canonical_grounding_for_node
+// ACCEPTS it. The coercion half is unchanged and remains this witness's claim; the
+// grounding-independence isolation now lives in the companion refusal witness below (a
+// roster-ABSENT source still refuses), not here.
+
+test fn ingest_identity_coercion_accepts_source_present_in_authored_roster() -> Bool {
   let source = dag_fixture_emitted_add_fn
   match infer(tree: source) {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
       match canonical_grounding_for_node(tree: inferred, node: source) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: grounding_r } =>
-          (grounding_r.head.reason == ^infer_grounding_not_derived)
-            && match coerce_grounded_node(
-              source: source,
-              tree: inferred,
-              target: ingest_fixture_model(
-                emitted: source,
-                spine_class: ^ingest_fixture_tok
-              )
-            ) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } =>
+          match coerce_grounded_node(
+            source: source,
+            tree: inferred,
+            target: ingest_fixture_model(
+              emitted: source,
+              spine_class: ^ingest_fixture_tok
+            )
+          ) {
               Rejected { diagnostics: _ } => false
               Accepted { value: coerced, diagnostics: _ } =>
                 (coerced.quality == Identity) && (coerced.target == source)
@@ -297,7 +307,17 @@ test fn ingest_fails_closed_on_unstamped_holds() -> Bool {
   }
 }
 
-test fn ingest_cross_language_compile_refuses_underived_holds() -> Bool {
+// FLIPPED 2026-09-06, in the change that landed the declared-inhabitant membership derivation
+// (v2.compiler.infer infer_node_declared_in_dag_inhabitants). Authored as
+// ingest_cross_language_compile_refuses_underived_holds, it pinned the frontier refusal
+// (infer_grounding_not_derived) on the dag same-language ingest path. The bridge recovers
+// dag_fixture_emitted_add_fn -- a declared inhabitant -- so infer now grounds the whole tree by
+// roster lookup and the compile ACCEPTS with no carried diagnostics. The oracle is the target
+// model's own serializer: the compiled source is byte-equal to the authority's serialization of
+// the same node, so the round trip is faithful by the authority's own measure, not by a
+// transcribed literal.
+
+test fn ingest_cross_language_compile_accepts_holds() -> Bool {
   match ingest_parse() {
     Accepted { value: tree, diagnostics: _ } =>
       match cross_language_compile(
@@ -305,9 +325,16 @@ test fn ingest_cross_language_compile_refuses_underived_holds() -> Bool {
         source_model: ingest_fixture_model(emitted: dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok),
         target_model: dag_target_model()
       ) {
-        Rejected { diagnostics: d } =>
-          d.head.reason == ^infer_grounding_not_derived
-        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
+        Accepted { value: source, diagnostics: d } =>
+          match target_serialize_source_from_model(
+            target: dag_target_model(),
+            emitted: dag_fixture_emitted_add_fn
+          ) {
+            Accepted { value: authority, diagnostics: ad } =>
+              (source.carried == authority.carried) && (d == None) && (ad == None)
+            Rejected { diagnostics: _ } => false
+          }
       }
     Rejected { diagnostics: _ } => false
   }
@@ -319,6 +346,6 @@ test fn ingest_bridge_realized() -> Bool {
     && ingest_fails_closed_off_frontier_holds()
     && ingest_fails_closed_ambiguous_holds()
     && ingest_fails_closed_on_unstamped_holds()
-    && ingest_cross_language_compile_refuses_underived_holds()
+    && ingest_cross_language_compile_accepts_holds()
 }
 

@@ -4,11 +4,25 @@ import v2.std.algebra { Cons, Empty }
 import gunbc.guarantee_rung { OutsideTheLadder, MechanicallyPreventable }
 import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
 
+// HISTORY, recorded because the trigger below only makes sense with it. This stall was authored
+// with a five-member population and a trigger whose causal clause read: derive grounding for the
+// Arrow, Conj and Atom kinds of the add fn, SO cross_language_compile stops carrying
+// infer_grounding_not_derived over the same-language python and typescript parse fixtures. The
+// add-fn half LANDED as the declared-inhabitant membership derivation (v2.compiler.infer
+// infer_node_declared_in_dag_inhabitants): the add slice's ten type-spine nodes are all declared
+// in the dag language authority's declared-inhabitants roster, so they derive by lookup, and
+// candidate_generation_translate_self_emit_dag_add_slice_holds passed -- the roster row deleted
+// itself per its own stale-quarantine arm. The causal clause was REFUTED BY EXECUTION: the four
+// round-trip members still red, and the cross_language_compile_refuses_canonical_underived control
+// confirms the refusal reason is unchanged. The parse fixtures' frontier is a different node
+// population -- grammar parse products, not language-authority inhabitants -- so the remaining
+// trigger names that population, not the add fn's spine.
+
 data self_host_candidate_generation_add_slice_stall: GuaranteeStall = GuaranteeStall {
-  subject: "self-host candidate generation, translation, and emission disagree on the add slice",
+  subject: "infer carries the grounding frontier over the python and typescript same-language parse fixtures, so the same-language round trips refuse",
   current: OutsideTheLadder,
   ceiling: MechanicallyPreventable,
   blocker: ClimbableButUnbuilt,
-  population: BoundedPopulation { members: Cons { head: "v2.test.execution.self_host_candidate_generation.candidate_generation_translate_self_emit_dag_add_slice_holds", tail: Cons { head: "v2.test.execution.emit_ingest_python_same_language_round_trip.emit_ingest_python_same_language_round_trip_holds", tail: Cons { head: "v2.test.execution.emit_ingest_python_same_language_round_trip.python_same_language_source_emit_round_trip_holds", tail: Cons { head: "v2.test.execution.emit_ingest_typescript_same_language_round_trip.emit_ingest_typescript_same_language_round_trip_holds", tail: Cons { head: "v2.test.execution.emit_ingest_typescript_same_language_round_trip.typescript_same_language_source_emit_round_trip_holds", tail: Empty {} } } } } } },
-  next_rung_trigger: climbs_when(capability: "candidate generation, translation, and self-emission agree on the add slice: infer derives grounding for the Arrow, Conj and Atom kinds of the add fn, so cross_language_compile stops carrying infer_grounding_not_derived over the same-language python and typescript parse fixtures")
+  population: BoundedPopulation { members: Cons { head: "v2.test.execution.emit_ingest_python_same_language_round_trip.emit_ingest_python_same_language_round_trip_holds", tail: Cons { head: "v2.test.execution.emit_ingest_python_same_language_round_trip.python_same_language_source_emit_round_trip_holds", tail: Cons { head: "v2.test.execution.emit_ingest_typescript_same_language_round_trip.emit_ingest_typescript_same_language_round_trip_holds", tail: Cons { head: "v2.test.execution.emit_ingest_typescript_same_language_round_trip.typescript_same_language_source_emit_round_trip_holds", tail: Empty {} } } } } },
+  next_rung_trigger: climbs_when(capability: "infer derives grounding for the grammar parse-tree node population of the python and typescript parse fixtures -- the parse-product kinds their cross_language_compile same-language round trips carry infer_grounding_not_derived over today")
 }

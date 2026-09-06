@@ -20,24 +20,28 @@ import v2.std.text { String, string_join }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE ADD-SLICE BINDING OF `v2.compiler.self_host.candidate_generation_stage_verdicts` -- the
-// instrument the `v2.workflow.floor_expected_red` add-slice roster note names as the producer of
-// its per-stage receipt. `add_slice_stage_verdicts` is the pure entry over the slice's own
+// instrument the `v2.workflow.floor_expected_red` add-slice roster note named as the producer of
+// its per-stage receipt, before that row greened and the note deleted itself per its own
+// dissolution statement. `add_slice_stage_verdicts` is the pure entry over the slice's own
 // fixture (`dag_add_emitted_root`, `dag_add_target_model`); `add_slice_stage_verdicts_entry` is
 // the runnable `gunbc run --function` form, exiting nonzero with the verdicts rendered while the
 // composition refuses, and ExitSuccess only when infer accepts clean and the composition accepts
 // clean -- the enrolled witness's green state.
 //
-// THE TWO WITNESSES ARE DELIBERATELY ASYMMETRIC. `add_slice_infer_accepts_holds` is a PERMANENT
-// positive control: infer accepting this root is the fact the roster note's structural account
-// could not establish, and it stays true after the repair lands.
-// `add_slice_composition_refuses_at_the_grounding_frontier_holds` pins TODAY's frontier state --
+// THE TWO WITNESSES ARE NOW BOTH PERMANENT REGRESSION CONTROLS. `add_slice_infer_accepts_holds`
+// was authored as the permanent positive control: infer accepting this root is the fact the
+// roster note's structural account could not establish, and it stays true after the repair.
+// `add_slice_composition_accepts_holds` was authored as
+// `add_slice_composition_refuses_at_the_grounding_frontier_holds`, pinning the frontier state --
 // composition refusal headed by `infer_grounding_not_derived`, with infer carrying that same
-// reason and nothing else -- so the instrument's composition arm has a discriminating consumer
-// (DESIGN section 5). It is expected to RED on the day
-// `gunbc.guarantee_stall.self_host_candidate_generation_add_slice_stall`'s trigger lands; the
-// repair rewrites it to assert `candidate_accepted` with empty carried lists -- the DESIGN 4b(4)
-// flip from frontier guard to permanent regression control -- in the same change that removes the
-// roster row.
+// reason and nothing else -- and flipped to assert the green state in the change that landed the
+// declared-inhabitant membership derivation (`v2.compiler.infer`
+// `infer_node_declared_in_dag_inhabitants`): the add slice's ten type-spine nodes are all declared
+// in the dag language authority's declared-inhabitants roster, so they derive by lookup. The flip
+// is the DESIGN 4b(4) move from frontier guard to permanent regression control, landed in the
+// same change that removed the roster row. The stall narrowed to its four python/typescript
+// round-trip members rather than dissolving: the membership derivation does not reach grammar
+// parse-product nodes, which is the remaining population's frontier.
 
 fn add_slice_stage_verdicts() -> CandidateGenerationStageVerdicts {
   candidate_generation_stage_verdicts(
@@ -98,13 +102,10 @@ test fn add_slice_infer_accepts_holds() -> Bool {
   add_slice_stage_verdicts().infer_verdict == ^infer_accepted
 }
 
-test fn add_slice_composition_refuses_at_the_grounding_frontier_holds() -> Bool {
+test fn add_slice_composition_accepts_holds() -> Bool {
   let verdicts = add_slice_stage_verdicts()
-  (verdicts.composition_verdict == ^infer_grounding_not_derived)
-    && !is_empty(xs: verdicts.infer_carried_reasons)
-    && fold_list(
-      xs: verdicts.infer_carried_reasons,
-      empty: true,
-      cons: fn(acc, reason) { acc && (reason == ^infer_grounding_not_derived) }
-    )
+  (verdicts.infer_verdict == ^infer_accepted)
+    && is_empty(xs: verdicts.infer_carried_reasons)
+    && (verdicts.composition_verdict == ^candidate_accepted)
+    && is_empty(xs: verdicts.composition_carried_reasons)
 }

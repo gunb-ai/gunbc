@@ -1,7 +1,7 @@
 module v2.compiler.infer
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.algebra { length, list_snoc_item }
+import v2.std.algebra { any, length, list_snoc_item }
 import v2.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
   partial_bounded_lattice_instances_in_tree
@@ -22,7 +22,8 @@ import v2.compiler.inferred_tree {
 import v2.extdeps.languages.dag {
   DagCanonicalBoolLiteral,
   DagCanonicalIntLiteral,
-  dag_canonical_literal_from_node
+  dag_canonical_literal_from_node,
+  dag_declared_inhabitants_root
 }
 import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
 import v2.std.collection {
@@ -87,6 +88,7 @@ import v2.std.node {
   loop_edge_contributes_to_iteration_fold,
   match_arm_body,
   match_arm_pattern,
+  node_subtree_nodes,
   well_formed,
 }
 import v2.std.node_query { find_named_child, node_positional_child_targets }
@@ -97,7 +99,7 @@ type AlgebraRef {
   witness: Node
 }
 
-data node_grounding_frontier_note: String = "GroundingNotDerived is v2's typed inference frontier, not a failure arm and not an escape hatch. v2 derives a node's type for exactly four of the closed vocabulary's twelve node kinds (Branch, Match, Loop, Transform add-shape only — 6 connectives + 6 behaviors = 12); the other eight kinds, and every other Transform shape, have no derivation rule yet. Before this carrier existed the nine were routed through solve_constraints with the singleton candidate set [root] under a predicate that reduces to root == root, and the resulting grounding carried the SOURCE NODE as its structural evidence — i.e. as the node's resolved type (inferred_facts_resolved_type reads that field), so every literal, binding and operation in v2 was typed as itself and every downstream consumer read that as an established judgment. Each frontier node now carries a typed, located, counted diagnostic (infer_grounding_not_derived) on the Accepted path, so the deficit's frequency is observable and prioritizable rather than zeroed by construction (DESIGN §5). dissolve-on: a behavior-specific derivation rule lands for a kind, at which point that kind moves to DerivedGrounding and its frontier count drops; the carrier deletes when all twelve kinds derive."
+data node_grounding_frontier_note: String = "GroundingNotDerived is v2's typed inference frontier, not a failure arm and not an escape hatch. v2 derives a node's type for exactly four of the closed vocabulary's twelve node kinds (Branch, Match, Loop, Transform add-shape only — 6 connectives + 6 behaviors = 12); the other eight kinds, and every other Transform shape, have no derivation rule yet. Above the kind rules sits one specimen-scope derivation: a node declared in the dag language authority's declared-inhabitants roster derives with that roster as its grounding evidence (infer_node_declared_in_dag_inhabitants) — the authority already fixes what its members denote, so the grounding is a lookup, not an invention; non-member specimens of every kind stay on the frontier unchanged. Before this carrier existed the nine were routed through solve_constraints with the singleton candidate set [root] under a predicate that reduces to root == root, and the resulting grounding carried the SOURCE NODE as its structural evidence — i.e. as the node's resolved type (inferred_facts_resolved_type reads that field), so every literal, binding and operation in v2 was typed as itself and every downstream consumer read that as an established judgment. Each frontier node now carries a typed, located, counted diagnostic (infer_grounding_not_derived) on the Accepted path, so the deficit's frequency is observable and prioritizable rather than zeroed by construction (DESIGN §5). dissolve-on: a behavior-specific derivation rule lands for a kind, at which point that kind moves to DerivedGrounding and its frontier count drops; the carrier deletes when all twelve kinds derive."
 
 fn infer_grounding_not_derived_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
@@ -460,6 +462,29 @@ fn concat_inferred_facts_entries(
 // remains the structural-solve authority named by dag/gunbc/plans/solve_higher_order_design.dag,
 // to be EXTENDED with real candidate generation, never forked.
 
+// THE DECLARED-INHABITANT MEMBERSHIP DERIVATION. The dag language authority's declared-inhabitants
+// roster (v2.extdeps.languages.dag dag_declared_inhabitants_root) already fixes what its members
+// denote — the add fn Arrow, the int inhabitant Conj, and the inhabitant and surface-spelling
+// Atoms are all declared there — so a node that IS a roster member derives its grounding by
+// LOOKUP, never by invention: the roster is the evidence, which is the intersubjective-grounding
+// move DESIGN section 1 requires (point at the shared framework, never an internal taxonomy). This
+// is the derivation the self-host candidate-generation add-slice stall's original trigger named,
+// at specimen scope: the add fn's Arrow, Conj and Atom nodes derive, while the KINDS stay frontier —
+// a non-member Arrow, Conj or Atom carries GroundingNotDerived exactly as before, so the enrolled
+// refusal witnesses pinning other shapes (the bodied arrow, the empty Conj, the rust grammar atom)
+// are untouched. Growth is execution-driven only: the python and typescript authorities carry
+// their own declared-inhabitants rosters, and their same-language round-trip witnesses are the
+// consumers that will name the moment this lookup widens to them. The end-state is the resolver
+// handing infer declaration-resolved identities directly — the namespace migration's completed
+// state — at which point this lookup deletes in favor of consuming resolution output.
+
+fn infer_node_declared_in_dag_inhabitants(n: Node) -> Bool {
+  any(
+    xs: node_subtree_nodes(root: dag_declared_inhabitants_root()),
+    predicate: fn(member) { member == n }
+  )
+}
+
 fn infer_node_facts(n: Node, partials: List<Node>) -> Outcome<InferredFacts> {
   match infer_bounded_lattice_consumer_gate(consumer: n, partials: partials) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -482,10 +507,18 @@ fn infer_node_facts(n: Node, partials: List<Node>) -> Outcome<InferredFacts> {
                 descent: Holds { value: descent_proof }
               )
             Rejected { diagnostics: _ } =>
-              inferred_facts_not_derived(
-                node: n,
-                descent: Holds { value: descent_proof }
-              )
+              if infer_node_declared_in_dag_inhabitants(n: n) {
+                inferred_facts_from_derived_type(
+                  node: n,
+                  derived_type: dag_declared_inhabitants_root(),
+                  descent: Holds { value: descent_proof }
+                )
+              } else {
+                inferred_facts_not_derived(
+                  node: n,
+                  descent: Holds { value: descent_proof }
+                )
+              }
           }
       }
   }
