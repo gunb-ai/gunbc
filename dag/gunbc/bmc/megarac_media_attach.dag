@@ -9,6 +9,7 @@ import gunbc.bmc.megarac_media {
   MegaRacAttached,
   MegaRacImageListingEmpty,
   MegaRacImageListingUnparseable,
+  MegaRacImageAmbiguous,
   MegaRacImageNotEnumerated,
   MegaRacImagesUnreadable,
   MegaRacPresentationUnreadable,
@@ -20,6 +21,7 @@ import gunbc.bmc.megarac_session {
   MegaRacScratchDiscarded,
   MegaRacScratchRetained,
   MegaRacSessionAcquired,
+  MegaRacSessionAllocationEffectUnresolved,
   MegaRacSessionDenied,
   MegaRacSessionNeverOpened,
   MegaRacSessionRelease,
@@ -52,9 +54,11 @@ fn render_attach(outcome: MegaRacAttachOutcome) -> ProcessExit {
       exit_failure(reason: concat("megarac attach: the available-image listing was not valid JSON, which is a protocol failure rather than an absent image: ", d))
     MegaRacImageListingEmpty =>
       exit_failure(reason: "megarac attach: the image is not presented AND the controller offers nothing available to attach; check that the export is reachable from the controller and holds the file. Do NOT toggle mount_cd to 'refresh' this -- it works by detaching every presented image, so on a host booted from that medium it withdraws what the running system is reading from")
+    MegaRacImageAmbiguous { image_name: n, occurrences: k } =>
+      exit_failure(reason: concat("megarac attach: the controller enumerates '", n as String, "' ", k as String, " times, so which file it denotes is ambiguous and no attach was attempted. Picking one would be a coin flip that selects a boot medium."))
     MegaRacImageNotEnumerated { image_name: n } =>
       exit_failure(reason: concat("megarac attach: the image is not presented, and the controller offers other images but not '", n as String, "' -- so it is absent from the share as the controller sees it, rather than already in use"))
-    MegaRacAttachIndeterminate { image_name: n, start_reached: _, evidence: e } =>
+    MegaRacAttachIndeterminate { image_name: n, transport_completed: _, evidence: e } =>
       exit_failure(reason: concat("megarac attach: INDETERMINATE for '", n as String, "'. start-media was issued and the read-back does not yet confirm it. This is NOT a refusal: this firmware answers non-2xx on writes that take effect, so the write may be settling. Re-read before retrying -- a retry here can re-issue a write already underway. Evidence: ", e))
   }
 }
@@ -155,6 +159,8 @@ func megarac_attach_remote_media(
     password: password as NonEmptyStr,
   )
   return match acquired {
+    MegaRacSessionAllocationEffectUnresolved { attempted_endpoint: e, scratch_dir: sd, detail: d } =>
+      exit_failure(reason: concat("megarac attach: ALLOCATION UNRESOLVED against ", e as String, ". No bearer was received, so nothing local can decide whether the controller allocated a session -- probing this jar would only prove the JAR does not authenticate. An orphan session may exist and can be discharged only by a server-side session census or a modeled expiry policy, neither of which this lane has. Scratch RETAINED at ", sd as String, " for correlation. Detail: ", d))
     MegaRacSessionStagingFailed { detail: d } =>
       exit_failure(reason: concat("megarac attach: credential staging failed, no request was made: ", d))
     MegaRacSessionDenied { detail: d } =>

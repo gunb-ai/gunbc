@@ -4,6 +4,7 @@ import std.types { Bool, FilePath, NonEmptyStr, String }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import extdeps.bmc.megarac { MegaRacImageRedirectionOn, megarac_image_redirection_wire }
+import extdeps.languages.json.emit { json_int, json_kv, json_object, json_string, serialize_json }
 import extdeps.languages.json.parse {
   JsonArray,
   JsonDocumentParsed,
@@ -280,3 +281,71 @@ func megarac_discard_scratch(scratch_dir: NonEmptyStr) -> MegaRacScratchCleanup
   }
 }
 
+
+// WHETHER THE JAR ACTUALLY HOLDS A BEARER, which is a different question from whether the login
+// request completed and the session fold needs both. A Netscape cookie file that received no cookie
+// still exists and is still readable -- curl writes the header comment regardless -- so its presence
+// proves nothing. What proves a bearer is a non-comment, non-blank line.
+//
+// THIS EXISTS BECAUSE PROBING AN EMPTY JAR PROVES THE WRONG THING. If the controller allocated a
+// session and the reply carrying Set-Cookie was lost, the local jar is empty; a teardown with it
+// cannot name the session, and the follow-up probe answers "unauthenticated" -- which the release
+// decoder would read as a confirmed release. That would be a confirmation about the JAR being
+// reported as a fact about the CONTROLLER.
+type MegaRacJarBearer
+  = MegaRacJarHoldsBearer
+  | MegaRacJarEmpty
+  | MegaRacJarUnreadable { detail: String }
+
+// #HttpOnly_ IS A COOKIE LINE, NOT A COMMENT, and reading it as one is the trap this predicate was
+// written into. The Netscape cookie format uses a leading # for comments, but libcurl marks an
+// HttpOnly cookie by PREFIXING its ordinary tab-separated record with #HttpOnly_ -- so the record
+// still carries domain, path, expiry, name and value. This controller's session cookie is HttpOnly,
+// so an entire jar holding a live bearer looked like nothing but comments, and a login that had
+// plainly succeeded was reported as an unresolved allocation.
+//
+// IT FAILED CLOSED, WHICH IS HOW IT WAS FOUND. The wrong answer was "no bearer, so an orphan session
+// may exist" on a run that had authenticated. Had the predicate defaulted the other way -- assume a
+// bearer unless proven absent -- the same bug would have silently claimed a bearer that a genuinely
+// lost Set-Cookie never delivered, which is the exact case the unresolved standing exists to catch.
+fn megarac_jar_line_is_bearer(line: String) -> Bool {
+  let t = trim(s: line)
+  if t.length() == 0 {
+    false
+  } else {
+    if starts_with(s: t, prefix: "#HttpOnly_") {
+      true
+    } else {
+      starts_with(s: t, prefix: "#") == false
+    }
+  }
+}
+
+func megarac_jar_bearer(cookie_jar: NonEmptyStr) -> MegaRacJarBearer
+  uses net: std.resources.Network
+{
+  let read = Filesystem.Read(path: cookie_jar as String)
+  if read.success == false {
+    return MegaRacJarUnreadable { detail: read.error }
+  }
+  return if split(s: read.content, delimiter: "\n") |> any(l => megarac_jar_line_is_bearer(line: l)) {
+    MegaRacJarHoldsBearer
+  } else {
+    MegaRacJarEmpty
+  }
+}
+
+// THE START BODY IS SERIALIZED, NOT CONCATENATED, through the same authority that parses JSON read
+// back off the wire. The previous form interpolated the image name straight into a hand-spelled
+// document, so a name carrying a quote, a backslash or a control character changed which document
+// was submitted rather than failing -- a caller-supplied string deciding the SHAPE of a request that
+// attaches a boot medium. Names on this share do not currently contain those characters, which is
+// exactly why this was invisible.
+fn megarac_start_body(image_name: NonEmptyStr, image_index: String) -> NonEmptyStr {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "image_name", value: json_string(s: image_name as String)),
+    json_kv(key: "image_type", value: json_int(n: 1)),
+    json_kv(key: "image_index", value: json_string(s: image_index)),
+    json_kv(key: "image_redirection", value: json_string(s: megarac_image_redirection_wire(r: MegaRacImageRedirectionOn) as String)),
+  ])) as NonEmptyStr
+}

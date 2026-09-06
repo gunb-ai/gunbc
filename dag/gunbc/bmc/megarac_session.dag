@@ -8,6 +8,10 @@ import extdeps.languages.json.parse {
   parse_json_document,
 }
 import gunbc.bmc.megarac_http_realization {
+  MegaRacJarBearer,
+  MegaRacJarEmpty,
+  MegaRacJarHoldsBearer,
+  MegaRacJarUnreadable,
   MegaRacScratchStaged,
   MegaRacScratchStaging,
   MegaRacScratchStagingFailed,
@@ -15,6 +19,7 @@ import gunbc.bmc.megarac_http_realization {
   json_string_member,
   megarac_discard_credential,
   megarac_discard_scratch,
+  megarac_jar_bearer,
   megarac_stage_scratch,
 }
 
@@ -50,6 +55,21 @@ type MegaRacSession sole_constructor {
   csrf_token: NonEmptyStr
 }
 
+// MegaRacSessionAllocationEffectUnresolved IS TERMINAL AND CANNOT BECOME A CONFIRMED RELEASE, which
+// is the whole reason it is a separate arm rather than a flavour of unusable.
+//
+// THE UNSOUNDNESS IT REPLACES: if the controller allocated a session and the reply carrying
+// Set-Cookie was lost, the local jar holds no bearer. A teardown issued with that jar cannot name
+// the session, and the follow-up probe answers "unauthenticated" -- which the release decoder would
+// read as a confirmed release. That is a confirmation about the JAR being reported as a fact about
+// the CONTROLLER. The probe proves only that this jar does not authenticate; it says nothing about
+// whether an orphan session exists.
+//
+// SO THERE IS NO LOCAL EVIDENCE THAT CAN DISCHARGE IT. It is discharged by a server-side session
+// census or termination facility, or by an explicitly modeled expiry policy for this build -- and
+// this lane has neither. Carrying it as its own terminal standing keeps the possible orphan
+// countable instead of laundering it into a clean run.
+//
 // MegaRacSessionUnusable CARRIES THE SCOPE, and that is the whole point of its existence. It is the
 // login-succeeded-token-unreadable case, which is a session that exists and cannot be used — so it
 // must still be released, and it can be: the release measurement below shows teardown does not
@@ -59,6 +79,11 @@ type MegaRacSessionAcquisition
   | MegaRacSessionDenied { detail: String }
   | MegaRacSessionUnusable { scope: MegaRacSessionScope, detail: String }
   | MegaRacSessionStagingFailed { detail: String }
+  | MegaRacSessionAllocationEffectUnresolved {
+      attempted_endpoint: NonEmptyStr
+      scratch_dir: NonEmptyStr
+      detail: String
+    }
 
 // THE RELEASE OUTCOME IS DECIDED BY A PROBE, NEVER BY THE DELETE'S STATUS, and that is a measured
 // requirement rather than belt-and-braces. Controlled runs against this controller on 2026-09-06,
@@ -116,13 +141,101 @@ type MegaRacSessionTeardown {
 // no session was created and there is nothing to release, unusable means one was created and its
 // token could not be read. Collapsing them is precisely the defect this replaces — the earlier form
 // reported the second as "release not attempted", a phrase that reads as "nothing to clean up".
+// THE JAR IS CONSULTED BEFORE THE BODY, because whether a bearer was received decides which
+// failures are recoverable. An acquisition holding a bearer can always tear down; one holding none
+// cannot, no matter what the body said.
 fn megarac_classify_acquisition(
+  scope: MegaRacSessionScope,
+  bearer: MegaRacJarBearer,
+  body: String,
+  reached: Bool,
+) -> MegaRacSessionAcquisition {
+  match bearer {
+    MegaRacJarUnreadable { detail: d } =>
+      MegaRacSessionAllocationEffectUnresolved {
+        attempted_endpoint: scope.bmc_host,
+        scratch_dir: scope.scratch_dir,
+        detail: concat("the cookie jar could not be read, so whether a bearer was received is unknown and no local observation can settle whether the controller allocated a session: ", d),
+      }
+    MegaRacJarEmpty =>
+      megarac_classify_bearerless(scope: scope, body: body, reached: reached)
+    MegaRacJarHoldsBearer =>
+      megarac_classify_with_bearer(scope: scope, body: body, reached: reached)
+  }
+}
+
+// NO BEARER MEANS NO LOCAL EVIDENCE ABOUT THE CONTROLLER, with exactly one exception: a clean,
+// exactly-shaped denial. A controller that answered "Could not login" and issued no cookie has told
+// us it allocated nothing, and that is the only body permitted to reach the denied arm. Every other
+// bearerless outcome -- a transport that did not complete, an unparseable body, a success-shaped
+// reply whose cookie never arrived -- leaves allocation genuinely unresolved.
+fn megarac_classify_bearerless(
   scope: MegaRacSessionScope,
   body: String,
   reached: Bool,
 ) -> MegaRacSessionAcquisition {
   if reached == false {
-    MegaRacSessionUnusable { scope: scope, detail: "the session request did not complete; a session may or may not have been created, so the jar is carried for teardown" }
+    MegaRacSessionAllocationEffectUnresolved {
+      attempted_endpoint: scope.bmc_host,
+      scratch_dir: scope.scratch_dir,
+      detail: "the session request did not complete and no bearer was received; the controller may still have allocated a session, and nothing observable from here can decide it",
+    }
+  } else {
+    match parse_json_document(s: body) {
+      JsonDocumentUnreadable { gap: _ } =>
+        MegaRacSessionAllocationEffectUnresolved {
+          attempted_endpoint: scope.bmc_host,
+          scratch_dir: scope.scratch_dir,
+          detail: concat("no bearer was received and the response was not JSON, so whether a session was allocated is unknown: ", body),
+        }
+      JsonDocumentParsed { value: doc } =>
+        if megarac_denial_shape(doc: doc) {
+          MegaRacSessionDenied { detail: megarac_denial_message(doc: doc) }
+        } else {
+          MegaRacSessionAllocationEffectUnresolved {
+            attempted_endpoint: scope.bmc_host,
+            scratch_dir: scope.scratch_dir,
+            detail: concat("no bearer was received and the response is not the exact denial shape, so it cannot be read as proof that nothing was allocated: ", body),
+          }
+        }
+    }
+  }
+}
+
+// THE DENIAL SHAPE IS EXACT, for the same reason the release shape is. The previous form treated any
+// response carrying any string-valued error as a denial, dropped the scope and deleted the scratch
+// -- so an error accompanying an allocated session would have been discarded along with its bearer.
+fn megarac_denial_shape(doc: JsonValue) -> Bool {
+  let has_error = match json_string_member(doc: doc, key: "error") {
+    Absent => false
+    Present { value: _ } => true
+  }
+  let has_token = match json_string_member(doc: doc, key: "CSRFToken") {
+    Absent => false
+    Present { value: _ } => true
+  }
+  has_error && (has_token == false)
+}
+
+fn megarac_denial_message(doc: JsonValue) -> String {
+  match json_string_member(doc: doc, key: "error") {
+    Absent => "the controller denied the login"
+    Present { value: e } => e
+  }
+}
+
+// A BEARER IS IN HAND, so every failure below is recoverable: teardown can name the session even
+// when the body could not be read. The distinction that matters here is between DENIED and
+// UNUSABLE -- denied means nothing was created, unusable means something was and cannot be used.
+// Collapsing them is the defect this replaces: the earlier form reported the second as "release not
+// attempted", a phrase that reads as "nothing to clean up".
+fn megarac_classify_with_bearer(
+  scope: MegaRacSessionScope,
+  body: String,
+  reached: Bool,
+) -> MegaRacSessionAcquisition {
+  if reached == false {
+    MegaRacSessionUnusable { scope: scope, detail: "the session request did not complete, but a bearer was received, so a session exists and can be torn down" }
   } else {
     match parse_json_document(s: body) {
       JsonDocumentUnreadable { gap: _ } =>
@@ -138,19 +251,12 @@ fn megarac_classify_acquisition(
               }
             }
           Absent =>
-            match json_string_member(doc: doc, key: "error") {
-              Present { value: e } => MegaRacSessionDenied { detail: e }
-              Absent => MegaRacSessionUnusable { scope: scope, detail: concat("the session response carried neither a CSRFToken nor an error: ", body) }
-            }
+            MegaRacSessionUnusable { scope: scope, detail: concat("a bearer was issued but the response carried no CSRFToken, so the session exists and cannot be used: ", body) }
         }
     }
   }
 }
 
-// AN UNREACHED PROBE IS UNVERIFIABLE, NOT RELEASED. The probe is the only thing that decides this
-// outcome, so a probe that did not happen decides nothing — reporting release on a failed probe
-// would make a network partition look like successful cleanup, which is the absorbing arm that
-// destroys the signal the finite session table depends on.
 // THE CONFIRMED SHAPE IS EXACT, and accepting any error field was an absorbing arm pointed at the
 // leak this probe exists to find. The measured unauthenticated response is
 // { "cc": 7, "error": "Invalid Authentication" } -- so a 500 answering { "error": "internal
@@ -267,7 +373,8 @@ func megarac_open_over_staged_scratch(
     cookie_jar: scope.cookie_jar,
   )
   let credential_gone = megarac_discard_credential(credential_path: credential_path)
-  let classified = megarac_classify_acquisition(scope: scope, body: opened.body, reached: opened.success)
+  let bearer = megarac_jar_bearer(cookie_jar: scope.cookie_jar)
+  let classified = megarac_classify_acquisition(scope: scope, bearer: bearer, body: opened.body, reached: opened.success)
   return megarac_discard_scratch_when_terminal(acquisition: classified, scratch_dir: scope.scratch_dir)
 }
 
@@ -287,6 +394,8 @@ func megarac_discard_scratch_when_terminal(
       discarded = megarac_discard_scratch(scratch_dir: scratch_dir)
       return acquisition
     }
+    MegaRacSessionAllocationEffectUnresolved { attempted_endpoint: _, scratch_dir: _, detail: _ } =>
+      return acquisition
     _ => return acquisition
   }
 }

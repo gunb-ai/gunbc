@@ -5,6 +5,7 @@ import std.process { ExitSuccess, ProcessExit, exit_failure }
 import gunbc.bmc.megarac_session {
   MegaRacSession,
   MegaRacSessionAcquired,
+  MegaRacSessionAllocationEffectUnresolved,
   MegaRacSessionAcquisition,
   MegaRacSessionDenied,
   MegaRacSessionNeverOpened,
@@ -82,6 +83,8 @@ func megarac_session_lifecycle_probe(
     password: password as NonEmptyStr,
   )
   return match acquired {
+    MegaRacSessionAllocationEffectUnresolved { attempted_endpoint: e, scratch_dir: sd, detail: d } =>
+      exit_failure(reason: concat("megarac session probe: ALLOCATION UNRESOLVED against ", e as String, ". No bearer was received, so nothing local can decide whether the controller allocated a session -- probing this jar would only prove the JAR does not authenticate. An orphan session may exist and can be discharged only by a server-side session census or a modeled expiry policy, neither of which this lane has. Scratch RETAINED at ", sd as String, " for correlation. Detail: ", d))
     MegaRacSessionStagingFailed { detail: d } =>
       exit_failure(reason: concat("megarac session probe: credential staging failed, no request was made: ", d))
     MegaRacSessionDenied { detail: d } =>
