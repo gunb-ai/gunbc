@@ -25,7 +25,7 @@ import extdeps.sudo.elevation { sudo_elevate_argv }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import v2.std.algebra { fold_list }
 import extdeps.github.actions_runner { actions_runner_base_dir, actions_runner_cache_dir }
-import extdeps.systemd.systemctl { systemctl_enable_verb, systemctl_start_verb, systemctl_set_property_verb }
+import extdeps.systemd.systemctl { systemctl_enable_verb, systemctl_start_verb, systemctl_set_property_verb, systemctl_reload_verb }
 import gunbc.fleet_posix_accounts {
   ci_runner_sudo_binary_path,
   SudoInstall,
@@ -52,6 +52,14 @@ type ExecutorPrivilegedOperation
   | SystemdSetUnitProperty { unit: NonEmptyStr, assignment: NonEmptyStr }
   | EnsureSystemAccount { login: NonEmptyStr, shell: NonEmptyStr }
   | EnsureSupplementaryGroupMembership { login: NonEmptyStr, group: NonEmptyStr }
+  | InstallFile {
+      source: NonEmptyStr
+      destination: NonEmptyStr
+      owner: NonEmptyStr
+      group: NonEmptyStr
+      mode: NonEmptyStr
+    }
+  | SystemdReloadUnit { unit: NonEmptyStr }
 
 // THE ONE PROJECTION. Everything else in this module derives from this function, so there is
 // exactly one place where an operation becomes words.
@@ -86,6 +94,22 @@ fn executor_privileged_operation_argv(op: ExecutorPrivilegedOperation) -> List<N
       "-aG" as NonEmptyStr,
       g,
       l
+    ]
+    InstallFile { source: src, destination: dst, owner: o, group: g, mode: m } => [
+      ci_runner_sudo_binary_path(b: SudoInstall),
+      "-m" as NonEmptyStr,
+      m,
+      "-o" as NonEmptyStr,
+      o,
+      "-g" as NonEmptyStr,
+      g,
+      src,
+      dst
+    ]
+    SystemdReloadUnit { unit: u } => [
+      ci_runner_sudo_binary_path(b: SudoSystemctl),
+      systemctl_reload_verb,
+      u
     ]
     SystemdDaemonReload => [
       ci_runner_sudo_binary_path(b: SudoSystemctl),
