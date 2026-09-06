@@ -8,7 +8,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.ethernet.link_mode {
   LinkMode, Modulation, Nrz, Pam4, modulation_eq, link_mode_eq,
-  ieee_25gbase_cr, ieee_100gbase_cr4,
+  ieee_25gbase_cr, ieee_100gbase_cr4, ieee_50gbase_cr2,
 }
 
 // THE MANAGEMENT EEPROM OF A QSFP MODULE OR CABLE LEG -- AND THE REASON A PART NUMBER IS NOT A LINK
@@ -137,102 +137,194 @@ fn sff8636_nominal_rate_from_byte222(code: Nat) -> SymbolRate {
   symbol_rate(code * 250000000)
 }
 
-// ================= BYTE 192: EXTENDED SPECIFICATION COMPLIANCE =================
+// ================= BYTE 192 / BYTE 116: EXTENDED SPECIFICATION COMPLIANCE =================
 //
-// This is the byte the ConnectX-7 reads to decide which rates to enable, so it is the byte the whole
-// incident turns on. The code is carried as its raw value with the modes it attests, where this lane
-// has read them.
+// THE BYTE IS THE EVIDENCE; THE MODE LIST IS AN INTERPRETATION OF IT. An earlier head carried
+// `ExtendedCompliance { code, attested_modes }` and let the caller author both. The assessor then
+// read only `attested_modes` and never consulted `code`, so the compliance byte was decorative: a
+// caller could supply an unmodelled code beside any capability list it liked and be admitted on its
+// own say-so. The synthetic positive fixture proved it -- code 0 with an authored CR2 list was
+// accepted -- and a decoder that is handed its own answer decodes nothing.
 //
-// WHAT IS NOT ESTABLISHED: the code that WOULD attest 100GBASE-CR2. SFF-8024 assigns one, this lane
-// did not read it against a copy of the specification, and writing a plausible value here would be a
-// fabricated citation of exactly the kind that caused the problem being modelled. The refusal below
-// does not need it -- internal inconsistency is decidable without knowing the right answer -- so the
-// gap blocks nothing except the eventual positive control. Its trigger is one reading of SFF-8024
-// Table 4-4.
-type ExtendedCompliance sole_constructor {
-  code: Nat
-  attested_modes: List<LinkMode>
+// So interpretation is a FUNCTION OF THE BYTE, and an unmodelled code interprets to UNKNOWN rather
+// than to an empty capability list. Those are different facts: "this code attests nothing" and "this
+// decoder cannot read this code" must not both arrive as `[]`, or the decoder's ignorance becomes an
+// accusation against the part.
+
+// A mode attested by a compliance code, together with any condition the standard attaches to it.
+// The condition is retained rather than promoted: an entry that holds only under a named FEC is not
+// the same claim as an unconditional one, and flattening the two would silently widen what the byte
+// attests.
+type FecCondition = FecUnconditional | RequiresClause91Fec
+
+type AttestedMode sole_constructor {
+  mode: LinkMode
+  fec: FecCondition
 }
 
-// 0x0B. Read from the delivered cable, and its meaning read from the ethtool decode the operator
-// captured: "100GBASE-CR4 or 25GBASE-CR CA-L". Both attested modes are NRZ at 25G per lane, which is
-// what makes the PAM4 encoding byte beside it a contradiction rather than a nuance.
-data ext_compliance_0x0b: ExtendedCompliance = ExtendedCompliance {
-  code: 11,
-  attested_modes: [ieee_100gbase_cr4, ieee_25gbase_cr],
+type ComplianceInterpretation
+  = ComplianceUnderstood { code: Nat, modes: List<AttestedMode> }
+  | ComplianceCodeUnmodelled { code: Nat }
+
+// THE DECODER. Rows are read from SFF-8024's extended-compliance table; a code with no row here
+// interprets to Unmodelled, never to an empty attestation.
+//
+// 0x0B carries THREE entries, not two. The first head modelled 100GBASE-CR4 and 25GBASE-CR CA-L and
+// omitted 50GBASE-CR2 with Clause 91 FEC, which changes behaviour: a 50GBASE-CR2 request against
+// this code returned "insufficient" when the standard's entry does include that mode, subject to its
+// FEC condition. The omission was found by an external standards cross-check (SFF-8024 Rev 4.14,
+// Table 4-6) rather than by anything in this repository, and the FEC qualification is carried rather
+// than dropped so the conditional entry cannot be read as unconditional support.
+fn sff8636_interpret_extended_compliance(code: Nat) -> ComplianceInterpretation {
+  if code == 11 {
+    ComplianceUnderstood {
+      code: code,
+      modes: [
+        AttestedMode { mode: ieee_100gbase_cr4, fec: FecUnconditional },
+        AttestedMode { mode: ieee_25gbase_cr, fec: FecUnconditional },
+        AttestedMode { mode: ieee_50gbase_cr2, fec: RequiresClause91Fec },
+      ],
+    }
+  } else {
+    ComplianceCodeUnmodelled { code: code }
+  }
 }
 
-// ================= THE LEG CODING, AND WHAT ITS BYTES CAN AND CANNOT DECIDE =================
+// ================= THE OBSERVED SECONDARY FIELD =================
 //
-// A coding carries BOTH extended-compliance codes. SFF-8636 provides a secondary code at byte 116
-// beside the primary at byte 192, and SFF-8024 permits a module supporting several encodings to
-// report the one belonging to its PRIMARY PRODUCT APPLICATION. The first version of this module read
-// only byte 192 and byte 139 and declared their disagreement a contradiction; that predicate is not
-// sound over a multi-application module, and the overreach was caught in review.
+// AN UNREAD FIELD IS NOT AN ABSENT ONE, and the distinction decides a verdict. Contradiction is a
+// claim about a COMPLETE profile: it says every application this module declares disagrees with its
+// encoding byte. That claim cannot be made while byte 116 has not been read, because the unread
+// field may carry the very application the encoding belongs to. The earlier head used `Absent` for
+// both and therefore proved contradiction from a gap in its own observation.
+type SecondaryComplianceObservation
+  = SecondaryNotObserved
+  | SecondaryObservedEmpty
+  | SecondaryObservedCode { code: Nat }
+
+// ================= THE LEG CODING =================
+//
+// The coding carries RAW BYTES. Nothing here lets a caller supply a capability directly.
 type Sff8636LegCoding sole_constructor {
   identifier: TransceiverIdentifier
-  primary_compliance: ExtendedCompliance
-  secondary_compliance: ExtendedCompliance?
+  primary_compliance_code: Nat
+  secondary_compliance: SecondaryComplianceObservation
   encoding: Sff8636Encoding
   nominal_rate: Sff8636NominalRate
 }
 
-// THREE FINDINGS, NOT ONE REFUSAL. Collapsing these would let the strongest claim absorb the weakest
-// evidence, which is how a decoder's ignorance turns into an accusation against a part.
-//
-//   Contradictory        -- every attested mode under the OBSERVED profile disagrees with the
-//                           encoding byte. A claim about these bytes, not about the hardware.
-//   InsufficientEvidence -- nothing in the observed bytes attests the mode the operator requires.
-//                           THIS IS WHERE THE DELIVERED FS CABLE LANDS: 0x0B attests 25G-per-lane
-//                           modes and nothing attests 100GBASE-CR2, which is why the ConnectX-7
-//                           refuses to enable 100G_2X. It is a strictly weaker and strictly more
-//                           defensible finding than "this EEPROM is self-contradictory".
-//   NotUnderstood        -- the decoder has no row for what it read. An unknown code must never
-//                           become a proven contradiction merely because this model lacks a row for
-//                           it; that is the decoder's gap, not the module's defect.
-type Sff8636CodingFinding
-  = CodingConsistentWithRequest { coding: Sff8636LegCoding }
-  | CodingContradictsEncoding { encoding_modulation: Modulation, attested_mode: LinkMode }
-  | CodingInsufficientForRequestedMode { requested: LinkMode, coding: Sff8636LegCoding }
-  | CodingNotUnderstood { encoding: Sff8636Encoding }
-
-// Every mode attested by either compliance code. The union is the observable profile; reading only
-// the primary is what made the earlier predicate unsound.
-fn sff8636_attested_modes(coding: Sff8636LegCoding) -> List<LinkMode> {
-  match coding.secondary_compliance {
-    Present { value: sec } =>
-      concat(coding.primary_compliance.attested_modes, sec.attested_modes)
-    Absent => coding.primary_compliance.attested_modes
+// THE CONSTRUCTOR, because `sole_constructor` means this module owns construction and a consumer --
+// including a witness -- may not mint the type itself. That is the same rule R2 asked for one level
+// down: the caller supplies OBSERVED BYTES, and the module decides what they mean.
+fn sff8636_leg_coding(
+  identifier: TransceiverIdentifier,
+  primary_compliance_code: Nat,
+  secondary_compliance: SecondaryComplianceObservation,
+  encoding: Sff8636Encoding,
+  nominal_rate: Sff8636NominalRate,
+) -> Sff8636LegCoding {
+  Sff8636LegCoding {
+    identifier: identifier,
+    primary_compliance_code: primary_compliance_code,
+    secondary_compliance: secondary_compliance,
+    encoding: encoding,
+    nominal_rate: nominal_rate,
   }
 }
 
-// THE QUESTION IS ALWAYS RELATIVE TO A REQUESTED MODE. There is no such thing as a coding that is
-// "correct" in the abstract -- only one that does or does not attest what this endpoint pair needs.
-// Asking it without a request is what let the earlier version imagine it could judge a part alone.
+// FIVE FINDINGS. Each says something different about what the bytes establish, and collapsing any
+// pair would let a stronger claim absorb weaker evidence.
+type Sff8636CodingFinding
+  = CodingAttestsRequestedMode { coding: Sff8636LegCoding }
+  | CodingAttestsRequestedModeSubjectToFec { coding: Sff8636LegCoding, fec: FecCondition }
+  | CodingInsufficientForRequestedMode { requested: LinkMode, coding: Sff8636LegCoding }
+  | CodingContradictsEncoding { encoding_modulation: Modulation, attested_mode: LinkMode }
+  | CodingComplianceCodeNotUnderstood { code: Nat }
+
+// The interpretations of both observed codes. A not-observed secondary contributes nothing AND is
+// remembered as unobserved by `sff8636_profile_is_complete` below.
+fn sff8636_interpretations(coding: Sff8636LegCoding) -> List<ComplianceInterpretation> {
+  match coding.secondary_compliance {
+    SecondaryObservedCode { code: sc } => [
+      sff8636_interpret_extended_compliance(code: coding.primary_compliance_code),
+      sff8636_interpret_extended_compliance(code: sc),
+    ]
+    SecondaryObservedEmpty =>
+      [sff8636_interpret_extended_compliance(code: coding.primary_compliance_code)]
+    SecondaryNotObserved =>
+      [sff8636_interpret_extended_compliance(code: coding.primary_compliance_code)]
+  }
+}
+
+fn sff8636_attested(coding: Sff8636LegCoding) -> List<AttestedMode> {
+  flat_map(sff8636_interpretations(coding: coding), i =>
+    match i {
+      ComplianceUnderstood { code: c, modes: ms } => ms
+      ComplianceCodeUnmodelled { code: c } => []
+    })
+}
+
+// Any code this decoder could not read. Its presence blocks both the acceptance and the
+// contradiction claims: an unread code may attest the requested mode, and it may carry the
+// application whose encoding is on the wire.
+fn sff8636_unmodelled_codes(coding: Sff8636LegCoding) -> List<Nat> {
+  flat_map(sff8636_interpretations(coding: coding), i =>
+    match i {
+      ComplianceCodeUnmodelled { code: c } => [c]
+      ComplianceUnderstood { code: c, modes: ms } => []
+    })
+}
+
+// A CONTRADICTION NEEDS A COMPLETE, FULLY DECODED PROFILE. Both conditions are necessary: every
+// declared field read, and every read code understood.
+fn sff8636_profile_is_complete(coding: Sff8636LegCoding) -> Bool {
+  match coding.secondary_compliance {
+    SecondaryNotObserved => false
+    SecondaryObservedEmpty => length(sff8636_unmodelled_codes(coding: coding)) == 0
+    SecondaryObservedCode { code: sc } => length(sff8636_unmodelled_codes(coding: coding)) == 0
+  }
+}
+
+// THE ASSESSMENT, ALWAYS RELATIVE TO A REQUESTED MODE.
 fn sff8636_assess_leg_coding(
   coding: Sff8636LegCoding,
   requested: LinkMode,
 ) -> Sff8636CodingFinding {
-  let attested = sff8636_attested_modes(coding: coding)
-  if any(attested, m => link_mode_eq(a: m, b: requested)) {
-    CodingConsistentWithRequest { coding: coding }
-  } else {
-    match sff8636_encoding_modulation(e: coding.encoding) {
-      Absent => CodingInsufficientForRequestedMode { requested: requested, coding: coding }
-      Present { value: enc_mod } => {
-        let agreeing = filter(attested, m => modulation_eq(a: m.modulation, b: enc_mod))
-        match agreeing.first() {
-          Absent =>
-            match attested.first() {
-              Present { value: bad } =>
-                CodingContradictsEncoding { encoding_modulation: enc_mod, attested_mode: bad }
-              Absent => CodingNotUnderstood { encoding: coding.encoding }
-            }
-          Present { value: ok } =>
-            CodingInsufficientForRequestedMode { requested: requested, coding: coding }
-        }
+  let attested = sff8636_attested(coding: coding)
+  let matching = filter(attested, a => link_mode_eq(a: a.mode, b: requested))
+  match matching.first() {
+    Present { value: hit } =>
+      match hit.fec {
+        FecUnconditional => CodingAttestsRequestedMode { coding: coding }
+        RequiresClause91Fec =>
+          CodingAttestsRequestedModeSubjectToFec { coding: coding, fec: hit.fec }
       }
-    }
+    Absent =>
+      match sff8636_unmodelled_codes(coding: coding).first() {
+        Present { value: unknown } => CodingComplianceCodeNotUnderstood { code: unknown }
+        Absent =>
+          match sff8636_encoding_modulation(e: coding.encoding) {
+            Absent => CodingInsufficientForRequestedMode { requested: requested, coding: coding }
+            Present { value: enc_mod } =>
+              if !sff8636_profile_is_complete(coding: coding) {
+                CodingInsufficientForRequestedMode { requested: requested, coding: coding }
+              } else {
+                let agreeing = filter(attested, a => modulation_eq(a: a.mode.modulation, b: enc_mod))
+                match agreeing.first() {
+                  Present { value: ok } =>
+                    CodingInsufficientForRequestedMode { requested: requested, coding: coding }
+                  Absent =>
+                    match attested.first() {
+                      Present { value: bad } =>
+                        CodingContradictsEncoding {
+                          encoding_modulation: enc_mod, attested_mode: bad.mode }
+                      Absent =>
+                        CodingInsufficientForRequestedMode { requested: requested, coding: coding }
+                    }
+                }
+              }
+          }
+      }
   }
 }
 

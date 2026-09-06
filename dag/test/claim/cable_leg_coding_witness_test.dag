@@ -11,12 +11,15 @@ import extdeps.ethernet.link_mode {
 }
 import extdeps.transceiver.sff_8636 {
   Sff8636LegCoding, Sff8636CodingFinding,
-  CodingConsistentWithRequest, CodingInsufficientForRequestedMode,
-  CodingContradictsEncoding, CodingNotUnderstood,
-  ExtendedCompliance, Qsfp28, EncodingPam4, Encoding64b66b, EncodingUnspecified,
+  CodingAttestsRequestedMode, CodingAttestsRequestedModeSubjectToFec,
+  CodingInsufficientForRequestedMode, CodingContradictsEncoding,
+  CodingComplianceCodeNotUnderstood,
+  SecondaryNotObserved, SecondaryObservedEmpty, SecondaryObservedCode,
+  ComplianceUnderstood, ComplianceCodeUnmodelled,
+  FecUnconditional, RequiresClause91Fec,
   NominalRateEscaped, NominalRateDirect,
-  ext_compliance_0x0b,
-  sff8636_assess_leg_coding, sff8636_nominal_rate_from_byte140,
+  sff8636_assess_leg_coding, sff8636_nominal_rate_from_byte140, sff8636_leg_coding,
+  sff8636_interpret_extended_compliance,
   transceiver_identifier_from_byte, sff8636_encoding_from_byte,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -75,51 +78,164 @@ test fn the_aggregate_is_derived_from_lanes_and_service_rate() -> Bool {
 
 // ---------------- the delivered cable: the discriminating RED ----------------
 
-// The bytes as read from the delivered leg. Identifier 0x11, extended compliance 0x0B, encoding 0x08
-// (PAM4). The nominal-rate byte is carried as the ESCAPE it appears to be rather than as the
-// 25.5 figure ethtool renders -- see the module's own note on why that distinction is not cosmetic.
-data delivered_fs_leg: Sff8636LegCoding = Sff8636LegCoding {
+// The bytes as read from the delivered leg: identifier 0x11, primary extended compliance 0x0B,
+// encoding 0x08 (PAM4), nominal-rate byte 255.
+//
+// BYTE 116 WAS NOT READ, and that is recorded as SecondaryNotObserved rather than as an empty
+// secondary. The distinction is load-bearing here: an unread field cannot participate in a proof
+// that the WHOLE profile disagrees with the encoding byte, because the unread field may carry the
+// application the encoding belongs to. An earlier head modelled the unread field as absent and
+// therefore proved a contradiction out of a gap in its own observation.
+data delivered_fs_leg: Sff8636LegCoding = sff8636_leg_coding(
   identifier: transceiver_identifier_from_byte(code: 17),
-  primary_compliance: ext_compliance_0x0b,
-  secondary_compliance: none,
+  primary_compliance_code: 11,
+  secondary_compliance: SecondaryNotObserved,
   encoding: sff8636_encoding_from_byte(code: 8),
-  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
-}
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
 
 fn is_insufficient(f: Sff8636CodingFinding) -> Bool {
   match f {
     CodingInsufficientForRequestedMode { requested: r, coding: c } => true
-    CodingConsistentWithRequest { coding: c } => false
+    CodingAttestsRequestedMode { coding: c } => false
+    CodingAttestsRequestedModeSubjectToFec { coding: c, fec: x } => false
     CodingContradictsEncoding { encoding_modulation: m, attested_mode: a } => false
-    CodingNotUnderstood { encoding: e } => false
+    CodingComplianceCodeNotUnderstood { code: c } => false
   }
 }
 
-fn is_consistent(f: Sff8636CodingFinding) -> Bool {
+fn attests_outright(f: Sff8636CodingFinding) -> Bool {
   match f {
-    CodingConsistentWithRequest { coding: c } => true
+    CodingAttestsRequestedMode { coding: c } => true
+    CodingAttestsRequestedModeSubjectToFec { coding: c, fec: x } => false
     CodingInsufficientForRequestedMode { requested: r, coding: c } => false
     CodingContradictsEncoding { encoding_modulation: m, attested_mode: a } => false
-    CodingNotUnderstood { encoding: e } => false
+    CodingComplianceCodeNotUnderstood { code: c } => false
   }
 }
 
-// THE CENTRAL ASSERTION OF THIS PR. The delivered leg does not attest 100GBASE-CR2, so a fleet that
-// needs 100G_2X must not be told this part supplies it. This reds if the assessment ever admits the
-// coding -- the failure that shipped a half-rate fabric that links, pings clean and tests green.
+fn attests_subject_to_fec(f: Sff8636CodingFinding) -> Bool {
+  match f {
+    CodingAttestsRequestedModeSubjectToFec { coding: c, fec: x } => true
+    CodingAttestsRequestedMode { coding: c } => false
+    CodingInsufficientForRequestedMode { requested: r, coding: c } => false
+    CodingContradictsEncoding { encoding_modulation: m, attested_mode: a } => false
+    CodingComplianceCodeNotUnderstood { code: c } => false
+  }
+}
+
+fn code_not_understood(f: Sff8636CodingFinding) -> Bool {
+  match f {
+    CodingComplianceCodeNotUnderstood { code: c } => true
+    CodingAttestsRequestedMode { coding: c } => false
+    CodingAttestsRequestedModeSubjectToFec { coding: c, fec: x } => false
+    CodingInsufficientForRequestedMode { requested: r, coding: c } => false
+    CodingContradictsEncoding { encoding_modulation: m, attested_mode: a } => false
+  }
+}
+
+// THE CENTRAL ASSERTION. The delivered leg does not attest 100GBASE-CR2, so a fleet needing 100G_2X
+// must not be told this part supplies it.
+//
+// The finding is INSUFFICIENCY, not contradiction, and the previous head asserted exactly this while
+// the implementation returned contradiction -- a documented behaviour that no execution had ever
+// checked. It is insufficiency because byte 116 was never read: with the profile incomplete, the
+// strong claim is unavailable and the honest one is that nothing OBSERVED attests the request.
 test fn the_delivered_leg_does_not_attest_the_purchased_mode() -> Bool {
   is_insufficient(f: sff8636_assess_leg_coding(
     coding: delivered_fs_leg, requested: ieee_100gbase_cr2))
 }
 
-// AND THE SAME LEG IS FINE FOR WHAT IT ACTUALLY ATTESTS. Without this arm the test above would pass
-// for a decoder that refuses everything, which is a wall that carries no information.
+// AND THE SAME LEG DOES ATTEST WHAT IT IS CODED FOR. Without this arm the assertion above would pass
+// for a decoder that refused everything, which is a wall carrying no information.
 test fn the_delivered_leg_does_attest_the_mode_it_is_coded_for() -> Bool {
-  is_consistent(f: sff8636_assess_leg_coding(
+  attests_outright(f: sff8636_assess_leg_coding(
     coding: delivered_fs_leg, requested: ieee_100gbase_cr4))
 }
 
-// The escape is not a measurement. This is the executing form of the byte-140 correction.
+// THE CLAUSE 91 ENTRY, WHICH THIS MODULE FIRST OMITTED. 0x0B also covers 50GBASE-CR2 subject to
+// Clause 91 FEC. It must be attested -- returning "insufficient" would understate the byte -- and it
+// must NOT be attested outright, because promoting a conditional entry to unconditional support is
+// exactly the silent widening the standard's qualification exists to prevent.
+test fn the_conditional_entry_is_attested_but_not_unconditionally() -> Bool {
+  let f = sff8636_assess_leg_coding(coding: delivered_fs_leg, requested: ieee_50gbase_cr2)
+  attests_subject_to_fec(f: f) && !attests_outright(f: f)
+}
+
+// ---------------- the code IS the evidence ----------------
+
+// THE DISCRIMINATING CONTROL FOR THE DECODER ITSELF: mutate ONLY the compliance byte and hold every
+// other observation fixed. An earlier head could not express this test at all, because the caller
+// authored the capability list beside the byte -- so changing the byte changed nothing and the
+// decoder was decorative. This reds if interpretation ever migrates back out of the byte.
+data leg_with_unmodelled_code: Sff8636LegCoding = sff8636_leg_coding(
+  identifier: transceiver_identifier_from_byte(code: 17),
+  primary_compliance_code: 254,
+  secondary_compliance: SecondaryNotObserved,
+  encoding: sff8636_encoding_from_byte(code: 8),
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
+
+test fn an_unmodelled_code_is_not_understood_rather_than_attesting_nothing() -> Bool {
+  code_not_understood(f: sff8636_assess_leg_coding(
+    coding: leg_with_unmodelled_code, requested: ieee_100gbase_cr2))
+}
+
+// An unread code must not become a proven contradiction. Same bytes, PAM4 encoding, NRZ-only
+// understood modes -- but one code the decoder cannot read, so no contradiction may be claimed.
+test fn an_unreadable_code_blocks_the_contradiction_claim() -> Bool {
+  !is_insufficient(f: sff8636_assess_leg_coding(
+    coding: leg_with_unmodelled_code, requested: ieee_100gbase_cr4))
+    && code_not_understood(f: sff8636_assess_leg_coding(
+      coding: leg_with_unmodelled_code, requested: ieee_100gbase_cr4))
+}
+
+// The interpretation is a function of the byte, asserted directly.
+test fn the_interpretation_is_derived_from_the_byte() -> Bool {
+  match sff8636_interpret_extended_compliance(code: 11) {
+    ComplianceUnderstood { code: c, modes: ms } => c == 11 && count(ms) == 3
+    ComplianceCodeUnmodelled { code: c } => false
+  }
+}
+
+test fn an_unknown_byte_interprets_to_unknown_not_to_an_empty_attestation() -> Bool {
+  match sff8636_interpret_extended_compliance(code: 254) {
+    ComplianceCodeUnmodelled { code: c } => c == 254
+    ComplianceUnderstood { code: c, modes: ms } => false
+  }
+}
+
+// ---------------- contradiction requires a complete profile ----------------
+
+// A leg whose byte 116 WAS read and found empty, whose primary code is understood, and whose every
+// attested mode is NRZ while the encoding byte says PAM4. Only here is the profile complete enough
+// for the strong claim, and this is the one fixture that may produce it.
+data complete_profile_contradictory_leg: Sff8636LegCoding = sff8636_leg_coding(
+  identifier: transceiver_identifier_from_byte(code: 17),
+  primary_compliance_code: 11,
+  secondary_compliance: SecondaryObservedEmpty,
+  encoding: sff8636_encoding_from_byte(code: 8),
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
+
+fn is_contradiction(f: Sff8636CodingFinding) -> Bool {
+  match f {
+    CodingContradictsEncoding { encoding_modulation: m, attested_mode: a } => true
+    CodingAttestsRequestedMode { coding: c } => false
+    CodingAttestsRequestedModeSubjectToFec { coding: c, fec: x } => false
+    CodingInsufficientForRequestedMode { requested: r, coding: c } => false
+    CodingComplianceCodeNotUnderstood { code: c } => false
+  }
+}
+
+// THE PAIR THAT MAKES THE COMPLETENESS CONDITION REAL. Identical bytes except that byte 116 is read
+// in one and unread in the other: the read one may claim contradiction, the unread one may not.
+// Without both arms, "contradiction requires a complete profile" would be prose no execution checks.
+test fn contradiction_is_claimed_only_when_the_profile_was_fully_observed() -> Bool {
+  is_contradiction(f: sff8636_assess_leg_coding(
+      coding: complete_profile_contradictory_leg, requested: ieee_100gbase_cr2))
+    && is_insufficient(f: sff8636_assess_leg_coding(
+      coding: delivered_fs_leg, requested: ieee_100gbase_cr2))
+}
+
+// The escape is not a measurement.
 test fn the_escape_value_is_not_recorded_as_a_rate() -> Bool {
   match sff8636_nominal_rate_from_byte140(code: 255) {
     NominalRateEscaped => true
@@ -128,51 +244,8 @@ test fn the_escape_value_is_not_recorded_as_a_rate() -> Bool {
 }
 
 test fn an_ordinary_byte140_is_read_as_a_symbol_rate() -> Bool {
-  match sff8636_nominal_rate_from_byte140(code: 255 - 1) {
+  match sff8636_nominal_rate_from_byte140(code: 254) {
     NominalRateDirect { rate: r } => symbol_rate_count(r: r) == 25400000000
     NominalRateEscaped => false
   }
-}
-
-// ---------------- the positive control ----------------
-
-// A SYNTHETIC leg coded for what the part was bought to do. Its compliance code is NOT the real
-// SFF-8024 assignment for 100GBASE-CR2 -- this lane has not read that table, and inventing the byte
-// would be the fabricated citation the whole subject exists to catch. What this row proves is that
-// the ASSESSMENT admits a leg whose attested modes include the requested one; it deliberately proves
-// nothing about which byte value carries that attestation in the real world.
-data synthetic_cr2_compliance: ExtendedCompliance = ExtendedCompliance {
-  code: 0,
-  attested_modes: [ieee_100gbase_cr2],
-}
-
-data synthetic_correctly_coded_leg: Sff8636LegCoding = Sff8636LegCoding {
-  identifier: transceiver_identifier_from_byte(code: 17),
-  primary_compliance: synthetic_cr2_compliance,
-  secondary_compliance: none,
-  encoding: sff8636_encoding_from_byte(code: 8),
-  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
-}
-
-// THE POSITIVE CONTROL. A decoder that said "insufficient" to everything would satisfy every
-// negative assertion above; this is what makes those assertions discriminating rather than vacuous.
-test fn a_correctly_coded_leg_is_admitted_for_the_requested_mode() -> Bool {
-  is_consistent(f: sff8636_assess_leg_coding(
-    coding: synthetic_correctly_coded_leg, requested: ieee_100gbase_cr2))
-}
-
-// AND THE SECONDARY CODE IS ACTUALLY READ. Byte 116 was added because reading only byte 192 is
-// unsound over a multi-application module; this reds if the union ever collapses back to the
-// primary, which is the exact regression the review caught by inspection.
-data secondary_coded_leg: Sff8636LegCoding = Sff8636LegCoding {
-  identifier: transceiver_identifier_from_byte(code: 17),
-  primary_compliance: ext_compliance_0x0b,
-  secondary_compliance: Present { value: synthetic_cr2_compliance },
-  encoding: sff8636_encoding_from_byte(code: 8),
-  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
-}
-
-test fn a_mode_attested_only_by_the_secondary_code_is_still_attested() -> Bool {
-  is_consistent(f: sff8636_assess_leg_coding(
-    coding: secondary_coded_leg, requested: ieee_100gbase_cr2))
 }
