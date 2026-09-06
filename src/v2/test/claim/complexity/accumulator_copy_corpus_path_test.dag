@@ -22,15 +22,18 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// THIS FILE IS THE ONLY EXECUTING EVIDENCE FOR THE CORPUS PATH, AND IT IS THE WHOLE OF IT.
-// Everything here reads a five-line fixture or nothing at all, so it is seconds. The corpus-grain
-// forms -- a census over a discovered root, over an explicit batch, and the subtree predicate --
-// are ENTRY POINTS, not witnesses, in v2.lens.complexity_accumulator_copy.corpus_census: their
-// per-subject price is minutes, so they cannot be enrolled, and a witness that cannot run is a
-// roster row standing in for a verdict. census_for_paths re-derives that price on the host asking. So the claim this lane makes is scoped to what runs: the planted
-// copied accumulator below is caught through corpus_gate and the clean fold beside it stays clean,
-// over a population the gate discovers rather than a hand-list. The corpus-wide verdict is a run,
-// and it is named where the instruments live.
+// WHAT IS A WITNESS HERE AND WHAT IS NOT IS DECIDED BY THE 500ms CPU LINE, MEASURED PER FUNCTION.
+// The required floor's per-witness CPU deadline is 500ms; interpreted ingest of the five-line
+// fixture below measures about 3s, so every predicate that reaches the ingest reports
+// interrupted_before_verdict and BLOCKS rather than running (measured on this branch: seven of
+// them at once, run 34022136976). Those predicates are therefore plain fns -- they pass by
+// execution under claim_batch and are enrolled in nothing, which is the same standing as the
+// corpus-grain forms in v2.lens.complexity_accumulator_copy.corpus_census and dissolves on the
+// same trigger.
+//
+// The witnesses that remain touch no ingest and measure 0-1ms: the coverage join, whose subject is
+// the join and whose inputs are rows, and the population floor. They are not a cheaper proxy for
+// the ingest claim; they are a different claim, stated at the grain that can execute.
 
 fn fixture_rows() -> List<CorpusFileRow> {
   corpus_rows_for_paths(paths: [
@@ -71,14 +74,14 @@ fn row_scanned_without_suspect(row: CorpusFileRow) -> Bool {
 // They live under test/fixture_roots/, outside every source root, because the planted subject is
 // deliberately a quadratic and must never be compiled as production source or reached by the corpus
 // population.
-test fn a_planted_copied_accumulator_is_caught_through_the_corpus_path() -> Bool {
+fn a_planted_copied_accumulator_is_caught_through_the_corpus_path() -> Bool {
   match fixture_rows() {
     Cons { head: planted, tail: _ } => row_has_suspect(row: planted)
     Empty => false
   }
 }
 
-test fn a_clean_accumulating_fold_stays_clean_through_the_corpus_path() -> Bool {
+fn a_clean_accumulating_fold_stays_clean_through_the_corpus_path() -> Bool {
   match fixture_rows() {
     Cons { head: _, tail: Cons { head: clean, tail: _ } } => row_scanned_without_suspect(row: clean)
     _ => false
@@ -108,6 +111,25 @@ data planted_path: String = "test/fixture_roots/complexity_accumulator_copy/plan
 
 data clean_path: String = "test/fixture_roots/complexity_accumulator_copy/clean_linear.dag"
 
+// THE COVERAGE WITNESSES BUILD THEIR ROWS RATHER THAN INGESTING THEM, AND THAT IS THE RIGHT
+// SUBJECT RATHER THAN A CHEAPER ONE. What is under test here is the JOIN -- given a discovered
+// population and a set of reported rows, does a report that covers less than its population refuse
+// -- and a CorpusFileRow is that join's input, not its producer. Ingesting real subjects to reach
+// it would test the ingest twice and the join once, and it would cost about 3s per witness against
+// the floor's 500ms CPU line, which is how the ingest-priced witnesses in this lens ended up
+// enrolled in nothing. The producer-side claim is a different claim and is priced separately;
+// see corpus_census.
+//
+// The rows are deliberately NOT all identical: the planted row carries a suspect and the clean row
+// does not, so the positive control below reaches the SUSPECT verdict rather than merely "not
+// incomplete", and a guard that passed coverage but dropped the standing would fail it.
+fn scanned_row(path: String, suspects: Int) -> CorpusFileRow {
+  CorpusFileRow {
+    path: path,
+    standing: CorpusFileScanned { suspects: suspects, refusals: 0, causes: Empty }
+  }
+}
+
 fn disposition_over(discovered: List<String>, rows: List<CorpusFileRow>) -> CorpusGateDisposition {
   corpus_gate_disposition_over(discovered: discovered, rows: rows, population_floor: 1)
 }
@@ -134,7 +156,7 @@ test fn a_truncated_sweep_refuses_rather_than_reporting_its_survivors() -> Bool 
   is_coverage_incomplete(
     d: disposition_over(
       discovered: [planted_path, clean_path],
-      rows: corpus_rows_for_paths(paths: [planted_path])
+      rows: [scanned_row(path: planted_path, suspects: 1)]
     )
   )
 }
@@ -147,7 +169,10 @@ test fn a_report_of_the_right_size_over_the_wrong_subjects_still_refuses() -> Bo
   is_coverage_incomplete(
     d: disposition_over(
       discovered: [planted_path, clean_path],
-      rows: corpus_rows_for_paths(paths: [planted_path, planted_path])
+      rows: [
+        scanned_row(path: planted_path, suspects: 1),
+        scanned_row(path: planted_path, suspects: 1)
+      ]
     )
   )
 }
@@ -160,7 +185,10 @@ test fn a_report_of_the_right_size_over_the_wrong_subjects_still_refuses() -> Bo
 test fn a_complete_report_over_the_same_population_reaches_its_ordinary_verdict() -> Bool {
   match disposition_over(
     discovered: [planted_path, clean_path],
-    rows: corpus_rows_for_paths(paths: [planted_path, clean_path])
+    rows: [
+      scanned_row(path: planted_path, suspects: 1),
+      scanned_row(path: clean_path, suspects: 0)
+    ]
   ) {
     CorpusSuspectObserved { paths: _, sites: _ } => true
     CorpusCoverageIncomplete { discovered: _, reported: _, missing: _ } => false

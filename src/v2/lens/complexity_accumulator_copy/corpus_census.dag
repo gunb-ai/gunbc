@@ -58,6 +58,13 @@ import v2.std.node_query { find_arrow_body_child, find_named_child }
 import v2.std.witness { Holds, Violates }
 import v2.std.collection { List }
 import v2.std.integer { Int }
+import v2.lens.complexity_accumulator_copy.roster_gate {
+  GateClean,
+  GateNotEstablished,
+  GateRefusalBudgetExceeded,
+  GateSuspectObserved,
+  file_gate_disposition
+}
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -80,11 +87,27 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // regardless of any exclusion (cause=ChangedWitnessOutsidePreparedSubject, run 34018018622), which
 // is exactly right: an exclusion that a new witness could opt into on the change that introduces it
 // would be the escape hatch DESIGN section 5 forbids. A corpus-priced assertion therefore cannot be
-// authored as a witness at all, and pretending otherwise buys a roster row that never runs. The
-// executing evidence for this code path is the cheap pair in
-// claim/complexity/accumulator_copy_corpus_path_test.dag -- a planted copied accumulator caught
-// through corpus_gate and a clean fold that stays clean -- which run on every push. What lives here
-// are entry points, run by a person, whose output belongs in a run.
+// authored as a witness at all, and pretending otherwise buys a roster row that never runs. What
+// lives here are entry points, run by a person, whose output belongs in a run.
+//
+// AND THE PRICE THAT DECIDES THIS IS NOT THE CORPUS -- IT IS ONE SUBJECT, WHICH IS A HARDER FACT
+// THAN THE ONE THIS FILE FIRST RECORDED. The required floor's per-witness CPU line is 500ms
+// (v2.workflow.required_floor required_floor_claim_cpu_safety_limit_ms, an operator ruling whose
+// two raises were repudiated). Interpreted ingest of a FIVE-LINE fixture measures about 3s, and a
+// four-line String snippet with no filesystem read measures about the same: six times the line, at
+// the smallest subject expressible. So no assertion in this lens that reaches the ingest can be
+// enrolled at any subject size, which is why every witness this lens ever had is frozen or
+// deferred -- a fact that was visible in the roster and had never been explained. Measured with
+// claim_batch on this branch; run it rather than trusting this sentence.
+//
+// WHAT DOES EXECUTE ON EVERY PUSH IS THEREFORE NARROWER THAN THIS FILE ONCE CLAIMED, and the
+// correction matters more than the claim did. It is the evidence that does not touch ingest: the
+// coverage join in claim/complexity/accumulator_copy_corpus_path_test.dag, whose subject is the
+// join and whose inputs are rows, and the typed-read pair in
+// claim/complexity/accumulator_copy_unreadable_subject_test.dag, whose subject is the read arm.
+// The ingest-priced predicates -- a planted copied accumulator caught through corpus_gate, a clean
+// fold that stays clean, a readable subject reaching the lens -- pass by execution under
+// claim_batch and are enrolled in nothing. That is the honest scope of this lane's claim.
 //
 // DISSOLUTION names the capability: ingest that does not re-parse source in the interpreter (native
 // ingest, or a lens reading the compile graph). At that price the corpus form becomes affordable
@@ -145,6 +168,25 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // many subjects a root contributes; census_for_root and census_for_paths answer what the lens finds
 // over a discovered root and over an explicit subject list respectively. Their output belongs in a
 // run, never transcribed into this file.
+
+// THE INGEST-PRICED PREDICATES, HOMED HERE WITH THE REST OF WHAT THE 500ms CPU LINE PRICES OUT.
+// Each costs seconds of interpreted ingest per subject and so cannot be a witness; each is a real
+// question with a real answer, run by a person or by the dissolution named above. a_readable_subject
+// _still_reaches_the_lens is the deep positive control for the typed-read red in
+// claim/complexity/accumulator_copy_unreadable_subject: that witness controls the READ arm, which
+// is cheap and is the mechanism the red can fail open into; this one controls the whole path
+// through to a clean verdict, and it is the half the budget does not admit.
+fn a_readable_subject_still_reaches_the_lens() -> Bool {
+  match file_gate_disposition(
+    path: "test/fixture_roots/complexity_accumulator_copy/clean_linear.dag",
+    refusal_ceiling: 0
+  ) {
+    GateClean => true
+    GateNotEstablished { cause: _ } => false
+    GateSuspectObserved { suspects: _ } => false
+    GateRefusalBudgetExceeded { refusals: _, ceiling: _ } => false
+  }
+}
 
 fn population_for_root(root: String) -> Int {
   length(xs: corpus_paths(pool_roots: [root]))
