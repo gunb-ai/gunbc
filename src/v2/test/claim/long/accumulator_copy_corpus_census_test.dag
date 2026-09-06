@@ -1,0 +1,313 @@
+module v2.test.claim.long.accumulator_copy_corpus_census_test
+
+import v2.lens.complexity_accumulator_copy.corpus_gate {
+  CorpusFileNotEstablished,
+  CorpusFileRow,
+  CorpusFileScanned,
+  CorpusClean,
+  CorpusGateDisposition,
+  CorpusNotEstablishedObserved,
+  CorpusPopulationBelowFloor,
+  CorpusReport,
+  CorpusSuspectObserved,
+  corpus_gate,
+  corpus_paths,
+  corpus_report,
+  corpus_report_from_rows,
+  corpus_rows_for_paths
+}
+import std.algebra { Cons, Empty }
+import v2.lens.complexity_accumulator_copy.roster_gate {
+  SourceTreeEstablished,
+  SourceTreeNotEstablished,
+  ingest_tree
+}
+import v2.lens.cost {
+  ClassConstant,
+  ClassExponential,
+  ClassFactorial,
+  ClassLinear,
+  ClassLinearithmic,
+  ClassLog,
+  ClassPolyLog,
+  ClassPolynomial,
+  ClassUnknown,
+  asymptotic_class_of_cost,
+  cost_lens
+}
+import v2.std.node {
+  Arrow,
+  Atom,
+  Bind,
+  Branch,
+  Cardinality,
+  ComputationNode,
+  Conj,
+  Disj,
+  Instantiation,
+  Loop,
+  Named,
+  Transform,
+  TypeNode,
+  Value
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node_query { find_arrow_body_child, find_named_child }
+import v2.std.witness { Holds, Violates }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE COST IS THE REASON THIS FILE IS OFFLINE, AND IT IS THE LENS'S OWN SUBJECT MATTER. The
+// corpus consumer re-ingests every subject through tokenize -> parse_production -> normalize in the
+// interpreter, measured on this session's host at roughly eighty seconds per subject against 5007
+// tracked .dag files. That is not a scheduling inconvenience to be waited out; it is the same
+// displaced cost DESIGN section 1 prices, and it is why the lens has stood roster-bound rather than
+// corpus-bound since it was written. The exclusion row is
+// claim/long/accumulator_copy_corpus_census in gunbc.ci_layer_roots, and its dissolution names the
+// capability -- native ingest, or a lens that reads the compile graph instead of re-parsing source
+// -- rather than any artifact.
+//
+// ONE PROCESS CANNOT CARRY THE CORPUS, AND THE FAILURE IS A SEGMENTATION FAULT RATHER THAN A
+// DIAGNOSTIC. Measured twice with census_for_paths over a stratified sample of the tracked corpus:
+// the run dies with SIGSEGV around the twentieth subject, and the subject it dies ON analyses
+// cleanly when handed to the same instrument alone -- so the cause is accumulation across subjects
+// within a process, not any one subject's shape. That is worse than the cost: it means the
+// whole-population form of corpus_gate is unreachable by construction and not merely slow, and the
+// failure carries no cause, no locus and no count, so a sweep that dies looks exactly like a sweep
+// that finished if only its exit status is read.
+//
+// So the census is run in BATCHES, which is why the instrument takes an explicit subject list
+// beside the discovered-root form. The batch ceiling is an observation about this host and this
+// build, not a modeled bound; it is stated here so the next author batches deliberately rather than
+// discovering it as a silent truncation. Dissolution is the same trigger the exclusion row names --
+// native ingest -- plus a driver that runs batches per process and joins their reports.
+//
+// EVERY WITNESS IN THIS FILE EXECUTES, WHICH IS WHY THE WHOLE-CORPUS ONE IS ABSENT. The obvious
+// row to write here is a gate over the tracked corpus, and it is deliberately not written: nothing
+// can run it, so it would be a documented red rather than an observed one -- roster membership
+// standing in for a verdict. The subtree witness below names a real discovered population small
+// enough to execute, and the corpus form stays a run of census_for_root until its cost dissolves.
+//
+// THE THREE INSTRUMENTS BELOW ARE ENTRY POINTS, NOT RESULTS. DESIGN section 6 asks that a
+// measurement be cited by naming the producer that re-derives it. population_for_root answers how
+// many subjects a root contributes; census_for_root and census_for_paths answer what the lens finds
+// over a discovered root and over an explicit subject list respectively. Their output belongs in a
+// run, never transcribed into this file.
+
+fn population_for_root(root: String) -> Int {
+  length(xs: corpus_paths(pool_roots: [root]))
+}
+
+fn census_for_root(root: String) -> CorpusReport {
+  corpus_report(pool_roots: [root])
+}
+
+fn census_for_paths(paths_csv: String) -> CorpusReport {
+  corpus_report_from_rows(rows: corpus_rows_for_paths(paths: split(s: paths_csv, delimiter: ",")))
+}
+
+fn subtree_gate() -> CorpusGateDisposition {
+  corpus_gate(pool_roots: ["dag/extdeps/filesystem"], population_floor: 5)
+}
+
+// A SUBTREE WHOSE SUBJECTS THE INGEST CANNOT READ IS NOT A CLEAN SUBTREE, and this witness says so
+// rather than passing. dag/extdeps/filesystem is deliberately the subject: three of its six modules
+// come back not-established under the v2 grammar, which is the reach fact the corpus consumer was
+// built to surface. Asserting CorpusClean here would have required either excluding the subtree or
+// widening the disposition until unreadable counted as fine, and both are the coverage-by-illusion
+// this file exists to end. The assertion is therefore that the gate REPORTS the unreadable
+// population -- and its failure mode is the one that matters: if the ingest silently started
+// answering clean for those subjects, this goes red.
+test fn corpus_subtree_gate_reports_its_unreadable_population() -> Bool {
+  match subtree_gate() {
+    CorpusNotEstablishedObserved { rows: _ } => true
+    CorpusClean { files: _ } => false
+    CorpusSuspectObserved { paths: _, sites: _ } => false
+    CorpusPopulationBelowFloor { files: _, floor: _ } => false
+  }
+}
+
+// THE POPULATION FLOOR'S OWN RED CONTROL. Without it the gate's clean arm is reachable by a walk
+// that resolved nothing at all, and an empty question reads as an affirmative answer.
+//
+// THE SUBJECT IS A REAL DIRECTORY HOLDING NO MODULES, NOT AN ABSENT ONE, AND THE FIRST CUT HAD IT
+// WRONG. Pointing this at a path that does not exist does not produce an empty population: the host
+// refuses at root admission (anchor_source_root: "... is not a directory") and unwinds, so the
+// witness PANICKED rather than answering. That refusal is correct -- a mistyped root is a caller
+// defect and should stop the line -- but it means the below-floor arm's red is only authorable from
+// a directory that is present and contributes no modules. docs/ is that subject.
+test fn an_empty_population_is_below_floor_rather_than_clean() -> Bool {
+  match corpus_gate(pool_roots: ["docs"], population_floor: 1) {
+    CorpusPopulationBelowFloor { files: _, floor: _ } => true
+    CorpusClean { files: _ } => false
+    CorpusSuspectObserved { paths: _, sites: _ } => false
+    CorpusNotEstablishedObserved { rows: _ } => false
+  }
+}
+
+// THE DISCRIMINATING PAIR FOR THE CORPUS PATH, AND IT IS A PAIR ON PURPOSE. The lens already has a
+// planted-source control that hands a String to source_finding_standing; that one proves the
+// DETECTOR fires. It does not prove the corpus path fires, because the corpus path is
+// path -> typed read -> ingest -> row, and every one of those steps is new. These two subjects
+// differ in exactly one authored construction -- the accumulating fold copies its carrier through a
+// registered combiner in one and adds to it in the other -- so a green on both says the corpus path
+// discriminates rather than that it answers a constant.
+//
+// They live under test/fixture_roots/, outside every source root, because the planted subject is
+// deliberately a quadratic and must never be compiled as production source or reached by the
+// corpus population.
+
+fn fixture_rows() -> List<CorpusFileRow> {
+  corpus_rows_for_paths(paths: [
+    "test/fixture_roots/complexity_accumulator_copy/planted_copy.dag",
+    "test/fixture_roots/complexity_accumulator_copy/clean_linear.dag"
+  ])
+}
+
+fn suspects_at(row: CorpusFileRow) -> Int {
+  match row.standing {
+    CorpusFileScanned { suspects: s, refusals: _, causes: _ } => s
+    CorpusFileNotEstablished { cause: _ } => 0 - 1
+  }
+}
+
+// A NOT-ESTABLISHED SUBJECT ANSWERS -1 ABOVE RATHER THAN 0, so a fixture the ingest cannot read
+// fails BOTH witnesses instead of silently satisfying the clean one. Zero would have made
+// unreadable and clean the same answer, which is the conflation this whole change exists to end.
+test fn a_planted_copied_accumulator_is_caught_through_the_corpus_path() -> Bool {
+  match fixture_rows() {
+    Cons { head: planted, tail: _ } => suspects_at(row: planted) > 0
+    Empty => false
+  }
+}
+
+test fn a_clean_accumulating_fold_stays_clean_through_the_corpus_path() -> Bool {
+  match fixture_rows() {
+    Cons { head: _, tail: Cons { head: clean, tail: _ } } => suspects_at(row: clean) == 0
+    _ => false
+  }
+}
+
+// CAN THE IN-.DAG INGEST PATH FEED THE ASYMPTOTIC ENGINE OVER A REAL MODULE? ANSWERED BY EXECUTION:
+// NO, AND THE FIRST READING OF THE EVIDENCE SAID YES. The instruments below are what settled it and
+// they are kept because the answer is easy to get wrong in exactly the way it was got wrong here.
+//
+// ingested_root_shape answers TypeNode/Conj for a real module, and cost_lens over that same root
+// answers Linear rather than refusing. Read together those two look like the asymptotic engine
+// returning a verdict on a real module's cost. They are not. ingested_root_child_labels names the
+// root's edges -- grammar_production_identity_node_projection and
+// grammar_production_captured_node_projection -- so the tree is a GRAMMAR PRODUCTION TREE encoded
+// in kernel nodes, and the Linear verdict is a cost of the parse shape, not of the program. That
+// is why ingested_decl_cost_class answers decl-not-found: there are no declaration-named edges on
+// the root for find_named_child to select, because normalize has not lowered anything.
+//
+// The consequence is the lane's shape. The copied-accumulator walker wants exactly this production
+// tree -- it reads the grammar captures -- so it runs on real modules today. The budget gate's
+// subjects are semantic Arrows, so feeding it a real module needs resolve / infer / fold_lowering,
+// which is the compile-graph capability gunbc.plans.structural_quadratic_wall_coverage_audit names
+// as the blocker. That blocker is real for the asymptotic path and is NOT a blocker for the shape
+// detector; conflating the two is what makes the audit's stale prose read as if nothing can move.
+//
+// These are instruments, not witnesses -- run them and read the value; do not transcribe it back
+// into this file.
+
+fn ingested_root_shape(path: String) -> String {
+  match ingest_tree(path: path) {
+    SourceTreeNotEstablished { cause: _ } => "not-established"
+    SourceTreeEstablished { root: r } =>
+      match r.kind {
+        TypeNode { connective: c } =>
+          match c {
+            Atom { identity: _ } => "TypeNode/Atom"
+            Conj => "TypeNode/Conj"
+            Disj => "TypeNode/Disj"
+            Arrow => "TypeNode/Arrow"
+            Cardinality => "TypeNode/Cardinality"
+            Instantiation => "TypeNode/Instantiation"
+          }
+        ComputationNode { behavior: b } =>
+          match b {
+            Value => "ComputationNode/Value"
+            Transform => "ComputationNode/Transform"
+            Branch => "ComputationNode/Branch"
+            Loop => "ComputationNode/Loop"
+            Bind => "ComputationNode/Bind"
+            Match => "ComputationNode/Match"
+          }
+      }
+  }
+}
+
+fn ingested_cost_class(path: String) -> String {
+  match ingest_tree(path: path) {
+    SourceTreeNotEstablished { cause: _ } => "not-established"
+    SourceTreeEstablished { root: r } =>
+      match cost_lens(n: r) {
+        Violates { diagnostic: _ } => "UnknownCost/refused"
+        Holds { value: c } =>
+          match asymptotic_class_of_cost(cost: c) {
+            ClassConstant => "Constant"
+            ClassLog => "Log"
+            ClassLinear => "Linear"
+            ClassLinearithmic => "Linearithmic"
+            ClassPolynomial { degree: _ } => "Polynomial"
+            ClassPolyLog { exponent: _ } => "PolyLog"
+            ClassExponential => "Exponential"
+            ClassFactorial => "Factorial"
+            ClassUnknown => "Unknown"
+          }
+      }
+  }
+}
+
+// THE ROSTER ROW'S OWN SHAPE, PROBED AGAINST A REAL MODULE. The budget gate's subject supply asks
+// for an Arrow and takes its body child; a module root is a Conj of declarations, so the step this
+// probe measures is whether one declaration of a real module can be selected and handed over in
+// exactly that shape.
+fn ingested_decl_cost_class(path: String, decl: String) -> String {
+  match ingest_tree(path: path) {
+    SourceTreeNotEstablished { cause: _ } => "not-established"
+    SourceTreeEstablished { root: r } =>
+      match find_named_child(root: r, name: symbol_intern_lexeme(lexeme: decl)) {
+        Rejected { diagnostics: _ } => "decl-not-found"
+        Accepted { value: arrow, diagnostics: _ } =>
+          match find_arrow_body_child(root: arrow) {
+            Rejected { diagnostics: _ } => "arrow-body-not-found"
+            Accepted { value: body, diagnostics: _ } =>
+              match cost_lens(n: body) {
+                Violates { diagnostic: _ } => "UnknownCost/refused"
+                Holds { value: c } =>
+                  match asymptotic_class_of_cost(cost: c) {
+                    ClassConstant => "Constant"
+                    ClassLog => "Log"
+                    ClassLinear => "Linear"
+                    ClassLinearithmic => "Linearithmic"
+                    ClassPolynomial { degree: _ } => "Polynomial"
+                    ClassPolyLog { exponent: _ } => "PolyLog"
+                    ClassExponential => "Exponential"
+                    ClassFactorial => "Factorial"
+                    ClassUnknown => "Unknown"
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn ingested_root_child_labels(path: String) -> String {
+  match ingest_tree(path: path) {
+    SourceTreeNotEstablished { cause: _ } => "not-established"
+    SourceTreeEstablished { root: r } =>
+      fold(r.children, init: "", f: fn(acc, e) {
+        match e.label {
+          Named { name: n } => join([acc, "|N:", symbol_lexeme(n)], "")
+          _ => join([acc, "|P"], "")
+        }
+      })
+  }
+}

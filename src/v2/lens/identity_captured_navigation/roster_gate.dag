@@ -7,7 +7,8 @@ import v2.lens.common.source_analysis_standing {
   SourceAnalysisNotEstablishedCause,
   LanguageGrammarUnavailable,
   SourceTokenizationRejected,
-  SourceParseRejected
+  SourceParseRejected,
+  SourceUnreadable
 }
 
 // The fast inline-source controls are required-floor witnesses at
@@ -115,9 +116,13 @@ fn source_findings(source_text: String) -> SourceFindingsStanding {
 }
 
 fn ingest_findings(path: String) -> SourceFindingsStanding {
-  v2.lens.identity_captured_navigation.roster_gate.source_findings(
-    source_text: filesystem_read(path: path).content
-  )
+  let read = Filesystem.Read(path: path)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: _ } =>
+      SourceFindingsNotEstablished { cause: SourceUnreadable }
+    FilesystemReadSucceeded { content: text } =>
+      v2.lens.identity_captured_navigation.roster_gate.source_findings(source_text: text)
+  }
 }
 
 fn count_matching(fs: List<Finding>, pred: fn(Finding) -> Bool) -> Int {

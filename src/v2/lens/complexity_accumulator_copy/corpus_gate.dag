@@ -1,0 +1,260 @@
+module v2.lens.complexity_accumulator_copy.corpus_gate
+
+import std.algebra { Cons, Empty }
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SubstrateMandatoryTag }
+import v2.lens.common.source_analysis_standing { SourceAnalysisNotEstablishedCause }
+import v2.lens.complexity_accumulator_copy { Finding }
+import v2.lens.complexity_accumulator_copy.analyze {
+  finding_is_refusal,
+  finding_is_suspect,
+  finding_refusal_cause
+}
+import v2.lens.complexity_accumulator_copy.roster_gate {
+  SourceFindingsEstablished,
+  SourceFindingsNotEstablished,
+  count_matching,
+  ingest_findings
+}
+import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
+import v2.std.algebra { list_reverse }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.optional { Absent, Present }
+import v2.std.text { String }
+
+// THE POPULATION IS DISCOVERED, NOT AUTHORED. The roster gate beside this module asks the same
+// question of nine hand-picked paths, so its answer is about those nine and the corpus outside
+// them is not clean but UNASKED -- coverage by illusion in the shape DESIGN section 6 names. This
+// module takes the subject universe from module_declaration_facts_live, the same host producer the
+// module graph resolves the corpus with, so adding a .dag file adds a subject with no edit here.
+//
+// WHAT THAT PRODUCER CAN STILL MISS, stated because a coverage claim that does not state it is
+// worth less than none: a file whose module binding is unclassifiable is dropped by the module
+// index rather than refused, so it never becomes a row and never becomes a refusal either. The
+// population floor below is what makes an accidentally-narrowed walk red instead of vacuously
+// green; it does not close that gap, and closing it belongs to the module index, not here.
+
+// A REFUSAL CAUSE IS CARRIED, NOT SUMMED AWAY. The five Unclassifiable causes have five different
+// remedies -- an unregistered combiner is a MODEL gap, an unreadable call head is an INSTRUMENT
+// gap, a may-alias name is a RESOLUTION gap -- so a corpus total over them names no work. They are
+// counted per cause here for the same reason the compile gate types them per cause there.
+
+type RefusalCauseCount {
+  cause: Symbol
+  count: Int
+}
+
+type CorpusFileStanding
+  = CorpusFileScanned { suspects: Int, refusals: Int, causes: List<RefusalCauseCount> }
+  | CorpusFileNotEstablished { cause: SourceAnalysisNotEstablishedCause }
+
+type CorpusFileRow {
+  path: String
+  standing: CorpusFileStanding
+}
+
+// THIS FOLD REBUILDS ITS ACCUMULATOR, WHICH IS THE SHAPE THIS VERY LENS CONVICTS, AND THE
+// JUSTIFICATION IS STRUCTURAL RATHER THAN "n IS SMALL HERE" -- DESIGN section 6 rejects that excuse
+// because reuse changes n. The bound here is not incidental: RefusalCauseCount is keyed on the
+// Unclassifiable cause, the causes are a CLOSED set fixed by the analyze module's arms, so this
+// list cannot exceed that set however large the corpus grows. The rebuild is over a constant, and
+// the alternative -- a per-cause field, or a map keyed on a symbol -- buys nothing and loses the
+// property that a new cause needs no edit here.
+fn add_cause(counts: List<RefusalCauseCount>, cause: Symbol, n: Int) -> List<RefusalCauseCount> {
+  if any(xs: counts, predicate: fn(row) { row.cause == cause }) {
+    list_reverse(xs: fold_list(xs: counts, empty: Empty, cons: fn(acc, row) {
+      Cons {
+        head: if row.cause == cause {
+            RefusalCauseCount { cause: row.cause, count: row.count + n }
+          } else {
+            row
+          },
+        tail: acc
+      }
+    }))
+  } else {
+    Cons { head: RefusalCauseCount { cause: cause, count: n }, tail: counts }
+  }
+}
+
+fn refusal_cause_counts(fs: List<Finding>) -> List<RefusalCauseCount> {
+  fold_list(xs: fs, empty: Empty, cons: fn(acc, f) {
+    match finding_refusal_cause(f: f) {
+      Present { value: cause } => add_cause(counts: acc, cause: cause, n: 1)
+      Absent => acc
+    }
+  })
+}
+
+fn merge_cause_counts(
+  left: List<RefusalCauseCount>,
+  right: List<RefusalCauseCount>
+) -> List<RefusalCauseCount> {
+  fold_list(xs: right, empty: left, cons: fn(acc, row) {
+    add_cause(counts: acc, cause: row.cause, n: row.count)
+  })
+}
+
+fn corpus_file_standing(path: String) -> CorpusFileStanding {
+  match ingest_findings(path: path) {
+    SourceFindingsNotEstablished { cause: cause } =>
+      CorpusFileNotEstablished { cause: cause }
+    SourceFindingsEstablished { findings: fs } =>
+      CorpusFileScanned {
+        suspects: count_matching(fs: fs, pred: finding_is_suspect),
+        refusals: count_matching(fs: fs, pred: finding_is_refusal),
+        causes: refusal_cause_counts(fs: fs)
+      }
+  }
+}
+
+fn corpus_file_row(path: String) -> CorpusFileRow {
+  CorpusFileRow { path: path, standing: corpus_file_standing(path: path) }
+}
+
+fn corpus_paths(pool_roots: List<String>) -> List<String> {
+  list_reverse(xs: fold_list(
+    xs: module_declaration_facts_live(pool_roots: pool_roots),
+    empty: Empty,
+    cons: fn(acc, fact) { Cons { head: fact.path, tail: acc } }
+  ))
+}
+
+fn corpus_rows_for_paths(paths: List<String>) -> List<CorpusFileRow> {
+  list_reverse(xs: fold_list(
+    xs: paths,
+    empty: Empty,
+    cons: fn(acc, path) { Cons { head: corpus_file_row(path: path), tail: acc } }
+  ))
+}
+
+fn corpus_rows(pool_roots: List<String>) -> List<CorpusFileRow> {
+  corpus_rows_for_paths(paths: corpus_paths(pool_roots: pool_roots))
+}
+
+// SUSPECTS AND UNREADABLE SUBJECTS ARE CARRIED AT IDENTITY GRAIN, NOT AS COUNTS. A count says how
+// many and never which, so it cannot be joined against anything and a removal cannot be given a
+// disposition (DESIGN section 5, the monotone debt contract).
+
+fn corpus_suspect_paths(rows: List<CorpusFileRow>) -> List<String> {
+  list_reverse(xs: fold_list(
+    xs: rows,
+    empty: Empty,
+    cons: fn(acc, row) {
+      match row.standing {
+        CorpusFileScanned { suspects: s, refusals: _, causes: _ } =>
+          if s > 0 { Cons { head: row.path, tail: acc } } else { acc }
+        CorpusFileNotEstablished { cause: _ } => acc
+      }
+    }
+  ))
+}
+
+fn corpus_not_established_rows(rows: List<CorpusFileRow>) -> List<CorpusFileRow> {
+  list_reverse(xs: fold_list(
+    xs: rows,
+    empty: Empty,
+    cons: fn(acc, row) {
+      match row.standing {
+        CorpusFileScanned { suspects: _, refusals: _, causes: _ } => acc
+        CorpusFileNotEstablished { cause: _ } => Cons { head: row, tail: acc }
+      }
+    }
+  ))
+}
+
+fn corpus_suspect_site_count(rows: List<CorpusFileRow>) -> Int {
+  fold_list(xs: rows, empty: 0, cons: fn(acc, row) {
+    match row.standing {
+      CorpusFileScanned { suspects: s, refusals: _, causes: _ } => acc + s
+      CorpusFileNotEstablished { cause: _ } => acc
+    }
+  })
+}
+
+fn corpus_refusal_site_count(rows: List<CorpusFileRow>) -> Int {
+  fold_list(xs: rows, empty: 0, cons: fn(acc, row) {
+    match row.standing {
+      CorpusFileScanned { suspects: _, refusals: r, causes: _ } => acc + r
+      CorpusFileNotEstablished { cause: _ } => acc
+    }
+  })
+}
+
+fn corpus_refusal_causes(rows: List<CorpusFileRow>) -> List<RefusalCauseCount> {
+  fold_list(xs: rows, empty: Empty, cons: fn(acc, row) {
+    match row.standing {
+      CorpusFileScanned { suspects: _, refusals: _, causes: cs } =>
+        merge_cause_counts(left: acc, right: cs)
+      CorpusFileNotEstablished { cause: _ } => acc
+    }
+  })
+}
+
+type CorpusReport {
+  files: Int
+  scanned: Int
+  suspect_files: List<String>
+  suspect_sites: Int
+  refusal_sites: Int
+  refusal_causes: List<RefusalCauseCount>
+  not_established: List<CorpusFileRow>
+}
+
+fn corpus_report_from_rows(rows: List<CorpusFileRow>) -> CorpusReport {
+  let unreadable = corpus_not_established_rows(rows: rows)
+  CorpusReport {
+    files: length(xs: rows),
+    scanned: length(xs: rows) - length(xs: unreadable),
+    suspect_files: corpus_suspect_paths(rows: rows),
+    suspect_sites: corpus_suspect_site_count(rows: rows),
+    refusal_sites: corpus_refusal_site_count(rows: rows),
+    refusal_causes: corpus_refusal_causes(rows: rows),
+    not_established: unreadable
+  }
+}
+
+fn corpus_report(pool_roots: List<String>) -> CorpusReport {
+  corpus_report_from_rows(rows: corpus_rows(pool_roots: pool_roots))
+}
+
+// AN EMPTY POPULATION IS ITS OWN ARM. Without it a walk that resolved no modules at all -- a wrong
+// pool root, a producer outage -- answers CorpusClean, which is the affirmative "nothing wrong
+// here" for a run that asked nothing.
+
+type CorpusGateDisposition
+  = CorpusClean { files: Int }
+  | CorpusSuspectObserved { paths: List<String>, sites: Int }
+  | CorpusNotEstablishedObserved { rows: List<CorpusFileRow> }
+  | CorpusPopulationBelowFloor { files: Int, floor: Int }
+
+fn corpus_gate_disposition(report: CorpusReport, population_floor: Int) -> CorpusGateDisposition {
+  if report.files < population_floor {
+    CorpusPopulationBelowFloor { files: report.files, floor: population_floor }
+  } else {
+    match report.suspect_files {
+      Cons { head: _, tail: _ } =>
+        CorpusSuspectObserved { paths: report.suspect_files, sites: report.suspect_sites }
+      Empty =>
+        match report.not_established {
+          Cons { head: _, tail: _ } =>
+            CorpusNotEstablishedObserved { rows: report.not_established }
+          Empty => CorpusClean { files: report.files }
+        }
+    }
+  }
+}
+
+fn corpus_gate(pool_roots: List<String>, population_floor: Int) -> CorpusGateDisposition {
+  corpus_gate_disposition(
+    report: corpus_report(pool_roots: pool_roots),
+    population_floor: population_floor
+  )
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+}
