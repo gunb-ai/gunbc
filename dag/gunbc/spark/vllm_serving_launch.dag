@@ -1,0 +1,191 @@
+module gunbc.spark.vllm_serving_launch
+
+import std.types { Bool, String, NonEmptyStr, List, EpochSecs }
+import v2.std.optional { Present, Absent }
+import std.content_hash { ContentHash, compare_content_hash, ContentHashComparison, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
+import product.placement_supply { HostIdentity }
+import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
+
+// ── ONE LAUNCH IS ONE SUBJECT, AND THE UNIT IS NOT IT ──────────────────────────────────────────
+//
+// WHY THIS TYPE EXISTS. Every capacity, usage, restart and routing observation this repository
+// takes about a serving engine has been joined on some combination of host, group, model name and
+// self-reported version string. None of those identify a LAUNCH, and the difference is not
+// theoretical: on 2026-09-05 the group A head produced engine cores reporting 23.6 GiB, then
+// 21.29 GiB, then 54.01 GiB of available KV -- three incarnations from ONE rendered unit whose text
+// never changed. Joined on host and unit, those are three readings of one object and the fleet
+// concludes its capacity is unstable. Joined on incarnation, they are three objects with one
+// reading each, and the live question becomes which one is currently serving.
+//
+// THE CONFUSION IS A SAFETY DEFECT AND NOT ONLY A REPORTING ONE. A seat granted against the engine
+// that answered a probe must not authorize a request against a different engine that has since
+// replaced it, and "FabricGroupA" cannot tell them apart. Restart is precisely the event that
+// invalidates every outstanding grant, so a grant that cannot name its incarnation cannot be fenced.
+//
+// WHAT IS DELIBERATELY NOT A FIELD. The engine's self-reported vLLM version string is not identity.
+// extdeps.vllm.server already carries a VllmSourceRevision for what the LAWS were established
+// against, and a version a process prints about itself is a claim rather than provenance: a patched
+// or locally built image reports whatever its metadata says. Executable provenance is the digest,
+// and an observer that cannot obtain one produces no incarnation rather than substituting a version.
+
+// The identity of one engine launch. Every field is an OBSERVED fact about that launch; nothing is
+// derived from the desired unit, because the desired unit is exactly what fails to distinguish two
+// launches of itself.
+type VllmServingLaunch sole_constructor {
+  group: FabricGroup
+  head: HostIdentity
+  systemd_invocation: NonEmptyStr
+  container_id: NonEmptyStr
+  executable_digest: ContentHash
+  unit_digest: ContentHash
+  started_at: EpochSecs
+}
+
+fn vllm_serving_launch(
+  group: FabricGroup,
+  head: HostIdentity,
+  systemd_invocation: NonEmptyStr,
+  container_id: NonEmptyStr,
+  executable_digest: ContentHash,
+  unit_digest: ContentHash,
+  started_at: EpochSecs,
+) -> VllmServingLaunch {
+  VllmServingLaunch {
+    group: group,
+    head: head,
+    systemd_invocation: systemd_invocation,
+    container_id: container_id,
+    executable_digest: executable_digest,
+    unit_digest: unit_digest,
+    started_at: started_at,
+  }
+}
+
+// ── THE JOIN IS AN IDENTITY COMPARISON, NOT A CO-LOCATION TEST ─────────────────────────────────
+//
+// Every join between two observations goes through this. The expression it exists to displace is
+// `a.group == b.group`, which reads as an identity test and is a co-location test.
+type LaunchJoin
+  = SameLaunch
+  | DifferentLaunch { left: NonEmptyStr, right: NonEmptyStr }
+  | LaunchContradiction { invocation: NonEmptyStr, field: NonEmptyStr }
+
+// THE CROSS-FAMILY ARM IS A CONTRADICTION, NOT A DISAGREEMENT. std.content_hash refuses to collapse
+// a cross-family pair into a silent false precisely so callers cannot read "I could not compare
+// these" as "these differ". Two observers that digested one launch under different hash families
+// have not established that it changed; they have established that they cannot be joined, which is
+// an observer defect. Mapping it to `false` here would reintroduce the collapse one level up.
+type DigestAgreement
+  = DigestsAgree
+  | DigestsDiffer
+  | DigestsIncomparable
+
+fn digests_agree(left: ContentHash, right: ContentHash) -> DigestAgreement {
+  match compare_content_hash(left: left, right: right) {
+    ContentHashEqual => DigestsAgree
+    ContentHashDifferent => DigestsDiffer
+    ContentHashCrossFamilyIncomparable => DigestsIncomparable
+  }
+}
+
+// THE AGREEMENT CHECKS ARE ONE ROW LIST FOLDED ONCE, not a conditional chain that recomputes a
+// comparison in order to ask whether it fired. Each row names its field and carries its verdict, so
+// the reported field is the FIRST that disagreed rather than whichever the nesting reached first.
+//
+// EVERY IDENTITY FIELD IS COMPARED, AND `head` IS THE ONE THAT WAS MISSED. It sat in the type and
+// not in this list, so two launches on DIFFERENT HOSTS that happened to share an invocation id
+// joined as the same launch -- and a systemd invocation id is unique per host, not across the
+// fleet, so nothing prevents that coincidence between two of the eight Sparks. A carrier field the
+// join ignores is worse than no field: it reads as though the host were part of the identity while
+// contributing nothing to it. The rule this row list now holds is that the type has no field the
+// fold does not consult.
+//
+// EVERY IDENTITY FIELD IS COMPARED, AND `head` IS THE ONE THAT WAS MISSED. It sat in the type and
+// not in this list, so two launches on DIFFERENT HOSTS that happened to share an invocation id
+// joined as the same launch -- and a systemd invocation id is unique per host, not across the
+// fleet, so nothing prevents that coincidence between two of the eight Sparks. A carrier field the
+// join ignores is worse than no field: it reads as though the host were part of the identity while
+// contributing nothing to it. The rule this row list now holds is that the type has no field the
+// fold does not consult.
+type FieldAgreement {
+  field: NonEmptyStr
+  agrees: Bool
+  incomparable: Bool
+}
+
+fn field_agreement(field: NonEmptyStr, agrees: Bool) -> FieldAgreement {
+  FieldAgreement { field: field, agrees: agrees, incomparable: false }
+}
+
+fn digest_agreement_row(field: NonEmptyStr, agreement: DigestAgreement) -> FieldAgreement {
+  match agreement {
+    DigestsAgree => FieldAgreement { field: field, agrees: true, incomparable: false }
+    DigestsDiffer => FieldAgreement { field: field, agrees: false, incomparable: false }
+    DigestsIncomparable => FieldAgreement { field: field, agrees: false, incomparable: true }
+  }
+}
+
+fn agreement_rows(a: VllmServingLaunch, b: VllmServingLaunch) -> List<FieldAgreement> {
+  [
+    field_agreement(field: "head" as NonEmptyStr, agrees: (a.head as String) == (b.head as String)),
+    field_agreement(field: "container_id" as NonEmptyStr, agrees: (a.container_id as String) == (b.container_id as String)),
+    digest_agreement_row(field: "executable_digest" as NonEmptyStr, agreement: digests_agree(left: a.executable_digest, right: b.executable_digest)),
+    digest_agreement_row(field: "unit_digest" as NonEmptyStr, agreement: digests_agree(left: a.unit_digest, right: b.unit_digest)),
+    field_agreement(field: "group" as NonEmptyStr, agrees: (fabric_group_wire(g: a.group) as String) == (fabric_group_wire(g: b.group) as String)),
+    field_agreement(field: "started_at" as NonEmptyStr, agrees: a.started_at == b.started_at),
+  ]
+}
+
+fn contradiction_of_row(invocation: NonEmptyStr, row: FieldAgreement) -> LaunchJoin {
+  if row.incomparable {
+    LaunchContradiction {
+      invocation: invocation,
+      field: join([row.field as String, " (the digest families are incomparable, so the two observers cannot be joined at all)"], "") as NonEmptyStr,
+    }
+  } else {
+    LaunchContradiction { invocation: invocation, field: row.field }
+  }
+}
+
+// THE DISCRIMINATOR IS THE INVOCATION. systemd mints a fresh invocation id per start of a unit, so
+// two launches differ there and nowhere else that is GUARANTEED to differ -- a restart inside one
+// second shares started_at, a rebuild-free restart shares both digests, and a container recreated
+// under the same name shares the name. A same-invocation pair therefore still checks the rest: if
+// the invocation agrees and a field does not, the two observations disagree about what they watched,
+// and that is a contradiction to surface rather than a match to report.
+fn same_launch(a: VllmServingLaunch, b: VllmServingLaunch) -> LaunchJoin {
+  if (a.systemd_invocation as String) != (b.systemd_invocation as String) {
+    DifferentLaunch { left: a.systemd_invocation, right: b.systemd_invocation }
+  } else {
+    match first(filter(agreement_rows(a: a, b: b), r => !r.agrees)) {
+      Absent => SameLaunch
+      Present { value: row } => contradiction_of_row(invocation: a.systemd_invocation, row: row)
+    }
+  }
+}
+
+// A join is admissible ONLY on SameLaunch. The contradiction arm is deliberately NOT folded
+// into the different arm: "these are two launches" and "these two readings disagree about one
+// launch" call for different action -- the first is ordinary turnover, the second means an observer
+// is wrong and no reading from either side should be trusted until that is resolved.
+fn join_is_admissible(j: LaunchJoin) -> Bool {
+  match j {
+    SameLaunch => true
+    DifferentLaunch { left: _, right: _ } => false
+    LaunchContradiction { invocation: _, field: _ } => false
+  }
+}
+
+fn launch_join_wire(j: LaunchJoin) -> String {
+  match j {
+    SameLaunch => "same-incarnation"
+    DifferentLaunch { left: l, right: r } =>
+      join(["different-incarnation: ", l as String, " vs ", r as String], "")
+    LaunchContradiction { invocation: i, field: f } =>
+      join(["incarnation-contradiction: two observations of ", i as String, " disagree on ", f as String], "")
+  }
+}
+
+fn launch_wire(i: VllmServingLaunch) -> String {
+  join([fabric_group_wire(g: i.group) as String, "@", i.systemd_invocation as String], "")
+}

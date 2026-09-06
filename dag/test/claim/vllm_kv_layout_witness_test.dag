@@ -1,0 +1,186 @@
+module test.claim.vllm_kv_layout_witness
+
+import std.types { Bool, String, Int, NonEmptyStr, List }
+import v2.std.optional { Present, Absent }
+import std.nat { Nat }
+import std.measure { TokenCount, token_count, token_count_value }
+import extdeps.vllm.log_lines { VllmStartupReading, vllm_startup_reading, GpuKvCacheSize }
+import extdeps.vllm.kv_cache {
+  VllmObservedKvPool, VllmKvPoolAdmission, KvPoolAdmitted, KvPoolRefused,
+  vllm_observed_kv_pool_from_reading,
+  VllmPoolReconstruction, BlockCountTimesBlockSize, UtilizationTimesTotalMemory,
+  vllm_pool_reconstruction_is_authoritative,
+}
+import extdeps.vllm.kv_layout {
+  KvBlockSize, KvLayerCount, KvGroupKind, FullAttention, SlidingWindowAttention, MambaState,
+  KvGroupLayout, ResolvedKvLayout, resolved_kv_layout,
+  VllmReportedCapacity, vllm_reported_capacity,
+  BlocksPerRequest, BlocksPerRequestRecovered, BlocksPerRequestUnrecoverable,
+  recovered_blocks_per_max_length_request,
+  PrintedLinesAgreement, PrintedLinesAgree, PrintedLinesDisagree, PrintedLinesUncheckable, printed_lines_agree,
+  AdmissionCost, AdmissionCostBlocks, AdmissionCostUnestablished, cold_admission_blocks,
+  AllocatorUsage, UsageReading, UsageRead, FreeCountImpossible, allocator_usage, allocator_usage_is_occupancy,
+  group_blocks_for,
+}
+
+// The group A head's own two startup lines, 2026-09-05T20:43:56Z.
+fn w_pool() -> VllmObservedKvPool {
+  match vllm_observed_kv_pool_from_reading(
+    tokens: token_count(count: 11767856),
+    reading: vllm_startup_reading(
+      line: GpuKvCacheSize,
+      captured_text: "[kv_cache_utils.py:1733] GPU KV cache size: 11,767,856 tokens" as NonEmptyStr,
+    ),
+  ) {
+    KvPoolAdmitted { pool: p } => p
+    KvPoolRefused { cause: _ } =>
+      match vllm_observed_kv_pool_from_reading(
+        tokens: token_count(count: 0),
+        reading: vllm_startup_reading(line: GpuKvCacheSize, captured_text: "x" as NonEmptyStr),
+      ) {
+        KvPoolAdmitted { pool: q } => q
+        KvPoolRefused { cause: _ } => w_pool()
+      }
+  }
+}
+
+fn w_reported() -> VllmReportedCapacity {
+  vllm_reported_capacity(pool: w_pool(), max_concurrency_hundredths: 1122)
+}
+
+// The allocator inventory read off the same engine's cache_config_info.
+fn w_layout(groups: List<KvGroupLayout>) -> ResolvedKvLayout {
+  resolved_kv_layout(
+    allocator_blocks: 54475,
+    scheduler_block_size: token_count(count: 16),
+    hash_block_size: token_count(count: 16),
+    max_model_len: token_count(count: 1048576),
+    max_num_batched_tokens: token_count(count: 8192),
+    groups: groups,
+  )
+}
+
+// THE ENGINE'S OWN GROUP-AWARE COST, READ BACK OUT OF ITS TWO PRINTED LINES: 54,475 blocks x
+// 1,048,576 context / 11,767,856 tokens = 4,854 blocks for one full-context request. That figure is
+// the engine's own group-aware arithmetic recovered, not re-derived from fields whose reductions
+// differ, and it is the only per-request cost today's evidence yields.
+test fn the_engines_per_request_block_cost_is_recoverable_from_its_printed_lines() -> Bool {
+  match recovered_blocks_per_max_length_request(layout: w_layout(groups: []), reported: w_reported()) {
+    BlocksPerRequestRecovered { blocks: b } => b == 4854
+    BlocksPerRequestUnrecoverable { cause: _ } => false
+  }
+}
+
+// THE LIMIT OF TODAY'S EVIDENCE, ASSERTED RATHER THAN ASSUMED. The printed-line check tests the pool
+// line against the concurrency line, and the inventory CANCELS OUT of it -- so swapping in a
+// different engine's inventory leaves it green. This row exists to keep that stated: it is the
+// reason the layout receipt is still required, and the reason no wall here may be described as
+// checking the inventory.
+//
+// The recovered per-request cost DOES move with the inventory (4,854 against group A's 54,475
+// blocks, 4,930 against group B's 55,328), which is what makes the cost a function of the launch
+// while the agreement check is not.
+test fn the_printed_line_check_does_not_see_the_inventory_which_is_why_a_receipt_is_still_needed() -> Bool {
+  let other = resolved_kv_layout(
+    allocator_blocks: 55328,
+    scheduler_block_size: token_count(count: 16),
+    hash_block_size: token_count(count: 16),
+    max_model_len: token_count(count: 1048576),
+    max_num_batched_tokens: token_count(count: 8192),
+    groups: [],
+  )
+  (match printed_lines_agree(layout: w_layout(groups: []), reported: w_reported()) { PrintedLinesAgree => true  _ => false })
+    && (match printed_lines_agree(layout: other, reported: w_reported()) { PrintedLinesAgree => true  _ => false })
+    && (match recovered_blocks_per_max_length_request(layout: other, reported: w_reported()) {
+          BlocksPerRequestRecovered { blocks: b } => b == 4930
+          BlocksPerRequestUnrecoverable { cause: _ } => false
+        })
+}
+
+// AND THE CHECK IS NOT VACUOUS: a mistranscribed concurrency line breaks it. Without this row the
+// one above could be satisfied by a function that returns Agree unconditionally.
+test fn a_mistranscribed_concurrency_line_breaks_the_printed_line_check() -> Bool {
+  let wrong = vllm_reported_capacity(pool: w_pool(), max_concurrency_hundredths: 440)
+  match printed_lines_agree(layout: w_layout(groups: []), reported: wrong) {
+    PrintedLinesDisagree { implied_hundredths: i, reported_hundredths: r } => i == 1122 && r == 440
+    _ => false
+  }
+}
+
+fn w_full(layers: KvLayerCount, block: KvBlockSize) -> KvGroupLayout {
+  KvGroupLayout { kind: FullAttention, layer_count: layers, block_size: block }
+}
+
+fn w_window(layers: KvLayerCount, block: KvBlockSize, window: Int) -> KvGroupLayout {
+  KvGroupLayout { kind: SlidingWindowAttention { window: token_count(count: window) }, layer_count: layers, block_size: block }
+}
+
+// THE DISCRIMINATING ROW FOR THE WHOLE MODULE: two layouts with the SAME allocator inventory and the
+// SAME global block size admit different costs, because the windows and group sizes differ. Any
+// model that reduces capacity to those two fields answers identically for both and is wrong for at
+// least one. The windowed group stops growing at 128 tokens while the full-attention group grows
+// with the sequence, which is exactly the asymmetry `num_gpu_blocks * block_size` erases.
+test fn one_inventory_and_one_block_size_do_not_determine_the_admission_cost() -> Bool {
+  let mostly_full = w_layout(groups: [w_full(layers: 40, block: 16), w_window(layers: 21, block: 16, window: 128)])
+  let mostly_windowed = w_layout(groups: [w_full(layers: 4, block: 16), w_window(layers: 57, block: 16, window: 128)])
+  let budget = token_count(count: 500000)
+  match cold_admission_blocks(layout: mostly_full, sequence_budget: budget) {
+    AdmissionCostUnestablished { cause: _ } => false
+    AdmissionCostBlocks { blocks: a } =>
+      match cold_admission_blocks(layout: mostly_windowed, sequence_budget: budget) {
+        AdmissionCostUnestablished { cause: _ } => false
+        AdmissionCostBlocks { blocks: b } =>
+          a != b
+            && a == (31250 * 40) + (8 * 21)
+            && b == (31250 * 4) + (8 * 57)
+      }
+  }
+}
+
+// AND WITH NO GROUPS OBSERVED THERE IS NO COST, WHICH IS TODAY'S REAL STATE. Every incarnation this
+// repository can currently observe lands here: the engine does not emit layer count or page size, so
+// the layout is inventory-only and the admission cost refuses rather than guessing one.
+test fn an_unobserved_group_layout_refuses_the_admission_cost() -> Bool {
+  (match cold_admission_blocks(layout: w_layout(groups: []), sequence_budget: token_count(count: 500000)) {
+     AdmissionCostUnestablished { cause: c } => string_contains(s: c as String, pattern: "unobserved")
+     AdmissionCostBlocks { blocks: _ } => false
+   })
+    && (match cold_admission_blocks(layout: w_layout(groups: [w_full(layers: 61, block: 16)]), sequence_budget: token_count(count: 2000000)) {
+          AdmissionCostUnestablished { cause: c } => string_contains(s: c as String, pattern: "context cap")
+          AdmissionCostBlocks { blocks: _ } => false
+        })
+}
+
+// THE TWO FORBIDDEN RECONSTRUCTIONS STAY FORBIDDEN, and this module offers no function that performs
+// either. The usage gauge is likewise not occupancy: it counts retained prefix-cache blocks, which
+// is why the group B head read a majority-used pool with nothing running.
+test fn neither_reconstruction_is_authoritative_and_usage_is_not_occupancy() -> Bool {
+  !vllm_pool_reconstruction_is_authoritative(r: BlockCountTimesBlockSize)
+    && !vllm_pool_reconstruction_is_authoritative(r: UtilizationTimesTotalMemory)
+    && (match allocator_usage(layout: w_layout(groups: []), free_blocks: 545) {
+          UsageRead { usage: u } => u.referenced_or_retained_blocks == 53930 && !allocator_usage_is_occupancy(usage: u)
+          FreeCountImpossible { free_blocks: _, allocator_blocks: _ } => false
+        })
+}
+
+// A FREE COUNT LARGER THAN THE INVENTORY REFUSES. It was clamped to zero-free, which is the most
+// alarming answer available and reached by fabrication -- an impossible reading rendered as a
+// saturated engine, indistinguishable from a real one. The two numbers came from different launches
+// and the only honest output says so.
+test fn a_free_count_exceeding_the_inventory_refuses_rather_than_reading_as_saturated() -> Bool {
+  match allocator_usage(layout: w_layout(groups: []), free_blocks: 99999) {
+    FreeCountImpossible { free_blocks: f, allocator_blocks: a } => f == 99999 && a == 54475
+    UsageRead { usage: _ } => false
+  }
+}
+
+// A WINDOWED GROUP WITH NO WINDOW IS NOT WRITABLE. The window used to sit beside the kind as an
+// optional field, so that state typechecked and the cost function charged it as full attention --
+// a malformed layout yielding a plausible number instead of a refusal. The constructor below is the
+// only way to build a windowed group, and it demands the window.
+test fn a_windowed_group_carries_its_window_by_construction() -> Bool {
+  let g = w_window(layers: 1, block: 16, window: 128)
+  (match g.kind { SlidingWindowAttention { window: w } => token_count_value(t: w) == 128  _ => false })
+    && group_blocks_for(group: g, sequence: token_count(count: 1048576)) == 8
+    && group_blocks_for(group: w_full(layers: 1, block: 16), sequence: token_count(count: 1048576)) == 65536
+}
