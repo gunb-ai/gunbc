@@ -7,6 +7,7 @@ import std.resources { Network }
 import extdeps.shell
 import extdeps.exec.command { ArgvCommand }
 import extdeps.posix.test_utility { test_exists_command, test_writable_command, test_executable_command }
+import extdeps.systemd.systemctl { systemctl_version_command }
 import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
