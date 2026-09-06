@@ -384,6 +384,7 @@ type CompilerDiagnostic
       missing_realization_fact: String,
       span: SourceSpan
     }
+  | EmissionConstructUnprojectable { construct: String, span: SourceSpan }
 
 
 // SEVERITY AND GATE DISPOSITION ARE TWO FACTS ABOUT A DIAGNOSTIC, NOT ONE.
@@ -592,6 +593,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     ContainerSpellingUnrecognized { name: _, container_leaf: _, span: s } => s
     ServiceConfigReferenceJudgmentDeferred { field: _, referenced_name: _, trigger: _, span: s } => s
     TransportEmissionNotModeled { transport_kind: _, service: _, operation: _, declaring_module: _, target: _, missing_realization_fact: _, span: s } => s
+    EmissionConstructUnprojectable { construct: _, span: s } => s
   }
 }
 
@@ -695,6 +697,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("service config field '", f, "' carries the reference '", n, "', and the reference judgment does not yet run on this field -- ", t, ". This is a counted deferral, not a pass: nothing has established that '", n, "' names anything")
     TransportEmissionNotModeled { transport_kind: kind, service: svc, operation: op, declaring_module: m, target: tgt, missing_realization_fact: missing, span: _ } =>
       concat("'", kind, "' transport emission is not modeled: operation '", svc, ".", op, "' declared in '", m, "' cannot be emitted for target '", tgt, "' -- ", missing, ". Bind a realization handler for the '", kind, "' transport (DESIGN §3: interface shape and transport are two facts); do not add a per-target renderer")
+    EmissionConstructUnprojectable { construct: c, span: _ } =>
+      concat("emission refused: unprojectable construct '", c, "' — every source construct contributing to a published file must receive a total projection; this construct has none, so the module must not be published")
   }
 }
 
@@ -813,6 +817,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     ContainerSpellingUnrecognized { name: _, container_leaf: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ServiceConfigReferenceJudgmentDeferred { field: _, referenced_name: _, trigger: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateAdvisoryTypecheck }
     TransportEmissionNotModeled { transport_kind: _, service: _, operation: _, declaring_module: _, target: _, missing_realization_fact: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    EmissionConstructUnprojectable { construct: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
   }
 }
 

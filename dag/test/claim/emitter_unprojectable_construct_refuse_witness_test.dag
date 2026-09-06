@@ -1,0 +1,44 @@
+module test.claim.emitter_unprojectable_construct_refuse_witness_test
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Permanent regression control (DESIGN 4b(4)) for stage0 emission fail-closed on an
+// unprojectable construct. THE DEFECT: filter-in-a-branch-condition produced no refusal and
+// published a truncated module. THE WALL: EmissionConstructUnprojectable at the construct's
+// span, and the module absent from published files. Do not teach the emitter this shape.
+
+data filter_in_guard_source: String = "module fx.filter_guard\nimport std.types { List, Bool, Int }\nfn f(xs: List<Int>) -> Int {\n  if (xs |> filter(x => x > 0) |> count) > 0 {\n    1\n  } else {\n    0\n  }\n}\n"
+
+data any_in_guard_source: String = "module fx.any_guard\nimport std.types { List, Bool, Int }\nfn f(xs: List<Int>) -> Int {\n  if xs |> any(x => x > 0) {\n    1\n  } else {\n    0\n  }\n}\n"
+
+fn unprojectable_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "EmissionConstructUnprojectable")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+test fn w_filter_in_branch_condition_refuses_at_emission() -> Bool {
+  unprojectable_blocking_count(source: filter_in_guard_source) == 1
+    && !compile_dag_rust_emit_check(filter_in_guard_source, "src/fx_filter_guard.rs", ["fn f"], [])
+}
+
+test fn w_supported_guarded_any_lambda_still_emits() -> Bool {
+  unprojectable_blocking_count(source: any_in_guard_source) == 0
+    && compile_dag_rust_emit_check(any_in_guard_source, "src/fx_any_guard.rs", ["fn f"], [])
+}
+
+test fn w_refused_module_is_not_published() -> Bool {
+  unprojectable_blocking_count(source: filter_in_guard_source) == 1
+    && !compile_dag_rust_emit_check(filter_in_guard_source, "src/fx_filter_guard.rs", ["pub fn f"], [])
+}

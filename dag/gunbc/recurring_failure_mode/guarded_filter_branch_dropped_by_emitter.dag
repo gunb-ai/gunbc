@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.guarded_filter_branch_dropped_by_emitter
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data guarded_filter_branch_dropped_by_emitter: RecurringFailureMode = RecurringFailureMode {
+  identity: "guarded_filter_branch_dropped_by_emitter" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: stage0 rust emission accepts a .dag module containing a construct it cannot project, and publishes a file that silently omits the unprojectable subtree — a guarded branch dropped because a filter sat in the condition — so the mirror builds cleanly and runs a floor whose diagnostics are unfounded. ",
+
+    "HARM: DESIGN section 5 fabricated plausible output, outside the guarantee ladder and forbidden outright: the compiler reports success beside a truncated realization of its own source. Eight functions vanished transitively on the measured #10625 candidate (branch gone, callee uncalled). ",
+
+    "DISTINGUISHING FACTS: the cheap tell is a caller in .dag whose callee has zero occurrences in the committed stage0 mirror. A self-consistent missing path is indistinguishable from a correct one by any green/red signal on the truncated artifact. ",
+
+    "SPECIMEN: filter-in-a-branch-condition. Census of src/v1/*.dag: 46 ordinary lambdas in a guard (any/all/map/fold) emit; filter-in-a-branch-condition occurred zero times on main and once on the #10625 candidate. Population one argues neither way for the wall: it is the sole site of THIS shape, not the only shape that can silently truncate. ",
+
+    "RECOGNITION RULE: if emission produced a file, every source construct contributing to that file received a total projection. A diagnostic beside a truncated file is the same hazard with better logging. ",
+
+    "REPAIR: the unprojectable construct feeds ModuleEmission.import_refusals as a blocking EmissionConstructUnprojectable, and emit_rust_selected publishes a module file only when that channel carries no error diagnostic. Do not teach the emitter filter-in-a-guard; refuse the module. ",
+
+    "RUNG FOUND AT: below the ladder, established by executing emission on the specimen and reading a published file that omitted the branch. ",
+
+    "CEILING: structurally guaranteed — a published EmitResult.files member cannot contain a module whose emission produced a projection refusal, derived from the same ModuleEmission unit that already carried import refusals. ",
+
+    "NEXT TRIGGER: an emission-stage census that every source expression node either received a rendered projection or contributed a blocking diagnostic on the same ModuleEmission, sufficient that a new unprojectable shape cannot publish by remaining silent.",
+  ],
+
+  evidence: [],
+}
