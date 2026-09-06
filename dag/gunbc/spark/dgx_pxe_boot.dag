@@ -33,13 +33,12 @@ import extdeps.systems.nvidia_dgx_spark_pxe {
   SecureBootDisabledForPxe,
   BootloaderEnrolledForPxe,
 }
+import extdeps.pci.identity { PciVendorId, PciDeviceId }
 import extdeps.os.ubuntu_kernel_nic_coverage {
   UbuntuKernelFlavour,
   Noble2404GaLinux68,
   Noble2404HweLinux617,
   r8169_claims_pci_device,
-  PciVendorId,
-  PciDeviceId,
 }
 
 type PxeNetworkObservation {

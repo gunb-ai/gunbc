@@ -1,5 +1,6 @@
 module extdeps.os.ubuntu_kernel_nic_coverage
 
+import extdeps.pci.identity { PciVendorId, PciDeviceId }
 import std.types { NonEmptyStr, Bool }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -22,8 +23,10 @@ data extdeps_further_authority_hwe: ExternalAuthority = ExternalAuthority {
 // These are PCI-SIG assigned identifiers, authored upstream and stable
 // across kernel versions. They are not facts about any particular unit.
 
-type PciVendorId = NonEmptyStr where brand("PciVendorId")
-type PciDeviceId = NonEmptyStr where brand("PciDeviceId")
+// PciVendorId and PciDeviceId ARE NO LONGER DECLARED HERE. They are PCI specification facts rather
+// than facts about Ubuntu's driver coverage, and a second consumer observing Intel parts on an
+// Ampere board would otherwise have had to import this Realtek-oriented module to spell a vendor id.
+// extdeps.pci.identity owns them; this module consumes them like any other caller.
 
 data realtek_pci_vendor: PciVendorId = "10ec" as PciVendorId
 

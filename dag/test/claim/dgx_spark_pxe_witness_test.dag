@@ -16,9 +16,8 @@ import extdeps.systems.nvidia_dgx_spark_pxe {
   SecureBootDisabledForPxe,
   BootloaderEnrolledForPxe,
 }
+import extdeps.pci.identity { PciVendorId, PciDeviceId }
 import extdeps.os.ubuntu_kernel_nic_coverage {
-  PciVendorId,
-  PciDeviceId,
   r8169_claims_pci_device,
   Noble2404GaLinux68,
 }

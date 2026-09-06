@@ -1,0 +1,100 @@
+[SOL Session operational.  Use ~? for help]
+
+'d' is not recognized as an internal or external command, operable program, or script file.
+Shell> pci
+   Seg  Bus  Dev  Func
+   ---  ---  ---  ----
+    00   00   00    00 ==> Bridge Device - Host/PCI bridge
+             Vendor 1DEF Device E100 Prog Interface 0
+    00   00   01    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E101 Prog Interface 0
+    01   00   00    00 ==> Bridge Device - Host/PCI bridge
+             Vendor 1DEF Device E100 Prog Interface 0
+    01   00   01    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E101 Prog Interface 0
+    02   00   00    00 ==> Bridge Device - Host/PCI bridge
+             Vendor 1DEF Device E110 Prog Interface 0
+    02   00   01    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E111 Prog Interface 0
+    02   00   03    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E113 Prog Interface 0
+    02   00   05    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E115 Prog Interface 0
+    02   02   00    00 ==> Network Controller - Ethernet controller
+             Vendor 8086 Device 1521 Prog Interface 0
+    02   02   00    01 ==> Network Controller - Ethernet controller
+             Vendor 8086 Device 1521 Prog Interface 0
+    03   00   00    00 ==> Bridge Device - Host/PCI bridge
+             Vendor 1DEF Device E110 Prog Interface 0
+    03   00   01    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E111 Prog Interface 0
+    03   00   05    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E115 Prog Interface 0
+    03   00   07    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E117 Prog Interface 0
+    04   00   00    00 ==> Bridge Device - Host/PCI bridge
+             Vendor 1DEF Device E110 Prog Interface 0
+    04   00   01    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E111 Prog Interface 0
+    04   00   03    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E113 Prog Interface 0
+    04   00   05    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E115 Prog Interface 0
+    04   00   07    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E117 Prog Interface 0
+    04   01   00    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1A03 Device 1150 Prog Interface 0
+    04   02   00    00 ==> Display Controller - VGA/8514 controller
+             Vendor 1A03 Device 2000 Prog Interface 0
+    04   03   00    00 ==> Serial Bus Controllers - USB
+             Vendor 1912 Device 0014 Prog Interface 30
+    05   00   00    00 ==> Bridge Device - Host/PCI bridge
+             Vendor 1DEF Device E110 Prog Interface 0
+    05   00   01    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E111 Prog Interface 0
+    05   00   05    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E115 Prog Interface 0
+    05   00   07    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E117 Prog Interface 0
+    06   00   00    00 ==> Bridge Device - Host/PCI bridge
+             Vendor 1DEF Device E100 Prog Interface 0
+    06   00   01    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E101 Prog Interface 0
+    07   00   00    00 ==> Bridge Device - Host/PCI bridge
+             Vendor 1DEF Device E100 Prog Interface 0
+    07   00   01    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E101 Prog Interface 0
+    08   00   00    00 ==> Bridge Device - Host/PCI bridge
+             Vendor 1DEF Device E110 Prog Interface 0
+    08   00   01    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E111 Prog Interface 0
+    08   00   05    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E115 Prog Interface 0
+    08   00   07    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E117 Prog Interface 0
+    09   00   00    00 ==> Bridge Device - Host/PCI bridge
+             Vendor 1DEF Device E110 Prog Interface 0
+    09   00   01    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E111 Prog Interface 0
+    09   00   03    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E113 Prog Interface 0
+    09   00   05    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E115 Prog Interface 0
+    0A   00   00    00 ==> Bridge Device - Host/PCI bridge
+             Vendor 1DEF Device E110 Prog Interface 0
+    0A   00   01    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E111 Prog Interface 0
+    0A   00   03    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E113 Prog Interface 0
+    0A   00   05    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E115 Prog Interface 0
+    0B   00   00    00 ==> Bridge Device - Host/PCI bridge
+             Vendor 1DEF Device E110 Prog Interface 0
+    0B   00   01    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E111 Prog Interface 0
+    0B   00   05    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E115 Prog Interface 0
+    0B   00   07    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E117 Prog Interface 0
+Shell> d
+Session terminated, killing shell... ...killed.
