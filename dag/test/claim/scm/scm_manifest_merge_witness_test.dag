@@ -9,6 +9,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.scm.object_store {
   ObjectStore, ObjectId, empty_store, object_id_eq,
   CorpusManifestEntry, AuthoredSourceTarget,
+  ManifestEntryComparand, manifest_comparands,
   SourceStored, SourceLocatorCollision, store_authored_source,
   CorpusManifestRecord, store_corpus_manifest,
   CorpusManifestStored, CorpusManifestDuplicatePath, CorpusManifestLocatorCollision,
@@ -286,6 +287,114 @@ test fn scm_mm_every_conflicting_path_is_reported_not_the_first() -> Bool {
 // ITS RED BECOMES AUTHORABLE THE DAY `AuthoredSourceTarget` GAINS A FIELD OUTSIDE THE EQUALITY --
 // at which point the arm has a real choice and this claim must come back with it.
 
+// COMPARING TWO OUTCOMES AT THE GRAIN A CONSUMER SEES. Conflicts are compared by path and merged
+// entries by path and locator, because those are the whole observable content of each arm -- an
+// equality that looked at anything else would be asserting about a representation rather than a fact.
+fn conflict_paths(conflicts: List<ManifestPathConflict>) -> List<String> {
+  map(conflicts, c => c.path as String)
+}
+
+// THE ENTRY COMPARISON IS object_store's OWN, NOT A SECOND ONE COINED HERE. `manifest_comparands` is
+// already the authority for "are these two manifests the same content", used by
+// `manifest_entries_equal`; writing a private path-and-locator tuple beside it would be a second
+// answer to one question (DESIGN section 3).
+//
+// THE FIRST WRITING OF THIS COMPARED PATHS ALONE, while the annotation above claimed path AND
+// locator -- weaker than its own description. The asymmetric-conflict mutation walked straight
+// through the symmetry claim on that: both directions produce an entry at path "a", disagreeing only
+// about WHICH side's content it holds, which is the entire defect the claim exists to catch. Caught
+// by RUNNING the mutation, not by reading the code, and it is the same lesson as the decoration
+// deleted above -- a claim is worth what its red proves, not what its annotation asserts.
+fn entry_keys(entries: List<CorpusManifestEntry>) -> List<ManifestEntryComparand> {
+  manifest_comparands(entries: entries)
+}
+
+fn outcomes_agree(left: ManifestMergeOutcome, right: ManifestMergeOutcome) -> Bool {
+  match left {
+    ManifestConflicted { conflicts: lc } =>
+      match right {
+        ManifestConflicted { conflicts: rc } => conflict_paths(conflicts: lc) == conflict_paths(conflicts: rc)
+        ManifestMerged { entries: _ } => false
+      }
+    ManifestMerged { entries: le } =>
+      match right {
+        ManifestConflicted { conflicts: _ } => false
+        ManifestMerged { entries: re } => entry_keys(entries: le) == entry_keys(entries: re)
+      }
+  }
+}
+
+fn resolves_to(
+  base: List<CorpusManifestEntry>,
+  source: List<CorpusManifestEntry>,
+  target: List<CorpusManifestEntry>,
+  expect: AuthoredSourceTarget,
+) -> Bool {
+  match merged(base: base, source: source, target: target) {
+    MergeUnavailable => false
+    Merged(outcome) =>
+      match outcome {
+        ManifestConflicted { conflicts: _ } => false
+        ManifestMerged { entries: e } => entries_hold(entries: e, path: "a", source: expect)
+      }
+  }
+}
+
+// THE LAW IS SYMMETRIC IN SOURCE AND TARGET, AND THIS IS THE CLAIM THAT REPLACES THE DELETED ONE.
+//
+// The annotation above records why the "S == T returns either operand" claim was a decoration: the
+// two operands are indistinguishable, so no input could turn it red. The statement WORTH making is
+// not about that arm's operand at all -- it is about the whole law. Read the four lines with source
+// and target exchanged and each maps onto another: S==B->T becomes T==B->S, T==B->S becomes S==B->T,
+// S==T->S is fixed because the operands are equal, and the conflict arm is fixed because it prefers
+// neither. So the merged result must not depend on WHICH side was handed in as source.
+//
+// ITS RED IS AUTHORABLE, WHICH IS THE WHOLE DIFFERENCE. The tempting wrong law resolves a conflict by
+// preferring one side -- the behaviour a git user knows as `-X ours` -- and that is asymmetric by
+// construction. The mutation table records it reding here.
+//
+// THE FIXTURE MIXES RESOLVABLE AND CONFLICTING PATHS ON PURPOSE. A symmetry claim over paths that all
+// resolve would be satisfied by a law with an asymmetric CONFLICT arm, which is the only arm where
+// asymmetry is tempting.
+test fn scm_mm_the_law_does_not_depend_on_which_side_is_source() -> Bool {
+  match pair() {
+    TrioUnavailable => false
+    Trio { x: x, y: y, z: z } =>
+      let b = concat(at(path: "a", source: x), at(path: "b", source: x))
+      let s = concat(at(path: "a", source: y), at(path: "b", source: x))
+      let t = concat(at(path: "a", source: z), at(path: "b", source: y))
+      match merged(base: b, source: s, target: t) {
+        MergeUnavailable => false
+        Merged(forward) =>
+          match merged(base: b, source: t, target: s) {
+            MergeUnavailable => false
+            Merged(backward) => outcomes_agree(left: forward, right: backward)
+          }
+      }
+  }
+}
+
+// THE LAW MUST NOT REFUSE TOO MUCH, WHICH NO OTHER CLAIM HERE STATES. Every mutation in the table
+// tests that the law refuses ENOUGH; a law that conflicted on every path whose three sides were not
+// all equal would pass all of them, and would be useless. These are the three all-present cases that
+// MUST resolve, and they are the exact cases a conflict wall over-reaches into:
+//
+//   B=x  S=x  T=y  -> take target   only the target moved
+//   B=x  S=y  T=x  -> take source   only the source moved
+//   B=x  S=y  T=y  -> take either   both moved to the same place
+test fn scm_mm_a_path_only_one_side_moved_resolves_rather_than_conflicting() -> Bool {
+  match pair() {
+    TrioUnavailable => false
+    Trio { x: x, y: y, z: _ } =>
+      resolves_to(base: at(path: "a", source: x), source: at(path: "a", source: x),
+                  target: at(path: "a", source: y), expect: y)
+        && resolves_to(base: at(path: "a", source: x), source: at(path: "a", source: y),
+                       target: at(path: "a", source: x), expect: y)
+        && resolves_to(base: at(path: "a", source: x), source: at(path: "a", source: y),
+                       target: at(path: "a", source: y), expect: y)
+  }
+}
+
 // THE UNION IS THE SUBJECT, NOT THE BASE. A path added only by the source is decided; an
 // implementation iterating the base's paths drops it silently and returns a manifest missing a file
 // the source added.
@@ -313,4 +422,6 @@ test fn scm_manifest_merge_witnesses_hold() -> Bool {
     && scm_mm_a_modify_against_a_delete_conflicts_and_says_which_side_was_absent()
     && scm_mm_every_conflicting_path_is_reported_not_the_first()
     && scm_mm_a_path_only_one_side_has_is_still_decided()
+    && scm_mm_the_law_does_not_depend_on_which_side_is_source()
+    && scm_mm_a_path_only_one_side_moved_resolves_rather_than_conflicting()
 }
