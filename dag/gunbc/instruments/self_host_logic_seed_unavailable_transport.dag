@@ -123,6 +123,12 @@ fn slbu_cargo_toml(root: String) -> String {
 // are evaluated in declaration order and a forward reference is unbound in this substrate).
 // The check scans what cargo actually builds — the final src/ tree with the transport's
 // own main.rs in place — not an intermediate tree from the emit step alone.
+//
+// Temp-directory cleanup is sequenced the same way: `seq` is derived from `verdict`, and
+// the cleanup Remove calls consume `seq`. On any scheduling substrate (positional or
+// dataflow), cleanup cannot evaluate before `verdict` is computed, because `seq` does not
+// exist until `verdict` produces it. The cleanup is unconditional — seq is always true —
+// but its computation is structurally ordered by the dependency.
 fn slbu_seed_unavailable_receipt() -> Bool {
   let root = git.Inspect.Toplevel()
   let logic_read = Filesystem.Read(path: slbu_repo_path(root: root.path, rel: slbu_logic_source_rel))
@@ -178,22 +184,24 @@ fn slbu_seed_unavailable_receipt() -> Bool {
   let witness_bin_path = concat(out_dir.path, "/target/release/witness")
   let pass_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path)
 
-  let cleanup_src = shell.Remove.RecursiveForce(path: scratch_src.path)
-  let cleanup_out = shell.Remove.RecursiveForce(path: out_dir.path)
-
   let staged = logic_read.success
     && stage_root.success
     && scratch_src.success && scratch_src_std.success && logic_written.success
     && out_dir.success && gunbc_built && emit.success
     && cargo_toml.success && main_rs.success
-    && cleanup_src.success && cleanup_out.success
 
-  staged
+  let verdict = staged
     && no_v1_rt_calls
     && build.success
     && string_contains(s: pass_run.stdout, pattern: slbu_cases_marker())
     && pass_run.success
     && string_contains(s: pass_run.stdout, pattern: slbu_pass_marker)
+
+  let seq = verdict || !verdict
+  let cleanup_out = seq && shell.Remove.RecursiveForce(path: out_dir.path).success
+  let cleanup_src = seq && shell.Remove.RecursiveForce(path: scratch_src.path).success
+
+  verdict
 }
 
 fn slbu_seed_unavailable_receipt_holds() -> Bool {
