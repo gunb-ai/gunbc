@@ -33,7 +33,6 @@ fn w_pool() -> VllmObservedKvPool {
   ) {
     KvPoolAdmitted { pool: p } => p
     KvPoolRefused { cause: _ } =>
-      // unreachable: the reading above IS the KV-cache-size line
       match vllm_observed_kv_pool_from_reading(
         tokens: token_count(count: 0),
         reading: vllm_startup_reading(line: GpuKvCacheSize, captured_text: "x" as NonEmptyStr),
