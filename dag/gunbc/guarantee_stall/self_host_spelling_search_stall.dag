@@ -15,7 +15,7 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // a higher rung (the earlier "ENFORCES by execution" in prose was corrected to the honest
 // description). Nothing fell; the climb to the ceiling is simply unbuilt.
 data self_host_spelling_search_stall: GuaranteeStall = GuaranteeStall {
-  subject: "v1_rt:: spelling search in the seed-unavailable transport",
+  subject: "v1_compiler:: call-site search in the seed-unavailable transport",
   current: Mitigatable,
   ceiling: StructurallyGuaranteed,
   blocker: AwaitsOneGrounding { grounding: "emitted crate runtime fragments DERIVED FROM THE MODELED SOURCE rather than copied from the seed's runtime module" },
