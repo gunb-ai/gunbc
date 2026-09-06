@@ -159,13 +159,37 @@ fn gate_declares_mutation(gates: List<FabricCiGate>, gate: NonEmptyStr, mutation
 // does not discharge the malformed path of a FAIL-CLOSED adjudicator -- malformed rosters are its
 // entire subject.
 //
-// THE REMAINING FIX IS NAMED, NOT DEFERRED VAGUELY: build the accumulator by PREPENDING with
+// A CANDIDATE REPAIR IS NAMED -- NOT YET A COMPLETE ONE: build the accumulator by PREPENDING with
 // `Cons` rather than appending with `concat`/`list_snoc_item`, which are `list_append` and fold
 // over their left operand. That makes accumulation O(1) per emission and leaves only the
-// comparison floor. It is not done here because no module under dag/ currently constructs
-// FreeMonoid cells directly, and this branch has no way to execute a .dag witness to confirm the
-// construction -- landing it unverified would trade a measured cost for an unmeasured
-// correctness risk. C2 remains open on this point.
+// comparison floor.
+//
+// It is a CANDIDATE and not "the remaining fix" because prepending REVERSES the returned list, and
+// the return type is an ordered `List`, so a bare `Cons` rewrite is not behavior-preserving on a
+// component a consumer may read. An earlier version of this note called it the remaining fix; that
+// ran one claim ahead of the evidence, in the same way the "no longer grows with the input" claim
+// above did. Equivalence has to be EARNED first, by exactly one of two contracts:
+//   (a) order is meaningful -- pin the current emitted order with a discriminating fixture, then
+//       preserve it (prepend and reverse once), or
+//   (b) order is meaningless -- state that as a contract of this function, so that no consumer is
+//       entitled to read list position. An incidental annotation is not that contract.
+// Nothing currently distinguishes [dup-a, dup-b] from [dup-b, dup-a]: no fixture builds TWO
+// DISTINCT duplicate identities from one roster. The three-refusal empty-enrolment control does
+// produce a multi-element list, but through unanswered_mutations, NOT through this function, so
+// strengthening it would not discriminate this change.
+//
+// Two things stay out of scope of that obligation, deliberately. duplicate_authority_identities
+// composes populations through an ordered `concat`, and no test pins relative CATEGORY order; a
+// `Cons` change confined to this function does not move those outer positions, so that is a
+// broader contract gap rather than a prerequisite here. And unanswered_mutations carries the SAME
+// copied-accumulator shape in its own fold, which is a second site for the §6 cost rule and not a
+// reason to delay this one.
+//
+// The repair is also not landed here because no module under dag/ currently constructs FreeMonoid
+// cells directly, and this branch has no way to execute a .dag witness to confirm either the
+// construction or the ordering fixture -- authoring an UNEXECUTED ordering witness and then
+// relying on it would reproduce the evidence failure this note exists to record. C2 remains open,
+// now carrying an ordering-evidence obligation as well as the cost one.
 fn count_name_in(seen: List<NonEmptyStr>, name: NonEmptyStr) -> Int {
   fold(seen, init: 0, f: (acc, s) => if s == name { acc + 1 } else { acc })
 }
@@ -181,7 +205,8 @@ fn fabric_name_already_in(seen: List<NonEmptyStr>, name: NonEmptyStr) -> Bool {
 // the accumulator below is bounded by the number of DISTINCT DUPLICATE names, which is zero on a
 // well-formed roster and d on a malformed one -- so its `concat` still copies quadratically on
 // exactly the malformed inputs this adjudicator exists to diagnose. That is an OPEN cost
-// obligation, not a discharged one, and the named remedy is prepending with `Cons`.
+// obligation, not a discharged one. The candidate remedy is prepending with `Cons`, which is NOT
+// yet behavior-preserving on its own -- see the ordering obligation recorded above count_name_in.
 //
 // std.keyed_roster is the corpus authority for duplicate detection and is NOT reused here because
 // it answers a narrower question: it returns the FIRST duplicate as evidence, where a coverage
