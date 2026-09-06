@@ -1,0 +1,5 @@
+module test.fixture.complexity_accumulator_copy.clean_linear
+
+fn clean_linear(xs: List<Int>) -> Int {
+  fold(xs, init: 0, f: fn(acc, x) { acc + x })
+}

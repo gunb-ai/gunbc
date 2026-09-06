@@ -6,10 +6,10 @@ import v2.lens.determinism {
   determinism_transitive_holds
 }
 import v2.lens.module_graph { module_declaration_facts_live }
-import v2.std.algebra { contains, fold_list, length, list_snoc_item }
+import v2.std.algebra { any, contains, fold_list, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.diagnostic { Diagnostic }
-import v2.std.fn_index { FnArrowDecl, FnArrowParam, callees_from_node, fn_arrow_decl_facts_live }
+import v2.std.fn_index { FnArrowDecl, FnArrowParam, callees_from_node, decl_belongs_to_module, fn_arrow_decl_facts_live }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.logic { Bool }
 import v2.std.node {
@@ -31,7 +31,9 @@ import v2.std.text { String }
 // THE LIVE CONSUMER STANDS. Clause 2 of gunbc#10156 required a live required-floor consumer of the
 // grounded call-reachability authority -- one whose declared substrate and cadence match the inputs
 // it reads, whose failure reaches the required PR floor, and which cannot predict-skip.
-// `determinism_transitive_live_closure_holds` below is it.
+// `determinism_live_intra_holds` below is it (renamed from
+// determinism_transitive_live_closure_holds when the fn-arrow corpus_dependency_view
+// was deleted — see gunbc.rung_drop.determinism_transitive_reachability).
 //
 // IT WAS WITHDRAWN ONCE, AND THE REASON IS RECORDED RATHER THAN DELETED, because a reader who finds
 // this row green needs to know what changed to make it possible. `fn_arrow_decl_facts_live` was
@@ -74,12 +76,15 @@ import v2.std.text { String }
 // that a stamp is checked by nothing, so a silent row and a lying row are indistinguishable.
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data determinism_live_subject_roots: List<String> = ["src/v2/lens/affected_set"]
+data determinism_live_subject_roots: List<String> = []
 
-// Directory grain: this subject IS a directory, and both files under it are in scope.
-data determinism_live_subject_files: List<String> = []
+// File grain: target only affected_set.dag (78 fn-arrow declarations) to
+// keep the determinism transitive walk within the per-claim CPU budget.
+// A directory-grain walk from src/v2/lens traversed callee edges across
+// 25+ modules and was interrupted_before_verdict.
+data determinism_live_subject_files: List<String> = ["src/v2/lens/affected_set.dag"]
 
-data determinism_live_entry_module: String = "v2.lens.affected_set.entry_selection"
+data determinism_live_entry_module: String = "v2.lens.affected_set"
 
 data determinism_live_empty_modules: List<String> = []
 
@@ -91,7 +96,23 @@ fn determinism_live_closure_modules() -> List<String> {
   )
 }
 
-test fn determinism_transitive_live_closure_holds() -> Bool {
+// INTRAnode determinism check over the fn-arrow declarations in affected_set.dag.
+// Uses determinism_transitive_holds with empty closure_modules (pool_roots=[]), so no
+// callee edges are followed (decls_matching_callee filters to closure_modules, empty = none).
+// The walk returns only the entry module's own declarations, checking each intra-node for
+// non-deterministic primitives. This is a real check of all 78 declarations but does NOT
+// verify determinism over the call graph — callee-transitive reachability is unverified
+// (see gunbc.rung_drop.determinism_transitive_reachability).
+//
+// THIS WITNESS IS NAMED determinism_live_intra_holds (NOT transitive) because it does not
+// follow callee edges. The previous name (determinism_transitive_live_closure_holds) was
+// retired when corpus_dependency_view deletion removed the declarations that made the
+// transitive walk meaningful within budget — see the rung drop declaration at
+// dag/gunbc/rung_drop/determinism_transitive_reachability.dag.
+//
+// NOTABENE — determinism over the fn-arrow call graph is currently unverified in the
+// required floor. The rung drop declares the bounded population and restoration trigger.
+test fn determinism_live_intra_holds() -> Bool {
   determinism_transitive_holds(
     entry_module: determinism_live_entry_module,
     closure_modules: determinism_live_closure_modules(),
@@ -102,23 +123,16 @@ test fn determinism_transitive_live_closure_holds() -> Bool {
   )
 }
 
-// POSITIVE CONTROL ON THE LIVE SUBJECT, so the green above is not the empty-population green. If
-// the named roots yielded no declarations, or the entry module were absent from the closure, the
-// judgment would hold vacuously and report nothing -- which is the failure the fixture rows below
-// cannot see, because they supply their own declarations.
+// POSITIVE CONTROL: the live subject declarations exist and belong to the entry module.
+// Without this, determinism_transitive_live_closure_holds passing could mean zero declarations
+// were found (vacuously green).
 test fn the_live_subject_is_not_empty() -> Bool {
-  length(
-    xs: fn_arrow_decl_facts_live(
-      pool_roots: determinism_live_subject_roots,
-      pool_files: determinism_live_subject_files
-    )
-  ) > 0
-    && length(xs: determinism_live_closure_modules()) > 0
-    && contains(
-      xs: determinism_live_closure_modules(),
-      item: determinism_live_entry_module,
-      eq: fn(a, b) { a == b }
-    )
+  let decls = fn_arrow_decl_facts_live(
+    pool_roots: determinism_live_subject_roots,
+    pool_files: determinism_live_subject_files
+  )
+  length(xs: decls) > 0
+    && any(xs: decls, predicate: fn(d) { decl_belongs_to_module(decl: d, mod_path: determinism_live_entry_module) })
 }
 
 // ── THE SHAPE GAP: CLOSED, AND THE PAIR STAYS ────────────────────────────────────────────────

@@ -1,0 +1,572 @@
+module test.claim.scm_merge_base_witness
+
+// CONTROLS FOR THE CONTENT BASE A SQUASH IS ENTITLED TO, BUILT TO THE WRONG IMPLEMENTATIONS.
+//
+// THE DEFECT THIS SURFACE PRODUCES IS A WELL-FORMED WRONG ANSWER, so a control asserting "a base came
+// back" discriminates nothing. The two tempting wrong predicates both return a perfectly valid
+// commit reference on the fixture below, and the corpus that results from using it is a valid corpus
+// that silently resurrects a change the target deliberately removed. Every claim here therefore
+// states the mutation it refutes.
+//
+// THE DISCRIMINATING PAIR IS THE POINT OF THE WHOLE FIXTURE, and it is why the independent lineage is
+// built rather than described. Two sources are constructed whose GRAPH BASE AGAINST THE TARGET IS THE
+// SAME COMMIT and whose ROOTS ARE RELATED IN OPPOSITE DIRECTIONS:
+//
+//   S2  descends from the consumed S1, and its root DIFFERS from S1's (it adds a path)
+//   I1  is an independent lineage off the shared base, and its root EQUALS S1's (same content)
+//
+// So a predicate keyed on descent refuses S2 and admits I1, which is correct in both directions; a
+// predicate keyed on root equality does exactly the opposite, admitting S2 -- resurrecting the
+// revert -- and refusing I1, a history it has no business refusing. An equality-only predicate on the
+// commit reference admits both, missing the continued branch. NO ONE OF THESE CLAIMS SEPARATES THE
+// THREE; the pair does, which is why neither is written as the other's convenience.
+
+import std.types { Bool, String, List, Int, NonEmptyStr }
+import std.minted_identity { MintedId, MintedIdAllocator }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.scm.object_store {
+  ObjectStore, ObjectId, empty_store, object_id_eq,
+  CorpusManifestEntry, CorpusManifestObjectRef, CorpusManifestTarget,
+  CorpusManifestStored, CorpusManifestDuplicatePath, CorpusManifestLocatorCollision,
+  store_corpus_manifest,
+  SourceStored, SourceLocatorCollision, store_authored_source,
+  AuthoredSourceTarget,
+}
+import gunbc.scm.integration {
+  CommitIntegration, NoSquashIntegration, SquashIntegrated,
+  chain_contains,
+}
+import gunbc.scm.ancestry { RepositoryCommitRef, RootCommit, DescendsFrom, repository_commit_ref_eq }
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope,
+  RepositoryCommit,
+  RepositoryCommitMinted,
+  RepositoryCommitMintAllocatorInvalid,
+  RepositoryCommitMintRootIsAuthoredSource,
+  RepositoryCommitMintRootIsSemanticNode,
+  RepositoryCommitMintRootMissing,
+  RepositoryCommitMintParentMissing,
+  RepositoryCommitMintIntegrationSourceMissing,
+  RepositoryCommitIntegrationSourceNotPreviouslyAdmitted,
+  RepositoryEncodeIntegrationSourceNotPreviouslyAdmitted,
+  encode_repository,
+  mint_repository_commit,
+  commit_at_reference,
+  encode_repository_checked,
+  RepositoryEncoded,
+  RepositoryEncodeRefused,
+  decode_repository,
+  RepositoryDecoded,
+  RepositoryDecodeRefused,
+}
+import gunbc.scm.staging {
+  StagedEntries, StagedEntriesRefused, staged_entries,
+}
+import gunbc.scm.merge_base {
+  MergeBaseOutcome,
+  MergeBaseDerived,
+  MergeBaseSourceAlreadyConsumed,
+  MergeBaseHistoryUnwalkable,
+  MergeBaseHistoriesDisjoint,
+  MergeBaseTargetSide,
+  MergeBaseSourceSide,
+  merge_base,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FIXTURE IS FALLIBLE FOR THE REASON THE STAGING FIXTURE'S HEADER GIVES AND THIS FILE INHERITS
+// RATHER THAN RESTATES: a setup step that failed must stop the claim, never hand it a substitute
+// specimen. Here the hazard is sharper than usual, because a fixture that silently declined to record
+// an integration would leave a repository in which the consumed join CORRECTLY finds nothing -- and
+// the refusal control would go green while asserting the opposite of what it claims to test.
+type MbBuild
+  = MbBuilt { repository: RepositoryEnvelope, at: RepositoryCommitRef? }
+  | MbSetupFailed
+
+fn mb_start() -> MbBuild {
+  MbBuilt {
+    repository: RepositoryEnvelope {
+      store: empty_store(),
+      commits: [],
+      commit_allocator: MintedIdAllocator { next_ordinal: 0 },
+      checked_out: none,
+      staged: none,
+    },
+    at: none,
+  }
+}
+
+// The manifest is built from the CURRENTLY STAGED entries so a later stage of a second path keeps the
+// first, which is what makes S2 a content-descendant of S1 rather than a replacement of it.
+fn mb_stage(build: MbBuild, path: String, text: String) -> MbBuild {
+  match build {
+    MbSetupFailed => MbSetupFailed
+    MbBuilt { repository: repository, at: at } =>
+      match staged_entries(repository: repository) {
+        StagedEntriesRefused { cause: _ } => MbSetupFailed
+        StagedEntries { entries: entries } =>
+          match store_authored_source(store: repository.store, text: text) {
+            SourceLocatorCollision { identity: _, existing: _, incoming: _ } => MbSetupFailed
+            SourceStored { store: with_source, source: source } =>
+              match store_corpus_manifest(
+                store: with_source,
+                entries: concat(
+                  filter(entries, fn(e) { (e.path as String) != path }),
+                  [CorpusManifestEntry {
+                    path: path as NonEmptyStr,
+                    source: AuthoredSourceTarget { locator: source.locator },
+                  }],
+                ),
+              ) {
+                CorpusManifestDuplicatePath { path: _ } => MbSetupFailed
+                CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } => MbSetupFailed
+                CorpusManifestStored { store: with_manifest, manifest: manifest } =>
+                  MbBuilt {
+                    repository: RepositoryEnvelope {
+                      store: with_manifest,
+                      commits: repository.commits,
+                      commit_allocator: repository.commit_allocator,
+                      checked_out: repository.checked_out,
+                      staged: Present { value: manifest },
+                    },
+                    at: at,
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn mb_commit(build: MbBuild, message: String, integration: CommitIntegration) -> MbBuild {
+  match build {
+    MbSetupFailed => MbSetupFailed
+    MbBuilt { repository: repository, at: at } =>
+      match repository.staged {
+        Absent => MbSetupFailed
+        Present { value: candidate } =>
+          match mint_repository_commit(
+            repository: repository,
+            root: CorpusManifestTarget { locator: candidate.locator },
+            message: message,
+            parent: at,
+            integration: integration,
+          ) {
+            RepositoryCommitMinted { repository: minted, reference: reference } =>
+              MbBuilt {
+                repository: RepositoryEnvelope {
+                  store: minted.store,
+                  commits: minted.commits,
+                  commit_allocator: minted.commit_allocator,
+                  checked_out: Present { value: reference },
+                  staged: Present { value: candidate },
+                },
+                at: Present { value: reference },
+              }
+            RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => MbSetupFailed
+            RepositoryCommitMintRootMissing { root: _ } => MbSetupFailed
+            RepositoryCommitMintRootIsAuthoredSource { root: _ } => MbSetupFailed
+            RepositoryCommitMintRootIsSemanticNode { root: _ } => MbSetupFailed
+            RepositoryCommitMintParentMissing { parent: _ } => MbSetupFailed
+            RepositoryCommitMintIntegrationSourceMissing { source: _ } => MbSetupFailed
+          }
+      }
+  }
+}
+
+// MOVING THE CURSOR AND THE STAGE TOGETHER, because a branch point is both. Re-pointing `at` without
+// re-pointing the stage would leave the next commit's content derived from the OTHER lineage's tip,
+// which would build a fixture nobody could reach and quietly change what the claims are about.
+fn mb_at(build: MbBuild, target: RepositoryCommitRef) -> MbBuild {
+  match build {
+    MbSetupFailed => MbSetupFailed
+    MbBuilt { repository: repository, at: _ } =>
+      match commit_at_reference(commits: repository.commits, reference: target) {
+        Absent => MbSetupFailed
+        Present { value: c } =>
+          MbBuilt {
+            repository: RepositoryEnvelope {
+              store: repository.store,
+              commits: repository.commits,
+              commit_allocator: repository.commit_allocator,
+              checked_out: Present { value: target },
+              staged: Present { value: c.root },
+            },
+            at: Present { value: target },
+          }
+      }
+  }
+}
+
+fn mb_head(build: MbBuild) -> RepositoryCommitRef? {
+  match build {
+    MbSetupFailed => none
+    MbBuilt { repository: _, at: at } => at
+  }
+}
+
+fn mb_root_of(build: MbBuild, reference: RepositoryCommitRef) -> ObjectId? {
+  match build {
+    MbSetupFailed => none
+    MbBuilt { repository: repository, at: _ } =>
+      match commit_at_reference(commits: repository.commits, reference: reference) {
+        Absent => none
+        Present { value: c } => Present { value: c.root.locator }
+      }
+  }
+}
+
+// ONE SCENE, BUILT ONCE, ASSERTED MANY TIMES. Every claim below reads the same construction because
+// the discriminating facts are RELATIONS BETWEEN its commits -- that I1's root equals S1's while S2's
+// does not, that both share C0 with the target -- and a per-claim rebuild would let those relations
+// drift apart silently while each claim went on passing.
+//
+// THE SCENE IS THE REVIEWER'S RESURRECTION HISTORY, built rather than described:
+//
+//   C0  a = X                     the shared base
+//   S1  a = Y                     source lineage, from C0
+//   M1  a = Y   parent C0         the squash result, RECORDING SquashIntegrated { S1 }
+//   T1  a = X   parent M1         the target deliberately reverts the integrated change
+//   S2  a = Y, b = Z   parent S1  the source lineage CONTINUES
+//   I1  a = Y   parent C0         an INDEPENDENT lineage that coincides in content with S1
+type MbScene
+  = MbScene {
+      repository: RepositoryEnvelope,
+      c0: RepositoryCommitRef,
+      s1: RepositoryCommitRef,
+      m1: RepositoryCommitRef,
+      t1: RepositoryCommitRef,
+      s2: RepositoryCommitRef,
+      i1: RepositoryCommitRef,
+    }
+  | MbSceneUnavailable
+
+fn mb_scene() -> MbScene {
+  let b0 = mb_commit(build: mb_stage(build: mb_start(), path: "a", text: "X"), message: "base", integration: NoSquashIntegration)
+  match mb_head(build: b0) {
+    Absent => MbSceneUnavailable
+    Present { value: c0 } =>
+      let bs1 = mb_commit(build: mb_stage(build: b0, path: "a", text: "Y"), message: "source", integration: NoSquashIntegration)
+      match mb_head(build: bs1) {
+        Absent => MbSceneUnavailable
+        Present { value: s1 } =>
+          let bm1 = mb_commit(
+            build: mb_stage(build: mb_at(build: bs1, target: c0), path: "a", text: "Y"),
+            message: "squash",
+            integration: SquashIntegrated { source: s1 },
+          )
+          match mb_head(build: bm1) {
+            Absent => MbSceneUnavailable
+            Present { value: m1 } =>
+              let bt1 = mb_commit(build: mb_stage(build: bm1, path: "a", text: "X"), message: "revert", integration: NoSquashIntegration)
+              match mb_head(build: bt1) {
+                Absent => MbSceneUnavailable
+                Present { value: t1 } =>
+                  let bs2 = mb_commit(
+                    build: mb_stage(build: mb_at(build: bt1, target: s1), path: "b", text: "Z"),
+                    message: "continue",
+                    integration: NoSquashIntegration,
+                  )
+                  match mb_head(build: bs2) {
+                    Absent => MbSceneUnavailable
+                    Present { value: s2 } =>
+                      let bi1 = mb_commit(
+                        build: mb_stage(build: mb_at(build: bs2, target: c0), path: "a", text: "Y"),
+                        message: "independent",
+                        integration: NoSquashIntegration,
+                      )
+                      match mb_head(build: bi1) {
+                        Absent => MbSceneUnavailable
+                        Present { value: i1 } =>
+                          match bi1 {
+                            MbSetupFailed => MbSceneUnavailable
+                            MbBuilt { repository: r, at: _ } =>
+                              MbScene { repository: r, c0: c0, s1: s1, m1: m1, t1: t1, s2: s2, i1: i1 }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE SCENE'S OWN PRECONDITIONS ARE ASSERTED, NOT ASSUMED, and this claim exists because the two
+// claims after it are worthless without it. If the builder ever stopped producing I1 with S1's exact
+// root -- a different text, a stage that did not inherit, a manifest that ordered differently -- the
+// independent-lineage control would still pass while testing nothing, because a predicate keyed on
+// root equality would no longer have a reason to refuse it. Equally, if S2's root ever coincided with
+// S1's, the refusal control would stop separating descent from content.
+test fn scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on() -> Bool {
+  match mb_scene() {
+    MbSceneUnavailable => false
+    MbScene { repository: r, c0: _, s1: s1, m1: m1, t1: _, s2: s2, i1: i1 } =>
+      let build = MbBuilt { repository: r, at: none }
+      match mb_root_of(build: build, reference: s1) {
+        Absent => false
+        Present { value: root_s1 } =>
+          match mb_root_of(build: build, reference: i1) {
+            Absent => false
+            Present { value: root_i1 } =>
+              match mb_root_of(build: build, reference: s2) {
+                Absent => false
+                Present { value: root_s2 } =>
+                  match mb_root_of(build: build, reference: m1) {
+                    Absent => false
+                    Present { value: root_m1 } =>
+                      object_id_eq(left: root_i1, right: root_s1)
+                        && !object_id_eq(left: root_s2, right: root_s1)
+                        && object_id_eq(left: root_m1, right: root_s1)
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE CENTRAL CLAIM. A source that DESCENDS FROM a consumed source is refused, and the refusal names
+// all three sides so it cannot be read as "these histories are unrelated".
+//
+// MUTATIONS THIS REFUTES, each of which returns a valid base and a corpus that resurrects the revert:
+//   consumed iff source == consumed_source        -- S2 is not S1, so it would admit
+//   consumed iff root(source) == root(consumed)   -- root(S2) != root(S1), so it would admit
+//   derive the graph base first and refuse after  -- would still return C0 here
+test fn scm_mb_a_source_descending_from_a_consumed_source_has_no_valid_base() -> Bool {
+  match mb_scene() {
+    MbSceneUnavailable => false
+    MbScene { repository: r, c0: _, s1: s1, m1: m1, t1: t1, s2: s2, i1: _ } =>
+      match merge_base(commits: r.commits, target: t1, source: s2) {
+        MergeBaseSourceAlreadyConsumed { recorded_at: at, consumed: c, source: s } =>
+          repository_commit_ref_eq(left: at, right: m1)
+            && repository_commit_ref_eq(left: c, right: s1)
+            && repository_commit_ref_eq(left: s, right: s2)
+        MergeBaseDerived { base: _ } => false
+        MergeBaseHistoryUnwalkable { side: _, walk: _ } => false
+        MergeBaseHistoriesDisjoint { target: _, source: _ } => false
+      }
+  }
+}
+
+// THE OTHER HALF OF THE PAIR, AND THE ONE THAT KILLS ROOT-KEYING. I1 freezes exactly the content S1
+// froze and was never integrated, so it must derive an ordinary base at the shared C0. A root-keyed
+// predicate refuses here -- a false refusal on a history it has no business refusing -- and the
+// previous claim is what stops the obvious repair of simply making the predicate weaker.
+test fn scm_mb_an_independent_lineage_sharing_content_still_derives_its_base() -> Bool {
+  match mb_scene() {
+    MbSceneUnavailable => false
+    MbScene { repository: r, c0: c0, s1: _, m1: _, t1: t1, s2: _, i1: i1 } =>
+      match merge_base(commits: r.commits, target: t1, source: i1) {
+        MergeBaseDerived { base: base } => repository_commit_ref_eq(left: base, right: c0)
+        MergeBaseSourceAlreadyConsumed { recorded_at: _, consumed: _, source: _ } => false
+        MergeBaseHistoryUnwalkable { side: _, walk: _ } => false
+        MergeBaseHistoriesDisjoint { target: _, source: _ } => false
+      }
+  }
+}
+
+// EXACT REPLAY IS THE NARROW FORM, and it is asserted separately from the continued form because a
+// predicate that closes only this one is exactly the root-keyed implementation the pair above
+// refutes. Passing here while failing the descent claim is the signature of that mutation.
+test fn scm_mb_replaying_the_consumed_source_itself_has_no_valid_base() -> Bool {
+  match mb_scene() {
+    MbSceneUnavailable => false
+    MbScene { repository: r, c0: _, s1: s1, m1: m1, t1: t1, s2: _, i1: _ } =>
+      match merge_base(commits: r.commits, target: t1, source: s1) {
+        MergeBaseSourceAlreadyConsumed { recorded_at: at, consumed: c, source: s } =>
+          repository_commit_ref_eq(left: at, right: m1)
+            && repository_commit_ref_eq(left: c, right: s1)
+            && repository_commit_ref_eq(left: s, right: s1)
+        MergeBaseDerived { base: _ } => false
+        MergeBaseHistoryUnwalkable { side: _, walk: _ } => false
+        MergeBaseHistoriesDisjoint { target: _, source: _ } => false
+      }
+  }
+}
+
+// PREEXISTENCE. The mint refuses an anchor that is not already in the INPUT repository, and this is
+// the claim that makes the provenance record mean what it says. Without the check a caller could mint
+// a result and its supposed consumed source in one motion, producing a self-consistent repository
+// whose integration describes an event that could not have happened -- and every claim above would
+// still pass, because they read a record whose truthfulness they do not establish.
+test fn scm_mb_a_squash_cannot_record_a_source_that_does_not_yet_exist() -> Bool {
+  match mb_scene() {
+    MbSceneUnavailable => false
+    MbScene { repository: r, c0: c0, s1: _, m1: _, t1: _, s2: _, i1: _ } =>
+      match commit_at_reference(commits: r.commits, reference: c0) {
+        Absent => false
+        Present { value: base_commit } =>
+          match mint_repository_commit(
+            repository: r,
+            root: CorpusManifestTarget { locator: base_commit.root.locator },
+            message: "forward-dated",
+            parent: Present { value: c0 },
+            integration: SquashIntegrated {
+              source: RepositoryCommitRef { identity: MintedId { ordinal: 99 } },
+            },
+          ) {
+            RepositoryCommitMintIntegrationSourceMissing { source: s } =>
+              repository_commit_ref_eq(
+                left: s,
+                right: RepositoryCommitRef { identity: MintedId { ordinal: 99 } },
+              )
+            RepositoryCommitMinted { repository: _, reference: _ } => false
+            RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => false
+            RepositoryCommitMintRootMissing { root: _ } => false
+            RepositoryCommitMintRootIsAuthoredSource { root: _ } => false
+            RepositoryCommitMintRootIsSemanticNode { root: _ } => false
+            RepositoryCommitMintParentMissing { parent: _ } => false
+          }
+      }
+  }
+}
+
+// THE PROVENANCE SURVIVES THE DOCUMENT. An integration that encodes and does not decode would make
+// every claim above true of a repository in memory and false of the one on disk, which is the rung
+// gap DESIGN section 4b names when it says a class's rung is the MINIMUM across its in-scope paths --
+// here source-to-value and value-to-document-to-value are two paths and both must hold.
+test fn scm_mb_the_integration_record_survives_a_document_round_trip() -> Bool {
+  match mb_scene() {
+    MbSceneUnavailable => false
+    MbScene { repository: r, c0: c0, s1: s1, m1: m1, t1: t1, s2: s2, i1: _ } =>
+      match encode_repository_checked(repo: r) {
+        RepositoryEncodeRefused { cause: _ } => false
+        RepositoryEncoded { value: doc } =>
+          match decode_repository(v: doc) {
+            RepositoryDecodeRefused { cause: _ } => false
+            RepositoryDecoded { envelope: back } =>
+              match merge_base(commits: back.commits, target: t1, source: s2) {
+                MergeBaseSourceAlreadyConsumed { recorded_at: at, consumed: c, source: _ } =>
+                  repository_commit_ref_eq(left: at, right: m1)
+                    && repository_commit_ref_eq(left: c, right: s1)
+                MergeBaseDerived { base: _ } => false
+                MergeBaseHistoryUnwalkable { side: _, walk: _ } => false
+                MergeBaseHistoriesDisjoint { target: _, source: _ } => false
+              }
+          }
+      }
+  }
+}
+
+// A COMMIT TABLE IN A CHOSEN ORDER, WHICH IS ALL THE MALFORMED SPECIMENS NEED AND IS WHY NONE OF THEM
+// CONSTRUCTS A COMMIT. RepositoryCommit is sole-constructed, so a fixture cannot forge one -- and it
+// does not have to. Every state below is reached by SELECTING AND ORDERING commits the mint already
+// produced, which is exactly the freedom a decoded document has: a wire table may list rows in any
+// order and may omit rows other rows still name.
+//
+// THAT IS WHAT MAKES THE REDS AUTHORABLE, and DESIGN section 4b says to ask that before writing the
+// check rather than after. A check whose forbidden state cannot be expressed anywhere the check could
+// run is a decoration, permanently green and worse than absent because it gets cited as coverage. The
+// state here is unrepresentable in an ACCEPTED corpus and perfectly representable as a specimen handed
+// to the reader, which is the boundary that decides it.
+fn mb_ordered(scene_repo: RepositoryEnvelope, order: List<RepositoryCommitRef>) -> RepositoryEnvelope {
+  RepositoryEnvelope {
+    store: scene_repo.store,
+    commits: fold(order, init: [], f: fn(acc, reference) {
+      match commit_at_reference(commits: scene_repo.commits, reference: reference) {
+        Absent => acc
+        Present { value: c } => concat(acc, [c])
+      }
+    }),
+    commit_allocator: scene_repo.commit_allocator,
+    checked_out: none,
+    staged: none,
+  }
+}
+
+// THE POSITIVE CONTROL, AND IT IS NOT DECORATION EITHER. The two refusals below are reached by
+// REMOVING or REORDERING rows of this exact table, so without this claim a reader cannot tell whether
+// they refuse for the reason named or because `mb_ordered` produces something no reader accepts.
+test fn scm_mb_a_well_ordered_subset_still_decodes() -> Bool {
+  match mb_scene() {
+    MbSceneUnavailable => false
+    MbScene { repository: r, c0: c0, s1: s1, m1: m1, t1: t1, s2: _, i1: _ } =>
+      match decode_repository(v: encode_repository(repo: mb_ordered(scene_repo: r, order: [c0, s1, m1, t1]))) {
+        RepositoryDecoded { envelope: back } => count(back.commits) == 4
+        RepositoryDecodeRefused { cause: _ } => false
+      }
+  }
+}
+
+// THE WIRE IS THE OTHER PATH, AND WITHOUT THIS CLAIM IT WAS THE WEAKER ONE. The mint refuses an anchor
+// absent from the input repository, so source-to-value was already walled; a DOCUMENT could still
+// assert one. Decode admitted it, the consumed join then matched nothing against that bogus anchor,
+// and merge_base returned the ordinary graph base -- the exact stale base this module exists to make
+// unavailable, reached through the path nobody checked. DESIGN section 4b reads a class's rung as the
+// MINIMUM across its in-scope paths, so before this the class sat at the wire's rung, not the mint's.
+test fn scm_mb_a_document_whose_integration_anchor_is_absent_refuses() -> Bool {
+  match mb_scene() {
+    MbSceneUnavailable => false
+    MbScene { repository: r, c0: c0, s1: s1, m1: m1, t1: t1, s2: _, i1: _ } =>
+      match decode_repository(v: encode_repository(repo: mb_ordered(scene_repo: r, order: [c0, m1, t1]))) {
+        RepositoryDecodeRefused { cause: RepositoryCommitIntegrationSourceNotPreviouslyAdmitted { source: x } } =>
+          repository_commit_ref_eq(left: x, right: s1)
+        RepositoryDecodeRefused { cause: _ } => false
+        RepositoryDecoded { envelope: _ } => false
+      }
+  }
+}
+
+// PREEXISTENCE IS AN ORDER FACT, NOT A MEMBERSHIP FACT, AND THIS IS THE CLAIM THAT SEPARATES THEM.
+// Here S1 is PRESENT in the table, so a check asking merely "is the anchor somewhere in this list"
+// admits the document. It must not: M1 cannot have consumed a source that did not exist when M1 was
+// made, and this table admits M1 first. The membership-only implementation passes the previous claim
+// and fails here, which is the only reason both are written.
+test fn scm_mb_a_document_whose_integration_anchor_comes_later_refuses() -> Bool {
+  match mb_scene() {
+    MbSceneUnavailable => false
+    MbScene { repository: r, c0: c0, s1: s1, m1: m1, t1: _, s2: _, i1: _ } =>
+      match decode_repository(v: encode_repository(repo: mb_ordered(scene_repo: r, order: [c0, m1, s1]))) {
+        RepositoryDecodeRefused { cause: RepositoryCommitIntegrationSourceNotPreviouslyAdmitted { source: x } } =>
+          repository_commit_ref_eq(left: x, right: s1)
+        RepositoryDecodeRefused { cause: _ } => false
+        RepositoryDecoded { envelope: _ } => false
+      }
+  }
+}
+
+// THE CHECKED WRITER REFUSES THE SAME TABLE, so the malformed repository cannot be PRODUCED either.
+// Walling only the reader would leave a writer free to emit a document its own reader rejects: a
+// repository that cannot be reloaded, written by an operation that reported success.
+test fn scm_mb_checked_encode_refuses_an_absent_integration_anchor() -> Bool {
+  match mb_scene() {
+    MbSceneUnavailable => false
+    MbScene { repository: r, c0: c0, s1: s1, m1: m1, t1: t1, s2: _, i1: _ } =>
+      match encode_repository_checked(repo: mb_ordered(scene_repo: r, order: [c0, m1, t1])) {
+        RepositoryEncodeRefused { cause: RepositoryEncodeIntegrationSourceNotPreviouslyAdmitted { source: x } } =>
+          repository_commit_ref_eq(left: x, right: s1)
+        RepositoryEncodeRefused { cause: _ } => false
+        RepositoryEncoded { value: _ } => false
+      }
+  }
+}
+
+// THE WRITER REFUSES THE ORDERING CASE TOO, which is what makes the cause's name honest. Without
+// this the encode arm was only ever exercised on an ABSENT anchor, so a membership-only writer would
+// have passed every control while the name claimed prior admission -- the check would have been
+// weaker than its own spelling, on the exact distinction this module was reworked to draw.
+test fn scm_mb_checked_encode_refuses_an_integration_anchor_that_comes_later() -> Bool {
+  match mb_scene() {
+    MbSceneUnavailable => false
+    MbScene { repository: r, c0: c0, s1: s1, m1: m1, t1: _, s2: _, i1: _ } =>
+      match encode_repository_checked(repo: mb_ordered(scene_repo: r, order: [c0, m1, s1])) {
+        RepositoryEncodeRefused { cause: RepositoryEncodeIntegrationSourceNotPreviouslyAdmitted { source: x } } =>
+          repository_commit_ref_eq(left: x, right: s1)
+        RepositoryEncodeRefused { cause: _ } => false
+        RepositoryEncoded { value: _ } => false
+      }
+  }
+}
+
+test fn scm_merge_base_witnesses_hold() -> Bool {
+  scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on()
+    && scm_mb_a_source_descending_from_a_consumed_source_has_no_valid_base()
+    && scm_mb_an_independent_lineage_sharing_content_still_derives_its_base()
+    && scm_mb_replaying_the_consumed_source_itself_has_no_valid_base()
+    && scm_mb_a_squash_cannot_record_a_source_that_does_not_yet_exist()
+    && scm_mb_the_integration_record_survives_a_document_round_trip()
+    && scm_mb_a_well_ordered_subset_still_decodes()
+    && scm_mb_a_document_whose_integration_anchor_is_absent_refuses()
+    && scm_mb_a_document_whose_integration_anchor_comes_later_refuses()
+    && scm_mb_checked_encode_refuses_an_absent_integration_anchor()
+    && scm_mb_checked_encode_refuses_an_integration_anchor_that_comes_later()
+}

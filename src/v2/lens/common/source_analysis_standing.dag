@@ -1,9 +1,22 @@
 module v2.lens.common.source_analysis_standing
 
 
+// SourceUnreadable IS THE ARM THE PIPELINE HAD NO WAY TO REACH, and its absence was not a gap in
+// coverage but an abort. Every consumer of this coproduct obtains its subject by reading a file,
+// and the read ran through the `filesystem_read` intrinsic, whose result carries content and
+// nothing else: a path that does not exist raises an interpreter type error and takes the WHOLE
+// run down, so a roster or corpus sweep learned nothing about the files after the missing one.
+// Receipt: src/v2/workflow/glob_discovery_law.dag moved to src/v2/test/workflow/ in the #9637
+// directory reorganisation and the roster row that names it was not repointed; because the roster
+// gate is offline, nothing ran it, and the row sat crashing rather than refusing until a
+// corpus-grain consumer executed it (2026-09-06).
+//
+// The read now folds through extdeps.filesystem.filesystem_io's filesystem_read_outcome, so an
+// unreadable subject is one typed, located, counted row and the sweep continues.
 type SourceAnalysisNotEstablishedCause
   = LanguageGrammarUnavailable
   | LanguageGrammarRejected
+  | SourceUnreadable
   | SourceTokenizationRejected
   | SourceParseRejected
   | SourceNormalizationRejected
