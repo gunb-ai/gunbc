@@ -4,9 +4,9 @@ import std.types { Bool, String, NonEmptyStr, List }
 import std.nat { Nat }
 import std.content_hash { ContentHash }
 import std.measure { TokenCount, token_count_value }
-import gunbc.spark.vllm_engine_incarnation {
-  VllmEngineIncarnation, IncarnationJoin, SameIncarnation, DifferentIncarnation, IncarnationContradiction,
-  same_incarnation, join_is_admissible, incarnation_join_wire, incarnation_wire,
+import gunbc.spark.vllm_serving_launch {
+  VllmServingLaunch, LaunchJoin, SameLaunch, DifferentLaunch, LaunchContradiction,
+  same_launch, join_is_admissible, launch_join_wire, launch_wire,
 }
 import extdeps.vllm.kv_layout {
   ResolvedKvLayout, VllmReportedCapacity,
@@ -38,14 +38,14 @@ import extdeps.vllm.kv_layout {
 
 type VllmKvLayoutReceipt
   = KvLayoutObserved {
-      incarnation: VllmEngineIncarnation,
+      incarnation: VllmServingLaunch,
       layout: ResolvedKvLayout,
       reported: VllmReportedCapacity,
       blocks_per_max_request: Nat,
       source_capture_digest: ContentHash,
     }
-  | KvLayoutUnreadable { incarnation: VllmEngineIncarnation, cause: NonEmptyStr }
-  | KvLayoutInconsistent { incarnation: VllmEngineIncarnation, cause: NonEmptyStr }
+  | KvLayoutUnreadable { incarnation: VllmServingLaunch, cause: NonEmptyStr }
+  | KvLayoutInconsistent { incarnation: VllmServingLaunch, cause: NonEmptyStr }
 
 // THE REPORTED FIGURES ARE CARRIED AS THE UPSTREAM CARRIER, not re-spelled as two fields beside it.
 // An earlier shape of this type listed reported_equivalent_tokens and reported_max_concurrency
@@ -67,7 +67,7 @@ type VllmKvLayoutReceipt
 // route does not exist. That is the honest state and not a bug in this fold: an absent second
 // opinion is not agreement.
 fn admit_kv_layout(
-  incarnation: VllmEngineIncarnation,
+  incarnation: VllmServingLaunch,
   layout: ResolvedKvLayout,
   reported: VllmReportedCapacity,
   source_capture_digest: ContentHash,
@@ -114,14 +114,14 @@ fn admit_kv_layout(
 // A receipt is not a standing fact about a group. It is a fact about ONE incarnation, and the only
 // question a seat lease may ask of it is: does this receipt describe the engine I am about to send
 // a request to? Anything that answers that question by comparing groups or hosts has reintroduced
-// the co-location test gunbc.spark.vllm_engine_incarnation exists to displace.
+// the co-location test gunbc.spark.vllm_serving_launch exists to displace.
 type SeatingAuthority
   = SeatingAuthorized { blocks_available: Nat, blocks_per_request: Nat }
   | SeatingRefused { cause: NonEmptyStr }
 
 fn seating_authority_for(
   receipt: VllmKvLayoutReceipt,
-  serving: VllmEngineIncarnation,
+  serving: VllmServingLaunch,
   sequence_budget: TokenCount,
 ) -> SeatingAuthority {
   match receipt {
@@ -130,12 +130,12 @@ fn seating_authority_for(
     KvLayoutInconsistent { incarnation: _, cause: c } =>
       SeatingRefused { cause: join(["the layout is inconsistent, so no capacity is established: ", c as String], "") as NonEmptyStr }
     KvLayoutObserved { incarnation: observed, layout: layout, reported: _, blocks_per_max_request: _, source_capture_digest: _ } => {
-      let join_verdict = same_incarnation(a: observed, b: serving)
+      let join_verdict = same_launch(a: observed, b: serving)
       if !join_is_admissible(j: join_verdict) {
         SeatingRefused {
           cause: join([
-            "the receipt describes ", incarnation_wire(i: observed), " but the request would be served by ",
-            incarnation_wire(i: serving), ": ", incarnation_join_wire(j: join_verdict),
+            "the receipt describes ", launch_wire(i: observed), " but the request would be served by ",
+            launch_wire(i: serving), ": ", launch_join_wire(j: join_verdict),
           ], "") as NonEmptyStr,
         }
       } else {
@@ -149,7 +149,7 @@ fn seating_authority_for(
   }
 }
 
-fn receipt_incarnation(r: VllmKvLayoutReceipt) -> VllmEngineIncarnation {
+fn receipt_incarnation(r: VllmKvLayoutReceipt) -> VllmServingLaunch {
   match r {
     KvLayoutObserved { incarnation: i, layout: _, reported: _, blocks_per_max_request: _, source_capture_digest: _ } => i
     KvLayoutUnreadable { incarnation: i, cause: _ } => i
@@ -160,10 +160,10 @@ fn receipt_incarnation(r: VllmKvLayoutReceipt) -> VllmEngineIncarnation {
 fn receipt_wire(r: VllmKvLayoutReceipt) -> String {
   match r {
     KvLayoutObserved { incarnation: i, layout: _, reported: _, blocks_per_max_request: b, source_capture_digest: _ } =>
-      join(["observed ", incarnation_wire(i: i), ": ", to_string(b), " blocks per full-context request"], "")
+      join(["observed ", launch_wire(i: i), ": ", to_string(b), " blocks per full-context request"], "")
     KvLayoutUnreadable { incarnation: i, cause: c } =>
-      join(["unreadable ", incarnation_wire(i: i), ": ", c as String], "")
+      join(["unreadable ", launch_wire(i: i), ": ", c as String], "")
     KvLayoutInconsistent { incarnation: i, cause: c } =>
-      join(["inconsistent ", incarnation_wire(i: i), ": ", c as String], "")
+      join(["inconsistent ", launch_wire(i: i), ": ", c as String], "")
   }
 }
