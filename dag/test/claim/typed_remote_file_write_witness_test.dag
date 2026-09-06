@@ -21,7 +21,7 @@ import gunbc.typed_remote_file_write {
   typed_remote_file_write_outcome_after_ssh_exec,
   typed_remote_file_write_over_fleet_ssh,
 }
-import gunbc.spark.serving_runtime_receipt { spark_serving_executor_home }
+import gunbc.fleet_ssh_locus { fleet_automation_principal_home }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -37,7 +37,7 @@ data witness_tmp_scope: FileTreeScope = FileTreeScope {
 }
 
 data witness_executor_home_scope: FileTreeScope = FileTreeScope {
-  root_path: spark_serving_executor_home as NonEmptyStr,
+  root_path: fleet_automation_principal_home as NonEmptyStr,
 }
 
 data witness_metachar_payload: String = "alpha beta\ttab $dollar \"dq\"\n; rm -rf /"
@@ -198,7 +198,7 @@ test fn w_content_digest_stable_for_same_bytes() -> Bool {
 test fn w_executor_home_unit_path_seals_for_spark_layout() -> Bool {
   match typed_remote_file_write_seal(
     path: concat(
-      spark_serving_executor_home as String,
+      fleet_automation_principal_home as String,
       "/.config/systemd/user/gunbc-spark-serving.service",
     ) as FilePath,
     content: "[Unit]\nDescription=test\n" as String,

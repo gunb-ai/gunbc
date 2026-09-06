@@ -19,15 +19,6 @@ import gunbc.ollama_model_resolution {
   gpt_oss_120b_manifest,
   deepseek_v4_no_h3_stop_manifest,
 }
-import gunbc.spark.serving_model_admission {
-  SparkServingLocalModelAttestation,
-  SparkServingModelAxisUpstreamCatalogued,
-  SparkServingModelAxisLocalAttested,
-  SparkServingModelAxisRefused,
-  spark_serving_model_axis_in,
-  spark_serving_local_model_attestations,
-  spark_serving_local_model_attestation,
-}
 
 // ================= FIXTURES =================
 //
@@ -157,93 +148,5 @@ test fn a_single_reading_upstream_manifest_is_still_independently_selected() -> 
   }
 }
 
-// ================= THE SERVING MODEL AXIS =================
-
 data fx_required_version: NonEmptyStr = "0.32.9" as NonEmptyStr
 
-// The production attestation admits the production manifest at the production required release.
-test fn the_selected_local_model_is_admitted_by_its_observed_load() -> Bool {
-  match spark_serving_model_axis_in(
-    manifest: deepseek_v4_no_h3_stop_manifest,
-    attestations: spark_serving_local_model_attestations,
-    required_runtime_version: fx_required_version,
-  ) {
-    SparkServingModelAxisLocalAttested { runtime_version: v } => (v as String) == "0.32.9"
-    SparkServingModelAxisUpstreamCatalogued => false
-    SparkServingModelAxisRefused { cause: _ } => false
-  }
-}
-
-// AN OBSERVED LOAD ESTABLISHES ONE VERSION AND DOES NOT GENERALIZE. Move the required release and
-// this refuses until the load is re-observed. Without this arm the attestation would behave as a
-// floor, which is the fabricated catalogue row wearing a comparison operator.
-test fn a_required_release_the_model_was_not_observed_under_refuses() -> Bool {
-  match spark_serving_model_axis_in(
-    manifest: deepseek_v4_no_h3_stop_manifest,
-    attestations: spark_serving_local_model_attestations,
-    required_runtime_version: "0.33.0" as NonEmptyStr,
-  ) {
-    SparkServingModelAxisRefused { cause: c } => string_contains(c as String, "does not generalize")
-    SparkServingModelAxisLocalAttested { runtime_version: _ } => false
-    SparkServingModelAxisUpstreamCatalogued => false
-  }
-}
-
-// A LOCAL ARTIFACT WITH NO ATTESTATION REFUSES. This is the arm that keeps the local path from being
-// a way around the catalogue: routing around ollama's support table is only admissible because a
-// stricter fact is required in its place, and if that fact is absent the answer is refusal, not
-// admission.
-test fn a_local_manifest_with_no_attestation_refuses() -> Bool {
-  match spark_serving_model_axis_in(
-    manifest: deepseek_v4_no_h3_stop_manifest,
-    attestations: [],
-    required_runtime_version: fx_required_version,
-  ) {
-    SparkServingModelAxisRefused { cause: c } => string_contains(c as String, "no observed-load attestation")
-    SparkServingModelAxisLocalAttested { runtime_version: _ } => false
-    SparkServingModelAxisUpstreamCatalogued => false
-  }
-}
-
-// An upstream manifest still routes to the catalogue, whatever attestations exist. The local path
-// must not capture models the upstream table can actually answer for.
-test fn an_upstream_manifest_routes_to_the_catalogue() -> Bool {
-  match spark_serving_model_axis_in(
-    manifest: gpt_oss_120b_manifest,
-    attestations: spark_serving_local_model_attestations,
-    required_runtime_version: fx_required_version,
-  ) {
-    SparkServingModelAxisUpstreamCatalogued => true
-    SparkServingModelAxisLocalAttested { runtime_version: _ } => false
-    SparkServingModelAxisRefused { cause: _ } => false
-  }
-}
-
-// A TAG RE-CREATED OVER DIFFERENT BYTES REFUSES, which is the failure a name-and-tag attestation
-// could not see. `POST /api/create` can be re-run with a different Modelfile and produce the same
-// `deepseek-v4-gguf:no-h3-stop` naming entirely different bytes; an attestation keyed only on the
-// reference would go on reporting an observed load of bytes nobody loaded. This is the 2026-08-19
-// republish shape reproduced locally, and the manifest identity is what discriminates it.
-test fn an_attestation_naming_other_bytes_refuses() -> Bool {
-  match spark_serving_model_axis_in(
-    manifest: deepseek_v4_no_h3_stop_manifest,
-    attestations: [
-      spark_serving_local_model_attestation(
-        model: OllamaModelRef {
-          name: "deepseek-v4-gguf" as NonEmptyStr,
-          tag: "no-h3-stop" as NonEmptyStr,
-        },
-        manifest_identity: fx_digest_b.hex as NonEmptyStr,
-        runtime_version: "0.32.9" as NonEmptyStr,
-        hosts: [],
-        observed_at: "2026-09-02T00:00Z",
-        instrument: "fixture" as NonEmptyStr,
-      ),
-    ],
-    required_runtime_version: fx_required_version,
-  ) {
-    SparkServingModelAxisRefused { cause: c } => string_contains(c as String, "re-created over different bytes")
-    SparkServingModelAxisLocalAttested { runtime_version: _ } => false
-    SparkServingModelAxisUpstreamCatalogued => false
-  }
-}

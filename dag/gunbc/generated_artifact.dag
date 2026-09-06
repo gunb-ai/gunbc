@@ -67,8 +67,30 @@ type CommitPolicy
 // otherwise mechanical merge puts that large shared projection on every lane's critical path.
 // heal-generated-artifacts already checks out the pushed branch head, derives every committed
 // artifact from that head's authorities, commits the result, and dispatches a revalidation bound
-// to the healed SHA. Therefore a lane may commit the driver-left ours bytes PROVISIONALLY for only
-// this pair, after staging the explicit unmerged path, and let that one actuator replace them.
+// to the healed SHA. So for this pair heal IS the route, not one of two: this arm is what the
+// selector returns and what the emitted recipe instructs, and no value in this module means "either
+// actuator". THAT EXCLUSIVITY IS THE MODELED POLICY AND IS ASSERTED IN BOTH DIRECTIONS by
+// gunbc.test.claim.generated_artifact_assessment_witness_test
+// `only_design_ledgers_delegate_concurrent_regeneration_to_heal`, so admitting an author-side ledger
+// route is a semantic widening that reds that claim -- not a permission this rationale may grant.
+// It would also buy nothing the cost argument above asked for: mandatory heal already keeps the
+// regenerator off every lane's critical path. A lane that demonstrates mandatory heal is
+// unacceptable is the evidence that would reopen this; absent it the arm has no producer.
+//
+// THE PROVISIONAL BYTES ARE THE BASE-SIDE PROJECTION, NEVER THE DRIVER-LEFT WORKTREE BYTES. This
+// sentence previously said ours, which is the action gunbc.generated_artifact_merge_driver measured
+// as row-deleting across four heads and now instructs against in its own step 1: the driver leaves
+// the ours side in the worktree, so staging it commits this branch's rows over the base's and drops
+// every row the base added since the merge base. Taking the base side is not a resolution either --
+// it leaves the tree authority-ahead-of-artifact by exactly this branch's rows, which is the state
+// heal exists to close -- but it is preservation-safe, and that is the whole requirement on a
+// provisional head.
+//
+// THE ORDERING IS THE INVARIANT, and it is what both actuators owe -- "who runs the regenerator" is
+// an actuator choice, while deriving against a pre-merge branch is a defect either one can commit:
+// preserve the base-side projection, complete the authored-authority merge, publish that as H0,
+// heal derives the projection from H0's AUTHORITIES, publish H1, verify H1. DERIVE ONLY AFTER THE
+// INTEGRATED AUTHORITY STATE EXISTS AS THE SUBJECT.
 // The required generated-artifact phase remains unchanged: it may red on H0 and must agree on H1.
 //
 // Every other artifact retains AuthorRegeneratesBeforeMerge. In particular this is not inferred

@@ -12,11 +12,8 @@ import extdeps.network.ipv4 { ipv4_address, render_ipv4_address }
 import gunbc.fleet_intent_network {
   operator_host_srv5, operator_host_srv7, operator_host_srv8 }
 import gunbc.spark.cell_role { spark_serving_cell_hosts }
-import gunbc.spark.fabric_link_desired {
-  fabric_rail0, fabric_endpoint_on,
-  fabric_link_identity, fabric_link_identity_eq, SparkFabricPair, SparkFabricRail,
-}
 import gunbc.spark.llama_cpp_rpc_observed {
+  llama_cpp_rpc_observed_fabric, llama_cpp_rpc_fabric_endpoint_on,
   llama_cpp_rpc_front_door,
   llama_cpp_rpc_weights_peer,
   llama_cpp_rpc_slot_plan,
@@ -107,10 +104,9 @@ test fn raising_the_slot_count_cannot_shrink_the_per_slot_window() -> Bool {
 // A SPLIT ACROSS ONE MACHINE IS NOT A SPLIT. It is one process addressing itself over a network
 // address, and it would report perfectly healthy.
 test fn a_deployment_whose_two_ends_are_one_host_refuses() -> Bool {
-  match fabric_rail0 {
-    Absent => false
-    Present { value: link } =>
-      match fabric_endpoint_on(link: link, host: operator_host_srv8) {
+  {
+    let link = llama_cpp_rpc_observed_fabric
+      match llama_cpp_rpc_fabric_endpoint_on(fabric: link, host: operator_host_srv8) {
         Absent => false
         Present { value: e } =>
           match llama_cpp_rpc_construct(
@@ -134,9 +130,8 @@ test fn a_deployment_whose_two_ends_are_one_host_refuses() -> Bool {
 // A PEER ADDRESSED OFF THE FABRIC REFUSES. This is the 34x claim as a wall: the deployment would
 // work, so no test of its behaviour could catch it.
 test fn a_peer_addressed_off_the_fabric_refuses() -> Bool {
-  match fabric_rail0 {
-    Absent => false
-    Present { value: link } =>
+  {
+    let link = llama_cpp_rpc_observed_fabric
       match llama_cpp_rpc_construct(
         alias: "x" as NonEmptyStr,
         front_door: llama_cpp_rpc_front_door(
@@ -375,10 +370,9 @@ test fn an_artifact_refuses_a_count_its_identity_contradicts() -> Bool {
 // executed evidence that it is now real; it went green vacuously before the guard landed only
 // because the string carrier could not compare addresses at all.
 test fn a_unit_whose_ends_share_an_address_and_port_has_no_constructor() -> Bool {
-  match fabric_rail0 {
-    Absent => false
-    Present { value: link } =>
-      match fabric_endpoint_on(link: link, host: operator_host_srv8) {
+  {
+    let link = llama_cpp_rpc_observed_fabric
+      match llama_cpp_rpc_fabric_endpoint_on(fabric: link, host: operator_host_srv8) {
         Absent => false
         Present { value: e } =>
           match llama_cpp_rpc_construct(
@@ -428,58 +422,20 @@ test fn an_unobserved_artifact_identity_is_not_bound() -> Bool {
 }
 
 
-// THE HISTORICAL OBSERVATION DEPENDS ON A ROW THAT IS ALLOWED TO CHANGE, AND THIS PINS IT.
-//
-// gunbc.spark.llama_cpp_rpc_observed does not restate the fabric addresses. It cites `fabric_rail0`
-// and derives the weights peer's address from it, which is the right §3 move -- one fabric fact, one
-// authority, and the deployment's constructor conditions then check against the MEASURED fabric
-// rather than a second copy authored to agree.
-//
-// BUT THE TWO ARE DIFFERENT SUBJECTS AND ONLY ONE OF THEM IS FROZEN. `fabric_rail0` is CURRENT
-// DESIRED STATE over srv7/srv8; this module is a DATED OBSERVATION of what the llama.cpp RPC
-// deployment used on 2026-09-02. Their present equality is an AGREEMENT, not identity of authority.
-// Nothing stops the desired row being re-addressed tomorrow -- that is what desired state is for --
-// and if it moves, a historical observation that derives its peer address from it silently becomes a
-// record of something that never happened. History would be rewritten by an edit to a different
-// module, with no diagnostic anywhere.
-//
-// So this claim pins every field the historical observation leans on. It is deliberately a
-// WHOLE-VALUE agreement rather than a spot check of the address: interface name, prefix and MTU are
-// all load-bearing -- the module's own constructor refuses on each of them -- so pinning only the
-// octets would let a rail move from enp1s0f0np0 to another NIC, or from MTU 9000 to 1500, without
-// this going red.
-//
-// THE RAIL ASSERTION WAS RE-EXPRESSED, AND THAT IS NOT AN EXCEPTION TO THE RULE BELOW.
-//
-// This clause used to read `link.name == "cx7-rail0"`. Two things were wrong with it and neither is a
-// change to the observation. `cx7-rail0` is the NetworkManager PROFILE ID, which the fabric module
-// itself records as a per-host actuation detail that both ends are free to disagree about -- so the
-// clause was asserting a host's local spelling as if it were the link's identity. And it was doing so
-// through a caller-authored string field that no longer exists: link identity is now the closed
-// `FabricLinkIdentity { pair, rail }`, and this reads it.
-//
-// The rail this names is unchanged -- srv7/srv8, rail0 -- and every other literal below is untouched,
-// which is the evidence that the desired fabric did not move and the snapshot rule was not triggered.
-// A representation change is not an observation change; the rule below governs the second.
-//
-// WHEN IT FIRES, THE FIX IS NOT TO UPDATE THE LITERALS. A red here means the desired fabric has
-// moved away from what the dated observation used, and the correct response is to snapshot the
-// observed rail into this module as its own dated value -- the side of the fork that stops being
-// derivable is the historical side, and it is the side that must stop deriving.
-test fn the_dated_observation_still_agrees_with_the_fabric_row_it_cites() -> Bool {
-  match fabric_rail0 {
-    Absent => false
-    Present { value: link } =>
-      match fabric_endpoint_on(link: link, host: operator_host_srv8) {
+// THE SNAPSHOT RAIL IS THE RAIL THE OBSERVATION USED. The module carries the 2026-09-02 direct-cable
+// rail as its own dated value now that the desired fabric has moved to the switch; this pins every
+// field the constructor conditions were checked against, so an edit to the snapshot is an edit to
+// history and shows here.
+test fn the_snapshot_rail_carries_every_field_the_observation_was_checked_against() -> Bool {
+  {
+    let link = llama_cpp_rpc_observed_fabric
+      match llama_cpp_rpc_fabric_endpoint_on(fabric: link, host: operator_host_srv8) {
         Absent => false
         Present { value: peer } =>
-          match fabric_endpoint_on(link: link, host: operator_host_srv7) {
+          match llama_cpp_rpc_fabric_endpoint_on(fabric: link, host: operator_host_srv7) {
             Absent => false
             Present { value: door } =>
-              fabric_link_identity_eq(
-                a: link.identity,
-                b: fabric_link_identity(pair: Srv7Srv8, rail: Rail0))
-                && render_ipv4_address(addr: peer.address) == "192.168.100.11"
+              render_ipv4_address(addr: peer.address) == "192.168.100.11"
                 && render_ipv4_address(addr: door.address) == "192.168.100.10"
                 && (peer.interface as String) == "enp1s0f0np0"
                 && (door.interface as String) == "enp1s0f0np0"

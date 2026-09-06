@@ -20,6 +20,7 @@ import v1.compiler.infer_occurrence_binding {
 }
 
 import std.induction { SubValueRelation }
+import v1.compiler.infer_env { TypeBinding }
 
 type ResolvedFuncSig {
   name: String
@@ -174,6 +175,87 @@ type FuncSigLookup
   = FuncSigResolved { sig: ResolvedFuncSig, declared: DeclaredCallableIdentity }
   | FuncSigUnresolved
   | FuncSigAmbiguous { candidates: List<CallableCandidate> }
+
+// THE DIRECT-CALL SITE'S OUTCOME, PARTITIONED SO ABSENCE CANNOT BE READ AS AUTHORITY.
+//
+// FuncSigLookup answers three constructors, but at the ExprCall seam FuncSigUnresolved carries
+// FOUR distinct states: a legitimate BUILTIN callable (v1.compiler.lookup
+// resolved_plain_call_target_for_outcome answers it from BuiltinCallableResolved), a
+// BODY-LOCAL or PARAMETER callee that a scope-shadow pre-step answered for, and a GENUINELY
+// MISSING declaration. The consumer then narrowed all of it to `ResolvedFuncSig?` and answered
+// `Absent => true` for "formal authority available" with an empty refusal reason, so a call whose
+// signature could not be found was typed against an EMPTY formal list and accepted -- absence of
+// all authority read as affirmative authority.
+//
+// THE COLLAPSE IS NOT A SLIP; IT IS WHAT A CONSUMER MUST DO WHEN ITS CARRIER CANNOT SAY
+// "BUILTIN". Flipping the arm alone is provably inert (both consumers independently conjoin
+// `sig != none`), and flipping it AND removing those guards refuses every builtin call in the
+// corpus -- a fail-open traded for an over-refusal. The repair is therefore the partition, so
+// that AVAILABILITY IS WHICH CONSTRUCTOR IS HELD rather than a Bool needing an interpretation for
+// "there is no formal authority because there is no declaration".
+//
+// This file has already made this exact decision once: the note above records that
+// `func_sig_if_resolved` mapped FuncSigAmbiguous onto the same Absent that means "no such
+// signature", and that projection was DELETED for being an erasure. The direct-call site
+// re-committed the identical collapse INLINE rather than through the shared projection, which is
+// why deleting the shared one did not reach it.
+type CallTargetOutcome
+  = DeclaredCallableResolved { sig: ResolvedFuncSig, declared: DeclaredCallableIdentity }
+  | BuiltinCallableResolved { primitive_name: String }
+  | LocallyBoundCallee { name: String, binding: TypeBinding }
+  | CallableUnresolved { name: String }
+  | CallableAmbiguous { candidates: List<CallableCandidate> }
+  | LocallyBoundBindingMissing { name: String }
+// LocallyBoundBindingMissing is the REFUSAL arm for a disagreement between two scope maps that
+// agree by construction today: `body_locals` (a presence set) and `locals` (the bindings). Every
+// writer that reaches an InferScope populates both over the same names, so this state is
+// currently unreachable -- and it is represented rather than absorbed precisely because that
+// agreement is a property of today's writers, not of the type. Folding it into CallableUnresolved
+// would report a scope-construction defect as an ordinary missing declaration, which is the
+// absorbing fallback DESIGN section 5 refuses: a failure arm must refuse, never widen.
+
+// The declaration-bound signature, and ONLY when one exists. Every other constructor answers
+// Absent HERE ON PURPOSE -- consumers that need to distinguish builtin from local from missing
+// must match the outcome itself, which is the distinction this type exists to preserve.
+// BODY-BINDING STATUS AND THE BINDING ITSELF, READ OFF THE CONSTRUCTOR THAT ESTABLISHED THEM.
+//
+// The consumer used to re-derive both below the seam -- `map_has(scope.body_locals, name)` for the
+// status and a separate `map_get(scope.locals, name)` for the binding -- which left the TWO-MAP
+// DECISION SURFACE standing downstream of the very constructor minted to eliminate it. Carrying
+// evidence is insufficient if the decision re-searches for it: the producer's adjudication is the
+// authority, and a second lookup is a second authority that can disagree with it.
+fn call_target_is_locally_bound(outcome: CallTargetOutcome) -> Bool {
+  match outcome {
+    LocallyBoundCallee { name: _, binding: _ } => true
+    DeclaredCallableResolved { sig: _, declared: _ } => false
+    BuiltinCallableResolved { primitive_name: _ } => false
+    CallableUnresolved { name: _ } => false
+    CallableAmbiguous { candidates: _ } => false
+    LocallyBoundBindingMissing { name: _ } => false
+  }
+}
+
+fn call_target_local_binding(outcome: CallTargetOutcome) -> TypeBinding? {
+  match outcome {
+    LocallyBoundCallee { name: _, binding: b } => Present { value: b }
+    DeclaredCallableResolved { sig: _, declared: _ } => Absent
+    BuiltinCallableResolved { primitive_name: _ } => Absent
+    CallableUnresolved { name: _ } => Absent
+    CallableAmbiguous { candidates: _ } => Absent
+    LocallyBoundBindingMissing { name: _ } => Absent
+  }
+}
+
+fn call_target_declared_sig(outcome: CallTargetOutcome) -> ResolvedFuncSig? {
+  match outcome {
+    DeclaredCallableResolved { sig: s, declared: _ } => Present { value: s }
+    BuiltinCallableResolved { primitive_name: _ } => Absent
+    LocallyBoundCallee { name: _, binding: _ } => Absent
+    CallableUnresolved { name: _ } => Absent
+    CallableAmbiguous { candidates: _ } => Absent
+    LocallyBoundBindingMissing { name: _ } => Absent
+  }
+}
 
 // THE PROJECTION THAT USED TO ERASE THE AMBIGUITY ARM, SPLIT SO IT CANNOT.
 //

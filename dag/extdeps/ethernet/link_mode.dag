@@ -1,7 +1,7 @@
 module extdeps.ethernet.link_mode
 
 import std.nat { Nat }
-import std.types { Bool, String }
+import std.types { Bool }
 import std.measure { Bandwidth, bandwidth, bandwidth_count, SymbolRate, symbol_rate, symbol_rate_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -51,13 +51,6 @@ fn modulation_bits_per_symbol(m: Modulation) -> Nat {
   match m {
     Nrz => 1
     Pam4 => 2
-  }
-}
-
-fn modulation_label(m: Modulation) -> String {
-  match m {
-    Nrz => "NRZ"
-    Pam4 => "PAM4"
   }
 }
 
@@ -219,14 +212,6 @@ fn hundred_gig_aggregate_collision() -> Bool {
   bandwidth_count(b: link_mode_aggregate(m: ieee_100gbase_cr4))
     == bandwidth_count(b: link_mode_aggregate(m: ieee_100gbase_cr2))
     && !link_mode_eq(a: ieee_100gbase_cr4, b: ieee_100gbase_cr2)
-}
-
-fn render_link_mode(m: LinkMode) -> String {
-  to_string(lane_count_value(l: m.lane_count))
-    + "x"
-    + to_string(bandwidth_count(b: m.per_lane_service_rate))
-    + " "
-    + modulation_label(m: m.modulation)
 }
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
