@@ -3,7 +3,8 @@ module v2.lens.unit_modeling
 import v2.lens.common.construction_justification {
   ConstructionJustification,
   OutsideModeledGuarantee,
-  HumanPolicyJudgment
+  PolicyJudgmentRequired,
+  modeled_outside_boundary
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -147,11 +148,24 @@ fn unit_modeling_gate(node: Node) -> Outcome<Witness<Node>> {
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: OutsideModeledGuarantee {
-    subject: DeclarationRef {
-      module_path: "v2.lens.unit_modeling",
-      decl_name: "unit_modeling_gate",
-      field: WholeDeclaration
-    },
-    reason: HumanPolicyJudgment
+    boundary: modeled_outside_boundary(
+      subject: DeclarationRef {
+        module_path: "v2.lens.unit_modeling",
+        decl_name: "unit_modeling_gate",
+        field: WholeDeclaration
+      },
+      required_capability: DeclarationRef {
+        module_path: "v2.lens.unit_modeling",
+        decl_name: "unit_modeling_gate",
+        field: WholeDeclaration
+      },
+      boundary_kind: PolicyJudgmentRequired {
+        judgment: DeclarationRef {
+          module_path: "v2.lens.unit_modeling",
+          decl_name: "unit_modeling_gate",
+          field: WholeDeclaration
+        }
+      }
+    )
   }
 }

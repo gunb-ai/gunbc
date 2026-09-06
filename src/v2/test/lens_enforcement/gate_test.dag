@@ -3,7 +3,8 @@ module v2.test.lens_enforcement.gate_test
 import v2.lens.common.construction_justification {
   ConstructionJustification,
   OutsideModeledGuarantee,
-  CandidateUniverseUnbounded
+  CandidateDomainNotClosed,
+  modeled_outside_boundary
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -36,12 +37,25 @@ data synthetic_contract: LensContract = {
   exemptions: [],
   boundary: ConstructionJustification {
     class: OutsideModeledGuarantee {
-      subject: DeclarationRef {
-        module_path: "v2.lens.enforcement.complexity_contract_subject",
-        decl_name: "OptimalityResidue",
-        field: WholeDeclaration
-      },
-      reason: CandidateUniverseUnbounded
+      boundary: modeled_outside_boundary(
+        subject: DeclarationRef {
+          module_path: "v2.lens.enforcement.complexity_contract_subject",
+          decl_name: "OptimalityResidue",
+          field: WholeDeclaration
+        },
+        required_capability: DeclarationRef {
+          module_path: "v2.lens.enforcement.complexity_contract_subject",
+          decl_name: "GlobalOptimality",
+          field: WholeDeclaration
+        },
+        boundary_kind: CandidateDomainNotClosed {
+          domain: DeclarationRef {
+            module_path: "v2.lens.enforcement.complexity_contract_subject",
+            decl_name: "ComplexityOptimalityClaim",
+            field: WholeDeclaration
+          }
+        }
+      )
     }
   }
 }
@@ -54,12 +68,25 @@ data synthetic_contract_audit_only: LensContract = {
   exemptions: [],
   boundary: ConstructionJustification {
     class: OutsideModeledGuarantee {
-      subject: DeclarationRef {
-        module_path: "v2.lens.enforcement.complexity_contract_subject",
-        decl_name: "OptimalityResidue",
-        field: WholeDeclaration
-      },
-      reason: CandidateUniverseUnbounded
+      boundary: modeled_outside_boundary(
+        subject: DeclarationRef {
+          module_path: "v2.lens.enforcement.complexity_contract_subject",
+          decl_name: "OptimalityResidue",
+          field: WholeDeclaration
+        },
+        required_capability: DeclarationRef {
+          module_path: "v2.lens.enforcement.complexity_contract_subject",
+          decl_name: "GlobalOptimality",
+          field: WholeDeclaration
+        },
+        boundary_kind: CandidateDomainNotClosed {
+          domain: DeclarationRef {
+            module_path: "v2.lens.enforcement.complexity_contract_subject",
+            decl_name: "ComplexityOptimalityClaim",
+            field: WholeDeclaration
+          }
+        }
+      )
     }
   }
 }

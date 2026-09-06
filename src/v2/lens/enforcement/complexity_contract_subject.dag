@@ -4,7 +4,9 @@ import v2.lens.common.construction_justification {
   ConstructionJustification,
   WallAfterGrounding,
   OutsideModeledGuarantee,
-  CandidateUniverseUnbounded
+  CandidateDomainNotClosed,
+  modeled_outside_boundary,
+  guarantee_boundary_still_outside
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { SingleAuthority }
@@ -15,14 +17,16 @@ import v2.std.integer { Int }
 
 // C0(c) of the v2 complexity capability parity program (operator-ruled 2026-08-05). The former
 // single lens_contract_complexity row carried RatchetForever over a MIXED population — decidable
-// derived-kernel capability beside genuinely undecidable optimality residue. This module is the
+// derived-kernel capability beside an optimality residue that was stamped permanent without a
+// checkable missing-capability witness. This module is the
 // scope authority: two disjoint contract subjects with typed claim rosters forming
 // ComplexityMixedRowClaim. What partition totality does and does not prove is stated in
 // complexity_contract_subject_scope_note — read that note before quoting this carrier. The split is
 // NOT an in-place class flip; each subject has its own LensContract row and LensIdV0. Dissolution
 // for derived-kernel: ParityC2 ComplexitySummary restored on v2.lens.cost (SingleAuthority wall
-// once the summary carrier exists and a live consumer is enrolled). Optimality stays permanent
-// AuditOnly / OutsideModeledGuarantee over OptimalityResidue.
+// once the summary carrier exists and a live consumer is enrolled). Optimality is
+// AuditOnly / OutsideModeledGuarantee over OptimalityResidue: the required capability is not in
+// the modeled inventory, not an uncheckable forever stamp.
 
 // Scope, stated so the partition witness cannot overclaim. PROVEN by this carrier and
 // complexity_contract_subjects_partition_legacy_mixed_row: DerivedKernel and OptimalityResidue are
@@ -190,12 +194,25 @@ data complexity_derived_kernel_boundary: ConstructionJustification = Constructio
 
 data complexity_optimality_boundary: ConstructionJustification = ConstructionJustification {
   class: OutsideModeledGuarantee {
-    subject: DeclarationRef {
-      module_path: "v2.lens.enforcement.complexity_contract_subject",
-      decl_name: "OptimalityResidue",
-      field: WholeDeclaration
-    },
-    reason: CandidateUniverseUnbounded
+    boundary: modeled_outside_boundary(
+      subject: DeclarationRef {
+        module_path: "v2.lens.enforcement.complexity_contract_subject",
+        decl_name: "OptimalityResidue",
+        field: WholeDeclaration
+      },
+      required_capability: DeclarationRef {
+        module_path: "v2.lens.enforcement.complexity_contract_subject",
+        decl_name: "GlobalOptimality",
+        field: WholeDeclaration
+      },
+      boundary_kind: CandidateDomainNotClosed {
+        domain: DeclarationRef {
+          module_path: "v2.lens.enforcement.complexity_contract_subject",
+          decl_name: "ComplexityOptimalityClaim",
+          field: WholeDeclaration
+        }
+      }
+    )
   }
 }
 
@@ -339,9 +356,9 @@ fn complexity_derived_kernel_boundary_is_wall_after_grounding() -> Bool {
 
 fn complexity_optimality_boundary_is_outside_modeled_guarantee() -> Bool {
   match complexity_optimality_boundary.class {
-    OutsideModeledGuarantee { subject: s, reason: CandidateUniverseUnbounded } =>
-      s.module_path == "v2.lens.enforcement.complexity_contract_subject"
-        && s.decl_name == "OptimalityResidue"
+    OutsideModeledGuarantee { boundary: b } =>
+      b.subject.decl_name == "OptimalityResidue"
+        && guarantee_boundary_still_outside(boundary: b)
     _ => false
   }
 }

@@ -2,17 +2,33 @@ module v2.lens.common.construction_justification
 
 import std.disposition { ConstructionMechanism }
 
-import std.decl_ref { DeclarationRef }
+import std.decl_ref {
+  DeclarationRef,
+  WholeDeclaration,
+  declaration_ref_eq,
+  declaration_ref_in_list
+}
 
-// DESIGN section 4b column beside the ladder, not a fifth rung: external reality, undeclared
-// intent, or a required subject/bound/equivalence the model does not represent. Observed, refused,
-// or mitigated at a declared boundary — never a claim that the class can never climb.
-type OutsideModeledGuaranteeReason
-  = OpenWorldEvidence
-  | UndeclaredIntent
-  | CandidateUniverseUnbounded
-  | SemanticEquivalenceNotRepresented
-  | HumanPolicyJudgment
+import v2.std.collection { List }
+
+// DESIGN section 4b column beside the ladder. The field that matters is a REQUIRED CAPABILITY
+// joined against a closed inventory: subject needs X; inventory I does not provide X; therefore
+// the subject is outside the guarantee I represents. If X later appears in I, the classification
+// becomes false and the corpus reds. boundary_kind is explanatory; each arm still carries the
+// authority, capability, or domain whose standing is checked.
+type GuaranteeBoundaryKind
+  = CapabilityNotRepresented { required: DeclarationRef }
+  | CandidateDomainNotClosed { domain: DeclarationRef }
+  | EquivalenceRelationNotRepresented { relation: DeclarationRef }
+  | ExternalEvidenceRequired { evidence: DeclarationRef }
+  | PolicyJudgmentRequired { judgment: DeclarationRef }
+
+type GuaranteeBoundary {
+  subject: DeclarationRef
+  required_capability: DeclarationRef
+  capability_inventory_authority: DeclarationRef
+  boundary_kind: GuaranteeBoundaryKind
+}
 
 type ConstructionClass
 
@@ -20,15 +36,59 @@ type ConstructionClass
 
   | WallAfterGrounding { dissolves_to: ConstructionMechanism }
 
-  | OutsideModeledGuarantee { subject: DeclarationRef, reason: OutsideModeledGuaranteeReason }
+  | OutsideModeledGuarantee { boundary: GuaranteeBoundary }
 
 type ConstructionJustification {
   class: ConstructionClass
 }
 
-// A total downstream read of a WallNow upstream value cannot sit outside the modeled guarantee:
-// the output is no less decidable than its input. This is the check that catches the complexity
-// lens defect (asymptotic_projection(cost_lens(n)) stamped as outside while cost is WallNow).
+data modeled_guarantee_capability_inventory: List<DeclarationRef> = [
+  DeclarationRef {
+    module_path: "v2.lens.cost",
+    decl_name: "cost_lens",
+    field: WholeDeclaration
+  },
+  DeclarationRef {
+    module_path: "v2.lens.complexity",
+    decl_name: "asymptotic_projection",
+    field: WholeDeclaration
+  }
+]
+
+data modeled_guarantee_capability_inventory_ref: DeclarationRef = DeclarationRef {
+  module_path: "v2.lens.common.construction_justification",
+  decl_name: "modeled_guarantee_capability_inventory",
+  field: WholeDeclaration
+}
+
+fn modeled_outside_boundary(
+  subject: DeclarationRef,
+  required_capability: DeclarationRef,
+  boundary_kind: GuaranteeBoundaryKind
+) -> GuaranteeBoundary {
+  GuaranteeBoundary {
+    subject: subject,
+    required_capability: required_capability,
+    capability_inventory_authority: modeled_guarantee_capability_inventory_ref,
+    boundary_kind: boundary_kind
+  }
+}
+
+fn guarantee_boundary_uses_modeled_inventory(boundary: GuaranteeBoundary) -> Bool {
+  declaration_ref_eq(
+    a: boundary.capability_inventory_authority,
+    b: modeled_guarantee_capability_inventory_ref
+  )
+}
+
+fn guarantee_boundary_still_outside(boundary: GuaranteeBoundary) -> Bool {
+  guarantee_boundary_uses_modeled_inventory(boundary: boundary)
+    && !declaration_ref_in_list(
+      target: boundary.required_capability,
+      refs: modeled_guarantee_capability_inventory
+    )
+}
+
 fn wall_now_total_projection_forbids_outside_modeled_guarantee(
   upstream: ConstructionClass,
   downstream: ConstructionClass
@@ -36,7 +96,7 @@ fn wall_now_total_projection_forbids_outside_modeled_guarantee(
   match upstream {
     WallNow { mechanism: _, authority: _ } =>
       match downstream {
-        OutsideModeledGuarantee { subject: _, reason: _ } => false
+        OutsideModeledGuarantee { boundary: _ } => false
         _ => true
       }
     _ => true
@@ -45,7 +105,14 @@ fn wall_now_total_projection_forbids_outside_modeled_guarantee(
 
 fn construction_class_is_outside_modeled_guarantee(class: ConstructionClass) -> Bool {
   match class {
-    OutsideModeledGuarantee { subject: _, reason: _ } => true
+    OutsideModeledGuarantee { boundary: _ } => true
     _ => false
+  }
+}
+
+fn construction_class_outside_boundary_still_outside(class: ConstructionClass) -> Bool {
+  match class {
+    OutsideModeledGuarantee { boundary: b } => guarantee_boundary_still_outside(boundary: b)
+    _ => true
   }
 }

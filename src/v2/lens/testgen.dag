@@ -4,7 +4,8 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.common.construction_justification {
   ConstructionJustification,
   OutsideModeledGuarantee,
-  CandidateUniverseUnbounded
+  CandidateDomainNotClosed,
+  modeled_outside_boundary
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -2163,11 +2164,24 @@ fn bootstrap_claim_generator_for_manual_anchor(
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: OutsideModeledGuarantee {
-    subject: DeclarationRef {
-      module_path: "v2.lens.testgen",
-      decl_name: "generator_id_for_claim_anchor",
-      field: WholeDeclaration
-    },
-    reason: CandidateUniverseUnbounded
+    boundary: modeled_outside_boundary(
+      subject: DeclarationRef {
+        module_path: "v2.lens.testgen",
+        decl_name: "generator_id_for_claim_anchor",
+        field: WholeDeclaration
+      },
+      required_capability: DeclarationRef {
+        module_path: "v2.lens.testgen",
+        decl_name: "generator_id_for_claim_anchor",
+        field: WholeDeclaration
+      },
+      boundary_kind: CandidateDomainNotClosed {
+        domain: DeclarationRef {
+          module_path: "v2.lens.testgen",
+          decl_name: "generator_id_for_claim_anchor",
+          field: WholeDeclaration
+        }
+      }
+    )
   }
 }

@@ -2,41 +2,49 @@ module v2.test.claim.construction_justification.ratchet_forever_permanence_witne
 
 import v2.lens.common.construction_justification {
   ConstructionClass,
+  GuaranteeBoundary,
   OutsideModeledGuarantee,
   WallAfterGrounding,
-  CandidateUniverseUnbounded,
+  CapabilityNotRepresented,
+  modeled_outside_boundary,
+  modeled_guarantee_capability_inventory,
+  guarantee_boundary_still_outside,
   wall_now_total_projection_forbids_outside_modeled_guarantee,
-  construction_class_is_outside_modeled_guarantee
+  construction_class_is_outside_modeled_guarantee,
+  construction_class_outside_boundary_still_outside
 }
 import v2.lens.complexity { construction_justification as complexity_construction_justification }
-import v2.lens.cost {
-  construction_justification as cost_construction_justification,
-  cost_lattice_top_diagnostic,
-  symbolic_cost_witness,
-  unknown_cost
-}
+import v2.lens.cost { construction_justification as cost_construction_justification }
 import v2.lens.enforcement.complexity_contract_subject {
   complexity_derived_kernel_boundary,
   complexity_optimality_boundary
 }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.node { Atom, Node, TypeNode }
-import v2.std.witness { Holds, Violates }
+import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_in_list }
 
-fn planted_outside_cost_projection() -> ConstructionClass {
-  OutsideModeledGuarantee {
-    subject: DeclarationRef {
-      module_path: "v2.lens.enforcement.complexity_contract_subject",
-      decl_name: "OptimalityResidue",
-      field: WholeDeclaration
-    },
-    reason: CandidateUniverseUnbounded
+fn cost_lens_ref() -> DeclarationRef {
+  DeclarationRef {
+    module_path: "v2.lens.cost",
+    decl_name: "cost_lens",
+    field: WholeDeclaration
   }
 }
 
-// LIVE PAIR: cost is WallNow; complexity_lens is AsymptoticCostProjection (DerivedKernel).
-// Revert complexity.construction_justification to OutsideModeledGuarantee and this must red.
+fn planted_outside_requiring_cost_lens_boundary() -> GuaranteeBoundary {
+  modeled_outside_boundary(
+    subject: DeclarationRef {
+      module_path: "v2.lens.complexity",
+      decl_name: "asymptotic_projection",
+      field: WholeDeclaration
+    },
+    required_capability: cost_lens_ref(),
+    boundary_kind: CapabilityNotRepresented { required: cost_lens_ref() }
+  )
+}
+
+fn planted_outside_requiring_cost_lens() -> ConstructionClass {
+  OutsideModeledGuarantee { boundary: planted_outside_requiring_cost_lens_boundary() }
+}
+
 test fn cost_wall_now_projected_complexity_forbids_outside_modeled_guarantee_holds() -> Bool {
   wall_now_total_projection_forbids_outside_modeled_guarantee(
     upstream: cost_construction_justification.class,
@@ -45,44 +53,29 @@ test fn cost_wall_now_projected_complexity_forbids_outside_modeled_guarantee_hol
     && !construction_class_is_outside_modeled_guarantee(class: complexity_construction_justification.class)
 }
 
-// Module grain matches the existing contract split: complexity is derived-kernel WallAfterGrounding,
-// optimality residue is OutsideModeledGuarantee over OptimalityResidue.
 test fn complexity_module_aligns_derived_kernel_contract_holds() -> Bool {
   match complexity_construction_justification.class {
     WallAfterGrounding { dissolves_to: _ } =>
       match complexity_derived_kernel_boundary.class {
         WallAfterGrounding { dissolves_to: _ } =>
-          construction_class_is_outside_modeled_guarantee(class: complexity_optimality_boundary.class)
+          construction_class_outside_boundary_still_outside(class: complexity_optimality_boundary.class)
         _ => false
       }
     _ => false
   }
 }
 
-// Discriminating RED of the helper: WallNow upstream + planted OutsideModeledGuarantee downstream
-// is the original defect shape and must refuse.
+test fn planted_outside_for_inventory_member_reds() -> Bool {
+  !guarantee_boundary_still_outside(boundary: planted_outside_requiring_cost_lens_boundary())
+    && declaration_ref_in_list(
+      target: cost_lens_ref(),
+      refs: modeled_guarantee_capability_inventory
+    )
+}
+
 test fn planted_wall_now_to_outside_modeled_guarantee_projection_red() -> Bool {
   !wall_now_total_projection_forbids_outside_modeled_guarantee(
     upstream: cost_construction_justification.class,
-    downstream: planted_outside_cost_projection()
+    downstream: planted_outside_requiring_cost_lens()
   )
-}
-
-// UnknownCost must never present as Holds — a fold that stops early and reports a verdict is fail-open.
-data unknown_cost_probe_node: Node = Node {
-  kind: TypeNode {
-    connective: Atom { identity: ^ratchet_forever_unknown_cost_probe }
-  },
-  children: [],
-  occurrence_id: OccurrenceSynthetic
-}
-
-test fn unknown_cost_witness_refuses_not_holds() -> Bool {
-  match symbolic_cost_witness(
-    c: unknown_cost(diagnostic: cost_lattice_top_diagnostic),
-    n: unknown_cost_probe_node
-  ) {
-    Violates { diagnostic: _ } => true
-    Holds { value: _ } => false
-  }
 }

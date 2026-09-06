@@ -58,8 +58,8 @@ import v2.std.witness { Holds, Violates, Witness }
 // ComplexityVariables is List<SizeVariable> with no Refined/Witness carrier. The admits predicate
 // is vacuous, so refine+Holds rewrap added no admission fact and under discovery (PR 7765) Witness
 // peels left Holds-wrapped lists that concat rejected as Record. complexity_lens returns
-// ComplexityBound directly (UnknownComplexity on cost Violates) so discovery cannot nest an extra
-// Holds around the bound. dissolve-on: root-cause the discovery shared-index path that injected the
+// ComplexityAssessment (Established bound or Incomplete diagnostic) so discovery cannot nest an extra
+// Holds around an unestablished bound. dissolve-on: root-cause the discovery shared-index path that injected the
 // extra Holds layer.
 
 fn complexity_variables_admits(xs: List<SizeVariable>) -> Bool {
@@ -94,10 +94,25 @@ type SizeIndexedAsymptoticClass
 type ComplexityBound
   = ConstantComplexity
   | SizedComplexity { class: SizeIndexedAsymptoticClass, variables: ComplexityVariables }
-  | UnknownComplexity { diagnostic: Diagnostic }
 
-fn unknown_complexity() -> ComplexityBound {
-  UnknownComplexity { diagnostic: complexity_projection_diagnostic() }
+type ComplexityAssessment
+  = Established { bound: ComplexityBound }
+  | Incomplete { diagnostic: Diagnostic }
+
+fn incomplete_complexity() -> ComplexityAssessment {
+  Incomplete { diagnostic: complexity_projection_diagnostic() }
+}
+
+fn incomplete_complexity_with_diagnostic(diagnostic: Diagnostic) -> ComplexityAssessment {
+  Incomplete { diagnostic: diagnostic }
+}
+
+fn unknown_complexity() -> ComplexityAssessment {
+  incomplete_complexity()
+}
+
+fn unknown_complexity_with_diagnostic(diagnostic: Diagnostic) -> ComplexityAssessment {
+  incomplete_complexity_with_diagnostic(diagnostic: diagnostic)
 }
 
 fn single_complexity_variable(size_var: SizeVariable) -> ComplexityVariables {
@@ -146,10 +161,6 @@ fn multidimensional_polynomial_complexity(
   sized_complexity(class: SizedPolynomialClass { degree: degree }, variables: variables)
 }
 
-fn unknown_complexity_with_diagnostic(diagnostic: Diagnostic) -> ComplexityBound {
-  UnknownComplexity { diagnostic: diagnostic }
-}
-
 fn complexity_variables_from_cost(cost: SymbolicCost) -> ComplexityVariables {
   match cost {
     ConstantCost { value: _ } => Empty
@@ -176,26 +187,29 @@ fn complexity_variables_from_cost(cost: SymbolicCost) -> ComplexityVariables {
 fn complexity_bound_from_sized_class(
   class: AsymptoticClass,
   variables: ComplexityVariables
-) -> ComplexityBound {
+) -> ComplexityAssessment {
   match class {
-    ClassConstant => ConstantComplexity
-    ClassLog => SizedComplexity { class: SizedLogClass, variables: variables }
-    ClassLinear => SizedComplexity { class: SizedLinearClass, variables: variables }
-    ClassLinearithmic => SizedComplexity { class: SizedLinearithmicClass, variables: variables }
+    ClassConstant => Established { bound: ConstantComplexity }
+    ClassLog => Established { bound: SizedComplexity { class: SizedLogClass, variables: variables } }
+    ClassLinear => Established { bound: SizedComplexity { class: SizedLinearClass, variables: variables } }
+    ClassLinearithmic =>
+      Established { bound: SizedComplexity { class: SizedLinearithmicClass, variables: variables } }
     ClassPolynomial { degree: d } =>
-      SizedComplexity { class: SizedPolynomialClass { degree: d }, variables: variables }
+      Established { bound: SizedComplexity { class: SizedPolynomialClass { degree: d }, variables: variables } }
     ClassPolyLog { exponent: e } =>
-      SizedComplexity { class: SizedPolyLogClass { exponent: e }, variables: variables }
-    ClassExponential => SizedComplexity { class: SizedExponentialClass, variables: variables }
-    ClassFactorial => SizedComplexity { class: SizedFactorialClass, variables: variables }
-    ClassUnknown => unknown_complexity()
+      Established { bound: SizedComplexity { class: SizedPolyLogClass { exponent: e }, variables: variables } }
+    ClassExponential =>
+      Established { bound: SizedComplexity { class: SizedExponentialClass, variables: variables } }
+    ClassFactorial =>
+      Established { bound: SizedComplexity { class: SizedFactorialClass, variables: variables } }
+    ClassUnknown => incomplete_complexity()
   }
 }
 
-fn complexity_bound_from_cost(cost: SymbolicCost) -> ComplexityBound {
+fn complexity_bound_from_cost(cost: SymbolicCost) -> ComplexityAssessment {
   match cost {
     UnknownCost { diagnostic: d } =>
-      unknown_complexity_with_diagnostic(diagnostic: d)
+      incomplete_complexity_with_diagnostic(diagnostic: d)
     _ =>
       complexity_bound_from_sized_class(
         class: asymptotic_class_of_cost(cost: cost),
@@ -212,16 +226,16 @@ fn complexity_projection_diagnostic() -> Diagnostic {
   }
 }
 
-fn asymptotic_projection(cost_witness: Witness<SymbolicCost>) -> ComplexityBound {
+fn asymptotic_projection(cost_witness: Witness<SymbolicCost>) -> ComplexityAssessment {
   match cost_witness {
     Holds { value: cost } =>
       complexity_bound_from_cost(cost: cost)
     Violates { diagnostic: d } =>
-      unknown_complexity_with_diagnostic(diagnostic: d)
+      incomplete_complexity_with_diagnostic(diagnostic: d)
   }
 }
 
-fn complexity_lens(n: Node) -> ComplexityBound {
+fn complexity_lens(n: Node) -> ComplexityAssessment {
   asymptotic_projection(cost_witness: cost_lens(n: n))
 }
 
@@ -229,7 +243,6 @@ fn complexity_bound_class(b: ComplexityBound) -> AsymptoticClass {
   match b {
     ConstantComplexity => ClassConstant
     SizedComplexity { class: c, variables: _ } => asymptotic_class_from_sized_class(class: c)
-    UnknownComplexity { diagnostic: _ } => ClassUnknown
   }
 }
 
@@ -245,9 +258,23 @@ fn asymptotic_class_from_sized_class(class: SizeIndexedAsymptoticClass) -> Asymp
   }
 }
 
+fn established_complexity(bound: ComplexityBound) -> ComplexityAssessment {
+  Established { bound: bound }
+}
+
+fn complexity_assessment_dominates(declared: ComplexityAssessment, computed: ComplexityAssessment) -> Bool {
+  match declared {
+    Incomplete { diagnostic: _ } => false
+    Established { bound: a } =>
+      match computed {
+        Incomplete { diagnostic: _ } => false
+        Established { bound: b } => complexity_bound_dominates(a: a, b: b)
+      }
+  }
+}
+
 fn complexity_bound_dominates(a: ComplexityBound, b: ComplexityBound) -> Bool {
   match a {
-    UnknownComplexity { diagnostic: _ } => true
     ConstantComplexity =>
       match b {
         ConstantComplexity => true
@@ -255,7 +282,6 @@ fn complexity_bound_dominates(a: ComplexityBound, b: ComplexityBound) -> Bool {
       }
     SizedComplexity { class: ac, variables: av } =>
       match b {
-        UnknownComplexity { diagnostic: _ } => false
         ConstantComplexity => true
         SizedComplexity { class: bc, variables: bv } =>
           if av == bv {
@@ -272,13 +298,13 @@ fn complexity_bound_dominates(a: ComplexityBound, b: ComplexityBound) -> Bool {
 
 // asymptotic_projection is AsymptoticCostProjection on ComplexityDerivedKernelClaim — DerivedKernel,
 // paired by v2.lens.enforcement.complexity_contract_subject with WallAfterGrounding / SingleAuthority.
-// UnknownComplexity is the cost fold's Violates diagnostic carried through — a modeling gap.
-// OptimalityResidue stays OutsideModeledGuarantee on complexity_optimality_boundary.
+// Incomplete carries the cost fold's Violates diagnostic — a modeling gap that cannot enter
+// complexity_bound_dominates. OptimalityResidue stays OutsideModeledGuarantee on complexity_optimality_boundary.
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
-// NEXT-RUNG TRIGGER (DESIGN 4b): the capability that dissolves UnknownComplexity. The residual
+// NEXT-RUNG TRIGGER (DESIGN 4b): the capability that dissolves Incomplete. The residual
 // is not Rice; it is every Accepted node having a known SymbolicCost so cost_lens never Violates.
 data complexity_unknown_climbs_when: DeclarationRef = DeclarationRef {
   module_path: "v2.lens.cost",

@@ -1,9 +1,10 @@
 module v2.test.complexity_gate.budget_roster_completeness
 
 import v2.lens.complexity {
-  ComplexityBound,
-  UnknownComplexity,
-  complexity_bound_dominates,
+  ComplexityAssessment,
+  Established,
+  Incomplete,
+  complexity_assessment_dominates,
   complexity_lens,
   unknown_complexity
 }
@@ -26,10 +27,10 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn complexity_declared_budget_is_rated(budget: ComplexityBound) -> Bool {
+fn complexity_declared_budget_is_established(budget: ComplexityAssessment) -> Bool {
   match budget {
-    UnknownComplexity { diagnostic: _ } => false
-    _ => true
+    Incomplete { diagnostic: _ } => false
+    Established { bound: _ } => true
   }
 }
 
@@ -44,12 +45,12 @@ fn complexity_budget_row_dominates(row: LensSubjectComplexityBudgetRow) -> Bool 
   match lens_subject_arrow_body_for_budget_row(row: row) {
     Accepted { value: body, diagnostics: _ } =>
       let declared = complexity_declared_budget_for_row(row: row, body: body)
-      if !complexity_declared_budget_is_rated(budget: declared) {
+      if !complexity_declared_budget_is_established(budget: declared) {
         false
       } else {
-        complexity_bound_dominates(
-          a: declared,
-          b: complexity_lens(n: body)
+        complexity_assessment_dominates(
+          declared: declared,
+          computed: complexity_lens(n: body)
         )
       }
     Rejected { diagnostics: _ } => false

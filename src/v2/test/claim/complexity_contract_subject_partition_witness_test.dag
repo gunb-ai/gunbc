@@ -19,7 +19,7 @@ import v2.lens.enforcement.contract {
   lens_contract_complexity_derived_kernel,
   lens_contract_complexity_optimality
 }
-import v2.lens.common.construction_justification { WallAfterGrounding, OutsideModeledGuarantee, CandidateUniverseUnbounded }
+import v2.lens.common.construction_justification { WallAfterGrounding, OutsideModeledGuarantee }
 import std.disposition { SingleAuthority }
 
 // C0(c) discriminating controls: the legacy mixed lens_contract_complexity row partitions into derived-kernel (WallAfterGrounding / SingleAuthority) and optimality (OutsideModeledGuarantee / OptimalityResidue). Positive: every legacy claim maps to exactly one subject roster and both contract rows carry the matching boundary class. RED: a derived claim classified under OptimalityResidue fails; a planted duplicate in a synthetic roster fails the no-duplicates check.
@@ -32,7 +32,7 @@ test fn complexity_contract_subjects_partition_legacy_mixed_row_holds() -> Bool 
       _ => false
     }
     && match lens_contract_complexity_optimality.boundary.class {
-      OutsideModeledGuarantee { subject: _, reason: CandidateUniverseUnbounded } => true
+      OutsideModeledGuarantee { boundary: _ } => true
       _ => false
     }
 }
