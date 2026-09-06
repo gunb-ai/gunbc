@@ -1,10 +1,11 @@
 module extdeps.systemd
 
 import std.types { NonEmptyStr, String, Int }
+import std.nat { Nat }
 import std.types { list_length }
 import std.algebra { trim }
 import std.types { List }
-import std.measure { ByteSize, byte_size, byte_size_count, Microsecond, microsecond }
+import std.measure { ByteSize, byte_size, byte_size_count, Microsecond, microsecond, microsecond_count, HardwareThreadCount, hardware_thread_count_value }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatReady, CheckedNatOverflow }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -49,6 +50,7 @@ type SystemdUnitProperty
   | MemoryHigh
   | CPUWeight
   | CPUQuota
+  | CPUQuotaPerSecUSec
   | MemoryCurrent
   | TasksMax
   | TasksCurrent
@@ -79,6 +81,7 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     MemoryHigh => "MemoryHigh" as NonEmptyStr
     CPUWeight => "CPUWeight" as NonEmptyStr
     CPUQuota => "CPUQuota" as NonEmptyStr
+    CPUQuotaPerSecUSec => "CPUQuotaPerSecUSec" as NonEmptyStr
     MemoryCurrent => "MemoryCurrent" as NonEmptyStr
     TasksMax => "TasksMax" as NonEmptyStr
     TasksCurrent => "TasksCurrent" as NonEmptyStr
@@ -187,6 +190,85 @@ fn systemd_duration_usec(text: String) -> Microsecond? {
         CheckedNatReady { value: n } => Present { value: microsecond(count: n) }
       }
     }
+  }
+}
+
+// THE CONFIGURED SPELLING AND THE READBACK SPELLING ARE DIFFERENT PROPERTIES, AND THAT IS SYSTEMD'S
+// SHAPE RATHER THAN A CHOICE HERE. `CPUQuota=` is a CONFIGURATION setting written as a percentage;
+// what `systemctl show` reports back is `CPUQuotaPerSecUSec`, a DURATION -- CPU time permitted per
+// wall second. A consumer that wrote CPUQuota and then read CPUQuota back would be comparing a
+// value against a property systemd does not report, and would read every cell as drifted or as
+// unreadable. Both spellings are modeled so neither side can pick the wrong one silently.
+//
+// 100% IS ONE CPU-SECOND PER WALL SECOND, BY DEFINITION, which is what makes the two commensurable
+// at all: a thread count is a multiple of one whole CPU, and one whole CPU is one second of CPU
+// time per second of wall time. The conversion below is that sentence and carries no tuning.
+data microseconds_per_second: Nat = 1000000
+
+// THE UNDECODABLE ARM IS NOT A FOURTH SPELLING OF ABSENCE, AND SEPARATING THEM IS THE WHOLE POINT.
+// An unset quota is a legitimate observed policy state -- the host says the cell has no ceiling. A
+// reading this module cannot decode is an OBSERVATION FAILURE: it does not say what the host's
+// state is, and folding it into absence would report a cell of unknown standing as a cell known to
+// be unbounded. That is the fail-open direction, so it gets its own arm and carries the text it
+// could not read.
+type SystemdCpuQuotaPerSec
+  = CpuQuotaUnbounded
+  | CpuQuotaPerSec { usec: Microsecond }
+  | CpuQuotaAbsent
+  | CpuQuotaUndecodable { raw: String }
+
+// A CELL THAT DECLARES NO QUOTA IS UNBOUNDED AND NOT ZERO, and mapping absence onto a magnitude is
+// how a slice with no ceiling would come to read as a slice ceilinged at nothing.
+fn systemd_cpu_quota_per_sec_of_threads(threads: HardwareThreadCount?) -> SystemdCpuQuotaPerSec {
+  match threads {
+    Absent => CpuQuotaUnbounded
+    Present { value: t } =>
+      CpuQuotaPerSec {
+        usec: microsecond(count: hardware_thread_count_value(t: t) * microseconds_per_second),
+      }
+  }
+}
+
+// SYSTEMD PRINTS THIS PROPERTY AS A FORMATTED TIME SPAN, NOT AS A DECIMAL, WHICH IS THE DEFECT THIS
+// FUNCTION EXISTS TO CLOSE. An earlier revision read the value with a bare integer parse, so every
+// bounded quota failed to parse and fell into the absent arm: a cell with a ceiling read as a cell
+// without one, and the desired side rendered microseconds that no host would ever print back.
+// Measured against systemd 255 with a quota set through `systemd-run --property=CPUQuota=`, the
+// readback forms are `infinity`, `100ms`, `1s`, `6s`, `1.500000s`, and past sixty seconds of CPU
+// time per second the compound `1min`, `1min 500ms`, `1min 30s`.
+//
+// SO IT DELEGATES TO THE TIME-SPAN AUTHORITY THIS MODULE ALREADY CARRIES rather than growing a
+// second one. systemd_duration_usec already splits a whitespace-separated span and sums its parts,
+// so the compound forms decode by construction, and `60s` equals `1min` as magnitudes instead of
+// differing as strings. Forms it cannot decode -- the fractional-second spelling among them --
+// REFUSE with the text, because a quota this module cannot read is not a quota it may guess at.
+fn parse_systemd_cpu_quota_per_sec_show(raw: String) -> SystemdCpuQuotaPerSec {
+  if trim(s: raw) == "" { CpuQuotaAbsent }
+  else if trim(s: raw) == "infinity" { CpuQuotaUnbounded }
+  else {
+    match systemd_duration_usec(text: raw) {
+      Present { value: u } => CpuQuotaPerSec { usec: u }
+      Absent => CpuQuotaUndecodable { raw: raw }
+    }
+  }
+}
+
+// ONE CANONICAL SPELLING, PRODUCED FROM THE PARSED VALUE, SO BOTH SIDES OF A COMPARISON SPEAK IT.
+// The desired side authors a thread count and the observed side reads whatever the host printed;
+// they agree only if each is normalized to the same magnitude first. Rendering microseconds is that
+// normalization -- it is deliberately NOT an attempt to reproduce systemd's own formatter, which
+// would have to choose between `6s` and `6.000000s` for one magnitude and would make the renderer,
+// not the host, decide whether a cell had drifted.
+//
+// THE UNDECODABLE ARM HAS NO SPELLING HERE ON PURPOSE. A caller holding one has not observed a
+// state to compare, so it must refuse rather than render; giving it a string would let an
+// unreadable host reach a digest and compare equal to something.
+fn systemd_cpu_quota_per_sec_identity(q: SystemdCpuQuotaPerSec) -> String? {
+  match q {
+    CpuQuotaUnbounded => Present { value: "infinity" }
+    CpuQuotaPerSec { usec: u } => Present { value: to_string(microsecond_count(m: u)) }
+    CpuQuotaAbsent => Present { value: "" }
+    CpuQuotaUndecodable { raw: _ } => none
   }
 }
 

@@ -6,7 +6,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, retires_dissolution }
 import extdeps.systemd {
   SystemdUnitProperty,
-  MemoryMax, MemorySwapMax, MemoryHigh, CPUWeight, CPUQuota, TasksMax,
+  MemoryMax, MemorySwapMax, MemoryHigh, CPUWeight, CPUQuota, CPUQuotaPerSecUSec, TasksMax,
   MemoryCurrent, TasksCurrent, ControlGroup,
   ActiveEnterTimestampMonotonic, ActiveState, MainPID,
   systemd_unit_property_wire,
@@ -106,6 +106,7 @@ fn systemd_property_writability(property: SystemdUnitProperty) -> SystemdPropert
     MemoryHigh => SettableDirective
     CPUWeight => SettableDirective
     CPUQuota => SettableDirective
+    CPUQuotaPerSecUSec => ObservationOnly
     TasksMax => SettableDirective
     MemoryCurrent => ObservationOnly
     TasksCurrent => ObservationOnly
@@ -157,7 +158,7 @@ fn systemd_property_is_settable(property: SystemdUnitProperty) -> Bool {
 // carries that weakness -- which is why the consumer roster below is measured by grep against the
 // corpus rather than computed from this list.
 data systemd_unit_property_members: List<SystemdUnitProperty> = [
-  MemoryMax, MemorySwapMax, MemoryHigh, CPUWeight, CPUQuota, TasksMax,
+  MemoryMax, MemorySwapMax, MemoryHigh, CPUWeight, CPUQuota, CPUQuotaPerSecUSec, TasksMax,
   MemoryCurrent, TasksCurrent, ControlGroup, ActiveEnterTimestampMonotonic, ActiveState, MainPID,
   LoadState, UnitFileState, SubState, Result, ExecMainStatus, ExecStartProperty,
   User, WorkingDirectoryProperty, RuntimeDirectoryProperty, Unit, NextElapseUSecMonotonic, AccuracyUSec, TimersMonotonic,
