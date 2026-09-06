@@ -107,6 +107,24 @@ test fn determinism_transitive_live_closure_holds() -> Bool {
   )
 }
 
+// POSITIVE CONTROL: the live subject is non-empty, so Holds above is not a vacuous green.
+// The subject roots (src/v2/lens) contain fn-arrow declarations; the entry module
+// (v2.lens.affected_set) is present in the closure from those roots.
+test fn the_live_subject_is_not_empty() -> Bool {
+  length(
+    xs: fn_arrow_decl_facts_live(
+      pool_roots: determinism_live_subject_roots,
+      pool_files: determinism_live_subject_files
+    )
+  ) > 0
+    && length(xs: determinism_live_closure_modules()) > 0
+    && contains(
+      xs: determinism_live_closure_modules(),
+      item: determinism_live_entry_module,
+      eq: fn(a, b) { a == b }
+    )
+}
+
 // ── THE SHAPE GAP: CLOSED, AND THE PAIR STAYS ────────────────────────────────────────────────
 //
 // THE TWO ROWS ABOVE ONCE PASSED WITHOUT CARRYING INFORMATION, and the record of why is kept here
