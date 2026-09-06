@@ -61,6 +61,7 @@ import gunbc.recurring_failure_mode.stale_buffer_write_reverts_outside_its_own_d
 import gunbc.recurring_failure_mode.review_summary_inverts_roles_and_affirms_the_join { review_summary_inverts_roles_and_affirms_the_join }
 import gunbc.recurring_failure_mode.fabricated_debt { fabricated_debt }
 import gunbc.recurring_failure_mode.yaml_inline_comment_ingested_as_scalar_content { yaml_inline_comment_ingested_as_scalar_content }
+import gunbc.recurring_failure_mode.unresolved_callee_conflated_with_dispatched_elsewhere { unresolved_callee_conflated_with_dispatched_elsewhere }
 import gunbc.recurring_failure_mode.accepted_source_emits_uncompilable_target { accepted_source_emits_uncompilable_target }
 import gunbc.recurring_failure_mode.incidental_denominator_as_wall { incidental_denominator_as_wall }
 import gunbc.recurring_failure_mode.compensating_errors_cancel_in_the_aggregate { compensating_errors_cancel_in_the_aggregate }
@@ -322,4 +323,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   binder_renaming_changes_variant_field_lookup,
   setup_failure_substitutes_a_specimen_the_claim_still_admits,
   native_stack_recursion_unbounded_over_corpus_shaped_structure,
+  unresolved_callee_conflated_with_dispatched_elsewhere,
 ]
