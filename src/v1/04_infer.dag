@@ -761,6 +761,32 @@ fn ambiguous_reference_refusal(name: String, candidates: List<String>, span: Sou
   }
 }
 
+// THE SCOPE-MAP DISAGREEMENT REFUSAL, AND WHY IT REFUSES HERE WHERE THE UNRESOLVED ARM MAY NOT.
+//
+// `body_locals` (a presence set) and `locals` (the bindings) are populated in lockstep by
+// build_params_scope and extend_scope_with_params, over the same names, in one construction. A
+// name present in the first and absent from the second is therefore NOT A LEGITIMATE PROGRAM
+// STATE -- it is a contradiction between two maps, and no authored program can produce it.
+//
+// THAT IS EXACTLY WHY THIS ARM MAY REFUSE WHILE THE UNRESOLVED ARM MAY NOT. The unresolved arm
+// carries calls whose callee legitimately resolves nowhere at this seam and which route to the
+// method bridge, so refusing there would refuse real programs. No such traffic reaches this arm.
+// Refusing cannot break method dispatch because nothing legitimate arrives here.
+//
+// SO THE DIAGNOSTIC IS EXPECTED TO FIRE ON NOTHING, AND THAT IS THE POINT: it is reachable in
+// principle and unreachable in practice, which is the shape of a wall rather than of a check. Its
+// evidence is the corpus identity-set measurement -- if the identity set is unchanged in both
+// directions with this diagnostic present, it fires nowhere while remaining reachable. It is an
+// InternalError rather than a user-facing class deliberately: the state it names is a compiler
+// invariant violation, not anything an author wrote, so attributing it to the author's source
+// would misname the defect even though the span points at their call.
+fn scope_map_disagreement_refusal(name: String, span: SourceSpan, scope: InferScope) -> InferResult {
+  InferResult {
+    typed: semantic_expr_error_node(message: concat("scope map disagreement for '", name, "'"), span: span),
+    diagnostics: [make_error_node(diagnostic: InternalError { message: concat("scope construction defect: '", name, "' is present in body_locals with no TypeBinding in scope.locals; the two maps are populated in lockstep and disagreeing is not a writable program state"), span: span }, module_name: scope.module_name)]
+  }
+}
+
 data constructor_reference_admission_enforced: Bool = true
 
 // Counted v1 seed realization for ConstructorReferenceAdmission (Horn 3, msg_968d6c24): unified
@@ -6237,6 +6263,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       match call_target {
       CallableAmbiguous { candidates: ambiguous_fn_candidates } =>
         ambiguous_reference_refusal(name: func_name, candidates: callable_candidate_labels(candidates: ambiguous_fn_candidates), span: span, scope: scope)
+      LocallyBoundBindingMissing { name: missing_local } =>
+        scope_map_disagreement_refusal(name: missing_local, span: span, scope: scope)
       _ =>
       match constructor_reference_admission_unshadowed(callee_name: func_name, span: span, scope: scope) {
         Present { value: refusal } => refusal
@@ -6445,7 +6473,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             source_indices: scope.type_env.source_indices
           )
         }
-        let callee_is_body_binding = map_has(scope.body_locals, func_name)
+        let callee_is_body_binding = call_target_is_locally_bound(outcome: call_target)
         let is_known_method = !callee_is_body_binding && method_resolution.result_type != none
         if is_known_method && typed_args |> count > 0 {
           let receiver = method_receiver
@@ -6664,11 +6692,17 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             diagnostics: concat(arg_diags, tier2b.kernel_diags)
           }
         } else {
-          let callable_local = match map_get(scope.locals, func_name) {
-            Present { value: binding } =>
-              if binding.resolved.params |> count > 0 { Present { value: binding.resolved } }
+          let callable_local = match call_target_local_binding(outcome: call_target) {
+            Present { value: carried } =>
+              if carried.resolved.params |> count > 0 { Present { value: carried.resolved } }
               else { none }
-            Absent => none
+            Absent =>
+              match map_get(scope.locals, func_name) {
+                Present { value: binding } =>
+                  if binding.resolved.params |> count > 0 { Present { value: binding.resolved } }
+                  else { none }
+                Absent => none
+              }
           }
           if callable_local != none {
             let callable_type = match callable_local {

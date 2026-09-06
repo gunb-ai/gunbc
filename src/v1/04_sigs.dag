@@ -217,6 +217,35 @@ type CallTargetOutcome
 // The declaration-bound signature, and ONLY when one exists. Every other constructor answers
 // Absent HERE ON PURPOSE -- consumers that need to distinguish builtin from local from missing
 // must match the outcome itself, which is the distinction this type exists to preserve.
+// BODY-BINDING STATUS AND THE BINDING ITSELF, READ OFF THE CONSTRUCTOR THAT ESTABLISHED THEM.
+//
+// The consumer used to re-derive both below the seam -- `map_has(scope.body_locals, name)` for the
+// status and a separate `map_get(scope.locals, name)` for the binding -- which left the TWO-MAP
+// DECISION SURFACE standing downstream of the very constructor minted to eliminate it. Carrying
+// evidence is insufficient if the decision re-searches for it: the producer's adjudication is the
+// authority, and a second lookup is a second authority that can disagree with it.
+fn call_target_is_locally_bound(outcome: CallTargetOutcome) -> Bool {
+  match outcome {
+    LocallyBoundCallee { name: _, binding: _ } => true
+    DeclaredCallableResolved { sig: _, declared: _ } => false
+    BuiltinCallableResolved { primitive_name: _ } => false
+    CallableUnresolved { name: _ } => false
+    CallableAmbiguous { candidates: _ } => false
+    LocallyBoundBindingMissing { name: _ } => false
+  }
+}
+
+fn call_target_local_binding(outcome: CallTargetOutcome) -> TypeBinding? {
+  match outcome {
+    LocallyBoundCallee { name: _, binding: b } => Present { value: b }
+    DeclaredCallableResolved { sig: _, declared: _ } => Absent
+    BuiltinCallableResolved { primitive_name: _ } => Absent
+    CallableUnresolved { name: _ } => Absent
+    CallableAmbiguous { candidates: _ } => Absent
+    LocallyBoundBindingMissing { name: _ } => Absent
+  }
+}
+
 fn call_target_declared_sig(outcome: CallTargetOutcome) -> ResolvedFuncSig? {
   match outcome {
     DeclaredCallableResolved { sig: s, declared: _ } => Present { value: s }

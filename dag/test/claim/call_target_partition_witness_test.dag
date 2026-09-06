@@ -47,9 +47,13 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // THE DEFECT WAS CONJUNCTION-SHAPED, WHICH IS WHY IT SURVIVED REVIEW: both consumers of that
 // Boolean independently conjoined `sig != none`, so the permissive arm was unreachable and
 // repairing either half alone was a provably inert edit. A control that exercises the repaired
-// bundle proves the bundle works and proves NOTHING about which conjunct is load-bearing, so the
-// negative controls that establish that are recorded per-conjunct in the change's own receipt --
-// each restoring ONE defect while the others stay repaired, each required to go red.
+// bundle proves the bundle works and proves NOTHING about which conjunct is load-bearing.
+//
+// PER-CONJUNCT NEGATIVE CONTROLS WOULD ESTABLISH THAT, AND THEY DO NOT EXIST BECAUSE THEY ARE NOT
+// AUTHORABLE AT THIS SEAM. Restoring any one conjunct changes which programs are ACCEPTED, and the
+// states that reached the defective arm are exactly the states that legitimately fall through to
+// the method bridge -- so no fixture may refuse them and every such control would stay green. The
+// conjunction analysis stands; the controls for it are absent and are recorded here as absent.
 //
 // THE POSITIVE CONTROLS ARE NOT OPTIONAL EITHER. An over-refusing repair passes every negative
 // control and looks like success, so a legitimate builtin call and an ordinary declared call must
@@ -63,7 +67,13 @@ data entry_builtin_call: String = "module ctp.entry\nfn main_answer() -> String 
 
 data entry_wrong_arity: String = "module ctp.entry\nimport ctp.peer { peer_two }\nfn main_answer() -> Int { peer_two(a: 1) }\n"
 
-data entry_local_shadow: String = "module ctp.entry\nimport ctp.peer { peer_two }\nfn main_answer(peer_two: String) -> String { peer_two }\n"
+// A FUNCTION-VALUED PARAMETER SHADOWING A DECLARED CALLABLE, AND IT MUST BE *CALLED*.
+//
+// The first version of this fixture bound `peer_two: String` and RETURNED it. That never enters
+// the ExprCall seam at all, so it could not exercise the locally-bound arm despite its name and
+// its commentary -- a case that does not reach the code it claims to cover, which is the
+// acceptance-only failure one level deeper. The parameter is now function-valued and applied.
+data entry_local_shadow: String = "module ctp.entry\nimport ctp.peer { peer_two }\nfn main_answer(peer_two: fn(Int) -> Int) -> Int { peer_two(1) }\n"
 
 fn peer_and_entry(entry: String) -> MultiModuleCompileFixtureOutcome {
   compile_fixture(MultiModuleCompileFixture {
@@ -135,10 +145,10 @@ test fn local_binding_shadowing_a_declared_callable_is_accepted() -> Bool {
 //
 // Every other case here asserts ACCEPTANCE. A fail-open makes more programs acceptable, so a
 // witness built only from acceptance cases stays green when the defect is restored -- it cannot
-// discriminate, and the negative controls that establish which conjunct is load-bearing would
-// have nothing to turn red. This is the case they act on: a declared callable applied at the
-// wrong arity must REFUSE, and it refuses through the one arm that carries a declaration-bound
-// formal count.
+// discriminate, and a per-conjunct negative control -- were one authorable here, which it is not
+// -- would have nothing to turn red. This is the case such a control WOULD act on: a declared
+// callable applied at the wrong arity must REFUSE, and it refuses through the one arm that
+// carries a declaration-bound formal count.
 //
 // Discovered by asking what the negative controls would actually flip, after the acceptance
 // cases were already written and passing -- which is the order that hides this.

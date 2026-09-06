@@ -165,7 +165,6 @@ pub use crate::v1_compiler_infer_service::{
     is_typed_service_call_receiver, service_op_entry,
 };
 pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult, UniqueAccum};
-pub use crate::v1_compiler_infer_sigs::call_target_declared_sig;
 pub use crate::v1_compiler_infer_sigs::CallTargetOutcome;
 use crate::v1_compiler_infer_sigs::CallTargetOutcome::*;
 use crate::v1_compiler_infer_sigs::CallableIdentity::{BuiltinCallable, DeclaredCallable};
@@ -178,6 +177,9 @@ use crate::v1_compiler_infer_sigs::NoDerivableSigReason::{
 };
 use crate::v1_compiler_infer_sigs::ResolvedFormals::{
     DeclarationBoundFormals, KernelGroundedFormals, LocalFormalsAwaitingModuleContext,
+};
+pub use crate::v1_compiler_infer_sigs::{
+    call_target_declared_sig, call_target_is_locally_bound, call_target_local_binding,
 };
 pub use crate::v1_compiler_infer_sigs::{
     callable_candidate_labels, callable_identity_label, flatten_parent_envs,
@@ -1142,6 +1144,20 @@ pub fn ambiguous_reference_refusal(
             scope.module_name.clone(),
         )]),
     })
+}
+
+pub fn scope_map_disagreement_refusal(
+    name: String,
+    span: Rc<SourceSpan>,
+    scope: Rc<InferScope>,
+) -> Rc<InferResult> {
+    Rc::new(InferResult {
+    typed: semantic_expr_error_node(v1_rt::concat(v1_rt::concat("scope map disagreement for '".to_string(), name.clone()), "'".to_string()), span.clone()),
+    diagnostics: Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::InternalError {
+    message: v1_rt::concat(v1_rt::concat("scope construction defect: '".to_string(), name.clone()), "' is present in body_locals with no TypeBinding in scope.locals; the two maps are populated in lockstep and disagreeing is not a writable program state".to_string()),
+    span: span.clone(),
+}), scope.module_name.clone())]),
+})
 }
 
 pub fn constructor_reference_admission_enforced() -> bool {
@@ -9717,6 +9733,14 @@ Rc::new(InferResult {
                     span.clone(),
                     scope.clone(),
                 ),
+                CallTargetOutcome::LocallyBoundBindingMissing {
+                    name: missing_local,
+                    ..
+                } => scope_map_disagreement_refusal(
+                    missing_local.clone(),
+                    span.clone(),
+                    scope.clone(),
+                ),
                 _ => {
                     match constructor_reference_admission_unshadowed(
                         func_name.clone(),
@@ -10177,10 +10201,8 @@ Rc::new(InferResult {
                             std::option::Option::None
                         }, scope.service_registry.clone(), scope.type_env.clone().source_indices.clone())
                     };
-                                    let callee_is_body_binding = v1_rt::map_has(
-                                        &scope.body_locals.clone(),
-                                        func_name.clone(),
-                                    );
+                                    let callee_is_body_binding =
+                                        call_target_is_locally_bound(call_target.clone());
                                     let is_known_method = (!callee_is_body_binding.clone()
                                         && (method_resolution.result_type.clone()
                                             != std::option::Option::None));
@@ -10536,13 +10558,20 @@ Rc::new(InferResult {
 }
                                 } else {
                                     {
-                                        let callable_local = match v1_rt::map_get(&scope.locals.clone(), func_name.clone()) {
+                                        let callable_local = match call_target_local_binding(call_target.clone()) {
+    Some(carried) => if ((carried.resolved.clone().params.clone().len() as i64) > 0) {
+                                            Some(carried.resolved.clone())
+                                        } else {
+                                            std::option::Option::None
+                                        },
+    std::option::Option::None => match v1_rt::map_get(&scope.locals.clone(), func_name.clone()) {
     Some(binding) => if ((binding.resolved.clone().params.clone().len() as i64) > 0) {
                                             Some(binding.resolved.clone())
                                         } else {
                                             std::option::Option::None
                                         },
     std::option::Option::None => std::option::Option::None,
+},
 };
 if (callable_local.clone() != std::option::Option::None) {
                                             {
