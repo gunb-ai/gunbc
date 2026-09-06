@@ -203,11 +203,21 @@ fn receipt_remote_name(r: ProjectUploadReceipt) -> NonEmptyStr { r.remote_name }
 // it into ProjectDeliveryRefused would be the opposite lie, since the bytes DID reach the printer and
 // a caller that retried would upload them twice. The transfer fact is preserved and the residue named:
 // MQTT must not consume that arm as ordinary readiness.
+//
+// THE SAME ARGUMENT HAS A MIRROR, AND IT WAS MISSING UNTIL A REVIEW FOUND IT. The refused arm also
+// computed the shred results and then discarded them, so a failed transfer whose credential shred
+// ALSO failed returned a plain ProjectDeliveryRefused -- byte-identical to a refusal that left
+// nothing behind. That is the residue fact deleted on exactly the path where it is most likely:
+// a transfer that died mid-flight is a transfer whose cleanup had the least chance to run.
+// ProjectDeliveryRefusedResidueRemains is not a severity label on the refusal; it names a SECOND
+// fact with a different remedy. A caller of ProjectDeliveryRefused may retry; a caller of this arm
+// must go look at the disk first, and the two must never be one message.
 type ProjectDelivery
   = ProjectDelivered { receipt: ProjectUploadReceipt }
   | ProjectDeliveryRefused { printer: PhysicalAssetIdentity, cause: NonEmptyStr }
   | ProjectDeliveryUnattempted { printer: PhysicalAssetIdentity, cause: NonEmptyStr }
   | ProjectTransferredCleanupRefused { receipt: ProjectUploadReceipt, cause: NonEmptyStr }
+  | ProjectDeliveryRefusedResidueRemains { printer: PhysicalAssetIdentity, cause: NonEmptyStr }
   | ProjectDeliveryProvisionRequired { printer: PhysicalAssetIdentity, desired: SecretRef }
 
 // THE ENDPOINT THE MACHINE ACTUALLY PRESENTS, recorded as an observation of THIS device rather than
@@ -431,6 +441,26 @@ fn delivered_receipt(
   }
 }
 
+// THE REFUSAL CLASSIFICATION IS PURE AND LIVES OUT HERE SO ITS RED IS AUTHORABLE. Inside the
+// effectful func it could only be reached by actually failing a network transfer, which means the
+// discriminating case -- refused AND unclean -- would never be exercised by any witness. Split out,
+// both arms are reachable from a fixture with no shell and no network.
+fn refused_delivery(printer: PhysicalAssetIdentity, stderr: String, cleaned: Bool) -> ProjectDelivery {
+  if cleaned {
+    ProjectDeliveryRefused {
+      printer: printer,
+      cause: concat("the transfer did not complete: ", stderr) as NonEmptyStr,
+    }
+  } else {
+    ProjectDeliveryRefusedResidueRemains {
+      printer: printer,
+      cause: concat(
+        "the transfer did not complete AND the credential shred or payload removal did not, so material may remain on disk: ",
+        stderr) as NonEmptyStr,
+    }
+  }
+}
+
 func deliver_project_to_printer(
   printer: PhysicalAssetIdentity,
   payload: IdentifiedProjectPayload,
@@ -502,10 +532,7 @@ func deliver_project_to_printer(
             let cleaned = credential_shredded && realization_removed
             match outcome {
               ProcessRefused { exit_code: _, stderr: stderr } =>
-                ProjectDeliveryRefused {
-                  printer: printer,
-                  cause: concat("the transfer did not complete: ", stderr) as NonEmptyStr,
-                }
+                refused_delivery(printer: printer, stderr: stderr, cleaned: cleaned)
               ProcessOutputAbsent =>
                 delivered_receipt(
                   printer: printer, payload: payload, endpoint: endpoint,

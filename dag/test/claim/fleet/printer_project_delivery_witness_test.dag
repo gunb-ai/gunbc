@@ -11,7 +11,11 @@ import extdeps.ietf.ftps {
 }
 import gunbc.fleet.printer_project_delivery {
   remote_name_for_digest, bambu_lan_endpoint, ftps_upload_url, upload_command_for,
+  refused_delivery, ProjectDelivery, ProjectDeliveryRefused, ProjectDeliveryRefusedResidueRemains,
+  ProjectDelivered, ProjectDeliveryUnattempted, ProjectTransferredCleanupRefused,
+  ProjectDeliveryProvisionRequired,
 }
+import gunbc.fleet_asset_identity { printer_01 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -95,4 +99,33 @@ fn probe_command() -> ArgvCommand {
     remote_name: probe_name(hex: "aa11"),
     netrc_path: "/tmp/a-fixture-netrc-that-is-never-created" as FilePath,
   )
+}
+
+// A FAILED TRANSFER AND A FAILED TRANSFER THAT LEFT THE ACCESS CODE ON DISK ARE NOT ONE OUTCOME.
+// Both arms were reachable before this pair existed; only one was spellable, because the refused
+// path computed the shred result and dropped it. The two remedies differ -- a plain refusal may be
+// retried, a residue refusal must send someone to look at the disk first -- so a witness asserting
+// only that "a refusal is returned" would stay green through exactly the collapse this prevents.
+// Hence the pair: same stderr, cleanliness the ONLY variable, and each arm must reject the other's
+// answer. Holding stderr fixed is what makes cleanliness the discriminator rather than the message.
+test fn a_clean_failed_transfer_is_not_reported_as_leaving_residue() -> Bool {
+  match refused_delivery(printer: printer_01, stderr: "connection reset", cleaned: true) {
+    ProjectDeliveryRefused { printer: _, cause: _ } => true
+    ProjectDeliveryRefusedResidueRemains { printer: _, cause: _ } => false
+    ProjectDelivered { receipt: _ } => false
+    ProjectDeliveryUnattempted { printer: _, cause: _ } => false
+    ProjectTransferredCleanupRefused { receipt: _, cause: _ } => false
+    ProjectDeliveryProvisionRequired { printer: _, desired: _ } => false
+  }
+}
+
+test fn a_failed_transfer_whose_shred_also_failed_names_the_residue() -> Bool {
+  match refused_delivery(printer: printer_01, stderr: "connection reset", cleaned: false) {
+    ProjectDeliveryRefusedResidueRemains { printer: _, cause: _ } => true
+    ProjectDeliveryRefused { printer: _, cause: _ } => false
+    ProjectDelivered { receipt: _ } => false
+    ProjectDeliveryUnattempted { printer: _, cause: _ } => false
+    ProjectTransferredCleanupRefused { receipt: _, cause: _ } => false
+    ProjectDeliveryProvisionRequired { printer: _, desired: _ } => false
+  }
 }

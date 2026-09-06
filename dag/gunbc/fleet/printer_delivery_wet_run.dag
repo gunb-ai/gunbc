@@ -12,7 +12,7 @@ import gunbc.auth.gcp_secret_access {
 import gunbc.fleet.printer_project_delivery {
   PrinterProjectPayload, PayloadIdentification, PayloadIdentified, PayloadIdentificationRefused,
   ProjectDelivery, ProjectDelivered, ProjectDeliveryRefused, ProjectDeliveryUnattempted,
-  ProjectTransferredCleanupRefused, ProjectDeliveryProvisionRequired,
+  ProjectTransferredCleanupRefused, ProjectDeliveryProvisionRequired, ProjectDeliveryRefusedResidueRemains,
   identify_project_payload, deliver_project_to_printer, receipt_remote_name,
 }
 import extdeps.cloud.gcp.secret_ref { secret_ref_secret_resource }
@@ -83,6 +83,8 @@ func run() -> ProcessExit uses net: Network {
           exit_failure(reason: concat("UNATTEMPTED: ", cause as String))
         ProjectDeliveryRefused { printer: _, cause: cause } =>
           exit_failure(reason: concat("REFUSED: ", cause as String))
+        ProjectDeliveryRefusedResidueRemains { printer: _, cause: cause } =>
+          exit_failure(reason: concat("REFUSED, RESIDUE MAY REMAIN ON DISK: ", cause as String))
         ProjectDeliveryProvisionRequired { printer: _, desired: d } =>
           exit_failure(reason: concat(
             "PROVISION REQUIRED: no access code has been materialized at ",
