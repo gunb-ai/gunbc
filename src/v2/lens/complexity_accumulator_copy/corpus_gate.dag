@@ -270,6 +270,26 @@ fn corpus_report(pool_roots: List<String>) -> CorpusReport {
 // "the corpus is only a few thousand" is the not-time-stable excuse DESIGN section 6 refuses.
 // Ordered comparison is linear and needs no set.
 
+// WHAT THIS JOIN DOES NOT ESTABLISH, NAMED SEPARATELY BECAUSE IT IS A DIFFERENT SENTENCE FROM
+// "THE INGEST IS UNENROLLED" AND ONLY THAT ONE WAS WRITTEN DOWN. The executing evidence proves the
+// join is correct GIVEN well-formed rows: it builds CorpusFileRow values directly, because the join
+// is the subject and a row is its input. The unenrolled predicates prove the lens is correct GIVEN
+// real files. Nothing executing joins those two halves.
+//
+// So the unverified thing is specifically the DISCOVERY-TO-ROWS SEAM: that corpus_rows_for_paths,
+// folded over the paths corpus_paths discovers, yields rows in the SAME ORDER, at the SAME
+// IDENTITIES and the SAME ARITY the lockstep walk assumes. The assumption is load-bearing here and
+// nowhere stated by a type: coverage_missing reports a divergence at the first position where the
+// two disagree, so a producer that reordered, deduplicated, or dropped a path would be reported as
+// a truncated sweep -- the right refusal for the wrong reason -- and one that silently REPAIRED an
+// order mismatch would make this guard permanently green.
+//
+// That seam is where a real defect would sit, because it is the only part of this path with no
+// evidence on either side of it. It cannot be witnessed today for the same reason everything else
+// here cannot: reaching a real row costs an ingest. It dissolves on the same trigger, and when that
+// trigger clears, the row to write first is not another join case -- it is one witness that
+// discovers a small real population and checks the produced rows against it at identity grain.
+
 fn coverage_missing(discovered: List<String>, rows: List<CorpusFileRow>) -> List<String> {
   match discovered {
     Empty => Empty

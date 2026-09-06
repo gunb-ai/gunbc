@@ -144,9 +144,19 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // TRIGGER: an ingest realization for the accumulator-copy lens that does not re-parse source in the
 // interpreter -- native ingest, or a lens that reads the compile graph the floor has already built.
 //
-// SUFFICIENT FOR, stated because a trigger naming less than the capability it restores is satisfied
-// while the capability stays dead, and because the loss here is CORPUS-grain while the tempting
-// trigger is per-subject: the capability is corpus_gate returning a verdict over the DISCOVERED
+// SUFFICIENT FOR -- AND THE MEASUREMENT THAT SETS THE BAR IS THE SMALLEST SUBJECT, NOT THE CORPUS.
+// This is the finding to carry out of this lane and it belongs in the trigger rather than in a
+// discussion: interpreted ingest of a FIVE-LINE fixture, and of a FOUR-LINE String with no
+// filesystem read, both measure about six times the required floor's 500ms per-witness CPU line.
+// At the smallest subject expressible. So this is not a budget that could be raised to fit the
+// work; it is a floor that no ingest-reaching assertion can ever clear, and it retroactively
+// explains why every witness this lens has ever had is frozen or deferred -- a fact that stood
+// visible in the roster with no stated cause. A trigger that made large subjects affordable and
+// left the smallest one at six times the line would restore nothing.
+//
+// Stated because a trigger naming less than the capability it restores is satisfied while the
+// capability stays dead, and because the loss here is CORPUS-grain while the tempting trigger is
+// per-subject: the capability is corpus_gate returning a verdict over the DISCOVERED
 // population -- every module the module index yields, not a sample and not a subtree -- inside one
 // required-lane budget and inside one process. Both halves are load-bearing and neither implies the
 // other. A tenfold speedup per subject satisfies a per-subject reading of the trigger and still
