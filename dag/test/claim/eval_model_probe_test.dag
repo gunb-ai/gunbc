@@ -1,4 +1,4 @@
-module tools.probe_eval_model
+module test.claim.eval_model_probe
 
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
