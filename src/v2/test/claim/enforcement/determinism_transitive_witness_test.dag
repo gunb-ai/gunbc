@@ -74,12 +74,12 @@ import v2.std.text { String }
 // that a stamp is checked by nothing, so a silent row and a lying row are indistinguishable.
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data determinism_live_subject_roots: List<String> = ["src/v2/lens/affected_set"]
+data determinism_live_subject_roots: List<String> = ["src/v2/lens/module_graph"]
 
-// Directory grain: this subject IS a directory, and both files under it are in scope.
+// Module grain: this subject is one file.
 data determinism_live_subject_files: List<String> = []
 
-data determinism_live_entry_module: String = "v2.lens.affected_set.entry_selection"
+data determinism_live_entry_module: String = "v2.lens.module_graph"
 
 data determinism_live_empty_modules: List<String> = []
 
