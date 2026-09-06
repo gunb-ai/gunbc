@@ -1,0 +1,111 @@
+module gunbc.spark.fabric_switch_desired
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import extdeps.mikrotik.crs812 {
+  Crs812LaneSpeed, Lane50GCr2, Lane100GCr2, Lane100GCr4, Lane200GCr4, Lane400GCr8,
+  Crs812FecMode, FecAuto, FecOff, Fec74, Fec91,
+  crs812_board_name, crs812_management_interface, crs812_default_bridge,
+  crs812_passive_dac_requires_forced_mode,
+}
+import product.cable_plant_converge {
+  CablePlantRefusal, CablePlantConvergence, WorldConverged, WorldNotConverged,
+}
+import gunbc.spark.fabric_switch_observed {
+  FabricLaneObserved, fabric_lane_observations, fabric_lane_interface,
+  fabric_cable_plant_convergence,
+}
+
+// WHAT THE FABRIC SWITCH IS SUPPOSED TO BE, DERIVED RATHER THAN DECLARED.
+//
+// `extdeps.mikrotik.crs812` cited this module by name before it existed -- the dangling-citation
+// class a reviewer caught one module over in this same subject, and the same repair applies: the
+// name is the authority, so the authority has to exist.
+//
+// THE LANE SPEED IS NOT A PREFERENCE AND IS NOT WRITTEN DOWN HERE. A switch lane can only run at a
+// mode the cable in it attests, so the desired speed is a FUNCTION of the cable plant's convergence,
+// not a constant an author picks. That matters because the fleet's legs are mis-coded today: writing
+// `Lane50GCr2` here would encode the outage as an intention, and the switch would then read as
+// correctly configured for as long as the wrong cables stayed in it.
+//
+// AND THE NOT-CONVERGED ARM REFUSES RATHER THAN DEGRADES. The tempting shape is "if the plant does
+// not converge, ask for the speed it can do" -- which is the absorbing fallback DESIGN section 5
+// names: it always produces an answer, so the cable defect stops being visible at this layer and
+// the switch quietly converges onto a configuration nobody chose. An undecidable desired state is
+// refused with the plant's own refusal carried through, so exactly one place in the tree reports
+// the cable fault and every consumer of the switch subject inherits it.
+type Crs812DesiredLaneSpeed
+  = DesiredLaneSpeed { speed: Crs812LaneSpeed }
+  | DesiredLaneSpeedUndecided { cause: CablePlantRefusal }
+
+fn crs812_desired_lane_speed() -> Crs812DesiredLaneSpeed {
+  match fabric_cable_plant_convergence() {
+    WorldConverged { subject: s, observed: o, receipt: r } =>
+      DesiredLaneSpeed { speed: Lane100GCr2 }
+    WorldNotConverged { subject: s, refusal: f } =>
+      DesiredLaneSpeedUndecided { cause: f }
+  }
+}
+
+// FORCED MODE IS THE CABLE CLASS'S REQUIREMENT, NOT A TUNING KNOB, so it is read from the extdeps
+// row that records the RouterOS behaviour rather than restated as a local constant. RS-FEC is
+// Clause 91, which is the FEC the 100GBASE-CR2 attestation is conditional on.
+fn crs812_desired_fec() -> Crs812FecMode {
+  if crs812_passive_dac_requires_forced_mode { Fec91 } else { FecAuto }
+}
+
+// A LANE PAIR IS ONE LEG. The odd lane carries the configuration and owns the even lane that
+// follows it, so the even lane is DISABLED rather than left at a default -- an unconfigured lane on
+// a two-lane leg is the state RouterOS reports as "initializing", which is why it is desired-off
+// explicitly instead of being omitted from the roster.
+type Crs812LaneIntent
+  = LaneCarriesLeg { interface: NonEmptyStr, speed: Crs812LaneSpeed, fec: Crs812FecMode }
+  | LaneOwnedByItsPair { interface: NonEmptyStr }
+
+type Crs812SwitchIntent
+  = SwitchIntent {
+      identity: NonEmptyStr
+      board_name: NonEmptyStr
+      management_interface: NonEmptyStr
+      bridge: NonEmptyStr
+      lanes: List<Crs812LaneIntent>
+    }
+  | SwitchIntentUndecided { cause: CablePlantRefusal }
+
+data fabric_switch_identity: NonEmptyStr = "gunbc-fabric-switch" as NonEmptyStr
+
+fn crs812_paired_lane_interface(o: FabricLaneObserved) -> NonEmptyStr {
+  fabric_lane_interface(o: FabricLaneObserved {
+    cage: o.cage,
+    lane: o.lane + 1,
+    host: o.host,
+    spark_hostname: o.spark_hostname,
+    leg_netdev: o.leg_netdev,
+    leg_netdev_twin: o.leg_netdev_twin,
+    leg_rdma_device: o.leg_rdma_device,
+  })
+}
+
+fn crs812_lane_intents(speed: Crs812LaneSpeed, fec: Crs812FecMode) -> List<Crs812LaneIntent> {
+  flat_map(fabric_lane_observations, o => [
+    LaneCarriesLeg { interface: fabric_lane_interface(o: o), speed: speed, fec: fec },
+    LaneOwnedByItsPair { interface: crs812_paired_lane_interface(o: o) },
+  ])
+}
+
+// THE INTENT IS UNDECIDED AS A WHOLE when the lane speed is, rather than being assembled with a
+// hole in it: a switch intent carrying every field but the one that decides whether the fabric runs
+// at rate is not a weaker intent, it is a different claim, and a consumer cannot tell the two apart
+// once the hole is filled with a default.
+fn fabric_switch_intent() -> Crs812SwitchIntent {
+  match crs812_desired_lane_speed() {
+    DesiredLaneSpeedUndecided { cause: c } => SwitchIntentUndecided { cause: c }
+    DesiredLaneSpeed { speed: sp } => SwitchIntent {
+      identity: fabric_switch_identity,
+      board_name: crs812_board_name,
+      management_interface: crs812_management_interface,
+      bridge: crs812_default_bridge,
+      lanes: crs812_lane_intents(speed: sp, fec: crs812_desired_fec()),
+    }
+  }
+}

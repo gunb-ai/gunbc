@@ -1,0 +1,241 @@
+module product.cable_plant_converge
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import extdeps.ethernet.link_mode { LinkMode }
+import product.cable_leg_observation {
+  CableLegObservation,
+  CableLegFinding,
+  LegAttestsRequestedMode,
+  LegAttestsRequestedModeSubjectToFec,
+  LegInsufficientForRequestedMode,
+  LegComplianceCodeNotUnderstood,
+  assess_cable_leg,
+}
+import gunbc.world_converge {
+  WorldObservation, WorldObserved, WorldUnobservable,
+  WorldDifference, WorldInAgreement, WorldDiverged,
+  WorldActuation, WorldApplied, WorldActuationRefused,
+  WorldConvergenceHandler,
+  WorldConvergenceResult, WorldConverged, WorldNotConverged,
+  world_converge,
+}
+
+// THE INSTALLED CABLE PLANT AS A CONVERGENCE SUBJECT.
+//
+// `product.cable_order_admission` refuses a cable whose per-leg coding is undeclared BEFORE money
+// moves. That gate cannot help a plant already in the racks: those legs were bought without it, and
+// the only thing that settles what they are is a reading. This module is the other half -- the
+// standing question "does the copper in the floor still attest what we need", asked of the same
+// observation carrier and answered through the one global convergence shape.
+//
+// WHY IT IS BOUND TO gunbc.world_converge AND NOT GIVEN ITS OWN LOOP. Observe, difference, actuate,
+// receipt is not a cabling idea; it is THE convergence idea, and that authority is subject-agnostic
+// by construction. A second loop authored here would be a fork of it (DESIGN section 3) and would
+// arrive with its own opinion about what "converged" means.
+//
+// THE ACTUATION ARM IS A REFUSAL, AND THAT IS THE HONEST RUNG, NOT A GAP. A transceiver's coding
+// lives in EEPROM on the leg itself; writing it needs the vendor's programmer and their part
+// definition. This repository can observe the plant and can say exactly which legs diverge, and it
+// cannot repair one. DESIGN section 4b calls that column "outside the modeled guarantee": observed,
+// refused, or mitigated at a declared boundary, never fabricated. So divergence terminates at
+// `PlantCodingCannotBeActuatedHere` CARRYING THE DIVERGENT LEGS -- a located, countable refusal,
+// which is what the operator can act on -- rather than at a silent no-op that would let an
+// unrepaired plant read as converged.
+//
+// DISSOLVE-ON, NAMED AS A CAPABILITY: an admitted realization that writes a leg's extended
+// specification compliance bytes AND READS THEM BACK off the same leg afterwards. A programmer that
+// writes without a read-back leaves the repair unobserved and does not retire this hold; neither
+// does the arrival of a vendor tool that this repository cannot call.
+
+// ================= WHAT A LEG READING IS =================
+//
+// AN UNREAD LEG IS THE WHOLE POINT OF THE SUBJECT, so it is a variant of the reading rather than an
+// absence smuggled into the observation. DESIGN section 3: missing observations are coverage
+// obligations DOWNSTREAM. This module is that downstream, and the obligation surfaces as a refusal
+// to observe the plant at all -- not as a plant that quietly reports on the legs it happened to
+// have.
+type CableLegReading
+  = LegNeverRead { endpoint: NonEmptyStr }
+  | LegReadingTaken { endpoint: NonEmptyStr, observation: CableLegObservation }
+
+type CablePlant sole_constructor {
+  plant: NonEmptyStr
+  required_mode: LinkMode
+  readings: List<CableLegReading>
+}
+
+type ObservedLeg sole_constructor {
+  endpoint: NonEmptyStr
+  observation: CableLegObservation
+}
+
+type CablePlantObserved sole_constructor {
+  legs: List<ObservedLeg>
+}
+
+// One outcome row per leg: the endpoint that names it and the finding the observation carrier
+// produced against the required mode. It is the difference type AND the receipt's condition type,
+// because a FEC-conditional leg and a mis-coded leg differ in their FINDING, not in their shape.
+type CableLegOutcome sole_constructor {
+  endpoint: NonEmptyStr
+  finding: CableLegFinding
+}
+
+type CablePlantRefusal
+  = PlantLegNeverRead { endpoint: NonEmptyStr }
+  | PlantHoldsNoLegs { plant: NonEmptyStr }
+  | PlantCodingCannotBeActuatedHere { divergences: List<CableLegOutcome> }
+
+type CablePlantReceipt sole_constructor {
+  legs_read: Nat
+  conditional: List<CableLegOutcome>
+}
+
+// ================= THE ONE CLASSIFICATION =================
+//
+// Every question this module asks about a leg is asked of THIS fold, never of the finding directly.
+// A per-question `match ... -> Bool` over the finding coproduct is the non-fold residue DESIGN
+// section 6 names, and it is what let an earlier module in this same subject drift: two call sites
+// answering the same question by two matches eventually disagree. A new finding arm is one row here
+// and every consumer re-decides at once, because the match is exhaustive.
+type LegStanding
+  = LegAgrees
+  | LegAgreesSubjectToFec
+  | LegDiverges
+
+fn leg_standing(finding: CableLegFinding) -> LegStanding {
+  match finding {
+    LegAttestsRequestedMode { obs: o } => LegAgrees
+    LegAttestsRequestedModeSubjectToFec { obs: o, fec: f } => LegAgreesSubjectToFec
+    LegInsufficientForRequestedMode { requested: r, obs: o } => LegDiverges
+    LegComplianceCodeNotUnderstood { code: c } => LegDiverges
+  }
+}
+
+fn leg_standing_is_divergent(s: LegStanding) -> Bool {
+  match s {
+    LegDiverges => true
+    LegAgrees => false
+    LegAgreesSubjectToFec => false
+  }
+}
+
+fn leg_standing_is_conditional(s: LegStanding) -> Bool {
+  match s {
+    LegAgreesSubjectToFec => true
+    LegAgrees => false
+    LegDiverges => false
+  }
+}
+
+fn plant_leg_outcome(required: LinkMode, leg: ObservedLeg) -> CableLegOutcome {
+  CableLegOutcome {
+    endpoint: leg.endpoint,
+    finding: assess_cable_leg(obs: leg.observation, requested: required),
+  }
+}
+
+fn plant_outcomes(subject: CablePlant, observed: CablePlantObserved) -> List<CableLegOutcome> {
+  map(observed.legs, l => plant_leg_outcome(required: subject.required_mode, leg: l))
+}
+
+fn plant_divergent_outcomes(subject: CablePlant, observed: CablePlantObserved) -> List<CableLegOutcome> {
+  filter(plant_outcomes(subject: subject, observed: observed),
+         o => leg_standing_is_divergent(s: leg_standing(finding: o.finding)))
+}
+
+fn plant_conditional_outcomes(subject: CablePlant, observed: CablePlantObserved) -> List<CableLegOutcome> {
+  filter(plant_outcomes(subject: subject, observed: observed),
+         o => leg_standing_is_conditional(s: leg_standing(finding: o.finding)))
+}
+
+// ================= THE FOUR HANDLER STAGES =================
+
+fn plant_unread_endpoints(subject: CablePlant) -> List<NonEmptyStr> {
+  flat_map(subject.readings, r =>
+    match r {
+      LegNeverRead { endpoint: e } => [e]
+      LegReadingTaken { endpoint: e, observation: o } => []
+    })
+}
+
+fn plant_read_legs(subject: CablePlant) -> List<ObservedLeg> {
+  flat_map(subject.readings, r =>
+    match r {
+      LegReadingTaken { endpoint: e, observation: o } =>
+        [ObservedLeg { endpoint: e, observation: o }]
+      LegNeverRead { endpoint: e } => []
+    })
+}
+
+// UNREAD FIRST, AND EMPTY SECOND. An unread leg refuses the whole plant rather than being dropped
+// from it: a plant reported on its read subset is the absorbing fallback DESIGN section 5 forbids,
+// where narrowing the population to what could be measured makes an unmeasured plant indistinguishable
+// from a healthy one. An empty plant refuses for the same reason one rung further out -- zero legs
+// trivially agree, and a subject that converges because nothing is in it carries no information.
+fn world_observe_cable_plant(
+  subject: CablePlant,
+  context: Bool,
+) -> WorldObservation<CablePlantObserved, CablePlantRefusal> {
+  match plant_unread_endpoints(subject: subject).first() {
+    Present { value: e } => WorldUnobservable { cause: PlantLegNeverRead { endpoint: e } }
+    Absent => {
+      let legs = plant_read_legs(subject: subject)
+      match legs.first() {
+        Absent => WorldUnobservable { cause: PlantHoldsNoLegs { plant: subject.plant } }
+        Present { value: l } => WorldObserved { value: CablePlantObserved { legs: legs } }
+      }
+    }
+  }
+}
+
+fn world_cable_plant_differences(
+  subject: CablePlant,
+  context: Bool,
+  observed: CablePlantObserved,
+) -> WorldDifference<CableLegOutcome> {
+  let divergences = plant_divergent_outcomes(subject: subject, observed: observed)
+  match divergences.first() {
+    Absent => WorldInAgreement
+    Present { value: d } => WorldDiverged { differences: divergences }
+  }
+}
+
+fn world_cable_plant_apply(
+  subject: CablePlant,
+  context: Bool,
+  observed: CablePlantObserved,
+  differences: List<CableLegOutcome>,
+) -> WorldActuation<CablePlantReceipt, CablePlantRefusal> {
+  WorldActuationRefused { cause: PlantCodingCannotBeActuatedHere { divergences: differences } }
+}
+
+// A CONVERGED PLANT STILL CARRIES ITS CONDITIONS. A leg attesting the required mode only under
+// Clause 91 FEC has agreed, and the condition is a fact the deployment must honour -- so it rides in
+// the receipt rather than being discarded on the way to a green.
+fn world_cable_plant_unchanged_receipt(
+  subject: CablePlant,
+  context: Bool,
+  observed: CablePlantObserved,
+) -> CablePlantReceipt {
+  CablePlantReceipt {
+    legs_read: list_length(items: observed.legs),
+    conditional: plant_conditional_outcomes(subject: subject, observed: observed),
+  }
+}
+
+type CablePlantConvergenceHandler = WorldConvergenceHandler<CablePlant, Bool, CablePlantObserved, CableLegOutcome, CablePlantReceipt, CablePlantRefusal>
+
+data cable_plant_convergence_handler: CablePlantConvergenceHandler = WorldConvergenceHandler {
+  observe: world_observe_cable_plant,
+  differences: world_cable_plant_differences,
+  apply: world_cable_plant_apply,
+  unchanged_receipt: world_cable_plant_unchanged_receipt,
+}
+
+type CablePlantConvergence = WorldConvergenceResult<CablePlant, CablePlantObserved, CablePlantReceipt, CablePlantRefusal>
+
+fn converge_cable_plant(subject: CablePlant) -> CablePlantConvergence {
+  world_converge(subject: subject, context: true, handler: cable_plant_convergence_handler)
+}
