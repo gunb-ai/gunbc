@@ -27,11 +27,41 @@ import gunbc.merge_admission_subject {
 // Bool claim result, which cannot carry the refusal cause — so the capture core returns the typed
 // sum below, and the Bool projection durably writes the labeled cause to
 // target/merge-admission-capture-refusal.txt (the floor-population-budget-refusal.txt pattern)
-// BEFORE returning false; claim_executor's run_pre_walk_execution reads that wire into its located
-// PRE-WALK-REFUSED line. The wire is best-effort-cleared at capture start so a stale cause from a
-// prior attempt cannot masquerade as this attempt's; a false result with no wire is itself a
+// BEFORE returning false. The wire is cleared at capture start so a stale cause from a prior
+// attempt cannot masquerade as this attempt's; a false result with no wire is meant to be a
 // distinct reported state (child died before writing), never silently folded into a generic
 // failure.
+//
+// TWO CORRECTIONS TO THE PARAGRAPH ABOVE, both found by the 19-candidate discarded-effect census
+// (#10574's out-of-scope remainder) and both left standing rather than quietly reworded, because
+// each is a claim this module was making and cannot make today.
+//
+// FIRST, THE READER IS GONE. This text said claim_executor's run_pre_walk_execution reads the wire
+// into a located PRE-WALK-REFUSED line. No such reader exists: neither relpath appears anywhere in
+// src/, claim_executor references no pre_walk_execution at all, and the five merge-admission phases
+// were deleted from required-CI by the 2026-08-21 ruling. Nor is there a producer -- no WalkPlan
+// literal in dag/ constructs a TypedClaimSubprocess, the floor plan that would have scheduled this
+// capture went with the 2026-08-15 floor cut, and capture_tested_subject has zero callers. So this
+// module is dormant at both ends, and a note asserting an executor consumes it was the
+// deleted-cadence-still-cited-as-enforcement shape.
+//
+// SECOND, THE GUARANTEE DEPENDS ON A DISCARDED OUTCOME. capture_tested_subject binds the clearing
+// sweep's outcome to `_`, so "the wire was cleared" and "the clear failed and a prior attempt's
+// cause survived" are spelled identically -- which is exactly the state the sentence above promises
+// cannot occur. The same holds for the refusal write, whose Bool is also discarded: a write that
+// FAILED is then indistinguishable from the child dying before writing, collapsing two of the three
+// states this wire exists to separate. This is the census's OutcomeSemanticallyRequired class, and
+// it is the only member of it outside the printer scope, together with its two siblings in
+// tools.merge_admission_walk.
+//
+// THE REMEDY IS NOT TO CONSUME THOSE TWO BOOLS. Presence-and-freshness of a file cannot be made
+// sound by a best-effort sweep; the wire must carry the walk attempt identity it is about, so a
+// reader decides staleness from the CONTENT rather than from a clear having succeeded, at which
+// point the pre-clear becomes honestly best-effort and the failed-write state stays distinct. That
+// is a change to the wire format, so it lands with the reader that parses it. TRIGGER: the
+// re-arming of a pre-walk capture stage -- a WalkPlan producer constructing TypedClaimSubprocess
+// and an executor that reads this wire. Until then the defect is real, unreachable, and recorded
+// here rather than repaired into a channel with no ends.
 
 fn env_var(name: NonEmptyStr) -> String? {
   let env = shell.Env.Get(name: name)

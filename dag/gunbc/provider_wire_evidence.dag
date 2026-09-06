@@ -132,6 +132,26 @@ fn publish_evidence_object_exclusive(
   }
 }
 
+// THE FIVE DISCARDED STAGING SWEEPS BELOW ARE EXPLICITLY BEST-EFFORT (19-candidate
+// discarded-effect census, the out-of-scope remainder of #10574). This module gets the statement
+// in its own right rather than a pointer to the package_delivery block, because it is the one
+// census member whose subject IS confidentiality, and "the sweep result is ignored" is precisely
+// the sentence that needs a reason here.
+//
+// The swept path is always the mktemp file this call minted inside the evidence root: unique,
+// never re-derived, and unreachable by any reader -- evidence is reached only through
+// PrivateEvidenceRef's content address, and nothing in the repository lists the root. mktemp
+// creates it 0600 and ensure_private_evidence_root has already made the root 0700, so residue is
+// no more exposed than the retained object sitting beside it, and it holds bytes this call is
+// retaining anyway rather than a secret the call was supposed to destroy. A failed sweep therefore
+// leaves unreferenced garbage under an owner-only root and changes no answer a caller can act on:
+// each retention outcome is already decided by the write, the digest, or the publish the sweep
+// follows.
+//
+// WHAT WOULD FALSIFY THAT: a reader that LISTS the evidence root. An unreferenced staging file
+// would then enter a population whose every member is supposed to be named by its own digest, and
+// these sweeps would owe their outcomes to the caller. No such reader exists today; adding one is
+// what obligates them.
 fn retain_private_evidence_bytes_detailed(
   root: FilePath,
   bytes: String,

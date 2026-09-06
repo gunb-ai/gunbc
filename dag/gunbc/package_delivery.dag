@@ -1932,6 +1932,29 @@ type UniquePublishingRelocateOutcome
   | UniquePublishingPlaceholderNotEmpty
   | UniquePublishingRelocateRefused
 
+// THE ELEVEN DISCARDED SWEEP OUTCOMES IN THIS MODULE ARE EXPLICITLY BEST-EFFORT, and the
+// discriminator is stated once here rather than left to be re-adjudicated at each `let _ =`
+// (19-candidate discarded-effect census, the out-of-scope remainder of #10574's printer scope).
+// The sites: the failed-move sweep in relocate_build_root_to_unique_publishing; the reused-release
+// build_root sweep and the three publishing-staging sweeps in
+// release_codex_runtime_bundle_immutable; the staging_dir and cache_dir sweeps on the
+// materialization success arm; and the four staging sweeps in
+// materialize_spark_serving_ollama_runtime_bundle.
+//
+// WHAT MAKES DISCARDING LAWFUL, in one property that holds at every one of them: the swept path is
+// a `mktemp -d` directory minted for THIS run -- unique by construction, never re-derived by a
+// later run, never enumerated, and never named in any value these functions return. So the only
+// state a consumed outcome could distinguish is "the transient tree was reclaimed" from "it was
+// left behind", and no caller can branch on it: the outcome each function returns was already
+// decided by the operation the sweep follows. Nothing here is the printer path's class, where a
+// failed credential shred and a successful one were spelled the same while the answer said the
+// credential was gone.
+//
+// WHAT WOULD MOVE A SITE OUT OF THIS CLASS, so the classification is falsifiable rather than a
+// blanket permission: a swept path a later run re-derives (residue would be read as that run's own
+// work); a swept path under a directory something LISTS (residue would join a population); or
+// residue outliving the confidentiality of what the call retained. A sweep that acquires any of
+// those owes its outcome to its caller.
 fn relocate_build_root_to_unique_publishing(
   build_root: FilePath,
   parent: FilePath,
