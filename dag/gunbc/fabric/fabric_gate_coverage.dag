@@ -236,10 +236,15 @@ fn foreign_enrolments(
   })
 }
 
-// ONE AUTHORITY FOR THE SPLIT, and the two sides are read from it rather than each re-deciding.
-// Both call sites used to filter the same population twice on a predicate and its negation, so
-// the rule deciding which arm an enrolment belongs to was written in two places and could drift
-// into a non-partition -- rows in both sides, or in neither -- with nothing to notice.
+// ONE AUTHORITY FOR THE SPLIT ITSELF, which is a narrower change than an earlier version of this
+// note claimed. That version said the rule deciding an enrolment's arm "was written in two places"
+// and is "now written exactly once". Both are false: `is_discharged` below already existed and
+// was already the single shared predicate. What was duplicated was the SPLIT CONSTRUCTION -- the
+// `filter(p)` / `filter(!p)` pair spelled inline at the call site -- so the two sides were
+// assembled separately and could drift apart in their pairing (a caller taking one side from here
+// and the other from elsewhere), even though each consulted the same predicate. Naming the
+// partition makes the PAIR the unit that is constructed once. The predicate authority is
+// unchanged by this commit and gets no credit from it.
 //
 // WHY THIS IS NOT ONE FOLD, deliberately. The obvious "single fold returning both lists" builds
 // each side with `concat(acc.side, [row])`, which copies a growing accumulator once per row: it
@@ -247,7 +252,7 @@ fn foreign_enrolments(
 // section 6 forbids in order to satisfy a structural reading of the same section. `filter` is
 // `fold_list_right` with `Cons`, so it is linear and allocates no intermediate copies; two of
 // them is 2n, not n^2. The section 6 obligation this actually owes is a single authority for the
-// decision, which is the constructor match below -- and that is now written exactly once.
+// decision; that authority is the constructor match below, and it already held before this change.
 fn is_discharged(e: MutationEnrolment) -> Bool {
   match e.discharge {
     DischargedByWitness { witness } => true,
