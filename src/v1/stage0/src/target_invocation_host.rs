@@ -941,7 +941,9 @@ mod affected_select_discriminating_red_controls {
     /// Targets `scope_shared.dag` line 9 -- the `data scope_shared_marker` declaration line,
     /// NOT line 7 (a comment). Line 7 is pre-first-declaration and routes to touched_entry_files;
     /// line 9 hits the DataItem classification and routes to overlapping_data_items.
-    /// A diff on a comment or string-literal-only data line is NOT a data-row test.
+    /// A diff on a pre-first-declaration line is NOT a data-row test — the distinction is the
+    /// line number, not the body kind: string-literal-valued data declarations are classified
+    /// the same as any other DataItem by item_kind.
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     #[test]
     fn data_row_only_diff_selects_through_overlapping_data_items() {
