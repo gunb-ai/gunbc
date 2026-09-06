@@ -1797,7 +1797,8 @@ test fn witness_request_scope_is_its_arm() -> Bool {
 // slot rows -- exactly what the fabric-only request renders, because it has no such fields. So
 // without the scope row the two texts would be byte-identical and the two subjects would collide:
 // an apply could admit a fabric-only plan against a full-host re-observation. This law asserts the
-// separation is real and that it is carried by the scope row alone.
+// separation is real and that it is carried by the scope row plus the one family only a full host
+// carries, the unit standings, which is asserted separately below.
 test fn witness_scope_row_is_what_separates_the_two_baselines() -> Bool {
   let population = fabric_cell_observation_unobserved(host: operator_host_srv3)
   let full_lines = split(
@@ -1819,13 +1820,27 @@ test fn witness_scope_row_is_what_separates_the_two_baselines() -> Bool {
     }),
     separator: "\n",
   )
-  join(filter(full_lines, l => !line_is_a_scope_row(l: l)), "\n")
+  join(filter(full_lines, l => !line_is_a_scope_row(l: l) && !line_is_a_units_row(l: l)), "\n")
     == join(filter(fabric_lines, l => !line_is_a_scope_row(l: l)), "\n")
     && list_length(items: filter(full_lines, l => line_is_a_scope_row(l: l))) == 1
     && list_length(items: filter(fabric_lines, l => line_is_a_scope_row(l: l))) == 1
     && list_length(items: filter(full_lines, l => l == "scope:full-host")) == 1
     && list_length(items: filter(fabric_lines, l => l == "scope:fabric-execution-cells-only")) == 1
     && list_length(items: filter(full_lines, l => l == "host:srv3")) == 1
+    && list_length(items: filter(full_lines, l => line_is_a_units_row(l: l))) == 1
+    && list_length(items: filter(fabric_lines, l => line_is_a_units_row(l: l))) == 0
+}
+
+// THE UNIT-STANDINGS FAMILY IS THE ONE FAMILY A FULL-HOST BASELINE CANNOT LEAVE EMPTY: an unread
+// population contributes a row, not an absence of rows (gunbc.runner.runner_service_activation
+// runner_unit_standings_baseline_rows), and the fabric-only request has no such field. So it is
+// removed from the remainder the way the scope row is, and asserted on its own side: exactly one
+// units row on the full host, none on the fabric-only text. Without this the claim above read
+// "only the scope row separates them" while a second family did, and it was red from the day that
+// family landed -- hidden because the required floor never offered this module until the serving
+// tree was cut and its closure changed.
+fn line_is_a_units_row(l: String) -> Bool {
+  starts_with(s: l, prefix: "units:")
 }
 
 // THE SCOPE ROWS ARE NORMALISED AWAY BY THIS PREDICATE RATHER THAN BY MATCHING TWO LITERALS AT
