@@ -270,24 +270,6 @@ fn emission_resolution_correspondence(
   }
 }
 
-fn emission_contribution_source(contribution: EmissionContribution) -> String {
-  match contribution {
-    EmissionAuthoredFragment { origin: _, source } => source
-    EmissionSourceComposition { origin: _, parts } =>
-      parts |> map(part => emission_contribution_source(contribution: part)) |> join(separator: "")
-    EmissionDerivedFragment { producer: _, source } => source
-    EmissionUnobservedFragment { producer: _, cause: _, source } => source
-  }
-}
-
-fn emission_contribution_unobserved(contribution: EmissionContribution) -> FreeMonoid<DeclarationRef> {
-  match emission_contribution_origins(contribution: contribution) {
-    EmissionOriginsObserved { origins: _ } => []
-    EmissionOriginsIncomplete { observed: _, missing } =>
-      concat([missing.head], missing.tail) |> map(gap => gap.producer)
-  }
-}
-
 type EmissionOriginGap {
   producer: DeclarationRef
   cause: NonEmptyStr
@@ -319,21 +301,72 @@ fn emission_origin_reads_combine(left: EmissionOriginRead, right: EmissionOrigin
   }
 }
 
-fn emission_origin_read_add(acc: EmissionOriginRead, contribution: EmissionContribution) -> EmissionOriginRead {
-  emission_origin_reads_combine(left: acc, right: emission_contribution_origins(contribution: contribution))
+type EmissionContributionRead {
+  source: String
+  origins: EmissionOriginRead
 }
 
-// This convenience reading is deliberately a coproduct: callers cannot obtain a complete-looking
-// origin list by silently dropping the unobserved nodes. The tree itself remains the authority for
-// parent-child structure and distinct contribution occurrences. Multiplicity is retained here too.
-fn emission_contribution_origins(contribution: EmissionContribution) -> EmissionOriginRead {
+// The result algebra selects what is materialized. The only recursive contribution walk lives
+// here; an origins-only algebra never reads or concatenates fragment source text.
+fn emission_contribution_fold<R>(
+  contribution: EmissionContribution,
+  read: fn(EmissionContribution, FreeMonoid<R>) -> R
+) -> R {
+  let children = match contribution {
+    EmissionSourceComposition { origin: _, parts } =>
+      parts |> map(part => emission_contribution_fold(contribution: part, read: read))
+    _ => []
+  }
+  read(contribution, children)
+}
+
+fn emission_source_read_layer(contribution: EmissionContribution, children: FreeMonoid<String>) -> String {
+  match contribution {
+    EmissionAuthoredFragment { origin: _, source } => source
+    EmissionSourceComposition { origin: _, parts: _ } => children |> join(separator: "")
+    EmissionDerivedFragment { producer: _, source } => source
+    EmissionUnobservedFragment { producer: _, cause: _, source } => source
+  }
+}
+
+fn emission_origin_read_layer(contribution: EmissionContribution, children: FreeMonoid<EmissionOriginRead>) -> EmissionOriginRead {
   match contribution {
     EmissionAuthoredFragment { origin, source: _ } => EmissionOriginsObserved { origins: [origin] }
-    EmissionSourceComposition { origin, parts } =>
-      parts |> fold(init: EmissionOriginsObserved { origins: [origin] }, f: emission_origin_read_add)
+    EmissionSourceComposition { origin, parts: _ } =>
+      children |> fold(init: EmissionOriginsObserved { origins: [origin] }, f: emission_origin_reads_combine)
     EmissionDerivedFragment { producer, source: _ } => EmissionOriginsObserved { origins: [producer] }
     EmissionUnobservedFragment { producer, cause, source: _ } => EmissionOriginsIncomplete {
       observed: [], missing: FreeSemigroup { head: EmissionOriginGap { producer: producer, cause: cause }, tail: [] }
     }
+  }
+}
+
+// Product algebra: reuse the same source and origin layer meanings over the paired child results.
+// It has no independent variant interpretation that could diverge from either standalone reader.
+fn emission_combined_read_layer(contribution: EmissionContribution, children: FreeMonoid<EmissionContributionRead>) -> EmissionContributionRead {
+  EmissionContributionRead {
+    source: emission_source_read_layer(contribution: contribution, children: children |> map(child => child.source)),
+    origins: emission_origin_read_layer(contribution: contribution, children: children |> map(child => child.origins))
+  }
+}
+
+fn emission_contribution_read(contribution: EmissionContribution) -> EmissionContributionRead {
+  emission_contribution_fold(contribution: contribution, read: emission_combined_read_layer)
+}
+
+fn emission_contribution_source(contribution: EmissionContribution) -> String {
+  emission_contribution_fold(contribution: contribution, read: emission_source_read_layer)
+}
+
+// This result algebra retains incomplete coverage without materializing the unrequested source.
+fn emission_contribution_origins(contribution: EmissionContribution) -> EmissionOriginRead {
+  emission_contribution_fold(contribution: contribution, read: emission_origin_read_layer)
+}
+
+fn emission_contribution_unobserved(contribution: EmissionContribution) -> FreeMonoid<DeclarationRef> {
+  match emission_contribution_origins(contribution: contribution) {
+    EmissionOriginsObserved { origins: _ } => []
+    EmissionOriginsIncomplete { observed: _, missing } =>
+      concat([missing.head], missing.tail) |> map(gap => gap.producer)
   }
 }
