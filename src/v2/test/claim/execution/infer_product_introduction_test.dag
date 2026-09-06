@@ -1,0 +1,232 @@
+module v2.test.execution.infer_product_introduction
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.infer {
+  DerivedGrounding,
+  GroundingNotDerived,
+  InferredTree,
+  infer
+}
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.self_host.direct_rust_door_fixture {
+  direct_rust_door_admission,
+  direct_rust_door_ingest
+}
+import v2.extdeps.languages.dag {
+  dag_int_inhabitant_node,
+  dag_language_model
+}
+import v2.std.algebra { fold_list }
+import v2.std.collection { List, list_at_optional }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.integer { Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  TypeNode,
+  node_subtree_nodes
+}
+import v2.std.optional { Absent, Present }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ENROLLED CONTROLS FOR THE PRODUCT-INTRODUCTION DERIVATION (`v2.compiler.infer`
+// infer_gather_product_row_on_entries): a non-roster Conj or Arrow whose every child carries
+// DerivedGrounding derives, its evidence the same shape re-formed over the children's grounding
+// evidence. The specimen is the direct-rust-door fixture's ingest -- the corpus's smallest
+// real-ingest dag module. The census pins that the witness actually saw the population: four
+// Conj nodes (three fully-evidenced, one -- the grammar-projection root -- with a frontier child)
+// and one bodied Arrow. The evidence control pins the composed evidence's SHAPE on the parameter
+// conj: a Conj whose named children target the dag authority's Int inhabitant, never the source
+// node (the self-evidence wall). The two boundary controls pin the refusal edge: a conj with a
+// frontier child stays frontier, and a childless conj -- no evidence to compose -- stays frontier.
+// Deleting the rule reddens the census and evidence controls; widening it to partially-evidenced
+// or childless products reddens the boundary controls.
+
+type ProductIntroductionCensus {
+  conjs: Int
+  conjs_derived: Int
+  arrows: Int
+  arrows_derived: Int
+}
+
+fn product_introduction_specimen_inferred() -> Outcome<InferredTree> {
+  match assemble_program_from_ingest(
+    ingest: direct_rust_door_ingest(),
+    admission: direct_rust_door_admission(),
+    lm: dag_language_model()
+  ) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: resolved, diagnostics: _ } => infer(tree: resolved)
+  }
+}
+
+fn product_introduction_node_derived(inferred: InferredTree, n: Node) -> Bool {
+  match inferred.facts.lookup(n) {
+    Absent => false
+    Present { value: facts } =>
+      match facts.grounding {
+        GroundingNotDerived { node: _ } => false
+        DerivedGrounding { grounding: _ } => true
+      }
+  }
+}
+
+fn product_introduction_census_step(
+  inferred: InferredTree,
+  acc: ProductIntroductionCensus,
+  n: Node
+) -> ProductIntroductionCensus {
+  match n.kind {
+    TypeNode { connective: Conj } =>
+      ProductIntroductionCensus {
+        conjs: acc.conjs + 1,
+        conjs_derived: acc.conjs_derived + (if product_introduction_node_derived(inferred: inferred, n: n) { 1 } else { 0 }),
+        arrows: acc.arrows,
+        arrows_derived: acc.arrows_derived
+      }
+    TypeNode { connective: Arrow } =>
+      ProductIntroductionCensus {
+        conjs: acc.conjs,
+        conjs_derived: acc.conjs_derived,
+        arrows: acc.arrows + 1,
+        arrows_derived: acc.arrows_derived + (if product_introduction_node_derived(inferred: inferred, n: n) { 1 } else { 0 })
+      }
+    _ => acc
+  }
+}
+
+fn product_introduction_census(inferred: InferredTree) -> ProductIntroductionCensus {
+  fold_list(
+    xs: node_subtree_nodes(root: inferred.root),
+    empty: ProductIntroductionCensus {
+      conjs: 0,
+      conjs_derived: 0,
+      arrows: 0,
+      arrows_derived: 0
+    },
+    cons: fn(acc, n) { product_introduction_census_step(inferred: inferred, acc: acc, n: n) }
+  )
+}
+
+fn params_conj_children_match(children: List<Edge>) -> Bool {
+  match list_at_optional(xs: children, index: 0) {
+    Absent => false
+    Present { value: first } =>
+      match list_at_optional(xs: children, index: 1) {
+        Absent => false
+        Present { value: second } =>
+          match list_at_optional(xs: children, index: 2) {
+            Absent =>
+              match first.label {
+                Named { name: a } =>
+                  match second.label {
+                    Named { name: b } => (a == ^x) && (b == ^y)
+                    _ => false
+                  }
+                _ => false
+              }
+            Present { value: _ } => false
+          }
+      }
+  }
+}
+
+fn is_params_conj(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Conj } => params_conj_children_match(children: n.children)
+    _ => false
+  }
+}
+
+fn evidence_children_target_int_inhabitant(children: List<Edge>) -> Bool {
+  match list_at_optional(xs: children, index: 0) {
+    Absent => false
+    Present { value: first } =>
+      match list_at_optional(xs: children, index: 1) {
+        Absent => false
+        Present { value: second } =>
+          match list_at_optional(xs: children, index: 2) {
+            Absent =>
+              (first.target == dag_int_inhabitant_node())
+                && (second.target == dag_int_inhabitant_node())
+            Present { value: _ } => false
+          }
+      }
+  }
+}
+
+fn params_conj_evidence_is_composed_over_int_inhabitant(inferred: InferredTree, n: Node) -> Bool {
+  match inferred.facts.lookup(n) {
+    Absent => false
+    Present { value: facts } =>
+      match facts.grounding {
+        GroundingNotDerived { node: _ } => false
+        DerivedGrounding { grounding: g } =>
+          let evidence = g.witness.structural.evidence
+          match evidence.kind {
+            TypeNode { connective: Conj } =>
+              evidence_children_target_int_inhabitant(children: evidence.children)
+            _ => false
+          }
+      }
+  }
+}
+
+fn params_conj_evidence_seen(inferred: InferredTree) -> Bool {
+  fold_list(
+    xs: node_subtree_nodes(root: inferred.root),
+    empty: false,
+    cons: fn(acc, n) {
+      if is_params_conj(n: n) {
+        params_conj_evidence_is_composed_over_int_inhabitant(inferred: inferred, n: n)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+test fn product_introduction_derives_fully_evidenced_products_holds() -> Bool {
+  match product_introduction_specimen_inferred() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      let census = product_introduction_census(inferred: inferred)
+      (census.conjs == 4) && (census.conjs_derived == 3)
+        && (census.arrows == 1) && (census.arrows_derived == 1)
+  }
+}
+
+test fn product_introduction_composed_evidence_carries_child_groundings_holds() -> Bool {
+  match product_introduction_specimen_inferred() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      params_conj_evidence_seen(inferred: inferred)
+  }
+}
+
+test fn product_introduction_leaves_childless_conj_on_the_frontier_holds() -> Bool {
+  let childless = Node {
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+  match infer(tree: childless) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      match inferred.facts.lookup(childless) {
+        Absent => false
+        Present { value: facts } =>
+          match facts.grounding {
+            GroundingNotDerived { node: _ } => true
+            DerivedGrounding { grounding: _ } => false
+          }
+      }
+  }
+}

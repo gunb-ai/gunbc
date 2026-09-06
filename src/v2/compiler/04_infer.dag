@@ -1,7 +1,7 @@
 module v2.compiler.infer
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.algebra { any, length, list_snoc_item }
+import v2.std.algebra { any, Empty, length, list_snoc_item }
 import v2.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
   partial_bounded_lattice_instances_in_tree
@@ -100,7 +100,7 @@ type AlgebraRef {
   witness: Node
 }
 
-data node_grounding_frontier_note: String = "GroundingNotDerived is v2's typed inference frontier, not a failure arm and not an escape hatch. v2 derives a node's type for exactly four of the closed vocabulary's twelve node kinds (Branch, Match, Loop, Transform add-shape only — 6 connectives + 6 behaviors = 12); the other eight kinds, and every other Transform shape, have no derivation rule yet. Above the kind rules sit two specimen-scope derivations, both lookups into the dag language authority rather than inventions: a node declared in the authority's declared-inhabitants roster derives with that roster as its grounding evidence (infer_node_declared_in_dag_inhabitants), and an Atom whose identity is a canonical dag binding with a declared denotation derives with that denotation as its evidence (dag_binding_denotation) — the resolver already bound the surface spelling to the canonical binding, and the authority fixes what the binding denotes. Both delete in favor of consuming resolution output when the resolver hands infer declaration-resolved identities directly (the namespace migration's completed state); specimens neither rostered nor binding-denoted stay on the frontier unchanged. Before this carrier existed the nine were routed through solve_constraints with the singleton candidate set [root] under a predicate that reduces to root == root, and the resulting grounding carried the SOURCE NODE as its structural evidence — i.e. as the node's resolved type (inferred_facts_resolved_type reads that field), so every literal, binding and operation in v2 was typed as itself and every downstream consumer read that as an established judgment. Each frontier node now carries a typed, located, counted diagnostic (infer_grounding_not_derived) on the Accepted path, so the deficit's frequency is observable and prioritizable rather than zeroed by construction (DESIGN §5). dissolve-on: a behavior-specific derivation rule lands for a kind, at which point that kind moves to DerivedGrounding and its frontier count drops; the carrier deletes when all twelve kinds derive."
+data node_grounding_frontier_note: String = "GroundingNotDerived is v2's typed inference frontier, not a failure arm and not an escape hatch. v2 derives a node's type for six of the closed vocabulary's twelve node kinds (Branch, Match, Loop, Transform add-shape only, and Conj and Arrow by product introduction — 6 connectives + 6 behaviors = 12); the other six kinds, and every other Transform shape, have no derivation rule yet. The Conj and Arrow rules are compositional: a non-roster Conj or Arrow whose every child carries DerivedGrounding derives with the same shape re-formed over the children's grounding evidence as its evidence, and one with any frontier or absent child stays frontier — the derivation discharges only on a fully-evidenced child spine. Above the kind rules sit two specimen-scope derivations, both lookups into the dag language authority rather than inventions: a node declared in the authority's declared-inhabitants roster derives with that roster as its grounding evidence (infer_node_declared_in_dag_inhabitants), and an Atom whose identity is a canonical dag binding with a declared denotation derives with that denotation as its evidence (dag_binding_denotation) — the resolver already bound the surface spelling to the canonical binding, and the authority fixes what the binding denotes. Both delete in favor of consuming resolution output when the resolver hands infer declaration-resolved identities directly (the namespace migration's completed state); specimens neither rostered nor binding-denoted stay on the frontier unchanged. Before this carrier existed the nine were routed through solve_constraints with the singleton candidate set [root] under a predicate that reduces to root == root, and the resulting grounding carried the SOURCE NODE as its structural evidence — i.e. as the node's resolved type (inferred_facts_resolved_type reads that field), so every literal, binding and operation in v2 was typed as itself and every downstream consumer read that as an established judgment. Each frontier node now carries a typed, located, counted diagnostic (infer_grounding_not_derived) on the Accepted path, so the deficit's frequency is observable and prioritizable rather than zeroed by construction (DESIGN §5). dissolve-on: a behavior-specific derivation rule lands for a kind, at which point that kind moves to DerivedGrounding and its frontier count drops; the carrier deletes when all twelve kinds derive."
 
 fn infer_grounding_not_derived_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
@@ -484,6 +484,94 @@ fn infer_node_declared_in_dag_inhabitants(n: Node) -> Bool {
     xs: node_subtree_nodes(root: dag_declared_inhabitants_root()),
     predicate: fn(member) { member == n }
   )
+}
+
+// THE PRODUCT-INTRODUCTION DERIVATION (Conj and Arrow kinds). A Conj node denotes the product of
+// its conjuncts' denotations and an Arrow node the function from its domain's denotation to its
+// codomain's — the closed vocabulary's own composition semantics (v2.std.node), not an invented
+// meaning. So when EVERY child of a non-roster Conj or Arrow carries DerivedGrounding, the node
+// derives: its evidence is the same shape re-formed over each child's grounding evidence, a fresh
+// OccurrenceSynthetic node whose evidential chain bottoms out in authority nodes at the leaves
+// (never the source node — canonical_grounding_from_derived_type refuses self-evidence by
+// construction). When ANY child is still on the frontier or absent from the entries, the node
+// stays on the frontier with its typed diagnostic — the derivation discharges only when the whole
+// child spine is evidenced, so a partially-derived product can never masquerade as grounded
+// (DESIGN section 5). Roster members keep their roster evidence (the authority's declaration
+// outranks composition for what the language itself declares), and a childless Conj or Arrow has
+// no evidence to compose and stays frontier. This is the frontier note's dissolve-on for these
+// two kinds: the kind-level rule the specimen-scope roster lookups stood in for.
+
+fn infer_type_node_awaits_product_row(n: Node) -> Bool {
+  (length(xs: n.children) > 0) && !infer_node_declared_in_dag_inhabitants(n: n)
+}
+
+fn infer_product_child_evidence_edges(
+  children: List<Edge>,
+  entries: List<InferredFactsEntry>,
+) -> Optional<List<Edge>> {
+  fold(
+    children,
+    init: optional_present(value: Empty),
+    f: fn(acc, edge) {
+      match acc {
+        Absent => acc
+        Present { value: evidence_edges } =>
+          match lookup_inferred_facts_in_entries(entries: entries, key: edge.target) {
+            Absent => optional_absent()
+            Present { value: child_facts } =>
+              match inferred_facts_resolved_type(facts: child_facts) {
+                Violates { diagnostic: _ } => optional_absent()
+                Holds { value: child_evidence } =>
+                  optional_present(
+                    value: list_snoc_item(
+                      xs: evidence_edges,
+                      item: Edge { label: edge.label, target: child_evidence }
+                    )
+                  )
+              }
+          }
+      }
+    }
+  )
+}
+
+fn infer_product_facts_from_entries(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  partials: List<Node>,
+) -> Outcome<InferredFacts> {
+  match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: _, diagnostics: cd } =>
+      match infer_descent_witness_for_node(n: node) {
+        Violates { diagnostic: d } =>
+          Rejected { diagnostics: diagnostics_singleton(d: d) }
+        Holds { value: descent_proof } =>
+          match infer_product_child_evidence_edges(children: node.children, entries: entries) {
+            Absent =>
+              bind_outcome_accepted(
+                od: cd,
+                inner: inferred_facts_not_derived(
+                  node: node,
+                  descent: Holds { value: descent_proof }
+                )
+              )
+            Present { value: evidence_edges } =>
+              bind_outcome_accepted(
+                od: cd,
+                inner: inferred_facts_from_derived_type(
+                  node: node,
+                  derived_type: Node {
+                    kind: node.kind,
+                    children: evidence_edges,
+                    occurrence_id: OccurrenceSynthetic
+                  },
+                  descent: Holds { value: descent_proof }
+                )
+              )
+          }
+      }
+  }
 }
 
 fn infer_node_facts(n: Node, partials: List<Node>) -> Outcome<InferredFacts> {
@@ -1766,9 +1854,37 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>) -> InferGatherFoldAcc {
       }
     ComputationNode { behavior: Bind } => infer_gather_fold_not_derived(n: n, partials: partials)
     TypeNode { connective: Atom { identity: _ } } => infer_gather_fold_not_derived(n: n, partials: partials)
-    TypeNode { connective: Conj } => infer_gather_fold_not_derived(n: n, partials: partials)
+    TypeNode { connective: Conj } =>
+      if infer_type_node_awaits_product_row(n: n) {
+        infer_gather_fold_acc_ok(
+          node: n,
+          entries: empty_inferred_facts_entry_list(),
+          pending: None,
+          await_branch_row: false,
+          await_match_row: false,
+          await_loop_row: false,
+          await_transform_row: false,
+          children_remaining: length(xs: n.children)
+        )
+      } else {
+        infer_gather_fold_not_derived(n: n, partials: partials)
+      }
     TypeNode { connective: Disj } => infer_gather_fold_not_derived(n: n, partials: partials)
-    TypeNode { connective: Arrow } => infer_gather_fold_not_derived(n: n, partials: partials)
+    TypeNode { connective: Arrow } =>
+      if infer_type_node_awaits_product_row(n: n) {
+        infer_gather_fold_acc_ok(
+          node: n,
+          entries: empty_inferred_facts_entry_list(),
+          pending: None,
+          await_branch_row: false,
+          await_match_row: false,
+          await_loop_row: false,
+          await_transform_row: false,
+          children_remaining: length(xs: n.children)
+        )
+      } else {
+        infer_gather_fold_not_derived(n: n, partials: partials)
+      }
     TypeNode { connective: Cardinality } => infer_gather_fold_not_derived(n: n, partials: partials)
     TypeNode { connective: Instantiation } => infer_gather_fold_not_derived(n: n, partials: partials)
   }
@@ -1799,6 +1915,69 @@ fn infer_literal_edge_diagnostics_derived(parent: Node, edge: Edge) -> Bool {
       }
     Accepted { value: DagCanonicalBoolLiteral { value: _ }, diagnostics: _ } => false
     Rejected { diagnostics: _ } => false
+  }
+}
+
+fn infer_gather_acc_awaits_product_row(node: Node, entries: List<InferredFactsEntry>) -> Bool {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      match lookup_inferred_facts_in_entries(entries: entries, key: node) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    TypeNode { connective: Arrow } =>
+      match lookup_inferred_facts_in_entries(entries: entries, key: node) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    _ => false
+  }
+}
+
+fn infer_gather_product_row_on_entries(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  pending: Diagnostics,
+  partials: List<Node>,
+) -> InferGatherFoldAcc {
+  match infer_product_facts_from_entries(node: node, entries: entries, partials: partials) {
+    Rejected { diagnostics: r } =>
+      infer_gather_fold_acc_failed(
+        node: node,
+        pending: rejected_with_pending(pending: pending, rejected: r),
+        await_branch_row: false,
+        await_match_row: false,
+        await_loop_row: false,
+        await_transform_row: false,
+        children_remaining: 0
+      )
+    Accepted { value: facts, diagnostics: d } =>
+      match admitted_inferred_facts_entry(node: node, facts: facts) {
+        Rejected { diagnostics: r } =>
+          infer_gather_fold_acc_failed(
+            node: node,
+            pending: rejected_with_pending(pending: pending, rejected: r),
+            await_branch_row: false,
+            await_match_row: false,
+            await_loop_row: false,
+            await_transform_row: false,
+            children_remaining: 0
+          )
+        Accepted { value: entry, diagnostics: ed } =>
+          infer_gather_fold_acc_ok(
+            node: node,
+            entries: list_snoc_item(xs: entries, item: entry),
+            pending: diagnostics_merge(
+              outer: diagnostics_merge(outer: pending, inner: d),
+              inner: ed
+            ),
+            await_branch_row: false,
+            await_match_row: false,
+            await_loop_row: false,
+            await_transform_row: false,
+            children_remaining: 0
+          )
+      }
   }
 }
 
@@ -1861,6 +2040,13 @@ fn infer_gather_fold_step(
         pending: merged_pending,
         partials: partials,
         tree: tree
+      )
+    } else if children_remaining == 0 && infer_gather_acc_awaits_product_row(node: acc.node, entries: merged_entries) {
+      infer_gather_product_row_on_entries(
+        node: acc.node,
+        entries: merged_entries,
+        pending: merged_pending,
+        partials: partials
       )
     } else {
       infer_gather_fold_acc_ok(
