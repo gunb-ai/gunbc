@@ -25,6 +25,7 @@ import gunbc.live_deploy.spec {
   DeploymentServiceConfig,
   deployment_spec_srv1,
   deployment_slice_unit_name,
+  deployment_belt_service_unit_name,
 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import gunbc.live_deploy.deployed_tree_scope { deployed_tree_rsync_exclude_flags }
@@ -351,11 +352,10 @@ fn belt_timer_unit_directives() -> List<SystemdUnitDirective> {
   }
 }
 
-// DECISION: the timer targets the belt service unit.
+// DECISION: the timer targets the belt service unit, consuming the canonical name.
 test fn belt_timer_targets_belt_service() -> Bool {
   let spec = live_spec()
-  let belt_service_name = join([deployment_slice_unit_name(names: spec.names) as String, "-belt.service"], "")
-  has_directive_timer(dirs: belt_timer_directives(), target: TimerUnit { target: belt_service_name as NonEmptyStr })
+  has_directive_timer(dirs: belt_timer_directives(), target: TimerUnit { target: deployment_belt_service_unit_name(names: spec.names) })
 }
 
 // DECISION: the timer cadence is the declared policy values.
