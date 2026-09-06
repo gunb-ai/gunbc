@@ -1,8 +1,8 @@
 module gunbc.guarantee_stall.algebra_application_owner_resolution_stall
 
 import v2.std.algebra { Cons, Empty }
-import gunbc.guarantee_rung { OutsideTheLadder, StructurallyImpossible, AwaitsOneGrounding }
-import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.guarantee_rung { OutsideTheLadder, StructurallyImpossible }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
 
 // The algebra application wall is useful evidence, but cannot yet carry the owner identity
 // through the dominant declared container-alias spelling to variant_reference_inferred_node.
