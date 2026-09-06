@@ -15,7 +15,7 @@ module test.claim.scm_repository_load_witness
 // would be refused by the interpreter's hermetic carve-out as a host effect rather than answered
 // as a failed read, and the claim would be measuring the sandbox instead of this module.
 
-import std.types { Bool, String }
+import std.types { Bool, String, List, Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.scm.repository_load {
   RepositoryLoad,
@@ -26,10 +26,12 @@ import gunbc.scm.repository_load {
   RepositoryDocumentUnparseable,
   RepositoryDocumentRefused,
   load_repository,
+  repository_load_refusal_lines,
 }
 import gunbc.scm.repository_envelope {
   RepositoryDecodeRefusal,
   RepositoryFormatUnrecognized,
+  RepositoryFormatRetired,
   repository_envelope_load_standing,
 }
 import gunbc.scm.load_standing {
@@ -44,6 +46,10 @@ data scm_rl_empty_repository_path: String = "dag/test/fixture/scm_repository_loa
 data scm_rl_malformed_document_path: String = "dag/test/fixture/scm_repository_load/malformed_document.json"
 data scm_rl_unknown_format_path: String = "dag/test/fixture/scm_repository_load/unknown_format.json"
 data scm_rl_frozen_v1_path: String = "dag/test/fixture/scm_repository_load/frozen_repository_v1.json"
+data scm_rl_retired_v3_path: String = "dag/test/fixture/scm_repository_load/retired_repository_v3.json"
+data scm_rl_retired_v3_tag_only_path: String = "dag/test/fixture/scm_repository_load/retired_v3_tag_only.json"
+data scm_rl_predecessor_v4_path: String = "dag/test/fixture/scm_repository_load/predecessor_repository_v4.json"
+data scm_rl_v4_declaring_a_stage_path: String = "dag/test/fixture/scm_repository_load/v4_declaring_a_stage.json"
 
 // UNDER THE CHECKOUT ROOT AND NEVER CREATED. See the header: the location is the claim.
 data scm_rl_absent_path: String = "dag/test/fixture/scm_repository_load/this_file_is_never_created.json"
@@ -118,6 +124,29 @@ test fn scm_rl_a_frozen_v1_document_is_a_protocol_gap_not_damage() -> Bool {
   }
 }
 
+// A RETIRED FORMAT IS NOT AN UNRECOGNIZED ONE, and this is the specimen that keeps them apart. v3 is
+// a tag this build knows EXACTLY and knows it cannot read: its commit root designates a semantic
+// node, and v4's carrier holds a corpus manifest. Telling the holder of a real v3 repository that
+// their format is unrecognized would point them at the wrong repair, so the refusal names it. It
+// stays UNSUPPORTED rather than malformed, because the document is not damaged -- this build is
+// simply not its reader, and there is deliberately no v3 reader beside v4: deriving a manifest from a
+// semantic root would fabricate the authored bytes the projection discarded.
+test fn scm_rl_a_retired_v3_document_is_refused_by_name_rather_than_as_unrecognized() -> Bool {
+  match load_repository(path: scm_rl_retired_v3_path) {
+    RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: p, cause: c } } =>
+      p == scm_rl_retired_v3_path
+        && match c {
+          RepositoryFormatRetired { found: f } => f == "gunbc-scm-repository-v3"
+          _ => false
+        }
+        && match repository_envelope_load_standing(cause: c) {
+          LoadUnsupportedProtocol => true
+          _ => false
+        }
+    _ => false
+  }
+}
+
 // THE CONTROL THE CLAIM ABOVE NEEDS. Without it, a classifier that answered LoadUnsupportedProtocol
 // for everything would satisfy it. A genuinely damaged document must still classify as malformed.
 test fn scm_rl_a_damaged_document_is_not_a_protocol_gap() -> Bool {
@@ -133,11 +162,128 @@ test fn scm_rl_a_damaged_document_is_not_a_protocol_gap() -> Bool {
   }
 }
 
+// A VALID v4 DOCUMENT IS READ, AND ITS STAGE IS ABSENT BECAUSE THAT IS WHAT IT SAYS.
+//
+// This is the predecessor-normalization claim proper: it starts from an independently fixed v4
+// document and passes it through the REAL decoder, rather than constructing the post-normalization
+// envelope by hand -- which would bypass the normalization the claim is about. The staging witness's
+// in-memory specimens test the inheritance rule and deliberately do not claim this route.
+//
+// MUTATION IT IS AIMED AT: retiring v4 the way v3 is retired. Under it this document refuses and the
+// claim goes red. The distinction it defends is that "no explicit staging selection" is a TRUTHFUL
+// reading of a v4 document -- staging did not exist when it was written -- whereas a v3 root would
+// have to invent authored bytes the semantic projection discarded.
+test fn scm_rl_a_valid_v4_document_reads_with_no_explicit_stage() -> Bool {
+  match load_repository(path: scm_rl_predecessor_v4_path) {
+    RepositoryLoaded { path: p, envelope: envelope } =>
+      p == scm_rl_predecessor_v4_path
+        && match envelope.staged {
+          Absent => true
+          Present { value: _ } => false
+        }
+    _ => false
+  }
+}
+
+// A v4 DOCUMENT CARRYING A STAGE MEMBER REFUSES RATHER THAN HAVING IT SILENTLY DISCARDED.
+//
+// No v4 writer could have produced such a document, so admitting it would mean reading bytes nobody
+// could have written -- and the two obvious wrong answers are equally bad: honouring the member reads
+// a v4 document under v5 rules, and ignoring it drops a declaration the document makes.
+//
+// THIS IS THE CLAIM THAT MAKES THE TWO READERS TWO READERS. A single tolerant reader admitting both
+// member populations passes the predecessor claim above and fails this one.
+test fn scm_rl_a_v4_document_declaring_a_stage_refuses() -> Bool {
+  match load_repository(path: scm_rl_v4_declaring_a_stage_path) {
+    RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: p, cause: _ } } =>
+      p == scm_rl_v4_declaring_a_stage_path
+    _ => false
+  }
+}
+
 test fn scm_repository_load_keystone_holds() -> Bool {
+  scm_rl_a_valid_v4_document_reads_with_no_explicit_stage() &&
+    scm_rl_a_v4_document_declaring_a_stage_refuses() &&
   scm_rl_a_well_formed_document_loads() &&
     scm_rl_an_absent_file_is_unreadable_not_empty() &&
     scm_rl_a_truncated_document_is_unparseable() &&
     scm_rl_a_parseable_non_repository_is_refused_by_schema() &&
     scm_rl_a_frozen_v1_document_is_a_protocol_gap_not_damage() &&
     scm_rl_a_damaged_document_is_not_a_protocol_gap()
+}
+
+// THE REFUSAL MUST REACH THE OPERATOR AS A RETIREMENT, NOT AS "NOT A REPOSITORY".
+//
+// The load witness above asserts the decoder's cause and standing, and stops there. Review of gunbc#10560
+// traced what happens after: the structured cause survives the loader and the read command, and the
+// TEXT PROJECTION discarded it -- every RepositoryDocumentRefused rendered as
+// "not a repository document: <path>". So the one population that most needs the distinction, someone
+// holding a repository this build has retired, was told their repository is not a repository. A
+// correct tag assertion that stops before the rendering boundary does not establish the
+// operator-visible claim, which is the whole point of the finding.
+//
+// These drive the SAME fixtures through the real projection.
+fn scm_rl_refusal_text(path: String) -> List<String> {
+  match load_repository(path: path) {
+    RepositoryLoaded { path: _, envelope: _ } => []
+    RepositoryLoadRefused { cause: cause } => repository_load_refusal_lines(cause: cause)
+  }
+}
+
+fn scm_rl_says(path: String, line: String) -> Bool {
+  fold(scm_rl_refusal_text(path: path), init: false, f: fn(seen, l) { seen || (l == line) })
+}
+
+fn scm_rl_line_count(path: String) -> Int {
+  length(xs: scm_rl_refusal_text(path: path))
+}
+
+test fn scm_rl_a_retired_document_renders_as_a_format_this_build_does_not_read() -> Bool {
+  scm_rl_says(path: scm_rl_retired_v3_path, line: "the document declares retired repository format gunbc-scm-repository-v3")
+    && scm_rl_says(path: scm_rl_retired_v3_path, line: concat("  at ", scm_rl_retired_v3_path))
+    && (scm_rl_says(
+          path: scm_rl_retired_v3_path,
+          line: concat("not a repository document: ", scm_rl_retired_v3_path)
+        ) == false)
+}
+
+// RECOGNIZING THE TAG IS NOT VALIDATING THE BODY, and this specimen is the one that keeps the two
+// apart. It is parseable JSON carrying the retired format member and NOTHING ELSE -- no identity rule,
+// no objects, no commits, no allocator. decode_repository returns on the format member before any body
+// validation, so it reaches the same protocol answer as a complete historical document.
+//
+// The claim is therefore that the output says WHICH PROTOCOL WAS DECLARED and says the contents were
+// NOT VALIDATED, and never that the document is intact or that a repository is present. An earlier cut
+// of this rendering said "the document is intact"; on these bytes that was simply false, and it was
+// derived from recognizing a tag rather than from reading anything.
+test fn scm_rl_a_retired_tag_over_no_body_claims_the_protocol_and_not_the_contents() -> Bool {
+  scm_rl_says(
+    path: scm_rl_retired_v3_tag_only_path,
+    line: "the document declares retired repository format gunbc-scm-repository-v3"
+  )
+    && scm_rl_says(
+         path: scm_rl_retired_v3_tag_only_path,
+         line: "  this build has no reader for that format, so its contents were not validated"
+       )
+    && (scm_rl_says(path: scm_rl_retired_v3_tag_only_path, line: "  the document is intact; this reader was retired, and no reader for that format ships here") == false)
+}
+
+// THE CONTROLS THAT STOP "EVERYTHING IS RETIRED" FROM SATISFYING THE CLAIM ABOVE. A healthy v4
+// document renders no refusal at all; a genuinely damaged one must not borrow the retirement wording;
+// and an unrecognized format is its own remedy -- nothing here was ever readable, rather than a reader
+// having been withdrawn.
+test fn scm_rl_a_healthy_document_renders_no_refusal_text() -> Bool {
+  scm_rl_line_count(path: scm_rl_empty_repository_path) == 0
+}
+
+test fn scm_rl_a_damaged_document_does_not_render_as_a_retired_format() -> Bool {
+  (scm_rl_line_count(path: scm_rl_malformed_document_path) > 0)
+    && (scm_rl_says(
+          path: scm_rl_malformed_document_path,
+          line: "the document declares retired repository format gunbc-scm-repository-v3"
+        ) == false)
+}
+
+test fn scm_rl_an_unknown_format_renders_as_unrecognized_rather_than_retired() -> Bool {
+  scm_rl_says(path: scm_rl_unknown_format_path, line: "the document declares unrecognized repository format gunbc-scm-repository-v99")
 }

@@ -5,7 +5,7 @@ import std.types { String, List }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
-import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, ClimbableButUnbuilt, UncountedNotEnumerable }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, ClimbableButUnbuilt, UncountedNotEnumerable, climbs_when }
 
 // WHY THIS CARRIER EXISTS BESIDE THE WALL RATHER THAN INSIDE THE PLAN IT ENFORCES. The
 // enforcement mechanism was dispatched OUTSIDE the import/namespace program deliberately --
@@ -201,7 +201,7 @@ data namespace_wave_admission_occurrence_grain_stall: GuaranteeStall = Guarantee
       "two references to one leaf inside one declaration where only one of them is requalified",
     ],
   },
-  next_rung_trigger: "A projector-emitted correspondence between the two trees being compared -- v2.workflow.legacy_binding_delta ProjectionProvenanceEntry, whose ProjectedFromSource arm relates one target occurrence to its source. The wall's row key descends from the leaf to the occurrence the moment a base/head pair carries one, and the union taken in binding_rows deletes with it. What does NOT close this is a finer key invented here: the scope law rules out every property computable from a finished tree in isolation, so an occurrence key that is not emitted by a transformation is not a stronger key, it is a wrong one."
+  next_rung_trigger: climbs_when(capability: "A projector-emitted correspondence between the two trees being compared -- v2.workflow.legacy_binding_delta ProjectionProvenanceEntry, whose ProjectedFromSource arm relates one target occurrence to its source. The wall's row key descends from the leaf to the occurrence the moment a base/head pair carries one, and the union taken in binding_rows deletes with it. What does NOT close this is a finer key invented here: the scope law rules out every property computable from a finished tree in isolation, so an occurrence key that is not emitted by a transformation is not a stronger key, it is a wrong one.")
 }
 
 data namespace_wave_admission_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
@@ -672,5 +672,5 @@ data namespace_wave_admission_board_grain_stall: GuaranteeStall = GuaranteeStall
   population: UncountedNotEnumerable {
     reason: "THE POPULATION IS THE EMISSION BOARD, WHICH IS ITSELF UNAVAILABLE TO THIS LANE, so its members cannot be listed here without inventing them. Rendering it as an empty list would read as nothing is affected -- bottom-as-answer conflated with bottom-as-ignorance, the narrow this type's third arm exists to refuse. The obstacle is measured, not assumed: emitting a single entry costs a fixed multi-GiB floor regardless of subject, and the corpus run refuses at the host-budget arm rather than admitting against a machine-wide reading, so a per-module sweep is a CI job and not a session job.",
   },
-  next_rung_trigger: "A BASE-VERSUS-HEAD EMISSION VERDICT PER BOARD MODULE, produced in ONE dispatch so that build and execution share a tree, with the two sides distinguished by a MARKER CARRIED IN THE OUTPUT rather than by run order, and joined at MODULE IDENTITY rather than by rank or count. What does NOT close this is an entry point that emits one module on demand: the question is a population question, and a per-call instrument answers it only if something sweeps the population and joins the two sides. Until such a verdict exists, the strongest claim available about this cut is the row-grain one -- fifteen verified, two unverifiable, zero refuted -- and NO board-grain claim in either direction is authorized by it."
+  next_rung_trigger: climbs_when(capability: "A BASE-VERSUS-HEAD EMISSION VERDICT PER BOARD MODULE, produced in ONE dispatch so that build and execution share a tree, with the two sides distinguished by a MARKER CARRIED IN THE OUTPUT rather than by run order, and joined at MODULE IDENTITY rather than by rank or count. What does NOT close this is an entry point that emits one module on demand: the question is a population question, and a per-call instrument answers it only if something sweeps the population and joins the two sides. Until such a verdict exists, the strongest claim available about this cut is the row-grain one -- fifteen verified, two unverifiable, zero refuted -- and NO board-grain claim in either direction is authorized by it.")
 }

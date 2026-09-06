@@ -399,17 +399,27 @@ type GitHubAppNextAction
       readback: BoundObservationProducer
     }
 
-data app_registration_observation: ObservationProducer = ObservationProducerAbsent {
-  required_observation: AppRegistrationReadbackObservation
+// WHICH OBSERVATIONS ARE BOUND IS A PER-APP FACT, NOT A MODULE-WIDE ONE. These three
+// bindings were module-level data read directly by control_plane_next_action, so binding a
+// real producer for one App would have simultaneously reported every other App as observed
+// - including gunbai_bot, which no producer watches. That is a rung claim made on a subject
+// whose evidence does not exist (DESIGN §4b(1)), so the binding travels with the App.
+type AppObservationProducers {
+  app_registration: ObservationProducer
+  installation: ObservationProducer
+  signer_fingerprint: ObservationProducer
 }
 
-data installation_observation: ObservationProducer = ObservationProducerAbsent {
-  required_observation: InstallationReadbackObservation
+// The all-absent set: the honest standing for any App this repository does not yet observe.
+// It is a NAMED default, never an implicit one - a caller must say which App it is passing.
+data no_bound_observations: AppObservationProducers = AppObservationProducers {
+  app_registration: ObservationProducerAbsent { required_observation: AppRegistrationReadbackObservation },
+  installation: ObservationProducerAbsent { required_observation: InstallationReadbackObservation },
+  signer_fingerprint: ObservationProducerAbsent { required_observation: SignerFingerprintObservation },
 }
 
-data signer_fingerprint_observation: ObservationProducer = ObservationProducerAbsent {
-  required_observation: SignerFingerprintObservation
-}
+// gunbai_bot (the programming-agent App) is observed by nothing today.
+data gunbai_bot_observations: AppObservationProducers = no_bound_observations
 
 fn operator_packet_or_producer_binding(
   action: GitHubAppOperatorAction,
@@ -432,7 +442,10 @@ fn operator_packet_or_producer_binding(
   }
 }
 
-fn control_plane_next_action(state: GitHubAppControlPlaneState) -> GitHubAppNextAction {
+fn control_plane_next_action(
+  state: GitHubAppControlPlaneState,
+  producers: AppObservationProducers
+) -> GitHubAppNextAction {
   match state {
     InstallationGrantObserved { installation: _ } => NoActionRequired
     PermissionObservationRefused { app, duplicate } =>
@@ -449,7 +462,7 @@ fn control_plane_next_action(state: GitHubAppControlPlaneState) -> GitHubAppNext
           action: GenerateAppSigningKey,
           locator: app_key_settings_locator(app: app),
           postcondition: AppHasRegisteredSigningKey { app: app },
-          observation: signer_fingerprint_observation
+          observation: producers.signer_fingerprint
         )
       SignerMaterialAvailabilityUnobserved =>
         MachineActionRequired { action: DiscoverSignerMaterial { app: app } }
@@ -463,14 +476,14 @@ fn control_plane_next_action(state: GitHubAppControlPlaneState) -> GitHubAppNext
         action: ApplyAppPermissionChange,
         locator: request.settings_locator,
         postcondition: AppRegistrationRequestsPermissions { add: request.add },
-        observation: app_registration_observation
+        observation: producers.app_registration
       )
     InstallationPermissionApprovalPending { request } =>
       operator_packet_or_producer_binding(
         action: AcceptInstallationPermissions,
         locator: request.installation_locator,
         postcondition: InstallationHoldsPermissions { accept: request.accept },
-        observation: installation_observation
+        observation: producers.installation
       )
   }
 }

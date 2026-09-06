@@ -15,7 +15,7 @@ import gunbc.roadmap_authority {
 }
 import gunbc.roadmap_dashboard_instance { DashboardActuationPosture, DashboardObserveOnly, DashboardActuating }
 import gunbc.deploy_transition { ActuationAdmission, ActuationAdmitted, ActuationRefused }
-import gunbc.fleet_desired_observe { FleetRevisionStanding, RevisionConverged, RevisionDrifted, RevisionUnobserved }
+import gunbc.fleet_desired_observe { LocalTreeRevision, LocalTreeRevisionObserved, LocalTreeRevisionUnobserved }
 import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, git_object_id_wire_hex, git_object_id_from_untagged_hex }
 import gunbc.roadmap_dispatch_actuator { DispatchLiveSession }
 import gunbc.worker_lifecycle {
@@ -86,7 +86,7 @@ type LaunchIdentity {
 // The five facts keep the types their authorities gave them (DESIGN 2: consume, never unwind at a
 // boundary): node_id is the RoadmapNodeId of the node the node gate FOUND in the projected
 // authority, never the request's spelling; instance_id is the dashboard instance's NonEmptyStr;
-// revision is the GitObjectId the revision gate observed converged. The three text projections
+// revision is the GitObjectId the revision gate observed as the deployed tree's HEAD. The three text projections
 // below are the ONLY place an identity becomes a string, so the wire, the page attributes and the
 // reason line spell each fact one way.
 
@@ -208,7 +208,6 @@ type LaunchRefusal
   | LaunchInstanceActuationRefused { instance_id: String, reason: String }
   | LaunchTransitionInhibited { reason: String }
   | LaunchRevisionUnobserved { cause: String }
-  | LaunchRevisionDrift { desired: String, local: String }
   | LaunchAuthorityUnobserved { detail: String }
   | LaunchNodeUnknown
   | LaunchNodeSuperseded { by: String }
@@ -241,7 +240,6 @@ fn launch_refusal_label(r: LaunchRefusal) -> String {
     LaunchInstanceActuationRefused { instance_id: _, reason: _ } => "disabled"
     LaunchTransitionInhibited { reason: _ } => "deployment_transition_inhibited"
     LaunchRevisionUnobserved { cause: _ } => "deployed_revision_unobserved"
-    LaunchRevisionDrift { desired: _, local: _ } => "deployed_revision_drifted"
     LaunchAuthorityUnobserved { detail: _ } => "authority_refused"
     LaunchNodeUnknown => "node_not_found"
     LaunchNodeSuperseded { by: _ } => "node_superseded"
@@ -267,7 +265,6 @@ fn launch_refusal_reason(r: LaunchRefusal) -> String {
     LaunchInstanceActuationRefused { instance_id, reason } => join(["instance ", instance_id, ": ", reason], "")
     LaunchTransitionInhibited { reason } => reason
     LaunchRevisionUnobserved { cause } => join(["deployed revision could not be observed: ", cause], "")
-    LaunchRevisionDrift { desired, local } => join(["deployed tree is not the admitted fleet revision: desired=", desired, " local=", local], "")
     LaunchAuthorityUnobserved { detail } => join(["roadmap authority projection refused: ", detail], "")
     LaunchNodeUnknown => "node is not in the roadmap authority"
     LaunchNodeSuperseded { by } => join(["node is superseded by ", by], "")
@@ -293,7 +290,6 @@ fn launch_refusal_exemplars() -> List<LaunchRefusal> {
     LaunchInstanceActuationRefused { instance_id: "i", reason: "r" },
     LaunchTransitionInhibited { reason: "r" },
     LaunchRevisionUnobserved { cause: "c" },
-    LaunchRevisionDrift { desired: "a", local: "b" },
     LaunchAuthorityUnobserved { detail: "d" },
     LaunchNodeUnknown,
     LaunchNodeSuperseded { by: "s" },
@@ -345,7 +341,7 @@ type LaunchHostStanding
       instance_id: NonEmptyStr,
       actuation: DashboardActuationPosture,
       transition: ActuationAdmission,
-      revision: FleetRevisionStanding,
+      revision: LocalTreeRevision,
       sessions: LaunchSessionsStanding,
       capacity: BeltCapacity,
       mode: SpawnMode,
@@ -358,7 +354,7 @@ type LaunchHostStanding
 // builds a standing for a real driver (gunbc.roadmap_belt_actuate
 // belt_launch_host_standing_for_instance -- the ONE observer behind the page, POST /dispatch and
 // the timer) reads the transition file only for an actuating instance, reads the fleet revision
-// only under an admitted transition, and lists tmux only under a converged revision. When an
+// only under an admitted transition, and lists tmux only under an observed revision. When an
 // earlier gate refuses, the standing is LaunchHostHalted at that gate and the later host facts are
 // NOT fields of it: there is no constructor for `transition inhibited AND sessions observed`, so
 // the effect order the route promises (`refused before observation`) is structural, not a
@@ -376,12 +372,12 @@ fn launch_host_halt_transition(instance_id: String, reason: String) -> LaunchHos
 }
 
 type LaunchHostRevisionStage
-  = HostRevisionConverged { revision: FleetRevisionStanding }
+  = HostRevisionObserved { revision: LocalTreeRevision }
   | HostRevisionHalted { standing: LaunchHostStanding }
 
-fn launch_host_stage_revision(instance_id: String, revision: FleetRevisionStanding) -> LaunchHostRevisionStage {
+fn launch_host_stage_revision(instance_id: String, revision: LocalTreeRevision) -> LaunchHostRevisionStage {
   match launch_gate_revision(revision: revision) {
-    GatePassed => HostRevisionConverged { revision: revision }
+    GatePassed => HostRevisionObserved { revision: revision }
     GateRefused { refusal } =>
       HostRevisionHalted { standing: LaunchHostHalted { instance_id: instance_id, gate: HostRevisionGate, refusal: refusal } }
     GateNotReached =>
@@ -496,7 +492,7 @@ type LaunchIdentityStanding
   | LaunchIdentityWithheld { refusal: LaunchRefusal }
 
 // The identity is a CONSEQUENCE of the first four gates, not a tenth gate: it is bound exactly when
-// the host is actuating and transition-clear, the revision observed converged (that GitObjectId)
+// the host is actuating and transition-clear, the revision observed (that GitObjectId)
 // and the node found (that RoadmapNodeId). When it is withheld, the standing carries the refusal of
 // the gate that withheld it -- the same verdict that gate's ledger row holds -- so the admission
 // never manufactures an `identity` gate and no ledger state says `every gate passed and no identity
@@ -662,19 +658,21 @@ type LaunchRevisionOutcome
   = LaunchRevisionBound { oid: GitObjectId }
   | LaunchRevisionRefused { refusal: LaunchRefusal }
 
-fn launch_revision_outcome(revision: FleetRevisionStanding) -> LaunchRevisionOutcome {
+// THE REVISION GATE BINDS, IT DOES NOT COMPARE (operator ruling, 2026-09-05). It reads the deployed
+// tree's own HEAD so the launch identity can name the code that dispatched it, and refuses only when
+// that cannot be read. It used to refuse on drift from the admitted fleet ref as well; that made
+// admissibility a race the host could not win -- desired advances on every green merge, a deploy
+// takes minutes -- and, because the belt tick shared the gate, a lagging host stopped verifying,
+// reviewing and publishing too. Convergence is the deploy path's fact (`gunbc.fleet_desired_observe`
+// `FleetRevisionStanding`, the deployed-tree report), never an admission input here.
+fn launch_revision_outcome(revision: LocalTreeRevision) -> LaunchRevisionOutcome {
   match revision {
-    RevisionConverged { revision: oid } => LaunchRevisionBound { oid: oid }
-    RevisionDrifted { desired, local } =>
-      LaunchRevisionRefused { refusal: LaunchRevisionDrift {
-        desired: git_object_id_wire_hex(oid: desired) as String,
-        local: git_object_id_wire_hex(oid: local) as String,
-      } }
-    RevisionUnobserved { cause } => LaunchRevisionRefused { refusal: LaunchRevisionUnobserved { cause: cause } }
+    LocalTreeRevisionObserved { revision: oid } => LaunchRevisionBound { oid: oid }
+    LocalTreeRevisionUnobserved { cause } => LaunchRevisionRefused { refusal: LaunchRevisionUnobserved { cause: cause } }
   }
 }
 
-fn launch_gate_revision(revision: FleetRevisionStanding) -> LaunchGateVerdict {
+fn launch_gate_revision(revision: LocalTreeRevision) -> LaunchGateVerdict {
   match launch_revision_outcome(revision: revision) {
     LaunchRevisionBound { oid: _ } => GatePassed
     LaunchRevisionRefused { refusal } => GateRefused { refusal: refusal }
@@ -881,7 +879,7 @@ fn launch_identity_of_observed(
   instance_id: NonEmptyStr,
   actuation: DashboardActuationPosture,
   transition: ActuationAdmission,
-  revision: FleetRevisionStanding,
+  revision: LocalTreeRevision,
   lookup: LaunchNodeLookup,
 ) -> LaunchIdentityStanding {
   match launch_instance_outcome(instance_id: instance_id, actuation: actuation) {

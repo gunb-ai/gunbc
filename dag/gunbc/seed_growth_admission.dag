@@ -29,6 +29,7 @@ import gunbc.regen_convergence_seed_growth { regen_convergence_seed_growth_justi
 import gunbc.witness_runtime_cause_seed_growth { witness_runtime_cause_seed_growth_justification }
 import gunbc.required_lane_judgment_seed_growth { required_lane_judgment_seed_growth_justification }
 import gunbc.data_eval_counters_seed_growth { data_eval_counters_seed_growth_justification }
+import gunbc.param_binder_seed_growth { param_binder_seed_growth_justification }
 import gunbc.rust_item_host_observation {
   ItemDeclarationRefProjection,
   LiveHandRustObservation,
@@ -239,7 +240,8 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     decl_facts_shared_memo_seed_growth_justification,
     cli_wire_host_seed_growth_justification,
     filesystem_create_new_seed_growth_justification,
-    required_lane_judgment_seed_growth_justification
+    required_lane_judgment_seed_growth_justification,
+    param_binder_seed_growth_justification
   ]
 }
 

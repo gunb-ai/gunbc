@@ -30,7 +30,7 @@ import extdeps.languages.typescript.program {
   TsProgram, TsExpr, TsStmt, serialize_typescript_program,
   ts_ident, ts_lit_str, ts_lit_num, ts_member, ts_call, ts_binop, ts_arrow, ts_block,
   ts_const, ts_let, ts_return, ts_new, ts_expr_stmt, ts_if, ts_cond, ts_prefix, ts_object, ts_field,
-  ts_array, ts_index, ts_try,
+  ts_array, ts_index, ts_try, ts_for_of,
 }
 import extdeps.w3c.device_orientation_and_motion {
   devicemotion_event_type, device_motion_event_interface,
@@ -338,6 +338,14 @@ data activity_ledger_class: String = "activity-ledger"
 data activity_obligation_class: String = "activity-obligation"
 data activity_evidence_class: String = "activity-evidence"
 data activity_evidence_row_class: String = "activity-evidence-row"
+data activity_round_strip_class: String = "activity-round-strip"
+data activity_round_read_class: String = "activity-round-read"
+data activity_round_write_class: String = "activity-round-write"
+data activity_round_unmeasured_class: String = "activity-round-unmeasured"
+data activity_round_reason_class: String = "activity-round-reason"
+data standing_chip_class: String = "standing"
+data activity_round_live_class: String = "activity-round-live"
+data activity_round_remaining_class: String = "activity-round-remaining"
 data activity_located_reason_class: String = "activity-located-reason"
 data session_facts_class: String = "session-facts"
 
@@ -2536,15 +2544,9 @@ fn activity_paint_stmts() -> List<TsStmt> {
       callee: ts_member(object: ts_ident(name: "act"), property: "querySelector"),
       args: [ts_lit_str(value: join(["details.", activity_detail_class], ""))])),
     ts_const(name: "anom", value: ts_binop(
-      left: ts_binop(
-        left: ts_member(object: ts_ident(name: "av"), property: "arm"),
-        op: "===",
-        right: ts_lit_str(value: "refused")),
-      op: "||",
-      right: ts_binop(
-        left: ts_member(object: ts_ident(name: "av"), property: "attention"),
-        op: "===",
-        right: ts_lit_str(value: "anomalous")))),
+      left: ts_member(object: ts_ident(name: "av"), property: "arm"),
+      op: "===",
+      right: ts_lit_str(value: "refused"))),
     ts_if(
       cond: ts_binop(
         left: ts_binop(
@@ -3172,6 +3174,69 @@ fn dispatch_client_js_source() -> String {
 }
 
 data sandbox_live_class: String = "sandbox-live-btn"
+data strip_lab_replay_class: String = "strip-lab-replay"
+data strip_lab_slow_class: String = "strip-lab-slow"
+data strip_lab_section_class: String = "sandbox-strip-lab"
+data round_strip_playback_ms: Int = 2400
+
+fn strip_lab_query_all(selector: String) -> TsExpr {
+  ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"), args: [ts_lit_str(value: selector)])
+}
+
+fn strip_lab_dataset_number(name: String) -> TsExpr {
+  ts_call(callee: ts_ident(name: "Number"), args: [ts_member(object: ts_member(object: ts_ident(name: "seg"), property: "dataset"), property: name)])
+}
+
+fn strip_lab_set_style(target: String, property: String, value: TsExpr) -> TsStmt {
+  ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_member(object: ts_ident(name: target), property: "style"), property: property), op: "=", right: value))
+}
+
+// A custom property is set through setProperty; the CSSStyleDeclaration member form the plain
+// setter uses has no spelling for a dashed name. The names match gunbc.roadmap_style's fill vars.
+fn strip_lab_set_custom_property(target: String, name: String, value: TsExpr) -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(object: ts_member(object: ts_ident(name: target), property: "style"), property: "setProperty"),
+    args: [ts_lit_str(value: name), value],
+  ))
+}
+
+fn strip_lab_on_click(selector: String, body: List<TsStmt>) -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(object: strip_lab_query_all(selector: selector), property: "forEach"),
+    args: [ts_arrow(params: ["b"], body: ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_ident(name: "b"), property: "addEventListener"),
+      args: [ts_lit_str(value: "click"), ts_arrow(params: [], body: ts_block(stmts: body))],
+    )))],
+  ))
+}
+
+fn strip_lab_bind_statements() -> List<TsStmt> {
+  [
+    ts_let(name: "gunbcStripSlow", value: ts_ident(name: "false")),
+    ts_const(name: "gunbcStripApply", value: ts_arrow(params: [], body: ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: strip_lab_query_all(selector: join([".", strip_lab_section_class, " .", activity_round_strip_class], "")), property: "forEach"),
+      args: [ts_arrow(params: ["strip"], body: ts_block(stmts: [
+        ts_const(name: "factor", value: ts_cond(test: ts_ident(name: "gunbcStripSlow"), consequent: ts_lit_num(text: "8"), alternate: ts_lit_num(text: "1"))),
+        ts_for_of(var_name: "seg", iterable: ts_member(object: ts_ident(name: "strip"), property: "children"), body: ts_block(stmts: [
+          strip_lab_set_style(target: "seg", property: "animation", value: ts_lit_str(value: "none")),
+          ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "seg"), property: "getBoundingClientRect"), args: [])),
+          strip_lab_set_style(target: "seg", property: "animation", value: ts_lit_str(value: "")),
+          strip_lab_set_custom_property(target: "seg", name: "--fill-duration", value: ts_binop(left: ts_binop(left: strip_lab_dataset_number(name: "durationMs"), op: "*", right: ts_ident(name: "factor")), op: "+", right: ts_lit_str(value: "ms"))),
+          strip_lab_set_custom_property(target: "seg", name: "--fill-delay", value: ts_binop(left: ts_binop(left: strip_lab_dataset_number(name: "delayMs"), op: "*", right: ts_ident(name: "factor")), op: "+", right: ts_lit_str(value: "ms"))),
+          
+        ])),
+      ]))],
+    )))),
+    strip_lab_on_click(selector: join([".", strip_lab_replay_class], ""), body: [
+      ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcStripApply"), args: [])),
+    ]),
+    strip_lab_on_click(selector: join([".", strip_lab_slow_class], ""), body: [
+      ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "gunbcStripSlow"), op: "=", right: ts_prefix(op: "!", expr: ts_ident(name: "gunbcStripSlow")))),
+      ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "b"), property: "textContent"), op: "=", right: ts_cond(test: ts_ident(name: "gunbcStripSlow"), consequent: ts_lit_str(value: "slow: on"), alternate: ts_lit_str(value: "slow: off")))),
+      ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcStripApply"), args: [])),
+    ]),
+  ]
+}
 
 // The /sandbox live instance reuses the EXACT dispatch render (dispatch_client_program_for) — one
 // behavior, two bindings (§2): same click/response handler, only the fetch URL differs. It POSTs to
@@ -3199,7 +3264,7 @@ fn sandbox_client_program() -> TsProgram {
       "same render as the real dispatch button, but POSTs to /sandbox/echo?status=<data-status>",
       "so every wire arm is pressable without dispatching a real session",
     ],
-    instance_statements: [],
+    instance_statements: strip_lab_bind_statements(),
   )
 }
 

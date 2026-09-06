@@ -7,7 +7,7 @@ import gunbc.rust_item_host_observation {
   rust_module_path_for_repo_path, RustModulePathProjected, RustModulePathRefused
 }
 import gunbc.v1_consumer_census {
-  v1_consumers, v1_uncitable_consumers, v1_consumer_population,
+  v1_consumers, v1_uncitable_consumers, v1_consumer_population, v1_row_keys,
   v1_every_discovered_consumer_disposed, v1_every_row_names_a_live_consumer, v1_every_claimed_successor_is_realized,
   v1_bankruptcy_transaction_admitted, v1_blocking_consumer_count, v1_consumer_member_count,
   v1_boundary_census, consumer_population_is_complete, consumer_population_rows, consumer_population_uncitable,
@@ -15,7 +15,7 @@ import gunbc.v1_consumer_census {
 }
 import test.fixture.v1_consumer_census.specimens {
   clean_rows, clean_discovered, clean_realized, clean_population,
-  planted_undisposed_discovered, planted_stale_discovered,
+  planted_undisposed_discovered, planted_stale_discovered, planted_same_size_discovered,
   planted_unrealized_rows, planted_unrealized_population,
   planted_lower_bound_population, planted_unmeasured_population,
   planted_blocking_population, planted_covered_unrealized_rows, planted_covered_unrealized_population
@@ -137,7 +137,13 @@ fn the_live_gate_refuses_even_with_every_successor_realized() -> Bool {
 // exactly one way -- an author filing a row and forgetting the population -- which would leave a
 // consumer recorded and unread by the gate.
 fn the_live_population_carries_the_whole_roster() -> Bool {
-  count(v1_consumers()) == count(consumer_population_rows(p: v1_consumer_population()))
+  v1_every_discovered_consumer_disposed(
+      discovered: v1_row_keys(rows: v1_consumers()),
+      rows: consumer_population_rows(p: v1_consumer_population())
+    ) && v1_every_row_names_a_live_consumer(
+      discovered: v1_row_keys(rows: v1_consumers()),
+      rows: consumer_population_rows(p: v1_consumer_population())
+    )
     && count(v1_uncitable_consumers()) == count(consumer_population_uncitable(p: v1_consumer_population()))
 }
 
@@ -167,4 +173,14 @@ test fn consumer_census_tooling_tree_projects_to_the_assembled_package_namespace
     RustModulePathRefused { repo_path: _, detail: _ } => true
     RustModulePathProjected { module_path: _ } => false
   }
+}
+
+// Counts would accept this replacement of one required relation with another.
+// Exercise the existing census joins, not a separate inventory verdict.
+test fn consumer_census_same_size_substitution_refuses_in_both_directions() -> Bool {
+  v1_every_discovered_consumer_disposed(discovered: clean_discovered, rows: clean_rows)
+    && v1_every_row_names_a_live_consumer(discovered: clean_discovered, rows: clean_rows)
+    && count(planted_same_size_discovered) == count(clean_discovered)
+    && !v1_every_discovered_consumer_disposed(discovered: planted_same_size_discovered, rows: clean_rows)
+    && !v1_every_row_names_a_live_consumer(discovered: planted_same_size_discovered, rows: clean_rows)
 }

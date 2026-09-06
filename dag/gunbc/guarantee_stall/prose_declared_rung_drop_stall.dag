@@ -1,7 +1,7 @@
 module gunbc.guarantee_stall.prose_declared_rung_drop_stall
 
 import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
-import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
 
 // THE PROSE HALF OF THE DROP ROSTER, DECLARED AS A STALL BECAUSE THAT IS WHAT IT IS. 26 of
 // gunbc.rung_drop's rows state their DESIGN section 4b(3) fields -- previous rung, temporary rung,
@@ -64,5 +64,5 @@ data prose_declared_rung_drop_stall: GuaranteeStall = GuaranteeStall {
       "gunbc.rung_drop floor_cut_regen_second_generation_agreement"
     ]
   },
-  next_rung_trigger: "EVERY row in gunbc.rung_drop rung_drop_roster carries TypedDeclaration -- its previous rung, temporary rung, reason, bounded population and restoration trigger readable as data and not as a paragraph -- with each split reviewed as its own readable diff against the paragraph it replaces, at which point LegacyProseIdentity and the AuthoredProse arm are both deleted and the class is structurally impossible rather than empty"
+  next_rung_trigger: climbs_when(capability: "EVERY row in gunbc.rung_drop rung_drop_roster carries TypedDeclaration -- its previous rung, temporary rung, reason, bounded population and restoration trigger readable as data and not as a paragraph -- with each split reviewed as its own readable diff against the paragraph it replaces, at which point LegacyProseIdentity and the AuthoredProse arm are both deleted and the class is structurally impossible rather than empty")
 }

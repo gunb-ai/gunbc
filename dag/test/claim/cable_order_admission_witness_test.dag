@@ -1,0 +1,159 @@
+module test.claim.cable_order_admission_witness
+
+import std.types { Bool, NonEmptyStr }
+import extdeps.ethernet.link_mode { ieee_100gbase_cr2, ieee_100gbase_cr4 }
+import extdeps.transceiver.sff_8636 {
+  Sff8636LegCoding,
+  SecondaryNotObserved, sff8636_leg_coding, sff8636_nominal_rate_from_byte140,
+  transceiver_identifier_from_byte, sff8636_encoding_from_byte,
+}
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import product.cable_order_admission {
+  CableLegCodingEvidence, CableOrderAdmission, CableReceiptReconciliation,
+  CableLinkRequirement,
+  LegCodingUndeclared, LegCodingVendorAsserted, LegCodingObserved,
+  AdmittedOnVendorClaim, AdmittedOnObservedCoding, OrderRefused,
+  ReceiptNotYetObserved, ReceiptHonoursAdmittedClaim,
+  ReceiptDivergesFromAdmittedClaim, ReceiptReconciliationNotApplicable,
+  cable_link_requirement, admit_cable_order, reconcile_cable_receipt,
+  receipt_requires_supplier_remedy,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// GREEN BY EXECUTION FOR THE TWO PROCUREMENT GATES, and the central case is the real order: it is
+// ADMITTED at purchase and CAUGHT at receipt. Anyone reasoning about this incident wants to believe
+// the order should have been refused up front; it should not have been, and the witness says so out
+// loud so the belief cannot quietly return.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data fs_listing: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "fs.com/products/139217.html" }
+}
+
+data spark_rail_requirement: CableLinkRequirement = cable_link_requirement(
+  required_mode: ieee_100gbase_cr2,
+  purpose: "Spark fabric rail leg, CRS812 QSFP-DD breakout to ConnectX-7" as NonEmptyStr)
+
+// ---------------- gate 1: order admission ----------------
+
+// THE LOUD FAILURE THE WHOLE SUBJECT EXISTS TO PRODUCE. A part whose per-leg coding nobody declared
+// cannot be bought for a link that needs a specific mode, because a part number does not determine
+// a link contract.
+test fn an_undeclared_coding_refuses_the_purchase() -> Bool {
+  match admit_cable_order(evidence: LegCodingUndeclared, requirement: spark_rail_requirement) {
+    OrderRefused { reason: r } => true
+    AdmittedOnVendorClaim { claimed_mode: m, citation: c } => false
+    AdmittedOnObservedCoding { coding: c } => false
+  }
+}
+
+// THE CENTRAL CASE, AND THE ONE MOST LIKELY TO BE MISREMEMBERED. FS's listing promises 4x100G legs
+// of 2x50G PAM4 -- exactly the requirement -- so the real order is ADMITTED here. A gate that
+// refused it would be reasoning from bytes nobody could have had before delivery.
+test fn the_real_order_is_admitted_on_the_vendor_claim() -> Bool {
+  match admit_cable_order(
+    evidence: LegCodingVendorAsserted {
+      asserted_mode: ieee_100gbase_cr2, citation: fs_listing },
+    requirement: spark_rail_requirement) {
+    AdmittedOnVendorClaim { claimed_mode: m, citation: c } => true
+    AdmittedOnObservedCoding { coding: c } => false
+    OrderRefused { reason: r } => false
+  }
+}
+
+// A claim for the WRONG mode still refuses, so admission is not merely "the vendor said something".
+test fn a_claim_for_a_different_mode_refuses() -> Bool {
+  match admit_cable_order(
+    evidence: LegCodingVendorAsserted {
+      asserted_mode: ieee_100gbase_cr4, citation: fs_listing },
+    requirement: spark_rail_requirement) {
+    OrderRefused { reason: r } => true
+    AdmittedOnVendorClaim { claimed_mode: m, citation: c } => false
+    AdmittedOnObservedCoding { coding: c } => false
+  }
+}
+
+// ---------------- gate 2: receipt reconciliation ----------------
+
+// The delivered leg, as read. Byte 116 unread, primary 0x0B, PAM4 encoding, escape rate byte.
+data delivered_leg: Sff8636LegCoding = sff8636_leg_coding(
+  identifier: transceiver_identifier_from_byte(code: 17),
+  primary_compliance_code: 11,
+  secondary_compliance: SecondaryNotObserved,
+  encoding: sff8636_encoding_from_byte(code: 8),
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
+
+data admitted_purchase: CableOrderAdmission = admit_cable_order(
+  evidence: LegCodingVendorAsserted { asserted_mode: ieee_100gbase_cr2, citation: fs_listing },
+  requirement: spark_rail_requirement)
+
+// THE GATE THAT WOULD HAVE CAUGHT THIS ORDER, an hour after delivery instead of after installation.
+test fn the_delivered_leg_diverges_from_the_admitted_claim() -> Bool {
+  match reconcile_cable_receipt(
+    admitted: admitted_purchase,
+    observed: LegCodingObserved { coding: delivered_leg },
+    requirement: spark_rail_requirement) {
+    ReceiptDivergesFromAdmittedClaim {
+      required: rq, claimed_mode: cm, observed_finding: f } => true
+    ReceiptHonoursAdmittedClaim { coding: c } => false
+    ReceiptNotYetObserved { admitted: a } => false
+    ReceiptReconciliationNotApplicable { admitted: a } => false
+  }
+}
+
+// AND THAT DIVERGENCE IS THE RMA TRIGGER, named once rather than re-derived by each consumer.
+test fn a_divergence_requires_a_supplier_remedy() -> Bool {
+  receipt_requires_supplier_remedy(r: reconcile_cable_receipt(
+    admitted: admitted_purchase,
+    observed: LegCodingObserved { coding: delivered_leg },
+    requirement: spark_rail_requirement))
+}
+
+// SILENCE IS NOT AGREEMENT. A delivered assembly nobody has read must NOT reconcile as matching --
+// that is exactly the state this fleet sat in while the fabric ran at half rate, and a model that
+// scored it as clean would have certified the outage.
+test fn an_unread_delivery_does_not_reconcile_as_matching() -> Bool {
+  match reconcile_cable_receipt(
+    admitted: admitted_purchase,
+    observed: LegCodingUndeclared,
+    requirement: spark_rail_requirement) {
+    ReceiptNotYetObserved { admitted: a } => true
+    ReceiptHonoursAdmittedClaim { coding: c } => false
+    ReceiptDivergesFromAdmittedClaim { required: rq, claimed_mode: cm, observed_finding: f } => false
+    ReceiptReconciliationNotApplicable { admitted: a } => false
+  }
+}
+
+// THE POSITIVE CONTROL. A leg coded for the required mode reconciles as honouring the claim and
+// needs no remedy -- without this arm every assertion above would pass for a gate that refused
+// everything, which is a wall carrying no information.
+data correctly_coded_leg: Sff8636LegCoding = sff8636_leg_coding(
+  identifier: transceiver_identifier_from_byte(code: 17),
+  primary_compliance_code: 11,
+  secondary_compliance: SecondaryNotObserved,
+  encoding: sff8636_encoding_from_byte(code: 8),
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
+
+// The CR4 requirement is one 0x0B genuinely attests, so this exercises the honouring path against
+// the same decoder the divergence path uses.
+data cr4_requirement: CableLinkRequirement = cable_link_requirement(
+  required_mode: ieee_100gbase_cr4,
+  purpose: "control: a link whose required mode this coding does attest" as NonEmptyStr)
+
+data admitted_cr4_purchase: CableOrderAdmission = admit_cable_order(
+  evidence: LegCodingVendorAsserted { asserted_mode: ieee_100gbase_cr4, citation: fs_listing },
+  requirement: cr4_requirement)
+
+test fn a_leg_coded_for_the_required_mode_honours_the_claim() -> Bool {
+  let r = reconcile_cable_receipt(
+    admitted: admitted_cr4_purchase,
+    observed: LegCodingObserved { coding: correctly_coded_leg },
+    requirement: cr4_requirement)
+  match r {
+    ReceiptHonoursAdmittedClaim { coding: c } => !receipt_requires_supplier_remedy(r: r)
+    ReceiptDivergesFromAdmittedClaim { required: rq, claimed_mode: cm, observed_finding: f } => false
+    ReceiptNotYetObserved { admitted: a } => false
+    ReceiptReconciliationNotApplicable { admitted: a } => false
+  }
+}

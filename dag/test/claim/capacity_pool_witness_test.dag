@@ -1,0 +1,143 @@
+module test.claim.capacity_pool_witness
+
+import std.types { Bool, Int, NonEmptyStr, List, EpochSecs }
+import std.nat { Nat, nat_range_inclusive }
+import std.measure { Measure, Count, One }
+import extdeps.accounting.encumbrance { ExceedsAppropriation, DuplicateReference, Held, Released, Expended }
+import extdeps.accounting.appropriation_period { AppropriationPeriod }
+import product.capacity.pool {
+  Pool, Replenishment, NoReplenishment, LapseAtPeriodEnd,
+  PoolOutcome, PoolAdvanced, PoolRefused, PoolRefusal, LedgerRefusal, LeaseCrossesLapse, PoolInstantBeforeAnchor, LeaseAlreadyLapsed,
+  PoolReading, PoolRead, PoolReadingRefused, LeaseStanding, LeaseLive, LeaseLapsed, LeaseTermUnknown,
+  pool_of, pool_acquire, pool_settle, pool_release, lapse_pass, pool_reading_at, lease_standing_at, observe_upstream_remaining, pool_refusal_wire,
+}
+
+type Seats = Measure<Count, One, Nat>
+
+fn w_seats(n: Nat) -> Seats { Measure { count: n } }
+
+fn w_advanced(o: PoolOutcome<Count, One>) -> Pool<Count, One>? {
+  match o { PoolAdvanced { pool: p } => Present { value: p }  PoolRefused { refusal: _ } => none }
+}
+
+fn w_refused_as(o: PoolOutcome<Count, One>, wire: String) -> Bool {
+  match o { PoolAdvanced { pool: _ } => false  PoolRefused { refusal: r } => pool_refusal_wire(r: r) == wire }
+}
+
+fn w_headroom(p: Pool<Count, One>, at: EpochSecs) -> Int {
+  match pool_reading_at(pool: p, at: at) {
+    PoolRead { committed: _, ceiling: _, headroom: h, over_committed: _ } => h.count
+    PoolReadingRefused { at: _, anchor: _ } => -1
+  }
+}
+
+fn w_ref(i: Nat) -> NonEmptyStr { join(["seat-", to_string(i)], "") as NonEmptyStr }
+
+// THE SEAT POOL: group A's admission count, no replenishment. Thirty-two leases fill it, the
+// thirty-third refuses at the ledger, a release makes room, and a lease under a reference already
+// held refuses as a duplicate rather than doubling the hold.
+fn w_seat_pool() -> Pool<Count, One> {
+  pool_of(identity: "group-a-seats" as NonEmptyStr, ceiling: w_seats(n: 32), replenishment: NoReplenishment)
+}
+
+fn w_fill(p: Pool<Count, One>, upto: Nat, at: EpochSecs) -> Pool<Count, One> {
+  fold(nat_range_inclusive(lo: 1, hi: upto), init: p, f: (acc, i) =>
+    match pool_acquire(pool: acc, reference: w_ref(i: i), amount: w_seats(n: 1), at: at, term_seconds: 600) {
+      PoolAdvanced { pool: q } => q
+      PoolRefused { refusal: _ } => acc
+    })
+}
+
+test fn the_seat_pool_fills_at_its_ceiling_and_a_release_makes_room() -> Bool {
+  let full = w_fill(p: w_seat_pool(), upto: 32, at: 1000)
+  w_headroom(p: full, at: 1000) == 0
+    && w_refused_as(o: pool_acquire(pool: full, reference: "seat-33" as NonEmptyStr, amount: w_seats(n: 1), at: 1000, term_seconds: 600), wire: "ledger-refused")
+    && w_refused_as(o: pool_acquire(pool: full, reference: "seat-7" as NonEmptyStr, amount: w_seats(n: 1), at: 1000, term_seconds: 600), wire: "ledger-refused")
+    && (match w_advanced(o: pool_release(pool: full, reference: "seat-7" as NonEmptyStr, reason: "done" as NonEmptyStr, at: 1010)) {
+         Absent => false
+         Present { value: freed } =>
+           w_headroom(p: freed, at: 1010) == 1
+             && (match w_advanced(o: pool_acquire(pool: freed, reference: "seat-33" as NonEmptyStr, amount: w_seats(n: 1), at: 1010, term_seconds: 600)) {
+                  Absent => false
+                  Present { value: again } => w_headroom(p: again, at: 1010) == 0
+                })
+       })
+}
+
+// EXPIRY IS A VERDICT AT AN INSTANT: the same pool reads full at second 1599 and empty at second
+// 1600, with nothing written in between; settling after the term refuses with the lapse instant;
+// the lapse pass then records the release durably and names the reference it touched.
+test fn a_lease_returns_its_capacity_when_its_term_runs_out_and_cannot_be_settled_after() -> Bool {
+  match w_advanced(o: pool_acquire(pool: w_seat_pool(), reference: "turn-1" as NonEmptyStr, amount: w_seats(n: 1), at: 1000, term_seconds: 600)) {
+    Absent => false
+    Present { value: p } =>
+      w_headroom(p: p, at: 1599) == 31
+        && w_headroom(p: p, at: 1600) == 32
+        && (match lease_standing_at(pool: p, reference: "turn-1" as NonEmptyStr, at: 1599) { LeaseLive { until: u } => u == 1600  LeaseLapsed { at: _ } => false  LeaseTermUnknown => false })
+        && (match lease_standing_at(pool: p, reference: "turn-1" as NonEmptyStr, at: 1600) { LeaseLapsed { at: l } => l == 1600  LeaseLive { until: _ } => false  LeaseTermUnknown => false })
+        && (match w_advanced(o: pool_settle(pool: p, reference: "turn-1" as NonEmptyStr, actual: w_seats(n: 1), at: 1500)) { Present { value: _ } => true  Absent => false })
+        && w_refused_as(o: pool_settle(pool: p, reference: "turn-1" as NonEmptyStr, actual: w_seats(n: 1), at: 1601), wire: "lease-already-lapsed")
+        && (match lapse_pass(pool: p, at: 1600) {
+             LapsePass { pool: q, lapsed: names } =>
+               length(names) == 1
+                 && any(names, n => (n as String) == "turn-1")
+                 && any(q.ledger.entries, e => (e.reference as String) == "turn-1" && match e.state { Released { reason: _, released_at: _ } => true  Held { maximum_liability: _ } => false  Expended { actual: _, settled_at: _ } => false })
+           })
+  }
+}
+
+// THE GITHUB CORE LIMIT: 5000 per hour, lapsing on the hour, the row every GitHub operation in
+// extdeps declares. A lease that would outlive its window refuses; the next window opens with the
+// full ceiling; an instant before the first known boundary has no window and refuses.
+fn w_core_pool() -> Pool<Count, One> {
+  pool_of(
+    identity: "github-core" as NonEmptyStr,
+    ceiling: w_seats(n: 5000),
+    replenishment: LapseAtPeriodEnd { period: AppropriationPeriod { period_seconds: 3600, anchor: 0 } },
+  )
+}
+
+test fn a_fixed_window_pool_lapses_on_its_boundary_and_refuses_a_lease_that_crosses_it() -> Bool {
+  match w_advanced(o: pool_acquire(pool: w_core_pool(), reference: "belt-tick-1" as NonEmptyStr, amount: w_seats(n: 4000), at: 100, term_seconds: 600)) {
+    Absent => false
+    Present { value: p } =>
+      w_headroom(p: p, at: 200) == 1000
+        && w_refused_as(o: pool_acquire(pool: p, reference: "belt-tick-2" as NonEmptyStr, amount: w_seats(n: 1001), at: 200, term_seconds: 60), wire: "ledger-refused")
+        && w_refused_as(o: pool_acquire(pool: p, reference: "belt-tick-3" as NonEmptyStr, amount: w_seats(n: 100), at: 3500, term_seconds: 200), wire: "lease-crosses-lapse")
+        && (match w_advanced(o: pool_acquire(pool: p, reference: "belt-tick-4" as NonEmptyStr, amount: w_seats(n: 100), at: 3500, term_seconds: 100)) { Present { value: _ } => true  Absent => false })
+        && w_headroom(p: p, at: 3600) == 5000
+        && (match w_advanced(o: pool_acquire(pool: p, reference: "belt-tick-5" as NonEmptyStr, amount: w_seats(n: 5000), at: 3600, term_seconds: 3600)) { Present { value: _ } => true  Absent => false })
+  }
+}
+
+test fn an_instant_before_the_anchor_has_no_window_and_refuses() -> Bool {
+  let p = pool_of(
+    identity: "github-core-late-anchor" as NonEmptyStr,
+    ceiling: w_seats(n: 5000),
+    replenishment: LapseAtPeriodEnd { period: AppropriationPeriod { period_seconds: 3600, anchor: 7200 } },
+  )
+  w_headroom(p: p, at: 500) == -1
+    && w_refused_as(o: pool_acquire(pool: p, reference: "early" as NonEmptyStr, amount: w_seats(n: 1), at: 500, term_seconds: 60), wire: "instant-before-anchor")
+    && w_headroom(p: p, at: 7200) == 5000
+}
+
+// AN UPSTREAM READING THAT SAYS LESS SHRINKS THE POOL AS AN ENCUMBRANCE, and a reading that says
+// more changes nothing: the ledger's own outstanding leases are what the upstream cannot see.
+test fn an_upstream_remaining_below_the_prediction_shrinks_headroom_and_above_it_does_not() -> Bool {
+  match w_advanced(o: pool_acquire(pool: w_core_pool(), reference: "belt-tick-1" as NonEmptyStr, amount: w_seats(n: 4000), at: 100, term_seconds: 600)) {
+    Absent => false
+    Present { value: p } =>
+      (match w_advanced(o: observe_upstream_remaining(pool: p, remaining: w_seats(n: 500), at: 300, term_seconds: 3300)) {
+         Absent => false
+         Present { value: shrunk } =>
+           w_headroom(p: shrunk, at: 300) == 500
+             && w_refused_as(o: pool_acquire(pool: shrunk, reference: "belt-tick-2" as NonEmptyStr, amount: w_seats(n: 501), at: 300, term_seconds: 60), wire: "ledger-refused")
+             && (match w_advanced(o: pool_acquire(pool: shrunk, reference: "belt-tick-2" as NonEmptyStr, amount: w_seats(n: 500), at: 300, term_seconds: 60)) { Present { value: _ } => true  Absent => false })
+             && w_headroom(p: shrunk, at: 3600) == 5000
+       })
+        && (match w_advanced(o: observe_upstream_remaining(pool: p, remaining: w_seats(n: 4500), at: 300, term_seconds: 3300)) {
+             Absent => false
+             Present { value: same } => w_headroom(p: same, at: 300) == 1000
+           })
+  }
+}

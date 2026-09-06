@@ -805,6 +805,22 @@ fn shape_git_rev_parse_head_args() -> List<String> {
   ["rev-parse", "HEAD"]
 }
 
+fn shape_git_merge_base_args(left: String, right: String) -> List<String> {
+  ["merge-base", left, right]
+}
+
+fn shape_git_status_porcelain_nul_args() -> List<String> {
+  ["status", "--porcelain", "-z"]
+}
+
+fn shape_git_add_all_args() -> List<String> {
+  ["add", "-A"]
+}
+
+fn shape_git_commit_message_args(message: String) -> List<String> {
+  ["commit", "-q", "-m", message]
+}
+
 fn git_observe_meta_shell_fragment() -> String {
   concat(
     "git branch=$(", concat(git_shell_join_argv(argv: shape_git_branch_show_current_argv()), " 2>/dev/null || echo unknown)"),
@@ -1329,6 +1345,16 @@ service git.Core {
     transport shell { argv: ["git", "-C", "{repo}", "push", "--quiet", "--force", "{remote}", "{refspec}"] }
   }
 
+  operation PushRefInRepo {
+    input { repo: FilePath, remote: String, refspec: String }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-C", "{repo}", "push", "--quiet", "{remote}", "{refspec}"] }
+  }
+
   operation CatFileBlobInRepo {
     input { repo: FilePath, oid: String }
     output {
@@ -1394,6 +1420,27 @@ service git.Core {
 
 fn shape_git_worktree_add_argv(path: FilePath, branch: NonEmptyStr, remote_ref: GitRef) -> List<String> {
   ["worktree", "add", path as String, "-b", branch as String, remote_ref as String]
+}
+
+// Worktree at an EXISTING branch (no -b): the branch is created elsewhere and this checks it out.
+fn shape_git_worktree_add_branch_argv(path: FilePath, branch: NonEmptyStr) -> List<String> {
+  ["worktree", "add", path as String, branch as String]
+}
+
+fn shape_git_checkout_orphan_args(branch: NonEmptyStr) -> List<String> {
+  ["checkout", "-q", "--orphan", branch as String]
+}
+
+fn shape_git_commit_allow_empty_args(message: String) -> List<String> {
+  ["commit", "-q", "--allow-empty", "-m", message]
+}
+
+fn shape_git_add_path_args(path: String) -> List<String> {
+  ["add", "--", path]
+}
+
+fn shape_git_ls_remote_heads_args(remote: String, branch: NonEmptyStr) -> List<String> {
+  ["ls-remote", "--heads", remote, branch as String]
 }
 
 fn shape_git_worktree_add_detached_argv(path: FilePath, commit: GitRef) -> List<String> {

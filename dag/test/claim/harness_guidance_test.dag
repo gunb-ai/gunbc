@@ -1,0 +1,277 @@
+module test.claim.harness_guidance
+
+import std.types { Bool, String, Int, List }
+import gunbc.harness.harness_guidance { harness_worker_guidance_at, WorktreeAt, TestProcessIs, CompileProcessIs, TestWithTheProcess, CapabilityWithheld, BuildOrTestOutsideTheProcess,
+  HarnessGroundedPremise, HarnessPremise, HarnessConclusion,
+  ActingAs, CodingWorkerInWorktree,
+  ToolCanWriteBy, HeredocWrite,
+  CompletionRequires, FilesOnDiskDiffer, AcceptanceCheckPasses,
+  RoundsRemaining,
+  ChangeTheTreeWithTheTool, VerifyWithTheTool, ReadingAloneCompletesNothing,
+  grounded, harness_conclusions, harness_guidance_prose,
+  harness_worker_guidance, harness_probe_guidance,
+}
+import gunbc.harness.harness_tool { RunCommandTool, harness_tool_wire_name }
+import std.measure { token_count_value, second_count }
+import gunbc.harness.harness_wire { harness_engine_context_window, harness_engine_admission_cap }
+import gunbc.harness.harness_cli { harness_default_max_tokens, harness_request_deadline }
+import gunbc.harness.harness_turn {
+  harness_stop_reason_truncated, harness_reasoning_kwargs, harness_wire_block_json,
+  harness_split_inline_reasoning, harness_thinking_format_cause,
+}
+import gunbc.harness.harness_wire { HarnessWireBlock, WireTextBlock, WireThinkingBlock }
+import extdeps.deepseek.deepseek_v4 { DeepseekV4ReasoningMode, DeepseekV4NonThink, DeepseekV4ThinkHigh, DeepseekV4ThinkMax }
+import extdeps.languages.json.emit { json_object, serialize_json }
+import extdeps.llm.anthropic_messages_api { MaxTokens, ToolUse, EndTurn }
+
+// WHAT THESE TEST, AND WHAT THEY DELIBERATELY DO NOT.
+//
+// A prompt has three separable layers and only two of them have a deterministic oracle. PROJECTION
+// (a premise renders to its clause) and ENTAILMENT (a premise SET derives an imperative set) are
+// pure folds over .dag values: no model, no host effect, no network, so they answer on every run at
+// substrate cost. BEHAVIOUR -- does a worker given this prompt edit N lines -- is a sampled property
+// of a nondeterministic system, and an assertion over it is a flaky oracle, not a test. It is
+// measured elsewhere and is not enrolled here.
+//
+// THE LOAD-BEARING HALF IS THE NEGATIVE ONE. Asserting that the worker roster yields the change
+// imperative is nearly free to satisfy and would stay green if the derivation were replaced by a
+// hardcoded list. The witnesses that carry information are the ones that DROP a premise and require
+// the imperative to disappear: they are the discriminating RED that DESIGN section 5 asks for, and
+// they fail exactly when the syllogism decays back into authored prose.
+//
+// NOT WRITTEN, AND THE OMISSION IS THE POINT: "every premise cites a declaration". DeclarationRef
+// carries NonEmptyStr fields and HarnessGroundedPremise requires one, so an ungrounded premise has
+// no constructor. Per DESIGN section 4b that check's RED is unauthorable, which makes it a
+// permanently-green decoration that would be cited as coverage. The carrier already holds it.
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+fn at(premise: HarnessPremise) -> HarnessGroundedPremise {
+  grounded(premise: premise, module_path: "gunbc.harness.harness_tool", decl_name: "harness_run_command")
+}
+
+fn counts_change_imperative(c: HarnessConclusion) -> Bool {
+  match c { ChangeTheTreeWithTheTool => true  _ => false }
+}
+
+fn counts_verify_imperative(c: HarnessConclusion) -> Bool {
+  match c { VerifyWithTheTool => true  _ => false }
+}
+
+fn counts_reading_clause(c: HarnessConclusion) -> Bool {
+  match c { ReadingAloneCompletesNothing => true  _ => false }
+}
+
+fn derives(rows: List<HarnessGroundedPremise>, f: fn(HarnessConclusion) -> Bool) -> Bool {
+  list_length(items: harness_conclusions(rows: rows) |> filter(c => f(c))) > 0
+}
+
+fn can_write() -> HarnessGroundedPremise { at(premise: ToolCanWriteBy { form: HeredocWrite }) }
+fn must_differ() -> HarnessGroundedPremise { at(premise: CompletionRequires { term: FilesOnDiskDiffer }) }
+fn must_accept() -> HarnessGroundedPremise { at(premise: CompletionRequires { term: AcceptanceCheckPasses }) }
+fn is_worker() -> HarnessGroundedPremise { at(premise: ActingAs { role: CodingWorkerInWorktree }) }
+
+// POSITIVE CONTROL. Both entailing premises present, so the imperative is derived.
+test fn write_form_and_difference_term_entail_the_change_imperative() -> Bool {
+  derives(rows: [is_worker(), can_write(), must_differ()], f: counts_change_imperative)
+}
+
+// DISCRIMINATING RED. Drop the write form: the harness can no longer write, so an imperative telling
+// the model to write is a sentence about a system that does not exist. It must not survive.
+test fn without_a_write_form_no_change_imperative_is_derived() -> Bool {
+  !derives(rows: [is_worker(), must_differ()], f: counts_change_imperative)
+}
+
+// DISCRIMINATING RED. Drop the completion term: writing is possible but not required, so the
+// imperative is unentailed even though the capability is held.
+test fn without_a_difference_term_no_change_imperative_is_derived() -> Bool {
+  !derives(rows: [is_worker(), can_write()], f: counts_change_imperative)
+}
+
+// The reading clause shares the change imperative's premises and must share its absence.
+test fn the_reading_clause_tracks_the_change_imperative() -> Bool {
+  !derives(rows: [is_worker(), must_differ()], f: counts_reading_clause)
+}
+
+test fn an_acceptance_term_entails_the_verify_imperative() -> Bool {
+  derives(rows: [is_worker(), must_accept()], f: counts_verify_imperative)
+}
+
+// DISCRIMINATING RED. No acceptance term, no verify imperative.
+test fn without_an_acceptance_term_no_verify_imperative_is_derived() -> Bool {
+  !derives(rows: [is_worker(), can_write(), must_differ()], f: counts_verify_imperative)
+}
+
+// THE ROSTER-LEVEL CONSEQUENCE. The probe roster is read-only by construction, so no write
+// imperative may reach a prompt built from it.
+test fn the_probe_roster_derives_no_write_imperative() -> Bool {
+  !derives(rows: harness_probe_guidance(), f: counts_change_imperative)
+}
+
+test fn the_worker_roster_derives_the_write_imperative() -> Bool {
+  derives(rows: harness_worker_guidance(), f: counts_change_imperative)
+}
+
+// PROJECTION. The prompt reads the tool's wire name rather than spelling it, so the prose and the
+// wire cannot disagree about what the model is being told to call.
+test fn worker_prose_names_the_tool_by_its_wire_name() -> Bool {
+  harness_guidance_prose(rows: harness_worker_guidance())
+    .contains(harness_tool_wire_name(tool: RunCommandTool))
+}
+
+// PROJECTION. A measured count reaches the prose as that count, not as a rounded or authored one.
+test fn a_rounds_premise_projects_its_measured_count() -> Bool {
+  harness_guidance_prose(rows: [is_worker(), at(premise: RoundsRemaining { rounds: 7 })]).contains("7")
+}
+
+// THE WORKING WINDOW MUST STAY UNDER THE ENGINE'S ADMISSION CEILING. Authorable red: raise the
+// window past the cap and this goes false, which is the state where every request is rejected by
+// the serving side rather than merely being slow. The two rows are separate facts that move for
+// different reasons (client entitlement vs server limit), so nothing structural keeps them ordered
+// -- which is exactly the case where a check earns its place rather than decorating a guarantee the
+// carrier already gives.
+test fn the_working_window_stays_under_the_engine_admission_cap() -> Bool {
+  token_count_value(t: harness_engine_context_window)
+    <= token_count_value(t: harness_engine_admission_cap)
+}
+
+// A RESPONSE CANNOT BE LARGER THAN THE WINDOW IT IS GENERATED INTO. Also authorable red, and it is
+// the relationship that was actually violated in spirit before today: a 65,536-token ceiling is not
+// wrong against a 1M window, but it became wrong the moment the window dropped to 200k without
+// anything relating the two.
+test fn one_response_fits_inside_the_working_window() -> Bool {
+  harness_default_max_tokens < token_count_value(t: harness_engine_context_window)
+}
+
+// THE DERIVED DEADLINE IS READ BACK, not assumed. Integer division is the whole reason this witness
+// exists: 16384/24 truncates to 682 (+300 = 2348; an earlier revision of this line said 983 and the
+// interpreter refused it), and a language that rounded differently
+// would move the deadline without moving anything an author wrote. Pinning the arithmetic here means
+// the value is measured by the interpreter rather than by the author's mental model of it.
+test fn the_request_deadline_derives_to_the_expected_seconds() -> Bool {
+  second_count(s: harness_request_deadline) == 2348
+}
+
+// A TRUNCATED TOOL CALL MUST NOT BE TREATED AS A COMPLETE ONE. This pins the predicate the round arm
+// consults before executing anything. It matters more than its size suggests: the failure it
+// prevents is SILENT -- a heredoc cut off at the token ceiling writes a partial file and returns
+// exit 0, so nothing downstream would have reported a problem. The arm that used to sit here
+// branched on whether tool calls were PRESENT, which is a question that is always true when the
+// model is working, and never on whether they were COMPLETE.
+test fn a_max_tokens_stop_is_recognised_as_truncation() -> Bool {
+  harness_stop_reason_truncated(reason: MaxTokens)
+}
+
+// THE DISCRIMINATING CONTROL, and it is the half that makes the witness above mean anything: an
+// ORDINARY tool-call stop must NOT be read as truncation. A predicate that answered true for every
+// stop reason would satisfy the witness above and refuse every round the harness ever runs.
+test fn an_ordinary_tool_use_stop_is_not_truncation() -> Bool {
+  !harness_stop_reason_truncated(reason: ToolUse)
+    && !harness_stop_reason_truncated(reason: EndTurn)
+}
+
+// THE REASONING SWITCH REACHES THE WIRE AS THE TEMPLATE'S OWN KWARGS, with the effort label the
+// extdeps module owns. Think Max must serialize as "max": an earlier revision of the extdeps row
+// said "xhigh", which the official guide lists as a compatibility alias for HIGH -- a harness that
+// asked for max with it would have received high and never known.
+test fn think_max_serializes_as_the_max_effort_kwarg() -> Bool {
+  serialize_json(v: json_object(harness_reasoning_kwargs(mode: DeepseekV4ThinkMax)))
+    .contains("\"reasoning_effort\": \"max\"")
+    && serialize_json(v: json_object(harness_reasoning_kwargs(mode: DeepseekV4ThinkMax)))
+    .contains("\"thinking\": true")
+}
+
+// NON-THINK SENDS NOTHING. On vLLM the absence of the kwarg IS non-think; a false would assert a key
+// whose absence means the same, and would be a second spelling of one fact.
+test fn non_think_emits_no_kwargs() -> Bool {
+  list_length(items: harness_reasoning_kwargs(mode: DeepseekV4NonThink)) == 0
+}
+
+// INLINE REASONING SPLITS INTO A THINKING BLOCK AND SPEECH. This is the encoder's completion format
+// decoded client-side: everything before the closer is reasoning, everything after is what the
+// model said. Probed 2026-09-04 against the live units, which carry no reasoning parser.
+test fn inline_reasoning_splits_into_thinking_and_speech() -> Bool {
+  let b = harness_split_inline_reasoning(blocks: [
+    WireTextBlock { text: "We need 17*23. 17*20=340, 17*3=51, total 391.</think>391" },
+  ])
+  list_length(items: b) == 2
+    && (match b.first() { Present { value: WireThinkingBlock { thinking: r } } => r.contains("17*20=340")  _ => false })
+    && (match b.last() { Present { value: WireTextBlock { text: t } } => t == "391"  _ => false })
+}
+
+// THE CONTROL: a thinking block from a parser-equipped server, and plain text, pass through
+// untouched -- the split must not fire on well-formed input.
+test fn a_thinking_block_and_plain_text_pass_through_the_split() -> Bool {
+  list_length(items: harness_split_inline_reasoning(blocks: [
+    WireThinkingBlock { thinking: "We need 17*23." }, WireTextBlock { text: "391" },
+  ])) == 2
+}
+
+// A SECOND CLOSER IS SPEECH. The encoder reads to the first end token and everything after it is
+// content, however many times the string recurs. This was the shape that stopped a live run: the
+// model's speech legitimately contained the token, and an invented rule called it invalid.
+test fn a_second_closer_is_speech_not_an_invalid_format() -> Bool {
+  let b = harness_split_inline_reasoning(blocks: [WireTextBlock { text: "plan</think>the file mentions </think> in a test" }])
+  list_length(items: b) == 2
+    && (match b.last() { Present { value: WireTextBlock { text: t } } => t == "the file mentions </think> in a test"  _ => false })
+    && harness_thinking_format_cause(blocks: [WireTextBlock { text: "plan</think>a </think> b" }], mode: DeepseekV4ThinkMax) == ""
+}
+
+// THE ENCODER'S SECOND INVALID SHAPE: thinking requested, no closer, no thinking block.
+test fn a_missing_closer_under_thinking_is_an_invalid_format() -> Bool {
+  harness_thinking_format_cause(blocks: [WireTextBlock { text: "391" }], mode: DeepseekV4ThinkMax)
+    .contains("no end-of-thinking closer")
+}
+
+// THE DISCRIMINATING CONTROL: the same closer-less text under NON-THINK is well-formed, and a
+// well-formed inline completion under Think Max is well-formed too. A cause that fired on either
+// would refuse every ordinary round.
+test fn a_closerless_text_is_valid_under_non_think_and_a_split_one_under_think_max() -> Bool {
+  harness_thinking_format_cause(blocks: [WireTextBlock { text: "391" }], mode: DeepseekV4NonThink) == ""
+    && harness_thinking_format_cause(blocks: [WireTextBlock { text: "r</think>391" }], mode: DeepseekV4ThinkMax) == ""
+}
+
+// THINK HIGH SENDS THE THINKING SWITCH AND NO EFFORT KEY. Measured on the live artifact: with
+// thinking on, an effort of "high" leaves prompt_tokens at 5 while "max" raises it to 84 -- only max
+// has a preamble in the canonical encoder. An effort key that renders nothing is a second spelling
+// of its own absence.
+test fn think_high_sends_thinking_without_an_effort_key() -> Bool {
+  let wire = serialize_json(v: json_object(harness_reasoning_kwargs(mode: DeepseekV4ThinkHigh)))
+  wire.contains("\"thinking\": true") && !wire.contains("reasoning_effort")
+}
+
+
+// REASONING ROUND-TRIPS AS REASONING. A thinking block re-encoded for replay must carry type
+// "thinking", never "text": the guide requires prior reasoning passed back as reasoning, and a
+// relabel would make the model's thought into its speech on the next turn. The control half checks
+// a text block still replays as text, so the fix did not simply relabel everything.
+test fn a_thinking_block_replays_as_a_thinking_block() -> Bool {
+  let th = serialize_json(v: harness_wire_block_json(block: WireThinkingBlock { thinking: "We need 17*23." }))
+  let tx = serialize_json(v: harness_wire_block_json(block: WireTextBlock { text: "391" }))
+  th.contains("\"type\": \"thinking\"") && th.contains("\"thinking\": \"We need 17*23.\"")
+    && tx.contains("\"type\": \"text\"") && !tx.contains("thinking")
+}
+
+test fn the_worker_is_told_its_own_worktree_path() -> Bool {
+  let prose = harness_guidance_prose(rows: harness_worker_guidance_at(worktree: "/x/attempts/n-a1", test_command: "gunbc-test-cmd", test_receipt_path: "/x/attempts/n-a1/.gunbc-test-receipt.json", compile_command: "gunbc-compile-cmd", compile_receipt_path: "/x/attempts/n-a1/.gunbc-compile-receipt.json"))
+  prose.contains("The attempt worktree is /x/attempts/n-a1.")
+    && prose.contains("paths outside it, including the tree that holds the gunbc binary, are not part of this task")
+}
+
+// ENTAILMENT + PROJECTION. A test-process premise beside an acceptance term derives the one acceptance
+// command, verbatim, and the withheld capability names the routes that are not it. RED against a
+// roster that mentions cargo as a way to check work, and against a process premise with no
+// acceptance term deriving the imperative on its own.
+test fn the_worker_is_told_the_one_test_command_and_nothing_else() -> Bool {
+  let rows = harness_worker_guidance_at(worktree: "/x/attempts/n-a1", test_command: "/opt/gunbc/bin/gunbc run --entry test_run.dag --arg pattern=//dag/test/claim/<package>/...", test_receipt_path: "/x/attempts/n-a1/.gunbc-test-receipt.json", compile_command: "/opt/gunbc/bin/gunbc run --entry test_run.dag --function compile_entry_cli --arg entry=<entry>", compile_receipt_path: "/x/attempts/n-a1/.gunbc-compile-receipt.json")
+  let prose = harness_guidance_prose(rows: rows)
+  let conclusions = harness_conclusions(rows: rows)
+  prose.contains("The canonical test process is one command: `/opt/gunbc/bin/gunbc run --entry test_run.dag --arg pattern=//dag/test/claim/<package>/...`.")
+    && prose.contains("So the acceptance command is `/opt/gunbc/bin/gunbc run --entry test_run.dag --arg pattern=//dag/test/claim/<package>/...` and nothing else")
+    && prose.contains("You may not build or test any other way: no cargo, no gunbc compile, no claim_batch by hand")
+    && prose.contains("/x/attempts/n-a1/.gunbc-test-receipt.json")
+    && prose.contains("To typecheck a change before testing it, run `/opt/gunbc/bin/gunbc run --entry test_run.dag --function compile_entry_cli --arg entry=<entry>`")
+    && prose.contains("zero blocking diagnostics; advisories are not the bar")
+    && prose.contains("/x/attempts/n-a1/.gunbc-compile-receipt.json")
+    && any(conclusions, c => match c { TestWithTheProcess { command } => command.contains("test_run.dag")  _ => false })
+    && !any(harness_conclusions(rows: [is_worker(), at(premise: TestProcessIs { command: "x", receipt_path: "r" })]), c => match c { TestWithTheProcess { command: _ } => true  _ => false })
+}

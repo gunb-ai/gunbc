@@ -16,15 +16,19 @@ module gunbc.scm.render
 // A file, a pipe or an HTTP body is therefore one more handler and never a change to these
 // functions.
 //
-// WHY STATUS RE-USES ITS VERB'S LINE HELPERS RATHER THAN RE-DECIDING ITS TEXT. `gunbc.scm.status`
-// already owns `render_status_checkout`, `render_commit_count` and `render_staged`, and those encode
-// real decisions -- notably that an empty staged list renders as "nothing staged" rather than as
-// blank space, because silence and emptiness are different facts to a reader. Re-authoring those
-// choices here would fork the presentation of one concept across two modules (section 3), so this
-// module consumes them and contributes only the DOCUMENT STRUCTURE around them. The witness holds
-// that composition to its consequence: the serialized document is byte-identical to the verb
-// module's own `render_repository_status`, so there is one authority for status text and this
-// module has not quietly become a second.
+// WHY STATUS TAKES ITS WHOLE LINE LIST FROM ITS VERB RATHER THAN ASSEMBLING ONE. `gunbc.scm.status`
+// owns what status SAYS; this module owns only how a line list becomes a document.
+//
+// THAT USED TO BE HALF TRUE AND THE HALF THAT WAS FALSE IS WHAT BROKE. This module consumed the verb
+// module's per-line helpers but re-assembled them here in its own ORDER, under a note claiming only
+// the document structure was decided here. The individual lines were shared; the COMPOSITION was
+// forked, so the two were one edit apart from disagreeing -- and they disagreed the moment status
+// grew a corpus section, because only the verb module's copy was updated. The witness asserting the
+// two are byte-identical is what caught it.
+//
+// So the composition has ONE home now, and this module calls `repository_status_lines`. The witness
+// still measures the equality, but it is now measuring a property that holds by construction rather
+// than one that depends on two authors remembering the same order.
 //
 // WHY LOG DECIDES ITS TEXT HERE. `gunbc.scm.log` deliberately ships NO renderer, for the reason
 // quoted above. So the log lines are authored here, and the two fields a reader expects and the
@@ -49,6 +53,13 @@ import std.render {
 }
 import gunbc.scm.read_command { ScmReadResult, ScmReadAnswered, ScmReadRepositoryUnavailable }
 import gunbc.scm.repository_load { repository_load_refusal_lines }
+import gunbc.scm.repository_envelope {
+  RepositoryDocumentProtocol,
+  RepositoryProtocolRetiredFormat,
+  RepositoryProtocolUnrecognizedFormat,
+  RepositoryProtocolUnrecognizedIdentityRule,
+  RepositoryProtocolNotAProtocolRefusal,
+}
 import gunbc.scm.init {
   ScmInitOutcome,
   ScmInitialized,
@@ -57,6 +68,7 @@ import gunbc.scm.init {
   ScmInitRefusal,
   ScmInitRepositoryPresent,
   ScmInitForeignFilePresent,
+  ScmInitUnsupportedDocumentPresent,
   ScmInitPathUnobserved,
   ScmInitNameNotAnEntry
 }
@@ -73,17 +85,12 @@ import gunbc.scm.log {
   CommitLogRows,
   CommitLogRow,
   LoggedCommitStanding,
-  LoggedCommitRootHeld,
+  LoggedCommitManifestHeld,
   LoggedCommitRootIsAuthoredSource,
-  LoggedCommitRootIsCorpusManifest,
+  LoggedCommitRootIsSemanticNode,
   LoggedCommitRootMissingFromStore,
 }
-import gunbc.scm.status {
-  RepositoryStatus,
-  render_status_checkout,
-  render_commit_count,
-  render_staged,
-}
+import gunbc.scm.status { RepositoryStatus, repository_status_lines }
 
 // A document of plain text lines: one Leaf block, one line per string.
 //
@@ -109,12 +116,18 @@ fn text_lines_document(lines: List<String>) -> Document {
 // `gunbc.scm.log` reports this per row because the envelope can decide it, and a row whose program
 // is missing CANNOT BE CHECKED OUT. Rendering it identically to an ordinary row would present an
 // unusable commit as usable -- the reader's next action differs, so the rendering must.
+// THE HELD ROW RENDERS EMPTY, AND THAT IS NOT A CLAIM THAT IT CHECKS OUT. `LoggedCommitManifestHeld`
+// says this store holds the manifest, not that it holds every source the manifest names, so the
+// suffix says nothing rather than saying "checkoutable" -- advertising held-ness as recoverability
+// would be a larger claim than the observation supports. Whether the sources are present is a
+// separate walk (gunbc.scm.checkout recover_corpus), and when a surface wants to report it, it
+// reports THAT observation rather than borrowing this one.
 fn log_standing_suffix(standing: LoggedCommitStanding) -> String {
   match standing {
-    LoggedCommitRootHeld => ""
-    LoggedCommitRootMissingFromStore => "  (program not held -- cannot be checked out)"
-    LoggedCommitRootIsAuthoredSource => "  (root is a source file, not a program -- cannot be checked out)"
-    LoggedCommitRootIsCorpusManifest => "  (root is a corpus manifest, not a program -- cannot be checked out)"
+    LoggedCommitManifestHeld => ""
+    LoggedCommitRootMissingFromStore => "  (snapshot not held -- cannot be checked out)"
+    LoggedCommitRootIsAuthoredSource => "  (root is a source file, not a corpus snapshot -- cannot be checked out)"
+    LoggedCommitRootIsSemanticNode => "  (root is a program node, not a corpus snapshot -- cannot be checked out)"
   }
 }
 
@@ -139,18 +152,6 @@ fn scm_log_document(result: ScmReadResult<CommitLog>) -> Document {
     ScmReadAnswered { path: _, answer: log } =>
       text_lines_document(lines: commit_log_lines(log: log))
   }
-}
-
-// The status lines come from the verb module; only the document structure is decided here. See the
-// header: this is the anti-fork constraint, and the witness measures it.
-fn repository_status_lines(status: RepositoryStatus) -> List<String> {
-  concat(
-    [
-      render_status_checkout(checkout: status.checkout),
-      render_commit_count(commit_count: status.commit_count),
-    ],
-    render_staged(staged: status.staged),
-  )
 }
 
 fn scm_status_document(result: ScmReadResult<RepositoryStatus>) -> Document {
@@ -221,7 +222,7 @@ fn scm_status_cli_response(
 fn repository_save_lines(save: RepositorySave) -> List<String> {
   match save {
     RepositorySaved { path: p, written: _ } =>
-      [concat("initialized repository at ", p)]
+      [concat("wrote repository at ", p)]
     RepositorySaveRefusedByCodec { path: p, cause: _ } =>
       [
         concat("cannot encode repository for ", p),
@@ -281,12 +282,33 @@ fn scm_init_lines(outcome: ScmInitOutcome) -> List<String> {
   }
 }
 
+// ONE SENTENCE FOR THE PROTOCOL FACT, so init and the read path cannot drift into describing the same
+// observation two ways. It says what was DECLARED and that this build has no reader; it does not say a
+// repository is present, because the decoder returned before validating any body.
+fn unsupported_document_line(protocol: RepositoryDocumentProtocol) -> String {
+  match protocol {
+    RepositoryProtocolRetiredFormat { found: f } =>
+      concat("the document declares retired repository format ", f)
+    RepositoryProtocolUnrecognizedFormat { found: f } =>
+      concat("the document declares unrecognized repository format ", f)
+    RepositoryProtocolUnrecognizedIdentityRule { found: f } =>
+      concat("the document declares unrecognized object identity rule ", f)
+    RepositoryProtocolNotAProtocolRefusal => "the document could not be read as a repository"
+  }
+}
+
 fn scm_init_refusal_lines(cause: ScmInitRefusal) -> List<String> {
   match cause {
     ScmInitRepositoryPresent { path: p } =>
       [
         concat("refusing to initialize ", p),
         "  a repository is already there, and init would replace its whole history"
+      ]
+    ScmInitUnsupportedDocumentPresent { path: p, protocol: protocol } =>
+      [
+        concat("refusing to initialize ", p),
+        concat("  ", unsupported_document_line(protocol: protocol)),
+        "  its contents were not validated, and init would destroy the bytes that are there"
       ]
     ScmInitForeignFilePresent { path: p } =>
       [
@@ -318,6 +340,8 @@ fn scm_init_refusal_exit(cause: ScmInitRefusal) -> ProcessExit {
   match cause {
     ScmInitRepositoryPresent { path: _ } =>
       exit_failure(reason: "repository already present")
+    ScmInitUnsupportedDocumentPresent { path: _, protocol: _ } =>
+      exit_failure(reason: "path occupied by a document declaring a protocol this build does not read")
     ScmInitForeignFilePresent { path: _ } =>
       exit_failure(reason: "path occupied by a non-repository file")
     ScmInitPathUnobserved { path: _, cause: _ } =>
