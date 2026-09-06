@@ -80,37 +80,46 @@ type MergeSideName
   | MergeSourceCommit
   | MergeTargetCommit
 
+// THE ARMS, AND WHY EACH IS ITS OWN ARM RATHER THAN A FIELD ON A SHARED ONE:
+//
+//   SquashMergeBaseRefused          carried out of merge_base UNCHANGED. Re-wording it here would
+//                                   fork the authority for what a missing base MEANS, and that
+//                                   wording is the operator's only handle on the remedy.
+//   SquashMergeConflicted           the conflicts ARE the answer, not an error string. This is the
+//                                   one refusal whose remedy is a human decision, so it carries the
+//                                   complete population manifest_merge produced: a caller given a
+//                                   count could not act, and one given the first could not size the
+//                                   job.
+//   SquashMergeRoot*                a commit names a manifest the store cannot produce.
+//                                   Distinguished by side AND by occupant kind, because "absent" is
+//                                   a missing object while "occupied by an authored source" is an
+//                                   identity collision or a corrupt row -- different damage,
+//                                   different investigation.
+//   SquashMergeCommitMissing        a reference naming no commit. Reachable BEFORE any history is
+//                                   walked, so it is not a merge_base refusal and must not be
+//                                   reported as one.
+//   SquashMergeResult*              the merged manifest would not store. Kept apart from the mint
+//                                   arms below because this happens before any commit is proposed:
+//                                   the corpus itself could not be written down.
+//   SquashMergeAllocatorInvalid     a corrupt envelope.
+//   SquashMergeMintParentMissing    a vanished target.
+//   SquashMergeMintIntegration...   a vanished source.
 type SquashMergeOutcome
   = SquashMerged { repository: RepositoryEnvelope, reference: RepositoryCommitRef }
 
-  // CARRIED OUT OF merge_base UNCHANGED. Re-wording them here would fork the authority for what a
-  // missing base MEANS, and the wording is the operator's only handle on the remedy.
   | SquashMergeBaseRefused { refusal: MergeBaseOutcome }
 
-  // THE CONFLICTS ARE THE ANSWER, NOT AN ERROR STRING. This is the one refusal whose remedy is a
-  // human decision, so it carries the complete population manifest_merge produced -- a caller that
-  // received a count could not act, and one that received the first could not size the job.
   | SquashMergeConflicted { conflicts: List<ManifestPathConflict> }
 
-  // A COMMIT NAMES A MANIFEST THE STORE CANNOT PRODUCE. Distinguished by side and by occupant kind,
-  // because "absent" is a missing object while "occupied by an authored source" is an identity
-  // collision or a corrupt row -- different damage, different investigation.
   | SquashMergeRootMissing { side: MergeSideName, root: ObjectId }
   | SquashMergeRootIsAuthoredSource { side: MergeSideName, root: ObjectId }
   | SquashMergeRootIsSemanticNode { side: MergeSideName, root: ObjectId }
 
-  // A REFERENCE THAT NAMES NO COMMIT. Reachable before any history is walked, so it is not a
-  // merge_base refusal and must not be reported as one.
   | SquashMergeCommitMissing { side: MergeSideName, reference: RepositoryCommitRef }
 
-  // THE MERGED MANIFEST WOULD NOT STORE. Kept apart from the mint refusals below because this
-  // happens BEFORE any commit is proposed: the corpus itself could not be written down.
   | SquashMergeResultDuplicatePath { path: String }
   | SquashMergeResultLocatorCollision { identity: ObjectId }
 
-  // THE MINT REFUSED. Carried outward one arm per cause for the same reason as the base refusals:
-  // an invalid allocator is a corrupt envelope, a missing parent is a vanished target, a missing
-  // integration source is a vanished source. Three repairs, three arms.
   | SquashMergeAllocatorInvalid
   | SquashMergeMintParentMissing { parent: RepositoryCommitRef }
   | SquashMergeMintIntegrationSourceMissing { source: RepositoryCommitRef }
@@ -171,6 +180,12 @@ fn carry_mint(mint: RepositoryCommitMint) -> SquashMergeOutcome {
   }
 }
 
+// THE PARENT IS THE TARGET AND ONLY THE TARGET. A squash records ONE lineage edge, and the source is
+// recorded as CONSUMED rather than as a second parent -- which is what makes the operator's "kill dev
+// history, never rebase" workflow the shape of the model instead of a convention layered over it. The
+// source is not lost: the SquashIntegrated below is precisely the record merge_base reads to refuse
+// the second merge.
+//
 // THE COMMIT IS MINTED ONTO THE STORE THE MANIFEST WAS WRITTEN INTO, never onto the caller's
 // repository value. Minting against the pre-store envelope would produce a commit whose root names a
 // manifest that repository does not contain -- a dangling root written by the one operation that
@@ -199,11 +214,6 @@ fn commit_merged_manifest(
           },
           root: CorpusManifestTarget { locator: reference.locator },
           message: message,
-          // THE PARENT IS THE TARGET AND ONLY THE TARGET. A squash records ONE lineage edge, and the
-          // source is recorded as CONSUMED rather than as a second parent -- which is what makes the
-          // operator's "kill dev history, never rebase" workflow the shape of the model instead of a
-          // convention layered over it. The source is not lost: SquashIntegrated below is precisely
-          // the record merge_base reads to refuse the second merge.
           parent: Present { value: target },
           integration: SquashIntegrated { source: source },
         )
