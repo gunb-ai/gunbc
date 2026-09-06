@@ -28,12 +28,11 @@ import std.types { NonEmptyStr, String }
 // one string because someone wrote them as one.
 data mtcollins1_boot_export_dir: NonEmptyStr = "/srv/bmc"
 
+// THE COMPOSITION ITSELF LIVES IN THE FETCH OPERATION, not here, and this module deliberately
+// exports only the two atoms. A composed path helper beside them would be a third row derived from
+// the first two, and the operation composes anyway because it needs the DIRECTORY separately -- the
+// ownership admission is about the directory while the write is about the path. Exporting both the
+// atoms and their composition would put two spellings of one fact back in circulation, which is the
+// condition this module was created to end.
 data mtcollins1_diskless_image_name: NonEmptyStr = "ubuntu-24.04.3-live-server-arm64.iso"
 
-fn mtcollins1_boot_image_published_path() -> NonEmptyStr {
-  join([
-    mtcollins1_boot_export_dir as String,
-    "/",
-    mtcollins1_diskless_image_name as String,
-  ], "") as NonEmptyStr
-}

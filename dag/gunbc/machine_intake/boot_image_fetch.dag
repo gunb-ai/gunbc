@@ -1,6 +1,11 @@
 module gunbc.machine_intake_boot_image_fetch
 
 import std.types { Bool, FilePath, NonEmptyStr, String }
+import gunbc.machine_intake_boot_image_export_ownership {
+  export_ownership_admits_publication,
+  export_ownership_refusal_reason,
+  observed_export_ownership_standing,
+}
 import extdeps.shell
 import extdeps.tools.curl { curl_download_command }
 import gunbc.command_runner { run_shell_command }
@@ -35,6 +40,7 @@ type BootImageFetchOutcome
   | BootImageDigestMismatchRefused { expected: NonEmptyStr, observed: NonEmptyStr }
   | BootImagePublishFailed { staged: NonEmptyStr, destination: NonEmptyStr }
   | BootImagePublishedDigestMismatch { path: NonEmptyStr, expected: NonEmptyStr, observed: NonEmptyStr }
+  | BootImagePublicationNotAdmitted { export_dir: NonEmptyStr, reason: String }
 
 // WHETHER A MEASURED DIGEST AGREES WITH THE PIN. Separated from the effect sequence so the judgment
 // is nameable, and returning the OBSERVED value on disagreement rather than a Bool: a refusal that
@@ -92,13 +98,20 @@ fn boot_image_staging_path(published_path: NonEmptyStr) -> NonEmptyStr {
   join([published_path as String, ".gunbc-staging"], "") as NonEmptyStr
 }
 
+// THE EXPORT DIRECTORY AND THE IMAGE NAME ARE TAKEN SEPARATELY, and the published path is composed
+// here, because the ADMISSION is about the directory while the WRITE is about the path. Taking a
+// composed path and a directory as two parameters would let a caller pass a path that does not live
+// in the directory that was admitted -- admitting one place and writing to another, which is the
+// same seam defect as verifying one artifact and attaching a different one.
 func fetch_verified_boot_image(
   url: NonEmptyStr,
-  published_path: NonEmptyStr,
+  export_dir: NonEmptyStr,
+  image_name: NonEmptyStr,
   expected_sha256: NonEmptyStr,
 ) -> BootImageFetchOutcome
   uses net: std.resources.Network
 {
+  let published_path = join([export_dir as String, "/", image_name as String], "") as NonEmptyStr
   let staging_path = boot_image_staging_path(published_path: published_path)
   let fetched = run_shell_command(
     command: curl_download_command(url: url as String, destination: staging_path as String),
@@ -109,6 +122,7 @@ func fetch_verified_boot_image(
       verify_and_publish_boot_image(
         staging_path: staging_path,
         published_path: published_path,
+        export_dir: export_dir,
         expected_sha256: expected_sha256,
       )
     _ => BootImageFetchFailed { url: url }
@@ -122,6 +136,7 @@ func fetch_verified_boot_image(
 func verify_and_publish_boot_image(
   staging_path: NonEmptyStr,
   published_path: NonEmptyStr,
+  export_dir: NonEmptyStr,
   expected_sha256: NonEmptyStr,
 ) -> BootImageFetchOutcome
   uses net: std.resources.Network
@@ -132,9 +147,10 @@ func verify_and_publish_boot_image(
       BootImageDigestUnreadable { path: p, reason: r }
     Sha256FileDigest { digest: _ } =>
       if boot_image_digest_agrees(observed: measured, expected: expected_sha256) {
-        publish_verified_boot_image(
+        admit_then_publish_boot_image(
           staging_path: staging_path,
           published_path: published_path,
+          export_dir: export_dir,
           digest: boot_image_observed_hex(observed: measured),
         )
       } else {
@@ -149,6 +165,39 @@ func verify_and_publish_boot_image(
 // THE PUBLISH IS ITS OWN FUNC so the move is reachable only through the arm where the digest already
 // agreed, in the same shape the boot handoff uses to keep its power cycle behind a confirmed
 // read-back. A future edit cannot fall through to it.
+// THE OWNERSHIP ADMISSION SITS AT THE WRITE BOUNDARY, which is the only place it means anything.
+// gunbc.machine_intake_boot_image_export_ownership previously described who may own the export and
+// was consulted by NOTHING: this module called mv directly, so the program published whenever the
+// operating system's permissions happened to allow it -- as root, or into a world-writable export --
+// while a probe asserted the policy against fixtures. A requirement with no causal position is a
+// description, and describing a wall is not building one.
+//
+// IT IS CHECKED AFTER THE DIGEST AGREES AND BEFORE THE MOVE, deliberately, so the two refusals stay
+// distinguishable. Checking it first would make every wrong-pin fetch on an unwritable export report
+// an ownership problem, hiding the artifact defect behind an environment one.
+func admit_then_publish_boot_image(
+  staging_path: NonEmptyStr,
+  published_path: NonEmptyStr,
+  export_dir: NonEmptyStr,
+  digest: NonEmptyStr,
+) -> BootImageFetchOutcome
+  uses net: std.resources.Network
+{
+  let standing = observed_export_ownership_standing(path: export_dir)
+  return if export_ownership_admits_publication(standing: standing) {
+    publish_verified_boot_image(
+      staging_path: staging_path,
+      published_path: published_path,
+      digest: digest,
+    )
+  } else {
+    BootImagePublicationNotAdmitted {
+      export_dir: export_dir,
+      reason: export_ownership_refusal_reason(path: export_dir, standing: standing),
+    }
+  }
+}
+
 // THE PUBLISHED BYTES ARE MEASURED AGAIN AT THE FINAL PATH, and the staged measurement is not
 // carried forward as though it answered for them. Those are different questions: the staged digest
 // establishes that what was FETCHED matches the pin, and says nothing about what now occupies the

@@ -1,7 +1,7 @@
 module gunbc.machine_intake_mtcollins1_boot_image_fetch
 
 import std.types { NonEmptyStr, String }
-import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_boot_image_published_path }
+import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_boot_export_dir, mtcollins1_diskless_image_name }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import gunbc.machine_intake_boot_image_fetch {
   BootImageAdmitted,
@@ -11,6 +11,7 @@ import gunbc.machine_intake_boot_image_fetch {
   BootImageFetchOutcome,
   BootImagePublishFailed,
   BootImagePublishedDigestMismatch,
+  BootImagePublicationNotAdmitted,
   fetch_verified_boot_image,
 }
 
@@ -48,6 +49,8 @@ fn mtcollins1_render_fetch(outcome: BootImageFetchOutcome) -> ProcessExit {
       exit_failure(reason: concat("mtcollins1 boot image: REFUSED, staged bytes digest ", o as String, " does not match the pinned ", e as String, "; the staged file is left in place as the evidence and was NOT published"))
     BootImagePublishFailed { staged: s, destination: d } =>
       exit_failure(reason: concat("mtcollins1 boot image: digest agreed but publishing ", s as String, " to ", d as String, " failed"))
+    BootImagePublicationNotAdmitted { export_dir: d, reason: r } =>
+      exit_failure(reason: concat("mtcollins1 boot image: the artifact verified but publication into ", d as String, " was NOT admitted: ", r))
     BootImagePublishedDigestMismatch { path: p, expected: e, observed: o } =>
       exit_failure(reason: concat("mtcollins1 boot image: the move reported success but ", p as String, " now holds ", o as String, " rather than the verified ", e as String, "; the export does NOT contain what this program published and the unit must not be booted from it until that is explained"))
   }
@@ -59,7 +62,8 @@ func mtcollins1_fetch_boot_image() -> ProcessExit
   return mtcollins1_render_fetch(
     outcome: fetch_verified_boot_image(
       url: mtcollins1_boot_image_url,
-      published_path: mtcollins1_boot_image_published_path(),
+      export_dir: mtcollins1_boot_export_dir,
+      image_name: mtcollins1_diskless_image_name,
       expected_sha256: mtcollins1_boot_image_sha256,
     )
   )
@@ -72,7 +76,7 @@ func mtcollins1_fetch_boot_image() -> ProcessExit
 // unverified artifact where the unit would boot it.
 data mtcollins1_wrong_pin: NonEmptyStr = "0000000000000000000000000000000000000000000000000000000000000000"
 
-data mtcollins1_wrong_pin_published_path: NonEmptyStr = "/var/tmp/gunbc-mtcollins1-wrongpin-published.iso"
+data mtcollins1_wrong_pin_export_dir: NonEmptyStr = "/var/tmp"
 
 func mtcollins1_fetch_boot_image_wrong_pin_control() -> ProcessExit
   uses net: std.resources.Network
@@ -80,8 +84,33 @@ func mtcollins1_fetch_boot_image_wrong_pin_control() -> ProcessExit
   return mtcollins1_render_fetch(
     outcome: fetch_verified_boot_image(
       url: mtcollins1_boot_image_url,
-      published_path: mtcollins1_wrong_pin_published_path,
+      export_dir: mtcollins1_wrong_pin_export_dir,
+      image_name: mtcollins1_diskless_image_name,
       expected_sha256: mtcollins1_wrong_pin,
+    )
+  )
+}
+
+// THE DISCRIMINATING RED FOR THE OWNERSHIP GATE, and it is a different one from the wrong-pin
+// control above. That control refuses at the DIGEST, so it never reaches the write boundary and
+// establishes nothing about who may write there. This one supplies the CORRECT pin -- so the
+// artifact verifies and the run arrives at the publish with everything about the bytes in order --
+// and points the export at a directory owned by root. If it succeeds, the admission is decorative.
+//
+// /var/tmp IS THE RIGHT CHOICE rather than an arbitrary one: it is root-owned on this host and
+// world-writable by mode, which is exactly the configuration that makes an ownership check look
+// unnecessary. The move would succeed there. Only the admission stops it.
+data mtcollins1_unowned_export_dir: NonEmptyStr = "/var/tmp"
+
+func mtcollins1_fetch_boot_image_unowned_export_control() -> ProcessExit
+  uses net: std.resources.Network
+{
+  return mtcollins1_render_fetch(
+    outcome: fetch_verified_boot_image(
+      url: mtcollins1_boot_image_url,
+      export_dir: mtcollins1_unowned_export_dir,
+      image_name: mtcollins1_diskless_image_name,
+      expected_sha256: mtcollins1_boot_image_sha256,
     )
   )
 }
