@@ -2,67 +2,30 @@ module v2.lens.affected_set.entry_selection
 
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.lens.module_graph {
-  module_graph_exclude_substrings,
-  entry_affected_by_touched_paths_excluding
-}
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 // THE MODULE-GRAPH IMPORT-CLOSURE IS THE SINGLE AUTHORITY FOR TEST SELECTION.
-// entry_affected_by_dependency_view delegates to entry_affected_by_touched_paths
-// (module-graph import-closure), which traces actual import statements — not
-// fn-arrow structural dependencies — so it correctly answers the cross-module
-// "which test files are affected by this diff?" question.
+// This module declares the scaffold binding that identifies the authority.
+// The authority itself is v2.lens.module_graph.entry_affected_by_touched_paths_excluding.
 //
 // REPLACEMENT MIGRATION — SECTION 3 CONSOLIDATION (2026-09-05):
-// Three mechanisms answered the question "which tests are affected by this diff?":
+// Three mechanisms answered "which tests are affected by this diff?":
 //   1. v2.lens.affected_set (semantic Node-level lens) — stays as regen authority.
-//   2. v2.lens.affected_set.corpus_dependency_view (fn-arrow Decl-level
-//      corpus_dependency_views_live) — DELETED (this commit). The fn-arrow
-//      function-arrow DependencyView primitives are removed entirely; anything
-//      that needed them breaks loudly, which is the section 3 census.
+//   2. v2.lens.affected_set.corpus_dependency_view (fn-arrow Decl-level) — DELETED.
+//      The fn-arrow corpus_dependency_views_live composition was the selection
+//      mechanism removed. The lower-level fn-arrow primitives (fn_arrow_decl_facts_live,
+//      dependency_lens) remain as general-purpose lens infrastructure, not selection
+//      mechanisms — the §3 fork was about the composition, not those primitives.
 //   3. v2.lens.module_graph.entry_affected_by_touched_paths (import-closure) —
-//      THE SURVIVOR. The Rust host mirror entry_file_touched_via_import_closure
-//      is the certified host rendering of this lens authority.
+//      THE SURVIVOR.
 //
-// THE IDENTITY DEFECT (decl.output conflated with decl identity) is resolved by
-// this delegation: module-graph import-closure operates on module-level import
-// edges, not fn-arrow output nodes, so the decl.output == node comparison that
-// caused the defect is never reached.
+// THE IDENTITY DEFECT (decl.output conflated with decl identity) that existed in
+// the deleted fn-arrow composition is resolved because module-graph import-closure
+// operates on module-level import edges, not fn-arrow output nodes.
 data entry_file_touched_grain_interim: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "v2.lens.affected_set.entry_selection",
-    decl_name: "entry_affected_by_dependency_view",
+    module_path: "v2.lens.module_graph",
+    decl_name: "entry_affected_by_touched_paths_excluding",
     field: WholeDeclaration
   }
-}
-
-fn entry_affected_by_dependency_view_excluding(
-  entry_path: String,
-  pool_roots: List<String>,
-  touched_paths: List<String>,
-  exclude_substrings: List<String>
-) -> Bool {
-  entry_affected_by_touched_paths_excluding(
-    entry_path: entry_path,
-    pool_roots: pool_roots,
-    touched_paths: touched_paths,
-    exclude_substrings: exclude_substrings
-  )
-}
-
-fn entry_affected_by_dependency_view(
-  entry_path: String,
-  pool_roots: List<String>,
-  touched_paths: List<String>
-) -> Bool {
-  entry_affected_by_dependency_view_excluding(
-    entry_path: entry_path,
-    pool_roots: pool_roots,
-    touched_paths: touched_paths,
-    exclude_substrings: module_graph_exclude_substrings
-  )
 }
