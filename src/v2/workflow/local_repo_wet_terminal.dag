@@ -382,8 +382,6 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       function: "and_with_true_left_removes_file",
       expectation: ExpectedToHold {}
     }
-      expectation: ExpectedToHold {}
-    }
   ]
 }
 
