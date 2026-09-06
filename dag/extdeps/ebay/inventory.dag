@@ -317,8 +317,6 @@ service ebay.Inventory {
     endpoint: production_api_base
     auth: Bearer
     auth_input: access_token
-
-    rate_limit: { requests: 2000000, per: day, scope: sell_inventory }
   }
 
   operation CreateOrReplaceInventoryItem {
