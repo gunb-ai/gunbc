@@ -540,6 +540,24 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: unbound_dissolution(description: "the owner-resolution capability carries declared container-alias identity to variant_reference_inferred_node; re-enroll these controls through the floor owner")
   },
   WitnessExclusionRow {
+    pattern: "algebra_receiver_application_witness_test.dag",
+    classification: OfflineLocalRecipe,
+    reason: "local algebra-receiver controls: retained as discriminating evidence, but excluded from the required floor while generic receiver evidence is not carried through the variant-reference boundary",
+    dissolution: unbound_dissolution(description: "the owner-resolution capability carries declared container-alias identity to variant_reference_inferred_node; re-enroll these controls through the floor owner")
+  },
+  WitnessExclusionRow {
+    pattern: "algebra_receiver_callable_witness_test.dag",
+    classification: OfflineLocalRecipe,
+    reason: "local algebra-receiver controls: retained as discriminating evidence, but excluded from the required floor while generic receiver evidence is not carried through the variant-reference boundary",
+    dissolution: unbound_dissolution(description: "the owner-resolution capability carries declared container-alias identity to variant_reference_inferred_node; re-enroll these controls through the floor owner")
+  },
+  WitnessExclusionRow {
+    pattern: "algebra_receiver_forwarding_witness_test.dag",
+    classification: OfflineLocalRecipe,
+    reason: "local algebra-receiver controls: retained as discriminating evidence, but excluded from the required floor while generic receiver evidence is not carried through the variant-reference boundary",
+    dissolution: unbound_dissolution(description: "the owner-resolution capability carries declared container-alias identity to variant_reference_inferred_node; re-enroll these controls through the floor owner")
+  },
+  WitnessExclusionRow {
     pattern: "claim/complexity/accumulator_copy_roster_gate",
     classification: OfflineLocalRecipe,
     reason: "operator-ruled OFFLINE roster gate (~15m serial interpreted resolve; runtime filesystem_read data deps invisible to closure attribution — see accumulator_copy_roster_gate_exclusion_note)",
