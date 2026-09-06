@@ -253,8 +253,14 @@ fn corpus_report(pool_roots: List<String>) -> CorpusReport {
 // (SIGSEGV out of the interpreter's unbounded native walk), and what survives is a report in the
 // same SHAPE as a complete one, one page shorter. That class sits BELOW the ladder, which DESIGN
 // section 5 forbids outright rather than admitting as a low rung, so it does not wait for its
-// trigger: this comparison does not fix the crash and is not meant to, it ends the silence, which
-// is the forbidden half. The real climb -- a depth-bounded interpreter walk that refuses with a
+// trigger: this comparison ends a silence, which is the forbidden half.
+//
+// BUT NOT THE CRASH'S SILENCE, AND THE DIFFERENCE IS EXACT. corpus_gate evaluates
+// corpus_rows_for_paths to completion before this join runs, so a death DURING collection takes the
+// process out with the join never reached (review 61363). What this refuses is a report that covers
+// less than the population it names -- rows assembled across batches after a death, or a truncated
+// row set arriving from anywhere. Containing the crash itself needs a surviving reporting boundary
+// outside the dying process; that does not exist here and is not claimed. The real climb -- a depth-bounded interpreter walk that refuses with a
 // locus -- is named in that row, and when it lands these witnesses stay as the regression control
 // that the higher rung is real rather than retiring with the mitigation.
 //
@@ -290,14 +296,44 @@ fn corpus_report(pool_roots: List<String>) -> CorpusReport {
 // trigger clears, the row to write first is not another join case -- it is one witness that
 // discovers a small real population and checks the produced rows against it at identity grain.
 
-fn coverage_missing(discovered: List<String>, rows: List<CorpusFileRow>) -> List<String> {
+// BOTH SEQUENCES MUST END TOGETHER, AND THE FIRST CUT OF THIS WALK ONLY CHECKED ONE OF THEM.
+// Review 61363 found it: running out of DISCOVERED paths returned "nothing missing" whatever rows
+// were left over, so a report carrying subjects the population does not contain was accepted, and
+// the degenerate case went all the way through -- an empty discovered population with one clean
+// reported row and a floor of 1 reached the no-suspect arm, because the floor was counting REPORTED
+// ROWS rather than the discovered population. That is the population-floor red control defeated by
+// the guard that was supposed to run before it. A surplus identity is not a lesser problem than a
+// missing one: it means the rows did not come from this population, so nothing about them is a
+// statement about it.
+fn row_path_list(rows: List<CorpusFileRow>) -> List<String> {
+  list_reverse(xs: fold_list(
+    xs: rows,
+    empty: Empty,
+    cons: fn(acc, row) { Cons { head: row.path, tail: acc } }
+  ))
+}
+
+type CoverageWalk
+  = WalkAligned
+  | WalkMissing { missing: List<String> }
+  | WalkSurplus { extra: List<String> }
+
+fn coverage_walk(discovered: List<String>, rows: List<CorpusFileRow>) -> CoverageWalk {
   match discovered {
-    Empty => Empty
+    Empty =>
+      match rows {
+        Empty => WalkAligned
+        Cons { head: _, tail: _ } => WalkSurplus { extra: row_path_list(rows: rows) }
+      }
     Cons { head: d, tail: dt } =>
       match rows {
-        Empty => discovered
+        Empty => WalkMissing { missing: discovered }
         Cons { head: r, tail: rt } =>
-          if r.path == d { coverage_missing(discovered: dt, rows: rt) } else { discovered }
+          if r.path == d {
+            coverage_walk(discovered: dt, rows: rt)
+          } else {
+            WalkMissing { missing: discovered }
+          }
       }
   }
 }
@@ -305,16 +341,22 @@ fn coverage_missing(discovered: List<String>, rows: List<CorpusFileRow>) -> List
 type CorpusCoverage
   = CorpusCoverageComplete { covered: Int }
   | CorpusCoverageShort { discovered: Int, reported: Int, missing: List<String> }
+  | CorpusCoverageExtra { discovered: Int, reported: Int, extra: List<String> }
 
 fn corpus_coverage(discovered: List<String>, rows: List<CorpusFileRow>) -> CorpusCoverage {
-  let missing = coverage_missing(discovered: discovered, rows: rows)
-  match missing {
-    Empty => CorpusCoverageComplete { covered: length(xs: rows) }
-    Cons { head: _, tail: _ } =>
+  match coverage_walk(discovered: discovered, rows: rows) {
+    WalkAligned => CorpusCoverageComplete { covered: length(xs: rows) }
+    WalkMissing { missing: missing } =>
       CorpusCoverageShort {
         discovered: length(xs: discovered),
         reported: length(xs: rows),
         missing: missing
+      }
+    WalkSurplus { extra: extra } =>
+      CorpusCoverageExtra {
+        discovered: length(xs: discovered),
+        reported: length(xs: rows),
+        extra: extra
       }
   }
 }
@@ -329,6 +371,7 @@ type CorpusGateDisposition
   | CorpusNotEstablishedObserved { rows: List<CorpusFileRow> }
   | CorpusPopulationBelowFloor { files: Int, floor: Int }
   | CorpusCoverageIncomplete { discovered: Int, reported: Int, missing: List<String> }
+  | CorpusCoverageSurplus { discovered: Int, reported: Int, extra: List<String> }
 
 fn corpus_gate_disposition(report: CorpusReport, population_floor: Int) -> CorpusGateDisposition {
   if report.files < population_floor {
@@ -363,6 +406,8 @@ fn corpus_gate_disposition_over(
   match corpus_coverage(discovered: discovered, rows: rows) {
     CorpusCoverageShort { discovered: d, reported: r, missing: m } =>
       CorpusCoverageIncomplete { discovered: d, reported: r, missing: m }
+    CorpusCoverageExtra { discovered: d, reported: r, extra: e } =>
+      CorpusCoverageSurplus { discovered: d, reported: r, extra: e }
     CorpusCoverageComplete { covered: _ } =>
       corpus_gate_disposition(
         report: corpus_report_from_rows(rows: rows),

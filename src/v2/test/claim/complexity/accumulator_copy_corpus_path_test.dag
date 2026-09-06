@@ -9,6 +9,7 @@ import v2.lens.complexity_accumulator_copy.corpus_gate {
   CorpusNoSuspectsObserved,
   CorpusNotEstablishedObserved,
   CorpusCoverageIncomplete,
+  CorpusCoverageSurplus,
   CorpusPopulationBelowFloor,
   CorpusSuspectObserved,
   corpus_gate,
@@ -105,6 +106,7 @@ test fn an_empty_population_is_below_floor_rather_than_clean() -> Bool {
     CorpusSuspectObserved { paths: _, sites: _ } => false
     CorpusNotEstablishedObserved { rows: _ } => false
     CorpusCoverageIncomplete { discovered: _, reported: _, missing: _ } => false
+    CorpusCoverageSurplus { discovered: _, reported: _, extra: _ } => false
   }
 }
 
@@ -138,11 +140,55 @@ fn disposition_over(discovered: List<String>, rows: List<CorpusFileRow>) -> Corp
 fn is_coverage_incomplete(d: CorpusGateDisposition) -> Bool {
   match d {
     CorpusCoverageIncomplete { discovered: _, reported: _, missing: _ } => true
+    CorpusCoverageSurplus { discovered: _, reported: _, extra: _ } => false
     CorpusPopulationBelowFloor { files: _, floor: _ } => false
     CorpusNoSuspectsObserved { files: _, refusal_sites: _, refusal_causes: _ } => false
     CorpusSuspectObserved { paths: _, sites: _ } => false
     CorpusNotEstablishedObserved { rows: _ } => false
   }
+}
+
+fn is_coverage_surplus(d: CorpusGateDisposition) -> Bool {
+  match d {
+    CorpusCoverageSurplus { discovered: _, reported: _, extra: _ } => true
+    CorpusCoverageIncomplete { discovered: _, reported: _, missing: _ } => false
+    CorpusPopulationBelowFloor { files: _, floor: _ } => false
+    CorpusNoSuspectsObserved { files: _, refusal_sites: _, refusal_causes: _ } => false
+    CorpusSuspectObserved { paths: _, sites: _ } => false
+    CorpusNotEstablishedObserved { rows: _ } => false
+  }
+}
+
+// THE OTHER END OF THE WALK, AND IT WAS OPEN. Review 61363: the first cut returned "nothing
+// missing" as soon as the DISCOVERED list ended, whatever rows remained, so a report carrying
+// subjects the population does not contain was accepted. A surplus identity is not a lesser
+// problem than a missing one -- it means the rows did not come from this population, so nothing
+// about them is a statement about it.
+test fn a_report_carrying_subjects_the_population_does_not_contain_refuses() -> Bool {
+  is_coverage_surplus(
+    d: disposition_over(
+      discovered: [planted_path],
+      rows: [
+        scanned_row(path: planted_path, suspects: 1),
+        scanned_row(path: clean_path, suspects: 0)
+      ]
+    )
+  )
+}
+
+// THE DEGENERATE CASE REVIEW 61363 NAMED, WITNESSED AT THE EXACT SHAPE IT NAMED. An empty
+// discovered population with one clean reported row and a floor of 1 reached the NO-SUSPECT arm,
+// because the floor counted REPORTED ROWS rather than the discovered population: the guard meant to
+// run before the floor let the floor's own red control be defeated. It refuses now, and it refuses
+// as SURPLUS rather than as below-floor, because the accurate statement is that these rows are not
+// from this population at all.
+test fn an_empty_population_with_a_reported_row_refuses_rather_than_reading_clean() -> Bool {
+  is_coverage_surplus(
+    d: disposition_over(
+      discovered: Empty,
+      rows: [scanned_row(path: clean_path, suspects: 0)]
+    )
+  )
 }
 
 // THE MITIGATION FOR A CLASS THAT SITS BELOW THE LADDER, AND ITS DISCRIMINATING RED.
@@ -193,6 +239,7 @@ test fn a_complete_report_over_the_same_population_reaches_its_ordinary_verdict(
   ) {
     CorpusSuspectObserved { paths: _, sites: _ } => true
     CorpusCoverageIncomplete { discovered: _, reported: _, missing: _ } => false
+    CorpusCoverageSurplus { discovered: _, reported: _, extra: _ } => false
     CorpusPopulationBelowFloor { files: _, floor: _ } => false
     CorpusNoSuspectsObserved { files: _, refusal_sites: _, refusal_causes: _ } => false
     CorpusNotEstablishedObserved { rows: _ } => false

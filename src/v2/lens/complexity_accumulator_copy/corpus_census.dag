@@ -8,6 +8,7 @@ import v2.lens.complexity_accumulator_copy.corpus_gate {
   CorpusGateDisposition,
   CorpusNotEstablishedObserved,
   CorpusCoverageIncomplete,
+  CorpusCoverageSurplus,
   CorpusPopulationBelowFloor,
   CorpusReport,
   CorpusSuspectObserved,
@@ -237,6 +238,7 @@ fn corpus_subtree_gate_reports_its_unreadable_population() -> Bool {
     CorpusSuspectObserved { paths: _, sites: _ } => false
     CorpusPopulationBelowFloor { files: _, floor: _ } => false
     CorpusCoverageIncomplete { discovered: _, reported: _, missing: _ } => false
+    CorpusCoverageSurplus { discovered: _, reported: _, extra: _ } => false
   }
 }
 
@@ -389,5 +391,6 @@ fn a_no_suspect_verdict_still_carries_its_refusal_census() -> Bool {
     CorpusNotEstablishedObserved { rows: _ } => false
     CorpusPopulationBelowFloor { files: _, floor: _ } => false
     CorpusCoverageIncomplete { discovered: _, reported: _, missing: _ } => false
+    CorpusCoverageSurplus { discovered: _, reported: _, extra: _ } => false
   }
 }
