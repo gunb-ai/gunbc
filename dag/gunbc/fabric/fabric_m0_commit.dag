@@ -16,6 +16,7 @@ import gunbc.fabric_m0_completion {
   CommittedArtifact,
   CommittedReceipt,
   CommitManifest,
+  OriginObservation,
   ManifestMember,
   OriginReadback,
   ReadbackConfirmed,
@@ -165,21 +166,32 @@ fn manifest_readback_for_slot(transport: CommitTransportOutcome, observed: Manif
   }
 }
 
-// A store that says committed is still not a recovered result: the manifest is only confirmed by an
-// independent read of the intended object, so the manifest handed to the completion authority
-// carries the READ's verdict, never the write's.
-fn commit_manifest(
-  namespace: CommitNamespace,
-  attempt: AttemptId,
-  manifest_digest: Sha256Digest,
-  members: List<ManifestMember>,
-  transport: CommitTransportOutcome,
-  observed: ManifestReadbackObservation
-) -> CommitManifest {
+// The manifest states WHAT WAS OWED; it no longer carries a read result.
+fn commit_manifest(attempt: AttemptId, manifest_digest: Sha256Digest, members: List<ManifestMember>) -> CommitManifest {
   CommitManifest {
     attempt: attempt,
     manifest_digest: manifest_digest,
     members: members,
+  }
+}
+
+// A store that says committed is still not a recovered result: the manifest is only confirmed by an
+// independent read of the intended object, so what this boundary contributes to the completion
+// authority is an OBSERVATION -- the READ's verdict -- and never the write's.
+//
+// This is the only manifest observation the authority will find under that subject, and it is
+// DERIVED here from the transport and the read rather than accepted from the caller. A caller of
+// publish_after_commit supplies reads of the required objects; it cannot supply the manifest's,
+// because the slot the manifest lives at is derived from the namespace and the attempt one layer
+// down and a hand-supplied observation could disagree with it.
+fn manifest_observation(
+  namespace: CommitNamespace,
+  attempt: AttemptId,
+  transport: CommitTransportOutcome,
+  observed: ManifestReadbackObservation
+) -> OriginObservation {
+  OriginObservation {
+    subject: "commit-manifest",
     readback: manifest_readback(namespace: namespace, attempt: attempt, transport: transport, observed: observed),
   }
 }
@@ -193,6 +205,7 @@ fn publish_after_commit(
   receipts: ReceiptObligations,
   committed_artifacts: List<CommittedArtifact>,
   committed_receipts: List<CommittedReceipt>,
+  observations: List<OriginObservation>,
   manifest_digest: Sha256Digest,
   members: List<ManifestMember>,
   transport: CommitTransportOutcome,
@@ -205,13 +218,10 @@ fn publish_after_commit(
     receipts: receipts,
     committed_artifacts: committed_artifacts,
     committed_receipts: committed_receipts,
-    manifest: commit_manifest(
-      namespace: namespace,
-      attempt: attempt,
-      manifest_digest: manifest_digest,
-      members: members,
-      transport: transport,
-      observed: observed
-    )
+    observations: concat(
+      observations,
+      [manifest_observation(namespace: namespace, attempt: attempt, transport: transport, observed: observed)]
+    ),
+    manifest: commit_manifest(attempt: attempt, manifest_digest: manifest_digest, members: members)
   )
 }

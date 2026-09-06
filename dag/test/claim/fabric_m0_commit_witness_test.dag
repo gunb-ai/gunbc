@@ -14,6 +14,7 @@ import gunbc.fabric_m0_completion {
   CommittedReceipt,
   ManifestMember,
   ReadbackConfirmed,
+  OriginObservation,
   JobPublication,
   PublishSuccess,
   PublishFinalizationFailed,
@@ -57,7 +58,6 @@ fn arts() -> List<CommittedArtifact> {
       id: "build-output" as RequiredArtifactId,
       attempt: the_attempt(),
       recorded_digest: digest_a(),
-      readback: ReadbackConfirmed { observed_digest: digest_a() },
     },
   ]
 }
@@ -68,8 +68,17 @@ fn recs() -> List<CommittedReceipt> {
       id: "execution-receipt" as RequiredReceiptId,
       attempt: the_attempt(),
       recorded_digest: digest_a(),
-      readback: ReadbackConfirmed { observed_digest: digest_a() },
     },
+  ]
+}
+
+// The object reads. The MANIFEST's observation is deliberately not here: the commit boundary
+// derives it from the transport and the read, so a caller cannot supply one that disagrees with the
+// slot the manifest actually lives at.
+fn object_reads() -> List<OriginObservation> {
+  [
+    OriginObservation { subject: "build-output", readback: ReadbackConfirmed { observed_digest: digest_a() } },
+    OriginObservation { subject: "execution-receipt", readback: ReadbackConfirmed { observed_digest: digest_a() } },
   ]
 }
 
@@ -82,6 +91,7 @@ fn commit(transport: CommitTransportOutcome, observed: ManifestReadbackObservati
     receipts: ReceiptObligationsDeclared { required: ["execution-receipt" as RequiredReceiptId] },
     committed_artifacts: arts(),
     committed_receipts: recs(),
+    observations: object_reads(),
     manifest_digest: digest_a(),
     members: members(),
     transport: transport,

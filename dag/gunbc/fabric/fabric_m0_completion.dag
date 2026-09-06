@@ -55,14 +55,12 @@ type CommittedArtifact {
   id: RequiredArtifactId
   attempt: AttemptId
   recorded_digest: Sha256Digest
-  readback: OriginReadback
 }
 
 type CommittedReceipt {
   id: RequiredReceiptId
   attempt: AttemptId
   recorded_digest: Sha256Digest
-  readback: OriginReadback
 }
 
 // The computation's own verdict, kept separate from every storage fact below it.
@@ -103,7 +101,7 @@ fn obligation_rank(v: ObligationVerdict) -> Int {
   }
 }
 
-fn artifact_readback_verdict(subject: NonEmptyStr, recorded: Sha256Digest, readback: OriginReadback) -> ObligationVerdict {
+fn readback_digest_verdict(subject: NonEmptyStr, recorded: Sha256Digest, readback: OriginReadback) -> ObligationVerdict {
   match readback {
     ReadbackConfirmed { observed_digest: observed } =>
       if content_hash_eq_cryptographic(left: recorded, right: observed) {
@@ -113,6 +111,44 @@ fn artifact_readback_verdict(subject: NonEmptyStr, recorded: Sha256Digest, readb
       }
     ReadbackAbsent => ObligationUnsatisfied { subject: subject, cause: "required artifact absent at origin" }
     ReadbackUnknown { cause: c } => ObligationUndetermined { subject: subject, cause: c }
+  }
+}
+
+// THE READ IS A SEPARATE POPULATION FROM THE WRITE, JOINED HERE RATHER THAN ASSEMBLED BY THE CALLER.
+//
+// This shape exists because the previous one carried `readback` as a FIELD of each committed row,
+// which made a readback exist for every committed object by construction: "no origin read was
+// performed for this subject" had no representation, and the nearest expressible thing --
+// ReadbackUnknown -- was a value a caller had to deliberately choose. A record whose read result is
+// always present and whose two compared halves are both supplied by one caller is checking a claim
+// about a commit rather than the commit; it is the seeded-true fold answering "complete" over a
+// population it never examined.
+//
+// Splitting them makes the unexamined case the DEFAULT rather than an option: an observation
+// population that no reader wrote to is empty, every required subject misses its join, and the fold
+// cannot reach success. Undetermined rather than unsatisfied is deliberate -- an unperformed read
+// says nothing about whether the object is there, so it must reconcile, not fail.
+//
+// What this does NOT establish, stated plainly: nothing here proves a reader ran. That is the
+// observation-to-slot boundary std.durable_compare_and_set already declares outside its guarantee,
+// and no pure fold can close it. What it does establish is that the AUTHORITY performs the join, so
+// a missing read is structurally distinguishable from a satisfied one instead of being absorbed.
+type OriginObservation {
+  subject: NonEmptyStr
+  readback: OriginReadback
+}
+
+fn readback_verdict_for(observations: List<OriginObservation>, subject: NonEmptyStr, recorded: Sha256Digest) -> ObligationVerdict {
+  let seen = observations |> filter(o => o.subject == subject)
+  if seen.count() == 0 {
+    ObligationUndetermined { subject: subject, cause: "no origin read is recorded for this subject" }
+  } else if seen.count() > 1 {
+    ObligationUnsatisfied { subject: subject, cause: "several origin observations claim this subject; no authoritative read" }
+  } else {
+    match seen |> first {
+      Present { value: o } => readback_digest_verdict(subject: subject, recorded: recorded, readback: o.readback)
+      Absent => ObligationUndetermined { subject: subject, cause: "no origin read is recorded for this subject" }
+    }
   }
 }
 
@@ -131,6 +167,7 @@ fn committed_receipts_for(committed: List<CommittedReceipt>, wanted: RequiredRec
 
 fn required_artifact_verdict(
   committed: List<CommittedArtifact>,
+  observations: List<OriginObservation>,
   members: List<ManifestMember>,
   wanted: RequiredArtifactId,
   attempt: AttemptId
@@ -144,7 +181,7 @@ fn required_artifact_verdict(
     match rows |> first {
       Present { value: c } =>
         obligation_meet(
-          a: artifact_readback_verdict(subject: wanted, recorded: c.recorded_digest, readback: c.readback),
+          a: readback_verdict_for(observations: observations, subject: wanted, recorded: c.recorded_digest),
           b: manifest_membership_verdict(members: members, subject: wanted, expected: c.recorded_digest)
         )
       Absent => ObligationUnsatisfied { subject: wanted, cause: "no committed artifact bound to this attempt" }
@@ -154,6 +191,7 @@ fn required_artifact_verdict(
 
 fn required_receipt_verdict(
   committed: List<CommittedReceipt>,
+  observations: List<OriginObservation>,
   members: List<ManifestMember>,
   wanted: RequiredReceiptId,
   attempt: AttemptId
@@ -167,7 +205,7 @@ fn required_receipt_verdict(
     match rows |> first {
       Present { value: c } =>
         obligation_meet(
-          a: artifact_readback_verdict(subject: wanted, recorded: c.recorded_digest, readback: c.readback),
+          a: readback_verdict_for(observations: observations, subject: wanted, recorded: c.recorded_digest),
           b: manifest_membership_verdict(members: members, subject: wanted, expected: c.recorded_digest)
         )
       Absent => ObligationUnsatisfied { subject: wanted, cause: "no committed receipt bound to this attempt" }
@@ -209,14 +247,13 @@ type CommitManifest {
   attempt: AttemptId
   manifest_digest: Sha256Digest
   members: List<ManifestMember>
-  readback: OriginReadback
 }
 
-fn manifest_verdict(manifest: CommitManifest, attempt: AttemptId) -> ObligationVerdict {
+fn manifest_verdict(manifest: CommitManifest, observations: List<OriginObservation>, attempt: AttemptId) -> ObligationVerdict {
   if (manifest.attempt == attempt) == false {
     ObligationUnsatisfied { subject: "commit-manifest", cause: "manifest is bound to a different attempt" }
   } else {
-    artifact_readback_verdict(subject: "commit-manifest", recorded: manifest.manifest_digest, readback: manifest.readback)
+    readback_verdict_for(observations: observations, subject: "commit-manifest", recorded: manifest.manifest_digest)
   }
 }
 
@@ -224,6 +261,7 @@ fn manifest_verdict(manifest: CommitManifest, attempt: AttemptId) -> ObligationV
 fn artifact_roster_verdicts(
   artifacts: ArtifactObligations,
   committed: List<CommittedArtifact>,
+  observations: List<OriginObservation>,
   members: List<ManifestMember>,
   attempt: AttemptId
 ) -> List<ObligationVerdict> {
@@ -231,13 +269,14 @@ fn artifact_roster_verdicts(
     ArtifactObligationsUnreadable { cause: c } =>
       [ObligationUnenumerable { subject: "artifact-obligations", cause: c }]
     ArtifactObligationsDeclared { required: required } =>
-      required |> map(wanted => required_artifact_verdict(committed: committed, members: members, wanted: wanted, attempt: attempt))
+      required |> map(wanted => required_artifact_verdict(committed: committed, observations: observations, members: members, wanted: wanted, attempt: attempt))
   }
 }
 
 fn receipt_roster_verdicts(
   receipts: ReceiptObligations,
   committed: List<CommittedReceipt>,
+  observations: List<OriginObservation>,
   members: List<ManifestMember>,
   attempt: AttemptId
 ) -> List<ObligationVerdict> {
@@ -245,7 +284,7 @@ fn receipt_roster_verdicts(
     ReceiptObligationsUnreadable { cause: c } =>
       [ObligationUnenumerable { subject: "receipt-obligations", cause: c }]
     ReceiptObligationsDeclared { required: required } =>
-      required |> map(wanted => required_receipt_verdict(committed: committed, members: members, wanted: wanted, attempt: attempt))
+      required |> map(wanted => required_receipt_verdict(committed: committed, observations: observations, members: members, wanted: wanted, attempt: attempt))
   }
 }
 
@@ -255,14 +294,15 @@ fn storage_assessment(
   receipts: ReceiptObligations,
   committed_artifacts: List<CommittedArtifact>,
   committed_receipts: List<CommittedReceipt>,
+  observations: List<OriginObservation>,
   manifest: CommitManifest
 ) -> List<ObligationVerdict> {
   concat(
     concat(
-      artifact_roster_verdicts(artifacts: artifacts, committed: committed_artifacts, members: manifest.members, attempt: attempt),
-      receipt_roster_verdicts(receipts: receipts, committed: committed_receipts, members: manifest.members, attempt: attempt)
+      artifact_roster_verdicts(artifacts: artifacts, committed: committed_artifacts, observations: observations, members: manifest.members, attempt: attempt),
+      receipt_roster_verdicts(receipts: receipts, committed: committed_receipts, observations: observations, members: manifest.members, attempt: attempt)
     ),
-    [manifest_verdict(manifest: manifest, attempt: attempt)]
+    [manifest_verdict(manifest: manifest, observations: observations, attempt: attempt)]
   )
 }
 
@@ -309,6 +349,7 @@ fn admit_job_publication(
   receipts: ReceiptObligations,
   committed_artifacts: List<CommittedArtifact>,
   committed_receipts: List<CommittedReceipt>,
+  observations: List<OriginObservation>,
   manifest: CommitManifest
 ) -> JobPublication {
   let verdicts = storage_assessment(
@@ -317,6 +358,7 @@ fn admit_job_publication(
     receipts: receipts,
     committed_artifacts: committed_artifacts,
     committed_receipts: committed_receipts,
+    observations: observations,
     manifest: manifest
   )
   let unresolved = unresolved_obligations(verdicts: verdicts)
