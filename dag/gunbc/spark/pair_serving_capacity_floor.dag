@@ -4,7 +4,7 @@ import std.types { Bool, String, Int, NonEmptyStr, List }
 import v2.std.optional { Present, Absent }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value }
-import gunbc.spark.vllm_engine_incarnation { VllmEngineIncarnation, incarnation_wire }
+import gunbc.spark.vllm_serving_launch { VllmServingLaunch, launch_wire }
 import gunbc.spark.vllm_kv_layout_observe {
   VllmKvLayoutReceipt, KvLayoutObserved, KvLayoutUnreadable, KvLayoutInconsistent,
 }
@@ -183,7 +183,7 @@ fn restart_admission(
 // and a receipt describing the incarnation that was just replaced does not count, which is why the
 // fresh receipt is joined rather than assumed.
 type ReAdmission
-  = ReAdmitted { incarnation: VllmEngineIncarnation, available_blocks: Nat }
+  = ReAdmitted { incarnation: VllmServingLaunch, available_blocks: Nat }
   | ReAdmissionRefused { cause: NonEmptyStr }
 
 fn re_admit(fresh: VllmKvLayoutReceipt, floor: MinimumColdSessions) -> ReAdmission {

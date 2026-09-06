@@ -7,7 +7,7 @@ import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex
 import std.measure { TokenCount, token_count, byte_size }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
-import gunbc.spark.vllm_engine_incarnation { VllmEngineIncarnation, vllm_engine_incarnation }
+import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_engine_incarnation }
 import extdeps.vllm.log_lines { vllm_startup_reading, GpuKvCacheSize }
 import extdeps.vllm.kv_cache { VllmObservedKvPool, KvPoolAdmitted, KvPoolRefused, vllm_observed_kv_pool_from_reading }
 import extdeps.vllm.kv_layout {
@@ -33,8 +33,8 @@ fn w_digest(hex: String) -> ContentHash {
 
 data w_hex: String = "1111111111111111111111111111111111111111111111111111111111111111"
 
-fn w_inc(invocation: String) -> VllmEngineIncarnation {
-  vllm_engine_incarnation(
+fn w_inc(invocation: String) -> VllmServingLaunch {
+  vllm_serving_launch(
     group: FabricGroupA,
     head: spark_pair_serving_head(group: FabricGroupA),
     systemd_invocation: invocation as NonEmptyStr,
