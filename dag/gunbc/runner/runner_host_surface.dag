@@ -269,8 +269,65 @@ fn is_production_ready(purpose: HostBootPurpose) -> Bool {
 // jailer and one firecracker per admitted attempt plus the live control sessions -- so the same
 // declaration answers "what should be running" at any moment without anyone maintaining a second
 // list that drifts.
-fn expected_process_count(admitted_attempts: Int, control_sessions: Int) -> Int {
-  2 + control_sessions + (2 * admitted_attempts)
+// THE JAILER AND FIRECRACKER ARE NOT AUTOMATICALLY TWO PROCESSES, and the declaration above said
+// they were. A live run on 2026-09-06 disproved it: the stock v1.16.1 jailer performs its
+// privileged setup -- cgroup, mount namespace, pivot, device creation, uid/gid drop -- and then
+// EXECS INTO the Firecracker binary. Without --new-pid-ns those are two PHASES OF ONE PROCESS
+// IDENTITY, not a parent and a child, so an expected population of two per attempt would be wrong
+// by one on every attempt and a census would report a missing process that never existed.
+//
+// THE TOPOLOGY IS A PROPERTY OF THE INVOCATION, so it is carried rather than assumed. --new-pid-ns
+// makes the jailer clone a child and the two-process shape becomes correct; a daemonizing
+// realization changes it again. A model that hardcodes either shape is wrong for the other.
+//
+// AND IT HAS A CONSEQUENCE FOR CLEANUP EVIDENCE. Under in-place exec, "zero surviving jailer" is
+// NOT an independent fact about teardown: the jailer stopped existing as a jailer at the moment it
+// became Firecracker, whether or not anything was cleaned up. The postcondition that carries weight
+// is that no process identity ASSOCIATED WITH THE ATTEMPT remains -- the deadline watcher and the
+// execution identity included.
+type JailerExecutionTopology
+  = JailerExecsFirecrackerInPlace
+  | JailerSpawnsFirecrackerInNewPidNamespace
+  | JailerDaemonizesFirecracker
+  | JailerTopologyUnobserved
+
+fn attempt_execution_processes(topology: JailerExecutionTopology) -> Int {
+  match topology {
+    JailerExecsFirecrackerInPlace => 1
+    JailerSpawnsFirecrackerInNewPidNamespace => 2
+    JailerDaemonizesFirecracker => 2
+    JailerTopologyUnobserved => 0
+  }
+}
+
+// THE DEADLINE WATCHER IS A REAL PROCESS AND WAS MISSING FROM THE MODEL. BusyBox timeout -- 1.36.1
+// in this image -- forks a watcher that outlives its exec and sends the signal when the bound
+// elapses, so a qualification attempt has an attempt-scoped process the surface never declared. It
+// belongs here for exactly as long as the deadline is realized that way; a supervisor that enforces
+// its own deadline internally has no such process and this term goes to zero.
+type DeadlineRealization
+  = DeadlineByExternalWatcher
+  | DeadlineBySupervisorInternal
+
+fn deadline_watcher_processes(realization: DeadlineRealization) -> Int {
+  match realization {
+    DeadlineByExternalWatcher => 1
+    DeadlineBySupervisorInternal => 0
+  }
+}
+
+// THE EXPECTED POPULATION IS DERIVED FROM THE TOPOLOGY AND THE DEADLINE MECHANISM, not from a
+// constant. The previous constant read 2 + sessions + 2*attempts and was wrong on both attempt
+// terms at once.
+fn expected_process_count(
+  admitted_attempts: Int,
+  control_sessions: Int,
+  topology: JailerExecutionTopology,
+  deadline: DeadlineRealization,
+) -> Int {
+  let per_attempt = attempt_execution_processes(topology: topology)
+    + deadline_watcher_processes(realization: deadline)
+  2 + control_sessions + (per_attempt * admitted_attempts)
 }
 
 type ObservedProcess {
@@ -379,7 +436,7 @@ data runner_host_qualification_processes: List<HostProcessClass> = [
     cardinality: ExactlyOnePerAdmittedAttempt,
     parent: ParentIsRole { role: HostSupervisor },
     executable_digest: "unbound-until-image-build",
-    runs_as: "root",
+    runs_as: "uid 1000 after the jailer's privilege drop; the same process identity that began as the jailer under in-place exec",
     may_spawn: [],
   },
 ]
