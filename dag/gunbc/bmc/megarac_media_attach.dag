@@ -2,7 +2,7 @@ module gunbc.bmc.megarac_media_attach
 
 import std.types { Bool, NonEmptyStr, String }
 import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
-import extdeps.bmc.megarac {
+import gunbc.bmc.megarac_media {
   MegaRacAlreadyPresented,
   MegaRacAttachIndeterminate,
   MegaRacAttachOutcome,
@@ -12,25 +12,26 @@ import extdeps.bmc.megarac {
   MegaRacImageNotEnumerated,
   MegaRacImagesUnreadable,
   MegaRacPresentationUnreadable,
-  MegaRacSessionAcquired,
-  MegaRacSessionDenied,
+  megarac_attach_image,
+}
+import gunbc.bmc.megarac_session {
   MegaRacScratchCleanup,
   MegaRacScratchDiscardFailed,
   MegaRacScratchDiscarded,
   MegaRacScratchRetained,
+  MegaRacSessionAcquired,
+  MegaRacSessionDenied,
+  MegaRacSessionNeverOpened,
   MegaRacSessionRelease,
   MegaRacSessionReleaseConfirmed,
   MegaRacSessionReleaseUnverifiable,
+  MegaRacSessionStagingFailed,
   MegaRacSessionStillLive,
   MegaRacSessionTeardown,
-  MegaRacSessionStagingFailed,
-  MegaRacSessionNeverOpened,
   MegaRacSessionUnusable,
   megarac_acquire_session,
-  megarac_attach_image,
   megarac_release_session,
 }
-
 // ATTACHING REMOTE MEDIA TO ANY MEGARAC CONTROLLER, as one host-parametric entry point. The lane
 // this replaces had two modules for this -- a generic operation and a per-unit wrapper naming one
 // machine -- and the wrapper existed only because the operation could not take a host. Seven such

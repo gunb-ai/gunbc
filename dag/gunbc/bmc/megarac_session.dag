@@ -1,0 +1,292 @@
+module gunbc.bmc.megarac_session
+
+import std.types { Bool, FilePath, NonEmptyStr, String }
+import extdeps.languages.json.parse {
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  JsonValue,
+  parse_json_document,
+}
+import gunbc.bmc.megarac_http_realization {
+  MegaRacScratchStaged,
+  MegaRacScratchStaging,
+  MegaRacScratchStagingFailed,
+  json_number_member,
+  json_string_member,
+  megarac_discard_credential,
+  megarac_discard_scratch,
+  megarac_stage_scratch,
+}
+
+// THE SESSION LIFETIME, AS A FOLD OVER THE REALIZATION BELOW IT. Acquisition, use and teardown are
+// this module's subject; how a request is actually issued is gunbc.bmc.megarac_http_realization's,
+// and what one controller build was measured doing is gunbc.bmc.megarac_observed_behavior's. Those
+// three were one file in extdeps, which is how single-build tactics came to be advertised as
+// family-grain firmware semantics.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// THE SESSION, AS A SCOPE RATHER THAN THREE LOOSE STRINGS
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+// A SESSION IS A RESOURCE WITH A LIFETIME, and the first modeled caller of this API treated it as a
+// bag of parameters — a host, a jar path and a token passed separately to every operation. That
+// shape has no place to put acquisition or release, so both ended up as the caller's problem, and
+// the caller got them wrong in the specific way this section exists to prevent: a login that
+// SUCCEEDED and then failed to yield a readable CSRF token returned an outcome named
+// "release not attempted", which asserts no session exists while one is open on the controller.
+// The session table is finite and this lane has already exhausted one service's share of it.
+//
+// SO THE SCOPE IS THE UNIT, NOT THE TOKEN. Everything an acquisition creates — the scratch
+// directory holding the credential, the cookie jar that is the actual bearer, the host it was
+// obtained against — is carried in one value that release consumes. There is no arm of acquisition
+// that creates state and returns a value which cannot release it.
+type MegaRacSessionScope sole_constructor {
+  bmc_host: NonEmptyStr
+  scratch_dir: NonEmptyStr
+  cookie_jar: NonEmptyStr
+}
+
+type MegaRacSession sole_constructor {
+  scope: MegaRacSessionScope
+  csrf_token: NonEmptyStr
+}
+
+// MegaRacSessionUnusable CARRIES THE SCOPE, and that is the whole point of its existence. It is the
+// login-succeeded-token-unreadable case, which is a session that exists and cannot be used — so it
+// must still be released, and it can be: the release measurement below shows teardown does not
+// require the token. Modelling it as a plain refusal would drop the jar on the floor.
+type MegaRacSessionAcquisition
+  = MegaRacSessionAcquired { session: MegaRacSession }
+  | MegaRacSessionDenied { detail: String }
+  | MegaRacSessionUnusable { scope: MegaRacSessionScope, detail: String }
+  | MegaRacSessionStagingFailed { detail: String }
+
+// THE RELEASE OUTCOME IS DECIDED BY A PROBE, NEVER BY THE DELETE'S STATUS, and that is a measured
+// requirement rather than belt-and-braces. Controlled runs against this controller on 2026-09-06,
+// each with a positive control confirming the session answered 200 before teardown:
+//
+//   DELETE carrying the CSRF header   -> HTTP 200, session subsequently 401  (released)
+//   DELETE with no CSRF header        -> HTTP 401, session subsequently 401  (RELEASED ANYWAY)
+//
+// The second row is the finding. A 401 on the teardown request accompanied a teardown that took
+// effect, which is the same status-is-not-outcome behaviour this firmware already shows on writes,
+// now confirmed for session lifetime. Keying release on the DELETE's exit would have reported a leak
+// that did not happen — and, worse, would have taught a caller to retry a teardown that had already
+// succeeded.
+//
+// IT ALSO SETTLES WHETHER THE UNUSABLE ARM CAN CLEAN UP: the no-CSRF row released, so a session
+// whose token could not be read is recoverable rather than a permanent leak.
+//
+// MegaRacSessionStillLive IS THE LOUD ONE. It means the probe authenticated AFTER teardown, so a
+// session really is stranded on the controller. That is the state the finite session table cares
+// about, and it is reported as its own arm rather than folded into an unverified outcome, because
+// the two license opposite actions: one is "look at the controller", the other is "look at the
+// probe".
+type MegaRacSessionRelease
+  = MegaRacSessionReleaseConfirmed
+  | MegaRacSessionStillLive { scope: MegaRacSessionScope, detail: String }
+  | MegaRacSessionReleaseUnverifiable { scope: MegaRacSessionScope, detail: String }
+  | MegaRacSessionNeverOpened
+
+// THE SCRATCH DIRECTORY IS NOT ALWAYS DISCARDED, and treating it as unconditional cleanup destroyed
+// the only thing that could fix a leak. That directory holds the COOKIE JAR, which is the bearer.
+// When the probe says a session is still live, removing the jar removes the sole credential capable
+// of issuing another authenticated teardown -- so the previous version reliably converted a
+// recoverable leak into a permanent one, at exactly the moment it had detected the leak. When the
+// probe is unverifiable it destroys the evidence needed to resolve the uncertainty instead.
+//
+// SO ONLY A CONFIRMED RELEASE LICENSES THE DELETE. Retention is a reported outcome rather than a
+// silent omission, because a retained scratch directory holds a live bearer on local disk and
+// someone has to know to come back for it.
+type MegaRacScratchCleanup
+  = MegaRacScratchDiscarded
+  | MegaRacScratchRetained { scratch_dir: NonEmptyStr, reason: String }
+  | MegaRacScratchDiscardFailed { scratch_dir: NonEmptyStr }
+
+// TEARDOWN IS A PRODUCT, NOT A SUM, because the remote session and the local scratch are independent
+// facts and every caller needs both. The previous renderer examined the release standing only when
+// the attach had succeeded, so on any attach refusal the stranded-session signal was dropped -- the
+// exact resource-accounting loss this abstraction exists to prevent, reintroduced one layer up.
+type MegaRacSessionTeardown {
+  standing: MegaRacSessionRelease
+  cleanup: MegaRacScratchCleanup
+}
+
+// THE CLASSIFICATION IS SEPARATE FROM THE EFFECT so the three outcomes can be reasoned about
+// without a controller. The distinction that matters is between DENIED and UNUSABLE: denied means
+// no session was created and there is nothing to release, unusable means one was created and its
+// token could not be read. Collapsing them is precisely the defect this replaces — the earlier form
+// reported the second as "release not attempted", a phrase that reads as "nothing to clean up".
+fn megarac_classify_acquisition(
+  scope: MegaRacSessionScope,
+  body: String,
+  reached: Bool,
+) -> MegaRacSessionAcquisition {
+  if reached == false {
+    MegaRacSessionUnusable { scope: scope, detail: "the session request did not complete; a session may or may not have been created, so the jar is carried for teardown" }
+  } else {
+    match parse_json_document(s: body) {
+      JsonDocumentUnreadable { gap: _ } =>
+        MegaRacSessionUnusable { scope: scope, detail: concat("the session response was not JSON: ", body) }
+      JsonDocumentParsed { value: doc } =>
+        match json_string_member(doc: doc, key: "CSRFToken") {
+          Present { value: token } =>
+            if token.length() == 0 {
+              MegaRacSessionUnusable { scope: scope, detail: "the session response carried an empty CSRFToken" }
+            } else {
+              MegaRacSessionAcquired {
+                session: MegaRacSession { scope: scope, csrf_token: token as NonEmptyStr },
+              }
+            }
+          Absent =>
+            match json_string_member(doc: doc, key: "error") {
+              Present { value: e } => MegaRacSessionDenied { detail: e }
+              Absent => MegaRacSessionUnusable { scope: scope, detail: concat("the session response carried neither a CSRFToken nor an error: ", body) }
+            }
+        }
+    }
+  }
+}
+
+// AN UNREACHED PROBE IS UNVERIFIABLE, NOT RELEASED. The probe is the only thing that decides this
+// outcome, so a probe that did not happen decides nothing — reporting release on a failed probe
+// would make a network partition look like successful cleanup, which is the absorbing arm that
+// destroys the signal the finite session table depends on.
+// THE CONFIRMED SHAPE IS EXACT, and accepting any error field was an absorbing arm pointed at the
+// leak this probe exists to find. The measured unauthenticated response is
+// { "cc": 7, "error": "Invalid Authentication" } -- so a 500 answering { "error": "internal
+// failure" } previously read as a confirmed logout, and a contradictory body carrying both an error
+// and authenticated fields took the confirmed arm because the error test ran first. Confirmation now
+// requires the exact code, the exact message, AND the absence of an authenticated marker;
+// everything else is unverifiable, which is the arm that keeps a possible leak visible.
+fn megarac_release_confirmed_shape(doc: JsonValue) -> Bool {
+  let code_ok = match json_number_member(doc: doc, key: "cc") {
+    Absent => false
+    Present { value: c } => c == "7"
+  }
+  let message_ok = match json_string_member(doc: doc, key: "error") {
+    Absent => false
+    Present { value: e } => e == "Invalid Authentication"
+  }
+  let authenticated_marker = match json_number_member(doc: doc, key: "id") {
+    Absent => false
+    Present { value: _ } => true
+  }
+  code_ok && message_ok && (authenticated_marker == false)
+}
+
+// AN UNREACHED PROBE IS UNVERIFIABLE, NOT RELEASED. The probe is the only thing that decides this
+// outcome, so a probe that did not happen decides nothing -- reporting release on a failed probe
+// would make a network partition look like successful cleanup, which is the absorbing arm that
+// destroys the signal the finite session table depends on.
+fn megarac_classify_release(scope: MegaRacSessionScope, body: String, reached: Bool) -> MegaRacSessionRelease {
+  if reached == false {
+    MegaRacSessionReleaseUnverifiable { scope: scope, detail: "the validity probe did not complete, so whether the session was released is unknown" }
+  } else {
+    match parse_json_document(s: body) {
+      JsonDocumentUnreadable { gap: _ } =>
+        MegaRacSessionReleaseUnverifiable { scope: scope, detail: concat("the validity probe returned a body that is not JSON: ", body) }
+      JsonDocumentParsed { value: doc } =>
+        if megarac_release_confirmed_shape(doc: doc) {
+          MegaRacSessionReleaseConfirmed
+        } else {
+          match json_number_member(doc: doc, key: "id") {
+            Present { value: _ } =>
+              MegaRacSessionStillLive { scope: scope, detail: "the cookie still authenticates after teardown; a session is stranded on the controller and the jar is RETAINED so it can be torn down again" }
+            Absent =>
+              MegaRacSessionReleaseUnverifiable { scope: scope, detail: concat("the validity probe returned a body matching neither the exact unauthenticated shape nor the authenticated one: ", body) }
+          }
+        }
+    }
+  }
+}
+
+// RELEASE TEARS DOWN, VERIFIES, AND ONLY THEN DECIDES WHETHER IT MAY DISCARD. The probe runs before
+// any removal because the jar is the probe's input: deleting it first leaves the verification unable
+// to run, which is how a cleanup step destroys its own evidence.
+func megarac_release_session(scope: MegaRacSessionScope) -> MegaRacSessionTeardown
+  uses net: std.resources.Network
+{
+  closed = megarac.Session.Close(bmc_host: scope.bmc_host, cookie_jar: scope.cookie_jar)
+
+  probed = megarac.Session.Probe(bmc_host: scope.bmc_host, cookie_jar: scope.cookie_jar)
+  let standing = megarac_classify_release(scope: scope, body: probed.body, reached: probed.success)
+
+  return match standing {
+    MegaRacSessionReleaseConfirmed =>
+      MegaRacSessionTeardown { standing: standing, cleanup: megarac_discard_scratch(scratch_dir: scope.scratch_dir) }
+    MegaRacSessionNeverOpened =>
+      MegaRacSessionTeardown { standing: standing, cleanup: megarac_discard_scratch(scratch_dir: scope.scratch_dir) }
+    MegaRacSessionStillLive { scope: _, detail: _ } =>
+      MegaRacSessionTeardown {
+        standing: standing,
+        cleanup: MegaRacScratchRetained { scratch_dir: scope.scratch_dir, reason: "the session is still live and this directory holds the only bearer that can tear it down" },
+      }
+    MegaRacSessionReleaseUnverifiable { scope: _, detail: _ } =>
+      MegaRacSessionTeardown {
+        standing: standing,
+        cleanup: MegaRacScratchRetained { scratch_dir: scope.scratch_dir, reason: "whether the session was released is unknown, and this directory holds the bearer needed to find out" },
+      }
+  }
+}
+
+
+// THE ACQUISITION IS NOW A FOLD OVER STAGED SCRATCH rather than the thing that makes it. The
+// credential is discarded as soon as the login has been issued: nothing after Open needs the
+// password, so holding it for the attach's lifetime widened its exposure for no purpose.
+func megarac_acquire_session(
+  bmc_host: NonEmptyStr,
+  username: NonEmptyStr,
+  password: NonEmptyStr,
+) -> MegaRacSessionAcquisition
+  uses net: std.resources.Network
+{
+  return match megarac_stage_scratch(password: password) {
+    MegaRacScratchStagingFailed { detail: d } => MegaRacSessionStagingFailed { detail: d }
+    MegaRacScratchStaged { scratch_dir: dir, credential_path: cred, cookie_jar: jar } =>
+      megarac_open_over_staged_scratch(
+        bmc_host: bmc_host,
+        username: username,
+        credential_path: cred,
+        scope: MegaRacSessionScope { bmc_host: bmc_host, scratch_dir: dir, cookie_jar: jar },
+      )
+  }
+}
+
+func megarac_open_over_staged_scratch(
+  bmc_host: NonEmptyStr,
+  username: NonEmptyStr,
+  credential_path: NonEmptyStr,
+  scope: MegaRacSessionScope,
+) -> MegaRacSessionAcquisition
+  uses net: std.resources.Network
+{
+  opened = megarac.Session.Open(
+    bmc_host: bmc_host,
+    username: username,
+    password_file: credential_path,
+    cookie_jar: scope.cookie_jar,
+  )
+  let credential_gone = megarac_discard_credential(credential_path: credential_path)
+  let classified = megarac_classify_acquisition(scope: scope, body: opened.body, reached: opened.success)
+  return megarac_discard_scratch_when_terminal(acquisition: classified, scratch_dir: scope.scratch_dir)
+}
+
+// AN ARM THAT WILL NEVER BE RELEASED CLEANS UP HERE, because nothing else can. Teardown owns the
+// scratch directory for every arm that hands one out, but MegaRacSessionDenied deliberately carries
+// no scope -- there is no controller session to tear down -- and the first version of this fold
+// returned it with the staged credential still on disk. Measured: a wrong-password run left
+// /tmp/tmp.XXXX/credential in place, correctly 0600 and indefinitely.
+func megarac_discard_scratch_when_terminal(
+  acquisition: MegaRacSessionAcquisition,
+  scratch_dir: NonEmptyStr,
+) -> MegaRacSessionAcquisition
+  uses net: std.resources.Network
+{
+  match acquisition {
+    MegaRacSessionDenied { detail: _ } => {
+      discarded = megarac_discard_scratch(scratch_dir: scratch_dir)
+      return acquisition
+    }
+    _ => return acquisition
+  }
+}

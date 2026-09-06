@@ -2,7 +2,7 @@ module gunbc.bmc.megarac_session_probe
 
 import std.types { NonEmptyStr, String }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
-import extdeps.bmc.megarac {
+import gunbc.bmc.megarac_session {
   MegaRacSession,
   MegaRacSessionAcquired,
   MegaRacSessionAcquisition,
