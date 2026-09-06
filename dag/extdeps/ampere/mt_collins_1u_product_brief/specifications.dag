@@ -1,0 +1,221 @@
+module extdeps.ampere.mt_collins_1u_product_brief.specifications
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure {
+  Bandwidth, ByteSize, Hertz, MegatransfersPerSecond, Millimeter, RackUnit, Watt,
+  bandwidth, byte_size, hertz, megatransfers_per_second, millimeter, rack_unit, watt,
+}
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.ampere.mt_collins_1u_product_brief.subject {
+  MtCollins1UPublicProductBrief, mt_collins_1u_public_product_brief, mt_collins_1u_brief_authority,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = mt_collins_1u_brief_authority
+
+data specifications_subject_edge_note: String = "SPECIFICATION FACTS JOIN THE DOCUMENT THAT STATES THEM, on the platform-module pattern used by the 2U brief: the subject module owns mt_collins_1u_public_product_brief and this row is the typed edge binding the rows below to it."
+
+data mt_collins_1u_specifications_subject: MtCollins1UPublicProductBrief = mt_collins_1u_public_product_brief
+
+// THE NETWORKING FACT THIS MODULE EXISTS TO SETTLE, and it reverses a claim this repository
+// briefly held. ONBOARD NETWORKING ON MT. COLLINS IS ONE INTEL i350 DUAL 1 GbE CONTROLLER, plus
+// a Realtek RTL8211E port dedicated to BMC manageability. THERE IS NO ONBOARD 10 GIGABIT
+// INTERFACE. Ten-gigabit connectivity on this platform is reached only through the OCP 3.0
+// mezzanine slot, which the same page lists separately as "OCP 3.0 mezzanine card with
+// multi-host support" - a SLOT, not a populated card.
+//
+// The retracted claim, recorded because it was acted on: a session reading dual 10GbE from the
+// ASRock Rack ALTRAD8UD-1L2T row in the private mobo_x candidate concluded the held Foxconn
+// Mt. Collins already carried 10GbE onboard and that fitting NICs would be redundant. Those are
+// two different boards on two different procurement tracks; the ASRock part number's trailing
+// 2T denotes its two 10GBase-T ports and says nothing about this platform. The consequence of
+// the error was a recommendation NOT to buy NICs, which is backwards: a 10G fleet built on this
+// platform needs one OCP 3.0 card per node that requires 10G.
+//
+// WHAT THIS ROW STILL DOES NOT ESTABLISH: whether the HELD unit has a card in that slot. The
+// slot's presence is a platform fact from collateral; occupancy is a per-unit observation and
+// belongs in the private held-unit receipts, where BMC sensor names OCP_Temp, OCP_Zone_Temp,
+// OCP_OPT1_Temp and OCP_OPT2_Temp were read on 2026-09-06 - sensors that name a slot and an
+// optical zone, which is evidence the chassis is wired for one, not evidence a card is fitted.
+
+type OnboardNetworkController {
+  controller: NonEmptyStr
+  port_count: Nat
+  per_port_bandwidth: Bandwidth
+  purpose: NonEmptyStr
+}
+
+data mt_collins_1u_onboard_data_network: OnboardNetworkController = OnboardNetworkController {
+  controller: "Intel i350",
+  port_count: 2,
+  per_port_bandwidth: bandwidth(count: 1000000000),
+  purpose: "host data networking",
+}
+
+data mt_collins_1u_bmc_manageability_network: OnboardNetworkController = OnboardNetworkController {
+  controller: "Realtek RTL8211E",
+  port_count: 1,
+  per_port_bandwidth: bandwidth(count: 1000000000),
+  purpose: "BMC manageability port",
+}
+
+type OcpSlotStanding
+  = OcpMezzanineSlotPresent { generation: NonEmptyStr, multi_host: Bool, occupancy_note: NonEmptyStr }
+  | NoOcpSlot
+
+data mt_collins_1u_ocp_slot: OcpSlotStanding = OcpMezzanineSlotPresent {
+  generation: "OCP 3.0",
+  multi_host: true,
+  occupancy_note: "The brief states the slot and its multi-host support. It states no bundled card, so a populated NIC is not a platform fact and any 10G capability on a given unit is an observation about that unit.",
+}
+
+fn mt_collins_1u_has_onboard_ten_gigabit() -> Bool {
+  false
+}
+
+fn mt_collins_1u_ten_gigabit_requires_ocp_card() -> Bool {
+  match mt_collins_1u_ocp_slot {
+    NoOcpSlot => false,
+    OcpMezzanineSlotPresent { generation, multi_host, occupancy_note } => true,
+  }
+}
+
+type MtCollins1UProcessorConfiguration {
+  socket_count: Nat
+  cores_per_socket: Nat
+  architecture_label: NonEmptyStr
+  max_core_clock: Hertz
+}
+
+data mt_collins_1u_processors: MtCollins1UProcessorConfiguration = MtCollins1UProcessorConfiguration {
+  socket_count: 2,
+  cores_per_socket: 80,
+  architecture_label: "Ampere Altra, Arm v8.2+ 64-bit",
+  max_core_clock: hertz(count: 3300000000),
+}
+
+type MtCollins1UMemoryConfiguration {
+  channels_per_socket: Nat
+  channel_width_bits: Nat
+  max_data_rate: MegatransfersPerSecond
+  max_dimms_per_socket: Nat
+  dimms_per_channel: Nat
+  max_capacity: ByteSize
+}
+
+data mt_collins_1u_memory: MtCollins1UMemoryConfiguration = MtCollins1UMemoryConfiguration {
+  channels_per_socket: 8,
+  channel_width_bits: 72,
+  max_data_rate: megatransfers_per_second(count: 3200),
+  max_dimms_per_socket: 16,
+  dimms_per_channel: 2,
+  max_capacity: byte_size(count: 4398046511104),
+}
+
+type MtCollins1UExpansion {
+  full_height_half_length_gen4_x16_slots: Nat
+  slot_note: NonEmptyStr
+}
+
+data mt_collins_1u_expansion: MtCollins1UExpansion = MtCollins1UExpansion {
+  full_height_half_length_gen4_x16_slots: 2,
+  slot_note: "Stated as 'Up to 2x FHHL PCIe Gen4 x16' - an upper bound on a configuration axis, not a guarantee that a given chassis is populated with two risers.",
+}
+
+type MtCollins1UStorageBays {
+  front_nvme_u2_bays: Nat
+  onboard_m2_nvme_slots: Nat
+  onboard_m2_link_label: NonEmptyStr
+}
+
+data mt_collins_1u_storage: MtCollins1UStorageBays = MtCollins1UStorageBays {
+  front_nvme_u2_bays: 12,
+  onboard_m2_nvme_slots: 1,
+  onboard_m2_link_label: "PCIe Gen4 x4",
+}
+
+type MtCollins1UPowerSupply {
+  psu_count: Nat
+  redundant: Bool
+  efficiency_rating: NonEmptyStr
+  max_rated_output: Watt
+  management_bus: NonEmptyStr
+}
+
+data mt_collins_1u_power: MtCollins1UPowerSupply = MtCollins1UPowerSupply {
+  psu_count: 2,
+  redundant: true,
+  efficiency_rating: "80 PLUS Platinum",
+  max_rated_output: watt(count: 2000),
+  management_bus: "PMBus 1.2",
+}
+
+type MtCollins1UManagement {
+  bmc_silicon: NonEmptyStr
+  bmc_firmware_stack: NonEmptyStr
+  host_firmware: NonEmptyStr
+  interfaces_stated: NonEmptyStr
+  security_connector: NonEmptyStr
+  supported_operating_systems: NonEmptyStr
+}
+
+data mt_collins_1u_management: MtCollins1UManagement = MtCollins1UManagement {
+  bmc_silicon: "ASPEED Technologies AST2600 Baseboard Management Controller",
+  bmc_firmware_stack: "MegaRAC",
+  host_firmware: "UEFI Aptio V",
+  interfaces_stated: "IPMI 2.0, Redfish, and WebUI; Serial-Over-LAN (SOL); Remote KVM; hardware health monitor",
+  security_connector: "TPM 2.0 connector",
+  supported_operating_systems: "CentOS 8.2+",
+}
+
+// THE COLLATERAL SAYS REDFISH AND THE HELD UNIT REFUSES IT. This document lists Redfish among
+// the systems-management interfaces. The private held-unit receipt records that this unit's
+// firmware serves an SP-X-style REST API at /api/* and has NO endpoint at /redfish/v1. A
+// platform-level capability claim and a firmware-level observation are different facts and both
+// stand: the platform is specified for Redfish, the shipped firmware on the held unit does not
+// implement it. Anything planning to drive these machines over Redfish must treat the collateral
+// as a specification and the unit as the authority, and re-observe per firmware revision.
+data mt_collins_1u_redfish_divergence_note: String = "Brief lists Redfish; held unit firmware exposes no /redfish/v1 (private held-unit BMC access receipt, 2026-08-29). Specification-versus-shipped-firmware divergence, not a contradiction in either source."
+
+type MtCollins1UChassisDimensions {
+  length: Millimeter
+  width: Millimeter
+  height: Millimeter
+  rack_units_from_height: RackUnit
+}
+
+data mt_collins_1u_dimensions: MtCollins1UChassisDimensions = MtCollins1UChassisDimensions {
+  length: millimeter(count: 847),
+  width: millimeter(count: 438),
+  height: millimeter(count: 43),
+  rack_units_from_height: rack_unit(count: 1),
+}
+
+// THE FORM-FACTOR DISCREPANCY IS RESOLVED AT THE COLLATERAL LEVEL, AND NOT IN THE DIRECTION THE
+// EARLIER ROW GUESSED. The 2U brief's platform note recorded a marketplace listing offering a 1U
+// Mt. Collins as contradicting "the 2U form factor every public document states", and treated
+// holding the unit as the only way to settle it. An official Ampere document titled "Mt. Collins
+// 1U Product Brief" now stands, so the 1U variant is vendor-documented rather than a listing
+// error.
+//
+// The sharper finding is that the two briefs state THE SAME DIMENSIONS - 33.36 in length,
+// 17.24 in width, 1.7 in height - and 1.7 inches IS ONE RACK UNIT. So the 2U-titled document
+// carries a height its own form-factor label contradicts, which means the discrepancy was never
+// listing-versus-specification: it is internal to the vendor's collateral. Depth is unaffected
+// and remains the load-bearing rack-planning figure at ~847 mm for both.
+data mt_collins_form_factor_resolution_note: String = "The 1U variant is vendor-documented (AMP 2020-0073). Both briefs state 1.7 in height, which is 1U, so the 2U-titled brief's own dimensions contradict its form-factor label. Treat the form-factor LABEL in the 2U brief as unreliable and the height figure as the fact; the held unit's 1U chassis part 1A624RA00-600-G agrees with the height, not the label."
+
+data mt_collins_1u_specifications_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ampere.mt_collins_1u_product_brief.specifications",
+      decl_name: "mt_collins_1u_onboard_data_network",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: mt_collins_1u_brief_authority,
+  further_citations: [],
+}
+
+data extdeps_model_scope: ExternalModelScope = mt_collins_1u_specifications_model_scope
