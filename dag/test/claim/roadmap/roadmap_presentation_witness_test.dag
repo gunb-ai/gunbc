@@ -472,13 +472,13 @@ fn fx_row(activity: ActivityView) -> WorkRowView {
     Present { value: rn } =>
       work_row_view(rn: rn, nodes: nodes, edges: fx_row_edges(), merged: [], activity: activity,
         rounds: RoundsUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
-        worker_alive: false,
+        worker_alive: false, standing: none,
         launch: fx_row_launch(nodes: nodes, edges: fx_row_edges()))
     Absent => work_row_view(
       rn: gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000009", id: "a2-unreachable", done: false, content: "unreachable"),
       nodes: [], edges: [], merged: [], activity: activity,
       rounds: RoundsUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
-      worker_alive: false,
+      worker_alive: false, standing: none,
       launch: fx_row_launch(nodes: [], edges: []))
   }
 }
@@ -587,6 +587,7 @@ fn fx_family_member_row(node_id: String, headline: String, activity: ActivityVie
     disclosure: base.disclosure,
     rounds: RoundsUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
     worker_alive: false,
+    standing: none,
   }
 }
 

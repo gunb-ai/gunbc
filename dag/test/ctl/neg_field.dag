@@ -1,0 +1,12 @@
+module ctl.neg_field
+
+import std.types { String }
+
+// NEGATIVE CONTROL for the A2 regression: an ordinary nested field access whose final component is
+// capitalised must not be mistaken for a service receiver.
+type Inner { User: String }
+type Outer { inner: Inner }
+
+fn read(o: Outer) -> String {
+  o.inner.User
+}

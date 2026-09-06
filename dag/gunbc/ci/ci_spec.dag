@@ -750,6 +750,30 @@ data gunbc_ci_runner_guest_image_observe_target: GunbcRunStepTarget = GunbcRunSt
   function: "runner_guest_image_observe_wet",
 }
 
+// THE BOOT PROBE IS ITS OWN TARGET, NOT A THIRD MODE OF THE IMAGE BUILD. It answers a different
+// question about a different subject: the build asks whether an image can be PRODUCED on this host,
+// the probe asks whether the image that exists BOOTS. Fusing them would mean no way to re-ask the
+// second without redoing the first, and a boot failure would be reported by a step named for a build.
+// THE HOST-READINESS CONVERGE HAD NO ACTUATION ROUTE UNTIL NOW. gunbc.runner_microvm_host_ready
+// landed in #10525 with an observe and a converge and nothing that invoked either, so srv2 was
+// assumed converged on the strength of a module existing. The boot probe read the host and reported
+// firecracker=absent at the executor-owned path (fleet-converge run 33986199807).
+//
+// WHAT THAT OBSERVATION DOES AND DOES NOT SAY, because the first version of this note overreached.
+// It says srv2 holds no Firecracker AT THE PATH THIS MODULE OWNS. It does NOT say the fleet has never
+// had one: #9578 reports an MVP proven by execution on srv4 at this same cited version, so a binary
+// existed there, placed outside the modeled path. One host's absence is not a fleet's history, and
+// the modeled path's emptiness is not the same fact as the binary's non-existence.
+data gunbc_ci_runner_microvm_host_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_microvm_host_ready.dag",
+  function: "runner_microvm_host_converge_wet",
+}
+
+data gunbc_ci_runner_microvm_boot_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_microvm_boot_probe.dag",
+  function: "runner_microvm_boot_probe_wet",
+}
+
 data gunbc_ci_runner_guest_image_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_guest_image.dag",
   function: "runner_guest_image_converge_wet",
@@ -899,6 +923,8 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_org_actions_converge_target,
     gunbc_ci_runner_guest_image_observe_target,
     gunbc_ci_runner_guest_image_converge_target,
+    gunbc_ci_runner_microvm_host_converge_target,
+    gunbc_ci_runner_microvm_boot_probe_target,
     gunbc_ci_spark_serving_reboot_target,
     gunbc_ci_spark_serving_durability_target,
     gunbc_ci_spark_grant_install_target,
@@ -1649,6 +1675,26 @@ fn gunbc_ci_runner_guest_image_observe_invoke() -> String {
     function: gunbc_ci_runner_guest_image_observe_target.function,
     claim_run: false,
     receipt_rel: "target/runner-guest-image-standing.txt"
+  )
+}
+
+fn gunbc_ci_runner_microvm_host_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_microvm_host_converge_target.entry,
+    function: gunbc_ci_runner_microvm_host_converge_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-microvm-host-standing.txt"
+  )
+}
+
+fn gunbc_ci_runner_microvm_boot_probe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_microvm_boot_probe_target.entry,
+    function: gunbc_ci_runner_microvm_boot_probe_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-microvm-boot-probe.txt"
   )
 }
 

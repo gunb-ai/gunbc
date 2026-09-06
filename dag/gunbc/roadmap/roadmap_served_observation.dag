@@ -1,5 +1,6 @@
 module gunbc.roadmap_served_observation
 
+import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance, roadmap_standings_read }
 import std.types { String, Int, Bool, List, NonEmptyStr }
 import std.algebra { trim }
 import std.content_hash { content_hash_tagged_structural, content_hash_atom }
@@ -160,11 +161,12 @@ fn served_observation_status_of_label(label: String) -> ServedObservationStatusD
 
 fn served_observation_daily_surface_for_instance(instance: HostDashboardInstance, observed: BeltWorkflowAttempts) -> ServedObservationSurface {
   let launch = belt_launch_host_standing_for_page(instance: instance)
+  let standings = roadmap_standings_read(layout: roadmap_event_carrier_layout_for_instance(instance: instance))
   let page = match observed {
     WorkflowAttemptsObserved { attempts } =>
-      roadmap_daily_workspace_page_for_authority_observed(attempts: attempts, attempts_refused: none, launch: launch)
+      roadmap_daily_workspace_page_for_authority_observed(attempts: attempts, attempts_refused: none, standings: standings, launch: launch)
     WorkflowAttemptsRefused { reason } =>
-      roadmap_daily_workspace_page_for_authority_observed(attempts: [], attempts_refused: Present { value: reason }, launch: launch)
+      roadmap_daily_workspace_page_for_authority_observed(attempts: [], attempts_refused: Present { value: reason }, standings: standings, launch: launch)
   }
   match try_serialize_html_source(node: page) {
     EmitOk { html } => ServedObservationSurface { kind: DailyPage, status: 200, body: html }
