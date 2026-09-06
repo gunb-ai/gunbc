@@ -47,6 +47,9 @@ import gunbc.scm.repository_envelope {
   RepositoryCommitMintRootMissing,
   RepositoryCommitMintParentMissing,
   RepositoryCommitMintIntegrationSourceMissing,
+  RepositoryCommitIntegrationSourceNotPreviouslyAdmitted,
+  RepositoryEncodeIntegrationSourceNotInCommits,
+  encode_repository,
   mint_repository_commit,
   commit_at_reference,
   encode_repository_checked,
@@ -444,6 +447,99 @@ test fn scm_mb_the_integration_record_survives_a_document_round_trip() -> Bool {
   }
 }
 
+// A COMMIT TABLE IN A CHOSEN ORDER, WHICH IS ALL THE MALFORMED SPECIMENS NEED AND IS WHY NONE OF THEM
+// CONSTRUCTS A COMMIT. RepositoryCommit is sole-constructed, so a fixture cannot forge one -- and it
+// does not have to. Every state below is reached by SELECTING AND ORDERING commits the mint already
+// produced, which is exactly the freedom a decoded document has: a wire table may list rows in any
+// order and may omit rows other rows still name.
+//
+// THAT IS WHAT MAKES THE REDS AUTHORABLE, and DESIGN section 4b says to ask that before writing the
+// check rather than after. A check whose forbidden state cannot be expressed anywhere the check could
+// run is a decoration, permanently green and worse than absent because it gets cited as coverage. The
+// state here is unrepresentable in an ACCEPTED corpus and perfectly representable as a specimen handed
+// to the reader, which is the boundary that decides it.
+fn mb_ordered(scene_repo: RepositoryEnvelope, order: List<RepositoryCommitRef>) -> RepositoryEnvelope {
+  RepositoryEnvelope {
+    store: scene_repo.store,
+    commits: fold(order, init: [], f: fn(acc, reference) {
+      match commit_at_reference(commits: scene_repo.commits, reference: reference) {
+        Absent => acc
+        Present { value: c } => concat(acc, [c])
+      }
+    }),
+    commit_allocator: scene_repo.commit_allocator,
+    checked_out: none,
+    staged: none,
+  }
+}
+
+// THE POSITIVE CONTROL, AND IT IS NOT DECORATION EITHER. The two refusals below are reached by
+// REMOVING or REORDERING rows of this exact table, so without this claim a reader cannot tell whether
+// they refuse for the reason named or because `mb_ordered` produces something no reader accepts.
+test fn scm_mb_a_well_ordered_subset_still_decodes() -> Bool {
+  match mb_scene() {
+    MbSceneUnavailable => false
+    MbScene { repository: r, c0: c0, s1: s1, m1: m1, t1: t1, s2: _, i1: _ } =>
+      match decode_repository(v: encode_repository(repo: mb_ordered(scene_repo: r, order: [c0, s1, m1, t1]))) {
+        RepositoryDecoded { envelope: back } => count(back.commits) == 4
+        RepositoryDecodeRefused { cause: _ } => false
+      }
+  }
+}
+
+// THE WIRE IS THE OTHER PATH, AND WITHOUT THIS CLAIM IT WAS THE WEAKER ONE. The mint refuses an anchor
+// absent from the input repository, so source-to-value was already walled; a DOCUMENT could still
+// assert one. Decode admitted it, the consumed join then matched nothing against that bogus anchor,
+// and merge_base returned the ordinary graph base -- the exact stale base this module exists to make
+// unavailable, reached through the path nobody checked. DESIGN section 4b reads a class's rung as the
+// MINIMUM across its in-scope paths, so before this the class sat at the wire's rung, not the mint's.
+test fn scm_mb_a_document_whose_integration_anchor_is_absent_refuses() -> Bool {
+  match mb_scene() {
+    MbSceneUnavailable => false
+    MbScene { repository: r, c0: c0, s1: s1, m1: m1, t1: t1, s2: _, i1: _ } =>
+      match decode_repository(v: encode_repository(repo: mb_ordered(scene_repo: r, order: [c0, m1, t1]))) {
+        RepositoryDecodeRefused { cause: RepositoryCommitIntegrationSourceNotPreviouslyAdmitted { source: x } } =>
+          repository_commit_ref_eq(left: x, right: s1)
+        RepositoryDecodeRefused { cause: _ } => false
+        RepositoryDecoded { envelope: _ } => false
+      }
+  }
+}
+
+// PREEXISTENCE IS AN ORDER FACT, NOT A MEMBERSHIP FACT, AND THIS IS THE CLAIM THAT SEPARATES THEM.
+// Here S1 is PRESENT in the table, so a check asking merely "is the anchor somewhere in this list"
+// admits the document. It must not: M1 cannot have consumed a source that did not exist when M1 was
+// made, and this table admits M1 first. The membership-only implementation passes the previous claim
+// and fails here, which is the only reason both are written.
+test fn scm_mb_a_document_whose_integration_anchor_comes_later_refuses() -> Bool {
+  match mb_scene() {
+    MbSceneUnavailable => false
+    MbScene { repository: r, c0: c0, s1: s1, m1: m1, t1: _, s2: _, i1: _ } =>
+      match decode_repository(v: encode_repository(repo: mb_ordered(scene_repo: r, order: [c0, m1, s1]))) {
+        RepositoryDecodeRefused { cause: RepositoryCommitIntegrationSourceNotPreviouslyAdmitted { source: x } } =>
+          repository_commit_ref_eq(left: x, right: s1)
+        RepositoryDecodeRefused { cause: _ } => false
+        RepositoryDecoded { envelope: _ } => false
+      }
+  }
+}
+
+// THE CHECKED WRITER REFUSES THE SAME TABLE, so the malformed repository cannot be PRODUCED either.
+// Walling only the reader would leave a writer free to emit a document its own reader rejects: a
+// repository that cannot be reloaded, written by an operation that reported success.
+test fn scm_mb_checked_encode_refuses_an_absent_integration_anchor() -> Bool {
+  match mb_scene() {
+    MbSceneUnavailable => false
+    MbScene { repository: r, c0: c0, s1: s1, m1: m1, t1: t1, s2: _, i1: _ } =>
+      match encode_repository_checked(repo: mb_ordered(scene_repo: r, order: [c0, m1, t1])) {
+        RepositoryEncodeRefused { cause: RepositoryEncodeIntegrationSourceNotInCommits { source: x } } =>
+          repository_commit_ref_eq(left: x, right: s1)
+        RepositoryEncodeRefused { cause: _ } => false
+        RepositoryEncoded { value: _ } => false
+      }
+  }
+}
+
 test fn scm_merge_base_witnesses_hold() -> Bool {
   scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on()
     && scm_mb_a_source_descending_from_a_consumed_source_has_no_valid_base()
@@ -451,4 +547,8 @@ test fn scm_merge_base_witnesses_hold() -> Bool {
     && scm_mb_replaying_the_consumed_source_itself_has_no_valid_base()
     && scm_mb_a_squash_cannot_record_a_source_that_does_not_yet_exist()
     && scm_mb_the_integration_record_survives_a_document_round_trip()
+    && scm_mb_a_well_ordered_subset_still_decodes()
+    && scm_mb_a_document_whose_integration_anchor_is_absent_refuses()
+    && scm_mb_a_document_whose_integration_anchor_comes_later_refuses()
+    && scm_mb_checked_encode_refuses_an_absent_integration_anchor()
 }

@@ -74,6 +74,8 @@ import gunbc.scm.repository_envelope {
   RepositoryEncodeStagedIsAuthoredSource,
   RepositoryEncodeStagedIsSemanticNode, RepositoryCheckoutNotInCommits,
   RepositoryCommitParentNotInCommits,
+  RepositoryEncodeIntegrationSourceNotInCommits,
+  RepositoryCommitIntegrationSourceNotPreviouslyAdmitted,
   RepositoryCommitReferenceDuplicated, RepositoryCommitReferenceDuplicatedOnWire,
   RepositoryCommitReferenceOutsideAllocator, RepositoryDecodedCommitReferenceOutsideAllocator,
   RepositoryCommitParentNotPreviouslyAdmitted,
@@ -702,6 +704,7 @@ fn scm_env_encode_cause_tag(outcome: RepositoryEncodeOutcome) -> String {
         RepositoryCommitRootNotInStore { root: _ } => "commit_root"
         RepositoryCheckoutNotInCommits { selected: _ } => "checked_out"
         RepositoryCommitParentNotInCommits { parent: _ } => "commit_parent"
+        RepositoryEncodeIntegrationSourceNotInCommits { source: _ } => "commit_integration_source"
         RepositoryCommitReferenceDuplicated { reference: _ } => "commit_duplicate"
         RepositoryCommitReferenceOutsideAllocator { reference: _, next_ordinal: _ } => "commit_outside_allocator"
       }
@@ -1003,6 +1006,7 @@ fn scm_env_named_target_is_uncontained(outcome: RepositoryEncodeOutcome, store: 
         RepositoryCommitRootNotInStore { root: _ } => false
         RepositoryCheckoutNotInCommits { selected: _ } => false
         RepositoryCommitParentNotInCommits { parent: _ } => false
+        RepositoryEncodeIntegrationSourceNotInCommits { source: _ } => false
         RepositoryCommitReferenceDuplicated { reference: _ } => false
         RepositoryCommitReferenceOutsideAllocator { reference: _, next_ordinal: _ } => false
       }
@@ -1133,6 +1137,7 @@ fn scm_env_decode_cause_tag(outcome: RepositoryDecodeOutcome) -> String {
         RepositoryCheckoutReferenceUnresolved { reference: _ } => "checked_out"
         RepositoryCommitReferenceDuplicatedOnWire { reference: _ } => "commit_duplicate"
         RepositoryCommitParentNotPreviouslyAdmitted { parent: _ } => "commit_parent"
+        RepositoryCommitIntegrationSourceNotPreviouslyAdmitted { source: _ } => "commit_integration_source"
         RepositoryDecodedCommitReferenceOutsideAllocator { reference: _, next_ordinal: _ } => "commit_outside_allocator"
         RepositoryUnexpectedMember { context: _, key: _ } => "unexpected_member"
         RepositoryTargetReferenceRefused { cause: _ } => "target_reference"
