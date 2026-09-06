@@ -101,6 +101,13 @@ fn slbu_check_no_v1_rt_calls(src_dir: String, writes_ok: Bool) -> Bool {
 // but does not make the violation structurally unwritable. A failed read or a match both return
 // false (fail-closed). The stronger half is the manifest: no v1-compiler dependency means seed
 // linkage is structurally impossible at link time.
+//
+// ADMITTED DEBT: this Cargo.toml is HAND-AUTHORED as literal TOML text, duplicating
+// dependency names and versions that the real emitter owns. It is a parallel authority
+// that will drift from the emitter's dependency list. DISSOLVES WHEN the emitter
+// produces its own Cargo.toml from the modeled dependency declaration, at which point
+// this hand-authored string should be replaced by a reference to the emitted manifest
+// and all version-duplication drift sites become structurally impossible.
 fn slbu_cargo_toml(root: String) -> String {
   concat(
     "[package]\nname = \"v1_compiled\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n",
