@@ -308,7 +308,6 @@ fn floor_route_gap_chunk_01() -> List<String> {
     }
     }
     }
-    }
 }
 
 fn floor_route_gap_chunk_02() -> List<String> {
