@@ -7,7 +7,7 @@ import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex
 import std.measure { TokenCount, token_count, byte_size }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
-import gunbc.spark.vllm_engine_incarnation { VllmEngineIncarnation, vllm_engine_incarnation }
+import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_engine_incarnation }
 import extdeps.vllm.log_lines { vllm_startup_reading, GpuKvCacheSize }
 import extdeps.vllm.kv_cache { VllmObservedKvPool, VllmKvPoolAdmission, KvPoolAdmitted, KvPoolRefused, vllm_observed_kv_pool_from_reading }
 import extdeps.vllm.kv_layout {
@@ -29,8 +29,8 @@ data w_exe: String = "1111111111111111111111111111111111111111111111111111111111
 data w_unit: String = "3333333333333333333333333333333333333333333333333333333333333333"
 data w_capture: String = "5555555555555555555555555555555555555555555555555555555555555555"
 
-fn w_incarnation(invocation: String) -> VllmEngineIncarnation {
-  vllm_engine_incarnation(
+fn w_launch_id(invocation: String) -> VllmServingLaunch {
+  vllm_serving_launch(
     group: FabricGroupA,
     head: spark_pair_serving_head(group: FabricGroupA),
     systemd_invocation: invocation as NonEmptyStr,
@@ -80,7 +80,7 @@ fn w_full(layers: Nat, block: KvBlockSize) -> KvGroupLayout {
 // second opinion to compare against. An absent second opinion is not agreement.
 test fn a_real_capture_with_no_group_metadata_is_inconsistent_not_observed() -> Bool {
   let r = admit_kv_layout(
-    incarnation: w_incarnation(invocation: "inv-20-43"),
+    incarnation: w_launch_id(invocation: "inv-20-43"),
     layout: w_layout(groups: []),
     reported: w_reported(tokens: 11767856, hundredths: 1122),
     source_capture_digest: w_digest(hex: w_capture),
@@ -97,12 +97,12 @@ test fn a_real_capture_with_no_group_metadata_is_inconsistent_not_observed() -> 
 // a request even against the very engine it describes.
 test fn an_inconsistent_receipt_seats_nothing() -> Bool {
   let r = admit_kv_layout(
-    incarnation: w_incarnation(invocation: "inv-20-43"),
+    incarnation: w_launch_id(invocation: "inv-20-43"),
     layout: w_layout(groups: []),
     reported: w_reported(tokens: 11767856, hundredths: 1122),
     source_capture_digest: w_digest(hex: w_capture),
   )
-  match seating_authority_for(receipt: r, serving: w_incarnation(invocation: "inv-20-43"), sequence_budget: token_count(count: 500000)) {
+  match seating_authority_for(receipt: r, serving: w_launch_id(invocation: "inv-20-43"), sequence_budget: token_count(count: 500000)) {
     SeatingRefused { cause: c } => string_contains(s: c as String, pattern: "no capacity is established")
     SeatingAuthorized { blocks_available: _, blocks_per_request: _ } => false
   }
@@ -115,7 +115,7 @@ test fn an_inconsistent_receipt_seats_nothing() -> Bool {
 // and 1.00x is the concurrency those two lines imply.
 fn w_reproducing_receipt(invocation: String) -> VllmKvLayoutReceipt {
   admit_kv_layout(
-    incarnation: w_incarnation(invocation: invocation),
+    incarnation: w_launch_id(invocation: invocation),
     layout: w_layout_with(blocks: 65536, groups: [w_full(layers: 1, block: 16)]),
     reported: w_reported(tokens: 1048576, hundredths: 100),
     source_capture_digest: w_digest(hex: w_capture),
@@ -137,11 +137,11 @@ test fn a_layout_whose_groups_reproduce_the_printed_cost_is_observed() -> Bool {
 test fn an_observed_receipt_refuses_to_seat_a_request_a_later_launch_will_serve() -> Bool {
   let r = w_reproducing_receipt(invocation: "inv-20-43")
   let budget = token_count(count: 500000)
-  (match seating_authority_for(receipt: r, serving: w_incarnation(invocation: "inv-22-11"), sequence_budget: budget) {
+  (match seating_authority_for(receipt: r, serving: w_launch_id(invocation: "inv-22-11"), sequence_budget: budget) {
      SeatingRefused { cause: c } => string_contains(s: c as String, pattern: "different-incarnation")
      SeatingAuthorized { blocks_available: _, blocks_per_request: _ } => false
    })
-    && (match seating_authority_for(receipt: r, serving: w_incarnation(invocation: "inv-20-43"), sequence_budget: budget) {
+    && (match seating_authority_for(receipt: r, serving: w_launch_id(invocation: "inv-20-43"), sequence_budget: budget) {
           SeatingAuthorized { blocks_available: a, blocks_per_request: p } => a == 65536 && p == 31250
           SeatingRefused { cause: _ } => false
         })
@@ -151,13 +151,13 @@ test fn an_observed_receipt_refuses_to_seat_a_request_a_later_launch_will_serve(
 // bytes cannot be trusted, the second says two trustworthy readings describe different engines.
 test fn garbled_lines_and_a_contradicting_layout_are_different_refusals() -> Bool {
   let garbled = admit_kv_layout(
-    incarnation: w_incarnation(invocation: "inv-20-43"),
+    incarnation: w_launch_id(invocation: "inv-20-43"),
     layout: w_layout(groups: []),
     reported: w_reported(tokens: 11767856, hundredths: 440),
     source_capture_digest: w_digest(hex: w_capture),
   )
   let contradicting = admit_kv_layout(
-    incarnation: w_incarnation(invocation: "inv-20-43"),
+    incarnation: w_launch_id(invocation: "inv-20-43"),
     layout: w_layout_with(blocks: 65536, groups: [w_full(layers: 2, block: 16)]),
     reported: w_reported(tokens: 1048576, hundredths: 100),
     source_capture_digest: w_digest(hex: w_capture),
