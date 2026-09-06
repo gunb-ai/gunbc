@@ -144,11 +144,9 @@ fn slbu_cargo_toml(root: String) -> String {
 //
 // Temp-directory cleanup is let-bound after verdict and the results are ANDed into the
 // receipt, matching the house pattern (emit_host_transport, dag_compile_clean_seam_transport).
-// Measured (probes let_is_eager_when_unused,
-// and_demands_right_even_when_left_false): let is eager, && does NOT short-circuit.
-// Cleanup always runs regardless of verdict. Residual: this depends on a property the
-// substrate does not DECLARE; the emitted Rust arm short-circuits where the interpreter
-// does not (filed elsewhere as evaluation_model_cleanup_undeclared, pending).
+// Measured (probes let_is_eager_when_unused): let is eager; cleanups fire at the binding
+// regardless of verdict. Cleanup always runs. Residual: this depends on EAGER LET, which
+// no declared property of the substrate guarantees (gunbc#10647, pending).
 fn slbu_seed_unavailable_receipt() -> Bool {
   let root = git.Inspect.Toplevel()
   let logic_read = Filesystem.Read(path: slbu_repo_path(root: root.path, rel: slbu_logic_source_rel))
