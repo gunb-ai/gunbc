@@ -3,6 +3,7 @@ module gunbc.machine_intake_mtcollins1_media_attach
 import std.types { NonEmptyStr, String }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
+import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_diskless_image_name }
 import gunbc.machine_intake_megarac_media_attach {
   MegaRacAttachOutcome,
   MegaRacAttachResult,
@@ -27,7 +28,11 @@ import gunbc.machine_intake_megarac_media_attach {
 // THE POLICY LAYER FOR ONE HOST'S MEDIA ATTACH, separate from the operation for the same reason the
 // boot-handoff wrappers are: which image this unit should carry is a workflow decision, and the
 // operation stays reusable by the next controller without carrying anyone's choices.
-data mtcollins1_diskless_image_name: NonEmptyStr = "ubuntu-24.04.3-live-server-arm64.iso"
+//
+// THE IMAGE NAME IS IMPORTED RATHER THAN AUTHORED, and it used to be authored here. That made this
+// module and the fetch module two authorities for one fact — the artifact this host boots — which
+// admitted verifying one image and attaching another, with every individual step reporting success.
+// See gunbc.machine_intake_mtcollins1_boot_artifact.
 
 // THE JAR IS ATTEMPT-OWNED, AND A FIXED LITERAL HERE WAS THE DEFECT. extdeps.bmc.megarac's note
 // once claimed that making the jar a parameter meant an attempt owned its own — it does not: a

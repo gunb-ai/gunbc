@@ -1,0 +1,39 @@
+module gunbc.machine_intake_mtcollins1_boot_artifact
+
+import std.types { NonEmptyStr, String }
+
+// WHICH ARTIFACT MT. COLLINS BOOTS, AS ONE AUTHORITY, because it was previously two and nothing
+// joined them. The fetch module authored a published path ending
+// ubuntu-24.04.3-live-server-arm64.iso and the attach module authored an image name spelled
+// ubuntu-24.04.3-live-server-arm64.iso, as independent literals in different files. They agreed, and
+// nothing required them to.
+//
+// WHAT THAT ADMITTED IS THE FAILURE THIS WHOLE LANE EXISTS TO PREVENT. Edit one and the converge
+// path verifies the digest of artifact A, publishes A into the export, and then asks the controller
+// to present artifact B — which, if B happens to be in the share, succeeds. Every step reports
+// success, every read-back confirms, and the unit boots bytes nothing checked. There is no arm for
+// it because no single operation is wrong; the defect lives in the seam between two that are each
+// individually correct.
+//
+// THE PUBLISHED PATH IS NOW DERIVED RATHER THAN AUTHORED, which is what makes the divergence
+// unrepresentable instead of merely detectable. A check that the path ENDS WITH the name would have
+// been the §5 shape to avoid: it concedes the two are separately writable and then validates them,
+// and it is satisfiable by editing whichever of the two the author was not thinking about. Composing
+// the path from the name leaves nothing to compare.
+//
+// AND THE DECOMPOSITION IS THE HONEST ONE rather than a trick to collapse a pair. A published path
+// genuinely fuses two facts of different ownership: WHERE this host's controller reads media from,
+// which is a property of the export and moves when the export moves, and WHICH artifact is being
+// served, which is a property of the release and moves when the release moves. They were only ever
+// one string because someone wrote them as one.
+data mtcollins1_boot_export_dir: NonEmptyStr = "/srv/bmc"
+
+data mtcollins1_diskless_image_name: NonEmptyStr = "ubuntu-24.04.3-live-server-arm64.iso"
+
+fn mtcollins1_boot_image_published_path() -> NonEmptyStr {
+  join([
+    mtcollins1_boot_export_dir as String,
+    "/",
+    mtcollins1_diskless_image_name as String,
+  ], "") as NonEmptyStr
+}
