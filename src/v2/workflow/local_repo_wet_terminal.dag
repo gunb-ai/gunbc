@@ -178,7 +178,7 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 //     self_host_logic_seed_unavailable_receipt_holds -- emit dag/std/logic.dag with gunbc,
 //     compile the emitted Rust with standard infrastructure deps (im, serde, etc. for v1_rt.rs)
 //     but WITHOUT the seed crate v1-compiler, run the witness binary. Proves the emitted logic
-//     module executes without seed dependency at build/run time. The transport's v1_rt:: call-site
+//     module executes without seed dependency at build/run time. The transport's v1_compiler:: call-site
 //     check (per-subject spelling search) refuses if the emitted subject module references the seed
 //     runtime namespace. Replaces the former zero-external-dependency constraint (now with standard
 //     deps for v1_rt.rs, which the emitter includes unconditionally).
