@@ -201,7 +201,8 @@ test fn only_an_exact_read_back_reports_success() -> Bool {
 // and the tick faults. An earlier cut of this change appended the member LAST, after the belt
 // timer, so a candidate belt could fire against the known-broken observation state before the
 // correction ran — a self-inflicted refusal on every fresh deploy, and an inversion of
-// deployment_apply_order_note's own rule that dependencies precede their consumers.
+// the rule gunbc.live_deploy.spec deployment_steps_apply_order's annotation states, that
+// dependencies precede their consumers.
 //
 // Third is the EARLIEST correct position rather than an arbitrary improvement: convergence needs
 // the tree (it configures that repository) and the binary (the unit's ExecStart invokes it), and
