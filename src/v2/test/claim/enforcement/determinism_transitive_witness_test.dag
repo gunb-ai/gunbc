@@ -30,7 +30,9 @@ import v2.std.text { String }
 // THE LIVE CONSUMER STANDS. Clause 2 of gunbc#10156 required a live required-floor consumer of the
 // grounded call-reachability authority -- one whose declared substrate and cadence match the inputs
 // it reads, whose failure reaches the required PR floor, and which cannot predict-skip.
-// `determinism_transitive_live_closure_holds` below is it.
+// `determinism_live_intra_holds` below is it (renamed from
+// determinism_transitive_live_closure_holds when the fn-arrow corpus_dependency_view
+// was deleted — see gunbc.rung_drop.determinism_transitive_reachability).
 //
 // IT WAS WITHDRAWN ONCE, AND THE REASON IS RECORDED RATHER THAN DELETED, because a reader who finds
 // this row green needs to know what changed to make it possible. `fn_arrow_decl_facts_live` was
@@ -93,30 +95,23 @@ fn determinism_live_closure_modules() -> List<String> {
   )
 }
 
-// LIVE CONSUMER: checks determinism over the fn-arrow declarations in affected_set.dag.
-// Uses determinism_transitive_holds with empty closure_modules (pool_roots=[]), which means
-// no callee edges are followed (decls_matching_callee filters to closure_modules, empty = no matches).
+// INTRAnode determinism check over the fn-arrow declarations in affected_set.dag.
+// Uses determinism_transitive_holds with empty closure_modules (pool_roots=[]), so no
+// callee edges are followed (decls_matching_callee filters to closure_modules, empty = none).
 // The walk returns only the entry module's own declarations, checking each intra-node for
-// non-deterministic primitives via determinism_findings. This is a real non-vacuous check
-// of all 78 declarations — each is inspected.
+// non-deterministic primitives. This is a real check of all 78 declarations but does NOT
+// verify determinism over the call graph — callee-transitive reachability is unverified
+// (see gunbc.rung_drop.determinism_transitive_reachability).
 //
-// RUNG DROP (DESIGN §4b(3)) — TRANSITIVE call-graph reachability lowered to INTRAnode-only.
-// Previous rung: determinism_transitive_holds walked the full call graph of fn-arrow declarations
-// under src/v2/lens/affected_set (which included corpus_dependency_view and entry_selection's
-// fn declarations, plus their callee chains into ~25 lens modules). After corpus_dependency_view
-// deletion, the remaining affected_set.dag declarations' callees reach into v2.std.* and
-// v2.lens.common.* — a walk broad enough to include those exceeds the per-claim CPU deadline
-// (measured: interrupted_before_verdict at 25+ modules).
-// Bounded population: the ~25 lens modules whose fn-arrow declarations were previously reachable
-// through the entry module's call graph from the old subject roots.
-// Restoration trigger: determinism_scoped_transitive_holds (a future function) that walks the
-// call graph but bounds the walk to only callees REACHABLE from the entry module's declarations,
-// rather than iterating ALL declarations in the closure. When that function exists and completes
-// within budget, switch this witness from determinism_transitive_holds to the scoped variant.
-// Until then, CHECK_IF_CAUSE_STILL_APPLIES at each determinism lens change: if the per-claim
-// CPU deadline has increased, or if the determinism walk has been optimized, re-test with
-// pool_roots=["src/v2/lens"] to restore transitive coverage.
-test fn determinism_transitive_live_closure_holds() -> Bool {
+// THIS WITNESS IS NAMED determinism_live_intra_holds (NOT transitive) because it does not
+// follow callee edges. The previous name (determinism_transitive_live_closure_holds) was
+// retired when corpus_dependency_view deletion removed the declarations that made the
+// transitive walk meaningful within budget — see the rung drop declaration at
+// dag/gunbc/rung_drop/determinism_transitive_reachability.dag.
+//
+// NOTABENE — determinism over the fn-arrow call graph is currently unverified in the
+// required floor. The rung drop declares the bounded population and restoration trigger.
+test fn determinism_live_intra_holds() -> Bool {
   determinism_transitive_holds(
     entry_module: determinism_live_entry_module,
     closure_modules: determinism_live_closure_modules(),

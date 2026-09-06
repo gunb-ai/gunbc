@@ -1,0 +1,40 @@
+module gunbc.rung_drop.determinism_transitive_reachability
+
+import std.types { NonEmptyStr, List }
+import gunbc.guarantee_rung { GuaranteeRung, MechanicallyPreventable, Mitigatable }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+
+// RUNG DROP — DETERMINISM TRANSITIVE REACHABILITY (2026-09-05).
+//
+// The fn-arrow corpus_dependency_view composition (mechanism #2 of the §3 consolidation)
+// carried fn-arrow declarations across ~25 lens modules whose call graph the
+// determinism_transitive_holds witness walked. Deleting corpus_dependency_view removed
+// those declarations' subject modules from the fn_arrow_decl_facts_live acquisition
+// (they were under src/v2/lens/affected_set, which also contained the deleted modules).
+// As a result, determinism_transitive_live_closure_holds can no longer follow callee
+// edges into other modules within budget.
+//
+// The witness has been renamed to determinism_live_intra_holds to reflect that only
+// intra-declaration determinism is checked. No cross-module callee traversal occurs.
+// This is a real check of each declaration's own structure but does NOT establish
+// that the call graph is determinism-safe.
+data determinism_transitive_reachability: RungDrop = RungDrop {
+  identity: "determinism_transitive_reachability" as NonEmptyStr,
+
+  subject: "Transitive determinism reachability over the fn-arrow call graph",
+
+  declared: "2026-09-05",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: [
+      "v2.lens.affected_set.corpus_dependency_view (fn-arrow composition, deleted)",
+      "v2.lens.affected_set.entry_selection (fn-arrow declarations, deleted)",
+    ],
+    restoration_trigger: "Full transitive determinism walk over the callee graph within one required-lane per-claim budget (currently 100ms CPU). Implement determinism_scoped_transitive_holds that walks only callees reachable from the entry module (rather than iterating all closure-module declarations), OR increase the per-claim CPU budget to cover a determinism_transitive_holds call with pool_roots containing >=25 lens modules and their callee chains through v2.std.* and v2.lens.common.* — re-test with determinism_transitive_holds(pool_roots=[\"src/v2/lens\"], pool_files=[]) and determinism_transitive_holds(pool_roots=[\"src/v2/lens/affected_set\"], pool_files=[]) as the passing conditions. Until then, determinism over the fn-arrow call graph is unverified.",
+  }
+}
