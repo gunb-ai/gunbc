@@ -93,71 +93,52 @@ fn ftps_default_port(negotiation: FtpsNegotiation) -> Port {
 // pin, it is the absence of authentication, and a name that flatters it is the cosmetic-wrapper
 // failure: the type would carry a distinction the realization does not enforce.
 //
-// THE REASON IS A CLOSED CLASS, NOT A CALLER-AUTHORED STRING. A free `because: NonEmptyStr` lets any
-// consumer mint its own justification at the call site, which makes the weakening self-authorising --
-// the same defect as a caller-supplied roster or a caller-chosen criterion. Enumerating the admissible
-// peer classes here means adding a new excuse requires editing this module, where it is reviewable
-// beside the sentence describing what -k actually surrenders.
+// THE REASON IS A PARAMETER OF THIS MODULE, NOT A ROSTER INSIDE IT. A free `because: NonEmptyStr`
+// would let any consumer mint its own justification at the call site, which makes the weakening
+// self-authorising -- so the reason must be a CLOSED class. But enumerating the admissible classes
+// HERE was a layer inversion, and the note that stood in this place said so out loud without
+// noticing: it argued that "adding a new excuse requires editing this module, where it is
+// reviewable". That is admission control over which devices a CONSUMER FLEET may waive verification
+// for, living inside a model of an IETF protocol.
+//
+// The tell was in the name. DeviceCertificateSubjectIsSerialNotAddress, and the measurement behind
+// it, are an observation of THIS repository's printers -- and section 3 is explicit that
+// observations produced here are receipts in the observing product layer, never facts owned by the
+// observed upstream. A second fleet with a different device could not add its class without editing
+// a protocol module it does not own, and adding one here would have widened the shape for everyone.
+//
+// So the protocol carries the SHAPE -- verification is on, or it is off for a reason of a type the
+// consumer supplies -- and the consumer carries the closed roster of reasons it will admit. The
+// weakening stays non-self-authorising because PeerClass is closed WHERE IT IS DECLARED; it simply
+// is not declared here. One shape, N bound reason types.
 //
 // The honest ceiling of the weakened arm is mitigation, not a rung: the transfer stays confidential
 // against a passive listener and remains fully open to an active one on the same LAN. Climbing it
-// means pinning the device's certificate or its public key -- a scoped pin, verified -- which is a
-// real construction rather than a rename, and is the trigger this arm is waiting on.
-// MEASURED CORRECTION, 2026-09-05. This enum first read DeviceSelfSignedCertificateOnTrustedLan,
-// which turned out to be FALSE about the actual devices. A TLS handshake against both printers on
-// the operator segment returns a certificate issued by `C=CN, O=BBL Technologies Co., Ltd, CN=BBL
-// CA` -- a vendor CA chain, not a self-signed leaf. The excuse was authored from an expectation
-// about consumer hardware and no one had looked; the model was carrying a reason that the first
-// measurement contradicted.
-//
-// WHAT ACTUALLY DEFEATS VERIFICATION HERE IS THE SUBJECT, NOT THE CHAIN. The certificate's CN is the
-// machine's SERIAL (0300CA652201400), not the address a client dials, so hostname verification
-// cannot succeed against an IP however the chain is trusted -- and curl's -k disables BOTH checks
-// together, which is why the arm is named for the loss rather than for the certificate.
-//
-// THAT MAKES THE CLIMB CONCRETE RATHER THAN ASPIRATIONAL, which is the point of recording the
-// measurement: pinning the BBL CA with --cacert recovers chain verification, leaving only the
-// name-mismatch to be waived deliberately and narrowly. That is a real construction and it is now
-// the named trigger for this arm, replacing "pin the certificate somehow".
-type UnverifiablePeerClass
-  = | DeviceCertificateSubjectIsSerialNotAddress
-
-type FtpsPeerVerification
+// means pinning the peer's certificate or public key -- a scoped pin, verified -- which is a real
+// construction rather than a rename, and is the trigger this arm is waiting on.
+type FtpsPeerVerification<PeerClass>
   = FtpsVerifyPeer
-  | FtpsPeerVerificationDisabled { peer: UnverifiablePeerClass }
+  | FtpsPeerVerificationDisabled { peer: PeerClass }
 
-fn ftps_verifies_peer(v: FtpsPeerVerification) -> Bool {
+fn ftps_verifies_peer<PeerClass>(v: FtpsPeerVerification<PeerClass>) -> Bool {
   match v {
     FtpsVerifyPeer => true
     FtpsPeerVerificationDisabled { peer: _ } => false
   }
 }
 
-// THE PORT CANNOT BE SET INDEPENDENTLY OF THE NEGOTIATION, because deriving a default is not the
-// same as preventing the contradiction. ftps_default_port answers 990 for implicit and 21 for
-// explicit, and the commentary above claims that derivation makes the mismatch unspellable -- but
-// while this was an open struct, FtpsEndpoint { port: 21, negotiation: FtpsImplicit } remained
-// perfectly writable, and a caller that set both by hand got exactly the connection failure the
-// type exists to prevent. A derivation only helps the callers who USE it; a constructor is what
-// makes the alternative unreachable.
-//
-// sole_constructor plus ftps_endpoint means the pair cannot be authored at all: the negotiation is
-// supplied and the port follows from it. WHAT THIS DELIBERATELY DOES NOT DO is forbid a
-// non-standard port forever -- FTPS permits one and a device may yet need it. That would be a
-// second constructor in this module, named for the fact that it departs from the registered port,
-// and it would be a deliberate act rather than a field nobody noticed was free.
-type FtpsEndpoint sole_constructor {
+type FtpsEndpoint<PeerClass> sole_constructor {
   host: NonEmptyStr
   port: Port
   negotiation: FtpsNegotiation
-  verification: FtpsPeerVerification
+  verification: FtpsPeerVerification<PeerClass>
 }
 
-fn ftps_endpoint(
+fn ftps_endpoint<PeerClass>(
   host: NonEmptyStr,
   negotiation: FtpsNegotiation,
-  verification: FtpsPeerVerification,
-) -> FtpsEndpoint {
+  verification: FtpsPeerVerification<PeerClass>,
+) -> FtpsEndpoint<PeerClass> {
   FtpsEndpoint {
     host: host,
     port: ftps_default_port(negotiation: negotiation),

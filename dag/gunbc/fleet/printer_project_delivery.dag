@@ -13,7 +13,6 @@ import extdeps.tools.curl { curl_ftps_upload_command }
 import extdeps.ietf.ftps {
   FtpsEndpoint, ftps_endpoint, FtpsNegotiation, FtpsExplicit, FtpsImplicit,
   FtpsPeerVerification, FtpsVerifyPeer, FtpsPeerVerificationDisabled,
-  UnverifiablePeerClass, DeviceCertificateSubjectIsSerialNotAddress,
   ftps_default_port, ftps_verifies_peer,
 }
 import product.placement_supply { PhysicalAssetIdentity }
@@ -268,6 +267,25 @@ type ProjectDelivery
   | ProjectDeliveryProvisionRequiredResidueRemains { printer: PhysicalAssetIdentity, desired: SecretRef, cause: NonEmptyStr }
   | ProjectDeliveryProvisionRequired { printer: PhysicalAssetIdentity, desired: SecretRef }
 
+// THE ROSTER OF PEERS THIS FLEET WILL DIAL WITHOUT VERIFICATION LIVES HERE, not in the FTPS model.
+// It is closed, so the weakening is still not self-authorising -- a caller cannot mint a fresh
+// excuse at the call site -- but it is closed in the layer that OWNS the policy. extdeps.ietf.ftps
+// carries the shape (verification on, or off for a reason of a supplied type) and knows nothing
+// about which devices this repository permits.
+//
+// THE ARM IS NAMED FOR THE LOSS, NOT THE CERTIFICATE, and the measurement is the reason it can be.
+// A TLS handshake against both printers returns a certificate issued by C=CN, O=BBL Technologies
+// Co., Ltd, CN=BBL CA -- a vendor chain, not a self-signed leaf, which is what an earlier arm name
+// wrongly assumed without looking. What actually defeats verification is the SUBJECT: the CN is the
+// machine's serial, not the address a client dials, so hostname verification cannot succeed against
+// an IP however the chain is trusted, and curl's -k surrenders both checks together.
+//
+// THAT MAKES THE CLIMB CONCRETE. Pinning the BBL CA with --cacert recovers chain verification,
+// leaving only the name mismatch to be waived deliberately and narrowly. That is the named trigger
+// for this arm, and it is a construction rather than a rename.
+type PrinterUnverifiablePeerClass
+  = | PrinterCertificateSubjectIsSerialNotAddress
+
 // THE ENDPOINT THE MACHINE ACTUALLY PRESENTS, recorded as an observation of THIS device rather than
 // a general claim about its model line. The A1 mini's LAN file channel is implicit FTPS on 990 and
 // the account name is fixed by the firmware.
@@ -290,12 +308,12 @@ type ProjectDelivery
 // refusal path comes to look like an edge case instead of the state we are actually in.
 data bambu_lan_ftps_user: NonEmptyStr = "bblp"
 
-fn bambu_lan_endpoint(host: NonEmptyStr) -> FtpsEndpoint {
+fn bambu_lan_endpoint(host: NonEmptyStr) -> FtpsEndpoint<PrinterUnverifiablePeerClass> {
   ftps_endpoint(
     host: host,
     negotiation: FtpsImplicit,
     verification: FtpsPeerVerificationDisabled {
-      peer: DeviceCertificateSubjectIsSerialNotAddress,
+      peer: PrinterCertificateSubjectIsSerialNotAddress,
     },
   )
 }
@@ -315,7 +333,7 @@ fn ftps_scheme(negotiation: FtpsNegotiation) -> String {
   }
 }
 
-fn ftps_upload_url(endpoint: FtpsEndpoint, remote_name: NonEmptyStr) -> String {
+fn ftps_upload_url<PeerClass>(endpoint: FtpsEndpoint<PeerClass>, remote_name: NonEmptyStr) -> String {
   concat(
     concat(
       concat(ftps_scheme(negotiation: endpoint.negotiation), endpoint.host as String),
@@ -345,8 +363,8 @@ fn ftps_upload_url(endpoint: FtpsEndpoint, remote_name: NonEmptyStr) -> String {
 // invisible. curl_ftps_upload_command stays FilePath-parametric on purpose: it is a syntax helper
 // for curl and is not where a credential guarantee can live. The boundary that represents an
 // AUTHENTICATED TRANSFER is this one, so this is where the binding must be required.
-fn upload_command_for(
-  endpoint: FtpsEndpoint,
+fn upload_command_for<PeerClass>(
+  endpoint: FtpsEndpoint<PeerClass>,
   local_path: NonEmptyStr,
   remote_name: NonEmptyStr,
   binding: NetrcBinding,
@@ -359,8 +377,8 @@ fn upload_command_for(
   )
 }
 
-fn project_upload_command(
-  endpoint: FtpsEndpoint,
+fn project_upload_command<PeerClass>(
+  endpoint: FtpsEndpoint<PeerClass>,
   payload: IdentifiedProjectPayload,
   binding: NetrcBinding,
 ) -> ArgvCommand {
@@ -515,8 +533,30 @@ fn refuse_and_drop(
   payload: IdentifiedProjectPayload,
   cause: NonEmptyStr,
 ) -> ProjectDelivery {
+  refuse_and_drop_carrying(printer: printer, payload: payload, cause: cause, residue_already: false)
+}
+
+// RESIDUE HAS TWO SOURCES AND CLEANING ONE CANNOT DISCHARGE THE OTHER. The netrc refusal arm routes
+// through here already knowing a CREDENTIAL may be on disk, and this function used to classify
+// cleanliness from the PAYLOAD removal alone -- so a credential-residue refusal whose payload copy
+// happened to delete cleanly returned an ordinary ProjectDeliveryUnattempted. The obligation
+// survived in the cause TEXT and was erased from the TYPE, which is worse than either losing both
+// or keeping both: a consumer matching the outcome sees a clean refusal and a human reading the
+// message sees a credential on disk, and only one of those is machine-checkable.
+//
+// This is the fifth appearance of one class in this PR -- a distinction preserved in prose and
+// dropped from the carrier -- and the second I introduced while fixing an earlier one.
+fn refuse_and_drop_carrying(
+  printer: PhysicalAssetIdentity,
+  payload: IdentifiedProjectPayload,
+  cause: NonEmptyStr,
+  residue_already: Bool,
+) -> ProjectDelivery {
   let removed = shell.Remove.FileForce(path: payload.realization.path).success
-  unattempted_delivery(printer: printer, cause: cause, removed: removed)
+  unattempted_delivery(
+    printer: printer,
+    cause: cause,
+    clean: removed && residue_already == false)
 }
 
 // THE RESIDUE MESSAGE HAS ONE AUTHORITY. Three paths can now leave a payload copy or a credential
@@ -525,8 +565,8 @@ fn residue_cause(what_failed: NonEmptyStr) -> NonEmptyStr {
   concat(what_failed as String, ", so material may remain on disk") as NonEmptyStr
 }
 
-fn unattempted_delivery(printer: PhysicalAssetIdentity, cause: NonEmptyStr, removed: Bool) -> ProjectDelivery {
-  if removed {
+fn unattempted_delivery(printer: PhysicalAssetIdentity, cause: NonEmptyStr, clean: Bool) -> ProjectDelivery {
+  if clean {
     ProjectDeliveryUnattempted { printer: printer, cause: cause }
   } else {
     ProjectDeliveryUnattemptedResidueRemains {
@@ -540,7 +580,7 @@ fn unattempted_delivery(printer: PhysicalAssetIdentity, cause: NonEmptyStr, remo
 fn delivered_receipt(
   printer: PhysicalAssetIdentity,
   payload: IdentifiedProjectPayload,
-  endpoint: FtpsEndpoint,
+  endpoint: FtpsEndpoint<PrinterUnverifiablePeerClass>,
   credential_version: SmResolvedVersionIdentity,
   cleaned: Bool,
 ) -> ProjectDelivery {
@@ -648,7 +688,8 @@ func deliver_project_to_printer(
             NetrcBindingRefused { cause: cause } =>
               refuse_and_drop(printer: printer, payload: payload, cause: cause)
             NetrcBindingRefusedResidueRemains { cause: cause } =>
-              refuse_and_drop(printer: printer, payload: payload, cause: cause)
+              refuse_and_drop_carrying(
+                printer: printer, payload: payload, cause: cause, residue_already: true)
             NetrcBindingPlaced { binding: binding } => {
             outcome = run_shell_command_capture(
               command: project_upload_command(

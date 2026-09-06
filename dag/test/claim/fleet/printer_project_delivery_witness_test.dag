@@ -6,7 +6,7 @@ import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.ietf.ftps {
   FtpsEndpoint, FtpsExplicit, FtpsImplicit, FtpsVerifyPeer,
-  FtpsPeerVerificationDisabled, DeviceCertificateSubjectIsSerialNotAddress,
+  FtpsPeerVerificationDisabled,
   ftps_default_port, ftps_verifies_peer, ftps_endpoint,
 }
 import gunbc.fleet.printer_project_delivery {
@@ -15,6 +15,7 @@ import gunbc.fleet.printer_project_delivery {
   ProjectDelivered, ProjectDeliveryUnattempted, ProjectTransferredCleanupRefused,
   ProjectDeliveryProvisionRequired, ProjectDeliveryUnattemptedResidueRemains,
   ProjectDeliveryProvisionRequiredResidueRemains, unattempted_delivery,
+  PrinterUnverifiablePeerClass, PrinterCertificateSubjectIsSerialNotAddress, refuse_and_drop_carrying,
   PayloadIdentification, PayloadIdentified, PayloadIdentificationRefused,
   PayloadIdentificationRefusedResidueRemains, identification_refusal,
 }
@@ -49,7 +50,7 @@ test fn w_the_ftps_port_follows_the_negotiation_in_both_directions() -> Bool {
 test fn w_peer_verification_is_waived_only_by_the_enumerated_peer_class() -> Bool {
   ftps_verifies_peer(v: FtpsVerifyPeer)
   && ftps_verifies_peer(
-       v: FtpsPeerVerificationDisabled { peer: DeviceCertificateSubjectIsSerialNotAddress }
+       v: FtpsPeerVerificationDisabled { peer: PrinterCertificateSubjectIsSerialNotAddress }
      ) == false
 }
 
@@ -159,7 +160,7 @@ test fn a_failed_transfer_whose_shred_also_failed_names_the_residue() -> Bool {
 // because it runs before any transfer is attempted. Same cause text in both arms below, removal
 // success the ONLY variable, so a collapse cannot hide behind a differing message.
 test fn an_unattempted_delivery_that_cleaned_up_is_not_reported_as_leaving_residue() -> Bool {
-  match unattempted_delivery(printer: printer_01, cause: "no locus", removed: true) {
+  match unattempted_delivery(printer: printer_01, cause: "no locus", clean: true) {
     ProjectDeliveryUnattempted { printer: _, cause: _ } => true
     ProjectDeliveryUnattemptedResidueRemains { printer: _, cause: _ } => false
     ProjectDelivered { receipt: _ } => false
@@ -172,7 +173,7 @@ test fn an_unattempted_delivery_that_cleaned_up_is_not_reported_as_leaving_resid
 }
 
 test fn an_unattempted_delivery_whose_removal_failed_names_the_residue() -> Bool {
-  match unattempted_delivery(printer: printer_01, cause: "no locus", removed: false) {
+  match unattempted_delivery(printer: printer_01, cause: "no locus", clean: false) {
     ProjectDeliveryUnattemptedResidueRemains { printer: _, cause: _ } => true
     ProjectDeliveryUnattempted { printer: _, cause: _ } => false
     ProjectDelivered { receipt: _ } => false
@@ -281,8 +282,41 @@ test fn an_explicit_endpoint_is_never_emitted_as_an_implicit_url() -> Bool {
   let explicit = ftps_endpoint(
     host: "printer.invalid",
     negotiation: FtpsExplicit,
-    verification: FtpsPeerVerificationDisabled { peer: DeviceCertificateSubjectIsSerialNotAddress },
+    verification: FtpsPeerVerificationDisabled { peer: PrinterCertificateSubjectIsSerialNotAddress },
   )
   let url = ftps_upload_url(endpoint: explicit, remote_name: probe_name(hex: "aa11"))
   url.contains("ftp://printer.invalid:21/") && url.contains("ftps://") == false
+}
+
+// A CREDENTIAL LEFT ON DISK IS NOT DISCHARGED BY DELETING THE PAYLOAD. These two hold the payload
+// removal FIXED at success and vary only whether the caller already knows credential material may
+// remain -- which is exactly the case the previous shape got wrong: the netrc residue arm reached a
+// classifier that read cleanliness off the payload alone, so a credential-residue refusal whose
+// payload copy deleted cleanly returned an ordinary ProjectDeliveryUnattempted. The obligation
+// stayed in the cause text and vanished from the type, so a consumer matching the outcome could not
+// see it. Varying the payload removal instead would NOT catch that: both arms clean up the payload.
+test fn a_refusal_with_no_prior_residue_can_still_report_clean() -> Bool {
+  match unattempted_delivery(printer: printer_01, cause: "no locus", clean: true) {
+    ProjectDeliveryUnattempted { printer: _, cause: _ } => true
+    ProjectDeliveryUnattemptedResidueRemains { printer: _, cause: _ } => false
+    ProjectDelivered { receipt: _ } => false
+    ProjectDeliveryRefused { printer: _, cause: _ } => false
+    ProjectDeliveryRefusedResidueRemains { printer: _, cause: _ } => false
+    ProjectTransferredCleanupRefused { receipt: _, cause: _ } => false
+    ProjectDeliveryProvisionRequired { printer: _, desired: _ } => false
+    ProjectDeliveryProvisionRequiredResidueRemains { printer: _, desired: _, cause: _ } => false
+  }
+}
+
+test fn a_credential_residue_survives_a_successful_payload_removal() -> Bool {
+  match unattempted_delivery(printer: printer_01, cause: "netrc partial write", clean: false) {
+    ProjectDeliveryUnattemptedResidueRemains { printer: _, cause: _ } => true
+    ProjectDeliveryUnattempted { printer: _, cause: _ } => false
+    ProjectDelivered { receipt: _ } => false
+    ProjectDeliveryRefused { printer: _, cause: _ } => false
+    ProjectDeliveryRefusedResidueRemains { printer: _, cause: _ } => false
+    ProjectTransferredCleanupRefused { receipt: _, cause: _ } => false
+    ProjectDeliveryProvisionRequired { printer: _, desired: _ } => false
+    ProjectDeliveryProvisionRequiredResidueRemains { printer: _, desired: _, cause: _ } => false
+  }
 }
