@@ -1,0 +1,228 @@
+module gunbc.runner_microvm_launch_plan
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.disposition { Disposition, SingleAuthority }
+import extdeps.systemd.systemd_run { SystemdRunProperty }
+import extdeps.virtualization.firecracker { FirecrackerVmConfig }
+import extdeps.github.effect { GitHubOrganizationRef }
+import extdeps.github.actions_jit_runner { JitRunnerConfigRequest, JitRunnerGroupId, JitRunnerLabel }
+import gunbc.auth.github_apps { GitHubAppControlPlaneState }
+import gunbc.auth.github_credential { GitHubCredentialAuthority, CredentialCapability }
+import gunbc.fabric_required_build_cell { RequiredBuildCellSnapshot }
+import gunbc.runner_unit { RunnerUnitLifecycleIntent }
+import gunbc.runner_microvm {
+  RunnerMicroVmAdmission, RunnerMicroVmAdmitted, RunnerMicroVmRefusedOrphanableUnit,
+  RunnerMicroVmRefusedSharedCredential, RunnerMicroVmRefusedMalformedVm,
+  RunnerMicroVmRefusedEnvelopeDisagreement, RunnerMicroVmRefusedEnvelopeUnresolved,
+  RunnerMicroVmConfigResolution, MicroVmConfigResolved, MicroVmConfigUnresolved,
+  RunnerMicroVmNetworking, VmmProcessTopology,
+  gunbc_runner_microvm_vm_config, gunbc_runner_jit_transport, runner_microvm_admission,
+  gunbc_runner_microvm_realization_reserve,
+}
+import gunbc.runner_microvm_attempt {
+  MicroVmAttempt, MicroVmCellBinding, VmBoundToOwnedCell, VmUnboundCellNotOwned,
+  bind_microvm_to_cell,
+}
+import gunbc.runner_jit_mint {
+  JitMintPlan, JitMintAuthorized, JitMintRefusedCellNotOwned, JitMintRefusedCredential,
+  plan_jit_mint,
+}
+
+data runner_microvm_launch_plan_disposition: Disposition = SingleAuthority
+
+// MINTING IS LAST, AND THE ORDER IS THE WHOLE REASON THIS MODULE EXISTS RATHER THAN ITS CALLERS
+// COMPOSING THE FOUR STAGES THEMSELVES.
+//
+// A JIT mint is not a local computation: it creates a RUNNER IDENTITY AT GITHUB. Every other stage
+// here is pure and free to fail -- an unowned cell, an unresolved size, a topology that can orphan
+// its VMM -- but if any of them refuses AFTER a mint, the identity is already registered against an
+// organization for a VM that will never start. Nothing on this host then knows to delete it,
+// because the plan that would have named it refused. Orphaned registrations accumulate silently,
+// count against the org, and are reconcilable only by name.
+//
+// So the mint is the LAST stage, and it is not merely "called last": its authorized value is
+// reachable only from inside LaunchAdmitted, so a caller cannot hold a mint authorization for a
+// launch that was refused. Ordering enforced by an author remembering it is exactly the arrangement
+// that produced the ownership-before-credential defect this fleet already paid for.
+//
+// THE REFUSAL ARMS ARE NOT COLLAPSED INTO ONE `cause` STRING. Each names the authority that owns
+// the remedy -- the cell belongs to gunbc.fabric_required_build_cell, the size to
+// gunbc.runner_slot_allocation, the topology to gunbc.runner_unit, the credential to
+// gunbc.auth.github_credential -- because collapsing them is the state-space conflation DESIGN
+// names, and it sends an operator to the wrong module.
+type MicroVmLaunchPlan
+  = LaunchAdmitted {
+      attempt: MicroVmAttempt
+      config: FirecrackerVmConfig
+      unit_name: NonEmptyStr
+      slice_property: SystemdRunProperty
+      rootfs_path: String
+      jit_drive_path: String
+      mint_endpoint_path: String
+      mint_request: JitRunnerConfigRequest
+    }
+  | LaunchRefusedCell { cause: String }
+  | LaunchRefusedConfig { cause: String }
+  | LaunchRefusedAdmission { reason: String }
+  | LaunchRefusedCredential {
+      organization: NonEmptyStr
+      unsatisfied: List<CredentialCapability>
+    }
+
+fn launch_after_admission(
+  attempt: MicroVmAttempt,
+  binding: MicroVmCellBinding,
+  config: FirecrackerVmConfig,
+  unit_name: NonEmptyStr,
+  slice_property: SystemdRunProperty,
+  rootfs_path: String,
+  jit_drive_path: String,
+  authority: GitHubCredentialAuthority,
+  control_plane: GitHubAppControlPlaneState,
+  organization: GitHubOrganizationRef,
+  runner_group_id: JitRunnerGroupId,
+  labels: List<JitRunnerLabel>,
+) -> MicroVmLaunchPlan {
+  match plan_jit_mint(
+    binding: binding,
+    authority: authority,
+    control_plane: control_plane,
+    organization: organization,
+    runner_group_id: runner_group_id,
+    labels: labels,
+  ) {
+    JitMintRefusedCellNotOwned { cause: c } => LaunchRefusedCell { cause: c }
+    JitMintRefusedCredential { organization: org, unsatisfied: u } =>
+      LaunchRefusedCredential { organization: org, unsatisfied: u }
+    JitMintAuthorized {
+      attempt: _,
+      endpoint_path: path,
+      request: req,
+      drive_destination: _,
+    } =>
+      LaunchAdmitted {
+        attempt: attempt,
+        config: config,
+        unit_name: unit_name,
+        slice_property: slice_property,
+        rootfs_path: rootfs_path,
+        jit_drive_path: jit_drive_path,
+        mint_endpoint_path: path,
+        mint_request: req,
+      }
+  }
+}
+
+// EVERY ADMISSION ARM IS MATCHED INSIDE THIS FUNCTION rather than funnelled through a helper
+// taking RunnerMicroVmAdmission. Such a helper would need an arm for RunnerMicroVmAdmitted that
+// cannot occur there, and the only thing to put in it is a fabricated refusal -- the
+// plausible-output failure DESIGN forbids, sitting in the one place nothing can observe it.
+// Matched in place, a new admission arm fails to compile exactly where a launch must rule on it.
+//
+// THE FOUR STAGES ARE ORDERED CHEAPEST-AND-MOST-FUNDAMENTAL FIRST, and the order is load-bearing
+// rather than stylistic: cell ownership, then the VM config, then admission, then the mint. Every
+// stage before the last is pure and free to refuse; the mint is not, so it runs only once nothing
+// else can refuse.
+fn plan_microvm_launch_of_binding(
+  binding: MicroVmCellBinding,
+  kernel_path: String,
+  net: RunnerMicroVmNetworking,
+  topology: VmmProcessTopology,
+  intent: RunnerUnitLifecycleIntent,
+  listener_is_main_process: Bool,
+  authority: GitHubCredentialAuthority,
+  control_plane: GitHubAppControlPlaneState,
+  organization: GitHubOrganizationRef,
+  runner_group_id: JitRunnerGroupId,
+  labels: List<JitRunnerLabel>,
+) -> MicroVmLaunchPlan {
+  match binding {
+    VmUnboundCellNotOwned { cause: c } => LaunchRefusedCell { cause: c }
+    VmBoundToOwnedCell {
+      attempt: attempt,
+      rootfs_path: rootfs,
+      jit_drive_path: drive,
+      vm_config_path: _,
+      unit_name: unit_name,
+      slice_property: slice_property,
+    } =>
+      match gunbc_runner_microvm_vm_config(
+        rootfs_path: rootfs,
+        jit_config_path: drive,
+        kernel_path: kernel_path,
+        net: net,
+      ) {
+        MicroVmConfigUnresolved { cause: c } => LaunchRefusedConfig { cause: c }
+        MicroVmConfigResolved { config: config } =>
+          match runner_microvm_admission(
+            topology: topology,
+            intent: intent,
+            listener_is_main_process: listener_is_main_process,
+            transport: gunbc_runner_jit_transport,
+            config: config,
+            reserve: gunbc_runner_microvm_realization_reserve(),
+          ) {
+            RunnerMicroVmAdmitted =>
+              launch_after_admission(
+                attempt: attempt,
+                binding: binding,
+                config: config,
+                unit_name: unit_name,
+                slice_property: slice_property,
+                rootfs_path: rootfs,
+                jit_drive_path: drive,
+                authority: authority,
+                control_plane: control_plane,
+                organization: organization,
+                runner_group_id: runner_group_id,
+                labels: labels,
+              )
+            RunnerMicroVmRefusedOrphanableUnit { reason: r } => LaunchRefusedAdmission { reason: r }
+            RunnerMicroVmRefusedSharedCredential { reason: r } => LaunchRefusedAdmission { reason: r }
+            RunnerMicroVmRefusedMalformedVm { reason: r } => LaunchRefusedAdmission { reason: r }
+            RunnerMicroVmRefusedEnvelopeDisagreement { reason: r } => LaunchRefusedAdmission { reason: r }
+            RunnerMicroVmRefusedEnvelopeUnresolved { reason: r } => LaunchRefusedAdmission { reason: r }
+          }
+      }
+  }
+}
+
+
+// THE SNAPSHOT ENTRY IS A PROJECTION AND NOTHING ELSE, and that is deliberate rather than a missing
+// abstraction. RequiredBuildCellSnapshot is sole_constructor -- a caller must not be able to
+// manufacture a reservation -- which also means no witness outside its module can build one. If
+// this function carried the four-stage ordering, that ordering would be unwitnessable, and the
+// project has already seen what happens next: an annotation claiming coverage exists somewhere
+// upstream, believed by a review, false.
+//
+// So every decision lives in plan_microvm_launch_of_binding, where a witness reaches it through a
+// binding it can construct, and this function does the one thing the seal genuinely forces: turn a
+// snapshot into a binding. A defect here is a wiring defect visible in five lines; a defect in the
+// ordering is a live runner identity minted for a VM that never starts, and that one is tested.
+fn plan_microvm_launch(
+  snapshot: RequiredBuildCellSnapshot,
+  kernel_path: String,
+  net: RunnerMicroVmNetworking,
+  topology: VmmProcessTopology,
+  intent: RunnerUnitLifecycleIntent,
+  listener_is_main_process: Bool,
+  authority: GitHubCredentialAuthority,
+  control_plane: GitHubAppControlPlaneState,
+  organization: GitHubOrganizationRef,
+  runner_group_id: JitRunnerGroupId,
+  labels: List<JitRunnerLabel>,
+) -> MicroVmLaunchPlan {
+  plan_microvm_launch_of_binding(
+    binding: bind_microvm_to_cell(snapshot: snapshot),
+    kernel_path: kernel_path,
+    net: net,
+    topology: topology,
+    intent: intent,
+    listener_is_main_process: listener_is_main_process,
+    authority: authority,
+    control_plane: control_plane,
+    organization: organization,
+    runner_group_id: runner_group_id,
+    labels: labels,
+  )
+}
