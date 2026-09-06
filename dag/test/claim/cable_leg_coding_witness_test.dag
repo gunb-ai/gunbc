@@ -270,6 +270,7 @@ fn consistency_cause_is_scope(c: ProfileConsistency) -> Bool {
       match cz {
         ConsistencyInterfaceScopeUnestablished => true
         ConsistencyFieldUnread { field: f } => false
+        ConsistencyInterpretationGap { gap: g } => false
       }
   }
 }
@@ -363,6 +364,7 @@ test fn the_escape_value_is_not_recorded_as_a_rate() -> Bool {
   match sff8636_nominal_rate_from_byte140(code: 255) {
     NominalRateEscaped => true
     NominalRateDirect { rate: r } => false
+    NominalRateUnspecified => false
   }
 }
 
@@ -370,5 +372,6 @@ test fn an_ordinary_byte140_is_read_as_a_symbol_rate() -> Bool {
   match sff8636_nominal_rate_from_byte140(code: 254) {
     NominalRateDirect { rate: r } => symbol_rate_count(r: r) == 25400000000
     NominalRateEscaped => false
+    NominalRateUnspecified => false
   }
 }
