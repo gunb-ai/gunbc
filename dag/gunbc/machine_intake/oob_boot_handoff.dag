@@ -1,0 +1,256 @@
+module gunbc.machine_intake_oob_boot_handoff
+
+import std.types { Bool, NonEmptyStr, String }
+import extdeps.bmc.ipmi
+import extdeps.bmc.access_profile {
+  BmcAccessObservation,
+  BmcAccessRoute,
+}
+import extdeps.bmc.capability {
+  BmcFirmwareReleaseCapabilityRow,
+  BmcFirmwareReleaseIdentity,
+  CapabilityBootSourceOverride,
+  CapabilityPowerControl,
+  bmc_firmware_release_identity_eq,
+  release_row_has_capability,
+}
+
+// THE OUT-OF-BAND BOOT HANDOFF: the operation a converge program performs against a host it cannot
+// reach THROUGH. Every existing transport in this repository — gunbc.host_effect LocalShell and
+// FleetSsh — talks to a machine via the operating system being installed, so neither can act on a
+// host that has none. This module models the arm that acts on the CONTROLLER instead, which is the
+// only arm that can move a bare host toward serving.
+//
+// WHY THIS IS A SEPARATE REALIZATION AND NOT A FORK OF THE IN-HOST PATH (DESIGN §3). Reaching a host
+// over its BMC and reaching it over ssh are two realizations of ONE interface — drive this host
+// toward its desired state — so the choice between them is dispatch, and dispatch sits peripheral.
+// What makes them genuinely different is not the wire protocol but WHAT IS CONVERGED: an in-host arm
+// mutates a persistent root, while this arm sets a boot chain and restarts. For a diskless host the
+// second is the whole of convergence, because there is no persistent root to mutate and therefore
+// nowhere for drift to live.
+//
+// WHAT THIS MODULE DOES NOT DO, stated because the omission is the design and not an unfinished
+// edge. It does not serve the boot artifacts, it does not decide which image a host should run, and
+// it does not observe what booted. It performs one transition — select boot source, verify the
+// selection took, restart — and every other phase is a separate authority. A module that also served
+// the image would fuse artifact delivery into boot control, and the first host wanting a different
+// delivery would have to fork it.
+//
+// WHETHER A CONTROLLER MAY BE DRIVEN AT ALL is decided from its capability row rather than from its
+// route list. A route says the controller ANSWERED over that transport; a capability says a WRITE
+// through it was observed to take effect. Only the second licenses driving a host, and the
+// distinction is load-bearing here: the Mt. Collins unit answers Redfish paths with 404 while
+// serving IPMI, so a route-shaped admission would have to enumerate absent Redfish locators, and a
+// capability-shaped one simply reads what was measured.
+type OobBootHandoffAdmission
+  = OobHandoffAdmitted { route: BmcAccessRoute }
+  | OobHandoffRouteUnobserved
+  | OobHandoffBootSourceOverrideUnavailable
+  | OobHandoffPowerControlUnavailable
+  | OobHandoffFirmwareMismatch { observed: BmcFirmwareReleaseIdentity, capability: BmcFirmwareReleaseIdentity }
+
+// The first boot-control route the observation carries, as an Option. The list is folded rather than
+// pattern-matched because the surface grammar admits no list patterns — measured, not assumed: a
+// match with [] and [first, ..] arms fails to parse with "expected FatArrow, found LBracket". This
+// is the same fold shape gunbc.machine_intake_access control_route_evidence_unnamed uses over the
+// same field, so the idiom is the corpus's rather than this module's.
+fn first_observed_boot_control_route(observation: BmcAccessObservation) -> BmcAccessRoute? {
+  fold(
+    observation.boot_control_routes,
+    init: none,
+    f: (acc, r) => match acc {
+      Present { value: _ } => acc
+      Absent => Present { value: r.route }
+    },
+  )
+}
+
+// The refusals are SEPARATE ARMS rather than one not-capable reason, because they have different
+// owners and different repairs. A missing boot-source override is a firmware capability question
+// answered by the catalog; a missing power control is the same; an unobserved route means nobody has
+// probed this controller yet and the repair is an intake attempt, not a catalog edit. Collapsing
+// them would be the state-space conflation DESIGN's failure-mode list names — one symbol standing
+// for conditions whose remedies point at different people.
+fn oob_boot_handoff_admission(
+  observation: BmcAccessObservation,
+  capability_row: BmcFirmwareReleaseCapabilityRow,
+) -> OobBootHandoffAdmission {
+  if bmc_firmware_release_identity_eq(a: observation.identity.firmware, b: capability_row.firmware) == false {
+    OobHandoffFirmwareMismatch { observed: observation.identity.firmware, capability: capability_row.firmware }
+  } else if release_row_has_capability(row: capability_row, cap: CapabilityBootSourceOverride) == false {
+    OobHandoffBootSourceOverrideUnavailable
+  } else {
+    if release_row_has_capability(row: capability_row, cap: CapabilityPowerControl) == false {
+      OobHandoffPowerControlUnavailable
+    } else {
+      match first_observed_boot_control_route(observation: observation) {
+        Absent => OobHandoffRouteUnobserved
+        Present { value: route } => OobHandoffAdmitted { route: route }
+      }
+    }
+  }
+}
+
+// WHETHER AN ADMISSION ADMITS, as its own fn so the handoff's guard is one named question rather
+// than a match inlined into an effect sequence.
+fn oob_handoff_is_admitted(admission: OobBootHandoffAdmission) -> Bool {
+  match admission {
+    OobHandoffAdmitted { route: _ } => true
+    OobHandoffRouteUnobserved => false
+    OobHandoffBootSourceOverrideUnavailable => false
+    OobHandoffPowerControlUnavailable => false
+    OobHandoffFirmwareMismatch { observed: _, capability: _ } => false
+  }
+}
+
+// WHAT A HANDOFF ATTEMPT CONCLUDED. BootSelectionNotApplied is the arm this type exists for: the
+// controller accepted chassis bootdev and boot parameter 5 did NOT read back the requested device.
+// Without it, a handoff whose override silently failed would restart the host into whatever it was
+// going to boot anyway and report success — the fabricated-plausible-output failure DESIGN §5
+// forbids, in the one place where it costs a whole install cycle to discover.
+//
+// PowerCycleRefused is distinct from BootSelectionNotApplied even though both leave the host in the
+// wrong state, because the boot selection has by then been APPLIED: the controller is holding a
+// next-boot override that nothing has consumed. A caller that retries must know which of the two it
+// is looking at, since one needs the selection re-applied and the other does not.
+type OobBootHandoffOutcome
+  = BootHandoffCompleted { selected: NonEmptyStr }
+  | BootSelectionRefused
+  | BootSelectionNotApplied { requested: NonEmptyStr, readback: String }
+  | BootSelectionUnverifiable { requested: NonEmptyStr, readback: String }
+  | BootSelectionFlagInvalid { requested: NonEmptyStr, readback: String }
+  | PowerCycleRefused { selected: NonEmptyStr }
+  | BootHandoffNotAdmitted { admission: OobBootHandoffAdmission }
+
+// WHAT A BOOT-PARAMETER-5 READ-BACK ESTABLISHED. Three outcomes, because they have three different
+// remedies and collapsing them is what made the previous form unsafe.
+//
+// THE PREVIOUS FORM WAS A SUBSTRING TEST AND IT ACCEPTED AN INVALID OVERRIDE. `chassis bootparam
+// get 5` renders a block of boot flags, and a controller can answer with BOTH of these lines at
+// once:
+//
+//     Boot Flag Invalid
+//     Boot Device Selector : Force PXE
+//
+// That is a documented output shape, not a contrived one, and it means the controller is reporting
+// the selector it holds WHILE saying the flags are not valid. A `contains(expected)` test sees
+// "Force PXE", answers true, and the handoff proceeds to power-cycle a machine whose override will
+// not be honoured — producing exactly the wasted boot cycle reported as success that the
+// select-verify-restart ordering exists to prevent. The verification was the weakest link in a
+// sequence built around it.
+//
+// THE SUCCESS FLAG IS CHECKED FIRST, AND SEPARATELY. The previous form applied the predicate to
+// `readback.stdout` without ever consulting `readback.success`, so a failed read whose output
+// happened to carry the expected words would verify. A read that did not complete establishes
+// nothing about the controller's state, which is a different fact from a read that completed and
+// disagreed.
+type BootReadbackVerdict
+  = BootReadbackConfirmed
+  | BootReadbackFlagInvalid
+  | BootReadbackSelectorAbsent
+
+// THE INVALID-FLAG MARKER IS AN UPSTREAM RENDERING, carried as a row rather than inlined so the one
+// string this judgment turns on is nameable. ipmitool prints it inside the parameter-5 flag block.
+data ipmi_boot_flag_invalid_rendering: NonEmptyStr = "Boot Flag Invalid"
+
+// ORDER MATTERS AND IS NOT INTERCHANGEABLE: invalidity is checked BEFORE the selector, because a
+// block carrying both is invalid, not confirmed. Checking the selector first would return the old
+// behaviour with extra steps.
+fn boot_readback_verdict(readback: String, expected_rendering: NonEmptyStr) -> BootReadbackVerdict {
+  if readback |> contains(ipmi_boot_flag_invalid_rendering as String) {
+    BootReadbackFlagInvalid
+  } else if readback |> contains(expected_rendering as String) {
+    BootReadbackConfirmed
+  } else {
+    BootReadbackSelectorAbsent
+  }
+}
+
+// THE RESTART LIVES BEHIND THE CONFIRMED ARM, which is what makes select-verify-restart structural
+// rather than merely sequential. The power cycle is not a statement that follows a check; it is the
+// body of the one verdict that permits it, so a future edit cannot reorder a refusal past it or fall
+// through to it. The previous form eliminated the verdict for its refusals and then continued to the
+// cycle, which is the same ordering held by convention instead of by shape.
+func oob_power_cycle_after_confirmed_selection(
+  bmc_host: NonEmptyStr,
+  username: NonEmptyStr,
+  password_file: NonEmptyStr,
+  device: NonEmptyStr,
+  power_action: NonEmptyStr,
+) -> OobBootHandoffOutcome
+  uses net: std.resources.Network
+{
+  cycle = diagnostic.ipmi.Tool.ChassisPowerControl(
+    bmc_host: bmc_host,
+    username: username,
+    password_file: password_file,
+    action: power_action,
+  )
+  return if cycle.success {
+    BootHandoffCompleted { selected: device }
+  } else {
+    PowerCycleRefused { selected: device }
+  }
+}
+
+// THE HANDOFF ITSELF, and the ordering is the point: SELECT, VERIFY, THEN RESTART. A restart issued
+// before the selection is verified converts a silently-refused override into a wasted boot cycle
+// that reports success, which is the one failure this whole module exists to make unrepresentable.
+// So the power cycle is reachable only through the arm where the read-back already matched.
+//
+// THE CREDENTIAL IS TAKEN AS A FILE PATH, NOT AS A SECRET VALUE. This func does not read, decrypt or
+// materialize anything: it receives the path to a file some caller wrote and hands that path to
+// ipmitool. Materialization is a separate concern with its own authority (gunbc.auth.materialized_secret),
+// and a func that both resolved a secret and drove a controller would fuse two facts that rotate on
+// different clocks — which matters here because the operator's ruling is that the factory credential
+// is rotated DURING converge, so the value behind this path changes mid-program while the path does not.
+func oob_boot_handoff(
+  observation: BmcAccessObservation,
+  capability_row: BmcFirmwareReleaseCapabilityRow,
+  username: NonEmptyStr,
+  password_file: NonEmptyStr,
+  device: NonEmptyStr,
+  expected_rendering: NonEmptyStr,
+  power_action: NonEmptyStr,
+) -> OobBootHandoffOutcome
+  uses net: std.resources.Network
+{
+  let admission = oob_boot_handoff_admission(observation: observation, capability_row: capability_row)
+  if oob_handoff_is_admitted(admission: admission) == false {
+    return BootHandoffNotAdmitted { admission: admission }
+  }
+  let bmc_host = observation.endpoint.host
+
+  set = diagnostic.ipmi.Tool.ChassisBootDev(
+    bmc_host: bmc_host,
+    username: username,
+    password_file: password_file,
+    device: device,
+  )
+  if set.success == false {
+    return BootSelectionRefused
+  }
+
+  readback = diagnostic.ipmi.Tool.ChassisBootParamGet(
+    bmc_host: bmc_host,
+    username: username,
+    password_file: password_file,
+    parameter: "5",
+  )
+  if readback.success == false {
+    return BootSelectionUnverifiable { requested: device, readback: readback.stdout }
+  }
+
+  return match boot_readback_verdict(readback: readback.stdout, expected_rendering: expected_rendering) {
+    BootReadbackFlagInvalid => BootSelectionFlagInvalid { requested: device, readback: readback.stdout }
+    BootReadbackSelectorAbsent => BootSelectionNotApplied { requested: device, readback: readback.stdout }
+    BootReadbackConfirmed =>
+      oob_power_cycle_after_confirmed_selection(
+        bmc_host: bmc_host,
+        username: username,
+        password_file: password_file,
+        device: device,
+        power_action: power_action,
+      )
+  }
+}

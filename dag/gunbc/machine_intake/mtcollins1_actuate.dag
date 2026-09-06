@@ -1,0 +1,236 @@
+module gunbc.machine_intake_mtcollins1_actuate
+
+import std.types { NonEmptyStr, String }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import extdeps.bmc.endpoint { AmiMegaRac }
+import extdeps.bmc.capability {
+  BmcFirmwareReleaseCapabilityRow,
+  BmcFirmwareReleaseIdentity,
+  CapabilityBootSourceOverride,
+  CapabilityPowerControl,
+}
+import gunbc.machine_intake_mtcollins1_access_observation {
+  mtcollins1_access_observation,
+  mtcollins1_capability_row,
+}
+import gunbc.machine_intake_oob_boot_handoff {
+  BootHandoffCompleted,
+  BootHandoffNotAdmitted,
+  BootSelectionFlagInvalid,
+  BootSelectionNotApplied,
+  BootSelectionRefused,
+  BootSelectionUnverifiable,
+  OobBootHandoffOutcome,
+  PowerCycleRefused,
+  oob_boot_handoff,
+}
+
+// THE POLICY LAYER FOR ONE HOST, and it is a separate module from the arm on purpose. The arm takes
+// device, power action and expected rendering as PARAMETERS because which of those a workflow picks
+// is business policy (DESIGN §3); this module is where that policy is decided for Mt. Collins, so
+// the arm stays reusable by the next host and by the Sparks without carrying anyone's choices.
+//
+// THE CLI REACHES ZERO-ARG AND SINGLE-String FUNCS ONLY, which is the mechanical reason this
+// wrapper exists at all — the same reason gunbc.tools.bmc_onboard carries srv3_/srv4_ wrappers
+// around a parameterized probe. It is NOT a per-host fork of the arm: everything host-specific here
+// is a value, and a second host is a second wrapper over the identical operation, never a second
+// operation. The one argument is the credential path, for the reason given on mtcollins1_password_file.
+data mtcollins1_boot_device: NonEmptyStr = "pxe"
+
+// WHAT ipmitool RENDERS WHEN THE OVERRIDE TOOK. `chassis bootparam get 5` prints a "Boot Device
+// Selector : Force PXE" line, and the wire word sent to `chassis bootdev` is "pxe" — two different
+// vocabularies for one fact, so the expected text is supplied here rather than guessed inside the
+// arm. A mapping guessed there would be a second, undeclared authority on IPMI's boot device names.
+// Measured on this unit 2026-09-05.
+data mtcollins1_boot_readback_rendering: NonEmptyStr = "Force PXE"
+
+// A CYCLE AND NOT A RESET, because the unit's own SEL is the evidence that a cycle takes effect
+// here: driving `chassis power cycle` produced "Power Unit — Power cycle | Asserted" and "System
+// Boot Initiated — Initiated by power up". Nothing has established the same for `reset` on this
+// controller, and picking the unmeasured verb would assert a capability this repository does not
+// hold evidence for.
+data mtcollins1_power_action: NonEmptyStr = "cycle"
+
+// THE ADMINISTRATOR ACCOUNT AS MEASURED, not as assumed: `ipmitool user list 1` reports user ID 2
+// named "admin" with ADMINISTRATOR privilege as the ONLY enabled account on the channel. This is
+// the account the converge rotation phase will re-key, which is why it is a named row rather than
+// a literal buried in a call.
+data mtcollins1_bmc_username: NonEmptyStr = "admin"
+
+// THE CREDENTIAL ARRIVES AS AN EXPLICIT PATH ARGUMENT, not from the environment. The first draft
+// read it from BMC_PASSWORD_FILE through shell.Env.Get and refused at run time with
+// `Unimplemented { what: "unknown service operation: shell.Env.Get" }`. THAT DIAGNOSTIC IS
+// MISLEADING: the operation is implemented and widely used — gunbc.actions_run_binding calls it on
+// the live converge path — and it refused only because this module did not carry
+// `import extdeps.shell`. Service operations register from the IMPORT CLOSURE, so an unimported
+// service compiles clean and refuses at run time naming the operation rather than the import.
+//
+// The argument is kept anyway, because it is the better shape independent of that defect: the
+// credential's location becomes a declared input the caller must state rather than ambient state
+// the func silently depends on, which matters most for the value that rotates mid-program.
+//
+// AN EMPTY PATH REFUSES BEFORE ANY EFFECT, and the previous form did not. It substituted the string
+// "bmc-password-file-argument-empty" and handed that to ipmitool as a filename — so a caller that
+// supplied nothing produced either an authentication failure that reads as the CONTROLLER rejecting
+// a credential, or, if a file of that name happened to exist, an unintended credential source. The
+// comment called it a refusal; it was a rename. A missing input is now a typed outcome returned
+// before the first write, so the zero-effects case is reachable and testable.
+type CredentialPathStanding
+  = CredentialPathGiven { path: NonEmptyStr }
+  | CredentialPathMissing
+
+fn mtcollins1_password_file(raw: String) -> CredentialPathStanding {
+  if raw == "" {
+    CredentialPathMissing
+  } else {
+    CredentialPathGiven { path: raw as NonEmptyStr }
+  }
+}
+
+// DRIVES THE REAL CONTROLLER. Every outcome arm is rendered as its own failure reason, because the
+// four refusals leave the host in materially different states and a caller retrying needs to know
+// which: BootSelectionNotApplied means the override never took and must be re-applied, while
+// PowerCycleRefused means it DID take and the controller is holding a next-boot override nothing
+// has consumed. Collapsing them into one "handoff failed" would be the state-space conflation
+// DESIGN's failure-mode list names.
+// ONE RENDERER FOR BOTH ROUTES. Each outcome arm gets its own reason because the refusals leave the
+// host in materially different states: BootSelectionNotApplied means the override never took and
+// must be re-applied; BootSelectionFlagInvalid means the controller reported the selector WHILE
+// declaring its boot flags invalid, so the override is present and will not be honoured;
+// BootSelectionUnverifiable means the read itself failed and establishes nothing about the
+// controller either way; PowerCycleRefused means the override APPLIED and the controller now holds
+// an unconsumed next-boot override. Collapsing these into one failure would be the state-space
+// conflation DESIGN's failure-mode list names.
+fn mtcollins1_render_outcome(label: NonEmptyStr, outcome: OobBootHandoffOutcome) -> ProcessExit {
+  match outcome {
+    BootHandoffCompleted { selected: _ } => ExitSuccess
+    BootSelectionRefused =>
+      exit_failure(reason: concat(label as String, ": controller refused the boot source override"))
+    BootSelectionNotApplied { requested: d, readback: r } =>
+      exit_failure(reason: concat(label as String, ": override for '", d as String, "' did not take; boot parameter 5 read back: ", r))
+    BootSelectionFlagInvalid { requested: d, readback: r } =>
+      exit_failure(reason: concat(label as String, ": override for '", d as String, "' reported alongside an INVALID boot flag, so it will not be honoured; boot parameter 5 read back: ", r))
+    BootSelectionUnverifiable { requested: d, readback: r } =>
+      exit_failure(reason: concat(label as String, ": boot parameter 5 read did not succeed, so the override for '", d as String, "' is unverified; output: ", r))
+    PowerCycleRefused { selected: d } =>
+      exit_failure(reason: concat(label as String, ": override for '", d as String, "' APPLIED but the power cycle was refused; the controller holds an unconsumed next-boot override"))
+    BootHandoffNotAdmitted { admission: _ } =>
+      exit_failure(reason: concat(label as String, ": controller not admitted for out-of-band drive; no write was attempted"))
+  }
+}
+
+func mtcollins1_netboot_handoff(password_file_raw: String) -> ProcessExit
+  uses net: std.resources.Network
+{
+  match mtcollins1_password_file(raw: password_file_raw) {
+    CredentialPathMissing =>
+      exit_failure(reason: "mtcollins1 handoff: no credential path supplied; refusing before any controller write")
+    CredentialPathGiven { path: pw } =>
+      mtcollins1_render_outcome(
+        label: "mtcollins1 handoff",
+        outcome: oob_boot_handoff(
+          observation: mtcollins1_access_observation,
+          capability_row: mtcollins1_capability_row,
+          username: mtcollins1_bmc_username,
+          password_file: pw,
+          device: mtcollins1_boot_device,
+          expected_rendering: mtcollins1_boot_readback_rendering,
+          power_action: mtcollins1_power_action,
+        )
+      )
+  }
+}
+
+// THE SECOND BOOT ROUTE FOR THE SAME UNIT, and it is the shape this module predicted: a second
+// wrapper over the IDENTICAL operation, not a second operation. Everything that differs between
+// netbooting and booting the BMC's virtual CD is a value — the device word and the text ipmitool
+// renders for it — so oob_boot_handoff is reused unchanged.
+//
+// WHY A CD ROUTE EXISTS AT ALL ON A UNIT THAT DEMONSTRABLY PXE-BOOTS. Measured 2026-09-05, the
+// controller answers `local_media_support: 0` and `sd_media: 0`, so it cannot HOLD a boot image;
+// it answers `remote_media_support: 1` and enumerates images from an NFS share, so it can PRESENT
+// one. That split is the whole reason this route matters: the host reaches a bootstrap without any
+// PXE server on the segment, because the controller fetches the image itself and offers it as
+// removable media. The DHCP capture in gunbc.machine_intake_mtcollins1_netboot_client_observation
+// records the other half — the host asks for a boot file over PXE and nothing on the segment
+// answers — so today this is the only delivery route that reaches this machine at all.
+data mtcollins1_cdrom_device: NonEmptyStr = "cdrom"
+
+// Measured, not guessed: `chassis bootdev cdrom` followed by `chassis bootparam get 5` renders
+// "Boot Device Selector : Force Boot from CD/DVD". The netboot route's rendering is "Force PXE",
+// a different string for the same field, which is exactly why the arm takes the expected text from
+// its caller rather than deriving it from the device word.
+data mtcollins1_cdrom_readback_rendering: NonEmptyStr = "Force Boot from CD/DVD"
+
+func mtcollins1_cdrom_handoff(password_file_raw: String) -> ProcessExit
+  uses net: std.resources.Network
+{
+  match mtcollins1_password_file(raw: password_file_raw) {
+    CredentialPathMissing =>
+      exit_failure(reason: "mtcollins1 cdrom handoff: no credential path supplied; refusing before any controller write")
+    CredentialPathGiven { path: pw } =>
+      mtcollins1_render_outcome(
+        label: "mtcollins1 cdrom handoff",
+        outcome: oob_boot_handoff(
+          observation: mtcollins1_access_observation,
+          capability_row: mtcollins1_capability_row,
+          username: mtcollins1_bmc_username,
+          password_file: pw,
+          device: mtcollins1_cdrom_device,
+          expected_rendering: mtcollins1_cdrom_readback_rendering,
+          power_action: mtcollins1_power_action,
+        )
+      )
+  }
+}
+
+// THE ENFORCEMENT CONTROL, and it is deliberately not a test of the admission fold. That fold is
+// pure and already exercised by gunbc.machine_intake_mtcollins1_handoff_probe; what it cannot show
+// is that a REFUSAL HAPPENS BEFORE ANY WRITE. Classification and enforcement are different claims,
+// and only the second is what a caller driving real hardware depends on.
+//
+// The capability row below carries the same capabilities the measured one does and a DIFFERENT
+// firmware release, so admission refuses on OobHandoffFirmwareMismatch — the arm that exists
+// because a capability row for release A could otherwise be handed beside an observation for
+// release B. Everything else about the call is the real thing: the real endpoint, the real
+// credential, the real operation.
+//
+// HOW TO READ THE RESULT. A non-zero exit naming "not admitted" is necessary but not sufficient:
+// the load-bearing observation is EXTERNAL, that boot parameter 5 is unchanged after this runs.
+// Reset it to a known value first, run this, and read it back. If the selector moved, the refusal
+// came after a write and the ordering is decorative.
+data mtcollins1_mismatched_firmware: BmcFirmwareReleaseIdentity = BmcFirmwareReleaseIdentity {
+  family: AmiMegaRac,
+  raw_version: "0.31-not-this-unit",
+  semantic_version: none,
+}
+
+data mtcollins1_mismatched_capability_row: BmcFirmwareReleaseCapabilityRow = BmcFirmwareReleaseCapabilityRow {
+  firmware: mtcollins1_mismatched_firmware,
+  capabilities: [
+    CapabilityBootSourceOverride,
+    CapabilityPowerControl,
+  ],
+}
+
+func mtcollins1_denied_admission_control(password_file_raw: String) -> ProcessExit
+  uses net: std.resources.Network
+{
+  match mtcollins1_password_file(raw: password_file_raw) {
+    CredentialPathMissing =>
+      exit_failure(reason: "mtcollins1 denied-admission control: no credential path supplied")
+    CredentialPathGiven { path: pw } =>
+      mtcollins1_render_outcome(
+        label: "mtcollins1 denied-admission control",
+        outcome: oob_boot_handoff(
+          observation: mtcollins1_access_observation,
+          capability_row: mtcollins1_mismatched_capability_row,
+          username: mtcollins1_bmc_username,
+          password_file: pw,
+          device: mtcollins1_boot_device,
+          expected_rendering: mtcollins1_boot_readback_rendering,
+          power_action: mtcollins1_power_action,
+        )
+      )
+  }
+}

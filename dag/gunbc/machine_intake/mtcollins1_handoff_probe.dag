@@ -1,0 +1,63 @@
+module gunbc.machine_intake_mtcollins1_handoff_probe
+
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
+import gunbc.machine_intake_mtcollins1_access_observation {
+  mtcollins1_access_observation,
+  mtcollins1_capability_row,
+  mtcollins1_firmware,
+}
+import gunbc.machine_intake_oob_boot_handoff {
+  OobHandoffAdmitted,
+  OobHandoffBootSourceOverrideUnavailable,
+  OobHandoffFirmwareMismatch,
+  OobHandoffPowerControlUnavailable,
+  OobHandoffRouteUnobserved,
+  oob_boot_handoff_admission,
+}
+
+// THE DISCRIMINATING RED. Same observation, same firmware identity, EMPTY capability list — the
+// controller that answered every read and was never shown to accept a write. A probe that only ran
+// the green case would pass just as happily against a fold that returned OobHandoffAdmitted
+// unconditionally, so this row is what makes the green mean something (DESIGN §5: a consumer green
+// by execution plus an input that goes red when the behavior is wrong).
+data mtcollins1_capability_row_unexercised: BmcFirmwareReleaseCapabilityRow = BmcFirmwareReleaseCapabilityRow {
+  firmware: mtcollins1_firmware,
+  capabilities: [],
+}
+
+// EXECUTES THE ADMISSION FOLD AGAINST THE REAL MEASURED ROWS, and against the control beside them.
+// It answers one question that reading the fold cannot: which arm does live data actually reach.
+// The pair is asserted in ONE func so the two cannot drift apart — a green case whose control lives
+// somewhere else is a green case whose control can be deleted without anything noticing.
+func mtcollins1_admission_probe() -> ProcessExit {
+  let admitted = match oob_boot_handoff_admission(
+    observation: mtcollins1_access_observation,
+    capability_row: mtcollins1_capability_row,
+  ) {
+    OobHandoffAdmitted { route: _ } => true
+    OobHandoffRouteUnobserved => false
+    OobHandoffBootSourceOverrideUnavailable => false
+    OobHandoffPowerControlUnavailable => false
+    OobHandoffFirmwareMismatch { observed: _, capability: _ } => false
+  }
+
+  let refused_without_capability = match oob_boot_handoff_admission(
+    observation: mtcollins1_access_observation,
+    capability_row: mtcollins1_capability_row_unexercised,
+  ) {
+    OobHandoffAdmitted { route: _ } => false
+    OobHandoffRouteUnobserved => false
+    OobHandoffBootSourceOverrideUnavailable => true
+    OobHandoffPowerControlUnavailable => false
+    OobHandoffFirmwareMismatch { observed: _, capability: _ } => false
+  }
+
+  if admitted == false {
+    return exit_failure(reason: "mtcollins1 admission probe: measured rows did NOT admit the controller")
+  }
+  if refused_without_capability == false {
+    return exit_failure(reason: "mtcollins1 admission probe: empty capability row did NOT refuse — the fold does not discriminate")
+  }
+  return ExitSuccess
+}
