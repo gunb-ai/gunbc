@@ -3327,6 +3327,43 @@ fn startable_nodes_missing_closing_contract_for_accepted(accepted: List<RoadmapN
     |> filter(n => node_is_startable_for_accepted(n: n, accepted: accepted))
 }
 
+// THE DERIVED BRIEF NAMES ITS MECHANISM, because the first one dispatched did not and the worker spent
+// all forty rounds finding it (srv1, 2026-09-06, attempt a0dd151e221290a9e for ci-required-run-cost:
+// forty tool calls, no edit, verification false on an unchanged tree). What the acceptance predicate
+// closing_contract_authored actually needs is two edits -- a witness module with the planted RED arms,
+// and the gated row in THIS file re-bound through with_execution + gunbc_claim_execution_contract --
+// and the brief said neither, while its "files likely touched" pointed at the parent's own carrier.
+// The witness path and module name are derived from the node id here so the brief, the check and
+// the worker agree on one spelling; the exemplar row named below is a real bound row to copy from.
+data closing_contract_witness_dir: String = "dag/test/claim/closing"
+data closing_contract_witness_module_root: String = "test.claim.closing"
+data closing_contract_exemplar_bound_row: String = "roadmap-continuation-turn-label"
+
+fn closing_contract_witness_stem(node_id: String) -> String {
+  concat(join(node_id.split(sep: "-"), "_"), "_closing_contract_witness_test")
+}
+
+fn closing_contract_witness_path(node_id: String) -> String {
+  join([closing_contract_witness_dir, "/", closing_contract_witness_stem(node_id: node_id), ".dag"], "")
+}
+
+fn closing_contract_witness_module(node_id: String) -> String {
+  join([closing_contract_witness_module_root, ".", closing_contract_witness_stem(node_id: node_id)], "")
+}
+
+fn closing_contract_first_slice(n: RoadmapNode) -> String {
+  let id = n.node as String
+  join([
+    "Two edits, in this order, then the acceptance command. (1) Author ", closing_contract_witness_path(node_id: id),
+    " with the first line `module ", closing_contract_witness_module(node_id: id),
+    "`, one `test fn` per clause of the bar, each proving its refusal on a PLANTED input (a constructed fixture the clause must refuse; never a count copied from the live tree). ",
+    "(2) In dag/gunbc/roadmap/roadmap_authority.dag find the row `id: \"", id,
+    "\"` and wrap its constructor as `with_execution(<row>, e: gunbc_claim_execution_contract(entry: \"", closing_contract_witness_path(node_id: id),
+    "\" as FilePath, function: \"<one test fn name>\" as NonEmptyStr))`; the row `id: \"", closing_contract_exemplar_bound_row,
+    "\"` in the same file is a bound row to copy the shape from. Do not touch the parent's own carriers.",
+  ], "")
+}
+
 fn closing_contract_task_for(n: RoadmapNode) -> RoadmapNode {
   RoadmapNode {
     identity: concat(n.identity as String, "-closing-contract") as RoadmapNodeIdentity,
@@ -3337,13 +3374,19 @@ fn closing_contract_task_for(n: RoadmapNode) -> RoadmapNode {
         headline: concat("Write the closing check for: ", ticket_headline_of(n: n)),
         boundary: concat("One executable check states when this is done, transcribed from the node's own bar: ", ticket_red_control_of(n: n)),
         displaced_cost: "Turns a prose bar into a runnable verdict, so the node it gates can be dispatched and its completion checked rather than judged.",
-        first_slice: "Write the check and prove each refusal arm fires on a planted input.",
+        first_slice: closing_contract_first_slice(n: n),
         red_control: concat("The check must fail when the condition fails: ", ticket_red_control_of(n: n)),
-        out_of_scope: "Write the statement of done; do not do the work it gates.",
+        out_of_scope: "Write the statement of done; do not do the work it gates. Do not edit any file the parent names as its own carrier.",
         handback: "Return the executable check, each arm firing on a planted input, and the gated node bound to it."
       ),
     },
-    carriers: n.carriers,
+    carriers: concat(
+      [
+        Pointer { label: "authority", path: "dag/gunbc/roadmap/roadmap_authority.dag" },
+        Pointer { label: "witness", path: closing_contract_witness_path(node_id: n.node as String) },
+      ],
+      map(n.carriers, c => Pointer { label: "subject", path: c.path }),
+    ),
     sizing: Sized {
       intricacy: IntricacyLow,
       volume: VolumeSmall,
