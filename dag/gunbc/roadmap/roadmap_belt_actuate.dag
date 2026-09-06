@@ -6852,23 +6852,40 @@ fn belt_review_attempt_for_instance(instance: HostDashboardInstance, progress: W
 }
 
 fn belt_review_verified_attempt(instance: HostDashboardInstance, progress: WorkflowAttemptProgress, verification_detail: String) -> List<BeltReviewOutcome> {
-  let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
-  let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key)
+  belt_review_head_for_instance(instance: instance, node_id: progress.node_id, attempt_key: progress.attempt_key, verification_detail: verification_detail)
+}
+
+// REVIEW ONE ATTEMPT'S HEAD: the one path the tick takes after verification and the operator takes on
+// demand (gunbc.roadmap_belt_tick_cli belt_review_head_cli). It reads the head, builds the plan, reports
+// a superseded earlier roster, and realizes plan.calls; nothing here enumerates criteria.
+fn belt_review_head_for_instance(instance: HostDashboardInstance, node_id: String, attempt_key: String, verification_detail: String) -> List<BeltReviewOutcome> {
+  let nid = node_id as gunbc.roadmap_model.RoadmapNodeId
+  let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: nid, attempt_key: attempt_key)
   let git = dispatch_capability_program(environment: instance.execution_environment, cap: GitWorkspaceCapability)
   match belt_exec(cmd: host_exec_argv(program: git, args: shape_git_rev_parse_head_args()), workdir: worktree) {
-    ExecFailed { program: _, exit_code: _, stderr } => [ ReviewDeferred { node_id: progress.node_id, criterion: "", reason: join(["the attempt worktree head could not be read: ", stderr], "") } ]
-    ExecRefused { program: _, reason } => [ ReviewDeferred { node_id: progress.node_id, criterion: "", reason: reason } ]
+    ExecFailed { program: _, exit_code: _, stderr } => [ ReviewDeferred { node_id: node_id, criterion: "", reason: join(["the attempt worktree head could not be read: ", stderr], "") } ]
+    ExecRefused { program: _, reason } => [ ReviewDeferred { node_id: node_id, criterion: "", reason: reason } ]
     ExecOk { stdout } => {
       let head = trim(stdout)
-      match belt_review_plan_for_head(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, head_sha: head, verification_detail: verification_detail) {
-        BeltReviewPlanRefused { reason } => [ ReviewDeferred { node_id: progress.node_id, criterion: "", reason: reason } ]
+      match belt_review_plan_for_head(instance: instance, node_id: nid, attempt_key: attempt_key, head_sha: head, verification_detail: verification_detail) {
+        BeltReviewPlanRefused { reason } => [ ReviewDeferred { node_id: node_id, criterion: "", reason: reason } ]
         BeltReviewPlanned { plan } =>
           concat(
-            belt_review_supersession(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, head: head, plan: plan),
-            map(plan.calls, call => belt_review_call(instance: instance, progress: progress, worktree: worktree, head: head, plan: plan, call: call)),
+            belt_review_supersession(instance: instance, node_id: nid, attempt_key: attempt_key, head: head, plan: plan),
+            map(plan.calls, call => belt_review_call(instance: instance, node_id: node_id, attempt_key: attempt_key, worktree: worktree, head: head, plan: plan, call: call)),
           )
       }
     }
+  }
+}
+
+// THE REPORT FOR ONE ATTEMPT'S CURRENT HEAD, for the operator entry and the board alike.
+fn belt_review_report_for_instance(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> ReviewReport {
+  let nid = node_id as gunbc.roadmap_model.RoadmapNodeId
+  let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: nid, attempt_key: attempt_key)
+  match belt_worktree_head_observe(instance: instance, worktree: worktree) {
+    WorktreeHeadUnobserved { reason } => review_report_absent(reason: join(["the attempt head is unobserved: ", reason], ""))
+    WorktreeHeadObserved { revision } => belt_review_report(instance: instance, node_id: nid, attempt_key: attempt_key, head_sha: revision as String)
   }
 }
 
@@ -6896,40 +6913,40 @@ fn belt_review_supersession(
   }
 }
 
-fn belt_review_call(instance: HostDashboardInstance, progress: WorkflowAttemptProgress, worktree: String, head: String, plan: ReviewPlan, call: ReviewCall) -> BeltReviewOutcome {
-  let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
+fn belt_review_call(instance: HostDashboardInstance, node_id: String, attempt_key: String, worktree: String, head: String, plan: ReviewPlan, call: ReviewCall) -> BeltReviewOutcome {
+  let nid = node_id as gunbc.roadmap_model.RoadmapNodeId
   let key = belt_review_call_key(plan: plan, call: call)
-  match belt_review_receipt_source(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, head_sha: head, criterion_key: key) {
-    ReviewReceiptPresent { text: _ } => ReviewSkipped { node_id: progress.node_id, criterion: call.id, reason: "a verdict is recorded for this head, plan revision and criterion" }
-    ReviewReceiptUnreadable { detail } => ReviewFailed { node_id: progress.node_id, criterion: call.id, detail: detail }
+  match belt_review_receipt_source(instance: instance, node_id: nid, attempt_key: attempt_key, head_sha: head, criterion_key: key) {
+    ReviewReceiptPresent { text: _ } => ReviewSkipped { node_id: node_id, criterion: call.id, reason: "a verdict is recorded for this head, plan revision and criterion" }
+    ReviewReceiptUnreadable { detail } => ReviewFailed { node_id: node_id, criterion: call.id, detail: detail }
     ReviewReceiptAbsent =>
-      match belt_review_process(node_id: progress.node_id, attempt_key: progress.attempt_key, criterion_key: key) {
-        WorkerProcessRunning { command: _ } => ReviewSkipped { node_id: progress.node_id, criterion: call.id, reason: "a reviewer is running" }
+      match belt_review_process(node_id: node_id, attempt_key: attempt_key, criterion_key: key) {
+        WorkerProcessRunning { command: _ } => ReviewSkipped { node_id: node_id, criterion: call.id, reason: "a reviewer is running" }
         WorkerProcessExited { exit_code, last_command: _ } =>
-          ReviewFailed { node_id: progress.node_id, criterion: call.id, detail: join(["the reviewer exited ", to_string(exit_code), " without writing a verdict; its unit is retained for inspection"], "") }
-        WorkerProcessUnobserved { reason } => ReviewDeferred { node_id: progress.node_id, criterion: call.id, reason: reason as String }
+          ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer exited ", to_string(exit_code), " without writing a verdict; its unit is retained for inspection"], "") }
+        WorkerProcessUnobserved { reason } => ReviewDeferred { node_id: node_id, criterion: call.id, reason: reason as String }
         WorkerProcessAbsent =>
-          belt_review_spawn(instance: instance, progress: progress, worktree: worktree, head: head, plan: plan, call: call)
+          belt_review_spawn(instance: instance, node_id: node_id, attempt_key: attempt_key, worktree: worktree, head: head, plan: plan, call: call)
       }
   }
 }
 
-fn belt_review_spawn(instance: HostDashboardInstance, progress: WorkflowAttemptProgress, worktree: String, head: String, plan: ReviewPlan, call: ReviewCall) -> BeltReviewOutcome {
-  let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
+fn belt_review_spawn(instance: HostDashboardInstance, node_id: String, attempt_key: String, worktree: String, head: String, plan: ReviewPlan, call: ReviewCall) -> BeltReviewOutcome {
+  let nid = node_id as gunbc.roadmap_model.RoadmapNodeId
   let key = belt_review_call_key(plan: plan, call: call)
   match instance.toolchain.systemd_run {
-    Absent => ReviewDeferred { node_id: progress.node_id, criterion: call.id, reason: "the toolchain declares no systemd-run; the reviewer needs a transient unit" }
+    Absent => ReviewDeferred { node_id: node_id, criterion: call.id, reason: "the toolchain declares no systemd-run; the reviewer needs a transient unit" }
     Present { value: systemd_run } => {
-      let verdict_path = dispatch_attempt_review_verdict_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, head_sha: head, criterion_key: key)
+      let verdict_path = dispatch_attempt_review_verdict_path_for_instance(instance: instance, node_id: nid, attempt_key: attempt_key, head_sha: head, criterion_key: key)
       let brief = join([call.brief, review_verdict_instruction(verdict_path: verdict_path)], "")
-      let unit = dispatch_review_unit_name(node_id: progress.node_id, attempt_key: progress.attempt_key, criterion_key: key)
+      let unit = dispatch_review_unit_name(node_id: node_id, attempt_key: attempt_key, criterion_key: key)
       match belt_exec(
-        cmd: dispatch_review_unit_argv(systemd_run_program: systemd_run, instance: instance, node_id: node_id, attempt_key: progress.attempt_key, worktree_path: worktree, brief: brief, head_sha: head, criterion_key: key),
+        cmd: dispatch_review_unit_argv(systemd_run_program: systemd_run, instance: instance, node_id: nid, attempt_key: attempt_key, worktree_path: worktree, brief: brief, head_sha: head, criterion_key: key),
         workdir: worktree,
       ) {
-        ExecOk { stdout: _ } => ReviewSpawned { node_id: progress.node_id, criterion: call.id, unit: unit as String }
-        ExecFailed { program: _, exit_code, stderr } => ReviewFailed { node_id: progress.node_id, criterion: call.id, detail: join(["the reviewer unit could not be started (exit ", to_string(exit_code), "): ", stderr], "") }
-        ExecRefused { program: _, reason } => ReviewFailed { node_id: progress.node_id, criterion: call.id, detail: reason }
+        ExecOk { stdout: _ } => ReviewSpawned { node_id: node_id, criterion: call.id, unit: unit as String }
+        ExecFailed { program: _, exit_code, stderr } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer unit could not be started (exit ", to_string(exit_code), "): ", stderr], "") }
+        ExecRefused { program: _, reason } => ReviewFailed { node_id: node_id, criterion: call.id, detail: reason }
       }
     }
   }

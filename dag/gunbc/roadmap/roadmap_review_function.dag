@@ -8,7 +8,8 @@ import gunbc.roadmap.roadmap_review_role {
   ReviewReceiptSource, ReviewReconciliation, WorkerFeedback,
   review_brief, review_reconcile_standings, review_feedback_standings, review_feedback_text,
 }
-import gunbc.roadmap_workflow_stage { WorkflowSegmentRefused, WorkflowSegmentComplete, WorkflowSegmentPending }
+import gunbc.roadmap_workflow_stage { WorkflowSegmentRefused, WorkflowSegmentComplete, WorkflowSegmentPending, WorkflowSegmentFailed, WorkflowSegmentActive, WorkflowSegmentStopped }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, json_array }
 import gunbc.worker_lifecycle { WorkerProcessEvidence }
 
 // REVIEW IS A FUNCTION, AND PRODUCTION CONSUMES IT: review(subject) = aggregate(plan, observations)
@@ -215,6 +216,31 @@ fn review_report_refused(reason: String) -> ReviewReport {
 
 fn review_report_approved(report: ReviewReport) -> Bool {
   match report.reconciliation.state { WorkflowSegmentComplete => true  _ => false }
+}
+
+fn review_report_state_word(report: ReviewReport) -> String {
+  match report.reconciliation.state {
+    WorkflowSegmentComplete => "complete"
+    WorkflowSegmentFailed => "failed"
+    WorkflowSegmentRefused => "refused"
+    WorkflowSegmentActive => "active"
+    WorkflowSegmentPending => "pending"
+    WorkflowSegmentStopped => "stopped"
+  }
+}
+
+fn review_report_json(report: ReviewReport) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "roadmap-review-report/v1")),
+    json_kv(key: "plan_revision", value: json_string(s: report.plan_revision)),
+    json_kv(key: "state", value: json_string(s: review_report_state_word(report: report))),
+    json_kv(key: "detail", value: json_string(s: report.reconciliation.detail)),
+    json_kv(key: "approved", value: json_array(elements: map(report.feedback.approved, k => json_string(s: k)))),
+    json_kv(key: "incomplete", value: json_array(elements: map(report.feedback.incomplete, k => json_string(s: k)))),
+    json_kv(key: "could_not_judge", value: json_array(elements: map(report.feedback.could_not_judge, k => json_string(s: k)))),
+    json_kv(key: "overlap_count", value: json_int(n: report.feedback.overlap_count)),
+    json_kv(key: "worker_feedback", value: json_string(s: review_feedback_text(f: report.feedback))),
+  ])
 }
 
 fn review_report_worker_text(report: ReviewReport) -> String {
