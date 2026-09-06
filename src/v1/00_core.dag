@@ -308,6 +308,36 @@ type TextFile {
 // would see from the code they were editing. A distinct constructor is therefore not a naming
 // preference: it is what makes the standing prohibition on adding bare variants to synthesis output
 // hold BY CONSTRUCTION rather than by a byte-diff that can only report 'not on this subject today'.
+//
+// DirectCallClassifierUnresolved IS A CENSUS INSTRUMENT AND IT CARRIES ITS OWN DISSOLUTION
+// CONDITION. It reports that the direct-call classifier did not resolve a callee, and records
+// whether some declaration SHARES THAT LEAF NAME in the compiled pool. It is SeverityNonError
+// because reaching that state does not establish the call is unanswerable: method, constructor and
+// builtin-adjacent paths may still answer it.
+//
+// THE FIELD IS CORRELATION, NOT ENTITLEMENT, AND THE NAME SAYS SO DELIBERATELY. It is read from the
+// whole-pool census, so it establishes that a spelling coincides and nothing more. A predicate of
+// the form "unresolved AND some declaration shares this leaf" was PROPOSED AS A WALL AND WITHDRAWN,
+// because it makes corpus population into naming input: adding an unrelated sibling declaration
+// elsewhere would turn a call that legitimately continued into a refusal, while being unable to
+// make that call resolvable. CallableOwnerIndex already records the executed falsifier for the same
+// move -- admitting every same-leaf declaration rebound 39 `contains` sites to an unrelated
+// three-parameter declaration. Entitlement is decided by the containment join, which this
+// diagnostic deliberately does not perform.
+//
+// WHY IT EXISTS AT ALL: a delete-first migration rests on removal making real dependents refuse
+// loudly, and this seam does not refuse -- it computes a refusal reason for the unresolved case and
+// discards it, so the population that surfaces is the subset something downstream happened to
+// COMPARE. Measured 2026-09-06 across two arms: five visible sites against 104 unresolved
+// (module, callee) pairs. The full measurement, both identity sets and the 0-of-27 versus 73-of-73
+// declared partition are in gunbc.recurring_failure_mode
+// `unresolved_callee_conflated_with_dispatched_elsewhere`.
+//
+// DISSOLVE-ON: the seam REFUSING for the population this instrument exists to size. Once a call
+// that cannot be answered produces a located refusal, that population is visible in the ordinary
+// diagnostic stream and needs no census beside it -- this variant, its disposition row and its
+// emission are deleted together. It does NOT dissolve on the count reaching zero, and it does not
+// dissolve on someone migrating the sites it found: both leave the state writable and unreported.
 type CompilerDiagnostic
   = UnresolvedImport   { module_path: String, importing_module: String, span: SourceSpan }
   | MissingExport      { name: String, module_path: String, importing_module: String, span: SourceSpan }
@@ -351,6 +381,7 @@ type CompilerDiagnostic
   | DeclaredTypeNotInhabited { position: String, expected: String, got: String, span: SourceSpan }
   | DeclaredTypeInhabitanceUndecided { position: String, reason: String, span: SourceSpan }
   | UnlistedImportUse { name: String, span: SourceSpan }
+  | DirectCallClassifierUnresolved { name: String, declared_leaf_correlated: Bool, span: SourceSpan }
   | ReferenceDerivedImportProviderUnknown { name: String, referencing_module: String, span: SourceSpan }
   | ReferenceDerivedImportExportUnproven { name: String, referencing_module: String, provider_module: String, span: SourceSpan }
   | UnlistedVariantValueUse { name: String, span: SourceSpan }
@@ -568,6 +599,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     DeclaredTypeNotInhabited { position: _, expected: _, got: _, span: s } => s
     DeclaredTypeInhabitanceUndecided { position: _, reason: _, span: s } => s
     UnlistedImportUse { name: _, span: s } => s
+    DirectCallClassifierUnresolved { name: _, declared_leaf_correlated: _, span: s } => s
     ReferenceDerivedImportProviderUnknown { name: _, referencing_module: _, span: s } => s
     ReferenceDerivedImportExportUnproven { name: _, referencing_module: _, provider_module: _, span: s } => s
     UnlistedVariantValueUse { name: _, span: s } => s
@@ -659,6 +691,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     DeclaredTypeInhabitanceUndecided { position: pos, reason: r, span: _ } =>
       concat("declared-type inhabitance is undecidable at the ", pos, " (", r, "): the modeled facts do not settle whether the produced value inhabits its declared type, so no verdict is asserted in either direction")
     UnlistedImportUse { name: n, span: _ } => concat("unlisted import use '", n, "' (referenced but not in any import's name list)")
+    DirectCallClassifierUnresolved { name: n, declared_leaf_correlated: d, span: _ } =>
+      concat("the direct-call classifier did not resolve '", n, "'", if d { ", and some declaration shares that leaf name in the compiled pool" } else { ", and no declaration shares that leaf name in the compiled pool" }, ". THIS IS AN OBSERVATION, NOT A VERDICT, AND THE FIELD IS CORRELATION RATHER THAN ENTITLEMENT. Reaching this state does not establish the call is unanswerable: method, constructor and builtin-adjacent paths may still answer it. And a shared leaf name does not establish that THIS occurrence is entitled to THAT declaration -- the field is read from the whole-pool census, so it says a name coincides, never that an authority answers. Deciding entitlement requires the containment join, which this diagnostic deliberately does not perform")
     ReferenceDerivedImportProviderUnknown { name: n, referencing_module: rm, span: _ } =>
       concat("no provider is present for '", n, "', referenced by module '", rm, "': the compile closure carries no module that declares the name, so no use-line can be synthesized and the emitted Rust references a name it never imported. The remedy is to AUTHOR AN IMPORT -- closure membership is driven by imports, so a name the module never imported is a name the closure was never asked to supply")
     ReferenceDerivedImportExportUnproven { name: n, referencing_module: rm, provider_module: p, span: _ } =>
@@ -793,6 +827,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     DeclaredTypeNotInhabited { position: _, expected: _, got: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     DeclaredTypeInhabitanceUndecided { position: _, reason: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateAdvisoryTypecheck }
     UnlistedImportUse { name: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+    DirectCallClassifierUnresolved { name: _, declared_leaf_correlated: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     ReferenceDerivedImportProviderUnknown { name: _, referencing_module: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     ReferenceDerivedImportExportUnproven { name: _, referencing_module: _, provider_module: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     UnlistedVariantValueUse { name: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }

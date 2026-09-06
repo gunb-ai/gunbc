@@ -6388,6 +6388,22 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let formal_authority_diags = if declared_formal_authority_failed {
         [make_error_node(diagnostic: InternalError { message: concat("resolved direct-call formal authority unavailable for ", func_name, ": ", formal_authority_refusal_reason), span: span }, module_name: scope.module_name)]
       } else { [] }
+      let classifier_unresolved_diags = match call_target {
+        CallableUnresolved { name: n } =>
+          [make_error_node(
+            diagnostic: DirectCallClassifierUnresolved {
+              name: n,
+              declared_leaf_correlated: map_has(scope.type_env.symbol_index.global_bare, n),
+              span: span
+            },
+            module_name: scope.module_name
+          )]
+        DeclaredCallableResolved { sig: _, declared: _ } => []
+        BuiltinCallableResolved { primitive_name: _ } => []
+        LocallyBoundCallee { name: _, binding: _ } => []
+        CallableAmbiguous { candidates: _ } => []
+        LocallyBoundBindingMissing { name: _ } => []
+      }
       let typed_arg_nodes = typed_args
       if sig != none {
         if declared_formal_authority_failed {
@@ -6399,7 +6415,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               span: span,
               name_span: node_name_span(n: texpr)
             ),
-            diagnostics: concat(formal_authority_diags, arg_diags)
+            diagnostics: concat(classifier_unresolved_diags, concat(formal_authority_diags, arg_diags))
           }
         } else {
         let resolved_type = match sig {
@@ -6452,7 +6468,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             span: span,
             name_span: node_name_span(n: texpr)
           ),
-          diagnostics: concat(formal_authority_diags, concat(arg_diags, concat(arg_shape_diags, concat(arg_compat_diags, concat(structured_arg_diags, concat(inhabitance_arg_diags, generic_type_argument_inhabitance_diags))))))
+          diagnostics: concat(classifier_unresolved_diags, concat(formal_authority_diags, concat(arg_diags, concat(arg_shape_diags, concat(arg_compat_diags, concat(structured_arg_diags, concat(inhabitance_arg_diags, generic_type_argument_inhabitance_diags)))))))
         }
         }
       } else {
