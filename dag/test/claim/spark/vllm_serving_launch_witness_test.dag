@@ -5,7 +5,7 @@ import std.content_hash { ContentHash, Sha256Hash, Sha1Hash, Sha256Digest, Sha1D
 import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
 import gunbc.spark.vllm_serving_launch {
-  VllmServingLaunch, vllm_engine_incarnation,
+  VllmServingLaunch, vllm_serving_launch,
   LaunchJoin, SameLaunch, DifferentLaunch, LaunchContradiction,
   same_launch, join_is_admissible, launch_join_wire,
 }
