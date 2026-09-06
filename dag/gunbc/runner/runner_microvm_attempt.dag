@@ -34,16 +34,82 @@ data runner_microvm_attempt_disposition: Disposition = SingleAuthority
 // silent in production: unbound storage looks like a working VM until two attempts collide,
 // unbound accounting looks like a working VM until the host runs out of memory, and unproven
 // teardown looks like a working VM until a leaked VMM outlives its cell.
-type MicroVmAttempt {
+// AN ATTEMPT ID IS A PATH SEGMENT, AND A SEGMENT IS NOT AN ARBITRARY STRING.
+//
+// The first draft took a bare NonEmptyStr and joined it under the attempt root. "../shared" then
+// escapes that root entirely and "a/../b" aliases a DIFFERENT attempt's storage -- so the storage
+// isolation this module's header promises could be defeated by the identity it was keyed on
+// (review 61259). Every path below is derived from this one value, so one traversing id moves the
+// rootfs, the JIT drive and the config together, and cleanup would prove the wrong subtree empty.
+//
+// §5 asks for construction over validation, so the refusal lives in the CONSTRUCTOR rather than in
+// a check each path function repeats. attempt_segment is the only way to obtain an AttemptSegment,
+// and it refuses rather than sanitizing: a rewritten id would silently disagree with the id the
+// caller believes it holds, and every receipt naming it would name something else. Emptiness, "."
+// and ".." are refused by name; a separator anywhere is refused wherever it appears, which covers
+// both the leading-slash absolute form and the embedded-traversal form without enumerating them.
+type AttemptSegmentRefusal
+  = AttemptSegmentEmpty
+  | AttemptSegmentIsRelativeMarker { spelling: String }
+  | AttemptSegmentContainsSeparator { spelling: String }
+
+type AttemptSegmentResult
+  = AttemptSegmentAccepted { segment: AttemptSegment }
+  | AttemptSegmentRefused { refusal: AttemptSegmentRefusal }
+
+type AttemptSegment sole_constructor {
+  value: NonEmptyStr
+}
+
+fn attempt_segment(spelling: String) -> AttemptSegmentResult {
+  if spelling == "" {
+    AttemptSegmentRefused { refusal: AttemptSegmentEmpty }
+  } else if spelling == "." || spelling == ".." {
+    AttemptSegmentRefused { refusal: AttemptSegmentIsRelativeMarker { spelling: spelling } }
+  } else if string_contains(s: spelling, pattern: "/") {
+    AttemptSegmentRefused { refusal: AttemptSegmentContainsSeparator { spelling: spelling } }
+  } else {
+    AttemptSegmentAccepted { segment: AttemptSegment { value: spelling as NonEmptyStr } }
+  }
+}
+
+fn attempt_segment_refusal_text(r: AttemptSegmentRefusal) -> String {
+  match r {
+    AttemptSegmentEmpty => "attempt id is empty, so it names no directory under the attempt root"
+    AttemptSegmentIsRelativeMarker { spelling: sp } =>
+      join(["attempt id ", sp, " is a relative-path marker and would resolve to the attempt root or its parent"], "")
+    AttemptSegmentContainsSeparator { spelling: sp } =>
+      join(["attempt id ", sp, " contains a path separator, so it could address storage outside its own attempt"], "")
+  }
+}
+
+// MicroVmAttempt IS SEALED TOO, because a record that merely HOLDS a validated segment can still be
+// assembled beside the validator by anyone who obtains one -- and the seal on AttemptSegment then
+// only guarantees that SOME segment was checked, not that THIS attempt's was. The pair is the unit
+// that has to be constructible in one place, so microvm_attempt is the only entry and it carries the
+// refusal outward rather than resolving it.
+type MicroVmAttempt sole_constructor {
   slot: RunnerSlotIdentity
-  attempt_id: NonEmptyStr
+  attempt_id: AttemptSegment
+}
+
+type MicroVmAttemptResult
+  = MicroVmAttemptAccepted { attempt: MicroVmAttempt }
+  | MicroVmAttemptRefused { refusal: AttemptSegmentRefusal }
+
+fn microvm_attempt(slot: RunnerSlotIdentity, attempt_id: String) -> MicroVmAttemptResult {
+  match attempt_segment(spelling: attempt_id) {
+    AttemptSegmentAccepted { segment: seg } =>
+      MicroVmAttemptAccepted { attempt: MicroVmAttempt { slot: slot, attempt_id: seg } }
+    AttemptSegmentRefused { refusal: r } => MicroVmAttemptRefused { refusal: r }
+  }
 }
 
 fn runner_microvm_attempt_dir(attempt: MicroVmAttempt) -> String {
   join([
     fabric_cell_attempt_root_path(slot: attempt.slot),
     "/",
-    attempt.attempt_id as String,
+    attempt.attempt_id.value as String,
   ], "")
 }
 
@@ -67,7 +133,7 @@ fn runner_microvm_attempt_unit_name(attempt: MicroVmAttempt) -> NonEmptyStr {
     "gunbc-microvm-",
     runner_slot_instance_name(slot: attempt.slot),
     "-",
-    attempt.attempt_id as String,
+    attempt.attempt_id.value as String,
   ], "") as NonEmptyStr
 }
 

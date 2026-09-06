@@ -23,6 +23,27 @@ type NftFamily
   = NftInet
   | NftIp
 
+// THE CHAIN TYPE IS A FIELD BECAUSE nftables REFUSES THE COMBINATION, NOT BECAUSE IT VARIES.
+// A `masquerade` statement is only valid in a chain of type `nat`; nftables rejects it in a `filter`
+// chain and the WHOLE RULESET fails to load, taking the tap-to-tap drop down with the NAT rule that
+// was actually wrong. The previous renderer hardcoded `type filter` for every chain, so the
+// postrouting chain below -- whose only rule is a masquerade -- described a ruleset that could not
+// load on any host (review 61259, citing upstream's NAT page).
+//
+// The witnesses did not catch it because they asserted the TEXT contained the right words. A string
+// assertion over a config language cannot tell a valid ruleset from an invalid one, which is why
+// the type is now modeled and paired with its hook rather than checked for.
+type NftChainType
+  = NftTypeFilter
+  | NftTypeNat
+
+fn nft_chain_type_wire(t: NftChainType) -> String {
+  match t {
+    NftTypeFilter => "filter"
+    NftTypeNat => "nat"
+  }
+}
+
 type NftHook
   = NftForward
   | NftPostrouting
@@ -122,6 +143,7 @@ fn nft_rule_wire(r: NftRule) -> String {
 
 type NftChain {
   name: NonEmptyStr
+  chain_type: NftChainType
   hook: NftHook
   priority: NftChainPriority
   policy: NftPolicy
@@ -158,7 +180,7 @@ fn nft_table_wire(t: NftTable) -> String {
 fn nft_chain_wire(family: NftFamily, c: NftChain) -> String {
   join([
     "  chain ", c.name as String, " {\n",
-    "    type filter hook ", nft_hook_wire(h: c.hook),
+    "    type ", nft_chain_type_wire(t: c.chain_type), " hook ", nft_hook_wire(h: c.hook),
     " priority ", nft_chain_priority_wire(p: c.priority),
     "; policy ", nft_policy_wire(p: c.policy), ";\n",
     join(map(c.rules, r => join(["    ", nft_rule_wire(r: r), "\n"], "")), ""),

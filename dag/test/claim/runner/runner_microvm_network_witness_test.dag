@@ -164,3 +164,15 @@ test fn the_nat_supernet_contains_the_slot_addresses_it_claims_to() -> Bool {
     && string_contains(s: host_octets, pattern: "172.30.")
     && string_contains(s: supernet, pattern: "172.30.")
 }
+
+// A masquerade IN A filter CHAIN MAKES THE WHOLE RULESET UNLOADABLE, and the earlier witnesses could
+// not see it: they asserted the text contained the right WORDS, which a ruleset nftables rejects
+// contains just as well (review 61259). nftables permits NAT statements only in a chain of type
+// nat, so this pins the chain type that carries the masquerade AND the one that must stay filter --
+// the red is the previous renderer, which hardcoded filter for both.
+test fn the_nat_chain_is_typed_nat_and_the_filter_chain_stays_filter() -> Bool {
+  let text = runner_microvm_nft_ruleset_text()
+  string_contains(s: text, pattern: "type nat hook postrouting")
+    && string_contains(s: text, pattern: "type filter hook forward")
+    && !string_contains(s: text, pattern: "type filter hook postrouting")
+}

@@ -13,6 +13,7 @@ import gunbc.executor_privileged_operation {
 import extdeps.nftables.ruleset {
   NftTable, NftChain, NftRule, NftMatch, NftFamily, NftInet, NftHook, NftForward, NftPostrouting,
   NftChainPriority, NftPriorityFilter, NftPrioritySrcnat, NftPolicy, NftPolicyAccept,
+  NftChainType, NftTypeFilter, NftTypeNat,
   NftVerdict, NftAccept, NftDrop, NftMasquerade,
   NftInputInterfaceWildcard, NftOutputInterfaceWildcard, NftSourceAddressPrefix,
   NftConnectionTrackingEstablished, nft_table_wire,
@@ -55,14 +56,14 @@ type RunnerSlotNetwork {
 // IFNAMSIZ is 16 bytes including the terminator, so 15 characters is the ceiling. "gunbc-tapNN"
 // is 11 characters at two digits, which leaves the derivation room the fleet will not reach.
 fn runner_slot_tap_device_name(slot: RunnerSlotIdentity) -> NonEmptyStr {
-  join(["gunbc-tap", to_string(slot.slot_index as Int)], "") as NonEmptyStr
+  join(["gunbc-tap", to_string(slot.slot_index)], "") as NonEmptyStr
 }
 
 fn runner_slot_host_address(slot: RunnerSlotIdentity) -> Ipv4Address {
   ipv4_address(
     octet1: runner_microvm_network_octet1,
     octet2: runner_microvm_network_octet2,
-    octet3: slot.slot_index as Int,
+    octet3: slot.slot_index,
     octet4: runner_microvm_network_host_octet4,
   )
 }
@@ -71,7 +72,7 @@ fn runner_slot_guest_address(slot: RunnerSlotIdentity) -> Ipv4Address {
   ipv4_address(
     octet1: runner_microvm_network_octet1,
     octet2: runner_microvm_network_octet2,
-    octet3: slot.slot_index as Int,
+    octet3: slot.slot_index,
     octet4: runner_microvm_network_guest_octet4,
   )
 }
@@ -88,7 +89,7 @@ fn runner_slot_guest_mac(slot: RunnerSlotIdentity) -> Eui48Address {
     octet3: 0,
     octet4: 0,
     octet5: 0,
-    octet6: slot.slot_index as Int,
+    octet6: slot.slot_index,
   )
 }
 
@@ -228,6 +229,7 @@ data runner_microvm_nft_table_name: NonEmptyStr = "gunbc_microvm" as NonEmptyStr
 fn runner_microvm_forward_chain() -> NftChain {
   NftChain {
     name: "forward" as NonEmptyStr,
+    chain_type: NftTypeFilter,
     hook: NftForward,
     priority: NftPriorityFilter,
     policy: NftPolicyAccept,
@@ -251,6 +253,7 @@ fn runner_microvm_forward_chain() -> NftChain {
 fn runner_microvm_postrouting_chain() -> NftChain {
   NftChain {
     name: "postrouting" as NonEmptyStr,
+    chain_type: NftTypeNat,
     hook: NftPostrouting,
     priority: NftPrioritySrcnat,
     policy: NftPolicyAccept,
