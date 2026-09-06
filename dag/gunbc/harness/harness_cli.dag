@@ -17,9 +17,8 @@ import gunbc.harness.harness_guidance { harness_worker_guidance_at, harness_guid
 import gunbc.harness.harness_review_guidance { harness_reviewer_guidance_at, review_guidance_prose }
 import gunbc.harness.harness_goal_audit_guidance { harness_auditor_guidance_at, audit_guidance_prose }
 import gunbc.roadmap.roadmap_review_role { review_verdict_shape_text }
-import gunbc.harness.harness_wire {
-  harness_engine_backend_url, harness_engine_model, harness_engine_context_window,
-}
+import gunbc.harness.harness_wire { harness_engine_model, harness_engine_context_window }
+import gunbc.harness.harness_backend { HarnessBackendUrl, BackendUrlBound, BackendUrlRefused, harness_serving_backend_url }
 
 // THE FIRST WET ENTRY FOR THE DEDICATED HARNESS. It exists to make DCH-2 provable by execution
 // rather than by typecheck -- DESIGN section 5's specification-without-execution trap names exactly
@@ -165,9 +164,9 @@ fn harness_macbook_environment() -> HarnessToolEnvironment {
 // different authority.
 data harness_context_budget: TokenCount = harness_engine_context_window
 
-fn harness_macbook_config() -> HarnessTurnConfig {
+fn harness_macbook_config(backend_url: String) -> HarnessTurnConfig {
   HarnessTurnConfig {
-    backend_url: harness_engine_backend_url(shape: harness_default_wire_shape, seed: ""),
+    backend_url: backend_url,
     model: harness_default_model(),
     max_tokens: harness_default_max_tokens,
     reasoning_mode: harness_reasoning_mode,
@@ -188,9 +187,9 @@ fn harness_macbook_config() -> HarnessTurnConfig {
 // posted, received a tool_use, executed it, posted the result back, and received a terminal.
 data harness_probe_prompt: String = "How many files in the dag/gunbc/harness directory of this repository end in .dag? Use run_command to find out, then state the number."
 
-fn harness_probe_outcome() -> HarnessTurnOutcome {
+fn harness_probe_outcome(backend_url: String) -> HarnessTurnOutcome {
   harness_run_turn(
-    config: harness_macbook_config(),
+    config: harness_macbook_config(backend_url: backend_url),
     prompt: harness_probe_prompt,
     step_budget: harness_default_step_budget,
   )
@@ -200,8 +199,7 @@ fn harness_probe_outcome() -> HarnessTurnOutcome {
 // happened rather than whether the task succeeded. Nothing here inspects the assistant's text for
 // correctness: that is external verification's subject, and a harness that graded its own worker's
 // answer would be the same conflation DCH-2 forbids between a stop reason and a completed task.
-fn harness_probe_cli() -> ProcessExit {
-  let outcome = harness_probe_outcome()
+fn harness_turn_exit(outcome: HarnessTurnOutcome) -> ProcessExit {
   match outcome {
     TurnProviderStopped { wire_stop_reason: _, assistant_text: _, steps_taken: _, input_tokens: _, output_tokens: _ } =>
       ExitSuccess
@@ -212,6 +210,19 @@ fn harness_probe_cli() -> ProcessExit {
           harness_outcome_label(outcome: outcome), ": ", harness_outcome_detail(outcome: outcome),
         ], ""),
       }
+  }
+}
+
+// THE BACKEND IS BOUND BEFORE THE TURN: a roster with nothing serving exits here with every
+// replica's cause, instead of a config whose first POST would refuse.
+fn harness_backend_refusal_exit(detail: String) -> ProcessExit {
+  ExitFailure { code: 1, reason: join(["harness backend: ", detail], "") }
+}
+
+fn harness_probe_cli() -> ProcessExit {
+  match harness_serving_backend_url(shape: harness_default_wire_shape, seed: "") {
+    BackendUrlRefused { detail } => harness_backend_refusal_exit(detail: detail)
+    BackendUrlBound { url, declined_count: _ } => harness_turn_exit(outcome: harness_probe_outcome(backend_url: url))
   }
 }
 
@@ -244,9 +255,10 @@ fn harness_worker_config(
   timeout_program: FilePath,
   request_scratch_path: FilePath,
   events_path: FilePath,
+  backend_url: String,
 ) -> HarnessTurnConfig {
   HarnessTurnConfig {
-    backend_url: harness_engine_backend_url(shape: harness_default_wire_shape, seed: worktree as String),
+    backend_url: backend_url,
     model: harness_default_model(),
     max_tokens: harness_default_max_tokens,
     reasoning_mode: harness_reasoning_mode,
@@ -286,26 +298,20 @@ fn harness_worker_cli(
   request_scratch_path: String,
   events_path: String,
 ) -> ProcessExit {
-  let outcome = harness_run_turn(
-    config: harness_worker_config(
-      worktree: worktree as FilePath,
-      timeout_program: timeout_program as FilePath,
-      request_scratch_path: request_scratch_path as FilePath,
-      events_path: events_path as FilePath,
-    ),
-    prompt: brief,
-    step_budget: harness_worker_step_budget,
-  )
-  match outcome {
-    TurnProviderStopped { wire_stop_reason: _, assistant_text: _, steps_taken: _, input_tokens: _, output_tokens: _ } =>
-      ExitSuccess
-    _ =>
-      ExitFailure {
-        code: 1,
-        reason: join([
-          harness_outcome_label(outcome: outcome), ": ", harness_outcome_detail(outcome: outcome),
-        ], ""),
-      }
+  match harness_serving_backend_url(shape: harness_default_wire_shape, seed: worktree) {
+    BackendUrlRefused { detail } => harness_backend_refusal_exit(detail: detail)
+    BackendUrlBound { url, declined_count: _ } =>
+      harness_turn_exit(outcome: harness_run_turn(
+        config: harness_worker_config(
+          worktree: worktree as FilePath,
+          timeout_program: timeout_program as FilePath,
+          request_scratch_path: request_scratch_path as FilePath,
+          events_path: events_path as FilePath,
+          backend_url: url,
+        ),
+        prompt: brief,
+        step_budget: harness_worker_step_budget,
+      ))
   }
 }
 
@@ -333,9 +339,10 @@ fn harness_reviewer_config(
   request_scratch_path: FilePath,
   events_path: FilePath,
   verdict_path: String,
+  backend_url: String,
 ) -> HarnessTurnConfig {
   HarnessTurnConfig {
-    backend_url: harness_engine_backend_url(shape: harness_default_wire_shape, seed: verdict_path),
+    backend_url: backend_url,
     model: harness_default_model(),
     max_tokens: harness_default_max_tokens,
     reasoning_mode: harness_reasoning_mode,
@@ -361,27 +368,21 @@ fn harness_reviewer_cli(
   events_path: String,
   verdict_path: String,
 ) -> ProcessExit {
-  let outcome = harness_run_turn(
-    config: harness_reviewer_config(
-      worktree: worktree as FilePath,
-      timeout_program: timeout_program as FilePath,
-      request_scratch_path: request_scratch_path as FilePath,
-      events_path: events_path as FilePath,
-      verdict_path: verdict_path,
-    ),
-    prompt: brief,
-    step_budget: harness_reviewer_step_budget,
-  )
-  match outcome {
-    TurnProviderStopped { wire_stop_reason: _, assistant_text: _, steps_taken: _, input_tokens: _, output_tokens: _ } =>
-      ExitSuccess
-    _ =>
-      ExitFailure {
-        code: 1,
-        reason: join([
-          harness_outcome_label(outcome: outcome), ": ", harness_outcome_detail(outcome: outcome),
-        ], ""),
-      }
+  match harness_serving_backend_url(shape: harness_default_wire_shape, seed: verdict_path) {
+    BackendUrlRefused { detail } => harness_backend_refusal_exit(detail: detail)
+    BackendUrlBound { url, declined_count: _ } =>
+      harness_turn_exit(outcome: harness_run_turn(
+        config: harness_reviewer_config(
+          worktree: worktree as FilePath,
+          timeout_program: timeout_program as FilePath,
+          request_scratch_path: request_scratch_path as FilePath,
+          events_path: events_path as FilePath,
+          verdict_path: verdict_path,
+          backend_url: url,
+        ),
+        prompt: brief,
+        step_budget: harness_reviewer_step_budget,
+      ))
   }
 }
 
@@ -396,9 +397,10 @@ fn harness_auditor_config(
   request_scratch_path: FilePath,
   events_path: FilePath,
   verdict_path: String,
+  backend_url: String,
 ) -> HarnessTurnConfig {
   HarnessTurnConfig {
-    backend_url: harness_engine_backend_url(shape: harness_default_wire_shape, seed: verdict_path),
+    backend_url: backend_url,
     model: harness_default_model(),
     max_tokens: harness_default_max_tokens,
     reasoning_mode: harness_reasoning_mode,
@@ -424,34 +426,33 @@ fn harness_auditor_cli(
   events_path: String,
   verdict_path: String,
 ) -> ProcessExit {
-  let outcome = harness_run_turn(
-    config: harness_auditor_config(
-      worktree: worktree as FilePath,
-      timeout_program: timeout_program as FilePath,
-      request_scratch_path: request_scratch_path as FilePath,
-      events_path: events_path as FilePath,
-      verdict_path: verdict_path,
-    ),
-    prompt: brief,
-    step_budget: harness_reviewer_step_budget,
-  )
-  match outcome {
-    TurnProviderStopped { wire_stop_reason: _, assistant_text: _, steps_taken: _, input_tokens: _, output_tokens: _ } =>
-      ExitSuccess
-    _ =>
-      ExitFailure {
-        code: 1,
-        reason: join([
-          harness_outcome_label(outcome: outcome), ": ", harness_outcome_detail(outcome: outcome),
-        ], ""),
-      }
+  match harness_serving_backend_url(shape: harness_default_wire_shape, seed: verdict_path) {
+    BackendUrlRefused { detail } => harness_backend_refusal_exit(detail: detail)
+    BackendUrlBound { url, declined_count: _ } =>
+      harness_turn_exit(outcome: harness_run_turn(
+        config: harness_auditor_config(
+          worktree: worktree as FilePath,
+          timeout_program: timeout_program as FilePath,
+          request_scratch_path: request_scratch_path as FilePath,
+          events_path: events_path as FilePath,
+          verdict_path: verdict_path,
+          backend_url: url,
+        ),
+        prompt: brief,
+        step_budget: harness_reviewer_step_budget,
+      ))
   }
 }
 
 fn harness_probe_report() -> String {
-  let outcome = harness_probe_outcome()
-  join([
-    "harness probe outcome: ", harness_outcome_label(outcome: outcome), "\n",
-    harness_outcome_detail(outcome: outcome), "\n",
-  ], "")
+  match harness_serving_backend_url(shape: harness_default_wire_shape, seed: "") {
+    BackendUrlRefused { detail } => join(["harness probe refused before the turn: ", detail, "\n"], "")
+    BackendUrlBound { url, declined_count: _ } => {
+      let outcome = harness_probe_outcome(backend_url: url)
+      join([
+        "harness probe outcome: ", harness_outcome_label(outcome: outcome), "\n",
+        harness_outcome_detail(outcome: outcome), "\n",
+      ], "")
+    }
+  }
 }

@@ -1,0 +1,34 @@
+module std.compiler_entry
+
+// WHICH MODULE IS THE COMPILER PIPELINE ENTRY IS A FACT ABOUT THE MODULE, CARRIED BY IT.
+//
+// The emitter used to answer that question by comparing a module's authored name against the
+// literal "v1.compiler.compile". That predicate does not name the property it is used for: v1's
+// entry is v1.compiler.compile and v2's is v2.compiler.compile, so the literal distinguishes WHICH
+// SEED GENERATION WROTE THE COMPILER, not whether a module is a compiler pipeline at all. It is a
+// generation discriminator wearing a role predicate's name, and the repair that suggests itself --
+// matching a second literal -- is the same defect twice: it breaks at the next generation and it
+// hard-codes into the tool a fact about the corpus the tool reads.
+//
+// The question is DECIDABLE and FULLY MODELLED, so DESIGN section 5 puts it at wall-now:
+// construction over validation, and the construction is that the entry module says so itself.
+//
+// THE DRIVER SHAPE IS A SECOND FACT AND IS NOT DERIVABLE FROM THE FIRST. DESIGN section 3 separates
+// interface, realization and policy: "this module is the compiler pipeline entry" is the interface
+// fact, and WHICH DRIVER REALIZES IT is realization. Two realizations exist in the tree today and
+// both are load-bearing, so the sum below is closed at two rather than opened for futures nobody
+// has. A third would have to be authored deliberately, which is the point of a closed vocabulary.
+//
+// RetainedHostCliKernel -- the seed's own entry: a clap CLI whose compile verb dispatches into
+// hand-authored host Rust (v1_compiler.cli_run). Only a crate that CONTAINS that retained host
+// source can select it, which is why the shape must be declared rather than assumed: a
+// self-emitted compiler does not contain cli_run, so rendering this driver for it would emit a
+// main naming a module that is not there -- trading a correct refusal for a call that does not
+// link.
+//
+// DirectIngestDriver -- a driver that reaches the emitted compiler's own ingest entry, taking
+// source text and a target and returning emitted text, with no retained host kernel between them.
+
+type CompilerEntryDriver
+  = RetainedHostCliKernel
+  | DirectIngestDriver

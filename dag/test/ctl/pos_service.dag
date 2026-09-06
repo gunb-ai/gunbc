@@ -1,0 +1,13 @@
+module ctl.pos_service
+
+import std.types { NonEmptyStr, String }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import extdeps.bmc.ipmi
+
+// POSITIVE CONTROL: a three-segment service operation must resolve and be callable.
+func call_three_segment(host: String) -> ProcessExit
+  uses net: std.resources.Network
+{
+  r = diagnostic.ipmi.Tool.SensorList(bmc_host: host as NonEmptyStr)
+  return if r.success { ExitSuccess } else { exit_failure(reason: "sensor list failed") }
+}

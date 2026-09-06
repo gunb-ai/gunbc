@@ -1,5 +1,7 @@
 module gunbc.roadmap_page
 
+import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, RoadmapStandings, StandingsObserved, StandingsUnobserved, standing_for_node, roadmap_node_standing_key, roadmap_node_standing_text }
+import gunbc.roadmap_component { standing_chip_class }
 import std.types { list_length }
 import gunbc.harness.harness_throughput {
   HarnessRoundLedger, RoundsUnobserved, RoundsObserved, RoundObservation,
@@ -724,6 +726,20 @@ fn activity_region_nodes(a: ActivityView, rounds: HarnessRoundLedger, live: Bool
   }
 }
 
+// THE STANDING CHIP: the node's live standing from the event log, beside the lifecycle chip. Absent
+// when the log has nothing for this node; the standing's own key is the class so each state reads
+// through the palette's neutral roles (gunbc.roadmap_style standing_chip_rules).
+fn standing_chip_nodes(view: WorkRowView) -> List<Fragment> {
+  match view.standing {
+    Absent => []
+    Present { value: s } =>
+      [ el_attrs("span", [
+          attr(name: "class", value: join([standing_chip_class, " ", standing_chip_class, "-", roadmap_node_standing_key(s: s)], "")),
+          attr(name: "title", value: roadmap_node_standing_text(s: s)),
+        ], [ txt(roadmap_node_standing_text(s: s)) ]) ]
+  }
+}
+
 fn status_chip_nodes(view: WorkRowView) -> List<Fragment> {
   if lifecycle_chip_renders(l: view.lifecycle) {
     let status = work_lifecycle_key(l: view.lifecycle)
@@ -737,6 +753,7 @@ fn render_work_row_head(view: WorkRowView) -> Fragment {
   el_class("div", "node-head", concat(
     concat(
       status_chip_nodes(view: view),
+      standing_chip_nodes(view: view),
       [ el_class("span", node_mid_class, concat(
           concat(
             [ el_class("span", "title", inline_md_nodes(text: view.headline)) ],
@@ -761,7 +778,7 @@ fn node_li_attributes(view: WorkRowView) -> List<Attribute> {
 }
 
 fn node_work_row_view(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, launch: LaunchRowContext) -> WorkRowView {
-  work_row_view(rn: rn, nodes: nodes, edges: edges, merged: merged, activity: NoActiveWork, rounds: RoundsUnobserved { reason: "no active attempt" as NonEmptyStr }, worker_alive: false, launch: launch)
+  work_row_view(rn: rn, nodes: nodes, edges: edges, merged: merged, activity: NoActiveWork, rounds: RoundsUnobserved { reason: "no active attempt" as NonEmptyStr }, worker_alive: false, standing: none, launch: launch)
 }
 
 fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int, launch: LaunchRowContext) -> Fragment {
@@ -1049,6 +1066,7 @@ fn daily_workspace_view_of_for_accepted(
   accepted_ids: List<RoadmapNodeId>,
   attempts: List<WorkflowAttemptProgress>,
   attempts_refused: String?,
+  standings: RoadmapStandings,
   launch: LaunchHostStanding,
 ) -> DailyWorkspaceView {
   let nodes = doc_all_nodes(doc: doc)
@@ -1060,6 +1078,7 @@ fn daily_workspace_view_of_for_accepted(
     activity: daily_row_activity(node_id: rn.node as String, attempts: attempts, attempts_refused: attempts_refused),
     rounds: daily_row_rounds(node_id: rn.node as String, attempts: attempts, attempts_refused: attempts_refused),
     worker_alive: daily_row_worker_alive(node_id: rn.node as String, attempts: attempts, attempts_refused: attempts_refused),
+    standing: standing_for_node(standings: standings, node_id: rn.node as String),
     launch: ctx))
   let ready_count = count(rows |> filter(r =>
     !row_is_active_work(row: r) && work_scheduling_key(s: r.scheduling) == "ready"))
@@ -1071,7 +1090,7 @@ fn daily_workspace_view_of_for_accepted(
     members: live_work_family_members_for_accepted(accepted: accepted_ids))
 }
 
-fn daily_workspace_view_of(doc: RoadmapDocument, merged: List<Int>, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?, launch: LaunchHostStanding) -> DailyWorkspaceView {
+fn daily_workspace_view_of(doc: RoadmapDocument, merged: List<Int>, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?, standings: RoadmapStandings, launch: LaunchHostStanding) -> DailyWorkspaceView {
   match accepted_roadmap_node_ids_projection() {
     AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } =>
       daily_workspace_view_of_for_accepted(
@@ -1079,7 +1098,7 @@ fn daily_workspace_view_of(doc: RoadmapDocument, merged: List<Int>, attempts: Li
         merged: merged,
         accepted_ids: [],
         attempts: attempts,
-        attempts_refused: attempts_refused,
+        attempts_refused: attempts_refused, standings: standings,
         launch: launch,
       )
     AcceptedRoadmapNodeIdsProjected { ids: accepted_ids } =>
@@ -1088,7 +1107,7 @@ fn daily_workspace_view_of(doc: RoadmapDocument, merged: List<Int>, attempts: Li
         merged: merged,
         accepted_ids: accepted_ids,
         attempts: attempts,
-        attempts_refused: attempts_refused,
+        attempts_refused: attempts_refused, standings: standings,
         launch: launch,
       )
   }
@@ -1101,6 +1120,7 @@ fn roadmap_daily_workspace_page_impl_for_accepted(
   main_prefix: List<Fragment>,
   attempts: List<WorkflowAttemptProgress>,
   attempts_refused: String?,
+  standings: RoadmapStandings,
   launch: LaunchHostStanding,
 ) -> Fragment {
   let ws = daily_workspace_view_of_for_accepted(
@@ -1108,7 +1128,7 @@ fn roadmap_daily_workspace_page_impl_for_accepted(
     merged: merged,
     accepted_ids: accepted_ids,
     attempts: attempts,
-    attempts_refused: attempts_refused,
+    attempts_refused: attempts_refused, standings: standings,
     launch: launch,
   )
   let program_strip = match ws.program {
@@ -1170,7 +1190,8 @@ fn roadmap_fleet_page() -> Fragment {
   }
 }
 
-fn roadmap_daily_workspace_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?, launch: LaunchHostStanding) -> Fragment {
+fn roadmap_daily_workspace_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?,
+  standings: RoadmapStandings, launch: LaunchHostStanding) -> Fragment {
   match accepted_roadmap_node_ids_projection() {
     AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } =>
       roadmap_daily_workspace_page_impl_for_accepted(
@@ -1180,6 +1201,7 @@ fn roadmap_daily_workspace_page_impl(doc: RoadmapDocument, merged: List<Int>, ma
         main_prefix: main_prefix,
         attempts: attempts,
         attempts_refused: attempts_refused,
+        standings: standings,
         launch: launch,
       )
     AcceptedRoadmapNodeIdsProjected { ids: accepted_ids } =>
@@ -1190,6 +1212,7 @@ fn roadmap_daily_workspace_page_impl(doc: RoadmapDocument, merged: List<Int>, ma
         main_prefix: main_prefix,
         attempts: attempts,
         attempts_refused: attempts_refused,
+        standings: standings,
         launch: launch,
       )
   }
@@ -1305,19 +1328,21 @@ fn roadmap_page_for_projection_launch(proj: RoadmapAuthorityProjection, launch: 
 }
 
 fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> Fragment {
-  roadmap_daily_workspace_page_impl(doc: doc, merged: merged, main_prefix: [], attempts: [], attempts_refused: none, launch: launch_host_unobserved_static_render())
+  roadmap_daily_workspace_page_impl(doc: doc, merged: merged, main_prefix: [], attempts: [], attempts_refused: none, standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" }, launch: launch_host_unobserved_static_render())
 }
 
 fn roadmap_daily_workspace_page_launch(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHostStanding) -> Fragment {
-  roadmap_daily_workspace_page_impl(doc: doc, merged: merged, main_prefix: [], attempts: [], attempts_refused: none, launch: launch)
+  roadmap_daily_workspace_page_impl(doc: doc, merged: merged, main_prefix: [], attempts: [], attempts_refused: none, standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" }, launch: launch)
 }
 
 // The served daily workspace consumes the OBSERVED attempt evidence at render (the serve handler decomposes the belt observation and passes progress rows or the located refusal), so the active band and every server-rendered activity region are real facts, not placeholders — the same decided views the /workflow.json wire carries, giving the client poll an identical starting DOM (the parity obligation's server half). The zero-argument form stays pure (empty attempts, nominal observation) for witnesses that assert composition without observation.
-fn roadmap_daily_workspace_page_for_authority_observed(attempts: List<WorkflowAttemptProgress>, attempts_refused: String?, launch: LaunchHostStanding) -> Fragment {
+fn roadmap_daily_workspace_page_for_authority_observed(attempts: List<WorkflowAttemptProgress>, attempts_refused: String?,
+  standings: RoadmapStandings, launch: LaunchHostStanding) -> Fragment {
   roadmap_daily_workspace_page_for_projection_observed(
     proj: roadmap_authority_projection(),
     attempts: attempts,
     attempts_refused: attempts_refused,
+        standings: standings,
     launch: launch,
   )
 }
@@ -1326,6 +1351,7 @@ fn roadmap_daily_workspace_page_for_projection_observed(
   proj: RoadmapAuthorityProjection,
   attempts: List<WorkflowAttemptProgress>,
   attempts_refused: String?,
+  standings: RoadmapStandings,
   launch: LaunchHostStanding,
 ) -> Fragment {
   match proj {
@@ -1339,6 +1365,7 @@ fn roadmap_daily_workspace_page_for_projection_observed(
         ],
         attempts: attempts,
         attempts_refused: attempts_refused,
+        standings: standings,
         launch: launch,
       )
     RoadmapAuthorityProjected { doc: doc, accepted: accepted } =>
@@ -1351,6 +1378,7 @@ fn roadmap_daily_workspace_page_for_projection_observed(
         ],
         attempts: attempts,
         attempts_refused: attempts_refused,
+        standings: standings,
         launch: launch,
       )
   }
@@ -1365,6 +1393,7 @@ fn roadmap_daily_workspace_page_for_projection(proj: RoadmapAuthorityProjection)
     proj: proj,
     attempts: [],
     attempts_refused: none,
+    standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" },
     launch: launch_host_unobserved_static_render(),
   )
 }

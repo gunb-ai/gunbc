@@ -1,0 +1,74 @@
+module gunbc.recurring_failure_mode.preparation_membership_derived_from_the_execution_selector
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data preparation_membership_derived_from_the_execution_selector: RecurringFailureMode = RecurringFailureMode {
+  identity: "preparation_membership_derived_from_the_execution_selector" as NonEmptyStr,
+
+  receipts: [
+    "**which modules get COMPILED is derived from which WITNESSES get EXECUTED, so production authority no selected claim imports is never prepared and the ordinary compiler floor goes unchecked over it** (INVALID STATE: a gate names a roster of TEST-MODULE identity prefixes, the run prepares the import closure of that roster, and preparation membership is therefore a downstream consequence of execution selection. ",
+
+    "A production module whose only importers are test modules outside the roster -- or which no test module imports at all -- is never loaded, never resolved, never typechecked, by any required run. ",
+
+    "HARM: the floor DESIGN section 4b names first -- names resolve, values inhabit declared types, closed variants eliminate exhaustively -- is unchecked over that population while both required lanes report green, so `main is green` and `the corpus holds the floor` are different propositions and nothing in the run says which one it established. ",
+
+    "**THE DISTINGUISHING FACT AGAINST EVERY NEIGHBOURING CLASS IS THAT NOTHING EVER LOOKED.** No diagnostic was produced and dropped, no lane swallowed an error, no aggregation lost a red, no exit status was mis-propagated. The first missing edge is ADMISSION TO THE PREPARED POPULATION, upstream of body resolution, which is why every instrument downstream of preparation reads clean and why looking for a suppressed diagnostic finds nothing. ",
+
+    "SPECIMEN WITH ITS POSITIVE CONTROL, both executed on main at 4da9c1a3fdd through the real acceptance path (`claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/systemd_property_directive_overlap_test.dag`, GUNBC_MEMORY_BUDGET_BYTES set): `extdeps.systemd` declares `RuntimeDirectoryProperty` as a variant of `SystemdUnitProperty`; `gunbc.systemd_property_directive_overlap` `systemd_property_writability` does not eliminate it. ",
+
+    "The run refuses at closure-strict-resolve with `non-exhaustive match: missing variant(s) RuntimeDirectoryProperty`. ",
+
+    "That module's only importer is a test module the gate roster does not name, so no required run had ever prepared it. ",
+
+    "**THE SPECIMEN CARRIES TWO OBLIGATIONS AND THE COMPILE-GREEN DISCHARGES ONLY ONE**, which is the half of this row a repair will get wrong: the classifier is a total match, so adding the arm is compelled by the compiler, while `systemd_unit_property_members` -- a hand-authored roster of the same coproduct's variants, consumed by both wire projections -- stays short with a clean compile and every count derived from it silently under-reports. ",
+
+    "That module's own annotation predicted exactly this in 2026-08 for `MainPID` and recorded it firing; it fired again here. ",
+
+    "The manual-enumeration face is `parallel_representation_debt`, and its own next-rung trigger -- a variant-enumeration surface over a declared coproduct -- is unrelated to this row's. ",
+
+    "**WHY WIDENING THE ROSTER IS NOT A CANDIDATE REPAIR, and the argument is structural rather than economic.** The roster keys on the identity of a WITNESS module, so the population it can address is bounded by which production modules some test module happens to import. ",
+
+    "Measured on 4da9c1a3fdd by a static module-import closure over `dag` and `src/v2` (module-declaration line plus import lines; roots = the modules matching `v2.workflow.required_floor` `required_gate_prefixes`; deliberately an OVER-estimate of the real closure, since long-home, fixture-home and cost-debt declines were not subtracted, so every figure is generous to the status quo): 2667 production modules, of which 1208 sit OUTSIDE the closure; of those 1208, 589 are imported by NO test module at all and 319 by nothing at all. ",
+
+    "No prefix string can name those 589, so the vocabulary cannot express half the exposed population; and reaching the remainder would mean enrolling 501 further test modules, which is the wall-clock the `required_gate_bankruptcy` drop was declared to cut. ",
+
+    "Widening also fuses WHAT TO COMPILE with WHAT TO EXECUTE into one roster, which is the DESIGN section 3 fork, and that drop already rules that widening the static roster moves its population rather than retiring it. ",
+
+    "**WHAT THE EXPOSURE NUMBER IS AND IS NOT: 1208 is production modules nobody compiles, NOT 1208 defects,** and it is a lower bound on the omitted authorities rather than an upper one, because the run's own `required-floor-disposition` artifact cannot count them -- they are DEPENDENCIES of witnesses, not witness identities, so the 12386 `declined_outside_gate_closure` rows on run 33967952362 are a different population and none of them is a production authority. ",
+
+    "**THE DEFECT CENSUS OVER THAT POPULATION IS UNMEASURED, AND THE DENOMINATOR BELONGS INSIDE THE CLAIM.** An executed instrument -- one synthetic witness module per outside-closure production module, importing exactly one of its exported symbols, fed to `claim_batch` as N entry groups sharing one module index so per-entry attribution survives -- found ZERO further defects IN THE 30 MODULES IT ACTUALLY MEASURED. ",
+
+    "30 of 1199 is 2.5 percent coverage and supports no statement about the population; `no further defects found` is not `no further defects exist`. ",
+
+    "THAT INSTRUMENT HAS A STRUCTURAL CEILING, stated so a later complete-looking run is not read as covering 1208: it works by importing an exported symbol, so the 9 modules exporting none are unreachable by construction and stay unreachable however long it runs -- `extdeps.fixture.external_authority_missing`, `gunbc.auth.optional_impersonation`, `gunbc.toolchain_home_interference_probe`, `gunbc.tools.bmc_read_telemetry`, `tools.cheap_claim_pool_gate`, `tools.extdeps_external_authority_gate`, `tools.floor_effect_gate_witness`, `v2.workflow.ci_heal_revalidation_preflight_emit_test`, `v2.workflow.source_root_ingest_gate`. ",
+
+    "A SECOND, SHARPER LIMIT WAS NOT RESOLVED AND MUST BE RESOLVED BEFORE ANY CENSUS IS BELIEVED: the specimen run reported ONE error and stopped, so if resolve halts at the first defect per closure then a full census yields a LOWER BOUND with an unquantified gap rather than a count -- and a lower bound would immediately be quoted as `the census`. ",
+
+    "That question costs one module with two planted defects, not a corpus sweep. ",
+
+    "**WHY THE CENSUS WAS NOT COMPLETED, WHICH IS THE SAME FACT AS THIS ROW'S TRIGGER.** Measured on a BuildBuddy runner (MemTotal 7.45 GiB): one process resolves 30 outside-closure production modules and then dies rc=137 at VmHWM 7.20 GiB, having spent 361s of which roughly 60s is a fixed whole-tree warm-up every process pays regardless of subject; resident size before any subject is resolved is 5.9 GiB and grows monotonically at roughly 40 MB per module resolved, with nothing evicted between entries. ",
+
+    "Preparation cost is therefore denominated in the ACCUMULATED UNION of everything already resolved, which is the same property that makes the whole corpus refuse under 16 GiB against its measured 17.16 GiB demand. ",
+
+    "RUNG FOUND AT: below the ladder for the affected population -- this is silent wrongness rather than a weak rung, since an ordinary floor violation stands on main under two green required lanes and no mechanism reports it. ",
+
+    "For the population the gate DOES prepare the floor is mechanically preventable and unaffected. ",
+
+    "CEILING: 3, structurally guaranteed. ",
+
+    "Membership is decidable -- whether a declared module was prepared by a run is a set question over the declaration index the tree already carries -- so a run can derive its own preparation coverage and refuse rather than report a green whose population it never names. ",
+
+    "**NEXT-RUNG TRIGGER, AT CAPABILITY GRAIN: a preparation whose RESIDENT COST IS BOUNDED BY THE SHARD rather than by the accumulated union of everything it has already resolved.** That is what makes a preparation selector disjoint from witness selection affordable, and what makes the change-derived population the `required_gate_bankruptcy` restoration trigger names cheap rather than merely possible. ",
+
+    "**WHAT DOES NOT DISCHARGE IT: a runner with 17.16 GiB or more.** That buys the census while leaving cost denominated in the CORPUS instead of the CHANGE, so the deficit stops being visible and never ranks for repair -- the absorbing arm in its exact form, where nothing is missed and the signal that the precise mechanism is anemic is destroyed. ",
+
+    "It may be taken as a mitigation for one bounded run; it is never the discharge. ",
+
+    "RECOGNITION RULE: for any gate, ask what its selector is KEYED ON and whether the population it must protect is expressible in that key. ",
+
+    "If the gate protects a property of modules and selects on the identity of tests, the two are joined only by whatever imports happen to exist, and the unprotected remainder is invisible by construction rather than by omission.)",
+  ],
+
+  evidence: [],
+}

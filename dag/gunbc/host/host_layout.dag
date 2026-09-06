@@ -290,7 +290,7 @@ data fleet_converge_receipt_dir: String = "/opt/gunbc/receipts"
 //
 // fleet_converge_receipt_dir above is byte-identical to instance_receipts_dir applied to
 // production's instance root ("/opt/gunbc"), which is the half-parameterization
-// live_deploy.emit serve_binary_parent_was_a_literal_note describes: the value that varies
+// live_deploy.emit path_parent_dir's annotation describes: the value that varies
 // became a parameter and the directory holding it stayed a literal. That fork is PRE-EXISTING
 // and is not created here — gunbc.fleet_converge_cli is parameterized by host, not by
 // instance, so de-forking it needs an instance on that path and is not this change's scope.

@@ -651,6 +651,53 @@ fn portable_remote_words_strings(words: PortableRemoteWords) -> List<String> {
 // is derived here from the context -- trust from the anchor, credential from the binding, ambient
 // suppression unconditionally -- and the principal is projected to an explicit User option rather
 // than joined into the destination, so the account being tested is a modeled field rather than text.
+// THE PASSWORD SESSION SHARES THE TRUST ANCHOR AND NOTHING ELSE WITH THE KEY SESSION. First contact
+// with a unit still on its setup credential has no fleet key on the far side to offer, so the
+// administrator legs authenticate with the administrator's password: the same pinned known_hosts
+// options, then password-only authentication with BatchMode off so sshpass can answer the prompt.
+// The two bootstrap runs that looked like a credential problem (srv9 33951697853, srv11
+// 33952611590) were this: the key session was offered to a host that had never seen the key.
+fn fleet_ssh_password_client_options(
+  trust: List<SshClientOption>,
+  principal: NonEmptyStr,
+) -> List<SshClientOption> {
+  concat(trust, [
+    PreferredAuthentications { methods: "password,keyboard-interactive" as NonEmptyStr },
+    User { name: principal },
+    BatchMode { enabled: false },
+    ConnectTimeout { seconds: second(count: 10) },
+  ])
+}
+
+// The password session needs only the trust anchor, so a caller holding no fleet key (the first
+// contact, or an apply run from an operator position) shapes it from the policy alone.
+fn shape_fleet_ssh_password_exec_trusting(
+  trust: FleetOpenSshTrustPolicy,
+  target: SshTarget,
+  words: PortableRemoteWords,
+) -> List<String> {
+  let config_suppression = openssh_suppress_ambient_configuration_options()
+  let derived = fleet_ssh_password_client_options(
+    trust: fleet_openssh_trust_options(policy: trust),
+    principal: target.principal,
+  )
+  concat(
+    concat(
+      flat_map(config_suppression, o => serialize_ssh_config_file_flag(option: o)),
+      serialize_ssh_client_options(options: derived),
+    ),
+    concat([target.endpoint as String, "--"], portable_remote_words_strings(words: words)),
+  )
+}
+
+fn shape_fleet_ssh_password_exec(
+  context: FleetSshExecutionContext,
+  target: SshTarget,
+  words: PortableRemoteWords,
+) -> List<String> {
+  shape_fleet_ssh_password_exec_trusting(trust: context.trust, target: target, words: words)
+}
+
 fn shape_fleet_ssh_exec(
   context: FleetSshExecutionContext,
   target: SshTarget,
