@@ -1,0 +1,317 @@
+module gunbc.runner.runner_host_surface
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import gunbc.build_cache_instance { ProcessIdentity }
+
+// THE RUNTIME SURFACE IS DERIVED, NOT DISCOVERED. The invariant this module exists to make
+// constructible: no user-space process, listener, route, executable, writable path, device grant or
+// secret ingress exists on the runner host unless one modeled declaration here caused it. A red team
+// should be able to enumerate the intended surface WITHOUT TOUCHING THE UNIT, because the same
+// values that build and launch the machine are the ones that answer the question.
+//
+// A SCAN IS THE THIRD LAYER, NEVER THE FIRST. Three questions with three different authorities:
+//
+//   DECLARED   what processes and interfaces MAY exist          this module
+//   ENFORCED   what prevents anything else existing             /init, namespaces, filter, image
+//   OBSERVED   does THIS boot match the declaration exactly     whole-population runtime receipt
+//
+// A declaration alone is prose with better syntax. A scan alone describes whatever happened to
+// start. The standing is the conjunction, and this module is deliberately only the first term.
+//
+// THE PROCESS IS THE ROOT, NOT THE PORT. A port is one projection of a running process, and a
+// surface described as a port list cannot answer who owns the socket, what that owner may execute,
+// what it may write, or what it may reach outbound. Modelling ports first is how a "surface
+// document" becomes a fourth authority that happens to agree with sshd_config, the firewall and the
+// probe -- which is four authorities, not one, and they agree only until they do not.
+//
+// WHAT THIS MODULE DELIBERATELY DOES NOT YET CARRY, named so its absence is not read as a claim:
+// capability sets, seccomp policy digests, mount grants, device grants and secret ingress are axes
+// of RuntimeProcessClass in the ruling this follows, and are NOT modeled here. This slice models the
+// process/listener/lineage spine and the exact-population judgment over it. An unmodeled axis is an
+// axis nothing enforces, and the surface report must say so rather than imply completeness.
+
+// CARDINALITY IS PART OF THE DECLARATION BECAUSE PIDS CANNOT BE. Nothing can name the pid a
+// supervisor will get, so the declared population is a set of CLASSES with counts -- some fixed,
+// some keyed by an admitted attempt, and one that is the whole point: Forbidden.
+//
+// ForbiddenClass IS NOT A COMMENT. It is the arm that makes "anything else" a representable,
+// checkable state rather than the silent complement of a list.
+type ProcessCardinality
+  = ExactlyOne
+  | ZeroOrMorePerControlSession
+  | ExactlyOnePerAdmittedAttempt
+  | ForbiddenClass
+
+// THE ROLES OF THE RAW RUNNER HOST, and the smallness is the design rather than an accident of this
+// slice. In production the static user-space graph is a supervisor and a control ingress; everything
+// else exists only because an attempt was admitted, and disappears when it retires.
+//
+// THERE IS NO IDLE FIRECRACKER. A hypervisor process with no admitted attempt behind it is not a
+// warm pool, it is an unexplained process, and the population judgment treats it as one.
+type HostProcessRole
+  = HostSupervisor
+  | ControlMaster
+  | ControlSession
+  | AttemptJailer
+  | AttemptFirecracker
+
+fn host_process_role_label(r: HostProcessRole) -> String {
+  match r {
+    HostSupervisor => "host-supervisor"
+    ControlMaster => "control-master"
+    ControlSession => "control-session"
+    AttemptJailer => "attempt-jailer"
+    AttemptFirecracker => "attempt-firecracker"
+  }
+}
+
+// LINEAGE IS DECLARED, NOT INFERRED FROM WHATEVER RAN. "A firecracker exists" and "a firecracker
+// exists BENEATH THE JAILER THAT WAS ADMITTED FOR THIS ATTEMPT" are different facts, and only the
+// second is the isolation the jailer is there to provide. A firecracker parented anywhere else has
+// escaped its jail by construction, whatever its command line says.
+type ProcessParent
+  = ParentIsKernel
+  | ParentIsRole { role: HostProcessRole }
+
+type HostProcessClass {
+  role: HostProcessRole
+  cardinality: ProcessCardinality
+  parent: ProcessParent
+  executable_digest: NonEmptyStr
+  runs_as: NonEmptyStr
+  may_spawn: List<HostProcessRole>
+}
+
+// ── the listener, at its real identity ──────────────────────────────────────────────────────────
+
+// A LISTENER IS NOT A PORT NUMBER. These are four materially different surfaces and a model that
+// records "22/tcp" cannot tell them apart:
+//
+//   127.0.0.1:22/tcp      reachable by nothing off-box
+//   192.168.1.230:22/tcp  reachable from the management network
+//   0.0.0.0:22/tcp        reachable from every attached network
+//   [::]:22/tcp           the same mistake, in a family people forget to check
+//
+// The namespace matters for the same reason: an endpoint inside an attempt's network namespace is
+// not on the host's surface at all, and conflating the two would report guest-side listeners as host
+// exposure or, far worse, the reverse.
+type AddressFamily = Inet4 | Inet6 | UnixDomain
+type TransportProtocol = Tcp | Udp | UnixStream
+
+type NetworkNamespaceScope
+  = HostNetworkNamespace
+  | AttemptNetworkNamespace
+
+type ExposureZone
+  = ManagementNetworkOnly
+  | LoopbackOnly
+  | HostLocalIpcOnly
+  | AnyAttachedNetwork
+
+type DeclaredListener {
+  owner: HostProcessRole
+  namespace_scope: NetworkNamespaceScope
+  family: AddressFamily
+  protocol: TransportProtocol
+  local_address: NonEmptyStr
+  port: Int
+  zone: ExposureZone
+}
+
+// ── the declared surface of the raw runner host ─────────────────────────────────────────────────
+
+// THE PRODUCTION SURFACE. One supervisor, one control ingress, and nothing standing idle.
+//
+// THE CONTROL LISTENER IS A TRANSPORT TO ONE PROGRAM, NOT A SHELL. An ordinary SSH login re-opens
+// the surface completely: it permits arbitrary combinations of every executable in the image, so the
+// process population stops being closed even though the binary set is finite. Public-key only,
+// forced command, no pty, no agent or TCP forwarding, management address only -- the caller reaches
+// the host control agent and cannot reach anything else.
+//
+// THIS IS ALSO WHY THE FLEET'S ORDINARY SSH REALIZATION DOES NOT FIT HERE: it invokes `bash -s`,
+// which both requires a shell this image should not contain and hands it arbitrary script text. The
+// stateless host needs a typed control surface, not a generic exec transport.
+data runner_host_production_processes: List<HostProcessClass> = [
+  HostProcessClass {
+    role: HostSupervisor,
+    cardinality: ExactlyOne,
+    parent: ParentIsKernel,
+    executable_digest: "unbound-until-image-build",
+    runs_as: "root",
+    may_spawn: [ControlMaster, AttemptJailer],
+  },
+  HostProcessClass {
+    role: ControlMaster,
+    cardinality: ExactlyOne,
+    parent: ParentIsRole { role: HostSupervisor },
+    executable_digest: "unbound-until-image-build",
+    runs_as: "root",
+    may_spawn: [ControlSession],
+  },
+  HostProcessClass {
+    role: ControlSession,
+    cardinality: ZeroOrMorePerControlSession,
+    parent: ParentIsRole { role: ControlMaster },
+    executable_digest: "unbound-until-image-build",
+    runs_as: "gunbc-control",
+    may_spawn: [],
+  },
+  HostProcessClass {
+    role: AttemptJailer,
+    cardinality: ExactlyOnePerAdmittedAttempt,
+    parent: ParentIsRole { role: HostSupervisor },
+    executable_digest: "unbound-until-image-build",
+    runs_as: "root",
+    may_spawn: [AttemptFirecracker],
+  },
+  HostProcessClass {
+    role: AttemptFirecracker,
+    cardinality: ExactlyOnePerAdmittedAttempt,
+    parent: ParentIsRole { role: AttemptJailer },
+    executable_digest: "unbound-until-image-build",
+    runs_as: "attempt-scoped",
+    may_spawn: [],
+  },
+]
+
+// FIRECRACKER EXPOSES NO HOST LISTENER. Its API is either absent entirely, when the whole
+// configuration is known before start, or an attempt-scoped Unix socket when lifecycle control needs
+// it. Either way it is not a TCP endpoint on the host's surface, and a firecracker holding one is a
+// finding rather than a configuration choice.
+data runner_host_production_listeners: List<DeclaredListener> = [
+  DeclaredListener {
+    owner: ControlMaster,
+    namespace_scope: HostNetworkNamespace,
+    family: Inet4,
+    protocol: Tcp,
+    local_address: "management-address",
+    port: 22,
+    zone: ManagementNetworkOnly,
+  },
+]
+
+// ── production and recovery are mutually exclusive ──────────────────────────────────────────────
+
+// A RECOVERY SHELL IN THE IMAGE IS NOT A RECOVERY SHELL ON THE SURFACE. Carrying busybox so a
+// console operator can diagnose a unit does not mean a network caller may reach it, and the two get
+// conflated precisely because the binary is present either way. Modelling the boot PURPOSE keeps the
+// distinction: a host in recovery refuses to admit VM work, and a host admitting VM work has no
+// interactive shell reachable.
+//
+// THE DANGEROUS STATE IS THE UNION, and it is unrepresentable here rather than discouraged: there is
+// no arm that is both.
+type HostBootPurpose
+  = RunnerHostProduction
+  | RunnerHostRecovery
+
+fn admits_vm_work(purpose: HostBootPurpose) -> Bool {
+  match purpose {
+    RunnerHostProduction => true
+    RunnerHostRecovery => false
+  }
+}
+
+fn admits_interactive_console_shell(purpose: HostBootPurpose) -> Bool {
+  match purpose {
+    RunnerHostProduction => false
+    RunnerHostRecovery => true
+  }
+}
+
+// ── the exact-population judgment ───────────────────────────────────────────────────────────────
+
+// THE EXPECTED POPULATION IS DERIVED FROM THE ADMITTED WORK, not fixed. Static singletons plus one
+// jailer and one firecracker per admitted attempt plus the live control sessions -- so the same
+// declaration answers "what should be running" at any moment without anyone maintaining a second
+// list that drifts.
+fn expected_process_count(admitted_attempts: Int, control_sessions: Int) -> Int {
+  2 + control_sessions + (2 * admitted_attempts)
+}
+
+type ObservedProcess {
+  identity: ProcessIdentity
+  role_claimed: HostProcessRole
+  parent_identity: ProcessIdentity
+  executable_digest: NonEmptyStr
+}
+
+// THE FAILURES ARE TYPED AND EACH NAMES A DIFFERENT REMEDY. A single Bool here would be the
+// typed-cause-erased failure this repository keeps finding: "the surface does not match" sends
+// nobody anywhere, while "a firecracker is parented outside its jailer" and "sshd is listening on
+// 0.0.0.0 instead of the management address" are different incidents with different owners.
+//
+// RuntimeSurfaceObservationUnreadable IS THE ARM THAT KEEPS THE OTHERS HONEST. An observation that
+// could not be taken is not an observation of nothing, and folding it into "exact" would make a
+// failed census the most reassuring outcome available.
+type RuntimeSurfaceFinding
+  = UnexpectedProcess { observed: ProcessIdentity, executable_digest: NonEmptyStr }
+  | MissingExpectedProcess { role: HostProcessRole }
+  | UnexpectedChildLineage { role: HostProcessRole, expected_parent: HostProcessRole }
+  | ExecutableIdentityMismatch { role: HostProcessRole, expected: NonEmptyStr, observed: NonEmptyStr }
+  | UnexpectedListener { local_address: NonEmptyStr, port: Int }
+  | MissingExpectedListener { owner: HostProcessRole, port: Int }
+  | ListenerOwnedByWrongProcess { port: Int, expected_owner: HostProcessRole }
+  | ListenerInWrongNamespace { port: Int }
+  | UnexpectedEgressRoute { destination: NonEmptyStr }
+  | FirewallPolicyMismatch { detail: String }
+  | RuntimeSurfaceObservationUnreadable { detail: String }
+
+type RuntimeSurfaceStanding
+  = RuntimeSurfaceHeld
+  | RuntimeSurfaceViolated { findings: List<RuntimeSurfaceFinding> }
+
+// COUNTS ARE NOT PROOF, and this function exists to say so in a place the compiler can see. Three
+// expected and three observed is satisfied by three substitutions. The standing is an IDENTITY JOIN
+// over roles, lineage and executable digests; the count is a cheap precondition that can only ever
+// produce a finding, never discharge one.
+fn runtime_surface_standing(findings: List<RuntimeSurfaceFinding>) -> RuntimeSurfaceStanding {
+  if (findings |> count) == 0 {
+    RuntimeSurfaceHeld
+  } else {
+    RuntimeSurfaceViolated { findings: findings }
+  }
+}
+
+// A HOST THAT CANNOT ACCOUNT FOR ITSELF DOES NOT TAKE NEW WORK. An unexpected listener is not
+// dashboard colour: it is an unexplained process holding a socket on a machine about to be handed
+// someone else's code to run. Admission is gated on the standing rather than reported beside it.
+fn admits_new_attempt(purpose: HostBootPurpose, standing: RuntimeSurfaceStanding) -> Bool {
+  match standing {
+    RuntimeSurfaceHeld => admits_vm_work(purpose: purpose)
+    RuntimeSurfaceViolated { findings: _ } => false
+  }
+}
+
+// ── the boundary of the claim ───────────────────────────────────────────────────────────────────
+
+// THREE POPULATIONS, AND ONLY ONE OF THEM IS CLAIMED EXACTLY. Stating this is what keeps the
+// invariant honest rather than grandiose.
+//
+//   HOST USER-SPACE   exactly modeled, exactly observed -- the subject of this module
+//   KERNEL SURFACE    config, built-in drivers, protocol families, syscall and LSM policy. Modeled
+//                     separately because kernel threads are not ordinary processes and their
+//                     population varies with hardware and activity.
+//   GUEST WORKLOAD    deliberately arbitrary. An Actions job runs whatever it runs.
+//
+// WHAT IS CLOSED FOR THE GUEST IS ITS ENVELOPE, NOT ITS PROCESS LIST: no host namespace, no host
+// mounts, no host devices beyond virtual ones, no inbound route, default-deny egress, one
+// attempt-scoped credential, a dedicated kernel, bounded memory, cpu and disk. Those are the axes
+// gunbc.product.fabric.isolation already names, and this module consumes that vocabulary rather than
+// restating it.
+type SurfacePopulation
+  = HostUserSpaceExactlyModeled
+  | KernelSurfaceModeledSeparately
+  | GuestWorkloadArbitraryWithinEnvelope
+
+// THE BMC IS OBSERVED AND MUST NEVER BE DERIVED. We do not build or launch its processes, so its
+// surface cannot honestly come from our image -- it comes from an exact controller, an exact
+// firmware identity, and an observed listener population. Presenting it beside the derived host
+// surface as though both had the same provenance is the same portability error the MegaRAC lane is
+// currently correcting: an observed property of one vendor build reported as a constructed property.
+//
+// So the asset report a red team receives is a COMPOSITION with its provenance visible per part,
+// never one flat list.
+type SurfaceProvenance
+  = DerivedFromOurImage
+  | ObservedFromVendorFirmware
+  | ObservedFromNetworkFabric
