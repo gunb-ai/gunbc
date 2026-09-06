@@ -8,6 +8,7 @@ import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import v2.extdeps.languages.rust { rust_target_model }
+import v2.extdeps.languages.rust_emit_small_test { rust_emit_small_translation_claim }
 import v2.std.leaf_model_verification { TargetCompileAccepted, TargetCompileRejected }
 import v2.std.diagnostic {
   Diagnostic,
@@ -255,7 +256,7 @@ fn rust_translation_claim() -> TranslationClaim {
 
 fn rustc_target_compile_claim() -> TargetCompileClaim {
   TargetCompileClaim {
-    translation: rust_translation_claim(),
+    translation: rust_emit_small_translation_claim(),
     toolchain_identity: ^toolchain_rustc
   }
 }
@@ -267,7 +268,10 @@ test fn acceptance_target_compile_prerequisite_is_its_own_translation() -> Bool 
     ),
     init: false,
     f: fn(acc, p) {
-      acc || obligation_eq(a: p, b: TranslateStage { claim: rust_translation_claim() })
+      acc || obligation_eq(
+        a: p,
+        b: TranslateStage { claim: rust_emit_small_translation_claim() }
+      )
     }
   )
 }

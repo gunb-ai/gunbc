@@ -1,0 +1,76 @@
+module test.claim.compute.work_request_witness_test
+
+import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
+import gunbc.compute.work_request {
+  WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoRelease, CargoDebug,
+  WorkToolchainIdentity, work_identity, work_identity_hex, work_default_build, work_declared_outputs,
+  DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
+  WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, HostAtColdBuildCap,
+  work_outcome_wire, stored_outcome_decode, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_is_success,
+}
+
+fn tree(hex: String) -> WorkSubject {
+  match git_object_id_from_untagged_hex(hex: hex) {
+    Present { value: oid } => ExactTree { tree: oid }
+    Absent => ExactTree { tree: hex as GitObjectId }
+  }
+}
+
+fn tc(rustc: String) -> WorkToolchainIdentity {
+  WorkToolchainIdentity { rustc_version: rustc as NonEmptyStr, cache_release: "sccache 0.15.0" as NonEmptyStr }
+}
+
+data tree_a: String = "1111111111111111111111111111111111111111"
+data tree_b: String = "2222222222222222222222222222222222222222"
+
+// DISCRIMINATING (compute-deduplication-and-admission's red control): identical requests share one
+// identity; a difference anywhere -- tree, operation, entry, functions, hermeticity, profile,
+// toolchain -- does not collapse, each proven separately.
+test fn identical_requests_share_an_identity_and_every_difference_separates_them() -> Bool {
+  let base = work_identity_hex(id: work_identity(subject: tree(hex: tree_a), op: work_default_build(), toolchain: tc(rustc: "rustc 1.90.0")))
+  let same = work_identity_hex(id: work_identity(subject: tree(hex: tree_a), op: work_default_build(), toolchain: tc(rustc: "rustc 1.90.0")))
+  let other_tree = work_identity_hex(id: work_identity(subject: tree(hex: tree_b), op: work_default_build(), toolchain: tc(rustc: "rustc 1.90.0")))
+  let other_toolchain = work_identity_hex(id: work_identity(subject: tree(hex: tree_a), op: work_default_build(), toolchain: tc(rustc: "rustc 1.91.0")))
+  let debug = work_identity_hex(id: work_identity(subject: tree(hex: tree_a), op: BuildGunbcBinaries { profile: CargoDebug, bins: ["gunbc" as NonEmptyStr] }, toolchain: tc(rustc: "rustc 1.90.0")))
+  let compile_x = work_identity_hex(id: work_identity(subject: tree(hex: tree_a), op: CompileEntry { entry: "dag/x.dag" as FilePath }, toolchain: tc(rustc: "rustc 1.90.0")))
+  let compile_y = work_identity_hex(id: work_identity(subject: tree(hex: tree_a), op: CompileEntry { entry: "dag/y.dag" as FilePath }, toolchain: tc(rustc: "rustc 1.90.0")))
+  let claims_h = work_identity_hex(id: work_identity(subject: tree(hex: tree_a), op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a,b" as NonEmptyStr, hermetic: true }, toolchain: tc(rustc: "rustc 1.90.0")))
+  let claims_w = work_identity_hex(id: work_identity(subject: tree(hex: tree_a), op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a,b" as NonEmptyStr, hermetic: false }, toolchain: tc(rustc: "rustc 1.90.0")))
+  let claims_f = work_identity_hex(id: work_identity(subject: tree(hex: tree_a), op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true }, toolchain: tc(rustc: "rustc 1.90.0")))
+  base == same
+    && base != other_tree && base != other_toolchain && base != debug && base != compile_x
+    && compile_x != compile_y && claims_h != claims_w && claims_h != claims_f && compile_x != claims_h
+    && base.length() == 16
+}
+
+// Declared outputs follow the operation: a build names its binaries under the profile directory of
+// the TARGET root (the shared per-host CARGO_TARGET_DIR, not the checkout -- the first wet run
+// declared the checkout and mismatched a build that had succeeded); checking operations declare
+// none, so an absent binary is a mismatch and an absent nothing is not.
+test fn declared_outputs_follow_the_operation() -> Bool {
+  let build = work_declared_outputs(op: work_default_build())
+  let debug = work_declared_outputs(op: BuildGunbcBinaries { profile: CargoDebug, bins: ["gunbc" as NonEmptyStr] })
+  map(build, d => d.path) == ["release/gunbc", "release/claim_batch"]
+    && all(build, d => match d.root { TargetRoot => true  CheckoutRoot => false })
+    && map(debug, d => d.path) == ["debug/gunbc"]
+    && count(work_declared_outputs(op: CompileEntry { entry: "dag/x.dag" as FilePath })) == 0
+    && count(work_declared_outputs(op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true })) == 0
+}
+
+// The stored outcome round-trips its ending and identity; a document missing either is unreadable,
+// never "no outcome" (RED against an attach that treats a broken store file as absent).
+test fn the_stored_outcome_round_trips_and_a_broken_one_is_unreadable() -> Bool {
+  let subject = tree(hex: tree_a)
+  let ok = work_outcome_wire(o: WorkSucceeded { identity: "abc", outputs: [WorkOutput { declared: "target/release/gunbc", blob: "deadbeef", store_path: "/s/gunbc" }], log_path: "/l" }, subject: subject, op: work_default_build())
+  let failed = work_outcome_wire(o: WorkFailed { identity: "abc", exit_code: 101, log_path: "/l" }, subject: subject, op: work_default_build())
+  let refused = work_outcome_wire(o: WorkRefusedByInfrastructure { identity: "abc", cause: HostAtColdBuildCap { in_flight: 2, cap: 2 } }, subject: subject, op: work_default_build())
+  (match stored_outcome_decode(text: ok) { StoredOutcomeFound { ending, identity, document: _ } => ending == "succeeded" && identity == "abc"  StoredOutcomeUnreadable { reason: _ } => false })
+    && stored_outcome_is_success(r: stored_outcome_decode(text: ok))
+    && !stored_outcome_is_success(r: stored_outcome_decode(text: failed))
+    && (match stored_outcome_decode(text: refused) { StoredOutcomeFound { ending, identity: _, document: _ } => ending == "refused_by_infrastructure"  StoredOutcomeUnreadable { reason: _ } => false })
+    && string_contains(s: refused, pattern: "cap 2")
+    && string_contains(s: ok, pattern: "\"blob\": \"deadbeef\"")
+    && (match stored_outcome_decode(text: "{\"identity\": \"abc\"}") { StoredOutcomeUnreadable { reason: _ } => true  StoredOutcomeFound { ending: _, identity: _, document: _ } => false })
+    && (match stored_outcome_decode(text: "not json") { StoredOutcomeUnreadable { reason: _ } => true  StoredOutcomeFound { ending: _, identity: _, document: _ } => false })
+}

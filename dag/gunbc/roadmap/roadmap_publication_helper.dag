@@ -884,7 +884,7 @@ fn publication_helper_run_once_cli_in(instance_root: String) -> ProcessExit {
 }
 
 // THE INSTANCE ROOT IS A REQUIRED ARGUMENT AND HAS NO DEFAULT, for the reason
-// belt_timer_is_a_deploy_member_note gives after the belt's own workdir was a literal projection of
+// gunbc.live_deploy.spec deployment_owned_steps carries, after the belt's own workdir was a literal projection of
 // production's tree: a helper that defaults would answer requests for whichever instance the
 // default names, whatever instance installed it, and two slots on one host would fuse their spools
 // silently. An empty argument REFUSES rather than falling back.

@@ -41,7 +41,11 @@ import gunbc.spark.managed_access_bootstrap {
 import gunbc.host_effect_realize { run_typed_argv_transport }
 import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.spark.bootstrap_credential { CredentialMaterializationPending, CredentialMaterialized, SparkCredentialStanding }
-import gunbc.spark.credential_workflow { spark_administrator_password_secret_ref }
+import gunbc.spark.credential_workflow {
+  spark_administrator_password_secret_ref_for,
+  SparkAdministratorCredentialRefFound,
+  SparkAdministratorCredentialHostNotEnrolled,
+}
 import extdeps.cloud.gcp.secret_ref { secret_ref_version_resource }
 import gunbc.spark.grant_privileged_operation {
   spark_bootstrap_credential_lease,
@@ -579,12 +583,16 @@ fn spark_grant_credential_requirement(host: HostIdentity, grant: SparkManagedGra
     attempt_identity: spark_grant_install_ci_attempt_raw as NonEmptyStr,
   )
   join([
-    "REQUIRED: an administrator credential for ", l.bootstrap_principal as String,
-    " on ", l.host as String,
-    ", enrolled at ", secret_ref_version_resource(ref: spark_administrator_password_secret_ref),
+    "REQUIRED: an administrator credential for ", l.subject.bootstrap_principal as String,
+    " on ", l.subject.host as String,
+    ", enrolled at ",
+    match spark_administrator_password_secret_ref_for(host: host) {
+      SparkAdministratorCredentialRefFound { ref: r } => secret_ref_version_resource(ref: r)
+      SparkAdministratorCredentialHostNotEnrolled { host: h } => join(["NO ENROLLED SECRET for ", h as String, " in spark_administrator_credential_roster"], "")
+    },
     " (that name is supplied, never derived; this line states WHICH secret the run needs, and never",
     " that any run holds it)",
-    ". Authorized purpose: ", l.authorized_purpose as String,
+    ". Authorized purpose: ", l.purpose as String,
     ". The credential is materialized only for this step, delivered over stdin, and never enters an",
     " argv, a plan artifact, a workflow input or this receipt. Supplying it is the whole of the",
     " external input -- the mutation itself stays inside convergence and is read back independently.",
@@ -765,7 +773,7 @@ func spark_grant_install_ci_wet() -> ProcessExit
             context: context,
             host: only,
             principal: spark_grant_install_principal(),
-            administrator: spark_grant_install_administrator_standing(),
+            administrator: spark_grant_install_administrator_standing(host: only),
           )
           let body = join([
             "spark_grant_install_ci_wet probed_at=", probed_at_word(reading: now) as String, "\n",
@@ -815,6 +823,9 @@ fn spark_grant_install_principal() -> NonEmptyStr {
 // on success. A run that bypasses that step reports "this run did not receive the enrolled
 // credential" through CredentialNotMaterialized -- which is the truth -- rather than rewriting
 // enrollment as pending.
-fn spark_grant_install_administrator_standing() -> SparkCredentialStanding {
-  CredentialMaterialized { ref: spark_administrator_password_secret_ref }
+fn spark_grant_install_administrator_standing(host: HostIdentity) -> SparkCredentialStanding {
+  match spark_administrator_password_secret_ref_for(host: host) {
+    SparkAdministratorCredentialRefFound { ref: r } => CredentialMaterialized { ref: r }
+    SparkAdministratorCredentialHostNotEnrolled { host: _ } => CredentialMaterializationPending
+  }
 }

@@ -1,0 +1,208 @@
+module product.cable_order_admission
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import extdeps.ethernet.link_mode { LinkMode, link_mode_eq }
+import extdeps.transceiver.sff_8636 {
+  Sff8636LegCoding, Sff8636CodingFinding,
+  CodingAttestsRequestedMode, CodingAttestsRequestedModeSubjectToFec,
+  CodingInsufficientForRequestedMode, CodingContradictsEncoding,
+  CodingComplianceCodeNotUnderstood,
+  sff8636_assess_leg_coding,
+}
+import extdeps.external_authority { ExternalAuthority }
+
+// WHY A CABLE ORDER NEEDS AN ADMISSION GATE, AND WHAT THAT GATE CAN HONESTLY SEE.
+//
+// The subject is a purchase, not a part. Two 400G QSFP-DD breakout cables were bought to carry 100G
+// per leg, arrived coded for 25G-per-lane modes, and now run at half the purchased rate on a link
+// that is stable, pings clean at MTU 9000 and tests green on every instrument the fleet owns. The
+// loss was not detected by anything; it was noticed by a person reading `ethtool -m`.
+//
+// THE GATE CANNOT OBSERVE AN UNDELIVERED CABLE. This is the correction that shaped the module, and
+// it was got wrong first: an earlier account claimed this order would have refused before purchase
+// because the observed EEPROM contradicts the listing. That reasons from bytes nobody could have
+// had. FS's listing promises exactly the right thing -- 4x100G legs of 2x50G PAM4 -- so a
+// pre-purchase gate reading the listing ADMITS this order, correctly, and the defect is invisible
+// until the part is in hand.
+//
+// So there are two gates and they consume different evidence:
+//
+//   ORDER ADMISSION   consumes a VENDOR CLAIM. It refuses a purchase whose per-leg coding is
+//                     undeclared, and admits one whose declared coding covers the requested mode --
+//                     as a PURCHASE, never as deployment acceptance.
+//   RECEIPT RECONCILE consumes an OBSERVATION. It joins the read EEPROM against the admitted claim.
+//                     This is the gate that catches the class: an hour after delivery, rather than
+//                     after installation.
+//
+// The second is what makes the first honest. A gate that treated a vendor claim as a reading would
+// be satisfied by an assumption, and would have greened on this exact order.
+
+// ================= EVIDENCE, GRADED BY WHERE IT CAME FROM =================
+//
+// A CLAIM AND A READING ARE DIFFERENT FACTS AND MAY NEVER SHARE A CARRIER. This follows the
+// sibling LandedCost split in gunbc.product.inventory: the arm IS the grade, so no consumer parses
+// a string to find out whether anyone actually looked at the hardware, and no code path can promote
+// a claim to a reading by forgetting to check a flag.
+//
+// The vendor arm carries its citation because an unattributed claim is not evidence at all -- if
+// nobody can say where the assertion came from, there is nothing to hold the vendor to later, which
+// is precisely what an RMA needs.
+type CableLegCodingEvidence
+  = LegCodingUndeclared
+  | LegCodingVendorAsserted { asserted_mode: LinkMode, citation: ExternalAuthority }
+  | LegCodingObserved { coding: Sff8636LegCoding }
+
+// ================= THE ENDPOINT PAIR THE CABLE MUST SERVE =================
+//
+// A cable is not correct in the abstract; it is correct FOR two endpoints and a mode. Modelling the
+// requirement as a fact about the link rather than about the part is what stops "is this a good
+// cable" being askable at all -- the question has no answer without its endpoints.
+//
+// WHAT THE NIC REQUIRES IS OUR DIAGNOSIS, NOT NVIDIA'S SPECIFICATION. The ConnectX-7 was observed
+// refusing 100G_2X with "Cable speed not enabled" against the delivered coding. That is an
+// observation of behaviour, not a published rule, and this module deliberately does not model a
+// firmware algorithm it has never read. `required_mode` is therefore declared by the fleet as what
+// the link must carry, and the NIC's agreement with it is evidence to be gathered, never derived.
+type CableLinkRequirement sole_constructor {
+  required_mode: LinkMode
+  purpose: NonEmptyStr
+}
+
+fn cable_link_requirement(required_mode: LinkMode, purpose: NonEmptyStr) -> CableLinkRequirement {
+  CableLinkRequirement { required_mode: required_mode, purpose: purpose }
+}
+
+// ================= ORDER ADMISSION =================
+
+type CableOrderRefusalReason
+  = OrderCodingUndeclared { required: LinkMode }
+  | OrderClaimedModeIsNotRequiredMode { claimed: LinkMode, required: LinkMode }
+  | OrderObservedCodingDoesNotAttestRequiredMode {
+      required: LinkMode
+      finding: Sff8636CodingFinding
+    }
+
+// ADMISSION RECORDS WHAT IT WAS SATISFIED BY. `AdmittedOnVendorClaim` is a purchase authorisation
+// and NOT an acceptance: it says the paperwork covers the requirement, and it carries the claim
+// forward so receipt reconciliation has something to compare a reading against. Flattening the two
+// admitted arms into one would erase exactly the distinction the incident turned on.
+type CableOrderAdmission
+  = AdmittedOnVendorClaim { claimed_mode: LinkMode, citation: ExternalAuthority }
+  | AdmittedOnObservedCoding { coding: Sff8636LegCoding }
+  | OrderRefused { reason: CableOrderRefusalReason }
+
+// The gate. An undeclared coding REFUSES -- that is the loud failure the whole subject exists to
+// produce, and it is the one this class of order actually needs, because a part number does not
+// determine a link contract and the EEPROM is field-programmed.
+fn admit_cable_order(
+  evidence: CableLegCodingEvidence,
+  requirement: CableLinkRequirement,
+) -> CableOrderAdmission {
+  match evidence {
+    LegCodingUndeclared =>
+      OrderRefused { reason: OrderCodingUndeclared { required: requirement.required_mode } }
+    LegCodingVendorAsserted { asserted_mode: claimed, citation: cite } =>
+      if link_mode_eq(a: claimed, b: requirement.required_mode) {
+        AdmittedOnVendorClaim { claimed_mode: claimed, citation: cite }
+      } else {
+        OrderRefused {
+          reason: OrderClaimedModeIsNotRequiredMode {
+            claimed: claimed, required: requirement.required_mode } }
+      }
+    LegCodingObserved { coding: c } => {
+      let finding = sff8636_assess_leg_coding(coding: c, requested: requirement.required_mode)
+      match finding {
+        CodingAttestsRequestedMode { coding: ok } => AdmittedOnObservedCoding { coding: ok }
+        CodingAttestsRequestedModeSubjectToFec { coding: ok, fec: f } =>
+          AdmittedOnObservedCoding { coding: ok }
+        CodingInsufficientForRequestedMode { requested: r, coding: bad } =>
+          OrderRefused {
+            reason: OrderObservedCodingDoesNotAttestRequiredMode {
+              required: requirement.required_mode, finding: finding } }
+        CodingContradictsEncoding { encoding_modulation: m, attested_mode: a } =>
+          OrderRefused {
+            reason: OrderObservedCodingDoesNotAttestRequiredMode {
+              required: requirement.required_mode, finding: finding } }
+        CodingComplianceCodeNotUnderstood { code: code } =>
+          OrderRefused {
+            reason: OrderObservedCodingDoesNotAttestRequiredMode {
+              required: requirement.required_mode, finding: finding } }
+      }
+    }
+  }
+}
+
+// ================= RECEIPT RECONCILIATION =================
+//
+// THE GATE THAT WOULD HAVE CAUGHT THIS ORDER. It joins what arrived against what was admitted, and
+// its divergence arm is the RMA evidence: the admitted claim, the observed finding, and the
+// requirement they disagree about, all in one carrier so the correspondence with the vendor cites
+// the same facts the model holds.
+//
+// A LOT NOT YET READ IS ITS OWN ARM. Silence is not agreement: a delivered assembly whose EEPROMs
+// nobody has read must not reconcile as matching, because that is precisely the state this fleet
+// was in for the weeks the fabric ran at half rate.
+type CableReceiptReconciliation
+  = ReceiptNotYetObserved { admitted: CableOrderAdmission }
+  | ReceiptHonoursAdmittedClaim { coding: Sff8636LegCoding }
+  | ReceiptDivergesFromAdmittedClaim {
+      required: LinkMode
+      claimed_mode: LinkMode
+      observed_finding: Sff8636CodingFinding
+    }
+  | ReceiptReconciliationNotApplicable { admitted: CableOrderAdmission }
+
+fn reconcile_cable_receipt(
+  admitted: CableOrderAdmission,
+  observed: CableLegCodingEvidence,
+  requirement: CableLinkRequirement,
+) -> CableReceiptReconciliation {
+  match admitted {
+    OrderRefused { reason: r } => ReceiptReconciliationNotApplicable { admitted: admitted }
+    AdmittedOnObservedCoding { coding: c } =>
+      ReceiptReconciliationNotApplicable { admitted: admitted }
+    AdmittedOnVendorClaim { claimed_mode: claimed, citation: cite } =>
+      match observed {
+        LegCodingUndeclared => ReceiptNotYetObserved { admitted: admitted }
+        LegCodingVendorAsserted { asserted_mode: m, citation: c2 } =>
+          ReceiptNotYetObserved { admitted: admitted }
+        LegCodingObserved { coding: obs } => {
+          let finding = sff8636_assess_leg_coding(
+            coding: obs, requested: requirement.required_mode)
+          match finding {
+            CodingAttestsRequestedMode { coding: ok } =>
+              ReceiptHonoursAdmittedClaim { coding: ok }
+            CodingAttestsRequestedModeSubjectToFec { coding: ok, fec: f } =>
+              ReceiptHonoursAdmittedClaim { coding: ok }
+            CodingInsufficientForRequestedMode { requested: rq, coding: bad } =>
+              ReceiptDivergesFromAdmittedClaim {
+                required: requirement.required_mode,
+                claimed_mode: claimed,
+                observed_finding: finding }
+            CodingContradictsEncoding { encoding_modulation: em, attested_mode: am } =>
+              ReceiptDivergesFromAdmittedClaim {
+                required: requirement.required_mode,
+                claimed_mode: claimed,
+                observed_finding: finding }
+            CodingComplianceCodeNotUnderstood { code: code } =>
+              ReceiptDivergesFromAdmittedClaim {
+                required: requirement.required_mode,
+                claimed_mode: claimed,
+                observed_finding: finding }
+          }
+        }
+      }
+  }
+}
+
+// A divergence is the RMA trigger, named once so a consumer does not re-derive the predicate.
+fn receipt_requires_supplier_remedy(r: CableReceiptReconciliation) -> Bool {
+  match r {
+    ReceiptDivergesFromAdmittedClaim {
+      required: rq, claimed_mode: cm, observed_finding: f } => true
+    ReceiptHonoursAdmittedClaim { coding: c } => false
+    ReceiptNotYetObserved { admitted: a } => false
+    ReceiptReconciliationNotApplicable { admitted: a } => false
+  }
+}

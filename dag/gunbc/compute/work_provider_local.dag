@@ -1,0 +1,430 @@
+module gunbc.compute.work_provider_local
+
+import std.types { String, Bool, Int, List, NonEmptyStr, FilePath, GitRef }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.algebra { trim }
+import std.measure { byte_size_count }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.output_policy { OutcomeIsData }
+import extdeps.gunbc
+import extdeps.git { shape_git_worktree_add_detached_argv }
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
+import extdeps.systemd.systemd_run { systemd_run_user_wait_arguments, systemd_run_property }
+import extdeps.cache.sccache { sccache_installed_binary_path }
+import gunbc.clock_read { clock_now_probed_at_or_unknown }
+import gunbc.roadmap_dashboard_instance {
+  HostDashboardInstance, dashboard_instance_for_repo_root, DashboardInstanceResolved, DashboardInstanceRootUnknown,
+}
+import gunbc.roadmap_dispatch_actuator { dispatch_capability_program }
+import gunbc.roadmap_execution_contract {
+  ExecutionCapability, GitWorkspaceCapability, CargoCapability, RustcCapability, AttemptStateDirectoryCapability,
+}
+import gunbc.compute.work_request {
+  WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
+  WorkToolchainIdentity, work_identity, work_identity_hex, work_default_build, work_declared_outputs,
+  DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
+  WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
+  WorkInfrastructureRefusal, ProducerInFlight, HostAtColdBuildCap, CheckoutUnavailable, StoreUnavailable,
+  ToolchainUnobserved, DependencyNotSucceeded, SubjectUnresolved,
+  work_outcome_wire, work_outcome_ending, StoredOutcomeRead, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_decode, stored_outcome_is_success,
+}
+
+// THE LOCAL PROVIDER: one of N behind the exact work contract, serving the host it runs on. It is a
+// realization and knows nothing the contract does not: it resolves the subject, observes the
+// toolchain, takes a lease, checks the commit out, runs the operation inside a transient user unit
+// with a memory bound, returns declared outputs by content into a store, and writes the outcome
+// beside them. A second caller with the same identity attaches to the stored outcome and runs
+// nothing (compute-deduplication-and-admission's first slice: two callers, one build). Placement
+// across the fabric is the next slice; this provider's boundary is the host.
+
+// HOW MANY COLD BUILDS THIS HOST CARRIES AT ONCE. A policy budget, not a measurement: each producer
+// runs under the instance's worker memory ceiling, and two of them fit beside the serve and belt
+// units on the smaller build host (srv2, 125 GiB) without the page-cache eviction that hung srv1 in
+// August. The dedup row's red control is that a caller refused for capacity is told so and counted;
+// it is, as HostAtColdBuildCap.
+data compute_cold_build_cap: Int = 2
+
+type ComputeLayout {
+  root: String
+  work_dir: String
+  checkout: String
+  out_dir: String
+  leases_dir: String
+  lease_path: String
+  store_dir: String
+  target_dir: String
+  log_path: String
+  outcome_path: String
+}
+
+fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> ComputeLayout {
+  let root = join([instance.instance_root as String, "/compute"], "")
+  let work_dir = join([root, "/work/", identity_hex], "")
+  ComputeLayout {
+    root: root,
+    work_dir: work_dir,
+    checkout: join([work_dir, "/src"], ""),
+    out_dir: join([work_dir, "/out"], ""),
+    leases_dir: join([root, "/leases"], ""),
+    lease_path: join([root, "/leases/", identity_hex], ""),
+    store_dir: join([root, "/store/", identity_hex], ""),
+    target_dir: join([root, "/target"], ""),
+    log_path: join([work_dir, "/log"], ""),
+    outcome_path: join([work_dir, "/outcome.json"], ""),
+  }
+}
+
+type ComputeExec
+  = ComputeExecOk { stdout: String, stderr: String }
+  | ComputeExecFailed { exit_code: Int, stdout: String, stderr: String }
+
+fn compute_exec(program: String, workdir: String, args: List<String>) -> ComputeExec {
+  let r = gunbc.WitnessBin.Run(workdir: workdir as FilePath, bin_path: program as FilePath, args: args, expect: OutcomeIsData)
+  if r.success { ComputeExecOk { stdout: r.stdout, stderr: r.stderr } } else { ComputeExecFailed { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr } }
+}
+
+fn compute_program(instance: HostDashboardInstance, cap: ExecutionCapability) -> String {
+  dispatch_capability_program(environment: instance.execution_environment, cap: cap)
+}
+
+// THE TOOLCHAIN IS OBSERVED, NOT SPELLED: the identity carries the rustc version line the host's
+// cargo will actually invoke and the sccache release that will serve it. Unreadable refuses.
+type ToolchainObservation
+  = ToolchainObserved { toolchain: WorkToolchainIdentity }
+  | ToolchainObservationRefused { detail: String }
+
+fn compute_observe_toolchain(instance: HostDashboardInstance) -> ToolchainObservation {
+  match compute_exec(program: compute_program(instance: instance, cap: RustcCapability), workdir: instance.repo_root as String, args: ["--version"]) {
+    ComputeExecFailed { exit_code, stdout: _, stderr } => ToolchainObservationRefused { detail: join(["rustc --version exited ", to_string(value: exit_code), ": ", stderr], "") }
+    ComputeExecOk { stdout: rustc_line, stderr: _ } =>
+      match compute_exec(program: sccache_installed_binary_path, workdir: instance.repo_root as String, args: ["--version"]) {
+        ComputeExecFailed { exit_code, stdout: _, stderr } => ToolchainObservationRefused { detail: join(["sccache --version exited ", to_string(value: exit_code), ": ", stderr], "") }
+        ComputeExecOk { stdout: cache_line, stderr: _ } =>
+          if trim(s: rustc_line) == "" || trim(s: cache_line) == "" {
+            ToolchainObservationRefused { detail: "rustc or sccache printed an empty version line" }
+          } else {
+            ToolchainObserved { toolchain: WorkToolchainIdentity { rustc_version: trim(s: rustc_line) as NonEmptyStr, cache_release: trim(s: cache_line) as NonEmptyStr } }
+          }
+      }
+  }
+}
+
+// THE SUBJECT IS THE COMMIT'S TREE: a caller holds a commit (its committed head) and the identity is
+// the tree that commit names, read from git rather than trusted from the caller.
+type SubjectResolution
+  = SubjectResolved { subject: WorkSubject }
+  | SubjectResolutionRefused { detail: String }
+
+fn compute_resolve_subject(instance: HostDashboardInstance, commit: String) -> SubjectResolution {
+  match compute_exec(program: compute_program(instance: instance, cap: GitWorkspaceCapability), workdir: instance.repo_root as String, args: ["show", "-s", "--format=%T", commit]) {
+    ComputeExecFailed { exit_code, stdout: _, stderr } => SubjectResolutionRefused { detail: join(["git show ", commit, " exited ", to_string(value: exit_code), ": ", stderr], "") }
+    ComputeExecOk { stdout, stderr: _ } =>
+      match git_object_id_from_untagged_hex(hex: trim(s: stdout)) {
+        Absent => SubjectResolutionRefused { detail: join(["git show printed no tree object id for ", commit, ": ", trim(s: stdout)], "") }
+        Present { value: tree } => SubjectResolved { subject: ExactTree { tree: tree } }
+      }
+  }
+}
+
+fn compute_ensure_dir(instance: HostDashboardInstance, path: String) -> Bool {
+  match compute_exec(program: compute_program(instance: instance, cap: AttemptStateDirectoryCapability), workdir: instance.repo_root as String, args: ["-d", "-m", "0755", path]) {
+    ComputeExecOk { stdout: _, stderr: _ } => true
+    ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => false
+  }
+}
+
+fn compute_count_lines(text: String) -> Int {
+  count(filter(text.split(sep: "\n"), l => trim(s: l) != ""))
+}
+
+// What a provide returns: a fresh run's outcome, or an attachment to a stored one (no run).
+type ProvideResult
+  = ProvideFresh { outcome: WorkOutcome, document: String }
+  | ProvideAttached { identity: String, ending: String, document: String }
+
+fn provide_result_succeeded(r: ProvideResult) -> Bool {
+  match r {
+    ProvideFresh { outcome, document: _ } => work_outcome_ending(o: outcome) == "succeeded"
+    ProvideAttached { identity: _, ending, document: _ } => ending == "succeeded"
+  }
+}
+
+fn provide_result_identity(r: ProvideResult) -> String {
+  match r {
+    ProvideFresh { outcome, document: _ } => gunbc.compute.work_request.work_outcome_identity(o: outcome)
+    ProvideAttached { identity, ending: _, document: _ } => identity
+  }
+}
+
+fn provide_result_ending(r: ProvideResult) -> String {
+  match r {
+    ProvideFresh { outcome, document: _ } => work_outcome_ending(o: outcome)
+    ProvideAttached { identity: _, ending, document: _ } => ending
+  }
+}
+
+fn provide_result_document(r: ProvideResult) -> String {
+  match r {
+    ProvideFresh { outcome: _, document } => document
+    ProvideAttached { identity: _, ending: _, document } => document
+  }
+}
+
+// The command an operation runs inside the unit. Build runs the host's cargo; compile and claims run
+// the binaries the SAME subject's build produced (dependency_store is that build's store dir), so a
+// worker never checks its .dag with a compiler built from a different tree.
+fn compute_command_argv(instance: HostDashboardInstance, layout: ComputeLayout, op: WorkOperation, dependency_store: String) -> List<String> {
+  match op {
+    BuildGunbcBinaries { profile, bins } =>
+      concat(
+        concat([compute_program(instance: instance, cap: CargoCapability), "build"], match profile { CargoRelease => ["--release"]  CargoDebug => [] }),
+        concat(["-p", "v1-compiler"], flat_map(bins, b => ["--bin", b as String])),
+      )
+    CompileEntry { entry } =>
+      [join([dependency_store, "/gunbc"], ""), "compile",
+       "--source-root", join([layout.checkout, "/dag"], ""), "--source-root", join([layout.checkout, "/src/v2"], ""),
+       "--entry", join([layout.checkout, "/", entry as String], ""), "--output-dir", layout.out_dir, "--target", "dag"]
+    RunClaims { entry, functions, hermetic } =>
+      concat(
+        [join([dependency_store, "/claim_batch"], ""),
+         "--source-root", join([layout.checkout, "/dag"], ""), "--source-root", join([layout.checkout, "/src/v2"], ""),
+         "--entry", join([layout.checkout, "/", entry as String], ""), "--functions", functions as String],
+        if hermetic { ["--hermetic"] } else { [] },
+      )
+  }
+}
+
+fn compute_unit_name(identity_hex: String) -> NonEmptyStr {
+  join(["gunbc-compute-", identity_hex], "") as NonEmptyStr
+}
+
+// Run the operation as a transient user unit and wait for it: the unit carries the memory ceiling,
+// the checkout as working directory, the shared per-host target directory and the sccache wrapper.
+fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>) -> ComputeExec {
+  let systemd_run = match instance.toolchain.systemd_run { Present { value: p } => p as String  Absent => "" }
+  if systemd_run == "" {
+    ComputeExecFailed { exit_code: 127, stdout: "", stderr: "this instance's toolchain declares no systemd-run; the local provider runs only under systemd" }
+  } else {
+    compute_exec(
+      program: systemd_run,
+      workdir: layout.checkout,
+      args: systemd_run_user_wait_arguments(
+        unit: compute_unit_name(identity_hex: identity_hex),
+        properties: [
+          systemd_run_property(name: "MemoryMax", value: to_string(value: byte_size_count(b: instance.dispatch_worker_memory_max))),
+          systemd_run_property(name: "WorkingDirectory", value: layout.checkout),
+        ],
+        setenv_bindings: [
+          join(["CARGO_TARGET_DIR=", layout.target_dir], ""),
+          join(["RUSTC_WRAPPER=", sccache_installed_binary_path], ""),
+        ],
+        command_argv: argv,
+      ),
+    )
+  }
+}
+
+// Return declared outputs by content: hash each with git (a blob object id is a content identity
+// every subject already uses) and install it into the identity's store directory. An absent or
+// unreadable output is a mismatch, never a success with a hole.
+type OutputsReturn
+  = OutputsReturned { outputs: List<WorkOutput> }
+  | OutputsMismatch { detail: String }
+
+fn compute_return_outputs(instance: HostDashboardInstance, layout: ComputeLayout, declared: List<DeclaredOutput>) -> OutputsReturn {
+  fold(declared, init: OutputsReturned { outputs: [] }, f: (acc, d) =>
+    match acc {
+      OutputsMismatch { detail } => OutputsMismatch { detail: detail }
+      OutputsReturned { outputs } => {
+        let rel = d.path
+        let src = join([match d.root { CheckoutRoot => layout.checkout  TargetRoot => layout.target_dir }, "/", rel], "")
+        let dst = join([layout.store_dir, "/", compute_basename(path: rel)], "")
+        match compute_exec(program: compute_program(instance: instance, cap: GitWorkspaceCapability), workdir: layout.checkout, args: ["hash-object", src]) {
+          ComputeExecFailed { exit_code: _, stdout: _, stderr } => OutputsMismatch { detail: join(["declared output ", rel, " could not be hashed: ", stderr], "") }
+          ComputeExecOk { stdout, stderr: _ } =>
+            match compute_exec(program: compute_program(instance: instance, cap: AttemptStateDirectoryCapability), workdir: layout.checkout, args: ["-m", "0755", src, dst]) {
+              ComputeExecFailed { exit_code: _, stdout: _, stderr } => OutputsMismatch { detail: join(["declared output ", rel, " could not be stored: ", stderr], "") }
+              ComputeExecOk { stdout: _, stderr: _ } =>
+                OutputsReturned { outputs: concat(outputs, [WorkOutput { declared: rel, blob: trim(s: stdout), store_path: dst }]) }
+            }
+        }
+      }
+    })
+}
+
+fn compute_basename(path: String) -> String {
+  fold(path.split(sep: "/"), init: path, f: (acc, part) => if part == "" { acc } else { part })
+}
+
+// PROVIDE ONE OPERATION whose dependency (if any) is already satisfied. The order is the contract's:
+// attach if a SUCCEEDED outcome is stored (a stored failure, mismatch or refusal is a record, and a
+// new request for the same identity produces again -- the same tree fails the same way, and sccache
+// makes the retry cheap; what must never happen is a caller attaching to a failure it did not ask for); refuse at the cap or behind a lease; take the lease; check out;
+// run; return outputs; write the outcome; release the lease. A refusal before the lease leaves no
+// state; a refusal after it leaves the lease released and the outcome written.
+fn compute_provide_leaf(
+  instance: HostDashboardInstance,
+  commit: String,
+  subject: WorkSubject,
+  op: WorkOperation,
+  toolchain: WorkToolchainIdentity,
+  dependency_store: String,
+) -> ProvideResult {
+  let identity = work_identity_hex(id: work_identity(subject: subject, op: op, toolchain: toolchain))
+  let layout = compute_layout(instance: instance, identity_hex: identity)
+  let stored = Filesystem.Read(path: layout.outcome_path)
+  let attached = if stored.success { stored_outcome_decode(text: stored.content) } else { StoredOutcomeUnreadable { reason: "no stored outcome" } }
+  if stored_outcome_is_success(r: attached) {
+    match attached {
+      StoredOutcomeFound { ending, identity: stored_identity, document } => ProvideAttached { identity: stored_identity, ending: ending, document: document }
+      StoredOutcomeUnreadable { reason } => compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: reason } }, subject: subject, op: op)
+    }
+  } else if !(compute_ensure_dir(instance: instance, path: layout.work_dir) && compute_ensure_dir(instance: instance, path: layout.leases_dir) && compute_ensure_dir(instance: instance, path: layout.store_dir) && compute_ensure_dir(instance: instance, path: layout.target_dir)) {
+    compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: join(["could not create the compute directories under ", layout.root], "") } }, subject: subject, op: op)
+  } else {
+    let leases = Filesystem.List(path: layout.leases_dir)
+    let in_flight = if leases.success { compute_count_lines(text: leases.entries) } else { 0 }
+    if in_flight >= compute_cold_build_cap {
+      compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: HostAtColdBuildCap { in_flight: in_flight, cap: compute_cold_build_cap } }, subject: subject, op: op)
+    } else {
+      let lease = Filesystem.WriteCreateNew(path: layout.lease_path, content: join([commit, " ", clock_now_probed_at_or_unknown() as String, "\n"], ""))
+      if !lease.success {
+        compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: ProducerInFlight { lease_path: layout.lease_path } }, subject: subject, op: op)
+      } else {
+        let outcome = compute_run_leased(instance: instance, commit: commit, layout: layout, identity: identity, op: op, dependency_store: dependency_store)
+        let document = work_outcome_wire(o: outcome, subject: subject, op: op)
+        let written = Filesystem.Write(path: layout.outcome_path, content: document)
+        let released = Filesystem.Delete(path: layout.lease_path)
+        if written.success && released.success {
+          ProvideFresh { outcome: outcome, document: document }
+        } else {
+          compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: join(["outcome written: ", if written.success { "yes" } else { written.error }, "; lease released: ", if released.success { "yes" } else { released.error }], "") } }, subject: subject, op: op)
+        }
+      }
+    }
+  }
+}
+
+fn compute_fresh(outcome: WorkOutcome, subject: WorkSubject, op: WorkOperation) -> ProvideResult {
+  ProvideFresh { outcome: outcome, document: work_outcome_wire(o: outcome, subject: subject, op: op) }
+}
+
+fn compute_run_leased(
+  instance: HostDashboardInstance,
+  commit: String,
+  layout: ComputeLayout,
+  identity: String,
+  op: WorkOperation,
+  dependency_store: String,
+) -> WorkOutcome {
+  let existing = Filesystem.List(path: layout.checkout)
+  let checkout = if existing.success {
+    ComputeExecOk { stdout: "", stderr: "" }
+  } else {
+    compute_exec(
+      program: compute_program(instance: instance, cap: GitWorkspaceCapability),
+      workdir: instance.repo_root as String,
+      args: shape_git_worktree_add_detached_argv(path: layout.checkout as FilePath, commit: commit as GitRef),
+    )
+  }
+  match checkout {
+    ComputeExecFailed { exit_code, stdout: _, stderr } =>
+      WorkRefusedByInfrastructure { identity: identity, cause: CheckoutUnavailable { detail: join(["git worktree add exited ", to_string(value: exit_code), ": ", stderr], "") } }
+    ComputeExecOk { stdout: _, stderr: _ } => {
+      let run = compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency_store: dependency_store))
+      let log = Filesystem.Write(path: layout.log_path, content: match run {
+        ComputeExecOk { stdout, stderr } => join([stdout, stderr], "")
+        ComputeExecFailed { exit_code: _, stdout, stderr } => join([stdout, stderr], "")
+      })
+      match run {
+        ComputeExecFailed { exit_code, stdout: _, stderr: _ } => WorkFailed { identity: identity, exit_code: exit_code, log_path: layout.log_path }
+        ComputeExecOk { stdout: _, stderr: _ } =>
+          match compute_return_outputs(instance: instance, layout: layout, declared: work_declared_outputs(op: op)) {
+            OutputsMismatch { detail } => WorkOutputMismatch { identity: identity, detail: detail }
+            OutputsReturned { outputs } => WorkSucceeded { identity: identity, outputs: outputs, log_path: if log.success { layout.log_path } else { "" } }
+          }
+      }
+    }
+  }
+}
+
+// PROVIDE, WITH THE BUILD DEPENDENCY RESOLVED FIRST. The build of the same subject is itself a
+// request: attached if stored, produced once otherwise, and compile/claims consume its store.
+fn compute_provide(instance: HostDashboardInstance, commit: String, op: WorkOperation) -> ProvideResult {
+  match compute_observe_toolchain(instance: instance) {
+    ToolchainObservationRefused { detail } =>
+      compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: ToolchainUnobserved { detail: detail } }, subject: ExactTree { tree: compute_null_tree() }, op: op)
+    ToolchainObserved { toolchain } =>
+      match compute_resolve_subject(instance: instance, commit: commit) {
+        SubjectResolutionRefused { detail } =>
+          compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: SubjectUnresolved { detail: detail } }, subject: ExactTree { tree: compute_null_tree() }, op: op)
+        SubjectResolved { subject } =>
+          match op {
+            BuildGunbcBinaries { profile: _, bins: _ } =>
+              compute_provide_leaf(instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency_store: "")
+            CompileEntry { entry: _ } => compute_provide_dependent(instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain)
+            RunClaims { entry: _, functions: _, hermetic: _ } => compute_provide_dependent(instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain)
+          }
+      }
+  }
+}
+
+fn compute_provide_dependent(instance: HostDashboardInstance, commit: String, subject: WorkSubject, op: WorkOperation, toolchain: WorkToolchainIdentity) -> ProvideResult {
+  let build = compute_provide_leaf(instance: instance, commit: commit, subject: subject, op: work_default_build(), toolchain: toolchain, dependency_store: "")
+  if provide_result_succeeded(r: build) {
+    let build_identity = provide_result_identity(r: build)
+    compute_provide_leaf(instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency_store: compute_layout(instance: instance, identity_hex: build_identity).store_dir)
+  } else {
+    let identity = work_identity_hex(id: work_identity(subject: subject, op: op, toolchain: toolchain))
+    compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: DependencyNotSucceeded { dependency_identity: provide_result_identity(r: build), ending: provide_result_ending(r: build) } }, subject: subject, op: op)
+  }
+}
+
+// git's null object id: the subject of a refusal that happened before any subject could be read, so
+// the document still has the field and a reader cannot mistake it for a real tree.
+fn compute_null_tree() -> GitObjectId {
+  match git_object_id_from_untagged_hex(hex: "0000000000000000000000000000000000000000") {
+    Present { value: oid } => oid
+    Absent => "0000000000000000000000000000000000000000" as GitObjectId
+  }
+}
+
+// THE CLI A WORKER RUNS. Arguments are strings because that is what `gunbc run --arg` carries; the
+// operation word selects the request, and the receipt (the outcome document) is written where the
+// caller asked so the worker can read it back, because no stdout channel is modeled for a run.
+//   operation = build | compile | claims
+//   entry     = the .dag entry (compile, claims); ignored for build
+//   functions = comma-joined claim functions (claims); ignored otherwise
+//   hermetic  = "true" | "false" (claims)
+fn compute_request_cli(repo_root: String, commit: String, operation: String, entry: String, functions: String, hermetic: String, receipt_path: String) -> ProcessExit {
+  match dashboard_instance_for_repo_root(repo_root: repo_root) {
+    DashboardInstanceRootUnknown { repo_root: r } => ExitFailure { code: 2, reason: join(["compute: no dashboard instance is rooted at ", r], "") }
+    DashboardInstanceResolved { instance } =>
+      match compute_parse_operation(operation: operation, entry: entry, functions: functions, hermetic: hermetic) {
+        Absent => ExitFailure { code: 2, reason: join(["compute: operation must be build, compile or claims (compile and claims need entry; claims needs functions and hermetic=true|false); got ", operation], "") }
+        Present { value: op } => {
+          let result = compute_provide(instance: instance, commit: commit, op: op)
+          let receipt = Filesystem.Write(path: receipt_path, content: provide_result_document(r: result))
+          if !receipt.success {
+            ExitFailure { code: 2, reason: join(["compute: receipt could not be written to ", receipt_path, ": ", receipt.error, "; outcome was ", provide_result_document(r: result)], "") }
+          } else if provide_result_succeeded(r: result) {
+            ExitSuccess
+          } else {
+            ExitFailure { code: 1, reason: join(["compute ", provide_result_ending(r: result), ": ", provide_result_document(r: result)], "") }
+          }
+        }
+      }
+  }
+}
+
+fn compute_parse_operation(operation: String, entry: String, functions: String, hermetic: String) -> WorkOperation? {
+  if operation == "build" {
+    Present { value: work_default_build() }
+  } else if operation == "compile" && entry != "" {
+    Present { value: CompileEntry { entry: entry as FilePath } }
+  } else if operation == "claims" && entry != "" && functions != "" && (hermetic == "true" || hermetic == "false") {
+    Present { value: RunClaims { entry: entry as FilePath, functions: functions as NonEmptyStr, hermetic: hermetic == "true" } }
+  } else {
+    none
+  }
+}

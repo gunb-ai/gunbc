@@ -2,19 +2,15 @@ module v2.test.emit.conditional_delimiting
 
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source_string }
 import v2.extdeps.languages.rust {
-  rust_lex_rule,
-  rust_fn_add_lex_rules,
   rust_operator_realizations_catalog_node,
-  rust_target_model,
   rust_value_expression_projection
 }
-import v2.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules }
+import v2.extdeps.languages.rust_emit_small_test { rust_emit_small_conditional_target }
 import v2.std.compilers.target_model {
   ConditionalClosedByToken,
   ConditionalDelimiting,
   ConditionalSelfDelimiting,
   TargetConditionalShape,
-  TargetModel,
   TargetValueExpression,
   TargetValueExpressionProjection,
   decode_conditional_shape_bundle,
@@ -26,7 +22,6 @@ import v2.std.compilers.target_model {
   target_value_expression_conditional,
   target_value_expression_to_concrete_tokens
 }
-import v2.std.algebra { list_append }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
@@ -69,32 +64,6 @@ data conditional_closed_golden: String = "if x { y } else { x }"
 // expectation, the control dissolves, and a lowering that dropped the close again
 // would pass silently.
 data conditional_self_delimiting_golden: String = "if x { y } else { x"
-
-fn cld_lex() -> LexRules {
-  ModeledLexRules {
-    root: LexRuleSet {
-      rules: list_append(
-        left: rust_fn_add_lex_rules().rules,
-        right: [
-          rust_lex_rule(token_class: ^rust_token_kw_if, text: "if "),
-          rust_lex_rule(token_class: ^rust_token_unwired_else, text: " } else { ")
-        ]
-      )
-    }
-  }
-}
-
-fn cld_target() -> TargetModel {
-  TargetModel {
-    lex: cld_lex(),
-    produced_decl_support: rust_target_model().produced_decl_support,
-    bundle: rust_target_model().bundle,
-    binding_spellings: rust_target_model().binding_spellings,
-    token_class_emit_transforms: rust_target_model().token_class_emit_transforms,
-    authority_source_text: rust_target_model().authority_source_text,
-    runtime_row: rust_target_model().runtime_row
-  }
-}
 
 fn cld_conditional() -> TargetValueExpression {
   target_value_expression_conditional(
@@ -147,7 +116,7 @@ fn cld_emit(projection: TargetValueExpressionProjection) -> Outcome<String> {
   ) {
     Accepted { value: tokens, diagnostics: _ } =>
       match serialize_concrete_syntax_tokens_to_source_string(
-        target: cld_target(),
+        target: rust_emit_small_conditional_target(),
         tokens: tokens
       ) {
         Accepted { value: text, diagnostics: _ } =>

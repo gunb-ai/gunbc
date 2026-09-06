@@ -10,6 +10,8 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { shell_quote }
 import extdeps.ssh { ssh_public_key_line }
 import extdeps.ssh.session { ssh_session_exec_portable_words_with_stdin, SshSessionExecResult }
+import extdeps.ssh.password_session { password_file_ssh_exec_portable_words_with_stdin }
+import gunbc.auth.materialized_secret { with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet_known_hosts_anchor {
@@ -25,8 +27,15 @@ import gunbc.fleet_known_hosts_anchor {
   PortableRemoteWord,
   portable_remote_words,
   shape_fleet_ssh_exec,
+  shape_fleet_ssh_password_exec,
 }
 import gunbc.spark.managed_access_bootstrap { spark_operator_bootstrap_login }
+import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.fleet_multi_principal_probe {
+  spark_converge_target_selection,
+  SparkConvergeTargetRefused, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetSingle,
+}
+import gunbc.spark.grant_privileged_operation { read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized }
 import gunbc.auth.access_token_source { GcloudPrintToken }
 import gunbc.spark.credential_workflow {
   SparkAdministratorCredentialRefused,
@@ -151,18 +160,24 @@ fn apply_outcome_label(outcome: SparkApplyOutcome) -> String {
 // not by itself PREVENT a future caller putting the credential in argv -- `as String` is still
 // writable -- so this is mitigatable, not structural; what it buys is that the wrong move now
 // requires an explicit unwrap at the site that makes it, where a reader and a lens can both see it.
+fn spark_admin_credential_file_name(attempt: FleetSshAttemptIdentity) -> NonEmptyStr {
+  join(["gunbc-spark-attempt-", attempt as String, "-admin-password"], "") as NonEmptyStr
+}
+
 fn privileged_leg(
   context: FleetSshExecutionContext,
   host: String,
   admin_principal: String,
   admin_credential: Secret,
+  admin_credential_file: NonEmptyStr,
   script: String,
 ) -> SparkApplyOutcome {
   match portable_remote_words(raws: ["sudo", "-S", "sh", "-s"]) {
     Absent => ApplyRefused { cause: "the privileged invocation is not expressible as portable remote words" }
     Present { value: words } => {
-      let r = ssh_session_exec_portable_words_with_stdin(
-        client_args: shape_fleet_ssh_exec(
+      let r = password_file_ssh_exec_portable_words_with_stdin(
+        password_file: admin_credential_file,
+        client_args: shape_fleet_ssh_password_exec(
           context: context,
           target: SshTarget {
             endpoint: fleet_probe_endpoint_for(host: host) as NonEmptyStr,
@@ -382,19 +397,23 @@ fn spark_managed_access_apply_with_resolved_credentials(
             Absent => ApplyNotAttempted { cause: "the inference login is not a portable word, so no script may name it" }
             Present { value: inference_word } => {
           let admin_principal = spark_operator_bootstrap_login
+          match with_materialized_ssh_key_file(
+            identity_file_name: spark_admin_credential_file_name(attempt: attempt),
+            secret_bytes: admin_credential,
+            use: fn(admin_credential_file) {
           let create = privileged_leg(
             context: context, host: host, admin_principal: admin_principal,
-            admin_credential: admin_credential,
+            admin_credential: admin_credential, admin_credential_file: admin_credential_file,
             script: create_managed_account_script(admitted: managed_word),
           )
           let key = privileged_leg(
             context: context, host: host, admin_principal: admin_principal,
-            admin_credential: admin_credential,
+            admin_credential: admin_credential, admin_credential_file: admin_credential_file,
             script: install_authorized_key_script(admitted: managed_word, key_line: fleet_authorized_key_line()),
           )
           let inference = privileged_leg(
             context: context, host: host, admin_principal: admin_principal,
-            admin_credential: admin_credential,
+            admin_credential: admin_credential, admin_credential_file: admin_credential_file,
             script: create_inference_identity_script(admitted: inference_word),
           )
           let proof = managed_principal_leg(
@@ -407,6 +426,12 @@ fn spark_managed_access_apply_with_resolved_credentials(
               SparkApplyStep { effect_label: "create-no-login-service-identity", outcome: inference },
               SparkApplyStep { effect_label: "prove-key-only-authentication", outcome: proof },
             ],
+          }
+            },
+          ) {
+            MaterializedSshKeyFileBracketCompleted { value: report } => report
+            MaterializedSshKeyFileBracketRefused { cause: cause } =>
+              ApplyNotAttempted { cause: join(["the administrator credential could not be materialized owner-only, so no privileged leg ran: ", cause as String], "") }
           }
             }
           }
@@ -423,7 +448,7 @@ func spark_managed_access_apply_wet(attempt_raw: String, host: String) -> Proces
 {
   let now = clock_now_probed_at()
   let token_source = GcloudPrintToken
-  match resolve_spark_administrator_credential(token_source: token_source) {
+  match resolve_spark_administrator_credential(host: host as HostIdentity, token_source: token_source) {
     SparkAdministratorCredentialRefused { reason: reason } =>
       exit_failure(reason: reason as String)
     SparkAdministratorCredentialResolved { credential: administrator } =>
@@ -459,5 +484,65 @@ func spark_managed_access_apply_wet(attempt_raw: String, host: String) -> Proces
           }
         },
       )
+  }
+}
+
+// THE BOOTSTRAP RUNS FROM A RUNNER, AS THE FLEET'S OWN IDENTITY. spark_managed_access_apply_wet is
+// the operator-workstation shape: it mints a GCP token through gcloud and materializes the fleet
+// key itself. On a self-hosted runner neither exists, and both are already provided by the job:
+// the fleet key sits in the in-run ssh-agent (gunbc.fleet_ssh_locus prepare_fleet_ssh_agent_context)
+// and the administrator credential for the TARGET host sits in the runner-materialized file the
+// grant-install prelude writes (gunbc.spark.grant_privileged_operation read_bootstrap_credential),
+// selected by SPARK_CONVERGE_TARGET through the per-host roster. So this entry is the same apply
+// with its two credentials taken from where the runner holds them, and it refuses the same ways:
+// no target, an unsafe attempt identity, no credential file, no trust anchor. It creates
+// gunbc-automation, installs the fleet key on it, proves key-only authentication, and lays the
+// narrow grants -- the five acts a fresh Spark needs before any converge can reach it.
+data spark_bootstrap_ci_attempt_raw: String = "spark-bootstrap-ci"
+
+func spark_managed_access_bootstrap_ci_wet() -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  match prepare_fleet_ssh_agent_context(attempt_raw: spark_bootstrap_ci_attempt_raw) {
+    FleetSshContextRefused { cause: cause } => exit_failure(reason: cause)
+    FleetSshContextReady { context: context, receipt: _ } =>
+      match spark_converge_target_selection(execute_apply: true) {
+        SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+        SparkConvergeTargetAllObserveOnly =>
+          exit_failure(reason: "spark_managed_access_bootstrap_ci_wet: SPARK_CONVERGE_TARGET names no host, and a bootstrap must never fan out across the fleet from an unset variable")
+        SparkConvergeTargetSingle { host: only } =>
+          match read_bootstrap_credential() {
+            BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
+            BootstrapCredentialReady { secret: administrator } => {
+              let report = spark_managed_access_apply_with_resolved_credentials(
+                attempt_raw: spark_bootstrap_ci_attempt_raw,
+                host: only as String,
+                admin_credential: administrator as Secret,
+                credential_binding: context.credential,
+              )
+              let body = join([
+                "spark managed-access bootstrap host=", only as String, " at=", probed_at_word(reading: now) as String,
+                " credential_identity=", serialize_content_hash(hash: context.credential.credential_identity) as String, "\n",
+                spark_apply_report_text(report: report),
+              ], "")
+              let w = Filesystem.Write(path: spark_apply_receipt_path, content: body)
+              if !w.success {
+                exit_failure(reason: join(["spark bootstrap receipt write failed: ", w.error], ""))
+              } else {
+                if spark_apply_converged(report: report) {
+                  ExitSuccess
+                } else {
+                  match spark_apply_first_refusal(report: report) {
+                    Present { value: why } =>
+                      exit_failure(reason: join(["spark managed-access bootstrap did not converge -- ", why], ""))
+                    Absent =>
+                      exit_failure(reason: "spark managed-access bootstrap did not converge and produced no refusal, which is a contradiction in the report")
+                  }
+                }
+              }
+            }
+          }
+      }
   }
 }
