@@ -741,9 +741,6 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             "ImportShadowedByLocalDefinition"
         }
         CompilerDiagnostic::UnresolvedType { .. } => "UnresolvedType",
-        CompilerDiagnostic::CollectionElementTypeUndecided { .. } => {
-            "CollectionElementTypeUndecided"
-        }
         CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { .. } => {
             "UnitVariantPhantomIdentityEvidenceUnavailable"
         }
@@ -825,9 +822,6 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::MissingExport { name, .. } => name.clone(),
         CompilerDiagnostic::ImportShadowedByLocalDefinition { name, .. } => name.clone(),
         CompilerDiagnostic::UnresolvedType { name, .. } => name.clone(),
-        CompilerDiagnostic::CollectionElementTypeUndecided { receiver_type, .. } => {
-            receiver_type.clone()
-        }
         CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { name, .. } => {
             name.clone()
         }
