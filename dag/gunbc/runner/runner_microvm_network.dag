@@ -117,7 +117,44 @@ fn runner_slot_network_as_microvm_networking(net: RunnerSlotNetwork) -> RunnerMi
 // a different, silently-misparsed directive. autoconf is "off" because every field is supplied
 // here; leaving it unset would have the kernel try DHCP anyway and stall the boot on a link where
 // nothing answers.
-data runner_microvm_network_netmask: NonEmptyStr = "255.255.255.252" as NonEmptyStr
+// THE NETMASK IS DERIVED FROM THE PREFIX, NOT SPELLED BESIDE IT (review 61223). "255.255.255.252"
+// and prefix_length 30 are two spellings of ONE fact, and only one of them would move if the fleet
+// ever re-prefixed: the host's .network file would carry the new CIDR while the guest's kernel ip=
+// line kept the old mask, and the guest would boot with a subnet that disagrees with its own
+// gateway's. Nothing refuses that -- the guest simply cannot reach the host.
+//
+// The kernel's ip= directive takes a DOTTED QUAD and not a prefix, so the conversion has to happen
+// somewhere; doing it here from the single prefix row is what keeps it one fact.
+//
+// mask_octet is total over the 9 reachable bit-counts rather than computed with a shift, because
+// each arm is the actual mask byte for that many leading ones and a wrong arm is visible by
+// inspection. There is no arm for a bit count outside 0..8: octet_mask_bits cannot produce one.
+fn mask_octet(bits: Int) -> Int {
+  if bits <= 0 { 0 }
+  else if bits == 1 { 128 }
+  else if bits == 2 { 192 }
+  else if bits == 3 { 224 }
+  else if bits == 4 { 240 }
+  else if bits == 5 { 248 }
+  else if bits == 6 { 252 }
+  else if bits == 7 { 254 }
+  else { 255 }
+}
+
+fn octet_mask_bits(prefix: Int, index: Int) -> Int {
+  let consumed = 8 * (index - 1)
+  let remaining = prefix - consumed
+  if remaining <= 0 { 0 } else if remaining >= 8 { 8 } else { remaining }
+}
+
+fn netmask_of_prefix(prefix: Int) -> Ipv4Address {
+  ipv4_address(
+    octet1: mask_octet(bits: octet_mask_bits(prefix: prefix, index: 1)),
+    octet2: mask_octet(bits: octet_mask_bits(prefix: prefix, index: 2)),
+    octet3: mask_octet(bits: octet_mask_bits(prefix: prefix, index: 3)),
+    octet4: mask_octet(bits: octet_mask_bits(prefix: prefix, index: 4)),
+  )
+}
 
 data runner_microvm_network_guest_interface: NonEmptyStr = "eth0" as NonEmptyStr
 
@@ -130,7 +167,7 @@ fn runner_slot_guest_ip_boot_arg(net: RunnerSlotNetwork) -> String {
     "::",
     render_ipv4_address(addr: net.host_address) as String,
     ":",
-    runner_microvm_network_netmask as String,
+    render_ipv4_address(addr: netmask_of_prefix(prefix: net.prefix_length)) as String,
     "::",
     runner_microvm_network_guest_interface as String,
     ":",
@@ -145,7 +182,30 @@ data runner_microvm_tap_device_prefix: NonEmptyStr = "gunbc-tap" as NonEmptyStr
 // THE WHOLE MICRO-VM RANGE IN ONE PREFIX, so the NAT rule is one row rather than one per slot. Every
 // slot's /30 sits inside 172.30.0.0/16 by the derivation above, so source-matching the /16 covers a
 // slot that does not exist yet and needs no edit when the roster grows.
-data runner_microvm_network_supernet: NonEmptyStr = "172.30.0.0/16" as NonEmptyStr
+// THE SUPERNET IS BUILT FROM THE SAME OCTET ROWS THE SLOTS USE (review 61223). The prose above
+// already states the derivation -- every slot's /30 sits inside it -- and the previous row then
+// re-minted that as a bare literal, which is the §3 fork the prose was describing. The failure is
+// worse than a stale comment: moving runner_microvm_network_octet2 relocates every slot's network
+// while the NAT rule keeps matching the OLD /16, so guest traffic stops being masqueraded and the
+// symptom is "the guests have no internet" with every per-slot row looking correct.
+data runner_microvm_network_supernet_prefix: Int = 16
+
+fn runner_microvm_network_supernet_address() -> Ipv4Address {
+  ipv4_address(
+    octet1: runner_microvm_network_octet1,
+    octet2: runner_microvm_network_octet2,
+    octet3: 0,
+    octet4: 0,
+  )
+}
+
+fn runner_microvm_network_supernet() -> NonEmptyStr {
+  join([
+    render_ipv4_address(addr: runner_microvm_network_supernet_address()) as String,
+    "/",
+    to_string(runner_microvm_network_supernet_prefix),
+  ], "") as NonEmptyStr
+}
 
 data runner_microvm_nft_table_name: NonEmptyStr = "gunbc_microvm" as NonEmptyStr
 
@@ -196,7 +256,7 @@ fn runner_microvm_postrouting_chain() -> NftChain {
     policy: NftPolicyAccept,
     rules: [
       NftRule {
-        matches: [NftSourceAddressPrefix { cidr: runner_microvm_network_supernet }],
+        matches: [NftSourceAddressPrefix { cidr: runner_microvm_network_supernet() }],
         verdict: NftMasquerade,
       },
     ],

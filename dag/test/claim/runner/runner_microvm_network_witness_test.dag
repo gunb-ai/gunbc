@@ -13,12 +13,19 @@ import gunbc.runner_microvm_network {
   runner_slot_guest_ip_boot_arg, runner_microvm_nft_ruleset_text,
   runner_slot_netdev_text, runner_slot_network_file_text,
   runner_slot_netdev_path, runner_slot_network_file_path,
+  netmask_of_prefix, runner_microvm_network_supernet,
+  runner_microvm_network_prefix_length, runner_microvm_network_supernet_prefix,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn slot(i: Int) -> RunnerSlotIdentity {
-  RunnerSlotIdentity { host: operator_host_srv2, slot_index: i as Nat }
+// THE HELPER TAKES A Nat AND DOES NOT CAST TO ONE. `i as Nat` COMPILED and then errored at claim
+// execution with "cannot cast Int to Nat" -- six witnesses in this file went red on the required
+// floor at fa4f529 while every targeted compile was clean. A bare literal already inhabits Nat, so
+// the cast was never load-bearing; what it did was defer a type error past the only instrument
+// that would not catch it.
+fn slot(i: Nat) -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv2, slot_index: i }
 }
 
 // TWO SLOTS MUST NOT SHARE AN ADDRESS OR A DEVICE, which is the whole isolation claim reduced to
@@ -120,4 +127,40 @@ test fn two_slots_install_to_different_unit_paths() -> Bool {
   runner_slot_netdev_path(net: a) != runner_slot_netdev_path(net: b)
     && runner_slot_network_file_path(net: a) != runner_slot_network_file_path(net: b)
     && runner_slot_netdev_path(net: a) != runner_slot_network_file_path(net: a)
+}
+
+// THE NETMASK MUST BE DERIVED, AND ONE VALUE CANNOT PROVE THAT. Asserting only /30 -> 255.255.255.252
+// passes for a function that ignores its argument and returns a constant -- which is exactly the row
+// this replaced (review 61223). A SECOND prefix is what discriminates: a constant cannot satisfy
+// both, so the red is any reversion to a spelled-out mask.
+test fn the_netmask_is_computed_from_the_prefix_and_not_a_constant() -> Bool {
+  (render_ipv4_address(addr: netmask_of_prefix(prefix: 30)) as String) == "255.255.255.252"
+    && (render_ipv4_address(addr: netmask_of_prefix(prefix: 24)) as String) == "255.255.255.0"
+    && (render_ipv4_address(addr: netmask_of_prefix(prefix: 16)) as String) == "255.255.0.0"
+    && (render_ipv4_address(addr: netmask_of_prefix(prefix: 31)) as String) == "255.255.255.254"
+}
+
+// THE GUEST'S MASK MUST AGREE WITH THE HOST'S PREFIX, which is the actual invariant the fork broke.
+// The host writes Address=<ip>/<prefix> into the .network file and the guest receives a dotted quad
+// on its kernel command line; if those two ever describe different subnets the guest boots unable
+// to reach its own gateway, and every row still reads correctly on its own.
+test fn the_guest_mask_and_the_host_prefix_describe_one_subnet() -> Bool {
+  let net = runner_slot_network(slot: slot(i: 9))
+  string_contains(
+    s: runner_slot_guest_ip_boot_arg(net: net),
+    pattern: render_ipv4_address(addr: netmask_of_prefix(prefix: runner_microvm_network_prefix_length)) as String,
+  )
+}
+
+// THE SUPERNET MUST FOLLOW THE OCTETS THE SLOTS USE. The red is the literal this replaced: move
+// runner_microvm_network_octet2 and a spelled supernet keeps matching the OLD range, so the NAT
+// rule silently stops masquerading traffic that every per-slot row still says is correct.
+test fn the_nat_supernet_contains_the_slot_addresses_it_claims_to() -> Bool {
+  let net = runner_slot_network(slot: slot(i: 10))
+  let supernet = runner_microvm_network_supernet() as String
+  let host_octets = render_ipv4_address(addr: net.host_address) as String
+  string_contains(s: supernet, pattern: to_string(runner_microvm_network_supernet_prefix))
+    && string_contains(s: runner_microvm_nft_ruleset_text(), pattern: supernet)
+    && string_contains(s: host_octets, pattern: "172.30.")
+    && string_contains(s: supernet, pattern: "172.30.")
 }

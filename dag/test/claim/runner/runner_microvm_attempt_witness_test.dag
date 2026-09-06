@@ -1,0 +1,82 @@
+module gunbc.test.claim.runner.runner_microvm_attempt_witness_test
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.nat { Nat }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fleet_intent_network { operator_host_srv2 }
+import gunbc.fabric_cell_converge { fabric_cell_attempt_root_path, fabric_cell_slice_name }
+import gunbc.runner_microvm_attempt {
+  MicroVmAttempt, MicroVmCellBinding, VmBoundToOwnedCell, VmUnboundCellNotOwned,
+  MicroVmTeardownVerdict, TeardownProven, TeardownVmmStillRunning, TeardownResidueRemains,
+  TeardownNotObserved, bind_microvm_to_cell, microvm_cell_releasable,
+  runner_microvm_attempt_dir, runner_microvm_attempt_rootfs_path,
+  runner_microvm_attempt_unit_name,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Nat, NOT `as Nat` -- see the sibling network witness: the cast compiles and errors at claim
+// execution, which the required floor runs and a targeted compile does not.
+fn attempt(i: Nat, id: String) -> MicroVmAttempt {
+  MicroVmAttempt {
+    slot: RunnerSlotIdentity { host: operator_host_srv2, slot_index: i },
+    attempt_id: id as NonEmptyStr,
+  }
+}
+
+// AN UNOWNED CELL MUST REFUSE A GUEST, and this is the control the whole binding exists for. The
+// red is the shortcut this module was written to prevent: launch the VM anyway and let ownership be
+// something a reviewer checks. A guest launched on an unowned cell runs outside every limit the
+// cell carries, and nothing about it LOOKS wrong until the host runs out of memory.
+test fn a_guest_is_refused_on_a_cell_that_is_not_owned() -> Bool {
+  match bind_microvm_to_cell(attempt: attempt(i: 1, id: "a1"), cell_owned: false) {
+    VmUnboundCellNotOwned { cause: c } => string_contains(s: c, pattern: "not owned")
+    _ => false
+  }
+}
+
+// EVERY WRITABLE GUEST PATH LIVES UNDER THE ATTEMPT ROOT. The red is a path derived from anywhere
+// else -- the executor's home, a fixed probe directory -- which is exactly what the boot probe uses
+// and exactly what must not survive into the job path. Two attempts on one slot must not share a
+// single byte of writable storage.
+test fn every_guest_path_is_scoped_to_its_own_attempt() -> Bool {
+  let a = attempt(i: 2, id: "first")
+  let b = attempt(i: 2, id: "second")
+  let root = fabric_cell_attempt_root_path(slot: a.slot)
+  string_contains(s: runner_microvm_attempt_dir(attempt: a), pattern: root)
+    && string_contains(s: runner_microvm_attempt_rootfs_path(attempt: a), pattern: runner_microvm_attempt_dir(attempt: a))
+    && runner_microvm_attempt_dir(attempt: a) != runner_microvm_attempt_dir(attempt: b)
+    && runner_microvm_attempt_rootfs_path(attempt: a) != runner_microvm_attempt_rootfs_path(attempt: b)
+}
+
+// THE VMM MUST LAND IN THE CELL'S SLICE. A VM outside the slice is invisible to every limit the
+// cell carries and to every observation that reads them, so the binding asserts the slice NAME
+// comes from the cell layer rather than being spelled here -- a locally-spelled slice name would
+// drift from the one fabric_cell_converge creates and would silently create a SECOND slice.
+test fn the_vmm_is_placed_in_the_cells_own_slice() -> Bool {
+  match bind_microvm_to_cell(attempt: attempt(i: 3, id: "s1"), cell_owned: true) {
+    VmBoundToOwnedCell { attempt: a, rootfs_path: _, jit_drive_path: _, vm_config_path: _, unit_name: _, slice_property: sp } =>
+      (sp.value as String) == fabric_cell_slice_name(slot: a.slot)
+    _ => false
+  }
+}
+
+// A LEAKED UNIT MUST SAY WHICH ATTEMPT LEAKED IT. A name derived from the slot alone collides
+// across attempts on one slot, which is precisely the case a leak check most needs to tell apart.
+test fn two_attempts_on_one_slot_get_distinct_unit_names() -> Bool {
+  let a = attempt(i: 4, id: "x")
+  let b = attempt(i: 4, id: "y")
+  (runner_microvm_attempt_unit_name(attempt: a) as String) != (runner_microvm_attempt_unit_name(attempt: b) as String)
+}
+
+// ONLY A PROVEN TEARDOWN RELEASES THE CELL. The three refusing arms are asserted individually
+// rather than as "not TeardownProven", because the red that matters is a future arm added to the
+// coproduct and quietly treated as releasable -- a negation would admit it silently, and this
+// will not.
+test fn the_cell_is_released_only_on_proven_teardown() -> Bool {
+  microvm_cell_releasable(verdict: TeardownProven)
+    && !microvm_cell_releasable(verdict: TeardownVmmStillRunning { unit: "gunbc-microvm-srv2-01-x" as NonEmptyStr })
+    && !microvm_cell_releasable(verdict: TeardownResidueRemains { path: "/x/attempts/x" })
+    && !microvm_cell_releasable(verdict: TeardownNotObserved { cause: "the observation could not run" })
+}
