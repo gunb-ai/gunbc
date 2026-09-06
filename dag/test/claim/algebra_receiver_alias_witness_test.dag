@@ -19,10 +19,10 @@ fn blocking_count_for(source: String, wanted: String) -> Int {
 // refuse until owner identity is carried to variant_reference_inferred_node.
 // Keeping the invalid programs inside strings lets the control observe the
 // typed refusal without making the required corpus reject this module.
-data nominal_return_source: String = "module alias_nominal_return\nimport std.algebra { Empty }\nfn asks() -> FreeMonoid<Int> { [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) }) }\n"
-data alias_return_source: String = "module alias_return\nimport std.algebra { Empty }\nfn asks() -> List<Int> { [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) }) }\n"
-data alias_field_source: String = "module alias_field\nimport std.algebra { Empty }\ntype Box { values: List<Int> }\nfn asks() -> List<Int> { let b = Box { values: [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) }) }; b.values }\n"
-data alias_initializer_source: String = "module alias_initializer\nimport std.algebra { Empty }\nfn asks() -> List<Int> { let initial: FreeMonoid<Int> = Empty; [1, 2] |> fold(init: initial, f: fn(acc, value) { acc |> list_push(value) }) }\n"
+data nominal_return_source: String = "module alias_nominal_return\nimport std.types { Int, List }\nimport std.algebra { Empty, FreeMonoid }\nfn asks() -> FreeMonoid<Int> { [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) }) }\n"
+data alias_return_source: String = "module alias_return\nimport std.types { Int, List }\nimport std.algebra { Empty, FreeMonoid }\nfn asks() -> List<Int> { [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) }) }\n"
+data alias_field_source: String = "module alias_field\nimport std.types { Int, List }\nimport std.algebra { Empty, FreeMonoid }\ntype Box { values: List<Int> }\nfn asks() -> List<Int> { let b = Box { values: [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) }) }; b.values }\n"
+data alias_initializer_source: String = "module alias_initializer\nimport std.types { Int, List }\nimport std.algebra { Empty, FreeMonoid }\nfn asks() -> List<Int> { let initial: FreeMonoid<Int> = Empty; [1, 2] |> fold(init: initial, f: fn(acc, value) { acc |> list_push(value) }) }\n"
 
 test fn alias_nominal_return_is_a_refusal_fixture() -> Bool {
   blocking_count_for(source: nominal_return_source, wanted: "MethodNotFound") >= 1
