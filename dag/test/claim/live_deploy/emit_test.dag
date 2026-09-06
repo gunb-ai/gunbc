@@ -493,7 +493,7 @@ test fn witness_execstart_carries_exactly_the_admitted_revision() -> Bool {
     " --host 0.0.0.0 --port 8080",
     " --release-revision ", deploy_witness_release_revision as String,
     " --eval-budget-cpu-ms 30000",
-    " --eval-budget-wall-ms 30000",
+    " --eval-budget-wall-ms 120000",
   ], "")
   string_contains(s: unit, pattern: expected)
     && !string_contains(s: unit, pattern: concat(expected, " --release-revision"))

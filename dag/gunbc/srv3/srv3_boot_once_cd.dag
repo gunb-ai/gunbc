@@ -31,6 +31,7 @@ import gunbc.bmc_onboarding { srv3_onboarding_plan }
 import gunbc.auth.netrc_binding {
   NetrcBindingPlaced, NetrcBindingRefused, NetrcBindingRefusedResidueRemains, place_netrc_binding,
 }
+import gunbc.durable_cas_file_store { admit_cas_attempt, file_compare_and_set }
 import gunbc.tools.bmc_onboard {
   bmc_onboard_netrc_path,
   boot_override_body,

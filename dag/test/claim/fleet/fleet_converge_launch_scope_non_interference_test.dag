@@ -29,7 +29,6 @@ import gunbc.fleet_converge_plan {
   fleet_converge_scope_wire,
   fleet_converge_desired_caps,
 }
-import gunbc.spark.serving_execution_schedule { scheduled_rows_empty }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 // THE LAUNCH-SCOPE NON-INTERFERENCE WALL AFTER ITS RUNG CLIMB.
@@ -263,7 +262,6 @@ fn signature_of(request: FleetConvergeRequest) -> String {
     a: fleet_converge_plan_artifact_of_request(
       request: request,
       prior_generation: 0,
-      spark_rows: scheduled_rows_empty(),
     ),
   )
 }
@@ -278,7 +276,6 @@ fn full_host_srv1(slots: List<RunnerSlotMember>) -> FleetConvergeRequest {
     host: host_srv1,
     observed_timers: [],
     observed_caps: fleet_converge_desired_caps(),
-    observed_spark: [],
     observed_slots: slots,
     observed_fabric_cells: fabric_cell_observation_unobserved(host: host_srv1 as HostIdentity),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
@@ -304,7 +301,6 @@ test fn the_same_cap_population_moves_the_full_host_projection() -> Bool {
       host: host_srv1,
       observed_timers: [],
       observed_caps: [],
-      observed_spark: [],
       observed_slots: [],
       observed_fabric_cells: fabric_cell_observation_unobserved(host: host_srv1 as HostIdentity),
       observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
@@ -320,14 +316,12 @@ test fn the_same_fabric_observation_refuses_where_it_is_owned() -> Bool {
         host: operator_host_srv3 as NonEmptyStr,
         observed_timers: [],
         observed_caps: [],
-        observed_spark: [],
         observed_slots: [],
         observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
         observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
         observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
       },
       prior_generation: 0,
-      spark_rows: scheduled_rows_empty(),
     ).plan_body,
     pattern: "REFUSED-OBSERVATION fabric-cell",
   )
