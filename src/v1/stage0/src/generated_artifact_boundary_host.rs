@@ -44,6 +44,59 @@ pub const GENERATED_ARTIFACT_PRODUCING_COMMAND: &str =
     "gunbc run --source-root dag --source-root src/v2 \
      --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet";
 
+/// Regenerates only the two `docs/*.md` ledger projections and returns `ProcessExit`.
+/// Distinct from `GENERATED_ARTIFACT_PRODUCING_COMMAND`: that entry resolves the whole
+/// registry emit graph and does not complete on the runners that SIGKILL `main_wet`.
+pub const DOCS_PROJECTION_REGEN_COMMAND: &str = "gunbc run --source-root dag --source-root src/v2 \
+     --entry dag/gunbc/instruments/docs_projection_gate.dag --function regen";
+
+const DOCS_PROJECTION_GATE_ENTRY: &str = "dag/gunbc/instruments/docs_projection_gate.dag";
+
+/// Outcome of the docs-ledger agreement entry. Kept separate from
+/// `GeneratedArtifactBoundaryOutcome` because that carrier resolves the whole registry;
+/// this one must be able to refuse a stale `docs/design-failure-modes.md` even when that
+/// resolve never returns.
+pub enum DocsProjectionAgreement {
+    Clean,
+    Refused { cause: String },
+}
+
+pub fn run_docs_projection_agreement(source_roots: &[String]) -> DocsProjectionAgreement {
+    let (graph, indices) = match crate::cli_run::resolve_entry_graph_shared(
+        source_roots,
+        DOCS_PROJECTION_GATE_ENTRY,
+    ) {
+        Ok(v) => v,
+        Err(e) => {
+            return DocsProjectionAgreement::Refused {
+                cause: format!("resolve {DOCS_PROJECTION_GATE_ENTRY}: {e}"),
+            }
+        }
+    };
+    let ctx = crate::cli_run::make_eval_context(
+        &graph,
+        indices,
+        crate::v1_interpreter::ExecutionMode::Hermetic,
+    );
+    let out = match crate::v1_interpreter::run_in_context_with_args(&ctx, "main", &[], false) {
+        Ok(v) => v,
+        Err(e) => {
+            return DocsProjectionAgreement::Refused {
+                cause: format!("docs projection gate: {e:?}"),
+            }
+        }
+    };
+    match super::classify_exit(&out, &ctx) {
+        super::ExitClass::Success => DocsProjectionAgreement::Clean,
+        super::ExitClass::Failure { reason, .. } => DocsProjectionAgreement::Refused {
+            cause: reason.unwrap_or_else(|| "docs projection drift".to_string()),
+        },
+        super::ExitClass::NotProcessExit { type_name } => DocsProjectionAgreement::Refused {
+            cause: format!("docs projection gate returned {type_name}, not ProcessExit"),
+        },
+    }
+}
+
 /// What the generated-artifact population says about one repo-relative path.
 ///
 /// Three states because the honest answers are three. `NotGenerated` is a POSITIVE answer —

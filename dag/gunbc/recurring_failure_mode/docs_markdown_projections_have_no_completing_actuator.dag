@@ -1,0 +1,31 @@
+module gunbc.recurring_failure_mode.docs_markdown_projections_have_no_completing_actuator
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data docs_markdown_projections_have_no_completing_actuator: RecurringFailureMode = RecurringFailureMode {
+  identity: "docs_markdown_projections_have_no_completing_actuator" as NonEmptyStr,
+
+  receipts: [
+    "**generated `docs/*.md` ledger projections were gated nowhere that completes: no ProcessExit actuator whose closure is those files, and no regen coverage that owns them** (INVALID STATE: `gunbc.recurring_failure_mode` and `gunbc.rung_drop` are the authorities; `docs/design-failure-modes.md` and `docs/design-rung-drops.md` are the projections DESIGN.md points readers at. The habitual regen, `claim_executor --required-regen`, denominates stage0 mirrors and reports a full round count while those files stay stale. The actuator that does own them, `tools.generated_artifact_gate` `main_wet`, resolves `gunbc.generated_artifact_emit` — every generator in the registry — and on the runners that matter it is SIGKILLed or MemoryStallRefused rather than returning ProcessExit. HARM: three rostered failure-mode rows can sit in the authority, absent from the projection every session loads, and every instrument that finished reported green about a different population. ",
+
+    "SPECIMEN, 2026-09-06: `binder_renaming_changes_variant_field_lookup`, `permissiveness_promoted_into_a_higher_safety_rung`, and `evaluation_model_cleanup_undeclared` were filed in the roster. Nothing that exited cleanly compared the committed markdown to `expected_design_failure_modes_md`. The gap was found by reading the projection, which is not a step any completing gate performed. ",
+
+    "THE TWO NEIGHBOURS THIS IS NOT. `green_reported_over_a_population_the_instrument_does_not_own` is the same split of actuators, climbed for the required composite phase over registry projections plus stage0 mirrors; that climb still pays the whole-registry resolve, so docs ledger drift remains unrefusable whenever that resolve does not return. This row is the completing-actuator grain: a ProcessExit whose import closure is the ledger renderer, not the registry emit match. `sweep_terminated_by_process_death_rather_than_a_typed_refusal` is death instead of a located verdict; here the death is of the WRONG entry, and authors still have a typed command that never ran. ",
+
+    "RECOGNITION RULE: when the file a reader is pointed at is generated, ask which ProcessExit entry writes it, whether that entry's closure is those files rather than an unbounded registry, and whether a required phase runs an agreement over that same closure. A round count from a sibling actuator is not coverage. ",
+
+    "RUNG FOUND AT: mechanically preventable once `tools.docs_projection_gate` `regen` / `main` and the required generated-artifact `docs-projections` population execute. The invalid stale file remains writable. CEILING: structurally guaranteed when required-run dispatch derives an adjudicator from every committed artifact whose location directory is `docs`, so omitting the arm is a compile refusal. ",
+
+    "NEXT-RUNG TRIGGER: required-run dispatch consumes an exhaustive docs-directory projection of `gunbc.generated_artifact` `committed_generated_artifacts`, such that adding a committed `docs/` artifact without an agreement arm will not compile. Filing this row does not itself enrol that derivation.)",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "test.claim.docs_projection_gate_test", decl_name: "drifted_docs_projection_bytes_refuse_and_name_the_path", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.docs_projection_gate_test", decl_name: "matching_docs_projection_bytes_succeed", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.generated_artifact_assessment", decl_name: "docs_projection_actuator_paths_match_registry_ledger_paths", field: WholeDeclaration },
+    DeclarationRef { module_path: "tools.docs_projection_gate", decl_name: "regen", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.bin.claim_executor", decl_name: "run", field: WholeDeclaration },
+  ],
+}

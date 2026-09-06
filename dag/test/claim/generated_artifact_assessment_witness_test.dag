@@ -20,11 +20,20 @@ import gunbc.generated_artifact_assessment {
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.process { ExitFailure, ExitSuccess }
 import tools.generated_artifact_gate { generated_artifact_agreement_verdict }
+import tools.docs_projection_agreement {
+  docs_design_failure_modes_path,
+  docs_design_rung_drops_path
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE EXCEPTION IS EXACTLY THE TWO LEDGER PROJECTIONS, not all documentation and not a copied
 // path roster in the driver. Both directions make widening or silently dropping either ledger red.
+test fn docs_projection_actuator_paths_match_registry_ledger_paths() -> Bool {
+  docs_design_failure_modes_path == artifact_path(a: DesignFailureModesArtifact)
+    && docs_design_rung_drops_path == artifact_path(a: DesignRungDropsArtifact)
+}
+
 test fn only_design_ledgers_delegate_concurrent_regeneration_to_heal() -> Bool {
   let paths = heal_regenerated_after_provisional_merge_paths()
   count(paths) == 2

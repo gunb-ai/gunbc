@@ -1,0 +1,26 @@
+module tools.docs_projection_agreement
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+
+// Same literals as gunbc.generated_artifact artifact_location for the two ledger variants.
+// The join is test.claim.docs_projection_path_join_test / generated_artifact_assessment:
+// artifact_path(DesignFailureModesArtifact) == docs_design_failure_modes_path.
+data docs_design_failure_modes_path: String = "docs/design-failure-modes.md"
+data docs_design_rung_drops_path: String = "docs/design-rung-drops.md"
+
+// ONE PURE VERDICT OVER ONE PATH'S EXPECTED AND COMMITTED BYTES. Production regen and the
+// required generated-artifact phase both reach a ProcessExit through this function, so a fixture
+// can present drifted ledger bytes without resolving gunbc.generated_artifact_emit or writing
+// the live tree. The path is an argument because the diagnostic must name the file; the bytes
+// are arguments because a live-tree read is a different question (the wet gate).
+
+fn docs_projection_bytes_agree(path: String, expected: String, committed: String) -> ProcessExit {
+  if expected == committed {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat(
+      "generated-artifact drift: ",
+      concat(path, " is not derived from its .dag authority; regenerate with gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/docs_projection_gate.dag --function regen")
+    ))
+  }
+}

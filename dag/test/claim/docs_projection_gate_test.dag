@@ -1,0 +1,31 @@
+module test.claim.docs_projection_gate_test
+
+import std.process { ExitSuccess, ExitFailure }
+import tools.docs_projection_agreement { docs_projection_bytes_agree }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn drifted_docs_projection_bytes_refuse_and_name_the_path() -> Bool {
+  match docs_projection_bytes_agree(
+    path: "docs/design-failure-modes.md",
+    expected: "authority",
+    committed: "stale"
+  ) {
+    ExitSuccess => false
+    ExitFailure { code: _, reason } =>
+      string_contains(s: reason, pattern: "docs/design-failure-modes.md")
+        && string_contains(s: reason, pattern: "docs_projection_gate.dag")
+  }
+}
+
+test fn matching_docs_projection_bytes_succeed() -> Bool {
+  match docs_projection_bytes_agree(
+    path: "docs/design-rung-drops.md",
+    expected: "same",
+    committed: "same"
+  ) {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+}

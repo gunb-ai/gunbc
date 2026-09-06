@@ -1,0 +1,79 @@
+module tools.docs_projection_gate
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
+import gunbc.design_ledgers { expected_design_failure_modes_md, expected_design_rung_drops_md }
+import tools.docs_projection_agreement {
+  docs_projection_bytes_agree,
+  docs_design_failure_modes_path,
+  docs_design_rung_drops_path
+}
+
+// THE CLEANLY-EXITING ACTUATOR FOR docs/*.md LEDGER PROJECTIONS.
+//
+// gunbc.generated_artifact_gate main_wet folds the WHOLE committed registry, and resolving
+// gunbc.generated_artifact_emit pulls every generator (plans, workflows, CAD, stage0 mirrors).
+// Authors filing a recurring-failure-mode row then ran claim_executor --required-regen (which
+// never owns these files) or main_wet (which does not return a ProcessExit on the runners that
+// SIGKILL it), so three rostered rows sat in the authority while docs/design-failure-modes.md
+// stayed stale and nothing that completes could say so.
+//
+// This entry imports the ledger renderer and the filesystem, not the registry emit match. Path
+// strings here are the same literals gunbc.generated_artifact artifact_location uses for these
+// two variants; test.claim.generated_artifact_assessment
+// `docs_projection_actuator_paths_match_registry_ledger_paths` joins them to artifact_path so a
+// rename of either side refuses.
+
+fn exit_ok(e: ProcessExit) -> Bool {
+  match e { ExitSuccess => true  _ => false }
+}
+
+fn write_docs_projection(path: String, content: String) -> ProcessExit {
+  let w = Filesystem.Write(path: path, content: content)
+  if w.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat(concat("write failed for ", path), concat(": ", w.error)))
+  }
+}
+
+func regen() -> ProcessExit {
+  let first = write_docs_projection(
+    path: docs_design_failure_modes_path,
+    content: expected_design_failure_modes_md()
+  )
+  if exit_ok(e: first) {
+    write_docs_projection(
+      path: docs_design_rung_drops_path,
+      content: expected_design_rung_drops_md()
+    )
+  } else {
+    first
+  }
+}
+
+fn agree_one(path: String, expected: String) -> ProcessExit {
+  let r = Filesystem.Read(path: path)
+  match filesystem_read_outcome(content: r.content, success: r.success, error: r.error) {
+    FilesystemReadRefused { error } => exit_failure(
+      reason: concat(concat("docs projection unreadable: ", path), concat(": ", error))
+    )
+    FilesystemReadSucceeded { content } =>
+      docs_projection_bytes_agree(path: path, expected: expected, committed: content)
+  }
+}
+
+func main() -> ProcessExit {
+  let first = agree_one(
+    path: docs_design_failure_modes_path,
+    expected: expected_design_failure_modes_md()
+  )
+  if exit_ok(e: first) {
+    agree_one(
+      path: docs_design_rung_drops_path,
+      expected: expected_design_rung_drops_md()
+    )
+  } else {
+    first
+  }
+}
