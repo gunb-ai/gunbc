@@ -374,23 +374,47 @@ pub fn test_affected_select() -> InvocationOutcome {
 
     let selected_count = selected_rows.len();
 
-    // Step 7: run the affected rows through the existing witness runner.
-    let summary = match cli_run::run_discovery_rows(
-        &selected_rows,
+    // Step 7: prime witness execution legs — required before run_discovery_rows.
+    // Without this, the first selected row panics ("entry was not primed").
+    // Also arm the entry retention schedule for the filtered set.
+    cli_run::prime_witness_execution_legs(
         &index,
-        v1_interpreter::ExecutionMode::Hermetic,
-        None,
-        cli_run::WitnessBudgetPolicy {
-            cpu_eval_budget_ms: None,
-            wet_receipt_wall_budget_ms: None,
-        },
-        cli_run::ShardStyle::single_shard(),
-    ) {
-        Ok(s) => s,
-        Err(err) => {
+        selected_rows.iter().map(|row| row.entry.as_str()),
+    );
+    cli_run::index_arm_schedule_retention(&index, &selected_rows);
+
+    // Step 8: run the affected rows through the existing witness runner.
+    // Wrap in catch_unwind for §5 fail-closed: a panic inside the runner must
+    // never escape as an abort — it must land as Termination::Refused.
+    let summary = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        cli_run::run_discovery_rows(
+            &selected_rows,
+            &index,
+            v1_interpreter::ExecutionMode::Hermetic,
+            None,
+            cli_run::WitnessBudgetPolicy {
+                cpu_eval_budget_ms: None,
+                wet_receipt_wall_budget_ms: None,
+            },
+            cli_run::ShardStyle::single_shard(),
+        )
+    })) {
+        Ok(Ok(s)) => s,
+        Ok(Err(err)) => {
             return InvocationOutcome {
                 termination: Termination::Refused,
                 message: format!("affected-select: witness runner refused: {err}"),
+            };
+        }
+        Err(panic_payload) => {
+            let msg = panic_payload
+                .downcast_ref::<String>()
+                .map(|s| s.clone())
+                .or_else(|| panic_payload.downcast_ref::<&str>().map(|s| s.to_string()))
+                .unwrap_or_else(|| "unknown panic".to_string());
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!("affected-select: witness runner panicked — {msg}"),
             };
         }
     };

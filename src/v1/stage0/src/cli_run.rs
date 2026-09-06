@@ -12510,7 +12510,7 @@ impl ScheduleRetention {
 /// `SpacePacked` follow-on) — a declared, typed frontier, never a silent widen. A per-entry
 /// closure that cannot be computed is skipped (its modules become counted `RetentionUnknown` at
 /// reconcile), so arming never fails the run.
-fn index_arm_schedule_retention(index: &MultiEntryIndex, rows: &[DiscoveryRow]) {
+pub(crate) fn index_arm_schedule_retention(index: &MultiEntryIndex, rows: &[DiscoveryRow]) {
     if index.cross_worker_store.is_some() {
         return;
     }
