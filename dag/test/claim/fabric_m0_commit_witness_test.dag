@@ -2,7 +2,7 @@ module test.claim.fabric_m0_commit_witness
 
 import std.types { Bool, List, NonEmptyStr }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
-import std.durable_compare_and_set { CasStoreRefused, CasUnreadableReadRefused }
+import std.durable_compare_and_set { CasStoreRefused, CasUnreadableReadRefused, CasPreconditionFailed, ExpectSlotAbsent, CasReadableAbsent }
 import gunbc.fabric_m0_completion {
   AttemptId,
   RequiredArtifactId,
@@ -183,5 +183,46 @@ test fn a_foreign_slot_answer_is_not_reported_as_absence() -> Bool {
   ) {
     PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => false
     other => true
+  }
+}
+
+fn digest_b() -> Sha256Digest {
+  Sha256Digest { hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as Sha256DigestHex }
+}
+
+fn precondition_failed() -> CommitTransportOutcome {
+  StoreAnswered {
+    slot: our_slot(),
+    outcome: CasPreconditionFailed { expected: ExpectSlotAbsent, observed: CasReadableAbsent },
+  }
+}
+
+// THE LOST-ACKNOWLEDGEMENT RETRY, and the case that made the old precondition branch wrong. The
+// slot key is derived from the attempt, so the occupant of our slot after a lost acknowledgement is
+// most often OUR OWN earlier write: A writes, the ack is lost, the retry asks create-if-absent, and
+// the store answers precondition-failed because A's manifest is already there. Reporting that as
+// absence fails a job whose result is committed and readable.
+test fn a_precondition_failure_reconciles_when_our_manifest_is_read_back() -> Bool {
+  match commit(transport: precondition_failed(), observed: ManifestRead { observed_digest: digest_a() }) {
+    PublishSuccess { attempt: _, manifest_digest: _ } => true
+    other => false
+  }
+}
+
+// AND A FOREIGN OCCUPANT IS STILL A CONFLICT, so the repair above does not turn precondition failure
+// into a blanket success. The reconciliation is earned by the digest matching, not by the branch.
+test fn a_precondition_failure_with_a_conflicting_manifest_prevents_success() -> Bool {
+  match commit(transport: precondition_failed(), observed: ManifestRead { observed_digest: digest_b() }) {
+    PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => true
+    other => false
+  }
+}
+
+// AND A PRECONDITION FAILURE WITH NOTHING AT THE SLOT IS STILL ABSENCE: the store answered, so a
+// fruitless read establishes non-commitment rather than leaving it unknown.
+test fn a_precondition_failure_with_no_object_is_absence() -> Bool {
+  match commit(transport: precondition_failed(), observed: ManifestNotFound) {
+    PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => true
+    other => false
   }
 }

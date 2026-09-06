@@ -87,11 +87,25 @@ type ManifestReadbackObservation
 
 // THE TRANSLATION, and the only rule in this module with teeth.
 //
-// An unanswered write yields Unknown, NOT absent: "we stopped waiting" and "we observed
-// non-commitment" are different facts, and collapsing them either re-executes work that may already
-// be committed or publishes over bytes nobody read. A precondition failure is the one arm that is
-// decided against us -- another writer holds the slot -- so it refuses rather than waiting.
-// Everything else defers to what the independent reader actually saw.
+// THE READ DECIDES WHAT DURABLE STATE EXISTS; the write outcome decides only what happened to THIS
+// invocation. Those are different questions and publication cares about the first, so the fold is
+// driven by the observation and consults the transport for exactly one thing: whether "not found"
+// is established or merely unobserved.
+//
+// An unanswered write with nothing found yields Unknown, NOT absent -- "we stopped waiting" and "we
+// observed non-commitment" are different facts, and collapsing them either re-executes work that may
+// already be committed or publishes over bytes nobody read. When the store DID answer, its answer
+// plus a fruitless read does establish absence.
+//
+// CasPreconditionFailed USED TO SHORT-CIRCUIT TO ABSENT HERE, and that was wrong in the case this
+// module exists to serve. A precondition failure proves only that the requested conditional
+// transition did not happen on this invocation; it does not prove the desired state is missing. The
+// slot key is DERIVED FROM THE ATTEMPT, so the occupant of attempt A's slot is most often A's own
+// earlier write -- the lost-acknowledgement retry: A writes, the acknowledgement is lost, the retry
+// asks create-if-absent, the store answers precondition-failed because A's own manifest is already
+// there. Reporting that as absence fails a job whose result is committed and readable. A CONFLICTING
+// occupant is still caught, one layer up: the readback digest is compared against the recorded
+// manifest digest, so a foreign manifest at our slot reports a content mismatch rather than success.
 fn manifest_readback(attempt: AttemptId, transport: CommitTransportOutcome, observed: ManifestReadbackObservation) -> OriginReadback {
   let expected = commit_slot_key(attempt: attempt)
   let actual = transport_slot(transport: transport)
@@ -103,28 +117,13 @@ fn manifest_readback(attempt: AttemptId, transport: CommitTransportOutcome, obse
 }
 
 fn manifest_readback_for_slot(transport: CommitTransportOutcome, observed: ManifestReadbackObservation) -> OriginReadback {
-  match transport {
-    StoreDidNotAnswer { slot: _, cause: c } =>
-      match observed {
-        ManifestRead { observed_digest: d } => ReadbackConfirmed { observed_digest: d }
-        ManifestNotFound => ReadbackUnknown { cause: c }
-        ManifestReadUnavailable { cause: rc } => ReadbackUnknown { cause: rc }
-      }
-    StoreAnswered { slot: _, outcome: o } =>
-      match o {
-        CasPreconditionFailed { expected: _, observed: _ } => ReadbackAbsent
-        CasStoreRefused { cause: _ } =>
-          match observed {
-            ManifestRead { observed_digest: d } => ReadbackConfirmed { observed_digest: d }
-            ManifestNotFound => ReadbackAbsent
-            ManifestReadUnavailable { cause: rc } => ReadbackUnknown { cause: rc }
-          }
-        CasCommitted { committed: _ } =>
-          match observed {
-            ManifestRead { observed_digest: d } => ReadbackConfirmed { observed_digest: d }
-            ManifestNotFound => ReadbackAbsent
-            ManifestReadUnavailable { cause: rc } => ReadbackUnknown { cause: rc }
-          }
+  match observed {
+    ManifestRead { observed_digest: d } => ReadbackConfirmed { observed_digest: d }
+    ManifestReadUnavailable { cause: rc } => ReadbackUnknown { cause: rc }
+    ManifestNotFound =>
+      match transport {
+        StoreAnswered { slot: _, outcome: _ } => ReadbackAbsent
+        StoreDidNotAnswer { slot: _, cause: c } => ReadbackUnknown { cause: c }
       }
   }
 }
