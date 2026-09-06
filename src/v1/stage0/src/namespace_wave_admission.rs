@@ -1490,92 +1490,52 @@ pub struct TransitionAdmission {
 /// this roster's next touch. Adjudicate that deletion by joining each row against main's tree on its
 /// own (module, in_declaration, spelling, target) tuple rather than trusting this sentence, because
 /// a trigger sentence is not evidence that the trigger fired.
-const SECRET_ACCESS_ENSURE_MOVE_LABEL: &str =
-    "gunbc#10514 access-grant widening: the Secret Manager access ensure moves to the auth layer, \
-     from gunbc.spark.secret_access_ensure to gunbc.auth.gcp_secret_access";
+/// THE gunbc#10514 SECRET-ACCESS ROWS DISSOLVED HERE (2026-09-05), BY THEIR OWN TRIGGER AND ON THE
+/// ROSTER TOUCH THEY NAMED. Their entry said they came due on this roster's next touch, and this is
+/// it: adding the row below made the required run report `0 unadjudicated delta(s), 0 stale
+/// admission(s), 8 consumed admission(s) due for deletion on this roster-touching change` (run
+/// 33998369913, `required-witnesses-floor`), which BLOCKS -- a consumed row left standing is the
+/// same debt a stale one is, and this is the seventh time this ledger has recorded that shape.
+///
+/// ADJUDICATED BY THE JOIN THEY DEMANDED RATHER THAN BY THEIR OWN SENTENCE, which is exactly what
+/// that entry asked of whoever deleted them. On main, `gunbc.auth.gcp_secret_access` declares all
+/// four spellings -- `secret_access_ensure_for`, `read_supplied_access_token`, `SuppliedTokenReady`
+/// and `SuppliedTokenUnavailable` -- and both consumers name that module in their import:
+/// `gunbc.fleet.org_actions_converge` on one line, `gunbc.spark.secret_access_ensure` in a braced
+/// list. `gunbc.spark.secret_access_ensure` no longer declares any of them. So base and head bind
+/// each spelling identically, no run can produce those deltas, and CONSUMED is the correct reading.
+/// That join is the positive, decidable fact the entry named as separating a consumed row from an
+/// author-error row; the trigger sentence alone was not taken as evidence that the trigger fired.
+///
+/// gunbc#10602, ONE ROW, ONE SUBJECT: `repository_status_lines` un-forked. `gunbc.scm.render`
+/// declared its own `repository_status_lines` that independently re-assembled the status line
+/// order already decided by `gunbc.scm.status` -- two authorities for one document's composition
+/// (DESIGN.md §3), which the repository's own
+/// `status_document_does_not_fork_the_verb_modules_text` witness exists to catch. The render copy
+/// is DELETED and `scm_status_document` now imports the status module's declaration. The spelling
+/// is unchanged on both sides and the declarer moved, so it arrives as `TargetChanged` -- the wall
+/// working on a deliberate deletion-and-repoint, not a requalification. Blast radius 0: the row
+/// names the exact (module, declaration, spelling) triple and admits nothing else.
+///
+/// TRIGGER, WHICH IS THIS ROW'S OWN DEATH: gunbc#10602 merging. Main then carries the un-fork,
+/// base and head both bind the spelling to `gunbc.scm.status`, no run can produce this delta, and
+/// the row reports CONSUMED rather than unadjudicated -- due for deletion on this roster's next
+/// touch. Adjudicate that deletion by joining the row against main's tree on its own
+/// (module, in_declaration, spelling, target) tuple, not by trusting this sentence.
+const SCM_STATUS_LINES_UNFORK_LABEL: &str =
+    "gunbc#10602 status composition un-fork: repository_status_lines is declared once, in \
+     gunbc.scm.status, and gunbc.scm.render's forked copy is deleted";
 
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet.org_actions_converge",
-            in_declaration: "org_admin_app_key_access_converge_with_supplied_token",
-            spelling: "SuppliedTokenReady",
-            target: "gunbc.auth.gcp_secret_access",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission {
+    label: SCM_STATUS_LINES_UNFORK_LABEL,
+    subject: AdmissionSubject::Binding {
+        module: "gunbc.scm.render",
+        in_declaration: "scm_status_document",
+        spelling: "repository_status_lines",
+        target: "gunbc.scm.status",
     },
-    TransitionAdmission {
-        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet.org_actions_converge",
-            in_declaration: "org_admin_app_key_access_converge_with_supplied_token",
-            spelling: "SuppliedTokenUnavailable",
-            target: "gunbc.auth.gcp_secret_access",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet.org_actions_converge",
-            in_declaration: "org_admin_app_key_access_converge_with_supplied_token",
-            spelling: "read_supplied_access_token",
-            target: "gunbc.auth.gcp_secret_access",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet.org_actions_converge",
-            in_declaration: "org_admin_app_key_access_converge_with_supplied_token",
-            spelling: "secret_access_ensure_for",
-            target: "gunbc.auth.gcp_secret_access",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.secret_access_ensure",
-            in_declaration: "spark_secret_access_converge_with_supplied_token",
-            spelling: "SuppliedTokenReady",
-            target: "gunbc.auth.gcp_secret_access",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.secret_access_ensure",
-            in_declaration: "spark_secret_access_converge_with_supplied_token",
-            spelling: "SuppliedTokenUnavailable",
-            target: "gunbc.auth.gcp_secret_access",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.secret_access_ensure",
-            in_declaration: "spark_secret_access_converge_with_supplied_token",
-            spelling: "read_supplied_access_token",
-            target: "gunbc.auth.gcp_secret_access",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.secret_access_ensure",
-            in_declaration: "spark_secret_access_ensure",
-            spelling: "secret_access_ensure_for",
-            target: "gunbc.auth.gcp_secret_access",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-];
+    disposition: NamespaceDeltaDisposition::TargetChanged,
+}];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.

@@ -111,6 +111,7 @@ fn log_witness_empty(store: ObjectStore) -> RepositoryEnvelope {
     commits: [],
     commit_allocator: MintedIdAllocator { next_ordinal: 0 },
     checked_out: none,
+    staged: none,
   }
 }
 
@@ -150,6 +151,7 @@ fn log_witness_repository_with_unheld_root() -> RepositoryEnvelope {
     commits: minted.commits,
     commit_allocator: minted.commit_allocator,
     checked_out: none,
+    staged: none,
   }
 }
 
@@ -177,6 +179,7 @@ test fn a_fresh_repository_logs_no_commits_yet_rather_than_no_rows() -> Bool {
     commits: [],
     commit_allocator: MintedIdAllocator { next_ordinal: 0 },
     checked_out: none,
+    staged: none,
   }) {
     NoCommitsYet => true
     CommitLogRows { rows: _ } => false
@@ -241,6 +244,7 @@ test fn fully_held_distinguishes_an_unheld_root_from_a_healthy_or_empty_log() ->
       commits: [],
       commit_allocator: MintedIdAllocator { next_ordinal: 0 },
       checked_out: none,
+      staged: none,
     }))
     && !commit_log_is_fully_held(
       log: repository_log(envelope: log_witness_repository_with_unheld_root())

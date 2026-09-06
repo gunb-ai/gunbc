@@ -83,8 +83,8 @@ import extdeps.languages.json.parse {
 }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.harness.harness_backend {
-  HarnessBackendRoster, HarnessRosterServing, HarnessRosterNoneServing,
-  harness_observe_roster, harness_declines_detail,
+  HarnessBackendRoster, HarnessRosterServing, HarnessRosterNoneServing, HarnessRosterUnresolved,
+  harness_observe_roster, harness_declines_detail, harness_roster_unresolved_detail,
 }
 import gunbc.roadmap_dispatch_actuator {
   HostExecArgv,
@@ -1401,6 +1401,8 @@ fn belt_provider_preflight_for_instance(
             step: "harness-backend-roster",
             detail: join(["no harness replica serves ", m, ": ", harness_declines_detail(declined: declined)], ""),
           }
+        HarnessRosterUnresolved { hosts } =>
+          ProviderPreflightRefused { step: "harness-backend-roster", detail: harness_roster_unresolved_detail(hosts: hosts) }
       }
   }
 }
