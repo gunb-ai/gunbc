@@ -1,0 +1,20 @@
+module v2.test.claim.measure_fn_arrow_decl_facts_cost
+
+import v2.std.logic { Bool }
+import v2.std.collection { List }
+import v2.std.text { String }
+import v2.std.integer { Int }
+import v2.std.fn_index { fn_arrow_decl_facts_live }
+import v2.std.algebra { length }
+
+data measurement_pool_roots: List<String> = ["dag", "src/v2"]
+data no_declared_pool_files: List<String> = []
+
+// MEASUREMENT: count of fn-arrow declarations under dag + src/v2.
+// Run with: time claim_executor --source-root dag --source-root src/v2
+//   --entry src/v2/test/claim/measure_fn_arrow_decl_facts_cost_test.dag
+//   --functions measure_decl_count
+// The wall time is the measurement; the decl count is the sanity check.
+test fn measure_decl_count() -> Bool {
+  length(xs: fn_arrow_decl_facts_live(pool_roots: measurement_pool_roots, pool_files: no_declared_pool_files)) > 0
+}
