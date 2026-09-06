@@ -2,7 +2,7 @@ module gunbc.runner_microvm_footprint_probe
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.disposition { Disposition, SingleAuthority }
-import std.measure { ByteSize, byte_size, byte_size_count, Second, second, mebibyte }
+import std.measure { ByteSize, byte_size, byte_size_count, Second, second, mebibyte, mebibyte_to_byte_size }
 
 data runner_microvm_footprint_probe_disposition: Disposition = SingleAuthority
 
@@ -57,10 +57,10 @@ type FootprintSampleOutcome
 // distinguish a flat relationship from a rising one within measurement noise; a 512 MiB to 4096 MiB
 // spread makes the two hypotheses produce visibly different receipts.
 data runner_microvm_footprint_sample_sizes: List<ByteSize> = [
-  mebibyte(count: 512),
-  mebibyte(count: 1024),
-  mebibyte(count: 2048),
-  mebibyte(count: 4096),
+  mebibyte_to_byte_size(m: mebibyte(count: 512)),
+  mebibyte_to_byte_size(m: mebibyte(count: 1024)),
+  mebibyte_to_byte_size(m: mebibyte(count: 2048)),
+  mebibyte_to_byte_size(m: mebibyte(count: 4096)),
 ]
 
 // GNU time's %M IS KILOBYTES, and this is the one place that fact is converted. extdeps.tools.gnu_time

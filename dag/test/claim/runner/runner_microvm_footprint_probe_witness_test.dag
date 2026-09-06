@@ -1,7 +1,7 @@
 module gunbc.test.claim.runner.runner_microvm_footprint_probe_witness_test
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.measure { ByteSize, byte_size, byte_size_count, mebibyte }
+import std.measure { ByteSize, byte_size, byte_size_count, mebibyte, mebibyte_to_byte_size }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.runner_microvm_footprint_probe {
   FootprintInstrument, GnuTimeMaxRss, SystemdMemoryPeak,
@@ -44,17 +44,61 @@ test fn a_receipt_missing_any_size_is_not_complete() -> Bool {
   let unreadable = [sampled(mib: 512, peak_kb: 200000), sampled(mib: 1024, peak_kb: 201000),
                     sampled(mib: 2048, peak_kb: 202000),
                     FootprintMeasurementUnreadable {
-                      guest_memory: mebibyte(count: 4096),
+                      guest_memory: mebibyte_to_byte_size(m: mebibyte(count: 4096)),
                       instrument: GnuTimeMaxRss,
                       cause: "the measurement file was empty",
                     }]
   let refused = [sampled(mib: 512, peak_kb: 200000), sampled(mib: 1024, peak_kb: 201000),
                  sampled(mib: 2048, peak_kb: 202000),
-                 FootprintBootRefused { guest_memory: mebibyte(count: 4096), detail: "vmm exited 1" }]
+                 FootprintBootRefused { guest_memory: mebibyte_to_byte_size(m: mebibyte(count: 4096)), detail: "vmm exited 1" }]
   footprint_receipt_is_complete(outcomes: full)
     && !footprint_receipt_is_complete(outcomes: short)
     && !footprint_receipt_is_complete(outcomes: unreadable)
     && !footprint_receipt_is_complete(outcomes: refused)
+}
+
+// THE PRODUCTION SIZES ARE PINNED IN ABSOLUTE BYTES, and this control exists because the span check
+// beside it provably cannot catch a scale error.
+//
+// This lane already shipped one: mebibyte(count: 4096) assigned into a ByteSize field is accepted and
+// does NOT convert -- the magnitude rides across unchanged -- so the declared sample sizes were
+// 512..4096 BYTES while reading as MiB. std.measure mebibyte_to_byte_size is the conversion, and the
+// type system stops the READ (mebibyte_count on a widened value is a hard error) while permitting the
+// WRITE, so the obvious repair of switching to byte_size_count compiles clean and relabels the same
+// number.
+//
+// The span check asserts largest >= smallest * 4. A UNIFORM unit error preserves every ratio, so it
+// passed identically on bytes and on mebibytes. Only an absolute assertion can see the difference,
+// and until this control the only absolutes in this file were over the witness's OWN fixtures rather
+// than over the list production actually samples.
+//
+// The literals are the specification rather than a measurement copied out of the tree: these are the
+// sizes this probe declares it will sample, so the check is a controlled fixture in DESIGN section 5's
+// sense and not a change detector.
+test fn the_production_sample_sizes_are_the_magnitudes_they_claim() -> Bool {
+  let counts = map(runner_microvm_footprint_sample_sizes, s => byte_size_count(b: s))
+  count(counts) == 4
+    && fold(counts, init: false, f: (found, c) => found || c == 536870912)
+    && fold(counts, init: false, f: (found, c) => found || c == 1073741824)
+    && fold(counts, init: false, f: (found, c) => found || c == 2147483648)
+    && fold(counts, init: false, f: (found, c) => found || c == 4294967296)
+}
+
+// THE EMPTY RECEIPT IS THE VACUOUS BOUNDARY, and this control exists because the predicate is
+// TRUE-SEEDED and would answer complete over a population it never examined.
+//
+// footprint_receipt_is_complete folds with init: true, so an empty outcome list satisfies the fold
+// arm on its own -- the classic universally-quantified check answered by the identity element. What
+// actually refuses today is the count guard beside it, which means that guard is LOAD-BEARING rather
+// than defensive, and it had no control. A future edit that reasonably-looking replaces the pair with
+// the fold alone would make a run that measured NOTHING report a complete relationship, and the
+// reserve would then be declared from an empty receipt.
+//
+// Found by applying merry-bear-25's finding on #10677 -- RuntimeSurfaceHeld deriving from
+// count(findings) == 0 over a caller-supplied list, so a caller who never looked gets Held -- to this
+// module rather than only agreeing with it. Same class, same direction, one file over.
+test fn an_empty_receipt_is_not_complete() -> Bool {
+  !footprint_receipt_is_complete(outcomes: [])
 }
 
 // THIS PROTECTS THE EXPERIMENT, NOT THE CODE, and it is the control most likely to be deleted by
@@ -85,10 +129,10 @@ test fn the_sample_sizes_span_enough_to_discriminate() -> Bool {
 // so the discriminating power is asserted on every run instead of on the day someone remembered to
 // test it.
 test fn the_span_check_rejects_the_collapses_it_exists_to_catch() -> Bool {
-  !sizes_span_enough(sizes: [mebibyte(count: 4096)])
-    && !sizes_span_enough(sizes: [mebibyte(count: 2048), mebibyte(count: 4096)])
-    && !sizes_span_enough(sizes: [mebibyte(count: 2048), mebibyte(count: 3072), mebibyte(count: 4096)])
-    && sizes_span_enough(sizes: [mebibyte(count: 512), mebibyte(count: 1024), mebibyte(count: 4096)])
+  !sizes_span_enough(sizes: [mebibyte_to_byte_size(m: mebibyte(count: 4096))])
+    && !sizes_span_enough(sizes: [mebibyte_to_byte_size(m: mebibyte(count: 2048)), mebibyte_to_byte_size(m: mebibyte(count: 4096))])
+    && !sizes_span_enough(sizes: [mebibyte_to_byte_size(m: mebibyte(count: 2048)), mebibyte_to_byte_size(m: mebibyte(count: 3072)), mebibyte_to_byte_size(m: mebibyte(count: 4096))])
+    && sizes_span_enough(sizes: [mebibyte_to_byte_size(m: mebibyte(count: 512)), mebibyte_to_byte_size(m: mebibyte(count: 1024)), mebibyte_to_byte_size(m: mebibyte(count: 4096))])
 }
 
 // THE FAILING ARMS MUST RENDER THEIR SIZE. A receipt whose failure rows do not say which size failed
@@ -96,10 +140,10 @@ test fn the_span_check_rejects_the_collapses_it_exists_to_catch() -> Bool {
 test fn every_outcome_renders_the_size_it_measured() -> Bool {
   string_contains(s: footprint_sample_text(o: sampled(mib: 2048, peak_kb: 202000)), pattern: "guest_bytes=2147483648")
     && string_contains(
-         s: footprint_sample_text(o: FootprintBootRefused { guest_memory: mebibyte(count: 1024), detail: "vmm exited 1" }),
+         s: footprint_sample_text(o: FootprintBootRefused { guest_memory: mebibyte_to_byte_size(m: mebibyte(count: 1024)), detail: "vmm exited 1" }),
          pattern: "guest_bytes=1073741824")
     && string_contains(
          s: footprint_sample_text(o: FootprintMeasurementUnreadable {
-              guest_memory: mebibyte(count: 512), instrument: SystemdMemoryPeak, cause: "empty" }),
+              guest_memory: mebibyte_to_byte_size(m: mebibyte(count: 512)), instrument: SystemdMemoryPeak, cause: "empty" }),
          pattern: "guest_bytes=536870912")
 }
