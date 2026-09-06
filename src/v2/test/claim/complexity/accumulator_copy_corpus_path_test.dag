@@ -1,0 +1,98 @@
+module v2.test.claim.complexity.accumulator_copy_corpus_path_test
+
+import std.algebra { Cons, Empty }
+import v2.lens.complexity_accumulator_copy.corpus_gate {
+  CorpusFileNotEstablished,
+  CorpusFileRow,
+  CorpusFileScanned,
+  CorpusNoSuspectsObserved,
+  CorpusNotEstablishedObserved,
+  CorpusPopulationBelowFloor,
+  CorpusSuspectObserved,
+  corpus_gate,
+  corpus_rows_for_paths
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE CORPUS PATH'S DISCRIMINATING EVIDENCE, SPLIT HERE BY COST SO IT CAN RUN ON THE FLOOR.
+// Everything in this file reads a five-line fixture or nothing at all, so it is seconds; the
+// corpus-grain witnesses that read real modules are in
+// v2.test.claim.long.accumulator_copy_corpus_census_test and are floor-excluded with their measured
+// cost. The split exists because the floor budgets an ENTRY, not a witness: one twenty-minute
+// member made every other witness in the same file report interrupted_before_verdict, so cheap
+// evidence was being lost to an expensive neighbour rather than to any fault of its own.
+
+fn fixture_rows() -> List<CorpusFileRow> {
+  corpus_rows_for_paths(paths: [
+    "test/fixture_roots/complexity_accumulator_copy/planted_copy.dag",
+    "test/fixture_roots/complexity_accumulator_copy/clean_linear.dag"
+  ])
+}
+
+// TWO PREDICATES OVER THE STANDING, NOT ONE PROJECTION TO A COUNT. An earlier cut answered the
+// suspect count and returned -1 for a subject the ingest could not read, so an unreadable fixture
+// would fail both witnesses rather than satisfying the clean one. The reasoning was right and the
+// carrier was wrong: a sentinel packed into an Int is the same collapse of a typed standing onto a
+// scalar this lane exists to undo, and it is safe only while every caller remembers what -1 means.
+// Each predicate answers its own question and answers FALSE for a not-established subject, which
+// gives the identical guarantee with nothing to remember -- verified by pointing fixture_rows at
+// two absent paths and watching BOTH witnesses go red.
+fn row_has_suspect(row: CorpusFileRow) -> Bool {
+  match row.standing {
+    CorpusFileScanned { suspects: s, refusals: _, causes: _ } => s > 0
+    CorpusFileNotEstablished { cause: _ } => false
+  }
+}
+
+fn row_scanned_without_suspect(row: CorpusFileRow) -> Bool {
+  match row.standing {
+    CorpusFileScanned { suspects: s, refusals: _, causes: _ } => s == 0
+    CorpusFileNotEstablished { cause: _ } => false
+  }
+}
+
+// THE PAIR IS A PAIR ON PURPOSE. The lens already has a planted-source control that hands a String
+// to source_finding_standing, and that one proves the DETECTOR fires. It does not prove the CORPUS
+// path fires, because that path is path -> typed read -> ingest -> row and every step of it is new.
+// These two subjects differ in exactly one authored construction -- the accumulating fold copies its
+// carrier through a registered combiner in one and adds to it in the other -- so a green on both
+// says the path discriminates rather than that it answers a constant.
+//
+// They live under test/fixture_roots/, outside every source root, because the planted subject is
+// deliberately a quadratic and must never be compiled as production source or reached by the corpus
+// population.
+test fn a_planted_copied_accumulator_is_caught_through_the_corpus_path() -> Bool {
+  match fixture_rows() {
+    Cons { head: planted, tail: _ } => row_has_suspect(row: planted)
+    Empty => false
+  }
+}
+
+test fn a_clean_accumulating_fold_stays_clean_through_the_corpus_path() -> Bool {
+  match fixture_rows() {
+    Cons { head: _, tail: Cons { head: clean, tail: _ } } => row_scanned_without_suspect(row: clean)
+    _ => false
+  }
+}
+
+// THE POPULATION FLOOR'S OWN RED CONTROL. Without it the no-suspect arm is reachable by a walk that
+// resolved nothing at all, and an empty question reads as an affirmative answer.
+//
+// THE SUBJECT IS A REAL DIRECTORY HOLDING NO MODULES, NOT AN ABSENT ONE, AND THE FIRST CUT HAD IT
+// WRONG. Pointing this at a path that does not exist does not produce an empty population: the host
+// refuses at root admission (anchor_source_root: "... is not a directory") and unwinds, so the
+// witness PANICKED rather than answering. That refusal is correct -- a mistyped root is a caller
+// defect and should stop the line -- but it means the below-floor arm's red is only authorable from
+// a directory that is present and contributes no modules. docs/ is that subject.
+test fn an_empty_population_is_below_floor_rather_than_clean() -> Bool {
+  match corpus_gate(pool_roots: ["docs"], population_floor: 1) {
+    CorpusPopulationBelowFloor { files: _, floor: _ } => true
+    CorpusNoSuspectsObserved { files: _, refusal_sites: _, refusal_causes: _ } => false
+    CorpusSuspectObserved { paths: _, sites: _ } => false
+    CorpusNotEstablishedObserved { rows: _ } => false
+  }
+}

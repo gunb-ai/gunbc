@@ -4,13 +4,14 @@ import v2.lens.complexity_accumulator_copy.corpus_gate {
   CorpusFileNotEstablished,
   CorpusFileRow,
   CorpusFileScanned,
-  CorpusClean,
+  CorpusNoSuspectsObserved,
   CorpusGateDisposition,
   CorpusNotEstablishedObserved,
   CorpusPopulationBelowFloor,
   CorpusReport,
   CorpusSuspectObserved,
   corpus_gate,
+  corpus_gate_disposition,
   corpus_paths,
   corpus_report,
   corpus_report_from_rows,
@@ -118,7 +119,7 @@ fn subtree_gate() -> CorpusGateDisposition {
 // A SUBTREE WHOSE SUBJECTS THE INGEST CANNOT READ IS NOT A CLEAN SUBTREE, and this witness says so
 // rather than passing. dag/extdeps/filesystem is deliberately the subject: three of its six modules
 // come back not-established under the v2 grammar, which is the reach fact the corpus consumer was
-// built to surface. Asserting CorpusClean here would have required either excluding the subtree or
+// built to surface. Asserting a no-suspect verdict here would have required either excluding the subtree or
 // widening the disposition until unreadable counted as fine, and both are the coverage-by-illusion
 // this file exists to end. The assertion is therefore that the gate REPORTS the unreadable
 // population -- and its failure mode is the one that matters: if the ingest silently started
@@ -126,83 +127,9 @@ fn subtree_gate() -> CorpusGateDisposition {
 test fn corpus_subtree_gate_reports_its_unreadable_population() -> Bool {
   match subtree_gate() {
     CorpusNotEstablishedObserved { rows: _ } => true
-    CorpusClean { files: _ } => false
+    CorpusNoSuspectsObserved { files: _, refusal_sites: _, refusal_causes: _ } => false
     CorpusSuspectObserved { paths: _, sites: _ } => false
     CorpusPopulationBelowFloor { files: _, floor: _ } => false
-  }
-}
-
-// THE POPULATION FLOOR'S OWN RED CONTROL. Without it the gate's clean arm is reachable by a walk
-// that resolved nothing at all, and an empty question reads as an affirmative answer.
-//
-// THE SUBJECT IS A REAL DIRECTORY HOLDING NO MODULES, NOT AN ABSENT ONE, AND THE FIRST CUT HAD IT
-// WRONG. Pointing this at a path that does not exist does not produce an empty population: the host
-// refuses at root admission (anchor_source_root: "... is not a directory") and unwinds, so the
-// witness PANICKED rather than answering. That refusal is correct -- a mistyped root is a caller
-// defect and should stop the line -- but it means the below-floor arm's red is only authorable from
-// a directory that is present and contributes no modules. docs/ is that subject.
-test fn an_empty_population_is_below_floor_rather_than_clean() -> Bool {
-  match corpus_gate(pool_roots: ["docs"], population_floor: 1) {
-    CorpusPopulationBelowFloor { files: _, floor: _ } => true
-    CorpusClean { files: _ } => false
-    CorpusSuspectObserved { paths: _, sites: _ } => false
-    CorpusNotEstablishedObserved { rows: _ } => false
-  }
-}
-
-// THE DISCRIMINATING PAIR FOR THE CORPUS PATH, AND IT IS A PAIR ON PURPOSE. The lens already has a
-// planted-source control that hands a String to source_finding_standing; that one proves the
-// DETECTOR fires. It does not prove the corpus path fires, because the corpus path is
-// path -> typed read -> ingest -> row, and every one of those steps is new. These two subjects
-// differ in exactly one authored construction -- the accumulating fold copies its carrier through a
-// registered combiner in one and adds to it in the other -- so a green on both says the corpus path
-// discriminates rather than that it answers a constant.
-//
-// They live under test/fixture_roots/, outside every source root, because the planted subject is
-// deliberately a quadratic and must never be compiled as production source or reached by the
-// corpus population.
-
-fn fixture_rows() -> List<CorpusFileRow> {
-  corpus_rows_for_paths(paths: [
-    "test/fixture_roots/complexity_accumulator_copy/planted_copy.dag",
-    "test/fixture_roots/complexity_accumulator_copy/clean_linear.dag"
-  ])
-}
-
-// TWO PREDICATES OVER THE STANDING, NOT ONE PROJECTION TO A COUNT. The first cut of this answered
-// the suspect count and returned -1 for a subject the ingest could not read, so that an unreadable
-// fixture would fail both witnesses rather than satisfying the clean one. That reasoning was right
-// and the carrier was wrong: it is a sentinel packed into an Int, which is the same collapse of a
-// typed standing onto a scalar that this whole change exists to undo -- and it only reads as safe
-// while every caller remembers what -1 means. Each predicate below answers its own question and
-// answers FALSE for a not-established subject, which gives the identical guarantee with nothing to
-// remember: an unreadable fixture is neither suspect nor clean, so it fails both witnesses by
-// construction rather than by arithmetic.
-fn row_has_suspect(row: CorpusFileRow) -> Bool {
-  match row.standing {
-    CorpusFileScanned { suspects: s, refusals: _, causes: _ } => s > 0
-    CorpusFileNotEstablished { cause: _ } => false
-  }
-}
-
-fn row_scanned_without_suspect(row: CorpusFileRow) -> Bool {
-  match row.standing {
-    CorpusFileScanned { suspects: s, refusals: _, causes: _ } => s == 0
-    CorpusFileNotEstablished { cause: _ } => false
-  }
-}
-
-test fn a_planted_copied_accumulator_is_caught_through_the_corpus_path() -> Bool {
-  match fixture_rows() {
-    Cons { head: planted, tail: _ } => row_has_suspect(row: planted)
-    Empty => false
-  }
-}
-
-test fn a_clean_accumulating_fold_stays_clean_through_the_corpus_path() -> Bool {
-  match fixture_rows() {
-    Cons { head: _, tail: Cons { head: clean, tail: _ } } => row_scanned_without_suspect(row: clean)
-    _ => false
   }
 }
 
@@ -322,5 +249,37 @@ fn ingested_root_child_labels(path: String) -> String {
           _ => join([acc, "|P"], "")
         }
       })
+  }
+}
+
+// THE ARM THAT USED TO ERASE ITS OWN CENSUS, WITNESSED ON A REAL SUBJECT. Review 61280 found that
+// the no-suspect disposition dropped the refusal counts and causes the report had already computed.
+// A witness that only checked the arm's NAME would have passed before the repair and after it, so
+// this one asserts the payload: a positive refusal count and a non-empty cause census reaching a
+// caller that reads the disposition alone.
+//
+// The subject is chosen because it is real and its residue is already known to the sibling roster,
+// which budgets src/v2/lens/complexity_accumulator_copy/analyze.dag at a nonzero refusal ceiling --
+// the accumulator-threading walk earns honest combiner_unregistered_carrier_reaches refusals from
+// this very lens. So this is not a fixture arranged to have refusals; it is the lens reading its
+// own analyzer and reporting what it cannot decide.
+fn analyzer_disposition() -> CorpusGateDisposition {
+  corpus_gate_disposition(
+    report: corpus_report_from_rows(
+      rows: corpus_rows_for_paths(
+        paths: ["src/v2/lens/complexity_accumulator_copy/analyze.dag"]
+      )
+    ),
+    population_floor: 1
+  )
+}
+
+test fn a_no_suspect_verdict_still_carries_its_refusal_census() -> Bool {
+  match analyzer_disposition() {
+    CorpusNoSuspectsObserved { files: _, refusal_sites: sites, refusal_causes: causes } =>
+      (sites > 0) && (length(xs: causes) > 0)
+    CorpusSuspectObserved { paths: _, sites: _ } => false
+    CorpusNotEstablishedObserved { rows: _ } => false
+    CorpusPopulationBelowFloor { files: _, floor: _ } => false
   }
 }

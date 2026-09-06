@@ -40,11 +40,20 @@ test fn an_unreadable_subject_is_refused_with_its_cause() -> Bool {
 
 // THE POSITIVE CONTROL ON THE SAME PATH. Without it, a read that refused every subject would
 // satisfy the claim above while establishing nothing -- the arm would be permanently green for the
-// wrong reason. This subject is a file the lens is already known to read and find clean (it is the
-// roster's own cost-model row), so a green here says the typed read still reaches real bytes.
+// wrong reason. A green here says the typed read still reaches real bytes and the lens still
+// answers over them.
+//
+// THE SUBJECT IS A FIVE-LINE FIXTURE, AND THAT IS A COST DECISION MADE FROM MEASUREMENT. It pointed
+// at a real 186-line production module first; that cost about fifty seconds and the required floor
+// reported it interrupted_before_verdict, so the control was being lost to its own price. Ingest
+// cost scales with subject size and does so superlinearly across this lane -- five lines is
+// seconds, 186 lines is tens of seconds, 874 lines is over twenty minutes -- so a control whose
+// entire claim is "a readable subject still reaches the lens" has no business buying a large one.
+// The sanctioned clean fixture establishes the same thing and stays affordable to the lane that
+// runs it on every push.
 test fn a_readable_subject_still_reaches_the_lens() -> Bool {
   match file_gate_disposition(
-    path: "src/v2/lens/complexity_accumulator_copy.dag",
+    path: "test/fixture_roots/complexity_accumulator_copy/clean_linear.dag",
     refusal_ceiling: 0
   ) {
     GateClean => true

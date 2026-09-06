@@ -222,11 +222,35 @@ fn corpus_report(pool_roots: List<String>) -> CorpusReport {
 }
 
 // AN EMPTY POPULATION IS ITS OWN ARM. Without it a walk that resolved no modules at all -- a wrong
-// pool root, a producer outage -- answers CorpusClean, which is the affirmative "nothing wrong
+// pool root, a producer outage -- answers the no-suspect arm, which is the affirmative "nothing wrong
 // here" for a run that asked nothing.
 
+// THE NO-SUSPECT ARM CARRIES THE RESIDUE, AND IT IS NOT NAMED "CLEAN". Review 61280 read this arm
+// as discarding the refusal census and asked for a refusal disposition before the corpus may be
+// declared clean. Half of that is right and the half that is not is governed by a standing ruling,
+// so both halves are written down here rather than settled by preference.
+//
+// REFUSALS DO NOT GATE, and that is not this module's choice. The operator ruling of 2026-07-13,
+// carried in this lens's own compile_gate_law, splits the Finding coproduct on the suspect/refusal
+// axis: a Poly2Suspect rejects, while Unclassifiable causes are the undecidable residue that rides
+// the accepted channel -- "typed per-cause, located, counted, NEVER GATING AND NEVER SILENTLY
+// DROPPED". Gating here would also be wrong on the facts rather than merely out of order: refusals
+// are the EXPECTED state of a real subject, which is why the roster gate budgets them per file with
+// ceilings rather than forbidding them, so a corpus arm that refused on refusal_sites > 0 would
+// refuse essentially every real population and convey nothing by doing it.
+//
+// NEVER SILENTLY DROPPED IS THE CLAUSE THIS ARM BROKE. corpus_report computes refusal_sites and
+// refusal_causes and the disposition threw both away, so a caller reading only the disposition could
+// not tell a population with no refusals from one with hundreds -- the collapse of a typed standing
+// onto a smaller one that this module exists to stop, committed at its own last step. The arm now
+// carries the census, and it is renamed: "clean" asserted more than was established, and the honest
+// name says exactly what was found -- no suspects, with this residue beside it.
 type CorpusGateDisposition
-  = CorpusClean { files: Int }
+  = CorpusNoSuspectsObserved {
+      files: Int,
+      refusal_sites: Int,
+      refusal_causes: List<RefusalCauseCount>
+    }
   | CorpusSuspectObserved { paths: List<String>, sites: Int }
   | CorpusNotEstablishedObserved { rows: List<CorpusFileRow> }
   | CorpusPopulationBelowFloor { files: Int, floor: Int }
@@ -242,7 +266,12 @@ fn corpus_gate_disposition(report: CorpusReport, population_floor: Int) -> Corpu
         match report.not_established {
           Cons { head: _, tail: _ } =>
             CorpusNotEstablishedObserved { rows: report.not_established }
-          Empty => CorpusClean { files: report.files }
+          Empty =>
+            CorpusNoSuspectsObserved {
+              files: report.files,
+              refusal_sites: report.refusal_sites,
+              refusal_causes: report.refusal_causes
+            }
         }
     }
   }
