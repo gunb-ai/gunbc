@@ -1,13 +1,13 @@
-module test.claim.spark.vllm_engine_incarnation_witness
+module test.claim.spark.vllm_serving_launch_witness
 
 import std.types { Bool, String, NonEmptyStr, EpochSecs }
 import std.content_hash { ContentHash, Sha256Hash, Sha1Hash, Sha256Digest, Sha1Digest, Sha256DigestHex, Sha1DigestHex }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
-import gunbc.spark.vllm_engine_incarnation {
-  VllmEngineIncarnation, vllm_engine_incarnation,
-  IncarnationJoin, SameIncarnation, DifferentIncarnation, IncarnationContradiction,
-  same_incarnation, join_is_admissible, incarnation_join_wire,
+import gunbc.spark.vllm_serving_launch {
+  VllmServingLaunch, vllm_engine_incarnation,
+  LaunchJoin, SameLaunch, DifferentLaunch, LaunchContradiction,
+  same_launch, join_is_admissible, launch_join_wire,
 }
 
 fn w_sha256(hex: String) -> ContentHash {
@@ -25,8 +25,8 @@ data w_unit: String = "333333333333333333333333333333333333333333333333333333333
 // The three launches the group A head actually produced on 2026-09-05 differ only by invocation:
 // one rendered unit, one image, three engine cores with different KV. That is the shape this
 // witness fixtures.
-fn w_launch(invocation: String, container: String, exe: String, started: EpochSecs) -> VllmEngineIncarnation {
-  vllm_engine_incarnation(
+fn w_launch(invocation: String, container: String, exe: String, started: EpochSecs) -> VllmServingLaunch {
+  vllm_serving_launch(
     group: FabricGroupA,
     head: spark_pair_serving_head(group: FabricGroupA),
     systemd_invocation: invocation as NonEmptyStr,
@@ -37,7 +37,7 @@ fn w_launch(invocation: String, container: String, exe: String, started: EpochSe
   )
 }
 
-fn w_first() -> VllmEngineIncarnation {
+fn w_first() -> VllmServingLaunch {
   w_launch(invocation: "inv-16-36", container: "gunbc-spark-pair", exe: w_exe_a, started: 1788000000)
 }
 
@@ -48,20 +48,20 @@ fn w_first() -> VllmEngineIncarnation {
 // against a dead engine.
 test fn two_launches_of_one_unit_are_not_one_incarnation() -> Bool {
   let second = w_launch(invocation: "inv-20-43", container: "gunbc-spark-pair", exe: w_exe_a, started: 1788000000)
-  (match same_incarnation(a: w_first(), b: second) {
-     DifferentIncarnation { left: l, right: r } => (l as String) == "inv-16-36" && (r as String) == "inv-20-43"
+  (match same_launch(a: w_first(), b: second) {
+     DifferentLaunch { left: l, right: r } => (l as String) == "inv-16-36" && (r as String) == "inv-20-43"
      _ => false
    })
-    && !join_is_admissible(j: same_incarnation(a: w_first(), b: second))
-    && (match same_incarnation(a: w_first(), b: w_first()) { SameIncarnation => true  _ => false })
-    && join_is_admissible(j: same_incarnation(a: w_first(), b: w_first()))
+    && !join_is_admissible(j: same_launch(a: w_first(), b: second))
+    && (match same_launch(a: w_first(), b: w_first()) { SameLaunch => true  _ => false })
+    && join_is_admissible(j: same_launch(a: w_first(), b: w_first()))
 }
 
 // Same invocation, disagreeing field: that is not turnover, it is two observers contradicting each
 // other about one launch, and it gets its own arm so it cannot be actioned as a restart.
 test fn one_invocation_with_a_disagreeing_field_is_a_contradiction_not_turnover() -> Bool {
   let rebuilt = w_launch(invocation: "inv-16-36", container: "gunbc-spark-pair", exe: w_exe_b, started: 1788000000)
-  let moved = vllm_engine_incarnation(
+  let moved = vllm_serving_launch(
     group: FabricGroupB,
     head: spark_pair_serving_head(group: FabricGroupA),
     systemd_invocation: "inv-16-36" as NonEmptyStr,
@@ -70,15 +70,15 @@ test fn one_invocation_with_a_disagreeing_field_is_a_contradiction_not_turnover(
     unit_digest: w_sha256(hex: w_unit),
     started_at: 1788000000,
   )
-  (match same_incarnation(a: w_first(), b: rebuilt) {
-     IncarnationContradiction { invocation: i, field: f } => (i as String) == "inv-16-36" && (f as String) == "executable_digest"
+  (match same_launch(a: w_first(), b: rebuilt) {
+     LaunchContradiction { invocation: i, field: f } => (i as String) == "inv-16-36" && (f as String) == "executable_digest"
      _ => false
    })
-    && (match same_incarnation(a: w_first(), b: moved) {
-          IncarnationContradiction { invocation: _, field: f } => (f as String) == "group"
+    && (match same_launch(a: w_first(), b: moved) {
+          LaunchContradiction { invocation: _, field: f } => (f as String) == "group"
           _ => false
         })
-    && !join_is_admissible(j: same_incarnation(a: w_first(), b: rebuilt))
+    && !join_is_admissible(j: same_launch(a: w_first(), b: rebuilt))
 }
 
 // AN INCOMPARABLE DIGEST PAIR IS NOT A DIFFERENCE. Two observers that hashed one launch under
@@ -87,7 +87,7 @@ test fn one_invocation_with_a_disagreeing_field_is_a_contradiction_not_turnover(
 // reintroduce the collapse. The refusal names the incomparability so the observer defect is
 // legible rather than reading as a rebuild.
 test fn cross_family_digests_refuse_as_incomparable_rather_than_reading_as_a_rebuild() -> Bool {
-  let other_family = vllm_engine_incarnation(
+  let other_family = vllm_serving_launch(
     group: FabricGroupA,
     head: spark_pair_serving_head(group: FabricGroupA),
     systemd_invocation: "inv-16-36" as NonEmptyStr,
@@ -96,8 +96,8 @@ test fn cross_family_digests_refuse_as_incomparable_rather_than_reading_as_a_reb
     unit_digest: w_sha256(hex: w_unit),
     started_at: 1788000000,
   )
-  match same_incarnation(a: w_first(), b: other_family) {
-    IncarnationContradiction { invocation: _, field: f } =>
+  match same_launch(a: w_first(), b: other_family) {
+    LaunchContradiction { invocation: _, field: f } =>
       string_contains(s: f as String, pattern: "executable_digest")
         && string_contains(s: f as String, pattern: "incomparable")
     _ => false
@@ -106,6 +106,6 @@ test fn cross_family_digests_refuse_as_incomparable_rather_than_reading_as_a_reb
 
 test fn the_join_wire_names_both_invocations() -> Bool {
   let second = w_launch(invocation: "inv-20-43", container: "gunbc-spark-pair", exe: w_exe_a, started: 1788000000)
-  string_contains(s: incarnation_join_wire(j: same_incarnation(a: w_first(), b: second)), pattern: "inv-16-36")
-    && string_contains(s: incarnation_join_wire(j: same_incarnation(a: w_first(), b: second)), pattern: "inv-20-43")
+  string_contains(s: launch_join_wire(j: same_launch(a: w_first(), b: second)), pattern: "inv-16-36")
+    && string_contains(s: launch_join_wire(j: same_launch(a: w_first(), b: second)), pattern: "inv-20-43")
 }

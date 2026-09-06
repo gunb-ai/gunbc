@@ -1,4 +1,4 @@
-module gunbc.spark.vllm_engine_incarnation
+module gunbc.spark.vllm_serving_launch
 
 import std.types { Bool, String, NonEmptyStr, List, EpochSecs }
 import v2.std.optional { Present, Absent }
@@ -31,7 +31,7 @@ import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
 // The identity of one engine launch. Every field is an OBSERVED fact about that launch; nothing is
 // derived from the desired unit, because the desired unit is exactly what fails to distinguish two
 // launches of itself.
-type VllmEngineIncarnation sole_constructor {
+type VllmServingLaunch sole_constructor {
   group: FabricGroup
   head: HostIdentity
   systemd_invocation: NonEmptyStr
@@ -41,7 +41,7 @@ type VllmEngineIncarnation sole_constructor {
   started_at: EpochSecs
 }
 
-fn vllm_engine_incarnation(
+fn vllm_serving_launch(
   group: FabricGroup,
   head: HostIdentity,
   systemd_invocation: NonEmptyStr,
@@ -49,8 +49,8 @@ fn vllm_engine_incarnation(
   executable_digest: ContentHash,
   unit_digest: ContentHash,
   started_at: EpochSecs,
-) -> VllmEngineIncarnation {
-  VllmEngineIncarnation {
+) -> VllmServingLaunch {
+  VllmServingLaunch {
     group: group,
     head: head,
     systemd_invocation: systemd_invocation,
@@ -65,10 +65,10 @@ fn vllm_engine_incarnation(
 //
 // Every join between two observations goes through this. The expression it exists to displace is
 // `a.group == b.group`, which reads as an identity test and is a co-location test.
-type IncarnationJoin
-  = SameIncarnation
-  | DifferentIncarnation { left: NonEmptyStr, right: NonEmptyStr }
-  | IncarnationContradiction { invocation: NonEmptyStr, field: NonEmptyStr }
+type LaunchJoin
+  = SameLaunch
+  | DifferentLaunch { left: NonEmptyStr, right: NonEmptyStr }
+  | LaunchContradiction { invocation: NonEmptyStr, field: NonEmptyStr }
 
 // THE CROSS-FAMILY ARM IS A CONTRADICTION, NOT A DISAGREEMENT. std.content_hash refuses to collapse
 // a cross-family pair into a silent false precisely so callers cannot read "I could not compare
@@ -109,7 +109,7 @@ fn digest_agreement_row(field: NonEmptyStr, agreement: DigestAgreement) -> Field
   }
 }
 
-fn agreement_rows(a: VllmEngineIncarnation, b: VllmEngineIncarnation) -> List<FieldAgreement> {
+fn agreement_rows(a: VllmServingLaunch, b: VllmServingLaunch) -> List<FieldAgreement> {
   [
     field_agreement(field: "container_id" as NonEmptyStr, agrees: (a.container_id as String) == (b.container_id as String)),
     digest_agreement_row(field: "executable_digest" as NonEmptyStr, agreement: digests_agree(left: a.executable_digest, right: b.executable_digest)),
@@ -119,14 +119,14 @@ fn agreement_rows(a: VllmEngineIncarnation, b: VllmEngineIncarnation) -> List<Fi
   ]
 }
 
-fn contradiction_of_row(invocation: NonEmptyStr, row: FieldAgreement) -> IncarnationJoin {
+fn contradiction_of_row(invocation: NonEmptyStr, row: FieldAgreement) -> LaunchJoin {
   if row.incomparable {
-    IncarnationContradiction {
+    LaunchContradiction {
       invocation: invocation,
       field: join([row.field as String, " (the digest families are incomparable, so the two observers cannot be joined at all)"], "") as NonEmptyStr,
     }
   } else {
-    IncarnationContradiction { invocation: invocation, field: row.field }
+    LaunchContradiction { invocation: invocation, field: row.field }
   }
 }
 
@@ -136,39 +136,39 @@ fn contradiction_of_row(invocation: NonEmptyStr, row: FieldAgreement) -> Incarna
 // under the same name shares the name. A same-invocation pair therefore still checks the rest: if
 // the invocation agrees and a field does not, the two observations disagree about what they watched,
 // and that is a contradiction to surface rather than a match to report.
-fn same_incarnation(a: VllmEngineIncarnation, b: VllmEngineIncarnation) -> IncarnationJoin {
+fn same_launch(a: VllmServingLaunch, b: VllmServingLaunch) -> LaunchJoin {
   if (a.systemd_invocation as String) != (b.systemd_invocation as String) {
-    DifferentIncarnation { left: a.systemd_invocation, right: b.systemd_invocation }
+    DifferentLaunch { left: a.systemd_invocation, right: b.systemd_invocation }
   } else {
     match first(filter(agreement_rows(a: a, b: b), r => !r.agrees)) {
-      Absent => SameIncarnation
+      Absent => SameLaunch
       Present { value: row } => contradiction_of_row(invocation: a.systemd_invocation, row: row)
     }
   }
 }
 
-// A join is admissible ONLY on SameIncarnation. The contradiction arm is deliberately NOT folded
+// A join is admissible ONLY on SameLaunch. The contradiction arm is deliberately NOT folded
 // into the different arm: "these are two launches" and "these two readings disagree about one
 // launch" call for different action -- the first is ordinary turnover, the second means an observer
 // is wrong and no reading from either side should be trusted until that is resolved.
-fn join_is_admissible(j: IncarnationJoin) -> Bool {
+fn join_is_admissible(j: LaunchJoin) -> Bool {
   match j {
-    SameIncarnation => true
-    DifferentIncarnation { left: _, right: _ } => false
-    IncarnationContradiction { invocation: _, field: _ } => false
+    SameLaunch => true
+    DifferentLaunch { left: _, right: _ } => false
+    LaunchContradiction { invocation: _, field: _ } => false
   }
 }
 
-fn incarnation_join_wire(j: IncarnationJoin) -> String {
+fn launch_join_wire(j: LaunchJoin) -> String {
   match j {
-    SameIncarnation => "same-incarnation"
-    DifferentIncarnation { left: l, right: r } =>
+    SameLaunch => "same-incarnation"
+    DifferentLaunch { left: l, right: r } =>
       join(["different-incarnation: ", l as String, " vs ", r as String], "")
-    IncarnationContradiction { invocation: i, field: f } =>
+    LaunchContradiction { invocation: i, field: f } =>
       join(["incarnation-contradiction: two observations of ", i as String, " disagree on ", f as String], "")
   }
 }
 
-fn incarnation_wire(i: VllmEngineIncarnation) -> String {
+fn launch_wire(i: VllmServingLaunch) -> String {
   join([fabric_group_wire(g: i.group) as String, "@", i.systemd_invocation as String], "")
 }
