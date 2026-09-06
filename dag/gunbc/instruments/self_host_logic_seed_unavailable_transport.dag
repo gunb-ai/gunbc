@@ -128,11 +128,11 @@ fn slbu_cargo_toml(root: String) -> String {
 // The check scans what cargo actually builds — the final src/ tree with the transport's
 // own main.rs in place — not an intermediate tree from the emit step alone.
 //
-// Temp-directory cleanup is sequenced the same way: `seq` is derived from `verdict`, and
-// the cleanup Remove calls consume `seq`. On any scheduling substrate (positional or
-// dataflow), cleanup cannot evaluate before `verdict` is computed, because `seq` does not
-// exist until `verdict` produces it. The cleanup is unconditional — seq is always true —
-// but its computation is structurally ordered by the dependency.
+// Temp-directory cleanup follows verdict in declaration order and the results are ANDed
+// into the receipt — matching the standard pattern used by emit_host_transport and
+// namespace_import_closure_behavioral_transport. Cleanups always evaluate because they
+// appear in the return expression; they cannot evaluate before verdict because the let
+// bindings are declared after verdict and this substrate evaluates let bindings in order.
 fn slbu_seed_unavailable_receipt() -> Bool {
   let root = git.Inspect.Toplevel()
   let logic_read = Filesystem.Read(path: slbu_repo_path(root: root.path, rel: slbu_logic_source_rel))
