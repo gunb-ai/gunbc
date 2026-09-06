@@ -31,6 +31,7 @@ import extdeps.ssh.client_options {
   ConnectTimeout,
 }
 import gunbc.fleet_host_key_enrollment { KnownHostKeyRow, fleet_host_key_enrollments, known_hosts_line, host_key_provenance_label }
+import gunbc.spark.fabric_reach { fabric_rail_known_host_rows }
 
 // THE TRUST ANCHOR AN SSH INVOCATION IS VERIFIED AGAINST, carried as a value rather than left as
 // ambient host state.
@@ -199,12 +200,19 @@ fn known_hosts_endpoint_conflict(rows: List<KnownHostKeyRow>) -> String? {
   })
 }
 
+// THE ANCHORED SET IS THE ENROLLMENTS PLUS THE SAME KEYS AT THE FABRIC RAIL ADDRESSES
+// (gunbc.spark.fabric_reach): a leg that reaches a Spark over the rail matches the same pinned key
+// at a second endpoint, so neither path is ever trust-on-first-use.
+fn fleet_known_hosts_rows() -> List<KnownHostKeyRow> {
+  concat(fleet_host_key_enrollments, fabric_rail_known_host_rows())
+}
+
 fn fleet_known_hosts_fragment() -> String {
-  canonical_known_hosts_fragment(rows: fleet_host_key_enrollments)
+  canonical_known_hosts_fragment(rows: fleet_known_hosts_rows())
 }
 
 fn fleet_known_hosts_registry_identity() -> ContentHash {
-  canonical_known_hosts_identity(rows: fleet_host_key_enrollments)
+  canonical_known_hosts_identity(rows: fleet_known_hosts_rows())
 }
 
 // The filename carries the registry digest, so the path is a claim the readback then verifies.
@@ -233,12 +241,12 @@ fn fleet_known_hosts_anchor_path(attempt: FleetSshAttemptIdentity) -> NonEmptySt
 func materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> KnownHostsMaterializationOutcome
   uses net: Network
 {
-  if length(fleet_host_key_enrollments) == 0 {
+  if length(fleet_known_hosts_rows()) == 0 {
     KnownHostsRefused {
       first: "known-hosts materialization refused: the enrollment registry is empty, so there is no host key to anchor to and every fleet SSH leg would be unverified",
       more: [],
     }
-  } else { match known_hosts_endpoint_conflict(rows: fleet_host_key_enrollments) {
+  } else { match known_hosts_endpoint_conflict(rows: fleet_known_hosts_rows()) {
     Present { value: conflict } => KnownHostsRefused {
       first: join(["known-hosts materialization refused: ", conflict], ""),
       more: [],
@@ -651,6 +659,53 @@ fn portable_remote_words_strings(words: PortableRemoteWords) -> List<String> {
 // is derived here from the context -- trust from the anchor, credential from the binding, ambient
 // suppression unconditionally -- and the principal is projected to an explicit User option rather
 // than joined into the destination, so the account being tested is a modeled field rather than text.
+// THE PASSWORD SESSION SHARES THE TRUST ANCHOR AND NOTHING ELSE WITH THE KEY SESSION. First contact
+// with a unit still on its setup credential has no fleet key on the far side to offer, so the
+// administrator legs authenticate with the administrator's password: the same pinned known_hosts
+// options, then password-only authentication with BatchMode off so sshpass can answer the prompt.
+// The two bootstrap runs that looked like a credential problem (srv9 33951697853, srv11
+// 33952611590) were this: the key session was offered to a host that had never seen the key.
+fn fleet_ssh_password_client_options(
+  trust: List<SshClientOption>,
+  principal: NonEmptyStr,
+) -> List<SshClientOption> {
+  concat(trust, [
+    PreferredAuthentications { methods: "password,keyboard-interactive" as NonEmptyStr },
+    User { name: principal },
+    BatchMode { enabled: false },
+    ConnectTimeout { seconds: second(count: 10) },
+  ])
+}
+
+// The password session needs only the trust anchor, so a caller holding no fleet key (the first
+// contact, or an apply run from an operator position) shapes it from the policy alone.
+fn shape_fleet_ssh_password_exec_trusting(
+  trust: FleetOpenSshTrustPolicy,
+  target: SshTarget,
+  words: PortableRemoteWords,
+) -> List<String> {
+  let config_suppression = openssh_suppress_ambient_configuration_options()
+  let derived = fleet_ssh_password_client_options(
+    trust: fleet_openssh_trust_options(policy: trust),
+    principal: target.principal,
+  )
+  concat(
+    concat(
+      flat_map(config_suppression, o => serialize_ssh_config_file_flag(option: o)),
+      serialize_ssh_client_options(options: derived),
+    ),
+    concat([target.endpoint as String, "--"], portable_remote_words_strings(words: words)),
+  )
+}
+
+fn shape_fleet_ssh_password_exec(
+  context: FleetSshExecutionContext,
+  target: SshTarget,
+  words: PortableRemoteWords,
+) -> List<String> {
+  shape_fleet_ssh_password_exec_trusting(trust: context.trust, target: target, words: words)
+}
+
 fn shape_fleet_ssh_exec(
   context: FleetSshExecutionContext,
   target: SshTarget,

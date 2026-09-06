@@ -89,6 +89,8 @@ import gunbc.scm.checkout {
   CheckoutSnapshotIsAuthoredSource,
   CheckoutSnapshotIsSemanticNode,
   CheckoutCorpusUnrecoverable,
+  CheckoutWouldDiscardStagedWork,
+  CheckoutCandidateUnreadable,
   CorpusEntrySourceMissing,
   CorpusEntrySourceIsSemanticNode,
   CorpusEntrySourceIsCorpusManifest,
@@ -128,6 +130,7 @@ fn scm_ck_repository_with_store(store: ObjectStore) -> RepositoryEnvelope {
     commits: [],
     commit_allocator: MintedIdAllocator { next_ordinal: 0 },
     checked_out: none,
+    staged: none,
   }
 }
 
@@ -199,9 +202,13 @@ test fn scm_ck_checking_out_a_commit_positions_the_repository_at_it() -> Bool {
       }
     CheckoutReferenceUnresolved { reference: _ } => false
     CheckoutSnapshotMissingFromStore { reference: _, root: _ } => false
+    CheckoutWouldDiscardStagedWork { reference: _, candidate: _, committed: _ } => false
+    CheckoutCandidateUnreadable { reference: _, cause: _ } => false
     CheckoutSnapshotIsAuthoredSource { reference: _, root: _ } => false
     CheckoutSnapshotIsSemanticNode { reference: _, root: _ } => false
     CheckoutCorpusUnrecoverable { reference: _, cause: _ } => false
+    CheckoutWouldDiscardStagedWork { reference: _, candidate: _, committed: _ } => false
+    CheckoutCandidateUnreadable { reference: _, cause: _ } => false
   }
 }
 
@@ -217,9 +224,13 @@ test fn scm_ck_checkout_leaves_its_argument_unpositioned() -> Bool {
       }
     CheckoutReferenceUnresolved { reference: _ } => false
     CheckoutSnapshotMissingFromStore { reference: _, root: _ } => false
+    CheckoutWouldDiscardStagedWork { reference: _, candidate: _, committed: _ } => false
+    CheckoutCandidateUnreadable { reference: _, cause: _ } => false
     CheckoutSnapshotIsAuthoredSource { reference: _, root: _ } => false
     CheckoutSnapshotIsSemanticNode { reference: _, root: _ } => false
     CheckoutCorpusUnrecoverable { reference: _, cause: _ } => false
+    CheckoutWouldDiscardStagedWork { reference: _, candidate: _, committed: _ } => false
+    CheckoutCandidateUnreadable { reference: _, cause: _ } => false
   }
 }
 
@@ -231,9 +242,13 @@ test fn scm_ck_a_reference_naming_no_commit_is_unresolved() -> Bool {
     CheckoutReferenceUnresolved { reference: r } => r == scm_ck_ref(ordinal: 7)
     RepositoryCheckedOut { repository: _, corpus: _ } => false
     CheckoutSnapshotMissingFromStore { reference: _, root: _ } => false
+    CheckoutWouldDiscardStagedWork { reference: _, candidate: _, committed: _ } => false
+    CheckoutCandidateUnreadable { reference: _, cause: _ } => false
     CheckoutSnapshotIsAuthoredSource { reference: _, root: _ } => false
     CheckoutSnapshotIsSemanticNode { reference: _, root: _ } => false
     CheckoutCorpusUnrecoverable { reference: _, cause: _ } => false
+    CheckoutWouldDiscardStagedWork { reference: _, candidate: _, committed: _ } => false
+    CheckoutCandidateUnreadable { reference: _, cause: _ } => false
   }
 }
 
@@ -253,6 +268,7 @@ fn scm_ck_lost_object_repository() -> RepositoryEnvelope {
     commits: minted.commits,
     commit_allocator: minted.commit_allocator,
     checked_out: none,
+    staged: none,
   }
 }
 
@@ -267,6 +283,8 @@ test fn scm_ck_a_lost_object_is_the_stores_fact_not_the_callers() -> Bool {
     CheckoutSnapshotIsAuthoredSource { reference: _, root: _ } => false
     CheckoutSnapshotIsSemanticNode { reference: _, root: _ } => false
     CheckoutCorpusUnrecoverable { reference: _, cause: _ } => false
+    CheckoutWouldDiscardStagedWork { reference: _, candidate: _, committed: _ } => false
+    CheckoutCandidateUnreadable { reference: _, cause: _ } => false
     RepositoryCheckedOut { repository: _, corpus: _ } => false
   }
 }
@@ -318,6 +336,8 @@ test fn scm_ck_a_held_snapshot_with_an_absent_source_is_unrecoverable_not_missin
              CorpusEntrySourceIsCorpusManifest { path: _, source: _ } => false
            }
     CheckoutSnapshotMissingFromStore { reference: _, root: _ } => false
+    CheckoutWouldDiscardStagedWork { reference: _, candidate: _, committed: _ } => false
+    CheckoutCandidateUnreadable { reference: _, cause: _ } => false
     CheckoutReferenceUnresolved { reference: _ } => false
     CheckoutSnapshotIsAuthoredSource { reference: _, root: _ } => false
     CheckoutSnapshotIsSemanticNode { reference: _, root: _ } => false
@@ -352,6 +372,7 @@ fn scm_ck_truncated_history_repository() -> RepositoryEnvelope {
         commits: [child_commit],
         commit_allocator: with_child.commit_allocator,
         checked_out: none,
+        staged: none,
       }
   }
 }
@@ -366,9 +387,13 @@ test fn scm_ck_a_commit_with_a_missing_parent_still_checks_out() -> Bool {
     RepositoryCheckedOut { repository: _, corpus: _ } => true
     CheckoutReferenceUnresolved { reference: _ } => false
     CheckoutSnapshotMissingFromStore { reference: _, root: _ } => false
+    CheckoutWouldDiscardStagedWork { reference: _, candidate: _, committed: _ } => false
+    CheckoutCandidateUnreadable { reference: _, cause: _ } => false
     CheckoutSnapshotIsAuthoredSource { reference: _, root: _ } => false
     CheckoutSnapshotIsSemanticNode { reference: _, root: _ } => false
     CheckoutCorpusUnrecoverable { reference: _, cause: _ } => false
+    CheckoutWouldDiscardStagedWork { reference: _, candidate: _, committed: _ } => false
+    CheckoutCandidateUnreadable { reference: _, cause: _ } => false
   }
 }
 
@@ -420,7 +445,7 @@ test fn scm_ck_checking_out_the_second_of_two_shared_root_commits_reports_its_ow
         envelope: r,
         pending: Proposal { requirements: [], dependencies: [] },
       ) {
-        RepositoryStatus { checkout: co, commit_count: _, staged: _ } =>
+        RepositoryStatus { checkout: co, commit_count: _, staged: _, corpus: _ } =>
           match co {
             CheckedOutCommit { root: _, message: m } => m == "SECOND"
             NothingCheckedOut => false
@@ -429,9 +454,13 @@ test fn scm_ck_checking_out_the_second_of_two_shared_root_commits_reports_its_ow
       }
     CheckoutReferenceUnresolved { reference: _ } => false
     CheckoutSnapshotMissingFromStore { reference: _, root: _ } => false
+    CheckoutWouldDiscardStagedWork { reference: _, candidate: _, committed: _ } => false
+    CheckoutCandidateUnreadable { reference: _, cause: _ } => false
     CheckoutSnapshotIsAuthoredSource { reference: _, root: _ } => false
     CheckoutSnapshotIsSemanticNode { reference: _, root: _ } => false
     CheckoutCorpusUnrecoverable { reference: _, cause: _ } => false
+    CheckoutWouldDiscardStagedWork { reference: _, candidate: _, committed: _ } => false
+    CheckoutCandidateUnreadable { reference: _, cause: _ } => false
   }
 }
 
@@ -445,7 +474,7 @@ test fn scm_ck_checking_out_the_first_of_two_shared_root_commits_reports_its_own
         envelope: r,
         pending: Proposal { requirements: [], dependencies: [] },
       ) {
-        RepositoryStatus { checkout: co, commit_count: _, staged: _ } =>
+        RepositoryStatus { checkout: co, commit_count: _, staged: _, corpus: _ } =>
           match co {
             CheckedOutCommit { root: _, message: m } => m == "FIRST"
             NothingCheckedOut => false
@@ -454,9 +483,13 @@ test fn scm_ck_checking_out_the_first_of_two_shared_root_commits_reports_its_own
       }
     CheckoutReferenceUnresolved { reference: _ } => false
     CheckoutSnapshotMissingFromStore { reference: _, root: _ } => false
+    CheckoutWouldDiscardStagedWork { reference: _, candidate: _, committed: _ } => false
+    CheckoutCandidateUnreadable { reference: _, cause: _ } => false
     CheckoutSnapshotIsAuthoredSource { reference: _, root: _ } => false
     CheckoutSnapshotIsSemanticNode { reference: _, root: _ } => false
     CheckoutCorpusUnrecoverable { reference: _, cause: _ } => false
+    CheckoutWouldDiscardStagedWork { reference: _, candidate: _, committed: _ } => false
+    CheckoutCandidateUnreadable { reference: _, cause: _ } => false
   }
 }
 
@@ -533,9 +566,13 @@ test fn scm_ck_a_successful_checkout_recovers_every_authored_file_by_content() -
           == ["", "module { ) unparseable <<<", "module ok"]
     CheckoutReferenceUnresolved { reference: _ } => false
     CheckoutSnapshotMissingFromStore { reference: _, root: _ } => false
+    CheckoutWouldDiscardStagedWork { reference: _, candidate: _, committed: _ } => false
+    CheckoutCandidateUnreadable { reference: _, cause: _ } => false
     CheckoutSnapshotIsAuthoredSource { reference: _, root: _ } => false
     CheckoutSnapshotIsSemanticNode { reference: _, root: _ } => false
     CheckoutCorpusUnrecoverable { reference: _, cause: _ } => false
+    CheckoutWouldDiscardStagedWork { reference: _, candidate: _, committed: _ } => false
+    CheckoutCandidateUnreadable { reference: _, cause: _ } => false
   }
 }
 
@@ -623,6 +660,7 @@ test fn scm_ck_a_partial_snapshot_refuses_then_recovers_once_its_source_arrives(
         commits: decoded.commits,
         commit_allocator: decoded.commit_allocator,
         checked_out: decoded.checked_out,
+        staged: none,
       }
       match checkout_repository_at(repo: decoded, reference: scm_ck_ref(ordinal: 0)) {
         CheckoutCorpusUnrecoverable { reference: r, cause: cause } =>
@@ -734,6 +772,8 @@ test fn scm_ck_a_gap_after_recoverable_entries_refuses_rather_than_returning_the
     RepositoryCheckedOut { repository: _, corpus: _ } => false
     CheckoutReferenceUnresolved { reference: _ } => false
     CheckoutSnapshotMissingFromStore { reference: _, root: _ } => false
+    CheckoutWouldDiscardStagedWork { reference: _, candidate: _, committed: _ } => false
+    CheckoutCandidateUnreadable { reference: _, cause: _ } => false
     CheckoutSnapshotIsAuthoredSource { reference: _, root: _ } => false
     CheckoutSnapshotIsSemanticNode { reference: _, root: _ } => false
   }

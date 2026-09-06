@@ -1,0 +1,159 @@
+module extdeps.bazel.target_pattern
+
+import extdeps.bazel.bazel { bazel_subject }
+import extdeps.bazel.label {
+  Label, PackageName, RootPackage, PackagePath, TargetName,
+  LabelParse, LabelParsed, LabelRefused, LabelRefusal,
+  PackageSegmentsParse, PackageSegmentsOk, PackageSegmentsRefused,
+  parse_label, parse_package_segments, render_package, package_eq, label_eq,
+}
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope }
+import extdeps.uri { Uri, Https }
+import std.types { NonEmptyStr, String, Bool, List, Int }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "bazel.build/run/build#specifying-build-targets"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: extdeps.bazel.bazel.bazel_subject,
+  first_citation: extdeps.bazel.target_pattern.extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// A TARGET PATTERN DENOTES A SET; A LABEL DENOTES ONE TARGET. extdeps.bazel.label refuses the pattern
+// forms on purpose (`TargetPattern` is a refusal there, because `gunbc test <label>` names exactly one
+// target). This module is where those forms are ADMITTED, as a different type, for the callers that
+// ask for a set: `gunbc test //pkg/...` runs every test target under a package subtree. The cited
+// authority's three set forms are the three arms below; the single form delegates to the label
+// grammar so a target name is spelled and refused in exactly one place.
+//
+//   //pkg:name   -> SingleTarget      (the label grammar decides)
+//   //pkg:all    -> PackageTargets    (also //pkg:*; the cited authority treats them alike for tests)
+//   //pkg/...    -> SubtreeTargets    (also //pkg/...:all and //...)
+//
+// NOT ADMITTED, refused with the label grammar's own causes: repository-qualified and relative
+// forms, `..` and `.` segments, and the `:all-targets` form (files as well as rules), which has no
+// meaning over a corpus whose targets are all test modules.
+type TargetPattern
+  = SingleTarget { label: Label }
+  | PackageTargets { package: PackageName }
+  | SubtreeTargets { package: PackageName }
+
+type TargetPatternRefusal
+  = PatternNotAbsolute { text: String }
+  | PatternPackageRefused { cause: LabelRefusal }
+  | PatternLabelRefused { cause: LabelRefusal }
+  | PatternAllTargetsUnsupported { text: String }
+
+type TargetPatternParse
+  = TargetPatternParsed { pattern: TargetPattern }
+  | TargetPatternRefused { cause: TargetPatternRefusal }
+
+fn text_has_prefix(text: String, prefix: String) -> Bool {
+  text.length() >= prefix.length() && text.substring(start: 0, end: prefix.length()) == prefix
+}
+
+fn text_has_suffix(text: String, suffix: String) -> Bool {
+  text.length() >= suffix.length() && text.substring(start: text.length() - suffix.length(), end: text.length()) == suffix
+}
+
+fn text_drop_suffix(text: String, suffix: String) -> String {
+  text.substring(start: 0, end: text.length() - suffix.length())
+}
+
+fn package_of_text(package_text: String) -> PackageSegmentsParse {
+  if package_text == "" { PackageSegmentsOk { segments: [] } } else { parse_package_segments(package_text: package_text) }
+}
+
+fn package_name_of_segments(segments: List<NonEmptyStr>) -> PackageName {
+  if count(segments) == 0 { RootPackage } else { PackagePath { segments: segments } }
+}
+
+fn parse_target_pattern(text: String) -> TargetPatternParse {
+  if !text_has_prefix(text: text, prefix: "//") {
+    TargetPatternRefused { cause: PatternNotAbsolute { text: text } }
+  } else if text_has_suffix(text: text, suffix: ":all-targets") {
+    TargetPatternRefused { cause: PatternAllTargetsUnsupported { text: text } }
+  } else {
+    let body = text.substring(start: 2, end: text.length())
+    if text_has_suffix(text: body, suffix: "/...") || text_has_suffix(text: body, suffix: "/...:all") || text_has_suffix(text: body, suffix: "/...:*") || body == "..." || body == "...:all" || body == "...:*" {
+      let stripped = if text_has_suffix(text: body, suffix: ":all") { text_drop_suffix(text: body, suffix: ":all") } else if text_has_suffix(text: body, suffix: ":*") { text_drop_suffix(text: body, suffix: ":*") } else { body }
+      let pkg_text = if stripped == "..." { "" } else { text_drop_suffix(text: stripped, suffix: "/...") }
+      match package_of_text(package_text: pkg_text) {
+        PackageSegmentsRefused { cause } => TargetPatternRefused { cause: PatternPackageRefused { cause: cause } }
+        PackageSegmentsOk { segments } => TargetPatternParsed { pattern: SubtreeTargets { package: package_name_of_segments(segments: segments) } }
+      }
+    } else if text_has_suffix(text: body, suffix: ":all") || text_has_suffix(text: body, suffix: ":*") {
+      let pkg_text = if text_has_suffix(text: body, suffix: ":all") { text_drop_suffix(text: body, suffix: ":all") } else { text_drop_suffix(text: body, suffix: ":*") }
+      match package_of_text(package_text: pkg_text) {
+        PackageSegmentsRefused { cause } => TargetPatternRefused { cause: PatternPackageRefused { cause: cause } }
+        PackageSegmentsOk { segments } => TargetPatternParsed { pattern: PackageTargets { package: package_name_of_segments(segments: segments) } }
+      }
+    } else {
+      match parse_label(text: text) {
+        LabelRefused { cause } => TargetPatternRefused { cause: PatternLabelRefused { cause: cause } }
+        LabelParsed { label } => TargetPatternParsed { pattern: SingleTarget { label: label } }
+      }
+    }
+  }
+}
+
+fn package_segments(p: PackageName) -> List<NonEmptyStr> {
+  match p {
+    RootPackage => []
+    PackagePath { segments } => segments
+  }
+}
+
+// `a` is `b` or lies under it: every segment of `b` is a prefix segment of `a`.
+fn package_within(a: PackageName, b: PackageName) -> Bool {
+  let inner = package_segments(p: a)
+  let outer = package_segments(p: b)
+  count(outer) <= count(inner)
+    && fold(outer, init: PrefixWalk { at: 0, ok: true }, f: (acc, seg) =>
+         PrefixWalk { at: acc.at + 1, ok: acc.ok && segment_at(segments: inner, index: acc.at) == (seg as String) }).ok
+}
+
+type PrefixWalk {
+  at: Int
+  ok: Bool
+}
+
+fn segment_at(segments: List<NonEmptyStr>, index: Int) -> String {
+  fold(segments, init: SegmentPick { at: 0, found: "" }, f: (acc, s) =>
+    SegmentPick { at: acc.at + 1, found: if acc.at == index { s as String } else { acc.found } }).found
+}
+
+type SegmentPick {
+  at: Int
+  found: String
+}
+
+fn target_pattern_matches(pattern: TargetPattern, target: Label) -> Bool {
+  match pattern {
+    SingleTarget { label } => label_eq(a: label, b: target)
+    PackageTargets { package } => package_eq(a: package, b: target.package)
+    SubtreeTargets { package } => package_within(a: target.package, b: package)
+  }
+}
+
+fn render_target_pattern(pattern: TargetPattern) -> String {
+  match pattern {
+    SingleTarget { label } => extdeps.bazel.label.render_label(l: label)
+    PackageTargets { package } => join(["//", render_package(p: package), ":all"], "")
+    SubtreeTargets { package } => match package { RootPackage => "//..."  PackagePath { segments: _ } => join(["//", render_package(p: package), "/..."], "") }
+  }
+}
+
+fn target_pattern_refusal_text(r: TargetPatternRefusal) -> String {
+  match r {
+    PatternNotAbsolute { text } => join(["target pattern is not absolute (must start with //): ", text], "")
+    PatternPackageRefused { cause: _ } => "target pattern names a package the label grammar refuses"
+    PatternLabelRefused { cause: _ } => "target pattern names a single target the label grammar refuses"
+    PatternAllTargetsUnsupported { text } => join([":all-targets has no meaning over a corpus of test modules: ", text], "")
+  }
+}

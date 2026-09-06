@@ -31,14 +31,45 @@ import gunbc.live_deploy.spec { DeploymentSpec, deployment_spec_srv1 }
 // the mechanism does not support. The deployed file is an observed realization, not the authority
 // for systemd syntax or for desired deployment state.
 //
-// What it IS good for, and why it exists: the expected bytes were obtained independently of the
-// functions under test, so this is not a self-capture golden — it cannot certify a renderer as
-// correct merely because nobody edited it, which is the change detector DESIGN section 5 rejects.
-// That makes it a sound BASELINE for refactoring these renderers: a red means the emitter moved
-// off the last observed deployed baseline, which during a migration is exactly the question.
+// What it WAS good for: the expected bytes were obtained independently of the functions under
+// test, so a row transcribed from the host and left alone is not a self-capture golden — it
+// cannot certify a renderer as correct merely because nobody edited it, which is the change
+// detector DESIGN section 5 rejects. A row that still holds its transcription is a sound BASELINE
+// for refactoring these renderers: a red means the emitter moved off the last observed deployed
+// baseline, which during a migration is exactly the question.
 //
-// It is needed because nothing else pins these bytes. dag/test/claim/live_deploy/long/emit_test.dag
-// carries 47 witnesses and not one asserts a unit doc's text; the emitted deploy script is not a
+// THAT PROPERTY IS NOW TRUE OF ONE ROW OUT OF FIVE, AND THIS PARAGRAPH USED TO CLAIM IT FOR ALL OF
+// THEM. Independence is not a property of the fixture's design; it is a property of each row's
+// EDIT HISTORY, and it is destroyed the moment an author updates an expected literal so that a
+// code change goes green. Since the 2026-08-19 transcription (#8496, 8b20599960) that has happened
+// three times:
+//
+//   4b7371d1f6 (#10357, 2026-09-04)  belt-service, serve, tree-sync edited; slice row ADDED
+//   75e1cf68b3 (#10446, 2026-09-04)  belt-service edited
+//   6a4ca1c5bc (#10590, 2026-09-05)  belt-service and serve edited (user-manager Environment)
+//
+// So per row, as of this writing: the_belt_timer_unit_matches_the_deployed_bytes still holds its
+// 2026-08-19 transcription and is the only row carrying an external referent. belt-service, serve
+// and tree-sync have each been edited to follow the emitter and are now EMITTER-REGRESSION PINS —
+// they still refuse an unintended emission change, which is worth keeping, but they are no longer
+// evidence that the emitter agrees with anything outside this tree. The slice row never had a
+// transcription at all: it was authored with the emitter in #10357.
+//
+// The decay is legible in a name: the_tree_sync_unit_matches_the_deployed_bytes_PLUS_THE_EXCLUSION
+// _WIDENING says out loud that its expectation is host bytes plus an emitter change.
+//
+// THE OBLIGATION THIS CREATES, stated rather than left to the next reader: an edit to an expected
+// literal is a rung change on that row, not a maintenance chore. Either re-transcribe from the
+// host and say so with a date, or move the row to a directive-level assertion over the typed
+// SystemdUnitFile (gunbc.live_deploy.emit live_deploy_belt_service_unit_file and
+// live_deploy_serve_unit_file return one before rendering), which asserts the DECISION — principal,
+// slice, working tree, environment derivation — and cannot be satisfied by editing the expectation.
+// What is forbidden is what happened here: editing the bytes while a paragraph three screens up
+// keeps vouching for their independence. That is DESIGN section 4b rung inflation, and the
+// inflated claim was load-bearing — it was cited to justify keeping these rows.
+//
+// It is needed because nothing else pins these bytes. dag/test/claim/live_deploy/emit_test.dag
+// carries 57 witnesses and not one asserts a unit doc's text; the emitted deploy script is not a
 // committed artifact, so git shows no diff; and the generated-artifact drift gate was deleted by
 // the 2026-08-15 floor cut (.github/workflows now holds only fleet-converge.yml and witnesses.yml).
 //
@@ -56,7 +87,8 @@ import gunbc.live_deploy.spec { DeploymentSpec, deployment_spec_srv1 }
 // rows. It said the members were still in deployment_spec_srv1's step list and would appear at the
 // next apply, so the oracle would re-arm then. They are not. gunbc.live_deploy.spec
 // deployment_owned_steps lists eight members and FleetConvergeTimerUnit is not among them —
-// deployment_apply_order_note in that module records it as RETIRED from deployment membership by
+// the annotation on that module's deployment_steps_apply_order records it as RETIRED from
+// deployment membership by
 // operator directive 2026-08-13, and test.claim.live_deploy.emit carries an enrolled claim
 // asserting exactly that absence. So the re-arm trigger I wrote could never fire: no apply will
 // ever install those units. That is the stalled-trigger shape DESIGN section 4b names, a `cannot

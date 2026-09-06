@@ -305,7 +305,7 @@ test fn witness_apply_script_wires_memory_cap_deploy_consumer() -> Bool {
     && string_contains(s: sh, pattern: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_max)))
 }
 
-data unprivileged_principal_witness_note: String = "Discriminating RED for the run-29822498755 regression class: the ci-runner principal (fleet_posix_accounts FleetAccountCiRunner) holds NO rsync/chown/rmdir grant and no write on the service-user-owned tree, so a bare rsync/chown/rmdir in either script is a deploy that fails on the host again. Working-byte rsync and repository convergence must instead ride the service-user oneshot unit (principal User=briansrls), and every mutation outside it must be one of the six roster-granted sudo -n commands. Post-hoc admission of each sudo -n command against the ci_deploy_access grant envelope is the named residue (emit_deploy_principal_note)."
+data unprivileged_principal_witness_note: String = "Discriminating RED for the run-29822498755 regression class: the ci-runner principal (fleet_posix_accounts FleetAccountCiRunner) holds NO rsync/chown/rmdir grant and no write on the service-user-owned tree, so a bare rsync/chown/rmdir in either script is a deploy that fails on the host again. Working-byte rsync and repository convergence must instead ride the service-user oneshot unit (principal User=briansrls), and every mutation outside it must be one of the roster-granted sudo -n commands (fleet_posix_ci_runner_sudo_grants). Post-hoc admission of each sudo -n command against the ci_deploy_access grant envelope is the named residue (carried by the annotation on gunbc.live_deploy.emit install_d_owned_command)."
 
 test fn retract_script_stays_within_ci_runner_grants() -> Bool {
   let retract = witness_retract_script()
@@ -729,7 +729,7 @@ test fn twin_apply_creates_its_own_binary_parent_directory_and_not_productions()
 // claim did until the emitter's quoting became the grammar's job — pinned a spelling, not the
 // fact: the discriminating half is the PATH differing between the two instances, and a literal
 // re-states production's path a second time, which is exactly the half-parameterization
-// serve_binary_parent_was_a_literal_note records the cost of.
+// gunbc.live_deploy.emit path_parent_dir's annotation records the cost of.
 fn serve_binary_parent_install_command(instance: HostDashboardInstance) -> String {
   install_directory_command(
     mode: install_d_shared_mode,
