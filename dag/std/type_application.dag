@@ -1,0 +1,30 @@
+module std.type_application
+
+import std.decl_ref { DeclarationRef }
+import std.types { List }
+
+// An application is its declaring owner together with its ordered arguments.
+// Arguments are a parameter because a compiler can carry substitutable syntax
+// before it has ground arguments. Neither the owner alone nor the runtime
+// fields identify an application: phantom arguments remain part of this fact.
+// The producer establishes owner in the declaration's context. A consumer must
+// not replace it with a lookup of the same spelling in the consumer's context.
+// An owner with no parameters has the same representation with arguments: [].
+// Consumers that require a generic application decide that from its arity.
+type TypeApplication<Argument> {
+  owner: DeclarationRef
+  arguments: List<Argument>
+}
+
+// Alias-head traversal is a different relation from recursive application
+// arguments. A repeated owner witnesses only a cycle along the alias-head path;
+// Loop = Record<Loop> does not revisit a head on that path. Preserve the path and
+// repeated declaration so consumers cannot confuse malformed traversal with an
+// application that this exposure did not establish.
+type TypeApplicationResolution<Argument>
+  = TypeApplicationResolved { application: TypeApplication<Argument> }
+  | TypeApplicationUnexposed
+  | TypeApplicationAliasHeadCycle {
+      path: List<DeclarationRef>
+      repeated_owner: DeclarationRef
+    }

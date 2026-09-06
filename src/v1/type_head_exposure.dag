@@ -2,14 +2,13 @@ module v1.compiler.type_head_exposure
 
 // This vocabulary belongs to the compiler judgment, not std: it describes how far this
 // compiler exposed an expected type before selecting an introduction or compatibility rule.
-// Exposure never means "choose an application argument". The outer constructor and every
-// argument identity remain present in ApplicationHead.
+// ApplicationHead is only the early structural category, before SymbolIndex
+// construction. Identity-sensitive judgments later consume declaration-bound
+// TypeApplication. All exposure consumers ask only the category; neither the
+// former identity Strings nor an authored-Node payload is needed here.
 type TypeHeadView
   = KernelScalarHead { type_identity: String }
-  | ApplicationHead {
-      constructor_identity: String,
-      argument_identities: List<String>
-    }
+  | ApplicationHead
   | ProductHead { type_identity: String }
   | CoproductHead { type_identity: String }
   | CallableHead { type_identity: String }

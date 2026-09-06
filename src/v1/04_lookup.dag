@@ -53,7 +53,7 @@ import v1.compiler.infer_env {
   listed_import_required_bare_call_blocked
 }
 
-import v1.compiler.infer_resolve { fn_type_param_names, peel_nominal_alias_identity }
+import v1.compiler.infer_resolve { fn_type_param_names, peel_nominal_alias_identity, declaration_bound_formal_product_application }
 
 import v1.compiler.infer_emit_info {
   build_struct_field_summaries, build_enum_field_summaries
@@ -649,6 +649,8 @@ fn declaration_unbound_leaf_names(n: Node, env: TypeEnv) -> List<String> {
 }
 
 fn census_declaration_bound_formals(type_env: TypeEnv, owner_module_path: String, node: Node) -> List<ResolvedFormal> {
+  let source_declaration = symbol_index_lookup(index: type_env.symbol_index,
+    qualified_name: concat(owner_module_path, ".", qualified_last_segment(name: authored_name_at(source_indices: type_env.source_indices, node: node))))
   let tp_names = fn_type_param_names(item: node, source_indices: type_env.source_indices)
   let declaration_env = census_declaration_type_env(
     census: type_env.symbol_index,
@@ -680,7 +682,8 @@ fn census_declaration_bound_formals(type_env: TypeEnv, owner_module_path: String
         declaration_bound_conformance: preserve_outer_optional_cardinality(
           outer: declared_type,
           inner: peel_nominal_alias_identity(n: declared_type, env: declaration_env, module_name: owner_module_path)),
-        substitution_basis: declaration_substitution_basis(n: declared_type, env: declaration_env, generic_names: declaration_generic_names)
+        substitution_basis: declaration_substitution_basis(n: declared_type, env: declaration_env, generic_names: declaration_generic_names),
+        product_application: declaration_bound_formal_product_application(declaration: source_declaration, parameter: p, env: declaration_env, module_name: owner_module_path)
       }
     })
 }

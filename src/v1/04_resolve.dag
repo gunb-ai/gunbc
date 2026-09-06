@@ -1,5 +1,8 @@
 module v1.compiler.infer_resolve
 
+import std.type_application { TypeApplication }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+
 import std.occurrence_identity { OccurrenceSynthetic }
 
 import std.types { SourceSpan, container_param_name }
@@ -8,8 +11,8 @@ import std.syntax { LiteralValue }
 
 import v1.std.core {
   Node,
-  authored_name_at, NewlineIndex,
-  make_param_node, make_resolved_param_node, param_node_name_at, param_node_type_expr, param_node_default_value,
+  authored_name_at, NewlineIndex, find_child_named, field_access_base, field_access_field_at,
+  make_param_node, make_resolved_param_node, param_node_name_at, param_node_type_expr, param_node_default_value, param_node_span,
   generic_param_name_at,
   make_field_node, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key,
   field_from_key_property_name,
@@ -47,10 +50,131 @@ import v1.compiler.infer_types {
 import std.induction { SubValueUnknown }
 
 import v1.compiler.infer_env {
+  declaration_ref_of_type_node, symbol_index_lookup, census_declaration_type_env, node_with_inferred,
   TypeEnv, TypeBinding, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
   env_with_type_variable_bindings, bare_name_miss_diagnostic,
   type_ref_measure_binding_authority,
   UnitVariantContribution
+}
+
+// Capture the application in the context that binds its spelling. Consumers
+// receive a DeclarationRef, never a request to repeat this lookup in their own
+// environment. Alias traversal visits declaration RHSs only; it does not rebuild
+// the product's fields. Revisited declaration identities decline cyclic heads;
+// unexposed heads retain their current conformance path.
+fn declaration_bound_formal_product_application(declaration: Node?, parameter: Node, env: TypeEnv, module_name: String) -> TypeApplication<Node>? {
+  match declaration {
+    Present { value: source } => {
+      // The exact callable declaration is selected by its declaring module.
+      // Resolution preserves the parameter occurrence span, including for
+      // repeated anonymous parameters; a caller-scoped name match is not a join.
+      let candidates = source.params |> filter(candidate =>
+        param_node_span(n: candidate) == param_node_span(n: parameter)
+          && param_node_name_at(n: candidate, source_indices: env.source_indices)
+            == param_node_name_at(n: parameter, source_indices: env.source_indices))
+      if (candidates |> count) == 1 {
+        match candidates |> first {
+          Present { value: authored } => declaration_bound_product_application(
+            n: param_node_type_expr(n: authored), env: env, module_name: module_name)
+          Absent => none
+        }
+      } else { none }
+    }
+    Absent => none
+  }
+}
+
+// Field projections retain an instantiated type for inference, which may already
+// expand concrete argument aliases. Capture their application from the declaring
+// product's authored field instead. The base application supplies the enclosing
+// substitution, and recursion follows only the strictly smaller expression base.
+fn declaration_bound_produced_product_application(value: Node, env: TypeEnv, module_name: String) -> TypeApplication<Node>? {
+  match value.expr_data {
+    ExprFieldAccess { summary: _ } =>
+      match declaration_bound_produced_product_application(value: field_access_base(texpr: value), env: env, module_name: module_name) {
+        Present { value: base } =>
+          match symbol_index_lookup(index: env.symbol_index, qualified_name: concat(base.owner.module_path, ".", base.owner.decl_name)) {
+            Present { value: declaration } =>
+              match find_child_named(n: declaration, name: field_access_field_at(texpr: value, source_indices: env.source_indices), source_indices: env.source_indices) {
+                Present { value: field } => {
+                  let bindings = declaration.params |> enumerate |> fold(init: empty_map(), f: (acc, param) =>
+                    match base.arguments |> skip(param.first) |> first {
+                      Present { value: arg } => map_insert(acc, generic_param_name_at(n: param.second, source_indices: env.source_indices), arg)
+                      Absent => acc
+                    })
+                  let field_env = census_declaration_type_env(census: env.symbol_index, module_path: base.owner.module_path, tp_names: [], source_indices: env.source_indices)
+                  declaration_bound_product_application(
+                    n: substitute_type_slots(n: child_type_node(ch: field), slot_bindings: bindings, decl_name: base.owner.decl_name, source_indices: env.source_indices),
+                    env: field_env, module_name: base.owner.module_path)
+                }
+                Absent => none
+              }
+            Absent => none
+          }
+        Absent => none
+      }
+    _ => declaration_bound_product_application(n: resolved_type(n: value), env: env, module_name: module_name)
+  }
+}
+
+fn declaration_bound_product_application(n: Node, env: TypeEnv, module_name: String) -> TypeApplication<Node>? {
+  declaration_bound_product_application_at(n: n, env: env, module_name: module_name, visited: [])
+}
+
+fn declaration_bound_product_application_at(n: Node, env: TypeEnv, module_name: String, visited: List<DeclarationRef>) -> TypeApplication<Node>? {
+  if n.return_cardinality == CardOptional || (n.connective != NoConnective && n.connective != Conj)
+    || is_declared_container_alias_spelling(name: authored_name_at(source_indices: env.source_indices, node: n)) {
+    none
+  } else {
+    match lookup_type_for(env: env, node: n) {
+      Present { value: bound } =>
+        match declaration_ref_of_type_node(rt: bound, source_indices: env.source_indices, env: env) {
+          Present { value: owner } =>
+            if visited |> any(prior => declaration_ref_eq(a: prior, b: owner)) { none } else {
+            match symbol_index_lookup(index: env.symbol_index, qualified_name: concat(owner.module_path, ".", owner.decl_name)) {
+              Present { value: declaration } =>
+                // A product declaration is the arity-zero application of its
+                // owner. Its children are fields, not application arguments.
+                let arguments = if n.connective == Conj { [] } else { n.children }
+                if declaration.connective == Conj
+                  && (declaration.params |> count) == (arguments |> count) {
+                  Present { value: TypeApplication {
+                    owner: owner,
+                    arguments: arguments |> map(arg => {
+                      let resolved = resolve_nominal_alias_rhs(n: arg, env: env, module_name: module_name)
+                      // Routing asks about the written argument, whereas identity
+                      // comparison consumes its declaration-context resolution.
+                      // Expanding a leaf alias must not make it a nested argument.
+                      node_with_inferred(n: arg, inferred: Present { value: Resolved { node: resolved.resolved } })
+                    })
+                  } }
+                } else if (declaration.connective == NoConnective) {
+                  match declaration.inferred {
+                    Present { value: Resolved { node: target } } =>
+                      if (declaration.params |> count) != (n.children |> count) && (declaration.params |> count) > 0 {
+                        none
+                      } else {
+                        let bindings = declaration.params |> enumerate |> fold(init: empty_map(), f: (acc, param) =>
+                          match n.children |> skip(param.first) |> first {
+                            Present { value: arg } => map_insert(acc, generic_param_name_at(n: param.second, source_indices: env.source_indices), arg)
+                            Absent => acc
+                          })
+                        let alias_env = census_declaration_type_env(census: env.symbol_index, module_path: owner.module_path, tp_names: [], source_indices: env.source_indices)
+                        declaration_bound_product_application_at(
+                          n: substitute_type_slots(n: target, slot_bindings: bindings, decl_name: owner.decl_name, source_indices: env.source_indices),
+                          env: alias_env, module_name: owner.module_path, visited: concat(visited, [owner]))
+                      }
+                    _ => none
+                  }
+                } else { none }
+              Absent => none
+            }
+            }
+          Absent => none
+        }
+      Absent => none
+    }
+  }
 }
 
 // Phantom unit-variant resolution reads the env's precomputed unit_variant_index (built and

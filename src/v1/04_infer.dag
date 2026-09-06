@@ -9,7 +9,8 @@ import std.content_hash {
 }
 import extdeps.container.oci.digest { oci_other_digest_algorithm, oci_other_digest_encoded }
 import std.syntax { Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce, BinOp, LitStr, LitInt, LitBool, LiteralValue }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import std.type_application { TypeApplication }
 import std.operator_realization { OperandDeclaration }
 import std.literal_elaboration {
   LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold, BooleanUnfold, UnicodeScalarSequenceUnfold,
@@ -159,6 +160,7 @@ import std.termination {
 }
 import std.algebra { CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows }
 import v1.compiler.infer_resolve {
+  declaration_bound_product_application, declaration_bound_formal_product_application, declaration_bound_produced_product_application,
   resolve_node, resolve_item_types, fn_type_param_names, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl,
   is_user_generic_use_site,
@@ -342,6 +344,9 @@ type StringPartInferResult {
 type ArgInferResult {
   typed_arg: Node
   diagnostics: List<ErrorNode>
+  // Grounded once before generic binding; the application plan consumes this
+  // same fact instead of resolving the actual again in a later phase.
+  product_application: TypeApplication<Node>?
 }
 
 type FieldInferResult {
@@ -1554,8 +1559,12 @@ fn type_node_is_established(n: Node, source_indices: Map<String, NewlineIndex>) 
     || n.params |> count > 0
 }
 
+// Generic declarations and callable types both carry params. Only Arrow denotes
+// a callable: treating Out<T>'s type parameter as a function parameter bypasses
+// the existing variant-membership judgment after Out<Int> exposes its owner.
+// The connective also identifies nullary callables, whose params are empty.
 fn type_node_is_callable(n: Node) -> Bool {
-  n.params |> count > 0
+  n.connective == Arrow
 }
 
 // THE v1.compiler.* ARM IS DELETED RATHER THAN REPAIRED, and the deletion preserves live behaviour
@@ -2637,7 +2646,7 @@ fn expected_type_head_exposure(formal: Node, scope: InferScope) -> TypeHeadExpos
 
 fn exposure_is_application(exposure: TypeHeadExposure) -> Bool {
   match exposure {
-    ExposedTypeHead { view: ApplicationHead { constructor_identity: _, argument_identities: _ } } => true
+    ExposedTypeHead { view: ApplicationHead } => true
     _ => false
   }
 }
@@ -2727,7 +2736,7 @@ fn equality_exposure_refusal(exposure: TypeHeadExposure, name: String, at_operan
     ExposedTypeHead { view: CallableHead { type_identity: _ } } => equality_refused(carrier: name, member: "function value", member_judged: true)
     ExposedTypeHead { view: ProductHead { type_identity: _ } } => equality_refused(carrier: name, member: "members not exposed at this reference", member_judged: false)
     ExposedTypeHead { view: CoproductHead { type_identity: _ } } => equality_refused(carrier: name, member: "members not exposed at this reference", member_judged: false)
-    ExposedTypeHead { view: ApplicationHead { constructor_identity: _, argument_identities: _ } } => equality_refused(carrier: name, member: "members not exposed at this reference", member_judged: false)
+    ExposedTypeHead { view: ApplicationHead } => equality_refused(carrier: name, member: "members not exposed at this reference", member_judged: false)
     OpaqueTypeHead { type_identity: _ } => none
     StuckTypeHead { cause: c } => if at_operand_root { none } else { equality_refused(carrier: name, member: c, member_judged: false) }
     MalformedApplicationHead { cause: c } => equality_refused(carrier: name, member: c, member_judged: false)
@@ -3257,6 +3266,8 @@ type DeclaredTypeObligation {
   declared: Node
   produced: Node
   span: SourceSpan
+  declared_product_application: TypeApplication<Node>?
+  produced_product_application: TypeApplication<Node>?
 }
 
 // UNDECIDABLE IS A PROPERTY OF THE FACTS, NEVER OF THE WIRING. Each reason names something the
@@ -3317,6 +3328,15 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
   }
   if either_optional {
     InhabitanceUndecidable { reason: UndecidableOptionalCarrier }
+  } else if obligation.declared_product_application != none && obligation.produced_product_application != none {
+    match obligation.declared_product_application {
+      Present { value: declared_application } => match obligation.produced_product_application {
+        Present { value: produced_application } => product_application_inhabitance(
+          declared: declared_application, produced: produced_application, scope: scope)
+        Absent => InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
+      }
+      Absent => InhabitanceUndecidable { reason: UndecidableFormalUnresolved }
+    }
   } else if declared_is_generic {
     InhabitanceUndecidable { reason: UndecidableGenericFormal }
   } else if declared_name == "" {
@@ -3343,6 +3363,25 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
       Present { value: r } => InhabitanceRefused { reason: r }
       Absent => Inhabits
     }
+  }
+}
+
+// The direct-call migration reads the producer's owner and its substituted
+// arguments. It neither peels the owner's fields nor looks its name up in the
+// caller. Unknown arguments remain a counted undecidable verdict.
+fn product_application_inhabitance(declared: TypeApplication<Node>, produced: TypeApplication<Node>, scope: InferScope) -> InhabitanceVerdict {
+  if !declaration_ref_eq(a: declared.owner, b: produced.owner) {
+    InhabitanceRefused { reason: RefusedDistinctProductConstructor }
+  } else if (declared.arguments |> count) != (produced.arguments |> count) {
+    InhabitanceUndecidable { reason: UndecidableFormalUnresolved }
+  } else if applied_type_arguments_conflict_scan(declared_args: declared.arguments, produced_args: produced.arguments, scope: scope) {
+    InhabitanceRefused { reason: RefusedDistinctAppliedTypeArgument }
+  } else if !(declared.arguments |> all(arg => applied_type_argument_identity_known(n: child_type_node(ch: arg), scope: scope))) {
+    InhabitanceUndecidable { reason: UndecidableGenericFormal }
+  } else if !(produced.arguments |> all(arg => applied_type_argument_identity_known(n: child_type_node(ch: arg), scope: scope))) {
+    InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
+  } else {
+    Inhabits
   }
 }
 
@@ -3534,7 +3573,7 @@ fn nominal_product_head_name(n: Node, scope: InferScope) -> String {
     ""
   } else {
     match expected_type_head_exposure(formal: n, scope: scope) {
-      ExposedTypeHead { view: ApplicationHead { constructor_identity: _, argument_identities: _ } } =>
+      ExposedTypeHead { view: ApplicationHead } =>
         nominal_product_head_name_if_declared_product(name: name, scope: scope)
       ExposedTypeHead { view: ProductHead { type_identity: _ } } =>
         nominal_product_head_name_if_declared_product(name: name, scope: scope)
@@ -3614,33 +3653,18 @@ fn applied_type_arguments_conflict_scan(
   }
 }
 
-// A TYPE VARIABLE IS NOT A DISAGREEMENT, AND FINDING A TEST FOR ONE TOOK THREE MEASUREMENTS.
+// Compare established declaration references, including bare phantom markers.
+// A type variable is not a disagreement: identity_known still declines the empty
+// resolved name. Requiring fields here used to decline real bare declarations
+// too, admitting Record<First> at Record<Second> despite distinct declaration refs.
 //
-// WHAT DOES NOT WORK, both refuted by execution rather than by reading. Asking whether the
-// argument's NAME resolves in the type environment does not work: type parameters ARE bound
-// there, so `S` and `R` answer "declared type" exactly as `KindA` does. Measured on the v2
-// pipeline entry, that test produced fifteen refusals and every single one had a type variable
-// on one side -- Measure<Q,S,M> receiving Measure<Time,S,Nat>, NodeFoldTopDown<Ctx,R> receiving
-// NodeFoldTopDown<Ctx,Result> -- with zero true positives among them. Comparing the exposure's
-// constructor_identity does not work either, and it is worth recording why since it looks like
-// the obvious authority: the identity is keyed on the REFERENCING file, so one Measure read from
-// two modules yields dag/std/measure.dag::Measure and dag/std/realization_measurement.dag::Measure
-// for the same declaration. It can therefore never establish agreement across modules, which is
-// the only case where establishing it would matter.
+// The former ApplicationHead constructor_identity String was not a usable
+// replacement: it used the referencing file, so the same declaration could have
+// different keys across modules. Exposure now records only the structural category;
+// declaration-bound application identity belongs to the carried TypeApplication.
 //
-// WHAT DOES WORK, and it is a property of the substrate rather than a trick: a type VARIABLE
-// resolves to nothing, so child_type_node leaves it with no authored name, while a real argument
-// resolves to its declaration and carries that declaration's name. The empty resolved name is
-// therefore the decidable test, and it fails open -- an argument this relation cannot resolve is
-// never read as a disagreement. This is also why node_type_shape renders these as `Primitive()`:
-// the renderer already followed the same resolution and found the same nothing.
-//
-// THE NESTEDNESS TEST STILL READS THE AUTHORED NODE while the name reads the RESOLVED one, and
-// the split is not an inconsistency: whether an argument is itself an application is a question
-// about how it was WRITTEN, and what it denotes is a question about what it RESOLVES TO. Reading
-// nestedness off the resolved node was the second cut of this arm and it silenced the whole
-// class, because a resolved record declaration carries its fields as children and every argument
-// then looked nested.
+// Nestedness reads the authored node, not a resolved declaration's field list.
+// Nested applications remain on the prior path until their population is routed.
 fn applied_type_argument_conflicts(
   declared_arg: Node,
   produced_arg: Node,
@@ -3657,12 +3681,21 @@ fn applied_type_argument_conflicts(
     let p = child_type_node(ch: produced_arg)
     let d_name = authored_name_at(source_indices: source_indices, node: d)
     let p_name = authored_name_at(source_indices: source_indices, node: p)
-    if applied_type_argument_identity_known(name: d_name, scope: scope) == false
-      || applied_type_argument_identity_known(name: p_name, scope: scope) == false {
+    if applied_type_argument_identity_known(n: d, scope: scope) == false
+      || applied_type_argument_identity_known(n: p, scope: scope) == false {
       false
     } else {
-      nominal_product_head_names_agree(
-        declared_name: d_name, produced_name: p_name, scope: scope) == false
+      match type_reference_declaration_ref(n: d, source_indices: source_indices, env: scope.type_env) {
+        Present { value: d_identity } => match type_reference_declaration_ref(n: p, source_indices: source_indices, env: scope.type_env) {
+          Present { value: p_identity } =>
+            !declaration_ref_eq(a: d_identity, b: p_identity)
+              && !transparent_alias_identity_agrees(index: scope.type_env.symbol_index,
+                left: concat(d_identity.module_path, ".", d_identity.decl_name),
+                right: concat(p_identity.module_path, ".", p_identity.decl_name))
+          Absent => !nominal_product_head_names_agree(declared_name: d_name, produced_name: p_name, scope: scope)
+        }
+        Absent => !nominal_product_head_names_agree(declared_name: d_name, produced_name: p_name, scope: scope)
+      }
     }
   }
 }
@@ -3673,42 +3706,28 @@ fn applied_type_argument_conflicts(
 // question is about the argument's own written form.
 fn applied_type_argument_is_nested_application(n: Node, scope: InferScope) -> Bool {
   match exposure_view_for_node(n: n, source_indices: scope.type_env.source_indices) {
-    ExposedTypeHead { view: ApplicationHead { constructor_identity: _, argument_identities: _ } } => true
+    ExposedTypeHead { view: ApplicationHead } => true
     _ => false
   }
 }
 
-// A TYPE VARIABLE MUST RESOLVE TO A STRUCTURE, NOT MERELY TO A BINDING, and the third refuted
-// test is the reason this clause is spelled this way rather than the two shorter ways.
-//
-// REFUTED ONCE: "the name resolves in the type environment". Type PARAMETERS are bound there, so
-// S and R answer exactly as a declared record does. Fifteen false positives on the v2 pipeline
-// entry.
-//
-// REFUTED TWICE, and this is the subtler one: "the resolved node has no authored name". On the
-// v2 entry a type variable's resolved node was nameless and the test looked sound. Over the WHOLE
-// corpus it is not -- measured on the required floor, `Measure<Time,S,Nat>`, `MembershipPlan<M,At>`
-// and `ContainmentPath<N>` all resolve their variables to nodes that KEEP the authored name, so
-// the test admitted them as concrete and refused four live modules. A property observed on one
-// entry was read as a property of the substrate; it is a property of that entry's resolution
-// state.
-//
-// WHAT HOLDS OVER THE CORPUS: a type parameter binds to a bare leaf standing for itself, while a
-// real type resolves to a declaration WITH STRUCTURE -- a record's fields, a coproduct's variants.
-// So the test is structural rather than nominal, and it fails open twice over: an argument whose
-// name does not resolve, and an argument that resolves to something structureless (a bare alias,
-// a parameter), are both left unjudged.
-fn applied_type_argument_identity_known(name: String, scope: InferScope) -> Bool {
+// Ground identity must come from a declaration, not parameter-name presence.
+// Earlier name/binding tests mistook generic variables for concrete types; the
+// compensating structure test avoided those false refusals but excluded genuine
+// bare declarations too. The structured/bare marker pair on 03a3b91fb4c1 shows
+// that both have exact DeclarationRefs while only the structured pair refused.
+// Consume that existing join. The declaration-context producer preserves the
+// application owner's identity separately from these substitutable arguments.
+// A bare marker has no fields but still has an exact declaration. A generic
+// binding has no such census join. Structure is not evidence of identity.
+fn applied_type_argument_identity_known(n: Node, scope: InferScope) -> Bool {
+  let name = authored_name_at(source_indices: scope.type_env.source_indices, node: n)
   if name == "" {
     false
   } else if is_kernel_type(name: name) {
     true
   } else {
-    match lookup_type_by_name(env: scope.type_env, name: name) {
-      Present { value: decl } =>
-        (decl.connective == Conj || decl.connective == Disj) && (decl.children |> count) > 0
-      Absent => false
-    }
+    type_reference_declaration_ref(n: n, source_indices: scope.type_env.source_indices, env: scope.type_env) != none
   }
 }
 
@@ -4149,10 +4168,13 @@ fn call_argument_selects_formal_index(argument: Node, argument_index: Int, forma
 // denominator. Behavior is identical because every recomputed term is a pure function of arguments
 // both callers already share.
 
+// Only a formal with a carried application can consume the actual's application.
+// Other call formals do not pay for that production.
 fn build_call_application_plan(
   value_params: List<Node>,
   formals: List<ResolvedFormal>,
   typed_args: List<Node>,
+  arg_infer_results: List<ArgInferResult>,
   call_subst: Map<String, Node>,
   type_env: TypeEnv,
   module_name: String
@@ -4162,19 +4184,36 @@ fn build_call_application_plan(
     value_params |> enumerate,
     pair =>
       match formals |> skip(pair.first) |> first {
-      Present { value: carried } => [ResolvedCallFormal {
+      Present { value: carried } => {
+      let matched = first(typed_args |> enumerate |> filter(candidate => call_argument_selects_formal_index(argument: candidate.second, argument_index: candidate.first, formal_index: pair.first, arguments: typed_args, value_params: value_params, source_indices: source_indices)))
+      [ResolvedCallFormal {
         formal_index: pair.first,
         formal: ResolvedFormal {
           parameter_identity: carried.parameter_identity,
           declared_type: substitute_generics(n: carried.declared_type, subst: call_subst, source_indices: source_indices),
           declaration_bound_conformance: substitute_generics(n: carried.declaration_bound_conformance, subst: call_subst, source_indices: source_indices),
-          substitution_basis: carried.substitution_basis
+          substitution_basis: carried.substitution_basis,
+          product_application: match carried.product_application {
+            Present { value: application } => Present { value: TypeApplication {
+              owner: application.owner,
+              arguments: application.arguments |> map(arg => substitute_generics(n: arg, subst: call_subst, source_indices: source_indices))
+            } }
+            Absent => none
+          }
         },
-        matched_argument_index: match typed_args |> enumerate |> filter(candidate => call_argument_selects_formal_index(argument: candidate.second, argument_index: candidate.first, formal_index: pair.first, arguments: typed_args, value_params: value_params, source_indices: source_indices)) |> first {
+        matched_argument_index: match matched {
           Present { value: bound } => Present { value: bound.first }
           Absent => none
-        }
+        },
+        produced_product_application: if carried.product_application == none { none } else { match matched {
+          Present { value: bound } => match arg_infer_results |> skip(bound.first) |> first {
+            Present { value: inferred } => inferred.product_application
+            Absent => none
+          }
+          Absent => none
+        } }
       }]
+      }
       Absent => []
       }
   )
@@ -4197,7 +4236,8 @@ fn direct_call_structured_application_mismatch_diags(
         Present { value: arg_index } => match typed_args |> skip(arg_index) |> first {
         Present { value: ta } =>
           let actual_expr = arg_value(n: ta)
-          if !direct_call_formal_has_unbound_type_variable(n: app.formal.substitution_basis)
+          if !direct_call_product_application_is_routed(app: app)
+            && !direct_call_formal_has_unbound_type_variable(n: app.formal.substitution_basis)
             && (literal_introduction_type_mismatch(formal: formal, actual_expr: actual_expr, scope: scope)
             || structured_application_site_type_mismatch_with_peeled(
               formal: formal_subst,
@@ -4263,7 +4303,9 @@ fn direct_call_argument_inhabitance_diags(
                   app.formal.declared_type
                 },
                 produced: resolved_type(n: actual_expr),
-                span: actual_expr.span
+                span: actual_expr.span,
+                declared_product_application: if direct_call_product_application_is_routed(app: app) { app.formal.product_application } else { none },
+                produced_product_application: if direct_call_product_application_is_routed(app: app) { app.produced_product_application } else { none }
               },
               scope: scope
             )
@@ -4315,9 +4357,9 @@ fn direct_call_generic_type_argument_inhabitance_diags(
                     match actual.children |> skip(declared_pair.first) |> first {
                       Present { value: produced_child } =>
                         if applied_type_argument_identity_known(
-                            name: authored_name_at(source_indices: source_indices, node: child_type_node(ch: raw_declared_child)), scope: scope)
+                            n: child_type_node(ch: raw_declared_child), scope: scope)
                           && applied_type_argument_identity_known(
-                            name: authored_name_at(source_indices: source_indices, node: child_type_node(ch: produced_child)), scope: scope) {
+                            n: child_type_node(ch: produced_child), scope: scope) {
                           declared_type_obligation_diags(
                             obligation: DeclaredTypeObligation {
                               position: PositionGenericTypeArgument,
@@ -4326,7 +4368,9 @@ fn direct_call_generic_type_argument_inhabitance_diags(
                                 n: child_type_node(ch: declared_pair.second), env: scope.type_env, module_name: scope.module_name),
                               produced: peel_nominal_alias_identity(
                                 n: child_type_node(ch: produced_child), env: scope.type_env, module_name: scope.module_name),
-                              span: actual_expr.span
+                              span: actual_expr.span,
+                              declared_product_application: none,
+                              produced_product_application: none
                             },
                             scope: scope
                           )
@@ -4703,6 +4747,23 @@ data direct_call_shape_wall_note: String = "WALL (DESIGN §5) — the compile se
 
 // Record-literal actuals skip this path; handoff lives in
 // direct_call_structured_application_mismatch_diags (+ resolved-type legacy checks there).
+// Frozen predecessor: identified product applications with flat arguments move
+// to declared_type_inhabitance. No argument comparison is added here. Nested,
+// optional, callable, collection and unidentified heads retain their existing
+// paths; moving them requires their own discriminating population evidence.
+fn direct_call_product_application_is_routed(app: ResolvedCallFormal) -> Bool {
+  match app.formal.product_application {
+    Present { value: declared } => match app.produced_product_application {
+      Present { value: produced } =>
+        (declared.arguments |> count) > 0 && (produced.arguments |> count) > 0
+          && !(declared.arguments |> any(arg => arg.connective == NoConnective && (arg.children |> count) > 0))
+          && !(produced.arguments |> any(arg => arg.connective == NoConnective && (arg.children |> count) > 0))
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
 fn direct_call_arg_mismatch_diags(
   plan: List<ResolvedCallFormal>,
   typed_args: List<Node>,
@@ -4718,7 +4779,7 @@ fn direct_call_arg_mismatch_diags(
         Present { value: arg_index } => match typed_args |> skip(arg_index) |> first {
         Present { value: ta } =>
           let actual_expr = arg_value(n: ta)
-          if match actual_expr.expr_data {
+          if direct_call_product_application_is_routed(app: app) || match actual_expr.expr_data {
             ExprRecordLit { parent_enum: _ } => true
             _ => false
           } {
@@ -5430,7 +5491,7 @@ fn extract_fold_init_info(method_name: String?, method_args: List<Node>, min_arg
     match init_arg {
       Present { value: ia } =>
         let init_result = infer_expr(texpr: arg_value(n: ia), scope: scope, expected: expected)
-        Present { value: ArgInferResult { typed_arg: make_arg_node(occurrence_identity: ia.occurrence_identity, name: arg_name_at(n: ia, source_indices: scope.type_env.source_indices), value: init_result.typed, span: ia.span, name_span: ia.span), diagnostics: init_result.diagnostics } }
+        Present { value: ArgInferResult { product_application: none, typed_arg: make_arg_node(occurrence_identity: ia.occurrence_identity, name: arg_name_at(n: ia, source_indices: scope.type_env.source_indices), value: init_result.typed, span: ia.span, name_span: ia.span), diagnostics: init_result.diagnostics } }
       Absent => none
     }
   } else { none }
@@ -5494,7 +5555,7 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         lambda_param_provenance: prov_map
       }
       let ar = infer_expr(texpr: lam_value, scope: fold_scope, expected: Present { value: fold_callable })
-      ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }
+      ArgInferResult { product_application: none, typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }
     } else {
       let nf_lam_value = arg_value(n: a)
       let nf_prov_map = match elem_provenance {
@@ -5520,14 +5581,14 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         ContractUnavailable =>
           let ar = infer_expr(texpr: nf_lam_value, scope: nf_scope, expected: none)
           let contract_diag = categorized_error(message: "no declared argument contract is available for this method call; refusing rather than substituting the receiver element type", span: a.span, module_name: nf_scope.module_name, category: "method-arg-contract-unavailable")
-          ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: nf_scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: concat(ar.diagnostics, [contract_diag]) }
+          ArgInferResult { product_application: none, typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: nf_scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: concat(ar.diagnostics, [contract_diag]) }
         ContractKnown { types: declared_types } =>
           match declared_types |> skip(idx) |> first {
             Present { value: declared_type } => infer_arg_with_element_type(arg: a, element_type: declared_type, scope: nf_scope)
             Absent =>
               let ar = infer_expr(texpr: nf_lam_value, scope: nf_scope, expected: none)
               let contract_diag = categorized_error(message: "no declared argument contract is available at this parameter position; refusing rather than substituting the receiver element type", span: a.span, module_name: nf_scope.module_name, category: "method-arg-contract-unavailable")
-              ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: nf_scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: concat(ar.diagnostics, [contract_diag]) }
+              ArgInferResult { product_application: none, typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: nf_scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: concat(ar.diagnostics, [contract_diag]) }
           }
       }
     }
@@ -5584,7 +5645,7 @@ fn expression_is_uppercase_constructor_reference(n: Node, source_indices: Map<St
   }
 }
 
-fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<Node>, formals: List<ResolvedFormal>, generic_names: List<String>, init_subst: Map<String, Node>, scope: InferScope) -> ArgGenericFoldState {
+fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<Node>, formals: List<ResolvedFormal>, generic_names: List<String>, init_subst: Map<String, Node>, prior_results: List<ArgInferResult>, scope: InferScope) -> ArgGenericFoldState {
   fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: init_subst }, f: (st, pair) =>
     let a = pair.second
     let formal_selection = select_formal_for_call_argument(argument: a, argument_index: pair.first, arguments: call_args, value_params: value_params, source_indices: scope.type_env.source_indices)
@@ -5615,15 +5676,53 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
     }
     let expected = if has_formal { Present { value: contextual_expected } } else { none }
     let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)
+    // Use the same first-actual selection as build_call_application_plan.
+    // A second generic pass may replace a provisional inferred value; method,
+    // unresolved, unavailable-formal and duplicate-actual paths do not capture.
+    let capture_application = match formal_selection {
+      CallArgumentFormalSelected { formal_index: index, formal: _ } => match formals |> skip(index) |> first {
+        Present { value: carried } => carried.product_application != none
+          && !(call_args |> take(pair.first) |> enumerate |> any(prior =>
+            call_argument_selects_formal_index(argument: prior.second, argument_index: prior.first,
+              formal_index: index, arguments: call_args, value_params: value_params,
+              source_indices: scope.type_env.source_indices)))
+        Absent => false
+      }
+      CallArgumentFormalUnavailable => false
+    }
+    let produced_application = if capture_application {
+      // The enclosing scope is identical across both passes. Share the first
+      // captured fact when its complete input is unchanged; changed inference
+      // (for example a contextually typed lambda) supersedes that first input.
+      // Full structural Node equality includes inferred data and spans. This is
+      // a conservative correctness guard: any disagreement recaptures. A span
+      // or name alone cannot establish that the capture input stayed equal.
+      match prior_results |> skip(pair.first) |> first {
+        Present { value: prior } => if arg_value(n: prior.typed_arg) == ar.typed {
+          prior.product_application
+        } else {
+          declaration_bound_produced_product_application(value: ar.typed, env: scope.type_env, module_name: scope.module_name)
+        }
+        Absent => declaration_bound_produced_product_application(value: ar.typed, env: scope.type_env, module_name: scope.module_name)
+      }
+    } else { none }
+    let actual_type = resolved_type(n: ar.typed)
+    let actual_for_binding = match produced_application {
+      Present { value: application } =>
+        if actual_type.connective == NoConnective && (actual_type.children |> count) == (application.arguments |> count) {
+          node_with_children(n: actual_type, children: application.arguments)
+        } else { actual_type }
+      Absent => actual_type
+    }
     let next_subst = if is_lambda_expr(e: arg_value(n: a)) || !has_formal {
       st.subst
     } else if should_unify_record_lit_generics(formal: formal_raw, arg_expr: arg_value(n: a), generic_names: generic_names, source_indices: scope.type_env.source_indices) {
       unify_record_lit_generics(formal: formal_raw, record: ar.typed, generic_names: generic_names, scope: scope, acc: st.subst)
     } else {
-      unify_generics(formal: formal_raw, actual: resolved_type(n: ar.typed), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st.subst)
+      unify_generics(formal: formal_raw, actual: actual_for_binding, generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st.subst)
     }
     ArgGenericFoldState {
-      results: concat(st.results, [ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }]),
+      results: concat(st.results, [ArgInferResult { product_application: produced_application, typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }]),
       subst: next_subst
     }
   )
@@ -5643,7 +5742,7 @@ fn empty_override_map() -> Map<String, Node> {
 
 fn infer_arg_with_element_type(arg: Node, element_type: Node, scope: InferScope) -> ArgInferResult {
   let ar = infer_expr(texpr: arg_value(n: arg), scope: scope, expected: Present { value: element_type })
-  ArgInferResult { typed_arg: make_arg_node(occurrence_identity: arg.occurrence_identity, name: arg_name_at(n: arg, source_indices: scope.type_env.source_indices), value: ar.typed, span: arg.span, name_span: arg.span), diagnostics: ar.diagnostics }
+  ArgInferResult { product_application: none, typed_arg: make_arg_node(occurrence_identity: arg.occurrence_identity, name: arg_name_at(n: arg, source_indices: scope.type_env.source_indices), value: ar.typed, span: arg.span, name_span: arg.span), diagnostics: ar.diagnostics }
 }
 
 fn binding_is_namespace_root_nominal(binding: TypeBinding) -> Bool {
@@ -6328,7 +6427,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: none)
           ArgGenericFoldState {
             subst: st.subst,
-            results: concat(st.results, [ArgInferResult {
+            results: concat(st.results, [ArgInferResult { product_application: none,
               typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span),
               diagnostics: ar.diagnostics
             }])
@@ -6343,7 +6442,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             let call_elem_provenance = derive_element_provenance(coll_expr: first_result.typed, elem_type: elem_type, scope: scope)
             let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, elem_provenance: call_elem_provenance, arg_contract: MethodUnresolved, scope: scope)
             concat(
-              [ArgInferResult { typed_arg: make_arg_node(occurrence_identity: first_arg.occurrence_identity, name: arg_name_at(n: first_arg, source_indices: scope.type_env.source_indices), value: first_result.typed, span: first_arg.span, name_span: first_arg.span), diagnostics: first_result.diagnostics }],
+              [ArgInferResult { product_application: none, typed_arg: make_arg_node(occurrence_identity: first_arg.occurrence_identity, name: arg_name_at(n: first_arg, source_indices: scope.type_env.source_indices), value: first_result.typed, span: first_arg.span, name_span: first_arg.span), diagnostics: first_result.diagnostics }],
               remaining_results
             )
           Absent =>
@@ -6353,9 +6452,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
 
         let value_params = call_sig_split.value_params
         let generic_names = call_sig_split.generic_names
-        let first_pass = infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: empty_map(), scope: scope)
+        let first_pass = infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: empty_map(), prior_results: [], scope: scope)
         if call_needs_generic_rebinding_pass(call_args: call_args, generic_names: generic_names, subst: first_pass.subst) {
-          infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: first_pass.subst, scope: scope)
+          infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: first_pass.subst, prior_results: first_pass.results, scope: scope)
         } else {
           first_pass
         }
@@ -6409,6 +6508,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           value_params: value_params_for_check,
           formals: resolved_formals,
           typed_args: typed_args,
+          arg_infer_results: arg_infer_results,
           call_subst: call_subst,
           type_env: scope.type_env,
           module_name: scope.module_name
@@ -7153,7 +7253,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 subject: "",
                 declared: declared_elem,
                 produced: resolved_type(n: te),
-                span: te.span
+                span: te.span,
+                declared_product_application: none,
+                produced_product_application: none
               },
               scope: scope
             )
@@ -11857,9 +11959,6 @@ fn type_reference_identity(n: Node, source_indices: Map<String, NewlineIndex>) -
   }
 }
 
-fn application_argument_identities(arguments: List<Node>, source_indices: Map<String, NewlineIndex>) -> List<String> {
-  arguments |> map(ch => type_reference_identity(n: child_type_node(ch: ch), source_indices: source_indices))
-}
 
 // SEALING A CARRIER MUST NOT ERASE ITS STRUCTURE, and it did. `sole_constructor` is stored as a
 // PROPERTY on the declaration node (v1.compiler.parse parsed_sole_constructor_properties, threaded
@@ -11911,11 +12010,7 @@ fn exposure_view_for_node(n: Node, source_indices: Map<String, NewlineIndex>) ->
             match constructor_name == "" {
               true => MalformedApplicationHead { cause: "application has no constructor identity" }
               false => ExposedTypeHead {
-                view: ApplicationHead {
-                  constructor_identity: type_declaration_identity_key(
-                    decl_file: node_declaration_file(n: n), declared_name: constructor_name),
-                  argument_identities: application_argument_identities(arguments: n.children, source_indices: source_indices)
-                }
+                view: ApplicationHead
               }
             }
           }
@@ -13172,6 +13267,9 @@ fn bind_local_func_conformance(func_env: ResolvedFuncEnv, env: TypeEnv, module_n
     match map_get(func_env.local, name) {
       Present { value: sig } =>
         let generic_names = sig.params |> filter(p => param_is_generic_decl(p: p, source_indices: env.source_indices)) |> map(p => param_node_name_at(n: p, source_indices: env.source_indices))
+        let source_declaration = symbol_index_lookup(index: env.symbol_index,
+          qualified_name: concat(module_name, ".", qualified_last_segment(name: name)))
+        let application_env = env_with_type_variable_bindings(env: env, tp_names: generic_names)
         map_insert(acc, name, ResolvedFuncSig {
         name: sig.name,
         params: sig.params,
@@ -13183,7 +13281,8 @@ fn bind_local_func_conformance(func_env: ResolvedFuncEnv, env: TypeEnv, module_n
             declaration_bound_conformance: preserve_outer_optional_cardinality(
               outer: declared_type,
               inner: peel_nominal_alias_identity(n: declared_type, env: env, module_name: module_name)),
-            substitution_basis: declaration_substitution_basis(n: declared_type, env: env, generic_names: generic_names)
+            substitution_basis: declaration_substitution_basis(n: declared_type, env: env, generic_names: generic_names),
+            product_application: declaration_bound_formal_product_application(declaration: source_declaration, parameter: p, env: application_env, module_name: module_name)
           }
         }) },
         inferred: sig.inferred,

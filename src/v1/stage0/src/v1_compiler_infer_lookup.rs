@@ -45,7 +45,9 @@ pub use crate::v1_compiler_infer_env::{
     GlobalBareCandidate, GlobalBareLookupState, TypeBinding, TypeEnv,
 };
 pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
-pub use crate::v1_compiler_infer_resolve::{fn_type_param_names, peel_nominal_alias_identity};
+pub use crate::v1_compiler_infer_resolve::{
+    declaration_bound_product_application, fn_type_param_names, peel_nominal_alias_identity,
+};
 pub use crate::v1_compiler_infer_service::check_service_method_call_node;
 pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult};
 pub use crate::v1_compiler_infer_sigs::CallTargetOutcome;
@@ -814,6 +816,12 @@ pub fn census_declaration_bound_formals(
                                 declared_type.clone(),
                                 declaration_env.clone(),
                                 declaration_generic_names.clone(),
+                            ),
+                        product_application:
+                            crate::v1_compiler_infer_resolve::declaration_bound_product_application(
+                                declared_type.clone(),
+                                declaration_env.clone(),
+                                owner_module_path.clone(),
                             ),
                     })
                 });

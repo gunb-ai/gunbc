@@ -1,0 +1,176 @@
+module test.claim.generic_application_inhabitance_witness
+
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixture, MultiModuleCompileFixtureOutcome,
+  FixtureCompileRefused, FixtureCompileCompleted,
+  fixture_source, compile_fixture, fixture_blocking_rows
+}
+import std.types { String, Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Inhabitance sibling of phantom_marker_type_argument_identity_witness, whose
+// rendering assertions intentionally do not judge values at declared positions.
+fn compile_application_inhabitance_source(source: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(fixture: MultiModuleCompileFixture {
+    sources: [fixture_source(path: "application.dag", content: source)],
+    entry: "application.dag"
+  })
+}
+
+fn application_source_refuses_distinct_argument(source: String) -> Bool {
+  match compile_application_inhabitance_source(source: source) {
+    FixtureCompileRefused { module_count: modules, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      modules == 1 && (fixture_blocking_rows(rows: rows) |> any(row =>
+        row.diagnostic_class == "DeclaredTypeNotInhabited"
+          && row.subject_name == "direct call argument for parameter 'q'"))
+    _ => false
+  }
+}
+
+fn application_source_is_clean(source: String) -> Bool {
+  match compile_application_inhabitance_source(source: source) {
+    FixtureCompileCompleted { module_count: modules, emitted_files: files, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      modules == 1 && (files |> count) > 0 && (rows |> count) == 0
+    _ => false
+  }
+}
+
+test fn distinct_bare_arguments_refuse_at_a_direct_parameter() -> Bool {
+  application_source_refuses_distinct_argument(source: "module application\ntype First\ntype Second\ntype Record<P> { n: Int }\nfn take(q: Record<First>) -> Int { q.n }\nfn probe(q: Record<Second>) -> Int { take(q: q) }\n")
+}
+
+// The speaking control for the bare-marker refusal: this same successor already
+// refuses when the marker declarations have fields, on the measured baseline.
+test fn distinct_structured_arguments_still_refuse() -> Bool {
+  application_source_refuses_distinct_argument(source: "module application\ntype First { x: Int }\ntype Second { y: Int }\ntype Record<P> { n: Int }\nfn take(q: Record<First>) -> Int { q.n }\nfn probe(q: Record<Second>) -> Int { take(q: q) }\n")
+}
+
+test fn equal_bare_arguments_remain_accepted() -> Bool {
+  application_source_is_clean(source: "module application\ntype Period\ntype Record<P> { n: Int }\nfn take(q: Record<Period>) -> Int { q.n }\nfn probe(q: Record<Period>) -> Int { take(q: q) }\n")
+}
+
+test fn an_alias_of_the_same_application_remains_accepted() -> Bool {
+  application_source_is_clean(source: "module application\ntype Period\ntype Record<P> { n: Int }\ntype Specific = Record<Period>\nfn take<P>(q: Record<P>) -> Int { q.n }\nfn probe(q: Specific) -> Int { take(q: q) }\n")
+}
+
+// Only Inner's declaration changes. Routing the outer Record must not depend
+// on whether resolving that written leaf happens to expose an application.
+// Both pass on 03a3b91fb4c1; the first generated carrier falsely refused the
+// second (compiler d5507a43, invocation 026bd976). Keep both after the repair.
+// These cover producer-side syntax preservation, not the ByteSize formal gap.
+test fn a_bare_argument_alias_remains_accepted() -> Bool {
+  application_source_is_clean(source: "module application\ntype Marker\ntype Wrapped<T> { n: Int }\ntype Record<P> { n: Int }\ntype Inner\ntype Specific = Record<Inner>\nfn take<P>(q: Record<P>) -> Int { q.n }\nfn probe(q: Specific) -> Int { take(q:q) }\n")
+}
+
+test fn an_argument_alias_to_an_application_remains_accepted() -> Bool {
+  application_source_is_clean(source: "module application\ntype Marker\ntype Wrapped<T> { n: Int }\ntype Record<P> { n: Int }\ntype Inner = Wrapped<Marker>\ntype Specific = Record<Inner>\nfn take<P>(q: Record<P>) -> Int { q.n }\nfn probe(q: Specific) -> Int { take(q:q) }\n")
+}
+
+// Unlike the generic P formal above, concrete Inner was expanded before the
+// formal application was captured. This reproduces the ByteSize/Measure fault
+// in one module: baseline 03a3 accepts, producer-only probe f774ab69 refuses
+// (80ff4388). Alias-chain depth alone did not reproduce that fault.
+// This also guards census_upgrade_sig_binding retaining source-authored indexed
+// parameters: resolving those parameters would reintroduce the formal-side gap.
+test fn a_concrete_alias_argument_formal_remains_accepted() -> Bool {
+  application_source_is_clean(source: "module application\ntype First\ntype Wrapped<T> { n: Int }\ntype Record<P> { n: Int }\ntype Inner = Wrapped<First>\ntype Specific = Record<Inner>\nfn take(q: Record<Inner>) -> Int { q.n }\nfn probe(q: Specific) -> Int { take(q:q) }\n")
+}
+
+// Probe 630cc515 falsely refuses the equal pair: argument declaration names
+// differ while their complete applications agree. The distinct pair prevents
+// fixing that refusal by discarding Wrapped's phantom argument.
+test fn equivalent_argument_application_aliases_remain_accepted() -> Bool {
+  application_source_is_clean(source: "module application\ntype First\ntype Wrapped<T> { n: Int }\ntype Record<P> { n: Int }\ntype InnerA = Wrapped<First>\ntype InnerB = Wrapped<First>\ntype Specific = Record<InnerB>\nfn take(q: Record<InnerA>) -> Int { q.n }\nfn probe(q: Specific) -> Int { take(q:q) }\n")
+}
+
+test fn distinct_argument_application_aliases_are_refused() -> Bool {
+  application_source_refuses_distinct_argument(source: "module application\ntype First\ntype Second\ntype Wrapped<T> { n: Int }\ntype Record<P> { n: Int }\ntype InnerA = Wrapped<First>\ntype InnerB = Wrapped<Second>\ntype Specific = Record<InnerB>\nfn take(q: Record<InnerA>) -> Int { q.n }\nfn probe(q: Specific) -> Int { take(q:q) }\n")
+}
+
+// fcf56b20 reproduces cache_interface's remaining refusal without std imports.
+// Enclosing parameter substitution already works (9796be29); a concrete alias
+// argument in the projected field exposed the produced-side shape loss.
+test fn a_projected_field_preserves_its_argument_application_alias() -> Bool {
+  application_source_is_clean(source: "module application\ntype First\ntype Wrapped<T> { n: Int }\ntype Inner = Wrapped<First>\ntype Record<P,Q> { n: Int }\ntype Specific = Record<First,Inner>\ntype Box<P> { value: Record<P,Inner> }\nfn take(q: Specific) -> Int { q.n }\nfn probe(q: Box<First>) -> Int { take(q:q.value) }\n")
+}
+
+test fn a_projected_field_preserves_distinct_enclosing_arguments() -> Bool {
+  application_source_refuses_distinct_argument(source: "module application\ntype First\ntype Second\ntype Record<P> { n: Int }\ntype Specific = Record<First>\ntype Box<P> { value: Record<P> }\nfn take(q: Specific) -> Int { q.n }\nfn probe(q: Box<Second>) -> Int { take(q:q.value) }\n")
+}
+
+// A nongeneric projection base is the same owner/application fact at arity zero.
+// This covers the base shape of ConcurrentMemoryPeakSample and EffectStallBudget;
+// requiring a generic base would discard their authored field argument syntax.
+test fn a_nongeneric_base_preserves_its_field_application_alias() -> Bool {
+  application_source_is_clean(source: "module application\ntype First\ntype Wrapped<T> { n:Int }\ntype Inner=Wrapped<First>\ntype Record<P> { n:Int }\ntype Specific=Record<Inner>\ntype Box { value:Specific }\nfn take<P>(q:Record<P>)->Int { q.n }\nfn probe(q:Box)->Int { take(q:q.value) }\n")
+}
+
+// Generic rebinding re-infers the actual with the first pass's substitution.
+// The final plan must use that pass's carried identity; an earlier capture must
+// not replace the newly inferred value or lose the concrete marker's binding.
+test fn generic_rebinding_preserves_the_carried_application() -> Bool {
+  application_source_is_clean(source: "module application\ntype Marker\ntype Record<P> { n:Int }\ntype Specific=Record<Marker>\nfn take<P>(q:Record<P>, f:fn(P)->P)->Int { q.n }\nfn probe(q:Specific)->Int { take(q:q,f:x=>x) }\n")
+}
+
+test fn distinct_application_aliases_are_refused_by_inhabitance() -> Bool {
+  application_source_refuses_distinct_argument(source: "module application\ntype First\ntype Second\ntype Record<P> { n: Int }\ntype FirstRecord = Record<First>\ntype SecondRecord = Record<Second>\nfn take(q: FirstRecord) -> Int { q.n }\nfn probe(q: SecondRecord) -> Int { take(q: q) }\n")
+}
+
+// The callee's application is grounded where it is declared. The caller owns
+// homonyms for BOTH the generic owner and its marker, so a caller-scope lookup
+// cannot satisfy this pair accidentally.
+fn compile_application_with_caller_homonyms(actual_type: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(fixture: MultiModuleCompileFixture {
+    sources: [
+      fixture_source(path: "decl.dag", content: "module authority.decl\ntype First\ntype Second\ntype Record<P> { n: Int }\ntype FirstRecord = Record<First>\ntype SecondRecord = Record<Second>\nfn take(q: Record<First>) -> Int { q.n }\n"),
+      fixture_source(path: "caller.dag", content: concat("module authority.caller\nimport authority.decl { take, FirstRecord, SecondRecord }\ntype First\ntype Record<P> { n: Int }\nfn probe(q: ", actual_type, ") -> Int { take(q: q) }\n"))
+    ],
+    entry: "caller.dag"
+  })
+}
+
+test fn caller_homonyms_cannot_change_an_equivalent_alias() -> Bool {
+  match compile_application_with_caller_homonyms(actual_type: "FirstRecord") {
+    FixtureCompileCompleted { module_count: modules, emitted_files: files, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      modules == 2 && (files |> count) > 0 && (rows |> count) == 0
+    _ => false
+  }
+}
+
+fn caller_homonym_application_refuses(actual_type: String) -> Bool {
+  match compile_application_with_caller_homonyms(actual_type: actual_type) {
+    FixtureCompileRefused { module_count: modules, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      modules == 2 && (fixture_blocking_rows(rows: rows) |> any(row =>
+        row.diagnostic_class == "DeclaredTypeNotInhabited"
+          && row.subject_name == "direct call argument for parameter 'q'"))
+    _ => false
+  }
+}
+
+test fn caller_homonyms_cannot_equate_distinct_arguments() -> Bool {
+  caller_homonym_application_refuses(actual_type: "SecondRecord")
+}
+
+test fn caller_homonyms_cannot_equate_distinct_owners() -> Bool {
+  caller_homonym_application_refuses(actual_type: "Record<First>")
+}
+
+// Known accepting boundary, NOT an inhabitance guarantee. Baseline 03a3 emits
+// two import advisories; the carried application adds one existing deferred
+// judgment advisory. Acceptance is the defect. Flip this to a refusing
+// regression when variant-to-declaration argument identity is established.
+// See generic_application_admits_distinct_unit_variant_arguments.
+test fn unit_variant_argument_identity_gap_remains_observable() -> Bool {
+  match compile_fixture(fixture: MultiModuleCompileFixture {
+    sources: [fixture_source(path: "application.dag", content: "module application\ntype Marker = First | Second\ntype Record<P> { n: Int }\nfn take(q: Record<First>) -> Int { q.n }\nfn probe(q: Record<Second>) -> Int { take(q: q) }\n")],
+    entry: "application.dag"
+  }) {
+    FixtureCompileCompleted { module_count: modules, emitted_files: files, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      modules == 1 && (files |> count) > 0
+        && (rows |> filter(row => row.diagnostic_class == "UnlistedImportUse") |> count) == 2
+        && (rows |> all(row => row.diagnostic_class == "UnlistedImportUse" || row.diagnostic_class == "DeclaredTypeInhabitanceUndecided"))
+    _ => false
+  }
+}
