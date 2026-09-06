@@ -13217,7 +13217,14 @@ fn module_local_callable_env(
   }
 }
 
-fn build_module_context(contributions: List<ItemContribution>,
+// The module-local callable env arrives from phase 1 as `local_func_env`; only the PARENT links
+// are attached here, because the parent supply is reference-derived from this module's own items
+// and is therefore a body-phase fact. Preserving flatten_parent_envs is not incidental:
+// resolve_func_sigs stored the FLATTENED chain, and assigning the raw list would silently change
+// lookup.
+fn build_module_context(local: LocalContributionState,
+    local_func_env: ResolvedFuncEnv,
+    local_env_diagnostics: List<ErrorNode>,
     parent_index: Map<String, TypedModule>,
     callable_owner_index: CallableOwnerIndex,
     variant_surfaces: Map<String, VariantExportSurface>,
@@ -13225,16 +13232,6 @@ fn build_module_context(contributions: List<ItemContribution>,
     env: TypeEnv,
     module_name: String,
     global_variant_base: Map<String, TypeBinding>) -> ModuleContext {
-  let local = fold_module_contributions(
-    remaining: contributions,
-    resolved_items: [],
-    func_sigs: empty_map(),
-    svc_registry: empty_map(),
-    svc_locals: empty_map(),
-    item_registry: empty_map(),
-    diag_chunks: [],
-    source_indices: env.source_indices
-  )
   let local_variant_fold = build_local_variants(
     items: local.resolved_items,
     source_indices: env.source_indices,
@@ -13290,14 +13287,13 @@ fn build_module_context(contributions: List<ItemContribution>,
     module_name: module_name,
     source_indices: env.source_indices
   ))
-  let local_env_result = module_local_callable_env(contributions_local: local, env: env, module_name: module_name)
   let resolve_result = ResolveFuncSigsResult {
     func_env: ResolvedFuncEnv {
-      name: local_env_result.func_env.name,
-      local: local_env_result.func_env.local,
+      name: local_func_env.name,
+      local: local_func_env.local,
       parents: flatten_parent_envs(direct_parents: parent_envs)
     },
-    diagnostics: local_env_result.diagnostics
+    diagnostics: local_env_diagnostics
   }
   let all_locals = fold(merged_scope.svc_locals |> map_values, init: env_variant_locals, f: (acc, binding) =>
     map_insert(acc, binding.name, binding)
@@ -13319,9 +13315,9 @@ type TypecheckModuleResult {
   binding_forks: List<TypeEnvCacheMergeConflict>
 }
 
-// THE PHASE SEAM, PROJECTED ONCE. Everything on the TYPE-RESOLUTION path -- build_type_env,
+// THE PHASE SEAM IS THE TYPE. Everything on the TYPE-RESOLUTION path -- build_type_env,
 // build_type_env_unresolved, build_ancestry_precedence, union_parent_type_env_caches and
-// overlay_direct_import_exports -- now takes Map<String, ModuleInterface> rather than
+// overlay_direct_import_exports -- takes Map<String, ModuleInterface> rather than
 // Map<String, TypedModule>, because reading the parent's ITEMS from any of them is a body
 // dependency and the whole point of delaying bodies is that no parent body exists yet.
 //
@@ -13332,44 +13328,26 @@ type TypecheckModuleResult {
 // whether item analysis completed, so "interface exists, body analysis intentionally has not
 // happened" has NO CONSTRUCTOR and could only be faked.
 //
-// This projection is the transitional half. It exists because parents are still realized as whole
-// TypedModules upstream; when phase 1a produces the interface map itself, this fold is deleted and
-// the map arrives already at interface grain.
-//
-// DELETION CONDITION, ATTACHED HERE RATHER THAN REMEMBERED. This fold is the SUBJECT of the
-// enrolled discriminating red `interface_index_projects_interface_grain_not_body_grain`
-// (infer_semantics_witness), which constructs a parent whose BODY cache carries a variant local
-// and whose INTERFACE cache has had it stripped, and asserts the projected row carries interface
-// grain. Deleting this fold therefore deletes that witness's subject. Under DESIGN section 4b(4)
-// a climb deletes the redundant PRODUCTION machinery and the discriminating red REMAINS ENROLLED:
-// so when this fold goes, THE WITNESS MOVES to whatever then produces the interface map -- same
-// fixture, same positive control, new producer -- and the mutation sourcing that producer from
-// body grain must still make it fail. Retiring the witness with the fold, or leaving it compiling
-// against something that no longer sits on the phase boundary, both look like progress and both
-// end the executed evidence for this boundary. ModuleInterface is not minted here -- it is the
-// carrier 04_items.dag already declares, and moving the cross-module type boundary onto it
-// ADVANCES typed_module_interface_body_dual_field_dissolution_trigger. It does not discharge it:
-// ResolvedFuncEnv is still a sibling field on TypedModule and CallableOwnerIndex is still a
-// separate cross-module surface, so "interface is the only cross-module export surface" stays
-// false for now.
-fn interface_index_of(parent_index: Map<String, TypedModule>) -> Map<String, ModuleInterface> {
-  fold(map_keys(parent_index), init: empty_map(), f: (acc, name) =>
-    match map_get(parent_index, name) {
-      Present { value: tm } => map_insert(acc, name, tm.interface)
-      Absent => acc
-    }
-  )
-}
+// The transitional projection that used to stand here -- a fold from the realized TypedModule map
+// down to interface grain -- IS DELETED. Phase 1 now produces the interface map itself, so the
+// map arrives already at interface grain and there is nothing to project. Per DESIGN section
+// 4b(4) the climb deletes the production machinery and NOT the evidence: the discriminating red
+// that guarded this seam MOVED, in the same commit, to the producer that survives --
+// build_module_interface, where interface_cache_from_module is what strips body grain -- with its
+// positive control re-established and its mutation re-executed against that new subject rather
+// than carried over.
 
-fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, callable_owner_index: CallableOwnerIndex, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex, global_variant_base: Map<String, TypeBinding>) -> TypecheckModuleResult {
-  let env_result = build_type_env(module: resolved, parent_index: interface_index_of(parent_index: parent_index), source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index)
-  let env = env_result.env
-  let env_cache = env_result.cache
-  let env_diags = env_result.diagnostics
+// Phase 2 CONSUMES the phase-1 row read-only. It does not recompute the type env, the item
+// contributions or the module-local callable env: those are one computation with a shared
+// ancestor, and recomputing them here would be the authored duplication DESIGN section 2 rules
+// out -- carry the first value. There is no path from here that extends the declaration layer.
+fn typecheck_module(resolved: ResolvedModule, facts: ModuleDeclarationFacts, parent_index: Map<String, TypedModule>, callable_owner_index: CallableOwnerIndex, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, global_variant_base: Map<String, TypeBinding>) -> TypecheckModuleResult {
+  let env = facts.env
+  let env_cache = facts.cache
+  let env_diags = facts.env_diagnostics
 
-  let env_errors = env_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
   let seed_diags = builtin_kernel_seed_diagnostics()
-  if env_errors |> count > 0 {
+  if facts.env_abandoned {
     return TypecheckModuleResult {
       typed: TypedModule {
         progress: AbandonedBeforeItems,
@@ -13377,28 +13355,21 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
         items: [],
         type_env: env,
         type_env_cache: env_cache,
-        interface: build_module_interface(
-          module_path: authored_name_at(source_indices: source_indices, node: resolved.module),
-          module: resolved.module,
-          env: env,
-          cache: env_cache,
-          source_indices: source_indices
-        ),
-        func_env: ResolvedFuncEnv { name: authored_name_at(source_indices: source_indices, node: resolved.module), local: empty_map(), parents: [] },
+        interface: facts.interface,
+        func_env: facts.local_func_env,
         item_registry: empty_map(),
         occurrence_transport: Present { value: resolved.occurrence_transport },
       },
       diagnostics: concat(env_diags, seed_diags),
-      binding_forks: env_result.binding_forks
+      binding_forks: facts.binding_forks
     }
   }
 
   let resolved_module_name = authored_name_at(source_indices: source_indices, node: resolved.module)
-  let contributions = map(module_items(n: resolved.module), item =>
-    analyze_item(item: item, env: env, module_name: resolved_module_name)
-  )
   let ctx = build_module_context(
-    contributions: contributions,
+    local: facts.local,
+    local_func_env: facts.local_func_env,
+    local_env_diagnostics: facts.local_env_diagnostics,
     parent_index: parent_index,
     callable_owner_index: callable_owner_index,
     variant_surfaces: variant_surfaces,
@@ -13485,7 +13456,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
       module_name: resolved_module_name,
       module_span: resolved.module.span,
       diagnostics: concat(env_diags, ctx.diagnostics, infer_diags, seed_diags)),
-    binding_forks: env_result.binding_forks
+    binding_forks: facts.binding_forks
   }
 }
 
@@ -13701,15 +13672,209 @@ fn seed_kernel_intern_table(intern_table: InternTable) -> InternTable {
   fold(map_keys(compiler_recursive_types), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
 }
 
-// The callable owner index is carried here rather than rebuilt per module: the supply is asked
-// once per module and a per-module rebuild over the whole realized population is the quadratic
-// fold DESIGN section 6 rules out regardless of the realized n.
+// PHASE 1 -- THE DECLARATION LAYER. One row per module, produced for the WHOLE population before
+// any body is analyzed, and consulted read-only by phase 2.
+//
+// This is what makes "the complete callable owner index exists before any body" a fact about the
+// TYPE rather than about the schedule. The index is no longer a field of RealizeState, so there is
+// no accumulator for a body-realization step to publish into: incremental publication is not
+// merely removed, it is UNWRITABLE at the phase-2 site. That is the construction-over-validation
+// move of DESIGN section 5 -- an earlier plan retyped the incremental field instead, which would
+// have preserved the same scheduling regime wearing the new carrier while making the completeness
+// claim false and looking migrated.
+//
+// Phase 1 is ACYCLIC, and that is a checked property rather than an assumption. Every input it
+// reads is declaration-side: build_type_env consults parent INTERFACES (never items),
+// analyze_item takes only the module's own env and name, and module_local_callable_env resolves
+// signatures with parent_envs: [] -- so no phase-1 step reads any other module's body. The one
+// function that WOULD have made it cyclic, build_imported_variants, reads parent_tm.items and is
+// deliberately not here.
+//
+// ORDERING IS REFERENCE-DERIVED AND WAS ALREADY SO. The recursion below mirrors realize_module's
+// exactly -- reference_provider_module_paths with the same `visiting` cycle bound -- because that
+// is the order realization already ran in on this branch. Phase 1 introduces no ordering device
+// and converts nothing: the type layer's PARENT EDGES are still module.resolved_imports inside
+// build_type_env, which is a different axis and a later step's subject.
+type ModuleDeclarationFacts {
+  interface: ModuleInterface
+  env: TypeEnv
+  cache: TypeEnvCache
+  local: LocalContributionState
+  local_func_env: ResolvedFuncEnv
+  env_diagnostics: List<ErrorNode>
+  local_env_diagnostics: List<ErrorNode>
+  binding_forks: List<TypeEnvCacheMergeConflict>
+  env_abandoned: Bool
+}
+
+// `interface_index` is CARRIED rather than re-derived from `facts` on each lookup. Projecting it
+// per module would be the quadratic fold DESIGN section 6 rules out regardless of the realized n,
+// and section 2 says carry the first value when the demands share an ancestor.
+type DeclarationPhaseState {
+  facts: Map<String, ModuleDeclarationFacts>
+  interface_index: Map<String, ModuleInterface>
+  callable_owner_index: CallableOwnerIndex
+}
+
+fn empty_local_contribution_state() -> LocalContributionState {
+  LocalContributionState {
+    resolved_items: [],
+    func_sigs: empty_map(),
+    svc_registry: empty_map(),
+    svc_locals: empty_map(),
+    item_registry: empty_map(),
+    diag_chunks: []
+  }
+}
+
+// The env-error arm reproduces typecheck_module's AbandonedBeforeItems disposition EXACTLY: a
+// module whose type env failed contributes no callable rows, because the TypedModule it used to
+// produce carried an empty func_env. Contributing rows here instead would widen the owner index
+// on precisely the modules whose declarations could not be resolved.
+fn declare_module_facts(
+  resolved: ResolvedModule,
+  interface_index: Map<String, ModuleInterface>,
+  source_indices: Map<String, NewlineIndex>,
+  intern_table: InternTable,
+  symbol_index: SymbolIndex
+) -> ModuleDeclarationFacts {
+  let module_path = authored_name_at(source_indices: source_indices, node: resolved.module)
+  let env_result = build_type_env(module: resolved, parent_index: interface_index, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index)
+  let env = env_result.env
+  let iface = build_module_interface(
+    module_path: module_path,
+    module: resolved.module,
+    env: env,
+    cache: env_result.cache,
+    source_indices: source_indices
+  )
+  let env_errors = env_result.diagnostics |> filter(d => is_error_diagnostic(d: d.diagnostic))
+  if env_errors |> count > 0 {
+    ModuleDeclarationFacts {
+      interface: iface,
+      env: env,
+      cache: env_result.cache,
+      local: empty_local_contribution_state(),
+      local_func_env: ResolvedFuncEnv { name: module_path, local: empty_map(), parents: [] },
+      env_diagnostics: env_result.diagnostics,
+      local_env_diagnostics: [],
+      binding_forks: env_result.binding_forks,
+      env_abandoned: true
+    }
+  } else {
+    let contributions = map(module_items(n: resolved.module), item =>
+      analyze_item(item: item, env: env, module_name: module_path)
+    )
+    let local = fold_module_contributions(
+      remaining: contributions,
+      resolved_items: [],
+      func_sigs: empty_map(),
+      svc_registry: empty_map(),
+      svc_locals: empty_map(),
+      item_registry: empty_map(),
+      diag_chunks: [],
+      source_indices: env.source_indices
+    )
+    let local_env_result = module_local_callable_env(contributions_local: local, env: env, module_name: module_path)
+    ModuleDeclarationFacts {
+      interface: iface,
+      env: env,
+      cache: env_result.cache,
+      local: local,
+      local_func_env: local_env_result.func_env,
+      env_diagnostics: env_result.diagnostics,
+      local_env_diagnostics: local_env_result.diagnostics,
+      binding_forks: env_result.binding_forks,
+      env_abandoned: false
+    }
+  }
+}
+
+// `visiting` is the same cycle bound realize_module carries and for the same reason: reference
+// providers carry no acyclicity law, so the recursion needs its own. Re-entering a module already
+// on the path returns the state unchanged -- the module is not skipped, it is declared by the
+// top-level fold that owns it.
+fn declare_module(
+  name: String,
+  resolved_by_name: Map<String, ResolvedModule>,
+  state: DeclarationPhaseState,
+  source_indices: Map<String, NewlineIndex>,
+  intern_table: InternTable,
+  symbol_index: SymbolIndex,
+  visiting: Map<String, Bool>
+) -> DeclarationPhaseState {
+  if map_has(visiting, name) { state }
+  else {
+  match map_get(state.facts, name) {
+    Present { value: _ } => state
+    Absent =>
+      match map_get(resolved_by_name, name) {
+        Absent => state
+        Present { value: resolved } =>
+          let dep_state = reference_provider_module_paths(
+              items: module_items(n: resolved.module),
+              module_path: name,
+              source_indices: source_indices
+            ) |> fold(init: state, f: (st, provider_path) =>
+            declare_module(
+              name: provider_path,
+              resolved_by_name: resolved_by_name,
+              state: st,
+              source_indices: source_indices,
+              intern_table: intern_table,
+              symbol_index: symbol_index,
+              visiting: map_insert(visiting, name, true)
+            )
+          )
+          let facts = declare_module_facts(
+            resolved: resolved,
+            interface_index: dep_state.interface_index,
+            source_indices: source_indices,
+            intern_table: intern_table,
+            symbol_index: symbol_index
+          )
+          DeclarationPhaseState {
+            facts: map_insert(dep_state.facts, name, facts),
+            interface_index: map_insert(dep_state.interface_index, name, facts.interface),
+            callable_owner_index: callable_owner_index_from_own_env(index: dep_state.callable_owner_index, env: facts.local_func_env)
+          }
+      }
+  }
+}
+}
+
+fn build_declaration_layer(
+  modules: List<ResolvedModule>,
+  resolved_by_name: Map<String, ResolvedModule>,
+  source_indices: Map<String, NewlineIndex>,
+  intern_table: InternTable,
+  symbol_index: SymbolIndex
+) -> DeclarationPhaseState {
+  modules |> fold(init: DeclarationPhaseState {
+    facts: empty_map(),
+    interface_index: empty_map(),
+    callable_owner_index: empty_callable_owner_index()
+  }, f: (st, rm) =>
+    declare_module(
+      name: authored_name_at(source_indices: source_indices, node: rm.module),
+      resolved_by_name: resolved_by_name,
+      state: st,
+      source_indices: source_indices,
+      intern_table: intern_table,
+      symbol_index: symbol_index,
+      visiting: empty_map()
+    )
+  )
+}
+
+// PHASE 2 -- BODY REALIZATION. The callable owner index is NOT a field here, and its absence is
+// the whole point: phase 1 built it over the whole population, so there is no accumulator a body
+// step could publish into. Incremental publication is unwritable rather than merely removed.
 type RealizeState {
   module_index: Map<String, TypedModule>
   variant_surfaces: Map<String, VariantExportSurface>
   item_registry: Map<String, ItemInfo>
   diags_by_name: Map<String, List<ErrorNode>>
-  callable_owner_index: CallableOwnerIndex
 }
 
 fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypedGraph {
@@ -13726,20 +13891,26 @@ fn typecheck_with_census_extra(graph: ModuleGraph, source_indices: Map<String, N
     fill: build_symbol_index_qualified_fill(modules: census_fill_modules, source_indices: census_si)
   )
   let global_variant_base = build_global_bare_variant_locals(global_bare: symbol_index.global_bare, source_indices: source_indices)
+  let declarations = build_declaration_layer(
+    modules: graph.modules,
+    resolved_by_name: resolved_by_name,
+    source_indices: source_indices,
+    intern_table: intern_table,
+    symbol_index: symbol_index
+  )
   let state = graph.modules |> fold(init: RealizeState {
     module_index: empty_map(),
     variant_surfaces: empty_map(),
     item_registry: empty_map(),
-    diags_by_name: empty_map(),
-    callable_owner_index: empty_callable_owner_index()
+    diags_by_name: empty_map()
   }, f: (st, rm) =>
     realize_module(
       name: authored_name_at(source_indices: source_indices, node: rm.module),
       resolved_by_name: resolved_by_name,
       state: st,
+      declarations: declarations.facts,
+      callable_owner_index: declarations.callable_owner_index,
       source_indices: source_indices,
-      intern_table: intern_table,
-      symbol_index: symbol_index,
       global_variant_base: global_variant_base,
       visiting: empty_map()
     )
@@ -13768,13 +13939,19 @@ fn typecheck_with_census_extra(graph: ModuleGraph, source_indices: Map<String, N
 // realization path returns the state unchanged: the module is not skipped, it is realized by the
 // top-level fold that owns it, and its env reaches the index there. That is a BOUND on one
 // traversal, not a widened answer to a question this function could not decide.
+// A MODULE REACHING BODY REALIZATION WITH NO PHASE-1 ROW IS A BROKEN PHASE SPLIT, not a module to
+// skip. Phase 1 folds the same population over the same recursion, so a miss means the two phases
+// disagree about who exists. The Absent arm below REFUSES with a located diagnostic rather than
+// realizing the module without its declarations: widening to a locally recomputed env there is the
+// absorbing arm DESIGN section 5 forbids, and it would hide exactly the defect this split exists
+// to make impossible.
 fn realize_module(
   name: String,
   resolved_by_name: Map<String, ResolvedModule>,
   state: RealizeState,
+  declarations: Map<String, ModuleDeclarationFacts>,
+  callable_owner_index: CallableOwnerIndex,
   source_indices: Map<String, NewlineIndex>,
-  intern_table: InternTable,
-  symbol_index: SymbolIndex,
   global_variant_base: Map<String, TypeBinding>,
   visiting: Map<String, Bool>
 ) -> RealizeState {
@@ -13795,15 +13972,24 @@ fn realize_module(
               name: provider_path,
               resolved_by_name: resolved_by_name,
               state: st,
+              declarations: declarations,
+              callable_owner_index: callable_owner_index,
               source_indices: source_indices,
-              intern_table: intern_table,
-              symbol_index: symbol_index,
               global_variant_base: global_variant_base,
               visiting: map_insert(visiting, name, true)
             )
           )
           let parent_result = collect_parent_envs(resolved: resolved, module_index: dep_state.module_index, source_indices: source_indices)
-          let tc_result = typecheck_module(resolved: resolved, parent_index: dep_state.module_index, callable_owner_index: dep_state.callable_owner_index, variant_surfaces: dep_state.variant_surfaces, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, global_variant_base: global_variant_base)
+          match map_get(declarations, name) {
+            Absent =>
+              RealizeState {
+                module_index: dep_state.module_index,
+                variant_surfaces: dep_state.variant_surfaces,
+                item_registry: dep_state.item_registry,
+                diags_by_name: map_insert(dep_state.diags_by_name, name, [make_error_node(diagnostic: InternalError { message: concat("module '", name, "' reached body realization with no declaration-phase row"), span: resolved.module.span }, module_name: name)])
+              }
+            Present { value: facts } =>
+          let tc_result = typecheck_module(resolved: resolved, facts: facts, parent_index: dep_state.module_index, callable_owner_index: callable_owner_index, variant_surfaces: dep_state.variant_surfaces, source_indices: source_indices, global_variant_base: global_variant_base)
           let typed = tc_result.typed
           let typed_path = authored_name_at(source_indices: source_indices, node: typed.module)
           RealizeState {
@@ -13814,8 +14000,8 @@ fn realize_module(
               build_variant_export_surface(tm: typed, surfaces: dep_state.variant_surfaces, source_indices: source_indices)
             ),
             item_registry: map_merge(dep_state.item_registry, typed.item_registry),
-            diags_by_name: map_insert(dep_state.diags_by_name, typed_path, concat(parent_result.diagnostics, tc_result.diagnostics)),
-            callable_owner_index: callable_owner_index_from_own_env(index: dep_state.callable_owner_index, env: typed.func_env)
+            diags_by_name: map_insert(dep_state.diags_by_name, typed_path, concat(parent_result.diagnostics, tc_result.diagnostics))
+          }
           }
       }
   }
@@ -14194,9 +14380,20 @@ fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<
 // leave this one serving import-derived links to every decoded graph.
 //
 // THE TWO PATHS CALL THE SAME SUPPLY FROM DIFFERENT SEEDS, stated as a plain fact because no
-// executed evidence licenses a claim about them agreeing: this one builds its owner index from
-// every module at once, while the primary path grows its index inside the dependency-driven
-// realize fold, so the primary index holds only the modules realized before the module using it.
+// executed evidence licenses a claim about them agreeing. ONE HALF OF THAT DIVERGENCE IS NOW
+// GONE AND THE OTHER HALF IS NOT, and the distinction is the whole content of this paragraph.
+//
+// GONE -- THE ORDER DEPENDENCE. This comment used to say the primary path grows its index inside
+// the dependency-driven realize fold, so the primary index holds only the modules realized before
+// the module using it. That is no longer true: phase 1 builds the callable owner index over the
+// WHOLE population before any body is analyzed, so both paths now answer from a complete index
+// and neither answer depends on where the asking module sits in traversal order.
+//
+// NOT GONE -- THE SEED. This path seeds its index from the REALIZED TypedModules' func_envs,
+// after populate_output_provenance has run; phase 1 seeds its index from the DECLARATION-side
+// local envs, before any body was inferred. Both are whole-population, and they are still built
+// from different values, so a row present in both may still differ in what body inference added
+// to it. No executed evidence establishes that they agree, and this paragraph does not claim it.
 fn rewire_func_env_parent_links(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
   let owner_index = callable_owner_index_from_envs(envs: modules |> map(m => m.func_env))
   map(modules, m =>

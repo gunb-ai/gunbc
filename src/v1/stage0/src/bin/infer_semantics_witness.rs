@@ -2122,21 +2122,22 @@ fn call_target_agreeing_scope_maps_are_locally_bound() {
     }
 }
 
-// THE DIVERGENCE RED FOR THE 1a PHASE BOUNDARY, authored one level below the source boundary
-// because the corpus structurally cannot express it.
+// THE PHASE-BOUNDARY DIVERGENCE RED, MOVED WITH ITS SUBJECT.
 //
-// `interface_cache_from_module` DELIBERATELY strips `variant_locals` -- they are interpretation-
-// local body grain -- so a module's INTERFACE cache and its own BODY cache legitimately disagree
-// on exactly that field. On the corpus they never visibly disagree in a way that changes an
-// answer, which is why a corpus comparison cannot decide this: body-derived and interface-derived
-// results are observationally identical there, and an identical result is precisely what the
-// forbidden dependency would also produce.
+// This probe used to sit on `interface_index_of`, the transitional fold from the realized
+// TypedModule map down to interface grain. That fold is DELETED: phase 1 now produces the
+// interface map itself. Under DESIGN §4b(4) a climb deletes the obsolete PRODUCTION machinery and
+// the discriminating evidence STAYS ENROLLED, so the probe moved in the same commit to the
+// producer that survives -- `build_module_interface`, where `interface_cache_from_module` is what
+// actually strips body grain -- rather than being retired with its old subject or left compiling
+// against something no longer on the phase boundary.
 //
-// The failure this discriminates is the one that survives a signature retype: a CALLER populating
-// the interface map from body grain. Every phase-1 body stays pristine, every parameter type still
-// reads Map<String, ModuleInterface>, and phase 1 silently regains body dependence. Textual
-// invariance of the retyped functions cannot see it; this can.
-fn interface_index_projects_interface_grain_not_body_grain() {
+// WHAT IT DISCRIMINATES: phase 1 hands parents to the type layer at INTERFACE grain, so no phase-1
+// step can observe a parent body. `variant_locals` is the state that separates the two grains: it
+// is body-local, and the interface cache must not carry it. Building the interface from a cache
+// that still holds a variant local -- i.e. skipping `interface_cache_from_module` -- makes this
+// assertion fail.
+fn build_module_interface_strips_body_grain_from_the_cache() {
     let mut body_variant_locals = im::HashMap::new();
     body_variant_locals.insert(
         "BodyOnlyVariant".to_string(),
@@ -2149,81 +2150,48 @@ fn interface_index_projects_interface_grain_not_body_grain() {
         }),
     );
 
-    // The two caches DISAGREE on variant_locals, which is the only state that discriminates.
+    // A BODY-GRAIN cache: exactly what phase 2 holds in `TypedModule.type_env_cache` after item
+    // inference has populated variant locals.
     let body_cache = Rc::new(v1_compiler::v1_compiler_infer_env::TypeEnvCache {
         deps_map: v1_compiler::v1_rt::rc_empty_map(),
         str_bindings: v1_compiler::v1_rt::rc_empty_map(),
         cycle_set_str: v1_compiler::v1_rt::rc_empty_map(),
         variant_locals: Rc::new(body_variant_locals),
     });
-    let interface_cache =
-        v1_compiler::v1_compiler_infer::interface_cache_from_module(body_cache.clone());
 
-    let iface = Rc::new(v1_compiler::v1_compiler_infer_items::ModuleInterface {
-        summary: Rc::new(v1_compiler::std_interface_summary::InterfaceSummary {
-            module_path: "probe.parent".to_string(),
-            exports: Rc::new(vec![]),
-            interface_hash: v1_compiler::std_content_hash::structural_content_hash(
-                "probe".to_string(),
-            ),
-        }),
-        env: empty_type_env(),
-        cache: interface_cache,
-    });
-
-    let parent = Rc::new(v1_compiler::v1_compiler_infer_items::TypedModule {
-        module: leaf_node("probe.parent".to_string()),
-        items: Rc::new(vec![]),
-        progress: v1_compiler::v1_compiler_infer_items::ModuleTypecheckProgress::ItemsChecked,
-        type_env: empty_type_env(),
-        type_env_cache: body_cache.clone(),
-        interface: iface,
-        func_env: Rc::new(v1_compiler::v1_compiler_infer_sigs::ResolvedFuncEnv {
-            name: "probe.parent".to_string(),
-            local: v1_compiler::v1_rt::rc_empty_map(),
-            parents: Rc::new(vec![]),
-        }),
-        item_registry: v1_compiler::v1_rt::rc_empty_map(),
-        occurrence_transport: None,
-    });
-
-    // POSITIVE CONTROL FIRST: the fixture is only discriminating if the two caches really differ.
-    // Without this, a probe over two identically-empty caches would pass by vacancy.
+    // POSITIVE CONTROL FIRST, RE-ESTABLISHED AGAINST THIS SUBJECT rather than assumed to survive
+    // the move: the probe is only discriminating while the input cache genuinely carries a variant
+    // local. Over an empty cache it would pass by vacancy and prove nothing.
     assert_eq!(
-        parent.type_env_cache.variant_locals.len(),
+        body_cache.variant_locals.len(),
         1,
-        "fixture is not discriminating: the body cache must carry a variant local"
-    );
-    assert_eq!(
-        parent.interface.cache.variant_locals.len(),
-        0,
-        "fixture is not discriminating: the interface cache must have stripped it"
+        "fixture is not discriminating: the input cache must carry a body-local variant"
     );
 
-    let mut index = im::HashMap::new();
-    index.insert("probe.parent".to_string(), parent);
-    let projected = v1_compiler::v1_compiler_infer::interface_index_of(Rc::new(index));
+    let iface = v1_compiler::v1_compiler_infer::build_module_interface(
+        "probe.parent".to_string(),
+        leaf_node("probe.parent".to_string()),
+        empty_type_env(),
+        body_cache.clone(),
+        v1_compiler::v1_rt::rc_empty_map(),
+    );
 
-    let row = projected
-        .get("probe.parent")
-        .expect("the projection must keep the module key");
-
-    // THE DISCRIMINATING ASSERTION. Body grain carries the variant local; interface grain does
-    // not. Sourcing the map from `tm.type_env_cache` instead of `tm.interface` makes this fail.
+    // THE DISCRIMINATING ASSERTION. The produced interface must not carry body grain. Building it
+    // from `cache` directly instead of `interface_cache_from_module(cache)` makes this fail.
     assert_eq!(
-        row.cache.variant_locals.len(),
+        iface.cache.variant_locals.len(),
         0,
-        "the phase-1 parent map must carry INTERFACE grain: variant_locals are body-local and \
-         interface_cache_from_module strips them, so a nonempty variant_locals here means the \
-         projection was sourced from the body cache and phase 1 can observe a body"
+        "the interface a parent is published at must carry INTERFACE grain: variant_locals are \
+         body-local and interface_cache_from_module strips them, so a nonempty variant_locals here \
+         means the interface was built from the body cache and phase 1 can observe a body"
     );
 }
 
 fn main() -> ExitCode {
     let tests: &[(&str, fn())] = &[
         (
-            "interface_index_projects_interface_grain_not_body_grain",
-            interface_index_projects_interface_grain_not_body_grain,
+            "build_module_interface_strips_body_grain_from_the_cache",
+            build_module_interface_strips_body_grain_from_the_cache,
         ),
         (
             "call_target_scope_map_disagreement_is_classified_as_missing_binding",
