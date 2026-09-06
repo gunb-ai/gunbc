@@ -1,0 +1,558 @@
+module gunbc.runner.runner_host_surface
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import gunbc.build_cache_instance { ProcessIdentity }
+
+// THE RUNTIME SURFACE IS DERIVED, NOT DISCOVERED. The invariant this module exists to make
+// constructible: no user-space process, listener, route, executable, writable path, device grant or
+// secret ingress exists on the runner host unless one modeled declaration here caused it. A red team
+// should be able to enumerate the intended surface WITHOUT TOUCHING THE UNIT, because the same
+// values that build and launch the machine are the ones that answer the question.
+//
+// A SCAN IS THE THIRD LAYER, NEVER THE FIRST. Three questions with three different authorities:
+//
+//   DECLARED   what processes and interfaces MAY exist          this module
+//   ENFORCED   what prevents anything else existing             /init, namespaces, filter, image
+//   OBSERVED   does THIS boot match the declaration exactly     whole-population runtime receipt
+//
+// A declaration alone is prose with better syntax. A scan alone describes whatever happened to
+// start. The standing is the conjunction, and this module is deliberately only the first term.
+//
+// THE PROCESS IS THE ROOT, NOT THE PORT. A port is one projection of a running process, and a
+// surface described as a port list cannot answer who owns the socket, what that owner may execute,
+// what it may write, or what it may reach outbound. Modelling ports first is how a "surface
+// document" becomes a fourth authority that happens to agree with sshd_config, the firewall and the
+// probe -- which is four authorities, not one, and they agree only until they do not.
+//
+// WHAT THIS MODULE DELIBERATELY DOES NOT YET CARRY, named so its absence is not read as a claim:
+// capability sets, seccomp policy digests, mount grants, device grants and secret ingress are axes
+// of RuntimeProcessClass in the ruling this follows, and are NOT modeled here. This slice models the
+// process/listener/lineage spine and the exact-population judgment over it. An unmodeled axis is an
+// axis nothing enforces, and the surface report must say so rather than imply completeness.
+
+// CARDINALITY IS PART OF THE DECLARATION BECAUSE PIDS CANNOT BE. Nothing can name the pid a
+// supervisor will get, so the declared population is a set of CLASSES with counts -- some fixed,
+// some keyed by an admitted attempt, and one that is the whole point: Forbidden.
+//
+// ForbiddenClass IS NOT A COMMENT. It is the arm that makes "anything else" a representable,
+// checkable state rather than the silent complement of a list.
+type ProcessCardinality
+  = ExactlyOne
+  | ZeroOrMorePerControlSession
+  | ExactlyOnePerAdmittedAttempt
+  | ForbiddenClass
+
+// THE ROLES OF THE RAW RUNNER HOST, and the smallness is the design rather than an accident of this
+// slice. In production the static user-space graph is a supervisor and a control ingress; everything
+// else exists only because an attempt was admitted, and disappears when it retires.
+//
+// THERE IS NO IDLE FIRECRACKER. A hypervisor process with no admitted attempt behind it is not a
+// warm pool, it is an unexplained process, and the population judgment treats it as one.
+// ONE ATTEMPT EXECUTION IDENTITY, NOT TWO PROCESSES. The roster used to name AttemptJailer and
+// AttemptFirecracker as separate classes with the second parented to the first, and a live census
+// disproved it directly: the pid launched as the jailer and the pid running Firecracker were the
+// SAME NUMBER (1649), with PPid 1. The jailer prepares and then execs, so the executable and the
+// role change while the process identity does not.
+//
+// FIXING ONLY THE COUNT LEFT THE MODEL SAYING TWO THINGS AT ONCE -- the arithmetic said one process
+// while this roster still declared two with a parent-child edge, so a consumer's answer depended on
+// which half it read. The roster is the authority a census compares against, so it is the half that
+// had to change.
+//
+// THE DEADLINE WATCHER IS A ROLE NOW BECAUSE IT IS A PROCESS. BusyBox timeout forks a watcher that
+// outlives its exec, and the same census saw it: pid 1651, busybox, uid 0, parented to init. It was
+// previously counted and unnamed, which is precisely the "exists only as a number" shape this
+// module rejects everywhere else.
+type HostProcessRole
+  = HostSupervisor
+  | ControlMaster
+  | ControlSession
+  | AttemptExecution
+  | AttemptDeadlineWatcher
+  | RuntimeSurfaceObserver
+
+fn host_process_role_label(r: HostProcessRole) -> String {
+  match r {
+    HostSupervisor => "host-supervisor"
+    ControlMaster => "control-master"
+    ControlSession => "control-session"
+    AttemptExecution => "attempt-execution"
+    AttemptDeadlineWatcher => "attempt-deadline-watcher"
+    RuntimeSurfaceObserver => "runtime-surface-observer"
+  }
+}
+
+// THE PHASE IS WHAT CHANGES, and it is modeled beside the role rather than as two roles. A snapshot
+// taken after the guest marker should find FirecrackerRunning; finding JailerPreparing there would
+// mean the exec never happened, which is a different failure from the process being absent.
+type AttemptExecutionPhase
+  = JailerPreparing
+  | FirecrackerRunning
+  | AttemptExecutionRetiring
+
+fn attempt_phase_label(p: AttemptExecutionPhase) -> String {
+  match p {
+    JailerPreparing => "jailer-preparing"
+    FirecrackerRunning => "firecracker-running"
+    AttemptExecutionRetiring => "attempt-execution-retiring"
+  }
+}
+
+// LINEAGE IS DECLARED, NOT INFERRED FROM WHATEVER RAN. "A firecracker exists" and "a firecracker
+// exists BENEATH THE JAILER THAT WAS ADMITTED FOR THIS ATTEMPT" are different facts, and only the
+// second is the isolation the jailer is there to provide. A firecracker parented anywhere else has
+// escaped its jail by construction, whatever its command line says.
+type ProcessParent
+  = ParentIsKernel
+  | ParentIsRole { role: HostProcessRole }
+
+type HostProcessClass {
+  role: HostProcessRole
+  cardinality: ProcessCardinality
+  parent: ProcessParent
+  executable_digest: NonEmptyStr
+  runs_as: NonEmptyStr
+  may_spawn: List<HostProcessRole>
+}
+
+// ── the listener, at its real identity ──────────────────────────────────────────────────────────
+
+// A LISTENER IS NOT A PORT NUMBER. These are four materially different surfaces and a model that
+// records "22/tcp" cannot tell them apart:
+//
+//   127.0.0.1:22/tcp      reachable by nothing off-box
+//   192.168.1.230:22/tcp  reachable from the management network
+//   0.0.0.0:22/tcp        reachable from every attached network
+//   [::]:22/tcp           the same mistake, in a family people forget to check
+//
+// The namespace matters for the same reason: an endpoint inside an attempt's network namespace is
+// not on the host's surface at all, and conflating the two would report guest-side listeners as host
+// exposure or, far worse, the reverse.
+type AddressFamily = Inet4 | Inet6 | UnixDomain
+type TransportProtocol = Tcp | Udp | UnixStream
+
+type NetworkNamespaceScope
+  = HostNetworkNamespace
+  | AttemptNetworkNamespace
+
+type ExposureZone
+  = ManagementNetworkOnly
+  | LoopbackOnly
+  | HostLocalIpcOnly
+  | AnyAttachedNetwork
+
+type DeclaredListener {
+  owner: HostProcessRole
+  namespace_scope: NetworkNamespaceScope
+  family: AddressFamily
+  protocol: TransportProtocol
+  local_address: NonEmptyStr
+  port: Int
+  zone: ExposureZone
+}
+
+// ── the declared surface of the raw runner host ─────────────────────────────────────────────────
+
+// THE PRODUCTION SURFACE. One supervisor, one control ingress, and nothing standing idle.
+//
+// THE CONTROL LISTENER IS A TRANSPORT TO ONE PROGRAM, NOT A SHELL. An ordinary SSH login re-opens
+// the surface completely: it permits arbitrary combinations of every executable in the image, so the
+// process population stops being closed even though the binary set is finite. Public-key only,
+// forced command, no pty, no agent or TCP forwarding, management address only -- the caller reaches
+// the host control agent and cannot reach anything else.
+//
+// THIS IS ALSO WHY THE FLEET'S ORDINARY SSH REALIZATION DOES NOT FIT HERE: it invokes `bash -s`,
+// which both requires a shell this image should not contain and hands it arbitrary script text. The
+// stateless host needs a typed control surface, not a generic exec transport.
+data runner_host_production_processes: List<HostProcessClass> = [
+  HostProcessClass {
+    role: HostSupervisor,
+    cardinality: ExactlyOne,
+    parent: ParentIsKernel,
+    executable_digest: "unbound-until-image-build",
+    runs_as: "root",
+    may_spawn: [ControlMaster, AttemptExecution, AttemptDeadlineWatcher],
+  },
+  HostProcessClass {
+    role: ControlMaster,
+    cardinality: ExactlyOne,
+    parent: ParentIsRole { role: HostSupervisor },
+    executable_digest: "unbound-until-image-build",
+    runs_as: "root",
+    may_spawn: [ControlSession],
+  },
+  HostProcessClass {
+    role: ControlSession,
+    cardinality: ZeroOrMorePerControlSession,
+    parent: ParentIsRole { role: ControlMaster },
+    executable_digest: "unbound-until-image-build",
+    runs_as: "gunbc-control",
+    may_spawn: [],
+  },
+  HostProcessClass {
+    role: AttemptExecution,
+    cardinality: ExactlyOnePerAdmittedAttempt,
+    parent: ParentIsRole { role: HostSupervisor },
+    executable_digest: "unbound-until-image-build",
+    runs_as: "root during the jailer phase, then the attempt uid after the drop -- one identity, two executables",
+    may_spawn: [],
+  },
+]
+
+// FIRECRACKER EXPOSES NO HOST LISTENER. Its API is either absent entirely, when the whole
+// configuration is known before start, or an attempt-scoped Unix socket when lifecycle control needs
+// it. Either way it is not a TCP endpoint on the host's surface, and a firecracker holding one is a
+// finding rather than a configuration choice.
+data runner_host_production_listeners: List<DeclaredListener> = [
+  DeclaredListener {
+    owner: ControlMaster,
+    namespace_scope: HostNetworkNamespace,
+    family: Inet4,
+    protocol: Tcp,
+    local_address: "management-address",
+    port: 22,
+    zone: ManagementNetworkOnly,
+  },
+]
+
+// ── production and recovery are mutually exclusive ──────────────────────────────────────────────
+
+// A RECOVERY SHELL IN THE IMAGE IS NOT A RECOVERY SHELL ON THE SURFACE. Carrying busybox so a
+// console operator can diagnose a unit does not mean a network caller may reach it, and the two get
+// conflated precisely because the binary is present either way. Modelling the boot PURPOSE keeps the
+// distinction: a host in recovery refuses to admit VM work, and a host admitting VM work has no
+// interactive shell reachable.
+//
+// THE DANGEROUS STATE IS THE UNION, and it is unrepresentable here rather than discouraged: there is
+// no arm that is both.
+// A THIRD PURPOSE EXISTS BECAUSE A REAL BOOT HAD NO TRUTHFUL CONSTRUCTOR HERE. The 2026-09-06 KVM
+// probe ran Firecracker DIRECTLY, with no jailer -- which the production graph forbids, since it
+// requires HostSupervisor -> AttemptJailer -> AttemptFirecracker. And recovery refuses VM work
+// outright. So the machine that actually ran was representable as neither, and a two-armed model
+// would have forced that run to be labelled production simply because it achieved the production
+// path's first interesting effect.
+//
+// WHAT THE QUALIFICATION PURPOSE ADMITS IS DELIBERATELY NARROW: one bounded attempt, one guest
+// pinned by digest, no arbitrary or GitHub workload, and direct Firecracker permitted FOR THIS
+// MILESTONE ONLY. It is not a weaker production; it is a different subject, and nothing running
+// under it may be described as production-ready.
+type HostBootPurpose
+  = RunnerHostProduction
+  | RunnerHostQualificationProbe
+  | RunnerHostRecovery
+
+fn admits_vm_work(purpose: HostBootPurpose) -> Bool {
+  match purpose {
+    RunnerHostProduction => true
+    RunnerHostQualificationProbe => true
+    RunnerHostRecovery => false
+  }
+}
+
+// ARBITRARY WORKLOAD IS THE DISTINCTION THAT MATTERS, not whether a VM starts. The qualification
+// profile runs a known, digest-pinned guest; admitting someone else's code under it would be
+// running untrusted work without the containment the production graph exists to require.
+fn admits_arbitrary_workload(purpose: HostBootPurpose) -> Bool {
+  match purpose {
+    RunnerHostProduction => true
+    RunnerHostQualificationProbe => false
+    RunnerHostRecovery => false
+  }
+}
+
+// THE JAILER IS REQUIRED BY PRODUCTION AND WAIVED ONLY FOR QUALIFICATION, and the waiver is written
+// as its own function so it is a decision someone can find rather than an omission in a launch
+// path. Firecracker's own guidance is that production deployments start it through the jailer; a
+// probe that skips it proves KVM works and proves nothing about containment.
+fn requires_jailer(purpose: HostBootPurpose) -> Bool {
+  match purpose {
+    RunnerHostProduction => true
+    RunnerHostQualificationProbe => false
+    RunnerHostRecovery => false
+  }
+}
+
+fn admits_interactive_console_shell(purpose: HostBootPurpose) -> Bool {
+  match purpose {
+    RunnerHostProduction => false
+    RunnerHostQualificationProbe => true
+    RunnerHostRecovery => true
+  }
+}
+
+fn is_production_ready(purpose: HostBootPurpose) -> Bool {
+  match purpose {
+    RunnerHostProduction => true
+    RunnerHostQualificationProbe => false
+    RunnerHostRecovery => false
+  }
+}
+
+// ── the exact-population judgment ───────────────────────────────────────────────────────────────
+
+// THE EXPECTED POPULATION IS DERIVED FROM THE ADMITTED WORK, not fixed. Static singletons plus one
+// jailer and one firecracker per admitted attempt plus the live control sessions -- so the same
+// declaration answers "what should be running" at any moment without anyone maintaining a second
+// list that drifts.
+// THE JAILER AND FIRECRACKER ARE NOT AUTOMATICALLY TWO PROCESSES, and the declaration above said
+// they were. A live run on 2026-09-06 disproved it: the stock v1.16.1 jailer performs its
+// privileged setup -- cgroup, mount namespace, pivot, device creation, uid/gid drop -- and then
+// EXECS INTO the Firecracker binary. Without --new-pid-ns those are two PHASES OF ONE PROCESS
+// IDENTITY, not a parent and a child, so an expected population of two per attempt would be wrong
+// by one on every attempt and a census would report a missing process that never existed.
+//
+// THE TOPOLOGY IS A PROPERTY OF THE INVOCATION, so it is carried rather than assumed. --new-pid-ns
+// makes the jailer clone a child and the two-process shape becomes correct; a daemonizing
+// realization changes it again. A model that hardcodes either shape is wrong for the other.
+//
+// AND IT HAS A CONSEQUENCE FOR CLEANUP EVIDENCE. Under in-place exec, "zero surviving jailer" is
+// NOT an independent fact about teardown: the jailer stopped existing as a jailer at the moment it
+// became Firecracker, whether or not anything was cleaned up. The postcondition that carries weight
+// is that no process identity ASSOCIATED WITH THE ATTEMPT remains -- the deadline watcher and the
+// execution identity included.
+// THE TWO JAILER OPTIONS ARE ORTHOGONAL BOOLEANS, NOT ALTERNATIVES. --new-pid-ns and --daemonize
+// are independent fields in the jailer, so a coproduct of "in place OR new-pid-ns OR daemonized"
+// makes mutually exclusive what the invocation does not. They are two axes.
+//
+// AND NEITHER LEAVES TWO STEADY-STATE PROCESSES. With --new-pid-ns the jailer clones and the parent
+// exits; with --daemonize the parent and an intermediate exit and the daemon continues. Both have
+// transient extra identities during launch and ONE Firecracker execution process after settling.
+// What differs between them is which pid becomes Firecracker, whether a pid namespace exists,
+// whether the process is session-detached, and what parent relationship survives -- none of which
+// is a steady-state count.
+type JailerPidNamespace = JailerSharedPidNamespace | JailerNewPidNamespace
+type JailerSession = JailerForeground | JailerDaemonized
+
+type JailerInvocationTopology {
+  pid_namespace: JailerPidNamespace
+  session: JailerSession
+}
+
+// THE DEADLINE MECHANISM AND THE JAILER TOPOLOGY ARE NOT INDEPENDENT, and treating them as two
+// separate count terms hid a correctness rule. An external watcher owns the lifetime of the pid it
+// was given -- which survives an in-place exec, so the watched pid becomes Firecracker and the
+// deadline still binds. It does NOT survive a fork: under --new-pid-ns the watched parent exits and
+// Firecracker continues as a child, and under --daemonize the watched process exits during
+// daemonization. In both cases the watcher would fire against a dead pid while the VM ran on.
+//
+// SO THE COMBINATION IS ADMITTED OR REFUSED, never merely counted. The production direction removes
+// the question: a supervisor holding a pidfd and enforcing its own deadline has no watcher process
+// and nothing to rebind after a fork.
+type DeadlineRealization
+  = DeadlineByExternalWatcher
+  | DeadlineBySupervisorInternal
+
+type DeadlineTopologyAdmission
+  = DeadlineBindingHolds
+  | DeadlineBindingLostOnFork { detail: String }
+
+fn deadline_topology_admission(
+  deadline: DeadlineRealization,
+  topology: JailerInvocationTopology,
+) -> DeadlineTopologyAdmission {
+  match deadline {
+    DeadlineBySupervisorInternal => DeadlineBindingHolds
+    DeadlineByExternalWatcher =>
+      match topology.pid_namespace {
+        JailerNewPidNamespace =>
+          DeadlineBindingLostOnFork { detail: "--new-pid-ns makes the jailer clone a child and the watched parent exit, so the watcher would fire against a dead pid while the VM continues" }
+        JailerSharedPidNamespace =>
+          match topology.session {
+            JailerDaemonized =>
+              DeadlineBindingLostOnFork { detail: "--daemonize makes the watched process exit during daemonization while the daemon continues" }
+            JailerForeground => DeadlineBindingHolds
+          }
+      }
+  }
+}
+
+fn deadline_watcher_processes(realization: DeadlineRealization) -> Int {
+  match realization {
+    DeadlineByExternalWatcher => 1
+    DeadlineBySupervisorInternal => 0
+  }
+}
+
+// AN UNRESOLVED EXPECTATION REFUSES RATHER THAN RETURNING ZERO. The previous form answered zero
+// processes for an unobserved topology, which is fail-open in the worst direction: for an ADMITTED
+// attempt, not knowing the topology does not establish that no attempt process should exist, and a
+// census comparing against zero would report every real process as unexpected -- or, worse, find
+// nothing and call it agreement.
+type AttemptProcessExpectation
+  = AttemptProcessExpectationResolved { processes: Int }
+  | AttemptProcessExpectationUnresolved { cause: String }
+
+fn attempt_process_expectation(
+  topology: JailerInvocationTopology,
+  deadline: DeadlineRealization,
+) -> AttemptProcessExpectation {
+  match deadline_topology_admission(deadline: deadline, topology: topology) {
+    DeadlineBindingLostOnFork { detail: d } =>
+      AttemptProcessExpectationUnresolved { cause: concat("the deadline mechanism does not bind under this topology: ", d) }
+    DeadlineBindingHolds =>
+      AttemptProcessExpectationResolved {
+        processes: 1 + deadline_watcher_processes(realization: deadline),
+      }
+  }
+}
+
+fn expected_process_count(
+  admitted_attempts: Int,
+  control_sessions: Int,
+  topology: JailerInvocationTopology,
+  deadline: DeadlineRealization,
+) -> AttemptProcessExpectation {
+  match attempt_process_expectation(topology: topology, deadline: deadline) {
+    AttemptProcessExpectationUnresolved { cause: c } => AttemptProcessExpectationUnresolved { cause: c }
+    AttemptProcessExpectationResolved { processes: per } =>
+      AttemptProcessExpectationResolved { processes: 2 + control_sessions + (per * admitted_attempts) }
+  }
+}
+
+type ObservedProcess {
+  identity: ProcessIdentity
+  role_claimed: HostProcessRole
+  parent_identity: ProcessIdentity
+  executable_digest: NonEmptyStr
+}
+
+// THE FAILURES ARE TYPED AND EACH NAMES A DIFFERENT REMEDY. A single Bool here would be the
+// typed-cause-erased failure this repository keeps finding: "the surface does not match" sends
+// nobody anywhere, while "a firecracker is parented outside its jailer" and "sshd is listening on
+// 0.0.0.0 instead of the management address" are different incidents with different owners.
+//
+// RuntimeSurfaceObservationUnreadable IS THE ARM THAT KEEPS THE OTHERS HONEST. An observation that
+// could not be taken is not an observation of nothing, and folding it into "exact" would make a
+// failed census the most reassuring outcome available.
+type RuntimeSurfaceFinding
+  = UnexpectedProcess { observed: ProcessIdentity, executable_digest: NonEmptyStr }
+  | MissingExpectedProcess { role: HostProcessRole }
+  | UnexpectedChildLineage { role: HostProcessRole, expected_parent: HostProcessRole }
+  | ExecutableIdentityMismatch { role: HostProcessRole, expected: NonEmptyStr, observed: NonEmptyStr }
+  | UnexpectedListener { local_address: NonEmptyStr, port: Int }
+  | MissingExpectedListener { owner: HostProcessRole, port: Int }
+  | ListenerOwnedByWrongProcess { port: Int, expected_owner: HostProcessRole }
+  | ListenerInWrongNamespace { port: Int }
+  | UnexpectedEgressRoute { destination: NonEmptyStr }
+  | FirewallPolicyMismatch { detail: String }
+  | RuntimeSurfaceObservationUnreadable { detail: String }
+
+type RuntimeSurfaceStanding
+  = RuntimeSurfaceHeld
+  | RuntimeSurfaceViolated { findings: List<RuntimeSurfaceFinding> }
+
+// COUNTS ARE NOT PROOF, and this function exists to say so in a place the compiler can see. Three
+// expected and three observed is satisfied by three substitutions. The standing is an IDENTITY JOIN
+// over roles, lineage and executable digests; the count is a cheap precondition that can only ever
+// produce a finding, never discharge one.
+// AN EMPTY FINDINGS LIST IS NOT AN OBSERVATION, and the previous form let a caller pass one and
+// receive RuntimeSurfaceHeld without having looked at a single process. That is the same fail-open
+// shape as an unobserved topology answering zero: absence of findings from an absent census is not
+// agreement.
+//
+// SO THE STANDING TAKES A COMPLETENESS WITNESS AS WELL. A snapshot that could not be taken, or that
+// raced the population it was enumerating, refuses -- and refusing is the whole point, because a
+// runner host that cannot account for itself must not admit work.
+type SnapshotCompleteness
+  = SnapshotComplete { processes_enumerated: Int }
+  | SnapshotRaced { detail: String }
+  | SnapshotUnreadable { detail: String }
+
+fn runtime_surface_standing(
+  completeness: SnapshotCompleteness,
+  findings: List<RuntimeSurfaceFinding>,
+) -> RuntimeSurfaceStanding {
+  match completeness {
+    SnapshotUnreadable { detail: d } =>
+      RuntimeSurfaceViolated { findings: [RuntimeSurfaceObservationUnreadable { detail: d }] }
+    SnapshotRaced { detail: d } =>
+      RuntimeSurfaceViolated { findings: [RuntimeSurfaceObservationUnreadable { detail: concat("the snapshot raced the process population it was enumerating: ", d) }] }
+    SnapshotComplete { processes_enumerated: _ } =>
+      if (findings |> count) == 0 {
+        RuntimeSurfaceHeld
+      } else {
+        RuntimeSurfaceViolated { findings: findings }
+      }
+  }
+}
+
+// A HOST THAT CANNOT ACCOUNT FOR ITSELF DOES NOT TAKE NEW WORK. An unexpected listener is not
+// dashboard colour: it is an unexplained process holding a socket on a machine about to be handed
+// someone else's code to run. Admission is gated on the standing rather than reported beside it.
+fn admits_new_attempt(purpose: HostBootPurpose, standing: RuntimeSurfaceStanding) -> Bool {
+  match standing {
+    RuntimeSurfaceHeld => admits_vm_work(purpose: purpose)
+    RuntimeSurfaceViolated { findings: _ } => false
+  }
+}
+
+// ── the boundary of the claim ───────────────────────────────────────────────────────────────────
+
+// THREE POPULATIONS, AND ONLY ONE OF THEM IS CLAIMED EXACTLY. Stating this is what keeps the
+// invariant honest rather than grandiose.
+//
+//   HOST USER-SPACE   exactly modeled, exactly observed -- the subject of this module
+//   KERNEL SURFACE    config, built-in drivers, protocol families, syscall and LSM policy. Modeled
+//                     separately because kernel threads are not ordinary processes and their
+//                     population varies with hardware and activity.
+//   GUEST WORKLOAD    deliberately arbitrary. An Actions job runs whatever it runs.
+//
+// WHAT IS CLOSED FOR THE GUEST IS ITS ENVELOPE, NOT ITS PROCESS LIST: no host namespace, no host
+// mounts, no host devices beyond virtual ones, no inbound route, default-deny egress, one
+// attempt-scoped credential, a dedicated kernel, bounded memory, cpu and disk. Those are the axes
+// gunbc.product.fabric.isolation already names, and this module consumes that vocabulary rather than
+// restating it.
+type SurfacePopulation
+  = HostUserSpaceExactlyModeled
+  | KernelSurfaceModeledSeparately
+  | GuestWorkloadArbitraryWithinEnvelope
+
+// THE BMC IS OBSERVED AND MUST NEVER BE DERIVED. We do not build or launch its processes, so its
+// surface cannot honestly come from our image -- it comes from an exact controller, an exact
+// firmware identity, and an observed listener population. Presenting it beside the derived host
+// surface as though both had the same provenance is the same portability error the MegaRAC lane is
+// currently correcting: an observed property of one vendor build reported as a constructed property.
+//
+// So the asset report a red team receives is a COMPOSITION with its provenance visible per part,
+// never one flat list.
+type SurfaceProvenance
+  = DerivedFromOurImage
+  | ObservedFromVendorFirmware
+  | ObservedFromNetworkFabric
+
+// THE QUALIFICATION PROCESS GRAPH, declared beside the production one rather than derived from it
+// by subtraction. It is what the 2026-09-06 probe actually ran: a supervisor, and one Firecracker
+// launched directly for one named attempt. The production roster above is unchanged and still
+// requires the jailer between them.
+data runner_host_qualification_processes: List<HostProcessClass> = [
+  HostProcessClass {
+    role: HostSupervisor,
+    cardinality: ExactlyOne,
+    parent: ParentIsKernel,
+    executable_digest: "unbound-until-image-build",
+    runs_as: "root",
+    may_spawn: [AttemptExecution],
+  },
+  HostProcessClass {
+    role: AttemptExecution,
+    cardinality: ExactlyOnePerAdmittedAttempt,
+    parent: ParentIsRole { role: HostSupervisor },
+    executable_digest: "unbound-until-image-build",
+    runs_as: "uid 1000 after the jailer's privilege drop; the same process identity that began as the jailer, measured as pid 1649 in both phases",
+    may_spawn: [],
+  },
+  HostProcessClass {
+    role: AttemptDeadlineWatcher,
+    cardinality: ExactlyOnePerAdmittedAttempt,
+    parent: ParentIsRole { role: HostSupervisor },
+    executable_digest: "unbound-until-image-build",
+    runs_as: "root",
+    may_spawn: [],
+  },
+]
+
+// THE QUALIFICATION PROFILE DECLARES NO LISTENER AT ALL, which is worth stating rather than leaving
+// as an empty list nobody reads. The probe image has no network configured and no sshd; its only
+// ingress is the serial console, which is not a network surface and is reachable only through the
+// BMC.
+data runner_host_qualification_listeners: List<DeclaredListener> = []

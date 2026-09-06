@@ -1,0 +1,39 @@
+module extdeps.pci.identity
+
+import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// PCI DEVICE IDENTITY, AS ITS OWN AUTHORITY. A vendor id and a device id are facts of the PCI
+// specification, not of any operating system that happens to enumerate them -- so they belong here
+// rather than inside a module about one distribution's driver coverage for one vendor's parts.
+//
+// THEY WERE DECLARED INSIDE extdeps.os.ubuntu_kernel_nic_coverage, beside Realtek rows, and the
+// second consumer is what surfaced it: a lane observing Intel parts on an Ampere board would have
+// had to import a Ubuntu-NIC-coverage module to say "vendor 8086", or mint a second pair. Two
+// brands for one concept is the section 3 nickname in its canonical form, and the fork is cheapest
+// to avoid at exactly the moment the second consumer appears.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pcisig.com/specifications"
+  }
+}
+
+// THE LOWERCASE HEX SPELLING IS THE CONVENTION THESE CARRY, matching what lspci and the UEFI shell
+// print and what the existing Realtek rows already used. Normalization is not attempted here: a
+// brand that silently lowercased would make two spellings compare unequal while looking identical
+// in a diagnostic.
+type PciVendorId = NonEmptyStr where brand("PciVendorId")
+type PciDeviceId = NonEmptyStr where brand("PciDeviceId")
+
+// THE ADDRESS IS WHERE A FUNCTION SITS, AND IT IS NOT AN IDENTITY. Two functions of one dual-port
+// adapter carry the same vendor and device id at different addresses, so a model keyed on the pair
+// alone cannot tell one port from two. Kept as its own brand rather than folded into an observation
+// record so the distinction survives every consumer.
+type PciAddress = NonEmptyStr where brand("PciAddress")
+
+// THE CLASS IS WHAT THE ENUMERATION SAYS THE FUNCTION IS FOR, and it is the field a population
+// question is asked over -- "were any mass-storage controllers enumerated" is a question about
+// class, answerable without knowing any vendor.
+type PciClassCode = NonEmptyStr where brand("PciClassCode")

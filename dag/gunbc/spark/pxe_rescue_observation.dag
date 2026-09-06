@@ -8,10 +8,7 @@ import extdeps.provisioning.network_boot { DhcpBootDirection, NativeDhcpBootOpti
 import extdeps.systems.nvidia_dgx_spark_pxe {
   spark_pxe_bootloader_filename,
 }
-import extdeps.os.ubuntu_kernel_nic_coverage {
-  PciVendorId,
-  PciDeviceId,
-}
+import extdeps.pci.identity { PciVendorId, PciDeviceId }
 import gunbc.spark.dgx_pxe_boot {
   PxeNetworkIsolation,
   IsolatedProvisioningSegment,
