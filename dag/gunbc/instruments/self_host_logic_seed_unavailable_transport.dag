@@ -208,9 +208,12 @@ fn slbu_seed_unavailable_receipt() -> Bool {
     && pass_run.success
     && string_contains(s: pass_run.stdout, pattern: slbu_pass_marker)
 
-  // Cleanup follows verdict in declaration order so it evaluates after the build
-  // and run. The result is ANDed into the receipt so the transport cannot silently
-  // leak temp directories.
+  // Cleanup: temp directories are removed in declaration order after the build and run
+  // complete. The results are ANDed into the receipt. CAVEAT: under a lazy evaluation
+  // model with short-circuit &&, a false verdict never demands cleanup_out or cleanup_src,
+  // and the temp directories leak on the failure path. The house pattern used by every
+  // transport in this codebase relies on strict let evaluation, under which all effects
+  // fire at declaration time and cleanup always runs. See PR body for the gap.
   let cleanup_out = shell.Remove.RecursiveForce(path: out_dir.path).success
   let cleanup_src = shell.Remove.RecursiveForce(path: scratch_src.path).success
 
