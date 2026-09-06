@@ -229,6 +229,25 @@ data design_section_2_to_7_rows: List<DesignRow> = [
 
   DesignRow {
     proposition: Proposition {
+      id: "s3c.consumption",
+      statement: "consumption is the converse of conformance: every declaration a change adds is consumed by a named consumer over an executing route, or it is redundant work by §2 and specification-without-execution by §5, however well modeled it is",
+      premises: ["s2.minimize-redundancy", "s5.fail-closed"]
+    },
+    review: ReviewableOnChange { parts: [yes_no_review(
+      part: "consumption",
+      question: "Does the change add a declaration -- a type, function, data row, module or witness -- that nothing consumes by execution, or whose only consumer is a typecheck, a grep, or a witness asserting it exists? For each added declaration name the consumer and the route by which it is reached at execution, or the later change that will consume it with its trigger; a declaration with neither is dangling.",
+      tells: [
+        "a pub declaration with no call site anywhere in the closure the change compiles",
+        "a data row no fold reads, or a module no module imports",
+        "a witness that asserts a declaration exists or has a shape, rather than exercising it through its consumer",
+        "consumption described in the change's prose or PR body but absent from the diff",
+        "a frontier row naming a future consumer with no trigger beside it"
+      ]
+    )] },
+  },
+
+  DesignRow {
+    proposition: Proposition {
       id: "s4.closed-grounded-substrate",
       statement: "the closed, grounded substrate makes §2–§3 decidable: you can unify and decompose mechanically only in a closed, grounded system, and grounding is intersubjective",
       premises: ["s2.minimize-redundancy", "s3.single-authority", "s1.grounding-intersubjective"]

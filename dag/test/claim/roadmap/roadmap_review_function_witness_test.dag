@@ -111,7 +111,7 @@ test fn the_aggregate_regroups_by_file_counts_the_overlap_and_names_the_incomple
     && any(f.incomplete, k => k == "conformance-extdeps")
     && string_contains(s: text, pattern: "Fix, by file: dag/y.dag — minimize-redundancy: changes requested — a copied fold · dag/x.dag — single-authority: changes requested — a second name for one concept; fail-closed: changes requested — an arm widens")
     && string_contains(s: text, pattern: "1 file(s) were named by more than one criterion")
-    && string_contains(s: text, pattern: "Still reviewing (5, this report is not complete): conformance-extdeps, conformance-realization, conformance-leasing, conformance-compute, how-to-work")
+    && string_contains(s: text, pattern: "Still reviewing (6, this report is not complete): conformance-extdeps, conformance-realization, conformance-leasing, conformance-compute, consumption, how-to-work")
     && !string_contains(s: text, pattern: "closed-grounded")
     && report.reconciliation.detail == text
 }

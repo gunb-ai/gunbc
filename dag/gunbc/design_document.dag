@@ -98,6 +98,15 @@ fn section_3b_blocks() -> List<MarkdownBlock> {
   ]
 }
 
+fn section_3c_blocks() -> List<MarkdownBlock> {
+  [
+    h2(text: "3c. Consumption (who consumes a change, and how)"),
+    p(text: "Conformance (§3b) asks whether a change inhabits the models that already exist. **Consumption asks the converse of every model the change adds: who consumes it, and by what executing route** (operator ruling, 2026-09-06: adding dangling modeling is interrogated separately, and the consumption must be understood well). The question is older than this section — §5 already rules that a typecheck and a grep are not consumers, and §6 lists *a new artifact with no final consumer* among the tells of experimental residue — but it was folded into other reviewers' questions, so a diff that added a well-shaped type, a data row and a witness proving the row exists could pass every criterion while nothing ever read the row. A declaration nothing consumes is §2's redundant work in its purest form: it costs authoring, review and maintenance and displaces nothing."),
+    p(text: "The reviewer's question is therefore two-part and both halves are located: for each declaration the change adds — type, function, data row, module, witness — **name the consumer** (the fold, the entry point, the realization, the emitted artifact) **and the route** by which it reaches that consumer at execution, or classify the declaration as one of three honest states: consumed by execution in this change; consumed by a named consumer that lands in a named later change (a declared frontier, which is admissible only with the trigger stated beside it); or dangling. Only the third is red, and it is red regardless of how well modeled the dangling piece is — the review is not of the model's shape but of its inhabitance by the rest of the program. The tells are mechanical: a `pub` declaration with no call site in the closure; a data row no fold reads; a module no module imports; a witness that asserts a declaration exists rather than exercising it; consumption described in the PR body but absent from the diff."),
+    p(text: "**Where this sits on the ladder (§4b).** As a reviewer it is *mitigation*; its climb is the same one §6 names for authorship facts: a declaration's consumers are a fact the namespace tree already carries, so the unconsumed set is derivable at ingestion for the closure a change compiles, and plan admission can require a change's new declarations to arrive with their consumers in the same closure, refusing a dangling set before any worker runs. Until that lands, the reviewer is the wall, and it is the one criterion that reads the change from the outside in — from the consumers toward the declaration — rather than from the declaration outward."),
+  ]
+}
+
 fn section_4_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "4. The closed, grounded substrate (what makes §2–§3 decidable)"),
@@ -215,6 +224,7 @@ fn design_blocks() -> List<MarkdownBlock> {
     section_2_blocks(),
     section_3_blocks(),
     section_3b_blocks(),
+    section_3c_blocks(),
     section_4_blocks(),
     section_4b_blocks(),
     section_4c_blocks(),
