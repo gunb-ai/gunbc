@@ -1,6 +1,6 @@
 module test.claim.fabric_m0_commit_witness
 
-import std.types { Bool, List }
+import std.types { Bool, List, NonEmptyStr }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import std.durable_compare_and_set { CasStoreRefused, CasUnreadableReadRefused }
 import gunbc.fabric_m0_completion {
@@ -84,8 +84,12 @@ fn commit(transport: CommitTransportOutcome, observed: ManifestReadbackObservati
   )
 }
 
+fn our_slot() -> NonEmptyStr {
+  "fabric-m0/commit/attempt-1"
+}
+
 fn store_refused() -> CommitTransportOutcome {
-  StoreAnswered { outcome: CasStoreRefused { cause: CasUnreadableReadRefused { detail: "read refused" } } }
+  StoreAnswered { slot: our_slot(), outcome: CasStoreRefused { cause: CasUnreadableReadRefused { detail: "read refused" } } }
 }
 
 // THE POSITIVE CONTROL: a store that answered and a read that found the intended manifest.
@@ -101,7 +105,7 @@ test fn an_answered_commit_confirmed_by_readback_publishes_success() -> Bool {
 // committed, and rendering it success would green over bytes nobody read.
 test fn an_unanswered_write_with_no_object_yet_is_pending() -> Bool {
   match commit(
-    transport: StoreDidNotAnswer { cause: "commit acknowledgement lost" },
+    transport: StoreDidNotAnswer { slot: our_slot(), cause: "commit acknowledgement lost" },
     observed: ManifestNotFound,
   ) {
     PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => true
@@ -113,7 +117,7 @@ test fn an_unanswered_write_with_no_object_yet_is_pending() -> Bool {
 // the pending arm above is a state that resolves rather than a dead end.
 test fn an_unanswered_write_reconciles_when_the_object_is_read_back() -> Bool {
   match commit(
-    transport: StoreDidNotAnswer { cause: "commit acknowledgement lost" },
+    transport: StoreDidNotAnswer { slot: our_slot(), cause: "commit acknowledgement lost" },
     observed: ManifestRead { observed_digest: digest_a() },
   ) {
     PublishSuccess { attempt: _, manifest_digest: _ } => true
@@ -146,10 +150,38 @@ test fn an_answered_commit_with_no_object_prevents_success() -> Bool {
 // because they are different branches, and covering one left the other free to lie.
 test fn an_unanswered_write_with_an_unavailable_read_is_pending() -> Bool {
   match commit(
-    transport: StoreDidNotAnswer { cause: "commit acknowledgement lost" },
+    transport: StoreDidNotAnswer { slot: our_slot(), cause: "commit acknowledgement lost" },
     observed: ManifestReadUnavailable { cause: "origin unreachable" },
   ) {
     PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => true
     other => false
+  }
+}
+
+// AN ANSWER ABOUT SOMEONE ELSE'S SLOT IS NOT EVIDENCE ABOUT OURS. The CAS authority declares this
+// relation outside its own guarantee -- its observation carries no key, so generations agreeing is
+// enough to commit to the wrong slot -- and names the realization as the owner. This is that owner.
+test fn an_answer_about_a_foreign_slot_cannot_publish_success() -> Bool {
+  match commit(
+    transport: StoreAnswered {
+      slot: "fabric-m0/commit/attempt-9",
+      outcome: CasStoreRefused { cause: CasUnreadableReadRefused { detail: "read refused" } },
+    },
+    observed: ManifestRead { observed_digest: digest_a() },
+  ) {
+    PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => true
+    other => false
+  }
+}
+
+// AND A FOREIGN-SLOT ANSWER IS NOT REPORTED AS ABSENCE EITHER, so the check above is not satisfied
+// by an implementation that simply fails everything it cannot match.
+test fn a_foreign_slot_answer_is_not_reported_as_absence() -> Bool {
+  match commit(
+    transport: StoreDidNotAnswer { slot: "fabric-m0/commit/attempt-9", cause: "commit acknowledgement lost" },
+    observed: ManifestNotFound,
+  ) {
+    PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => false
+    other => true
   }
 }

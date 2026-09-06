@@ -42,8 +42,40 @@ import gunbc.fabric_m0_completion {
 // manufacture a store verdict to fit the branches available -- fabricating the one fact the caller
 // most needs to not be invented. It is a sibling of the outcome, never an arm of it.
 type CommitTransportOutcome
-  = StoreAnswered { outcome: CasOutcome<Sha256Digest> }
-  | StoreDidNotAnswer { cause: NonEmptyStr }
+  = StoreAnswered { slot: NonEmptyStr, outcome: CasOutcome<Sha256Digest> }
+  | StoreDidNotAnswer { slot: NonEmptyStr, cause: NonEmptyStr }
+
+// THE SLOT AN ANSWER IS ABOUT, carried so it can be compared with the slot we asked about.
+//
+// std.durable_compare_and_set declares this boundary rather than closing it: its CasSlotVersion
+// deliberately drops the key, and it records that an unkeyed observation describes NO slot, so
+// cas_decide never reads attempt.key and an observation read from slot B still commits to slot A
+// when the generations agree. It names the realization as the owner of that relation, and this
+// module is that realization's boundary, so the comparison lives here or nowhere.
+//
+// One authority for the slot name: the key is DERIVED from the attempt rather than passed beside
+// it, because a caller-supplied key next to a caller-supplied attempt is two spellings of one fact
+// and they can disagree -- which is the shape the CAS module already had to correct once.
+fn commit_slot_key(attempt: AttemptId) -> NonEmptyStr {
+  "fabric-m0/commit/" + attempt
+}
+
+fn transport_slot(transport: CommitTransportOutcome) -> NonEmptyStr {
+  match transport {
+    StoreAnswered { slot: s, outcome: _ } => s
+    StoreDidNotAnswer { slot: s, cause: _ } => s
+  }
+}
+
+// A foreign-slot answer is UNKNOWN about our object, never absence and never confirmation.
+//
+// It is not a softer refusal: an answer about someone else's slot carries no information about
+// ours, so reporting absence would assert something nobody observed, and reporting confirmation
+// would be the wrong-slot commit this check exists to stop. Unknown with a cause naming the
+// mismatch is the honest state, and it cannot publish success.
+fn slot_mismatch_readback(expected: NonEmptyStr, actual: NonEmptyStr) -> OriginReadback {
+  ReadbackUnknown { cause: "store answered about a different slot: expected " + expected + ", answer names " + actual }
+}
 
 // What an independent reader saw at the manifest slot afterwards, kept separate from what the write
 // call returned. A write that reported success and a read that confirms the intended bytes are two
@@ -60,15 +92,25 @@ type ManifestReadbackObservation
 // be committed or publishes over bytes nobody read. A precondition failure is the one arm that is
 // decided against us -- another writer holds the slot -- so it refuses rather than waiting.
 // Everything else defers to what the independent reader actually saw.
-fn manifest_readback(transport: CommitTransportOutcome, observed: ManifestReadbackObservation) -> OriginReadback {
+fn manifest_readback(attempt: AttemptId, transport: CommitTransportOutcome, observed: ManifestReadbackObservation) -> OriginReadback {
+  let expected = commit_slot_key(attempt: attempt)
+  let actual = transport_slot(transport: transport)
+  if (expected == actual) == false {
+    slot_mismatch_readback(expected: expected, actual: actual)
+  } else {
+    manifest_readback_for_slot(transport: transport, observed: observed)
+  }
+}
+
+fn manifest_readback_for_slot(transport: CommitTransportOutcome, observed: ManifestReadbackObservation) -> OriginReadback {
   match transport {
-    StoreDidNotAnswer { cause: c } =>
+    StoreDidNotAnswer { slot: _, cause: c } =>
       match observed {
         ManifestRead { observed_digest: d } => ReadbackConfirmed { observed_digest: d }
         ManifestNotFound => ReadbackUnknown { cause: c }
         ManifestReadUnavailable { cause: rc } => ReadbackUnknown { cause: rc }
       }
-    StoreAnswered { outcome: o } =>
+    StoreAnswered { slot: _, outcome: o } =>
       match o {
         CasPreconditionFailed { expected: _, observed: _ } => ReadbackAbsent
         CasStoreRefused { cause: _ } =>
@@ -101,7 +143,7 @@ fn commit_manifest(
     attempt: attempt,
     manifest_digest: manifest_digest,
     members: members,
-    readback: manifest_readback(transport: transport, observed: observed),
+    readback: manifest_readback(attempt: attempt, transport: transport, observed: observed),
   }
 }
 
