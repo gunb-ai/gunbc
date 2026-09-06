@@ -15289,7 +15289,10 @@ fn finish_resolved_graph_assembly(
         crate::v1_compiler_infer_service::ServiceEffectAnalysis::EffectsComplete { registry } => {
             (registry.clone(), Vec::new())
         }
-        crate::v1_compiler_infer_service::ServiceEffectAnalysis::EffectsIncomplete { partial, causes } => {
+        crate::v1_compiler_infer_service::ServiceEffectAnalysis::EffectsIncomplete {
+            partial,
+            causes,
+        } => {
             let diags = causes
                 .iter()
                 .map(|cause| match cause.as_ref() {

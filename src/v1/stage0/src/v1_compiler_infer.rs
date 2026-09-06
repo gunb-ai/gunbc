@@ -132,12 +132,12 @@ use crate::v1_compiler_infer_lookup::DeclaredArgContract::{
     ContractKnown, ContractUnavailable, MethodUnresolved,
 };
 pub use crate::v1_compiler_infer_lookup::{
-    builtin_call_target_or_undetermined, declared_arg_types_for_method, field_summary_for_type,
-    func_decl_binding_for_call, global_bare_callable_node, lookup_coproduct_common_field_node,
-    lookup_field_type_node, lookup_func_sig, lookup_in_scope, lookup_structural_method,
-    map_key_type_in_env, map_value_type_in_env, product_field_result_type,
-    resolve_known_method_node, resolve_method_receiver_type, resolve_scrutinee_type_node,
-    resolved_declaration_call_target, resolved_plain_call_target, set_element_type_in_env,
+    declared_arg_types_for_method, field_summary_for_type, func_decl_binding_for_call,
+    global_bare_callable_node, lookup_coproduct_common_field_node, lookup_field_type_node,
+    lookup_func_sig, lookup_in_scope, lookup_structural_method, map_key_type_in_env,
+    map_value_type_in_env, product_field_result_type, resolve_known_method_node,
+    resolve_method_receiver_type, resolve_scrutinee_type_node, resolved_declaration_call_target,
+    resolved_plain_call_target, set_element_type_in_env,
 };
 pub use crate::v1_compiler_infer_lookup::{
     ConstructorDeclarationLookup, DeclarationLookupFailure, DeclaredArgContract,
@@ -10084,7 +10084,7 @@ Rc::new(InferResult {
                                         Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(Rc::new(CallSemantics::ResolvedDirectCallSemantics {
-    target: crate::v1_compiler_infer_lookup::resolved_plain_call_target(func_name.clone(), call_sig_lookup.clone()),
+    target: crate::v1_compiler_infer_lookup::resolved_plain_call_target(scope.type_env.clone(), func_name.clone(), call_sig_lookup.clone()),
     application_plan: call_application_plan.clone(),
 })),
     descent_evidence: std::option::Option::None,
@@ -10424,7 +10424,7 @@ match bare_m.clone() {
                                         Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
-    target: crate::v1_compiler_infer_lookup::resolved_plain_call_target(func_name.clone(), call_sig_lookup.clone()),
+    target: crate::v1_compiler_infer_lookup::resolved_plain_call_target(scope.type_env.clone(), func_name.clone(), call_sig_lookup.clone()),
 })),
     descent_evidence: std::option::Option::None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
@@ -10439,7 +10439,7 @@ match bare_s.clone() {
     Some(set_t) => Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
-    target: crate::v1_compiler_infer_lookup::resolved_plain_call_target(func_name.clone(), call_sig_lookup.clone()),
+    target: crate::v1_compiler_infer_lookup::resolved_plain_call_target(scope.type_env.clone(), func_name.clone(), call_sig_lookup.clone()),
 })),
     descent_evidence: std::option::Option::None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
@@ -10450,7 +10450,7 @@ match bare_s.clone() {
     std::option::Option::None => Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
-    target: crate::v1_compiler_infer_lookup::resolved_plain_call_target(func_name.clone(), call_sig_lookup.clone()),
+    target: crate::v1_compiler_infer_lookup::resolved_plain_call_target(scope.type_env.clone(), func_name.clone(), call_sig_lookup.clone()),
 })),
     descent_evidence: std::option::Option::None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::CompilerError {
@@ -10466,7 +10466,7 @@ match bare_s.clone() {
     Some(set_t) => Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
-    target: crate::v1_compiler_infer_lookup::resolved_plain_call_target(func_name.clone(), call_sig_lookup.clone()),
+    target: crate::v1_compiler_infer_lookup::resolved_plain_call_target(scope.type_env.clone(), func_name.clone(), call_sig_lookup.clone()),
 })),
     descent_evidence: std::option::Option::None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
@@ -10477,7 +10477,7 @@ match bare_s.clone() {
     std::option::Option::None => Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
-    target: crate::v1_compiler_infer_lookup::resolved_plain_call_target(func_name.clone(), call_sig_lookup.clone()),
+    target: crate::v1_compiler_infer_lookup::resolved_plain_call_target(scope.type_env.clone(), func_name.clone(), call_sig_lookup.clone()),
 })),
     descent_evidence: std::option::Option::None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::CompilerError {
@@ -10503,7 +10503,7 @@ let call_semantics = if (func_name.clone() == "lookup".to_string()) {
 }))
                                         } else {
                                             Some(Rc::new(CallSemantics::PlainCallSemantics {
-    target: crate::v1_compiler_infer_lookup::resolved_plain_call_target(func_name.clone(), call_sig_lookup.clone()),
+    target: crate::v1_compiler_infer_lookup::resolved_plain_call_target(scope.type_env.clone(), func_name.clone(), call_sig_lookup.clone()),
 }))
                                         };
 Rc::new(InferResult {
@@ -10542,7 +10542,7 @@ Rc::new(InferResult {
                                                     Rc::new(CallSemantics::FunctionValueCallSemantics)
                                                 } else {
                                                     Rc::new(CallSemantics::PlainCallSemantics {
-    target: crate::v1_compiler_infer_lookup::resolved_plain_call_target(func_name.clone(), call_sig_lookup.clone()),
+    target: crate::v1_compiler_infer_lookup::resolved_plain_call_target(scope.type_env.clone(), func_name.clone(), call_sig_lookup.clone()),
 })
                                                 }),
     descent_evidence: std::option::Option::None,
@@ -10593,7 +10593,7 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
 Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
-    target: crate::v1_compiler_infer_lookup::resolved_plain_call_target(func_name.clone(), call_sig_lookup.clone()),
+    target: crate::v1_compiler_infer_lookup::resolved_plain_call_target(scope.type_env.clone(), func_name.clone(), call_sig_lookup.clone()),
 })),
     descent_evidence: std::option::Option::None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
@@ -23526,7 +23526,11 @@ pub fn refresh_one_item_service_names(
 ) -> Rc<HashMap<String, Rc<ItemInfo>>> {
     {
         let item_name = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
-        match v1_rt::map_get(&acc, item_name.clone()) {
+        let key = crate::v1_std_core::callable_identity(Rc::new(DeclaredCallableIdentity {
+            owner_module_path: module_name.clone(),
+            decl_name: item_name.clone(),
+        }));
+        match v1_rt::map_get(&acc, key.clone()) {
             std::option::Option::None => acc.clone(),
             Some(info) => {
                 if (info.module_name.clone() != module_name.clone()) {
@@ -23537,7 +23541,7 @@ pub fn refresh_one_item_service_names(
                     } else {
                         v1_rt::rc_map_insert(
                             acc.clone(),
-                            item_name.clone(),
+                            key.clone(),
                             Rc::new(ItemInfo {
                                 service_names:
                                     crate::v1_compiler_infer_service::collect_typed_service_calls(

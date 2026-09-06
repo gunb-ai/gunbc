@@ -216,7 +216,7 @@ import v1.compiler.infer_lookup {
   lookup_field_type_node, lookup_coproduct_common_field_node, product_field_result_type,
   map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
   lookup_in_scope, lookup_func_sig,
-  resolved_plain_call_target, resolved_declaration_call_target, builtin_call_target_or_undetermined,
+  resolved_plain_call_target, resolved_declaration_call_target,
   global_bare_callable_node, func_decl_binding_for_call,
   ConstructorDeclarationLookup, ExactConstructorDeclaration,
   NotAdmissionBearingReference, AdmissionBearingDeclarationUnavailable,
@@ -6399,7 +6399,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         )
         InferResult {
           typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-            name: func_name, expr_data: ExprCall { call_semantics: Present { value: ResolvedDirectCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup), application_plan: call_application_plan } }, descent_evidence: none },
+            name: func_name, expr_data: ExprCall { call_semantics: Present { value: ResolvedDirectCallSemantics { target: resolved_plain_call_target(type_env: scope.type_env, func_name: func_name, sig_lookup: call_sig_lookup), application_plan: call_application_plan } }, descent_evidence: none },
             children: typed_arg_nodes,
             inferred: Present { value: Resolved { node: resolved_type } },
             span: span,
@@ -6575,7 +6575,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               if node_is_set_collection(n: exp, source_indices: scope.type_env.source_indices) {
                 InferResult {
                   typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-                    name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
+                    name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(type_env: scope.type_env, func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                     children: typed_arg_nodes,
                     inferred: Present { value: Resolved { node: exp } },
                     span: span,
@@ -6589,7 +6589,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   Present { value: set_t } =>
                     InferResult {
                       typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
+                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(type_env: scope.type_env, func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                         children: typed_arg_nodes,
                         inferred: Present { value: Resolved { node: set_t } },
                         span: span,
@@ -6600,7 +6600,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   Absent =>
                     InferResult {
                       typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
+                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(type_env: scope.type_env, func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                         children: typed_arg_nodes,
                         inferred: Present { value: CompilerError { message: "empty_set(): Set kernel container profile missing (compiler misconfigured)", span: span } },
                         span: span,
@@ -6615,7 +6615,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 Present { value: set_t } =>
                   InferResult {
                     typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
+                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(type_env: scope.type_env, func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                       children: typed_arg_nodes,
                       inferred: Present { value: Resolved { node: set_t } },
                       span: span,
@@ -6626,7 +6626,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 Absent =>
                   InferResult {
                     typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
+                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(type_env: scope.type_env, func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                       children: typed_arg_nodes,
                       inferred: Present { value: CompilerError { message: "empty_set(): Set kernel container profile missing (compiler misconfigured)", span: span } },
                       span: span,
@@ -6642,7 +6642,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           let call_semantics = if func_name == "lookup" {
             Present { value: LookupCallSemantics { target: RuntimePrimitiveCall { primitive_name: func_name, projected_from: none } } }
           } else {
-            Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }
+            Present { value: PlainCallSemantics { target: resolved_plain_call_target(type_env: scope.type_env, func_name: func_name, sig_lookup: call_sig_lookup) } }
           }
           InferResult {
             typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
@@ -6672,7 +6672,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             }
             InferResult {
               typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-                name: func_name, expr_data: ExprCall { call_semantics: Present { value: if callee_is_body_binding { FunctionValueCallSemantics } else { PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } } }, descent_evidence: none },
+                name: func_name, expr_data: ExprCall { call_semantics: Present { value: if callee_is_body_binding { FunctionValueCallSemantics } else { PlainCallSemantics { target: resolved_plain_call_target(type_env: scope.type_env, func_name: func_name, sig_lookup: call_sig_lookup) } } }, descent_evidence: none },
                 children: typed_arg_nodes,
                 inferred: Present { value: Resolved { node: resolved_type } },
                 span: span,
@@ -6717,7 +6717,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               }
               InferResult {
                 typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-                  name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
+                  name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(type_env: scope.type_env, func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                   children: typed_arg_nodes,
                   inferred: Present { value: Resolved { node: resolved_type } },
                   span: span,
@@ -12642,7 +12642,8 @@ fn refresh_one_item_service_names(
   module_name: String
 ) -> Map<String, ItemInfo> {
   let item_name = authored_name_at(source_indices: source_indices, node: item)
-  match map_get(acc, item_name) {
+  let key = callable_identity(id: DeclaredCallableIdentity { owner_module_path: module_name, decl_name: item_name })
+  match map_get(acc, key) {
     Absent => acc
     Present { value: info } =>
       if info.module_name != module_name {
@@ -12650,7 +12651,7 @@ fn refresh_one_item_service_names(
       } else if item.body == none {
         acc
       } else {
-        map_insert(acc, item_name, with(info, {
+        map_insert(acc, key, with(info, {
           service_names: collect_typed_service_calls(texpr: item.body.value, source_indices: source_indices)
         }))
       }

@@ -1,6 +1,7 @@
 module v1.compiler.infer_lookup
 
 import std.induction { SubValueRelation }
+import v1.compiler.infer_items { ItemKind, FnItem, FuncItem, TypeItem, ServiceItem, DataItem, OtherItem, item_kind }
 import std.types { is_kernel_type }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.primitive_projection {
@@ -291,21 +292,52 @@ fn resolved_declaration_call_target(declared: DeclaredCallableIdentity) -> CallT
 // same registry the ExprCall arm already routes such calls through -- and anything else is
 // genuinely undetermined. Ambiguity is refused upstream and carries no single target, so it is
 // Undetermined here rather than a guess at which candidate emission should prefer.
-fn resolved_plain_call_target(func_name: String, sig_lookup: FuncSigLookup) -> CallTargetIdentity {
+// THE SIG AND THE IDENTITY ARE TWO QUESTIONS, AND ONLY ONE OF THEM NEEDS A RETURN TYPE.
+// `func_sig_from_global_bare` admits a borrowed census declaration only when it can also produce a
+// return type for it, and its evidence for that is `params > 0 || inferred != none ||
+// type_annotation != none`. For a NULLARY fn reached without a listed import, the census node
+// carries none of the three, so the whole lookup answers FuncSigUnresolved -- and the call target
+// was being derived from that same answer, so the callee's IDENTITY was lost along with its type.
+// Identity does not depend on the return type: the census already names the owning module. So the
+// unresolved arm asks the census directly rather than inheriting the sig's silence, and it routes
+// through `resolved_declaration_call_target` so the primitive-projection roster stays the single
+// authority on whether a declaration lowers to the runtime bridge.
+// THE KIND GATE EXCLUDES WHAT IS NOT CALLABLE; IT DOES NOT DEMAND PROOF OF WHAT IS.
+// `item_kind` reads FnItem and FuncItem off the presence of a BODY, and a census node is a
+// borrowed declaration surface that carries a signature without one -- so a nullary fn reached
+// this way reads as OtherItem, and an admit-list of the two callable kinds refuses every member
+// of the population this arm exists to serve. The call position is what establishes that the name
+// is being called; what the kind can still tell us is that the declaration is a TYPE, a SERVICE or
+// a DATA row, none of which a call may target.
+fn census_declaration_call_target(type_env: TypeEnv, func_name: String) -> CallTargetIdentity {
+  match borrowed_census_decl(type_env: type_env, name: func_name) {
+    BorrowedCensusDeclFound { declaration: bd } =>
+      match item_kind(item: bd.node) {
+        TypeItem => CallableTargetUndetermined
+        ServiceItem => CallableTargetUndetermined
+        DataItem => CallableTargetUndetermined
+        _ =>
+          resolved_declaration_call_target(declared: DeclaredCallableIdentity {
+            owner_module_path: bd.owner_module_path, decl_name: qualified_last_segment(name: func_name) })
+      }
+    BorrowedCensusDeclAmbiguous { candidates: _ } => CallableTargetUndetermined
+    BorrowedCensusDeclNotFound => CallableTargetUndetermined
+  }
+}
+
+fn resolved_plain_call_target(type_env: TypeEnv, func_name: String, sig_lookup: FuncSigLookup) -> CallTargetIdentity {
   match sig_lookup {
     FuncSigResolved { sig: _, declared: declared } =>
       resolved_declaration_call_target(declared: declared)
-    FuncSigUnresolved => builtin_call_target_or_undetermined(func_name: func_name)
+    FuncSigUnresolved =>
+      match infer_builtin_call_type(name: func_name) {
+        Present { value: _ } => RuntimePrimitiveCall { primitive_name: func_name, projected_from: none }
+        Absent => census_declaration_call_target(type_env: type_env, func_name: func_name)
+      }
     FuncSigAmbiguous { candidates: _ } => CallableTargetUndetermined
   }
 }
 
-fn builtin_call_target_or_undetermined(func_name: String) -> CallTargetIdentity {
-  match infer_builtin_call_type(name: func_name) {
-    Present { value: _ } => RuntimePrimitiveCall { primitive_name: func_name, projected_from: none }
-    Absent => CallableTargetUndetermined
-  }
-}
 
 // COLLECT EVERY ADMISSIBLE CANDIDATE, THEN DECIDE.
 //
