@@ -1516,75 +1516,77 @@ pub fn lookup_structural_method(
             }
         } else {
             {
-                let receiver_name = crate::v1_std_core::authored_name_at(
-                    source_indices.clone(),
+                let enriched = crate::v1_compiler_infer_types::enrich_kernel_type(
+                    crate::v1_std_core::authored_name_at(
+                        source_indices.clone(),
+                        receiver_type.clone(),
+                    ),
                     receiver_type.clone(),
+                    source_indices.clone(),
                 );
-                let profile =
-                    crate::v1_compiler_infer_types::kernel_profile_lookup(receiver_name.clone());
-                let template_match = match profile.clone() {
-                    Some(p) => {
-                        let templates =
-                            crate::std_algebra::algebra_templates_for_profile(p.clone());
-                        Rc::new({
-                            let mut __result = Vec::new();
-                            for t in templates.iter().cloned() {
-                                if (t.name.clone() == method_name.clone()) {
-                                    __result.push(t);
-                                }
-                            }
-                            __result
-                        })
-                        .first()
-                        .cloned()
-                    }
-                    std::option::Option::None => std::option::Option::None,
-                };
-                match template_match.clone() {
-                    Some(template) => {
-                        let field = crate::v1_compiler_infer_types::instantiate_algebra_field(
-                            template.clone(),
-                            receiver_type.clone(),
+                if ((enriched.ty.clone().connective.clone() == Connective::Conj)
+                    && ((enriched.ty.clone().children.clone().len() as i64) > 0))
+                {
+                    {
+                        let base_result = lookup_field_in_product(
+                            enriched.ty.clone(),
+                            method_name.clone(),
                             source_indices.clone(),
                         );
-                        if ((field.diagnostics.clone().len() as i64) == 0) {
-                            {
-                                let product =
-                                    crate::v1_compiler_infer_types::enrich_base_with_fields(
-                                        receiver_name.clone(),
+                        match base_result.clone() {
+                            Some(mfr) => {
+                                let profile = crate::v1_compiler_infer_types::kernel_profile_lookup(
+                                    crate::v1_std_core::authored_name_at(
+                                        source_indices.clone(),
                                         receiver_type.clone(),
-                                        Rc::new(vec![field.ty.clone()]),
-                                    );
-                                let resolution = match lookup_field_in_product(
-                                    product.clone(),
-                                    method_name.clone(),
-                                    source_indices.clone(),
-                                ) {
-                                    Some(mfr) => Some(Rc::new(MethodFieldResult {
+                                    ),
+                                );
+                                let template_match = match profile.clone() {
+                                    Some(p) => {
+                                        let templates =
+                                            crate::std_algebra::algebra_templates_for_profile(
+                                                p.clone(),
+                                            );
+                                        Rc::new({
+                                            let mut __result = Vec::new();
+                                            for t in templates.iter().cloned() {
+                                                if (t.name.clone() == method_name.clone()) {
+                                                    __result.push(t);
+                                                }
+                                            }
+                                            __result
+                                        })
+                                        .first()
+                                        .cloned()
+                                    }
+                                    std::option::Option::None => std::option::Option::None,
+                                };
+                                let resolution = match template_match.clone() {
+                                    Some(t) => Some(Rc::new(MethodFieldResult {
                                         field_node: mfr.field_node.clone(),
                                         result_type: mfr.result_type.clone(),
-                                        size_effect: template.size_effect.clone(),
-                                        cost_shape: template.cost_shape.clone(),
-                                        algebra_template: Some(template.clone()),
+                                        size_effect: t.size_effect.clone(),
+                                        cost_shape: t.cost_shape.clone(),
+                                        algebra_template: Some(t.clone()),
                                     })),
-                                    std::option::Option::None => std::option::Option::None,
+                                    std::option::Option::None => base_result.clone(),
                                 };
                                 Rc::new(StructuralMethodLookup {
                                     resolution: resolution.clone(),
-                                    kernel_diagnostics: field.diagnostics.clone(),
+                                    kernel_diagnostics: enriched.diagnostics.clone(),
                                 })
                             }
-                        } else {
-                            Rc::new(StructuralMethodLookup {
+                            std::option::Option::None => Rc::new(StructuralMethodLookup {
                                 resolution: std::option::Option::None,
-                                kernel_diagnostics: field.diagnostics.clone(),
-                            })
+                                kernel_diagnostics: enriched.diagnostics.clone(),
+                            }),
                         }
                     }
-                    std::option::Option::None => Rc::new(StructuralMethodLookup {
+                } else {
+                    Rc::new(StructuralMethodLookup {
                         resolution: std::option::Option::None,
-                        kernel_diagnostics: Rc::new(vec![]),
-                    }),
+                        kernel_diagnostics: enriched.diagnostics.clone(),
+                    })
                 }
             }
         }
