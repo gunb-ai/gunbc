@@ -12,9 +12,13 @@ import extdeps.ethernet.link_mode {
 import extdeps.transceiver.sff_8636 {
   Sff8636LegCoding, Sff8636CodingFinding,
   CodingAttestsRequestedMode, CodingAttestsRequestedModeSubjectToFec,
-  CodingInsufficientForRequestedMode, CodingContradictsEncoding,
-  CodingComplianceCodeNotUnderstood,
-  SecondaryNotObserved, SecondaryObservedEmpty, SecondaryObservedCode,
+  CodingInsufficientForRequestedMode, CodingComplianceCodeNotUnderstood,
+  SecondaryNotObserved, SecondaryObservedUnspecified, SecondaryObservedCode,
+  ProfileConsistency, ConsistencyUndecidable,
+  ConsistencySecondaryFieldUnread, ConsistencySecondaryFieldUnspecified,
+  ConsistencyComplianceCodeNotUnderstood, ConsistencyInterfaceScopeUnestablished,
+  sff8636_profile_consistency,
+  sff8636_required_fields_observed, sff8636_interpretation_is_exhaustive,
   ComplianceUnderstood, ComplianceCodeUnmodelled,
   FecUnconditional, RequiresClause91Fec,
   NominalRateEscaped, NominalRateDirect,
@@ -98,7 +102,6 @@ fn is_insufficient(f: Sff8636CodingFinding) -> Bool {
     CodingInsufficientForRequestedMode { requested: r, coding: c } => true
     CodingAttestsRequestedMode { coding: c } => false
     CodingAttestsRequestedModeSubjectToFec { coding: c, fec: x } => false
-    CodingContradictsEncoding { encoding_modulation: m, attested_mode: a } => false
     CodingComplianceCodeNotUnderstood { code: c } => false
   }
 }
@@ -108,7 +111,6 @@ fn attests_outright(f: Sff8636CodingFinding) -> Bool {
     CodingAttestsRequestedMode { coding: c } => true
     CodingAttestsRequestedModeSubjectToFec { coding: c, fec: x } => false
     CodingInsufficientForRequestedMode { requested: r, coding: c } => false
-    CodingContradictsEncoding { encoding_modulation: m, attested_mode: a } => false
     CodingComplianceCodeNotUnderstood { code: c } => false
   }
 }
@@ -118,7 +120,6 @@ fn attests_subject_to_fec(f: Sff8636CodingFinding) -> Bool {
     CodingAttestsRequestedModeSubjectToFec { coding: c, fec: x } => true
     CodingAttestsRequestedMode { coding: c } => false
     CodingInsufficientForRequestedMode { requested: r, coding: c } => false
-    CodingContradictsEncoding { encoding_modulation: m, attested_mode: a } => false
     CodingComplianceCodeNotUnderstood { code: c } => false
   }
 }
@@ -129,7 +130,6 @@ fn code_not_understood(f: Sff8636CodingFinding) -> Bool {
     CodingAttestsRequestedMode { coding: c } => false
     CodingAttestsRequestedModeSubjectToFec { coding: c, fec: x } => false
     CodingInsufficientForRequestedMode { requested: r, coding: c } => false
-    CodingContradictsEncoding { encoding_modulation: m, attested_mode: a } => false
   }
 }
 
@@ -203,34 +203,104 @@ test fn an_unknown_byte_interprets_to_unknown_not_to_an_empty_attestation() -> B
   }
 }
 
-// ---------------- contradiction requires a complete profile ----------------
+// ---------------- self-consistency is its own question ----------------
+//
+// THE LAW, MADE MECHANICAL RATHER THAN OBSERVED. Changing the requested mode must not change whether
+// a profile contradicts itself. `sff8636_profile_consistency` takes no requested mode, so the law
+// holds by construction and this test records WHY the shape is what it is.
+//
+// THE ARM THAT IS NOT HERE. There is no operational contradiction verdict, because deciding one
+// requires establishing that the encoding byte and the compliance codes describe the SAME
+// INTERFACE -- true for an unretimed passive assembly, false by design for a module converting NRZ
+// host lanes to a PAM4 media channel. Nothing this decoder reads settles that. Rather than keep a
+// branch no valid input can reach, the distinction survives as a typed undecidable naming its cause.
 
-// A leg whose byte 116 WAS read and found empty, whose primary code is understood, and whose every
-// attested mode is NRZ while the encoding byte says PAM4. Only here is the profile complete enough
-// for the strong claim, and this is the one fixture that may produce it.
-data complete_profile_contradictory_leg: Sff8636LegCoding = sff8636_leg_coding(
-  identifier: transceiver_identifier_from_byte(code: 17),
-  primary_compliance_code: 11,
-  secondary_compliance: SecondaryObservedEmpty,
-  encoding: sff8636_encoding_from_byte(code: 8),
-  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
-
-fn is_contradiction(f: Sff8636CodingFinding) -> Bool {
-  match f {
-    CodingContradictsEncoding { encoding_modulation: m, attested_mode: a } => true
-    CodingAttestsRequestedMode { coding: c } => false
-    CodingAttestsRequestedModeSubjectToFec { coding: c, fec: x } => false
-    CodingInsufficientForRequestedMode { requested: r, coding: c } => false
-    CodingComplianceCodeNotUnderstood { code: c } => false
+fn consistency_cause_is_unread(c: ProfileConsistency) -> Bool {
+  match c {
+    ConsistencyUndecidable { cause: cz } =>
+      match cz {
+        ConsistencySecondaryFieldUnread => true
+        ConsistencySecondaryFieldUnspecified => false
+        ConsistencyComplianceCodeNotUnderstood { code: k } => false
+        ConsistencyInterfaceScopeUnestablished => false
+      }
   }
 }
 
-// THE PAIR THAT MAKES THE COMPLETENESS CONDITION REAL. Identical bytes except that byte 116 is read
-// in one and unread in the other: the read one may claim contradiction, the unread one may not.
-// Without both arms, "contradiction requires a complete profile" would be prose no execution checks.
-test fn contradiction_is_claimed_only_when_the_profile_was_fully_observed() -> Bool {
-  is_contradiction(f: sff8636_assess_leg_coding(
-      coding: complete_profile_contradictory_leg, requested: ieee_100gbase_cr2))
+fn consistency_cause_is_unspecified(c: ProfileConsistency) -> Bool {
+  match c {
+    ConsistencyUndecidable { cause: cz } =>
+      match cz {
+        ConsistencySecondaryFieldUnspecified => true
+        ConsistencySecondaryFieldUnread => false
+        ConsistencyComplianceCodeNotUnderstood { code: k } => false
+        ConsistencyInterfaceScopeUnestablished => false
+      }
+  }
+}
+
+fn consistency_cause_is_scope(c: ProfileConsistency) -> Bool {
+  match c {
+    ConsistencyUndecidable { cause: cz } =>
+      match cz {
+        ConsistencyInterfaceScopeUnestablished => true
+        ConsistencySecondaryFieldUnread => false
+        ConsistencySecondaryFieldUnspecified => false
+        ConsistencyComplianceCodeNotUnderstood { code: k } => false
+      }
+  }
+}
+
+// THE DELIVERED CABLE: byte 116 was never read, so the cause is the unread field and nothing
+// stronger. This is the arm that used to be a contradiction accusation.
+test fn the_delivered_leg_consistency_is_undecidable_for_want_of_a_reading() -> Bool {
+  consistency_cause_is_unread(c: sff8636_profile_consistency(coding: delivered_fs_leg))
+}
+
+// THE INVERSE CONTROL, and the specific bug it guards. A leg whose byte 116 WAS read and found 00h
+// must NOT become decidable: 00h is "Unspecified", so reading it improves observation coverage while
+// leaving interpretation non-exhaustive. An earlier head treated this exact case as establishing
+// absence and licensed a verdict the bytes do not support.
+data secondary_unspecified_leg: Sff8636LegCoding = sff8636_leg_coding(
+  identifier: transceiver_identifier_from_byte(code: 17),
+  primary_compliance_code: 11,
+  secondary_compliance: SecondaryObservedUnspecified,
+  encoding: sff8636_encoding_from_byte(code: 8),
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
+
+test fn reading_an_unspecified_secondary_does_not_make_the_profile_decidable() -> Bool {
+  consistency_cause_is_unspecified(c: sff8636_profile_consistency(coding: secondary_unspecified_leg))
+}
+
+// THE TWO AXES ARE SEPARATE, asserted directly: for 00h the field WAS observed and the
+// interpretation is still not exhaustive. Collapsing these into one boolean is what made the defect
+// recur, so the split is the thing under test.
+test fn an_unspecified_secondary_is_observed_but_not_exhaustively_interpreted() -> Bool {
+  sff8636_required_fields_observed(coding: secondary_unspecified_leg)
+    && !sff8636_interpretation_is_exhaustive(coding: secondary_unspecified_leg)
+    && !sff8636_required_fields_observed(coding: delivered_fs_leg)
+}
+
+// A FULLY READ, FULLY UNDERSTOOD PROFILE still cannot be decided -- and the cause names the frontier
+// rather than going quiet. This is what stops the retired arm from reading as "nothing left to do".
+data fully_understood_leg: Sff8636LegCoding = sff8636_leg_coding(
+  identifier: transceiver_identifier_from_byte(code: 17),
+  primary_compliance_code: 11,
+  secondary_compliance: SecondaryObservedCode { code: 64 },
+  encoding: sff8636_encoding_from_byte(code: 8),
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
+
+test fn a_fully_read_profile_is_undecidable_only_for_interface_scope() -> Bool {
+  consistency_cause_is_scope(c: sff8636_profile_consistency(coding: fully_understood_leg))
+}
+
+// AND THE 0x40 ROW EARNS ITS CITATION. SFF-8024 Rev 4.14 Table 4-4 row 40h attests 50GBASE-CR,
+// 100GBASE-CR2 and 200GBASE-CR4, so a leg carrying it in byte 116 DOES attest the mode the Spark
+// rail needs -- which the delivered leg, carrying only 0x0B, does not. This is also the positive
+// control that retires the placeholder code 0 the first head used.
+test fn the_secondary_code_0x40_attests_the_mode_the_primary_does_not() -> Bool {
+  attests_outright(f: sff8636_assess_leg_coding(
+      coding: fully_understood_leg, requested: ieee_100gbase_cr2))
     && is_insufficient(f: sff8636_assess_leg_coding(
       coding: delivered_fs_leg, requested: ieee_100gbase_cr2))
 }
