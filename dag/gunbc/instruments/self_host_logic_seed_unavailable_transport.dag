@@ -201,11 +201,13 @@ fn slbu_seed_unavailable_receipt() -> Bool {
     && pass_run.success
     && string_contains(s: pass_run.stdout, pattern: slbu_pass_marker)
 
-  let seq = verdict || !verdict
-  let cleanup_out = seq && shell.Remove.RecursiveForce(path: out_dir.path).success
-  let cleanup_src = seq && shell.Remove.RecursiveForce(path: scratch_src.path).success
+  // Cleanup follows verdict in declaration order so it evaluates after the build
+  // and run. The result is ANDed into the receipt so the transport cannot silently
+  // leak temp directories.
+  let cleanup_out = shell.Remove.RecursiveForce(path: out_dir.path).success
+  let cleanup_src = shell.Remove.RecursiveForce(path: scratch_src.path).success
 
-  verdict
+  verdict && cleanup_out && cleanup_src
 }
 
 fn slbu_seed_unavailable_receipt_holds() -> Bool {
