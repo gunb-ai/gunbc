@@ -263,13 +263,16 @@ pub fn test_affected_select() -> InvocationOutcome {
     let facts = index.module_graph_facts();
 
     // Step 2: observe the working-tree diff.
-    let diff_text = match std::process::Command::new("git")
+    //
+    // Uses `git diff HEAD` for tracked changes (modified, deleted, renamed) and
+    // complements it with untracked `.dag` files via `git ls-files --others`.
+    // Without the untracked complement, a brand-new witness or entry file produces
+    // no diff hunk, touched_paths comes back empty, and the new entry is never selected.
+    let diff_output = match std::process::Command::new("git")
         .args(["diff", "HEAD"])
         .output()
     {
-        Ok(output) if output.status.success() => {
-            String::from_utf8_lossy(&output.stdout).to_string()
-        }
+        Ok(output) if output.status.success() => output,
         Ok(_) => {
             return InvocationOutcome {
                 termination: Termination::Refused,
@@ -284,6 +287,38 @@ pub fn test_affected_select() -> InvocationOutcome {
             };
         }
     };
+    let mut diff_text = String::from_utf8_lossy(&diff_output.stdout).to_string();
+
+    // Append synthetic `/dev/null -> new file` diffs for untracked .dag files.
+    if let Ok(untracked_output) = std::process::Command::new("git")
+        .args(["ls-files", "--others", "--exclude-standard", "*.dag"])
+        .output()
+    {
+        if untracked_output.status.success() {
+            let untracked = String::from_utf8_lossy(&untracked_output.stdout);
+            for path in untracked.lines() {
+                let path = path.trim();
+                if path.is_empty() || !path.ends_with(".dag") {
+                    continue;
+                }
+                // Read the full content of the untracked file to generate a diff.
+                if let Ok(body) = std::fs::read_to_string(path) {
+                    let line_count = body.lines().count();
+                    diff_text.push_str(&format!(
+                        "diff --git a/dev/null b/{path}\n\
+                         new file mode 100644\n\
+                         --- /dev/null\n\
+                         +++ b/{path}\n\
+                         @@ -0,0 +1,{lc} @@\n",
+                        lc = line_count.max(1)
+                    ));
+                    for line in body.lines() {
+                        diff_text.push_str(&format!("+{line}\n"));
+                    }
+                }
+            }
+        }
+    }
 
     // An empty diff means nothing changed — no tests selected.
     if diff_text.trim().is_empty() {

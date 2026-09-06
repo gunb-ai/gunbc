@@ -89,6 +89,21 @@ import gunbc.seed_growth { SeedGrowthJustification }
 //   SeedFeatureCompletion -- no; the seed compiler gains no capability.
 //   PublicSurfaceGrowth -- yes, and it is a measured rather than a silent one: the single new
 //     public declaration (test_affected_select) is enrolled in hand_authored_declarations below.
+//
+// ADMISSION UNDER THE v1 FREEZE is on two independent grounds:
+//
+//   Ground 1 — operator instruction. The operator requested this verb by name:
+//     "gunbc test --affected-select should only run tests that you actually had
+//     any direct or transitive impact on." A change whose purpose, scope, and
+//     owner are given by the program's owner is admitted by that instruction.
+//
+//   Ground 2 — serves the v2 self-host program. The PurposeAdmission paragraph
+//     for the `test` verb admits it because it makes the INSTRUMENTS that measure
+//     the v2 program invocable by name. --affected-select extends that same purpose:
+//     it decides WHICH of those instruments a given change requires. Selecting the
+//     instruments a diff actually touches serves the program more directly than
+//     naming them, because the cost of running the floor is the thing that currently
+//     prices the program's own feedback loop.
 
 data target_invocation_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
