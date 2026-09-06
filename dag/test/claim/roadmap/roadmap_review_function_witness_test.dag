@@ -1,7 +1,7 @@
 module test.claim.roadmap.roadmap_review_function_witness_test
 
 import std.types { Bool, String, List, NonEmptyStr }
-import gunbc.roadmap.roadmap_review_criteria { review_criteria, review_criterion_identities_are_unique, review_criterion_by_key, GroundedOnDesignProposition, GroundedOnTheNodeContract }
+import gunbc.roadmap.roadmap_review_criteria { review_criteria, review_criterion_identities_are_unique, review_criterion_by_key, GroundedOnDesignProposition, GroundedOnTheNodeContract, ReviewCriterion }
 import gunbc.roadmap.roadmap_review_role { ReviewReceiptPresent, ReviewReceiptAbsent, ReviewReceiptSource }
 import gunbc.roadmap.roadmap_review_function {
   ReviewSubject, ReviewPlan, ReviewCall, ReviewObservation, review_plan, review_plan_revision, review_plan_revision_of, review_subject_id,
@@ -43,6 +43,7 @@ test fn the_roster_is_derived_with_unique_identities_and_a_content_revision() ->
     })
     && review_plan_revision() == review_plan_revision_of(criteria: review_criteria)
     && review_plan_revision_of(criteria: review_criteria) != review_plan_revision_of(criteria: filter(review_criteria, c => c.key != "fail-closed"))
+    && review_plan_revision_of(criteria: review_criteria) != review_plan_revision_of(criteria: map(review_criteria, c => ReviewCriterion { key: c.key, ground: c.ground, question: c.question, tells: c.tells, answer: c.answer, homes: [] }))
     && review_plan_revision().length() == 16
 }
 

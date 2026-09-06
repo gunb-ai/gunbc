@@ -104,6 +104,21 @@ fn review_criterion_homes_text(c: ReviewCriterion) -> String {
   }
 }
 
+// THE CRITERION'S IDENTITY FOR THE PLAN REVISION: every field a reviewer's brief or verdict reading
+// depends on. Homes and the answer algebra change what a verdict MEANS, so a revision that hashed only
+// key, question and tells would let an approval produced under old homes or yes/no semantics be reused
+// for a call whose meaning had moved (review on gunbc#10679).
+fn review_answer_key(a: ReviewAnswerAlgebra) -> String {
+  match a {
+    YesIsADefect => "yes-is-a-defect"
+    ConformanceThreeValued => "conformance-three-valued"
+  }
+}
+
+fn review_criterion_identity_text(c: ReviewCriterion) -> String {
+  join([c.key, "|", c.question, "|", join(c.tells, "|"), "|", review_answer_key(a: c.answer), "|", join(map(c.homes, h => review_home_text(h: h)), "|")], "")
+}
+
 fn review_criterion_tells_heading(a: ReviewAnswerAlgebra) -> String {
   match a {
     YesIsADefect => "Tells that the answer is yes:\n"
