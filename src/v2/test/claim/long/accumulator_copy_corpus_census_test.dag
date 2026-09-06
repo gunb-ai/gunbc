@@ -169,26 +169,39 @@ fn fixture_rows() -> List<CorpusFileRow> {
   ])
 }
 
-fn suspects_at(row: CorpusFileRow) -> Int {
+// TWO PREDICATES OVER THE STANDING, NOT ONE PROJECTION TO A COUNT. The first cut of this answered
+// the suspect count and returned -1 for a subject the ingest could not read, so that an unreadable
+// fixture would fail both witnesses rather than satisfying the clean one. That reasoning was right
+// and the carrier was wrong: it is a sentinel packed into an Int, which is the same collapse of a
+// typed standing onto a scalar that this whole change exists to undo -- and it only reads as safe
+// while every caller remembers what -1 means. Each predicate below answers its own question and
+// answers FALSE for a not-established subject, which gives the identical guarantee with nothing to
+// remember: an unreadable fixture is neither suspect nor clean, so it fails both witnesses by
+// construction rather than by arithmetic.
+fn row_has_suspect(row: CorpusFileRow) -> Bool {
   match row.standing {
-    CorpusFileScanned { suspects: s, refusals: _, causes: _ } => s
-    CorpusFileNotEstablished { cause: _ } => 0 - 1
+    CorpusFileScanned { suspects: s, refusals: _, causes: _ } => s > 0
+    CorpusFileNotEstablished { cause: _ } => false
   }
 }
 
-// A NOT-ESTABLISHED SUBJECT ANSWERS -1 ABOVE RATHER THAN 0, so a fixture the ingest cannot read
-// fails BOTH witnesses instead of silently satisfying the clean one. Zero would have made
-// unreadable and clean the same answer, which is the conflation this whole change exists to end.
+fn row_scanned_without_suspect(row: CorpusFileRow) -> Bool {
+  match row.standing {
+    CorpusFileScanned { suspects: s, refusals: _, causes: _ } => s == 0
+    CorpusFileNotEstablished { cause: _ } => false
+  }
+}
+
 test fn a_planted_copied_accumulator_is_caught_through_the_corpus_path() -> Bool {
   match fixture_rows() {
-    Cons { head: planted, tail: _ } => suspects_at(row: planted) > 0
+    Cons { head: planted, tail: _ } => row_has_suspect(row: planted)
     Empty => false
   }
 }
 
 test fn a_clean_accumulating_fold_stays_clean_through_the_corpus_path() -> Bool {
   match fixture_rows() {
-    Cons { head: _, tail: Cons { head: clean, tail: _ } } => suspects_at(row: clean) == 0
+    Cons { head: _, tail: Cons { head: clean, tail: _ } } => row_scanned_without_suspect(row: clean)
     _ => false
   }
 }
