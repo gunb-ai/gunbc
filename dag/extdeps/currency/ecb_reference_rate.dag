@@ -3,6 +3,7 @@ module extdeps.currency.ecb_reference_rate
 import extdeps.currency.currency { CurrencyCode, Eur, Usd, currency_code_eq }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.measure { MoneyAmountMicro, money_amount_micro, money_amount_micro_count }
 import std.types { Bool, Int, NonEmptyStr, List }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -34,7 +35,7 @@ data ecb_reference_rate_authority: ExternalAuthority = extdeps_external_authorit
 type FxReferenceRateRow {
   base: CurrencyCode
   quote: CurrencyCode
-  quote_micro_per_base_unit: Int
+  quote_per_base_unit: MoneyAmountMicro
   observed_date: NonEmptyStr
   authority: ExternalAuthority
   basis: NonEmptyStr
@@ -43,7 +44,7 @@ type FxReferenceRateRow {
 data ecb_eur_usd_2026_09_04: FxReferenceRateRow = FxReferenceRateRow {
   base: Eur,
   quote: Usd,
-  quote_micro_per_base_unit: 1162200,
+  quote_per_base_unit: money_amount_micro(count: 1162200),
   observed_date: "2026-09-04",
   authority: ecb_reference_rate_authority,
   basis: "ECB euro foreign exchange reference rate, US dollar, read from the anchor page on 2026-09-05 and dated by the publisher 2026-09-04. Reference rate, not a tradeable or transacted rate.",
@@ -58,20 +59,22 @@ fn ecb_reference_rates() -> List<FxReferenceRateRow> {
 // published reference rate produces a figure the publisher never published, and the two directions
 // are not the same number once any spread exists.
 type FxConversion
-  = FxConverted { micros: Int, through: NonEmptyStr }
+  = FxConverted { amount: MoneyAmountMicro, through: NonEmptyStr }
   | FxPairUnavailable { obligation: NonEmptyStr }
 
-fn convert_micros(
-  amount_micros: Int,
+fn convert_money(
+  amount: MoneyAmountMicro,
   from: CurrencyCode,
   to: CurrencyCode,
   rate: FxReferenceRateRow,
 ) -> FxConversion {
   if currency_code_eq(a: from, b: to) {
-    FxConverted { micros: amount_micros, through: "no conversion required - one currency" }
+    FxConverted { amount: amount, through: "no conversion required - one currency" }
   } else if currency_code_eq(a: from, b: rate.base) && currency_code_eq(a: to, b: rate.quote) {
     FxConverted {
-      micros: amount_micros * rate.quote_micro_per_base_unit / 1000000,
+      amount: money_amount_micro(
+        count: money_amount_micro_count(m: amount) * money_amount_micro_count(m: rate.quote_per_base_unit) / 1000000,
+      ),
       through: rate.observed_date,
     }
   } else {
@@ -81,9 +84,9 @@ fn convert_micros(
   }
 }
 
-fn fx_conversion_micros_or(c: FxConversion, fallback: Int) -> Int {
+fn fx_conversion_or(c: FxConversion, fallback: MoneyAmountMicro) -> MoneyAmountMicro {
   match c {
-    FxConverted { micros, through } => micros,
+    FxConverted { amount, through } => amount,
     FxPairUnavailable { obligation } => fallback,
   }
 }

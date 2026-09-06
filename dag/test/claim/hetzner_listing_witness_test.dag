@@ -2,7 +2,7 @@ module test.claim.hetzner_listing_witness
 
 import extdeps.currency.currency { CurrencyCode, Eur, Usd, currency_code_eq, currency_numeric_code, currency_minor_unit_exponent }
 import extdeps.currency.ecb_reference_rate {
-  FxConversion, FxConverted, FxPairUnavailable, convert_micros,
+  FxConversion, FxConverted, FxPairUnavailable, convert_money, fx_conversion_or,
   ecb_eur_usd_2026_09_04, ecb_reference_rates,
 }
 import extdeps.pricing.hetzner_dedicated {
@@ -15,7 +15,7 @@ import extdeps.pricing.hetzner_dedicated {
   hetzner_dx294_listed,
 }
 import std.types { Bool, Int }
-import std.measure { money_amount_micro_count }
+import std.measure { money_amount_micro, money_amount_micro_count }
 import extdeps.cloud.hetzner {
   cax41_catalog, cax41_catalog_superseded, cax41_catalog_usd, tariff_is_current,
   hetzner_cloud_listed_catalog, hetzner_cloud_orderable_rows, hetzner_cloud_arm_rows_orderable,
@@ -100,7 +100,7 @@ test fn w_hetzner_refuses_to_stand_as_an_arm64_cost_floor() -> Bool {
 // ---------------------------------------------------------------------------------------------
 // THE CURRENCY-IDENTITY CONTROL. This is the discriminating red for a defect that was live: an
 // equality written over currency_minor_unit_exponent answers TRUE for EUR against USD, because
-// both subdivide by a hundred. Under that equality a euro figure passed through convert_micros
+// both subdivide by a hundred. Under that equality a euro figure passed through convert_money
 // untouched and was then compared against dollars, and nothing anywhere went red. Restore that
 // implementation and the first line below fails.
 // ---------------------------------------------------------------------------------------------
@@ -114,22 +114,22 @@ test fn w_currency_identity_is_not_the_minor_unit_exponent() -> Bool {
 
 fn converted_or(c: FxConversion) -> Int {
   match c {
-    FxConverted { micros, through } => micros,
+    FxConverted { amount, through } => money_amount_micro_count(m: amount),
     FxPairUnavailable { obligation } => 0 - 1,
   }
 }
 
 test fn w_eur_converts_to_usd_at_the_cited_reference_rate() -> Bool {
-  converted_or(c: convert_micros(amount_micros: 1000000, from: Eur, to: Usd, rate: ecb_eur_usd_2026_09_04)) == 1162200
-    && ecb_eur_usd_2026_09_04.quote_micro_per_base_unit == 1162200
+  converted_or(c: convert_money(amount: money_amount_micro(count: 1000000), from: Eur, to: Usd, rate: ecb_eur_usd_2026_09_04)) == 1162200
+    && money_amount_micro_count(m: ecb_eur_usd_2026_09_04.quote_per_base_unit) == 1162200
     && count(ecb_reference_rates()) == 1
 }
 
 // A RATE ROW IS DIRECTIONAL. Converting the other way must refuse rather than invent an inverse,
 // and a same-currency conversion must pass the amount through untouched.
 test fn w_reverse_direction_refuses_and_identity_passes_through() -> Bool {
-  converted_or(c: convert_micros(amount_micros: 1000000, from: Usd, to: Eur, rate: ecb_eur_usd_2026_09_04)) < 0
-    && converted_or(c: convert_micros(amount_micros: 4242, from: Usd, to: Usd, rate: ecb_eur_usd_2026_09_04)) == 4242
+  converted_or(c: convert_money(amount: money_amount_micro(count: 1000000), from: Usd, to: Eur, rate: ecb_eur_usd_2026_09_04)) < 0
+    && converted_or(c: convert_money(amount: money_amount_micro(count: 4242), from: Usd, to: Usd, rate: ecb_eur_usd_2026_09_04)) == 4242
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -155,10 +155,10 @@ test fn w_cax41_current_tariff_is_the_new_price_column() -> Bool {
 // SUPERSEDED euro row to the current dollar row instead and the gap blows out past thirty per
 // cent - the arithmetic that manufactured the premium.
 test fn w_published_currencies_are_fx_consistent_within_the_same_tariff() -> Bool {
-  let eur_valued = money_amount_micro_count(m: cax41_catalog.monthly_cap) * 1162200 / 1000000
+  let eur_valued = money_amount_micro_count(m: fx_conversion_or(c: convert_money(amount: cax41_catalog.monthly_cap, from: Eur, to: Usd, rate: ecb_eur_usd_2026_09_04), fallback: money_amount_micro(count: 0)))
   let usd_listed = money_amount_micro_count(m: cax41_catalog_usd.monthly_cap)
   let gap = if eur_valued > usd_listed { eur_valued - usd_listed } else { usd_listed - eur_valued }
-  let stale_valued = money_amount_micro_count(m: cax41_catalog_superseded.monthly_cap) * 1162200 / 1000000
+  let stale_valued = money_amount_micro_count(m: fx_conversion_or(c: convert_money(amount: cax41_catalog_superseded.monthly_cap, from: Eur, to: Usd, rate: ecb_eur_usd_2026_09_04), fallback: money_amount_micro(count: 0)))
   let stale_gap = usd_listed - stale_valued
   gap * 1000 / usd_listed < 30 && stale_gap * 1000 / usd_listed > 200
 }
@@ -166,7 +166,7 @@ test fn w_published_currencies_are_fx_consistent_within_the_same_tariff() -> Boo
 test fn w_cloud_listing_is_eight_rows_with_one_orderable() -> Bool {
   count(hetzner_cloud_listed_catalog()) == 8
     && count(hetzner_cloud_orderable_rows()) == 1
-    && cax41_listed.monthly_micro == 48490000
+    && money_amount_micro_count(m: cax41_listed.monthly.amount) == 48490000
 }
 
 // THE SUPPLY CONSEQUENCE, CONSUMED RATHER THAN RECORDED: no arm row may be cited as a purchasable

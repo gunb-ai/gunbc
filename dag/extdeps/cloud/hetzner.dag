@@ -5,9 +5,9 @@ import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.toolchain.types { Architecture }
+import extdeps.toolchain.types { Architecture, architecture_is_aarch64 }
 import extdeps.currency.currency { CurrencyCode, Eur, Usd, currency_code_eq }
-import std.measure { ByteSize, HardwareThreadCount, MoneyAmountMicro, byte_size, hardware_thread_count, money_amount_micro }
+import std.measure { ByteSize, HardwareThreadCount, MoneyAmountMicro, MoneyPerHour, MoneyPerMonth, byte_size, hardware_thread_count, money_amount_micro }
 import std.types { Bool, Int, List, NonEmptyStr }
 
 
@@ -100,6 +100,20 @@ data cax41_catalog: HetznerCloudServerCatalogRow = HetznerCloudServerCatalogRow 
   cpu_architecture: Aarch64,
 }
 
+// CALLER CENSUS FOR THE RENAME, recorded because a rename that moves a symbol's MEANING is the
+// section 3 meaning-fork, and "I checked" is not a fact a later reader can verify. The row formerly
+// named cax41_catalog became cax41_catalog_superseded and a NEW row took the old name, so every
+// consumer of that name now reads a different tariff. Three consumers existed at the rename and all
+// three are accounted for:
+//   test.claim.hetzner_cost_quote_witness - updated in the same change; its pinned literal moved
+//     50500 -> 65700 deliberately, and it now ALSO asserts the superseded row at 50500, so a silent
+//     swap of one row for the other reds rather than passing.
+//   test.claim.hetzner_listing_witness - authored in the same change; asserts both rows by identity.
+//   strategy.node_rental (private tree) - imported the name but had already stopped reading it;
+//     the dead import and the prose naming it were removed in the same landing.
+// No consumer silently changed meaning. A future rename here owes the same census.
+data cax41_rename_caller_census: NonEmptyStr = "2026-09-06: three consumers at the rename, all updated or shown dead in the same landing - hetzner_cost_quote_witness (literal moved with both rows asserted), hetzner_listing_witness (asserts both by identity), strategy.node_rental (dead import removed)."
+
 data cax41_catalog_usd: HetznerCloudServerCatalogRow = HetznerCloudServerCatalogRow {
   server_type: Cax41,
   vcpus: hardware_thread_count(16),
@@ -186,9 +200,8 @@ type HetznerCloudListedRow {
   vcpus: HardwareThreadCount
   memory_bytes: ByteSize
   disk_bytes: ByteSize
-  hourly_micro: Int
-  monthly_micro: Int
-  currency: CurrencyCode
+  hourly: MoneyPerHour
+  monthly: MoneyPerMonth
   regions_observed: List<HetznerCloudRegion>
   availability: HetznerCloudAvailability
   observation: NonEmptyStr
@@ -218,7 +231,8 @@ data hetzner_regions_read: List<HetznerCloudRegion> = [Helsinki, Nuremberg]
 data cax11_listed: HetznerCloudListedRow = HetznerCloudListedRow {
   wire_label: "cax11", cpu_architecture: Aarch64,
   vcpus: hardware_thread_count(2), memory_bytes: byte_size(4294967296), disk_bytes: byte_size(42949672960),
-  hourly_micro: 11000, monthly_micro: 6990000, currency: Usd,
+  hourly: MoneyPerHour { amount: money_amount_micro(count: 11000), currency: Usd },
+  monthly: MoneyPerMonth { amount: money_amount_micro(count: 6990000), currency: Usd },
   regions_observed: hetzner_regions_read, availability: hetzner_cax_line_unavailable,
   observation: hetzner_cloud_console_observation,
 }
@@ -226,7 +240,8 @@ data cax11_listed: HetznerCloudListedRow = HetznerCloudListedRow {
 data cax21_listed: HetznerCloudListedRow = HetznerCloudListedRow {
   wire_label: "cax21", cpu_architecture: Aarch64,
   vcpus: hardware_thread_count(4), memory_bytes: byte_size(8589934592), disk_bytes: byte_size(85899345920),
-  hourly_micro: 20000, monthly_micro: 12490000, currency: Usd,
+  hourly: MoneyPerHour { amount: money_amount_micro(count: 20000), currency: Usd },
+  monthly: MoneyPerMonth { amount: money_amount_micro(count: 12490000), currency: Usd },
   regions_observed: hetzner_regions_read, availability: hetzner_cax_line_unavailable,
   observation: hetzner_cloud_console_observation,
 }
@@ -234,7 +249,8 @@ data cax21_listed: HetznerCloudListedRow = HetznerCloudListedRow {
 data cax31_listed: HetznerCloudListedRow = HetznerCloudListedRow {
   wire_label: "cax31", cpu_architecture: Aarch64,
   vcpus: hardware_thread_count(8), memory_bytes: byte_size(17179869184), disk_bytes: byte_size(171798691840),
-  hourly_micro: 40000, monthly_micro: 24990000, currency: Usd,
+  hourly: MoneyPerHour { amount: money_amount_micro(count: 40000), currency: Usd },
+  monthly: MoneyPerMonth { amount: money_amount_micro(count: 24990000), currency: Usd },
   regions_observed: hetzner_regions_read, availability: hetzner_cax_line_unavailable,
   observation: hetzner_cloud_console_observation,
 }
@@ -242,7 +258,8 @@ data cax31_listed: HetznerCloudListedRow = HetznerCloudListedRow {
 data cax41_listed: HetznerCloudListedRow = HetznerCloudListedRow {
   wire_label: "cax41", cpu_architecture: Aarch64,
   vcpus: hardware_thread_count(16), memory_bytes: byte_size(34359738368), disk_bytes: byte_size(343597383680),
-  hourly_micro: 78000, monthly_micro: 48490000, currency: Usd,
+  hourly: MoneyPerHour { amount: money_amount_micro(count: 78000), currency: Usd },
+  monthly: MoneyPerMonth { amount: money_amount_micro(count: 48490000), currency: Usd },
   regions_observed: hetzner_regions_read, availability: hetzner_cax_line_unavailable,
   observation: "As hetzner_cloud_console_observation, with one narrowing: the HOURLY figure was read in both regions and agreed, but the MONTHLY cap was captured only from the Nuremberg listing - the Helsinki row was truncated at the hourly rate in the reading relayed. The monthly figure is therefore Nuremberg's, and the regions list is honest about where the hourly was seen rather than asserting the cap was checked twice. THIS ROW IS THE ONE THE COMPARISON TURNS ON: 48.49 USD per month against an hourly-times-730 extrapolation of 56.94, so this vendor's monthly cap sits about fifteen per cent below the extrapolation - which is exactly the correction the hourly_extrapolation_caveat in strategy.node_rental exists to force, and the reason a cap must be read rather than derived.",
 }
@@ -250,7 +267,8 @@ data cax41_listed: HetznerCloudListedRow = HetznerCloudListedRow {
 data cx23_listed: HetznerCloudListedRow = HetznerCloudListedRow {
   wire_label: "cx23", cpu_architecture: X86_64,
   vcpus: hardware_thread_count(2), memory_bytes: byte_size(4294967296), disk_bytes: byte_size(42949672960),
-  hourly_micro: 10000, monthly_micro: 6490000, currency: Usd,
+  hourly: MoneyPerHour { amount: money_amount_micro(count: 10000), currency: Usd },
+  monthly: MoneyPerMonth { amount: money_amount_micro(count: 6490000), currency: Usd },
   regions_observed: hetzner_regions_read, availability: hetzner_cx23_scarce,
   observation: hetzner_cloud_console_observation,
 }
@@ -258,7 +276,8 @@ data cx23_listed: HetznerCloudListedRow = HetznerCloudListedRow {
 data cx33_listed: HetznerCloudListedRow = HetznerCloudListedRow {
   wire_label: "cx33", cpu_architecture: X86_64,
   vcpus: hardware_thread_count(4), memory_bytes: byte_size(8589934592), disk_bytes: byte_size(85899345920),
-  hourly_micro: 16000, monthly_micro: 9990000, currency: Usd,
+  hourly: MoneyPerHour { amount: money_amount_micro(count: 16000), currency: Usd },
+  monthly: MoneyPerMonth { amount: money_amount_micro(count: 9990000), currency: Usd },
   regions_observed: hetzner_regions_read, availability: hetzner_cx_larger_sizes_unavailable,
   observation: hetzner_cloud_console_observation,
 }
@@ -266,7 +285,8 @@ data cx33_listed: HetznerCloudListedRow = HetznerCloudListedRow {
 data cx43_listed: HetznerCloudListedRow = HetznerCloudListedRow {
   wire_label: "cx43", cpu_architecture: X86_64,
   vcpus: hardware_thread_count(8), memory_bytes: byte_size(17179869184), disk_bytes: byte_size(171798691840),
-  hourly_micro: 30000, monthly_micro: 18490000, currency: Usd,
+  hourly: MoneyPerHour { amount: money_amount_micro(count: 30000), currency: Usd },
+  monthly: MoneyPerMonth { amount: money_amount_micro(count: 18490000), currency: Usd },
   regions_observed: hetzner_regions_read, availability: hetzner_cx_larger_sizes_unavailable,
   observation: hetzner_cloud_console_observation,
 }
@@ -274,7 +294,8 @@ data cx43_listed: HetznerCloudListedRow = HetznerCloudListedRow {
 data cx53_listed: HetznerCloudListedRow = HetznerCloudListedRow {
   wire_label: "cx53", cpu_architecture: X86_64,
   vcpus: hardware_thread_count(16), memory_bytes: byte_size(34359738368), disk_bytes: byte_size(343597383680),
-  hourly_micro: 56000, monthly_micro: 34990000, currency: Usd,
+  hourly: MoneyPerHour { amount: money_amount_micro(count: 56000), currency: Usd },
+  monthly: MoneyPerMonth { amount: money_amount_micro(count: 34990000), currency: Usd },
   regions_observed: hetzner_regions_read, availability: hetzner_cx_larger_sizes_unavailable,
   observation: hetzner_cloud_console_observation,
 }
@@ -296,9 +317,6 @@ fn admissible_as_purchasable_floor(r: HetznerCloudListedRow) -> Bool {
 }
 
 fn hetzner_cloud_arm_rows_orderable() -> Bool {
-  any(hetzner_cloud_listed_catalog(), r => match r.cpu_architecture {
-    Aarch64 => availability_is_orderable(a: r.availability),
-    X86_64 => false, X86 => false, Arm => false, Armv7 => false, Mips => false,
-    Mipsel => false, Mips64 => false, Mips64el => false, Riscv64 => false, Wasm32 => false,
-  })
+  any(hetzner_cloud_listed_catalog(), r =>
+    architecture_is_aarch64(a: r.cpu_architecture) && availability_is_orderable(a: r.availability))
 }
