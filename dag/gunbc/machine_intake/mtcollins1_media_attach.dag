@@ -1,0 +1,75 @@
+module gunbc.machine_intake_mtcollins1_media_attach
+
+import std.types { NonEmptyStr, String }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
+import gunbc.machine_intake_megarac_media_attach {
+  MegaRacAttachOutcome,
+  MegaRacAttachUnconfirmed,
+  MegaRacAttached,
+  MegaRacImageListingEmpty,
+  MegaRacImageNotEnumerated,
+  MegaRacImagesUnreadable,
+  MegaRacSessionRefused,
+  MegaRacSessionTokenUnreadable,
+  MegaRacStartRefused,
+  megarac_attach_remote_image,
+}
+
+// THE POLICY LAYER FOR ONE HOST'S MEDIA ATTACH, separate from the operation for the same reason the
+// boot-handoff wrappers are: which image this unit should carry is a workflow decision, and the
+// operation stays reusable by the next controller without carrying anyone's choices.
+data mtcollins1_diskless_image_name: NonEmptyStr = "ubuntu-24.04.3-live-server-arm64.iso"
+
+data mtcollins1_media_cookie_jar: NonEmptyStr = "/tmp/gunbc-mtcollins1-megarac-jar"
+
+data mtcollins1_media_username: NonEmptyStr = "admin"
+
+// EACH OUTCOME RENDERS ITS OWN REASON because they have different remedies, and two of them are
+// easy to confuse in a way that sends an operator to the wrong place.
+//
+// MegaRacImageListingEmpty means the CONTROLLER'S CACHE went stale — measured on this unit after a
+// new file appeared in the export, when it stopped enumerating even a file it had listed before.
+// The remedy is to re-assert mount_cd, not to look for the missing file. Reading it as "the share
+// is empty" sends someone to inspect an export that is fine.
+//
+// MegaRacAttachUnconfirmed is the one state where waiting is right: start-media was accepted and
+// the configurations listing does not name the image yet. The controller's mount daemon is
+// asynchronous, so this is pending rather than failed — but it is reported rather than slept
+// through, because a caller that polls until something looks successful has no deadline.
+fn mtcollins1_render_attach(outcome: MegaRacAttachOutcome) -> ProcessExit {
+  match outcome {
+    MegaRacAttached { image_name: _, image_index: _ } => ExitSuccess
+    MegaRacSessionRefused { detail: d } =>
+      exit_failure(reason: concat("mtcollins1 media attach: session refused: ", d))
+    MegaRacSessionTokenUnreadable { detail: d } =>
+      exit_failure(reason: concat("mtcollins1 media attach: session succeeded but no CSRFToken could be read from its document: ", d))
+    MegaRacImagesUnreadable { detail: d } =>
+      exit_failure(reason: concat("mtcollins1 media attach: images listing unreadable: ", d))
+    MegaRacImageListingEmpty =>
+      exit_failure(reason: "mtcollins1 media attach: the controller enumerated NO images; that listing is a cache and has gone stale, so re-assert mount_cd rather than concluding the share is empty")
+    MegaRacImageNotEnumerated { image_name: n } =>
+      exit_failure(reason: concat("mtcollins1 media attach: the controller enumerated images but not '", n as String, "'"))
+    MegaRacStartRefused { detail: d } =>
+      exit_failure(reason: concat("mtcollins1 media attach: start-media refused AND the configurations listing does not name the image: ", d))
+    MegaRacAttachUnconfirmed { image_name: n, configurations: c } =>
+      exit_failure(reason: concat("mtcollins1 media attach: start-media was accepted but configurations does not yet name '", n as String, "'; the mount daemon is asynchronous so this may be pending: ", c))
+  }
+}
+
+func mtcollins1_attach_diskless_image(password_raw: String) -> ProcessExit
+  uses net: std.resources.Network
+{
+  if password_raw == "" {
+    return exit_failure(reason: "mtcollins1 media attach: no controller password supplied; refusing before any request")
+  }
+  return mtcollins1_render_attach(
+    outcome: megarac_attach_remote_image(
+      bmc_host: mtcollins1_endpoint.host,
+      username: mtcollins1_media_username,
+      password: password_raw as NonEmptyStr,
+      cookie_jar: mtcollins1_media_cookie_jar,
+      image_name: mtcollins1_diskless_image_name,
+    )
+  )
+}
