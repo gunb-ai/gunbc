@@ -386,6 +386,8 @@ pub type MegatransfersPerSecond = Rc<Measure<Frequency, Mega, i64>>;
 
 pub type HardwareThreadCount = Rc<Measure<Count, One, i64>>;
 
+pub type PhysicalCoreCount = Rc<Measure<Count, One, i64>>;
+
 pub type CharacterCount = Rc<Measure<Count, One, i64>>;
 
 pub type TokenCount = Rc<Measure<Count, One, i64>>;
@@ -1054,6 +1056,17 @@ pub fn hardware_thread_count(count: Nat) -> HardwareThreadCount {
 
 pub fn hardware_thread_count_value(t: HardwareThreadCount) -> Nat {
     measure_count(t.clone())
+}
+
+pub fn physical_core_count(count: Nat) -> PhysicalCoreCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn physical_core_count_value(c: PhysicalCoreCount) -> Nat {
+    measure_count(c.clone())
 }
 
 pub fn character_count(count: Nat) -> CharacterCount {

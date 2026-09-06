@@ -112,7 +112,6 @@ data cax41_catalog: HetznerCloudServerCatalogRow = HetznerCloudServerCatalogRow 
 //   strategy.node_rental (private tree) - imported the name but had already stopped reading it;
 //     the dead import and the prose naming it were removed in the same landing.
 // No consumer silently changed meaning. A future rename here owes the same census.
-data cax41_rename_caller_census: NonEmptyStr = "2026-09-06: three consumers at the rename, all updated or shown dead in the same landing - hetzner_cost_quote_witness (literal moved with both rows asserted), hetzner_listing_witness (asserts both by identity), strategy.node_rental (dead import removed)."
 
 data cax41_catalog_usd: HetznerCloudServerCatalogRow = HetznerCloudServerCatalogRow {
   server_type: Cax41,
@@ -137,7 +136,6 @@ data cax41_catalog_usd: HetznerCloudServerCatalogRow = HetznerCloudServerCatalog
 // grounds that it would. What it must refuse is labelling an FX-derived figure as the vendor's
 // quote in that currency, and joining two tariff VERSIONS across two currencies - which is the
 // arithmetic that manufactured the premium in the first place.
-data cax41_currency_consistency_note: NonEmptyStr = "Both published currencies move together across the 2026-06-15 adjustment: 31.49 to 40.99 EUR and 36.99 to 48.49 USD. The apparent thirty-per-cent dollar premium reported earlier was old EUR joined to new USD - a temporal-identity error wearing a currency-identity costume."
 
 
 // ---------------------------------------------------------------------------------------------
@@ -176,21 +174,11 @@ fn hetzner_cloud_region_label(r: HetznerCloudRegion) -> NonEmptyStr {
 type HetznerCloudAvailability
   = UnitsAvailable { count: Int, observation: NonEmptyStr }
   | NotOrderable { observation: NonEmptyStr }
-  | AvailabilityUnobserved { obligation: NonEmptyStr }
 
 fn availability_is_orderable(a: HetznerCloudAvailability) -> Bool {
   match a {
     UnitsAvailable { count, observation } => count > 0,
     NotOrderable { observation } => false,
-    AvailabilityUnobserved { obligation } => false,
-  }
-}
-
-fn availability_is_observed(a: HetznerCloudAvailability) -> Bool {
-  match a {
-    UnitsAvailable { count, observation } => true,
-    NotOrderable { observation } => true,
-    AvailabilityUnobserved { obligation } => false,
   }
 }
 

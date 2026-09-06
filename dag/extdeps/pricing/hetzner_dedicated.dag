@@ -12,12 +12,15 @@ import std.measure {
   Gigabyte,
   HardwareThreadCount,
   Hertz,
+  PhysicalCoreCount,
   byte_size,
   gigabyte,
   gigabyte_count,
   hardware_thread_count,
   hardware_thread_count_value,
   hertz,
+  physical_core_count,
+  physical_core_count_value,
   MoneyOnce,
   MoneyPerHour,
   MoneyPerMonth,
@@ -187,15 +190,15 @@ type ListedCpuStanding
   | VendorStatedCpu {
       model: NonEmptyStr
       codename: NonEmptyStr
-      physical_cores: Int
+      physical_cores: PhysicalCoreCount
       threads: HardwareThreadCount
       stated_clock: Hertz
       obligation: NonEmptyStr
     }
 
-fn listed_cpu_physical_cores(c: ListedCpuStanding) -> Int {
+fn listed_cpu_physical_cores(c: ListedCpuStanding) -> PhysicalCoreCount {
   match c {
-    CpuFactsCited { facts } => facts.catalog.cores,
+    CpuFactsCited { facts } => physical_core_count(count: facts.catalog.cores),
     VendorStatedCpu { model, codename, physical_cores, threads, stated_clock, obligation } => physical_cores,
   }
 }
@@ -250,7 +253,7 @@ data hetzner_listing_observation_2026_09_05: NonEmptyStr = "Operator reading of 
 data hetzner_ax41_listed: HetznerListedServerRow = HetznerListedServerRow {
   wire_label: "AX41",
   cpu: VendorStatedCpu {
-    model: "AMD Ryzen 5 3600", codename: "Matisse (Zen2)", physical_cores: 6,
+    model: "AMD Ryzen 5 3600", codename: "Matisse (Zen2)", physical_cores: physical_core_count(6),
     threads: hardware_thread_count(12), stated_clock: hertz(3600000000),
     obligation: "extdeps.cpu.amd carries ryzen_5_3600_facts; this row is promotable to CpuFactsCited and is left unpromoted only so the whole listing is authored under one rule",
   },
@@ -267,7 +270,7 @@ data hetzner_ax41_listed: HetznerListedServerRow = HetznerListedServerRow {
 data hetzner_sx65_listed: HetznerListedServerRow = HetznerListedServerRow {
   wire_label: "SX65",
   cpu: VendorStatedCpu {
-    model: "AMD Ryzen 7 3700X", codename: "Matisse (Zen2)", physical_cores: 8,
+    model: "AMD Ryzen 7 3700X", codename: "Matisse (Zen2)", physical_cores: physical_core_count(8),
     threads: hardware_thread_count(16), stated_clock: hertz(3600000000),
     obligation: "no extdeps.cpu row for Ryzen 7 3700X",
   },
@@ -284,7 +287,7 @@ data hetzner_sx65_listed: HetznerListedServerRow = HetznerListedServerRow {
 data hetzner_ax42_listed: HetznerListedServerRow = HetznerListedServerRow {
   wire_label: "AX42",
   cpu: VendorStatedCpu {
-    model: "AMD Ryzen 7 PRO 8700GE", codename: "Phoenix 1 (Zen4)", physical_cores: 8,
+    model: "AMD Ryzen 7 PRO 8700GE", codename: "Phoenix 1 (Zen4)", physical_cores: physical_core_count(8),
     threads: hardware_thread_count(16), stated_clock: hertz(3650000000),
     obligation: "extdeps.cpu.amd carries ryzen_7_pro_8700ge_facts; promotable",
   },
@@ -301,7 +304,7 @@ data hetzner_ax42_listed: HetznerListedServerRow = HetznerListedServerRow {
 data hetzner_ex63_listed: HetznerListedServerRow = HetznerListedServerRow {
   wire_label: "EX63",
   cpu: VendorStatedCpu {
-    model: "Intel Core Ultra 7 265", codename: "Arrow Lake", physical_cores: 20,
+    model: "Intel Core Ultra 7 265", codename: "Arrow Lake", physical_cores: physical_core_count(20),
     threads: hardware_thread_count(20), stated_clock: hertz(2400000000),
     obligation: "no extdeps.cpu row for Core Ultra 7 265; note the listing states 20 cores and 20 threads, so this part has no SMT and its core and thread counts coincide",
   },
@@ -318,7 +321,7 @@ data hetzner_ex63_listed: HetznerListedServerRow = HetznerListedServerRow {
 data hetzner_gex45_listed: HetznerListedServerRow = HetznerListedServerRow {
   wire_label: "GEX45",
   cpu: VendorStatedCpu {
-    model: "Intel Core i5-13500", codename: "Raptor Lake-S", physical_cores: 14,
+    model: "Intel Core i5-13500", codename: "Raptor Lake-S", physical_cores: physical_core_count(14),
     threads: hardware_thread_count(20), stated_clock: hertz(2500000000),
     obligation: "no extdeps.cpu row for i5-13500",
   },
@@ -335,7 +338,7 @@ data hetzner_gex45_listed: HetznerListedServerRow = HetznerListedServerRow {
 data hetzner_ax102_listed: HetznerListedServerRow = HetznerListedServerRow {
   wire_label: "AX102",
   cpu: VendorStatedCpu {
-    model: "AMD Ryzen 9 7950X3D", codename: "Raphael (Zen 4)", physical_cores: 16,
+    model: "AMD Ryzen 9 7950X3D", codename: "Raphael (Zen 4)", physical_cores: physical_core_count(16),
     threads: hardware_thread_count(32), stated_clock: hertz(4200000000),
     obligation: "extdeps.cpu.amd carries ryzen_9_7950x3d_facts; promotable",
   },
@@ -352,7 +355,7 @@ data hetzner_ax102_listed: HetznerListedServerRow = HetznerListedServerRow {
 data hetzner_sx135_listed: HetznerListedServerRow = HetznerListedServerRow {
   wire_label: "SX135",
   cpu: VendorStatedCpu {
-    model: "AMD Ryzen 9 3900", codename: "Matisse (Zen2)", physical_cores: 12,
+    model: "AMD Ryzen 9 3900", codename: "Matisse (Zen2)", physical_cores: physical_core_count(12),
     threads: hardware_thread_count(24), stated_clock: hertz(3100000000),
     obligation: "no extdeps.cpu row for Ryzen 9 3900",
   },
@@ -369,7 +372,7 @@ data hetzner_sx135_listed: HetznerListedServerRow = HetznerListedServerRow {
 data hetzner_ex131_listed: HetznerListedServerRow = HetznerListedServerRow {
   wire_label: "EX131",
   cpu: VendorStatedCpu {
-    model: "Intel Xeon Gold 6731P", codename: "Granite Rapids", physical_cores: 32,
+    model: "Intel Xeon Gold 6731P", codename: "Granite Rapids", physical_cores: physical_core_count(32),
     threads: hardware_thread_count(64), stated_clock: hertz(2500000000),
     obligation: "no extdeps.cpu row for Xeon Gold 6731P",
   },
@@ -386,7 +389,7 @@ data hetzner_ex131_listed: HetznerListedServerRow = HetznerListedServerRow {
 data hetzner_ax162_listed: HetznerListedServerRow = HetznerListedServerRow {
   wire_label: "AX162",
   cpu: VendorStatedCpu {
-    model: "AMD EPYC 9454P", codename: "Genoa (Zen4)", physical_cores: 48,
+    model: "AMD EPYC 9454P", codename: "Genoa (Zen4)", physical_cores: physical_core_count(48),
     threads: hardware_thread_count(96), stated_clock: hertz(2750000000),
     obligation: "no extdeps.cpu row for EPYC 9454P",
   },
@@ -403,7 +406,7 @@ data hetzner_ax162_listed: HetznerListedServerRow = HetznerListedServerRow {
 data hetzner_dx154_listed: HetznerListedServerRow = HetznerListedServerRow {
   wire_label: "DX154",
   cpu: VendorStatedCpu {
-    model: "Intel Xeon 6741P", codename: "Granite Rapids", physical_cores: 48,
+    model: "Intel Xeon 6741P", codename: "Granite Rapids", physical_cores: physical_core_count(48),
     threads: hardware_thread_count(96), stated_clock: hertz(2500000000),
     obligation: "no extdeps.cpu row for Xeon 6741P",
   },
@@ -420,7 +423,7 @@ data hetzner_dx154_listed: HetznerListedServerRow = HetznerListedServerRow {
 data hetzner_dx182_listed: HetznerListedServerRow = HetznerListedServerRow {
   wire_label: "DX182",
   cpu: VendorStatedCpu {
-    model: "AMD EPYC 9454P", codename: "Genoa (Zen4)", physical_cores: 48,
+    model: "AMD EPYC 9454P", codename: "Genoa (Zen4)", physical_cores: physical_core_count(48),
     threads: hardware_thread_count(96), stated_clock: hertz(2750000000),
     obligation: "no extdeps.cpu row for EPYC 9454P; same processor as AX162 at a different price, which is a fact about the two product families and not a transcription error",
   },
@@ -437,7 +440,7 @@ data hetzner_dx182_listed: HetznerListedServerRow = HetznerListedServerRow {
 data hetzner_sx295_listed: HetznerListedServerRow = HetznerListedServerRow {
   wire_label: "SX295",
   cpu: VendorStatedCpu {
-    model: "AMD EPYC 7502P", codename: "Rome (Zen2)", physical_cores: 32,
+    model: "AMD EPYC 7502P", codename: "Rome (Zen2)", physical_cores: physical_core_count(32),
     threads: hardware_thread_count(64), stated_clock: hertz(2000000000),
     obligation: "no extdeps.cpu row for EPYC 7502P",
   },
@@ -454,7 +457,7 @@ data hetzner_sx295_listed: HetznerListedServerRow = HetznerListedServerRow {
 data hetzner_dx294_listed: HetznerListedServerRow = HetznerListedServerRow {
   wire_label: "DX294",
   cpu: VendorStatedCpu {
-    model: "Intel Xeon Gold 6787P", codename: "Granite Rapids", physical_cores: 86,
+    model: "Intel Xeon Gold 6787P", codename: "Granite Rapids", physical_cores: physical_core_count(86),
     threads: hardware_thread_count(172), stated_clock: hertz(2000000000),
     obligation: "no extdeps.cpu row for Xeon Gold 6787P",
   },
@@ -471,7 +474,7 @@ data hetzner_dx294_listed: HetznerListedServerRow = HetznerListedServerRow {
 data hetzner_gex131_listed: HetznerListedServerRow = HetznerListedServerRow {
   wire_label: "GEX131",
   cpu: VendorStatedCpu {
-    model: "Intel Xeon Gold 5412U", codename: "Sapphire Rapids", physical_cores: 24,
+    model: "Intel Xeon Gold 5412U", codename: "Sapphire Rapids", physical_cores: physical_core_count(24),
     threads: hardware_thread_count(48), stated_clock: hertz(2100000000),
     obligation: "no extdeps.cpu row for Xeon Gold 5412U",
   },
@@ -534,7 +537,7 @@ type ListedRateStanding
   | RateNotMeaningful { reason: NonEmptyStr }
 
 fn hetzner_listed_per_physical_core_micros(row: HetznerListedServerRow, holding_months: Int) -> ListedRateStanding {
-  let cores = listed_cpu_physical_cores(c: row.cpu)
+  let cores = physical_core_count_value(c: listed_cpu_physical_cores(c: row.cpu))
   if listing_is_cpu_only(w: row.workload) == false {
     RateNotMeaningful {
       reason: "this row's price includes a discrete GPU, so most of what it buys is not cores and a per-core rate derived from it would be an artifact of the division rather than a price",
