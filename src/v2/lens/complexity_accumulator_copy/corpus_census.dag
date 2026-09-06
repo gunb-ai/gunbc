@@ -1,4 +1,4 @@
-module v2.test.claim.long.accumulator_copy_corpus_census_test
+module v2.lens.complexity_accumulator_copy.corpus_census
 
 import v2.lens.complexity_accumulator_copy.corpus_gate {
   CorpusFileNotEstablished,
@@ -68,10 +68,24 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // interpreter, measured on this session's host at roughly eighty seconds per subject against 5007
 // tracked .dag files. That is not a scheduling inconvenience to be waited out; it is the same
 // displaced cost DESIGN section 1 prices, and it is why the lens has stood roster-bound rather than
-// corpus-bound since it was written. The exclusion row is
-// claim/long/accumulator_copy_corpus_census in gunbc.ci_layer_roots, and its dissolution names the
-// capability -- native ingest, or a lens that reads the compile graph instead of re-parsing source
-// -- rather than any artifact.
+// corpus-bound since it was written.
+//
+// SO THIS FILE DECLARES NO WITNESS, AND THAT IS THE POINT RATHER THAN AN OMISSION. It was first
+// written as claim/long/accumulator_copy_corpus_census_test.dag with two `test fn` rows and two
+// exclusions -- a discovery row in gunbc.ci_layer_roots and a floor-preparation row -- and the
+// floor refused both times, correctly. A CHANGED witness is admitted to the required floor
+// regardless of any exclusion (cause=ChangedWitnessOutsidePreparedSubject, run 34018018622), which
+// is exactly right: an exclusion that a new witness could opt into on the change that introduces it
+// would be the escape hatch DESIGN section 5 forbids. A corpus-priced assertion therefore cannot be
+// authored as a witness at all, and pretending otherwise buys a roster row that never runs. The
+// executing evidence for this code path is the cheap pair in
+// claim/complexity/accumulator_copy_corpus_path_test.dag -- a planted copied accumulator caught
+// through corpus_gate and a clean fold that stays clean -- which run on every push. What lives here
+// are entry points, run by a person, whose output belongs in a run.
+//
+// DISSOLUTION names the capability: ingest that does not re-parse source in the interpreter (native
+// ingest, or a lens reading the compile graph). At that price the corpus form becomes affordable
+// and these entry points become witnesses.
 //
 // ONE PROCESS CANNOT CARRY THE CORPUS, AND THE FAILURE IS A SEGMENTATION FAULT RATHER THAN A
 // DIAGNOSTIC. Measured twice with census_for_paths over a stratified sample of the tracked corpus:
@@ -85,14 +99,14 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // So the census is run in BATCHES, which is why the instrument takes an explicit subject list
 // beside the discovered-root form. The batch ceiling is an observation about this host and this
 // build, not a modeled bound; it is stated here so the next author batches deliberately rather than
-// discovering it as a silent truncation. Dissolution is the same trigger the exclusion row names --
-// native ingest -- plus a driver that runs batches per process and joins their reports.
+// discovering it as a silent truncation. Dissolution is the same trigger named above -- native
+// ingest -- plus a driver that runs batches per process and joins their reports.
 //
-// EVERY WITNESS IN THIS FILE EXECUTES, WHICH IS WHY THE WHOLE-CORPUS ONE IS ABSENT. The obvious
-// row to write here is a gate over the tracked corpus, and it is deliberately not written: nothing
-// can run it, so it would be a documented red rather than an observed one -- roster membership
-// standing in for a verdict. The subtree witness below names a real discovered population small
-// enough to execute, and the corpus form stays a run of census_for_root until its cost dissolves.
+// THE WHOLE-CORPUS FORM IS ABSENT EVEN AS AN ENTRY POINT WITH A FIXED ANSWER. The obvious thing to
+// write is a gate over the tracked corpus; nothing can run it, so it would be a documented red
+// rather than an observed one -- roster membership standing in for a verdict. The subtree predicate
+// below names a real discovered population small enough to execute, and the corpus form stays a run
+// of census_for_root until its cost dissolves.
 //
 // THE THREE INSTRUMENTS BELOW ARE ENTRY POINTS, NOT RESULTS. DESIGN section 6 asks that a
 // measurement be cited by naming the producer that re-derives it. population_for_root answers how
@@ -124,7 +138,7 @@ fn subtree_gate() -> CorpusGateDisposition {
 // this file exists to end. The assertion is therefore that the gate REPORTS the unreadable
 // population -- and its failure mode is the one that matters: if the ingest silently started
 // answering clean for those subjects, this goes red.
-test fn corpus_subtree_gate_reports_its_unreadable_population() -> Bool {
+fn corpus_subtree_gate_reports_its_unreadable_population() -> Bool {
   match subtree_gate() {
     CorpusNotEstablishedObserved { rows: _ } => true
     CorpusNoSuspectsObserved { files: _, refusal_sites: _, refusal_causes: _ } => false
@@ -274,7 +288,7 @@ fn analyzer_disposition() -> CorpusGateDisposition {
   )
 }
 
-test fn a_no_suspect_verdict_still_carries_its_refusal_census() -> Bool {
+fn a_no_suspect_verdict_still_carries_its_refusal_census() -> Bool {
   match analyzer_disposition() {
     CorpusNoSuspectsObserved { files: _, refusal_sites: sites, refusal_causes: causes } =>
       (sites > 0) && (length(xs: causes) > 0)

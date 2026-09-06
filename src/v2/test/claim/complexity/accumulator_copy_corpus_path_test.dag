@@ -18,13 +18,15 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// THE CORPUS PATH'S DISCRIMINATING EVIDENCE, SPLIT HERE BY COST SO IT CAN RUN ON THE FLOOR.
-// Everything in this file reads a five-line fixture or nothing at all, so it is seconds; the
-// corpus-grain witnesses that read real modules are in
-// v2.test.claim.long.accumulator_copy_corpus_census_test and are floor-excluded with their measured
-// cost. The split exists because the floor budgets an ENTRY, not a witness: one twenty-minute
-// member made every other witness in the same file report interrupted_before_verdict, so cheap
-// evidence was being lost to an expensive neighbour rather than to any fault of its own.
+// THIS FILE IS THE ONLY EXECUTING EVIDENCE FOR THE CORPUS PATH, AND IT IS THE WHOLE OF IT.
+// Everything here reads a five-line fixture or nothing at all, so it is seconds. The corpus-grain
+// forms -- a census over a discovered root, over an explicit batch, and the subtree predicate --
+// are ENTRY POINTS, not witnesses, in v2.lens.complexity_accumulator_copy.corpus_census: at roughly
+// eighty seconds per subject they cannot be enrolled, and a witness that cannot run is a roster row
+// standing in for a verdict. So the claim this lane makes is scoped to what runs: the planted
+// copied accumulator below is caught through corpus_gate and the clean fold beside it stays clean,
+// over a population the gate discovers rather than a hand-list. The corpus-wide verdict is a run,
+// and it is named where the instruments live.
 
 fn fixture_rows() -> List<CorpusFileRow> {
   corpus_rows_for_paths(paths: [
