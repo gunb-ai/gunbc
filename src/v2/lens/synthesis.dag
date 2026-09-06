@@ -1,13 +1,8 @@
 module v2.lens.synthesis
 
-import v2.lens.common.construction_justification {
-  ConstructionJustification,
-  OutsideModeledGuarantee,
-  CandidateDomainNotClosed,
-  modeled_outside_boundary,
-  modeled_guarantee_capability_inventory_ref
-}
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { SingleAuthority }
 
 import v2.lens.complexity { ComplexityBound, Established, Incomplete, complexity_lens }
 
@@ -203,26 +198,11 @@ fn synthesis_lens_diagnostics(n: Node, declared_technique: LowerBoundTechnique) 
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: OutsideModeledGuarantee {
-    boundary: modeled_outside_boundary(
-      subject: DeclarationRef {
-        module_path: "v2.lens.enforcement.complexity_contract_subject",
-        decl_name: "CompleteRewriteDiscovery",
-        field: WholeDeclaration
-      },
-      required_capability: DeclarationRef {
-        module_path: "v2.lens.enforcement.complexity_contract_subject",
-        decl_name: "GlobalOptimality",
-        field: WholeDeclaration
-      },
-      capability_inventory_authority: modeled_guarantee_capability_inventory_ref,
-      boundary_kind: CandidateDomainNotClosed {
-        domain: DeclarationRef {
-          module_path: "v2.lens.enforcement.complexity_contract_subject",
-          decl_name: "ComplexityOptimalityClaim",
-          field: WholeDeclaration
-        }
-      }
-    )
-  }
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}
+
+data synthesis_climbs_when: DeclarationRef = DeclarationRef {
+  module_path: "v2.lens.synthesis",
+  decl_name: "synthesis_lens",
+  field: WholeDeclaration
 }

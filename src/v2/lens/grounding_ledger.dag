@@ -1,37 +1,17 @@
 module v2.lens.grounding_ledger
 
-import v2.lens.common.construction_justification {
-  ConstructionJustification,
-  OutsideModeledGuarantee,
-  PolicyJudgmentRequired,
-  modeled_outside_boundary,
-  grounding_modeled_capability_inventory_ref
-}
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { SingleAuthority }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: OutsideModeledGuarantee {
-    boundary: modeled_outside_boundary(
-      subject: DeclarationRef {
-        module_path: "v2.lens.grounding_ledger",
-        decl_name: "LedgerEntry",
-        field: WholeDeclaration
-      },
-      required_capability: DeclarationRef {
-        module_path: "v2.lens.grounding_ledger",
-        decl_name: "GroundingVerdict",
-        field: WholeDeclaration
-      },
-      capability_inventory_authority: grounding_modeled_capability_inventory_ref,
-      boundary_kind: PolicyJudgmentRequired {
-        judgment: DeclarationRef {
-          module_path: "v2.lens.grounding_ledger",
-          decl_name: "GroundingVerdict",
-          field: WholeDeclaration
-        }
-      }
-    )
-  }
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}
+
+data grounding_ledger_climbs_when: DeclarationRef = DeclarationRef {
+  module_path: "v2.lens.grounding_ledger",
+  decl_name: "GroundingVerdict",
+  field: WholeDeclaration
 }
 
 type ResidueReason

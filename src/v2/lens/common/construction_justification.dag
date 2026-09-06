@@ -63,30 +63,6 @@ data modeled_guarantee_capability_inventory_ref: DeclarationRef = DeclarationRef
   field: WholeDeclaration
 }
 
-data grounding_modeled_capability_inventory: List<DeclarationRef> = []
-
-data grounding_modeled_capability_inventory_ref: DeclarationRef = DeclarationRef {
-  module_path: "v2.lens.common.construction_justification",
-  decl_name: "grounding_modeled_capability_inventory",
-  field: WholeDeclaration
-}
-
-data unit_modeling_modeled_capability_inventory: List<DeclarationRef> = []
-
-data unit_modeling_modeled_capability_inventory_ref: DeclarationRef = DeclarationRef {
-  module_path: "v2.lens.common.construction_justification",
-  decl_name: "unit_modeling_modeled_capability_inventory",
-  field: WholeDeclaration
-}
-
-data testgen_modeled_capability_inventory: List<DeclarationRef> = []
-
-data testgen_modeled_capability_inventory_ref: DeclarationRef = DeclarationRef {
-  module_path: "v2.lens.common.construction_justification",
-  decl_name: "testgen_modeled_capability_inventory",
-  field: WholeDeclaration
-}
-
 fn modeled_outside_boundary(
   subject: DeclarationRef,
   required_capability: DeclarationRef,
@@ -103,20 +79,11 @@ fn modeled_outside_boundary(
 
 fn guarantee_boundary_inventory_authority_is_closed(authority: DeclarationRef) -> Bool {
   declaration_ref_eq(a: authority, b: modeled_guarantee_capability_inventory_ref)
-    || declaration_ref_eq(a: authority, b: grounding_modeled_capability_inventory_ref)
-    || declaration_ref_eq(a: authority, b: unit_modeling_modeled_capability_inventory_ref)
-    || declaration_ref_eq(a: authority, b: testgen_modeled_capability_inventory_ref)
 }
 
 fn guarantee_boundary_inventory_rows(authority: DeclarationRef) -> List<DeclarationRef> {
   if declaration_ref_eq(a: authority, b: modeled_guarantee_capability_inventory_ref) {
     modeled_guarantee_capability_inventory
-  } else if declaration_ref_eq(a: authority, b: grounding_modeled_capability_inventory_ref) {
-    grounding_modeled_capability_inventory
-  } else if declaration_ref_eq(a: authority, b: unit_modeling_modeled_capability_inventory_ref) {
-    unit_modeling_modeled_capability_inventory
-  } else if declaration_ref_eq(a: authority, b: testgen_modeled_capability_inventory_ref) {
-    testgen_modeled_capability_inventory
   } else {
     []
   }
@@ -151,20 +118,6 @@ fn wall_now_total_projection_forbids_outside_modeled_guarantee(
         OutsideModeledGuarantee { boundary: _ } => false
         _ => true
       }
-    _ => true
-  }
-}
-
-fn construction_class_outside_boundary_still_outside(class: ConstructionClass) -> Bool {
-  match class {
-    OutsideModeledGuarantee { boundary: b } => guarantee_boundary_still_outside(boundary: b)
-    _ => true
-  }
-}
-
-fn construction_class_outside_required_is_not_subject(class: ConstructionClass) -> Bool {
-  match class {
-    OutsideModeledGuarantee { boundary: b } => guarantee_boundary_required_is_not_subject(boundary: b)
     _ => true
   }
 }

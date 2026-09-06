@@ -68,14 +68,7 @@ import v2.lens.enforcement.vocab {
 import v2.lens.common.construction_justification {
   ConstructionJustification,
   WallNow,
-  WallAfterGrounding,
-  OutsideModeledGuarantee,
-  PolicyJudgmentRequired,
-  CandidateDomainNotClosed,
-  modeled_outside_boundary,
-  modeled_guarantee_capability_inventory_ref,
-  grounding_modeled_capability_inventory_ref,
-  unit_modeling_modeled_capability_inventory_ref
+  WallAfterGrounding
 }
 import std.disposition { SingleAuthority, RealizationDispatch, SubstrateMandatoryTag }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -312,30 +305,7 @@ data lens_contract_grounding: LensContract = {
   claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: NoConsumerWitness,
   exemptions: [],
-  boundary: ConstructionJustification {
-    class: OutsideModeledGuarantee {
-      boundary: modeled_outside_boundary(
-        subject: DeclarationRef {
-          module_path: "v2.lens.grounding",
-          decl_name: "name_coincides",
-          field: WholeDeclaration
-        },
-        required_capability: DeclarationRef {
-          module_path: "v2.lens.grounding_ledger",
-          decl_name: "GroundingVerdict",
-          field: WholeDeclaration
-        },
-        capability_inventory_authority: grounding_modeled_capability_inventory_ref,
-        boundary_kind: PolicyJudgmentRequired {
-          judgment: DeclarationRef {
-            module_path: "v2.lens.grounding_ledger",
-            decl_name: "GroundingVerdict",
-            field: WholeDeclaration
-          }
-        }
-      )
-    }
-  }
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
 }
 
 data lens_contract_host_language_transport_script: LensContract = {
@@ -518,30 +488,7 @@ data lens_contract_synthesis: LensContract = {
   claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: NoConsumerWitness,
   exemptions: [],
-  boundary: ConstructionJustification {
-    class: OutsideModeledGuarantee {
-      boundary: modeled_outside_boundary(
-        subject: DeclarationRef {
-          module_path: "v2.lens.enforcement.complexity_contract_subject",
-          decl_name: "CompleteRewriteDiscovery",
-          field: WholeDeclaration
-        },
-        required_capability: DeclarationRef {
-          module_path: "v2.lens.enforcement.complexity_contract_subject",
-          decl_name: "GlobalOptimality",
-          field: WholeDeclaration
-        },
-        capability_inventory_authority: modeled_guarantee_capability_inventory_ref,
-        boundary_kind: CandidateDomainNotClosed {
-          domain: DeclarationRef {
-            module_path: "v2.lens.enforcement.complexity_contract_subject",
-            decl_name: "ComplexityOptimalityClaim",
-            field: WholeDeclaration
-          }
-        }
-      )
-    }
-  }
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
 }
 
 data lens_contract_test_migration_debt: LensContract = {
@@ -559,30 +506,7 @@ data lens_contract_unit_modeling: LensContract = {
   claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: NoConsumerWitness,
   exemptions: [],
-  boundary: ConstructionJustification {
-    class: OutsideModeledGuarantee {
-      boundary: modeled_outside_boundary(
-        subject: DeclarationRef {
-          module_path: "v2.lens.unit_modeling",
-          decl_name: "unit_modeling_gate",
-          field: WholeDeclaration
-        },
-        required_capability: DeclarationRef {
-          module_path: "v2.lens.unit_modeling",
-          decl_name: "field_name_has_known_carrier",
-          field: WholeDeclaration
-        },
-        capability_inventory_authority: unit_modeling_modeled_capability_inventory_ref,
-        boundary_kind: CandidateDomainNotClosed {
-          domain: DeclarationRef {
-            module_path: "v2.lens.unit_modeling",
-            decl_name: "unit_field_rows",
-            field: WholeDeclaration
-          }
-        }
-      )
-    }
-  }
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
 }
 
 data lens_contract_vacuity: LensContract = {

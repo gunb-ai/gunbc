@@ -2,12 +2,7 @@ module v2.lens.enforcement.complexity_contract_subject
 
 import v2.lens.common.construction_justification {
   ConstructionJustification,
-  WallAfterGrounding,
-  OutsideModeledGuarantee,
-  CandidateDomainNotClosed,
-  modeled_outside_boundary,
-  guarantee_boundary_still_outside,
-  modeled_guarantee_capability_inventory_ref
+  WallAfterGrounding
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { SingleAuthority }
@@ -26,8 +21,9 @@ import v2.std.integer { Int }
 // NOT an in-place class flip; each subject has its own LensContract row and LensIdV0. Dissolution
 // for derived-kernel: ParityC2 ComplexitySummary restored on v2.lens.cost (SingleAuthority wall
 // once the summary carrier exists and a live consumer is enrolled). Optimality is
-// AuditOnly / OutsideModeledGuarantee over OptimalityResidue: the required capability is not in
-// the modeled inventory, not an uncheckable forever stamp.
+// AuditOnly / WallAfterGrounding over OptimalityResidue: the subject split remains, but
+// GlobalOptimality is a named claim in this module, not an unrepresented capability, so it
+// sits on the ladder with a next-rung trigger rather than an inventory miss.
 
 // Scope, stated so the partition witness cannot overclaim. PROVEN by this carrier and
 // complexity_contract_subjects_partition_legacy_mixed_row: DerivedKernel and OptimalityResidue are
@@ -35,8 +31,7 @@ import v2.std.integer { Int }
 // union is ComplexityMixedRowClaim; every variant in that union lands in exactly one subject roster
 // via complexity_mixed_row_claim_subject; roster distinctness is validated by
 // complexity_scope_roster_has_no_duplicates; and each replacement LensContract row carries the
-// matching boundary class (WallAfterGrounding/SingleAuthority for derived-kernel, OutsideModeledGuarantee
-// over OptimalityResidue). ComplexityMixedRowClaim is an AUTHORED enumeration of what the deleted mixed row
+// matching boundary class (WallAfterGrounding/SingleAuthority for both subjects). ComplexityMixedRowClaim is an AUTHORED enumeration of what the deleted mixed row
 // covered — nine derived-kernel variants and three optimality variants written here, not derived
 // from lens_contract_complexity as it stood. NOT PROVEN: that this enumeration is complete over
 // what lens_contract_complexity actually claimed. A claim the mixed row covered but this vocabulary
@@ -194,28 +189,13 @@ data complexity_derived_kernel_boundary: ConstructionJustification = Constructio
 }
 
 data complexity_optimality_boundary: ConstructionJustification = ConstructionJustification {
-  class: OutsideModeledGuarantee {
-    boundary: modeled_outside_boundary(
-      subject: DeclarationRef {
-        module_path: "v2.lens.enforcement.complexity_contract_subject",
-        decl_name: "OptimalityResidue",
-        field: WholeDeclaration
-      },
-      required_capability: DeclarationRef {
-        module_path: "v2.lens.enforcement.complexity_contract_subject",
-        decl_name: "GlobalOptimality",
-        field: WholeDeclaration
-      },
-      capability_inventory_authority: modeled_guarantee_capability_inventory_ref,
-      boundary_kind: CandidateDomainNotClosed {
-        domain: DeclarationRef {
-          module_path: "v2.lens.enforcement.complexity_contract_subject",
-          decl_name: "ComplexityOptimalityClaim",
-          field: WholeDeclaration
-        }
-      }
-    )
-  }
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}
+
+data complexity_optimality_climbs_when: DeclarationRef = DeclarationRef {
+  module_path: "v2.lens.enforcement.complexity_contract_subject",
+  decl_name: "ComplexityOptimalityClaim",
+  field: WholeDeclaration
 }
 
 fn complexity_mixed_row_claim_belongs_to_subject(
@@ -356,11 +336,9 @@ fn complexity_derived_kernel_boundary_is_wall_after_grounding() -> Bool {
   }
 }
 
-fn complexity_optimality_boundary_is_outside_modeled_guarantee() -> Bool {
+fn complexity_optimality_boundary_is_wall_after_grounding() -> Bool {
   match complexity_optimality_boundary.class {
-    OutsideModeledGuarantee { boundary: b } =>
-      b.subject.decl_name == "OptimalityResidue"
-        && guarantee_boundary_still_outside(boundary: b)
+    WallAfterGrounding { dissolves_to: _ } => true
     _ => false
   }
 }

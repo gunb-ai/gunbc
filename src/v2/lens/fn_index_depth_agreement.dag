@@ -2,6 +2,7 @@ module v2.lens.fn_index_depth_agreement
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import v2.std.algebra { any, contains, fold_list, length, list_snoc_item }
 import v2.std.collection { Absent, List, Present }
@@ -48,6 +49,12 @@ import v2.std.fn_index {
 // at the floor by fixture rows there; this is the re-derivation entry point for the corpus numbers.
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}
+
+data fn_index_depth_agreement_climbs_when: DeclarationRef = DeclarationRef {
+  module_path: "v2.std.fn_index",
+  decl_name: "fn_arrow_decl_facts_live",
+  field: WholeDeclaration
 }
 
 data empty_symbol_list: List<Symbol> = []

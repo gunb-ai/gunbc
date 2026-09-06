@@ -1,13 +1,8 @@
 module v2.lens.unit_modeling
 
-import v2.lens.common.construction_justification {
-  ConstructionJustification,
-  OutsideModeledGuarantee,
-  CandidateDomainNotClosed,
-  modeled_outside_boundary,
-  unit_modeling_modeled_capability_inventory_ref
-}
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { SingleAuthority }
 
 import v2.std.witness { Holds }
 import v2.std.node_query { edge_field_type_name }
@@ -148,26 +143,11 @@ fn unit_modeling_gate(node: Node) -> Outcome<Witness<Node>> {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: OutsideModeledGuarantee {
-    boundary: modeled_outside_boundary(
-      subject: DeclarationRef {
-        module_path: "v2.lens.unit_modeling",
-        decl_name: "unit_modeling_gate",
-        field: WholeDeclaration
-      },
-      required_capability: DeclarationRef {
-        module_path: "v2.lens.unit_modeling",
-        decl_name: "field_name_has_known_carrier",
-        field: WholeDeclaration
-      },
-      capability_inventory_authority: unit_modeling_modeled_capability_inventory_ref,
-      boundary_kind: CandidateDomainNotClosed {
-        domain: DeclarationRef {
-          module_path: "v2.lens.unit_modeling",
-          decl_name: "unit_field_rows",
-          field: WholeDeclaration
-        }
-      }
-    )
-  }
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}
+
+data unit_modeling_climbs_when: DeclarationRef = DeclarationRef {
+  module_path: "v2.lens.unit_modeling",
+  decl_name: "field_name_has_known_carrier",
+  field: WholeDeclaration
 }
