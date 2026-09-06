@@ -3,11 +3,11 @@ module product.cable_order_admission
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import extdeps.ethernet.link_mode { LinkMode, link_mode_eq }
-import extdeps.transceiver.sff_8636 {
-  Sff8636LegCoding, Sff8636CodingFinding,
-  CodingAttestsRequestedMode, CodingAttestsRequestedModeSubjectToFec,
-  CodingInsufficientForRequestedMode, CodingComplianceCodeNotUnderstood,
-  sff8636_assess_leg_coding,
+import product.cable_leg_observation {
+  CableLegObservation, CableLegFinding,
+  LegAttestsRequestedMode, LegAttestsRequestedModeSubjectToFec,
+  LegInsufficientForRequestedMode, LegComplianceCodeNotUnderstood,
+  assess_cable_leg,
 }
 import extdeps.external_authority { ExternalAuthority }
 
@@ -50,7 +50,7 @@ import extdeps.external_authority { ExternalAuthority }
 type CableLegCodingEvidence
   = LegCodingUndeclared
   | LegCodingVendorAsserted { asserted_mode: LinkMode, citation: ExternalAuthority }
-  | LegCodingObserved { coding: Sff8636LegCoding }
+  | LegCodingObserved { coding: CableLegObservation }
 
 // ================= THE ENDPOINT PAIR THE CABLE MUST SERVE =================
 //
@@ -79,7 +79,7 @@ type CableOrderRefusalReason
   | OrderClaimedModeIsNotRequiredMode { claimed: LinkMode, required: LinkMode }
   | OrderObservedCodingDoesNotAttestRequiredMode {
       required: LinkMode
-      finding: Sff8636CodingFinding
+      finding: CableLegFinding
     }
 
 // ADMISSION RECORDS WHAT IT WAS SATISFIED BY. `AdmittedOnVendorClaim` is a purchase authorisation
@@ -88,7 +88,7 @@ type CableOrderRefusalReason
 // admitted arms into one would erase exactly the distinction the incident turned on.
 type CableOrderAdmission
   = AdmittedOnVendorClaim { claimed_mode: LinkMode, citation: ExternalAuthority }
-  | AdmittedOnObservedCoding { coding: Sff8636LegCoding }
+  | AdmittedOnObservedCoding { coding: CableLegObservation }
   | OrderRefused { reason: CableOrderRefusalReason }
 
 // The gate. An undeclared coding REFUSES -- that is the loud failure the whole subject exists to
@@ -110,16 +110,16 @@ fn admit_cable_order(
             claimed: claimed, required: requirement.required_mode } }
       }
     LegCodingObserved { coding: c } => {
-      let finding = sff8636_assess_leg_coding(coding: c, requested: requirement.required_mode)
+      let finding = assess_cable_leg(obs: c, requested: requirement.required_mode)
       match finding {
-        CodingAttestsRequestedMode { coding: ok } => AdmittedOnObservedCoding { coding: ok }
-        CodingAttestsRequestedModeSubjectToFec { coding: ok, fec: f } =>
+        LegAttestsRequestedMode { obs: ok } => AdmittedOnObservedCoding { coding: ok }
+        LegAttestsRequestedModeSubjectToFec { obs: ok, fec: f } =>
           AdmittedOnObservedCoding { coding: ok }
-        CodingInsufficientForRequestedMode { requested: r, coding: bad } =>
+        LegInsufficientForRequestedMode { requested: r, obs: bad } =>
           OrderRefused {
             reason: OrderObservedCodingDoesNotAttestRequiredMode {
               required: requirement.required_mode, finding: finding } }
-        CodingComplianceCodeNotUnderstood { code: code } =>
+        LegComplianceCodeNotUnderstood { code: code } =>
           OrderRefused {
             reason: OrderObservedCodingDoesNotAttestRequiredMode {
               required: requirement.required_mode, finding: finding } }
@@ -140,11 +140,11 @@ fn admit_cable_order(
 // was in for the weeks the fabric ran at half rate.
 type CableReceiptReconciliation
   = ReceiptNotYetObserved { admitted: CableOrderAdmission }
-  | ReceiptHonoursAdmittedClaim { coding: Sff8636LegCoding }
+  | ReceiptHonoursAdmittedClaim { coding: CableLegObservation }
   | ReceiptDivergesFromAdmittedClaim {
       required: LinkMode
       claimed_mode: LinkMode
-      observed_finding: Sff8636CodingFinding
+      observed_finding: CableLegFinding
     }
   | ReceiptReconciliationNotApplicable { admitted: CableOrderAdmission }
 
@@ -163,19 +163,19 @@ fn reconcile_cable_receipt(
         LegCodingVendorAsserted { asserted_mode: m, citation: c2 } =>
           ReceiptNotYetObserved { admitted: admitted }
         LegCodingObserved { coding: obs } => {
-          let finding = sff8636_assess_leg_coding(
-            coding: obs, requested: requirement.required_mode)
+          let finding = assess_cable_leg(
+            obs: obs, requested: requirement.required_mode)
           match finding {
-            CodingAttestsRequestedMode { coding: ok } =>
+            LegAttestsRequestedMode { obs: ok } =>
               ReceiptHonoursAdmittedClaim { coding: ok }
-            CodingAttestsRequestedModeSubjectToFec { coding: ok, fec: f } =>
+            LegAttestsRequestedModeSubjectToFec { obs: ok, fec: f } =>
               ReceiptHonoursAdmittedClaim { coding: ok }
-            CodingInsufficientForRequestedMode { requested: rq, coding: bad } =>
+            LegInsufficientForRequestedMode { requested: rq, obs: bad } =>
               ReceiptDivergesFromAdmittedClaim {
                 required: requirement.required_mode,
                 claimed_mode: claimed,
                 observed_finding: finding }
-            CodingComplianceCodeNotUnderstood { code: code } =>
+            LegComplianceCodeNotUnderstood { code: code } =>
               ReceiptDivergesFromAdmittedClaim {
                 required: requirement.required_mode,
                 claimed_mode: claimed,

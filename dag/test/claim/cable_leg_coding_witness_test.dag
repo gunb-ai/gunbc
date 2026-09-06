@@ -10,21 +10,23 @@ import extdeps.ethernet.link_mode {
   ieee_25gbase_cr, ieee_50gbase_cr2, ieee_100gbase_cr4, ieee_100gbase_cr2,
 }
 import extdeps.transceiver.sff_8636 {
-  Sff8636LegCoding, Sff8636CodingFinding,
-  CodingAttestsRequestedMode, CodingAttestsRequestedModeSubjectToFec,
-  CodingInsufficientForRequestedMode, CodingComplianceCodeNotUnderstood,
-  SecondaryNotObserved, SecondaryObservedUnspecified, SecondaryObservedCode,
-  ProfileConsistency, ConsistencyUndecidable,
-  ConsistencySecondaryFieldUnread, ConsistencySecondaryFieldUnspecified,
-  ConsistencyComplianceCodeNotUnderstood, ConsistencyInterfaceScopeUnestablished,
-  sff8636_profile_consistency,
-  sff8636_required_fields_observed, sff8636_interpretation_is_exhaustive,
-  ComplianceUnderstood, ComplianceCodeUnmodelled,
-  FecUnconditional, RequiresClause91Fec,
-  NominalRateEscaped, NominalRateDirect,
-  sff8636_assess_leg_coding, sff8636_nominal_rate_from_byte140, sff8636_leg_coding,
-  sff8636_interpret_extended_compliance,
+  NominalRateUnspecified, NominalRateDirect, NominalRateEscaped,
+  ComplianceUnderstood, ComplianceUnspecified, ComplianceCodeUnmodelled,
+  sff8636_nominal_rate_from_byte140, sff8636_interpret_extended_compliance,
   transceiver_identifier_from_byte, sff8636_encoding_from_byte,
+}
+import product.cable_leg_observation {
+  CableLegObservation, CableLegFinding,
+  LegAttestsRequestedMode, LegAttestsRequestedModeSubjectToFec,
+  LegInsufficientForRequestedMode, LegComplianceCodeNotUnderstood,
+  SecondaryNotObserved, SecondaryObserved,
+  ProfileConsistency, ConsistencyUndecidable,
+  ConsistencyFieldUnread, ConsistencyInterpretationGap,
+  ConsistencyInterfaceScopeUnestablished,
+  InterpretationGap, GapComplianceUnspecified, GapComplianceNotUnderstood,
+  GapEncodingUnspecified, GapEncodingNotUnderstood,
+  cable_leg_observation, assess_cable_leg, cable_leg_consistency,
+  cable_leg_unread_fields, cable_leg_interpretation_gaps,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -90,46 +92,46 @@ test fn the_aggregate_is_derived_from_lanes_and_service_rate() -> Bool {
 // that the WHOLE profile disagrees with the encoding byte, because the unread field may carry the
 // application the encoding belongs to. An earlier head modelled the unread field as absent and
 // therefore proved a contradiction out of a gap in its own observation.
-data delivered_fs_leg: Sff8636LegCoding = sff8636_leg_coding(
+data delivered_fs_leg: CableLegObservation = cable_leg_observation(
   identifier: transceiver_identifier_from_byte(code: 17),
   primary_compliance_code: 11,
   secondary_compliance: SecondaryNotObserved,
   encoding: sff8636_encoding_from_byte(code: 8),
   nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
 
-fn is_insufficient(f: Sff8636CodingFinding) -> Bool {
+fn is_insufficient(f: CableLegFinding) -> Bool {
   match f {
-    CodingInsufficientForRequestedMode { requested: r, coding: c } => true
-    CodingAttestsRequestedMode { coding: c } => false
-    CodingAttestsRequestedModeSubjectToFec { coding: c, fec: x } => false
-    CodingComplianceCodeNotUnderstood { code: c } => false
+    LegInsufficientForRequestedMode { requested: r, obs: c } => true
+    LegAttestsRequestedMode { obs: c } => false
+    LegAttestsRequestedModeSubjectToFec { obs: c, fec: x } => false
+    LegComplianceCodeNotUnderstood { code: c } => false
   }
 }
 
-fn attests_outright(f: Sff8636CodingFinding) -> Bool {
+fn attests_outright(f: CableLegFinding) -> Bool {
   match f {
-    CodingAttestsRequestedMode { coding: c } => true
-    CodingAttestsRequestedModeSubjectToFec { coding: c, fec: x } => false
-    CodingInsufficientForRequestedMode { requested: r, coding: c } => false
-    CodingComplianceCodeNotUnderstood { code: c } => false
+    LegAttestsRequestedMode { obs: c } => true
+    LegAttestsRequestedModeSubjectToFec { obs: c, fec: x } => false
+    LegInsufficientForRequestedMode { requested: r, obs: c } => false
+    LegComplianceCodeNotUnderstood { code: c } => false
   }
 }
 
-fn attests_subject_to_fec(f: Sff8636CodingFinding) -> Bool {
+fn attests_subject_to_fec(f: CableLegFinding) -> Bool {
   match f {
-    CodingAttestsRequestedModeSubjectToFec { coding: c, fec: x } => true
-    CodingAttestsRequestedMode { coding: c } => false
-    CodingInsufficientForRequestedMode { requested: r, coding: c } => false
-    CodingComplianceCodeNotUnderstood { code: c } => false
+    LegAttestsRequestedModeSubjectToFec { obs: c, fec: x } => true
+    LegAttestsRequestedMode { obs: c } => false
+    LegInsufficientForRequestedMode { requested: r, obs: c } => false
+    LegComplianceCodeNotUnderstood { code: c } => false
   }
 }
 
-fn code_not_understood(f: Sff8636CodingFinding) -> Bool {
+fn code_not_understood(f: CableLegFinding) -> Bool {
   match f {
-    CodingComplianceCodeNotUnderstood { code: c } => true
-    CodingAttestsRequestedMode { coding: c } => false
-    CodingAttestsRequestedModeSubjectToFec { coding: c, fec: x } => false
-    CodingInsufficientForRequestedMode { requested: r, coding: c } => false
+    LegComplianceCodeNotUnderstood { code: c } => true
+    LegAttestsRequestedMode { obs: c } => false
+    LegAttestsRequestedModeSubjectToFec { obs: c, fec: x } => false
+    LegInsufficientForRequestedMode { requested: r, obs: c } => false
   }
 }
 
@@ -141,15 +143,15 @@ fn code_not_understood(f: Sff8636CodingFinding) -> Bool {
 // checked. It is insufficiency because byte 116 was never read: with the profile incomplete, the
 // strong claim is unavailable and the honest one is that nothing OBSERVED attests the request.
 test fn the_delivered_leg_does_not_attest_the_purchased_mode() -> Bool {
-  is_insufficient(f: sff8636_assess_leg_coding(
-    coding: delivered_fs_leg, requested: ieee_100gbase_cr2))
+  is_insufficient(f: assess_cable_leg(
+    obs: delivered_fs_leg, requested: ieee_100gbase_cr2))
 }
 
 // AND THE SAME LEG DOES ATTEST WHAT IT IS CODED FOR. Without this arm the assertion above would pass
 // for a decoder that refused everything, which is a wall carrying no information.
 test fn the_delivered_leg_does_attest_the_mode_it_is_coded_for() -> Bool {
-  attests_outright(f: sff8636_assess_leg_coding(
-    coding: delivered_fs_leg, requested: ieee_100gbase_cr4))
+  attests_outright(f: assess_cable_leg(
+    obs: delivered_fs_leg, requested: ieee_100gbase_cr4))
 }
 
 // THE CLAUSE 91 ENTRY, WHICH THIS MODULE FIRST OMITTED. 0x0B also covers 50GBASE-CR2 subject to
@@ -157,7 +159,7 @@ test fn the_delivered_leg_does_attest_the_mode_it_is_coded_for() -> Bool {
 // must NOT be attested outright, because promoting a conditional entry to unconditional support is
 // exactly the silent widening the standard's qualification exists to prevent.
 test fn the_conditional_entry_is_attested_but_not_unconditionally() -> Bool {
-  let f = sff8636_assess_leg_coding(coding: delivered_fs_leg, requested: ieee_50gbase_cr2)
+  let f = assess_cable_leg(obs: delivered_fs_leg, requested: ieee_50gbase_cr2)
   attests_subject_to_fec(f: f) && !attests_outright(f: f)
 }
 
@@ -167,7 +169,7 @@ test fn the_conditional_entry_is_attested_but_not_unconditionally() -> Bool {
 // other observation fixed. An earlier head could not express this test at all, because the caller
 // authored the capability list beside the byte -- so changing the byte changed nothing and the
 // decoder was decorative. This reds if interpretation ever migrates back out of the byte.
-data leg_with_unmodelled_code: Sff8636LegCoding = sff8636_leg_coding(
+data leg_with_unmodelled_code: CableLegObservation = cable_leg_observation(
   identifier: transceiver_identifier_from_byte(code: 17),
   primary_compliance_code: 254,
   secondary_compliance: SecondaryNotObserved,
@@ -175,17 +177,17 @@ data leg_with_unmodelled_code: Sff8636LegCoding = sff8636_leg_coding(
   nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
 
 test fn an_unmodelled_code_is_not_understood_rather_than_attesting_nothing() -> Bool {
-  code_not_understood(f: sff8636_assess_leg_coding(
-    coding: leg_with_unmodelled_code, requested: ieee_100gbase_cr2))
+  code_not_understood(f: assess_cable_leg(
+    obs: leg_with_unmodelled_code, requested: ieee_100gbase_cr2))
 }
 
 // An unread code must not become a proven contradiction. Same bytes, PAM4 encoding, NRZ-only
 // understood modes -- but one code the decoder cannot read, so no contradiction may be claimed.
 test fn an_unreadable_code_blocks_the_contradiction_claim() -> Bool {
-  !is_insufficient(f: sff8636_assess_leg_coding(
-    coding: leg_with_unmodelled_code, requested: ieee_100gbase_cr4))
-    && code_not_understood(f: sff8636_assess_leg_coding(
-      coding: leg_with_unmodelled_code, requested: ieee_100gbase_cr4))
+  !is_insufficient(f: assess_cable_leg(
+    obs: leg_with_unmodelled_code, requested: ieee_100gbase_cr4))
+    && code_not_understood(f: assess_cable_leg(
+      obs: leg_with_unmodelled_code, requested: ieee_100gbase_cr4))
 }
 
 // The interpretation is a function of the byte, asserted directly.
@@ -206,7 +208,7 @@ test fn an_unknown_byte_interprets_to_unknown_not_to_an_empty_attestation() -> B
 // ---------------- self-consistency is its own question ----------------
 //
 // THE LAW, MADE MECHANICAL RATHER THAN OBSERVED. Changing the requested mode must not change whether
-// a profile contradicts itself. `sff8636_profile_consistency` takes no requested mode, so the law
+// a profile contradicts itself. `cable_leg_consistency` takes no requested mode, so the law
 // holds by construction and this test records WHY the shape is what it is.
 //
 // THE ARM THAT IS NOT HERE. There is no operational contradiction verdict, because deciding one
@@ -219,21 +221,41 @@ fn consistency_cause_is_unread(c: ProfileConsistency) -> Bool {
   match c {
     ConsistencyUndecidable { cause: cz } =>
       match cz {
-        ConsistencySecondaryFieldUnread => true
-        ConsistencySecondaryFieldUnspecified => false
-        ConsistencyComplianceCodeNotUnderstood { code: k } => false
+        ConsistencyFieldUnread { field: f } => true
         ConsistencyInterfaceScopeUnestablished => false
       }
   }
 }
 
-fn consistency_cause_is_unspecified(c: ProfileConsistency) -> Bool {
+fn consistency_gap_is_compliance_unspecified(c: ProfileConsistency) -> Bool {
   match c {
     ConsistencyUndecidable { cause: cz } =>
       match cz {
-        ConsistencySecondaryFieldUnspecified => true
-        ConsistencySecondaryFieldUnread => false
-        ConsistencyComplianceCodeNotUnderstood { code: k } => false
+        ConsistencyInterpretationGap { gap: g } =>
+          match g {
+            GapComplianceUnspecified { code: k } => true
+            GapComplianceNotUnderstood { code: k } => false
+            GapEncodingUnspecified => false
+            GapEncodingNotUnderstood { code: k } => false
+          }
+        ConsistencyFieldUnread { field: f } => false
+        ConsistencyInterfaceScopeUnestablished => false
+      }
+  }
+}
+
+fn consistency_gap_is_encoding_unspecified(c: ProfileConsistency) -> Bool {
+  match c {
+    ConsistencyUndecidable { cause: cz } =>
+      match cz {
+        ConsistencyInterpretationGap { gap: g } =>
+          match g {
+            GapEncodingUnspecified => true
+            GapComplianceUnspecified { code: k } => false
+            GapComplianceNotUnderstood { code: k } => false
+            GapEncodingNotUnderstood { code: k } => false
+          }
+        ConsistencyFieldUnread { field: f } => false
         ConsistencyInterfaceScopeUnestablished => false
       }
   }
@@ -244,9 +266,7 @@ fn consistency_cause_is_scope(c: ProfileConsistency) -> Bool {
     ConsistencyUndecidable { cause: cz } =>
       match cz {
         ConsistencyInterfaceScopeUnestablished => true
-        ConsistencySecondaryFieldUnread => false
-        ConsistencySecondaryFieldUnspecified => false
-        ConsistencyComplianceCodeNotUnderstood { code: k } => false
+        ConsistencyFieldUnread { field: f } => false
       }
   }
 }
@@ -254,44 +274,44 @@ fn consistency_cause_is_scope(c: ProfileConsistency) -> Bool {
 // THE DELIVERED CABLE: byte 116 was never read, so the cause is the unread field and nothing
 // stronger. This is the arm that used to be a contradiction accusation.
 test fn the_delivered_leg_consistency_is_undecidable_for_want_of_a_reading() -> Bool {
-  consistency_cause_is_unread(c: sff8636_profile_consistency(coding: delivered_fs_leg))
+  consistency_cause_is_unread(c: cable_leg_consistency(obs: delivered_fs_leg))
 }
 
 // THE INVERSE CONTROL, and the specific bug it guards. A leg whose byte 116 WAS read and found 00h
 // must NOT become decidable: 00h is "Unspecified", so reading it improves observation coverage while
 // leaving interpretation non-exhaustive. An earlier head treated this exact case as establishing
 // absence and licensed a verdict the bytes do not support.
-data secondary_unspecified_leg: Sff8636LegCoding = sff8636_leg_coding(
+data secondary_unspecified_leg: CableLegObservation = cable_leg_observation(
   identifier: transceiver_identifier_from_byte(code: 17),
   primary_compliance_code: 11,
-  secondary_compliance: SecondaryObservedUnspecified,
+  secondary_compliance: SecondaryObserved { code: 0 },
   encoding: sff8636_encoding_from_byte(code: 8),
   nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
 
 test fn reading_an_unspecified_secondary_does_not_make_the_profile_decidable() -> Bool {
-  consistency_cause_is_unspecified(c: sff8636_profile_consistency(coding: secondary_unspecified_leg))
+  consistency_gap_is_compliance_unspecified(c: cable_leg_consistency(obs: secondary_unspecified_leg))
 }
 
 // THE TWO AXES ARE SEPARATE, asserted directly: for 00h the field WAS observed and the
 // interpretation is still not exhaustive. Collapsing these into one boolean is what made the defect
 // recur, so the split is the thing under test.
 test fn an_unspecified_secondary_is_observed_but_not_exhaustively_interpreted() -> Bool {
-  sff8636_required_fields_observed(coding: secondary_unspecified_leg)
-    && !sff8636_interpretation_is_exhaustive(coding: secondary_unspecified_leg)
-    && !sff8636_required_fields_observed(coding: delivered_fs_leg)
+  length(cable_leg_unread_fields(obs: secondary_unspecified_leg)) == 0
+    && length(cable_leg_interpretation_gaps(obs: secondary_unspecified_leg)) > 0
+    && length(cable_leg_unread_fields(obs: delivered_fs_leg)) > 0
 }
 
 // A FULLY READ, FULLY UNDERSTOOD PROFILE still cannot be decided -- and the cause names the frontier
 // rather than going quiet. This is what stops the retired arm from reading as "nothing left to do".
-data fully_understood_leg: Sff8636LegCoding = sff8636_leg_coding(
+data fully_understood_leg: CableLegObservation = cable_leg_observation(
   identifier: transceiver_identifier_from_byte(code: 17),
   primary_compliance_code: 11,
-  secondary_compliance: SecondaryObservedCode { code: 64 },
+  secondary_compliance: SecondaryObserved { code: 64 },
   encoding: sff8636_encoding_from_byte(code: 8),
   nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
 
 test fn a_fully_read_profile_is_undecidable_only_for_interface_scope() -> Bool {
-  consistency_cause_is_scope(c: sff8636_profile_consistency(coding: fully_understood_leg))
+  consistency_cause_is_scope(c: cable_leg_consistency(obs: fully_understood_leg))
 }
 
 // AND THE 0x40 ROW EARNS ITS CITATION. SFF-8024 Rev 4.14 Table 4-4 row 40h attests 50GBASE-CR,
@@ -299,10 +319,40 @@ test fn a_fully_read_profile_is_undecidable_only_for_interface_scope() -> Bool {
 // rail needs -- which the delivered leg, carrying only 0x0B, does not. This is also the positive
 // control that retires the placeholder code 0 the first head used.
 test fn the_secondary_code_0x40_attests_the_mode_the_primary_does_not() -> Bool {
-  attests_outright(f: sff8636_assess_leg_coding(
-      coding: fully_understood_leg, requested: ieee_100gbase_cr2))
-    && is_insufficient(f: sff8636_assess_leg_coding(
-      coding: delivered_fs_leg, requested: ieee_100gbase_cr2))
+  attests_outright(f: assess_cable_leg(
+      obs: fully_understood_leg, requested: ieee_100gbase_cr2))
+    && is_insufficient(f: assess_cable_leg(
+      obs: delivered_fs_leg, requested: ieee_100gbase_cr2))
+}
+
+// R2's DEFECT, MADE EXECUTABLE. A profile whose compliance codes are all understood but whose
+// ENCODING byte is unspecified must not reach the interface-scope frontier: reading the
+// transmitter-technology field would not make such an observation decidable, so reporting the
+// frontier there is a false diagnosis. The gap names the field that actually defeated the decoder.
+data encoding_unspecified_leg: CableLegObservation = cable_leg_observation(
+  identifier: transceiver_identifier_from_byte(code: 17),
+  primary_compliance_code: 11,
+  secondary_compliance: SecondaryObserved { code: 64 },
+  encoding: sff8636_encoding_from_byte(code: 0),
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
+
+test fn an_unspecified_encoding_is_named_rather_than_blamed_on_interface_scope() -> Bool {
+  consistency_gap_is_encoding_unspecified(c: cable_leg_consistency(
+      obs: encoding_unspecified_leg))
+    && !consistency_cause_is_scope(c: cable_leg_consistency(
+      obs: encoding_unspecified_leg))
+}
+
+// R3: A ZERO BAUD BYTE IS A SENTINEL, NOT A MEASUREMENT. SFF-8636 gives 0 the meaning "not
+// specified; determine from module technology". Multiplying it out to 0 baud is a fabricated
+// measurement wearing a unit, and a consumer comparing it against a required rate would read the
+// module as infinitely slow rather than as silent.
+test fn a_zero_nominal_rate_byte_is_unspecified_not_zero_baud() -> Bool {
+  match sff8636_nominal_rate_from_byte140(code: 0) {
+    NominalRateUnspecified => true
+    NominalRateDirect { rate: r } => false
+    NominalRateEscaped => false
+  }
 }
 
 // The escape is not a measurement.

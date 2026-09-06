@@ -26,9 +26,19 @@ import extdeps.ethernet.link_mode {
 // external upstream decomposition, and it carries a reading of these fields rather than redefining
 // them.
 //
-// WHAT THIS MODULE MAY AND MAY NOT CONCLUDE. It reads bytes and reports findings about bytes. It
-// does not certify hardware: no reading here establishes that a given assembly will carry a given
-// mode, and a leg whose coding is impeccable can still fail electrically.
+// WHAT THIS MODULE MAY AND MAY NOT CONCLUDE. It owns BYTE MEANINGS and nothing else: given a value,
+// what does the specification say it denotes. It does not certify hardware, and no reading here
+// establishes that a given assembly will carry a given mode.
+//
+// IN PARTICULAR IT OWNS NO OBSERVATION. An earlier head authored `SecondaryNotObserved` and a
+// completeness predicate here, which is the layer inversion DESIGN section 3 names outright:
+// "Observations produced by this repository are receipts in the observing product or workflow
+// layer, not facts owned by the observed upstream. Missing observations are coverage obligations
+// downstream, never `Unobserved` properties authored inside an upstream module." Whether anyone
+// read byte 116 is a fact about THIS FLEET's probing, not about SFF-8636, and a specification that
+// carried it would be asserting something the standard never says. The observation model, its
+// coverage, its consistency assessment and the requested-mode join all live in
+// `product.cable_leg_observation`.
 //
 // THE OBSERVED DEFECT MUST STAY REPRESENTABLE. An earlier head said the delivered cable "would have
 // had no constructor", which is backwards: a model that cannot record a contradictory EEPROM cannot
@@ -121,13 +131,21 @@ fn sff8636_encoding_modulation(e: Sff8636Encoding) -> Modulation? {
 // raw dump (`ethtool -m <dev> raw on`), not the decoded view. Until that is read, a leg whose byte
 // 140 is 255 carries NominalRateEscaped and NOT a 25.5 GBd claim, because recording an escape marker
 // as a measurement is the fabrication this whole subject exists to catch.
+// 00h AND FFh ARE BOTH SENTINELS AND NEITHER IS A RATE. SFF-8636 gives 0 the meaning "not
+// specified; determine from module technology" and FFh the meaning "exceeds one byte; read the
+// extended field". An earlier head multiplied 0 out to 0 baud, which is a fabricated measurement
+// wearing a unit -- a consumer comparing it to a required rate would read the module as infinitely
+// slow rather than as silent.
 type Sff8636NominalRate
-  = NominalRateDirect { rate: SymbolRate }
+  = NominalRateUnspecified
+  | NominalRateDirect { rate: SymbolRate }
   | NominalRateEscaped
 
 fn sff8636_nominal_rate_from_byte140(code: Nat) -> Sff8636NominalRate {
   if code == 255 {
     NominalRateEscaped
+  } else if code == 0 {
+    NominalRateUnspecified
   } else {
     NominalRateDirect { rate: symbol_rate(code * 100000000) }
   }
@@ -160,6 +178,7 @@ type AttestedMode sole_constructor {
 
 type ComplianceInterpretation
   = ComplianceUnderstood { code: Nat, modes: List<AttestedMode> }
+  | ComplianceUnspecified { code: Nat }
   | ComplianceCodeUnmodelled { code: Nat }
 
 // THE DECODER. Rows are read from SFF-8024's extended-compliance table; a code with no row here
@@ -169,10 +188,12 @@ type ComplianceInterpretation
 // omitted 50GBASE-CR2 with Clause 91 FEC, which changes behaviour: a 50GBASE-CR2 request against
 // this code returned "insufficient" when the standard's entry does include that mode, subject to its
 // FEC condition. The omission was found by an external standards cross-check (SFF-8024 Rev 4.14,
-// Table 4-6) rather than by anything in this repository, and the FEC qualification is carried rather
+// Table 4-4) rather than by anything in this repository, and the FEC qualification is carried rather
 // than dropped so the conditional entry cannot be read as unconditional support.
 fn sff8636_interpret_extended_compliance(code: Nat) -> ComplianceInterpretation {
-  if code == 11 {
+  if code == 0 {
+    ComplianceUnspecified { code: code }
+  } else if code == 11 {
     ComplianceUnderstood {
       code: code,
       modes: [
@@ -202,190 +223,6 @@ fn sff8636_interpret_extended_compliance(code: Nat) -> ComplianceInterpretation 
 // encoding byte. That claim cannot be made while byte 116 has not been read, because the unread
 // field may carry the very application the encoding belongs to. The earlier head used `Absent` for
 // both and therefore proved contradiction from a gap in its own observation.
-type SecondaryComplianceObservation
-  = SecondaryNotObserved
-  | SecondaryObservedUnspecified
-  | SecondaryObservedCode { code: Nat }
-
-// ================= THE LEG CODING =================
-//
-// The coding carries RAW BYTES. Nothing here lets a caller supply a capability directly.
-type Sff8636LegCoding sole_constructor {
-  identifier: TransceiverIdentifier
-  primary_compliance_code: Nat
-  secondary_compliance: SecondaryComplianceObservation
-  encoding: Sff8636Encoding
-  nominal_rate: Sff8636NominalRate
-}
-
-// THE CONSTRUCTOR, because `sole_constructor` means this module owns construction and a consumer --
-// including a witness -- may not mint the type itself. That is the same rule R2 asked for one level
-// down: the caller supplies OBSERVED BYTES, and the module decides what they mean.
-fn sff8636_leg_coding(
-  identifier: TransceiverIdentifier,
-  primary_compliance_code: Nat,
-  secondary_compliance: SecondaryComplianceObservation,
-  encoding: Sff8636Encoding,
-  nominal_rate: Sff8636NominalRate,
-) -> Sff8636LegCoding {
-  Sff8636LegCoding {
-    identifier: identifier,
-    primary_compliance_code: primary_compliance_code,
-    secondary_compliance: secondary_compliance,
-    encoding: encoding,
-    nominal_rate: nominal_rate,
-  }
-}
-
-// ================= TWO QUESTIONS, TWO FUNCTIONS =================
-//
-// "Is this profile self-contradictory" and "does it attest the mode I need" are different
-// propositions, and the first must not depend on the second. An earlier head answered both from one
-// decision, reaching the contradiction branch only when the requested mode was unattested -- so
-// whether a module was called self-contradictory depended on what the reader happened to ask for.
-// Self-consistency is a property of the observation alone, which is now true MECHANICALLY rather
-// than by discipline: `sff8636_profile_consistency` takes no requested mode, so it cannot vary with
-// one.
-//
-// WHY THERE IS NO OPERATIONAL CONTRADICTION ARM, AND WHY THAT IS THE HONEST OUTCOME.
-//
-// A contradiction between the encoding byte and the attested modes requires three things: every
-// field the comparison needs actually READ, every read code UNDERSTOOD including sentinel meanings,
-// and -- the one this module cannot supply -- the compared facts CONCERNING THE SAME INTERFACE.
-// SFF-8024 says the encoding value primarily concerns the HOST interface, while the compliance codes
-// concern the media application. Those are the same signal only for an unretimed passive assembly.
-// For a module that converts between them the two disagree BY DESIGN: NVIDIA's MMS1V70-CM presents
-// four 25G NRZ host lanes and one 100G PAM4 optical channel, and both descriptions are meant to be
-// true at once.
-//
-// Nothing this module reads establishes that scope. The identifier does not: QSFP28 is carried by
-// optical modules as readily as by copper. The field that would is SFF-8636's transmitter-technology
-// nibble, which has not been read in this lane, and authoring its code values from memory is the
-// fabricated citation this whole subject exists to catch.
-//
-// So the arm is RETIRED rather than kept unreachable. A result variant belongs in the operational
-// codomain only if some valid input can actually produce it under the stated evidence rules; a
-// branch that requires evidence nobody here can produce is precisely the apparent guarantee that
-// later gets cited as stronger than it is. The DISTINCTION survives as a typed undecidable that says
-// WHY it cannot be decided, so the frontier is named rather than silently absent.
-//
-// NEXT-RUNG TRIGGER: read SFF-8636's transmitter-technology field (byte 147 upper nibble) so
-// passive-copper scope is established from the module's own bytes. At that point
-// `ConsistencyInterfaceScopeUnestablished` becomes discharged for copper assemblies and a
-// contradiction arm may be introduced WITH a positive fixture whose premises are standards-supported
-// and an inverse control holding the same profile at SecondaryObservedUnspecified.
-
-// TWO AXES HID INSIDE ONE `profile_is_complete`, and collapsing them is what made the R1 defect
-// recur one level down. For byte 116 at 00h the fields WERE observed and their interpretation is
-// still not exhaustive, so a single boolean cannot say what is known.
-fn sff8636_required_fields_observed(coding: Sff8636LegCoding) -> Bool {
-  match coding.secondary_compliance {
-    SecondaryNotObserved => false
-    SecondaryObservedUnspecified => true
-    SecondaryObservedCode { code: sc } => true
-  }
-}
-
-// 00h IS SPECIFIED IGNORANCE, NOT ESTABLISHED ABSENCE. SFF-8636 gives byte 116 the value
-// "Unspecified" at zero, so reading a zero tells you what the byte contains and NOT that the module
-// declares no secondary application. An earlier head treated it as absence and thereby licensed a
-// verdict the bytes do not support -- the same defect as using an UNREAD field as evidence of
-// absence, arrived at from the other side.
-fn sff8636_interpretation_is_exhaustive(coding: Sff8636LegCoding) -> Bool {
-  match coding.secondary_compliance {
-    SecondaryNotObserved => false
-    SecondaryObservedUnspecified => false
-    SecondaryObservedCode { code: sc } => length(sff8636_unmodelled_codes(coding: coding)) == 0
-  }
-}
-
-type ConsistencyUndecidableCause
-  = ConsistencySecondaryFieldUnread
-  | ConsistencySecondaryFieldUnspecified
-  | ConsistencyComplianceCodeNotUnderstood { code: Nat }
-  | ConsistencyInterfaceScopeUnestablished
-
-type ProfileConsistency
-  = ConsistencyUndecidable { cause: ConsistencyUndecidableCause }
-
-// The causes are ordered by what a reader could do about them: an unread field is a probe away, an
-// unspecified one cannot be improved by reading harder, an unmodelled code is a decoder gap here,
-// and the scope arm is the standing frontier above.
-fn sff8636_profile_consistency(coding: Sff8636LegCoding) -> ProfileConsistency {
-  if !sff8636_required_fields_observed(coding: coding) {
-    ConsistencyUndecidable { cause: ConsistencySecondaryFieldUnread }
-  } else if !sff8636_interpretation_is_exhaustive(coding: coding) {
-    match sff8636_unmodelled_codes(coding: coding).first() {
-      Present { value: unknown } =>
-        ConsistencyUndecidable {
-          cause: ConsistencyComplianceCodeNotUnderstood { code: unknown } }
-      Absent => ConsistencyUndecidable { cause: ConsistencySecondaryFieldUnspecified }
-    }
-  } else {
-    ConsistencyUndecidable { cause: ConsistencyInterfaceScopeUnestablished }
-  }
-}
-
-// ================= THE REQUESTED-MODE QUESTION =================
-//
-// Four findings, and no contradiction arm: this function answers only what the observed bytes
-// attest about a mode someone needs.
-type Sff8636CodingFinding
-  = CodingAttestsRequestedMode { coding: Sff8636LegCoding }
-  | CodingAttestsRequestedModeSubjectToFec { coding: Sff8636LegCoding, fec: FecCondition }
-  | CodingInsufficientForRequestedMode { requested: LinkMode, coding: Sff8636LegCoding }
-  | CodingComplianceCodeNotUnderstood { code: Nat }
-
-fn sff8636_interpretations(coding: Sff8636LegCoding) -> List<ComplianceInterpretation> {
-  match coding.secondary_compliance {
-    SecondaryObservedCode { code: sc } => [
-      sff8636_interpret_extended_compliance(code: coding.primary_compliance_code),
-      sff8636_interpret_extended_compliance(code: sc),
-    ]
-    SecondaryObservedUnspecified =>
-      [sff8636_interpret_extended_compliance(code: coding.primary_compliance_code)]
-    SecondaryNotObserved =>
-      [sff8636_interpret_extended_compliance(code: coding.primary_compliance_code)]
-  }
-}
-
-fn sff8636_attested(coding: Sff8636LegCoding) -> List<AttestedMode> {
-  flat_map(sff8636_interpretations(coding: coding), i =>
-    match i {
-      ComplianceUnderstood { code: c, modes: ms } => ms
-      ComplianceCodeUnmodelled { code: c } => []
-    })
-}
-
-fn sff8636_unmodelled_codes(coding: Sff8636LegCoding) -> List<Nat> {
-  flat_map(sff8636_interpretations(coding: coding), i =>
-    match i {
-      ComplianceCodeUnmodelled { code: c } => [c]
-      ComplianceUnderstood { code: c, modes: ms } => []
-    })
-}
-
-fn sff8636_assess_leg_coding(
-  coding: Sff8636LegCoding,
-  requested: LinkMode,
-) -> Sff8636CodingFinding {
-  let attested = sff8636_attested(coding: coding)
-  let matching = filter(attested, a => link_mode_eq(a: a.mode, b: requested))
-  match matching.first() {
-    Present { value: hit } =>
-      match hit.fec {
-        FecUnconditional => CodingAttestsRequestedMode { coding: coding }
-        RequiresClause91Fec =>
-          CodingAttestsRequestedModeSubjectToFec { coding: coding, fec: hit.fec }
-      }
-    Absent =>
-      match sff8636_unmodelled_codes(coding: coding).first() {
-        Present { value: unknown } => CodingComplianceCodeNotUnderstood { code: unknown }
-        Absent => CodingInsufficientForRequestedMode { requested: requested, coding: coding }
-      }
-  }
-}
-
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
