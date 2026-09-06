@@ -22,6 +22,14 @@ import v1.compiler.infer_occurrence_binding {
 
 import std.induction { SubValueRelation }
 
+import std.types { SourceSpan }
+
+import std.occurrence_identity {
+  OccurrenceId,
+  NodeOccurrenceIdentity, OccurrenceSynthetic, OccurrenceMinted, OccurrenceProjected,
+  OccurrenceCategory, CallableOccurrence,
+}
+
 type ResolvedFuncSig {
   name: String
   params: List<Node>
@@ -252,8 +260,8 @@ type PathPrefixAccum {
 
 fn reference_provider_module_paths(items: List<Node>, module_path: String, source_indices: Map<String, NewlineIndex>) -> List<String> {
   let prefixes = containment_ancestor_paths(module_path: module_path)
-  let qualified = callable_reference_names(items: items, source_indices: source_indices)
-    |> map(name => reference_containment_qualifier(name: name))
+  let qualified = callable_occurrence_rows(items: items, source_indices: source_indices)
+    |> map(row => reference_containment_qualifier(name: callable_occurrence_authored_name(row: row)))
     |> filter(qualifier => string_length(s: qualifier) > 0)
   let relative = flat_map(qualified, qualifier =>
     concat([qualifier], prefixes |> map(prefix => concat(prefix, ".", qualifier)))
@@ -550,6 +558,100 @@ fn containment_admits_owner(owner_module_path: String, qualifier: String, refere
   else { false }
 }
 
+// PER-OCCURRENCE ACCOUNTING FOR THE CALLABLE CHANNEL. Every reference occurrence the collector
+// visits leaves exactly one row here, so coverage is DERIVED FROM THE PRODUCER rather than
+// declared beside it: there is no separately supplied denominator that can disagree with the walk,
+// because the walk IS the denominator. A dropped occurrence is not a smaller number, it is a
+// missing row, and the identity it would have carried says which one.
+//
+// MODELLED ON `gunbc.repository_census_coverage`, specifically `CensusCoverageReconciliation` and
+// `CensusCoverageOutcome`: an identity-grain join with an established arm and located refusal arms
+// that say WHICH subject failed and why. The shape was derived from that authority, not coined.
+//
+// WHAT IS DELIBERATELY NOT COPIED, because the compiler cannot honestly fill it. That carrier's
+// success arm is `CoverageReconciled { population_identity, revision_identity }` and its receipt
+// carries `DenominatorIndependence`; both entry points take a `RepositoryPopulation` and a
+// `MeasurementRevision`. A compile has no revision, and enumeration and classification are the SAME
+// parser walk, so independence would be permanently `SharedRun` by construction. A field that can
+// only take one value is a decoration, and a truncated honest carrier beats a faithful copy with
+// dead fields, so no population identity, no revision identity, no independence field appears here.
+//
+// KNOWN NEAR-DUPLICATE, declared as such. DISSOLUTION TRIGGER: a subject-key-parameterised
+// reconciliation algebra that `gunbc.repository_census_coverage` and this module can both inhabit
+// without either authoring fields that cannot be true. Not "when someone refactors it" -- the
+// capability is the parameterisation over the subject key. When it exists, this carrier dissolves
+// into it and these rows become its compiler-side instance.
+//
+// THE ADMITTED ARM CARRIES A LIST OF OWNERS, NOT ONE OWNER, because per-occurrence totality is a
+// claim about OUTCOMES and not about arity: one reference may legitimately see several declaring
+// owners on its containment chain, and collapsing that to one here would answer the unbound /
+// unique / ambiguous question in the supply. The supply produces candidates; `decide_callable_
+// candidates` decides. An empty admitted list is not representable -- that case is a refusal arm.
+// The category is `std.occurrence_identity.OccurrenceCategory`, not a parallel channel enum: this
+// collector only ever mints `CallableOccurrence`, and carrying the shared category is what lets the
+// type, method and field collectors join these rows instead of coining a second vocabulary.
+type CallableOccurrenceAccounting
+  = CallableOccurrenceAdmitted {
+      occurrence: OccurrenceId
+      category: OccurrenceCategory
+      authored_name: String
+      owner_module_paths: List<String>
+    }
+  | CallableOccurrenceNoProviderDeclared {
+      occurrence: OccurrenceId
+      category: OccurrenceCategory
+      authored_name: String
+    }
+  | CallableOccurrenceFilteredByContainment {
+      occurrence: OccurrenceId
+      category: OccurrenceCategory
+      authored_name: String
+    }
+  | CallableOccurrenceIdentityUnavailable {
+      authored_name: String
+      diagnostic_span: SourceSpan
+    }
+
+// THE SYNTHETIC ARM REFUSES RATHER THAN SKIPPING. A node the parser never minted an identity for
+// cannot be accounted at occurrence grain, and dropping it would be exactly the silent narrow the
+// exhaustive collector below exists to prevent -- an occurrence absent from the supply reads as
+// correctly filtered. `std.occurrence_identity.occurrence_identity_acceptance_law_collector_dedupe`
+// forbids keying a collector by spelling, SourceSpan or Node structure, so there is no honest
+// substitute identity to fall back to; the row is kept and located instead.
+fn callable_occurrence_identity(identity: NodeOccurrenceIdentity) -> OccurrenceId? {
+  match identity {
+    OccurrenceSynthetic => none
+    OccurrenceMinted { id: id } => Present { value: id }
+    OccurrenceProjected { id: id, caused_by: _ } => Present { value: id }
+  }
+}
+
+fn callable_occurrence_authored_name(row: CallableOccurrenceAccounting) -> String {
+  match row {
+    CallableOccurrenceAdmitted { occurrence: _, category: _, authored_name: authored_name, owner_module_paths: _ } => authored_name
+    CallableOccurrenceNoProviderDeclared { occurrence: _, category: _, authored_name: authored_name } => authored_name
+    CallableOccurrenceFilteredByContainment { occurrence: _, category: _, authored_name: authored_name } => authored_name
+    CallableOccurrenceIdentityUnavailable { authored_name: authored_name, diagnostic_span: _ } => authored_name
+  }
+}
+
+fn callable_occurrence_row(n: Node, source_indices: Map<String, NewlineIndex>) -> CallableOccurrenceAccounting {
+  let authored = authored_name_at(source_indices: source_indices, node: n)
+  match callable_occurrence_identity(identity: n.occurrence_identity) {
+    Present { value: id } =>
+      CallableOccurrenceNoProviderDeclared {
+        occurrence: id,
+        category: CallableOccurrence,
+        authored_name: authored
+      }
+    Absent =>
+      CallableOccurrenceIdentityUnavailable {
+        authored_name: authored,
+        diagnostic_span: n.span
+      }
+  }
+}
+
 // THE MATCH IS EXHAUSTIVE ON PURPOSE, with no `_` arm, for the reason `match_pattern_is_irrefutable`
 // in `v1.compiler.core` states: a catch-all answers "contributes no callable reference" for any
 // `ExprData` constructor added later, so a new expression form that CAN carry a callable reference
@@ -560,11 +662,11 @@ fn containment_admits_owner(owner_module_path: String, qualifier: String, refere
 // An empty arm below is a claim about THE CALLABLE CHANNEL ONLY. `ExprFieldAccess` and
 // `ExprRecordLit` do carry occurrences -- in the field and constructor channels -- and this
 // collector is not their accounting; that is what the per-occurrence coverage carrier is for.
-fn callable_reference_names_in_node(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+fn callable_occurrence_rows_in_node(n: Node, source_indices: Map<String, NewlineIndex>) -> List<CallableOccurrenceAccounting> {
   let here = match n.expr_data {
-    ExprCall => [authored_name_at(source_indices: source_indices, node: n)]
-    ExprVar { binding_kind: _ } => [authored_name_at(source_indices: source_indices, node: n)]
-    ExprMethodCall { method_semantics: _ } => [authored_name_at(source_indices: source_indices, node: n)]
+    ExprCall => [callable_occurrence_row(n: n, source_indices: source_indices)]
+    ExprVar { binding_kind: _ } => [callable_occurrence_row(n: n, source_indices: source_indices)]
+    ExprMethodCall { method_semantics: _ } => [callable_occurrence_row(n: n, source_indices: source_indices)]
     NoExprData => []
     ExprLiteral { value: _ } => []
     ExprElaboratedLiteral { value: _, elaboration: _ } => []
@@ -587,25 +689,24 @@ fn callable_reference_names_in_node(n: Node, source_indices: Map<String, Newline
     ExprReturn => []
   }
   let body_names = match n.body {
-    Present { value: b } => callable_reference_names_in_node(n: b, source_indices: source_indices)
+    Present { value: b } => callable_occurrence_rows_in_node(n: b, source_indices: source_indices)
     Absent => []
   }
-  let child_names = n.children |> flat_map(c => callable_reference_names_in_node(n: c, source_indices: source_indices))
+  let child_names = n.children |> flat_map(c => callable_occurrence_rows_in_node(n: c, source_indices: source_indices))
   concat(concat(here, body_names), child_names)
 }
 
-type ReferenceNameAccum {
-  seen: Map<String, Bool>
-  out: List<String>
-}
-
-fn callable_reference_names(items: List<Node>, source_indices: Map<String, NewlineIndex>) -> List<String> {
-  let all = flat_map(items, item => callable_reference_names_in_node(n: item, source_indices: source_indices))
-  let dedup = fold(all, init: ReferenceNameAccum { seen: empty_map(), out: [] }, f: (acc, name) =>
-    if emit_map_has(m: acc.seen, key: name) { acc }
-    else { ReferenceNameAccum { seen: map_insert(acc.seen, name, true), out: list_push(acc.out, name) } }
-  )
-  dedup.out
+// NO DEDUPE BY SPELLING. The previous collector folded occurrences into a set of distinct NAMES,
+// which `std.occurrence_identity.occurrence_identity_acceptance_law_collector_dedupe` forbids in
+// terms: two observations of one authored occurrence enter a collector once by exact occurrence
+// identity, "never by spelling, SourceSpan, or Node structure". Keying by spelling also merges the
+// two facts the law separates -- one occurrence seen twice, and two distinct occurrences that
+// happen to be spelled the same -- so a corpus with same-spelled references in sibling match arms
+// or nested lets could not be accounted at occurrence grain at all. Rows now flow through
+// undeduplicated; the env supply is keyed by owner and lookup key, so repeats collapse where they
+// are actually redundant rather than in the collector where the identity would be lost.
+fn callable_occurrence_rows(items: List<Node>, source_indices: Map<String, NewlineIndex>) -> List<CallableOccurrenceAccounting> {
+  flat_map(items, item => callable_occurrence_rows_in_node(n: item, source_indices: source_indices))
 }
 
 // The env's local map is keyed by the SPELLING the reference used, because that is the key
@@ -635,8 +736,9 @@ fn reference_derived_parent_envs(
   module_name: String,
   source_indices: Map<String, NewlineIndex>
 ) -> List<ResolvedFuncEnv> {
-  let names = callable_reference_names(items: items, source_indices: source_indices)
-  let supply = fold(names, init: ParentEnvSupplyAccum { by_owner: empty_map(), owner_order: [] }, f: (acc, name) =>
+  let rows = callable_occurrence_rows(items: items, source_indices: source_indices)
+  let supply = fold(rows, init: ParentEnvSupplyAccum { by_owner: empty_map(), owner_order: [] }, f: (acc, row) =>
+    let name = callable_occurrence_authored_name(row: row)
     let leaf = qualified_last_segment(name: name)
     let qualifier = reference_containment_qualifier(name: name)
     match map_get(index.by_name, leaf) {

@@ -2,12 +2,21 @@
 // Source module: v1.compiler.infer_sigs
 
 use self::CallableIdentity::*;
+use self::CallableOccurrenceAccounting::*;
 use self::DerivedCalleeSig::*;
 use self::FuncSigLookup::*;
 use self::NoDerivableSigReason::*;
 use self::ResolvedFormals::*;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
+use crate::std_occurrence_identity::NodeOccurrenceIdentity::{
+    OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic,
+};
+use crate::std_occurrence_identity::OccurrenceCategory::CallableOccurrence;
+pub use crate::std_occurrence_identity::{
+    NodeOccurrenceIdentity, OccurrenceCategory, OccurrenceId,
+};
+pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_occurrence_binding::module_path_owner_binding_decide;
 pub use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection;
 use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection::*;
@@ -299,11 +308,13 @@ pub fn reference_provider_module_paths(
             let mut __result = Vec::new();
             for qualifier in Rc::new({
                 let mut __result = Vec::new();
-                for name in callable_reference_names(items.clone(), source_indices.clone())
+                for row in callable_occurrence_rows(items.clone(), source_indices.clone())
                     .iter()
                     .cloned()
                 {
-                    __result.push(reference_containment_qualifier(name.clone()));
+                    __result.push(reference_containment_qualifier(
+                        callable_occurrence_authored_name(row.clone()),
+                    ));
                 }
                 __result
             })
@@ -752,28 +763,127 @@ pub fn containment_admits_owner(
     }
 }
 
-pub fn callable_reference_names_in_node(
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum CallableOccurrenceAccounting {
+    CallableOccurrenceAdmitted {
+        occurrence: OccurrenceId,
+        category: OccurrenceCategory,
+        authored_name: String,
+        owner_module_paths: Rc<Vec<String>>,
+    },
+    CallableOccurrenceNoProviderDeclared {
+        occurrence: OccurrenceId,
+        category: OccurrenceCategory,
+        authored_name: String,
+    },
+    CallableOccurrenceFilteredByContainment {
+        occurrence: OccurrenceId,
+        category: OccurrenceCategory,
+        authored_name: String,
+    },
+    CallableOccurrenceIdentityUnavailable {
+        authored_name: String,
+        diagnostic_span: Rc<SourceSpan>,
+    },
+}
+impl CallableOccurrenceAccounting {
+    pub fn authored_name(&self) -> String {
+        match self {
+            CallableOccurrenceAccounting::CallableOccurrenceAdmitted {
+                authored_name: __val,
+                ..
+            } => __val.clone(),
+            CallableOccurrenceAccounting::CallableOccurrenceNoProviderDeclared {
+                authored_name: __val,
+                ..
+            } => __val.clone(),
+            CallableOccurrenceAccounting::CallableOccurrenceFilteredByContainment {
+                authored_name: __val,
+                ..
+            } => __val.clone(),
+            CallableOccurrenceAccounting::CallableOccurrenceIdentityUnavailable {
+                authored_name: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
+}
+
+pub fn callable_occurrence_identity(identity: Rc<NodeOccurrenceIdentity>) -> Option<OccurrenceId> {
+    match (*identity.clone()).clone() {
+        NodeOccurrenceIdentity::OccurrenceSynthetic => std::option::Option::None,
+        NodeOccurrenceIdentity::OccurrenceMinted { id: id, .. } => Some(id.clone()),
+        NodeOccurrenceIdentity::OccurrenceProjected { id, .. } => Some(id.clone()),
+    }
+}
+
+pub fn callable_occurrence_authored_name(row: Rc<CallableOccurrenceAccounting>) -> String {
+    match (*row.clone()).clone() {
+        CallableOccurrenceAccounting::CallableOccurrenceAdmitted { authored_name, .. } => {
+            authored_name.clone()
+        }
+        CallableOccurrenceAccounting::CallableOccurrenceNoProviderDeclared {
+            authored_name,
+            ..
+        } => authored_name.clone(),
+        CallableOccurrenceAccounting::CallableOccurrenceFilteredByContainment {
+            authored_name,
+            ..
+        } => authored_name.clone(),
+        CallableOccurrenceAccounting::CallableOccurrenceIdentityUnavailable {
+            authored_name,
+            ..
+        } => authored_name.clone(),
+    }
+}
+
+pub fn callable_occurrence_row(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
+) -> Rc<CallableOccurrenceAccounting> {
+    {
+        let authored = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+        match callable_occurrence_identity(n.occurrence_identity.clone()) {
+            Some(id) => Rc::new(
+                CallableOccurrenceAccounting::CallableOccurrenceNoProviderDeclared {
+                    occurrence: id.clone(),
+                    category: OccurrenceCategory::CallableOccurrence,
+                    authored_name: authored.clone(),
+                },
+            ),
+            std::option::Option::None => Rc::new(
+                CallableOccurrenceAccounting::CallableOccurrenceIdentityUnavailable {
+                    authored_name: authored.clone(),
+                    diagnostic_span: n.span.clone(),
+                },
+            ),
+        }
+    }
+}
+
+pub fn callable_occurrence_rows_in_node(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<CallableOccurrenceAccounting>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let here = match (*n.expr_data.clone()).clone() {
-            ExprData::ExprCall { .. } => Rc::new(vec![crate::v1_std_core::authored_name_at(
-                source_indices.clone(),
+            ExprData::ExprCall { .. } => Rc::new(vec![callable_occurrence_row(
                 n.clone(),
+                source_indices.clone(),
             )]),
             ExprData::ExprVar {
                 binding_kind: _, ..
-            } => Rc::new(vec![crate::v1_std_core::authored_name_at(
-                source_indices.clone(),
+            } => Rc::new(vec![callable_occurrence_row(
                 n.clone(),
+                source_indices.clone(),
             )]),
             ExprData::ExprMethodCall {
                 method_semantics: _,
                 ..
-            } => Rc::new(vec![crate::v1_std_core::authored_name_at(
-                source_indices.clone(),
+            } => Rc::new(vec![callable_occurrence_row(
                 n.clone(),
+                source_indices.clone(),
             )]),
             ExprData::NoExprData => Rc::new(vec![]),
             ExprData::ExprLiteral { value: _, .. } => Rc::new(vec![]),
@@ -797,14 +907,14 @@ pub fn callable_reference_names_in_node(
             ExprData::ExprReturn => Rc::new(vec![]),
         };
         let body_names = match n.body.clone() {
-            Some(b) => callable_reference_names_in_node(b.clone(), source_indices.clone()),
+            Some(b) => callable_occurrence_rows_in_node(b.clone(), source_indices.clone()),
             std::option::Option::None => Rc::new(vec![]),
         };
         let child_names = Rc::new({
             let mut __result = Vec::new();
             for c in n.children.clone().iter().cloned() {
                 __result.extend(
-                    (*callable_reference_names_in_node(c.clone(), source_indices.clone()))
+                    (*callable_occurrence_rows_in_node(c.clone(), source_indices.clone()))
                         .iter()
                         .cloned(),
                 );
@@ -818,46 +928,21 @@ pub fn callable_reference_names_in_node(
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ReferenceNameAccum {
-    pub seen: Rc<HashMap<String, bool>>,
-    pub out: Rc<Vec<String>>,
-}
-
-pub fn callable_reference_names(
+pub fn callable_occurrence_rows(
     items: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
-    {
-        let all = Rc::new({
-            let mut __result = Vec::new();
-            for item in items.iter().cloned() {
-                __result.extend(
-                    (*callable_reference_names_in_node(item.clone(), source_indices.clone()))
-                        .iter()
-                        .cloned(),
-                );
-            }
-            __result
-        });
-        let dedup = all.iter().cloned().fold(
-            Rc::new(ReferenceNameAccum {
-                seen: v1_rt::rc_empty_map::<String, bool>(),
-                out: Rc::new(vec![]),
-            }),
-            |acc: _, name: String| {
-                if crate::v1_compiler_infer_types::emit_map_has(acc.seen.clone(), name.clone()) {
-                    acc.clone()
-                } else {
-                    Rc::new(ReferenceNameAccum {
-                        seen: v1_rt::rc_map_insert(acc.seen.clone(), name.clone(), true),
-                        out: v1_rt::rc_list_push(acc.out.clone(), name.clone()),
-                    })
-                }
-            },
-        );
-        dedup.out.clone()
-    }
+) -> Rc<Vec<Rc<CallableOccurrenceAccounting>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for item in items.iter().cloned() {
+            __result.extend(
+                (*callable_occurrence_rows_in_node(item.clone(), source_indices.clone()))
+                    .iter()
+                    .cloned(),
+            );
+        }
+        __result
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -903,13 +988,14 @@ pub fn reference_derived_parent_envs(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<ResolvedFuncEnv>>> {
     {
-        let names = callable_reference_names(items.clone(), source_indices.clone());
-        let supply = names.iter().cloned().fold(
+        let rows = callable_occurrence_rows(items.clone(), source_indices.clone());
+        let supply = rows.clone().iter().cloned().fold(
             Rc::new(ParentEnvSupplyAccum {
                 by_owner: v1_rt::rc_empty_map::<String, Rc<HashMap<String, Rc<ResolvedFuncSig>>>>(),
                 owner_order: Rc::new(vec![]),
             }),
-            |acc: _, name: String| {
+            |acc: _, row: Rc<CallableOccurrenceAccounting>| {
+                let name = callable_occurrence_authored_name(row.clone());
                 let leaf = crate::v1_std_core::qualified_last_segment(name.clone());
                 let qualifier = reference_containment_qualifier(name.clone());
                 match v1_rt::map_get(&index.by_name.clone(), leaf.clone()) {
