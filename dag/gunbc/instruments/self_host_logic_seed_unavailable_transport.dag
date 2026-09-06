@@ -216,14 +216,13 @@ fn slbu_seed_unavailable_receipt() -> Bool {
     && string_contains(s: pass_run.stdout, pattern: slbu_pass_marker)
 
   // Cleanup: temp directories are removed in declaration order after the build and run
-  // complete. The results are ANDed into the receipt. Measured (snappy-crane-234):
-  // let is eager (eval_let evaluates the bound expression unconditionally) and &&
-  // does NOT short-circuit (both operands always evaluate, left then right). Cleanup
-  // always runs regardless of verdict. CAVEAT: no DECLARED property of the substrate
-  // guarantees this -- it is a property of the current interpreter realization. If &&
-  // is ever given short-circuit semantics (classical_and already short-circuits
-  // internally), cleanup silently stops running without any test going red. Filed as
-  // its own 4b subject by snappy-crane-234.
+  // complete. The results are ANDed into the receipt. Measured (snappy-crane-234 probes
+  // let_is_eager_when_unused, and_demands_right_even_when_left_false): let is eager,
+  // && does NOT short-circuit (both operands always evaluate left then right). Cleanup
+  // always runs regardless of verdict. Residual: this correctness depends on a property
+  // the substrate does not DECLARE; the emitted Rust arm short-circuits where the
+  // interpreter does not (snappy-crane-234, failure-mode
+  // realization_arms_diverge_on_whether_the_program_refuses).
   let cleanup_out = shell.Remove.RecursiveForce(path: out_dir.path).success
   let cleanup_src = shell.Remove.RecursiveForce(path: scratch_src.path).success
 
