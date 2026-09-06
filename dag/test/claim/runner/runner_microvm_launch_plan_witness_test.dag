@@ -10,7 +10,7 @@ import gunbc.auth.github_credential { GitHubCredentialAuthority }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet_intent_network { operator_host_srv2 }
 import gunbc.runner_unit { RunnerUnitLifecycleIntent }
-import gunbc.runner_microvm { RunnerMicroVmNetworking, GuestNetworkAbsent, VmmProcessTopology, VmmIsMainProcess, VmmUnderLifecycleController }
+import gunbc.runner_microvm { RealizationReserve, ReserveDeclared, gunbc_runner_microvm_realization_reserve, RunnerMicroVmNetworking, GuestNetworkAbsent, VmmProcessTopology, VmmIsMainProcess, VmmUnderLifecycleController }
 import gunbc.runner_microvm_attempt {
   MicroVmCellBinding, VmUnboundCellNotOwned,
   MicroVmAttemptResult, MicroVmAttemptAccepted, MicroVmAttemptRefused,
@@ -21,6 +21,7 @@ import gunbc.runner_microvm_attempt {
 // be two answers to "what does this installation hold", and they would drift the first time either
 // moves. Precedent: test.parsecheck imports a witness module for the same reason.
 import test.claim.github_app_registry { app_credential, observed_grant, runner_grant, full_workflow_grant }
+import std.measure { byte_size }
 import gunbc.runner_microvm_launch_plan {
   MicroVmLaunchPlan, LaunchAdmitted, LaunchRefusedCell, LaunchRefusedConfig,
   LaunchRefusedAdmission, LaunchRefusedCredential,
@@ -68,6 +69,12 @@ fn launch_binding(owned: Bool) -> MicroVmCellBinding {
   }
 }
 
+// A DECLARED RESERVE THE WITNESS OWNS. Production's reserve is ReserveUnmodeled and every launch
+// therefore refuses -- see the production-refuses control below, which is the claim about today.
+// These fixtures supply a reserve so the ORDERING can be exercised at all; without one the mint
+// stage is unreachable and every assertion about it would be vacuous.
+data witness_reserve: RealizationReserve = ReserveDeclared { bytes: byte_size(268435456) }
+
 fn planned(
   owned: Bool,
   topology: VmmProcessTopology,
@@ -76,6 +83,7 @@ fn planned(
 ) -> MicroVmLaunchPlan {
   plan_microvm_launch_of_binding(
     binding: launch_binding(owned: owned),
+    reserve: witness_reserve,
     kernel_path: "/var/lib/gunbc-runner/guest/vmlinux",
     net: launch_net(),
     topology: topology,
@@ -128,6 +136,7 @@ test fn an_orphanable_topology_refuses_at_admission_not_at_the_mint() -> Bool {
 test fn a_credential_without_the_runner_permission_refuses_the_launch() -> Bool {
   match plan_microvm_launch_of_binding(
     binding: launch_binding(owned: true),
+    reserve: witness_reserve,
     kernel_path: "/var/lib/gunbc-runner/guest/vmlinux",
     net: launch_net(),
     topology: VmmIsMainProcess,
@@ -167,32 +176,36 @@ test fn an_owned_cell_with_a_sufficient_credential_admits_and_carries_the_mint()
   }
 }
 
-// DIAGNOSTIC ARM PROBES. These name which arm the admitting fixture actually reaches, so one lane
-// run identifies it instead of one run per guess. They are deleted once the fixture is correct.
-test fn diag_admitting_fixture_is_refused_config() -> Bool {
-  match planned(owned: true, topology: VmmIsMainProcess, intent: cannot_orphan_intent, listener_is_main_process: true) {
-    LaunchRefusedConfig { cause: _ } => true
-    _ => false
-  }
-}
 
-test fn diag_admitting_fixture_is_refused_admission() -> Bool {
-  match planned(owned: true, topology: VmmIsMainProcess, intent: cannot_orphan_intent, listener_is_main_process: true) {
-    LaunchRefusedAdmission { reason: _ } => true
-    _ => false
-  }
-}
-
-test fn diag_admitting_fixture_is_refused_cell() -> Bool {
-  match planned(owned: true, topology: VmmIsMainProcess, intent: cannot_orphan_intent, listener_is_main_process: true) {
-    LaunchRefusedCell { cause: _ } => true
-    _ => false
-  }
-}
-
-test fn diag_admitting_fixture_is_refused_credential() -> Bool {
-  match planned(owned: true, topology: VmmIsMainProcess, intent: cannot_orphan_intent, listener_is_main_process: true) {
-    LaunchRefusedCredential { organization: _, unsatisfied: _ } => true
+// PRODUCTION ADMITS NO GUEST TODAY, AND THIS IS THE CONTROL THAT SAYS SO OUT LOUD.
+//
+// gunbc.runner_microvm gunbc_runner_microvm_realization_reserve answers ReserveUnmodeled, because no
+// VMM resident footprint is a cited quantity in extdeps.virtualization.firecracker and inventing one
+// would be a fabricated plausible output. Every launch therefore refuses at MemoryFitUnresolved,
+// which means NO CI JOB RUNS IN A MICRO-VM until that quantity is either cited or measured and
+// declared. Stating that in a witness rather than in prose is what keeps the rest of this module
+// from reading as a working launcher: the ordering above is real and reachable, and the product is
+// still refused at the envelope.
+//
+// This goes GREEN today and turns RED the day the reserve becomes declared -- at which point the
+// launch path becomes live and this control has to be re-read rather than silently starting to pass
+// a guest through.
+test fn production_refuses_every_launch_while_the_vmm_reserve_is_unmodeled() -> Bool {
+  match plan_microvm_launch_of_binding(
+    binding: launch_binding(owned: true),
+    reserve: gunbc_runner_microvm_realization_reserve(),
+    kernel_path: "/var/lib/gunbc-runner/guest/vmlinux",
+    net: launch_net(),
+    topology: VmmIsMainProcess,
+    intent: cannot_orphan_intent,
+    listener_is_main_process: true,
+    authority: launch_authority(),
+    control_plane: launch_control_plane(),
+    organization: launch_org,
+    runner_group_id: JitRunnerGroupId { value: 1 },
+    labels: [JitRunnerLabel { value: "self-hosted" }],
+  ) {
+    LaunchRefusedAdmission { reason: r } => string_contains(s: r, pattern: "cannot be judged")
     _ => false
   }
 }

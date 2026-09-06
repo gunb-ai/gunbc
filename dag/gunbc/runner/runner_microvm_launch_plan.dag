@@ -11,6 +11,7 @@ import gunbc.auth.github_credential { GitHubCredentialAuthority, CredentialCapab
 import gunbc.fabric_required_build_cell { RequiredBuildCellSnapshot }
 import gunbc.runner_unit { RunnerUnitLifecycleIntent }
 import gunbc.runner_microvm {
+  RealizationReserve,
   RunnerMicroVmAdmission, RunnerMicroVmAdmitted, RunnerMicroVmRefusedOrphanableUnit,
   RunnerMicroVmRefusedSharedCredential, RunnerMicroVmRefusedMalformedVm,
   RunnerMicroVmRefusedEnvelopeDisagreement, RunnerMicroVmRefusedEnvelopeUnresolved,
@@ -125,6 +126,7 @@ fn launch_after_admission(
 // else can refuse.
 fn plan_microvm_launch_of_binding(
   binding: MicroVmCellBinding,
+  reserve: RealizationReserve,
   kernel_path: String,
   net: RunnerMicroVmNetworking,
   topology: VmmProcessTopology,
@@ -160,7 +162,7 @@ fn plan_microvm_launch_of_binding(
             listener_is_main_process: listener_is_main_process,
             transport: gunbc_runner_jit_transport,
             config: config,
-            reserve: gunbc_runner_microvm_realization_reserve(),
+            reserve: reserve,
           ) {
             RunnerMicroVmAdmitted =>
               launch_after_admission(
@@ -188,6 +190,19 @@ fn plan_microvm_launch_of_binding(
 }
 
 
+// THE RESERVE IS AN INPUT TO THIS JUDGMENT, NOT A ROW THIS MODULE READS, and threading it was a
+// real repair rather than a testing convenience. Reading gunbc_runner_microvm_realization_reserve()
+// inside the composition made the admitted arm unreachable from ANY caller: production's reserve is
+// ReserveUnmodeled -- deliberately, because no VMM resident footprint is a cited quantity and
+// inventing one would be a fabricated plausible output -- so every launch refuses at
+// MemoryFitUnresolved and the mint stage below it was dead code no input could reach. A positive
+// control over it would have been asserting a state that cannot exist, which is the decoration
+// DESIGN 4b warns about, written into the test rather than the production path.
+//
+// As a parameter, the fit judgment is decided by the caller that owns the reserve, the ordering
+// below becomes reachable and therefore witnessable, and production keeps refusing honestly at the
+// entry point rather than by accident inside a composition.
+
 // THE SNAPSHOT ENTRY IS A PROJECTION AND NOTHING ELSE, and that is deliberate rather than a missing
 // abstraction. RequiredBuildCellSnapshot is sole_constructor -- a caller must not be able to
 // manufacture a reservation -- which also means no witness outside its module can build one. If
@@ -214,6 +229,7 @@ fn plan_microvm_launch(
 ) -> MicroVmLaunchPlan {
   plan_microvm_launch_of_binding(
     binding: bind_microvm_to_cell(snapshot: snapshot),
+    reserve: gunbc_runner_microvm_realization_reserve(),
     kernel_path: kernel_path,
     net: net,
     topology: topology,
