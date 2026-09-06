@@ -1560,9 +1560,6 @@ pub struct TransitionAdmission {
 /// the carrier in `product.cable_leg_observation`, base and head bind each spelling identically,
 /// and all four report CONSUMED, coming due on this roster's next touch. Adjudicate that deletion
 /// by joining each row against main's tree on its own tuple, not by trusting this sentence.
-const LEG_OBSERVATION_REHOME_LABEL: &str =
-    "gunbc#10671 transceiver layer split: the cable-leg observation carrier moves from the \
-     SFF-8636 byte-meaning module extdeps.transceiver.sff_8636 to product.cable_leg_observation";
 
 /// THE SCM REPOSITORY BUILDER MOVES TO A SHARED FIXTURE (2026-09-06, gunbc#10676). No ordinal is
 /// claimed, for the reason the entries above give.
@@ -1594,6 +1591,19 @@ const LEG_OBSERVATION_REHOME_LABEL: &str =
 /// identically, and all nine report CONSUMED, coming due on this roster's next touch. Adjudicate
 /// that deletion by joining each row against main's tree on its own
 /// (module, in_declaration, spelling, target) tuple, not by trusting this sentence.
+/// THE gunbc#10671 ROWS DISSOLVED HERE (2026-09-06), BY THEIR OWN TRIGGER AND ON THE ROSTER TOUCH
+/// THEY NAMED. gunbc#10671 merged, so the four cable-leg rows reported CONSUMED and came due on the
+/// next roster-touching change, which is this one.
+///
+/// ADJUDICATED BY THE JOIN THOSE ROWS DEMANDED RATHER THAN BY THEIR OWN SENTENCE, in all three
+/// directions the join has. On main, `product.cable_leg_observation` DECLARES `SecondaryNotObserved`
+/// as an arm of its compliance coproduct; `extdeps.transceiver.sff_8636` does NOT declare it -- its
+/// only remaining occurrence of the spelling is prose recording that an earlier head authored it,
+/// which is exactly the trap a grep-count would have fallen into and a declaration check does not;
+/// and both consumers, `test.claim.cable_leg_coding_witness` and
+/// `test.claim.cable_order_admission_witness`, import the spelling from the new declarer. So base and
+/// head bind it identically, no run can produce those four deltas, and CONSUMED is the correct
+/// reading rather than an author error.
 const SCM_REPOSITORY_BUILDER_REHOME_LABEL: &str =
     "gunbc#10676 scm fixture extraction: the repository builder moves from \
      test.claim.scm_merge_base_witness to test.fixture.scm_repository_builder, so the merge_base \
@@ -1687,46 +1697,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             in_declaration: "scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on",
             spelling: "mb_root_of",
             target: "test.fixture.scm_repository_builder",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: LEG_OBSERVATION_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.cable_leg_coding_witness",
-            in_declaration: "delivered_fs_leg",
-            spelling: "SecondaryNotObserved",
-            target: "product.cable_leg_observation",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: LEG_OBSERVATION_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.cable_leg_coding_witness",
-            in_declaration: "leg_with_unmodelled_code",
-            spelling: "SecondaryNotObserved",
-            target: "product.cable_leg_observation",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: LEG_OBSERVATION_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.cable_order_admission_witness",
-            in_declaration: "correctly_coded_leg",
-            spelling: "SecondaryNotObserved",
-            target: "product.cable_leg_observation",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: LEG_OBSERVATION_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.cable_order_admission_witness",
-            in_declaration: "delivered_leg",
-            spelling: "SecondaryNotObserved",
-            target: "product.cable_leg_observation",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
