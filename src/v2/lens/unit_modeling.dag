@@ -2,9 +2,10 @@ module v2.lens.unit_modeling
 
 import v2.lens.common.construction_justification {
   ConstructionJustification,
-  RatchetForever,
-  DomainQuantityDenotation
+  OutsideModeledGuarantee,
+  HumanPolicyJudgment
 }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 import v2.std.witness { Holds }
 import v2.std.node_query { edge_field_type_name }
@@ -145,5 +146,12 @@ fn unit_modeling_gate(node: Node) -> Outcome<Witness<Node>> {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: RatchetForever { basis: DomainQuantityDenotation }
+  class: OutsideModeledGuarantee {
+    subject: DeclarationRef {
+      module_path: "v2.lens.unit_modeling",
+      decl_name: "unit_modeling_gate",
+      field: WholeDeclaration
+    },
+    reason: HumanPolicyJudgment
+  }
 }

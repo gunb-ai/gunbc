@@ -2,12 +2,20 @@ module v2.lens.grounding
 
 import v2.lens.common.construction_justification {
   ConstructionJustification,
-  RatchetForever,
-  ReferenceGroundingVerdict
+  OutsideModeledGuarantee,
+  HumanPolicyJudgment
 }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: RatchetForever { basis: ReferenceGroundingVerdict }
+  class: OutsideModeledGuarantee {
+    subject: DeclarationRef {
+      module_path: "v2.lens.grounding",
+      decl_name: "name_coincides",
+      field: WholeDeclaration
+    },
+    reason: HumanPolicyJudgment
+  }
 }
 
 

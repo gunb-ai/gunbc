@@ -1,10 +1,12 @@
 module v2.test.claim.construction_justification.ratchet_forever_permanence_witness_test
 
 import v2.lens.common.construction_justification {
-  RatchetForever,
-  RiceGlobalOptimality,
-  wall_now_total_projection_forbids_ratchet_forever,
-  construction_class_is_ratchet_forever
+  ConstructionClass,
+  OutsideModeledGuarantee,
+  WallAfterGrounding,
+  CandidateUniverseUnbounded,
+  wall_now_total_projection_forbids_outside_modeled_guarantee,
+  construction_class_is_outside_modeled_guarantee
 }
 import v2.lens.complexity { construction_justification as complexity_construction_justification }
 import v2.lens.cost {
@@ -13,30 +15,60 @@ import v2.lens.cost {
   symbolic_cost_witness,
   unknown_cost
 }
+import v2.lens.enforcement.complexity_contract_subject {
+  complexity_derived_kernel_boundary,
+  complexity_optimality_boundary
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.node { Atom, Node, TypeNode }
 import v2.std.witness { Holds, Violates }
 
-// LIVE PAIR: cost is WallNow and complexity is a total projection of cost_lens. Revert
-// complexity.construction_justification to RatchetForever { basis: _ } and this must red.
-test fn cost_wall_now_projected_complexity_forbids_ratchet_forever_holds() -> Bool {
-  wall_now_total_projection_forbids_ratchet_forever(
+fn planted_outside_cost_projection() -> ConstructionClass {
+  OutsideModeledGuarantee {
+    subject: DeclarationRef {
+      module_path: "v2.lens.enforcement.complexity_contract_subject",
+      decl_name: "OptimalityResidue",
+      field: WholeDeclaration
+    },
+    reason: CandidateUniverseUnbounded
+  }
+}
+
+// LIVE PAIR: cost is WallNow; complexity_lens is AsymptoticCostProjection (DerivedKernel).
+// Revert complexity.construction_justification to OutsideModeledGuarantee and this must red.
+test fn cost_wall_now_projected_complexity_forbids_outside_modeled_guarantee_holds() -> Bool {
+  wall_now_total_projection_forbids_outside_modeled_guarantee(
     upstream: cost_construction_justification.class,
     downstream: complexity_construction_justification.class
   )
-    && !construction_class_is_ratchet_forever(class: complexity_construction_justification.class)
+    && !construction_class_is_outside_modeled_guarantee(class: complexity_construction_justification.class)
 }
 
-// Discriminating RED of the helper: the original defect shape (WallNow upstream, planted
-// RatchetForever downstream) refuses. This is the fixture, not a census of the live pair.
-test fn planted_wall_now_to_ratchet_forever_projection_red() -> Bool {
-  !wall_now_total_projection_forbids_ratchet_forever(
+// Module grain matches the existing contract split: complexity is derived-kernel WallAfterGrounding,
+// optimality residue is OutsideModeledGuarantee over OptimalityResidue.
+test fn complexity_module_aligns_derived_kernel_contract_holds() -> Bool {
+  match complexity_construction_justification.class {
+    WallAfterGrounding { dissolves_to: _ } =>
+      match complexity_derived_kernel_boundary.class {
+        WallAfterGrounding { dissolves_to: _ } =>
+          construction_class_is_outside_modeled_guarantee(class: complexity_optimality_boundary.class)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// Discriminating RED of the helper: WallNow upstream + planted OutsideModeledGuarantee downstream
+// is the original defect shape and must refuse.
+test fn planted_wall_now_to_outside_modeled_guarantee_projection_red() -> Bool {
+  !wall_now_total_projection_forbids_outside_modeled_guarantee(
     upstream: cost_construction_justification.class,
-    downstream: RatchetForever { basis: RiceGlobalOptimality }
+    downstream: planted_outside_cost_projection()
   )
 }
 
-// UnknownCost must never present as Holds — a fail-open arm would let a truncated fold look finished.
+// UnknownCost must never present as Holds — a fold that stops early and reports a verdict is fail-open.
 data unknown_cost_probe_node: Node = Node {
   kind: TypeNode {
     connective: Atom { identity: ^ratchet_forever_unknown_cost_probe }

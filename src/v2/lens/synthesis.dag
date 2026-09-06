@@ -2,9 +2,10 @@ module v2.lens.synthesis
 
 import v2.lens.common.construction_justification {
   ConstructionJustification,
-  RatchetForever,
-  ConstructiveSynthesisGap
+  OutsideModeledGuarantee,
+  CandidateUniverseUnbounded
 }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 import v2.lens.complexity { complexity_lens }
 
@@ -204,5 +205,12 @@ fn synthesis_lens_diagnostics(n: Node, declared_technique: LowerBoundTechnique) 
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: RatchetForever { basis: ConstructiveSynthesisGap }
+  class: OutsideModeledGuarantee {
+    subject: DeclarationRef {
+      module_path: "v2.lens.enforcement.complexity_contract_subject",
+      decl_name: "CompleteRewriteDiscovery",
+      field: WholeDeclaration
+    },
+    reason: CandidateUniverseUnbounded
+  }
 }

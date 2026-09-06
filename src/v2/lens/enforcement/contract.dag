@@ -69,10 +69,9 @@ import v2.lens.common.construction_justification {
   ConstructionJustification,
   WallNow,
   WallAfterGrounding,
-  RatchetForever,
-  ReferenceGroundingVerdict,
-  ConstructiveSynthesisGap,
-  DomainQuantityDenotation
+  OutsideModeledGuarantee,
+  HumanPolicyJudgment,
+  CandidateUniverseUnbounded
 }
 import std.disposition { SingleAuthority, RealizationDispatch, SubstrateMandatoryTag }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -309,7 +308,16 @@ data lens_contract_grounding: LensContract = {
   claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: NoConsumerWitness,
   exemptions: [],
-  boundary: ConstructionJustification { class: RatchetForever { basis: ReferenceGroundingVerdict } }
+  boundary: ConstructionJustification {
+    class: OutsideModeledGuarantee {
+      subject: DeclarationRef {
+        module_path: "v2.lens.grounding",
+        decl_name: "name_coincides",
+        field: WholeDeclaration
+      },
+      reason: HumanPolicyJudgment
+    }
+  }
 }
 
 data lens_contract_host_language_transport_script: LensContract = {
@@ -492,7 +500,16 @@ data lens_contract_synthesis: LensContract = {
   claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: NoConsumerWitness,
   exemptions: [],
-  boundary: ConstructionJustification { class: RatchetForever { basis: ConstructiveSynthesisGap } }
+  boundary: ConstructionJustification {
+    class: OutsideModeledGuarantee {
+      subject: DeclarationRef {
+        module_path: "v2.lens.enforcement.complexity_contract_subject",
+        decl_name: "CompleteRewriteDiscovery",
+        field: WholeDeclaration
+      },
+      reason: CandidateUniverseUnbounded
+    }
+  }
 }
 
 data lens_contract_test_migration_debt: LensContract = {
@@ -510,7 +527,16 @@ data lens_contract_unit_modeling: LensContract = {
   claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: NoConsumerWitness,
   exemptions: [],
-  boundary: ConstructionJustification { class: RatchetForever { basis: DomainQuantityDenotation } }
+  boundary: ConstructionJustification {
+    class: OutsideModeledGuarantee {
+      subject: DeclarationRef {
+        module_path: "v2.lens.unit_modeling",
+        decl_name: "unit_modeling_gate",
+        field: WholeDeclaration
+      },
+      reason: HumanPolicyJudgment
+    }
+  }
 }
 
 data lens_contract_vacuity: LensContract = {

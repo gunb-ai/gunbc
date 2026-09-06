@@ -4,17 +4,15 @@ import std.disposition { ConstructionMechanism }
 
 import std.decl_ref { DeclarationRef }
 
-// THE PERMANENCE ARGUMENT, modeled as a closed coproduct over the bounded forward substrate
-// (DESIGN section 4). Each variant names the membership question claimed permanently
-// undecidable here — not prose about why, and not a Turing-complete-language hand-wave.
-// Rice-global-optimality is the only variant that cites Rice; the others are substrate-bounded
-// residues (domain denotation, grounding verdict, synthesis gap, complete test oracle).
-type RatchetPermanenceBasis
-  = RiceGlobalOptimality
-  | ConstructiveSynthesisGap
-  | CompleteTestOracle
-  | DomainQuantityDenotation
-  | ReferenceGroundingVerdict
+// DESIGN section 4b column beside the ladder, not a fifth rung: external reality, undeclared
+// intent, or a required subject/bound/equivalence the model does not represent. Observed, refused,
+// or mitigated at a declared boundary — never a claim that the class can never climb.
+type OutsideModeledGuaranteeReason
+  = OpenWorldEvidence
+  | UndeclaredIntent
+  | CandidateUniverseUnbounded
+  | SemanticEquivalenceNotRepresented
+  | HumanPolicyJudgment
 
 type ConstructionClass
 
@@ -22,32 +20,32 @@ type ConstructionClass
 
   | WallAfterGrounding { dissolves_to: ConstructionMechanism }
 
-  | RatchetForever { basis: RatchetPermanenceBasis }
+  | OutsideModeledGuarantee { subject: DeclarationRef, reason: OutsideModeledGuaranteeReason }
 
 type ConstructionJustification {
   class: ConstructionClass
 }
 
-// A total downstream read of a WallNow upstream value cannot claim RatchetForever: the output's
-// decidability is no stronger than the WallNow input's. This is the check that catches the
-// complexity-lens defect (asymptotic_projection(cost_lens(n)) with class RatchetForever).
-fn wall_now_total_projection_forbids_ratchet_forever(
+// A total downstream read of a WallNow upstream value cannot sit outside the modeled guarantee:
+// the output is no less decidable than its input. This is the check that catches the complexity
+// lens defect (asymptotic_projection(cost_lens(n)) stamped as outside while cost is WallNow).
+fn wall_now_total_projection_forbids_outside_modeled_guarantee(
   upstream: ConstructionClass,
   downstream: ConstructionClass
 ) -> Bool {
   match upstream {
     WallNow { mechanism: _, authority: _ } =>
       match downstream {
-        RatchetForever { basis: _ } => false
+        OutsideModeledGuarantee { subject: _, reason: _ } => false
         _ => true
       }
     _ => true
   }
 }
 
-fn construction_class_is_ratchet_forever(class: ConstructionClass) -> Bool {
+fn construction_class_is_outside_modeled_guarantee(class: ConstructionClass) -> Bool {
   match class {
-    RatchetForever { basis: _ } => true
+    OutsideModeledGuarantee { subject: _, reason: _ } => true
     _ => false
   }
 }

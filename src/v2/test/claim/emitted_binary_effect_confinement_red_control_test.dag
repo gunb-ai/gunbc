@@ -14,7 +14,7 @@ import v2.std.host_transport {
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.extdeps.languages.rust { rust_emit_host_runtime_primitive_type_node }
-import v2.lens.common.construction_justification { WallNow, WallAfterGrounding, RatchetForever }
+import v2.lens.common.construction_justification { WallNow, WallAfterGrounding, OutsideModeledGuarantee }
 import std.decl_ref { WholeDeclaration, NamedField }
 import v2.lens.emitted_binary_effect_confinement { construction_justification }
 
@@ -80,6 +80,6 @@ test fn emitted_binary_effect_confinement_authority_points_at_host_transport() -
           NamedField { field_name: _ } => false
         })
     WallAfterGrounding { dissolves_to: _ } => false
-    RatchetForever { basis: _ } => false
+    OutsideModeledGuarantee { subject: _, reason: _ } => false
   }
 }

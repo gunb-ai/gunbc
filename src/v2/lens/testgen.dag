@@ -3,9 +3,10 @@ module v2.lens.testgen
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.common.construction_justification {
   ConstructionJustification,
-  RatchetForever,
-  CompleteTestOracle
+  OutsideModeledGuarantee,
+  CandidateUniverseUnbounded
 }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 import v2.std.collection { List }
 import std.algebra { FreeMonoid, Empty, Cons }
@@ -2161,5 +2162,12 @@ fn bootstrap_claim_generator_for_manual_anchor(
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: RatchetForever { basis: CompleteTestOracle }
+  class: OutsideModeledGuarantee {
+    subject: DeclarationRef {
+      module_path: "v2.lens.testgen",
+      decl_name: "generator_id_for_claim_anchor",
+      field: WholeDeclaration
+    },
+    reason: CandidateUniverseUnbounded
+  }
 }
