@@ -48,6 +48,8 @@ data scm_rl_unknown_format_path: String = "dag/test/fixture/scm_repository_load/
 data scm_rl_frozen_v1_path: String = "dag/test/fixture/scm_repository_load/frozen_repository_v1.json"
 data scm_rl_retired_v3_path: String = "dag/test/fixture/scm_repository_load/retired_repository_v3.json"
 data scm_rl_retired_v3_tag_only_path: String = "dag/test/fixture/scm_repository_load/retired_v3_tag_only.json"
+data scm_rl_predecessor_v4_path: String = "dag/test/fixture/scm_repository_load/predecessor_repository_v4.json"
+data scm_rl_v4_declaring_a_stage_path: String = "dag/test/fixture/scm_repository_load/v4_declaring_a_stage.json"
 
 // UNDER THE CHECKOUT ROOT AND NEVER CREATED. See the header: the location is the claim.
 data scm_rl_absent_path: String = "dag/test/fixture/scm_repository_load/this_file_is_never_created.json"
@@ -160,7 +162,48 @@ test fn scm_rl_a_damaged_document_is_not_a_protocol_gap() -> Bool {
   }
 }
 
+// A VALID v4 DOCUMENT IS READ, AND ITS STAGE IS ABSENT BECAUSE THAT IS WHAT IT SAYS.
+//
+// This is the predecessor-normalization claim proper: it starts from an independently fixed v4
+// document and passes it through the REAL decoder, rather than constructing the post-normalization
+// envelope by hand -- which would bypass the normalization the claim is about. The staging witness's
+// in-memory specimens test the inheritance rule and deliberately do not claim this route.
+//
+// MUTATION IT IS AIMED AT: retiring v4 the way v3 is retired. Under it this document refuses and the
+// claim goes red. The distinction it defends is that "no explicit staging selection" is a TRUTHFUL
+// reading of a v4 document -- staging did not exist when it was written -- whereas a v3 root would
+// have to invent authored bytes the semantic projection discarded.
+test fn scm_rl_a_valid_v4_document_reads_with_no_explicit_stage() -> Bool {
+  match load_repository(path: scm_rl_predecessor_v4_path) {
+    RepositoryLoaded { path: p, envelope: envelope } =>
+      p == scm_rl_predecessor_v4_path
+        && match envelope.staged {
+          Absent => true
+          Present { value: _ } => false
+        }
+    _ => false
+  }
+}
+
+// A v4 DOCUMENT CARRYING A STAGE MEMBER REFUSES RATHER THAN HAVING IT SILENTLY DISCARDED.
+//
+// No v4 writer could have produced such a document, so admitting it would mean reading bytes nobody
+// could have written -- and the two obvious wrong answers are equally bad: honouring the member reads
+// a v4 document under v5 rules, and ignoring it drops a declaration the document makes.
+//
+// THIS IS THE CLAIM THAT MAKES THE TWO READERS TWO READERS. A single tolerant reader admitting both
+// member populations passes the predecessor claim above and fails this one.
+test fn scm_rl_a_v4_document_declaring_a_stage_refuses() -> Bool {
+  match load_repository(path: scm_rl_v4_declaring_a_stage_path) {
+    RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: p, cause: _ } } =>
+      p == scm_rl_v4_declaring_a_stage_path
+    _ => false
+  }
+}
+
 test fn scm_repository_load_keystone_holds() -> Bool {
+  scm_rl_a_valid_v4_document_reads_with_no_explicit_stage() &&
+    scm_rl_a_v4_document_declaring_a_stage_refuses() &&
   scm_rl_a_well_formed_document_loads() &&
     scm_rl_an_absent_file_is_unreadable_not_empty() &&
     scm_rl_a_truncated_document_is_unparseable() &&

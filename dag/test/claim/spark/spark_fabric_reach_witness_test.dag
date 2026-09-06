@@ -1,0 +1,44 @@
+module test.claim.spark.spark_fabric_reach_witness
+
+import std.types { Bool, List, String }
+import product.placement_supply { host_identity_eq }
+import gunbc.fleet_intent_network { operator_host_srv2, operator_host_srv9, operator_host_srv5 }
+import gunbc.fleet_host_key_enrollment { KnownHostKeyRow, fleet_host_key_enrollments }
+import gunbc.fleet_known_hosts_anchor { fleet_known_hosts_rows, known_hosts_endpoint_conflict }
+import gunbc.spark.fabric_reach {
+  SparkReachPath, ReachManagementLan, ReachFabricRail,
+  spark_reach_path_for_executor, spark_reach_endpoint, fabric_rail_known_host_rows, spark_reach_path_wire,
+}
+
+fn w_is_rail(p: SparkReachPath) -> Bool {
+  match p { ReachFabricRail => true  ReachManagementLan => false }
+}
+
+// THE EXECUTOR'S POSITION PICKS THE PATH: a fabric host by its lane hostname takes the rail, a
+// runner or the workstation takes the LAN, and a trailing newline from `hostname -s` is not a third host.
+test fn a_fabric_host_executes_over_the_rail_and_anything_else_over_the_lan() -> Bool {
+  w_is_rail(p: spark_reach_path_for_executor(executor_short_hostname: "spark-3bd5"))
+    && w_is_rail(p: spark_reach_path_for_executor(executor_short_hostname: "spark-0c75\n"))
+    && !w_is_rail(p: spark_reach_path_for_executor(executor_short_hostname: "srv2"))
+    && !w_is_rail(p: spark_reach_path_for_executor(executor_short_hostname: "runner-7"))
+}
+
+// EACH PATH NAMES A DIFFERENT ADDRESS FOR THE SAME HOST, AND THE RAIL IS ABSENT FOR A HOST WITH NO LANE.
+test fn the_two_paths_are_two_addresses_and_the_rail_refuses_a_host_off_the_fabric() -> Bool {
+  (match spark_reach_endpoint(host: operator_host_srv9, path: ReachFabricRail) { Present { value: e } => e == "192.168.110.17"  Absent => false })
+    && (match spark_reach_endpoint(host: operator_host_srv9, path: ReachManagementLan) { Present { value: e } => e == "192.168.1.236"  Absent => false })
+    && (match spark_reach_endpoint(host: operator_host_srv5, path: ReachFabricRail) { Present { value: e } => e == "192.168.110.11"  Absent => false })
+    && (match spark_reach_endpoint(host: operator_host_srv2, path: ReachFabricRail) { Present { value: _ } => false  Absent => true })
+    && spark_reach_path_wire(p: ReachFabricRail) == "fabric-rail"
+}
+
+// THE RAIL ROWS PIN THE ENROLLED KEY AT THE RAIL ADDRESS: one per enrolled fabric host, same
+// fingerprint as its LAN row, and the combined anchored set has no endpoint enrolled twice.
+test fn the_rail_rows_carry_each_enrolled_fabric_hosts_key_and_the_anchored_set_has_no_conflict() -> Bool {
+  let rail = fabric_rail_known_host_rows()
+  length(rail) == 8
+    && all(rail, r => any(fleet_host_key_enrollments, k => host_identity_eq(a: k.host, b: r.host) && k.sha256_fingerprint == r.sha256_fingerprint && k.endpoint != r.endpoint))
+    && all(rail, r => starts_with(s: r.endpoint, prefix: "192.168.110."))
+    && length(fleet_known_hosts_rows()) == length(fleet_host_key_enrollments) + 8
+    && (match known_hosts_endpoint_conflict(rows: fleet_known_hosts_rows()) { Present { value: _ } => false  Absent => true })
+}

@@ -1156,6 +1156,15 @@ fn dashboard_instance_dispatch_worktree_root(instance: HostDashboardInstance) ->
   }
 }
 
+// THE COMPUTE ROOT: where the exact work contract's provider keeps leases, checkouts, the shared
+// per-host target directory and the content store (gunbc.compute.work_provider_local). Named here so
+// the deployment (gunbc.live_deploy.spec ComputeRoot) and the provider read one authority; the first
+// srv1 converge after the provider landed had no such member, and under a root-owned /opt/gunbc a
+// worker's first request would have refused StoreUnavailable at `install -d`.
+fn dashboard_instance_compute_root(instance: HostDashboardInstance) -> FilePath {
+  dashboard_instance_child(root: instance.instance_root, child: "compute")
+}
+
 fn dashboard_instance_dispatch_attempt_state_root(instance: HostDashboardInstance) -> FilePath {
   match instance.dispatch_state_scope {
     DispatchStateInstanceOwned { worktree_child: _, attempt_state_child } =>
