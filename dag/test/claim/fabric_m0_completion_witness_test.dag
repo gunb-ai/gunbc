@@ -1,0 +1,347 @@
+module test.claim.fabric_m0_completion_witness
+
+import std.types { Bool, List, String }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import gunbc.fabric_m0_completion {
+  AttemptId,
+  RequiredArtifactId,
+  RequiredReceiptId,
+  ArtifactObligations,
+  ArtifactObligationsDeclared,
+  ArtifactObligationsUnreadable,
+  ReceiptObligations,
+  ReceiptObligationsDeclared,
+  ReceiptObligationsUnreadable,
+  ComputationOutcome,
+  ComputationSucceeded,
+  ComputationFailed,
+  OriginReadback,
+  ReadbackConfirmed,
+  ReadbackAbsent,
+  ReadbackUnknown,
+  CommittedArtifact,
+  CommittedReceipt,
+  CommitManifest,
+  JobPublication,
+  PublishSuccess,
+  PublishComputationFailed,
+  PublishFinalizationFailed,
+  PublishPendingReconciliation,
+  admit_job_publication,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Two distinct fixture digests. The witness needs a SECOND value so the digest comparison is shown
+// to separate rather than answer true for everything -- an equality that never fails would satisfy
+// the positive control on its own.
+fn digest_a() -> Sha256Digest {
+  Sha256Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as Sha256DigestHex }
+}
+
+fn digest_b() -> Sha256Digest {
+  Sha256Digest { hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as Sha256DigestHex }
+}
+
+fn the_attempt() -> AttemptId {
+  "attempt-1" as AttemptId
+}
+
+fn other_attempt() -> AttemptId {
+  "attempt-2" as AttemptId
+}
+
+fn good_manifest() -> CommitManifest {
+  CommitManifest {
+    attempt: the_attempt(),
+    manifest_digest: digest_a(),
+    readback: ReadbackConfirmed { observed_digest: digest_a() },
+  }
+}
+
+fn one_required_artifact() -> ArtifactObligations {
+  ArtifactObligationsDeclared { required: ["build-output" as RequiredArtifactId] }
+}
+
+fn one_required_receipt() -> ReceiptObligations {
+  ReceiptObligationsDeclared { required: ["execution-receipt" as RequiredReceiptId] }
+}
+
+fn committed_output() -> List<CommittedArtifact> {
+  [
+    CommittedArtifact {
+      id: "build-output" as RequiredArtifactId,
+      attempt: the_attempt(),
+      recorded_digest: digest_a(),
+      readback: ReadbackConfirmed { observed_digest: digest_a() },
+    },
+  ]
+}
+
+fn committed_execution_receipt() -> List<CommittedReceipt> {
+  [
+    CommittedReceipt {
+      id: "execution-receipt" as RequiredReceiptId,
+      attempt: the_attempt(),
+      readback: ReadbackConfirmed { observed_digest: digest_a() },
+    },
+  ]
+}
+
+fn is_success(p: JobPublication) -> Bool {
+  match p {
+    PublishSuccess { attempt: _, manifest_digest: _ } => true
+    other => false
+  }
+}
+
+fn is_finalization_failure(p: JobPublication) -> Bool {
+  match p {
+    PublishFinalizationFailed { attempt: _, subject: _, cause: _ } => true
+    other => false
+  }
+}
+
+fn is_pending(p: JobPublication) -> Bool {
+  match p {
+    PublishPendingReconciliation { attempt: _, subject: _, cause: _ } => true
+    other => false
+  }
+}
+
+fn publish(
+  computation: ComputationOutcome,
+  artifacts: ArtifactObligations,
+  receipts: ReceiptObligations,
+  arts: List<CommittedArtifact>,
+  recs: List<CommittedReceipt>,
+  manifest: CommitManifest
+) -> JobPublication {
+  admit_job_publication(
+    attempt: the_attempt(),
+    computation: computation,
+    artifacts: artifacts,
+    receipts: receipts,
+    committed_artifacts: arts,
+    committed_receipts: recs,
+    manifest: manifest,
+  )
+}
+
+// THE POSITIVE CONTROL. Without it every refusal below is satisfied by an authority that never
+// publishes anything, which is the shape the brief names explicitly: an implementation refusing
+// every job does not satisfy M0.
+test fn a_complete_attempt_publishes_success() -> Bool {
+  is_success(p: publish(
+    computation: ComputationSucceeded,
+    artifacts: one_required_artifact(),
+    receipts: one_required_receipt(),
+    arts: committed_output(),
+    recs: committed_execution_receipt(),
+    manifest: good_manifest(),
+  ))
+}
+
+// WITHHOLD THE REQUIRED ARTIFACT. The obligation set must not shrink to match what arrived.
+test fn a_withheld_required_artifact_prevents_success() -> Bool {
+  is_finalization_failure(p: publish(
+    computation: ComputationSucceeded,
+    artifacts: one_required_artifact(),
+    receipts: one_required_receipt(),
+    arts: [],
+    recs: committed_execution_receipt(),
+    manifest: good_manifest(),
+  ))
+}
+
+test fn a_withheld_required_receipt_prevents_success() -> Bool {
+  is_finalization_failure(p: publish(
+    computation: ComputationSucceeded,
+    artifacts: one_required_artifact(),
+    receipts: one_required_receipt(),
+    arts: committed_output(),
+    recs: [],
+    manifest: good_manifest(),
+  ))
+}
+
+// AN UNREADABLE DECLARATION IS NOT AN EMPTY ONE. This is the pair the module's constructor split
+// exists for, and it is checked in BOTH directions: the declared-empty roster must still succeed,
+// or the refusal above would be satisfied by an authority that simply rejects every zero-length
+// roster and the distinction would carry no information.
+test fn an_unreadable_artifact_declaration_prevents_success() -> Bool {
+  is_finalization_failure(p: publish(
+    computation: ComputationSucceeded,
+    artifacts: ArtifactObligationsUnreadable { cause: "declaration unreadable" },
+    receipts: one_required_receipt(),
+    arts: committed_output(),
+    recs: committed_execution_receipt(),
+    manifest: good_manifest(),
+  ))
+}
+
+test fn a_declared_empty_artifact_roster_still_succeeds() -> Bool {
+  is_success(p: publish(
+    computation: ComputationSucceeded,
+    artifacts: ArtifactObligationsDeclared { required: [] },
+    receipts: one_required_receipt(),
+    arts: [],
+    recs: committed_execution_receipt(),
+    manifest: good_manifest(),
+  ))
+}
+
+test fn an_unreadable_receipt_declaration_prevents_success() -> Bool {
+  is_finalization_failure(p: publish(
+    computation: ComputationSucceeded,
+    artifacts: one_required_artifact(),
+    receipts: ReceiptObligationsUnreadable { cause: "declaration unreadable" },
+    arts: committed_output(),
+    recs: committed_execution_receipt(),
+    manifest: good_manifest(),
+  ))
+}
+
+// A SUCCESSFUL STORAGE FINALIZATION MUST NOT INVERT A FAILED BUILD.
+test fn a_failed_build_stays_failed_though_every_receipt_commits() -> Bool {
+  match publish(
+    computation: ComputationFailed { cause: "compile error" },
+    artifacts: one_required_artifact(),
+    receipts: one_required_receipt(),
+    arts: committed_output(),
+    recs: committed_execution_receipt(),
+    manifest: good_manifest(),
+  ) {
+    PublishComputationFailed { attempt: _, cause: c } => c == "compile error"
+    other => false
+  }
+}
+
+// A READBACK THAT DISAGREES WITH THE COMMITTED RECORD IS NOT A HIT.
+test fn a_readback_digest_mismatch_prevents_success() -> Bool {
+  is_finalization_failure(p: publish(
+    computation: ComputationSucceeded,
+    artifacts: one_required_artifact(),
+    receipts: one_required_receipt(),
+    arts: [
+      CommittedArtifact {
+        id: "build-output" as RequiredArtifactId,
+        attempt: the_attempt(),
+        recorded_digest: digest_a(),
+        readback: ReadbackConfirmed { observed_digest: digest_b() },
+      },
+    ],
+    recs: committed_execution_receipt(),
+    manifest: good_manifest(),
+  ))
+}
+
+test fn an_absent_object_at_origin_prevents_success() -> Bool {
+  is_finalization_failure(p: publish(
+    computation: ComputationSucceeded,
+    artifacts: one_required_artifact(),
+    receipts: one_required_receipt(),
+    arts: [
+      CommittedArtifact {
+        id: "build-output" as RequiredArtifactId,
+        attempt: the_attempt(),
+        recorded_digest: digest_a(),
+        readback: ReadbackAbsent,
+      },
+    ],
+    recs: committed_execution_receipt(),
+    manifest: good_manifest(),
+  ))
+}
+
+// A LOST ACKNOWLEDGEMENT IS NEITHER SUCCESS NOR FAILURE. This is the arm that would disappear if
+// unknown were folded into either decided outcome, so it is asserted as pending specifically --
+// not merely as not-success, which ReadbackAbsent already satisfies.
+test fn a_lost_acknowledgement_is_pending_not_decided() -> Bool {
+  is_pending(p: publish(
+    computation: ComputationSucceeded,
+    artifacts: one_required_artifact(),
+    receipts: one_required_receipt(),
+    arts: [
+      CommittedArtifact {
+        id: "build-output" as RequiredArtifactId,
+        attempt: the_attempt(),
+        recorded_digest: digest_a(),
+        readback: ReadbackUnknown { cause: "upload acknowledgement lost" },
+      },
+    ],
+    recs: committed_execution_receipt(),
+    manifest: good_manifest(),
+  ))
+}
+
+// A DEFINITELY-MISSING OBJECT DOMINATES AN UNKNOWN ONE, so a job that is already incomplete is not
+// parked in pending forever waiting on a reconcile that cannot complete it.
+test fn a_missing_object_dominates_an_unknown_one() -> Bool {
+  is_finalization_failure(p: publish(
+    computation: ComputationSucceeded,
+    artifacts: ArtifactObligationsDeclared {
+      required: ["build-output" as RequiredArtifactId, "second-output" as RequiredArtifactId],
+    },
+    receipts: one_required_receipt(),
+    arts: [
+      CommittedArtifact {
+        id: "build-output" as RequiredArtifactId,
+        attempt: the_attempt(),
+        recorded_digest: digest_a(),
+        readback: ReadbackUnknown { cause: "upload acknowledgement lost" },
+      },
+    ],
+    recs: committed_execution_receipt(),
+    manifest: good_manifest(),
+  ))
+}
+
+// EVIDENCE FROM A FOREIGN ATTEMPT DOES NOT DISCHARGE THIS ATTEMPT'S OBLIGATIONS.
+test fn a_foreign_attempts_artifact_does_not_satisfy_this_one() -> Bool {
+  is_finalization_failure(p: publish(
+    computation: ComputationSucceeded,
+    artifacts: one_required_artifact(),
+    receipts: one_required_receipt(),
+    arts: [
+      CommittedArtifact {
+        id: "build-output" as RequiredArtifactId,
+        attempt: other_attempt(),
+        recorded_digest: digest_a(),
+        readback: ReadbackConfirmed { observed_digest: digest_a() },
+      },
+    ],
+    recs: committed_execution_receipt(),
+    manifest: good_manifest(),
+  ))
+}
+
+test fn a_manifest_bound_to_another_attempt_prevents_success() -> Bool {
+  is_finalization_failure(p: publish(
+    computation: ComputationSucceeded,
+    artifacts: one_required_artifact(),
+    receipts: one_required_receipt(),
+    arts: committed_output(),
+    recs: committed_execution_receipt(),
+    manifest: CommitManifest {
+      attempt: other_attempt(),
+      manifest_digest: digest_a(),
+      readback: ReadbackConfirmed { observed_digest: digest_a() },
+    },
+  ))
+}
+
+test fn an_uncommitted_manifest_prevents_success() -> Bool {
+  is_finalization_failure(p: publish(
+    computation: ComputationSucceeded,
+    artifacts: one_required_artifact(),
+    receipts: one_required_receipt(),
+    arts: committed_output(),
+    recs: committed_execution_receipt(),
+    manifest: CommitManifest {
+      attempt: the_attempt(),
+      manifest_digest: digest_a(),
+      readback: ReadbackAbsent,
+    },
+  ))
+}
