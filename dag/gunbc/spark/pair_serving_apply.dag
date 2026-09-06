@@ -11,7 +11,7 @@ import extdeps.ssh.password_session { password_file_ssh_exec_portable_words_with
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { gunbc_spark_pair_runtime_dockerfile }
 import gunbc.auth.materialized_secret { with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
-import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.spark.fabric_reach { SparkReachPath, ReachManagementLan, ReachFabricRail, spark_reach_path_wire, spark_reach_endpoint, ExecutorReach, ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
 import gunbc.fleet_known_hosts_anchor {
   FleetOpenSshTrustPolicy, fleet_ssh_attempt_identity, materialize_fleet_known_hosts_anchor,
   fleet_openssh_trust_policy_of, known_hosts_materialization_receipt,
@@ -168,9 +168,9 @@ fn spark_pair_host_applied(o: SparkPairHostApplyOutcome) -> Bool {
   }
 }
 
-fn spark_pair_apply_receipt_body(at: String, outcomes: List<SparkPairHostApplyOutcome>) -> String {
+fn spark_pair_apply_receipt_body(at: String, executor: String, path: SparkReachPath, outcomes: List<SparkPairHostApplyOutcome>) -> String {
   join([
-    "spark pair serving apply at=", at, "\n",
+    "spark pair serving apply at=", at, " executor=", executor, " reach=", spark_reach_path_wire(p: path), "\n",
     join(map(outcomes, o => join([spark_pair_host_apply_outcome_line(o: o), "\n"], "")), ""),
   ], "")
 }
@@ -179,28 +179,32 @@ fn spark_pair_apply_all_applied(outcomes: List<SparkPairHostApplyOutcome>) -> Bo
   all(outcomes, o => spark_pair_host_applied(o: o))
 }
 
-fn spark_pair_privileged_leg(trust: FleetOpenSshTrustPolicy, plan: SparkPairHostApplyPlan, admin_credential: Secret, admin_credential_file: NonEmptyStr) -> SparkPairHostApplyOutcome {
+fn spark_pair_privileged_leg(trust: FleetOpenSshTrustPolicy, path: SparkReachPath, plan: SparkPairHostApplyPlan, admin_credential: Secret, admin_credential_file: NonEmptyStr) -> SparkPairHostApplyOutcome {
   match portable_remote_words(raws: ["sudo", "-S", "sh", "-s"]) {
     Absent => SparkPairHostApplyFailed { host: plan.host, cause: "the privileged invocation is not expressible as portable remote words" }
-    Present { value: words } => {
-      let r = password_file_ssh_exec_portable_words_with_stdin(
-        password_file: admin_credential_file,
-        client_args: shape_fleet_ssh_password_exec_trusting(
-          trust: trust,
-          target: SshTarget {
-            endpoint: fleet_probe_endpoint_for(host: plan.host as String) as NonEmptyStr,
-            principal: spark_operator_bootstrap_login as NonEmptyStr,
-          },
-          words: words,
-        ),
-        stdin_payload: join([admin_credential as String, "\n", plan.script, "\n"], ""),
-      )
-      if r.success {
-        SparkPairHostApplied { host: plan.host, detail: trim(s: r.stdout) }
-      } else {
-        SparkPairHostApplyFailed { host: plan.host, cause: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+    Present { value: words } =>
+      match spark_reach_endpoint(host: plan.host, path: path) {
+        Absent => SparkPairHostApplyFailed { host: plan.host, cause: join(["no ", spark_reach_path_wire(p: path), " endpoint: the host has no fabric lane"], "") }
+        Present { value: endpoint } => {
+          let r = password_file_ssh_exec_portable_words_with_stdin(
+            password_file: admin_credential_file,
+            client_args: shape_fleet_ssh_password_exec_trusting(
+              trust: trust,
+              target: SshTarget {
+                endpoint: endpoint as NonEmptyStr,
+                principal: spark_operator_bootstrap_login as NonEmptyStr,
+              },
+              words: words,
+            ),
+            stdin_payload: join([admin_credential as String, "\n", plan.script, "\n"], ""),
+          )
+          if r.success {
+            SparkPairHostApplied { host: plan.host, detail: join([spark_reach_path_wire(p: path), " ", trim(s: r.stdout)], "") }
+          } else {
+            SparkPairHostApplyFailed { host: plan.host, cause: join([spark_reach_path_wire(p: path), " exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+          }
+        }
       }
-    }
   }
 }
 
@@ -215,6 +219,9 @@ func spark_pair_serving_apply_wet() -> ProcessExit
   } else if length(refusals) != 0 {
     exit_failure(reason: join(["spark_pair_serving_apply: a group realization refused: ", join(refusals, "; ")], ""))
   } else {
+    match observe_executor_reach() {
+      ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["spark_pair_serving_apply: ", c], ""))
+      ExecutorReachKnown { short_hostname: executor, path: path } =>
           match read_bootstrap_credential() {
             BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
             BootstrapCredentialReady { secret: administrator } =>
@@ -232,9 +239,9 @@ func spark_pair_serving_apply_wet() -> ProcessExit
                           flat_map(plans, gp => match gp {
                             SparkPairApplyRefused { cause: _ } => [] as List<SparkPairHostApplyOutcome>
                             SparkPairApplyPlanned { workers: wps, head: hp } => {
-                              let ws = map(wps, p => spark_pair_privileged_leg(trust: trust, plan: p, admin_credential: administrator as Secret, admin_credential_file: file))
+                              let ws = map(wps, p => spark_pair_privileged_leg(trust: trust, path: path, plan: p, admin_credential: administrator as Secret, admin_credential_file: file))
                               let h = if spark_pair_apply_all_applied(outcomes: ws) {
-                                spark_pair_privileged_leg(trust: trust, plan: hp, admin_credential: administrator as Secret, admin_credential_file: file)
+                                spark_pair_privileged_leg(trust: trust, path: path, plan: hp, admin_credential: administrator as Secret, admin_credential_file: file)
                               } else {
                                 SparkPairHostApplyFailed { host: hp.host, cause: "not attempted: a worker apply failed" }
                               }
@@ -245,7 +252,7 @@ func spark_pair_serving_apply_wet() -> ProcessExit
                       ) {
                         MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
                         MaterializedSshKeyFileBracketCompleted { value: outcomes } => {
-                          let body = spark_pair_apply_receipt_body(at: probed_at_word(reading: now) as String, outcomes: outcomes)
+                          let body = spark_pair_apply_receipt_body(at: probed_at_word(reading: now) as String, executor: executor, path: path, outcomes: outcomes)
                           let wr = Filesystem.Write(path: spark_pair_apply_receipt_path, content: body)
                           if !wr.success {
                             exit_failure(reason: join(["spark pair apply receipt write failed: ", wr.error], ""))
@@ -260,5 +267,6 @@ func spark_pair_serving_apply_wet() -> ProcessExit
                 }
               }
           }
+    }
   }
 }
