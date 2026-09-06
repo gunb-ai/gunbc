@@ -269,9 +269,25 @@ type ProjectDelivery
   | ProjectDeliveryProvisionRequired { printer: PhysicalAssetIdentity, desired: SecretRef }
 
 // THE ENDPOINT THE MACHINE ACTUALLY PRESENTS, recorded as an observation of THIS device rather than
-// a general claim about its model line. The A1 mini's LAN file channel is implicit FTPS on 990 with
-// a self-signed certificate, and the account name is fixed by the firmware; the password is the LAN
-// access code, which lives only in Secret Manager and is resolved per delivery.
+// a general claim about its model line. The A1 mini's LAN file channel is implicit FTPS on 990 and
+// the account name is fixed by the firmware.
+//
+// TWO CLAIMS THAT STOOD HERE WERE WRONG, and both were contradicted by facts this same branch had
+// already established -- which is worse than being unverified, because the correction was sitting
+// one import away.
+//
+// The certificate is NOT self-signed. extdeps.ietf.ftps records the measured result: the segment
+// returns a certificate issued by C=CN, O=BBL Technologies Co., Ltd, CN=BBL CA -- a vendor CA
+// chain. "Self-signed" was authored from an expectation about cheap devices and never observed, and
+// it matters because it is the sentence that makes disabling verification sound inevitable rather
+// than a declared weakening with --cacert as its named trigger.
+//
+// The access code does NOT "live only in Secret Manager". At this head neither printer's code has
+// been materialized there -- which is precisely why PrinterCredentialProvisionRequired and
+// ProjectDeliveryProvisionRequired exist and why the wet run refuses. The code is resolved per
+// delivery FROM Secret Manager when a provisioning receipt names a version; until then, delivery
+// refuses rather than proceeding. Describing the destination state as the current one is how a
+// refusal path comes to look like an edge case instead of the state we are actually in.
 data bambu_lan_ftps_user: NonEmptyStr = "bblp"
 
 fn bambu_lan_endpoint(host: NonEmptyStr) -> FtpsEndpoint {

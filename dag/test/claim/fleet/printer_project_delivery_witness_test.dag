@@ -43,7 +43,9 @@ test fn w_the_ftps_port_follows_the_negotiation_in_both_directions() -> Bool {
 }
 
 // AND VERIFICATION IS A DECISION, NOT A DEFAULT. If this ever reads false for FtpsVerifyPeer, a
-// weakening authored for one self-signed device has escaped to every endpoint.
+// weakening authored for ONE enumerated peer class has escaped to every endpoint. The device is not
+// self-signed -- it presents a BBL CA chain, measured -- and the waiver is narrower than "the cert
+// is bad": it exists because the subject names the serial rather than the dialed address.
 test fn w_peer_verification_is_waived_only_by_the_enumerated_peer_class() -> Bool {
   ftps_verifies_peer(v: FtpsVerifyPeer)
   && ftps_verifies_peer(
