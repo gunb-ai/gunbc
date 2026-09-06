@@ -29,8 +29,9 @@ data slbu_logic_source_rel: String = "dag/std/logic.dag"
 // subject-specific behavioral driver exercising the emitted dag/std/logic.dag module.
 // Unlike the hand-authored Cargo.toml (which duplicates the emitter's dependency list),
 // there is no emitter-produced test driver for this subject — the emitter does not
-// produce behavioral test harnesses. Exempt from a dissolution trigger: no parallel
-// authority exists to drift from.
+// produce behavioral test harnesses. DISSOLVES WHEN the emitter produces a behavioral
+// witness driver for a modeled subject from the modeled source, at which point this
+// hand-authored string is replaced by a reference to the emitted driver.
 
 data slbu_driver_main_source: String = "use v1_compiled::std_logic;\n\nfn eq(e: std_logic::Classical, v: std_logic::Classical) -> bool {\n    matches!((e, v),\n        (std_logic::Classical::True, std_logic::Classical::True)\n            | (std_logic::Classical::False, std_logic::Classical::False)\n    )\n}\n\nfn main() {\n    let tru = std_logic::Classical::True;\n    let fls = std_logic::Classical::False;\n    let mut all_pass = true;\n    let mut cases = 0;\n\n    // classical_not\n    all_pass = all_pass && eq(std_logic::classical_not(tru), fls); cases += 1;\n    all_pass = all_pass && eq(std_logic::classical_not(fls), tru); cases += 1;\n\n    // classical_and\n    all_pass = all_pass && eq(std_logic::classical_and(tru, tru), tru); cases += 1;\n    all_pass = all_pass && eq(std_logic::classical_and(tru, fls), fls); cases += 1;\n    all_pass = all_pass && eq(std_logic::classical_and(fls, tru), fls); cases += 1;\n    all_pass = all_pass && eq(std_logic::classical_and(fls, fls), fls); cases += 1;\n\n    // classical_or\n    all_pass = all_pass && eq(std_logic::classical_or(tru, tru), tru); cases += 1;\n    all_pass = all_pass && eq(std_logic::classical_or(tru, fls), tru); cases += 1;\n    all_pass = all_pass && eq(std_logic::classical_or(fls, tru), tru); cases += 1;\n    all_pass = all_pass && eq(std_logic::classical_or(fls, fls), fls); cases += 1;\n\n    println!(\"SELF_HOST_LOGIC_SEED_UNAVAIL_CASES: {}\", cases);\n\n    if all_pass {\n        println!(\"SELF_HOST_LOGIC_SEED_UNAVAIL: PASS\");\n        std::process::exit(0);\n    } else {\n        println!(\"SELF_HOST_LOGIC_SEED_UNAVAIL: FAIL\");\n        std::process::exit(1);\n    }\n}\n"
 
