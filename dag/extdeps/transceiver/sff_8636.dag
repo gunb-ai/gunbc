@@ -132,11 +132,6 @@ fn sff8636_nominal_rate_from_byte140(code: Nat) -> Sff8636NominalRate {
   }
 }
 
-// Byte 222, the extended field the escape points at, in units of 250 MBd.
-fn sff8636_nominal_rate_from_byte222(code: Nat) -> SymbolRate {
-  symbol_rate(code * 250000000)
-}
-
 // ================= BYTE 192 / BYTE 116: EXTENDED SPECIFICATION COMPLIANCE =================
 //
 // THE BYTE IS THE EVIDENCE; THE MODE LIST IS AN INTERPRETATION OF IT. An earlier head carried
