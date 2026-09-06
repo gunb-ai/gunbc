@@ -200,13 +200,49 @@ data runner_host_production_listeners: List<DeclaredListener> = [
 //
 // THE DANGEROUS STATE IS THE UNION, and it is unrepresentable here rather than discouraged: there is
 // no arm that is both.
+// A THIRD PURPOSE EXISTS BECAUSE A REAL BOOT HAD NO TRUTHFUL CONSTRUCTOR HERE. The 2026-09-06 KVM
+// probe ran Firecracker DIRECTLY, with no jailer -- which the production graph forbids, since it
+// requires HostSupervisor -> AttemptJailer -> AttemptFirecracker. And recovery refuses VM work
+// outright. So the machine that actually ran was representable as neither, and a two-armed model
+// would have forced that run to be labelled production simply because it achieved the production
+// path's first interesting effect.
+//
+// WHAT THE QUALIFICATION PURPOSE ADMITS IS DELIBERATELY NARROW: one bounded attempt, one guest
+// pinned by digest, no arbitrary or GitHub workload, and direct Firecracker permitted FOR THIS
+// MILESTONE ONLY. It is not a weaker production; it is a different subject, and nothing running
+// under it may be described as production-ready.
 type HostBootPurpose
   = RunnerHostProduction
+  | RunnerHostQualificationProbe
   | RunnerHostRecovery
 
 fn admits_vm_work(purpose: HostBootPurpose) -> Bool {
   match purpose {
     RunnerHostProduction => true
+    RunnerHostQualificationProbe => true
+    RunnerHostRecovery => false
+  }
+}
+
+// ARBITRARY WORKLOAD IS THE DISTINCTION THAT MATTERS, not whether a VM starts. The qualification
+// profile runs a known, digest-pinned guest; admitting someone else's code under it would be
+// running untrusted work without the containment the production graph exists to require.
+fn admits_arbitrary_workload(purpose: HostBootPurpose) -> Bool {
+  match purpose {
+    RunnerHostProduction => true
+    RunnerHostQualificationProbe => false
+    RunnerHostRecovery => false
+  }
+}
+
+// THE JAILER IS REQUIRED BY PRODUCTION AND WAIVED ONLY FOR QUALIFICATION, and the waiver is written
+// as its own function so it is a decision someone can find rather than an omission in a launch
+// path. Firecracker's own guidance is that production deployments start it through the jailer; a
+// probe that skips it proves KVM works and proves nothing about containment.
+fn requires_jailer(purpose: HostBootPurpose) -> Bool {
+  match purpose {
+    RunnerHostProduction => true
+    RunnerHostQualificationProbe => false
     RunnerHostRecovery => false
   }
 }
@@ -214,7 +250,16 @@ fn admits_vm_work(purpose: HostBootPurpose) -> Bool {
 fn admits_interactive_console_shell(purpose: HostBootPurpose) -> Bool {
   match purpose {
     RunnerHostProduction => false
+    RunnerHostQualificationProbe => true
     RunnerHostRecovery => true
+  }
+}
+
+fn is_production_ready(purpose: HostBootPurpose) -> Bool {
+  match purpose {
+    RunnerHostProduction => true
+    RunnerHostQualificationProbe => false
+    RunnerHostRecovery => false
   }
 }
 
@@ -315,3 +360,32 @@ type SurfaceProvenance
   = DerivedFromOurImage
   | ObservedFromVendorFirmware
   | ObservedFromNetworkFabric
+
+// THE QUALIFICATION PROCESS GRAPH, declared beside the production one rather than derived from it
+// by subtraction. It is what the 2026-09-06 probe actually ran: a supervisor, and one Firecracker
+// launched directly for one named attempt. The production roster above is unchanged and still
+// requires the jailer between them.
+data runner_host_qualification_processes: List<HostProcessClass> = [
+  HostProcessClass {
+    role: HostSupervisor,
+    cardinality: ExactlyOne,
+    parent: ParentIsKernel,
+    executable_digest: "unbound-until-image-build",
+    runs_as: "root",
+    may_spawn: [AttemptFirecracker],
+  },
+  HostProcessClass {
+    role: AttemptFirecracker,
+    cardinality: ExactlyOnePerAdmittedAttempt,
+    parent: ParentIsRole { role: HostSupervisor },
+    executable_digest: "unbound-until-image-build",
+    runs_as: "root",
+    may_spawn: [],
+  },
+]
+
+// THE QUALIFICATION PROFILE DECLARES NO LISTENER AT ALL, which is worth stating rather than leaving
+// as an empty list nobody reads. The probe image has no network configured and no sshd; its only
+// ingress is the serial console, which is not a network surface and is reachable only through the
+// BMC.
+data runner_host_qualification_listeners: List<DeclaredListener> = []
