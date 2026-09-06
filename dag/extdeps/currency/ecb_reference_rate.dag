@@ -83,10 +83,3 @@ fn convert_money(
     }
   }
 }
-
-fn fx_conversion_or(c: FxConversion, fallback: MoneyAmountMicro) -> MoneyAmountMicro {
-  match c {
-    FxConverted { amount, through } => amount,
-    FxPairUnavailable { obligation } => fallback,
-  }
-}

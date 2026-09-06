@@ -10,6 +10,7 @@ import extdeps.currency.currency { Eur }
 import std.measure {
   ByteSize,
   Gigabyte,
+  AmortizationMonths,
   HardwareThreadCount,
   Hertz,
   PhysicalCoreCount,
@@ -17,6 +18,7 @@ import std.measure {
   gigabyte,
   gigabyte_count,
   hardware_thread_count,
+  amortization_months_count,
   hardware_thread_count_value,
   hertz,
   physical_core_count,
@@ -520,11 +522,21 @@ fn hetzner_listed_setup_micros(row: HetznerListedServerRow) -> Int {
 // not about the vendor: a machine held for three months and a machine held for three years spread
 // the same fee very differently, and burying a choice of horizon inside a rate would make two
 // incomparable numbers look like one.
-fn hetzner_listed_effective_monthly_micros(row: HetznerListedServerRow, holding_months: Int) -> Int {
-  if holding_months <= 0 {
-    0 - 1
+fn hetzner_listed_effective_monthly(row: HetznerListedServerRow, holding: AmortizationMonths) -> ListedRateStanding {
+  let months = amortization_months_count(m: holding)
+  if months <= 0 {
+    RateNotMeaningful {
+      reason: "a holding period of zero months spreads a setup fee over nothing. There is no monthly figure to report and the caller must be told so rather than handed a number.",
+    }
   } else {
-    hetzner_listed_monthly_micros(row: row) + hetzner_listed_setup_micros(row: row) / holding_months
+    ListedRate {
+      rate: MoneyPerMonth {
+        amount: money_amount_micro(
+          count: hetzner_listed_monthly_micros(row: row) + hetzner_listed_setup_micros(row: row) / months,
+        ),
+        currency: row.monthly.currency,
+      },
+    }
   }
 }
 
@@ -532,11 +544,28 @@ fn hetzner_listed_effective_monthly_micros(row: HetznerListedServerRow, holding_
 // listing states both, and every arm64 product this repository compares against sells whole cores
 // - so a per-thread figure would compare a half-core against a whole one. GPU rows refuse: the
 // price is mostly not buying cores, so dividing it by cores would manufacture a comparison.
+// A RATE THAT SURVIVES DIVISION KEEPS ITS CURRENCY. A bare micro Int would erase both the unit
+// and the currency, and a euro figure that has forgotten it is a euro is exactly the input that
+// manufactured this repository's retired currency-premium claim.
 type ListedRateStanding
-  = ListedRate { micros: Int }
+  = ListedRate { rate: MoneyPerMonth }
   | RateNotMeaningful { reason: NonEmptyStr }
 
-fn hetzner_listed_per_physical_core_micros(row: HetznerListedServerRow, holding_months: Int) -> ListedRateStanding {
+// DIVIDING A REFUSAL IS STILL A REFUSAL. The cause propagates unchanged rather than being
+// absorbed into a number, so a caller cannot mistake an unpriceable row for a cheap one.
+fn listed_rate_divided(s: ListedRateStanding, divisor: Int) -> ListedRateStanding {
+  match s {
+    RateNotMeaningful { reason } => RateNotMeaningful { reason: reason },
+    ListedRate { rate } => ListedRate {
+      rate: MoneyPerMonth {
+        amount: money_amount_micro(count: money_per_month_micros(q: rate) / divisor),
+        currency: rate.currency,
+      },
+    },
+  }
+}
+
+fn hetzner_listed_per_physical_core(row: HetznerListedServerRow, holding: AmortizationMonths) -> ListedRateStanding {
   let cores = physical_core_count_value(c: listed_cpu_physical_cores(c: row.cpu))
   if listing_is_cpu_only(w: row.workload) == false {
     RateNotMeaningful {
@@ -545,13 +574,13 @@ fn hetzner_listed_per_physical_core_micros(row: HetznerListedServerRow, holding_
   } else if cores <= 0 {
     RateNotMeaningful { reason: "no physical core count on this row" }
   } else {
-    ListedRate { micros: hetzner_listed_effective_monthly_micros(row: row, holding_months: holding_months) / cores }
+    listed_rate_divided(s: hetzner_listed_effective_monthly(row: row, holding: holding), divisor: cores)
   }
 }
 
 // PER DECIMAL GIGABYTE OF THE BASE CONFIGURATION. Both the numerator and the denominator are read
 // from the base end of the range, per the ListedPriceBasis note above.
-fn hetzner_listed_per_base_gb_micros(row: HetznerListedServerRow, holding_months: Int) -> ListedRateStanding {
+fn hetzner_listed_per_base_gb(row: HetznerListedServerRow, holding: AmortizationMonths) -> ListedRateStanding {
   let gb = gigabyte_count(g: row.base_memory_gb)
   if listing_is_cpu_only(w: row.workload) == false {
     RateNotMeaningful {
@@ -560,46 +589,48 @@ fn hetzner_listed_per_base_gb_micros(row: HetznerListedServerRow, holding_months
   } else if gb <= 0 {
     RateNotMeaningful { reason: "no base memory figure on this row" }
   } else {
-    ListedRate { micros: hetzner_listed_effective_monthly_micros(row: row, holding_months: holding_months) / gb }
+    listed_rate_divided(s: hetzner_listed_effective_monthly(row: row, holding: holding), divisor: gb)
   }
 }
 
-fn listed_rate_micros_or(s: ListedRateStanding, fallback: Int) -> Int {
-  match s {
-    ListedRate { micros } => micros,
-    RateNotMeaningful { reason } => fallback,
+fn listed_rate_cheaper(a: ListedRateStanding, b: ListedRateStanding) -> ListedRateStanding {
+  match a {
+    RateNotMeaningful { reason } => b,
+    ListedRate { rate } => {
+      let a_micros = money_per_month_micros(q: rate)
+      match b {
+        RateNotMeaningful { reason } => a,
+        ListedRate { rate } => if money_per_month_micros(q: rate) < a_micros { b } else { a },
+      }
+    },
   }
 }
 
-data listed_rate_absent_sentinel: Int = 1000000000000
+data listed_rate_none_meaningful: ListedRateStanding = RateNotMeaningful {
+  reason: "no row on the listing carries a meaningful rate on this axis - every row either refused or the listing is empty",
+}
 
 // THE CHEAPEST CPU-ONLY CORE ON THE LISTING, folded rather than transcribed, so that adding a row
 // moves the answer instead of leaving a stale number in prose beside a fresh roster.
-fn hetzner_listed_cheapest_per_core_micros(holding_months: Int) -> Int {
+fn hetzner_listed_cheapest_per_core(holding: AmortizationMonths) -> ListedRateStanding {
   fold(
     hetzner_listed_catalog(),
-    init: listed_rate_absent_sentinel,
-    f: (acc, row) => {
-      let r = listed_rate_micros_or(
-        s: hetzner_listed_per_physical_core_micros(row: row, holding_months: holding_months),
-        fallback: listed_rate_absent_sentinel,
-      )
-      if r < acc { r } else { acc }
-    },
+    init: listed_rate_none_meaningful,
+    f: (acc, row) => listed_rate_cheaper(
+      a: acc,
+      b: hetzner_listed_per_physical_core(row: row, holding: holding),
+    ),
   )
 }
 
-fn hetzner_listed_cheapest_per_base_gb_micros(holding_months: Int) -> Int {
+fn hetzner_listed_cheapest_per_base_gb(holding: AmortizationMonths) -> ListedRateStanding {
   fold(
     hetzner_listed_catalog(),
-    init: listed_rate_absent_sentinel,
-    f: (acc, row) => {
-      let r = listed_rate_micros_or(
-        s: hetzner_listed_per_base_gb_micros(row: row, holding_months: holding_months),
-        fallback: listed_rate_absent_sentinel,
-      )
-      if r < acc { r } else { acc }
-    },
+    init: listed_rate_none_meaningful,
+    f: (acc, row) => listed_rate_cheaper(
+      a: acc,
+      b: hetzner_listed_per_base_gb(row: row, holding: holding),
+    ),
   )
 }
 

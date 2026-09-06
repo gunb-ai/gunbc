@@ -2,24 +2,30 @@ module test.claim.hetzner_listing_witness
 
 import extdeps.currency.currency { CurrencyCode, Eur, Usd, currency_code_eq, currency_numeric_code, currency_minor_unit_exponent }
 import extdeps.currency.ecb_reference_rate {
-  FxConversion, FxConverted, FxPairUnavailable, convert_money, fx_conversion_or,
+  FxConversion, FxConverted, FxPairUnavailable, convert_money,
   ecb_eur_usd_2026_09_04, ecb_reference_rates,
 }
 import extdeps.pricing.hetzner_dedicated {
-  hetzner_listed_catalog, hetzner_listed_cheapest_per_core_micros,
-  hetzner_listed_cheapest_per_base_gb_micros, hetzner_admissible_as_arm64_cost_floor,
-  hetzner_listed_per_physical_core_micros, hetzner_listed_effective_monthly_micros,
+  hetzner_listed_catalog, hetzner_listed_cheapest_per_core,
+  hetzner_listed_cheapest_per_base_gb, hetzner_admissible_as_arm64_cost_floor,
+  hetzner_listed_per_physical_core, hetzner_listed_effective_monthly,
   hetzner_listed_monthly_micros, hetzner_listed_setup_micros,
   ListedRateStanding, ListedRate, RateNotMeaningful,
   hetzner_ex63_listed, hetzner_gex131_listed, hetzner_gex45_listed, hetzner_ax41_listed,
   hetzner_dx294_listed,
 }
 import std.types { Bool, Int }
-import std.measure { money_amount_micro, money_amount_micro_count }
+import std.measure {
+  amortization_months, money_amount_micro, money_amount_micro_count, money_per_month_micros,
+}
 import extdeps.cloud.hetzner {
   cax41_catalog, cax41_catalog_superseded, cax41_catalog_usd, tariff_is_current,
-  hetzner_cloud_listed_catalog, hetzner_cloud_orderable_rows, hetzner_cloud_arm_rows_orderable,
-  admissible_as_purchasable_floor, cax41_listed, cx23_listed,
+  hetzner_cloud_listed_catalog, cax41_listed, cx23_listed,
+}
+import gunbc.procurement.hetzner_supply_observation {
+  HetznerSupplyObservation, hetzner_supply_observations, hetzner_orderable_observations,
+  hetzner_arm_rows_orderable, admissible_as_purchasable_floor, hetzner_supply_coverage_is_complete,
+  hetzner_cx23_scarce, hetzner_cax_line_unavailable,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -27,15 +33,28 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn rate_is_refused(s: ListedRateStanding) -> Bool {
   match s {
-    ListedRate { micros } => false,
+    ListedRate { rate } => false,
     RateNotMeaningful { reason } => true,
   }
 }
 
-fn rate_micros(s: ListedRateStanding) -> Int {
+fn rate_micros_is(s: ListedRateStanding, expected: Int) -> Bool {
   match s {
-    ListedRate { micros } => micros,
-    RateNotMeaningful { reason } => 0 - 1,
+    ListedRate { rate } => money_per_month_micros(q: rate) == expected,
+    RateNotMeaningful { reason } => false,
+  }
+}
+
+fn rate_micros_eq(a: ListedRateStanding, b: ListedRateStanding) -> Bool {
+  match a {
+    RateNotMeaningful { reason } => false,
+    ListedRate { rate } => {
+      let a_micros = money_per_month_micros(q: rate)
+      match b {
+        RateNotMeaningful { reason } => false,
+        ListedRate { rate } => money_per_month_micros(q: rate) == a_micros,
+      }
+    },
   }
 }
 
@@ -60,34 +79,39 @@ test fn w_row_figures_match_the_cited_listing() -> Bool {
 // A SETUP FEE ENTERS A MONTHLY RATE ONLY THROUGH A DECLARED HOLDING PERIOD, and the two horizons
 // must differ - otherwise the parameter is decorative and the fee is being ignored.
 test fn w_setup_fee_amortizes_over_the_declared_horizon() -> Bool {
-  let twelve = hetzner_listed_effective_monthly_micros(row: hetzner_ex63_listed, holding_months: 12)
-  let thirtysix = hetzner_listed_effective_monthly_micros(row: hetzner_ex63_listed, holding_months: 36)
-  twelve == 149000000 + 74000000 / 12
-    && thirtysix == 149000000 + 74000000 / 36
-    && twelve > thirtysix
-    && hetzner_listed_effective_monthly_micros(row: hetzner_ex63_listed, holding_months: 0) < 0
+  let twelve = hetzner_listed_effective_monthly(row: hetzner_ex63_listed, holding: amortization_months(12))
+  let thirtysix = hetzner_listed_effective_monthly(row: hetzner_ex63_listed, holding: amortization_months(36))
+  rate_micros_is(s: twelve, expected: 149000000 + 74000000 / 12)
+    && rate_micros_is(s: thirtysix, expected: 149000000 + 74000000 / 36)
+    && rate_micros_eq(a: twelve, b: thirtysix) == false
+    && rate_is_refused(s: hetzner_listed_effective_monthly(row: hetzner_ex63_listed, holding: amortization_months(0)))
 }
 
 // THE CHEAPEST CPU-ONLY CORE IS EX63'S, asserted by IDENTITY and not only by magnitude: the fold
 // must select the same row the per-row derivation prices, so swapping the fold for a wrong row at
 // a coincidentally similar figure still reds.
 test fn w_cheapest_core_is_the_ex63_row() -> Bool {
-  hetzner_listed_cheapest_per_core_micros(holding_months: 12)
-    == rate_micros(s: hetzner_listed_per_physical_core_micros(row: hetzner_ex63_listed, holding_months: 12))
-    && hetzner_listed_cheapest_per_core_micros(holding_months: 12) == 7758333
+  rate_micros_eq(
+    a: hetzner_listed_cheapest_per_core(holding: amortization_months(12)),
+    b: hetzner_listed_per_physical_core(row: hetzner_ex63_listed, holding: amortization_months(12)),
+  )
+    && rate_micros_is(s: hetzner_listed_cheapest_per_core(holding: amortization_months(12)), expected: 7758333)
 }
 
 test fn w_cheapest_base_gb_is_the_ax41_row() -> Bool {
-  hetzner_listed_cheapest_per_base_gb_micros(holding_months: 12) == 59000000 / 64
+  rate_micros_is(
+    s: hetzner_listed_cheapest_per_base_gb(holding: amortization_months(12)),
+    expected: 59000000 / 64,
+  )
 }
 
 // THE DISCRIMINATING RED FOR THE GPU GUARD. Both GPU rows must refuse a per-core rate. Delete the
-// workload guard in hetzner_listed_per_physical_core_micros and both of these return a number, so
+// workload guard in hetzner_listed_per_physical_core and both of these return a number, so
 // this witness is the executing evidence that the guard is present rather than described.
 test fn w_gpu_rows_refuse_a_per_core_rate() -> Bool {
-  rate_is_refused(s: hetzner_listed_per_physical_core_micros(row: hetzner_gex45_listed, holding_months: 12))
-    && rate_is_refused(s: hetzner_listed_per_physical_core_micros(row: hetzner_gex131_listed, holding_months: 12))
-    && rate_is_refused(s: hetzner_listed_per_physical_core_micros(row: hetzner_ex63_listed, holding_months: 12)) == false
+  rate_is_refused(s: hetzner_listed_per_physical_core(row: hetzner_gex45_listed, holding: amortization_months(12)))
+    && rate_is_refused(s: hetzner_listed_per_physical_core(row: hetzner_gex131_listed, holding: amortization_months(12)))
+    && rate_is_refused(s: hetzner_listed_per_physical_core(row: hetzner_ex63_listed, holding: amortization_months(12))) == false
 }
 
 // THE ABSENCE OF ARM ON THE LISTING IS LOAD-BEARING AND IS CONSUMED, not merely recorded: this
@@ -155,24 +179,40 @@ test fn w_cax41_current_tariff_is_the_new_price_column() -> Bool {
 // SUPERSEDED euro row to the current dollar row instead and the gap blows out past thirty per
 // cent - the arithmetic that manufactured the premium.
 test fn w_published_currencies_are_fx_consistent_within_the_same_tariff() -> Bool {
-  let eur_valued = money_amount_micro_count(m: fx_conversion_or(c: convert_money(amount: cax41_catalog.monthly_cap, from: Eur, to: Usd, rate: ecb_eur_usd_2026_09_04), fallback: money_amount_micro(count: 0)))
+  let current = convert_money(amount: cax41_catalog.monthly_cap, from: Eur, to: Usd, rate: ecb_eur_usd_2026_09_04)
+  let superseded = convert_money(amount: cax41_catalog_superseded.monthly_cap, from: Eur, to: Usd, rate: ecb_eur_usd_2026_09_04)
   let usd_listed = money_amount_micro_count(m: cax41_catalog_usd.monthly_cap)
-  let gap = if eur_valued > usd_listed { eur_valued - usd_listed } else { usd_listed - eur_valued }
-  let stale_valued = money_amount_micro_count(m: fx_conversion_or(c: convert_money(amount: cax41_catalog_superseded.monthly_cap, from: Eur, to: Usd, rate: ecb_eur_usd_2026_09_04), fallback: money_amount_micro(count: 0)))
-  let stale_gap = usd_listed - stale_valued
-  gap * 1000 / usd_listed < 30 && stale_gap * 1000 / usd_listed > 200
+  match current {
+    FxPairUnavailable { obligation } => false,
+    FxConverted { amount, through } => {
+      let eur_valued = money_amount_micro_count(m: amount)
+      let gap = if eur_valued > usd_listed { eur_valued - usd_listed } else { usd_listed - eur_valued }
+      match superseded {
+        FxPairUnavailable { obligation } => false,
+        FxConverted { amount, through } => {
+          let stale_gap = usd_listed - money_amount_micro_count(m: amount)
+          gap * 1000 / usd_listed < 30 && stale_gap * 1000 / usd_listed > 200
+        },
+      }
+    },
+  }
 }
 
 test fn w_cloud_listing_is_eight_rows_with_one_orderable() -> Bool {
   count(hetzner_cloud_listed_catalog()) == 8
-    && count(hetzner_cloud_orderable_rows()) == 1
+    && count(hetzner_orderable_observations()) == 1
+    && hetzner_supply_coverage_is_complete()
     && money_amount_micro_count(m: cax41_listed.monthly.amount) == 48490000
 }
 
 // THE SUPPLY CONSEQUENCE, CONSUMED RATHER THAN RECORDED: no arm row may be cited as a purchasable
 // floor while every arm row is unorderable.
 test fn w_no_arm_row_is_a_purchasable_floor() -> Bool {
-  hetzner_cloud_arm_rows_orderable() == false
-    && admissible_as_purchasable_floor(r: cax41_listed) == false
-    && admissible_as_purchasable_floor(r: cx23_listed)
+  hetzner_arm_rows_orderable() == false
+    && admissible_as_purchasable_floor(
+      o: HetznerSupplyObservation { server: cax41_listed, availability: hetzner_cax_line_unavailable },
+    ) == false
+    && admissible_as_purchasable_floor(
+      o: HetznerSupplyObservation { server: cx23_listed, availability: hetzner_cx23_scarce },
+    )
 }
