@@ -1,4 +1,4 @@
-module v2.test.claim.construction_justification.ratchet_forever_permanence_witness_test
+module v2.test.claim.construction_justification.outside_modeled_guarantee_witness_test
 
 import v2.lens.common.construction_justification {
   ConstructionClass,
