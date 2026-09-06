@@ -1,0 +1,182 @@
+module test.fixture.scm_repository_builder
+
+// BUILDING A REPOSITORY BY THE OPERATIONS THAT ACTUALLY BUILD ONE, FOR EVERY CLAIM THAT NEEDS ONE.
+//
+// This was authored inside the merge_base witness and then needed verbatim by the squash_merge
+// witness. Copying it would have put one construction rule in two files and let them drift -- and the
+// drift would be invisible, because each copy would go on passing its own claims while the two
+// fixtures quietly stopped describing the same repository. That is the redundancy DESIGN section 2
+// names, so the builder moved here and both witnesses read it.
+//
+// NOTHING HERE FORGES A COMMIT. Every row is produced by store_authored_source,
+// store_corpus_manifest and mint_repository_commit, so a fixture cannot construct a repository the
+// real operations could not produce -- which is what makes a claim over one of these scenes evidence
+// about the product rather than about the fixture.
+
+import std.types { Bool, String, List, Int, NonEmptyStr }
+import std.minted_identity { MintedId, MintedIdAllocator }
+import gunbc.scm.object_store {
+  ObjectStore, ObjectId, empty_store,
+  CorpusManifestEntry, CorpusManifestObjectRef, CorpusManifestTarget,
+  CorpusManifestStored, CorpusManifestDuplicatePath, CorpusManifestLocatorCollision,
+  store_corpus_manifest,
+  SourceStored, SourceLocatorCollision, store_authored_source,
+  AuthoredSourceTarget,
+}
+import gunbc.scm.integration { CommitIntegration }
+import gunbc.scm.ancestry { RepositoryCommitRef }
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope,
+  RepositoryCommit,
+  RepositoryCommitMinted,
+  RepositoryCommitMintAllocatorInvalid,
+  RepositoryCommitMintRootIsAuthoredSource,
+  RepositoryCommitMintRootIsSemanticNode,
+  RepositoryCommitMintRootMissing,
+  RepositoryCommitMintParentMissing,
+  RepositoryCommitMintIntegrationSourceMissing,
+  mint_repository_commit,
+  commit_at_reference,
+}
+import gunbc.scm.staging { StagedEntries, StagedEntriesRefused, staged_entries }
+
+// THE FIXTURE IS FALLIBLE FOR THE REASON THE STAGING FIXTURE'S HEADER GIVES AND THIS FILE INHERITS
+// RATHER THAN RESTATES: a setup step that failed must stop the claim, never hand it a substitute
+// specimen. Here the hazard is sharper than usual, because a fixture that silently declined to record
+// an integration would leave a repository in which the consumed join CORRECTLY finds nothing -- and
+// the refusal control would go green while asserting the opposite of what it claims to test.
+type MbBuild
+  = MbBuilt { repository: RepositoryEnvelope, at: RepositoryCommitRef? }
+  | MbSetupFailed
+
+fn mb_start() -> MbBuild {
+  MbBuilt {
+    repository: RepositoryEnvelope {
+      store: empty_store(),
+      commits: [],
+      commit_allocator: MintedIdAllocator { next_ordinal: 0 },
+      checked_out: none,
+      staged: none,
+    },
+    at: none,
+  }
+}
+
+// The manifest is built from the CURRENTLY STAGED entries so a later stage of a second path keeps the
+// first, which is what makes S2 a content-descendant of S1 rather than a replacement of it.
+fn mb_stage(build: MbBuild, path: String, text: String) -> MbBuild {
+  match build {
+    MbSetupFailed => MbSetupFailed
+    MbBuilt { repository: repository, at: at } =>
+      match staged_entries(repository: repository) {
+        StagedEntriesRefused { cause: _ } => MbSetupFailed
+        StagedEntries { entries: entries } =>
+          match store_authored_source(store: repository.store, text: text) {
+            SourceLocatorCollision { identity: _, existing: _, incoming: _ } => MbSetupFailed
+            SourceStored { store: with_source, source: source } =>
+              match store_corpus_manifest(
+                store: with_source,
+                entries: concat(
+                  filter(entries, fn(e) { (e.path as String) != path }),
+                  [CorpusManifestEntry {
+                    path: path as NonEmptyStr,
+                    source: AuthoredSourceTarget { locator: source.locator },
+                  }],
+                ),
+              ) {
+                CorpusManifestDuplicatePath { path: _ } => MbSetupFailed
+                CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } => MbSetupFailed
+                CorpusManifestStored { store: with_manifest, manifest: manifest } =>
+                  MbBuilt {
+                    repository: RepositoryEnvelope {
+                      store: with_manifest,
+                      commits: repository.commits,
+                      commit_allocator: repository.commit_allocator,
+                      checked_out: repository.checked_out,
+                      staged: Present { value: manifest },
+                    },
+                    at: at,
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn mb_commit(build: MbBuild, message: String, integration: CommitIntegration) -> MbBuild {
+  match build {
+    MbSetupFailed => MbSetupFailed
+    MbBuilt { repository: repository, at: at } =>
+      match repository.staged {
+        Absent => MbSetupFailed
+        Present { value: candidate } =>
+          match mint_repository_commit(
+            repository: repository,
+            root: CorpusManifestTarget { locator: candidate.locator },
+            message: message,
+            parent: at,
+            integration: integration,
+          ) {
+            RepositoryCommitMinted { repository: minted, reference: reference } =>
+              MbBuilt {
+                repository: RepositoryEnvelope {
+                  store: minted.store,
+                  commits: minted.commits,
+                  commit_allocator: minted.commit_allocator,
+                  checked_out: Present { value: reference },
+                  staged: Present { value: candidate },
+                },
+                at: Present { value: reference },
+              }
+            RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => MbSetupFailed
+            RepositoryCommitMintRootMissing { root: _ } => MbSetupFailed
+            RepositoryCommitMintRootIsAuthoredSource { root: _ } => MbSetupFailed
+            RepositoryCommitMintRootIsSemanticNode { root: _ } => MbSetupFailed
+            RepositoryCommitMintParentMissing { parent: _ } => MbSetupFailed
+            RepositoryCommitMintIntegrationSourceMissing { source: _ } => MbSetupFailed
+          }
+      }
+  }
+}
+
+// MOVING THE CURSOR AND THE STAGE TOGETHER, because a branch point is both. Re-pointing `at` without
+// re-pointing the stage would leave the next commit's content derived from the OTHER lineage's tip,
+// which would build a fixture nobody could reach and quietly change what the claims are about.
+fn mb_at(build: MbBuild, target: RepositoryCommitRef) -> MbBuild {
+  match build {
+    MbSetupFailed => MbSetupFailed
+    MbBuilt { repository: repository, at: _ } =>
+      match commit_at_reference(commits: repository.commits, reference: target) {
+        Absent => MbSetupFailed
+        Present { value: c } =>
+          MbBuilt {
+            repository: RepositoryEnvelope {
+              store: repository.store,
+              commits: repository.commits,
+              commit_allocator: repository.commit_allocator,
+              checked_out: Present { value: target },
+              staged: Present { value: c.root },
+            },
+            at: Present { value: target },
+          }
+      }
+  }
+}
+
+fn mb_head(build: MbBuild) -> RepositoryCommitRef? {
+  match build {
+    MbSetupFailed => none
+    MbBuilt { repository: _, at: at } => at
+  }
+}
+
+fn mb_root_of(build: MbBuild, reference: RepositoryCommitRef) -> ObjectId? {
+  match build {
+    MbSetupFailed => none
+    MbBuilt { repository: repository, at: _ } =>
+      match commit_at_reference(commits: repository.commits, reference: reference) {
+        Absent => none
+        Present { value: c } => Present { value: c.root.locator }
+      }
+  }
+}
