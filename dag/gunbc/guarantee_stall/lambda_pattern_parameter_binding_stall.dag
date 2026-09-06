@@ -21,7 +21,7 @@ data lambda_pattern_parameter_binding_stall: GuaranteeStall = GuaranteeStall {
       tail: Cons {
         head: "algebra_receiver_callable_witness_test.dag (scope/application specimen; relationship to field projection remains unproven)",
         tail: Cons {
-          head: "emission_provenance_test.dag:179 in the external provenance lane (decl_name-on-Empty specimen)",
+          head: "emission_provenance_test (external specimen, shape-similar; causal relationship UNMEASURED)",
           tail: Empty {}
         }
       }
