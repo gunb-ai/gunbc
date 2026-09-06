@@ -1,9 +1,10 @@
 module gunbc.spark.pxe_rescue_observation
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, Bool }
 import std.nat { Nat }
 import std.measure { Second, second }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
+import extdeps.provisioning.network_boot { DhcpBootDirection, NativeDhcpBootOptions }
 import extdeps.systems.nvidia_dgx_spark_pxe {
   spark_pxe_bootloader_filename,
 }
@@ -11,6 +12,17 @@ import extdeps.os.ubuntu_kernel_nic_coverage {
   PciVendorId,
   PciDeviceId,
 }
+import gunbc.spark.dgx_pxe_boot {
+  PxeNetworkIsolation,
+  IsolatedProvisioningSegment,
+}
+
+// The observed boot order for spark-2196. This is a simple sum because only
+// two orderings were observed across the five-unit survey (Receipt 4); a wider
+// survey may need to expand this type.
+type SparkBootOrder
+  = PxeFirst
+  | UbuntuFirst
 
 // SPARK-PXE-RESCUE-0 (2026-09-05). WHAT THIS REPOSITORY ACTUALLY DID TO PUT ONE PHYSICAL
 // SPARK UNIT (spark-2196) ON THE NETWORK THROUGH PXE AND INSTALL AN OS ON IT, as opposed to
@@ -177,11 +189,17 @@ data spark_2196_pxe_bootloader_filename_documented: NonEmptyStr = spark_pxe_boot
 // boot order at console before relying on PXE, because the fleet invariant does
 // not exist.
 
-data spark_2196_boot_order: NonEmptyStr = "UbuntuFirst" as NonEmptyStr
+data spark_2196_boot_order: SparkBootOrder = UbuntuFirst
 
-data fleet_boot_order_pxe_first_count: Nat = 4
+type FleetBootOrderSurvey {
+  pxe_first_count: Nat
+  ubuntu_first_count: Nat
+}
 
-data fleet_boot_order_ubuntu_first_count: Nat = 1
+data fleet_boot_order_survey: FleetBootOrderSurvey = FleetBootOrderSurvey {
+  pxe_first_count: 4,
+  ubuntu_first_count: 1,
+}
 
 // --------------------------------------------------------------------------
 // RECEIPT 5: Chainloading local GRUB is defeated by timeout=0.
@@ -206,11 +224,7 @@ data fleet_boot_order_ubuntu_first_count: Nat = 1
 // spark_unattended_image_boot function constructs a boot chain for unattended
 // INSTALL, not for RESCUE. A rescue scenario that needs to fall through to the
 // installed OS must use the direct-boot construction above, not a GRUB chainload.
-
-data spark_2196_grub_timeout_zero_defeats_chainload: NonEmptyStr = "timeout=0 causes local GRUB to boot default entry immediately; chainload never pauses for input" as NonEmptyStr
-
-data spark_2196_local_boot_rescue_construction: NonEmptyStr = "search --file /boot/grub/grub.cfg --set=root ; probe --set=uu --fs-uuid $root ; linux ... root=UUID=$uu" as NonEmptyStr
-
+//
 // The direct-boot construction requires knowing the root filesystem UUID at
 // PXE-GRUB-config-authoring time, so it is site-specific rather than a fleet-
 // invariant TFTP template. This observation does not produce a general-purpose
@@ -229,9 +243,9 @@ data spark_2196_local_boot_rescue_construction: NonEmptyStr = "search --file /bo
 // unit. The ProxyDhcpPxeOnly variant exists in the model and may be needed for
 // other network topologies, but is not required for spark-2196.
 
-data spark_2196_pxe_isolation: NonEmptyStr = "IsolatedProvisioningSegment" as NonEmptyStr
+data spark_2196_pxe_isolation: PxeNetworkIsolation = IsolatedProvisioningSegment
 
-data spark_2196_pxe_dhcp_direction_fact: NonEmptyStr = "NativeDhcp" as NonEmptyStr
+data spark_2196_pxe_dhcp_direction: DhcpBootDirection = NativeDhcpBootOptions
 
 // --------------------------------------------------------------------------
 // RECEIPT 7: The actual fault mode that bricked spark-2196.
@@ -262,8 +276,20 @@ data spark_2196_pxe_dhcp_direction_fact: NonEmptyStr = "NativeDhcp" as NonEmptyS
 
 // Annotation: 6.17.0-1032-nvidia was installed without initramfs; grub-install
 // succeeded before the setup process was interrupted.
-data spark_2196_broken_kernel_label: NonEmptyStr = "6.17.0-1032-nvidia" as NonEmptyStr
-
 // Annotation: 6.11.0-1014-nvidia has complete initramfs built during an earlier
 // setup phase.
-data spark_2196_recovery_kernel_label: NonEmptyStr = "6.11.0-1014-nvidia" as NonEmptyStr
+
+type InstalledKernelObservation {
+  version_label: NonEmptyStr
+  has_initramfs: Bool
+}
+
+data spark_2196_broken_kernel: InstalledKernelObservation = InstalledKernelObservation {
+  version_label: "6.17.0-1032-nvidia" as NonEmptyStr,
+  has_initramfs: false,
+}
+
+data spark_2196_recovery_kernel: InstalledKernelObservation = InstalledKernelObservation {
+  version_label: "6.11.0-1014-nvidia" as NonEmptyStr,
+  has_initramfs: true,
+}
