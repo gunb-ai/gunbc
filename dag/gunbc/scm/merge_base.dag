@@ -1,0 +1,197 @@
+module gunbc.scm.merge_base
+
+// THE CONTENT BASE A SQUASH MERGE IS ENTITLED TO USE, OR A TYPED REASON THERE IS NONE.
+//
+// THE ARM THAT DOES NOT EXIST IS THE WHOLE POINT OF THIS MODULE. There is no value here meaning
+// "here is the graph fork point, and separately you should check whether the source was already
+// consumed". A caller cannot receive a base that is unsafe to use, because the outcome that would
+// carry it is not constructible. The alternative shape -- a base function beside a consumed-source
+// guard -- was considered and refused: it leaves the stale base constructible and makes safety
+// depend on a sequencing discipline that executes, stays enrolled, and is remembered by every future
+// caller. That is DESIGN section 4b rung 2 where rung 3 was available, and section 5's construction
+// over validation says which to take.
+//
+// THE DEFECT IT CLOSES IS NOT "REPEATED MERGE IS UNSUPPORTED". It is that after a first squash the
+// graph fork point can no longer distinguish "the target never touched this path" from "the target
+// deliberately returned this path to the base value" -- both read T == B -- so a second merge against
+// that fork point resurrects the change the target removed on purpose. The refusal therefore belongs
+// to the BASE DERIVATION rather than to the merge algebra: the algebra is correct for a valid base,
+// and what the second merge lacks is a valid base.
+//
+// WHY A SCOPE STATEMENT WAS NOT ENOUGH, since one was proposed and refused. "Development branches are
+// merged and then deleted, so a repeated merge does not occur" is INTENT standing in for
+// operation-domain exclusion. This operation takes two ordinary commit references; a second
+// invocation is authorable, and deleting a branch NAME on a hosting platform removes nothing from
+// this model. A prose boundary a caller can walk across does not make a silently wrong operation
+// admissible.
+
+import std.types { Bool, List, NonEmptyStr }
+import gunbc.scm.ancestry {
+  AncestryTraced,
+  AncestryBrokenAt,
+  AncestryStartNotInHistory,
+  AncestryRevisitsACommit,
+  AncestryWalk,
+  RepositoryCommitRef,
+  RepositoryHistory,
+  ancestry_walk,
+  repository_commit_ref_eq,
+}
+import gunbc.scm.integration {
+  CommitIntegration,
+  NoSquashIntegration,
+  SquashIntegrated,
+  chain_contains,
+}
+import gunbc.scm.repository_envelope {
+  RepositoryCommit,
+  commit_at_reference,
+  repository_history,
+}
+
+// THE FOUR REFUSALS ARE DISTINGUISHED BECAUSE THEY HAVE DIFFERENT REMEDIES AND DIFFERENT BLAME.
+// Collapsing them into one "no base" arm would be the absorbing fallback DESIGN section 5 names: a
+// failure arm must refuse, never widen, and a widened arm destroys the signal that would rank the
+// precise deficit for repair. An unwalkable history is damage to be investigated; an already-consumed
+// source is an unsupported OPERATION on an intact repository; disjoint histories are two repositories
+// that never shared anything. Those are three different conversations with the operator.
+//
+// THE CONSUMED ARM CARRIES ALL THREE SIDES OF THE JOIN, and that is not diagnostic garnish. Without
+// the recording commit the operator cannot tell WHICH earlier squash is responsible; without the
+// anchor they cannot tell WHICH source state was consumed; without the current source they cannot
+// tell whether they asked for a replay or a continuation. A reader given only "no base" would
+// reasonably conclude the histories are unrelated, which is the opposite of the truth -- they are
+// related by an integration that already happened.
+type MergeBaseOutcome
+  = MergeBaseDerived { base: RepositoryCommitRef }
+  | MergeBaseSourceAlreadyConsumed {
+      recorded_at: RepositoryCommitRef,
+      consumed: RepositoryCommitRef,
+      source: RepositoryCommitRef,
+    }
+  | MergeBaseHistoryUnwalkable { side: MergeBaseSide, walk: AncestryWalk }
+  | MergeBaseHistoriesDisjoint { target: RepositoryCommitRef, source: RepositoryCommitRef }
+
+// WHICH SIDE FAILED IS PART OF THE FACT, not a detail a renderer may add. "The target history is
+// broken" and "the source history is broken" send an operator to different repositories.
+type MergeBaseSide
+  = MergeBaseTargetSide
+  | MergeBaseSourceSide
+
+type ConsumedJoin
+  = ConsumedJoinFound { recorded_at: RepositoryCommitRef, consumed: RepositoryCommitRef }
+  | ConsumedJoinNone
+
+// THE JOIN IS DESCENT, NOT EQUALITY, and one predicate covers both replay and continuation because
+// they are the same question asked of different points in one lineage. `source_chain` is the current
+// source's ancestry INCLUDING the source itself -- ancestry_walk's chain is descendant-first and
+// starts at the walked commit -- so `chain_contains` answers "equals or descends from" in one read.
+//
+// An equality-only predicate would admit any descendant of a consumed source, which is exactly the
+// continued-branch form of the resurrection defect. A root-keyed predicate would admit a descendant
+// whose content changed AND refuse an independent history that coincided in content. Both wrong
+// implementations are refuted by executed controls rather than by this paragraph; see
+// gunbc.test.claim.scm.scm_merge_base_witness_test.
+fn consumed_join_step(
+  commits: List<RepositoryCommit>,
+  source_chain: List<RepositoryCommitRef>,
+  found: ConsumedJoin,
+  target_commit_ref: RepositoryCommitRef,
+) -> ConsumedJoin {
+  match found {
+    ConsumedJoinFound { recorded_at: _, consumed: _ } => found
+    ConsumedJoinNone =>
+      match commit_at_reference(commits: commits, reference: target_commit_ref) {
+        Absent => found
+        Present { value: c } =>
+          match c.integration {
+            NoSquashIntegration => found
+            SquashIntegrated { source: anchor } =>
+              if chain_contains(chain: source_chain, target: anchor) {
+                ConsumedJoinFound { recorded_at: target_commit_ref, consumed: anchor }
+              } else {
+                found
+              }
+          }
+      }
+  }
+}
+
+fn consumed_join(
+  commits: List<RepositoryCommit>,
+  target_chain: List<RepositoryCommitRef>,
+  source_chain: List<RepositoryCommitRef>,
+) -> ConsumedJoin {
+  fold(target_chain, init: ConsumedJoinNone, f: fn(found, t) {
+    consumed_join_step(
+      commits: commits,
+      source_chain: source_chain,
+      found: found,
+      target_commit_ref: t,
+    )
+  })
+}
+
+// THE FIRST COMMON REFERENCE WALKING THE TARGET CHAIN FROM ITS TIP. The chain is descendant-first, so
+// the first target ancestor that also appears in the source chain is the nearest common ancestor --
+// no ordering fact is invented, because "nearer" here means "fewer edges from the target tip", which
+// is the order the walk already produced.
+fn nearest_common_step(
+  source_chain: List<RepositoryCommitRef>,
+  found: RepositoryCommitRef?,
+  candidate: RepositoryCommitRef,
+) -> RepositoryCommitRef? {
+  match found {
+    Present { value: _ } => found
+    Absent =>
+      if chain_contains(chain: source_chain, target: candidate) {
+        Present { value: candidate }
+      } else {
+        none
+      }
+  }
+}
+
+fn nearest_common_ancestor(
+  target_chain: List<RepositoryCommitRef>,
+  source_chain: List<RepositoryCommitRef>,
+) -> RepositoryCommitRef? {
+  fold(target_chain, init: none, f: fn(found, t) {
+    nearest_common_step(source_chain: source_chain, found: found, candidate: t)
+  })
+}
+
+// THE ORDER OF THE THREE QUESTIONS IS LOAD-BEARING AND IS NOT AN OPTIMIZATION. The consumed join is
+// asked BEFORE the common ancestor is sought, because in every case this module exists to close, a
+// common ancestor DOES exist and is exactly the stale one. Deriving it first and then refusing would
+// mean the unsafe value was constructed and discarded, which is a weaker guarantee than never
+// constructing it -- and the shape that invites a later author to return it "since we already have
+// it".
+fn merge_base(
+  commits: List<RepositoryCommit>,
+  target: RepositoryCommitRef,
+  source: RepositoryCommitRef,
+) -> MergeBaseOutcome {
+  let history = repository_history(commits: commits)
+  match ancestry_walk(start: target, history: history) {
+    AncestryTraced { chain: target_chain } =>
+      match ancestry_walk(start: source, history: history) {
+        AncestryTraced { chain: source_chain } =>
+          match consumed_join(
+            commits: commits,
+            target_chain: target_chain,
+            source_chain: source_chain,
+          ) {
+            ConsumedJoinFound { recorded_at: r, consumed: c } =>
+              MergeBaseSourceAlreadyConsumed { recorded_at: r, consumed: c, source: source }
+            ConsumedJoinNone =>
+              match nearest_common_ancestor(target_chain: target_chain, source_chain: source_chain) {
+                Present { value: base } => MergeBaseDerived { base: base }
+                Absent => MergeBaseHistoriesDisjoint { target: target, source: source }
+              }
+          }
+        other => MergeBaseHistoryUnwalkable { side: MergeBaseSourceSide, walk: other }
+      }
+    other => MergeBaseHistoryUnwalkable { side: MergeBaseTargetSide, walk: other }
+  }
+}
