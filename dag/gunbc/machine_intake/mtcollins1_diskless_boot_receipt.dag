@@ -1,0 +1,127 @@
+module gunbc.machine_intake_mtcollins1_diskless_boot_receipt
+
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
+import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
+
+// THE HOST BOOTED DISKLESS FROM AN OUT-OF-BAND IMAGE, and this row is what the corpus holds about
+// it. On 2026-09-05T22:55Z the Foxconn Mt. Collins unit — which has NO BOOT DRIVE — ran an aarch64
+// Linux kernel to systemd, from an image the controller fetched itself over NFS and presented as a
+// virtual CD. Nothing on the network served PXE and nothing ran on the controller.
+//
+// THE MARKER IS THE BOOTED PROGRAM'S OWN OUTPUT. A nonzero redirection_status proves a media
+// session was established; only the host console proves the artifact executed. Serial-over-LAN
+// carried GRUB 2.12, "EFI stub: Booting Linux Kernel...", "Linux version 6.8.0-71-generic" on
+// aarch64, "squashfs: version 4.0", an overlayfs upper, and systemd 255.4 as PID 1.
+//
+// WHAT MAKES IT DISKLESS RATHER THAN MERELY BOOTED: the kernel command line is
+// BOOT_IMAGE=/casper/vmlinuz, and casper mounts the squashfs read-only under a tmpfs overlay, so
+// the running root is in RAM. The unit reported 261972592 KiB available, which is why a
+// RAM-resident root is unremarkable here rather than a constraint.
+data mtcollins1_diskless_boot_capture_digest: ContentHash = Sha256Hash(Sha256Digest {
+  hex: "cefdf6c063544a08c937770f9450ce0d0ee15a06bab2bf35af9f5eaadcda7681",
+})
+
+data mtcollins1_diskless_boot_artifact_path: NonEmptyStr = "artifacts/bmc/mtcollins1-diskless-boot.json"
+
+data mtcollins1_diskless_boot_byte_count: Int = 4361
+
+data mtcollins1_diskless_boot_observed_at: EpochMs = 1788648900000
+
+// THE IMAGE DIGEST AGREED WITH THE MODEL'S PIN BEFORE ANYTHING BOOTED IT, which is the one check
+// that makes the boot attributable to a known artifact rather than to whatever happened to be on
+// the share. The file measured 2ee2163c... and that is the value carried by
+// extdeps.provisioning.ubuntu_install_media noble_numbat_2404_3_live_server_arm64.content_sha256,
+// and by upstream's own cdimage SHA256SUMS for ubuntu-24.04.3-live-server-arm64.iso.
+data mtcollins1_booted_image_sha256: NonEmptyStr = "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555"
+
+// THREE CONTROLLER BEHAVIOURS A MODELED CALLER MUST EXPECT, recorded here because they were
+// measured and because a modeled operation that does not expect them will be WRONG in the
+// dangerous direction.
+//
+// A WRITE CAN REPORT FAILURE AND TAKE EFFECT. PUT /api/settings/media/general answered HTTP 500
+// with body code 16425 — and the share re-mounted anyway; the image list, empty before, enumerated
+// both images 23 seconds later. POST stop-media answered HTTP 500 with body code 1411, and the
+// start-media that followed succeeded. An operation whose `exit` arms treat nonzero as refusal will
+// refuse a write that worked, which is worse than a plain failure: the caller retries or aborts
+// against a controller whose state has already moved.
+//
+// THAT IS WHY THE SUCCESS SIGNAL FOR THESE OPERATIONS MUST BE A READ-BACK, not an exit status —
+// the same shape gunbc.machine_intake_oob_boot_handoff already uses for the boot override, where a
+// set command's own return could not distinguish acceptance from indifference. The read-back here
+// is the images listing and the configurations listing.
+//
+// AND THE SHARE LISTING IS NOT STABLE ACROSS FILE ADDITIONS. After a new ISO appeared in the
+// exported directory the controller returned an EMPTY image list, including for the file it had
+// previously enumerated. Re-asserting mount_cd re-scanned it. A caller that reads an empty listing
+// as "the share has no images" will conclude the wrong thing; the listing is a cache, not the
+// share.
+type ControllerWriteReportingAnomaly {
+  operation: NonEmptyStr
+  http_status: Int
+  body_code: Int
+  effect_observed: NonEmptyStr
+}
+
+data mtcollins1_controller_write_anomalies: List<ControllerWriteReportingAnomaly> = [
+  ControllerWriteReportingAnomaly {
+    operation: "PUT /api/settings/media/general",
+    http_status: 500,
+    body_code: 16425,
+    effect_observed: "the share re-mounted and both images enumerated 23s later, having been empty before",
+  },
+  ControllerWriteReportingAnomaly {
+    operation: "POST /api/settings/media/remote/stop-media",
+    http_status: 500,
+    body_code: 1411,
+    effect_observed: "the subsequent start-media succeeded and attached the requested image",
+  },
+]
+
+// THE CONTROLLER CLOCK IS OFFSET, NOT DRIFTING, and the distinction decides the remedy. Two
+// readings sixteen hours apart give the SAME offset to the second:
+//
+//   2026-09-05T07:27:22Z real, controller reported 03:23:47  -> 4h03m35s behind
+//   2026-09-05T23:57:54Z real, controller reported 19:54:19  -> 4h03m35s behind
+//
+// A clock losing time would show a growing gap; an identical gap across sixteen hours means the
+// oscillator is fine and the clock was simply set wrong. So the remedy is ONE write (`sel time
+// set`), not an NTP client, and the converged property is a bounded difference from real time
+// rather than a sync relationship with a server.
+//
+// WHY IT MATTERS BEYOND TIDINESS: every SEL entry is stamped with this clock. The power-cycle
+// receipts this lane already relies on — "Power Unit — Power cycle | Asserted" and "System Boot
+// Initiated — Initiated by power up" — carry timestamps four hours in the past, so correlating a
+// controller event with anything observed from the fleet requires knowing the offset. An
+// uncorrected clock does not corrupt the events; it makes them unjoinable to everything else.
+//
+// THE WRITE IS NOT MODELED. extdeps.bmc.ipmi has no clock operation, and this row does not add one:
+// grounding it needs the write performed and read back, the same standard every other capability in
+// gunbc.machine_intake_mtcollins1_access_observation was held to. SurfaceBmcClock is recorded there
+// as a successful READ surface only, which remains accurate.
+type ControllerClockSkewObservation {
+  observed_at: EpochMs
+  controller_behind_seconds: Int
+  rate_correct: Bool
+}
+
+data mtcollins1_controller_clock_skew: ControllerClockSkewObservation = ControllerClockSkewObservation {
+  observed_at: 1788652674000,
+  controller_behind_seconds: 14615,
+  rate_correct: true,
+}
+
+// WHAT THIS BOOT DOES NOT ESTABLISH, stated here so the receipt cannot be read as more than it is.
+//
+// It is a STOCK live-server image. Nothing per-host is injected, no identity is bound, and the
+// running system is the installer's live environment rather than a converged host. Customising the
+// root needs a squashfs builder, which extdeps.tools.squashfs_tools deliberately does not model.
+//
+// The backing share is srv2, a FLEET PEER, so this is not yet a boot path independent of the
+// fleet's own operating systems. Moving that endpoint off-fleet is a change of location and not of
+// mechanism, and until it happens the colo case is unproven.
+//
+// UEFI HTTP Boot remains UNMEASURED. Every boot in this lane was forced to a device over IPMI, so
+// the firmware has never been given the chance to advertise HTTPClient. The PXE client observation
+// in gunbc.machine_intake_mtcollins1_netboot_client_observation is therefore not evidence that HTTP
+// boot is unavailable — only that PXE is what a forced PXE boot produced.
+data mtcollins1_diskless_boot_receipt_scope: NonEmptyStr = "stock live-server image, fleet-peer backing share, UEFI HTTP Boot unmeasured"

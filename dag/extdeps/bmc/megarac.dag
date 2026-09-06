@@ -156,3 +156,108 @@ fn megarac_image_redirection_wire(r: MegaRacImageRedirectionRequired) -> NonEmpt
     MegaRacImageRedirectionOn => "1"
   }
 }
+
+// THE OPERATIONS ABOVE ARE A DESCRIPTION; THESE ARE THE OPERATIONS. megarac_api_operations records
+// paths and contract notes and carries no transport, so nothing in this repository could invoke the
+// MegaRAC media surface — the first attach against a Mt. Collins unit was therefore driven by a
+// hand-written shell script, which is exactly the unmodeled realization DESIGN §6 names. These rows
+// make that surface reachable from a workflow.
+//
+// SESSION AUTH IS COOKIE-AND-HEADER, NOT netrc, which is why these cannot reuse the redfish.Http
+// shape beside them. POST /api/session returns a CSRFToken in its body and sets a session cookie;
+// every subsequent request must present BOTH the cookie jar and an X-CSRFTOKEN header. The jar path
+// is a parameter rather than a fixed location so an attempt owns its own jar and two concurrent
+// attempts cannot share one session.
+//
+// THE CREDENTIAL IS FORM-ENCODED IN THE SESSION CALL AND NOWHERE ELSE. It reaches argv there, which
+// is a real weakness and is stated rather than hidden: curl offers no netrc equivalent for a
+// form-encoded POST body, and the alternative spellings (--data @file) put the credential in a file
+// whose lifetime this operation does not control. Every operation AFTER the session carries no
+// credential at all — the cookie is the bearer — so the exposure is one call, not the whole flow.
+// The next-rung repair is a transport that reads a form body from a file the caller materializes
+// and removes, which is the same missing mechanism the removed ipmi UserSetPassword operation
+// needs.
+//
+// StartMedia's json_body MUST CARRY image_redirection AND ITS ABSENCE IS OPAQUE. The contract note
+// on the operation row above records that omitting it makes the firmware refuse with codes
+// 13410/13460, recovered from the firmware's own UI bundle rather than from documentation. The body
+// is a caller parameter rather than a baked literal because image_index is resolved by READING the
+// images listing, never assumed, and megarac_image_redirection_wire is the authority for the field
+// itself.
+service megarac.Media {
+
+  operation OpenSession {
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr, cookie_jar: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "-c", "{cookie_jar}", "-X", "POST", "-d", "username={username}", "-d", "password={password}", "https://{bmc_host}/api/session"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "megarac session POST failed"
+    }
+  }
+
+  operation GetMediaGeneral {
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "https://{bmc_host}/api/settings/media/general"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "megarac media general GET failed"
+    }
+  }
+
+  operation GetRemoteImages {
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "https://{bmc_host}/api/settings/media/remote/images"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "megarac remote images GET failed"
+    }
+  }
+
+  operation GetRemoteConfigurations {
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "https://{bmc_host}/api/settings/media/remote/configurations"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "megarac remote configurations GET failed"
+    }
+  }
+
+  operation StartMedia {
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, json_body: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-H", "Content-Type: application/json", "-X", "POST", "-d", "{json_body}", "https://{bmc_host}/api/settings/media/remote/start-media"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "megarac start-media POST failed"
+    }
+  }
+
+  operation StopMedia {
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, json_body: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-H", "Content-Type: application/json", "-X", "POST", "-d", "{json_body}", "https://{bmc_host}/api/settings/media/remote/stop-media"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "megarac stop-media POST failed"
+    }
+  }
+}
