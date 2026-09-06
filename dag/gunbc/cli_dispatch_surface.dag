@@ -261,16 +261,6 @@ type CliOperandArity
   = CliExactlyOneOperand {}
   | CliAtMostOneOperand {}
 
-// THE TEST SELECTION MODE, MODELED AS A COPRODUCT RATHER THAN AS TWO INDEPENDENT
-// FIELDS WITH A RUNTIME XOR CHECK. The `gunbc test` verb admits exactly one of two
-// modes: naming an exact target label, or running all affected targets from the
-// working-tree diff. The host realization may represent this as two flat fields
-// (target operand + --affected-select flag) for clap compatibility, but the XOR
-// exclusivity is a model property, not a host convention.
-type TestSelection
-  = TestExactTarget { target: String }
-  | TestAffectedSet {}
-
 type CliOperandRow {
   field: String
   placeholder: String
