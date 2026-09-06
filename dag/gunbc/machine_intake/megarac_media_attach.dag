@@ -44,10 +44,24 @@ import extdeps.languages.json.parse {
 //
 // THE EARLIER READING WAS THAT THE LISTING IS A CACHE THAT GOES STALE, with the remedy "re-assert
 // mount_cd". That remedy appeared to work, and the reason it appeared to work is the problem:
-// toggling mount_cd DETACHES EVERYTHING, which returns the image to the available pool. On a host
-// that is booted from that medium — which is this lane's entire purpose — the advice amounts to
-// pulling the running root out from under it. A remedy that works by undoing the desired state is
-// worse than no remedy, and it was written into an operator-facing message.
+// toggling mount_cd DETACHES EVERYTHING, which is what returns the image to the available pool. A
+// remedy that works by undoing the desired state is worse than no remedy, and it was written into
+// an operator-facing message on a lane whose entire purpose is hosts booted from that medium.
+//
+// WHAT THE HAZARD IS, AT THE STRENGTH IT WAS ACTUALLY MEASURED, because an earlier revision of this
+// paragraph overstated it in the same breath as retracting an overstatement. It claimed the toggle
+// pulls the running root out from under a booted host. That is the MECHANISM — the presented medium
+// is withdrawn, and casper reads the read-only lower layer from it on demand rather than from RAM,
+// per this lane's own boot receipt — but it is not what was observed. The toggle WAS performed on
+// this unit while it was booted from the medium, and the running installer survived it: measured
+// afterwards over serial console, still interactive at its own menu. The controller is configured
+// rmedia_retry_count 3 / rmedia_retry_interval 15, and the system was idle at a prompt rather than
+// reading, either of which may explain the survival.
+//
+// SO THE HONEST STATEMENT IS THAT THE BLAST RADIUS IS UNQUANTIFIED, not that it is catastrophic and
+// not that it is safe. One observation of one idle host is not evidence that a toggle during heavy
+// reads is survivable, and the remedy is still wrong for the reason that does not depend on any of
+// this: it "fixes" the listing by undoing the attachment the caller asked for.
 //
 // SO THE ORDER OF READS IS LOAD-BEARING AND CONFIGURATIONS COMES FIRST. Asking the available list
 // whether an already-attached image is present is asking the wrong authority a question it answers

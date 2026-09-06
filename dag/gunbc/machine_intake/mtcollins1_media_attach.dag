@@ -47,10 +47,11 @@ data mtcollins1_media_username: NonEmptyStr = "admin"
 
 // EACH OUTCOME RENDERS ITS OWN REASON because they have different remedies, and the remedies are
 // what an operator acts on — which is why one of these messages previously had to be retracted
-// rather than reworded. It advised re-asserting mount_cd to fix an "empty" listing. That detaches
-// every presented image, so on a host booted from the medium the advice destroys the running root.
-// The listing was never stale; the image was simply attached, and attached images leave the
-// available listing. See gunbc.machine_intake_megarac_media_attach for the measurement.
+// rather than reworded. It advised re-asserting mount_cd to fix an "empty" listing. The listing was
+// never stale: the image was simply attached, and attached images leave the available listing. The
+// advice "worked" only by detaching every presented image, which is to say by undoing the state the
+// caller had asked for. See gunbc.machine_intake_megarac_media_attach, which also records how far
+// the danger to a booted host was and was not measured.
 //
 // MegaRacAlreadyAttached IS A SUCCESS AND IS RENDERED AS ONE. Converge is run repeatedly by
 // construction, so the second run finding the desired state already held is the normal case, not an
@@ -73,7 +74,7 @@ fn mtcollins1_render_attach(outcome: MegaRacAttachOutcome) -> ProcessExit {
     MegaRacImagesUnreadable { detail: d } =>
       exit_failure(reason: concat("mtcollins1 media attach: images listing unreadable: ", d))
     MegaRacImageListingEmpty =>
-      exit_failure(reason: "mtcollins1 media attach: the image is not presented AND the controller offers no image available to attach; check that the export is reachable from the controller and holds the file. Do NOT toggle mount_cd to 'refresh' this — that detaches presented media, which on a host booted from it removes the running root")
+      exit_failure(reason: "mtcollins1 media attach: the image is not presented AND the controller offers no image available to attach; check that the export is reachable from the controller and holds the file. Do NOT toggle mount_cd to 'refresh' this — it works by detaching every presented image, so on a host booted from that medium it withdraws what the running system is reading from")
     MegaRacImageListingUnparseable { detail: d } =>
       exit_failure(reason: concat("mtcollins1 media attach: the images listing was not valid JSON, which is a protocol failure rather than the stale-cache case above: ", d))
     MegaRacImageNotEnumerated { image_name: n } =>

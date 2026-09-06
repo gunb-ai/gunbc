@@ -69,5 +69,16 @@
     "the backing share is srv2, a fleet peer, so this is not yet independent of the fleet",
     "UEFI HTTP Boot remains unmeasured; every boot so far was forced to a device over IPMI"
   ],
-  "observed_at_utc": "2026-09-05T22:55Z"
+  "observed_at_utc": "2026-09-05T22:55Z",
+  "media_detach_during_boot_observation": {
+    "observed_at": "2026-09-06",
+    "what_was_done": "mount_cd toggled 0 then 1 on the controller while the unit was booted from the presented ISO, to force the images listing to re-enumerate",
+    "why_it_was_done": "a wrong diagnosis: the image had left the available listing because it was ATTACHED, not because the listing was stale",
+    "observed_outcome": "the running Ubuntu installer survived; measured afterwards over IPMI SOL, still interactive at its own menu, and chassis power reported on",
+    "controller_retry_config": {
+      "rmedia_retry_count": 3,
+      "rmedia_retry_interval": 15
+    },
+    "what_this_does_not_establish": "that a detach during heavy reads is survivable. The system was idle at a prompt rather than reading, and casper reads the read-only lower layer from the presented medium on demand (toram is absent from the observed command line). One observation of one idle host bounds nothing."
+  }
 }
