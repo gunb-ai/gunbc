@@ -1,0 +1,63 @@
+{
+  "subject": "bmc-mtcollins1 host side (Ampere Mt. Collins, Foxconn build)",
+  "observed_at": "2026-09-06",
+  "observed_from": "UEFI Interactive Shell v2.2 / EDK II / UEFI v2.70 (American Megatrends, 0x0005000F), reached over IPMI SOL after the host fell through its boot options",
+  "why_taken_here": "the kernel configuration for a stateless host image depends on the actual NIC driver, and PXE reporting Arch:00011 establishes firmware network support rather than which Linux driver binds the adapter. Taken from firmware rather than a running Linux because no shell was reachable in the installer that was booted at the time.",
+  "pci": {
+    "ethernet": {
+      "addresses": ["02:02:00.00", "02:02:00.01"],
+      "vendor_id": "8086",
+      "device_id": "1521",
+      "identification": "Intel I350 Gigabit Ethernet, dual port",
+      "linux_driver": "igb",
+      "external_firmware_blob_required": false,
+      "note": "the two functions correspond to the two ports; the host NIC that attempted PXE reported MAC 28-C1-3C-8A-D6-4A on serial"
+    },
+    "graphics": {
+      "vendor_id": "1A03",
+      "device_id": "2000",
+      "identification": "ASPEED BMC graphics",
+      "needed_by_host_image": false,
+      "note": "the host image uses the serial console; no DRM/framebuffer driver is required"
+    },
+    "usb": {
+      "address": "04:03:00.00",
+      "vendor_id": "1912",
+      "device_id": "0014",
+      "identification": "Renesas uPD720201 USB 3.0 host controller",
+      "note": "this is the path the BMC virtual media arrives on; firmware consumes it during boot, so a kernel driver is needed only if the running host must read the medium after boot"
+    },
+    "mass_storage_controllers_found": 0,
+    "mass_storage_note": "no mass-storage controller appears in the enumeration, which is the hardware-level confirmation that this unit is diskless rather than merely unpartitioned"
+  },
+  "secure_boot": {
+    "variable": "EFIGlobalVariable:SecureBoot",
+    "data_size": 1,
+    "value": "0x00",
+    "state": "disabled",
+    "consequence": "an EFI image presented to this unit needs no signature and no key enrollment; a signing policy is not a prerequisite for the host image, though enabling Secure Boot later would make one"
+  },
+  "pxe": {
+    "attempted": true,
+    "host_nic_mac": "28:c1:3c:8a:d6:4a",
+    "observed_line": "Start PXE over IPv6 on MAC: 28-C1-3C-8A-D6-4A / PXE-E16: No valid offer received",
+    "result": "no DHCP offer",
+    "consequence": "PXE is present in firmware and unusable today because nothing on this LAN answers it. A network boot route therefore requires standing up DHCP/TFTP or HTTP service before it can be a transport, which is why virtual media remains the proven route.",
+    "http_boot_status": "NOT ESTABLISHED. Firmware offers 'Press <F12> to PXE Boot' and no HTTP Boot device was observed. Whether this firmware carries the UEFI HTTP Boot driver is a separate measurement, taken in Setup or from the boot-device list, and is not implied by PXE support."
+  },
+  "firmware_boot_prompts": {
+    "setup": "DEL or ESC",
+    "boot_menu": "F11",
+    "pxe": "F12"
+  },
+  "alpine_iso_negative": {
+    "image": "alpine-virt-3.24.1-aarch64.iso",
+    "upstream_sha256": "c81699152db11d2a6dbb7d75348d632fcf5811eff414d7e71876a8bb6d48bc02",
+    "digest_agreed_at_publication": true,
+    "attached_via": "gunbc.bmc.megarac_media_attach, modeled path",
+    "result": "did not boot",
+    "evidence": "the UEFI shell mapping table lists BLK0 at PcieRoot(0x60000)/Pci(0x3,0x0)/Pci(0x0,0x0)/USB(0x5,0x0)/USB(0x0,0x0) with NO FS alias, so firmware saw the medium as a block device and found no filesystem it could mount. Boot option loading failed and the firmware fell through to the shell.",
+    "what_it_does_not_establish": "that the ISO is malformed. It establishes that THIS firmware, over ITS virtual-USB-CD presentation, did not map an EFI system partition from it. Ubuntu's arm64 live-server ISO boots by the same route on the same unit, so the difference is in how the two images lay out their EFI boot path, not in the transport.",
+    "consequence_for_the_host_image": "a derived virtual-media envelope must be verified to present an ESP this firmware maps -- an EFI/BOOT/BOOTAA64.EFI on a FAT filesystem the firmware recognises -- rather than assumed to work because it is an ISO"
+  }
+}
