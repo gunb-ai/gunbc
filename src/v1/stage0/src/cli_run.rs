@@ -19391,11 +19391,18 @@ pub fn handle_serve(
                 // Idle or cleanly-closed connection: no request was made, so the
                 // connection is dropped without a response.
                 Ok(None) => {}
-                Ok(Some((method, path, body))) => {
+                Ok(Some((method, path, body, tailscale_identity))) => {
                     let args: Vec<(Option<String>, v1_interpreter::Value)> = vec![
                         (Some("method".to_string()), str_value(method)),
                         (Some("path".to_string()), str_value(path)),
                         (Some("body".to_string()), str_value(body)),
+                        // Empty when the header was absent. The `.dag` side refuses on empty
+                        // rather than treating it as an anonymous caller, so a deployment that
+                        // stopped routing through the tailscale proxy fails closed.
+                        (
+                            Some("tailscale_identity".to_string()),
+                            str_value(tailscale_identity),
+                        ),
                         // Captured once above and cloned per request: the value
                         // is fixed for the process lifetime, so no request can
                         // observe a different release than any other request.
@@ -19526,9 +19533,30 @@ pub fn handle_serve(
 /// request: Resource temporarily unavailable (os error 11)" to the operator.
 /// "The client sent something malformed" and "the client has not spoken yet" are
 /// different facts with different remedies; only the first is a 400.
+/// The one header this seam extracts beyond Content-Length, and the reason it is extracted HERE
+/// rather than handed to `.dag` as a general header bag.
+///
+/// `tailscale serve` injects the authenticated tailnet identity into proxied requests. That value
+/// is the recipient authentication for the approval loop: a signed capability establishes WHAT is
+/// being decided, and this establishes WHO is deciding, so a link that leaks to someone unrelated
+/// is useless to them. Passing one named value rather than every header is deliberate — a general
+/// bag would let any handler read any client-supplied header, and the fact this server needs is
+/// exactly one.
+///
+/// A DUPLICATE IS REFUSED, exactly as duplicate Content-Length is, and for the same class of
+/// reason: with two values present, the seam and any downstream reader can disagree about which
+/// one is authoritative, and header smuggling is precisely the technique of making them disagree.
+///
+/// THE VALUE IS ONLY MEANINGFUL IF THE PROXY IS THE ONLY PATH TO THIS SOCKET. Anything that can
+/// connect directly can send this header itself. That is a deployment property — bind to loopback,
+/// let `tailscale serve` be the only route — and it is not established by this parse. The `.dag`
+/// side treats an absent value as a refusal rather than as "unknown", so the failure mode of a
+/// misconfigured deployment is a closed door rather than an open one.
+const SERVE_TAILSCALE_IDENTITY_HEADER: &str = "tailscale-user-login";
+
 fn serve_read_request(
     stream: &mut std::net::TcpStream,
-) -> Result<Option<(String, String, String)>, String> {
+) -> Result<Option<(String, String, String, String)>, String> {
     use std::io::{BufRead, Read};
     const MAX_HEAD: usize = 16 << 10;
     const MAX_BODY: usize = 1 << 20;
@@ -19575,6 +19603,7 @@ fn serve_read_request(
         ));
     }
     let mut content_length: Option<usize> = None;
+    let mut tailscale_identity: Option<String> = None;
     loop {
         let mut line = String::new();
         let n = reader
@@ -19606,6 +19635,15 @@ fn serve_read_request(
                         .map_err(|e| format!("bad Content-Length: {}", e))?,
                 );
             }
+            if name.eq_ignore_ascii_case(SERVE_TAILSCALE_IDENTITY_HEADER) {
+                if tailscale_identity.is_some() {
+                    return Err(format!(
+                        "duplicate {} header",
+                        SERVE_TAILSCALE_IDENTITY_HEADER
+                    ));
+                }
+                tailscale_identity = Some(value.trim().to_string());
+            }
         }
     }
     let content_length = content_length.unwrap_or(0);
@@ -19620,7 +19658,12 @@ fn serve_read_request(
         .read_exact(&mut body_bytes)
         .map_err(|e| format!("read body: {}", e))?;
     let body = String::from_utf8(body_bytes).map_err(|e| format!("body not utf-8: {}", e))?;
-    Ok(Some((method, target, body)))
+    Ok(Some((
+        method,
+        target,
+        body,
+        tailscale_identity.unwrap_or_default(),
+    )))
 }
 
 fn serve_write_response(

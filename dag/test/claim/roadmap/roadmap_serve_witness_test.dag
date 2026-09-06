@@ -153,7 +153,7 @@ test fn witness_dispatch_get_folds_405() -> Bool {
 }
 
 fn fixture_request(method: HttpMethod, path: String) -> ServeHttpRequest {
-  ServeHttpRequest { method: method, path: path, body: "" }
+  ServeHttpRequest { method: method, path: path, body: "", identity: TailnetIdentityAbsent }
 }
 
 test fn witness_unknown_path_folds_404_response() -> Bool {
@@ -212,6 +212,7 @@ test fn witness_preview_dispatch_refuses_before_effects() -> Bool {
     method_label: "POST",
     path: "/dispatch/ts-dispatch-provider-events",
     body: "",
+    tailscale_identity: "",
     release_revision: deploy_witness_release_revision,
   )
   r.status == 403
@@ -226,6 +227,7 @@ test fn witness_instance_route_names_posture_and_paths() -> Bool {
     method_label: "GET",
     path: "/instance.json",
     body: "",
+    tailscale_identity: "",
     release_revision: deploy_witness_release_revision,
   )
   r.status == 200

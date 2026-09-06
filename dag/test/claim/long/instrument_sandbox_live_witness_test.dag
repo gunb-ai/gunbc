@@ -49,7 +49,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // a second copy of it would now be doubly wrong.
 
 fn fixture_request(path: String) -> ServeHttpRequest {
-  ServeHttpRequest { method: GET, path: path, body: "" }
+  ServeHttpRequest { method: GET, path: path, body: "", identity: TailnetIdentityAbsent }
 }
 
 fn served() -> ServeHttpResponse {

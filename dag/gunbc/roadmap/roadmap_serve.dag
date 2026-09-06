@@ -764,6 +764,7 @@ fn roadmap_serve_respond_for_instance(
   method_label: String,
   path: String,
   body: String,
+  tailscale_identity: String,
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   match parse_http_method_label(label: method_label) {
@@ -790,7 +791,12 @@ fn roadmap_serve_respond_for_instance(
           roadmap_serve_selection_response_for_instance(
             instance: instance,
             sel: serve_select_route(table: t, method: m, path: path),
-            request: ServeHttpRequest { method: m, path: path, body: body },
+            request: ServeHttpRequest {
+              method: m,
+              path: path,
+              body: body,
+              identity: tailnet_identity_of(header_value: tailscale_identity),
+            },
             release_revision: release_revision,
           )
       }
@@ -801,6 +807,7 @@ fn roadmap_serve_respond(
   method_label: String,
   path: String,
   body: String,
+  tailscale_identity: String,
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_respond_for_instance(
@@ -808,14 +815,27 @@ fn roadmap_serve_respond(
     method_label: method_label,
     path: path,
     body: body,
+    tailscale_identity: tailscale_identity,
     release_revision: release_revision,
   )
 }
 
+// THE IDENTITY ARGUMENT, and why it arrives as one named value rather than a header bag.
+//
+// `tailscale serve` authenticates the tailnet device and user before proxying, and injects the
+// resulting login. That is the recipient authentication the approval loop needs: a signed
+// capability establishes WHAT is being decided, and this establishes WHO is deciding, so an
+// approval link that leaks to someone unrelated is useless to them -- they cannot present the
+// operator's identity, and on this deployment they cannot reach the socket at all.
+//
+// It is threaded through the entry rather than read at the handler because there is exactly one
+// entry, and a fact every route may need to consult belongs on the request that reaches them all.
+// Handlers that do not need it ignore it; the approval routes refuse without it.
 fn roadmap_serve_handle(
   method: String,
   path: String,
   body: String,
+  tailscale_identity: String,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
   serve_wire_response(r: roadmap_serve_respond_for_instance(
@@ -823,6 +843,7 @@ fn roadmap_serve_handle(
     method_label: method,
     path: path,
     body: body,
+    tailscale_identity: tailscale_identity,
     release_revision: release_revision,
   ))
 }
@@ -838,6 +859,7 @@ fn roadmap_serve_handle_macbook_local(
   method: String,
   path: String,
   body: String,
+  tailscale_identity: String,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
   serve_wire_response(r: roadmap_serve_respond_for_instance(
@@ -845,6 +867,7 @@ fn roadmap_serve_handle_macbook_local(
     method_label: method,
     path: path,
     body: body,
+    tailscale_identity: tailscale_identity,
     release_revision: release_revision,
   ))
 }
@@ -853,6 +876,7 @@ fn roadmap_serve_handle_srv1_lab(
   method: String,
   path: String,
   body: String,
+  tailscale_identity: String,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
   serve_wire_response(r: roadmap_serve_respond_for_instance(
@@ -860,6 +884,7 @@ fn roadmap_serve_handle_srv1_lab(
     method_label: method,
     path: path,
     body: body,
+    tailscale_identity: tailscale_identity,
     release_revision: release_revision,
   ))
 }
@@ -868,6 +893,7 @@ fn roadmap_serve_handle_srv2_preview(
   method: String,
   path: String,
   body: String,
+  tailscale_identity: String,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
   serve_wire_response(r: roadmap_serve_respond_for_instance(
@@ -875,6 +901,7 @@ fn roadmap_serve_handle_srv2_preview(
     method_label: method,
     path: path,
     body: body,
+    tailscale_identity: tailscale_identity,
     release_revision: release_revision,
   ))
 }
@@ -886,6 +913,7 @@ fn roadmap_serve_handle_srv2_deploy(
   method: String,
   path: String,
   body: String,
+  tailscale_identity: String,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
   serve_wire_response(r: roadmap_serve_respond_for_instance(
@@ -893,6 +921,7 @@ fn roadmap_serve_handle_srv2_deploy(
     method_label: method,
     path: path,
     body: body,
+    tailscale_identity: tailscale_identity,
     release_revision: release_revision,
   ))
 }
@@ -901,6 +930,7 @@ fn roadmap_serve_handle_srv2_lab(
   method: String,
   path: String,
   body: String,
+  tailscale_identity: String,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
   serve_wire_response(r: roadmap_serve_respond_for_instance(
@@ -908,6 +938,7 @@ fn roadmap_serve_handle_srv2_lab(
     method_label: method,
     path: path,
     body: body,
+    tailscale_identity: tailscale_identity,
     release_revision: release_revision,
   ))
 }
