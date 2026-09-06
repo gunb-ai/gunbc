@@ -45,7 +45,7 @@ pub fn extent_fixture_observed_content(source: String) -> Option<Rc<ContentHash>
                 .clone()
                 .iter()
                 .cloned()
-                .filter(extent_fixture_is_kept)
+                .filter(|__item| (extent_fixture_is_kept)((*__item).clone()))
                 .collect::<Vec<_>>(),
         );
         if ((declarations.clone().len() as i64) != 1) {
