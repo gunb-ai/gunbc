@@ -245,6 +245,60 @@ fn corpus_report(pool_roots: List<String>) -> CorpusReport {
 // onto a smaller one that this module exists to stop, committed at its own last step. The arm now
 // carries the census, and it is renamed: "clean" asserted more than was established, and the honest
 // name says exactly what was found -- no suspects, with this residue beside it.
+
+// A REPORT THAT COVERS LESS THAN THE POPULATION IT NAMES IS NOT A VERDICT ABOUT THAT POPULATION,
+// and this is the join that says so. It exists because of a filed class:
+// gunbc.recurring_failure_mode.sweep_terminated_by_process_death_rather_than_a_typed_refusal --
+// a single-process fold over a discovered population can be killed by the host partway through
+// (SIGSEGV out of the interpreter's unbounded native walk), and what survives is a report in the
+// same SHAPE as a complete one, one page shorter. That class sits BELOW the ladder, which DESIGN
+// section 5 forbids outright rather than admitting as a low rung, so it does not wait for its
+// trigger: this comparison does not fix the crash and is not meant to, it ends the silence, which
+// is the forbidden half. The real climb -- a depth-bounded interpreter walk that refuses with a
+// locus -- is named in that row, and when it lands these witnesses stay as the regression control
+// that the higher rung is real rather than retiring with the mitigation.
+//
+// IT IS AN IDENTITY JOIN, NOT A COUNT EQUALITY, per DESIGN section 5: rows are produced from the
+// discovered list in order, so the two are walked in lockstep and the first position where they
+// disagree -- or where the rows run out -- ends the covered prefix and everything from there is
+// reported as missing BY NAME. A count comparison would pass a report that analysed one subject
+// twice and skipped another, which is exactly the shape a batched sweep produces when a batch is
+// re-run after a death.
+//
+// THE LOCKSTEP WALK IS ALSO WHY THIS IS NOT QUADRATIC. A membership test per discovered path would
+// be a nested fold over the same collection -- the shape this very lens exists to catch -- and
+// "the corpus is only a few thousand" is the not-time-stable excuse DESIGN section 6 refuses.
+// Ordered comparison is linear and needs no set.
+
+fn coverage_missing(discovered: List<String>, rows: List<CorpusFileRow>) -> List<String> {
+  match discovered {
+    Empty => Empty
+    Cons { head: d, tail: dt } =>
+      match rows {
+        Empty => discovered
+        Cons { head: r, tail: rt } =>
+          if r.path == d { coverage_missing(discovered: dt, rows: rt) } else { discovered }
+      }
+  }
+}
+
+type CorpusCoverage
+  = CorpusCoverageComplete { covered: Int }
+  | CorpusCoverageShort { discovered: Int, reported: Int, missing: List<String> }
+
+fn corpus_coverage(discovered: List<String>, rows: List<CorpusFileRow>) -> CorpusCoverage {
+  let missing = coverage_missing(discovered: discovered, rows: rows)
+  match missing {
+    Empty => CorpusCoverageComplete { covered: length(xs: rows) }
+    Cons { head: _, tail: _ } =>
+      CorpusCoverageShort {
+        discovered: length(xs: discovered),
+        reported: length(xs: rows),
+        missing: missing
+      }
+  }
+}
+
 type CorpusGateDisposition
   = CorpusNoSuspectsObserved {
       files: Int,
@@ -254,6 +308,7 @@ type CorpusGateDisposition
   | CorpusSuspectObserved { paths: List<String>, sites: Int }
   | CorpusNotEstablishedObserved { rows: List<CorpusFileRow> }
   | CorpusPopulationBelowFloor { files: Int, floor: Int }
+  | CorpusCoverageIncomplete { discovered: Int, reported: Int, missing: List<String> }
 
 fn corpus_gate_disposition(report: CorpusReport, population_floor: Int) -> CorpusGateDisposition {
   if report.files < population_floor {
@@ -277,9 +332,30 @@ fn corpus_gate_disposition(report: CorpusReport, population_floor: Int) -> Corpu
   }
 }
 
+// COVERAGE IS DECIDED BEFORE ANYTHING ELSE, because every other arm is a statement ABOUT a
+// population and none of them is true of a population that was not walked. A short report reaching
+// the no-suspect arm is the exact silent-wrongness this guard exists to end.
+fn corpus_gate_disposition_over(
+  discovered: List<String>,
+  rows: List<CorpusFileRow>,
+  population_floor: Int
+) -> CorpusGateDisposition {
+  match corpus_coverage(discovered: discovered, rows: rows) {
+    CorpusCoverageShort { discovered: d, reported: r, missing: m } =>
+      CorpusCoverageIncomplete { discovered: d, reported: r, missing: m }
+    CorpusCoverageComplete { covered: _ } =>
+      corpus_gate_disposition(
+        report: corpus_report_from_rows(rows: rows),
+        population_floor: population_floor
+      )
+  }
+}
+
 fn corpus_gate(pool_roots: List<String>, population_floor: Int) -> CorpusGateDisposition {
-  corpus_gate_disposition(
-    report: corpus_report(pool_roots: pool_roots),
+  let discovered = corpus_paths(pool_roots: pool_roots)
+  corpus_gate_disposition_over(
+    discovered: discovered,
+    rows: corpus_rows_for_paths(paths: discovered),
     population_floor: population_floor
   )
 }

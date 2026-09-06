@@ -5,14 +5,18 @@ import v2.lens.complexity_accumulator_copy.corpus_gate {
   CorpusFileNotEstablished,
   CorpusFileRow,
   CorpusFileScanned,
+  CorpusGateDisposition,
   CorpusNoSuspectsObserved,
   CorpusNotEstablishedObserved,
+  CorpusCoverageIncomplete,
   CorpusPopulationBelowFloor,
   CorpusSuspectObserved,
   corpus_gate,
+  corpus_gate_disposition_over,
   corpus_rows_for_paths
 }
 import v2.std.collection { List }
+import v2.std.text { String }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
@@ -95,6 +99,73 @@ test fn an_empty_population_is_below_floor_rather_than_clean() -> Bool {
     CorpusPopulationBelowFloor { files: _, floor: _ } => true
     CorpusNoSuspectsObserved { files: _, refusal_sites: _, refusal_causes: _ } => false
     CorpusSuspectObserved { paths: _, sites: _ } => false
+    CorpusNotEstablishedObserved { rows: _ } => false
+    CorpusCoverageIncomplete { discovered: _, reported: _, missing: _ } => false
+  }
+}
+
+data planted_path: String = "test/fixture_roots/complexity_accumulator_copy/planted_copy.dag"
+
+data clean_path: String = "test/fixture_roots/complexity_accumulator_copy/clean_linear.dag"
+
+fn disposition_over(discovered: List<String>, rows: List<CorpusFileRow>) -> CorpusGateDisposition {
+  corpus_gate_disposition_over(discovered: discovered, rows: rows, population_floor: 1)
+}
+
+fn is_coverage_incomplete(d: CorpusGateDisposition) -> Bool {
+  match d {
+    CorpusCoverageIncomplete { discovered: _, reported: _, missing: _ } => true
+    CorpusPopulationBelowFloor { files: _, floor: _ } => false
+    CorpusNoSuspectsObserved { files: _, refusal_sites: _, refusal_causes: _ } => false
+    CorpusSuspectObserved { paths: _, sites: _ } => false
+    CorpusNotEstablishedObserved { rows: _ } => false
+  }
+}
+
+// THE MITIGATION FOR A CLASS THAT SITS BELOW THE LADDER, AND ITS DISCRIMINATING RED.
+// gunbc.recurring_failure_mode.sweep_terminated_by_process_death_rather_than_a_typed_refusal:
+// a single-process fold over a discovered population can be killed partway through, and the
+// survivors present in the same shape as a complete run. Silent wrongness is outside the ladder and
+// forbidden outright, so the guard is owed now even though the real climb -- a depth-bounded
+// interpreter walk -- is not in this change. This witness is the truncated sweep: two subjects
+// discovered, one row reported, which is precisely what a death after the first subject leaves
+// behind.
+test fn a_truncated_sweep_refuses_rather_than_reporting_its_survivors() -> Bool {
+  is_coverage_incomplete(
+    d: disposition_over(
+      discovered: [planted_path, clean_path],
+      rows: corpus_rows_for_paths(paths: [planted_path])
+    )
+  )
+}
+
+// THE JOIN IS ON IDENTITY, AND THIS IS THE WITNESS THAT SAYS SO RATHER THAN THE COMMENT. Same
+// discovered population, same NUMBER of rows, one subject analysed twice and the other never --
+// the shape a batched sweep produces when a batch is re-run after a death. A count comparison is
+// green here, which is why DESIGN section 5 says completeness is an identity join.
+test fn a_report_of_the_right_size_over_the_wrong_subjects_still_refuses() -> Bool {
+  is_coverage_incomplete(
+    d: disposition_over(
+      discovered: [planted_path, clean_path],
+      rows: corpus_rows_for_paths(paths: [planted_path, planted_path])
+    )
+  )
+}
+
+// THE POSITIVE CONTROL ON BOTH OF THE ABOVE. Without it the guard could refuse everything and the
+// two reds would still pass -- the absorbing arm wearing a typed name. A complete report over the
+// same population reaches the ordinary verdict, and the verdict it reaches is the suspect one,
+// because the planted subject is a suspect: so this control also proves coverage is decided BEFORE
+// the other arms rather than instead of them.
+test fn a_complete_report_over_the_same_population_reaches_its_ordinary_verdict() -> Bool {
+  match disposition_over(
+    discovered: [planted_path, clean_path],
+    rows: corpus_rows_for_paths(paths: [planted_path, clean_path])
+  ) {
+    CorpusSuspectObserved { paths: _, sites: _ } => true
+    CorpusCoverageIncomplete { discovered: _, reported: _, missing: _ } => false
+    CorpusPopulationBelowFloor { files: _, floor: _ } => false
+    CorpusNoSuspectsObserved { files: _, refusal_sites: _, refusal_causes: _ } => false
     CorpusNotEstablishedObserved { rows: _ } => false
   }
 }
