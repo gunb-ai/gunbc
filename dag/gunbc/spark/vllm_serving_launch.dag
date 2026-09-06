@@ -91,6 +91,22 @@ fn digests_agree(left: ContentHash, right: ContentHash) -> DigestAgreement {
 // THE AGREEMENT CHECKS ARE ONE ROW LIST FOLDED ONCE, not a conditional chain that recomputes a
 // comparison in order to ask whether it fired. Each row names its field and carries its verdict, so
 // the reported field is the FIRST that disagreed rather than whichever the nesting reached first.
+//
+// EVERY IDENTITY FIELD IS COMPARED, AND `head` IS THE ONE THAT WAS MISSED. It sat in the type and
+// not in this list, so two launches on DIFFERENT HOSTS that happened to share an invocation id
+// joined as the same launch -- and a systemd invocation id is unique per host, not across the
+// fleet, so nothing prevents that coincidence between two of the eight Sparks. A carrier field the
+// join ignores is worse than no field: it reads as though the host were part of the identity while
+// contributing nothing to it. The rule this row list now holds is that the type has no field the
+// fold does not consult.
+//
+// EVERY IDENTITY FIELD IS COMPARED, AND `head` IS THE ONE THAT WAS MISSED. It sat in the type and
+// not in this list, so two launches on DIFFERENT HOSTS that happened to share an invocation id
+// joined as the same launch -- and a systemd invocation id is unique per host, not across the
+// fleet, so nothing prevents that coincidence between two of the eight Sparks. A carrier field the
+// join ignores is worse than no field: it reads as though the host were part of the identity while
+// contributing nothing to it. The rule this row list now holds is that the type has no field the
+// fold does not consult.
 type FieldAgreement {
   field: NonEmptyStr
   agrees: Bool
@@ -111,6 +127,7 @@ fn digest_agreement_row(field: NonEmptyStr, agreement: DigestAgreement) -> Field
 
 fn agreement_rows(a: VllmServingLaunch, b: VllmServingLaunch) -> List<FieldAgreement> {
   [
+    field_agreement(field: "head" as NonEmptyStr, agrees: (a.head as String) == (b.head as String)),
     field_agreement(field: "container_id" as NonEmptyStr, agrees: (a.container_id as String) == (b.container_id as String)),
     digest_agreement_row(field: "executable_digest" as NonEmptyStr, agreement: digests_agree(left: a.executable_digest, right: b.executable_digest)),
     digest_agreement_row(field: "unit_digest" as NonEmptyStr, agreement: digests_agree(left: a.unit_digest, right: b.unit_digest)),
