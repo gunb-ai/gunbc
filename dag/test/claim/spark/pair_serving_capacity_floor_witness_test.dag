@@ -4,14 +4,14 @@ import std.types { Bool, String, Int, NonEmptyStr, List }
 import v2.std.optional { Present, Absent }
 import std.nat { Nat }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
-import std.measure { TokenCount, token_count, byte_size }
+import std.measure { TokenCount, token_count }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
 import extdeps.vllm.log_lines { vllm_startup_reading, GpuKvCacheSize }
 import extdeps.vllm.kv_cache { VllmObservedKvPool, KvPoolAdmitted, KvPoolRefused, vllm_observed_kv_pool_from_reading }
 import extdeps.vllm.kv_layout {
-  KvBlockSize, KvGroupLayout, FullAttention, ResolvedKvLayout, resolved_kv_layout,
+  KvBlockSize, KvLayerCount, KvGroupLayout, FullAttention, ResolvedKvLayout, resolved_kv_layout,
   VllmReportedCapacity, vllm_reported_capacity,
 }
 import gunbc.spark.vllm_kv_layout_observe { VllmKvLayoutReceipt, KvLayoutObserved, KvLayoutInconsistent, admit_kv_layout }
@@ -48,15 +48,15 @@ fn w_inc(invocation: String) -> VllmServingLaunch {
 fn w_pool(tokens: Int) -> VllmObservedKvPool {
   match vllm_observed_kv_pool_from_reading(
     tokens: token_count(count: tokens),
-    reading: vllm_startup_reading(line: GpuKvCacheSize, captured_text: "GPU KV cache size: n tokens" as NonEmptyStr),
+    reading: vllm_startup_reading(line: GpuKvCacheSize, captured_text: "GPU KV cache size: n tokens" as NonEmptyStr, observed_at_revision: vllm_source_revision_read),
   ) {
     KvPoolAdmitted { pool: p } => p
     KvPoolRefused { cause: _ } => w_pool(tokens: tokens)
   }
 }
 
-fn w_full(layers: Nat) -> KvGroupLayout {
-  KvGroupLayout { kind: FullAttention, layer_count: layers, block_size: 16, page_size_bytes: byte_size(count: 32768), sliding_window: none }
+fn w_full(layers: KvLayerCount) -> KvGroupLayout {
+  KvGroupLayout { kind: FullAttention, layer_count: layers, block_size: 16 }
 }
 
 // A receipt whose groups reproduce its printed lines: one full-attention layer at block 16 costs
