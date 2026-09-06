@@ -377,8 +377,15 @@ type BuildTypeEnvResult {
 // baseline receipt (follow-up work item), NOT an in-run refusal (that would double floor cost by
 // re-resolving main's ledger).
 
+// ONLY THE DIAGNOSTICS. An earlier shape also carried `modules: List<TypedModule>`, collected by
+// a flat_map with a map_get per resolved import, on every module realization, and read by NOBODY:
+// both callers -- the realize fold here and the hand-written schedule-dispatch loop in
+// cli_run.rs -- take `.diagnostics` and nothing else. Enumerated at the deletion: 2 callers, 0
+// readers of the field, across every .dag and .rs outside target/ plus the generated mirror.
+//
+// Its removal is why this function needs no parent VALUE at all: it asks whether an import has a
+// realized parent, so it depends on the KEY SET, and its whole remaining job is one diagnostic.
 type ParentModulesResult {
-  modules: List<TypedModule>
   diagnostics: List<ErrorNode>
 }
 
@@ -13506,12 +13513,6 @@ fn topo_resolve_types(
 }
 
 fn collect_parent_envs(resolved: ResolvedModule, module_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>) -> ParentModulesResult {
-  let modules = flat_map(resolved.resolved_imports, imp =>
-    match map_get(module_index, imp.module_path) {
-      Present { value: typed } => [typed]
-      Absent => []
-    }
-  )
   let resolved_mod_name = authored_name_at(source_indices: source_indices, node: resolved.module)
   let diagnostics = flat_map(resolved.resolved_imports, imp =>
     match map_get(module_index, imp.module_path) {
@@ -13519,7 +13520,7 @@ fn collect_parent_envs(resolved: ResolvedModule, module_index: Map<String, Typed
       Absent => [make_error_node(diagnostic: InternalError { message: concat("missing parent environment for imported module '", imp.module_path, "' while ordering '", resolved_mod_name, "'"), span: imp.target_module.value.span }, module_name: resolved_mod_name)]
     }
   )
-  ParentModulesResult { modules: modules, diagnostics: diagnostics }
+  ParentModulesResult { diagnostics: diagnostics }
 }
 
 fn variant_has_positional_payload_shape(variant: Node, source_indices: Map<String, NewlineIndex>) -> Bool {

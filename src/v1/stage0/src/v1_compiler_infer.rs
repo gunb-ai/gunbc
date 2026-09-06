@@ -488,7 +488,6 @@ pub struct BuildTypeEnvResult {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParentModulesResult {
-    pub modules: Rc<Vec<Rc<TypedModule>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
@@ -25149,20 +25148,6 @@ pub fn collect_parent_envs(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<ParentModulesResult> {
     {
-        let modules = Rc::new({
-            let mut __result = Vec::new();
-            for imp in resolved.resolved_imports.clone().iter().cloned() {
-                __result.extend(
-                    (*match v1_rt::map_get(&module_index, imp.module_path.clone()) {
-                        Some(typed) => Rc::new(vec![typed.clone()]),
-                        std::option::Option::None => Rc::new(vec![]),
-                    })
-                    .iter()
-                    .cloned(),
-                );
-            }
-            __result
-        });
         let resolved_mod_name =
             crate::v1_std_core::authored_name_at(source_indices.clone(), resolved.module.clone());
         let diagnostics = Rc::new({
@@ -25179,7 +25164,6 @@ pub fn collect_parent_envs(
             __result
         });
         Rc::new(ParentModulesResult {
-            modules: modules.clone(),
             diagnostics: diagnostics.clone(),
         })
     }
