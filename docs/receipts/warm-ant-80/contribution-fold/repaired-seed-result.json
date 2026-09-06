@@ -1,0 +1,53 @@
+{
+  "producer": "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/emission_provenance_test.dag --functions emission_module_loss_is_separate_from_declaration_loss,emission_unreached_roster_does_not_compare_as_empty,emission_declaration_deletion_is_reported_by_address,emission_same_count_substitution_preserves_both_directions,emission_duplicate_address_is_not_deduplicated,emission_body_change_is_not_hidden_by_membership,emission_nested_contributor_survives_flattening,emission_nested_unobserved_producer_remains_named,emission_combined_read_preserves_content_order_and_origin_multiplicity",
+  "invocation": "https://app.buildbuddy.io/invocation/444e1647-8c7e-475a-92a7-38e0abc03ab1",
+  "compiler_source_revision": "1faeee5ee41fd54077ef643a750fb19fcc8654ec",
+  "compiler_sha256": "a5add6dc91219600c59abbda58091b43f7fbca618fce6af5f3171d0471d682fc",
+  "baseline_compiler_sha256": "07a950c35a1e665791d2a69afc1ac357a76fcfab04bbfc4ce776d392e082c94c",
+  "baseline_invocation": "https://app.buildbuddy.io/invocation/747cf3e9-6435-46b4-ba15-8556ef463944",
+  "source_sha256": {
+    "dag/std/emission_provenance.dag": "c1e21a0ae6c647d9f87766c4c8b378717cb64037cfb4e8b76a2dd8da1c2c78f4",
+    "dag/test/claim/emission_provenance_test.dag": "b64c03bc9348cfee04aad67895c9d7c35e707bac162960404919eff022dd0637"
+  },
+  "results": [
+    {
+      "identity": "emission_module_loss_is_separate_from_declaration_loss",
+      "result": "PASS"
+    },
+    {
+      "identity": "emission_unreached_roster_does_not_compare_as_empty",
+      "result": "PASS"
+    },
+    {
+      "identity": "emission_declaration_deletion_is_reported_by_address",
+      "result": "PASS"
+    },
+    {
+      "identity": "emission_same_count_substitution_preserves_both_directions",
+      "result": "PASS"
+    },
+    {
+      "identity": "emission_duplicate_address_is_not_deduplicated",
+      "result": "PASS"
+    },
+    {
+      "identity": "emission_body_change_is_not_hidden_by_membership",
+      "result": "PASS"
+    },
+    {
+      "identity": "emission_nested_contributor_survives_flattening",
+      "result": "PASS"
+    },
+    {
+      "identity": "emission_nested_unobserved_producer_remains_named",
+      "result": "PASS"
+    },
+    {
+      "identity": "emission_combined_read_preserves_content_order_and_origin_multiplicity",
+      "result": "PASS"
+    }
+  ],
+  "requested_but_unreported": [],
+  "reported_but_unrequested": [],
+  "scope": "Authored model/control execution only; no production emission roster, build lineage, or seed-independence claim."
+}

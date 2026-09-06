@@ -19,3 +19,7 @@ Latest paired probe digests:
 - dag/test/claim/emission_provenance_test.dag: b64c03bc9348cfee04aad67895c9d7c35e707bac162960404919eff022dd0637
 
 Keep the pairing control as regression evidence for delegation to the shared layer readers. Await L4's stabilized repaired seed, then rerun with the source payload unchanged and separately record the new executor identity. No caller workaround, independent compiler repair, regeneration, or placement is authorized by this packet.
+
+## Repaired-seed observation
+
+The unchanged paired payload executes successfully with the compiler built from `1faeee5ee41fd54077ef643a750fb19fcc8654ec` (#10625): [producing invocation](https://app.buildbuddy.io/invocation/444e1647-8c7e-475a-92a7-38e0abc03ab1). `repaired-seed-result.json` retains each requested control identity and its result, both executor digests, and the unchanged payload digests. The exact rerun replaces only the three compiler-revision pin occurrences in `paired-probe.sh` with this revision. The baseline resolution refusal is absent and every requested control executes successfully. This establishes coverage by that repaired compiler, not a production provenance receipt or corpus-wide defect census.
