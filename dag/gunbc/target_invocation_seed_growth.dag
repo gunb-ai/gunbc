@@ -71,6 +71,24 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // gunbc.cli_dispatch_surface gunbc_cli_emitter_gap is the instrument that reports the surface it
 // omits. The `test` verb is authored there as AbsentFromEmitMainRs, so the gap instrument counts it
 // rather than this file claiming it away.
+//
+// THE --affected-select EXTENSION (PR #10689) is classified against the same five refused classes:
+//   NewLanguageBehavior -- no; the compile pipeline is byte-untouched.
+//   NewCompatibilityObligation -- no; the required floor is untouched and unaffected; the
+//     affected-select verb is a standalone development command, not a CI replacement.
+//   NewEscapeHatchOrAdmissionRow -- no; the new verb does not weaken any existing refusal.
+//     The XOR admission (target OR --affected-select, never both, never neither) and the
+//     fail-closed refusal on affected-set computation failure (REFUSED vs widened to run-all)
+//     mirror the same discipline as test_verb. A selector that runs fewer tests is indeed the
+//     shape a reviewer should suspect, but it does so by the established import-closure authority
+//     (entry_file_touched_via_import_closure), not by a new leniency. The verb is standalone and
+//     has no effect on the required floor's selection (it is a local development command, not a
+//     CI gate). The three-bucket consumption fix (edits.touched_entry_files ∪ overlapping_data_items
+//     ∪ edited_test_fns) ensures the affected set is complete — a data-only or test-fn-only diff
+//     correctly selects the entries whose import closure includes the edited file.
+//   SeedFeatureCompletion -- no; the seed compiler gains no capability.
+//   PublicSurfaceGrowth -- yes, and it is a measured rather than a silent one: the single new
+//     public declaration (test_affected_select) is enrolled in hand_authored_declarations below.
 
 data target_invocation_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
@@ -167,6 +185,11 @@ data target_invocation_seed_growth_justification: SeedGrowthJustification = Seed
     DeclarationRef {
       module_path: "v1_compiler.target_invocation_host",
       decl_name: "test_verb",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.target_invocation_host",
+      decl_name: "test_affected_select",
       field: WholeDeclaration
     },
     DeclarationRef {
