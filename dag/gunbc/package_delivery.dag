@@ -1950,6 +1950,22 @@ type UniquePublishingRelocateOutcome
 // failed credential shred and a successful one were spelled the same while the answer said the
 // credential was gone.
 //
+// CHECKED BY CONSTRUCTION SITE, NOT BY NAME, because the name is what nearly defeated it. Every
+// binding these eleven sweeps reach is a `shell.Mktemp.*` call in this module and there is no
+// other origin and no shadowing: `staged` (DirWithTemplate, in relocate_build_root_to_unique_
+// publishing, which is also where `publishing` comes from via UniquePublishingRelocateReady), and
+// `staging`, `cache`, `build` (Mktemp.Dir, at both the codex-runtime and spark-serving
+// construction sites), with build_root reaching release_codex_runtime_bundle_immutable from that
+// same `build`.
+//
+// `cache_dir` IS THE MEMBER THAT LOOKS LIKE AN EXCEPTION AND IS NOT. A cache is normally the one
+// object here whose purpose is to outlive the run, which would make "left behind" observable by
+// the NEXT run and would break the property above for that site specifically. It does not: both
+// its construction sites are `let cache = shell.Mktemp.Dir()`, so it is per-run despite the name.
+// The name is the only misleading part, and it is a §3 concern in its own right -- a name
+// asserting a lifetime its construction does not have, which a reader can only refute by finding
+// two mktemp call sites hundreds of lines away. Renaming it is not this classification's change.
+//
 // WHAT WOULD MOVE A SITE OUT OF THIS CLASS, so the classification is falsifiable rather than a
 // blanket permission: a swept path a later run re-derives (residue would be read as that run's own
 // work); a swept path under a directory something LISTS (residue would join a population); or

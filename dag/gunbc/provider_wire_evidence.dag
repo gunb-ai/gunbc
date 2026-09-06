@@ -148,6 +148,9 @@ fn publish_evidence_object_exclusive(
 // each retention outcome is already decided by the write, the digest, or the publish the sweep
 // follows.
 //
+// CHECKED BY CONSTRUCTION SITE, NOT BY NAME: all five reach the single `staging` binding, whose
+// only origin in this module is mktemp_file_in_dir's `shell.Mktemp.FileInDirectory`.
+//
 // WHAT WOULD FALSIFY THAT: a reader that LISTS the evidence root. An unreferenced staging file
 // would then enter a population whose every member is supposed to be named by its own digest, and
 // these sweeps would owe their outcomes to the caller. No such reader exists today; adding one is
