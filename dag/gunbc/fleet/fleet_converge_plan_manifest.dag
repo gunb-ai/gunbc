@@ -13,7 +13,6 @@ import gunbc.fleet_converge_plan {
   fleet_converge_plan_body_path,
   fleet_converge_plan_content_hash_path,
   fleet_converge_plan_apply_shell_path,
-  fleet_converge_plan_spark_typed_actions_wire_path,
   fleet_converge_plan_subject_host_path,
   fleet_converge_plan_subject_scope_path,
   fleet_converge_plan_member_set_fp_path,
@@ -26,9 +25,9 @@ import gunbc.fleet_converge_plan {
 
 // EVERY VALUE APPLY TRUSTS, JUDGED IN ONE PLACE AGAINST ONE RUN-BOUND ANCHOR.
 //
-// THE HOLE THIS CLOSES, stated as the attack rather than as a property. The plan writes eight files
-// into /tmp/fleet-converge-plan. plan_content.hex covers exactly three of them -- plan.txt, apply.sh
-// and the spark wire -- and subject_scope.txt, subject_host.txt, subject_member_set.txt,
+// THE HOLE THIS CLOSES, stated as the attack rather than as a property. The plan writes seven files
+// into /tmp/fleet-converge-plan. plan_content.hex covers exactly two of them -- plan.txt and
+// apply.sh -- and subject_scope.txt, subject_host.txt, subject_member_set.txt,
 // observed_baseline.hex and the two generation files were covered by nothing. Apply then read the
 // SCOPE out of subject_scope.txt and used it for BOTH halves of its own admission: it was the
 // planned scope handed to fleet_converge_apply_artifact_admits AND the selector deciding which
@@ -99,8 +98,6 @@ fn fleet_converge_persisted_member_authority(path: String) -> FleetConvergePersi
     PersistedMemberClassified { path: path, authority: DerivedFromBoundAuthority { recomputed_into: "plan_artifact_hash" } }
   } else if path == fleet_converge_plan_apply_shell_path {
     PersistedMemberClassified { path: path, authority: DerivedFromBoundAuthority { recomputed_into: "plan_artifact_hash" } }
-  } else if path == fleet_converge_plan_spark_typed_actions_wire_path {
-    PersistedMemberClassified { path: path, authority: DerivedFromBoundAuthority { recomputed_into: "plan_artifact_hash" } }
   } else {
     UnclassifiedPersistedMember { path: path }
   }
@@ -119,7 +116,6 @@ data fleet_converge_persisted_member_paths: List<String> = [
   fleet_converge_plan_content_hash_path,
   fleet_converge_plan_body_path,
   fleet_converge_plan_apply_shell_path,
-  fleet_converge_plan_spark_typed_actions_wire_path,
 ]
 
 // CATEGORY THREE IS EMPTY TODAY, AND THAT IS AN OBSERVATION RATHER THAN AN OMISSION. Every file the
@@ -128,8 +124,8 @@ data fleet_converge_persisted_member_paths: List<String> = [
 // it must be classified as one deliberately, which is the point of the fold having no default.
 // THE ON-DISK POPULATION APPLY READS, AS ONE VALUE.
 //
-// It is a record rather than ten parameters because the admission below must be TOTAL over it: a
-// caller able to pass nine of ten would be back in the shape that produced the hole, where each
+// It is a record rather than nine parameters because the admission below must be TOTAL over it: a
+// caller able to pass eight of nine would be back in the shape that produced the hole, where each
 // site chose which facts it carried. Every field is the raw TEXT read from disk and never a parsed
 // value, because parsing before admitting is what let a corrupt generation file reach a comparison
 // at all.
@@ -142,7 +138,6 @@ type FleetConvergeApplyPayload {
   planned_generation_text: String
   plan_body: String
   apply_shell: String
-  spark_typed_actions_wire: String
   plan_content_hex: String
 }
 
@@ -269,7 +264,6 @@ fn payload_digest_admits(
   match fleet_converge_plan_bundle_digest_hex(
     plan_body: payload.plan_body,
     apply_shell: payload.apply_shell,
-    spark_typed_actions_wire: payload.spark_typed_actions_wire,
   ) {
     Absent => PayloadDigestUncomputable { path: fleet_converge_plan_body_path }
     Present { value: computed } =>

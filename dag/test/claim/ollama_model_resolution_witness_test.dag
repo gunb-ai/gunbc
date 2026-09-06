@@ -11,50 +11,6 @@ import gunbc.ollama_model_resolution {
   gpt_oss_20b_manifest_digest_2026_08_19,
   gpt_oss_20b_manifest_digest_2026_08_12,
 }
-import gunbc.spark.serving_desired { spark_serving_desired_model_artifact }
-import gunbc.model_artifact { ModelArtifact, model_artifact_provenance_label }
-
-// The join that makes the repin real rather than declared: desired state's artifact identity IS the
-// resolution's resolved identity, not a second copy of the same hex that could drift from it.
-test fn desired_model_identity_is_the_resolved_identity() -> Bool {
-  match compare_content_hash(
-    left: spark_serving_desired_model_artifact().identity,
-    right: gpt_oss_120b_resolution().resolved_identity,
-  ) {
-    ContentHashEqual => true
-    ContentHashDifferent => false
-    ContentHashCrossFamilyIncomparable => false
-  }
-}
-
-// The discriminating negatives. Two of them, because under the P1 selection the claim above needs
-// guarding in two directions at once: that it is not passing because every content hash compares
-// equal, and that desired state actually MOVED off 20b rather than merely naming a resolution.
-//
-// The second comparison is the one that reds on a revert. The superseded 2026-08-12 identity alone
-// would stay different from any 120b value, so it can no longer distinguish a correct selection from
-// a reverted one -- it is kept because it is still the record that this tag moved, not because it
-// still discriminates.
-fn desired_identity_differs_from(right: ContentHash) -> Bool {
-  match compare_content_hash(
-    left: spark_serving_desired_model_artifact().identity,
-    right: right,
-  ) {
-    ContentHashDifferent => true
-    ContentHashEqual => false
-    ContentHashCrossFamilyIncomparable => false
-  }
-}
-
-test fn the_superseded_identity_is_not_the_desired_one() -> Bool {
-  desired_identity_differs_from(
-    right: as_content_hash_cryptographic(digest: gpt_oss_20b_manifest_digest_2026_08_12),
-  )
-}
-
-test fn the_current_20b_identity_is_not_the_desired_one() -> Bool {
-  desired_identity_differs_from(right: gpt_oss_20b_resolution().resolved_identity)
-}
 
 // Three readings: the registry selection plus two independent srv6 confirmations. The count is the
 // cheapest thing that reds if a future edit drops a confirmation into prose.
@@ -90,10 +46,3 @@ test fn the_resolution_wire_carries_reference_identity_and_evidence() -> Bool {
     && string_contains(gpt_oss_20b_resolution_wire(), "registry.ollama.ai")
 }
 
-// Provenance survives the new minting door: the artifact is still a pulled stock artifact carrying
-// its upstream reference as a LABEL, which is what distinguishes it from a tuned one.
-test fn the_resolved_artifact_is_still_stock_with_its_reference_as_provenance() -> Bool {
-  string_contains(model_artifact_provenance_label(artifact: spark_serving_desired_model_artifact()), "pulled")
-    && string_contains(model_artifact_provenance_label(artifact: spark_serving_desired_model_artifact()), "gpt-oss:120b")
-    && (spark_serving_desired_model_artifact().serving_label as String) == "gpt-oss:120b"
-}
