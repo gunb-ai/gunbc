@@ -184,7 +184,6 @@ import v1.compiler.infer_emit_info {
   add_emit_item_summary, derive_variant_to_enum, close_fn_fields
 }
 import v1.compiler.infer_items {
-  duplicate_item_identity_marker,
   ItemKind, FnItem, FuncItem, TypeItem, DataItem, ServiceItem, OtherItem,
   ItemInfo, TypedModule, TypedGraph, ResolvedGraph, ModuleInterface,
   ModuleTypecheckProgress, ItemsChecked, AbandonedBeforeItems,
@@ -12627,19 +12626,20 @@ fn analyze_item(item: Node, env: TypeEnv, module_name: String) -> ItemContributi
   }
 }
 
-// The registry's key IS the declaration's identity, projected. A collision therefore means two
-// declarations of one leaf inside one module — the single case owner_module_path plus decl_name
-// cannot tell apart — so the row becomes the sentinel and every reader refuses, rather than the
-// later contribution silently winning.
+// The registry's key IS the declaration's identity, projected, so an insert is idempotent: a row
+// already present under this key names the same owner module and the same declared name, which is
+// the whole of what the key says. A collision check here therefore cannot discriminate -- it fires
+// on a benign re-contribution of one declaration exactly as it would on a real duplicate, and when
+// it did, it replaced the real row with a sentinel and the declaration stopped resolving. Two
+// declarations of one leaf inside one module is a real class, but its subject is a MODULE'S ITEMS,
+// not this fold, and it is not walled here. Trigger: a per-module declaration census that counts
+// authored names before the registry flattens them, at which point the refusal has a subject that
+// can tell the two cases apart.
 fn insert_item_by_identity(registry: Map<String, ItemInfo>, info: ItemInfo) -> Map<String, ItemInfo> {
-  let key = callable_identity(id: DeclaredCallableIdentity {
+  map_insert(registry, callable_identity(id: DeclaredCallableIdentity {
     owner_module_path: info.module_name,
     decl_name: info.name
-  })
-  match map_get(registry, key) {
-    Present { value: _ } => map_insert(registry, key, duplicate_item_identity_marker(name: key))
-    Absent => map_insert(registry, key, info)
-  }
+  }), info)
 }
 
 fn fold_module_contributions(remaining: List<ItemContribution>,
@@ -13422,16 +13422,24 @@ fn build_enum_variant_shape_sets(modules: List<TypedModule>, type_summaries: Map
 // A leaf declared by two different modules maps to the empty string, which is not a legal module
 // path, so every identity built from it misses and the consumer refuses rather than being handed
 // whichever module folded last.
+// A module's registry carries rows for the names it IMPORTS as well as the ones it declares, and an
+// imported row names the importer. Counting those made every widely imported declaration look like
+// it had many owners, so the leaf resolved to the ambiguity sentinel and its use line was dropped --
+// the seed then failed to build on a function it could no longer name. This index is about
+// DECLARATIONS, so a row only counts inside the module that declares it.
 fn build_item_leaf_owner_modules(modules: List<TypedModule>) -> Map<String, String> {
   modules |> fold(init: empty_map(), f: (acc, tm) =>
+    let owning_module = authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)
     tm.item_registry |> map_keys |> fold(init: acc, f: (acc2, key) =>
       match map_get(tm.item_registry, key) {
         Present { value: info } =>
-          match map_get(acc2, info.name) {
-            Present { value: prior } =>
-              if prior == info.module_name { acc2 }
-              else { map_insert(acc2, info.name, "") }
-            Absent => map_insert(acc2, info.name, info.module_name)
+          if info.module_name != owning_module { acc2 } else {
+            match map_get(acc2, info.name) {
+              Present { value: prior } =>
+                if prior == info.module_name { acc2 }
+                else { map_insert(acc2, info.name, "") }
+              Absent => map_insert(acc2, info.name, info.module_name)
+            }
           }
         Absent => acc2
       }

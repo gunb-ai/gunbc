@@ -7163,7 +7163,7 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                         };
                         let result_bt = if (func_name.clone() == "set_contains".to_string()) {
                             if (recv_is_set.clone() && !elem_mismatch.clone()) {
-                                bool_type.clone()
+                                bool_type()
                             } else {
                                 crate::v1_compiler_infer_method::resolve_builtin_call_type(
                                     func_name.clone(),
@@ -7265,7 +7265,7 @@ pub fn method_existence_decision(
         ) != std::option::Option::None);
         if recv_surface_established.clone() {
             Rc::new(MethodPipeFallback {
-                result_ty: error_type.clone(),
+                result_ty: error_type(),
                 kernel_diags: Rc::new(vec![crate::v1_std_core::make_error_node(
                     Rc::new(CompilerDiagnostic::MethodNotFound {
                         method: method_name.clone(),
@@ -7302,7 +7302,7 @@ pub fn method_existence_decision(
                             ) != std::option::Option::None);
                         if peeled_surface_established.clone() {
                             Rc::new(MethodPipeFallback {
-                                result_ty: error_type.clone(),
+                                result_ty: error_type(),
                                 kernel_diags: Rc::new(vec![crate::v1_std_core::make_error_node(
                                     Rc::new(CompilerDiagnostic::MethodNotFound {
                                         method: method_name.clone(),
@@ -7325,7 +7325,7 @@ pub fn method_existence_decision(
                                     ) == "".to_string())
                                     {
                                         Rc::new(MethodPipeFallback {
-    result_ty: error_type.clone(),
+    result_ty: error_type(),
     kernel_diags: Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::ReceiverTypeUnestablished {
     method: method_name.clone(),
     span: span.clone(),
@@ -7333,7 +7333,7 @@ pub fn method_existence_decision(
 })
                                     } else {
                                         Rc::new(MethodPipeFallback {
-    result_ty: error_type.clone(),
+    result_ty: error_type(),
     kernel_diags: Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::MethodExistenceFrontierAdmitted {
     method: method_name.clone(),
     receiver_type: recv_shape.clone(),
@@ -7344,7 +7344,7 @@ pub fn method_existence_decision(
                                     }
                                 }
                                 std::option::Option::None => Rc::new(MethodPipeFallback {
-                                    result_ty: error_type.clone(),
+                                    result_ty: error_type(),
                                     kernel_diags: Rc::new(vec![
                                         crate::v1_std_core::make_error_node(
                                             Rc::new(CompilerDiagnostic::MethodExistenceUndecided {
@@ -8723,7 +8723,7 @@ pub fn infer_call_arguments_generic_pass(
                     .next()
                 {
                     Some(carried) => carried.substitution_basis.clone(),
-                    std::option::Option::None => error_type.clone(),
+                    std::option::Option::None => error_type(),
                 },
                 CallArgumentFormalSelection::CallArgumentFormalUnavailable => {
                     type_variable_node("callable_param".to_string())
@@ -8761,7 +8761,7 @@ pub fn infer_call_arguments_generic_pass(
                         st.subst.clone(),
                         scope.type_env.clone().source_indices.clone(),
                     ),
-                    std::option::Option::None => error_type.clone(),
+                    std::option::Option::None => error_type(),
                 },
                 CallArgumentFormalSelection::CallArgumentFormalUnavailable => {
                     type_variable_node("callable_param".to_string())
@@ -8849,7 +8849,7 @@ pub fn seed_override_map() -> Rc<HashMap<String, Rc<Node>>> {
     Rc::new(vec!["".to_string()]).iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<Node>>(),
         |acc: Rc<HashMap<String, Rc<Node>>>, k: String| {
-            v1_rt::rc_map_insert(acc, k.clone(), unit_type.clone())
+            v1_rt::rc_map_insert(acc, k.clone(), unit_type())
         },
     )
 }
@@ -9005,7 +9005,7 @@ pub fn literal_boundary_elaboration(
                                 scope.type_env.clone(),
                             ),
                         );
-                        match (*crate::std_literal_elaboration::elaborate_literal_at(literal_homomorphism_rows.clone(), kind.clone(), destination.clone(), element.clone(), natively.clone())).clone() {
+                        match (*crate::std_literal_elaboration::elaborate_literal_at(literal_homomorphism_rows(), kind.clone(), destination.clone(), element.clone(), natively.clone())).clone() {
     LiteralElaborationOutcome::DirectLiteral => Rc::new(LiteralBoundary::LiteralBoundaryPlain),
     LiteralElaborationOutcome::ViaHomomorphism { homomorphism: h, .. } => Rc::new(LiteralBoundary::LiteralBoundaryElaborated {
     elaboration: Rc::new(LiteralElaboration {
@@ -9139,9 +9139,7 @@ pub fn unfold_scalar_sequence_image(
                         value: Rc::new(LiteralValue::LitInt { value: cp.clone() }),
                     }),
                     Rc::new(vec![]),
-                    Some(Rc::new(InferredNode::Resolved {
-                        node: int_type.clone(),
-                    })),
+                    Some(Rc::new(InferredNode::Resolved { node: int_type() })),
                     span.clone(),
                 ));
             }
@@ -9475,7 +9473,7 @@ if ((var_ambiguity_cands.clone().len() as i64) > 0) {
                         let err_texpr = crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), name.clone(), Rc::new(ExprData::ExprVar {
     binding_kind: std::option::Option::None,
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
-    node: error_type.clone(),
+    node: error_type(),
 })), span.clone(), span.clone());
 Rc::new(InferResult {
     typed: err_texpr.clone(),
@@ -9774,7 +9772,7 @@ Rc::new(InferResult {
                                 Some(fi) => crate::v1_compiler_infer_types::resolved_type(
                                     crate::v1_std_core::arg_value(fi.typed_arg.clone()),
                                 ),
-                                std::option::Option::None => error_type.clone(),
+                                std::option::Option::None => error_type(),
                             };
                             let arg_call = if ((sig.clone() != std::option::Option::None)
                                 && !formal_authority_available.clone())
@@ -9965,7 +9963,7 @@ Rc::new(InferResult {
                                             }),
                                             typed_arg_nodes.clone(),
                                             Some(Rc::new(InferredNode::Resolved {
-                                                node: error_type.clone(),
+                                                node: error_type(),
                                             })),
                                             span.clone(),
                                             crate::v1_std_core::node_name_span(texpr.clone()),
@@ -9983,7 +9981,7 @@ Rc::new(InferResult {
                                                 call_subst.clone(),
                                                 scope.type_env.clone().source_indices.clone(),
                                             ),
-                                            std::option::Option::None => error_type.clone(),
+                                            std::option::Option::None => error_type(),
                                         };
                                         let value_params_for_check =
                                             call_sig_split.value_params.clone();
@@ -10047,7 +10045,7 @@ Rc::new(InferResult {
                                         Some(ta) => crate::v1_compiler_infer_types::resolved_type(
                                             crate::v1_std_core::arg_value(ta.clone()),
                                         ),
-                                        std::option::Option::None => unit_type.clone(),
+                                        std::option::Option::None => unit_type(),
                                     };
                                     let method_receiver = match typed_args.clone().first().cloned()
                                     {
@@ -10128,7 +10126,7 @@ Rc::new(InferResult {
                                             let base_result_type =
                                                 match method_resolution.result_type.clone() {
                                                     Some(mt) => mt.clone(),
-                                                    std::option::Option::None => error_type.clone(),
+                                                    std::option::Option::None => error_type(),
                                                 };
                                             let method_tv = if (method_resolution.semantics.clone()
                                                 == std::option::Option::None)
@@ -10476,11 +10474,11 @@ if (callable_local.clone() != std::option::Option::None) {
                                             {
                                                 let callable_type = match callable_local.clone() {
     Some(ct) => ct.clone(),
-    std::option::Option::None => error_type.clone(),
+    std::option::Option::None => error_type(),
 };
 let resolved_type = match callable_type.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: ret, .. }) => ret.clone(),
-    _ => error_type.clone(),
+    _ => error_type(),
 };
 Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
@@ -10515,7 +10513,7 @@ let resolved_type = match type_match.clone() {
                                                 } else {
                                                     crate::v1_compiler_infer_types::callable_return_type(gnode.clone())
                                                 },
-    std::option::Option::None => error_type.clone(),
+    std::option::Option::None => error_type(),
 },
 };
 let call_diags = match type_match.clone() {
@@ -10626,7 +10624,7 @@ Rc::new(InferResult {
                         Some(fi) => crate::v1_compiler_infer_types::resolved_type(
                             crate::v1_std_core::arg_value(fi.typed_arg.clone()),
                         ),
-                        std::option::Option::None => error_type.clone(),
+                        std::option::Option::None => error_type(),
                     };
                     let mc_elem_provenance = derive_element_provenance(
                         recv_typed.clone(),
@@ -11266,9 +11264,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                         texpr.occurrence_identity.clone(),
                         Rc::new(ExprData::ExprIf),
                         Rc::new(vec![cond_typed.clone(), then_typed.clone()]),
-                        Some(Rc::new(InferredNode::Resolved {
-                            node: unit_type.clone(),
-                        })),
+                        Some(Rc::new(InferredNode::Resolved { node: unit_type() })),
                         span.clone(),
                     );
                     Rc::new(InferResult {
@@ -11473,7 +11469,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
             let elem_type_node = if ((elem_results.clone().len() as i64) > 0) {
                 match elem_results.clone().first().cloned() {
                     Some(r) => crate::v1_compiler_infer_types::resolved_type(r.typed.clone()),
-                    std::option::Option::None => unit_type.clone(),
+                    std::option::Option::None => unit_type(),
                 }
             } else {
                 match expected.clone() {
@@ -11486,10 +11482,10 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                 Some(elem) => {
                                     crate::v1_compiler_infer_types::child_type_node(elem.clone())
                                 }
-                                std::option::Option::None => unit_type.clone(),
+                                std::option::Option::None => unit_type(),
                             }
                         } else {
-                            unit_type.clone()
+                            unit_type()
                         }
                     }
                     std::option::Option::None => {
@@ -11604,7 +11600,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
             let operand_typed = operand_result.typed.clone();
             let operand_diags = operand_result.diagnostics.clone();
             let result_type = match op.clone() {
-                UnaryOpKind::Not => bool_type.clone(),
+                UnaryOpKind::Not => bool_type(),
                 UnaryOpKind::Neg => {
                     crate::v1_compiler_infer_types::resolved_type(operand_typed.clone())
                 }
@@ -11937,7 +11933,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 Rc::new(ExprData::ExprStringInterp),
                 typed_part_nodes.clone(),
                 Some(Rc::new(InferredNode::Resolved {
-                    node: string_type.clone(),
+                    node: string_type(),
                 })),
                 span.clone(),
             );
@@ -11957,7 +11953,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                         scope.clone(),
                         Rc::new(vec![]),
                         Rc::new(vec![]),
-                        unit_type.clone(),
+                        unit_type(),
                         expected.clone(),
                     );
                     let blk_texpr = crate::v1_std_core::make_expr_node(
@@ -11985,9 +11981,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                     texpr.occurrence_identity.clone(),
                     Rc::new(ExprData::ExprBlock),
                     Rc::new(vec![]),
-                    Some(Rc::new(InferredNode::Resolved {
-                        node: unit_type.clone(),
-                    })),
+                    Some(Rc::new(InferredNode::Resolved { node: unit_type() })),
                     span.clone(),
                 ))
             }
@@ -13482,7 +13476,7 @@ let field_conformance_type = match field_declared_type.clone() {
     std::option::Option::None => ft.clone(),
 },
 },
-    std::option::Option::None => error_type.clone(),
+    std::option::Option::None => error_type(),
 };
 let field_expected = match field_declared_type.clone() {
     Some(ft) => if ((((ft.ident_span.clone() != std::option::Option::None) || type_node_is_callable(ft.clone())) || (ft.return_cardinality.clone() == Cardinality::CardOptional)) || field_type_is_optional_coproduct(ft.clone(), scope.type_env.clone())) {
@@ -13691,7 +13685,7 @@ Rc::new(FieldInferResult {
                 };
                 let variant_lookup_resolved = match effective_lookup.clone() {
                     Some(tn) => tn.clone(),
-                    std::option::Option::None => error_type.clone(),
+                    std::option::Option::None => error_type(),
                 };
                 let type_name_declares_own_type =
                     match crate::v1_compiler_infer_env::lookup_binding_by_name(
@@ -18959,9 +18953,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                         __result
                     }),
                     params: item.params.clone(),
-                    inferred: Some(Rc::new(InferredNode::Resolved {
-                        node: unit_type.clone(),
-                    })),
+                    inferred: Some(Rc::new(InferredNode::Resolved { node: unit_type() })),
                     return_cardinality: item.return_cardinality.clone(),
                     uses: item.uses.clone(),
                     body: std::option::Option::None,
@@ -19288,9 +19280,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                     {
                                         item.inferred.clone()
                                     } else {
-                                        Some(Rc::new(InferredNode::Resolved {
-                                            node: unit_type.clone(),
-                                        }))
+                                        Some(Rc::new(InferredNode::Resolved { node: unit_type() }))
                                     },
                                     return_cardinality: item.return_cardinality.clone(),
                                     uses: item.uses.clone(),
@@ -19333,9 +19323,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                     {
                                         item.inferred.clone()
                                     } else {
-                                        Some(Rc::new(InferredNode::Resolved {
-                                            node: unit_type.clone(),
-                                        }))
+                                        Some(Rc::new(InferredNode::Resolved { node: unit_type() }))
                                     },
                                     return_cardinality: item.return_cardinality.clone(),
                                     uses: item.uses.clone(),
@@ -19884,7 +19872,7 @@ pub fn deps_excluding_leaf_self(
 }
 
 pub fn compiler_recursive_name_set() -> Rc<HashMap<String, bool>> {
-    Rc::new(v1_rt::map_keys(&compiler_recursive_types))
+    Rc::new(v1_rt::map_keys(&compiler_recursive_types()))
         .iter()
         .cloned()
         .fold(
@@ -22181,7 +22169,7 @@ pub fn build_type_env(
     symbol_index: Rc<SymbolIndex>,
 ) -> Rc<BuildTypeEnvResult> {
     {
-        let source_indices = Rc::new(v1_rt::map_keys(&kernel_type_set))
+        let source_indices = Rc::new(v1_rt::map_keys(&kernel_type_set()))
             .iter()
             .cloned()
             .fold(
@@ -22234,7 +22222,7 @@ pub fn build_type_env(
             },
         );
         let intern_table = seed_kernel_intern_table(intern_table.clone());
-        let kernel_bindings_base = Rc::new(v1_rt::map_keys(&kernel_type_set))
+        let kernel_bindings_base = Rc::new(v1_rt::map_keys(&kernel_type_set()))
             .iter()
             .cloned()
             .fold(
@@ -22421,12 +22409,11 @@ pub fn build_type_env(
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
             }),
         );
-        let node_fields = crate::v1_compiler_infer_env::inductive_fields_list_to_map(
-            compiler_inductive_fields.clone(),
-        );
+        let node_fields =
+            crate::v1_compiler_infer_env::inductive_fields_list_to_map(compiler_inductive_fields());
         let kernel_recursive_types = Rc::new({
             let mut __result = Vec::new();
-            for name in Rc::new(v1_rt::map_keys(&compiler_recursive_types))
+            for name in Rc::new(v1_rt::map_keys(&compiler_recursive_types()))
                 .iter()
                 .cloned()
             {
@@ -22438,7 +22425,7 @@ pub fn build_type_env(
             }
             __result
         });
-        let kernel_recursive_type_set = Rc::new(v1_rt::map_keys(&compiler_recursive_types))
+        let kernel_recursive_type_set = Rc::new(v1_rt::map_keys(&compiler_recursive_types()))
             .iter()
             .cloned()
             .fold(
@@ -22793,7 +22780,7 @@ pub fn build_type_env(
                     v1_rt::rc_map_insert(acc, n.clone(), true)
                 },
             );
-        let svn_kernel = Rc::new(v1_rt::map_keys(&kernel_type_set))
+        let svn_kernel = Rc::new(v1_rt::map_keys(&kernel_type_set()))
             .iter()
             .cloned()
             .fold(
@@ -22946,7 +22933,7 @@ pub fn build_type_env_unresolved(
     intern_table: Rc<InternTable>,
 ) -> Rc<BuildTypeEnvResult> {
     {
-        let intern_table = Rc::new(v1_rt::map_keys(&kernel_type_set))
+        let intern_table = Rc::new(v1_rt::map_keys(&kernel_type_set()))
             .iter()
             .cloned()
             .fold(intern_table.clone(), |t: Rc<InternTable>, name: String| {
@@ -22959,7 +22946,7 @@ pub fn build_type_env_unresolved(
             },
         );
         let zero_span = crate::v1_std_core::no_span();
-        let kernel_bindings = Rc::new(v1_rt::map_keys(&kernel_type_set))
+        let kernel_bindings = Rc::new(v1_rt::map_keys(&kernel_type_set()))
             .iter()
             .cloned()
             .fold(
@@ -25186,6 +25173,10 @@ pub fn build_item_leaf_owner_modules(
     modules.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, String>(),
         |acc: Rc<HashMap<String, String>>, tm: _| {
+            let owning_module = crate::v1_std_core::authored_name_at(
+                tm.type_env.clone().source_indices.clone(),
+                tm.module.clone(),
+            );
             Rc::new(v1_rt::map_keys(&tm.item_registry.clone()))
                 .iter()
                 .cloned()
@@ -25195,24 +25186,30 @@ pub fn build_item_leaf_owner_modules(
                         &tm.item_registry.clone(),
                         key.clone(),
                     ) {
-                        Some(info) => match v1_rt::map_get(&acc2, info.name.clone()) {
-                            Some(prior) => {
-                                if (prior.clone() == info.module_name.clone()) {
-                                    acc2.clone()
-                                } else {
-                                    v1_rt::rc_map_insert(
+                        Some(info) => {
+                            if (info.module_name.clone() != owning_module.clone()) {
+                                acc2.clone()
+                            } else {
+                                match v1_rt::map_get(&acc2, info.name.clone()) {
+                                    Some(prior) => {
+                                        if (prior.clone() == info.module_name.clone()) {
+                                            acc2.clone()
+                                        } else {
+                                            v1_rt::rc_map_insert(
+                                                acc2.clone(),
+                                                info.name.clone(),
+                                                "".to_string(),
+                                            )
+                                        }
+                                    }
+                                    std::option::Option::None => v1_rt::rc_map_insert(
                                         acc2.clone(),
                                         info.name.clone(),
-                                        "".to_string(),
-                                    )
+                                        info.module_name.clone(),
+                                    ),
                                 }
                             }
-                            std::option::Option::None => v1_rt::rc_map_insert(
-                                acc2.clone(),
-                                info.name.clone(),
-                                info.module_name.clone(),
-                            ),
-                        },
+                        }
                         std::option::Option::None => acc2.clone(),
                     },
                 )
@@ -25308,7 +25305,7 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
 
 pub fn seed_kernel_intern_table(intern_table: Rc<InternTable>) -> Rc<InternTable> {
     {
-        let intern_table = Rc::new(v1_rt::map_keys(&kernel_type_set))
+        let intern_table = Rc::new(v1_rt::map_keys(&kernel_type_set()))
             .iter()
             .cloned()
             .fold(intern_table.clone(), |t: Rc<InternTable>, name: String| {
@@ -25328,7 +25325,7 @@ pub fn seed_kernel_intern_table(intern_table: Rc<InternTable>) -> Rc<InternTable
         .fold(intern_table.clone(), |t: Rc<InternTable>, name: String| {
             crate::v1_std_core::intern(t, name.clone()).table.clone()
         });
-        Rc::new(v1_rt::map_keys(&compiler_recursive_types))
+        Rc::new(v1_rt::map_keys(&compiler_recursive_types()))
             .iter()
             .cloned()
             .fold(intern_table.clone(), |t: Rc<InternTable>, name: String| {
@@ -25939,7 +25936,7 @@ pub fn compiler_kernel_type_env(
     intern_table: Rc<InternTable>,
 ) -> Rc<TypeEnv> {
     {
-        let kernel_bindings_base = Rc::new(v1_rt::map_keys(&kernel_type_set))
+        let kernel_bindings_base = Rc::new(v1_rt::map_keys(&kernel_type_set()))
             .iter()
             .cloned()
             .fold(
@@ -26126,12 +26123,11 @@ pub fn compiler_kernel_type_env(
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
             }),
         );
-        let node_fields = crate::v1_compiler_infer_env::inductive_fields_list_to_map(
-            compiler_inductive_fields.clone(),
-        );
+        let node_fields =
+            crate::v1_compiler_infer_env::inductive_fields_list_to_map(compiler_inductive_fields());
         let kernel_recursive_types = Rc::new({
             let mut __result = Vec::new();
-            for name in Rc::new(v1_rt::map_keys(&compiler_recursive_types))
+            for name in Rc::new(v1_rt::map_keys(&compiler_recursive_types()))
                 .iter()
                 .cloned()
             {
@@ -26143,7 +26139,7 @@ pub fn compiler_kernel_type_env(
             }
             __result
         });
-        let kernel_recursive_type_set = Rc::new(v1_rt::map_keys(&compiler_recursive_types))
+        let kernel_recursive_type_set = Rc::new(v1_rt::map_keys(&compiler_recursive_types()))
             .iter()
             .cloned()
             .fold(

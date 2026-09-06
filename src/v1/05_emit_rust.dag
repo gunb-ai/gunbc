@@ -183,7 +183,7 @@ import v1.compiler.infer_method {
 }
 import v1.compiler.infer_sigs { ResolvedFuncEnv }
 import v1.compiler.infer_items {
-  is_duplicate_item_identity_marker,
+  is_duplicate_item_identity_marker, duplicate_item_identity_marker,
   ResolvedGraph, TypedModule,
   ItemInfo, DataItem, TypeItem, OtherItem,
   item_kind
@@ -2559,9 +2559,10 @@ fn build_data_item_index(modules: List<TypedModule>) -> Map<String, Node> {
 // SECOND key space rebuilt from the per-module pre-expansion registries, so it answered the same
 // question as the top-level registry and answered it from staler facts. The registry is now keyed on
 // the declaration's own identity at construction, in fold_module_contributions, so there is one key
-// space and the homonym cannot arise from the key. What survives is the duplicate case the identity
-// itself cannot separate — two declarations of one leaf inside ONE module — and that refusal moved
-// with the key, to duplicate_item_identity_marker in v1.compiler.items.
+// space and the homonym cannot arise from the key. What survives is the REVERSE question — which
+// module declares a bare leaf — and where two modules answer it, lookup_item_by_leaf yields
+// duplicate_item_identity_marker so the consumers below refuse instead of taking whichever module
+// was folded last.
 
 fn value_ref_registry_lookup_key(resolved_name: String) -> String {
   let qualifier = value_ref_qualifier_prefix(name: resolved_name)
@@ -2594,7 +2595,11 @@ fn value_ref_registry_lookup_key(resolved_name: String) -> String {
 fn lookup_item_by_leaf(leaf: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> ItemInfo? {
   match map_get(emit_info.item_leaf_owner_modules, leaf) {
     Present { value: owner } =>
-      lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: owner, decl_name: leaf })
+      if owner == "" {
+        Present { value: duplicate_item_identity_marker(name: leaf) }
+      } else {
+        lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: owner, decl_name: leaf })
+      }
     Absent => Absent
   }
 }

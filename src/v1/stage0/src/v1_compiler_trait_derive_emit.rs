@@ -549,7 +549,7 @@ pub fn v1_freemonoid_unroutable_row_refusal() -> String {
     {
         let unroutable = Rc::new({
             let mut __result = Vec::new();
-            for row in rust_vec_freemonoid_supplemental_generic_bound_rows
+            for row in rust_vec_freemonoid_supplemental_generic_bound_rows()
                 .iter()
                 .cloned()
             {
@@ -575,7 +575,7 @@ pub fn v1_freemonoid_hand_written_traits() -> Rc<Vec<RustCapability>> {
         let mut __result = Vec::new();
         for row in Rc::new({
             let mut __result = Vec::new();
-            for row in rust_vec_freemonoid_supplemental_generic_bound_rows
+            for row in rust_vec_freemonoid_supplemental_generic_bound_rows()
                 .iter()
                 .cloned()
             {
@@ -685,7 +685,7 @@ pub fn v1_freemonoid_param_in_fields(
 pub fn v1_freemonoid_supplemental_bound_spelling() -> String {
     crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
         let mut __result = Vec::new();
-        for row in rust_vec_freemonoid_supplemental_generic_bound_rows
+        for row in rust_vec_freemonoid_supplemental_generic_bound_rows()
             .iter()
             .cloned()
         {
@@ -906,7 +906,7 @@ pub fn v1_set_unroutable_row_refusal() -> String {
     {
         let unroutable = Rc::new({
             let mut __result = Vec::new();
-            for row in rust_btree_set_supplemental_generic_bound_rows
+            for row in rust_btree_set_supplemental_generic_bound_rows()
                 .iter()
                 .cloned()
             {
@@ -932,7 +932,7 @@ pub fn v1_set_hand_written_traits() -> Rc<Vec<RustCapability>> {
         let mut __result = Vec::new();
         for row in Rc::new({
             let mut __result = Vec::new();
-            for row in rust_btree_set_supplemental_generic_bound_rows
+            for row in rust_btree_set_supplemental_generic_bound_rows()
                 .iter()
                 .cloned()
             {
@@ -980,7 +980,7 @@ pub fn v1_set_required_traits_for(derive_trait: RustCapability) -> Rc<Vec<RustCa
         let mut __result = Vec::new();
         for row in Rc::new({
             let mut __result = Vec::new();
-            for row in rust_btree_set_supplemental_generic_bound_rows
+            for row in rust_btree_set_supplemental_generic_bound_rows()
                 .iter()
                 .cloned()
             {

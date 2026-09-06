@@ -96,7 +96,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
 pub fn resolved_type(n: Rc<Node>) -> Rc<Node> {
     match n.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
-        _ => error_type,
+        _ => error_type(),
     }
 }
 
@@ -179,14 +179,14 @@ pub fn is_declared_container_alias_spelling(name: String) -> bool {
 }
 
 pub fn container_alias_canonical_spelling(algebra: String) -> Option<String> {
-    Rc::new(v1_rt::sorted_map_keys(&container_template_alias_rows))
+    Rc::new(v1_rt::sorted_map_keys(&container_template_alias_rows()))
         .iter()
         .cloned()
         .fold(std::option::Option::None, |acc: _, k: String| {
             match acc.clone() {
                 Some(_) => acc.clone(),
                 std::option::Option::None => {
-                    match v1_rt::map_get(&container_template_alias_rows, k.clone()) {
+                    match v1_rt::map_get(&container_template_alias_rows(), k.clone()) {
                         Some(v) => {
                             if (v.clone() == algebra.clone()) {
                                 Some(k.clone())
@@ -204,7 +204,7 @@ pub fn container_alias_canonical_spelling(algebra: String) -> Option<String> {
 pub fn container_kind_canonical(name: String) -> String {
     {
         let last = crate::v1_std_core::qualified_last_segment(name.clone());
-        match v1_rt::map_get(&kernel_algebra_profile.clone(), last.clone()) {
+        match v1_rt::map_get(&kernel_algebra_profile(), last.clone()) {
             Some(_) => last.clone(),
             std::option::Option::None => {
                 match crate::std_types::container_template_algebra(last.clone()) {
@@ -221,7 +221,7 @@ pub fn container_kind_canonical(name: String) -> String {
 
 pub fn kernel_profile_lookup(name: String) -> Option<AlgebraProfile> {
     v1_rt::map_get(
-        &kernel_algebra_profile.clone(),
+        &kernel_algebra_profile(),
         container_kind_canonical(name.clone()),
     )
 }
@@ -1602,7 +1602,7 @@ pub fn build_type_substitution(
                 .cloned()
                 {
                     Some(a) => a.clone(),
-                    std::option::Option::None => error_type.clone(),
+                    std::option::Option::None => error_type(),
                 };
                 unify_template(
                     pair.1.clone(),
@@ -2018,8 +2018,8 @@ pub fn callable_inferred(n: Rc<Node>) -> Rc<Node> {
                         make_callable_type(n.params.clone(), ret.clone())
                     }
                 }
-                std::option::Option::None => error_type,
-                _ => error_type,
+                std::option::Option::None => error_type(),
+                _ => error_type(),
             }
         } else {
             n.clone()
@@ -2031,7 +2031,7 @@ pub fn callable_return_type(n: Rc<Node>) -> Rc<Node> {
     if ((n.params.clone().len() as i64) == 0) {
         match n.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: ret, .. }) => ret.clone(),
-            _ => error_type,
+            _ => error_type(),
         }
     } else {
         match callable_inferred(n.clone())
@@ -2043,10 +2043,10 @@ pub fn callable_return_type(n: Rc<Node>) -> Rc<Node> {
             Some(InferredNode::Resolved { node: callable, .. }) => {
                 match callable.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::Resolved { node: ret, .. }) => ret.clone(),
-                    _ => error_type,
+                    _ => error_type(),
                 }
             }
-            _ => error_type,
+            _ => error_type(),
         }
     }
 }
@@ -2963,12 +2963,12 @@ pub fn node_type_deps(
 
 pub fn infer_literal_node(lit: Rc<LiteralValue>) -> Rc<Node> {
     match (*lit.clone()).clone() {
-        LiteralValue::LitStr { value: _, .. } => string_type,
-        LiteralValue::LitInt { value: _, .. } => int_type,
-        LiteralValue::LitFloat { value: _, .. } => float_type,
-        LiteralValue::LitBool { value: _, .. } => bool_type,
-        LiteralValue::LitNull => crate::v1_std_core::with_optional_cardinality(unit_type.clone()),
-        LiteralValue::LitSymbol { value: _, .. } => string_type,
+        LiteralValue::LitStr { value: _, .. } => string_type(),
+        LiteralValue::LitInt { value: _, .. } => int_type(),
+        LiteralValue::LitFloat { value: _, .. } => float_type(),
+        LiteralValue::LitBool { value: _, .. } => bool_type(),
+        LiteralValue::LitNull => crate::v1_std_core::with_optional_cardinality(unit_type()),
+        LiteralValue::LitSymbol { value: _, .. } => string_type(),
     }
 }
 
@@ -3122,35 +3122,35 @@ pub fn infer_binop_type_node(
 ) -> Rc<BinOpInferred> {
     match op.clone() {
         BinOp::Eq => Rc::new(BinOpInferred {
-            result_type: bool_type.clone(),
+            result_type: bool_type(),
             algebra_field: std::option::Option::None,
         }),
         BinOp::Ne => Rc::new(BinOpInferred {
-            result_type: bool_type.clone(),
+            result_type: bool_type(),
             algebra_field: std::option::Option::None,
         }),
         BinOp::Lt => Rc::new(BinOpInferred {
-            result_type: bool_type.clone(),
+            result_type: bool_type(),
             algebra_field: std::option::Option::None,
         }),
         BinOp::Gt => Rc::new(BinOpInferred {
-            result_type: bool_type.clone(),
+            result_type: bool_type(),
             algebra_field: std::option::Option::None,
         }),
         BinOp::Le => Rc::new(BinOpInferred {
-            result_type: bool_type.clone(),
+            result_type: bool_type(),
             algebra_field: std::option::Option::None,
         }),
         BinOp::Ge => Rc::new(BinOpInferred {
-            result_type: bool_type.clone(),
+            result_type: bool_type(),
             algebra_field: std::option::Option::None,
         }),
         BinOp::And => Rc::new(BinOpInferred {
-            result_type: bool_type.clone(),
+            result_type: bool_type(),
             algebra_field: std::option::Option::None,
         }),
         BinOp::Or => Rc::new(BinOpInferred {
-            result_type: bool_type.clone(),
+            result_type: bool_type(),
             algebra_field: std::option::Option::None,
         }),
         BinOp::NullCoalesce => Rc::new(BinOpInferred {
@@ -3235,7 +3235,7 @@ pub fn for_each_element_type_node(
                         normed.clone(),
                     ) == "String".to_string()))
                 {
-                    string_type
+                    string_type()
                 } else {
                     normed.clone()
                 }

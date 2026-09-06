@@ -880,7 +880,7 @@ pub fn resolve_node_bounded(
                         })
                     }
                     _ => Rc::new(NodeResolveResult {
-                        resolved: unit_type.clone(),
+                        resolved: unit_type(),
                         diagnostics: Rc::new(vec![]),
                     }),
                 };
@@ -1501,7 +1501,7 @@ Rc::new(NodeResolveResult {
                                 );
                                 let key_child_node = match n.children.clone().first().cloned() {
                                     Some(k) => k.clone(),
-                                    std::option::Option::None => unit_type.clone(),
+                                    std::option::Option::None => unit_type(),
                                 };
                                 let val_child_node = match n
                                     .children
@@ -1512,7 +1512,7 @@ Rc::new(NodeResolveResult {
                                     .next()
                                 {
                                     Some(v) => v.clone(),
-                                    std::option::Option::None => unit_type.clone(),
+                                    std::option::Option::None => unit_type(),
                                 };
                                 let key_type = crate::v1_compiler_infer_types::child_type_node(
                                     key_child_node.clone(),
@@ -1984,7 +1984,7 @@ pub fn resolve_optional_node(
 ) -> Rc<NodeResolveResult> {
     if (n.clone() == std::option::Option::None) {
         Rc::new(NodeResolveResult {
-            resolved: unit_type.clone(),
+            resolved: unit_type(),
             diagnostics: Rc::new(vec![]),
         })
     } else {
@@ -2089,7 +2089,7 @@ pub fn resolve_field(
                         if (crate::v1_std_core::field_init_node_name_at(
                             p.clone(),
                             env.source_indices.clone(),
-                        ) == field_from_key_property_name.clone())
+                        ) == field_from_key_property_name())
                         {
                             __result.push(p);
                         }
@@ -2908,7 +2908,7 @@ pub fn resolve_expr_types(
                 let anno_resolved = if (texpr.type_annotation.clone() == std::option::Option::None)
                 {
                     Rc::new(NodeResolveResult {
-                        resolved: unit_type.clone(),
+                        resolved: unit_type(),
                         diagnostics: Rc::new(vec![]),
                     })
                 } else {
@@ -3276,7 +3276,7 @@ pub fn resolve_expr_types(
                 let tr = match ch.clone().iter().cloned().skip(1 as usize).next() {
                     Some(target) => resolve_node(target.clone(), env.clone(), module_name.clone()),
                     std::option::Option::None => Rc::new(NodeResolveResult {
-                        resolved: unit_type.clone(),
+                        resolved: unit_type(),
                         diagnostics: Rc::new(vec![]),
                     }),
                 };
@@ -3632,7 +3632,7 @@ pub fn resolve_item_types(
         };
         let anno_resolved = if (item.type_annotation.clone() == std::option::Option::None) {
             Rc::new(NodeResolveResult {
-                resolved: unit_type.clone(),
+                resolved: unit_type(),
                 diagnostics: Rc::new(vec![]),
             })
         } else {

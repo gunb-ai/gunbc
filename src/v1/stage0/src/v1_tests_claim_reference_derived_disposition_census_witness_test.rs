@@ -16,6 +16,7 @@ pub use crate::v1_compiler_emit_rust::{
 pub use crate::v1_compiler_emit_rust::{
     ReferenceDerivedCandidateDisposition, ReferenceDerivedCandidateRow, ReferenceDerivedCensus,
 };
+pub use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
 use crate::v1_compiler_infer_emit_info::TypeRepr::EnumRepr;
 pub use crate::v1_compiler_infer_emit_info::{TypeRepr, TypeSummary};
 use crate::v1_compiler_infer_items::ItemKind::FnItem;
@@ -78,6 +79,7 @@ pub fn fixture_disposition(
         crate::v1_compiler_emit_rust::reference_derived_candidate_disposition(
             "PeerName".to_string(),
             "fixture.consumer".to_string(),
+            crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
             registry.clone(),
             export_sets.clone(),
             Rc::new(vec![]),
@@ -118,6 +120,7 @@ pub fn cross_module_candidate_with_export_proof_survives() -> bool {
     (crate::v1_compiler_emit_rust::reference_derived_candidate_disposition(
         "PeerName".to_string(),
         "fixture.consumer".to_string(),
+        crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
         fixture_registry("PeerName".to_string(), "fixture.provider".to_string()),
         fixture_export_sets("fixture.provider".to_string(), "PeerName".to_string()),
         Rc::new(vec![]),
@@ -230,6 +233,7 @@ pub fn known_variant_is_delegated_to_its_parent_not_registry_absent() -> bool {
     (crate::v1_compiler_emit_rust::reference_derived_candidate_disposition(
         "V".to_string(),
         "fixture.consumer".to_string(),
+        crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
         v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
         v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
         Rc::new(vec![]),
@@ -286,6 +290,7 @@ pub fn a_variant_whose_parent_is_ambiguous_is_not_delegated_to_nothing() -> bool
     (crate::v1_compiler_emit_rust::reference_derived_candidate_disposition(
         "V".to_string(),
         "fixture.consumer".to_string(),
+        crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
         v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
         v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
         Rc::new(vec![]),
@@ -309,6 +314,7 @@ pub fn a_known_variant_spelling_in_a_type_position_takes_the_registry_arm() -> b
         crate::v1_compiler_emit_rust::reference_derived_candidate_disposition(
             "V".to_string(),
             "fixture.consumer".to_string(),
+            crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
             v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
             v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
             Rc::new(vec![]),
@@ -339,6 +345,7 @@ pub fn non_variant_name_still_answers_registry_absent() -> bool {
         crate::v1_compiler_emit_rust::reference_derived_candidate_disposition(
             "NotAVariant".to_string(),
             "fixture.consumer".to_string(),
+            crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
             v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
             v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
             Rc::new(vec![]),

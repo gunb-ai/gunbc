@@ -353,7 +353,7 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
     {
         let inner = match scrut.children.clone().first().cloned() {
             Some(child) => crate::v1_compiler_infer_types::child_type_node(child.clone()),
-            std::option::Option::None => error_type.clone(),
+            std::option::Option::None => error_type(),
         };
         let value_field = Rc::new(Node {
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
@@ -559,8 +559,8 @@ pub fn lookup_result_subject(result: Rc<NodeLookupResult>) -> Rc<PatternSubject>
 pub fn pattern_binding_type(subject: Rc<PatternSubject>) -> Rc<Node> {
     match (*subject.clone()).clone() {
         PatternSubject::PatternResolved { node: resolved, .. } => resolved.clone(),
-        PatternSubject::PatternDynamic { span: _, .. } => error_type,
-        PatternSubject::PatternLookupBlocked => error_type,
+        PatternSubject::PatternDynamic { span: _, .. } => error_type(),
+        PatternSubject::PatternLookupBlocked => error_type(),
     }
 }
 
@@ -681,7 +681,7 @@ pub fn lookup_variant_in_type(
                                 if (optional_cardinality_subject.clone()
                                     && (variant_name.clone() == "Absent".to_string()))
                                 {
-                                    node_lookup_resolved(none_type.clone())
+                                    node_lookup_resolved(none_type())
                                 } else {
                                     if (witness_subject.clone()
                                         && (variant_name.clone() == "Holds".to_string()))
@@ -744,7 +744,7 @@ pub fn lookup_variant_in_type(
                                                             && (variant_name.clone()
                                                                 == "Absent".to_string()))
                                                         {
-                                                            node_lookup_resolved(none_type.clone())
+                                                            node_lookup_resolved(none_type())
                                                         } else {
                                                             variant_not_found_result(
                                                                 scrut_node.clone(),

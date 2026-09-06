@@ -616,7 +616,7 @@ pub fn borrowed_census_callable_candidate(
             Some(InferredNode::Resolved { node: inferred, .. }) => inferred.clone(),
             _ => match node.type_annotation.clone() {
                 Some(ann) => ann.clone(),
-                std::option::Option::None => error_type.clone(),
+                std::option::Option::None => error_type(),
             },
         };
         let return_type = crate::v1_compiler_infer_env::qualify_borrowed_type_names(
@@ -711,7 +711,7 @@ pub fn census_declaration_bound_formals(
             }) => resolved_return.clone(),
             _ => match node.type_annotation.clone() {
                 Some(annotated_return) => annotated_return.clone(),
-                std::option::Option::None => error_type.clone(),
+                std::option::Option::None => error_type(),
             },
         };
         let declaration_generic_names = v1_rt::concat(
@@ -836,7 +836,7 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                     }
                                     _ => match node.type_annotation.clone() {
                                         Some(ann) => ann.clone(),
-                                        std::option::Option::None => error_type.clone(),
+                                        std::option::Option::None => error_type(),
                                     },
                                 };
                                 if (bd.owner_module_path.clone() == type_env.module_path.clone()) {

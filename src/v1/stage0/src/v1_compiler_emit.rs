@@ -2007,7 +2007,7 @@ pub fn render_node_type(
                                     v1_rt::concat(v1_rt::concat(v1_rt::concat(crate::v1_compiler_coercion::coerce_primitive_type(crate::v1_compiler_coercion::type_reference_realization(n.clone(), tn.clone(), target.clone()), tn.clone()), spec.type_arg_open.clone()), param_strs.clone().join(&", ".to_string())), spec.type_arg_close.clone())
                                 }
                             } else {
-                                if (tn.clone() == tuple_type_name.clone()) {
+                                if (tn.clone() == tuple_type_name()) {
                                     render_tuple_parts(Rc::new(vec![]), target.clone())
                                 } else {
                                     crate::v1_compiler_coercion::coerce_primitive_type(
@@ -2135,7 +2135,7 @@ pub fn render_node_type(
             }
             __result
         });
-        if (tn.clone() == tuple_type_name.clone()) {
+        if (tn.clone() == tuple_type_name()) {
             {
                 let multi_tuple_str = render_tuple_parts(child_strs.clone(), target.clone());
                 return multi_tuple_str;
@@ -4981,7 +4981,7 @@ pub fn child_from_key(
         let mut __result = Vec::new();
         for p in ch.properties.clone().iter().cloned() {
             if (crate::v1_std_core::field_init_node_name_at(p.clone(), source_indices.clone())
-                == field_from_key_property_name.clone())
+                == field_from_key_property_name())
             {
                 __result.push(p);
             }
