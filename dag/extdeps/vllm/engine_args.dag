@@ -52,7 +52,9 @@ fn vllm_memory_utilization(fraction: Percent) -> VllmMemoryUtilization {
 // DeepSeek MLA checkpoint resolves to `fp8_ds_mla`, and the engine says so on its own startup line.
 // A realization that records the REQUESTED spelling and calls it the served format has recorded the
 // argument it sent, not the behaviour it got.
-type VllmKvCacheDtypeRequest = KvAuto | KvFp8 | KvFp16 | KvBf16
+// fp8_ds_mla is the DeepSeek MLA-specific fp8 KV layout; read back from the srv6 front door on
+// 2026-09-03 (gunbc.spark.vllm_observed) and the operator's pair tuple.
+type VllmKvCacheDtypeRequest = KvAuto | KvFp8 | KvFp16 | KvBf16 | KvFp8DsMla
 
 fn vllm_kv_cache_dtype_wire(request: VllmKvCacheDtypeRequest) -> NonEmptyStr {
   match request {
@@ -60,6 +62,7 @@ fn vllm_kv_cache_dtype_wire(request: VllmKvCacheDtypeRequest) -> NonEmptyStr {
     KvFp8 => "fp8" as NonEmptyStr
     KvFp16 => "fp16" as NonEmptyStr
     KvBf16 => "bf16" as NonEmptyStr
+    KvFp8DsMla => "fp8_ds_mla" as NonEmptyStr
   }
 }
 

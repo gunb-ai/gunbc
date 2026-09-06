@@ -1,0 +1,224 @@
+module gunbc.machine_intake_mtcollins1_access_observation
+
+import std.types { EpochMs, Int, NonEmptyStr, String }
+import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
+import extdeps.boards.types { AmpereMtCollins }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint }
+import extdeps.bmc.capability {
+  BmcFirmwareReleaseCapabilityRow,
+  BmcFirmwareReleaseIdentity,
+  CapabilityBootSourceOverride,
+  CapabilityPowerControl,
+}
+import extdeps.bmc.access_profile {
+  BmcAccessObservation,
+  BmcAccessObservationStanding,
+  BmcAccessObserved,
+  BmcBootControlRouteObservation,
+  BmcObservedIdentity,
+  IpmiLanplusRoute,
+  SurfaceBmcClock,
+  SurfaceBmcShell,
+  SurfaceBootControl,
+  SurfaceEventLog,
+  SurfaceOemRestRemoteMedia,
+  SurfaceSystemInventory,
+}
+
+// THE FIRST LANDED BmcAccessObservation IN THE REPOSITORY, and that is a fact about the corpus
+// rather than about this unit: extdeps.bmc.access_profile has carried BmcAccessObservation, the
+// route vocabulary and the catalog lookup since the machine-intake rulings, and gunbc.machine_intake_access
+// has carried the binder and its evidence-manifest joins, but no host — srv3 included — has ever
+// authored an observation for them to consume. Every consumer of that machinery has therefore run
+// only against test fixtures. This row is the first real input, so it is also the first execution
+// of those joins against bytes a machine actually produced.
+//
+// WHAT WAS OBSERVED, AND BY WHAT. On 2026-09-05T07:15Z the operator's Foxconn Mt. Collins unit was
+// reachable at 192.168.1.228 (static reservation `bmc-mtcollins1`, MAC 28:C1:3C:8A:D6:4C). The
+// readings below were taken with `ipmitool -I lanplus` and `curl`, NOT through gunbc.tools.bmc_first_contact:
+// that probe speaks Redfish only and this controller serves no Redfish, so running it would have
+// produced an expected 404 and a bare ProcessExit carrying no evidence. The raw bytes of every
+// reading are committed at artifacts/bmc/mtcollins1-intake-ipmi.json and named by digest below;
+// nothing in this module is stated that is not in that file.
+//
+// WHY THIS IS NOT AUTHORED IN extdeps.ampere.mt_collins_product_brief.bmc. That module holds
+// mt_collins_bmc_implementation_expected as an EXPECTATION and forbids its own promotion: it says
+// the confirming carrier is "a workflow-layer gunbc.machine_intake_access BmcImplementationObserved
+// receipt keyed to unit, attempt, endpoint, time and raw Manager-response evidence". An observation
+// authored into the extdeps module would be the provenance inversion DESIGN §3 names — a report
+// rendered as an upstream fact. So the expectation row is left exactly as it stands and this module
+// carries what the unit answered. The expectation now measures TRUE, and saying so is a workflow
+// fact about one unit, never an amendment to what Ampere's public product page states.
+data mtcollins1_endpoint: BmcControllerEndpoint = BmcControllerEndpoint {
+  host: "192.168.1.228",
+}
+
+// THE CAPTURED BYTES. sha256 over artifacts/bmc/mtcollins1-intake-ipmi.json, 3227 bytes, which is
+// the single blob every field below was read from. It is carried as a Sha256Hash rather than the
+// structural Fnv1a64 arm because it digests FILE BYTES and not a Node tree — the two are different
+// questions and std.content_hash keeps them in different families precisely so a cross-family
+// comparison cannot silently answer either one.
+data mtcollins1_intake_capture_digest: ContentHash = Sha256Hash(Sha256Digest {
+  hex: "3c358eb4110742287a5adce6fd772fe85ab08e9357e6edef629745bce07eaaa5",
+})
+
+data mtcollins1_intake_capture_artifact_path: NonEmptyStr = "artifacts/bmc/mtcollins1-intake-ipmi.json"
+
+data mtcollins1_intake_capture_byte_count: Int = 3227
+
+// THE WRITE-EXERCISE BYTES, a second blob because it answers a second question. The capture above
+// records what the controller SAID; this one records what it DID when driven. Two blobs rather than
+// one appended file because the read pass stands on its own — it was taken before any write and is
+// still the evidence for identity and firmware even if every write had been refused.
+data mtcollins1_write_exercise_digest: ContentHash = Sha256Hash(Sha256Digest {
+  hex: "e5a4c7288c629126406240153e4845c178872a75cf781e53453b78579ac414e4",
+})
+
+data mtcollins1_write_exercise_artifact_path: NonEmptyStr = "artifacts/bmc/mtcollins1-intake-write-exercise.json"
+
+data mtcollins1_write_exercise_byte_count: Int = 1844
+
+data mtcollins1_observed_at: EpochMs = 1788592988469
+
+// THE WRITE EXERCISE HAS ITS OWN TIME because it is a separate attempt against the same unit. Using
+// the read pass's timestamp for a write that happened afterwards would place an effect before its
+// own evidence.
+data mtcollins1_write_exercise_observed_at: EpochMs = 1788593400000
+
+// FIRMWARE, READ FROM THE CONTROLLER ITSELF. `ipmitool mc info` reports Firmware Revision 0.32 and
+// IPMI Version 2.0. The raw string is carried verbatim and the semantic version is Absent: 0.32 is
+// two components, the wire parser wants three, and inventing a patch component to make it parse
+// would be a fabricated value in the field that decides capability matching. THE 2026-08-29 REPORT
+// IS NOW CORROBORATED — it claimed firmware `0.32` and no Redfish, and both reproduce here — but
+// this row does not cite that report as evidence and does not need it: the reading stands on the
+// committed bytes alone. That the two agree is worth recording because the earlier report was
+// explicitly typed non-citable, and a non-citable report that later measures true is still not
+// retroactively evidence; it is a prediction that happened to hold.
+data mtcollins1_firmware: BmcFirmwareReleaseIdentity = BmcFirmwareReleaseIdentity {
+  family: AmiMegaRac,
+  raw_version: "0.32",
+  semantic_version: none,
+}
+
+// WHAT THE ENDPOINT SAID IT IS. Board and chassis come from `ipmitool fru print 0`: Board Product
+// and Product Name both read "Mt. Collins", Board Mfg FOXCONN, board serial 02030A800TEXFT02L,
+// chassis part number 1A624RA00-600-G. `Board Extra: 28C13C8AD64C` is the controller's own MAC and
+// matches the DHCP reservation the operator authored, so the address, the MAC and the FRU identity
+// all join on one physical box — that join is what makes this an observation OF A UNIT rather than
+// of an address.
+data mtcollins1_identity: BmcObservedIdentity = BmcObservedIdentity {
+  baseboard: AmpereMtCollins,
+  chassis_part_number: Present { value: "1A624RA00-600-G" },
+  firmware: mtcollins1_firmware,
+}
+
+// THE OBSERVATION'S raw_response NAMES A MANIFEST, NOT ONE CAPTURE, and that is a correction rather
+// than a refinement. It previously named the intake capture alone, while the observation's own
+// fields made claims that capture does not contain: the SEL read behind SurfaceEventLog, the clock
+// skew behind SurfaceBmcClock, and every write behind successful_write_surfaces were all taken
+// LATER and live in the write-exercise capture. Declaring a second digest elsewhere in the module
+// does not connect those fields to it; a reader resolving raw_response would have fetched bytes
+// that do not mention them.
+//
+// THE TWO ATTEMPTS STAY DISTINGUISHABLE, which is the reason this is a manifest and not one merged
+// file. The intake capture was taken FIRST, before any write, and is the evidence for identity,
+// firmware and the Redfish absence; it establishes what an unauthenticated-to-media, read-only pass
+// found. The write exercise came after and is the evidence for boot-source override and power
+// control. Merging them would let the later successful media work retroactively re-describe what the
+// earlier probe established, which is exactly the direction evidence must not flow.
+//
+// THE DIGEST IS OVER THE PAIR, ordered read-then-write, so a consumer can resolve both halves from
+// one field while the halves remain separately named above.
+data mtcollins1_evidence_manifest_digest: ContentHash = Sha256Hash(Sha256Digest {
+  hex: "df87eb85817628e6901402d4f8d7c7898d9717b867b89c2a4f3553fc0dcfff3b",
+})
+
+// BOOT CONTROL, OBSERVED OVER IPMI LANPLUS, READ AND WRITE. `chassis bootparam get 5` first
+// answered valid/unlocked with Boot Device Selector "No override". `chassis bootdev pxe` was then
+// accepted and the SAME parameter read back "Force PXE" with "Options apply to only next boot" —
+// so the write is grounded by a discriminating read-back and not by the command's own exit status,
+// which is the only difference between an observed capability and a hopeful one. The write evidence
+// is the second artifact, artifacts/bmc/mtcollins1-intake-write-exercise.json.
+data mtcollins1_boot_control_route: BmcBootControlRouteObservation = BmcBootControlRouteObservation {
+  route: IpmiLanplusRoute,
+  raw_response: mtcollins1_write_exercise_digest,
+  observed_at: mtcollins1_write_exercise_observed_at,
+}
+
+// THE OBSERVATION. redfish_virtual_media_probe is Absent, and that is the modeled meaning of the
+// arm rather than a gap: the type's own comment says the probe "is Absent on a controller that
+// serves no Redfish, rather than a ladder arm pretending to describe a member that does not exist".
+// Five Redfish paths were requested over TLS — /redfish, /redfish/v1, /redfish/v1/, /redfish/v1/Systems,
+// /redfish/v1/Managers — and all five returned 404 while the same host served its web root 200, so
+// the absence is a measured property of the controller and not a reachability failure. THE NEGATIVE
+// RESULT IS EVIDENCE and its bytes are in the manifest; an unprobed controller and a controller
+// probed and found to serve no Redfish are different states, and only the second is authorable here.
+//
+// discovered_surfaces carries what the controller EXPOSED. SurfaceOemRestRemoteMedia is included on
+// a 401 rather than a 200: /api/settings/media/general answered 401 where /api/session answered 404
+// with `{"error":"Invalid API Call","code":1010}`, so the REST remote-media surface is present and
+// merely unauthenticated-to, which is a different fact from absent. SurfaceBmcShell is included on
+// an open port 22 alone and is the weakest row here — no session was established, so it records
+// that the controller listens, not that the shell admits.
+data mtcollins1_access_observation: BmcAccessObservation = BmcAccessObservation {
+  endpoint: mtcollins1_endpoint,
+  identity: mtcollins1_identity,
+  discovered_surfaces: [
+    SurfaceSystemInventory,
+    SurfaceBootControl,
+    SurfaceEventLog,
+    SurfaceBmcClock,
+    SurfaceOemRestRemoteMedia,
+    SurfaceBmcShell,
+  ],
+  boot_control_routes: [mtcollins1_boot_control_route],
+  redfish_virtual_media_probe: none,
+  successful_read_surfaces: [
+    SurfaceSystemInventory,
+    SurfaceBootControl,
+    SurfaceEventLog,
+    SurfaceBmcClock,
+  ],
+  successful_write_surfaces: [
+    SurfaceBootControl,
+  ],
+  raw_response: mtcollins1_evidence_manifest_digest,
+  observed_at: mtcollins1_observed_at,
+}
+
+data mtcollins1_access_standing: BmcAccessObservationStanding = BmcAccessObserved {
+  observation: mtcollins1_access_observation,
+}
+
+// THE CAPABILITY ROW, AND EVERY MEMBER OF IT IS A WRITE THAT WAS ACTUALLY PERFORMED. BmcCapability
+// has no read-only arms: CapabilityPowerControl and CapabilityBootSourceOverride are both claims
+// about driving the controller, so a row authored from successful READS would assert exactly what
+// was never tested. Both members below were exercised against this unit on 2026-09-05 and both are
+// evidenced in artifacts/bmc/mtcollins1-intake-write-exercise.json:
+//
+//   CapabilityBootSourceOverride — `chassis bootdev pxe` accepted, and boot parameter 5 read back
+//   "Force PXE" / "Options apply to only next boot". The READ-BACK is the evidence; a command's own
+//   success return would not distinguish a controller that accepted the write from one that ignored it.
+//
+//   CapabilityPowerControl — `chassis power cycle` accepted, and the SEL independently recorded
+//   `Power Unit — Power cycle | Asserted` and `System Boot Initiated — Initiated by power up`. The
+//   controller's own event log is a second witness to the effect, not a restatement of the request.
+//
+// WHAT IS DELIBERATELY ABSENT, because absence here is the whole point of the row. CapabilityVirtualMedia,
+// CapabilityOemRemoteMedia, CapabilityNbdProxyVirtualMedia, CapabilityAccountManagement,
+// CapabilityFirmwareUpdate, CapabilityBiosAttributeConfig and CapabilitySerialConsole are NOT members.
+// The REST remote-media surface answered 401 — present, unauthenticated-to, never exercised — and a
+// 401 grounds SurfaceOemRestRemoteMedia in discovered_surfaces (the surface exists) while grounding
+// no capability whatever (nothing was mounted). That split is the model earning its keep: the delivery
+// solver reads CAPABILITIES to choose a transport, so an unexercised media capability authored here
+// would send it down a path nothing has shown this controller can walk. SerialConsole is the sharpest
+// case — SOL was in fact activated and streamed Ampere checkpoint codes, so the capability is very
+// probably real, and it is still omitted because that session was driven by hand from a terminal and
+// not through any modeled route. A capability this row asserts must be one the AUTOMATION can perform.
+data mtcollins1_capability_row: BmcFirmwareReleaseCapabilityRow = BmcFirmwareReleaseCapabilityRow {
+  firmware: mtcollins1_firmware,
+  capabilities: [
+    CapabilityBootSourceOverride,
+    CapabilityPowerControl,
+  ],
+}

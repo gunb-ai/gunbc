@@ -8,12 +8,12 @@ import std.resources { Network }
 import std.disposition { Disposition, SingleAuthority }
 import extdeps.shell
 import extdeps.exec.command { ArgvCommand }
-import extdeps.crypto.hash { Digest }
+import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
-import extdeps.tools.gnu_coreutils { rm_force_command }
+import extdeps.tools.gnu_coreutils { rm_force_command, rm_recursive_force_command }
 import extdeps.tools.squashfs_tools { unsquashfs_extract_command }
 import extdeps.tools.e2fsprogs { Ext2FilesystemType, Ext4, mke2fs_populate_command }
 import extdeps.tools.sha256sum {
@@ -29,10 +29,11 @@ import extdeps.virtualization.firecracker {
 }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, SystemdInstallSection, Installable,
+  SystemdDropIn, SystemdDropInSection, DropInUnitSection,
   Description, After, Wants,
   ServiceType, ExecStartPre, ExecStart, ExecStopPost, WorkingDirectory,
   ServiceStandardOutput, ServiceStandardError, OutputJournalAndConsole,
-  WantedBy, serialize_systemd_unit_file,
+  WantedBy, serialize_systemd_unit_file, serialize_systemd_drop_in,
 }
 import gunbc.runner_microvm { RunnerGuestImage, gunbc_runner_guest_image }
 import gunbc.command_runner {
@@ -64,6 +65,13 @@ data runner_guest_image_disposition: Disposition = SingleAuthority
 // the observed upstream. Writing an observed digest into extdeps.virtualization.firecracker would
 // have made this fleet's first fetch look like something the vendor published.
 //
+// THESE TWO ROWS ARE NOW PINNED, AND WHAT THEY ARE PINNED **TO** IS ONE FETCH. The digests below
+// were measured on srv2 by fleet-converge run 33985760921 on 2026-09-05, and FirstObservedOnFetch is
+// the honest arm: trust-on-first-use. They ground every LATER fetch against that first one and
+// nothing more. They are NOT a vendor publication and must never be cited as one -- upstream still
+// publishes no digest beside either artifact, which is exactly why this fleet had to measure them.
+// If the vendor ever publishes its own, that is a different provenance arm and a different claim.
+//
 // THE PROVENANCE IS THE HOST-KEY VOCABULARY BECAUSE IT IS THE SAME PROBLEM. gunbc.fleet_host_key_
 // enrollment already settled that a fingerprint row is only as trustworthy as the fact behind it,
 // and split trust-on-first-use from an independently anchored join. An artifact digest is that
@@ -79,9 +87,17 @@ type GuestArtifactDigestProvenance
 // is printed for a human to commit as a row; it is never silently accepted as whatever arrived.
 // Filling the pinned arm with a plausible-looking hex string would be the fabricated output DESIGN
 // section 5 forbids, wearing a security control's clothes.
+// A BUILT ARTIFACT IS NOT "NOT PINNED YET", IT IS NOT PINNABLE, and collapsing the two made the
+// receipt instruct a reader to do what this module forbids: the standing printed "author this as
+// ArtifactDigestPinned with FirstObservedOnFetch provenance" beside the image THIS BUILD had just
+// produced. Following that advice would pin a digest that legitimately changes whenever the tree
+// does, and demand byte-reproducible mke2fs output to stay green. The distinction is the artifact's
+// to carry, because only the artifact knows whether a pin could ever be authored for it, so
+// ArtifactDigestNotPinnable is a third arm rather than a flag on the second.
 type GuestArtifactIntegrity
   = ArtifactDigestPinned { digest: Digest, provenance: GuestArtifactDigestProvenance }
   | ArtifactDigestUnpinned { cause: String }
+  | ArtifactDigestNotPinnable { cause: String }
 
 type GuestBaseArtifact {
   url: NonEmptyStr
@@ -92,16 +108,49 @@ type GuestBaseArtifact {
 data runner_guest_kernel_artifact: GuestBaseArtifact = GuestBaseArtifact {
   url: firecracker_ci_smoke_kernel_url as NonEmptyStr,
   filename: "vmlinux-6.1.128" as NonEmptyStr,
-  integrity: ArtifactDigestUnpinned {
-    cause: "the vendor publishes no digest beside its CI kernel and this fleet has not yet fetched one; runner_guest_image_observe prints the first-contact measurement, and the row it prints is what pins this field",
+  integrity: ArtifactDigestPinned {
+    digest: sha256_digest(hex: "cb1291c66bca75bc11cb9c8357fcef9965bb1786dffcb42a60923c3e0e49f319" as NonEmptyStr),
+    provenance: FirstObservedOnFetch {
+      observed_from: "srv2 via fleet-converge guest_image_converge run 33985760921" as NonEmptyStr,
+      observed_on: "2026-09-05" as NonEmptyStr,
+    },
   },
 }
 
 data runner_guest_base_rootfs_artifact: GuestBaseArtifact = GuestBaseArtifact {
   url: firecracker_ci_smoke_rootfs_url as NonEmptyStr,
   filename: "ubuntu-24.04.squashfs" as NonEmptyStr,
-  integrity: ArtifactDigestUnpinned {
-    cause: "the vendor publishes no digest beside its CI rootfs and this fleet has not yet fetched one; runner_guest_image_observe prints the first-contact measurement, and the row it prints is what pins this field",
+  integrity: ArtifactDigestPinned {
+    digest: sha256_digest(hex: "c61b6ff3b34cb3d393f9c7d8e274f11c356ca7346609532fcffa415bb7d62d70" as NonEmptyStr),
+    provenance: FirstObservedOnFetch {
+      observed_from: "srv2 via fleet-converge guest_image_converge run 33985760921" as NonEmptyStr,
+      observed_on: "2026-09-05" as NonEmptyStr,
+    },
+  },
+}
+
+// THE IMAGE THIS MODULE PRODUCES, AS ONE ROW, BECAUSE ASKING IT TWICE ANSWERED DIFFERENTLY.
+// A built artifact has NO pin to verify against -- its digest is a RECEIPT of the build that just
+// ran, not a claim to check -- so its integrity is Unpinned and stays that way. Pinning it would
+// demand byte-reproducible mke2fs output and would red on every legitimate change to the tree,
+// which is the opposite of what a receipt is for.
+//
+// It exists as a row because it previously existed TWICE: the standing renderer built this
+// descriptor inline, while BOTH verdict sites passed runner_guest_base_rootfs_artifact -- the BASE
+// ROOTFS -- as the artifact whose pin the BUILT IMAGE's bytes were compared against. That
+// comparison can only ever contradict, because the two are different files by construction.
+//
+// It stayed invisible until the pins landed. At fleet-converge run 33985760921 the rootfs was still
+// Unpinned (that run is what recorded its digest), so the mismatched comparison rendered as a
+// REPORT and nothing refused. Committing the pin ARMED a check that had been wrong the whole time,
+// and run 33995287883 failed with expected=<the rootfs pin> observed=<the built image>. A wrong
+// comparison that is dormant until an unrelated row is filled in is the reason the descriptor is a
+// single authority rather than a value each site constructs for itself.
+data runner_guest_built_image_artifact: GuestBaseArtifact = GuestBaseArtifact {
+  url: "about:built-here" as NonEmptyStr,
+  filename: "guest-image" as NonEmptyStr,
+  integrity: ArtifactDigestNotPinnable {
+    cause: "the image is built here, so its digest is a receipt of this build rather than a pin to verify against",
   },
 }
 
@@ -181,6 +230,25 @@ fn runner_guest_image_dir(root: String) -> String {
 // observed by anybody. The serial console is the only surface that survives the VM.
 data runner_guest_agent_unit_name: String = "gunbc-runner-agent.service"
 
+// THE TARGET IS ONE ROW BECAUSE TWO ARTIFACTS NAME IT. The unit's [Install] section says which
+// target this agent belongs to, and the drop-in below is what actually pulls it in inside an image
+// where nobody ever runs `systemctl enable`. Those are two spellings of one fact, so they are
+// derived from this datum rather than authored twice -- change the target here and both move.
+data runner_guest_agent_target: NonEmptyStr = "multi-user.target" as NonEmptyStr
+
+// systemd READS ONLY `*.conf` INSIDE A `.d/` DIRECTORY, and omitting this suffix is how the FIRST
+// repair of this defect stayed broken. The original bug was a regular file in `.wants/`, which
+// systemd skips because it is not a symlink; the fix moved to a drop-in and then named it
+// `10-gunbc-runner-agent.service`, which systemd skips because it does not end in `.conf`. Two
+// different mechanisms, the same outcome: an activation file that is written, looks right, and is
+// never read.
+//
+// THE WITNESS ALREADY DEMANDED THIS AND WAS NEVER RUN. the_agent_is_pulled_in_by_a_drop_in_systemd_
+// will_actually_read asserts `.conf` in the path; it would have gone red on the first repair. It was
+// compiled and not executed, which is precisely the specification-without-execution DESIGN section 5
+// names -- a typecheck is not a consumer.
+data runner_guest_agent_drop_in_suffix: String = ".conf"
+
 data runner_guest_agent_poweroff_command: NonEmptyStr = "/usr/sbin/poweroff -f" as NonEmptyStr
 
 fn runner_guest_agent_unit() -> SystemdUnitFile {
@@ -200,7 +268,7 @@ fn runner_guest_agent_unit() -> SystemdUnitFile {
       ExecStopPost { command: runner_guest_agent_poweroff_command },
     ],
     install: Installable {
-      directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }],
+      directives: [WantedBy { target: runner_guest_agent_target }],
     },
   }
 }
@@ -224,14 +292,56 @@ fn runner_guest_agent_unit_path(root: String, image: RunnerGuestImage) -> String
   join([runner_guest_tree_dir(root: root, image: image), "/etc/systemd/system/", runner_guest_agent_unit_name], "")
 }
 
-// THE ENABLE IS A SECOND COPY OF THE SAME BYTES, NOT A SYMLINK, and the reason is that a symlink is
-// not expressible as a row here while a file is. systemd resolves a `.wants` directory entry by
-// NAME and searches its unit path, and `/etc/systemd/system/<target>.wants/` is on that path, so a
-// regular unit file placed there is started at that target exactly as an enable symlink would be.
-// Both paths are derived from one `runner_guest_agent_unit` value, so there is one authoring of the
-// unit and two placements of it -- never two authorings that could disagree.
-fn runner_guest_agent_wants_path(root: String, image: RunnerGuestImage) -> String {
-  join([runner_guest_tree_dir(root: root, image: image), "/etc/systemd/system/multi-user.target.wants/", runner_guest_agent_unit_name], "")
+// A REGULAR FILE IN A .wants/ DIRECTORY IS IGNORED BY systemd, AND THIS BLOCK IS THE REPAIR.
+//
+// The previous revision wrote the unit's bytes a SECOND time into multi-user.target.wants/ and
+// carried an annotation asserting that systemd resolves such an entry by name exactly as it would an
+// enable symlink. THAT CLAIM IS FALSE. systemd's dependency loader (src/core/load-dropin.c,
+// process_deps) checks each entry in a .wants/ or .requires/ directory and SKIPS anything that is not
+// a symlink, logging "dependency dropin ... is not a symlink, ignoring." So the agent was never
+// pulled into the boot at all, and the image would have booted to multi-user with nothing running.
+//
+// IT IS WORTH RECORDING HOW THAT SURVIVED REVIEW, because the mechanism is the point: the false claim
+// lived in an ANNOTATION, and DESIGN section 4c says no Accepted program can read one. Nothing could
+// go red on it. It was checked by a witness that asserted `WantedBy=multi-user.target` appeared in
+// the unit TEXT -- which was true, and which says nothing about whether the placement systemd
+// actually reads was correct. A correct assertion over the wrong subject.
+//
+// THE REPAIR IS A DROP-IN ON THE TARGET, NOT A SYMLINK, and that choice is deliberate rather than
+// convenient. A symlink would be the closer analogue of `systemctl enable`, and it is also a file
+// KIND this build cannot currently create -- Filesystem.Write writes regular files. Reaching for a
+// symlink here would mean minting an `ln -s` argv builder to make the image build depend on a second
+// mechanism, when systemd already documents a fragment that expresses the dependency directly and IS
+// a regular file honestly used as one. `<target>.d/*.conf` carrying `[Unit] Wants=` is merged into
+// the target's own configuration by the ordinary drop-in path, which has no symlink requirement.
+//
+// The unit keeps its [Install] section, and that is not a second authority for the same fact: the
+// section states which target this agent BELONGS to, so `systemctl enable` inside a running guest
+// still does the right thing, while the drop-in is what activates it in an image nobody enables.
+// Both read runner_guest_agent_target, so they cannot disagree.
+fn runner_guest_agent_target_drop_in() -> SystemdDropIn {
+  SystemdDropIn {
+    sections: [
+      DropInUnitSection {
+        directives: [Wants { target: runner_guest_agent_unit_name as NonEmptyStr }],
+      },
+    ],
+  }
+}
+
+fn runner_guest_agent_drop_in_path(root: String, image: RunnerGuestImage) -> String {
+  join([
+    runner_guest_tree_dir(root: root, image: image),
+    "/etc/systemd/system/", runner_guest_agent_target as String, ".d/10-",
+    runner_guest_agent_unit_name, runner_guest_agent_drop_in_suffix,
+  ], "")
+}
+
+fn runner_guest_agent_drop_in_dir(root: String, image: RunnerGuestImage) -> String {
+  join([
+    runner_guest_tree_dir(root: root, image: image),
+    "/etc/systemd/system/", runner_guest_agent_target as String, ".d",
+  ], "")
 }
 
 // THE RUNNER TARBALL IS THE SAME ROW THE HOST PATH INSTALLS. extdeps.github.actions_runner owns the
@@ -277,14 +387,33 @@ fn runner_guest_runner_tarball_path(root: String, artifact: ActionsRunnerBinaryA
   join([runner_guest_base_dir(root: root), "/", actions_runner_tarball_filename(artifact: artifact)], "")
 }
 
+// unsquashfs CREATES ITS DESTINATION LEAF AND NOT THE PATH ABOVE IT, which is why the mkdir below
+// is part of the sequence rather than redundant with the fetch step's directory creation. Measured
+// on srv2 (fleet-converge run 33983516809): with `base/` and `images/` present but `tree/` absent,
+// `unsquashfs -f -d <root>/tree/<image>` exits 1 with "dir_scan: failed to make directory ...,
+// because No such file or directory". The tool makes the directory it was pointed at, one level, and
+// the earlier revision assumed it would make the chain.
+//
 // THE TREE IS REMOVED BEFORE IT IS BUILT, and that is what makes a rebuild mean what it says. A
 // second unsquashfs over a surviving tree from an earlier release would leave that release's files
 // standing wherever the new one does not overwrite them, and the resulting image would carry bytes
 // no row in this repository names. The removal is `rm -rf` on a path DERIVED from the image
 // identity, never a path a caller hands in.
+//
+// THIS PARAGRAPH DESCRIBED A `rm -rf` THE CODE DID NOT ISSUE, for as long as it existed. The call
+// was rm_force_command -- `rm -f`, whose own row in extdeps.tools.gnu_coreutils says in terms that
+// it never recurses and REFUSES a directory precisely so a mistaken call cannot destroy a tree. So
+// the substrate was correct and this caller was wrong, while the annotation asserted the property
+// that was missing. No Accepted program reads an annotation, so nothing could ever contradict it.
+//
+// It could not fail on a host that had never built before, because there was no directory to
+// remove; the first build on srv2 passed and the SECOND failed (fleet-converge run 33993440148).
+// An idempotence defect that is invisible on exactly one run per host is the shape to expect from
+// staging that is only ever exercised on fresh state.
 fn runner_guest_tree_commands(root: String, image: RunnerGuestImage, artifact: ActionsRunnerBinaryArtifact) -> List<ArgvCommand> {
   [
-    rm_force_command(path: runner_guest_tree_dir(root: root, image: image)),
+    rm_recursive_force_command(path: runner_guest_tree_dir(root: root, image: image)),
+    mkdir_parents_command(path: runner_guest_tree_dir(root: root, image: image)),
     unsquashfs_extract_command(
       archive: runner_guest_base_artifact_path(root: root, artifact: runner_guest_base_rootfs_artifact),
       into_directory: runner_guest_tree_dir(root: root, image: image),
@@ -296,7 +425,7 @@ fn runner_guest_tree_commands(root: String, image: RunnerGuestImage, artifact: A
       strip_components: 0,
     ),
     mkdir_parents_command(path: runner_guest_tree_unit_dir(root: root, image: image)),
-    mkdir_parents_command(path: runner_guest_tree_wants_dir(root: root, image: image)),
+    mkdir_parents_command(path: runner_guest_agent_drop_in_dir(root: root, image: image)),
   ]
 }
 
@@ -306,10 +435,6 @@ fn runner_guest_tree_runner_dir(root: String, image: RunnerGuestImage) -> String
 
 fn runner_guest_tree_unit_dir(root: String, image: RunnerGuestImage) -> String {
   join([runner_guest_tree_dir(root: root, image: image), "/etc/systemd/system"], "")
-}
-
-fn runner_guest_tree_wants_dir(root: String, image: RunnerGuestImage) -> String {
-  join([runner_guest_tree_dir(root: root, image: image), "/etc/systemd/system/multi-user.target.wants"], "")
 }
 
 fn runner_guest_image_commands(root: String, image: RunnerGuestImage) -> List<ArgvCommand> {
@@ -333,6 +458,7 @@ fn runner_guest_image_commands(root: String, image: RunnerGuestImage) -> List<Ar
 type GuestArtifactVerdict
   = ArtifactMatchesPin
   | ArtifactUnpinnedFirstContact { digest_hex: String }
+  | ArtifactBuildReceipt { digest_hex: String }
   | ArtifactContradictsPin { expected_hex: String, observed_hex: String }
   | ArtifactNotMeasured { reason: String }
 
@@ -343,6 +469,8 @@ fn guest_artifact_verdict(artifact: GuestBaseArtifact, observed: Sha256FileDiges
       match artifact.integrity {
         ArtifactDigestUnpinned { cause: _ } =>
           ArtifactUnpinnedFirstContact { digest_hex: d.hex as String }
+        ArtifactDigestNotPinnable { cause: _ } =>
+          ArtifactBuildReceipt { digest_hex: d.hex as String }
         ArtifactDigestPinned { digest: expected, provenance: _ } =>
           if expected == d {
             ArtifactMatchesPin
@@ -359,6 +487,9 @@ fn guest_artifact_verdict_text(artifact: GuestBaseArtifact, verdict: GuestArtifa
     ArtifactUnpinnedFirstContact { digest_hex: h } =>
       join([artifact.filename as String, "=unpinned-first-contact sha256=", h,
             " (author this as ArtifactDigestPinned with FirstObservedOnFetch provenance)"], "")
+    ArtifactBuildReceipt { digest_hex: h } =>
+      join([artifact.filename as String, "=build-receipt sha256=", h,
+            " (this build's output; not a pin, and not to be authored as one)"], "")
     ArtifactContradictsPin { expected_hex: e, observed_hex: o } =>
       join([artifact.filename as String, "=CONTRADICTS-PIN expected=", e, " observed=", o], "")
     ArtifactNotMeasured { reason: r } =>
@@ -373,6 +504,7 @@ fn guest_artifact_verdict_admits_build(verdict: GuestArtifactVerdict) -> Bool {
   match verdict {
     ArtifactMatchesPin => true
     ArtifactUnpinnedFirstContact { digest_hex: _ } => true
+    ArtifactBuildReceipt { digest_hex: _ } => true
     ArtifactContradictsPin { expected_hex: _, observed_hex: _ } => false
     ArtifactNotMeasured { reason: _ } => false
   }
@@ -390,14 +522,7 @@ fn runner_guest_image_standing_text(s: RunnerGuestImageStanding) -> String {
     guest_artifact_verdict_text(artifact: runner_guest_kernel_artifact, verdict: s.kernel), "\n",
     guest_artifact_verdict_text(artifact: runner_guest_base_rootfs_artifact, verdict: s.rootfs), "\n",
     "image=", s.image_path, "\n",
-    guest_artifact_verdict_text(
-      artifact: GuestBaseArtifact {
-        url: "about:built-here" as NonEmptyStr,
-        filename: "guest-image" as NonEmptyStr,
-        integrity: ArtifactDigestUnpinned { cause: "the image is built here, so its digest is a receipt of this build rather than a pin to verify against" },
-      },
-      verdict: s.image_digest,
-    ),
+    guest_artifact_verdict_text(artifact: runner_guest_built_image_artifact, verdict: s.image_digest),
   ], "")
 }
 
@@ -427,9 +552,12 @@ func write_guest_agent_unit_wet(root: String, image: RunnerGuestImage) -> Proces
   if !a.success {
     exit_failure(reason: join(["runner_guest_image: guest agent unit write refused: ", a.error], ""))
   } else {
-    let b = Filesystem.Write(path: runner_guest_agent_wants_path(root: root, image: image), content: text)
+    let b = Filesystem.Write(
+      path: runner_guest_agent_drop_in_path(root: root, image: image),
+      content: serialize_systemd_drop_in(drop_in: runner_guest_agent_target_drop_in()),
+    )
     if !b.success {
-      exit_failure(reason: join(["runner_guest_image: guest agent enable-placement write refused: ", b.error], ""))
+      exit_failure(reason: join(["runner_guest_image: guest agent target drop-in write refused: ", b.error], ""))
     } else {
       ExitSuccess
     }
@@ -446,6 +574,53 @@ func runner_guest_image_receipt_wet(standing: RunnerGuestImageStanding) -> Proce
     ExitSuccess
   } else {
     exit_failure(reason: join(["runner_guest_image: no image was produced --\n", text], ""))
+  }
+}
+
+// THE RECEIPT IS WRITTEN ON EVERY ARM, INCLUDING THE ONES THAT FAILED, and that is a repair rather
+// than thoroughness. The earlier revision propagated a build failure straight out and wrote nothing,
+// so fleet-converge run 33983516809 measured BOTH base artifacts' first-contact digests -- the exact
+// measurement this fleet has no other route to -- and then discarded them because a LATER step
+// failed. Evidence a run produces must survive the failure that makes it interesting, which is the
+// same property the boot probe's console receipt needs and for the same reason.
+//
+// THE BUILD'S OWN OUTCOME IS NOT LAUNDERED BY THIS. image_digest reads the image path, so a build
+// that produced no image reports ArtifactNotMeasured, which guest_artifact_verdict_admits_build
+// refuses and the receipt exits non-zero on; and the build's exit is returned in preference to the
+// receipt's. Writing the receipt records what was learned. It does not decide the verdict.
+//
+// IT IS ITS OWN DECLARATION BECAUSE THE EXPLANATION HAS TO LIVE SOMEWHERE A READER FINDS IT. The
+// first attempt put this reasoning in a comment inside the converge body, which DESIGN 4c refuses at
+// module-item grain -- annotations attach to declarations, so a step worth explaining is a step worth
+// naming.
+func runner_guest_image_build_and_receipt_wet(
+  root: String,
+  image: RunnerGuestImage,
+  artifact: ActionsRunnerBinaryArtifact,
+  kernel: GuestArtifactVerdict,
+  rootfs: GuestArtifactVerdict,
+) -> ProcessExit {
+  let built = match run_shell_commands(commands: runner_guest_tree_commands(root: root, image: image, artifact: artifact), transport: LocalExec) {
+    ExitSuccess =>
+      match write_guest_agent_unit_wet(root: root, image: image) {
+        ExitSuccess =>
+          run_shell_commands(commands: runner_guest_image_commands(root: root, image: image), transport: LocalExec)
+        other => other
+      }
+    other => other
+  }
+  let receipt = runner_guest_image_receipt_wet(standing: RunnerGuestImageStanding {
+    kernel: kernel,
+    rootfs: rootfs,
+    image_path: runner_guest_image_path(root: root, image: image),
+    image_digest: guest_artifact_verdict(
+      artifact: runner_guest_built_image_artifact,
+      observed: sha256sum_file_digest_via_shell(path: runner_guest_image_path(root: root, image: image) as NonEmptyStr),
+    ),
+  })
+  match built {
+    ExitSuccess => receipt
+    other => other
   }
 }
 
@@ -470,7 +645,7 @@ func runner_guest_image_observe_wet() -> ProcessExit
             rootfs: measure_artifact_wet(root: root, artifact: runner_guest_base_rootfs_artifact),
             image_path: runner_guest_image_path(root: root, image: image),
             image_digest: guest_artifact_verdict(
-              artifact: runner_guest_base_rootfs_artifact,
+              artifact: runner_guest_built_image_artifact,
               observed: sha256sum_file_digest_via_shell(path: runner_guest_image_path(root: root, image: image) as NonEmptyStr),
             ),
           })
@@ -507,27 +682,9 @@ func runner_guest_image_converge_wet() -> ProcessExit
                   guest_artifact_verdict_text(artifact: runner_guest_base_rootfs_artifact, verdict: rootfs),
                 ], ""))
               } else {
-                match run_shell_commands(commands: runner_guest_tree_commands(root: root, image: image, artifact: a), transport: LocalExec) {
-                  ExitSuccess =>
-                    match write_guest_agent_unit_wet(root: root, image: image) {
-                      ExitSuccess =>
-                        match run_shell_commands(commands: runner_guest_image_commands(root: root, image: image), transport: LocalExec) {
-                          ExitSuccess =>
-                            runner_guest_image_receipt_wet(standing: RunnerGuestImageStanding {
-                              kernel: kernel,
-                              rootfs: rootfs,
-                              image_path: runner_guest_image_path(root: root, image: image),
-                              image_digest: guest_artifact_verdict(
-                                artifact: runner_guest_base_rootfs_artifact,
-                                observed: sha256sum_file_digest_via_shell(path: runner_guest_image_path(root: root, image: image) as NonEmptyStr),
-                              ),
-                            })
-                          other => other
-                        }
-                      other => other
-                    }
-                  other => other
-                }
+                runner_guest_image_build_and_receipt_wet(
+                  root: root, image: image, artifact: a, kernel: kernel, rootfs: rootfs,
+                )
               }
             }
             other => other

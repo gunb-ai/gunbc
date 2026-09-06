@@ -5,16 +5,19 @@ import extdeps.crypto.hash { sha256_digest }
 import extdeps.github.actions_runner { ActionsRunnerRelease }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.e2fsprogs { Ext4, mke2fs_populate_command }
-import extdeps.systemd.unit_file { serialize_systemd_unit_file }
+import extdeps.systemd.unit_file { serialize_systemd_unit_file, serialize_systemd_drop_in }
 import gunbc.runner_microvm { RunnerGuestImage, gunbc_runner_guest_image }
 import gunbc.runner_guest_image {
   GuestBaseArtifact, GuestArtifactIntegrity, ArtifactDigestPinned, ArtifactDigestUnpinned,
+  ArtifactDigestNotPinnable, runner_guest_built_image_artifact,
   GuestArtifactDigestProvenance, FirstObservedOnFetch,
   GuestArtifactVerdict, ArtifactMatchesPin, ArtifactUnpinnedFirstContact, ArtifactContradictsPin,
+  ArtifactBuildReceipt,
   ArtifactNotMeasured,
-  guest_artifact_verdict, guest_artifact_verdict_admits_build,
+  guest_artifact_verdict, guest_artifact_verdict_admits_build, guest_artifact_verdict_text,
   runner_guest_image_name, runner_guest_image_path, runner_guest_tree_dir,
-  runner_guest_agent_unit, runner_guest_agent_unit_path, runner_guest_agent_wants_path,
+  runner_guest_agent_unit, runner_guest_agent_unit_path,
+  runner_guest_agent_drop_in_path, runner_guest_agent_target_drop_in,
   runner_guest_image_size, runner_guest_image_filesystem,
 }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
@@ -91,6 +94,27 @@ test fn an_unpinned_artifact_reports_first_contact_and_an_unreadable_one_refuses
     && (match unreadable { ArtifactNotMeasured { reason: _ } => true  _ => false })
 }
 
+// THE BUILT IMAGE IS A RECEIPT AND MUST NEVER BE ADVISED AS A PIN, and this control exists because
+// the receipt said the opposite on a real run. fleet-converge run 33996923229 printed "author this
+// as ArtifactDigestPinned with FirstObservedOnFetch provenance" beside the image THAT BUILD had just
+// produced -- advice that, followed, pins a digest which legitimately changes whenever the tree does
+// and demands byte-reproducible mke2fs output to stay green.
+//
+// THE RED IS AUTHORABLE AND IS THE OLD BEHAVIOUR: give the built-image artifact ArtifactDigestUnpinned
+// and this goes red on both halves, because that arm is the one carrying the pin advice. The two
+// halves are separate on purpose -- asserting only that the text differs would pass on any wording
+// change, so the first pins the arm and the second pins what the arm must NOT tell a reader to do.
+test fn the_built_image_reports_a_receipt_and_never_advises_authoring_a_pin() -> Bool {
+  let v = guest_artifact_verdict(
+    artifact: runner_guest_built_image_artifact,
+    observed: Sha256FileDigest { digest: sha256_digest(hex: b_digest) },
+  )
+  let rendered = guest_artifact_verdict_text(artifact: runner_guest_built_image_artifact, verdict: v)
+  (match v { ArtifactBuildReceipt { digest_hex: h } => h == b_digest as String  _ => false })
+    && !string_contains(s: rendered, pattern: "ArtifactDigestPinned")
+    && guest_artifact_verdict_admits_build(verdict: v)
+}
+
 // THE IMAGE PATH CARRIES THE WHOLE IDENTITY, so a runner bump cannot land on the path the previous
 // release's image occupies. The red here is a second image differing ONLY in the runner release.
 test fn two_images_differing_only_in_the_runner_release_do_not_share_a_path() -> Bool {
@@ -119,16 +143,38 @@ test fn the_guest_agent_powers_the_machine_off_on_every_arm() -> Bool {
     && string_contains(s: text, pattern: "StandardOutput=journal+console")
     && string_contains(s: text, pattern: "Type=oneshot")
     && string_contains(s: text, pattern: "WantedBy=multi-user.target")
+    && string_contains(s: text, pattern: "ExecStopPost=")
 }
 
-// THE ENABLE PLACEMENT IS THE SAME UNIT UNDER THE TARGET'S WANTS DIRECTORY, both derived from the
-// image root. A unit written only to /etc/systemd/system is never started.
-test fn the_agent_is_placed_where_the_default_target_reaches_it() -> Bool {
-  let a = runner_guest_agent_unit_path(root: "/r", image: gunbc_runner_guest_image)
-  let w = runner_guest_agent_wants_path(root: "/r", image: gunbc_runner_guest_image)
-  a != w
-    && string_contains(s: a, pattern: "/etc/systemd/system/gunbc-runner-agent.service")
-    && string_contains(s: w, pattern: "/etc/systemd/system/multi-user.target.wants/gunbc-runner-agent.service")
+// THE REGRESSION CONTROL FOR THE ACTIVATION DEFECT, and it is written against the mechanism systemd
+// actually reads rather than against the unit's own text.
+//
+// The previous witness here asserted that `WantedBy=multi-user.target` appeared in the unit and that
+// a second file landed under multi-user.target.wants/. Both assertions were TRUE and the image still
+// did not start its agent: systemd's dependency loader skips any entry in a .wants/ directory that is
+// not a symlink, so the second file was inert. A correct assertion over the wrong subject -- it could
+// never have gone red for the reason that mattered.
+//
+// This asserts the drop-in instead: a `<target>.d/*.conf` fragment carrying `Wants=` naming the
+// service, which is merged into the target by the ordinary drop-in path and has no symlink
+// requirement. The red is a build that stops emitting that fragment, or emits one that does not name
+// the unit -- which is exactly the state the merged image was in.
+test fn the_agent_is_pulled_in_by_a_drop_in_systemd_will_actually_read() -> Bool {
+  let path = runner_guest_agent_drop_in_path(root: "/r", image: gunbc_runner_guest_image)
+  let body = serialize_systemd_drop_in(drop_in: runner_guest_agent_target_drop_in())
+  string_contains(s: path, pattern: "/etc/systemd/system/multi-user.target.d/")
+    && string_contains(s: path, pattern: ".conf")
+    && string_contains(s: body, pattern: "[Unit]")
+    && string_contains(s: body, pattern: "Wants=gunbc-runner-agent.service")
+    && path != runner_guest_agent_unit_path(root: "/r", image: gunbc_runner_guest_image)
+}
+
+// NOTHING IS WRITTEN INTO A .wants/ DIRECTORY ANY MORE, and this says so directly. A future author
+// restoring the "just copy the unit into .wants/" shortcut reds here even if the drop-in above still
+// stands, because the failure mode was an INERT file that looked like activation.
+test fn no_placement_relies_on_a_regular_file_in_a_wants_directory() -> Bool {
+  !string_contains(s: runner_guest_agent_drop_in_path(root: "/r", image: gunbc_runner_guest_image), pattern: ".wants/")
+    && !string_contains(s: runner_guest_agent_unit_path(root: "/r", image: gunbc_runner_guest_image), pattern: ".wants/")
 }
 
 // THE mke2fs OPERAND CARRIES ITS UNIT. An unsuffixed fs-size is a BLOCK count, so a builder that

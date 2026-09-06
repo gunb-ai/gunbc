@@ -320,7 +320,24 @@ fn healthz_refusal_reason(cause: HealthzRefusalCause) -> String {
   }
 }
 
-data readiness_compares_the_candidate_note: String = "THE EXPECTATION IS THE ADMITTED CANDIDATE, NOT A FRESH OBSERVATION, AND THAT IS THE ENTIRE VALUE OF PASSING IT DOWN. Both halves compare against values the launcher captured ONCE before any mutation: candidate.revision and candidate.expected_surface_identity. Readiness therefore reads back the subject the deploy admitted, rather than re-deriving an expectation at comparison time.\\n\\nRe-materializing the bundle here would reopen exactly the time-of-check/time-of-use hole the candidate exists to close: if the deploying checkout changed after admission, a recomputed expectation would describe the CHANGED tree, and readiness could then agree with a process other than the one admitted — a self-consistent false green that no downstream check can see, because the expectation and the verdict would have drifted together.\\n\\nTHE TWO SURFACE CHECKS ARE NOT REDUNDANT. ProcessSurfaceMismatch compares the process's REPORTED bundle identity against the candidate's captured one — a claim about which tree the process bound. ServedSurfaceStale compares the projected artifact map — a claim about what it is actually serving. A process could report the expected identity while serving stale artifacts (a rendering defect), or serve correct artifacts under an unexpected identity (a different tree that happens to render the same). Each has its own discriminating control, because a single check covering both would green whenever either happened to agree."
+// THE EXPECTATION IS THE ADMITTED CANDIDATE, NOT A FRESH OBSERVATION, AND THAT IS THE ENTIRE VALUE
+// OF PASSING IT DOWN. Both halves compare against values the launcher captured ONCE before any
+// mutation: candidate.revision and candidate.expected_surface_identity. Readiness therefore reads
+// back the subject the deploy admitted, rather than re-deriving an expectation at comparison time.
+//
+// Re-materializing the bundle here would reopen exactly the time-of-check/time-of-use hole the
+// candidate exists to close: if the deploying checkout changed after admission, a recomputed
+// expectation would describe the CHANGED tree, and readiness could then agree with a process other
+// than the one admitted — a self-consistent false green that no downstream check can see, because
+// the expectation and the verdict would have drifted together.
+//
+// THE TWO SURFACE CHECKS ARE NOT REDUNDANT. ProcessSurfaceMismatch compares the process's REPORTED
+// bundle identity against the candidate's captured one — a claim about which tree the process
+// bound. ServedSurfaceStale compares the projected artifact map — a claim about what it is actually
+// serving. A process could report the expected identity while serving stale artifacts (a rendering
+// defect), or serve correct artifacts under an unexpected identity (a different tree that happens
+// to render the same). Each has its own discriminating control, because a single check covering
+// both would green whenever either happened to agree.
 
 fn ground_service_ready_from_healthz_with_bundle(
   read: HealthzEffectiveRead,
@@ -390,7 +407,24 @@ fn ground_service_ready_from_healthz_body(
   }
 }
 
-data readiness_check_order_note: String = "THE ORDER IS PARSE, IDENTITY, REVISION, SURFACE, AND IT IS CHOSEN SO THE FIRST REFUSAL IS THE MOST LOCATING ONE. A process at the wrong revision usually also serves the wrong surface, so checking the surface first would report 'stale surface' for what is really 'the pre-restart process is still answering' — true but one inference away from the remedy. Checking the revision first names the process; checking the surface after names the rebind. Identity precedes both because a body with no readable identity cannot be compared on either axis, and reporting a surface verdict about a process we cannot identify would attribute the surface to the wrong party.\\n\\nTHIS ROW USED TO NAME FIVE STAGES AND NOW NAMES FOUR, and the missing one is the point: PROBE is no longer ordered by this note because it is no longer ordered by anything. HealthzEffectiveRead became a coproduct (gunbc.roadmap_site_surface_types), so a refused probe carries no body at all and the parse stage is unreachable from it — not checked-first, but unreachable. The four above remain ordering-by-discipline inside ground_service_ready_from_healthz_body: they are stages over ONE String, and nothing structural stops a future edit from reordering them, so this note is still doing real work for them. It is stated this way rather than deleted wholesale because a note that shrank silently would read as though the whole ordering had been made structural, which is the rung inflation DESIGN §4b calls worse than sitting low."
+// THE ORDER IS PARSE, IDENTITY, REVISION, SURFACE, AND IT IS CHOSEN SO THE FIRST REFUSAL IS THE
+// MOST LOCATING ONE. A process at the wrong revision usually also serves the wrong surface, so
+// checking the surface first would report 'stale surface' for what is really 'the pre-restart
+// process is still answering' — true but one inference away from the remedy. Checking the revision
+// first names the process; checking the surface after names the rebind. Identity precedes both
+// because a body with no readable identity cannot be compared on either axis, and reporting a
+// surface verdict about a process we cannot identify would attribute the surface to the wrong
+// party.
+//
+// THIS ROW USED TO NAME FIVE STAGES AND NOW NAMES FOUR, and the missing one is the point: PROBE is
+// no longer ordered by this note because it is no longer ordered by anything. HealthzEffectiveRead
+// became a coproduct (gunbc.roadmap_site_surface_types), so a refused probe carries no body at all
+// and the parse stage is unreachable from it — not checked-first, but unreachable. The four above
+// remain ordering-by-discipline inside ground_service_ready_from_healthz_body: they are stages over
+// ONE String, and nothing structural stops a future edit from reordering them, so this note is
+// still doing real work for them. It is stated this way rather than deleted wholesale because a
+// note that shrank silently would read as though the whole ordering had been made structural, which
+// is the rung inflation DESIGN §4b calls worse than sitting low.
 
 fn ground_service_ready_from_healthz(
   read: HealthzEffectiveRead,

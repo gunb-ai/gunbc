@@ -42,7 +42,8 @@ import gunbc.repository { gunbc_repository }
 data deployed_tree_remote_name: GitRemoteName = "origin" as GitRemoteName
 
 // NO FETCH REFSPEC IS WRITTEN, DELIBERATELY. `ls-remote` needs the URL alone, and
-// `live_deploy.emit` `apply_tree_split_sync_note` records that this host performs no fetch -- its
+// `live_deploy.emit` `emit_artifact_upsert` records in its annotation that this host performs no
+// fetch -- its
 // remote-tracking refs arrive through the additive .git sync, which is their authority. A refspec
 // would advertise a fetch that must not happen, and a fetch here would overwrite exactly those refs.
 fn deployed_tree_remote_desired(repository_path: FilePath) -> GitRemoteUrlMember {

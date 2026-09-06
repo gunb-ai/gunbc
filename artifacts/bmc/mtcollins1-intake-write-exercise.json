@@ -1,0 +1,27 @@
+{
+  "bmc_clock": {
+    "actual_utc_at_read": "2026-09-05 07:27:22",
+    "note": "BMC clock trails real time; skew measured at read, not asserted as constant",
+    "sel_time_get": "09/05/2026 03:23:47 AM UTC"
+  },
+  "boot_source_override": {
+    "command": "ipmitool chassis bootdev pxe",
+    "readback_bootparam_5": "Boot parameter version: 1\nBoot parameter 5 is valid/unlocked\nBoot parameter data: 8004000000\n Boot Flags :\n   - Boot Flag Valid\n   - Options apply to only next boot\n   - BIOS PC Compatible (legacy) boot \n   - Boot Device Selector : Force PXE\n   - BIOS verbosity : System Default\n   - Console Redirection control : Console redirection occurs per BIOS configuration setting (default)\n   - BIOS Mux Control Override : BIOS uses recommended setting of the mux at the end of POST\n",
+    "result": "Set Boot Device to pxe"
+  },
+  "capture_subject": "bmc-mtcollins1",
+  "captured_by": "ipmitool -I lanplus; bootstrap factory credential, unrotated",
+  "endpoint": "192.168.1.228",
+  "exercise": "write-capability grounding: boot source override and power control",
+  "power_control": {
+    "command": "ipmitool chassis power cycle",
+    "result": "Chassis Power Control: Cycle\n",
+    "sel_tail_after_cycle": " 116 | 09/05/2026 | 03:23:14 AM UTC | Power Unit #0xe0 | Soft-power control failure | Asserted\n 117 | 09/05/2026 | 03:23:22 AM UTC | Power Unit #0xe0 | Power off/down | Asserted\n 118 | 09/05/2026 | 03:23:23 AM UTC | System Boot Initiated #0xd5 | Initiated by power up | Asserted\n 119 | 09/05/2026 | 03:23:23 AM UTC | Power Unit #0xe0 | Power cycle | Asserted"
+  },
+  "second_controller_nic": {
+    "address": "192.168.1.231",
+    "dhcp_vendor_class": "udhcp 1.21.1",
+    "evidence": "same controller: mc info reports Device ID 32, Firmware Revision 0.32 at both addresses",
+    "mac": "28:c1:3c:8a:d6:4d"
+  }
+}

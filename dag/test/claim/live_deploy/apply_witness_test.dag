@@ -62,8 +62,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // HONESTLY LOST with them: idle-slot discovery. A deploy into the live slot has no idle twin to
 // stage in, so a bad release is downtime rather than a held-back cutover. That is stated in
-// gunbc.live_deploy.apply single_deployment_note as the accepted cost of the operator's
-// single-deployment ruling, not papered over here.
+// the annotation on gunbc.live_deploy.apply live_deploy_fold as the accepted cost of the
+// operator's single-deployment ruling, not papered over here.
 
 fn fixture_converged_mutation() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   Converged {

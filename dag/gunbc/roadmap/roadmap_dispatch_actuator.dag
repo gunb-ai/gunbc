@@ -95,8 +95,8 @@ import extdeps.llm.cli_lifecycle {
   CursorCliProvider,
 }
 import gunbc.harness.harness_backend {
-  HarnessBackendStanding, HarnessBackendServing, HarnessBackendModelAbsent,
-  HarnessBackendUnreachable, HarnessBackendUnreadable, harness_observe_backend,
+  HarnessBackendRoster, HarnessRosterServing, HarnessRosterNoneServing, HarnessRosterUnresolved,
+  harness_observe_roster, harness_declines_detail, harness_roster_unresolved_detail,
 }
 import gunbc.dispatch_selection {
   ExecutionProfile,
@@ -294,27 +294,19 @@ type DispatchActuatorSelection
 data harness_selection_process_fingerprint: NonEmptyStr = "gunbc" as NonEmptyStr
 
 fn dispatch_harness_selection() -> DispatchActuatorSelection {
-  match harness_observe_backend() {
-    HarnessBackendServing { model: _ } =>
+  match harness_observe_roster() {
+    HarnessRosterServing { model: _, serving: _, declined: _ } =>
       DispatchActuatorSelectionOk {
         provider: GunbcHarnessProvider,
         effort: ReasoningMedium,
         process_fingerprint: harness_selection_process_fingerprint,
       }
-    HarnessBackendModelAbsent { model: m, advertised: a } =>
+    HarnessRosterNoneServing { model: m, declined } =>
       DispatchActuatorSelectionRefused {
-        reason: join([
-          "harness backend is reachable but does not advertise ", m, "; it advertises: ", a,
-        ], "") as NonEmptyStr,
+        reason: join(["no harness replica serves ", m, ": ", harness_declines_detail(declined: declined)], "") as NonEmptyStr,
       }
-    HarnessBackendUnreachable { url: u } =>
-      DispatchActuatorSelectionRefused {
-        reason: join(["harness backend did not answer ", u], "") as NonEmptyStr,
-      }
-    HarnessBackendUnreadable { cause: c } =>
-      DispatchActuatorSelectionRefused {
-        reason: join(["harness backend answered unreadably: ", c], "") as NonEmptyStr,
-      }
+    HarnessRosterUnresolved { hosts } =>
+      DispatchActuatorSelectionRefused { reason: harness_roster_unresolved_detail(hosts: hosts) as NonEmptyStr }
   }
 }
 
@@ -1730,6 +1722,8 @@ fn gunbc_harness_spawn_argv(
     "--arg", join(["timeout_program=", timeout_program], ""),
     "--arg", join(["request_scratch_path=", request_scratch_path], ""),
     "--arg", join(["events_path=", events_path], ""),
+    "--arg", join(["repo_root=", repo_root], ""),
+    "--arg", join(["gunbc_program=", gunbc_program], ""),
   ]
 }
 
