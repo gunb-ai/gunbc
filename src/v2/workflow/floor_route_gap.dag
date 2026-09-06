@@ -327,6 +327,8 @@ fn floor_route_gap_chunk_02() -> List<String> {
       tail: Cons {
       head: "test.claim.self_host_logic_behavioral_witness.self_host_logic_behavioral_receipt_holds",
       tail: Cons {
+      head: "test.claim.self_host_logic_seed_unavailable_witness.self_host_logic_seed_unavailable_receipt_holds",
+      tail: Cons {
       head: "test.claim.self_host_materialization_carriers_behavioral_witness.self_host_materialization_carriers_behavioral_receipt_holds",
       tail: Cons {
       head: "test.claim.self_host_parse_engine_hooks_behavioral_witness.self_host_parse_engine_hooks_behavioral_receipt_holds",
