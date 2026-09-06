@@ -14,12 +14,12 @@ import gunbc.fabric_event_log {
 // unplaced log yields no remote word at all rather than a default.
 test fn the_remote_is_a_path_on_the_placed_host_and_fleet_ssh_elsewhere_and_nothing_when_unplaced() -> Bool {
   (match event_log_remote_for(placement: fabric_event_log_placement, executor: operator_host_srv1) {
-     RemoteLocalPath { path: p } => (p as String) == "/var/lib/gunbc/fabric/event-log.git"
+     RemoteLocalPath { path: p } => (p as String) == "/opt/gunbc/fabric-event-log.git"
      RemoteOverFleetSsh { url: _ } => false
      RemoteUnplaced => false
    })
     && (match event_log_remote_for(placement: fabric_event_log_placement, executor: operator_host_srv2) {
-         RemoteOverFleetSsh { url: u } => (u as String) == "ssh://gunbc-automation@srv1/var/lib/gunbc/fabric/event-log.git"
+         RemoteOverFleetSsh { url: u } => (u as String) == "ssh://briansrls@srv1/opt/gunbc/fabric-event-log.git"
          RemoteLocalPath { path: _ } => false
          RemoteUnplaced => false
        })

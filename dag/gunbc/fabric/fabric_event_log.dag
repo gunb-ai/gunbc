@@ -6,12 +6,14 @@ import std.algebra { trim }
 import std.measure { Count, One }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.filesystem.filesystem_io
+import extdeps.shell
 import extdeps.git
 import extdeps.git.plumbing
 import extdeps.git.plumbing { GitRepositoryAddress, GitWorktreeAt, GitDirectoryAt }
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
-import gunbc.fleet_ssh_locus { fleet_automation_principal_login }
+import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 import product.capacity.pool { Pool }
 import product.capacity.event_chain {
   PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, HeadAbsent, HeadAt, head_expectation_eq,
@@ -37,11 +39,16 @@ import product.capacity.lease { LeasePolicy, LeaseGrant }
 
 type FabricEventLogPlacement
   = EventLogUnplaced
-  | EventLogPlaced { host: HostIdentity, bare_path: FilePath }
+  | EventLogPlaced { host: HostIdentity, bare_path: FilePath, principal: NonEmptyStr }
 
+// FIRST PLACEMENT: srv1, under the instance root, owned by and reached as the fleet operator
+// account -- the account the harness and belt run under on srv1 and srv2 today. The target
+// principal is the fleet automation account once it holds a login on the placed host and the
+// writers run under it; that is a row change here, not a change to any lease or event.
 data fabric_event_log_placement: FabricEventLogPlacement = EventLogPlaced {
   host: operator_host_srv1,
-  bare_path: "/var/lib/gunbc/fabric/event-log.git" as FilePath,
+  bare_path: "/opt/gunbc/fabric-event-log.git" as FilePath,
+  principal: fleet_posix_operator_user.name as NonEmptyStr,
 }
 
 // The remote as the executor reaches it: a path when the executor is the placed host, the fleet
@@ -55,11 +62,11 @@ type EventLogRemote
 fn event_log_remote_for(placement: FabricEventLogPlacement, executor: HostIdentity) -> EventLogRemote {
   match placement {
     EventLogUnplaced => RemoteUnplaced
-    EventLogPlaced { host: h, bare_path: p } =>
+    EventLogPlaced { host: h, bare_path: p, principal: who } =>
       if host_identity_eq(a: h, b: executor) {
         RemoteLocalPath { path: p }
       } else {
-        RemoteOverFleetSsh { url: join(["ssh://", fleet_automation_principal_login as String, "@", fleet_probe_endpoint_for(host: h as String), p as String], "") as NonEmptyStr }
+        RemoteOverFleetSsh { url: join(["ssh://", who as String, "@", fleet_probe_endpoint_for(host: h as String), p as String], "") as NonEmptyStr }
       }
   }
 }
@@ -116,8 +123,13 @@ fn event_log_ensure_mirror(layout: EventLogLayout) -> CarrierStanding {
   if head.success {
     MirrorReady
   } else {
-    let init = git.Plumbing.InitBareAt(address: GitWorktreeAt { path: layout.scratch }, path: layout.mirror)
-    if init.exit_code == 0 { MirrorReady } else { MirrorRefused { step: "init-bare", reason: join(["exit ", to_string(init.exit_code), ": ", trim(s: init.stderr)], "") } }
+    let made = shell.Mkdir.Parents(path: layout.scratch)
+    if !made.success {
+      MirrorRefused { step: "scratch", reason: join(["could not create ", layout.scratch as String], "") }
+    } else {
+      let init = git.Plumbing.InitBareAt(address: GitWorktreeAt { path: layout.scratch }, path: layout.mirror)
+      if init.exit_code == 0 { MirrorReady } else { MirrorRefused { step: "init-bare", reason: join(["exit ", to_string(init.exit_code), ": ", trim(s: init.stderr)], "") } }
+    }
   }
 }
 
@@ -331,5 +343,31 @@ fn seat_acquisition_wire(a: SeatAcquisition) -> String {
     SeatFull { wire: w } => join(["full ", w], "")
     SeatContended { attempts: n } => join(["contended after ", to_string(n), " attempts"], "")
     SeatAcquireRefused { step: s, reason: why } => join(["refused at ", s, ": ", why], "")
+  }
+}
+
+// THE PLACEMENT ENSURE, run ON the placed host: a bare repository at the placement path, created
+// if absent. The directory's existence and ownership are the substrate's obligation (the same
+// shape gunbc.fabric_allocation_store_substrate carries for the allocation store) and are not
+// created here; a missing or unwritable parent refuses.
+fn event_log_placement_ensure(placement: FabricEventLogPlacement) -> CarrierStanding {
+  match placement {
+    EventLogUnplaced => MirrorRefused { step: "placement", reason: "the event log is unplaced" }
+    EventLogPlaced { host: _, bare_path: p, principal: _ } => {
+      let head = Filesystem.Read(path: join([p as String, "/HEAD"], ""))
+      if head.success {
+        MirrorReady
+      } else {
+        let init = git.Plumbing.InitBareAt(address: GitWorktreeAt { path: "/" as FilePath }, path: p)
+        if init.exit_code == 0 { MirrorReady } else { MirrorRefused { step: "init-bare", reason: join(["exit ", to_string(init.exit_code), ": ", trim(s: init.stderr)], "") } }
+      }
+    }
+  }
+}
+
+fn fabric_event_log_placement_ensure_wet() -> ProcessExit {
+  match event_log_placement_ensure(placement: fabric_event_log_placement) {
+    MirrorReady => ExitSuccess
+    MirrorRefused { step: s, reason: why } => exit_failure(reason: join(["fabric event log placement ensure refused at ", s, ": ", why], ""))
   }
 }

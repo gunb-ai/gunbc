@@ -1,0 +1,97 @@
+module gunbc.instruments.fabric_seat_probe
+
+import std.types { String, Bool, Int, NonEmptyStr, List, FilePath, EpochSecs }
+import std.nat { Nat }
+import std.algebra { trim }
+import std.measure { Measure, Count, One }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io
+import extdeps.tools.hostname
+import product.capacity.pool { Pool, NoReplenishment, pool_of }
+import product.capacity.event_chain { PartitionId }
+import product.capacity.pool_events { SeatRequest }
+import product.capacity.lease { LeasePolicy, QuiescenceRequired }
+import gunbc.harness.harness_wire { OpenAiChatCompletionsShape }
+import gunbc.harness.harness_seat {
+  HarnessSeatBinding, HarnessSeatBound, HarnessSeatRefused, harness_bind_seat,
+  HarnessSeatRelease, HarnessSeatReleased, HarnessSeatReleaseRefused, harness_release_seat, harness_seat_release_wire,
+  harness_now_epoch,
+}
+import gunbc.harness.harness_cli { harness_seat_policy }
+import gunbc.fabric_event_log {
+  EventLogRemote, RemoteLocalPath, RemoteOverFleetSsh, EventLogLayout, event_log_layout,
+  SeatAcquisition, SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, fabric_seat_acquire, seat_acquisition_wire,
+}
+
+// TWO LIVE RECEIPTS FOR THE SEAT TRANSACTION ON THE PLACED EVENT LOG.
+//
+// fabric_seat_probe: the harness path end to end on this host -- bind a seat on a serving group
+// through the real placement, write the grant to a receipt file, release. Run as
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/fabric_seat_probe.dag --function fabric_seat_probe \
+//     --arg receipt=<file to write>
+//
+// fabric_seat_collision_probe: the contention the operator asked for -- a one-seat pool on a probe
+// partition at a caller-named remote, one acquisition per run, so two hosts started together from
+// the same head produce exactly one grant and one typed full (or a stale that re-folds into a
+// full). Run on each host as
+//
+//   gunbc run ... --entry dag/gunbc/instruments/fabric_seat_probe.dag \
+//     --function fabric_seat_collision_probe --arg root=<empty dir> --arg remote=<url or path> \
+//     --arg partition=<name> --arg receipt=<file to write>
+
+fn fabric_seat_probe(receipt: NonEmptyStr) -> ProcessExit {
+  let host = os.Hostname.ReadShort()
+  let short = if host.success { trim(s: host.value) } else { "" }
+  let binding = harness_bind_seat(short_hostname: short, shape: OpenAiChatCompletionsShape, actor: join(["seat-probe:", short], "") as NonEmptyStr, policy: harness_seat_policy)
+  match binding {
+    HarnessSeatRefused { detail: d } => exit_failure(reason: join(["seat probe: bind refused: ", d], ""))
+    HarnessSeatBound { url: u, grant: g, partition: p, group_wire: gw, layout: _ } => {
+      let line = join([
+        "host=", short, " group=", gw, " partition=", p as String, " url=", u,
+        " reference=", g.reference as String, " fence=", g.fence.grant as String, "@", to_string(g.fence.generation),
+        " granted_at=", to_string(g.granted_at), " expires_at=", to_string(g.expires_at), "\n",
+      ], "")
+      let seat_release = harness_release_seat(binding: binding, reason: "seat-probe complete" as NonEmptyStr)
+      let w = Filesystem.Write(path: receipt as String, content: join([line, harness_seat_release_wire(r: seat_release), "\n"], ""))
+      match seat_release {
+        HarnessSeatReleased { partition: _ } => if w.success { ExitSuccess } else { exit_failure(reason: join(["seat probe: receipt write failed: ", w.error], "")) }
+        HarnessSeatReleaseRefused { detail: d } => exit_failure(reason: join(["seat probe: granted but release refused: ", d], ""))
+      }
+    }
+  }
+}
+
+fn collision_remote(remote: String) -> EventLogRemote {
+  if starts_with(s: remote, prefix: "ssh://") { RemoteOverFleetSsh { url: remote as NonEmptyStr } } else { RemoteLocalPath { path: remote as FilePath } }
+}
+
+fn fabric_seat_collision_probe(root: NonEmptyStr, remote: NonEmptyStr, partition: NonEmptyStr, receipt: NonEmptyStr) -> ProcessExit {
+  let host = os.Hostname.ReadShort()
+  let short = if host.success { trim(s: host.value) } else { "unknown" }
+  let layout = event_log_layout(root: root as FilePath, remote: collision_remote(remote: remote as String))
+  let pool = pool_of(identity: partition, ceiling: Measure { count: 1 }, replenishment: NoReplenishment)
+  match harness_now_epoch() {
+    Absent => exit_failure(reason: "collision probe: clock unreadable")
+    Present { value: now } => {
+      let outcome = fabric_seat_acquire(
+        layout: layout,
+        partition: (partition as String) as PartitionId,
+        root: pool,
+        actor: join(["collision-probe:", short], "") as NonEmptyStr,
+        request: SeatRequest { reference: join([short, "@", to_string(now)], "") as NonEmptyStr, amount: 1, at: now, term_seconds: 120 },
+        policy: LeasePolicy { maximum_duration_seconds: 120, release_law: QuiescenceRequired },
+        attempts: 3,
+        budget: 256,
+      )
+      let w = Filesystem.Write(path: receipt as String, content: join(["host=", short, " ", seat_acquisition_wire(a: outcome), "\n"], ""))
+      match outcome {
+        SeatGranted { grant: _, generation: _ } => ExitSuccess
+        SeatFull { wire: _ } => ExitSuccess
+        SeatContended { attempts: n } => exit_failure(reason: join(["collision probe: contended after ", to_string(n)], ""))
+        SeatAcquireRefused { step: s, reason: why } => exit_failure(reason: join(["collision probe: refused at ", s, ": ", why], ""))
+      }
+    }
+  }
+}

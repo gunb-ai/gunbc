@@ -665,6 +665,25 @@ type DashboardInstanceLookup
   = DashboardInstanceResolved { instance: HostDashboardInstance }
   | DashboardInstanceRootUnknown { repo_root: String }
 
+// THE INSTANCE BY THE HOST IT RUNS ON, for a caller that knows where it is executing and not
+// which checkout it was launched from: a harness turn or a belt tick reads its own short hostname
+// and resolves the instance whose host_identity spells it. An unknown host is its own arm.
+type DashboardInstanceByHost
+  = DashboardInstanceForHost { instance: HostDashboardInstance }
+  | DashboardInstanceHostUnknown { host: String }
+
+fn dashboard_instance_for_host(host: String) -> DashboardInstanceByHost {
+  if host == (srv1_live_dashboard_instance().host_identity as String) {
+    DashboardInstanceForHost { instance: srv1_live_dashboard_instance() }
+  } else if host == (srv2_deploy_dashboard_instance().host_identity as String) {
+    DashboardInstanceForHost { instance: srv2_deploy_dashboard_instance() }
+  } else if host == (macbook_local_dashboard_instance().host_identity as String) {
+    DashboardInstanceForHost { instance: macbook_local_dashboard_instance() }
+  } else {
+    DashboardInstanceHostUnknown { host: host }
+  }
+}
+
 fn dashboard_instance_for_repo_root(repo_root: String) -> DashboardInstanceLookup {
   if repo_root == (srv1_live_dashboard_instance().repo_root as String) {
     DashboardInstanceResolved { instance: srv1_live_dashboard_instance() }

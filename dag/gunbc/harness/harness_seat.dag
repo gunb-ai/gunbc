@@ -1,0 +1,200 @@
+module gunbc.harness.harness_seat
+
+import std.types { String, Bool, Int, NonEmptyStr, List, FilePath, EpochSecs }
+import std.nat { Nat, nat_range_inclusive }
+import std.algebra { trim }
+import std.measure { Measure, Count, One }
+import extdeps.clock
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { host_lan_address }
+import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
+import gunbc.spark.pair_serving_desired {
+  spark_pair_serving_groups, spark_pair_serving_head, spark_pair_serving_unit,
+  SparkPairServingUnit, SparkPairServingUnitReady, SparkPairServingUnitRefused,
+}
+import gunbc.spark.serving_engine { ServingEngine, VllmServing, OllamaServing }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, DashboardInstanceByHost, DashboardInstanceForHost, DashboardInstanceHostUnknown, dashboard_instance_for_host }
+import product.capacity.pool { Pool, NoReplenishment, pool_of }
+import product.capacity.event_chain { PartitionId, HeadExpectation, HeadAbsent, HeadAt, ChainEvent }
+import product.capacity.pool_events { PoolEvent, PoolReleased, SeatRequest }
+import product.capacity.lease { LeasePolicy, LeaseGrant }
+import gunbc.fabric_event_log {
+  fabric_event_log_placement, event_log_remote_for, EventLogLayout, event_log_layout,
+  HeadObservation, HeadObserved, HeadObservationRefused, event_log_observe_head,
+  EventAppend, EventAppended, EventAppendStale, EventAppendRefused, event_log_append,
+  SeatAcquisition, SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, fabric_seat_acquire, seat_acquisition_wire,
+}
+import gunbc.harness.harness_backend { HarnessBackendStanding, harness_observe_replica, harness_standing_is_serving, harness_standing_label, harness_standing_detail }
+import gunbc.harness.harness_wire { HarnessWireShape, harness_backend_url_for_address }
+
+// THE HARNESS TAKES A SEAT BEFORE IT TAKES A TURN. A serving group's seats are a pool on the
+// fabric event log, one partition per group, whose root is the group's admitted engine tuple; the
+// endpoint the turn talks to comes FROM the granted seat, never from a picker that could diverge
+// from the admission (operator ruling 2026-09-06). A full group is a typed refusal, and the next
+// group is tried; nothing queues. The reservation carries the declared maximum turn duration as
+// its deadline, and the seat is released explicitly when the turn ends. Under vLLM the resource
+// cannot fence a superseded holder, so the release law is quiescence-required: an expired seat
+// whose turn was never seen to end stays held rather than becoming oversubscription.
+
+fn harness_seat_partition(group: FabricGroup) -> PartitionId {
+  join(["group-", fabric_group_wire(g: group) as String, "-seats"], "") as PartitionId
+}
+
+// THE ROOT POOL IS THE GROUP'S ADMISSION COUNT, read off the desired unit rather than typed again;
+// a group that is refused or served by a runtime without a seat count has no pool.
+fn harness_seat_root_pool(group: FabricGroup) -> Pool<Count, One>? {
+  match spark_pair_serving_unit(group: group) {
+    SparkPairServingUnitRefused { group: _, cause: _ } => none
+    SparkPairServingUnitReady { group: _, engine: e, head: _, workers: _ } =>
+      match e {
+        VllmServing { args: a } => Present { value: pool_of(identity: harness_seat_partition(group: group) as String as NonEmptyStr, ceiling: Measure { count: a.max_num_seqs }, replenishment: NoReplenishment) }
+        OllamaServing { profile: _ } => none
+      }
+  }
+}
+
+fn harness_event_log_root(instance: HostDashboardInstance) -> FilePath {
+  join([instance.instance_root as String, "/fabric-event-log"], "") as FilePath
+}
+
+type HarnessEventLogLayout
+  = HarnessLayoutResolved { layout: EventLogLayout, executor: HostIdentity }
+  | HarnessLayoutRefused { detail: String }
+
+fn harness_event_log_layout_for_host(short_hostname: String) -> HarnessEventLogLayout {
+  match dashboard_instance_for_host(host: trim(s: short_hostname)) {
+    DashboardInstanceHostUnknown { host: h } => HarnessLayoutRefused { detail: join(["no dashboard instance is declared for host ", h], "") }
+    DashboardInstanceForHost { instance: i } =>
+      HarnessLayoutResolved {
+        layout: event_log_layout(root: harness_event_log_root(instance: i), remote: event_log_remote_for(placement: fabric_event_log_placement, executor: (i.host_identity as String) as HostIdentity)),
+        executor: (i.host_identity as String) as HostIdentity,
+      }
+  }
+}
+
+fn harness_now_epoch() -> EpochSecs? {
+  match parse_int(s: trim(s: Clock.UnixSecs().unix_secs)) {
+    Present { value: n } => if n < 0 { none } else { Present { value: n } }
+    Absent => none
+  }
+}
+
+type HarnessSeatBinding
+  = HarnessSeatBound { url: String, grant: LeaseGrant, partition: PartitionId, group_wire: String, layout: EventLogLayout }
+  | HarnessSeatRefused { detail: String }
+
+type SeatBindFold {
+  bound: HarnessSeatBinding?
+  details: List<String>
+}
+
+fn seat_bind_detail(group: FabricGroup, text: String) -> String {
+  join([fabric_group_wire(g: group) as String, ": ", text], "")
+}
+
+fn harness_try_group(acc: SeatBindFold, group: FabricGroup, layout: EventLogLayout, shape: HarnessWireShape, actor: NonEmptyStr, policy: LeasePolicy, now: EpochSecs) -> SeatBindFold {
+  match acc.bound {
+    Present { value: _ } => acc
+    Absent =>
+      match host_lan_address(host: spark_pair_serving_head(group: group)) {
+        Absent => SeatBindFold { bound: none, details: concat(acc.details, [seat_bind_detail(group: group, text: "head has no LAN endpoint row")]) }
+        Present { value: address } => {
+          let standing = harness_observe_replica(address: address as String)
+          if !harness_standing_is_serving(standing: standing) {
+            SeatBindFold { bound: none, details: concat(acc.details, [seat_bind_detail(group: group, text: join([harness_standing_label(standing: standing), " -- ", harness_standing_detail(standing: standing)], ""))]) }
+          } else {
+            match harness_seat_root_pool(group: group) {
+              Absent => SeatBindFold { bound: none, details: concat(acc.details, [seat_bind_detail(group: group, text: "no seat pool: the group is refused or not served by vLLM")]) }
+              Present { value: root } => {
+                let partition = harness_seat_partition(group: group)
+                let request = SeatRequest {
+                  reference: join([actor as String, "@", to_string(now)], "") as NonEmptyStr,
+                  amount: 1,
+                  at: now,
+                  term_seconds: policy.maximum_duration_seconds,
+                }
+                match fabric_seat_acquire(layout: layout, partition: partition, root: root, actor: actor, request: request, policy: policy, attempts: 3, budget: 4096) {
+                  SeatGranted { grant: g, generation: _ } =>
+                    SeatBindFold { bound: Present { value: HarnessSeatBound { url: harness_backend_url_for_address(shape: shape, address: address as String), grant: g, partition: partition, group_wire: fabric_group_wire(g: group) as String, layout: layout } }, details: acc.details }
+                  other => SeatBindFold { bound: none, details: concat(acc.details, [seat_bind_detail(group: group, text: seat_acquisition_wire(a: other))]) }
+                }
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn harness_bind_seat(short_hostname: String, shape: HarnessWireShape, actor: NonEmptyStr, policy: LeasePolicy) -> HarnessSeatBinding {
+  match harness_event_log_layout_for_host(short_hostname: short_hostname) {
+    HarnessLayoutRefused { detail: d } => HarnessSeatRefused { detail: d }
+    HarnessLayoutResolved { layout: layout, executor: _ } =>
+      match harness_now_epoch() {
+        Absent => HarnessSeatRefused { detail: "the clock could not be read as epoch seconds" }
+        Present { value: now } => {
+          let folded = fold(spark_pair_serving_groups, init: SeatBindFold { bound: none, details: [] }, f: (acc, g) =>
+            harness_try_group(acc: acc, group: g, layout: layout, shape: shape, actor: actor, policy: policy, now: now))
+          match folded.bound {
+            Present { value: b } => b
+            Absent => HarnessSeatRefused { detail: join(["no serving group granted a seat: ", join(folded.details, "; ")], "") }
+          }
+        }
+      }
+  }
+}
+
+// RELEASE IS AN EVENT ON THE SAME PARTITION, appended against the head observed at release time
+// and retried on stale, because the seat's neighbours keep moving the head while this turn ran.
+type HarnessSeatRelease
+  = HarnessSeatReleased { partition: PartitionId }
+  | HarnessSeatReleaseRefused { detail: String }
+
+type ReleaseFold {
+  done: HarnessSeatRelease?
+}
+
+fn release_attempt(binding: HarnessSeatBinding, reason: NonEmptyStr, now: EpochSecs) -> HarnessSeatRelease? {
+  match binding {
+    HarnessSeatRefused { detail: d } => Present { value: HarnessSeatReleaseRefused { detail: join(["nothing to release: ", d], "") } }
+    HarnessSeatBound { url: _, grant: g, partition: p, group_wire: _, layout: layout } =>
+      match event_log_observe_head(layout: layout, partition: p) {
+        HeadObservationRefused { step: s, reason: why } => Present { value: HarnessSeatReleaseRefused { detail: join([s, ": ", why], "") } }
+        HeadObserved { head: head } => {
+          let event = ChainEvent {
+            partition: p,
+            parent: match head { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
+            recorded_at: now,
+            actor: g.reference,
+            payload: PoolReleased { reference: g.reference, reason: reason },
+          }
+          match event_log_append(layout: layout, partition: p, event: event, expected: head) {
+            EventAppended { id: _ } => Present { value: HarnessSeatReleased { partition: p } }
+            EventAppendStale { expected: _, observed: _ } => none
+            EventAppendRefused { step: s, reason: why } => Present { value: HarnessSeatReleaseRefused { detail: join([s, ": ", why], "") } }
+          }
+        }
+      }
+  }
+}
+
+fn harness_release_seat(binding: HarnessSeatBinding, reason: NonEmptyStr) -> HarnessSeatRelease {
+  match harness_now_epoch() {
+    Absent => HarnessSeatReleaseRefused { detail: "the clock could not be read as epoch seconds" }
+    Present { value: now } => {
+      let st = fold(nat_range_inclusive(lo: 1, hi: 3), init: ReleaseFold { done: none }, f: (acc, _i) =>
+        match acc.done { Present { value: _ } => acc  Absent => ReleaseFold { done: release_attempt(binding: binding, reason: reason, now: now) } })
+      match st.done {
+        Present { value: r } => r
+        Absent => HarnessSeatReleaseRefused { detail: "release contended three times" }
+      }
+    }
+  }
+}
+
+fn harness_seat_release_wire(r: HarnessSeatRelease) -> String {
+  match r {
+    HarnessSeatReleased { partition: p } => join(["released on ", p as String], "")
+    HarnessSeatReleaseRefused { detail: d } => join(["release refused: ", d], "")
+  }
+}
