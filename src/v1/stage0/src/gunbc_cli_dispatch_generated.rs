@@ -119,14 +119,23 @@ pub enum Commands {
         #[arg(long)]
         eval_budget_wall_ms: Option<u64>,
     },
-    /// Run one target by its absolute label and report the standing its own
-    /// producer answers in. The label is exact: a target PATTERN refuses, and
-    /// an unbound or unknown target refuses rather than reporting a pass.
+    /// Run one or more targets by exact label, or all affected targets
+    /// from the working-tree diff (`--affected-select`). EXACTLY ONE admission
+    /// mode: either a target operand (exact) OR `--affected-select` (all
+    /// affected), but never both and never neither.
     Test {
         /// Absolute label of exactly one target, e.g.
         /// `//gunbc/instruments:heads-reading-differential`.
+        /// Omit this operand and use `--affected-select` to run all
+        /// targets affected by the working-tree diff.
         #[arg(value_name = "LABEL")]
-        target: String,
+        target: Option<String>,
+        /// Run every instrument target whose import-closure is
+        /// touched by the working-tree diff, rather than naming
+        /// one exact target. Mutually exclusive with the LABEL
+        /// operand: passing both refuses, passing neither refuses.
+        #[arg(long = "affected-select")]
+        affected_select: bool,
     },
 }
 
@@ -159,7 +168,7 @@ pub trait CliDispatchHost {
         eval_budget_cpu_ms: Option<u64>,
         eval_budget_wall_ms: Option<u64>,
     ) -> !;
-    fn invoke_bound_target_producer(&self, target: String) -> !;
+    fn invoke_bound_target_producer(&self, target: Option<String>, affected_select: bool) -> !;
 }
 
 pub fn dispatch<H: CliDispatchHost>(
@@ -263,8 +272,12 @@ pub fn dispatch<H: CliDispatchHost>(
             eval_budget_cpu_ms,
             eval_budget_wall_ms,
         ),
-        (Commands::Test { target }, _) => {
-            __gunbc_dispatch_executor_0.invoke_bound_target_producer(target)
-        }
+        (
+            Commands::Test {
+                target,
+                affected_select,
+            },
+            _,
+        ) => __gunbc_dispatch_executor_0.invoke_bound_target_producer(target, affected_select),
     }
 }

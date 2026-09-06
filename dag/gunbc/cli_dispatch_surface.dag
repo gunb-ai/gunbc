@@ -259,6 +259,7 @@ type CliOperandValue
 // adds an arm here and must then decide what it means, rather than inheriting an option's answer.
 type CliOperandArity
   = CliExactlyOneOperand {}
+  | CliAtMostOneOperand {}
 
 type CliOperandRow {
   field: String
@@ -739,24 +740,41 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
       verb: "test",
       variant: "Test",
       doc: [
-        "Run one target by its absolute label and report the standing its own",
-        "producer answers in. The label is exact: a target PATTERN refuses, and",
-        "an unbound or unknown target refuses rather than reporting a pass."
+        "Run one or more targets by exact label, or all affected targets",
+        "from the working-tree diff (`--affected-select`). EXACTLY ONE admission",
+        "mode: either a target operand (exact) OR `--affected-select` (all",
+        "affected), but never both and never neither."
       ],
       operands: [
         CliOperandRow {
           field: "target",
           placeholder: "LABEL",
           value: CliAbsoluteLabelOperand {},
-          arity: CliExactlyOneOperand {},
+          arity: CliAtMostOneOperand {},
           doc: [
             "Absolute label of exactly one target, e.g.",
-            "`//gunbc/instruments:heads-reading-differential`."
+            "`//gunbc/instruments:heads-reading-differential`.",
+            "Omit this operand and use `--affected-select` to run all",
+            "targets affected by the working-tree diff."
           ],
           emission: CarriedByGeneratedDispatch
         }
       ],
-      options: [],
+      options: [
+        CliOptionRow {
+          field: "affected_select",
+          long: "affected-select",
+          value: CliToggleValue,
+          arity: CliAtMostOne,
+          doc: [
+            "Run every instrument target whose import-closure is",
+            "touched by the working-tree diff, rather than naming",
+            "one exact target. Mutually exclusive with the LABEL",
+            "operand: passing both refuses, passing neither refuses."
+          ],
+          emission: CarriedByGeneratedDispatch
+        }
+      ],
       realization: CliInvokesBoundTargetProducer,
       emission: CarriedByGeneratedDispatch
     }

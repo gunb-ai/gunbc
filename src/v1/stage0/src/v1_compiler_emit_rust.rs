@@ -37466,7 +37466,14 @@ pub fn cli_dispatch_field_type(sub: Rc<CliSubcommandRow>, field: String) -> Stri
     .first()
     .cloned()
     {
-        Some(_) => "String".to_string(),
+        Some(operand) => match operand.arity.clone() {
+            crate::gunbc_cli_dispatch_surface::CliOperandArity::CliExactlyOneOperand => {
+                "String".to_string()
+            }
+            crate::gunbc_cli_dispatch_surface::CliOperandArity::CliAtMostOneOperand => {
+                "Option<String>".to_string()
+            }
+        },
         std::option::Option::None => match Rc::new({
             let mut __result = Vec::new();
             for o in crate::gunbc_cli_dispatch_surface::cli_subcommand_generated_dispatch_options(
@@ -38431,6 +38438,14 @@ pub fn emit_modeled_operand_field(operand: Rc<CliOperandRow>, depth: i64) -> Str
             __result
         })
         .join(&"".to_string());
+        let field_type = match operand.arity.clone() {
+            crate::gunbc_cli_dispatch_surface::CliOperandArity::CliExactlyOneOperand => {
+                "String".to_string()
+            }
+            crate::gunbc_cli_dispatch_surface::CliOperandArity::CliAtMostOneOperand => {
+                "Option<String>".to_string()
+            }
+        };
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
@@ -38448,7 +38463,10 @@ pub fn emit_modeled_operand_field(operand: Rc<CliOperandRow>, depth: i64) -> Str
                 ),
                 operand.field.clone(),
             ),
-            ": String,\n".to_string(),
+            v1_rt::concat(
+                ": ".to_string(),
+                v1_rt::concat(field_type, ",\n".to_string()),
+            ),
         )
     }
 }

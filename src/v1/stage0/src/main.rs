@@ -39,14 +39,23 @@ enum RetainedCommands {
         entry: Option<String>,
     },
 
-    /// Run one target by its absolute label and report the standing its own producer
-    /// answers in. The label is exact: a target PATTERN refuses, and an unbound or
-    /// unknown target refuses rather than reporting a pass.
+    /// Run one or more targets by exact label, or all affected targets
+    /// from the working-tree diff (`--affected-select`). EXACTLY ONE admission
+    /// mode: either a target operand (exact) OR `--affected-select` (all
+    /// affected), but never both and never neither.
     Test {
         /// Absolute label of exactly one target, e.g.
         /// `//gunbc/instruments:heads-reading-differential`.
+        /// Omit this operand and use `--affected-select` to run all
+        /// targets affected by the working-tree diff.
         #[arg(value_name = "LABEL")]
-        target: String,
+        target: Option<String>,
+        /// Run every instrument target whose import-closure is
+        /// touched by the working-tree diff, rather than naming
+        /// one exact target. Mutually exclusive with the LABEL
+        /// operand: passing both refuses, passing neither refuses.
+        #[arg(long = "affected-select")]
+        affected_select: bool,
     },
 
     /// Execute a .dag program directly (interpreter)
@@ -419,8 +428,14 @@ impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliH
         )
     }
 
-    fn invoke_bound_target_producer(&self, target: String) -> ! {
-        retained_dispatch(RetainedCommands::Test { target }, self.dry_run)
+    fn invoke_bound_target_producer(&self, target: Option<String>, affected_select: bool) -> ! {
+        retained_dispatch(
+            RetainedCommands::Test {
+                target,
+                affected_select,
+            },
+            self.dry_run,
+        )
     }
 }
 
@@ -768,8 +783,32 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
         // `test_standing_verdict` and the Blaze status export are deliberately NOT consulted --
         // each refuses instrument producers by design, so either would answer a question this
         // verb is not asking.
-        RetainedCommands::Test { target } => {
-            let outcome = cli_run::target_invocation_host::test_verb(&target);
+        //
+        // Two admission modes, XOR:
+        //   Some(target) + false  → exact target
+        //   None         + true   → affected-select
+        //   Some(_)      + true   → refuse (BOTH)
+        //   None         + false  → refuse (NEITHER)
+        RetainedCommands::Test {
+            target,
+            affected_select,
+        } => {
+            let outcome = match (target, affected_select) {
+                (Some(label), false) => {
+                    cli_run::target_invocation_host::test_verb(&label)
+                }
+                (None, true) => {
+                    cli_run::target_invocation_host::test_affected_select()
+                }
+                (Some(_), true) => cli_run::target_invocation_host::InvocationOutcome {
+                    termination: cli_run::target_invocation_host::Termination::Refused,
+                    message: "gunbc test: both a LABEL operand and --affected-select were given; use exactly one mode".to_string(),
+                },
+                (None, false) => cli_run::target_invocation_host::InvocationOutcome {
+                    termination: cli_run::target_invocation_host::Termination::Refused,
+                    message: "gunbc test: neither a LABEL operand nor --affected-select was given; use exactly one mode".to_string(),
+                },
+            };
             Verdict {
                 status: cli_run::target_invocation_host::invocation_exit_status(
                     outcome.termination,

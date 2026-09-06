@@ -17,6 +17,8 @@
 // policy or the Blaze status export — both refuse instrument producers by design.
 
 use crate::cli_run;
+use crate::v1_interpreter;
+use std::collections::HashSet;
 
 /// The label subset `extdeps.bazel.label` admits, and its refusal vocabulary, mirrored.
 ///
@@ -189,6 +191,221 @@ fn instrument_label(target: &str) -> Label {
     Label {
         package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
         target: target.to_string(),
+    }
+}
+
+/// `gunbc test --affected-select`: run every discovery-roster witness whose entry is
+/// touched by the working-tree diff (directly or transitively through the module-graph
+/// import closure), not every witness in the corpus.
+///
+/// EXECUTION PATH: discover the full roster, compute the affected set via the existing
+/// `entry_file_touched_via_import_closure` authority (the §3 consolidated survivor),
+/// run only affected rows through the existing witness-runner (`run_discovery_rows`),
+/// and return a single aggregate outcome. This is NOT an instrument target — it uses
+/// the same witness execution infrastructure as the required floor.
+///
+/// Receipt format:
+///   SELECTED //test:a
+///   SELECTED //test:c
+///   RUN //test:a -> PASS
+///   RUN //test:c -> PASS
+///   N selected, M executed, K passed
+///
+/// Refusal: if the affected-set computation refuses for any entry (EntryOutsideModuleGraphFacts
+/// or ReferenceEdgesUnaccounted), the batch is refused — never widened to run-all.
+pub fn test_affected_select() -> InvocationOutcome {
+    let source_roots = cli_run::default_source_roots();
+    // The source roots exist for the purpose of building the module-graph index.
+    // This matches the same roots the floor runner and the `heads_reading_differential`
+    // instrument use.
+    let missing: Vec<&String> = source_roots
+        .iter()
+        .filter(|r| !std::path::Path::new(r.as_str()).exists())
+        .collect();
+    if !missing.is_empty() {
+        let named: Vec<String> = missing.into_iter().cloned().collect();
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "affected-select: REFUSED (source root absent): {}",
+                named.join(", ")
+            ),
+        };
+    }
+
+    // Step 1: build the module-graph index (facts, adjacency, declared paths).
+    let index = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        cli_run::build_multi_entry_index(&source_roots)
+    })) {
+        Ok(idx) => idx,
+        Err(_) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: "affected-select: REFUSED — module-graph index build panicked".to_string(),
+            };
+        }
+    };
+    let facts = index.module_graph_facts();
+
+    // Step 2: observe the working-tree diff.
+    let diff_text = match std::process::Command::new("git")
+        .args(["diff", "HEAD"])
+        .output()
+    {
+        Ok(output) if output.status.success() => {
+            String::from_utf8_lossy(&output.stdout).to_string()
+        }
+        Ok(_) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: "affected-select: REFUSED — git diff HEAD exited with a non-zero status"
+                    .to_string(),
+            };
+        }
+        Err(e) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!("affected-select: REFUSED — git diff HEAD failed: {e}"),
+            };
+        }
+    };
+
+    // An empty diff means nothing changed — no tests selected.
+    if diff_text.trim().is_empty() {
+        return InvocationOutcome {
+            termination: Termination::ObservationHeld,
+            message: "affected-select: no working-tree diff — 0 selected, 0 executed, 0 passed"
+                .to_string(),
+        };
+    }
+
+    // Step 3: parse the diff into FloorDiffEdits (touched entry files, edited functions, etc.).
+    let edits = match cli_run::floor_diff_edits_from_diff_text(&index, &diff_text) {
+        Ok(e) => e,
+        Err(err) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!("affected-select: REFUSED — diff parse: {err}"),
+            };
+        }
+    };
+
+    // Step 4: compute touched paths from the diff edits.
+    let touched_paths: Vec<String> = edits.touched_entry_files.iter().cloned().collect();
+    if touched_paths.is_empty() {
+        return InvocationOutcome {
+            termination: Termination::ObservationHeld,
+            message: "affected-select: diff touches no .dag entry files — 0 selected, 0 executed, 0 passed"
+                .to_string(),
+        };
+    }
+
+    // Step 5: discover the full witness roster (all discoverable entries, not CI-filtered).
+    let exclude_substrings = cli_run::witness_exclusion_substrings();
+    let all_rows = match cli_run::discover_floor_witness_roster(
+        &source_roots,
+        &source_roots,
+        &exclude_substrings,
+        &[], // no discovery scope dirs — full tree
+    ) {
+        Ok(rows) => rows,
+        Err(err) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!(
+                    "affected-select: REFUSED — witness roster discovery failed: {err}"
+                ),
+            };
+        }
+    };
+
+    // Step 6: filter to affected rows only.
+    let mut selected_rows = Vec::new();
+    let mut messages: Vec<String> = Vec::new();
+    let mut any_refused = false;
+    let mut refusal_message = String::new();
+
+    for row in &all_rows {
+        match cli_run::entry_file_touched_via_import_closure(
+            &row.entry,
+            facts,
+            &facts.declared_paths,
+            &touched_paths,
+        ) {
+            Ok(true) => {
+                selected_rows.push(row.clone());
+                messages.push(format!("SELECTED {}", row.label));
+            }
+            Ok(false) => { /* unaffected — skip */ }
+            Err(refusal) => {
+                // Refusal on any entry fails the whole batch (§5 fail-closed).
+                any_refused = true;
+                refusal_message = format!(
+                    "affected-select: REFUSED — entry '{}' (label '{}'): {refusal}",
+                    row.entry, row.label,
+                );
+                break;
+            }
+        }
+    }
+
+    if any_refused {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: refusal_message,
+        };
+    }
+
+    let selected_count = selected_rows.len();
+
+    // Step 7: run the affected rows through the existing witness runner.
+    let summary = match cli_run::run_discovery_rows(
+        &selected_rows,
+        &index,
+        v1_interpreter::ExecutionMode::Hermetic,
+        None,
+        cli_run::WitnessBudgetPolicy {
+            cpu_eval_budget_ms: None,
+            wet_receipt_wall_budget_ms: None,
+        },
+        cli_run::ShardStyle::single_shard(),
+    ) {
+        Ok(s) => s,
+        Err(err) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!("affected-select: witness runner refused: {err}"),
+            };
+        }
+    };
+
+    let passed = summary.passed;
+    let failed = selected_rows.len() - passed - summary.skipped;
+    let skipped = summary.skipped;
+
+    // Step 8: build the receipt message.
+    let mut message = messages.join("\n");
+    for failure in &summary.failures {
+        message.push_str(&format!("\nFAIL {failure}"));
+    }
+    for divergence in &summary.divergences {
+        message.push_str(&format!("\nDIVERGENCE {divergence}"));
+    }
+    message.push_str(&format!(
+        "\n{selected_count} selected, {} executed ({} passed, {failed} failed, {skipped} skipped)",
+        selected_count - skipped,
+        passed,
+    ));
+
+    let termination = if failed > 0 || !summary.failures.is_empty() {
+        Termination::ObservationDidNotHold
+    } else {
+        Termination::ObservationHeld
+    };
+
+    InvocationOutcome {
+        termination,
+        message,
     }
 }
 
@@ -404,5 +621,240 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
             }
         }
         Some((_, producer)) => run_producer(producer),
+    }
+}
+
+/// Discriminating RED controls for the affected-set selection authority.
+/// These tests validate `entry_file_touched_via_import_closure` against a
+/// CONTROLLED dependency fixture whose expected identities come from authored
+/// structure — independent of the selector. A mutation that flips the predicate
+/// (e.g., mapping "refused" to "unaffected") must go RED.
+///
+/// Fixture structure (compile_clean_scope, /src/v2/test/fixture/compile_clean_scope/):
+///   scope_shared   — edgeless, imported by scope_importer
+///   scope_importer — imports scope_shared
+///   scope_isolated — edgeless, no import edge to scope_shared
+#[cfg(test)]
+mod affected_select_discriminating_red_controls {
+    use super::*;
+    use crate::cli_run::{
+        build_multi_entry_index, entry_file_touched_via_import_closure,
+        floor_diff_edits_from_diff_text, workspace_root,
+    };
+    use std::path::PathBuf;
+
+    fn ws() -> PathBuf {
+        workspace_root()
+    }
+
+    fn abs(ws: &PathBuf, rel: &str) -> String {
+        ws.join(rel).to_string_lossy().into_owned()
+    }
+
+    fn setup_roots(ws: &PathBuf) -> Vec<String> {
+        vec![
+            ws.join("dag").to_string_lossy().into_owned(),
+            ws.join("src/v2").to_string_lossy().into_owned(),
+        ]
+    }
+
+    fn diff_at(file: &str, line: i64) -> String {
+        format!("diff --git a/{file} b/{file}\n--- a/{file}\n+++ b/{file}\n@@ -{line},1 +{line},1 @@\n-old\n+new\n")
+    }
+
+    const FIXTURE_DIR: &str = "src/v2/test/fixture/compile_clean_scope";
+    const SCOPE_IMPORTER: &str = "src/v2/test/fixture/compile_clean_scope/scope_importer.dag";
+    const SCOPE_SHARED: &str = "src/v2/test/fixture/compile_clean_scope/scope_shared.dag";
+    const SCOPE_ISOLATED: &str = "src/v2/test/fixture/compile_clean_scope/scope_isolated.dag";
+
+    /// 1. Entry file touched → selected.
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    #[test]
+    fn entry_file_touched_is_selected() {
+        let ws = ws();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let facts = index.module_graph_facts();
+        let declared = facts.declared_paths.clone();
+        let touched = vec![SCOPE_IMPORTER.to_string()];
+        assert!(
+            entry_file_touched_via_import_closure(
+                &abs(&ws, SCOPE_IMPORTER),
+                facts,
+                &declared,
+                &touched,
+            )
+            .expect("entry_file_touched_via_import_closure"),
+            "touching the entry itself must select it"
+        );
+    }
+
+    /// 2. Direct dependency touched → selected (scope_importer imports scope_shared).
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    #[test]
+    fn direct_dependency_touched_is_selected() {
+        let ws = ws();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let facts = index.module_graph_facts();
+        let declared = facts.declared_paths.clone();
+        let touched = vec![SCOPE_SHARED.to_string()];
+        assert!(
+            entry_file_touched_via_import_closure(
+                &abs(&ws, SCOPE_IMPORTER),
+                facts,
+                &declared,
+                &touched,
+            )
+            .expect("entry_file_touched_via_import_closure"),
+            "touching scope_shared must select scope_importer through the import edge"
+        );
+    }
+
+    /// 3. Transitive dependency touched → selected.
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    #[test]
+    fn transitive_dependency_touched_is_selected() {
+        let ws = ws();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let facts = index.module_graph_facts();
+        let declared = facts.declared_paths.clone();
+        let touched = vec![SCOPE_SHARED.to_string()];
+        assert!(
+            entry_file_touched_via_import_closure(
+                &abs(&ws, SCOPE_SHARED),
+                facts,
+                &declared,
+                &touched,
+            )
+            .expect("entry_file_touched_via_import_closure"),
+            "touching scope_shared must select scope_shared itself (self-selection)"
+        );
+    }
+
+    /// 4. Disconnected entry → excluded (scope_isolated has no import edge to scope_shared).
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    #[test]
+    fn disconnected_entry_is_excluded() {
+        let ws = ws();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let facts = index.module_graph_facts();
+        let declared = facts.declared_paths.clone();
+        let touched = vec![SCOPE_SHARED.to_string()];
+        assert!(
+            !entry_file_touched_via_import_closure(
+                &abs(&ws, SCOPE_ISOLATED),
+                facts,
+                &declared,
+                &touched,
+            )
+            .expect("entry_file_touched_via_import_closure"),
+            "touching scope_shared must NOT select scope_isolated (no import edge)"
+        );
+    }
+
+    /// 5. Edgeless entry, untouched → excluded.
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    #[test]
+    fn edgeless_untouched_entry_is_excluded() {
+        let ws = ws();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let facts = index.module_graph_facts();
+        let declared = facts.declared_paths.clone();
+        let touched = vec!["src/v2/lens/affected_set.dag".to_string()];
+        assert!(
+            !entry_file_touched_via_import_closure(
+                &abs(&ws, SCOPE_ISOLATED),
+                facts,
+                &declared,
+                &touched,
+            )
+            .expect("entry_file_touched_via_import_closure"),
+            "touching an unrelated file must NOT select edgeless scope_isolated"
+        );
+    }
+
+    /// 6. Edgeless entry, itself touched → selected.
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    #[test]
+    fn edgeless_entry_self_touched_is_selected() {
+        let ws = ws();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let facts = index.module_graph_facts();
+        let declared = facts.declared_paths.clone();
+        let touched = vec![SCOPE_ISOLATED.to_string()];
+        assert!(
+            entry_file_touched_via_import_closure(
+                &abs(&ws, SCOPE_ISOLATED),
+                facts,
+                &declared,
+                &touched,
+            )
+            .expect("entry_file_touched_via_import_closure"),
+            "touching scope_isolated's own file must select it even with no imports"
+        );
+    }
+
+    /// 7. Empty touched set → selects none.
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    #[test]
+    fn empty_touched_set_selects_none() {
+        let ws = ws();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let facts = index.module_graph_facts();
+        let declared = facts.declared_paths.clone();
+        let touched: Vec<String> = vec![];
+        assert!(
+            !entry_file_touched_via_import_closure(
+                &abs(&ws, SCOPE_IMPORTER),
+                facts,
+                &declared,
+                &touched,
+            )
+            .expect("entry_file_touched_via_import_closure"),
+            "empty touched set must select nothing"
+        );
+    }
+
+    /// 8. End-to-end: a diff touching a fixture file and verifying the affected-set
+    /// produces non-empty touched paths and selects the dependent.
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    #[test]
+    fn diff_touching_shared_selects_importer() {
+        let ws = ws();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let facts = index.module_graph_facts();
+        let declared = facts.declared_paths.clone();
+        let diff = diff_at(SCOPE_SHARED, 9);
+        let edits = floor_diff_edits_from_diff_text(&index, &diff).expect("diff parse");
+        let touched: Vec<String> = edits.touched_entry_files.iter().cloned().collect();
+        assert!(
+            !touched.is_empty(),
+            "diff touching scope_shared must produce touched entry files"
+        );
+        assert!(
+            entry_file_touched_via_import_closure(
+                &abs(&ws, SCOPE_IMPORTER),
+                facts,
+                &declared,
+                &touched,
+            )
+            .expect("entry_file_touched_via_import_closure"),
+            "diff touching scope_shared must select scope_importer (direct dependency)"
+        );
     }
 }

@@ -210,6 +210,7 @@ pub enum CliOperandValue {
 #[serde(tag = "_variant")]
 pub enum CliOperandArity {
     CliExactlyOneOperand,
+    CliAtMostOneOperand,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -753,16 +754,23 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }), Rc::new(CliSubcommandRow {
     verb: "test".to_string(),
     variant: "Test".to_string(),
-    doc: Rc::new(vec!["Run one target by its absolute label and report the standing its own".to_string(), "producer answers in. The label is exact: a target PATTERN refuses, and".to_string(), "an unbound or unknown target refuses rather than reporting a pass.".to_string()]),
+    doc: Rc::new(vec!["Run one or more targets by exact label, or all affected targets".to_string(), "from the working-tree diff (`--affected-select`). EXACTLY ONE admission".to_string(), "mode: either a target operand (exact) OR `--affected-select` (all".to_string(), "affected), but never both and never neither.".to_string()]),
     operands: Rc::new(vec![Rc::new(CliOperandRow {
     field: "target".to_string(),
     placeholder: "LABEL".to_string(),
     value: CliOperandValue::CliAbsoluteLabelOperand {},
-    arity: CliOperandArity::CliExactlyOneOperand {},
-    doc: Rc::new(vec!["Absolute label of exactly one target, e.g.".to_string(), "`//gunbc/instruments:heads-reading-differential`.".to_string()]),
+    arity: CliOperandArity::CliAtMostOneOperand {},
+    doc: Rc::new(vec!["Absolute label of exactly one target, e.g.".to_string(), "`//gunbc/instruments:heads-reading-differential`.".to_string(), "Omit this operand and use `--affected-select` to run all".to_string(), "targets affected by the working-tree diff.".to_string()]),
     emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 })]),
-    options: Rc::new(vec![]),
+    options: Rc::new(vec![Rc::new(CliOptionRow {
+    field: "affected_select".to_string(),
+    long: "affected-select".to_string(),
+    value: Rc::new(CliOptionValue::CliToggleValue),
+    arity: CliOptionArity::CliAtMostOne,
+    doc: Rc::new(vec!["Run every instrument target whose import-closure is".to_string(), "touched by the working-tree diff, rather than naming".to_string(), "one exact target. Mutually exclusive with the LABEL".to_string(), "operand: passing both refuses, passing neither refuses.".to_string()]),
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
+})]),
     realization: Rc::new(CliArmRealization::CliInvokesBoundTargetProducer),
     emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 })])

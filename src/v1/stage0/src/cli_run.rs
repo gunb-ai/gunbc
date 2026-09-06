@@ -6095,7 +6095,7 @@ fn repo_paths_match_touched(closure_path: &str, touched_path: &str) -> bool {
 /// Refusal, never widen: an entry absent from the facts' declared-module set is a provenance
 /// gap the relation cannot answer for, and returns a typed error that fails the batch (the §5
 /// fail-closed arm lives HERE; the old arm that called its widen "fail-closed" is deleted).
-fn entry_file_touched_via_import_closure(
+pub(crate) fn entry_file_touched_via_import_closure(
     entry_path: &str,
     facts: &ModuleGraphFactsLive,
     declared_paths: &HashSet<String>,
@@ -11115,6 +11115,13 @@ impl MultiEntryIndex {
     /// This index's opaque identity, for checking a manifest against the index about to consume it.
     pub fn generation(&self) -> u64 {
         self.generation
+    }
+
+    /// Module-graph facts: the adjacency, declared paths, selection closure, and root-level
+    /// declarations this index was built from. `pub(crate)` so that sibling host modules
+    /// (`target_invocation_host`) can compute affected-set selection without owning the index.
+    pub(crate) fn module_graph_facts(&self) -> &ModuleGraphFactsLive {
+        &self.module_graph_facts
     }
 
     /// The live-read selection manifest for this index, built once and reused.
@@ -24285,7 +24292,7 @@ pub(crate) struct FloorDiffEdits {
     overlapping_data_items: HashSet<(String, String)>,
     edited_test_fns: HashSet<(String, String)>,
     /// `.dag` files with a non-data, non-test-fn declaration touched — run that entry's roster.
-    touched_entry_files: HashSet<String>,
+    pub(crate) touched_entry_files: HashSet<String>,
 }
 
 const MODULE_GRAPH_ENTRY: &str = "src/v2/lens/module_graph.dag";
