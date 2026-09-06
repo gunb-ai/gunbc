@@ -282,23 +282,43 @@ type EmissionOriginRead
       missing: FreeSemigroup<EmissionOriginGap>
     }
 
-fn emission_origin_reads_combine(left: EmissionOriginRead, right: EmissionOriginRead) -> EmissionOriginRead {
-  match left {
-    EmissionOriginsObserved { origins: a } => match right {
-      EmissionOriginsObserved { origins: b } => EmissionOriginsObserved { origins: concat(a, b) }
-      EmissionOriginsIncomplete { observed: b, missing } =>
-        EmissionOriginsIncomplete { observed: concat(a, b), missing: missing }
+type EmissionOriginBuilder {
+  append_origins: fn(EmissionOriginRead) -> EmissionOriginRead
+}
+
+fn emission_origin_builders_compose(left: EmissionOriginBuilder, right: EmissionOriginBuilder) -> EmissionOriginBuilder {
+  EmissionOriginBuilder {
+    append_origins: fn(observation) { right.append_origins(left.append_origins(observation)) }
+  }
+}
+
+fn emission_origin_append_observed(observation: EmissionOriginRead, origin: DeclarationRef) -> EmissionOriginRead {
+  match observation {
+    EmissionOriginsObserved { origins } => EmissionOriginsObserved { origins: origins.append(origin) }
+    EmissionOriginsIncomplete { observed, missing } =>
+      EmissionOriginsIncomplete { observed: observed.append(origin), missing: missing }
+  }
+}
+
+fn emission_origin_append_missing(observation: EmissionOriginRead, gap: EmissionOriginGap) -> EmissionOriginRead {
+  match observation {
+    EmissionOriginsObserved { origins } => EmissionOriginsIncomplete {
+      observed: origins, missing: FreeSemigroup { head: gap, tail: [] }
     }
-    EmissionOriginsIncomplete { observed: a, missing: ma } => match right {
-      EmissionOriginsObserved { origins: b } =>
-        EmissionOriginsIncomplete { observed: concat(a, b), missing: ma }
-      EmissionOriginsIncomplete { observed: b, missing: mb } =>
-        EmissionOriginsIncomplete {
-          observed: concat(a, b),
-          missing: FreeSemigroup { head: ma.head, tail: concat(ma.tail, [mb.head], mb.tail) }
-        }
+    EmissionOriginsIncomplete { observed, missing } => EmissionOriginsIncomplete {
+      observed: observed, missing: FreeSemigroup { head: missing.head, tail: missing.tail.append(gap) }
     }
   }
+}
+
+fn emission_origin_observed_builder(origin: DeclarationRef) -> EmissionOriginBuilder {
+  EmissionOriginBuilder { append_origins: fn(observation) { emission_origin_append_observed(observation: observation, origin: origin) } }
+}
+
+fn emission_origin_missing_builder(producer: DeclarationRef, cause: NonEmptyStr) -> EmissionOriginBuilder {
+  EmissionOriginBuilder { append_origins: fn(observation) {
+    emission_origin_append_missing(observation: observation, gap: EmissionOriginGap { producer: producer, cause: cause })
+  } }
 }
 
 type EmissionContributionRead {
@@ -326,7 +346,7 @@ type EmissionSourceBuilder {
 
 type EmissionContributionBuild {
   source: EmissionSourceBuilder
-  origins: EmissionOriginRead
+  origins: EmissionOriginBuilder
 }
 
 fn emission_source_builder_identity(fragments: FreeMonoid<String>) -> FreeMonoid<String> { fragments }
@@ -355,16 +375,20 @@ fn emission_source_read_layer(contribution: EmissionContribution, children: Free
   }
 }
 
-fn emission_origin_read_layer(contribution: EmissionContribution, children: FreeMonoid<EmissionOriginRead>) -> EmissionOriginRead {
+// Each node contributes one append operation. Composition combines operations without
+// enumerating descendant origin lists; only the public boundary runs the resulting builder.
+fn emission_origin_read_layer(contribution: EmissionContribution, children: FreeMonoid<EmissionOriginBuilder>) -> EmissionOriginBuilder {
   match contribution {
-    EmissionAuthoredFragment { origin, source: _ } => EmissionOriginsObserved { origins: [origin] }
+    EmissionAuthoredFragment { origin, source: _ } => emission_origin_observed_builder(origin: origin)
     EmissionSourceComposition { origin, parts: _ } =>
-      children |> fold(init: EmissionOriginsObserved { origins: [origin] }, f: emission_origin_reads_combine)
-    EmissionDerivedFragment { producer, source: _ } => EmissionOriginsObserved { origins: [producer] }
-    EmissionUnobservedFragment { producer, cause, source: _ } => EmissionOriginsIncomplete {
-      observed: [], missing: FreeSemigroup { head: EmissionOriginGap { producer: producer, cause: cause }, tail: [] }
-    }
+      children |> fold(init: emission_origin_observed_builder(origin: origin), f: emission_origin_builders_compose)
+    EmissionDerivedFragment { producer, source: _ } => emission_origin_observed_builder(origin: producer)
+    EmissionUnobservedFragment { producer, cause, source: _ } => emission_origin_missing_builder(producer: producer, cause: cause)
   }
+}
+
+fn emission_origin_materialize(builder: EmissionOriginBuilder) -> EmissionOriginRead {
+  builder.append_origins(EmissionOriginsObserved { origins: [] })
 }
 
 // Product algebra: reuse the same source and origin layer meanings over the paired child results.
@@ -378,7 +402,7 @@ fn emission_combined_read_layer(contribution: EmissionContribution, children: Fr
 
 fn emission_contribution_read(contribution: EmissionContribution) -> EmissionContributionRead {
   let built = emission_contribution_fold(contribution: contribution, read: emission_combined_read_layer)
-  EmissionContributionRead { source: emission_source_materialize(builder: built.source), origins: built.origins }
+  EmissionContributionRead { source: emission_source_materialize(builder: built.source), origins: emission_origin_materialize(builder: built.origins) }
 }
 
 fn emission_contribution_source(contribution: EmissionContribution) -> String {
@@ -391,7 +415,7 @@ fn emission_source_materialize(builder: EmissionSourceBuilder) -> String {
 
 // This result algebra retains incomplete coverage without materializing the unrequested source.
 fn emission_contribution_origins(contribution: EmissionContribution) -> EmissionOriginRead {
-  emission_contribution_fold(contribution: contribution, read: emission_origin_read_layer)
+  emission_origin_materialize(builder: emission_contribution_fold(contribution: contribution, read: emission_origin_read_layer))
 }
 
 fn emission_contribution_unobserved(contribution: EmissionContribution) -> FreeMonoid<DeclarationRef> {
