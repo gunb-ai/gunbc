@@ -3,12 +3,21 @@
 
 use self::CallTargetOutcome::*;
 use self::CallableIdentity::*;
+use self::CallableOccurrenceAccounting::*;
 use self::DerivedCalleeSig::*;
 use self::FuncSigLookup::*;
 use self::NoDerivableSigReason::*;
 use self::ResolvedFormals::*;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
+use crate::std_occurrence_identity::NodeOccurrenceIdentity::{
+    OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic,
+};
+use crate::std_occurrence_identity::OccurrenceCategory::CallableOccurrence;
+pub use crate::std_occurrence_identity::{
+    NodeOccurrenceIdentity, OccurrenceCategory, OccurrenceId,
+};
+pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_env::TypeBinding;
 pub use crate::v1_compiler_infer_occurrence_binding::module_path_owner_binding_decide;
 pub use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection;
@@ -17,8 +26,11 @@ pub use crate::v1_compiler_infer_types::emit_map_has;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CompilerDiagnostic::MissingAnnotation;
-use crate::v1_std_core::ExprData::ExprCall;
-pub use crate::v1_std_core::{authored_name_at, expr_call_func_at, make_error_node, no_span};
+use crate::v1_std_core::ExprData::{ExprCall, ExprMethodCall, ExprVar};
+pub use crate::v1_std_core::{
+    authored_name_at, expr_call_func_at, make_error_node, module_path_segments, no_span,
+    qualified_last_segment,
+};
 pub use crate::v1_std_core::{
     CompilerDiagnostic, DeclaredCallableIdentity, DeclaredFuncSig, ErrorNode, ExprData,
     NewlineIndex, Node, ResolvedFormal,
@@ -314,6 +326,111 @@ pub fn lookup_resolved_sig_unique_across_parents(
     ))
 }
 
+pub fn containment_ancestor_paths(module_path: String) -> Rc<Vec<String>> {
+    {
+        let segments = crate::v1_std_core::module_path_segments(module_path.clone());
+        segments
+            .iter()
+            .cloned()
+            .fold(
+                Rc::new(PathPrefixAccum {
+                    current: "".to_string(),
+                    out: Rc::new(vec![]),
+                }),
+                |acc: Rc<PathPrefixAccum>, segment: String| {
+                    let next = if (acc.current.clone() == "".to_string()) {
+                        segment.clone()
+                    } else {
+                        v1_rt::concat(
+                            v1_rt::concat(acc.current.clone(), ".".to_string()),
+                            segment.clone(),
+                        )
+                    };
+                    Rc::new(PathPrefixAccum {
+                        current: next.clone(),
+                        out: v1_rt::rc_list_push(acc.out.clone(), next.clone()),
+                    })
+                },
+            )
+            .out
+            .clone()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PathPrefixAccum {
+    pub current: String,
+    pub out: Rc<Vec<String>>,
+}
+
+pub fn reference_provider_module_paths(
+    items: Rc<Vec<Rc<Node>>>,
+    module_path: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    {
+        let prefixes = containment_ancestor_paths(module_path.clone());
+        let qualified = Rc::new({
+            let mut __result = Vec::new();
+            for qualifier in Rc::new({
+                let mut __result = Vec::new();
+                for row in callable_occurrence_rows(items.clone(), source_indices.clone())
+                    .iter()
+                    .cloned()
+                {
+                    __result.push(reference_containment_qualifier(
+                        callable_occurrence_authored_name(row.clone()),
+                    ));
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                if (v1_rt::string_length(&qualifier) > 0) {
+                    __result.push(qualifier);
+                }
+            }
+            __result
+        });
+        let relative = Rc::new({
+            let mut __result = Vec::new();
+            for qualifier in qualified.iter().cloned() {
+                __result.extend(
+                    (*v1_rt::concat(
+                        Rc::new(vec![qualifier.clone()]),
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for prefix in prefixes.iter().cloned() {
+                                __result.push(v1_rt::concat(
+                                    v1_rt::concat(prefix.clone(), ".".to_string()),
+                                    qualifier.clone(),
+                                ));
+                            }
+                            __result
+                        }),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        Rc::new({
+            let mut __result = Vec::new();
+            for path in v1_rt::concat(prefixes.clone(), relative.clone())
+                .iter()
+                .cloned()
+            {
+                if (path.clone() != module_path.clone()) {
+                    __result.push(path);
+                }
+            }
+            __result
+        })
+    }
+}
+
 pub fn parent_closure_callable_candidates(
     env: Rc<ResolvedFuncEnv>,
     name: String,
@@ -331,7 +448,7 @@ pub fn parent_closure_callable_candidates(
                         identity: Rc::new(CallableIdentity::DeclaredCallable {
                             identity: Rc::new(DeclaredCallableIdentity {
                                 owner_module_path: p.name.clone(),
-                                decl_name: name.clone(),
+                                decl_name: sig.name.clone(),
                             }),
                         }),
                         sig: sig.clone(),
@@ -562,6 +679,438 @@ pub fn collect_calls_in_expr(
         let result = v1_rt::concat(this_edges.clone(), child_edges.clone());
         result
     })
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CallableOwnerRow {
+    pub owner_module_path: String,
+    pub sig: Rc<ResolvedFuncSig>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CallableOwnerIndex {
+    pub by_name: Rc<HashMap<String, Rc<Vec<Rc<CallableOwnerRow>>>>>,
+}
+
+pub fn empty_callable_owner_index() -> Rc<CallableOwnerIndex> {
+    Rc::new(CallableOwnerIndex {
+        by_name: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<CallableOwnerRow>>>>(),
+    })
+}
+
+pub fn extend_callable_owner_index(
+    index: Rc<CallableOwnerIndex>,
+    env: Rc<ResolvedFuncEnv>,
+) -> Rc<CallableOwnerIndex> {
+    Rc::new(CallableOwnerIndex {
+        by_name: Rc::new(v1_rt::map_keys(&env.local.clone()))
+            .iter()
+            .cloned()
+            .fold(
+                index.by_name.clone(),
+                |acc: _, name: String| match v1_rt::map_get(&env.local.clone(), name.clone()) {
+                    Some(sig) => {
+                        let row = Rc::new(CallableOwnerRow {
+                            owner_module_path: env.name.clone(),
+                            sig: sig.clone(),
+                        });
+                        match v1_rt::map_get(&acc, name.clone()) {
+                            Some(rows) => v1_rt::rc_map_insert(
+                                acc.clone(),
+                                name.clone(),
+                                v1_rt::rc_list_push(rows.clone(), row.clone()),
+                            ),
+                            std::option::Option::None => v1_rt::rc_map_insert(
+                                acc.clone(),
+                                name.clone(),
+                                Rc::new(vec![row.clone()]),
+                            ),
+                        }
+                    }
+                    std::option::Option::None => acc.clone(),
+                },
+            ),
+    })
+}
+
+pub fn callable_owner_index_from_envs(
+    envs: Rc<Vec<Rc<ResolvedFuncEnv>>>,
+) -> Rc<CallableOwnerIndex> {
+    envs.iter().cloned().fold(
+        empty_callable_owner_index(),
+        |acc: _, env: Rc<ResolvedFuncEnv>| extend_callable_owner_index(acc, env.clone()),
+    )
+}
+
+pub fn callable_owner_index_from_own_env(
+    index: Rc<CallableOwnerIndex>,
+    env: Rc<ResolvedFuncEnv>,
+) -> Rc<CallableOwnerIndex> {
+    extend_callable_owner_index(
+        index.clone(),
+        Rc::new(ResolvedFuncEnv {
+            name: env.name.clone(),
+            local: env.local.clone(),
+            parents: Rc::new(vec![]),
+        }),
+    )
+}
+
+pub fn reference_containment_qualifier(name: String) -> String {
+    {
+        let leaf = crate::v1_std_core::qualified_last_segment(name.clone());
+        let name_len = v1_rt::string_length(&name);
+        let leaf_len = v1_rt::string_length(&leaf);
+        if (name_len.clone() > leaf_len.clone()) {
+            v1_rt::substring(&name, 0, ((name_len.clone() - leaf_len.clone()) - 1))
+        } else {
+            "".to_string()
+        }
+    }
+}
+
+pub fn containment_chain_admits_owner(
+    owner_module_path: String,
+    referencing_module_path: String,
+) -> bool {
+    {
+        let owner_len = v1_rt::string_length(&owner_module_path);
+        let referencing_len = v1_rt::string_length(&referencing_module_path);
+        if (owner_len.clone() == referencing_len.clone()) {
+            (owner_module_path.clone() == referencing_module_path.clone())
+        } else {
+            if (referencing_len.clone() > owner_len.clone()) {
+                (v1_rt::substring(&referencing_module_path, 0, (owner_len.clone() + 1))
+                    == v1_rt::concat(owner_module_path.clone(), ".".to_string()))
+            } else {
+                false
+            }
+        }
+    }
+}
+
+pub fn containment_admits_owner(
+    owner_module_path: String,
+    qualifier: String,
+    referencing_module_path: String,
+) -> bool {
+    {
+        let owner_len = v1_rt::string_length(&owner_module_path);
+        let qualifier_len = v1_rt::string_length(&qualifier);
+        if (qualifier_len.clone() == 0) {
+            true
+        } else {
+            if (owner_len.clone() == qualifier_len.clone()) {
+                (owner_module_path.clone() == qualifier.clone())
+            } else {
+                if (owner_len.clone() > qualifier_len.clone()) {
+                    if (v1_rt::substring(
+                        &owner_module_path,
+                        ((owner_len.clone() - qualifier_len.clone()) - 1),
+                        owner_len.clone(),
+                    ) == v1_rt::concat(".".to_string(), qualifier.clone()))
+                    {
+                        containment_chain_admits_owner(
+                            v1_rt::substring(
+                                &owner_module_path,
+                                0,
+                                ((owner_len.clone() - qualifier_len.clone()) - 1),
+                            ),
+                            referencing_module_path.clone(),
+                        )
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum CallableOccurrenceAccounting {
+    CallableOccurrenceAdmitted {
+        occurrence: OccurrenceId,
+        category: OccurrenceCategory,
+        authored_name: String,
+        owner_module_paths: Rc<Vec<String>>,
+    },
+    CallableOccurrenceNoProviderDeclared {
+        occurrence: OccurrenceId,
+        category: OccurrenceCategory,
+        authored_name: String,
+    },
+    CallableOccurrenceFilteredByContainment {
+        occurrence: OccurrenceId,
+        category: OccurrenceCategory,
+        authored_name: String,
+    },
+    CallableOccurrenceIdentityUnavailable {
+        authored_name: String,
+        diagnostic_span: Rc<SourceSpan>,
+    },
+}
+impl CallableOccurrenceAccounting {
+    pub fn authored_name(&self) -> String {
+        match self {
+            CallableOccurrenceAccounting::CallableOccurrenceAdmitted {
+                authored_name: __val,
+                ..
+            } => __val.clone(),
+            CallableOccurrenceAccounting::CallableOccurrenceNoProviderDeclared {
+                authored_name: __val,
+                ..
+            } => __val.clone(),
+            CallableOccurrenceAccounting::CallableOccurrenceFilteredByContainment {
+                authored_name: __val,
+                ..
+            } => __val.clone(),
+            CallableOccurrenceAccounting::CallableOccurrenceIdentityUnavailable {
+                authored_name: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
+}
+
+pub fn callable_occurrence_identity(identity: Rc<NodeOccurrenceIdentity>) -> Option<OccurrenceId> {
+    match (*identity.clone()).clone() {
+        NodeOccurrenceIdentity::OccurrenceSynthetic => std::option::Option::None,
+        NodeOccurrenceIdentity::OccurrenceMinted { id: id, .. } => Some(id.clone()),
+        NodeOccurrenceIdentity::OccurrenceProjected { id, .. } => Some(id.clone()),
+    }
+}
+
+pub fn callable_occurrence_authored_name(row: Rc<CallableOccurrenceAccounting>) -> String {
+    match (*row.clone()).clone() {
+        CallableOccurrenceAccounting::CallableOccurrenceAdmitted { authored_name, .. } => {
+            authored_name.clone()
+        }
+        CallableOccurrenceAccounting::CallableOccurrenceNoProviderDeclared {
+            authored_name,
+            ..
+        } => authored_name.clone(),
+        CallableOccurrenceAccounting::CallableOccurrenceFilteredByContainment {
+            authored_name,
+            ..
+        } => authored_name.clone(),
+        CallableOccurrenceAccounting::CallableOccurrenceIdentityUnavailable {
+            authored_name,
+            ..
+        } => authored_name.clone(),
+    }
+}
+
+pub fn callable_occurrence_row(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<CallableOccurrenceAccounting> {
+    {
+        let authored = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+        match callable_occurrence_identity(n.occurrence_identity.clone()) {
+            Some(id) => Rc::new(
+                CallableOccurrenceAccounting::CallableOccurrenceNoProviderDeclared {
+                    occurrence: id.clone(),
+                    category: OccurrenceCategory::CallableOccurrence,
+                    authored_name: authored.clone(),
+                },
+            ),
+            std::option::Option::None => Rc::new(
+                CallableOccurrenceAccounting::CallableOccurrenceIdentityUnavailable {
+                    authored_name: authored.clone(),
+                    diagnostic_span: n.span.clone(),
+                },
+            ),
+        }
+    }
+}
+
+pub fn callable_occurrence_rows_in_node(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<CallableOccurrenceAccounting>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let here = match (*n.expr_data.clone()).clone() {
+            ExprData::ExprCall { .. } => Rc::new(vec![callable_occurrence_row(
+                n.clone(),
+                source_indices.clone(),
+            )]),
+            ExprData::ExprVar {
+                binding_kind: _, ..
+            } => Rc::new(vec![callable_occurrence_row(
+                n.clone(),
+                source_indices.clone(),
+            )]),
+            ExprData::ExprMethodCall {
+                method_semantics: _,
+                ..
+            } => Rc::new(vec![callable_occurrence_row(
+                n.clone(),
+                source_indices.clone(),
+            )]),
+            ExprData::NoExprData => Rc::new(vec![]),
+            ExprData::ExprLiteral { value: _, .. } => Rc::new(vec![]),
+            ExprData::ExprElaboratedLiteral { .. } => Rc::new(vec![]),
+            ExprData::ExprError { .. } => Rc::new(vec![]),
+            ExprData::ExprFieldAccess { summary: _, .. } => Rc::new(vec![]),
+            ExprData::ExprMatch => Rc::new(vec![]),
+            ExprData::ExprIf => Rc::new(vec![]),
+            ExprData::ExprLet => Rc::new(vec![]),
+            ExprData::ExprRecordLit { parent_enum: _, .. } => Rc::new(vec![]),
+            ExprData::ExprListLit => Rc::new(vec![]),
+            ExprData::ExprBinOp { .. } => Rc::new(vec![]),
+            ExprData::ExprUnaryOp { op: _, .. } => Rc::new(vec![]),
+            ExprData::ExprLambda => Rc::new(vec![]),
+            ExprData::ExprStringInterp => Rc::new(vec![]),
+            ExprData::ExprBlock => Rc::new(vec![]),
+            ExprData::ExprCast => Rc::new(vec![]),
+            ExprData::ExprForEach => Rc::new(vec![]),
+            ExprData::ExprIndex => Rc::new(vec![]),
+            ExprData::ExprSlice => Rc::new(vec![]),
+            ExprData::ExprReturn => Rc::new(vec![]),
+        };
+        let body_names = match n.body.clone() {
+            Some(b) => callable_occurrence_rows_in_node(b.clone(), source_indices.clone()),
+            std::option::Option::None => Rc::new(vec![]),
+        };
+        let child_names = Rc::new({
+            let mut __result = Vec::new();
+            for c in n.children.clone().iter().cloned() {
+                __result.extend(
+                    (*callable_occurrence_rows_in_node(c.clone(), source_indices.clone()))
+                        .iter()
+                        .cloned(),
+                );
+            }
+            __result
+        });
+        v1_rt::concat(
+            v1_rt::concat(here.clone(), body_names.clone()),
+            child_names.clone(),
+        )
+    })
+}
+
+pub fn callable_occurrence_rows(
+    items: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<CallableOccurrenceAccounting>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for item in items.iter().cloned() {
+            __result.extend(
+                (*callable_occurrence_rows_in_node(item.clone(), source_indices.clone()))
+                    .iter()
+                    .cloned(),
+            );
+        }
+        __result
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ParentEnvSupplyAccum {
+    pub by_owner: Rc<HashMap<String, Rc<HashMap<String, Rc<ResolvedFuncSig>>>>>,
+    pub owner_order: Rc<Vec<String>>,
+}
+
+pub fn supply_admit_row(
+    acc: Rc<ParentEnvSupplyAccum>,
+    owner: String,
+    key: String,
+    sig: Rc<ResolvedFuncSig>,
+) -> Rc<ParentEnvSupplyAccum> {
+    match v1_rt::map_get(&acc.by_owner.clone(), owner.clone()) {
+        Some(locals) => Rc::new(ParentEnvSupplyAccum {
+            by_owner: v1_rt::rc_map_insert(
+                acc.by_owner.clone(),
+                owner.clone(),
+                v1_rt::rc_map_insert(locals.clone(), key.clone(), sig.clone()),
+            ),
+            owner_order: acc.owner_order.clone(),
+        }),
+        std::option::Option::None => Rc::new(ParentEnvSupplyAccum {
+            by_owner: v1_rt::rc_map_insert(
+                acc.by_owner.clone(),
+                owner.clone(),
+                v1_rt::rc_map_insert(
+                    v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
+                    key.clone(),
+                    sig.clone(),
+                ),
+            ),
+            owner_order: v1_rt::rc_list_push(acc.owner_order.clone(), owner.clone()),
+        }),
+    }
+}
+
+pub fn reference_derived_parent_envs(
+    items: Rc<Vec<Rc<Node>>>,
+    index: Rc<CallableOwnerIndex>,
+    module_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<ResolvedFuncEnv>>> {
+    {
+        let rows = callable_occurrence_rows(items.clone(), source_indices.clone());
+        let supply = rows.clone().iter().cloned().fold(
+            Rc::new(ParentEnvSupplyAccum {
+                by_owner: v1_rt::rc_empty_map::<String, Rc<HashMap<String, Rc<ResolvedFuncSig>>>>(),
+                owner_order: Rc::new(vec![]),
+            }),
+            |acc: _, row: Rc<CallableOccurrenceAccounting>| {
+                let name = callable_occurrence_authored_name(row.clone());
+                let leaf = crate::v1_std_core::qualified_last_segment(name.clone());
+                let qualifier = reference_containment_qualifier(name.clone());
+                match v1_rt::map_get(&index.by_name.clone(), leaf.clone()) {
+                    Some(rows) => rows.iter().cloned().fold(acc.clone(), |inner: _, row: _| {
+                        if if (v1_rt::string_length(&qualifier) == 0) {
+                            containment_chain_admits_owner(
+                                row.owner_module_path.clone(),
+                                module_name.clone(),
+                            )
+                        } else {
+                            containment_admits_owner(
+                                row.owner_module_path.clone(),
+                                qualifier.clone(),
+                                module_name.clone(),
+                            )
+                        } {
+                            supply_admit_row(
+                                inner.clone(),
+                                row.owner_module_path.clone(),
+                                name.clone(),
+                                row.sig.clone(),
+                            )
+                        } else {
+                            inner.clone()
+                        }
+                    }),
+                    std::option::Option::None => acc.clone(),
+                }
+            },
+        );
+        Rc::new({
+            let mut __result = Vec::new();
+            for owner in supply.owner_order.clone().iter().cloned() {
+                __result.extend(
+                    (*match v1_rt::map_get(&supply.by_owner.clone(), owner.clone()) {
+                        Some(locals) => Rc::new(vec![Rc::new(ResolvedFuncEnv {
+                            name: owner.clone(),
+                            local: locals.clone(),
+                            parents: Rc::new(vec![]),
+                        })]),
+                        std::option::Option::None => Rc::new(vec![]),
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        })
+    }
 }
 
 pub fn func_reaches_self(

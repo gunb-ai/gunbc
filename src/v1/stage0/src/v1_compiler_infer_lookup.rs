@@ -841,7 +841,11 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                         }),
                     }),
                     std::option::Option::None => {
-                        borrowed_census_decl(type_env.clone(), name.clone())
+                        if v1_rt::contains(name.clone(), ".".to_string()) {
+                            borrowed_census_decl(type_env.clone(), name.clone())
+                        } else {
+                            Rc::new(BorrowedCensusDeclLookup::BorrowedCensusDeclNotFound)
+                        }
                     }
                 };
                 match (*borrowed.clone()).clone() {

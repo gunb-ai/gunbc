@@ -2,7 +2,8 @@ module v1.compiler.infer_sigs
 
 import v1.std.core {
   Node,
-  ExprData, ExprCall, expr_call_func_at,
+  ExprData, ExprCall, ExprVar, ExprMethodCall, expr_call_func_at,
+  qualified_last_segment, module_path_segments,
   ErrorNode, make_error_node,
   MissingAnnotation, no_span,
   DeclaredFuncSig,
@@ -21,6 +22,14 @@ import v1.compiler.infer_occurrence_binding {
 
 import std.induction { SubValueRelation }
 import v1.compiler.infer_env { TypeBinding }
+
+import std.types { SourceSpan }
+
+import std.occurrence_identity {
+  OccurrenceId,
+  NodeOccurrenceIdentity, OccurrenceSynthetic, OccurrenceMinted, OccurrenceProjected,
+  OccurrenceCategory, CallableOccurrence,
+}
 
 type ResolvedFuncSig {
   name: String
@@ -304,12 +313,61 @@ fn lookup_resolved_sig_unique_across_parents(env: ResolvedFuncEnv, name: String)
 // shape stopped at the FIRST hit and kept a separate owner list only to count with; the sig it
 // answered with therefore came from a position in a list rather than from a decision, and a
 // second authority that was not a `fn` at all could never appear beside it.
+// THE REALIZATION ORDER MUST RANGE OVER THE SAME UNIVERSE THE SUPPLY DOES.
+//
+// The primary path fills its containment index as modules are realized, and realization used to
+// recurse over `resolved_imports`. So a provider that is REFERENCED but not imported, and not yet
+// realized, was absent from the primary path's candidate universe while the post-fold
+// reconstruction -- which indexes every module -- could see it. Same supply function, two
+// different universes, and the whole-pool census sits underneath ready to conceal the difference
+// by answering anyway. The two paths agreeing about anything proves nothing while that holds.
+//
+// The dependencies are derived from the SAME rule the supply uses, so there is one authority and
+// not two: a bare reference can only be served by a containment ANCESTOR of the referencing
+// module, and those are computable from the module's own path without consulting any index; a
+// qualified reference names its provider directly, either corpus-root absolute or relative to one
+// of those same ancestors. Nothing here scans the module population per reference.
+fn containment_ancestor_paths(module_path: String) -> List<String> {
+  let segments = module_path_segments(path: module_path)
+  fold(segments, init: PathPrefixAccum { current: "", out: [] }, f: (acc, segment) =>
+    let next = if acc.current == "" { segment } else { concat(acc.current, ".", segment) }
+    PathPrefixAccum { current: next, out: list_push(acc.out, next) }
+  ).out
+}
+
+type PathPrefixAccum {
+  current: String
+  out: List<String>
+}
+
+fn reference_provider_module_paths(items: List<Node>, module_path: String, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let prefixes = containment_ancestor_paths(module_path: module_path)
+  let qualified = callable_occurrence_rows(items: items, source_indices: source_indices)
+    |> map(row => reference_containment_qualifier(name: callable_occurrence_authored_name(row: row)))
+    |> filter(qualifier => string_length(s: qualifier) > 0)
+  let relative = flat_map(qualified, qualifier =>
+    concat([qualifier], prefixes |> map(prefix => concat(prefix, ".", qualifier)))
+  )
+  concat(prefixes, relative) |> filter(path => path != module_path)
+}
+
+// THE DECLARATION NAME COMES FROM THE DECLARATION, NEVER FROM THE SPELLING THAT FOUND IT.
+//
+// `decl_name` was built from `name` -- the authored LOOKUP KEY. That was indistinguishable from
+// the declaration's own name only for as long as every key was a bare leaf, which the import-derived
+// selective view guaranteed. Under the reference supply a parent view for owner `pkg.api` is keyed
+// by the full authored reference `pkg.api.f`, so the identity returned was
+// (pkg.api, "pkg.api.f") rather than (pkg.api, "f") -- and that identity is handed to
+// `resolved_plain_call_target` / `resolved_declaration_call_target`, i.e. it reaches emission's
+// target selection. `ResolvedFuncSig` already carries the declaration's own `name`, so the fix is to
+// read the fact from its authority rather than reconstruct it from a spelling; re-deriving it in the
+// emitter would be the authority-substitution class this file's own header warns about.
 fn parent_closure_callable_candidates(env: ResolvedFuncEnv, name: String) -> List<CallableCandidate> {
   fold(env.parents, init: [], f: (acc, p) =>
     match map_get(p.local, name) {
       Present { value: sig } =>
         concat(acc, [CallableCandidate {
-          identity: DeclaredCallable { identity: DeclaredCallableIdentity { owner_module_path: p.name, decl_name: name } },
+          identity: DeclaredCallable { identity: DeclaredCallableIdentity { owner_module_path: p.name, decl_name: sig.name } },
           sig: sig
         }])
       Absent => acc
@@ -454,6 +512,337 @@ fn collect_calls_in_expr(caller: String, texpr: Node, local_func_set: Map<String
   )
   let result = concat(this_edges, child_edges)
   result
+}
+
+// THE CALLABLE PARENT SUPPLY, DERIVED FROM REFERENCES AND RESOLVED BY CONTAINMENT.
+//
+// What a module may call used to be derived from its IMPORT LIST: `func_env_views_for_import`
+// admitted a parent env whole for an all-import and a leaf-keyed selection for a listed one, at
+// two independent assembly points (typecheck-time in `v1.compiler.infer`, and again post-fold in
+// `rewire_func_env_parent_links`, which also serves a decoded cache). Both are replaced here by
+// ONE supply with a single authority: the module's own REFERENCE NODES name what it reaches, and
+// the containment tree decides which declaration a reference names.
+//
+// The decision downstream is unchanged and must stay unchanged: this function supplies
+// CANDIDATES, never an answer. `decide_callable_candidates` still reads the population 0/1/many
+// and returns FuncSigUnresolved / FuncSigResolved / FuncSigAmbiguous, so a name reached by two
+// admissible declarations refuses here exactly as it refused under imports. Supplying a wider or
+// narrower candidate set is the only thing that changes, and it changes as a function of what the
+// author actually wrote rather than of a second positional naming scheme they also had to write.
+//
+// PARSED REFERENCE NODES, NOT TEXT. The names come from `ExprCall`, `ExprVar` and
+// `ExprMethodCall` nodes walked out of the module's own item trees -- the three node kinds whose
+// spelling reaches `lookup_func_sig` -- never from a dotted-identifier scan over source bytes,
+// which cannot tell a reference from prose.
+type CallableOwnerRow {
+  owner_module_path: String
+  sig: ResolvedFuncSig
+}
+
+// One index over every declaring module, keyed by the DECLARED leaf name. It is built once and
+// extended per realized module rather than rebuilt per consumer: the supply is asked once per
+// module, and a per-module rebuild over the whole population would be the quadratic fold DESIGN
+// section 6 rules out regardless of the realized n.
+type CallableOwnerIndex {
+  by_name: Map<String, List<CallableOwnerRow>>
+}
+
+fn empty_callable_owner_index() -> CallableOwnerIndex {
+  CallableOwnerIndex { by_name: empty_map() }
+}
+
+// The rows come from a module's OWN local map only. A module's `parents` are its former import
+// closure; reading them here would re-admit the import universe through the replacement and make
+// re-export position, rather than declaration, the owner of a name.
+fn extend_callable_owner_index(index: CallableOwnerIndex, env: ResolvedFuncEnv) -> CallableOwnerIndex {
+  CallableOwnerIndex {
+    by_name: fold(map_keys(env.local), init: index.by_name, f: (acc, name) =>
+      match map_get(env.local, name) {
+        Present { value: sig } =>
+          let row = CallableOwnerRow { owner_module_path: env.name, sig: sig }
+          match map_get(acc, name) {
+            Present { value: rows } => map_insert(acc, name, list_push(rows, row))
+            Absent => map_insert(acc, name, [row])
+          }
+        Absent => acc
+      }
+    )
+  }
+}
+
+fn callable_owner_index_from_envs(envs: List<ResolvedFuncEnv>) -> CallableOwnerIndex {
+  fold(envs, init: empty_callable_owner_index(), f: (acc, env) => extend_callable_owner_index(index: acc, env: env))
+}
+
+fn callable_owner_index_from_own_env(index: CallableOwnerIndex, env: ResolvedFuncEnv) -> CallableOwnerIndex {
+  extend_callable_owner_index(index: index, env: ResolvedFuncEnv { name: env.name, local: env.local, parents: [] })
+}
+
+// CONTAINMENT, STATED ONCE, AND IT IS THE UNIQUE-ON-CHAIN RULE THE v2 RESOLVER ALREADY STATES.
+//
+// A reference spelled `a.b.f` names the declaration `f` inside the containment path `a.b`, and a
+// containment path is matched as a SUFFIX of the owner's module path -- `v1.std.core` is reached
+// by `core`, `std.core` and its whole path alike. That is the downward projection half.
+//
+// A BARE `f` IS NOT UNCONSTRAINED, and getting this wrong is the pool-coincidence failure the cut
+// exists to remove: it resolves against the ANCESTOR CHAIN of the referencing position, so an
+// owner is admissible only when its module path is that position's module or one of its
+// containment ancestors. Admitting every declaring module instead would make a bare name bind by
+// corpus population -- measured, it re-bound 39 `contains` call sites onto an unrelated
+// three-parameter declaration in a module the caller does not contain and is not contained by.
+// Where the chain answers nothing, the name is not resolved HERE; the reference falls to the
+// arms that already own it, which is a smaller claim than pretending the chain answered.
+fn reference_containment_qualifier(name: String) -> String {
+  let leaf = qualified_last_segment(name: name)
+  let name_len = string_length(s: name)
+  let leaf_len = string_length(s: leaf)
+  if name_len > leaf_len { substring(s: name, start: 0, end: name_len - leaf_len - 1) } else { "" }
+}
+
+fn containment_chain_admits_owner(owner_module_path: String, referencing_module_path: String) -> Bool {
+  let owner_len = string_length(s: owner_module_path)
+  let referencing_len = string_length(s: referencing_module_path)
+  if owner_len == referencing_len { owner_module_path == referencing_module_path }
+  else if referencing_len > owner_len {
+    substring(s: referencing_module_path, start: 0, end: owner_len + 1) == concat(owner_module_path, ".")
+  }
+  else { false }
+}
+
+// THE QUALIFIED ARM IS FIRST-SEGMENT BINDING FOLLOWED BY DOWNWARD PROJECTION, AND A WHOLE-PATH
+// SUFFIX SEARCH IS A DIFFERENT OPERATION WEARING THE SAME NAME.
+//
+// This predicate was a bare suffix test that never received the referencing position, so for
+// `app.api.f` referenced from `app.client` it admitted BOTH `app.api` and `unrelated.app.api` --
+// the second matches as a suffix and was never reached by binding `app` at the occurrence's
+// containment position and descending through `api.f`. Fully qualifying the entire corpus cannot
+// repair a resolver that treats a full declaring path as a suffix of an unrelated one, which is
+// why this is a defect in the arm rather than a strictness preference.
+//
+// The canonical rule, stated as the two halves it actually has: strip the qualifier from the end
+// of the owner's path -- that is the downward projection, and it must match exactly at a segment
+// boundary -- and then require the REMAINING PREFIX to be the referencing module or one of its
+// containment ancestors, which is the first-segment binding. An empty prefix is the corpus-root
+// absolute spelling and is admitted on its own terms; every other prefix must be on the chain.
+fn containment_admits_owner(owner_module_path: String, qualifier: String, referencing_module_path: String) -> Bool {
+  let owner_len = string_length(s: owner_module_path)
+  let qualifier_len = string_length(s: qualifier)
+  if qualifier_len == 0 { true }
+  else if owner_len == qualifier_len { owner_module_path == qualifier }
+  else if owner_len > qualifier_len {
+    if substring(s: owner_module_path, start: owner_len - qualifier_len - 1, end: owner_len) == concat(".", qualifier) {
+      containment_chain_admits_owner(
+        owner_module_path: substring(s: owner_module_path, start: 0, end: owner_len - qualifier_len - 1),
+        referencing_module_path: referencing_module_path
+      )
+    } else { false }
+  }
+  else { false }
+}
+
+// PER-OCCURRENCE ACCOUNTING FOR THE CALLABLE CHANNEL. Every reference occurrence the collector
+// visits leaves exactly one row here, so coverage is DERIVED FROM THE PRODUCER rather than
+// declared beside it: there is no separately supplied denominator that can disagree with the walk,
+// because the walk IS the denominator. A dropped occurrence is not a smaller number, it is a
+// missing row, and the identity it would have carried says which one.
+//
+// MODELLED ON `gunbc.repository_census_coverage`, specifically `CensusCoverageReconciliation` and
+// `CensusCoverageOutcome`: an identity-grain join with an established arm and located refusal arms
+// that say WHICH subject failed and why. The shape was derived from that authority, not coined.
+//
+// WHAT IS DELIBERATELY NOT COPIED, because the compiler cannot honestly fill it. That carrier's
+// success arm is `CoverageReconciled { population_identity, revision_identity }` and its receipt
+// carries `DenominatorIndependence`; both entry points take a `RepositoryPopulation` and a
+// `MeasurementRevision`. A compile has no revision, and enumeration and classification are the SAME
+// parser walk, so independence would be permanently `SharedRun` by construction. A field that can
+// only take one value is a decoration, and a truncated honest carrier beats a faithful copy with
+// dead fields, so no population identity, no revision identity, no independence field appears here.
+//
+// KNOWN NEAR-DUPLICATE, declared as such. DISSOLUTION TRIGGER: a subject-key-parameterised
+// reconciliation algebra that `gunbc.repository_census_coverage` and this module can both inhabit
+// without either authoring fields that cannot be true. Not "when someone refactors it" -- the
+// capability is the parameterisation over the subject key. When it exists, this carrier dissolves
+// into it and these rows become its compiler-side instance.
+//
+// THE ADMITTED ARM CARRIES A LIST OF OWNERS, NOT ONE OWNER, because per-occurrence totality is a
+// claim about OUTCOMES and not about arity: one reference may legitimately see several declaring
+// owners on its containment chain, and collapsing that to one here would answer the unbound /
+// unique / ambiguous question in the supply. The supply produces candidates; `decide_callable_
+// candidates` decides. An empty admitted list is not representable -- that case is a refusal arm.
+// The category is `std.occurrence_identity.OccurrenceCategory`, not a parallel channel enum: this
+// collector only ever mints `CallableOccurrence`, and carrying the shared category is what lets the
+// type, method and field collectors join these rows instead of coining a second vocabulary.
+type CallableOccurrenceAccounting
+  = CallableOccurrenceAdmitted {
+      occurrence: OccurrenceId
+      category: OccurrenceCategory
+      authored_name: String
+      owner_module_paths: List<String>
+    }
+  | CallableOccurrenceNoProviderDeclared {
+      occurrence: OccurrenceId
+      category: OccurrenceCategory
+      authored_name: String
+    }
+  | CallableOccurrenceFilteredByContainment {
+      occurrence: OccurrenceId
+      category: OccurrenceCategory
+      authored_name: String
+    }
+  | CallableOccurrenceIdentityUnavailable {
+      authored_name: String
+      diagnostic_span: SourceSpan
+    }
+
+// THE SYNTHETIC ARM REFUSES RATHER THAN SKIPPING. A node the parser never minted an identity for
+// cannot be accounted at occurrence grain, and dropping it would be exactly the silent narrow the
+// exhaustive collector below exists to prevent -- an occurrence absent from the supply reads as
+// correctly filtered. `std.occurrence_identity.occurrence_identity_acceptance_law_collector_dedupe`
+// forbids keying a collector by spelling, SourceSpan or Node structure, so there is no honest
+// substitute identity to fall back to; the row is kept and located instead.
+fn callable_occurrence_identity(identity: NodeOccurrenceIdentity) -> OccurrenceId? {
+  match identity {
+    OccurrenceSynthetic => none
+    OccurrenceMinted { id: id } => Present { value: id }
+    OccurrenceProjected { id: id, caused_by: _ } => Present { value: id }
+  }
+}
+
+fn callable_occurrence_authored_name(row: CallableOccurrenceAccounting) -> String {
+  match row {
+    CallableOccurrenceAdmitted { occurrence: _, category: _, authored_name: authored_name, owner_module_paths: _ } => authored_name
+    CallableOccurrenceNoProviderDeclared { occurrence: _, category: _, authored_name: authored_name } => authored_name
+    CallableOccurrenceFilteredByContainment { occurrence: _, category: _, authored_name: authored_name } => authored_name
+    CallableOccurrenceIdentityUnavailable { authored_name: authored_name, diagnostic_span: _ } => authored_name
+  }
+}
+
+fn callable_occurrence_row(n: Node, source_indices: Map<String, NewlineIndex>) -> CallableOccurrenceAccounting {
+  let authored = authored_name_at(source_indices: source_indices, node: n)
+  match callable_occurrence_identity(identity: n.occurrence_identity) {
+    Present { value: id } =>
+      CallableOccurrenceNoProviderDeclared {
+        occurrence: id,
+        category: CallableOccurrence,
+        authored_name: authored
+      }
+    Absent =>
+      CallableOccurrenceIdentityUnavailable {
+        authored_name: authored,
+        diagnostic_span: n.span
+      }
+  }
+}
+
+// THE MATCH IS EXHAUSTIVE ON PURPOSE, with no `_` arm, for the reason `match_pattern_is_irrefutable`
+// in `v1.compiler.core` states: a catch-all answers "contributes no callable reference" for any
+// `ExprData` constructor added later, so a new expression form that CAN carry a callable reference
+// would be dropped from the supply silently and the parent env would simply be missing an owner --
+// a subtraction that looks exactly like a correct visibility filter. Without a catch-all, adding a
+// constructor refuses here and the author is made to decide which channel it belongs to.
+//
+// An empty arm below is a claim about THE CALLABLE CHANNEL ONLY. `ExprFieldAccess` and
+// `ExprRecordLit` do carry occurrences -- in the field and constructor channels -- and this
+// collector is not their accounting; that is what the per-occurrence coverage carrier is for.
+fn callable_occurrence_rows_in_node(n: Node, source_indices: Map<String, NewlineIndex>) -> List<CallableOccurrenceAccounting> {
+  let here = match n.expr_data {
+    ExprCall => [callable_occurrence_row(n: n, source_indices: source_indices)]
+    ExprVar { binding_kind: _ } => [callable_occurrence_row(n: n, source_indices: source_indices)]
+    ExprMethodCall { method_semantics: _ } => [callable_occurrence_row(n: n, source_indices: source_indices)]
+    NoExprData => []
+    ExprLiteral { value: _ } => []
+    ExprElaboratedLiteral { value: _, elaboration: _ } => []
+    ExprError { kind: _, message: _ } => []
+    ExprFieldAccess { summary: _ } => []
+    ExprMatch => []
+    ExprIf => []
+    ExprLet => []
+    ExprRecordLit { parent_enum: _ } => []
+    ExprListLit => []
+    ExprBinOp { op: _, algebra_field: _, operand: _ } => []
+    ExprUnaryOp { op: _ } => []
+    ExprLambda => []
+    ExprStringInterp => []
+    ExprBlock => []
+    ExprCast => []
+    ExprForEach => []
+    ExprIndex => []
+    ExprSlice => []
+    ExprReturn => []
+  }
+  let body_names = match n.body {
+    Present { value: b } => callable_occurrence_rows_in_node(n: b, source_indices: source_indices)
+    Absent => []
+  }
+  let child_names = n.children |> flat_map(c => callable_occurrence_rows_in_node(n: c, source_indices: source_indices))
+  concat(concat(here, body_names), child_names)
+}
+
+// NO DEDUPE BY SPELLING. The previous collector folded occurrences into a set of distinct NAMES,
+// which `std.occurrence_identity.occurrence_identity_acceptance_law_collector_dedupe` forbids in
+// terms: two observations of one authored occurrence enter a collector once by exact occurrence
+// identity, "never by spelling, SourceSpan, or Node structure". Keying by spelling also merges the
+// two facts the law separates -- one occurrence seen twice, and two distinct occurrences that
+// happen to be spelled the same -- so a corpus with same-spelled references in sibling match arms
+// or nested lets could not be accounted at occurrence grain at all. Rows now flow through
+// undeduplicated; the env supply is keyed by owner and lookup key, so repeats collapse where they
+// are actually redundant rather than in the collector where the identity would be lost.
+fn callable_occurrence_rows(items: List<Node>, source_indices: Map<String, NewlineIndex>) -> List<CallableOccurrenceAccounting> {
+  flat_map(items, item => callable_occurrence_rows_in_node(n: item, source_indices: source_indices))
+}
+
+// The env's local map is keyed by the SPELLING the reference used, because that is the key
+// `callable_lookup_over_candidates` asks with. A bare reference therefore keys by its leaf,
+// exactly as the import-derived selective view did; a qualified reference keys by its full
+// spelling, which is the projection the containment rule exists to answer.
+type ParentEnvSupplyAccum {
+  by_owner: Map<String, Map<String, ResolvedFuncSig>>
+  owner_order: List<String>
+}
+
+fn supply_admit_row(acc: ParentEnvSupplyAccum, owner: String, key: String, sig: ResolvedFuncSig) -> ParentEnvSupplyAccum {
+  match map_get(acc.by_owner, owner) {
+    Present { value: locals } =>
+      ParentEnvSupplyAccum { by_owner: map_insert(acc.by_owner, owner, map_insert(locals, key, sig)), owner_order: acc.owner_order }
+    Absent =>
+      ParentEnvSupplyAccum {
+        by_owner: map_insert(acc.by_owner, owner, map_insert(empty_map(), key, sig)),
+        owner_order: list_push(acc.owner_order, owner)
+      }
+  }
+}
+
+fn reference_derived_parent_envs(
+  items: List<Node>,
+  index: CallableOwnerIndex,
+  module_name: String,
+  source_indices: Map<String, NewlineIndex>
+) -> List<ResolvedFuncEnv> {
+  let rows = callable_occurrence_rows(items: items, source_indices: source_indices)
+  let supply = fold(rows, init: ParentEnvSupplyAccum { by_owner: empty_map(), owner_order: [] }, f: (acc, row) =>
+    let name = callable_occurrence_authored_name(row: row)
+    let leaf = qualified_last_segment(name: name)
+    let qualifier = reference_containment_qualifier(name: name)
+    match map_get(index.by_name, leaf) {
+      Present { value: rows } =>
+        fold(rows, init: acc, f: (inner, row) =>
+          if (if string_length(s: qualifier) == 0 {
+                containment_chain_admits_owner(owner_module_path: row.owner_module_path, referencing_module_path: module_name)
+              } else {
+                containment_admits_owner(owner_module_path: row.owner_module_path, qualifier: qualifier, referencing_module_path: module_name)
+              }) {
+            supply_admit_row(acc: inner, owner: row.owner_module_path, key: name, sig: row.sig)
+          } else { inner }
+        )
+      Absent => acc
+    }
+  )
+  supply.owner_order |> flat_map(owner =>
+    match map_get(supply.by_owner, owner) {
+      Present { value: locals } => [ResolvedFuncEnv { name: owner, local: locals, parents: [] }]
+      Absent => []
+    }
+  )
 }
 
 fn func_reaches_self(root: String, current: String, call_edges: List<CallEdge>, visited: Map<String, Bool>) -> Bool {

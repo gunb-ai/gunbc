@@ -13877,7 +13877,9 @@ pub struct ResolveStageNanos {
     pub normalize: u128,
     /// Genuine `typecheck_module` computes inside reconcile (typed-cache misses only).
     pub typecheck_compute: u128,
-    /// `collect_parent_envs` calls inside reconcile (every module, cache hit or miss).
+    /// `collect_parent_envs` calls inside reconcile. MISSES ONLY: the call sits in the
+    /// `else` arm of a `was_cache_hit` branch, so a cache hit contributes no time here and
+    /// is not counted. Reading this as a per-module cost overstates it by the hit rate.
     pub parent_envs: u128,
     /// Reconcile total minus the rows above and the assembly sub-rows below: the
     /// unattributed whole-closure assembly residue that reruns per entry even at
@@ -15832,6 +15834,63 @@ fn build_symbol_index_for_reconcile(
     Ok(merged)
 }
 
+// Same-tree bare underlay for one module (bare = own tree, qualified = whole pool); out-of-root
+// modules keep the closure-only bare universe. Memoized per SOURCE-TREE ROOT rather than per
+// module, because the composition is a function of the root alone.
+//
+// Extracted so the declaration pre-pass and body realization ask ONE authority: both phases must
+// see the same composed index for a module, and two copies of this block would be two answers to
+// one question the moment either is edited.
+#[allow(clippy::type_complexity)]
+fn composed_symbol_index_for_decl_file(
+    index: &MultiEntryIndex,
+    decl_file: &str,
+    symbol_index: &Rc<SymbolIndex>,
+    closure_variant_base: &Rc<HashMap<String, Rc<crate::v1_compiler_infer_env::TypeBinding>>>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    tree_symbol_index_memo: &mut std::collections::HashMap<
+        String,
+        (
+            Rc<SymbolIndex>,
+            Rc<HashMap<String, Rc<crate::v1_compiler_infer_env::TypeBinding>>>,
+        ),
+    >,
+) -> Result<
+    (
+        Rc<SymbolIndex>,
+        Rc<HashMap<String, Rc<crate::v1_compiler_infer_env::TypeBinding>>>,
+    ),
+    String,
+> {
+    match source_tree_root_of(&index.source_roots, decl_file) {
+        Some(root) => match tree_symbol_index_memo.get(&root) {
+            Some(hit) => Ok(hit.clone()),
+            None => {
+                let (composed, composed_nanos) = nanos_net_of_pool_parse(|| {
+                    tree_bare_census_for_root(index, &root).map(|tree| {
+                        v1_compiler_infer::symbol_index_with_bare_fill(symbol_index.clone(), tree)
+                    })
+                });
+                let composed = composed?;
+                resolve_stage_slot_add(|s| s.assembly_root_symbol_index += composed_nanos);
+                // The composed index's global_bare = closure ∪ tree, so its variant base is
+                // computed from the composed map — once per root, beside the index it belongs to.
+                let root_variant_base_started = std::time::Instant::now();
+                let base = v1_compiler_infer::build_global_bare_variant_locals(
+                    composed.global_bare.clone(),
+                    source_indices.clone(),
+                );
+                resolve_stage_slot_add(|s| {
+                    s.assembly_root_variant_base += root_variant_base_started.elapsed().as_nanos()
+                });
+                tree_symbol_index_memo.insert(root, (composed.clone(), base.clone()));
+                Ok((composed, base))
+            }
+        },
+        None => Ok((symbol_index.clone(), closure_variant_base.clone())),
+    }
+}
+
 fn reconcile_with_typed_cache(
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -15925,6 +15984,69 @@ fn reconcile_with_typed_cache(
             Rc<v1_compiler_infer::TypecheckModuleResult>,
         )>,
     > = vec![None; closure_modules.len()];
+
+    // PHASE 1 — THE DECLARATION LAYER, built over the WHOLE population before any body is
+    // typechecked, mirroring `build_declaration_layer` in v1.compiler.infer. The host runs its own
+    // loop rather than calling that function because the host composes a PER-SOURCE-TREE symbol
+    // index, and phase 1 must see the same composed index a module's body phase will see; the
+    // schedule already supplies the dependency order the .dag recursion derives.
+    //
+    // `callable_owner_index` IS NOT `mut` AND THAT IS THE POINT. It used to be an accumulator
+    // extended inside the body loop beside `module_index`, which made every module's callable
+    // parent answer a function of how much of the population had been realized before it. It is
+    // now complete before the loop starts and is only read there, so incremental publication is
+    // not merely deleted — there is no binding to publish into.
+    //
+    // This also removes a defect the incremental form carried independently of ordering: the old
+    // extension ran from the typecheck RESULT, so a module served from the typed cache published
+    // whatever the cached result held, making the index a function of cache state as well as of
+    // order. Phase 1 does not consult the typed cache at all.
+    //
+    // Every slot is covered: `module_schedule_batches` leaves cycle-residue slots inside the final
+    // batch rather than outside the schedule, so iterating the batches iterates the population.
+    let mut declaration_facts: std::collections::HashMap<
+        String,
+        Rc<v1_compiler_infer::ModuleDeclarationFacts>,
+    > = std::collections::HashMap::with_capacity(closure_modules.len());
+    let mut declaration_interface_index: Rc<
+        HashMap<String, Rc<crate::v1_compiler_infer_items::ModuleInterface>>,
+    > = v1_rt::rc_empty_map();
+    let mut callable_owner_index_acc: Rc<crate::v1_compiler_infer_sigs::CallableOwnerIndex> =
+        crate::v1_compiler_infer_sigs::empty_callable_owner_index();
+    for batch in &schedule {
+        for &slot in batch {
+            let resolved = closure_modules[slot].clone();
+            let decl_name = closure_names[slot].clone();
+            let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
+            let (module_symbol_index, _module_variant_base) = composed_symbol_index_for_decl_file(
+                index,
+                &decl_file,
+                &symbol_index,
+                &closure_variant_base,
+                &source_indices,
+                &mut tree_symbol_index_memo,
+            )?;
+            let facts = v1_compiler_infer::declare_module_facts(
+                resolved.clone(),
+                declaration_interface_index.clone(),
+                source_indices.clone(),
+                intern_table.clone(),
+                module_symbol_index,
+            );
+            declaration_interface_index = v1_rt::rc_map_insert(
+                declaration_interface_index,
+                decl_name.clone(),
+                facts.interface.clone(),
+            );
+            callable_owner_index_acc =
+                crate::v1_compiler_infer_sigs::callable_owner_index_from_own_env(
+                    callable_owner_index_acc.clone(),
+                    facts.local_func_env.clone(),
+                );
+            declaration_facts.insert(decl_name, facts);
+        }
+    }
+    let callable_owner_index = callable_owner_index_acc;
 
     for batch in &schedule {
         let mut pending: Vec<usize> = batch.clone();
@@ -16025,59 +16147,36 @@ fn reconcile_with_typed_cache(
                                 // Same-tree bare underlay for the module being typechecked
                                 // (bare = own tree, qualified = whole pool); out-of-root
                                 // modules keep the closure-only bare universe.
-                                let (module_symbol_index, module_variant_base) =
-                                    match source_tree_root_of(&index.source_roots, &decl_file) {
-                                        Some(root) => match tree_symbol_index_memo.get(&root) {
-                                            Some(hit) => hit.clone(),
-                                            None => {
-                                                let (composed, composed_nanos) =
-                                                    nanos_net_of_pool_parse(|| {
-                                                        tree_bare_census_for_root(index, &root).map(
-                                                            |tree| {
-                                                                v1_compiler_infer::symbol_index_with_bare_fill(
-                                                                    symbol_index.clone(),
-                                                                    tree,
-                                                                )
-                                                            },
-                                                        )
-                                                    });
-                                                let composed = composed?;
-                                                resolve_stage_slot_add(|s| {
-                                                    s.assembly_root_symbol_index += composed_nanos
-                                                });
-                                                // The composed index's global_bare = closure ∪ tree,
-                                                // so its variant base is computed from the composed
-                                                // map — once per root, beside the index it belongs to.
-                                                let root_variant_base_started =
-                                                    std::time::Instant::now();
-                                                let base =
-                                            v1_compiler_infer::build_global_bare_variant_locals(
-                                                composed.global_bare.clone(),
-                                                source_indices.clone(),
-                                            );
-                                                resolve_stage_slot_add(|s| {
-                                                    s.assembly_root_variant_base +=
-                                                        root_variant_base_started
-                                                            .elapsed()
-                                                            .as_nanos()
-                                                });
-                                                tree_symbol_index_memo
-                                                    .insert(root, (composed.clone(), base.clone()));
-                                                (composed, base)
-                                            }
-                                        },
-                                        None => {
-                                            (symbol_index.clone(), closure_variant_base.clone())
-                                        }
-                                    };
+                                let (_module_symbol_index, module_variant_base) =
+                                    composed_symbol_index_for_decl_file(
+                                        index,
+                                        &decl_file,
+                                        &symbol_index,
+                                        &closure_variant_base,
+                                        &source_indices,
+                                        &mut tree_symbol_index_memo,
+                                    )?;
                                 let module_tc_started = std::time::Instant::now();
+                                // A module reaching body realization with no phase-1 row means the
+                                // two phases disagree about who exists. It REFUSES here rather than
+                                // recomputing the declarations locally: recomputing would be the
+                                // absorbing arm DESIGN §5 forbids and would hide the exact defect
+                                // the split exists to make impossible.
+                                let facts = declaration_facts.get(&mod_name).cloned().ok_or_else(
+                                    || {
+                                        format!(
+                                            "module '{}' reached body realization with no declaration-phase row",
+                                            mod_name
+                                        )
+                                    },
+                                )?;
                                 let computed = v1_compiler_infer::typecheck_module(
                                     resolved.clone(),
+                                    facts,
                                     module_index.clone(),
+                                    callable_owner_index.clone(),
                                     variant_surfaces.clone(),
                                     source_indices.clone(),
-                                    intern_table.clone(),
-                                    module_symbol_index,
                                     module_variant_base,
                                 );
                                 // Per-module attribution for the typecheck-dominant resolves measured

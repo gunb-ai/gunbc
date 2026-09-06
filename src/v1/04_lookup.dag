@@ -685,6 +685,30 @@ fn census_declaration_bound_formals(type_env: TypeEnv, owner_module_path: String
     })
 }
 
+// THE WHOLE-POOL CENSUS NO LONGER ANSWERS A BARE CALLABLE NAME. THE ARM REFUSES.
+//
+// This was an absorbing fallback in DESIGN section 5's exact shape: containment-chain resolution
+// cannot compute a precise answer for an off-chain reference, so the arm substituted the SUPERSET
+// -- every declaration in the corpus -- and answered from pool membership. Nothing is missed, so
+// it reads as safe; it is top-as-answer conflated with top-as-ignorance, and it fails open twice.
+// On safety, the specimen is a named declaration binding to the WRONG OWNER: `dag/std/types.dag`
+// `type NonEmptyStr = String where non_empty` bound a different `non_empty` returning an Outcome.
+// On measurement, the arm answered behind the containment supply for every name the chain admitted
+// AND every name it excluded, so the replacement's effect could not be observed at all -- seven
+// authored fixtures could not separate the two compilers because this arm decided before the
+// difference could show.
+//
+// A QUALIFIED NAME IS NOT AFFECTED AND THE DISTINCTION IS THE POINT. `borrowed_census_decl`'s
+// dotted branch is an EXACT lookup of a full path in the symbol index -- an identity, not a
+// population -- so it keeps answering. What refuses is the bare branch, whose answer was
+// `global_bare`: a corpus-wide uniqueness claim, plus `global_bare_policy_candidate` picking among
+// candidates when it was not even unique. The module's OWN declarations still answer first, above
+// this arm, exactly as before.
+//
+// The refusal is not silent: the seams that consult this lookup already render typed, located
+// diagnostics for an unresolved callable, so what was a wrong or coincidental binding becomes a
+// counted refusal at the referencing site. The blocking population is expected to rise sharply and
+// that rise is the census, not a regression -- it is the residue the import universe was masking.
 fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
   if algebra_method_template_name(name: name) {
     FuncSigUnresolved
@@ -694,7 +718,12 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
     Absent =>
   let borrowed = match lookup_binding_by_name_local(env: type_env, name: name) {
     Present { value: binding } => BorrowedCensusDeclFound { declaration: BorrowedCensusDecl { owner_module_path: type_env.module_path, node: binding.resolved } }
-    Absent => borrowed_census_decl(type_env: type_env, name: name)
+    Absent =>
+      if contains(name, ".") {
+        borrowed_census_decl(type_env: type_env, name: name)
+      } else {
+        BorrowedCensusDeclNotFound
+      }
   }
   match borrowed {
     BorrowedCensusDeclFound { declaration: bd } =>

@@ -182,12 +182,14 @@ pub use crate::v1_compiler_infer_sigs::{
     call_target_declared_sig, call_target_is_locally_bound, call_target_local_binding,
 };
 pub use crate::v1_compiler_infer_sigs::{
-    callable_candidate_labels, callable_identity_label, flatten_parent_envs,
-    func_sig_for_derivation, resolve_func_sigs,
+    callable_candidate_labels, callable_identity_label, callable_owner_index_from_envs,
+    callable_owner_index_from_own_env, empty_callable_owner_index, flatten_parent_envs,
+    func_sig_for_derivation, reference_derived_parent_envs, reference_provider_module_paths,
+    resolve_func_sigs,
 };
 pub use crate::v1_compiler_infer_sigs::{
-    CallableCandidate, CallableIdentity, DerivedCalleeSig, FuncSigLookup, NoDerivableSigReason,
-    ResolveFuncSigsResult, ResolvedFormals, ResolvedFuncEnv, ResolvedFuncSig,
+    CallableCandidate, CallableIdentity, CallableOwnerIndex, DerivedCalleeSig, FuncSigLookup,
+    NoDerivableSigReason, ResolveFuncSigsResult, ResolvedFormals, ResolvedFuncEnv, ResolvedFuncSig,
 };
 pub use crate::v1_compiler_infer_types::KernelTypeBuild;
 pub use crate::v1_compiler_infer_types::{
@@ -486,7 +488,6 @@ pub struct BuildTypeEnvResult {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParentModulesResult {
-    pub modules: Rc<Vec<Rc<TypedModule>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
@@ -20060,7 +20061,7 @@ pub struct ParentCacheRow {
 
 pub fn union_parent_type_env_caches(
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
-    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    parent_index: Rc<HashMap<String, Rc<ModuleInterface>>>,
 ) -> Rc<GuardedTypeEnvCacheMerge> {
     {
         let parent_caches = Rc::new({
@@ -20070,7 +20071,7 @@ pub fn union_parent_type_env_caches(
                     (*match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
                         Some(parent) => Rc::new(vec![Rc::new(ParentCacheRow {
                             import_path: imp.module_path.clone(),
-                            cache: parent.interface.clone().cache.clone(),
+                            cache: parent.cache.clone(),
                         })]),
                         std::option::Option::None => Rc::new(vec![]),
                     })
@@ -22143,7 +22144,7 @@ pub fn overlay_skips_kernel_name(name: String) -> bool {
 pub fn overlay_direct_import_exports(
     ancestry_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
-    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    parent_index: Rc<HashMap<String, Rc<ModuleInterface>>>,
 ) -> Rc<HashMap<String, Rc<TypeBinding>>> {
     resolved_imports.iter().cloned().fold(
         ancestry_str_bindings.clone(),
@@ -22152,10 +22153,8 @@ pub fn overlay_direct_import_exports(
             imp.module_path.clone(),
         ) {
             Some(typed_parent) => {
-                let export_surface = interface_env_for_import(
-                    imp.module_path.clone(),
-                    typed_parent.interface.clone().env.clone(),
-                );
+                let export_surface =
+                    interface_env_for_import(imp.module_path.clone(), typed_parent.env.clone());
                 let selected = if imp.is_all.clone() {
                     Rc::new({
                         let mut __result = Vec::new();
@@ -22279,7 +22278,7 @@ pub fn kernel_bool_type_node() -> Rc<Node> {
 
 pub fn build_ancestry_precedence(
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
-    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    parent_index: Rc<HashMap<String, Rc<ModuleInterface>>>,
     kernel_cache: Rc<TypeEnvCache>,
 ) -> Rc<AncestryPrecedence> {
     {
@@ -22303,7 +22302,7 @@ pub fn build_ancestry_precedence(
 
 pub fn build_type_env(
     module: Rc<ResolvedModule>,
-    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    parent_index: Rc<HashMap<String, Rc<ModuleInterface>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     symbol_index: Rc<SymbolIndex>,
@@ -22612,7 +22611,7 @@ pub fn build_type_env(
                     (*match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
                         Some(typed_parent) => Rc::new(vec![interface_env_for_import(
                             imp.module_path.clone(),
-                            typed_parent.interface.clone().env.clone(),
+                            typed_parent.env.clone(),
                         )]),
                         std::option::Option::None => Rc::new(vec![]),
                     })
@@ -22936,13 +22935,7 @@ pub fn build_type_env(
                     match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
                         Some(parent_mod) => {
                             let a1 = Rc::new(v1_rt::map_keys(
-                                &parent_mod
-                                    .interface
-                                    .clone()
-                                    .env
-                                    .clone()
-                                    .str_bindings
-                                    .clone(),
+                                &parent_mod.env.clone().str_bindings.clone(),
                             ))
                             .iter()
                             .cloned()
@@ -22953,13 +22946,7 @@ pub fn build_type_env(
                                 },
                             );
                             Rc::new(v1_rt::map_keys(
-                                &parent_mod
-                                    .interface
-                                    .clone()
-                                    .env
-                                    .clone()
-                                    .ancestry_str_bindings
-                                    .clone(),
+                                &parent_mod.env.clone().ancestry_str_bindings.clone(),
                             ))
                             .iter()
                             .cloned()
@@ -23068,7 +23055,7 @@ pub fn build_type_env(
 
 pub fn build_type_env_unresolved(
     module: Rc<ResolvedModule>,
-    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    parent_index: Rc<HashMap<String, Rc<ModuleInterface>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<BuildTypeEnvResult> {
@@ -23272,7 +23259,7 @@ pub fn build_type_env_unresolved(
                     (*match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
                         Some(typed_parent) => Rc::new(vec![interface_env_for_import(
                             imp.module_path.clone(),
-                            typed_parent.interface.clone().env.clone(),
+                            typed_parent.env.clone(),
                         )]),
                         std::option::Option::None => Rc::new(vec![]),
                     })
@@ -24318,47 +24305,6 @@ pub fn build_imported_variants(
         })
 }
 
-pub fn selective_func_env_view(
-    env: Rc<ResolvedFuncEnv>,
-    names: Rc<Vec<String>>,
-) -> Rc<ResolvedFuncEnv> {
-    {
-        let selected = names.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
-            |acc: _, name: String| match v1_rt::map_get(&env.local.clone(), name.clone()) {
-                Some(sig) => v1_rt::rc_map_insert(acc.clone(), name.clone(), sig.clone()),
-                std::option::Option::None => acc.clone(),
-            },
-        );
-        Rc::new(ResolvedFuncEnv {
-            name: env.name.clone(),
-            local: selected.clone(),
-            parents: Rc::new(vec![]),
-        })
-    }
-}
-
-pub fn func_env_views_for_import(
-    parent: Rc<ResolvedFuncEnv>,
-    is_all: bool,
-    specific_names: Rc<Vec<String>>,
-) -> Rc<Vec<Rc<ResolvedFuncEnv>>> {
-    if is_all.clone() {
-        Rc::new(vec![parent.clone()])
-    } else {
-        Rc::new({
-            let mut __result = Vec::new();
-            for env in v1_rt::concat(Rc::new(vec![parent.clone()]), parent.parents.clone())
-                .iter()
-                .cloned()
-            {
-                __result.push(selective_func_env_view(env.clone(), specific_names.clone()));
-            }
-            __result
-        })
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FuncEnvViewMerge {
     pub by_owner: Rc<HashMap<String, Rc<ResolvedFuncEnv>>>,
@@ -24469,9 +24415,36 @@ Rc::new(ResolvedFormal {
     }
 }
 
+pub fn module_local_callable_env(
+    contributions_local: Rc<LocalContributionState>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<ResolveFuncSigsResult> {
+    {
+        let resolve_result = crate::v1_compiler_infer_sigs::resolve_func_sigs(
+            contributions_local.func_sigs.clone(),
+            Rc::new(vec![]),
+            contributions_local.resolved_items.clone(),
+            module_name.clone(),
+            env.source_indices.clone(),
+        );
+        Rc::new(ResolveFuncSigsResult {
+            func_env: bind_local_func_conformance(
+                resolve_result.func_env.clone(),
+                env.clone(),
+                module_name.clone(),
+            ),
+            diagnostics: resolve_result.diagnostics.clone(),
+        })
+    }
+}
+
 pub fn build_module_context(
-    contributions: Rc<Vec<Rc<ItemContribution>>>,
+    local: Rc<LocalContributionState>,
+    local_func_env: Rc<ResolvedFuncEnv>,
+    local_env_diagnostics: Rc<Vec<Rc<ErrorNode>>>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    callable_owner_index: Rc<CallableOwnerIndex>,
     variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     env: Rc<TypeEnv>,
@@ -24479,16 +24452,6 @@ pub fn build_module_context(
     global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<ModuleContext> {
     {
-        let local = fold_module_contributions(
-            contributions.clone(),
-            Rc::new(vec![]),
-            v1_rt::rc_empty_map::<String, Rc<DeclaredFuncSig>>(),
-            v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
-            v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-            v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
-            Rc::new(vec![]),
-            env.source_indices.clone(),
-        );
         let local_variant_fold = build_local_variants(
             local.resolved_items.clone(),
             env.source_indices.clone(),
@@ -24580,31 +24543,22 @@ pub fn build_module_context(
             ),
             v1_rt::rc_map_merge(census_scope.svc_locals.clone(), local.svc_locals.clone()),
         );
-        let parent_envs = merge_func_env_views_by_owner(Rc::new({
-            let mut __result = Vec::new();
-            for imp in resolved_imports.iter().cloned() {
-                __result.extend(
-                    (*match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
-                        Some(typed_parent) => func_env_views_for_import(
-                            typed_parent.func_env.clone(),
-                            imp.is_all.clone(),
-                            imp.specific_names.clone(),
-                        ),
-                        std::option::Option::None => Rc::new(vec![]),
-                    })
-                    .iter()
-                    .cloned(),
-                );
-            }
-            __result
-        }));
-        let resolve_result = crate::v1_compiler_infer_sigs::resolve_func_sigs(
-            local.func_sigs.clone(),
-            parent_envs.clone(),
-            local.resolved_items.clone(),
-            module_name.clone(),
-            env.source_indices.clone(),
+        let parent_envs = merge_func_env_views_by_owner(
+            crate::v1_compiler_infer_sigs::reference_derived_parent_envs(
+                local.resolved_items.clone(),
+                callable_owner_index.clone(),
+                module_name.clone(),
+                env.source_indices.clone(),
+            ),
         );
+        let resolve_result = Rc::new(ResolveFuncSigsResult {
+            func_env: Rc::new(ResolvedFuncEnv {
+                name: local_func_env.name.clone(),
+                local: local_func_env.local.clone(),
+                parents: crate::v1_compiler_infer_sigs::flatten_parent_envs(parent_envs.clone()),
+            }),
+            diagnostics: local_env_diagnostics.clone(),
+        });
         let all_locals = Rc::new(v1_rt::map_values(&merged_scope.svc_locals.clone()))
             .iter()
             .cloned()
@@ -24616,11 +24570,7 @@ pub fn build_module_context(
             );
         Rc::new(ModuleContext {
             resolved_items: local.resolved_items.clone(),
-            func_env: bind_local_func_conformance(
-                resolve_result.func_env.clone(),
-                env.clone(),
-                module_name.clone(),
-            ),
+            func_env: resolve_result.func_env.clone(),
             svc_registry: merged_scope.svc_registry.clone(),
             locals: all_locals.clone(),
             variant_locals: env_variant_locals.clone(),
@@ -24651,35 +24601,19 @@ pub struct TypecheckModuleResult {
 
 pub fn typecheck_module(
     resolved: Rc<ResolvedModule>,
+    facts: Rc<ModuleDeclarationFacts>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    callable_owner_index: Rc<CallableOwnerIndex>,
     variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    intern_table: Rc<InternTable>,
-    symbol_index: Rc<SymbolIndex>,
     global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<TypecheckModuleResult> {
     {
-        let env_result = build_type_env(
-            resolved.clone(),
-            parent_index.clone(),
-            source_indices.clone(),
-            intern_table.clone(),
-            symbol_index.clone(),
-        );
-        let env = env_result.env.clone();
-        let env_cache = env_result.cache.clone();
-        let env_diags = env_result.diagnostics.clone();
-        let env_errors = Rc::new({
-            let mut __result = Vec::new();
-            for d in env_diags.iter().cloned() {
-                if crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone()) {
-                    __result.push(d);
-                }
-            }
-            __result
-        });
+        let env = facts.env.clone();
+        let env_cache = facts.cache.clone();
+        let env_diags = facts.env_diagnostics.clone();
         let seed_diags = crate::v1_compiler_infer_method::builtin_kernel_seed_diagnostics();
-        if ((env_errors.clone().len() as i64) > 0) {
+        if facts.env_abandoned.clone() {
             return Rc::new(TypecheckModuleResult {
                 typed: Rc::new(TypedModule {
                     progress: ModuleTypecheckProgress::AbandonedBeforeItems,
@@ -24687,50 +24621,23 @@ pub fn typecheck_module(
                     items: Rc::new(vec![]),
                     type_env: env.clone(),
                     type_env_cache: env_cache.clone(),
-                    interface: build_module_interface(
-                        crate::v1_std_core::authored_name_at(
-                            source_indices.clone(),
-                            resolved.module.clone(),
-                        ),
-                        resolved.module.clone(),
-                        env.clone(),
-                        env_cache.clone(),
-                        source_indices.clone(),
-                    ),
-                    func_env: Rc::new(ResolvedFuncEnv {
-                        name: crate::v1_std_core::authored_name_at(
-                            source_indices.clone(),
-                            resolved.module.clone(),
-                        ),
-                        local: v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
-                        parents: Rc::new(vec![]),
-                    }),
+                    interface: facts.interface.clone(),
+                    func_env: facts.local_func_env.clone(),
                     item_registry: v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
                     occurrence_transport: Some(resolved.occurrence_transport.clone()),
                 }),
                 diagnostics: v1_rt::concat(env_diags.clone(), seed_diags.clone()),
-                binding_forks: env_result.binding_forks.clone(),
+                binding_forks: facts.binding_forks.clone(),
             });
         }
         let resolved_module_name =
             crate::v1_std_core::authored_name_at(source_indices.clone(), resolved.module.clone());
-        let contributions = Rc::new({
-            let mut __result = Vec::new();
-            for item in crate::v1_std_core::module_items(resolved.module.clone())
-                .iter()
-                .cloned()
-            {
-                __result.push(analyze_item(
-                    item.clone(),
-                    env.clone(),
-                    resolved_module_name.clone(),
-                ));
-            }
-            __result
-        });
         let ctx = build_module_context(
-            contributions.clone(),
+            facts.local.clone(),
+            facts.local_func_env.clone(),
+            facts.local_env_diagnostics.clone(),
             parent_index.clone(),
+            callable_owner_index.clone(),
             variant_surfaces.clone(),
             resolved.resolved_imports.clone(),
             env.clone(),
@@ -24892,26 +24799,9 @@ pub fn typecheck_module(
                     seed_diags.clone(),
                 ),
             ),
-            binding_forks: env_result.binding_forks.clone(),
+            binding_forks: facts.binding_forks.clone(),
         })
     }
-}
-
-pub fn typecheck_module_isolated(
-    resolved: Rc<ResolvedModule>,
-    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    intern_table: Rc<InternTable>,
-) -> Rc<TypecheckModuleResult> {
-    typecheck_module(
-        resolved.clone(),
-        parent_index.clone(),
-        v1_rt::rc_empty_map::<String, Rc<VariantExportSurface>>(),
-        source_indices.clone(),
-        intern_table.clone(),
-        crate::v1_compiler_infer_env::empty_symbol_index(),
-        v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-    )
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -25212,20 +25102,6 @@ pub fn collect_parent_envs(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<ParentModulesResult> {
     {
-        let modules = Rc::new({
-            let mut __result = Vec::new();
-            for imp in resolved.resolved_imports.clone().iter().cloned() {
-                __result.extend(
-                    (*match v1_rt::map_get(&module_index, imp.module_path.clone()) {
-                        Some(typed) => Rc::new(vec![typed.clone()]),
-                        std::option::Option::None => Rc::new(vec![]),
-                    })
-                    .iter()
-                    .cloned(),
-                );
-            }
-            __result
-        });
         let resolved_mod_name =
             crate::v1_std_core::authored_name_at(source_indices.clone(), resolved.module.clone());
         let diagnostics = Rc::new({
@@ -25242,7 +25118,6 @@ pub fn collect_parent_envs(
             __result
         });
         Rc::new(ParentModulesResult {
-            modules: modules.clone(),
             diagnostics: diagnostics.clone(),
         })
     }
@@ -25465,6 +25340,231 @@ pub fn seed_kernel_intern_table(intern_table: Rc<InternTable>) -> Rc<InternTable
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleDeclarationFacts {
+    pub interface: Rc<ModuleInterface>,
+    pub env: Rc<TypeEnv>,
+    pub cache: Rc<TypeEnvCache>,
+    pub local: Rc<LocalContributionState>,
+    pub local_func_env: Rc<ResolvedFuncEnv>,
+    pub env_diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub local_env_diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub binding_forks: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
+    pub env_abandoned: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DeclarationPhaseState {
+    pub facts: Rc<HashMap<String, Rc<ModuleDeclarationFacts>>>,
+    pub interface_index: Rc<HashMap<String, Rc<ModuleInterface>>>,
+    pub callable_owner_index: Rc<CallableOwnerIndex>,
+}
+
+pub fn empty_local_contribution_state() -> Rc<LocalContributionState> {
+    Rc::new(LocalContributionState {
+        resolved_items: Rc::new(vec![]),
+        func_sigs: v1_rt::rc_empty_map::<String, Rc<DeclaredFuncSig>>(),
+        svc_registry: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
+        svc_locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+        item_registry: v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
+        diag_chunks: Rc::new(vec![]),
+    })
+}
+
+pub fn declare_module_facts(
+    resolved: Rc<ResolvedModule>,
+    interface_index: Rc<HashMap<String, Rc<ModuleInterface>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+    symbol_index: Rc<SymbolIndex>,
+) -> Rc<ModuleDeclarationFacts> {
+    {
+        let module_path =
+            crate::v1_std_core::authored_name_at(source_indices.clone(), resolved.module.clone());
+        let env_result = build_type_env(
+            resolved.clone(),
+            interface_index.clone(),
+            source_indices.clone(),
+            intern_table.clone(),
+            symbol_index.clone(),
+        );
+        let env = env_result.env.clone();
+        let iface = build_module_interface(
+            module_path.clone(),
+            resolved.module.clone(),
+            env.clone(),
+            env_result.cache.clone(),
+            source_indices.clone(),
+        );
+        let env_errors = Rc::new({
+            let mut __result = Vec::new();
+            for d in env_result.diagnostics.clone().iter().cloned() {
+                if crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone()) {
+                    __result.push(d);
+                }
+            }
+            __result
+        });
+        if ((env_errors.clone().len() as i64) > 0) {
+            Rc::new(ModuleDeclarationFacts {
+                interface: iface.clone(),
+                env: env.clone(),
+                cache: env_result.cache.clone(),
+                local: empty_local_contribution_state(),
+                local_func_env: Rc::new(ResolvedFuncEnv {
+                    name: module_path.clone(),
+                    local: v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
+                    parents: Rc::new(vec![]),
+                }),
+                env_diagnostics: env_result.diagnostics.clone(),
+                local_env_diagnostics: Rc::new(vec![]),
+                binding_forks: env_result.binding_forks.clone(),
+                env_abandoned: true,
+            })
+        } else {
+            {
+                let contributions = Rc::new({
+                    let mut __result = Vec::new();
+                    for item in crate::v1_std_core::module_items(resolved.module.clone())
+                        .iter()
+                        .cloned()
+                    {
+                        __result.push(analyze_item(item.clone(), env.clone(), module_path.clone()));
+                    }
+                    __result
+                });
+                let local = fold_module_contributions(
+                    contributions.clone(),
+                    Rc::new(vec![]),
+                    v1_rt::rc_empty_map::<String, Rc<DeclaredFuncSig>>(),
+                    v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
+                    v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+                    v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
+                    Rc::new(vec![]),
+                    env.source_indices.clone(),
+                );
+                let local_env_result =
+                    module_local_callable_env(local.clone(), env.clone(), module_path.clone());
+                Rc::new(ModuleDeclarationFacts {
+                    interface: iface.clone(),
+                    env: env.clone(),
+                    cache: env_result.cache.clone(),
+                    local: local.clone(),
+                    local_func_env: local_env_result.func_env.clone(),
+                    env_diagnostics: env_result.diagnostics.clone(),
+                    local_env_diagnostics: local_env_result.diagnostics.clone(),
+                    binding_forks: env_result.binding_forks.clone(),
+                    env_abandoned: false,
+                })
+            }
+        }
+    }
+}
+
+pub fn declare_module(
+    name: String,
+    resolved_by_name: Rc<HashMap<String, Rc<ResolvedModule>>>,
+    state: Rc<DeclarationPhaseState>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+    symbol_index: Rc<SymbolIndex>,
+    visiting: Rc<HashMap<String, bool>>,
+) -> Rc<DeclarationPhaseState> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if v1_rt::map_has(&visiting, name.clone()) {
+            state
+        } else {
+            match v1_rt::map_get(&state.facts.clone(), name.clone()) {
+                Some(_) => state,
+                std::option::Option::None => {
+                    match v1_rt::map_get(&resolved_by_name, name.clone()) {
+                        std::option::Option::None => state,
+                        Some(resolved) => {
+                            let dep_state =
+                                crate::v1_compiler_infer_sigs::reference_provider_module_paths(
+                                    crate::v1_std_core::module_items(resolved.module.clone()),
+                                    name.clone(),
+                                    source_indices.clone(),
+                                )
+                                .iter()
+                                .cloned()
+                                .fold(
+                                    state,
+                                    |st: _, provider_path: String| {
+                                        declare_module(
+                                            provider_path.clone(),
+                                            resolved_by_name.clone(),
+                                            st,
+                                            source_indices.clone(),
+                                            intern_table.clone(),
+                                            symbol_index.clone(),
+                                            v1_rt::rc_map_insert(
+                                                visiting.clone(),
+                                                name.clone(),
+                                                true,
+                                            ),
+                                        )
+                                    },
+                                );
+                            let facts = declare_module_facts(
+                                resolved.clone(),
+                                dep_state.interface_index.clone(),
+                                source_indices.clone(),
+                                intern_table.clone(),
+                                symbol_index.clone(),
+                            );
+                            Rc::new(DeclarationPhaseState {
+                                facts: v1_rt::rc_map_insert(
+                                    dep_state.facts.clone(),
+                                    name.clone(),
+                                    facts.clone(),
+                                ),
+                                interface_index: v1_rt::rc_map_insert(
+                                    dep_state.interface_index.clone(),
+                                    name.clone(),
+                                    facts.interface.clone(),
+                                ),
+                                callable_owner_index:
+                                    crate::v1_compiler_infer_sigs::callable_owner_index_from_own_env(
+                                        dep_state.callable_owner_index.clone(),
+                                        facts.local_func_env.clone(),
+                                    ),
+                            })
+                        }
+                    }
+                }
+            }
+        }
+    })
+}
+
+pub fn build_declaration_layer(
+    modules: Rc<Vec<Rc<ResolvedModule>>>,
+    resolved_by_name: Rc<HashMap<String, Rc<ResolvedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+    symbol_index: Rc<SymbolIndex>,
+) -> Rc<DeclarationPhaseState> {
+    modules.iter().cloned().fold(
+        Rc::new(DeclarationPhaseState {
+            facts: v1_rt::rc_empty_map::<String, Rc<ModuleDeclarationFacts>>(),
+            interface_index: v1_rt::rc_empty_map::<String, Rc<ModuleInterface>>(),
+            callable_owner_index: crate::v1_compiler_infer_sigs::empty_callable_owner_index(),
+        }),
+        |st: _, rm: _| {
+            declare_module(
+                crate::v1_std_core::authored_name_at(source_indices.clone(), rm.module.clone()),
+                resolved_by_name.clone(),
+                st,
+                source_indices.clone(),
+                intern_table.clone(),
+                symbol_index.clone(),
+                v1_rt::rc_empty_map::<String, bool>(),
+            )
+        },
+    )
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RealizeState {
     pub module_index: Rc<HashMap<String, Rc<TypedModule>>>,
     pub variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
@@ -25513,6 +25613,13 @@ pub fn typecheck_with_census_extra(
             symbol_index.global_bare.clone(),
             source_indices.clone(),
         );
+        let declarations = build_declaration_layer(
+            graph.modules.clone(),
+            resolved_by_name.clone(),
+            source_indices.clone(),
+            intern_table.clone(),
+            symbol_index.clone(),
+        );
         let state = graph.modules.clone().iter().cloned().fold(
             Rc::new(RealizeState {
                 module_index: v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
@@ -25525,10 +25632,11 @@ pub fn typecheck_with_census_extra(
                     crate::v1_std_core::authored_name_at(source_indices.clone(), rm.module.clone()),
                     resolved_by_name.clone(),
                     st,
+                    declarations.facts.clone(),
+                    declarations.callable_owner_index.clone(),
                     source_indices.clone(),
-                    intern_table.clone(),
-                    symbol_index.clone(),
                     global_variant_base.clone(),
+                    v1_rt::rc_empty_map::<String, bool>(),
                 )
             },
         );
@@ -25593,80 +25701,80 @@ pub fn realize_module(
     name: String,
     resolved_by_name: Rc<HashMap<String, Rc<ResolvedModule>>>,
     state: Rc<RealizeState>,
+    declarations: Rc<HashMap<String, Rc<ModuleDeclarationFacts>>>,
+    callable_owner_index: Rc<CallableOwnerIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    intern_table: Rc<InternTable>,
-    symbol_index: Rc<SymbolIndex>,
     global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
+    visiting: Rc<HashMap<String, bool>>,
 ) -> Rc<RealizeState> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match v1_rt::map_get(&state.module_index.clone(), name.clone()) {
-            Some(_) => state,
-            std::option::Option::None => match v1_rt::map_get(&resolved_by_name, name.clone()) {
-                std::option::Option::None => state,
-                Some(resolved) => {
-                    let dep_state = resolved.resolved_imports.clone().iter().cloned().fold(
-                        state,
-                        |st: _, imp: _| {
-                            realize_module(
-                                imp.module_path.clone(),
-                                resolved_by_name.clone(),
-                                st,
+        if v1_rt::map_has(&visiting, name.clone()) {
+            state
+        } else {
+            match v1_rt::map_get(&state.module_index.clone(), name.clone()) {
+                Some(_) => state,
+                std::option::Option::None => {
+                    match v1_rt::map_get(&resolved_by_name, name.clone()) {
+                        std::option::Option::None => state,
+                        Some(resolved) => {
+                            let dep_state =
+                                crate::v1_compiler_infer_sigs::reference_provider_module_paths(
+                                    crate::v1_std_core::module_items(resolved.module.clone()),
+                                    name.clone(),
+                                    source_indices.clone(),
+                                )
+                                .iter()
+                                .cloned()
+                                .fold(
+                                    state,
+                                    |st: _, provider_path: String| {
+                                        realize_module(
+                                            provider_path.clone(),
+                                            resolved_by_name.clone(),
+                                            st,
+                                            declarations.clone(),
+                                            callable_owner_index.clone(),
+                                            source_indices.clone(),
+                                            global_variant_base.clone(),
+                                            v1_rt::rc_map_insert(
+                                                visiting.clone(),
+                                                name.clone(),
+                                                true,
+                                            ),
+                                        )
+                                    },
+                                );
+                            let parent_result = collect_parent_envs(
+                                resolved.clone(),
+                                dep_state.module_index.clone(),
                                 source_indices.clone(),
-                                intern_table.clone(),
-                                symbol_index.clone(),
-                                global_variant_base.clone(),
-                            )
-                        },
-                    );
-                    let parent_result = collect_parent_envs(
-                        resolved.clone(),
-                        dep_state.module_index.clone(),
-                        source_indices.clone(),
-                    );
-                    let tc_result = typecheck_module(
-                        resolved.clone(),
-                        dep_state.module_index.clone(),
-                        dep_state.variant_surfaces.clone(),
-                        source_indices.clone(),
-                        intern_table.clone(),
-                        symbol_index.clone(),
-                        global_variant_base.clone(),
-                    );
-                    let typed = tc_result.typed.clone();
-                    let typed_path = crate::v1_std_core::authored_name_at(
-                        source_indices.clone(),
-                        typed.module.clone(),
-                    );
-                    Rc::new(RealizeState {
-                        module_index: v1_rt::rc_map_insert(
-                            dep_state.module_index.clone(),
-                            typed_path.clone(),
-                            typed.clone(),
-                        ),
-                        variant_surfaces: v1_rt::rc_map_insert(
-                            dep_state.variant_surfaces.clone(),
-                            typed_path.clone(),
-                            build_variant_export_surface(
-                                typed.clone(),
-                                dep_state.variant_surfaces.clone(),
-                                source_indices.clone(),
-                            ),
-                        ),
-                        item_registry: v1_rt::rc_map_merge(
-                            dep_state.item_registry.clone(),
-                            typed.item_registry.clone(),
-                        ),
-                        diags_by_name: v1_rt::rc_map_insert(
-                            dep_state.diags_by_name.clone(),
-                            typed_path.clone(),
-                            v1_rt::concat(
-                                parent_result.diagnostics.clone(),
-                                tc_result.diagnostics.clone(),
-                            ),
-                        ),
-                    })
+                            );
+                            match v1_rt::map_get(&declarations, name.clone()) {
+    std::option::Option::None => Rc::new(RealizeState {
+    module_index: dep_state.module_index.clone(),
+    variant_surfaces: dep_state.variant_surfaces.clone(),
+    item_registry: dep_state.item_registry.clone(),
+    diags_by_name: v1_rt::rc_map_insert(dep_state.diags_by_name.clone(), name.clone(), Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::InternalError {
+    message: v1_rt::concat(v1_rt::concat("module '".to_string(), name.clone()), "' reached body realization with no declaration-phase row".to_string()),
+    span: resolved.module.clone().span.clone(),
+}), name.clone())])),
+}),
+    Some(facts) => {
+                    let tc_result = typecheck_module(resolved.clone(), facts.clone(), dep_state.module_index.clone(), callable_owner_index.clone(), dep_state.variant_surfaces.clone(), source_indices.clone(), global_variant_base.clone());
+let typed = tc_result.typed.clone();
+let typed_path = crate::v1_std_core::authored_name_at(source_indices.clone(), typed.module.clone());
+Rc::new(RealizeState {
+    module_index: v1_rt::rc_map_insert(dep_state.module_index.clone(), typed_path.clone(), typed.clone()),
+    variant_surfaces: v1_rt::rc_map_insert(dep_state.variant_surfaces.clone(), typed_path.clone(), build_variant_export_surface(typed.clone(), dep_state.variant_surfaces.clone(), source_indices.clone())),
+    item_registry: v1_rt::rc_map_merge(dep_state.item_registry.clone(), typed.item_registry.clone()),
+    diags_by_name: v1_rt::rc_map_insert(dep_state.diags_by_name.clone(), typed_path.clone(), v1_rt::concat(parent_result.diagnostics.clone(), tc_result.diagnostics.clone())),
+})
+},
+}
+                        }
+                    }
                 }
-            },
+            }
         }
     })
 }
@@ -26411,48 +26519,25 @@ pub fn rewire_func_env_parent_links(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedModule>>> {
     {
-        let index = modules.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
-            |acc: _, m: _| {
-                v1_rt::rc_map_insert(
-                    acc,
-                    crate::v1_std_core::authored_name_at(source_indices.clone(), m.module.clone()),
-                    m.clone(),
-                )
-            },
-        );
+        let owner_index = crate::v1_compiler_infer_sigs::callable_owner_index_from_envs(Rc::new({
+            let mut __result = Vec::new();
+            for m in modules.iter().cloned() {
+                __result.push(m.func_env.clone());
+            }
+            __result
+        }));
         Rc::new({
             let mut __result = Vec::new();
             for m in modules.iter().cloned() {
                 __result.push({
-                    let parents = merge_func_env_views_by_owner(Rc::new({
-                        let mut __result = Vec::new();
-                        for imp in crate::v1_std_core::module_imports(m.module.clone())
-                            .iter()
-                            .cloned()
-                        {
-                            __result.extend(
-                                (*{
-                                    let path =
-                                        import_module_path_at(imp.clone(), source_indices.clone());
-                                    match v1_rt::map_get(&index, path.clone()) {
-                                        Some(parent) => func_env_views_for_import(
-                                            parent.func_env.clone(),
-                                            crate::v1_std_core::import_is_all(imp.clone()),
-                                            crate::v1_std_core::import_specific_names_at(
-                                                imp.clone(),
-                                                source_indices.clone(),
-                                            ),
-                                        ),
-                                        std::option::Option::None => Rc::new(vec![]),
-                                    }
-                                })
-                                .iter()
-                                .cloned(),
-                            );
-                        }
-                        __result
-                    }));
+                    let parents = merge_func_env_views_by_owner(
+                        crate::v1_compiler_infer_sigs::reference_derived_parent_envs(
+                            m.items.clone(),
+                            owner_index.clone(),
+                            m.func_env.clone().name.clone(),
+                            source_indices.clone(),
+                        ),
+                    );
                     Rc::new(TypedModule {
                         progress: m.progress.clone(),
                         module: m.module.clone(),
