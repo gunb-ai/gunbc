@@ -46,7 +46,7 @@ fn self_applying_lenses_body() -> List<MarkdownBlock> {
     p(text: "**Decidability split (the expressibility frontier, §0):**"),
     ul(items: [
       li(text: "**WALL / self-applying** — source-redundancy + the *finite* rewrite catalog (\"bulletproof where it fires\", §5). Decidable: pattern-match + rewrite."),
-      li(text: "**RATCHET / advisory (until the named authority is a wall)** — *global* optimality (Rice: \"is there ANY cheaper equivalent?\"). `complexity.dag` is `WallAfterGrounding` / `SingleAuthority` for the derived kernel (`complexity_unknown_climbs_when` → `v2.lens.cost.cost_lens`, sufficient for every Accepted node having known SymbolicCost). Optimality is `OutsideModeledGuarantee` (`complexity_optimality_boundary`) until `unrestricted_semantic_complexity_equivalence_procedure` is authored. Catalog lowering is `v2.lens.complexity_lowering`. Not a permanent `RatchetForever` class — that arm is gone from `ConstructionClass`."),
+      li(text: "**RATCHET / advisory (until the named authority is a wall)** — *global* optimality (Rice: \"is there ANY cheaper equivalent?\"). `complexity.dag` is `WallAfterGrounding` / `SingleAuthority` for the derived kernel; next-rung is `gunbc.guarantee_stall.complexity_incomplete_assessment_stall`. Optimality is `OutsideModeledGuarantee` (`complexity_optimality_boundary`) until `unrestricted_semantic_complexity_equivalence_procedure` is authored. Catalog lowering is `v2.lens.complexity_lowering`. Not a permanent `RatchetForever` class — that arm is gone from `ConstructionClass`."),
     ]),
     p(text: "**Honest disanalogy — the axes genuinely diverge, so a row must tag which one it improves:**"),
     ul(items: [

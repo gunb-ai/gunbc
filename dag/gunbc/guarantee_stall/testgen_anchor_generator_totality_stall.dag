@@ -1,0 +1,13 @@
+module gunbc.guarantee_stall.testgen_anchor_generator_totality_stall
+
+import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+
+data testgen_anchor_generator_totality_stall: GuaranteeStall = GuaranteeStall {
+  subject: "v2.lens.testgen generator_id_for_claim_anchor is not total over enrolled ClaimAnchorKey values",
+  current: MechanicallyPreventable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: ["v2.lens.testgen"] },
+  next_rung_trigger: climbs_when(capability: "every enrolled ClaimAnchorKey mapping to a GeneratorId, so a claim with no generator is unwritable")
+}

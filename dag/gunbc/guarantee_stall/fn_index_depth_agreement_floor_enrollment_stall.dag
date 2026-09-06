@@ -1,0 +1,13 @@
+module gunbc.guarantee_stall.fn_index_depth_agreement_floor_enrollment_stall
+
+import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+
+data fn_index_depth_agreement_floor_enrollment_stall: GuaranteeStall = GuaranteeStall {
+  subject: "v2.lens.fn_index_depth_agreement reads fn_arrow_decl_facts_live but is deliberately not a required-lane floor witness, so a depth-one versus subtree disagreement does not refuse on the merge path",
+  current: MechanicallyPreventable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: ["v2.lens.fn_index_depth_agreement"] },
+  next_rung_trigger: climbs_when(capability: "this instrument enrolled as a required-lane consumer so a depth-one versus subtree disagreement refuses on the merge path")
+}

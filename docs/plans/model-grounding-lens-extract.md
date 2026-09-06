@@ -10,7 +10,7 @@
 
 ## 2. Construction justification (post-#5943 carrier)
 
-The module carries `ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }`. `grounding_climbs_when` names `name_coincides`, which already exists: existence is not the climb. Sufficient for: every field that is closed-set-by-comparison deciding role-vs-reference from structure, so a name-only residual never reaches a judge. Rice-complete "should this string be a reference?" is not that ceiling.
+The module carries `ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }`. The EXTRACT stall is `gunbc.guarantee_stall.grounding_extract_closed_set_stall`. The name-only confirm-judge residual is `grounding_name_only_residual_boundary` (`OutsideModeledGuarantee`). Rice-complete "should this string be a reference?" is not the EXTRACT ceiling.
 
 Whether a bare-string field **should be grounded** on an existing concept (it re-spells a type that already exists) or is legitimately a string (an open registry, a constraint/grammar string, an opaque token, or free-form prose) is **not decidable from the substrate**. Name-coincidence with a concept (Signal-A) is only a **necessary** candidate condition, never sufficient: `cursor`~`Cursor`, `mediaType`~open registry, `schedule`~`Schedule`(wrong-target) all coincide by name yet are correct as strings. Sufficiency requires semantic judgment of the field's meaning — the residual routes to a CONFIRM judge (LLM). That residue is not a live `RatchetForever` `ConstructionClass` arm (that arm is gone); it is the part of the subject that the WallAfterGrounding stamp does not claim becomes a wall.
 

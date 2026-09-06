@@ -9,17 +9,15 @@ import v2.lens.common.construction_justification {
   PolicyJudgmentRequired,
   modeled_outside_boundary,
   decl_facts_inventory_authority,
-  guarantee_boundary_still_outside,
   guarantee_boundary_required_is_not_subject,
   wall_now_total_projection_forbids_outside_modeled_guarantee
 }
+import v2.lens.common.outside_modeled_guarantee_join { guarantee_boundary_still_outside }
 import v2.lens.enforcement.complexity_contract_subject {
   complexity_derived_kernel_boundary,
   complexity_optimality_boundary
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.decl_index { DeclFact, decl_facts }
-import v2.std.collection { List }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -46,10 +44,6 @@ fn nonexistent_capability_ref() -> DeclarationRef {
     decl_name: "capability_absent_from_decl_facts",
     field: WholeDeclaration
   }
-}
-
-fn lens_decl_facts() -> List<DeclFact> {
-  decl_facts(pool_roots: ["src/v2/lens"])
 }
 
 fn planted_outside_requiring(required: DeclarationRef) -> GuaranteeBoundary {
@@ -93,6 +87,15 @@ fn class_is_wall_after_grounding(class: ConstructionClass) -> Bool {
   }
 }
 
+fn live_outside_class_still_outside(class: ConstructionClass) -> Bool {
+  match class {
+    OutsideModeledGuarantee { boundary: b } =>
+      guarantee_boundary_still_outside(boundary: b)
+        && guarantee_boundary_required_is_not_subject(boundary: b)
+    _ => false
+  }
+}
+
 test fn cost_wall_now_projected_complexity_forbids_outside_modeled_guarantee_holds() -> Bool {
   wall_now_total_projection_forbids_outside_modeled_guarantee(
     upstream: v2.lens.cost.construction_justification.class,
@@ -116,14 +119,8 @@ test fn complexity_module_aligns_derived_kernel_contract_holds() -> Bool {
 }
 
 test fn planted_outside_for_existing_decl_reds() -> Bool {
-  !guarantee_boundary_still_outside(
-    boundary: planted_outside_requiring(required: cost_lens_ref()),
-    facts: lens_decl_facts()
-  )
-    && !guarantee_boundary_still_outside(
-      boundary: planted_outside_requiring(required: synthesis_lens_ref()),
-      facts: lens_decl_facts()
-    )
+  !guarantee_boundary_still_outside(boundary: planted_outside_requiring(required: cost_lens_ref()))
+    && !guarantee_boundary_still_outside(boundary: planted_outside_requiring(required: synthesis_lens_ref()))
 }
 
 test fn planted_subject_as_required_capability_reds() -> Bool {
@@ -131,10 +128,7 @@ test fn planted_subject_as_required_capability_reds() -> Bool {
 }
 
 test fn planted_absent_decl_still_outside_holds() -> Bool {
-  guarantee_boundary_still_outside(
-    boundary: planted_outside_requiring(required: nonexistent_capability_ref()),
-    facts: lens_decl_facts()
-  )
+  guarantee_boundary_still_outside(boundary: planted_outside_requiring(required: nonexistent_capability_ref()))
 }
 
 test fn live_extract_stamps_are_on_ladder() -> Bool {
@@ -148,20 +142,10 @@ test fn live_extract_stamps_are_on_ladder() -> Bool {
     && class_is_wall_after_grounding(class: v2.lens.fn_index_depth_agreement.construction_justification.class)
 }
 
-fn live_outside_class_still_outside(class: ConstructionClass, facts: List<DeclFact>) -> Bool {
-  match class {
-    OutsideModeledGuarantee { boundary: b } =>
-      guarantee_boundary_still_outside(boundary: b, facts: facts)
-        && guarantee_boundary_required_is_not_subject(boundary: b)
-    _ => false
-  }
-}
-
 test fn live_undecidable_residues_are_outside_modeled_guarantee() -> Bool {
-  let facts = lens_decl_facts()
-  live_outside_class_still_outside(class: v2.lens.grounding.grounding_name_only_residual_boundary.class, facts: facts)
-    && live_outside_class_still_outside(class: v2.lens.synthesis.synthesis_rice_residual_boundary.class, facts: facts)
-    && live_outside_class_still_outside(class: complexity_optimality_boundary.class, facts: facts)
+  live_outside_class_still_outside(class: v2.lens.grounding.grounding_name_only_residual_boundary.class)
+    && live_outside_class_still_outside(class: v2.lens.synthesis.synthesis_rice_residual_boundary.class)
+    && live_outside_class_still_outside(class: complexity_optimality_boundary.class)
 }
 
 test fn planted_wall_now_to_outside_modeled_guarantee_projection_red() -> Bool {

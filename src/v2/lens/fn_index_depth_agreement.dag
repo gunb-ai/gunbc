@@ -2,7 +2,6 @@ module v2.lens.fn_index_depth_agreement
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import v2.std.algebra { any, contains, fold_list, length, list_snoc_item }
 import v2.std.collection { Absent, List, Present }
@@ -51,14 +50,7 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
-// NEXT-RUNG TRIGGER (DESIGN 4b): fn_arrow_decl_facts_live already exists; existence is not the climb.
-// Sufficient for: this instrument enrolled as a required-lane consumer so a depth-one vs subtree
-// disagreement refuses on the merge path (today it is live and deliberately not a floor witness).
-data fn_index_depth_agreement_climbs_when: DeclarationRef = DeclarationRef {
-  module_path: "v2.std.fn_index",
-  decl_name: "fn_arrow_decl_facts_live",
-  field: WholeDeclaration
-}
+// Next-rung: gunbc.guarantee_stall.fn_index_depth_agreement_floor_enrollment_stall.
 
 data empty_symbol_list: List<Symbol> = []
 data empty_string_list: List<String> = []

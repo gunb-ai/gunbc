@@ -220,12 +220,6 @@ data complexity_optimality_boundary: ConstructionJustification = ConstructionJus
   }
 }
 
-data complexity_optimality_climbs_when: DeclarationRef = DeclarationRef {
-  module_path: "v2.lens.enforcement.complexity_contract_subject",
-  decl_name: "unrestricted_semantic_complexity_equivalence_procedure",
-  field: WholeDeclaration
-}
-
 fn complexity_mixed_row_claim_belongs_to_subject(
   claim: ComplexityMixedRowClaim,
   subject: ComplexityContractSubject

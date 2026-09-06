@@ -1,21 +1,13 @@
 module v2.lens.grounding_ledger
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { SingleAuthority }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
-// NEXT-RUNG TRIGGER (DESIGN 4b): GroundingVerdict already exists; existence is not the climb.
-// Sufficient for: ResidueReason uninhabited — DecodeReturnedNone and UnrecognizedSiblingArm
-// have no remaining constructor path, so every ledger row is a GroundingVerdict.
-data grounding_ledger_climbs_when: DeclarationRef = DeclarationRef {
-  module_path: "v2.lens.grounding_ledger",
-  decl_name: "GroundingVerdict",
-  field: WholeDeclaration
-}
+// Next-rung: gunbc.guarantee_stall.grounding_ledger_residue_uninhabited_stall.
 
 type ResidueReason
   = DecodeReturnedNone

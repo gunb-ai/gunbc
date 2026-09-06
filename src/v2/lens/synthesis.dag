@@ -208,16 +208,8 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
-// NEXT-RUNG TRIGGER (DESIGN 4b): synthesis_lens already exists; existence is not the climb.
-// Sufficient for: every Established bound yielding a cheaper Node or a typed catalog-refusal
-// that no rewrite applies — not an AdvisoryLens empty list on Incomplete.
-data synthesis_climbs_when: DeclarationRef = DeclarationRef {
-  module_path: "v2.lens.synthesis",
-  decl_name: "synthesis_lens",
-  field: WholeDeclaration
-}
-
-// PARTITION (DESIGN 4b / C0(c)): Established-bound vs declared technique is WallAfterGrounding above.
+// PARTITION (DESIGN 4b / C0(c)): Established-bound vs declared technique is WallAfterGrounding
+// (`gunbc.guarantee_stall.synthesis_established_bound_patch_stall`).
 // Rice-complete "ANY cheaper equivalent" is off the ladder until that decision procedure is authored.
 data synthesis_rice_residual_boundary: ConstructionJustification = ConstructionJustification {
   class: OutsideModeledGuarantee {

@@ -8,18 +8,12 @@ import std.decl_ref {
   declaration_ref_eq
 }
 
-import v2.std.collection { List }
-import v2.std.algebra { length }
-import v2.std.decl_index { DeclFact, logical_qualified_name_from_module }
-import v2.std.decl_facts_skeleton { decl_facts_matching_qualified_name }
-
 // DESIGN section 4b column beside the ladder. OutsideModeledGuarantee is an identity join
-// against the declaration population: subject needs X; X has no DeclFact row. If X is later
-// authored, the same join reds. capability_inventory_authority names the producer of that
-// population (`v2.std.decl_index.decl_facts`); it is not an authored subset of capabilities.
-// This module does not call decl_facts — callers pass the facts they already acquired.
-// boundary_kind is explanatory; each arm still carries the authority, capability, or domain
-// whose standing is checked.
+// against the declaration population via v2.std.decl_ref_resolution.resolve_declaration_ref
+// (the runtime resolution authority). The join lives in
+// v2.lens.common.outside_modeled_guarantee_join so this module stays a type carrier and does
+// not import module_graph. capability_inventory_authority names that producer
+// (`v2.std.decl_index.decl_facts`); boundary_kind is explanatory.
 type GuaranteeBoundaryKind
   = CapabilityNotRepresented { required: DeclarationRef }
   | CandidateDomainNotClosed { domain: DeclarationRef }
@@ -64,25 +58,6 @@ fn modeled_outside_boundary(
     capability_inventory_authority: capability_inventory_authority,
     boundary_kind: boundary_kind
   }
-}
-
-fn guarantee_boundary_inventory_authority_is_closed(authority: DeclarationRef) -> Bool {
-  declaration_ref_eq(a: authority, b: decl_facts_inventory_authority)
-}
-
-fn required_capability_qualified_name(boundary: GuaranteeBoundary) -> String {
-  logical_qualified_name_from_module(
-    module_name: boundary.required_capability.module_path as String,
-    name: boundary.required_capability.decl_name as String
-  )
-}
-
-fn guarantee_boundary_still_outside(boundary: GuaranteeBoundary, facts: List<DeclFact>) -> Bool {
-  guarantee_boundary_inventory_authority_is_closed(authority: boundary.capability_inventory_authority)
-    && (length(xs: decl_facts_matching_qualified_name(
-      qn: required_capability_qualified_name(boundary: boundary),
-      facts: facts
-    )) == 0)
 }
 
 fn guarantee_boundary_required_is_not_subject(boundary: GuaranteeBoundary) -> Bool {

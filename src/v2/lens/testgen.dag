@@ -2,7 +2,6 @@ module v2.lens.testgen
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { SingleAuthority }
 
 import v2.std.collection { List }
@@ -2162,11 +2161,4 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
-// NEXT-RUNG TRIGGER (DESIGN 4b): generator_id_for_claim_anchor already exists; existence is not the climb.
-// Sufficient for: every enrolled ClaimAnchorKey mapping to a GeneratorId, so a claim with no
-// generator is unwritable.
-data testgen_climbs_when: DeclarationRef = DeclarationRef {
-  module_path: "v2.lens.testgen",
-  decl_name: "generator_id_for_claim_anchor",
-  field: WholeDeclaration
-}
+// Next-rung: gunbc.guarantee_stall.testgen_anchor_generator_totality_stall.
