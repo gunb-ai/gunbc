@@ -1,0 +1,14 @@
+module gunbc.recurring_failure_mode.guarded_filter_branch_dropped_by_emitter
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data guarded_filter_branch_dropped_by_emitter: RecurringFailureMode = RecurringFailureMode {
+  identity: "guarded_filter_branch_dropped_by_emitter" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a .dag function contains a branch condition using a piped filter(lambda) |> count expression, but the stage0 emitter omits that guarded branch while still emitting a compiling function. HARM: the mirror silently implements less than the .dag authority and downstream diagnostics appear authoritative while describing behavior the source never requested.",
+    "BOUND: the measured population is one site in this corpus, src/v1/04_lookup.dag lookup_structural_method; no matching filter-in-branch-condition sites occur on main.",
+    "Required failure behavior: when the emitter cannot project this construct, it must refuse with a typed, located diagnostic rather than emit a function with the branch omitted. Next-rung trigger: the emitter preserves the guarded filter branch or fail-closes at the unsupported construct boundary."
+  ],
+  evidence: [],
+}
