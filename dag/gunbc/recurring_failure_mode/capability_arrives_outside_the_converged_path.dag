@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.capability_arrives_outside_the_converged_path
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data capability_arrives_outside_the_converged_path: RecurringFailureMode = RecurringFailureMode {
+  identity: "capability_arrives_outside_the_converged_path" as NonEmptyStr,
+
+  receipts: [
+    "**a host holds a capability that no modeled path put there, so every later green on that host is uninterpretable.** INVALID STATE: a host answers ready for some capability while the convergence that is supposed to be the only way that capability arrives has not delivered it. The harm is not the capability -- it usually works -- it is that a receipt naming the host can no longer distinguish the modeled path working from a hand-run answering, and the ambiguity is permanent and travels with every future citation of that host. ",
+
+    "DISTINGUISHING FACTS, against neighbours it is easy to file as. It is not `execution_provenance_loss`: there an observation may never have run, whereas here the observation runs and reports faithfully -- the host really does hold the capability. It is not `head_landed_by_hand_before_its_own_verification_reported`: that is an artifact landing uncertified, this is DURABLE HOST STATE whose origin is unrecorded. The tell is a convergence that reports `already satisfied` for a host it never satisfied. ",
+
+    "THE STRUCTURAL CAUSE IS A CAPABILITY AUTHORIZED BY ONE MODULE, DISCLAIMED BY ANOTHER, AND EXECUTED BY NEITHER, which is DESIGN section 6's out-of-band actuation wearing convergence vocabulary. `gunbc.runner.runner_host_grants` emits EnsureSupplementaryGroupMembership and `runner_host_sudoers_content` renders permission to run its argv; `gunbc.runner_microvm_host_ready` explicitly disclaims applying it, naming the result 'a hole an operator falls into once per host, by hand'. A modeled capability with no executor is a manual step, and the roster row that grants it makes the manual step look converged. ",
+
+    "SPECIMEN A, srv2 KVM (2026-09-05): an operator ran `sudo usermod -aG kvm ghrunner` by hand, the argv already rendered at provisioning/srv2/gunbc-ghrunner.sudoers. srv2 has read kvm=writable ever since while every sibling host reads present-not-writable. The module's own annotation recording the earlier measurement went stale at that moment and COULD NOT GO RED, because DESIGN section 4c says no Accepted program reads an annotation; it was caught only because someone asked whether the grant was converged. ",
+
+    "SPECIMEN B, srv1 Firecracker (2026-09-06, this row's occasion): a session ran the modeled `runner_microvm_host_converge_wet` by hand on srv1, which installed Firecracker v1.16.1-aarch64 into the executor-owned root -- 30 paths under ~/.local/share/gunbc-firecracker, the root directory itself created by the run, so nothing pre-existed. It was digest-verified, idempotent, and spent no host grant, and it was STILL wrong: srv1 is the canary of record, and its capability would not have come from the host-image path that is supposed to own it. ",
+
+    "THE RULING, AND WHY DECLARING THE DEVIATION WAS REJECTED AS THE WEAKER ARM. The first recommendation was to keep the install and write it down. The operator overrode it: declaring makes the ambiguity legible but leaves every later srv1 receipt carrying a provenance caveat forever, whereas removing it makes the question stop existing. CONVERGENCE IS ONLY MEANINGFUL IF IT IS THE ONLY WAY STATE ARRIVES. Specimen B was reverted the same day -- the enumerated tree removed and nothing adjacent touched -- and the honest post-revert state is that srv1 cannot run a guest, which is what makes the convergence gap visible instead of papered over. ",
+
+    "REPAIR, IN PREFERENCE ORDER: bake the capability into a host image so the question cannot be asked, or close it in fleet converge. NOT an applier bolted beside the disclaiming module, and never the sudoers argv by hand -- that converts a modeled hole into a second undeclared deviation, which is how specimen A was produced. The reviewer's question for any host-capability claim: which run put it there, and can you name it. ",
+  ],
+
+  evidence: [],
+}
