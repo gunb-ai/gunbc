@@ -129,9 +129,9 @@ fn mint_bmc_credential() -> Secret {
 // which is a different remedy -- retry versus go clean it up. Collapsing here would have been the
 // exact defect the new variant exists to prevent, committed one function away from the fix.
 //
-// The locus is deliberately NOT carried out: it is sealed, and a Bool-shaped adapter has nowhere
-// safe to put it. What crosses is the FACT, so a caller can refuse loudly instead of retrying over
-// a credential it did not clean.
+// No locator crosses this adapter, because the placement outcome does not carry one at all -- an
+// earlier repair sealed the path instead, and the seal did not hold. What crosses is the FACT, so a
+// caller can refuse loudly instead of retrying over a credential it did not clean.
 type NetrcWriteOutcome
   = NetrcWritten
   | NetrcNotWritten

@@ -7,7 +7,7 @@ import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.ietf.ftps {
   FtpsEndpoint, FtpsExplicit, FtpsImplicit, FtpsVerifyPeer,
   FtpsPeerVerificationDisabled, DeviceCertificateSubjectIsSerialNotAddress,
-  ftps_default_port, ftps_verifies_peer,
+  ftps_default_port, ftps_verifies_peer, ftps_endpoint,
 }
 import gunbc.fleet.printer_project_delivery {
   remote_name_for_digest, bambu_lan_endpoint, ftps_upload_url, ftps_scheme,
@@ -225,8 +225,9 @@ test fn an_identification_refusal_whose_workspace_survived_names_the_path() -> B
 // THE SECOND WITNESS ASSERTS THE ABSENCE OF THE PATH, not its value. It used to compare the
 // rendered locus against the fixture path -- which was the defect wearing the costume of coverage:
 // a green witness whose green MEANT a credential-bearing path had reached a printable string. The
-// locus is sealed now, so the property worth holding is that the cause carries the FACT and cannot
-// carry the location.
+// outcome carries NO locator at all now -- not a sealed one, which was an earlier repair that did
+// not hold -- so the property worth holding is that the cause carries the FACT and cannot carry the
+// location.
 test fn a_netrc_write_failure_that_cleaned_up_reports_no_credential_on_disk() -> Bool {
   match netrc_write_refusal(
     path: "/tmp/print-n-witness-netrc" as FilePath,
@@ -275,12 +276,11 @@ test fn the_ftps_scheme_follows_the_negotiation_in_both_directions() -> Bool {
 }
 
 test fn an_explicit_endpoint_is_never_emitted_as_an_implicit_url() -> Bool {
-  let explicit = FtpsEndpoint {
+  let explicit = ftps_endpoint(
     host: "printer.invalid",
-    port: ftps_default_port(negotiation: FtpsExplicit),
     negotiation: FtpsExplicit,
     verification: FtpsPeerVerificationDisabled { peer: DeviceCertificateSubjectIsSerialNotAddress },
-  }
+  )
   let url = ftps_upload_url(endpoint: explicit, remote_name: probe_name(hex: "aa11"))
   url.contains("ftp://printer.invalid:21/") && url.contains("ftps://") == false
 }

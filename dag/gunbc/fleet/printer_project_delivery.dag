@@ -11,7 +11,7 @@ import extdeps.tools.sha256sum {
 import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.curl { curl_ftps_upload_command }
 import extdeps.ietf.ftps {
-  FtpsEndpoint, FtpsNegotiation, FtpsExplicit, FtpsImplicit,
+  FtpsEndpoint, ftps_endpoint, FtpsNegotiation, FtpsExplicit, FtpsImplicit,
   FtpsPeerVerification, FtpsVerifyPeer, FtpsPeerVerificationDisabled,
   UnverifiablePeerClass, DeviceCertificateSubjectIsSerialNotAddress,
   ftps_default_port, ftps_verifies_peer,
@@ -275,14 +275,13 @@ type ProjectDelivery
 data bambu_lan_ftps_user: NonEmptyStr = "bblp"
 
 fn bambu_lan_endpoint(host: NonEmptyStr) -> FtpsEndpoint {
-  FtpsEndpoint {
+  ftps_endpoint(
     host: host,
-    port: ftps_default_port(negotiation: FtpsImplicit),
     negotiation: FtpsImplicit,
     verification: FtpsPeerVerificationDisabled {
       peer: DeviceCertificateSubjectIsSerialNotAddress,
     },
-  }
+  )
 }
 
 // THE SCHEME FOLLOWS THE NEGOTIATION, AND HARDCODING IT MADE THE TYPE A DECORATION. curl reads

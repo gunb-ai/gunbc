@@ -46,7 +46,7 @@ fn netrc_binding_path(binding: NetrcBinding) -> FilePath { binding.path }
 // -- and the credential is the LAST field on the line, so a truncated one is the likelier shape.
 // The old refusal said "no credential was placed", which is a claim about the disk that the return
 // value could not support. The placement now removes the path on failure and, when removal also
-// fails, names the file so a reader has something to act on. The path is a per-call mktemp location,
+// fails, says so WITHOUT naming the file -- see the note above NetrcPlacement. The path is a per-call mktemp location,
 // not the credential; nothing here puts an access code in a diagnostic.
 // THE RESIDUE LOCATOR IS SEALED, BECAUSE A PATH THAT DEREFERENCES TO A CREDENTIAL IS A CREDENTIAL
 // LOCATOR AND THE RULE DOES NOT CARE THAT THE PATHNAME ITSELF IS NOT THE SECRET. The first version

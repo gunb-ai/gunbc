@@ -216,6 +216,16 @@ fn srv3_process_exit_render(exit: ProcessExit) -> String {
   }
 }
 
+// THE NETRC RESIDUE FACT IS NOT FLATTENED IN THIS FUNCTION. Both refusal arms of the placement used
+// to answer the same `false`, so the operator got one sentence for two situations with different
+// next actions: a plain failure can be retried, a residue failure means a file that may hold this
+// BMC's credential is still on disk and must be cleaned before any retry. No locator is carried at
+// all -- what crosses is the fact, not the path.
+//
+// THIS NOTE SITS HERE, ABOVE THE DECLARATION, BECAUSE THAT IS THE ONLY GRAIN 4C MODELS. It was
+// first written inside the match and the floor lane refused it, four lines at once -- the fourth
+// time this session I have put an annotation inside a declaration body. A match arm is a
+// declaration body; so is a service body. The rule has no in-body form to reach for.
 func srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessExit
   uses net: std.resources.Network
 {
@@ -243,10 +253,6 @@ func srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessE
     login: account as NonEmptyStr,
     password: password as Secret
   )
-  // THE RESIDUE FACT IS NOT FLATTENED HERE EITHER. Both refusal arms used to answer `false` and the
-  // operator got one sentence for two situations with different next actions: a plain failure can be
-  // retried, a residue failure means a file that may hold this BMC's credential is still on disk and
-  // must be cleaned first. The locus stays sealed -- what crosses is the fact, not the path.
   match netrc_placement {
     NetrcBindingRefused { cause: _ } =>
       return exit_failure(

@@ -133,9 +133,35 @@ fn ftps_verifies_peer(v: FtpsPeerVerification) -> Bool {
   }
 }
 
-type FtpsEndpoint {
+// THE PORT CANNOT BE SET INDEPENDENTLY OF THE NEGOTIATION, because deriving a default is not the
+// same as preventing the contradiction. ftps_default_port answers 990 for implicit and 21 for
+// explicit, and the commentary above claims that derivation makes the mismatch unspellable -- but
+// while this was an open struct, FtpsEndpoint { port: 21, negotiation: FtpsImplicit } remained
+// perfectly writable, and a caller that set both by hand got exactly the connection failure the
+// type exists to prevent. A derivation only helps the callers who USE it; a constructor is what
+// makes the alternative unreachable.
+//
+// sole_constructor plus ftps_endpoint means the pair cannot be authored at all: the negotiation is
+// supplied and the port follows from it. WHAT THIS DELIBERATELY DOES NOT DO is forbid a
+// non-standard port forever -- FTPS permits one and a device may yet need it. That would be a
+// second constructor in this module, named for the fact that it departs from the registered port,
+// and it would be a deliberate act rather than a field nobody noticed was free.
+type FtpsEndpoint sole_constructor {
   host: NonEmptyStr
   port: Port
   negotiation: FtpsNegotiation
   verification: FtpsPeerVerification
+}
+
+fn ftps_endpoint(
+  host: NonEmptyStr,
+  negotiation: FtpsNegotiation,
+  verification: FtpsPeerVerification,
+) -> FtpsEndpoint {
+  FtpsEndpoint {
+    host: host,
+    port: ftps_default_port(negotiation: negotiation),
+    negotiation: negotiation,
+    verification: verification,
+  }
 }
