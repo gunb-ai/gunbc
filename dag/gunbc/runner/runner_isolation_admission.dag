@@ -1,0 +1,224 @@
+module gunbc.runner.runner_isolation_admission
+
+import std.types { Bool, List, NonEmptyStr, String }
+import product.fabric.isolation {
+  AttemptScopedSecrets,
+  DedicatedKernel,
+  DefaultDenyEgress,
+  FreshWritableRoot,
+  IsolationGuarantee,
+  IsolationProfile,
+  PrivateNetworkNamespace,
+  PrivateProcessNamespace,
+  PrivateUserNamespace,
+  dedicated_kernel_sandbox_profile,
+  isolation_guarantee_label,
+  shared_kernel_sandbox_profile,
+  unsatisfied_isolation_guarantees,
+}
+
+// WHERE A WORKLOAD'S ISOLATION REQUIREMENT COMES FROM, and why this module had to exist at all.
+// product.fabric.isolation already models the axes correctly -- required and provided
+// profiles, a matcher, and shared-kernel and dedicated-kernel profiles that differ by exactly the
+// DedicatedKernel guarantee. What it had no connection to was ADMISSION: isolation_profile_satisfies
+// was consumed only by witness tests, so nothing in a production path ever asked whether a
+// workload's requirement was met before running it.
+//
+// THE MECHANISMS ARE NOT SUBSTITUTES AND THE MT. COLLINS CENSUS PROVED IT. That attempt had a
+// dedicated guest kernel and ran its VMM in the ROOT CGROUP -- a kernel boundary with no host
+// resource boundary at all. So "VM or namespaces" is the wrong axis: dependency closure is an image
+// question, visibility is a namespace question, resource bounds are a cgroup question, syscall
+// authority is a seccomp and capability question, and the ONE thing only a microVM contributes is
+// that arbitrary job syscalls do not reach the host kernel.
+//
+// THE RULE THIS MODULE ENFORCES IS NOT "EVERYTHING USES A VM". It is that no work receives a weaker
+// boundary than its declared profile requires -- which is a different and more durable claim,
+// because it stays true when a second realization lands.
+
+// ── provenance decides the requirement ──────────────────────────────────────────────────────────
+
+// REPOSITORY OWNERSHIP IS NOT A QUALIFICATION, and this is the arm most likely to be widened by
+// someone reasoning that first-party work is safe. A job on our own repository can still execute
+// code changed by an unreviewed PR, a workflow changed by that same PR, an unpinned third-party
+// action, a downloaded install script, or a compromised dependency -- while holding credentials
+// worth taking. None of that is made safe by the repository's name.
+//
+// SO QUALIFICATION IS EXPLICIT AND CARRIES ITS OWN REASON. QualifiedFixedOperation is the only arm
+// that may omit DedicatedKernel, it names what was qualified, and it is meant to be rare.
+type RunnerWorkProvenance
+  = GeneralCiWorkload
+  | ForkPullRequest
+  | UnreviewedBranch
+  | PullRequestControlledWorkflow
+  | ThirdPartyAction
+  | ArbitraryShellStep
+  | QualifiedFixedOperation { qualification: NonEmptyStr }
+  | HostControlAgent
+
+fn runner_work_provenance_label(p: RunnerWorkProvenance) -> String {
+  match p {
+    GeneralCiWorkload => "general-ci-workload"
+    ForkPullRequest => "fork-pull-request"
+    UnreviewedBranch => "unreviewed-branch"
+    PullRequestControlledWorkflow => "pull-request-controlled-workflow"
+    ThirdPartyAction => "third-party-action"
+    ArbitraryShellStep => "arbitrary-shell-step"
+    QualifiedFixedOperation { qualification: _ } => "qualified-fixed-operation"
+    HostControlAgent => "host-control-agent"
+  }
+}
+
+// THE RUNNER REQUIREMENT IS STRICTER THAN THE GENERIC TENANT ONE, deliberately.
+// product.fabric.isolation tenant_workload_isolation_requirement omits DedicatedKernel AND
+// PrivateNetworkNamespace AND DefaultDenyEgress -- reasonable as a generic floor, and materially
+// weaker than what arbitrary GitHub job code should get. Reusing it here would have been the
+// quiet widening this module exists to prevent, so the runner requirement is derived rather than
+// borrowed.
+fn runner_work_isolation_requirement(p: RunnerWorkProvenance) -> IsolationProfile {
+  match p {
+    QualifiedFixedOperation { qualification: _ } =>
+      IsolationProfile {
+        guarantees: [
+          FreshWritableRoot,
+          PrivateProcessNamespace,
+          PrivateNetworkNamespace,
+          PrivateUserNamespace,
+          AttemptScopedSecrets,
+          DefaultDenyEgress,
+        ],
+      }
+    _ =>
+      IsolationProfile {
+        guarantees: [
+          FreshWritableRoot,
+          PrivateProcessNamespace,
+          PrivateNetworkNamespace,
+          PrivateUserNamespace,
+          AttemptScopedSecrets,
+          DefaultDenyEgress,
+          DedicatedKernel,
+        ],
+      }
+  }
+}
+
+// ── providers offer, work requires, the broker joins them ───────────────────────────────────────
+
+// THE WORK DOES NOT NAME FIRECRACKER. It names guarantees, and a provider is selected because its
+// provided profile CONTAINS them. That is what keeps a second realization from becoming a flag on
+// the first: a shared-kernel provider lands as its own row offering its own profile, and every
+// workload that requires DedicatedKernel simply stops matching it -- no launcher acquires a mode.
+type SandboxProvider
+  = DedicatedKernelSandboxProvider
+  | SharedKernelSandboxProvider
+
+fn sandbox_provider_label(p: SandboxProvider) -> String {
+  match p {
+    DedicatedKernelSandboxProvider => "dedicated-kernel"
+    SharedKernelSandboxProvider => "shared-kernel"
+  }
+}
+
+fn sandbox_provider_profile(p: SandboxProvider) -> IsolationProfile {
+  match p {
+    DedicatedKernelSandboxProvider => dedicated_kernel_sandbox_profile()
+    SharedKernelSandboxProvider => shared_kernel_sandbox_profile()
+  }
+}
+
+// A REFUSAL NAMES THE MISSING GUARANTEES rather than reporting that nothing matched. "No provider
+// is available" sends an operator nowhere; "this provider cannot offer dedicated-kernel" says which
+// class of supplier to go and find, which is the same reason the isolation module returns the
+// missing set instead of a Bool.
+type ProviderSelection
+  = ProviderSelected { provider: SandboxProvider }
+  | NoProviderSatisfies { missing: List<IsolationGuarantee> }
+
+fn provider_admits(provider: SandboxProvider, required: IsolationProfile) -> Bool {
+  (unsatisfied_isolation_guarantees(
+     required: required,
+     provided: sandbox_provider_profile(p: provider),
+   ) |> count) == 0
+}
+
+// THE DEDICATED-KERNEL PROVIDER IS TRIED FIRST AND THAT IS THE CONSERVATIVE DEFAULT, not an
+// optimization order. Until a shared-kernel provider is built and qualified, every runner workload
+// resolves to the microVM path -- one operational path to debug, one cleanup contract, one
+// boundary. Ordering it the other way would silently move work to the weaker realization the moment
+// one existed.
+fn select_sandbox_provider(required: IsolationProfile) -> ProviderSelection {
+  if provider_admits(provider: DedicatedKernelSandboxProvider, required: required) {
+    ProviderSelected { provider: DedicatedKernelSandboxProvider }
+  } else {
+    if provider_admits(provider: SharedKernelSandboxProvider, required: required) {
+      ProviderSelected { provider: SharedKernelSandboxProvider }
+    } else {
+      NoProviderSatisfies {
+        missing: unsatisfied_isolation_guarantees(
+          required: required,
+          provided: sandbox_provider_profile(p: DedicatedKernelSandboxProvider),
+        ),
+      }
+    }
+  }
+}
+
+fn provider_for_work(p: RunnerWorkProvenance) -> ProviderSelection {
+  select_sandbox_provider(required: runner_work_isolation_requirement(p: p))
+}
+
+// ── the host control agent is not a workload ────────────────────────────────────────────────────
+
+// IT HAS NO ISOLATION REQUIREMENT BECAUSE IT IS NOT SCHEDULED WORK. The supervisor, the census
+// helper and the artifact staging helper are host-native processes with a fixed declared surface --
+// gunbc.runner.runner_host_surface owns them. Handing one to a sandbox provider would be a category
+// error, and putting each in its own VM would complicate the host without strengthening any
+// boundary that matters.
+fn is_schedulable_work(p: RunnerWorkProvenance) -> Bool {
+  match p {
+    HostControlAgent => false
+    _ => true
+  }
+}
+
+// ── what a second realization would cost the surface claim ──────────────────────────────────────
+
+// SHARED-KERNEL EXECUTION CHANGES THE RED-TEAM CLAIM, and the change is worth stating before anyone
+// builds it. A private PID namespace changes what the JOB can see; it does not remove those
+// processes from the host's ancestor namespace. So today, with every job in a microVM:
+//
+//   host userspace   exact declared population
+//   guest            arbitrary population inside an exact envelope
+//
+// and with host-native namespaced execution the strongest honest claim becomes:
+//
+//   host userspace   exact static control population, PLUS one admitted dynamic subtree per attempt
+//   subtree          arbitrary executables inside an exact namespace, cgroup, mount and network envelope
+//
+// THAT MAY BE ACCEPTABLE FOR QUALIFIED WORK and it is not the same guarantee. The exact host
+// population stops being knowable before the job runs; what remains knowable is that every dynamic
+// process descends from one admitted root and stays inside its envelope. Moving a class across that
+// line is a decision with a receipt, not a configuration change.
+type HostSurfaceClaimUnderProvider
+  = ExactDeclaredHostPopulation
+  | StaticPopulationPlusAdmittedDynamicSubtree
+
+fn host_surface_claim(provider: SandboxProvider) -> HostSurfaceClaimUnderProvider {
+  match provider {
+    DedicatedKernelSandboxProvider => ExactDeclaredHostPopulation
+    SharedKernelSandboxProvider => StaticPopulationPlusAdmittedDynamicSubtree
+  }
+}
+
+// AND THE AXES THAT ARE NOT THE PROVIDER'S JOB, listed because the census found one of them empty
+// while the provider was doing its job correctly. Resource bounds are cgroups under EITHER
+// realization -- the Mt. Collins attempt had a dedicated kernel and no cgroup at all -- so a
+// provider selection says nothing about whether the attempt was bounded, and the supervisor owes
+// these regardless of which provider ran.
+data axes_the_provider_does_not_supply: List<NonEmptyStr> = [
+  "resource bounds -- cgroups, under either provider; observed absent on the 2026-09-06 microVM attempt",
+  "lifetime -- the supervisor's deadline and reap, tracked by pidfd",
+  "network exposure -- namespace, routes and filter policy",
+  "allocation exclusivity -- the fabric grant and lease authority",
+  "dependency closure -- the work artifact's own image, which a namespace can carry as well as a guest can",
+]

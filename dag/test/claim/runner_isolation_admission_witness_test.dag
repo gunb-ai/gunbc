@@ -1,0 +1,140 @@
+module test.claim.runner_isolation_admission_witness
+
+import std.logic { Bool }
+import std.types { NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.fabric.isolation {
+  DedicatedKernel,
+  isolation_profile_contains,
+  tenant_workload_isolation_requirement,
+}
+import gunbc.runner.runner_isolation_admission {
+  ArbitraryShellStep,
+  DedicatedKernelSandboxProvider,
+  ForkPullRequest,
+  GeneralCiWorkload,
+  HostControlAgent,
+  NoProviderSatisfies,
+  ProviderSelected,
+  PullRequestControlledWorkflow,
+  QualifiedFixedOperation,
+  SharedKernelSandboxProvider,
+  ThirdPartyAction,
+  UnreviewedBranch,
+  is_schedulable_work,
+  provider_admits,
+  provider_for_work,
+  runner_work_isolation_requirement,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE REDS HERE ARE THE WIDENINGS SOMEONE WOULD ACTUALLY REACH FOR, not arbitrary negatives. Each
+// one is a plausible edit -- "first-party work is fine on the shared kernel", "reuse the tenant
+// requirement, it already exists" -- and each would move real GitHub job code onto a weaker
+// boundary without any single change looking wrong.
+
+// ── every untrusted provenance requires the kernel boundary ─────────────────────────────────────
+
+test fn a_general_ci_workload_requires_a_dedicated_kernel() -> Bool {
+  isolation_profile_contains(
+    profile: runner_work_isolation_requirement(p: GeneralCiWorkload),
+    wanted: DedicatedKernel,
+  )
+}
+
+test fn a_fork_pull_request_requires_a_dedicated_kernel() -> Bool {
+  isolation_profile_contains(
+    profile: runner_work_isolation_requirement(p: ForkPullRequest),
+    wanted: DedicatedKernel,
+  )
+}
+
+test fn an_unreviewed_branch_requires_a_dedicated_kernel() -> Bool {
+  isolation_profile_contains(
+    profile: runner_work_isolation_requirement(p: UnreviewedBranch),
+    wanted: DedicatedKernel,
+  )
+}
+
+test fn a_pr_controlled_workflow_requires_a_dedicated_kernel() -> Bool {
+  isolation_profile_contains(
+    profile: runner_work_isolation_requirement(p: PullRequestControlledWorkflow),
+    wanted: DedicatedKernel,
+  )
+}
+
+test fn a_third_party_action_requires_a_dedicated_kernel() -> Bool {
+  isolation_profile_contains(
+    profile: runner_work_isolation_requirement(p: ThirdPartyAction),
+    wanted: DedicatedKernel,
+  )
+}
+
+test fn an_arbitrary_shell_step_requires_a_dedicated_kernel() -> Bool {
+  isolation_profile_contains(
+    profile: runner_work_isolation_requirement(p: ArbitraryShellStep),
+    wanted: DedicatedKernel,
+  )
+}
+
+// ── the one arm that may omit it, and the control that keeps that meaningful ────────────────────
+
+// WITHOUT THIS THE TESTS ABOVE ARE SATISFIED BY A FUNCTION THAT DEMANDS A DEDICATED KERNEL FOR
+// EVERYTHING, which would make the qualified arm dead and the model useless while looking green.
+test fn a_qualified_fixed_operation_may_omit_the_dedicated_kernel() -> Bool {
+  isolation_profile_contains(
+    profile: runner_work_isolation_requirement(p: QualifiedFixedOperation { qualification: "a pinned, reviewed operation with a bounded executable and syscall closure" }),
+    wanted: DedicatedKernel,
+  ) == false
+}
+
+// ── provider selection follows the requirement, not a preference ────────────────────────────────
+
+test fn untrusted_work_selects_the_dedicated_kernel_provider() -> Bool {
+  match provider_for_work(p: ForkPullRequest) {
+    ProviderSelected { provider: DedicatedKernelSandboxProvider } => true
+    _ => false
+  }
+}
+
+// THE RED THAT MATTERS MOST. If a shared-kernel provider could ever admit work requiring a
+// dedicated kernel, every guarantee above is decorative -- the requirement would be stated and then
+// satisfied by a provider that cannot meet it.
+test fn the_shared_kernel_provider_cannot_admit_untrusted_work() -> Bool {
+  provider_admits(
+    provider: SharedKernelSandboxProvider,
+    required: runner_work_isolation_requirement(p: GeneralCiWorkload),
+  ) == false
+}
+
+// AND THE POSITIVE CONTROL FOR THE SHARED-KERNEL PROVIDER, so the test above is not satisfied by a
+// provider that admits nothing at all.
+test fn the_shared_kernel_provider_admits_qualified_work() -> Bool {
+  provider_admits(
+    provider: SharedKernelSandboxProvider,
+    required: runner_work_isolation_requirement(p: QualifiedFixedOperation { qualification: "pinned and reviewed" }),
+  )
+}
+
+// ── the tenant floor is not the runner requirement ──────────────────────────────────────────────
+
+// THE EXACT WIDENING THIS MODULE EXISTS TO PREVENT. Reusing the generic tenant profile for runner
+// work is a one-line change that reads as reuse and is a real weakening: that profile omits
+// DedicatedKernel, and this test is the wall that makes the omission visible.
+test fn the_generic_tenant_requirement_would_not_have_been_enough() -> Bool {
+  isolation_profile_contains(
+    profile: tenant_workload_isolation_requirement(),
+    wanted: DedicatedKernel,
+  ) == false
+}
+
+// ── the control agent is not schedulable work ───────────────────────────────────────────────────
+
+test fn the_host_control_agent_is_not_schedulable_work() -> Bool {
+  is_schedulable_work(p: HostControlAgent) == false
+}
+
+test fn ordinary_ci_work_is_schedulable() -> Bool {
+  is_schedulable_work(p: GeneralCiWorkload)
+}
