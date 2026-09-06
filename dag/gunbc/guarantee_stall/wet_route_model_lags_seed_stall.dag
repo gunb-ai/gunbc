@@ -1,46 +1,33 @@
 module gunbc.guarantee_stall.wet_route_model_lags_seed_stall
 
-import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
 import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
 
-// THE MODEL LAGS THE SEED ON THREE NAMED DEFECTS, WHICH IS THE DIVERGENCE RUNNING BACKWARDS
-// (gunbc#9725). The substrate is supposed to be the authority and the seed one realization of it;
-// here the EXECUTING path is strictly stricter than the authored model, on three counts that were
-// repaired in `v1_compiler.cli_run.required_floor_runner` and not in `v2.workflow.floor_wet_route`.
+// THIS ROW IS THE REFERENT THE TWO CITING 4b TRIGGERS NAME, not a reconstruction of a module that
+// never merged. `gunbc.recurring_failure_mode.content_digest_makes_annotations_semantically_load_bearing`
+// and `gunbc.recurring_failure_mode.subject_and_its_digest_as_independent_parameters` both retire
+// against `gunbc.guarantee_stall` `wet_route_model_lags_seed_stall`. The first landing of this
+// symbol listed `v2.workflow.floor_wet_route` and three of its declarations. Those names do not
+// resolve on this tree -- #9725 closed unmerged -- so a population of them is not countable debt
+// (DESIGN section 3: a stale name is decidable). This file keeps the cited identity and replaces
+// the members with what grep still finds of the classes those two rows measured.
 //
-// THIS ROW WAS DECLARED ON #9725 AND CITED FROM MAIN WITHOUT BEING LANDED. gunbc#10299 moved six
-// failure-mode rows verbatim onto main, including
-// `content_digest_makes_annotations_semantically_load_bearing` and
-// `subject_and_its_digest_as_independent_parameters`. Both name this declaration as the population
-// their next-rung triggers retire. #9725 closed unmerged, and the per-row stall split never carried
-// this symbol, so those two 4b triggers were retired by nothing until this file existed -- the
-// class `gunbc.recurring_failure_mode.dissolution_trigger_cites_a_mechanism_that_is_later_deleted`
-// names when a trigger cites a mechanism that later vanishes; this is the same class at origin,
-// a citation whose referent was never on the tree that consumed it.
-//
-// WHY THE MODEL WAS NOT REPAIRED WITH THE SEED, and it is a hard constraint rather than a
-// preference: that module is a TERM OF THE WET SEMANTIC SUBJECT, and the subject is
-// `closure_content_digest` over RAW FILE CONTENT. Any byte changed there -- a comment included --
-// moves the digest the committed receipt is pinned to and voids the operator-granted lease that
-// admits it, forcing a re-dispatch and a second grant to repair an artifact that has no executing
-// consumer.
-//
-// THE DIVERGENCE DIRECTION IS SAFE AND STILL WRONG. A stricter seed cannot ADMIT anything the
-// model would refuse, so nothing is fail-open today; what is wrong is that the authority is the
-// laggard, so a reader consulting the substrate learns the weaker rule and any consumer generated
-// from it inherits the weaker rule. It is filed as a countable debt rather than left inside another
-// stall's prose, because it is invisible the moment the citing failure-mode rows merge without it.
+// WHAT STILL STANDS. `v1_compiler.resolved_graph_cache` `closure_content_digest` still folds each
+// source's raw `content`, so an annotation edit still moves a digest those rows call a semantic
+// subject. The independent `envelope` / `envelope_digest` signature they demonstrated is not a
+// declaration here: no `wet_route_gate_disposition_for_receipt` exists, and the successor
+// `v2.workflow.wet_evidence` does not take those two as peer parameters. A trigger that waited on
+// authoring the three rules inside `floor_wet_route` would never fire, which is the class this
+// row's first landing reproduced.
 data wet_route_model_lags_seed_stall: GuaranteeStall = GuaranteeStall {
-  subject: "v2.workflow.floor_wet_route authors three rules its own seed realization has already superseded: the executor arm returns fifth of nine rather than last (so ExecutorSnapshotDifferent means only that executor disagreement was the FIRST blocking arm reached, with roster join, identity conformance, outcome vocabulary, age sanity and staleness unevaluated); wet_route_gate_disposition_for_receipt accepts `envelope` and `envelope_digest` as independent parameters rather than deriving the digest from the envelope it judges; and the negative-age arm, while present here, is the one the seed had to be taught separately",
+  subject: "a wet-lane semantic subject digest is still taken over raw file content by v1_compiler.resolved_graph_cache closure_content_digest, so an annotation edit moves the digest DESIGN section 4c says cannot move; the two citing failure-mode triggers retire this remaining member, not the unmerged floor_wet_route symbols",
   current: Mitigatable,
-  ceiling: StructurallyGuaranteed,
+  ceiling: StructurallyImpossible,
   blocker: ClimbableButUnbuilt,
   population: BoundedPopulation {
     members: [
-      "v2.workflow.floor_wet_route wet_lane_receipt_standing -- executor arm ordered fifth of nine",
-      "v2.workflow.floor_wet_route wet_route_gate_disposition_for_receipt -- envelope and envelope_digest are independent parameters, demonstrated constructible by v2.test.floor_wet_route.wet_lease_admits_an_envelope_whose_content_the_digest_does_not_name",
-      "v2.workflow.floor_wet_route -- the module is a term of its own semantic subject, so repairing it requires a re-dispatch and a fresh lease grant"
+      "v1_compiler.resolved_graph_cache closure_content_digest",
     ]
   },
-  next_rung_trigger: climbs_when(capability: "the three rules are authored in the wet-route substrate authority itself -- executor arm last of the standing fold, envelope digest derived from the envelope it judges rather than accepted beside it, negative age refused rather than clamped -- landed on a head whose wet receipt was dispatched AFTER them so the subject digest covers them, SUFFICIENT FOR the two citing failure-mode triggers to retire a named, rostered population rather than a missing symbol. NOT satisfied by the seed continuing to be stricter, which is the state this row exists to count, and not satisfied by this declaration existing: a row is a home, not the repairs")
+  next_rung_trigger: climbs_when(capability: "a subject digest folded over the annotation-erased projection that semantic compiler passes already receive, so the digest is invariant under comment edits by construction -- SUFFICIENT FOR the two citing failure-mode triggers to retire this rostered member. NOT satisfied by restoring a floor_wet_route spelling, by the seed remaining stricter than a model that is not on this tree, or by this declaration existing")
 }
