@@ -37,9 +37,8 @@ pub use crate::v1_compiler_emit_core_support::{
     capitalize_first, escape_json_string, escape_string_literal_body, extract_test_projections,
     is_leaf_type_item, is_type_alias_item, is_type_alias_return_node, is_type_decl_item,
     is_type_def_item, is_upper, language_spec, make_indent, module_filename_collision_diagnostics,
-    module_to_filename, sanitize_service_name, service_symbol_collision_diagnostics,
-    service_var_name, test_function_name, to_lower_char, to_screaming_snake, to_snake, to_string,
-    to_string_helper, to_upper_char, unique_strings,
+    module_to_filename, sanitize_service_name, service_var_name, test_function_name, to_lower_char,
+    to_screaming_snake, to_snake, to_string, to_string_helper, to_upper_char, unique_strings,
 };
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_infer::InferScope;
@@ -106,14 +105,10 @@ use std::rc::Rc;
 
 pub fn emit_python(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
     {
-        let filename_collisions = v1_rt::concat(
+        let filename_collisions =
             crate::v1_compiler_emit_core_support::module_filename_collision_diagnostics(
                 typed.clone(),
-            ),
-            crate::v1_compiler_emit_core_support::service_symbol_collision_diagnostics(
-                typed.clone(),
-            ),
-        );
+            );
         if ((filename_collisions.clone().len() as i64) > 0) {
             return Rc::new(EmitResult {
                 files: Rc::new(vec![]),

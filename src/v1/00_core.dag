@@ -394,7 +394,6 @@ type CompilerDiagnostic
   | DataReferenceVisibilityBudgetExceeded { name: String, span: SourceSpan }
   | ParameterDefaultFormNotAdmitted { parameter: String, admitted: List<String>, span: SourceSpan }
   | AmbiguousAnonymousRecordLiteral { candidates: List<String>, span: SourceSpan }
-  | ServiceSymbolProjectionCollision { colliding_symbol: String, first_service: String, second_service: String, span: SourceSpan }
   | ModuleFilenameCollision { filename: String, modules: List<String>, span: SourceSpan }
   | CallArgumentNameUnknown { callee: String, argument: String, declared: List<String>, span: SourceSpan }
   | CallPositionalSurplus { callee: String, supplied: Int, capacity: Int, span: SourceSpan }
@@ -612,7 +611,6 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     DataReferenceVisibilityBudgetExceeded { name: _, span: s } => s
     ParameterDefaultFormNotAdmitted { parameter: _, admitted: _, span: s } => s
     AmbiguousAnonymousRecordLiteral { candidates: _, span: s } => s
-    ServiceSymbolProjectionCollision { colliding_symbol: _, first_service: _, second_service: _, span: s } => s
     ModuleFilenameCollision { filename: _, modules: _, span: s } => s
     CallArgumentNameUnknown { callee: _, argument: _, declared: _, span: s } => s
     CallPositionalSurplus { callee: _, supplied: _, capacity: _, span: s } => s
@@ -708,7 +706,6 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     ParameterDefaultFormNotAdmitted { parameter: p, admitted: forms, span: _ } =>
       concat("default value for parameter '", p, "' is not an admitted form (admitted: ", join(forms, separator: ", "), ")")
     AmbiguousAnonymousRecordLiteral { candidates: cs, span: _ } => concat("ambiguous anonymous record literal shape matches ", to_string(value: cs |> count), " structs: ", join(cs, separator: ", "), " — add a nominal type")
-    ServiceSymbolProjectionCollision { colliding_symbol: sym, first_service: a, second_service: b, span: _ } => concat("service names '", a, "' and '", b, "' are distinct identities that project to the same emitted symbol '", sym, "' — the dotted segment boundary is erased by the shared symbol projection, so both would emit one declaration and share one binding")
     ModuleFilenameCollision { filename: f, modules: ms, span: _ } => concat("module filename collision: ", to_string(value: ms |> count), " modules render one emitted file name '", f, "': ", join(ms, separator: ", "), " — module_to_filename maps '.' to '_', so these names are indistinguishable at the emitted path; rename one module segment")
     CallArgumentNameUnknown { callee: c, argument: a, declared: ds, span: _ } =>
       concat("call shape mismatch calling '", c, "': no parameter named '", a, "' (declared: [", join(ds, separator: ", "), "])")
@@ -839,7 +836,6 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     DataReferenceVisibilityBudgetExceeded { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ParameterDefaultFormNotAdmitted { parameter: _, admitted: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     AmbiguousAnonymousRecordLiteral { candidates: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
-    ServiceSymbolProjectionCollision { colliding_symbol: _, first_service: _, second_service: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ModuleFilenameCollision { filename: _, modules: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     CallArgumentNameUnknown { callee: _, argument: _, declared: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     CallPositionalSurplus { callee: _, supplied: _, capacity: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }

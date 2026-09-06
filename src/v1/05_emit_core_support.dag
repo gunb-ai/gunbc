@@ -3,7 +3,7 @@ module v1.compiler.emit_core_support
 import v1.std.core {
   Node, ErrorNode, TextFile, NewlineIndex,
   authored_name_at, field_init_node_name_at,
-  make_error_node, ModuleFilenameCollision, ServiceSymbolProjectionCollision,
+  make_error_node, ModuleFilenameCollision,
   Connective, NoConnective,
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
   ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem
@@ -196,37 +196,7 @@ fn sanitize_service_name(name: String) -> String {
 // control that says the allocation is still injective; its next-rung trigger is an allocation whose
 // distinct service identities cannot share a symbol by construction, at which point this refusal
 // becomes permanently green rather than being deleted.
-fn service_symbol_collision_diagnostics(typed: ResolvedGraph) -> List<ErrorNode> {
-  let result = typed.modules |> fold(init: ServiceSymbolOwners { owners: empty_map(), diagnostics: [] }, f: fn(acc, tm) {
-    let module_name = authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)
-    tm.items
-      |> filter(item => item.module_item_kind == ModuleItemService)
-      |> fold(init: acc, f: fn(inner, svc) {
-        let service_name = authored_name_at(source_indices: tm.type_env.source_indices, node: svc)
-        let symbol = sanitize_service_name(name: service_name)
-        match map_get(inner.owners, symbol) {
-          Present { value: owner } =>
-            if owner == service_name {
-              inner
-            } else {
-              ServiceSymbolOwners {
-                owners: inner.owners,
-                diagnostics: list_push(inner.diagnostics, make_error_node(
-                  diagnostic: ServiceSymbolProjectionCollision {
-                    colliding_symbol: symbol,
-                    first_service: owner,
-                    second_service: service_name,
-                    span: svc.span
-                  },
-                  module_name: module_name))
-              }
-            }
-          Absent => ServiceSymbolOwners { owners: map_insert(inner.owners, symbol, service_name), diagnostics: inner.diagnostics }
-        }
-      })
-  })
-  result.diagnostics
-}
+
 
 type ServiceSymbolOwners {
   owners: Map<String, String>

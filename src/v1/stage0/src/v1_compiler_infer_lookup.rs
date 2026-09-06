@@ -44,6 +44,11 @@ pub use crate::v1_compiler_infer_env::{
 pub use crate::v1_compiler_infer_env::{
     GlobalBareCandidate, GlobalBareLookupState, TypeBinding, TypeEnv,
 };
+pub use crate::v1_compiler_infer_items::item_kind;
+pub use crate::v1_compiler_infer_items::ItemKind;
+use crate::v1_compiler_infer_items::ItemKind::{
+    DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
+};
 pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
 pub use crate::v1_compiler_infer_resolve::{fn_type_param_names, peel_nominal_alias_identity};
 pub use crate::v1_compiler_infer_service::check_service_method_call_node;
@@ -248,11 +253,34 @@ pub fn resolved_declaration_call_target(
     }
 }
 
+pub fn census_declaration_identity(
+    type_env: Rc<TypeEnv>,
+    func_name: String,
+) -> Option<Rc<BorrowedCensusDecl>> {
+    match (*borrowed_census_decl(type_env.clone(), func_name.clone())).clone() {
+        BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
+            declaration: bd, ..
+        } => match crate::v1_compiler_infer_items::item_kind(bd.node.clone()) {
+            ItemKind::TypeItem => std::option::Option::None,
+            ItemKind::ServiceItem => std::option::Option::None,
+            ItemKind::DataItem => std::option::Option::None,
+            _ => Some(bd.clone()),
+        },
+        BorrowedCensusDeclLookup::BorrowedCensusDeclAmbiguous { candidates: _, .. } => {
+            std::option::Option::None
+        }
+        BorrowedCensusDeclLookup::BorrowedCensusDeclNotFound => std::option::Option::None,
+    }
+}
+
 pub fn resolved_plain_call_target_for_outcome(
     outcome: Rc<CallTargetOutcome>,
 ) -> Rc<CallTargetIdentity> {
     match (*outcome.clone()).clone() {
         CallTargetOutcome::DeclaredCallableResolved { declared: d, .. } => {
+            resolved_declaration_call_target(d.clone())
+        }
+        CallTargetOutcome::DeclaredCallableIdentityResolved { declared: d, .. } => {
             resolved_declaration_call_target(d.clone())
         }
         CallTargetOutcome::BuiltinCallableResolved {
@@ -273,31 +301,6 @@ pub fn resolved_plain_call_target_for_outcome(
         CallTargetOutcome::LocallyBoundBindingMissing { name: _, .. } => {
             Rc::new(CallTargetIdentity::CallableTargetUndetermined)
         }
-    }
-}
-
-pub fn resolved_plain_call_target(
-    func_name: String,
-    sig_lookup: Rc<FuncSigLookup>,
-) -> Rc<CallTargetIdentity> {
-    match (*sig_lookup.clone()).clone() {
-        FuncSigLookup::FuncSigResolved { declared, .. } => {
-            resolved_declaration_call_target(declared.clone())
-        }
-        FuncSigLookup::FuncSigUnresolved => builtin_call_target_or_undetermined(func_name.clone()),
-        FuncSigLookup::FuncSigAmbiguous { candidates: _, .. } => {
-            Rc::new(CallTargetIdentity::CallableTargetUndetermined)
-        }
-    }
-}
-
-pub fn builtin_call_target_or_undetermined(func_name: String) -> Rc<CallTargetIdentity> {
-    match crate::v1_compiler_infer_method::infer_builtin_call_type(func_name.clone()) {
-        Some(_) => Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
-            primitive_name: func_name.clone(),
-            projected_from: std::option::Option::None,
-        }),
-        std::option::Option::None => Rc::new(CallTargetIdentity::CallableTargetUndetermined),
     }
 }
 

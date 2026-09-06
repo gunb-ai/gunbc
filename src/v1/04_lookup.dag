@@ -293,9 +293,13 @@ fn resolved_declaration_call_target(declared: DeclaredCallableIdentity) -> CallT
 // same registry the ExprCall arm already routes such calls through -- and anything else is
 // genuinely undetermined. Ambiguity is refused upstream and carries no single target, so it is
 // Undetermined here rather than a guess at which candidate emission should prefer.
-// THE CALLEE IDENTITY BEHIND AN UNRESOLVED SIGNATURE.
-// Routed through `resolved_declaration_call_target` so the primitive-projection roster stays the
-// single authority on whether a declaration lowers to the runtime bridge.
+// THE CENSUS DECLARATION BEHIND AN UNRESOLVED SIGNATURE, AS AN IDENTITY AND NOTHING MORE.
+//
+// This answers the producer, not a downstream consumer: `call_target_for_direct_call` calls it at
+// the point that would otherwise construct CallableUnresolved, so the direct-call decision is still
+// made ONCE and every later reader takes the answer off the constructor. Resolving it below the
+// seam instead would leave other consumers of the same outcome reading "unresolved" while this one
+// reads "declared" -- the authority-substitution geometry the outcome type exists to remove.
 //
 // THE KIND GATE EXCLUDES WHAT IS NOT CALLABLE; IT DOES NOT DEMAND PROOF OF WHAT IS.
 // `item_kind` reads FnItem and FuncItem off the presence of a BODY, and a census node is a
@@ -304,21 +308,20 @@ fn resolved_declaration_call_target(declared: DeclaredCallableIdentity) -> CallT
 // of the population this arm exists to serve. The call position is what establishes that the name
 // is being called; what the kind can still tell us is that the declaration is a TYPE, a SERVICE or
 // a DATA row, none of which a call may target.
-fn census_declaration_call_target(type_env: TypeEnv, func_name: String) -> CallTargetIdentity {
+fn census_declaration_identity(type_env: TypeEnv, func_name: String) -> BorrowedCensusDecl? {
   match borrowed_census_decl(type_env: type_env, name: func_name) {
     BorrowedCensusDeclFound { declaration: bd } =>
       match item_kind(item: bd.node) {
-        TypeItem => CallableTargetUndetermined
-        ServiceItem => CallableTargetUndetermined
-        DataItem => CallableTargetUndetermined
-        _ =>
-          resolved_declaration_call_target(declared: DeclaredCallableIdentity {
-            owner_module_path: bd.owner_module_path, decl_name: qualified_last_segment(name: func_name) })
+        TypeItem => Absent
+        ServiceItem => Absent
+        DataItem => Absent
+        _ => Present { value: bd }
       }
-    BorrowedCensusDeclAmbiguous { candidates: _ } => CallableTargetUndetermined
-    BorrowedCensusDeclNotFound => CallableTargetUndetermined
+    BorrowedCensusDeclAmbiguous { candidates: _ } => Absent
+    BorrowedCensusDeclNotFound => Absent
   }
 }
+
 
 // THE SAME MAPPING resolved_plain_call_target MAKES, READ OFF THE PARTITIONED OUTCOME.
 //
@@ -334,12 +337,13 @@ fn census_declaration_call_target(type_env: TypeEnv, func_name: String) -> CallT
 // type_annotation != none`, and a nullary census node carries none of the three. Identity does not
 // depend on the return type -- the census already names the owning module -- so this arm asks the
 // census directly instead.
-fn resolved_plain_call_target_for_outcome(type_env: TypeEnv, outcome: CallTargetOutcome) -> CallTargetIdentity {
+fn resolved_plain_call_target_for_outcome(outcome: CallTargetOutcome) -> CallTargetIdentity {
   match outcome {
     DeclaredCallableResolved { sig: _, declared: d } => resolved_declaration_call_target(declared: d)
+    DeclaredCallableIdentityResolved { declared: d } => resolved_declaration_call_target(declared: d)
     BuiltinCallableResolved { primitive_name: n } => RuntimePrimitiveCall { primitive_name: n, projected_from: none }
     LocallyBoundCallee { name: _, binding: _ } => CallableTargetUndetermined
-    CallableUnresolved { name: n } => census_declaration_call_target(type_env: type_env, func_name: n)
+    CallableUnresolved { name: _ } => CallableTargetUndetermined
     CallableAmbiguous { candidates: _ } => CallableTargetUndetermined
     LocallyBoundBindingMissing { name: _ } => CallableTargetUndetermined
   }

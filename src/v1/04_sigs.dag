@@ -201,11 +201,26 @@ type FuncSigLookup
 // why deleting the shared one did not reach it.
 type CallTargetOutcome
   = DeclaredCallableResolved { sig: ResolvedFuncSig, declared: DeclaredCallableIdentity }
+  | DeclaredCallableIdentityResolved { declared: DeclaredCallableIdentity, borrowed_declaration: Node }
   | BuiltinCallableResolved { primitive_name: String }
   | LocallyBoundCallee { name: String, binding: TypeBinding }
   | CallableUnresolved { name: String }
   | CallableAmbiguous { candidates: List<CallableCandidate> }
   | LocallyBoundBindingMissing { name: String }
+// DeclaredCallableIdentityResolved IS "THE DECLARATION IS KNOWN, ITS SIGNATURE IS NOT".
+// `func_sig_from_global_bare` admits a borrowed census declaration only when it can also produce a
+// RETURN TYPE for it, evidenced by `params > 0 || inferred != none || type_annotation != none`. A
+// nullary census node carries none of the three, so the signature lookup answers FuncSigUnresolved
+// for a call whose callee the census can name perfectly well. Identity does not depend on the
+// return type. Folding that state into CallableUnresolved would say "no declaration answered" about
+// a declaration this compiler located, and every consumer keyed on the constructor -- effect
+// propagation first among them -- would then carry the erasure. It is the same collapse the note
+// above refuses for LocallyBoundBindingMissing, so it gets the same treatment: its own constructor.
+//
+// IT CARRIES THE OBSERVATION, NOT JUST THE ANSWER. The producer had the census node in hand when it
+// established the identity, and the call-typing seam downstream needs that same node. Discarding it
+// and reacquiring it BY SPELLING is how a target authority and a type authority drift apart -- the
+// identical move this type exists to stop -- so the node rides on the constructor.
 // LocallyBoundBindingMissing is the REFUSAL arm for a disagreement between two scope maps that
 // agree by construction today: `body_locals` (a presence set) and `locals` (the bindings). Every
 // writer that reaches an InferScope populates both over the same names, so this state is
@@ -228,6 +243,7 @@ fn call_target_is_locally_bound(outcome: CallTargetOutcome) -> Bool {
   match outcome {
     LocallyBoundCallee { name: _, binding: _ } => true
     DeclaredCallableResolved { sig: _, declared: _ } => false
+    DeclaredCallableIdentityResolved { declared: _, borrowed_declaration: _ } => false
     BuiltinCallableResolved { primitive_name: _ } => false
     CallableUnresolved { name: _ } => false
     CallableAmbiguous { candidates: _ } => false
@@ -239,6 +255,7 @@ fn call_target_local_binding(outcome: CallTargetOutcome) -> TypeBinding? {
   match outcome {
     LocallyBoundCallee { name: _, binding: b } => Present { value: b }
     DeclaredCallableResolved { sig: _, declared: _ } => Absent
+    DeclaredCallableIdentityResolved { declared: _, borrowed_declaration: _ } => Absent
     BuiltinCallableResolved { primitive_name: _ } => Absent
     CallableUnresolved { name: _ } => Absent
     CallableAmbiguous { candidates: _ } => Absent
@@ -249,6 +266,7 @@ fn call_target_local_binding(outcome: CallTargetOutcome) -> TypeBinding? {
 fn call_target_declared_sig(outcome: CallTargetOutcome) -> ResolvedFuncSig? {
   match outcome {
     DeclaredCallableResolved { sig: s, declared: _ } => Present { value: s }
+    DeclaredCallableIdentityResolved { declared: _, borrowed_declaration: _ } => Absent
     BuiltinCallableResolved { primitive_name: _ } => Absent
     LocallyBoundCallee { name: _, binding: _ } => Absent
     CallableUnresolved { name: _ } => Absent

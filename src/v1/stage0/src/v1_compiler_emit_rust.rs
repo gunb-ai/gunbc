@@ -165,9 +165,8 @@ pub use crate::v1_compiler_emit_core_support::{
     has_mock_prefix, is_leaf_type_item, is_type_alias_item, is_type_alias_return_node,
     is_type_decl_item, is_type_def_item, is_upper, language_spec, leaf_owner_modules_from_registry,
     make_indent, module_filename_collision_diagnostics, module_to_filename, sanitize_service_name,
-    service_symbol_collision_diagnostics, service_var_name, test_function_name, to_lower_char,
-    to_pascal, to_screaming_snake, to_snake, to_string, to_string_helper, to_upper_char,
-    unique_strings,
+    service_var_name, test_function_name, to_lower_char, to_pascal, to_screaming_snake, to_snake,
+    to_string, to_string_helper, to_upper_char, unique_strings,
 };
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_infer::InferScope;
@@ -6204,10 +6203,6 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
                 )
             },
         );
-        let service_collision_diags =
-            crate::v1_compiler_emit_core_support::service_symbol_collision_diagnostics(
-                typed.clone(),
-            );
         let test_projections =
             crate::v1_compiler_emit_core_support::extract_test_projections(typed.clone());
         let export_sets = build_module_export_sets(typed.modules.clone());
@@ -6222,10 +6217,7 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             data_items: data_items.clone(),
             workflow_funcs: workflow_funcs.clone(),
             workflow_default_diags: workflow_default_diags.clone(),
-            anonymous_record_diags: v1_rt::concat(
-                anonymous_record_diags.clone(),
-                service_collision_diags.clone(),
-            ),
+            anonymous_record_diags: anonymous_record_diags.clone(),
             svc_module_map: svc_module_map.clone(),
             test_projections: test_projections.clone(),
             export_sets: export_sets.clone(),
