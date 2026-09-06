@@ -1,0 +1,142 @@
+module gunbc.machine_intake_boot_image_fetch
+
+import std.types { Bool, FilePath, NonEmptyStr, String }
+import extdeps.shell
+import extdeps.tools.curl { curl_download_command }
+import gunbc.command_runner { run_shell_command }
+import extdeps.exec.command { CommandTransport, LocalExec }
+import std.process { ExitSuccess, ProcessExit }
+import extdeps.tools.sha256sum {
+  Sha256FileDigest,
+  Sha256FileDigestUnavailable,
+  sha256sum_file_digest_via_shell,
+}
+
+// PLACING A VERIFIED BOOT IMAGE WHERE A CONTROLLER CAN FETCH IT, as a modeled operation. The
+// diskless boot this lane already achieved used an ISO downloaded to the share by hand-run curl and
+// checked by a hand-run sha256sum, so procurement was the one step of the chain still outside the
+// model while attach and boot were inside it.
+//
+// THE DIGEST DECIDES ADMISSION, AND IT IS MEASURED BEFORE THE FILE IS PUBLISHED. The order matters
+// and is the whole point: an artifact whose bytes disagree with the pin must never occupy the path
+// the controller reads. Fetching straight into the export and checking afterwards leaves a window
+// where a truncated or substituted image is mountable, and on a share the controller re-scans on its
+// own schedule that window is not bounded by this program's lifetime. So the fetch lands in a
+// staging path, the digest is taken there, and only an agreeing artifact is moved into place.
+//
+// THE PIN IS NOT MINTED HERE. extdeps.provisioning.ubuntu_install_media already carries
+// content_sha256 for each artifact row, cited to upstream's own SHA256SUMS, and this module consumes
+// that value rather than restating it. A second copy of a digest is a second authority for one fact,
+// and the one that rots is always the copy.
+type BootImageFetchOutcome
+  = BootImageAdmitted { path: NonEmptyStr, digest: NonEmptyStr }
+  | BootImageFetchFailed { url: NonEmptyStr }
+  | BootImageDigestUnreadable { path: NonEmptyStr, reason: String }
+  | BootImageDigestMismatchRefused { expected: NonEmptyStr, observed: NonEmptyStr }
+  | BootImagePublishFailed { staged: NonEmptyStr, destination: NonEmptyStr }
+
+// WHETHER A MEASURED DIGEST AGREES WITH THE PIN. Separated from the effect sequence so the judgment
+// is nameable, and returning the OBSERVED value on disagreement rather than a Bool: a refusal that
+// does not say what it saw sends the reader back to the machine to find out.
+fn boot_image_digest_agrees(observed: Sha256FileDigest, expected: NonEmptyStr) -> Bool {
+  match observed {
+    Sha256FileDigestUnavailable { path: _, reason: _ } => false
+    Sha256FileDigest { digest: d } => (d.hex as String) == (expected as String)
+  }
+}
+
+// THE OBSERVED HEX, OR A SELF-NAMING PLACEHOLDER WHEN THERE ISN'T ONE. A refusal carries what was
+// seen so the reader does not have to go back to the machine, and an unreadable digest is reported
+// as unreadable rather than as a mismatch against an empty string -- those are different failures
+// with different owners: one is the artifact, the other is the tool or the path.
+fn boot_image_observed_hex(observed: Sha256FileDigest) -> NonEmptyStr {
+  match observed {
+    Sha256FileDigestUnavailable { path: _, reason: _ } => "digest-unreadable"
+    Sha256FileDigest { digest: d } => d.hex
+  }
+}
+
+// THE SEQUENCE, AND ITS ORDER IS THE GUARANTEE. Fetch to a staging path, measure there, and move
+// into the published path ONLY on agreement. Fetching straight into the export and checking
+// afterwards would leave an interval in which a truncated or substituted image is mountable, and the
+// controller re-scans that share on its own schedule rather than this program's, so the interval is
+// not bounded by anything here.
+//
+// A MISMATCH LEAVES THE STAGED FILE WHERE IT IS. It is deliberately not deleted: the bytes that
+// disagreed are the evidence for why the fetch was refused, and removing them turns a diagnosable
+// refusal into a bare assertion. What matters for safety is that they never reach the published
+// path, not that they cease to exist.
+func fetch_verified_boot_image(
+  url: NonEmptyStr,
+  staging_path: NonEmptyStr,
+  published_path: NonEmptyStr,
+  expected_sha256: NonEmptyStr,
+) -> BootImageFetchOutcome
+  uses net: std.resources.Network
+{
+  let fetched = run_shell_command(
+    command: curl_download_command(url: url as String, destination: staging_path as String),
+    transport: LocalExec,
+  )
+  return match fetched {
+    ExitSuccess =>
+      verify_and_publish_boot_image(
+        staging_path: staging_path,
+        published_path: published_path,
+        expected_sha256: expected_sha256,
+      )
+    _ => BootImageFetchFailed { url: url }
+  }
+}
+
+// MEASUREMENT AND PUBLICATION ARE REACHABLE ONLY THROUGH A SUCCESSFUL FETCH, which is why this is a
+// separate func rather than statements following an `if`. The same shape keeps the boot handoff's
+// power cycle behind a confirmed read-back: a refusal cannot be reordered past it and nothing can
+// fall through to it.
+func verify_and_publish_boot_image(
+  staging_path: NonEmptyStr,
+  published_path: NonEmptyStr,
+  expected_sha256: NonEmptyStr,
+) -> BootImageFetchOutcome
+  uses net: std.resources.Network
+{
+  let measured = sha256sum_file_digest_via_shell(path: staging_path)
+  return match measured {
+    Sha256FileDigestUnavailable { path: p, reason: r } =>
+      BootImageDigestUnreadable { path: p, reason: r }
+    Sha256FileDigest { digest: _ } =>
+      if boot_image_digest_agrees(observed: measured, expected: expected_sha256) {
+        publish_verified_boot_image(
+          staging_path: staging_path,
+          published_path: published_path,
+          digest: boot_image_observed_hex(observed: measured),
+        )
+      } else {
+        BootImageDigestMismatchRefused {
+          expected: expected_sha256,
+          observed: boot_image_observed_hex(observed: measured),
+        }
+      }
+  }
+}
+
+// THE PUBLISH IS ITS OWN FUNC so the move is reachable only through the arm where the digest already
+// agreed, in the same shape the boot handoff uses to keep its power cycle behind a confirmed
+// read-back. A future edit cannot fall through to it.
+func publish_verified_boot_image(
+  staging_path: NonEmptyStr,
+  published_path: NonEmptyStr,
+  digest: NonEmptyStr,
+) -> BootImageFetchOutcome
+  uses net: std.resources.Network
+{
+  moved = shell.Move.File(
+    source: staging_path as FilePath,
+    destination: published_path as FilePath,
+  )
+  return if moved.success {
+    BootImageAdmitted { path: published_path, digest: digest }
+  } else {
+    BootImagePublishFailed { staged: staging_path, destination: published_path }
+  }
+}

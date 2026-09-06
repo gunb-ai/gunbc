@@ -1,0 +1,82 @@
+module gunbc.machine_intake_mtcollins1_boot_image_fetch
+
+import std.types { NonEmptyStr, String }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import gunbc.machine_intake_boot_image_fetch {
+  BootImageAdmitted,
+  BootImageDigestMismatchRefused,
+  BootImageDigestUnreadable,
+  BootImageFetchFailed,
+  BootImageFetchOutcome,
+  BootImagePublishFailed,
+  fetch_verified_boot_image,
+}
+
+// THE POLICY LAYER FOR ONE HOST'S BOOT IMAGE. Which artifact this unit should carry, and where the
+// controller reads it from, are workflow decisions; the operation stays reusable.
+//
+// THE URL AND THE PIN ARE THE SAME ROW UPSTREAM. extdeps.provisioning.ubuntu_install_media
+// noble_numbat_2404_3_live_server_arm64 carries content_sha256 cited to cdimage's own SHA256SUMS,
+// and the artifact this lane already booted measured exactly that value. The digest below is that
+// same figure; when the artifact row grows a locator field this policy should read both from it
+// rather than carrying either.
+data mtcollins1_boot_image_url: NonEmptyStr = "https://cdimage.ubuntu.com/releases/24.04/release/ubuntu-24.04.3-live-server-arm64.iso"
+
+data mtcollins1_boot_image_sha256: NonEmptyStr = "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555"
+
+// STAGING IS OUTSIDE THE EXPORT, PUBLICATION IS INSIDE IT. That is the whole safety property: the
+// controller enumerates /srv/bmc on its own schedule, so an artifact placed there is mountable
+// before anything has measured it. Staging elsewhere means a file only ever appears in the export
+// after its digest agreed.
+data mtcollins1_boot_image_staging_path: NonEmptyStr = "/var/tmp/gunbc-mtcollins1-boot-image.iso"
+
+data mtcollins1_boot_image_published_path: NonEmptyStr = "/srv/bmc/ubuntu-24.04.3-live-server-arm64.iso"
+
+fn mtcollins1_render_fetch(outcome: BootImageFetchOutcome) -> ProcessExit {
+  match outcome {
+    BootImageAdmitted { path: _, digest: _ } => ExitSuccess
+    BootImageFetchFailed { url: u } =>
+      exit_failure(reason: concat("mtcollins1 boot image: fetch failed for ", u as String))
+    BootImageDigestUnreadable { path: p, reason: r } =>
+      exit_failure(reason: concat("mtcollins1 boot image: staged at ", p as String, " but its digest could not be read: ", r))
+    BootImageDigestMismatchRefused { expected: e, observed: o } =>
+      exit_failure(reason: concat("mtcollins1 boot image: REFUSED, staged bytes digest ", o as String, " does not match the pinned ", e as String, "; the staged file is left in place as the evidence and was NOT published"))
+    BootImagePublishFailed { staged: s, destination: d } =>
+      exit_failure(reason: concat("mtcollins1 boot image: digest agreed but publishing ", s as String, " to ", d as String, " failed"))
+  }
+}
+
+func mtcollins1_fetch_boot_image() -> ProcessExit
+  uses net: std.resources.Network
+{
+  return mtcollins1_render_fetch(
+    outcome: fetch_verified_boot_image(
+      url: mtcollins1_boot_image_url,
+      staging_path: mtcollins1_boot_image_staging_path,
+      published_path: mtcollins1_boot_image_published_path,
+      expected_sha256: mtcollins1_boot_image_sha256,
+    )
+  )
+}
+
+// THE DISCRIMINATING RED. Same artifact, same paths, a pin that cannot match. If this returns
+// success the verification is decorative, and the wrong-pin case is the one that matters: a
+// mismatched image reaching the export is exactly the failure the staging split exists to prevent.
+// It publishes to a path the controller does NOT read, so a defect in the wall cannot put an
+// unverified artifact where the unit would boot it.
+data mtcollins1_wrong_pin: NonEmptyStr = "0000000000000000000000000000000000000000000000000000000000000000"
+
+data mtcollins1_wrong_pin_published_path: NonEmptyStr = "/var/tmp/gunbc-mtcollins1-wrongpin-published.iso"
+
+func mtcollins1_fetch_boot_image_wrong_pin_control() -> ProcessExit
+  uses net: std.resources.Network
+{
+  return mtcollins1_render_fetch(
+    outcome: fetch_verified_boot_image(
+      url: mtcollins1_boot_image_url,
+      staging_path: mtcollins1_boot_image_staging_path,
+      published_path: mtcollins1_wrong_pin_published_path,
+      expected_sha256: mtcollins1_wrong_pin,
+    )
+  )
+}
