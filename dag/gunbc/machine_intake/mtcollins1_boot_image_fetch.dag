@@ -9,6 +9,7 @@ import gunbc.machine_intake_boot_image_fetch {
   BootImageFetchFailed,
   BootImageFetchOutcome,
   BootImagePublishFailed,
+  BootImagePublishedDigestMismatch,
   fetch_verified_boot_image,
 }
 
@@ -24,12 +25,11 @@ data mtcollins1_boot_image_url: NonEmptyStr = "https://cdimage.ubuntu.com/releas
 
 data mtcollins1_boot_image_sha256: NonEmptyStr = "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555"
 
-// STAGING IS OUTSIDE THE EXPORT, PUBLICATION IS INSIDE IT. That is the whole safety property: the
-// controller enumerates /srv/bmc on its own schedule, so an artifact placed there is mountable
-// before anything has measured it. Staging elsewhere means a file only ever appears in the export
-// after its digest agreed.
-data mtcollins1_boot_image_staging_path: NonEmptyStr = "/var/tmp/gunbc-mtcollins1-boot-image.iso"
-
+// THERE IS NO STAGING PATH HERE ANY MORE, and its absence is the point. This module used to author
+// one beside the destination, which made the atomicity of the publish a property of two literals
+// agreeing about a filesystem — true on this host and unenforced. gunbc.machine_intake_boot_image_fetch
+// now derives staging from the destination, so a caller cannot express the divergence at all. What
+// this module still owns is the only fact that is genuinely this host's: WHERE the export is.
 data mtcollins1_boot_image_published_path: NonEmptyStr = "/srv/bmc/ubuntu-24.04.3-live-server-arm64.iso"
 
 fn mtcollins1_render_fetch(outcome: BootImageFetchOutcome) -> ProcessExit {
@@ -43,6 +43,8 @@ fn mtcollins1_render_fetch(outcome: BootImageFetchOutcome) -> ProcessExit {
       exit_failure(reason: concat("mtcollins1 boot image: REFUSED, staged bytes digest ", o as String, " does not match the pinned ", e as String, "; the staged file is left in place as the evidence and was NOT published"))
     BootImagePublishFailed { staged: s, destination: d } =>
       exit_failure(reason: concat("mtcollins1 boot image: digest agreed but publishing ", s as String, " to ", d as String, " failed"))
+    BootImagePublishedDigestMismatch { path: p, expected: e, observed: o } =>
+      exit_failure(reason: concat("mtcollins1 boot image: the move reported success but ", p as String, " now holds ", o as String, " rather than the verified ", e as String, "; the export does NOT contain what this program published and the unit must not be booted from it until that is explained"))
   }
 }
 
@@ -52,7 +54,6 @@ func mtcollins1_fetch_boot_image() -> ProcessExit
   return mtcollins1_render_fetch(
     outcome: fetch_verified_boot_image(
       url: mtcollins1_boot_image_url,
-      staging_path: mtcollins1_boot_image_staging_path,
       published_path: mtcollins1_boot_image_published_path,
       expected_sha256: mtcollins1_boot_image_sha256,
     )
@@ -74,7 +75,6 @@ func mtcollins1_fetch_boot_image_wrong_pin_control() -> ProcessExit
   return mtcollins1_render_fetch(
     outcome: fetch_verified_boot_image(
       url: mtcollins1_boot_image_url,
-      staging_path: mtcollins1_boot_image_staging_path,
       published_path: mtcollins1_wrong_pin_published_path,
       expected_sha256: mtcollins1_wrong_pin,
     )

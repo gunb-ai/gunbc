@@ -34,6 +34,7 @@ type BootImageFetchOutcome
   | BootImageDigestUnreadable { path: NonEmptyStr, reason: String }
   | BootImageDigestMismatchRefused { expected: NonEmptyStr, observed: NonEmptyStr }
   | BootImagePublishFailed { staged: NonEmptyStr, destination: NonEmptyStr }
+  | BootImagePublishedDigestMismatch { path: NonEmptyStr, expected: NonEmptyStr, observed: NonEmptyStr }
 
 // WHETHER A MEASURED DIGEST AGREES WITH THE PIN. Separated from the effect sequence so the judgment
 // is nameable, and returning the OBSERVED value on disagreement rather than a Bool: a refusal that
@@ -66,14 +67,39 @@ fn boot_image_observed_hex(observed: Sha256FileDigest) -> NonEmptyStr {
 // disagreed are the evidence for why the fetch was refused, and removing them turns a diagnosable
 // refusal into a bare assertion. What matters for safety is that they never reach the published
 // path, not that they cease to exist.
+// THE STAGING PATH IS DERIVED FROM THE DESTINATION, NOT SUPPLIED BESIDE IT, and that is the whole
+// of this module's atomicity guarantee rather than a tidiness preference.
+//
+// THE GUARANTEE WAS PREVIOUSLY TRUE BY COINCIDENCE. Staging and destination were two independent
+// hand-authored literals — /var/tmp/... and /srv/bmc/... — and rename(2) is atomic only WITHIN one
+// filesystem. On this host both happen to sit on the same logical volume, so the move was atomic and
+// the module's central claim held; measured, not assumed. But nothing established it. Point either
+// literal at a separate mount, a tmpfs /var/tmp among them, and mv silently degrades to copy-then-
+// unlink, which publishes a growing partial file into a share the controller re-scans on its own
+// schedule. That is precisely the window the staging split exists to close, reopened by an edit to a
+// path constant with no diagnostic anywhere.
+//
+// DERIVING THE STAGING PATH FROM THE DESTINATION MAKES THE TWO PATHS UNABLE TO DIVERGE. They share a
+// directory by construction, so they share a filesystem, so the rename is atomic — and there is no
+// longer an input whose editing could break it. This is the §5 move: prefer the single authority the
+// realization is derived from over a check that the two agree.
+//
+// THE SUFFIX IS NOT .iso, AND THAT IS LOAD-BEARING because staging now lives INSIDE the export the
+// controller reads. The controller enumerates by extension: this same export holds
+// memtest86-iso.zip, whose name contains "iso", and the controller has never listed it. So a
+// partially-written file under this suffix is not offerable as media even while it is being written.
+fn boot_image_staging_path(published_path: NonEmptyStr) -> NonEmptyStr {
+  join([published_path as String, ".gunbc-staging"], "") as NonEmptyStr
+}
+
 func fetch_verified_boot_image(
   url: NonEmptyStr,
-  staging_path: NonEmptyStr,
   published_path: NonEmptyStr,
   expected_sha256: NonEmptyStr,
 ) -> BootImageFetchOutcome
   uses net: std.resources.Network
 {
+  let staging_path = boot_image_staging_path(published_path: published_path)
   let fetched = run_shell_command(
     command: curl_download_command(url: url as String, destination: staging_path as String),
     transport: LocalExec,
@@ -123,6 +149,18 @@ func verify_and_publish_boot_image(
 // THE PUBLISH IS ITS OWN FUNC so the move is reachable only through the arm where the digest already
 // agreed, in the same shape the boot handoff uses to keep its power cycle behind a confirmed
 // read-back. A future edit cannot fall through to it.
+// THE PUBLISHED BYTES ARE MEASURED AGAIN AT THE FINAL PATH, and the staged measurement is not
+// carried forward as though it answered for them. Those are different questions: the staged digest
+// establishes that what was FETCHED matches the pin, and says nothing about what now occupies the
+// path the controller reads. Reporting the staged digest as the published one is the
+// execution-provenance loss this repository keeps finding — a value consumed as though an
+// observation produced it, when the observation was of something else.
+//
+// WHAT CAN ACTUALLY DIVERGE, so this is not a decorative re-read: the rename can land beside a file
+// another writer replaces, the destination can be a symlink into somewhere else, and the export is
+// group-writable by the automation account rather than exclusively held. A disagreement here means
+// the export does not contain what this program published, which is the one state that must never be
+// reported as an admission.
 func publish_verified_boot_image(
   staging_path: NonEmptyStr,
   published_path: NonEmptyStr,
@@ -135,8 +173,47 @@ func publish_verified_boot_image(
     destination: published_path as FilePath,
   )
   return if moved.success {
-    BootImageAdmitted { path: published_path, digest: digest }
+    confirm_published_boot_image(published_path: published_path, digest: digest)
   } else {
     BootImagePublishFailed { staged: staging_path, destination: published_path }
+  }
+}
+
+// A SEPARATE FUNC so the admission is reachable only through a successful move, in the same shape
+// the rest of this lane uses to keep a consequential step behind its precondition.
+//
+// THE EVIDENCE BEHIND THIS ARM IS ASYMMETRIC AND SAYING SO IS PART OF THE ROW. The positive path is
+// green by execution: a controlled fixture whose content, and therefore whose digest, was authored
+// rather than measured from the tree, fetched through file://, staged, moved, and re-measured at the
+// final path — two DigestFile calls in the trace, the second one this arm.
+//
+// BootImagePublishedDigestMismatch ITSELF HAS NO EXECUTED RED. Producing one needs the destination
+// to hold different bytes AFTER a successful rename, which no static fixture can arrange: it takes a
+// concurrent writer or a mocked move. That makes it a guard which is REACHABLE but unoccupied — the
+// mechanism exists (any second writer to a group-writable export produces it) and nothing lands in
+// it today — rather than a decoration whose red cannot be authored at all. The distinction is the
+// one this repository keeps having to redraw, and it decides whether the arm should exist: it
+// should. NEXT-RUNG TRIGGER: a fixture harness able to interpose on shell.Move.File, at which point
+// the red is authorable and this arm is owed one.
+func confirm_published_boot_image(
+  published_path: NonEmptyStr,
+  digest: NonEmptyStr,
+) -> BootImageFetchOutcome
+  uses net: std.resources.Network
+{
+  let republished = sha256sum_file_digest_via_shell(path: published_path)
+  return match republished {
+    Sha256FileDigestUnavailable { path: p, reason: r } =>
+      BootImageDigestUnreadable { path: p, reason: r }
+    Sha256FileDigest { digest: _ } =>
+      if boot_image_digest_agrees(observed: republished, expected: digest) {
+        BootImageAdmitted { path: published_path, digest: digest }
+      } else {
+        BootImagePublishedDigestMismatch {
+          path: published_path,
+          expected: digest,
+          observed: boot_image_observed_hex(observed: republished),
+        }
+      }
   }
 }
