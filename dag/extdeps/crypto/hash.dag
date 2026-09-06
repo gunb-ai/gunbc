@@ -41,7 +41,7 @@ fn sha512_digest(hex: NonEmptyStr) -> Digest {
   Digest { algorithm: Sha512, hex: hex }
 }
 
-data digest_shell_verify_line_legacy_note: NonEmptyStr = "LEGACY SHA-256-only shell-string verifier for the existing sccache consumer. Not a package-delivery realization. SHA-512 intentionally has no production shell arm here — gunbc.package_delivery uses PackageArchiveDigestObservation. dissolve-on: sccache migrates off this helper and the function deletes."
+data digest_shell_verify_line_legacy_note: NonEmptyStr = "SHA-256 shell-string verifier: `echo <hex>  <path> | sha256sum -c -` exits nonzero when the file at path does not hash to the digest, which under set -e stops the line. Two consumers: the sccache pin and the live-deploy executable install, which verifies the SOURCE against the planned digest before copying and the DESTINATION after (gunbc.live_deploy.emit emit_release_member_effects) so an installed executable can never differ from the identity the plan declared converged. Not a package-delivery realization: SHA-512 intentionally has no production shell arm here — gunbc.package_delivery uses PackageArchiveDigestObservation."
 
 fn digest_shell_verify_line(digest: Digest, file_path: NonEmptyStr) -> String {
   match digest.algorithm {

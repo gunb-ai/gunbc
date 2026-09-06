@@ -58,7 +58,7 @@ import gunbc.host_effect {
   DeployAccessPreflight,
 }
 import gunbc.host_effect_realize { host_effect_apply_gated }
-import gunbc.live_deploy.member_observe { deployment_effect_plan }
+import gunbc.live_deploy.member_observe { deployment_effect_plan, deployment_identity_readback, IdentityReadbackConverged, IdentityReadbackDrift, IdentityReadbackRefused }
 import gunbc.live_deploy.member_identity { EffectsDerived, EffectsRefused, decision_label }
 import gunbc.live_deploy.readiness {
   live_deploy_poll_until_service_ready_for_deploy, live_deploy_healthz_get_for_port, running_release_unidentified_detail,
@@ -306,6 +306,38 @@ fn live_deploy_apply_digest_readback_via_transport(
   )
 }
 
+// THE MEMBER IDENTITIES ARE READ BACK AFTER READINESS, and readiness is not a substitute for it.
+// Readiness proves the unit answers /healthz as the candidate; an equivalent binary reporting the
+// same revision, or a unit file rewritten after the copy, would pass it. The plan was derived from
+// the host's member identities, so the transaction closes by observing them again
+// (gunbc.live_deploy.member_observe deployment_identity_readback) and requiring every member
+// AlreadyConverged -- a remaining mutation names which member the apply failed to land, and a refusal
+// names which member could not be read afterwards. Both are NotConverged, never a green with a note.
+fn live_deploy_apply_identity_readback_gate(
+  spec: DeploymentSpec,
+  candidate: CandidateRelease,
+  transport: HostEffectTransport,
+  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let intent = match mutation {
+    Converged { evidence: _, applied: i } => i
+    NotConverged { reason: _, applied: i } => i
+  }
+  match deployment_identity_readback(spec: spec, candidate: candidate, transport: transport) {
+    IdentityReadbackConverged => mutation
+    IdentityReadbackDrift { remaining } =>
+      NotConverged {
+        reason: join(["live_deploy: the apply completed and readiness held, but the host's member identities still differ from the release: ", join(remaining, "; ")], ""),
+        applied: intent,
+      }
+    IdentityReadbackRefused { refusals } =>
+      NotConverged {
+        reason: join(["live_deploy: the apply completed but the member identities could not be read back: ", join(map(refusals, d => decision_label(d: d)), "; ")], ""),
+        applied: intent,
+      }
+  }
+}
+
 fn live_deploy_apply_via_transport(
   spec: DeploymentSpec,
   candidate: CandidateRelease,
@@ -334,7 +366,7 @@ fn live_deploy_apply_via_transport(
       access: access,
     )
     if reconciliation_converged(r: digest) {
-      gated
+      live_deploy_apply_identity_readback_gate(spec: spec, candidate: candidate, transport: transport, mutation: gated)
     } else {
       match digest {
         NotConverged { reason: why, applied: _ } =>

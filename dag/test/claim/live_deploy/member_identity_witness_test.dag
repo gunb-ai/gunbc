@@ -3,14 +3,17 @@ module test.claim.live_deploy.member_identity_witness_test
 import std.types { Bool, String, List, NonEmptyStr, CommitSha }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
-import extdeps.systemd { Active, Failed }
+import extdeps.systemd { Active, Failed, Inactive }
 import gunbc.live_deploy.member_identity {
-  ConvergedMember, TreePublication, Executable, ServiceUnit,
-  TreePublicationIdentity, ServiceUnitIdentity,
-  MemberIdentity, TreeIdentity, ExecutableIdentity, UnitIdentity,
+  ConvergedMember, TreePublication, Executable, UnitFile, UnitManager, ServiceProcess,
+  TreePublicationIdentity, UnitFileIdentity, UnitManagerStanding, ManagerLoadedCurrent, ManagerNeedsReload,
+  ServiceProcessIdentity, ProcessRunningRelease, ProcessNotRunning,
+  MemberIdentity, TreeIdentity, ExecutableIdentity, UnitFileAt, UnitManagerAt, ProcessAt,
   ObservedMember, MemberObserved, MemberAbsentOnHost, MemberUnobservable,
   MemberDecision, AlreadyConverged, Create, Replace, MemberRefused,
-  decide_member, derive_effects, EffectDerivation, EffectsDerived, EffectsRefused, effect_labels,
+  MemberRefusalCause, RepositoryBootstrapUnavailable, ObservationIsOfAnotherMember, DecisionFiledUnderAnotherMember,
+  decide_member, derive_effects, ReleaseMemberDecisions, ReleaseTarget,
+  EffectDerivation, EffectsDerived, EffectsRefused, effect_labels,
 }
 
 fn rev_a() -> CommitSha { "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as CommitSha }
@@ -21,111 +24,187 @@ fn unit_a() -> Fnv1a64Structural { content_hash_atom(value: "[Unit]\nDescription
 fn unit_b() -> Fnv1a64Structural { content_hash_atom(value: "[Unit]\nDescription=b\n" as NonEmptyStr) }
 fn unit_name() -> NonEmptyStr { "gunbc-roadmap.service" as NonEmptyStr }
 
+fn release_target() -> ReleaseTarget { ReleaseTarget { revision: rev_a(), executable: bin_a(), unit: unit_name() } }
+
 fn desired_tree() -> MemberIdentity { TreeIdentity { tree: TreePublicationIdentity { revision: rev_a(), tracked_projection_clean: true } } }
 fn desired_bin() -> MemberIdentity { ExecutableIdentity { digest: bin_a() } }
-fn desired_unit() -> MemberIdentity { UnitIdentity { unit: ServiceUnitIdentity { unit: unit_name(), document: unit_a(), active: Active } } }
+fn desired_file() -> MemberIdentity { UnitFileAt { file: UnitFileIdentity { unit: unit_name(), document: unit_a() } } }
+fn desired_manager() -> MemberIdentity { UnitManagerAt { standing: ManagerLoadedCurrent } }
+fn desired_process() -> MemberIdentity { ProcessAt { process: ProcessRunningRelease { revision: rev_a() } } }
 
-fn decisions(observed_tree: ObservedMember, observed_bin: ObservedMember, observed_unit: ObservedMember) -> List<MemberDecision> {
-  [
-    decide_member(member: TreePublication, desired: desired_tree(), observed: observed_tree),
-    decide_member(member: Executable, desired: desired_bin(), observed: observed_bin),
-    decide_member(member: ServiceUnit, desired: desired_unit(), observed: observed_unit),
-  ]
+fn converged_observations() -> ReleaseMemberDecisions {
+  decisions(
+    observed_bin: MemberObserved { identity: desired_bin() },
+    observed_tree: MemberObserved { identity: desired_tree() },
+    observed_file: MemberObserved { identity: desired_file() },
+    observed_manager: MemberObserved { identity: desired_manager() },
+    observed_process: MemberObserved { identity: desired_process() },
+  )
+}
+
+fn decisions(
+  observed_bin: ObservedMember,
+  observed_tree: ObservedMember,
+  observed_file: ObservedMember,
+  observed_manager: ObservedMember,
+  observed_process: ObservedMember,
+) -> ReleaseMemberDecisions {
+  ReleaseMemberDecisions {
+    executable: decide_member(member: Executable, desired: desired_bin(), observed: observed_bin),
+    tree: decide_member(member: TreePublication, desired: desired_tree(), observed: observed_tree),
+    unit_file: decide_member(member: UnitFile, desired: desired_file(), observed: observed_file),
+    unit_manager: decide_member(member: UnitManager, desired: desired_manager(), observed: observed_manager),
+    process: decide_member(member: ServiceProcess, desired: desired_process(), observed: observed_process),
+  }
 }
 
 fn labels_of(d: EffectDerivation) -> List<String> {
   match d { EffectsDerived { plan } => effect_labels(plan: plan)  EffectsRefused { refusals: _ } => ["REFUSED"] }
 }
 
+fn labels(d: ReleaseMemberDecisions) -> List<String> {
+  labels_of(d: derive_effects(decisions: d, target: release_target()))
+}
+
+fn one_drift(member: ConvergedMember, observed: ObservedMember) -> ReleaseMemberDecisions {
+  let c = converged_observations()
+  match member {
+    Executable => ReleaseMemberDecisions { executable: decide_member(member: Executable, desired: desired_bin(), observed: observed), tree: c.tree, unit_file: c.unit_file, unit_manager: c.unit_manager, process: c.process }
+    TreePublication => ReleaseMemberDecisions { executable: c.executable, tree: decide_member(member: TreePublication, desired: desired_tree(), observed: observed), unit_file: c.unit_file, unit_manager: c.unit_manager, process: c.process }
+    UnitFile => ReleaseMemberDecisions { executable: c.executable, tree: c.tree, unit_file: decide_member(member: UnitFile, desired: desired_file(), observed: observed), unit_manager: c.unit_manager, process: c.process }
+    UnitManager => ReleaseMemberDecisions { executable: c.executable, tree: c.tree, unit_file: c.unit_file, unit_manager: decide_member(member: UnitManager, desired: desired_manager(), observed: observed), process: c.process }
+    ServiceProcess => ReleaseMemberDecisions { executable: c.executable, tree: c.tree, unit_file: c.unit_file, unit_manager: c.unit_manager, process: decide_member(member: ServiceProcess, desired: desired_process(), observed: observed) }
+  }
+}
+
 // FIXTURE 1: ALREADY CONVERGED -> ZERO MUTATIONS. The host holds exactly the desired identities, so
-// the plan carries no mutation and only the readiness readback. This is the property the apply-all
-// path could not have: with observed = [] every member was an add on every apply.
+// the plan carries no mutation. This is the property the apply-all path could not have: with
+// observed = [] every member was an add on every apply.
 test fn an_already_converged_host_produces_zero_mutations() -> Bool {
-  let d = decisions(
-    observed_tree: MemberObserved { identity: desired_tree() },
-    observed_bin: MemberObserved { identity: desired_bin() },
-    observed_unit: MemberObserved { identity: desired_unit() },
-  )
-  count(labels_of(d: derive_effects(decisions: d, service_unit: unit_name()))) == 0
+  count(labels(d: converged_observations())) == 0
 }
 
 // FIXTURE 2: EXECUTABLE-ONLY DRIFT -> INSTALL + RESTART, NOTHING ELSE. The key (the binary's path)
 // is fixed and only its content differs -- the control the observed-side record demands of every
 // reconcile binding, and the one the path-keyed roster could never express.
 test fn executable_drift_installs_the_executable_and_restarts_its_consumer_only() -> Bool {
-  let d = decisions(
-    observed_tree: MemberObserved { identity: desired_tree() },
-    observed_bin: MemberObserved { identity: ExecutableIdentity { digest: bin_b() } },
-    observed_unit: MemberObserved { identity: desired_unit() },
-  )
-  labels_of(d: derive_effects(decisions: d, service_unit: unit_name()))
+  labels(d: one_drift(member: Executable, observed: MemberObserved { identity: ExecutableIdentity { digest: bin_b() } }))
     == ["install-executable sha256:1111111111111111111111111111111111111111111111111111111111111111", "restart gunbc-roadmap.service"]
 }
 
-// FIXTURE 3: UNIT-ONLY DRIFT -> WRITE + DAEMON-RELOAD + RESTART. daemon-reload appears because a
-// unit document changed, and appears once.
-test fn unit_drift_writes_the_unit_reloads_the_manager_and_restarts() -> Bool {
-  let d = decisions(
-    observed_tree: MemberObserved { identity: desired_tree() },
-    observed_bin: MemberObserved { identity: desired_bin() },
-    observed_unit: MemberObserved { identity: UnitIdentity { unit: ServiceUnitIdentity { unit: unit_name(), document: unit_b(), active: Active } } },
-  )
-  labels_of(d: derive_effects(decisions: d, service_unit: unit_name()))
+// FIXTURE 3: UNIT-FILE DRIFT -> WRITE + DAEMON-RELOAD + RESTART. The reload appears because the file
+// changed, and appears once.
+test fn unit_file_drift_writes_the_unit_reloads_the_manager_and_restarts() -> Bool {
+  labels(d: one_drift(member: UnitFile, observed: MemberObserved { identity: UnitFileAt { file: UnitFileIdentity { unit: unit_name(), document: unit_b() } } }))
     == ["write-unit gunbc-roadmap.service", "daemon-reload", "restart gunbc-roadmap.service"]
 }
 
-// A CURRENT UNIT FILE WHOSE PROCESS IS FAILED IS NOT CONVERGED: identity includes active state, so
-// the decision is a replace and the plan restarts. Without the state axis a failed dashboard under a
-// correct unit would read as converged and the deploy would leave it down.
-test fn a_failed_process_under_a_current_unit_is_a_replace_that_restarts() -> Bool {
-  let d = decisions(
-    observed_tree: MemberObserved { identity: desired_tree() },
-    observed_bin: MemberObserved { identity: desired_bin() },
-    observed_unit: MemberObserved { identity: UnitIdentity { unit: ServiceUnitIdentity { unit: unit_name(), document: unit_a(), active: Failed } } },
-  )
-  labels_of(d: derive_effects(decisions: d, service_unit: unit_name()))
-    == ["write-unit gunbc-roadmap.service", "daemon-reload", "restart gunbc-roadmap.service"]
+// THE THREE UNIT MEMBERS ARE THREE REMEDIES, AND THIS IS THE PAIR THAT PROVES IT. A stale MANAGER
+// under a current file reloads and restarts -- and does NOT rewrite the file, which the fused
+// identity did (it derived a write for any unit-side difference). This is the interrupted deploy:
+// file written, never reloaded.
+test fn a_stale_manager_reloads_and_restarts_without_rewriting_the_file() -> Bool {
+  labels(d: one_drift(member: UnitManager, observed: MemberObserved { identity: UnitManagerAt { standing: ManagerNeedsReload } }))
+    == ["daemon-reload", "restart gunbc-roadmap.service"]
+}
+
+// A DOWN PROCESS UNDER A CURRENT FILE AND A CURRENT MANAGER RESTARTS, AND ONLY RESTARTS. The fused
+// identity wrote the unit and reloaded the manager for this state too; both were work the host did
+// not need.
+test fn a_failed_process_restarts_and_nothing_else() -> Bool {
+  labels(d: one_drift(member: ServiceProcess, observed: MemberObserved { identity: ProcessAt { process: ProcessNotRunning { active: Failed } } }))
+    == ["restart gunbc-roadmap.service"]
+}
+
+// AN ACTIVE PROCESS RUNNING THE PREVIOUS RELEASE IS NOT CONVERGED. This is the state the fused
+// identity could not express at all: unit file current, manager current, ActiveState Active, so
+// every member compared equal and the plan was EMPTY -- while readiness refused with
+// ProcessRevisionMismatch and no later plan ever restarted it. An absorbing refusal, repaired here
+// by making the running release part of the process's identity.
+test fn an_active_process_running_the_previous_release_restarts() -> Bool {
+  labels(d: one_drift(member: ServiceProcess, observed: MemberObserved { identity: ProcessAt { process: ProcessRunningRelease { revision: rev_b() } } }))
+    == ["restart gunbc-roadmap.service"]
 }
 
 // A DIRTY TRACKED PROJECTION AT THE RIGHT REVISION IS A REPLACE, and a right revision is not enough:
 // this is the stale-projection state the observed-side record found revision-only checks blind to.
 test fn a_dirty_projection_at_the_desired_revision_republishes_the_tree() -> Bool {
-  let d = decisions(
-    observed_tree: MemberObserved { identity: TreeIdentity { tree: TreePublicationIdentity { revision: rev_a(), tracked_projection_clean: false } } },
-    observed_bin: MemberObserved { identity: desired_bin() },
-    observed_unit: MemberObserved { identity: desired_unit() },
-  )
-  labels_of(d: derive_effects(decisions: d, service_unit: unit_name()))
+  labels(d: one_drift(member: TreePublication, observed: MemberObserved { identity: TreeIdentity { tree: TreePublicationIdentity { revision: rev_a(), tracked_projection_clean: false } } }))
     == ["publish-tree aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "restart gunbc-roadmap.service"]
 }
 
-// AN ABSENT MEMBER IS A CREATE; AN UNOBSERVABLE MEMBER REFUSES THE WHOLE PLAN. Absence is an
+// AN ABSENT EXECUTABLE IS A CREATE; AN UNOBSERVABLE MEMBER REFUSES THE WHOLE PLAN. Absence is an
 // established fact and produces the install; a read that could not be made is neither absence nor
 // convergence, and a plan built over it would either reinstall blindly or skip blindly.
 test fn absence_creates_and_unobservability_refuses() -> Bool {
-  let created = decisions(
-    observed_tree: MemberObserved { identity: desired_tree() },
-    observed_bin: MemberAbsentOnHost { member: Executable },
-    observed_unit: MemberObserved { identity: desired_unit() },
-  )
-  let unobservable = decisions(
-    observed_tree: MemberObserved { identity: desired_tree() },
-    observed_bin: MemberUnobservable { member: Executable, cause: "sha256sum refused" },
-    observed_unit: MemberObserved { identity: desired_unit() },
-  )
-  labels_of(d: derive_effects(decisions: created, service_unit: unit_name()))
+  labels(d: one_drift(member: Executable, observed: MemberAbsentOnHost { member: Executable }))
     == ["install-executable sha256:1111111111111111111111111111111111111111111111111111111111111111", "restart gunbc-roadmap.service"]
-    && (match derive_effects(decisions: unobservable, service_unit: unit_name()) {
+    && (match derive_effects(decisions: one_drift(member: Executable, observed: MemberUnobservable { member: Executable, cause: "sha256sum refused" }), target: release_target()) {
       EffectsRefused { refusals } => count(refusals) == 1
       EffectsDerived { plan: _ } => false
     })
+}
+
+// AN ABSENT REPOSITORY REFUSES BY NAME RATHER THAN PLANNING A CREATE IT CANNOT PERFORM. The tree's
+// Create would publish into a directory that is not a repository (the sync excludes .git and the
+// convergence oneshot refuses a non-repository pre-state), leaving a state every later observation
+// refuses -- a recoverable absence turned into a permanent one. Until a bootstrap transition exists
+// the deploy says so and installs nothing.
+test fn an_absent_repository_refuses_with_the_bootstrap_cause() -> Bool {
+  match derive_effects(decisions: one_drift(member: TreePublication, observed: MemberAbsentOnHost { member: TreePublication }), target: release_target()) {
+    EffectsDerived { plan: _ } => false
+    EffectsRefused { refusals } => count(refusals) == 1 && any(refusals, d => match d {
+      MemberRefused { member: TreePublication, cause: RepositoryBootstrapUnavailable } => true
+      _ => false
+    })
+  }
 }
 
 // A DECISION ASKED OF THE WRONG MEMBER IS A REFUSAL, NOT A COMPARISON: the tree's decision handed an
 // executable observation cannot be converged or changed, only wrong.
 test fn an_observation_of_another_member_is_refused() -> Bool {
   match decide_member(member: TreePublication, desired: desired_tree(), observed: MemberObserved { identity: desired_bin() }) {
-    MemberRefused { member: TreePublication, cause } => string_contains(s: cause, pattern: "observation is of executable")
+    MemberRefused { member: TreePublication, cause: ObservationIsOfAnotherMember { observed: Executable } } => true
     _ => false
   }
+}
+
+// A DECISION FILED IN THE WRONG SLOT IS REFUSED BY THE DERIVATION. The record gives one slot per
+// member, so a member cannot be missing; what it cannot type-check is that a slot holds a decision
+// ABOUT its member, and that is checked here rather than assumed.
+test fn a_decision_in_the_wrong_slot_refuses_the_plan() -> Bool {
+  let c = converged_observations()
+  let swapped = ReleaseMemberDecisions {
+    executable: c.tree,
+    tree: c.executable,
+    unit_file: c.unit_file,
+    unit_manager: c.unit_manager,
+    process: c.process,
+  }
+  match derive_effects(decisions: swapped, target: release_target()) {
+    EffectsDerived { plan: _ } => false
+    EffectsRefused { refusals } => count(refusals) == 2 && any(refusals, d => match d {
+      MemberRefused { member: Executable, cause: DecisionFiledUnderAnotherMember { found: TreePublication } } => true
+      _ => false
+    })
+  }
+}
+
+// A FULL DRIFT DERIVES EVERY MUTATION ONCE, IN THE DEPLOYMENT'S ORDER, and the reload appears once
+// even though both the file and the manager changed.
+test fn a_fully_drifted_host_derives_each_mutation_once_in_order() -> Bool {
+  let d = decisions(
+    observed_bin: MemberObserved { identity: ExecutableIdentity { digest: bin_b() } },
+    observed_tree: MemberObserved { identity: TreeIdentity { tree: TreePublicationIdentity { revision: rev_b(), tracked_projection_clean: true } } },
+    observed_file: MemberObserved { identity: UnitFileAt { file: UnitFileIdentity { unit: unit_name(), document: unit_b() } } },
+    observed_manager: MemberObserved { identity: UnitManagerAt { standing: ManagerNeedsReload } },
+    observed_process: MemberObserved { identity: ProcessAt { process: ProcessNotRunning { active: Inactive } } },
+  )
+  labels(d: d) == [
+    "install-executable sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "publish-tree aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "write-unit gunbc-roadmap.service",
+    "daemon-reload",
+    "restart gunbc-roadmap.service",
+  ]
 }
