@@ -556,7 +556,21 @@ fn refuse_and_drop_carrying(
   unattempted_delivery(
     printer: printer,
     cause: cause,
-    clean: removed && residue_already == false)
+    clean: delivery_is_clean(payload_removed: removed, residue_already: residue_already))
+}
+
+// THE JOIN IS ITS OWN FUNCTION BECAUSE A WITNESS BELOW IT PROVES NOTHING ABOUT IT. The first
+// discriminating pair for this defect called unattempted_delivery(clean: ...) directly -- so it
+// varied the ALREADY-COLLAPSED Bool and never exercised the collapse itself. It would have stayed
+// green if this expression regressed to `clean: removed`, which is precisely the defect it was
+// written to prevent, and I described that pair in a commit message as holding payload removal
+// fixed while varying residue when it did neither.
+//
+// A pure two-input join is the smallest thing whose RED is authorable: nothing here is an effect,
+// so both inputs are free, and "payload removed but credential residue known" is a state a fixture
+// can name directly instead of approximating one layer down.
+fn delivery_is_clean(payload_removed: Bool, residue_already: Bool) -> Bool {
+  payload_removed && residue_already == false
 }
 
 // THE RESIDUE MESSAGE HAS ONE AUTHORITY. Three paths can now leave a payload copy or a credential
