@@ -411,7 +411,13 @@ type RepositoryEncodeRefusal
   | RepositoryCommitReferenceDuplicated { reference: RepositoryCommitRef }
   | RepositoryCommitReferenceOutsideAllocator { reference: RepositoryCommitRef, next_ordinal: Int }
   | RepositoryCommitParentNotInCommits { parent: RepositoryCommitRef }
-  | RepositoryEncodeIntegrationSourceNotInCommits { source: RepositoryCommitRef }
+// NAMED FOR PRIOR ADMISSION, NOT FOR MEMBERSHIP, AND THE DISTINCTION IS THE WHOLE INVARIANT. The
+// producing rule refuses an anchor that is not admitted BEFORE the row naming it, so an anchor
+// PRESENT in the table but listed later is refused too. A name saying `NotInCommits` would describe a
+// weaker check than the one that runs -- a reader deciding whether the ordering case is covered would
+// read the name and conclude it is not -- and the sibling arm on the decode side already carries the
+// accurate spelling. One rule answering under two names is the meaning fork DESIGN section 3 refuses.
+  | RepositoryEncodeIntegrationSourceNotPreviouslyAdmitted { source: RepositoryCommitRef }
 
 // THE SAME MISATTRIBUTION THIS TYPE ALREADY CLOSED ONCE, CLOSED AGAIN ONE LAYER OVER. The
 // member-read arm below exists because dropping the envelope's own identity_rule member used to
@@ -966,7 +972,7 @@ fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcom
                 Present { value: CommitParentNotPreviouslyAdmitted { parent: parent } } =>
                   RepositoryEncodeRefused { cause: RepositoryCommitParentNotInCommits { parent: parent } }
                 Present { value: CommitIntegrationSourceNotPreviouslyAdmitted { source: source } } =>
-                  RepositoryEncodeRefused { cause: RepositoryEncodeIntegrationSourceNotInCommits { source: source } }
+                  RepositoryEncodeRefused { cause: RepositoryEncodeIntegrationSourceNotPreviouslyAdmitted { source: source } }
                 Present { value: CommitReferenceOutsideAllocator { reference: reference, next_ordinal: _ } } =>
                   RepositoryEncodeRefused {
                     cause: RepositoryCommitReferenceOutsideAllocator {

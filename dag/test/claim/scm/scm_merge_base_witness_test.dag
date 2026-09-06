@@ -48,7 +48,7 @@ import gunbc.scm.repository_envelope {
   RepositoryCommitMintParentMissing,
   RepositoryCommitMintIntegrationSourceMissing,
   RepositoryCommitIntegrationSourceNotPreviouslyAdmitted,
-  RepositoryEncodeIntegrationSourceNotInCommits,
+  RepositoryEncodeIntegrationSourceNotPreviouslyAdmitted,
   encode_repository,
   mint_repository_commit,
   commit_at_reference,
@@ -532,7 +532,24 @@ test fn scm_mb_checked_encode_refuses_an_absent_integration_anchor() -> Bool {
     MbSceneUnavailable => false
     MbScene { repository: r, c0: c0, s1: s1, m1: m1, t1: t1, s2: _, i1: _ } =>
       match encode_repository_checked(repo: mb_ordered(scene_repo: r, order: [c0, m1, t1])) {
-        RepositoryEncodeRefused { cause: RepositoryEncodeIntegrationSourceNotInCommits { source: x } } =>
+        RepositoryEncodeRefused { cause: RepositoryEncodeIntegrationSourceNotPreviouslyAdmitted { source: x } } =>
+          repository_commit_ref_eq(left: x, right: s1)
+        RepositoryEncodeRefused { cause: _ } => false
+        RepositoryEncoded { value: _ } => false
+      }
+  }
+}
+
+// THE WRITER REFUSES THE ORDERING CASE TOO, which is what makes the cause's name honest. Without
+// this the encode arm was only ever exercised on an ABSENT anchor, so a membership-only writer would
+// have passed every control while the name claimed prior admission -- the check would have been
+// weaker than its own spelling, on the exact distinction this module was reworked to draw.
+test fn scm_mb_checked_encode_refuses_an_integration_anchor_that_comes_later() -> Bool {
+  match mb_scene() {
+    MbSceneUnavailable => false
+    MbScene { repository: r, c0: c0, s1: s1, m1: m1, t1: _, s2: _, i1: _ } =>
+      match encode_repository_checked(repo: mb_ordered(scene_repo: r, order: [c0, m1, s1])) {
+        RepositoryEncodeRefused { cause: RepositoryEncodeIntegrationSourceNotPreviouslyAdmitted { source: x } } =>
           repository_commit_ref_eq(left: x, right: s1)
         RepositoryEncodeRefused { cause: _ } => false
         RepositoryEncoded { value: _ } => false
@@ -551,4 +568,5 @@ test fn scm_merge_base_witnesses_hold() -> Bool {
     && scm_mb_a_document_whose_integration_anchor_is_absent_refuses()
     && scm_mb_a_document_whose_integration_anchor_comes_later_refuses()
     && scm_mb_checked_encode_refuses_an_absent_integration_anchor()
+    && scm_mb_checked_encode_refuses_an_integration_anchor_that_comes_later()
 }

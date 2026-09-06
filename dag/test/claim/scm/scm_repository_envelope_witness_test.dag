@@ -74,7 +74,7 @@ import gunbc.scm.repository_envelope {
   RepositoryEncodeStagedIsAuthoredSource,
   RepositoryEncodeStagedIsSemanticNode, RepositoryCheckoutNotInCommits,
   RepositoryCommitParentNotInCommits,
-  RepositoryEncodeIntegrationSourceNotInCommits,
+  RepositoryEncodeIntegrationSourceNotPreviouslyAdmitted,
   RepositoryCommitIntegrationSourceNotPreviouslyAdmitted,
   RepositoryCommitReferenceDuplicated, RepositoryCommitReferenceDuplicatedOnWire,
   RepositoryCommitReferenceOutsideAllocator, RepositoryDecodedCommitReferenceOutsideAllocator,
@@ -704,7 +704,7 @@ fn scm_env_encode_cause_tag(outcome: RepositoryEncodeOutcome) -> String {
         RepositoryCommitRootNotInStore { root: _ } => "commit_root"
         RepositoryCheckoutNotInCommits { selected: _ } => "checked_out"
         RepositoryCommitParentNotInCommits { parent: _ } => "commit_parent"
-        RepositoryEncodeIntegrationSourceNotInCommits { source: _ } => "commit_integration_source"
+        RepositoryEncodeIntegrationSourceNotPreviouslyAdmitted { source: _ } => "commit_integration_source"
         RepositoryCommitReferenceDuplicated { reference: _ } => "commit_duplicate"
         RepositoryCommitReferenceOutsideAllocator { reference: _, next_ordinal: _ } => "commit_outside_allocator"
       }
@@ -1006,7 +1006,7 @@ fn scm_env_named_target_is_uncontained(outcome: RepositoryEncodeOutcome, store: 
         RepositoryCommitRootNotInStore { root: _ } => false
         RepositoryCheckoutNotInCommits { selected: _ } => false
         RepositoryCommitParentNotInCommits { parent: _ } => false
-        RepositoryEncodeIntegrationSourceNotInCommits { source: _ } => false
+        RepositoryEncodeIntegrationSourceNotPreviouslyAdmitted { source: _ } => false
         RepositoryCommitReferenceDuplicated { reference: _ } => false
         RepositoryCommitReferenceOutsideAllocator { reference: _, next_ordinal: _ } => false
       }
