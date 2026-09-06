@@ -1,0 +1,78 @@
+module test.claim.approval_notification_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.auth.approval_notification {
+  approval_ntfy_topic, approval_cache_policy, approval_notification,
+  approval_notification_priority, access_lifetime_sentence,
+}
+import gunbc.auth.access_request { AccessLifetime, LifetimeSeconds, LifetimeStanding }
+import extdeps.ntfy.ntfy {
+  NtfyPriority, PriorityHigh, PriorityMax, NtfyCachePolicy, CacheServerSide, CacheDisabled,
+}
+import std.types { NonEmptyStr, Seconds }
+import std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── The sentence the operator reads states the ACCESS lifetime ───────────────────────────────
+// THE DISCRIMINATING RED FOR THE WHOLE SEPARATION. A capability link lives for minutes; the
+// binding it authorizes routinely lives for a day, a month, or forever. If the notification
+// rendered the LINK's deadline as the access deadline, the operator would read "expires in 15
+// minutes" and grant a month. These pin that the sentence describes the access.
+test fn a_standing_grant_says_ongoing_rather_than_naming_a_deadline() -> Bool {
+  string_contains(s: access_lifetime_sentence(l: LifetimeStanding), pattern: "ONGOING")
+    && string_contains(s: access_lifetime_sentence(l: LifetimeStanding), pattern: "does not expire")
+}
+
+// THE OTHER SIDE, so the renderer cannot be saying ONGOING for everything: a bounded grant names
+// its own duration and says the provider enforces it, rather than implying someone will revoke it.
+test fn a_bounded_grant_names_its_own_duration_and_its_enforcement() -> Bool {
+  let s = access_lifetime_sentence(l: LifetimeSeconds { seconds: 86400 as Seconds })
+  string_contains(s: s, pattern: "86400")
+    && string_contains(s: s, pattern: "expiring condition")
+    && !string_contains(s: s, pattern: "ONGOING")
+}
+
+// THE TWO SENTENCES MUST DIFFER. A renderer that returned the same text for a day and for forever
+// would pass each test above on its own, and would be the exact confusion this separation exists
+// to prevent.
+test fn a_bounded_and_a_standing_grant_do_not_read_the_same() -> Bool {
+  access_lifetime_sentence(l: LifetimeSeconds { seconds: 86400 as Seconds })
+    != access_lifetime_sentence(l: LifetimeStanding)
+}
+
+// ── Delivery choices, asserted because both have a failure mode ──────────────────────────────
+// HIGH, NOT MAX. Max bypasses the ringer on iOS. A blocked convergence is urgent -- a pipeline is
+// stopped -- but it is not an emergency, and a channel that wakes the operator at night for a
+// routine grant gets muted. A muted approval channel fails closed in the worst way: requests wait
+// forever while everyone believes notifications work.
+test fn the_notification_is_high_priority_and_not_max() -> Bool {
+  match approval_notification_priority() {
+    PriorityHigh => true
+    _ => false
+  }
+}
+
+// THE CACHE STAYS ON. Disabling it is the reflex for a message carrying a credential, and here it
+// would be the wrong trade twice: the message never reaches a third party's history anyway -- the
+// upstream relay sees a hashed topic and an id, never the body -- and Cache: no drops delivery to
+// temporarily disconnected subscribers, which is exactly the phone this arrangement produces.
+test fn the_cache_stays_server_side() -> Bool {
+  match approval_cache_policy {
+    CacheServerSide => true
+    CacheDisabled => false
+  }
+}
+
+// The click target is what the operator's tap opens, and it must be the URL we were handed rather
+// than anything the renderer composed -- a notification whose button goes somewhere else is the
+// one thing worse than no notification.
+test fn the_click_target_is_the_approval_url_verbatim() -> Bool {
+  let m = approval_notification(
+    title: "secret access requested" as NonEmptyStr,
+    body: "fleet-cloud-convergence wants secretAccessor on ci-github-app-private-key" as NonEmptyStr,
+    approval_url: "https://srv1.tailnet/approve/abc123" as NonEmptyStr,
+  )
+  m.click == "https://srv1.tailnet/approve/abc123"
+    && m.topic == approval_ntfy_topic
+}

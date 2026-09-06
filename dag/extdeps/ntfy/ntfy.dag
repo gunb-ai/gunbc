@@ -132,7 +132,7 @@ service ntfy.Publish {
         "X-Click": click,
         "Cache": cache
       },
-      body: body
+      body: { message: body }
     }
     response {
       200 => NtfyPublishReceipt
