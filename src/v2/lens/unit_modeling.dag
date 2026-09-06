@@ -3,7 +3,7 @@ module v2.lens.unit_modeling
 import v2.lens.common.construction_justification {
   ConstructionJustification,
   OutsideModeledGuarantee,
-  PolicyJudgmentRequired,
+  CandidateDomainNotClosed,
   modeled_outside_boundary
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -156,13 +156,13 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
       },
       required_capability: DeclarationRef {
         module_path: "v2.lens.unit_modeling",
-        decl_name: "unit_modeling_gate",
+        decl_name: "field_name_has_known_carrier",
         field: WholeDeclaration
       },
-      boundary_kind: PolicyJudgmentRequired {
-        judgment: DeclarationRef {
+      boundary_kind: CandidateDomainNotClosed {
+        domain: DeclarationRef {
           module_path: "v2.lens.unit_modeling",
-          decl_name: "unit_modeling_gate",
+          decl_name: "unit_field_rows",
           field: WholeDeclaration
         }
       }

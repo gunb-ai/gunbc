@@ -524,7 +524,7 @@ data lens_contract_synthesis: LensContract = {
         },
         required_capability: DeclarationRef {
           module_path: "v2.lens.enforcement.complexity_contract_subject",
-          decl_name: "CompleteRewriteDiscovery",
+          decl_name: "GlobalOptimality",
           field: WholeDeclaration
         },
         boundary_kind: CandidateDomainNotClosed {
@@ -564,13 +564,13 @@ data lens_contract_unit_modeling: LensContract = {
         },
         required_capability: DeclarationRef {
           module_path: "v2.lens.unit_modeling",
-          decl_name: "unit_modeling_gate",
+          decl_name: "field_name_has_known_carrier",
           field: WholeDeclaration
         },
-        boundary_kind: PolicyJudgmentRequired {
-          judgment: DeclarationRef {
+        boundary_kind: CandidateDomainNotClosed {
+          domain: DeclarationRef {
             module_path: "v2.lens.unit_modeling",
-            decl_name: "unit_modeling_gate",
+            decl_name: "unit_field_rows",
             field: WholeDeclaration
           }
         }

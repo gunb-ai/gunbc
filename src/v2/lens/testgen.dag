@@ -2172,13 +2172,13 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
       },
       required_capability: DeclarationRef {
         module_path: "v2.lens.testgen",
-        decl_name: "generator_id_for_claim_anchor",
+        decl_name: "TestgenConcept",
         field: WholeDeclaration
       },
       boundary_kind: CandidateDomainNotClosed {
         domain: DeclarationRef {
           module_path: "v2.lens.testgen",
-          decl_name: "generator_id_for_claim_anchor",
+          decl_name: "TestgenConcept",
           field: WholeDeclaration
         }
       }

@@ -6,11 +6,14 @@ import v2.lens.common.construction_justification {
   OutsideModeledGuarantee,
   WallAfterGrounding,
   CapabilityNotRepresented,
+  PolicyJudgmentRequired,
   modeled_outside_boundary,
   modeled_guarantee_capability_inventory,
   guarantee_boundary_still_outside,
+  guarantee_boundary_required_is_not_subject,
   wall_now_total_projection_forbids_outside_modeled_guarantee,
-  construction_class_outside_boundary_still_outside
+  construction_class_outside_boundary_still_outside,
+  construction_class_outside_required_is_not_subject
 }
 import v2.lens.enforcement.complexity_contract_subject {
   complexity_derived_kernel_boundary,
@@ -40,6 +43,22 @@ fn planted_outside_requiring_cost_lens_boundary() -> GuaranteeBoundary {
     },
     required_capability: cost_lens_ref(),
     boundary_kind: CapabilityNotRepresented { required: cost_lens_ref() }
+  )
+}
+
+fn grounding_verdict_ref() -> DeclarationRef {
+  DeclarationRef {
+    module_path: "v2.lens.grounding_ledger",
+    decl_name: "GroundingVerdict",
+    field: WholeDeclaration
+  }
+}
+
+fn planted_subject_as_required_capability_boundary() -> GuaranteeBoundary {
+  modeled_outside_boundary(
+    subject: grounding_verdict_ref(),
+    required_capability: grounding_verdict_ref(),
+    boundary_kind: PolicyJudgmentRequired { judgment: grounding_verdict_ref() }
   )
 }
 
@@ -74,6 +93,10 @@ test fn planted_outside_for_inventory_member_reds() -> Bool {
     )
 }
 
+test fn planted_subject_as_required_capability_reds() -> Bool {
+  !guarantee_boundary_required_is_not_subject(boundary: planted_subject_as_required_capability_boundary())
+}
+
 test fn planted_wall_now_to_outside_modeled_guarantee_projection_red() -> Bool {
   !wall_now_total_projection_forbids_outside_modeled_guarantee(
     upstream: v2.lens.cost.construction_justification.class,
@@ -83,12 +106,21 @@ test fn planted_wall_now_to_outside_modeled_guarantee_projection_red() -> Bool {
 
 test fn live_outside_stamps_red_when_required_capability_enters_inventory() -> Bool {
   construction_class_outside_boundary_still_outside(class: v2.lens.synthesis.construction_justification.class)
+    && construction_class_outside_required_is_not_subject(class: v2.lens.synthesis.construction_justification.class)
     && construction_class_outside_boundary_still_outside(class: v2.lens.unit_modeling.construction_justification.class)
+    && construction_class_outside_required_is_not_subject(class: v2.lens.unit_modeling.construction_justification.class)
     && construction_class_outside_boundary_still_outside(class: v2.lens.testgen.construction_justification.class)
+    && construction_class_outside_required_is_not_subject(class: v2.lens.testgen.construction_justification.class)
     && construction_class_outside_boundary_still_outside(class: v2.lens.grounding.construction_justification.class)
+    && construction_class_outside_required_is_not_subject(class: v2.lens.grounding.construction_justification.class)
     && construction_class_outside_boundary_still_outside(class: v2.lens.grounding_ledger.construction_justification.class)
+    && construction_class_outside_required_is_not_subject(class: v2.lens.grounding_ledger.construction_justification.class)
     && construction_class_outside_boundary_still_outside(class: complexity_optimality_boundary.class)
+    && construction_class_outside_required_is_not_subject(class: complexity_optimality_boundary.class)
     && construction_class_outside_boundary_still_outside(class: lens_contract_grounding.boundary.class)
+    && construction_class_outside_required_is_not_subject(class: lens_contract_grounding.boundary.class)
     && construction_class_outside_boundary_still_outside(class: lens_contract_synthesis.boundary.class)
+    && construction_class_outside_required_is_not_subject(class: lens_contract_synthesis.boundary.class)
     && construction_class_outside_boundary_still_outside(class: lens_contract_unit_modeling.boundary.class)
+    && construction_class_outside_required_is_not_subject(class: lens_contract_unit_modeling.boundary.class)
 }
