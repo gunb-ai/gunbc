@@ -362,6 +362,8 @@ data excl_install_media_reason: String = "real host-effect execution witness (sh
 
 data excl_local_repo_wet_reason: String = "real host-effect execution witness over a THROWAWAY LOCAL REPOSITORY -- refused by the hermetic envelope, so excluded from the discovery corpus, and executed instead by the required floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule). This row is NOT the dark bin-wet class: every function in the named file is on that schedule, the floor decodes it, runs each member wet, and joins the observed terminals back to the roster at identity grain, so a member that stops executing refuses rather than reading as covered."
 
+data excl_local_repo_wet_tempdir_write_reason: String = "real host-effect execution witness whose effect is a FILESYSTEM WRITE INTO A THROWAWAY TEMP DIRECTORY -- refused by the hermetic envelope (Filesystem.Write and shell.Mktemp.Dir have no mock_response), so excluded from the discovery corpus and executed by the required floor's local-repo wet lane. THIS IS A DISTINCT ADMITTED EFFECT FROM BOTH NEIGHBOURS AND IS NAMED RATHER THAN FOLDED INTO EITHER: it is not excl_local_repo_wet_reason's throwaway REPOSITORY property -- no repository is built and no git operation runs -- and it is not excl_local_repo_wet_host_probe_reason, which admits read-only probes that write NOTHING. What admits it to the same lane is the negative half those rows share: no network, no cargo, no remote host, no install media, and nothing outside a directory the witness created and removes. IT IS ENROLLED IN THE IDENTITY-GRAIN LANE DELIBERATELY rather than in the dark bin-wet class, because the whole purpose of the witness is that a wall which stops executing must REFUSE rather than read as covered -- enrolling a witness about silent absence somewhere it could be silently absent would reproduce its own subject."
+
 data excl_local_repo_wet_host_probe_reason: String = "real host-effect execution witness whose ONLY effect is a READ-ONLY HOST PATH PROBE (shell.PosixCommandV.Check, i.e. command -v) -- refused by the hermetic envelope (no mock_response for operation Check), so excluded from the discovery corpus and executed by the required floor's local-repo wet lane. THIS IS A DISTINCT ADMITTED EFFECT, NOT THE THROWAWAY-REPOSITORY PROPERTY excl_local_repo_wet_reason NAMES: these fns build no temporary repository and write nothing. What they share with that class, and what admits them to the same lane, is the negative half -- no network, no cargo, no remote host, no install media. THE VERDICT IS HOST-INDEPENDENT ON THE TOOL-PRESENCE AXIS, MEASURED RATHER THAN ASSUMED (2026-09-02, PR #10055): every arm of both fns returns the literal true, and the npm fn was executed on one host in both conditions -- probe found, and probe exit=127 with sh still resolvable -- returning the same verdict in each. So admitting them imports no host-conditional red. The residual red these fns CAN produce is route-unreachability (no shell at all: TypeError failed to execute sh), which is the same reachability risk every member of this lane already carries and is not specific to the probed tool. PROVENANCE CARRIED FORWARD from the bin-wet row this replaces: falsifier Codex materialization reuses the same PosixCommandV.Check.exists path (migrated off shell.Which.Check, crisp-wren-896, PR #8590)."
 
 data excl_local_repo_wet_host_probe_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for shell.PosixCommandV.Check, so observe_host_cli_dependency can be asserted under a fixed mock; then these fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes")
@@ -872,6 +874,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_install_media_reason,
     dissolution: excl_install_media_dissolve},
   WitnessExclusionRow {
+    pattern: "provenance_calibration_report_real_execution_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
     pattern: "commit_writer_heal_admission_real_execution_witness_test.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_reason,
@@ -1329,7 +1336,12 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/contract_identity/required_ci_epoch_real_execution_witness_test.dag", f: "a_run_of_the_contract_at_the_required_epoch_admits_by_real_execution"),
   bin_wet(entry: "dag/test/claim/contract_identity/required_ci_epoch_real_execution_witness_test.dag", f: "a_commit_that_is_not_in_the_repository_is_unreadable_not_absent_by_real_execution"),
   bin_wet(entry: "dag/test/claim/contract_identity/required_ci_epoch_real_execution_witness_test.dag", f: "a_readable_commit_without_the_workflow_is_path_absent_not_commit_unreadable_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", f: "row_extractor_names_a_row_that_went_dark_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", f: "row_extractor_reconciles_with_both_rosters_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", f: "row_extractor_refuses_a_duplicated_identity_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", f: "row_extractor_refuses_a_substituted_identity_by_real_execution"),
   bin_wet(entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", f: "divergent_generated_artifact_merge_refuses_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", f: "driver_printed_step_two_carries_the_row_extractor_by_real_execution"),
   bin_wet(entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", f: "divergent_generated_artifact_merge_under_true_driver_silently_drops_theirs_red_control_by_real_execution"),
   bin_wet(entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", f: "one_sided_generated_artifact_change_merges_clean_by_real_execution"),
   bin_wet(entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag", f: "clean_staged_index_admits_by_real_execution"),
@@ -1342,8 +1354,8 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/proc_self_cgroup_real_execution_witness_test.dag", f: "bash_assign_from_source_observed_shell_holds"),
   bin_wet(entry: "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag", f: "live_rust_observation_matches_actions_subject"),
   bin_wet(entry: "dag/test/claim/roadmap/roadmap_receipt_continuity_live_witness_test.dag", f: "live_roadmap_acceptance_history_integrity_holds"),
-  bin_wet(entry: "dag/test/claim/host/host_effect_plan_real_execution_witness_test.dag", f: "host_effect_plan_shell_witness_holds_by_real_execution"),
-  bin_wet(entry: "dag/test/claim/host/host_effect_plan_real_execution_witness_test.dag", f: "host_effect_plan_shell_failure_reason_carries_exit_code_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/host/host_effect_plan_real_execution_witness_test.dag", f: "host_effect_plan_typed_read_witness_holds_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/host/host_effect_plan_real_execution_witness_test.dag", f: "host_effect_plan_ssh_failure_reason_carries_exit_code_by_real_execution"),
   bin_wet(entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness_test.dag", f: "effect_plan_bash_two_declared_operations_execute"),
   bin_wet(entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness_test.dag", f: "effect_plan_bash_fail_fast_prevents_later_operation_execution"),
   bin_wet(entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness_test.dag", f: "effect_plan_bash_metachar_and_newline_cannot_open_a_statement"),

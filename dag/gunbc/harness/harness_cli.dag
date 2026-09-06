@@ -1,0 +1,474 @@
+module gunbc.harness.harness_cli
+
+import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
+import extdeps.deepseek.deepseek_v4 { DeepseekV4ReasoningMode, DeepseekV4ThinkMax }
+import gunbc.harness.harness_throughput { harness_round_budget_steps }
+import gunbc.harness.harness_wire { HarnessWireShape, OpenAiChatCompletionsShape }
+import std.measure { TokenCount, token_count, token_count_value, Second, second }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.harness.harness_tool { HarnessToolEnvironment }
+import gunbc.harness.harness_turn {
+  HarnessTurnConfig, HarnessTurnOutcome,
+  TurnProviderStopped, TurnStepBudgetExhausted, TurnTransportRefused,
+  TurnResponseUnreadable, TurnRequestUnwritable,
+  harness_run_turn, harness_outcome_label, harness_outcome_detail,
+}
+import gunbc.harness.harness_guidance { harness_worker_guidance_at, harness_guidance_prose, harness_worker_guidance, harness_probe_guidance }
+import gunbc.compute.test_run {
+  test_process_command, test_process_receipt_path, test_process_pattern_placeholder,
+  compile_process_command, compile_process_receipt_path, compile_process_entry_placeholder,
+}
+import gunbc.harness.harness_review_guidance { harness_reviewer_guidance_at, review_guidance_prose }
+import gunbc.harness.harness_goal_audit_guidance { harness_auditor_guidance_at, audit_guidance_prose }
+import gunbc.roadmap.roadmap_review_role { review_verdict_shape_text }
+import gunbc.harness.harness_wire { harness_engine_model, harness_engine_context_window }
+import gunbc.harness.harness_backend { HarnessBackendUrl, BackendUrlBound, BackendUrlRefused, harness_serving_backend_url }
+
+// THE FIRST WET ENTRY FOR THE DEDICATED HARNESS. It exists to make DCH-2 provable by execution
+// rather than by typecheck -- DESIGN section 5's specification-without-execution trap names exactly
+// this artifact as the one that looks finished without running.
+
+// The model is the SERVING desired value, not a literal. gunbc.spark.serving_desired is the single
+// authority for which model these hosts are converged to hold, and a second spelling here would
+// disagree with it the first time that row is amended -- which has already happened once, when the
+// desired model moved to deepseek-v4-gguf:no-h3-stop.
+// THE WIRE PROJECTION IS CITED, NOT REBUILT. The first wet run cast the OllamaModelRef straight to
+// String and sent `OllamaModelRef { name: deepseek-v4-gguf, tag: no-h3-stop }` -- the record's
+// rendering, not its wire form -- and the backend answered `invalid model name`. Building
+// `name + ":" + tag` here instead would have worked and been the DESIGN section 3 violation:
+// extdeps.ollama.api already owns how a model reference is spelled on the wire, and a second
+// spelling drifts the moment upstream changes it. The refusal was cheap precisely because the
+// backend carried a structured cause; that is the argument for keeping the body on a failed post.
+fn harness_default_model() -> String {
+  harness_engine_model
+}
+
+// THE MACBOOK'S TOOL ENVIRONMENT. The timeout program is the GNU build, for the reason
+// harness_timeout_kill_exit_code records: the 124 exit is what makes "the harness killed this"
+// decidable, and BSD has no timeout at all.
+data harness_macbook_timeout_program: FilePath = "/opt/homebrew/bin/gtimeout" as FilePath
+
+data harness_macbook_working_directory: FilePath = "/Users/briansrls/gunbc" as FilePath
+
+data harness_request_scratch_path: FilePath = "/tmp/gunbc-harness-request.json" as FilePath
+
+data harness_probe_events_path: FilePath = "/tmp/gunbc-harness-probe-events.jsonl" as FilePath
+
+data harness_default_duration_limit_seconds: Int = 120
+
+data harness_default_step_budget: Int = 8
+
+// THE REASONING MODE THE WORKER RUNS IN, DECLARED. Until 2026-09-04 nothing declared it, and on a
+// vLLM realization the undeclared default is non-think, so every measured run drove the model
+// without reasoning while the harness decoded thinking blocks that never arrived. Think Max is the
+// operator's choice for coding work. The switch reaches the model as chat_template_kwargs on the
+// harness's own endpoint -- proven honored there -- and not as the Anthropic thinking field, which
+// vLLM's messages endpoint ignores for this model (probed: it answered cold).
+data harness_reasoning_mode: DeepseekV4ReasoningMode = DeepseekV4ThinkMax
+
+// THE WIRE SHAPE THIS FLEET NEEDS, MEASURED. The harness spoke the Anthropic messages shape until
+// 2026-09-04; on this fleet's vLLM that endpoint accepts a replayed thinking block and renders none
+// of it (prompt_tokens 104 with, 104 without), while the chat completions shape renders a replayed
+// reasoning_content (365 -> 404). The encoder retains reasoning on every assistant turn when tools
+// are defined, so a tool-using harness that wants the model to see its own prior deliberation must
+// speak the chat shape here. The messages realization stays available and witnessed; it is not
+// the default because on this fleet it silently discards half of every turn.
+data harness_default_wire_shape: HarnessWireShape = OpenAiChatCompletionsShape
+
+// THE OUTPUT BUDGET, DERIVED FROM WHAT THE MODEL ACTUALLY DECLARES -- which is that it declares no
+// output ceiling at all. extdeps.deepseek.deepseek_v4 records the research: no primary source
+// documents a maximum output for V4-Flash, and the GGUF carries no output or thinking key. What
+// bounds output is the ENGINE, measured against the router: input plus output must fit the context,
+// with no separate ceiling beneath it.
+//
+// SO THIS IS A POLICY ROW, NOT A CAPABILITY ROW, and it lives here rather than in extdeps for that
+// reason. A deepseek_v4_max_output_tokens row would have attributed the serving engine's admission
+// rule to the model, which is the authority substitution the corpus keeps catching.
+//
+// 64Ki IS CHOSEN AGAINST TWO MEASURED FACTS. The 2048 it replaces was chat-shaped and its cost is
+// visible in the transcripts: a thinking model spent its whole allowance reasoning and emitted the
+// same sentence twice rather than acting, and a heredoc carrying real file content does not fit in
+// it -- a worker that cannot emit a file cannot write one. Against the other side, observed turns
+// peak near 40k input tokens, so 64Ki of output sits far under the shared 1M window and cannot be
+// the binding constraint. It is deliberately generous rather than tuned: nothing yet measures what
+// a successful edit actually costs, and the honest reading of an unmeasured axis is headroom.
+//
+// DISSOLVES ON: a measured distribution of output tokens across attempts that COMPLETE a task, at
+// which point this is derived from that distribution instead of chosen against a ceiling.
+// WHAT ONE RESPONSE MAY GENERATE. It was 65,536, raised earlier from 2,048 on an instruction to use
+// the maximum the model allows -- which was the wrong reading of "allows": the engine ADMITS that
+// many, it does not produce them quickly. vLLM's KV cache is paged and commits blocks per token
+// actually generated, so a large ceiling reserves nothing; the cost is entirely in the tail. At the
+// measured decode floor below, 65,536 tokens is roughly forty-five minutes of generation, so one
+// legitimate long answer exceeded any deadline this harness could carry -- which is a far better
+// explanation of the observed hangs than router state was.
+// RAISED FROM 8,192 ON A MEASUREMENT, NOT A GUESS. The first Think Max run on a mechanical brief
+// produced 7,899 completion tokens in a single round -- 96% of the previous ceiling -- and a
+// reasoning model that deliberates does so in the completion, not somewhere the ceiling ignores.
+// One longer round would have ended the run through the truncation refusal, correctly. At the
+// declared floor 16,384 tokens is about eleven minutes of decode, and the deadline below follows
+// by derivation rather than being re-guessed beside it.
+data harness_default_max_tokens: Int = token_count_value(t: token_count(count: 16384))
+
+// THE SLOWEST DECODE THIS DEPLOYMENT IS EXPECTED TO SUSTAIN, in tokens per second. It is a declared
+// policy floor rather than a measurement of any one run: observed rates here span 2.4 tok/s under
+// contention to 16.59 on the fastest rounds, and the router reports ~40 tok/s serving four to five
+// concurrent sessions. The floor is set at 24 because a deadline derived from an optimistic rate
+// kills healthy generations, and one derived from the worst contended reading would never fire.
+// THE FLOOR IS READ FROM THE ENGINE'S OWN INSTRUMENT, not from a wire assumption. vLLM exports
+// vllm:generation_tokens_total and vllm:request_decode_time_seconds_sum on /metrics; their ratio is
+// the engine's realized decode rate over every request it has served. Measured 2026-09-04 on the
+// two harness engines: about 10 tok/s on .232 and 7.5 tok/s on .225 under ctrl's concurrent load.
+// The previous value, 24, was a single unloaded observation and made the derived deadline unable
+// to cover the max_tokens it is derived from: a full Think Max answer took 16 minutes to time out
+// (curl exit 28) while the engine was still generating. 8 is the lower engine's floor rounded down.
+data harness_decode_floor_tokens_per_second: Int = 8
+
+// TIME TO FIRST TOKEN IS NOT DECODE TIME, so it is a separate term. A 200k working window prefills
+// at the rates this deployment measured (up to ~1800 tok/s once fixed overhead amortizes), which is
+// on the order of two minutes; 300s carries that with margin for a cold or contended round.
+data harness_request_prefill_allowance_seconds: Int = 300
+
+// THE DEADLINE IS DERIVED, NOT AUTHORED BESIDE THE BUDGET IT MUST COVER. This is the repair for the
+// exact defect the router owner identified: a flat 900s and a 65,536-token ceiling were two
+// independent numbers, and nothing related them, so raising the token budget silently created a
+// generation the deadline could not admit. Here the deadline is a FUNCTION of the budget, so the
+// two cannot drift: change max_tokens and the deadline follows. A refusal now means the backend
+// genuinely failed to sustain the declared floor, which is a real fault, rather than meaning the
+// model was answering at a perfectly ordinary rate for longer than a hand-written constant allowed.
+data harness_request_deadline: Second = second(
+  count: (harness_default_max_tokens / harness_decode_floor_tokens_per_second)
+    + harness_request_prefill_allowance_seconds,
+)
+
+data harness_default_system_prompt: String = harness_guidance_prose(rows: harness_probe_guidance())
+
+fn harness_macbook_environment() -> HarnessToolEnvironment {
+  HarnessToolEnvironment {
+    working_directory: harness_macbook_working_directory,
+    timeout_program: harness_macbook_timeout_program,
+    duration_limit_seconds: harness_default_duration_limit_seconds,
+  }
+}
+
+// THE WINDOW COMES FROM THE SURFACE THE HARNESS ACTUALLY POSTS TO. The first cut of this row read
+// spark_serving_desired_context_length, which is the OLLAMA roster ceiling -- and the harness does
+// not post to the Ollama units, it posts to the llama-server pair behind the router. That is the
+// meaning fork gunbc.harness.harness_wire already refused for the MODEL ("one name over two serving
+// stacks"), written again one field over.
+//
+// It was invisible because both rows read 1048576. A derivation from the wrong authority is exactly
+// this cheap to write and this expensive to find: correct-looking while the values agree, silently
+// wrong the moment an engine restart moves one of them. The engine's cap is being changed
+// independently of the Ollama roster, so they are free to diverge on any boot.
+//
+// The binding stays at the CLI rather than inside the turn. harness_turn takes the budget as a
+// field the way it takes the worktree, the timeout program and its two paths -- so the same loop
+// runs against a different serving surface by being handed a different number, not by importing a
+// different authority.
+data harness_context_budget: TokenCount = harness_engine_context_window
+
+fn harness_macbook_config(backend_url: String) -> HarnessTurnConfig {
+  HarnessTurnConfig {
+    backend_url: backend_url,
+    model: harness_default_model(),
+    max_tokens: harness_default_max_tokens,
+    reasoning_mode: harness_reasoning_mode,
+    wire_shape: harness_default_wire_shape,
+    system_prompt: harness_default_system_prompt,
+    request_scratch_path: harness_request_scratch_path,
+    events_path: harness_probe_events_path,
+    context_budget: harness_context_budget,
+    request_deadline: harness_request_deadline,
+    environment: harness_macbook_environment(),
+  }
+}
+
+// THE PROBE PROMPT IS CHOSEN TO BE DISCRIMINATING, not to be easy. It cannot be answered from the
+// model's own knowledge, so a turn that returns a plausible answer WITHOUT a tool round has failed
+// the thing this run is testing -- which is the tool loop, not the model's fluency. The count is
+// whatever the repository actually holds at run time; the property under test is that the harness
+// posted, received a tool_use, executed it, posted the result back, and received a terminal.
+data harness_probe_prompt: String = "How many files in the dag/gunbc/harness directory of this repository end in .dag? Use run_command to find out, then state the number."
+
+fn harness_probe_outcome(backend_url: String) -> HarnessTurnOutcome {
+  harness_run_turn(
+    config: harness_macbook_config(backend_url: backend_url),
+    prompt: harness_probe_prompt,
+    step_budget: harness_default_step_budget,
+  )
+}
+
+// A PROVIDER TERMINAL EXITS ZERO AND A HARNESS REFUSAL DOES NOT, and the exit code says which
+// happened rather than whether the task succeeded. Nothing here inspects the assistant's text for
+// correctness: that is external verification's subject, and a harness that graded its own worker's
+// answer would be the same conflation DCH-2 forbids between a stop reason and a completed task.
+fn harness_turn_exit(outcome: HarnessTurnOutcome) -> ProcessExit {
+  match outcome {
+    TurnProviderStopped { wire_stop_reason: _, assistant_text: _, steps_taken: _, input_tokens: _, output_tokens: _ } =>
+      ExitSuccess
+    _ =>
+      ExitFailure {
+        code: 1,
+        reason: join([
+          harness_outcome_label(outcome: outcome), ": ", harness_outcome_detail(outcome: outcome),
+        ], ""),
+      }
+  }
+}
+
+// THE BACKEND IS BOUND BEFORE THE TURN: a roster with nothing serving exits here with every
+// replica's cause, instead of a config whose first POST would refuse.
+fn harness_backend_refusal_exit(detail: String) -> ProcessExit {
+  ExitFailure { code: 1, reason: join(["harness backend: ", detail], "") }
+}
+
+fn harness_probe_cli() -> ProcessExit {
+  match harness_serving_backend_url(shape: harness_default_wire_shape, seed: "") {
+    BackendUrlRefused { detail } => harness_backend_refusal_exit(detail: detail)
+    BackendUrlBound { url, declined_count: _ } => harness_turn_exit(outcome: harness_probe_outcome(backend_url: url))
+  }
+}
+
+// THE WORKER ENTRY THE BELT SPAWNS. Its two facts arrive as named arguments rather than through the
+// environment, because `gunbc run` has had --arg since the scm read landed and the belt's own
+// annotation saying otherwise ("gunbc run --function cannot pass an argument (no --arg flag)") is
+// stale -- measured against `gunbc run --help` on 2026-09-03, which lists it. That staleness is why
+// belt_dispatch_node_cli reads its node id from GUNBC_BELT_NODE_ID; repairing that is not this
+// lane's, but repeating the workaround here would propagate a dead constraint into new code.
+//
+// The working directory is the ATTEMPT WORKTREE, not the repository root, and that is the whole
+// point of taking it as an argument: an attempt edits its own checkout, and a harness that ran its
+// commands in the shared repo root would write outside the attempt's boundary while every receipt
+// said otherwise.
+// THE REQUEST BODY'S SCRATCH PATH IS PER ATTEMPT, NOT PER HOST, and it arrives as an argument for
+// the same reason the worktree and the timeout program do: it is a fact about WHERE this attempt
+// keeps its bytes, which the controller knows and the worker cannot derive.
+//
+// harness_request_scratch_path is a single fixed /tmp file, and every worker on a host writes it
+// once per turn. That is invisible while exactly one worker runs and is silent corruption the
+// moment two do -- one worker's request body overwritten by another's between the write and the
+// POST that reads it back. Nothing would refuse; the model would simply answer the wrong prompt.
+//
+// Deriving it from the attempt's own state directory rather than from a host-global temp root also
+// makes the location a PARAMETER rather than an assumption, which is the property a distributed
+// harness needs: an attempt that runs elsewhere carries its scratch with it instead of contending
+// for one host's /tmp.
+fn harness_worker_config(
+  worktree: FilePath,
+  timeout_program: FilePath,
+  request_scratch_path: FilePath,
+  events_path: FilePath,
+  backend_url: String,
+  repo_root: String,
+  gunbc_program: String,
+) -> HarnessTurnConfig {
+  HarnessTurnConfig {
+    backend_url: backend_url,
+    model: harness_default_model(),
+    max_tokens: harness_default_max_tokens,
+    reasoning_mode: harness_reasoning_mode,
+    wire_shape: harness_default_wire_shape,
+    system_prompt: harness_worker_system_prompt_at(worktree: worktree as String, repo_root: repo_root, gunbc_program: gunbc_program),
+    request_scratch_path: request_scratch_path,
+    events_path: events_path,
+    context_budget: harness_context_budget,
+    request_deadline: harness_request_deadline,
+    environment: HarnessToolEnvironment {
+      working_directory: worktree,
+      timeout_program: timeout_program,
+      duration_limit_seconds: harness_default_duration_limit_seconds,
+    },
+  }
+}
+
+fn harness_worker_system_prompt_at(worktree: String, repo_root: String, gunbc_program: String) -> String {
+  harness_guidance_prose(rows: harness_worker_guidance_at(
+    worktree: worktree,
+    test_command: test_process_command(gunbc_program: gunbc_program, repo_root: repo_root, worktree: worktree, pattern: test_process_pattern_placeholder),
+    test_receipt_path: test_process_receipt_path(worktree: worktree),
+    compile_command: compile_process_command(gunbc_program: gunbc_program, repo_root: repo_root, worktree: worktree, entry: compile_process_entry_placeholder),
+    compile_receipt_path: compile_process_receipt_path(worktree: worktree),
+  ))
+}
+
+// RAISED FROM 24 ON A MEASUREMENT. A mechanical four-file deletion, run under Think Max, spent its
+// rounds at roughly one sed edit per declaration plus a verification read per file, and exhausted 24
+// with two files complete and two untouched -- every write correct, none wasted. A budget that ends
+// a correct run mid-task is a cost with no safety behind it; the per-round deadline still bounds
+// each step, so the total wall bound grows with the count rather than being replaced by it.
+data harness_worker_step_budget: Int = harness_round_budget_steps
+
+// EXIT SAYS WHETHER THE HARNESS COMPLETED A TURN, NOT WHETHER THE TASK WAS DONE. A provider
+// terminal exits zero; every harness refusal exits non-zero with its typed cause. Whether the WORK
+// satisfies the node is decided by the belt's pinned verification against the attempt head, which
+// is the separation DCH-2 requires and the reason there is nothing here that inspects the diff.
+fn harness_worker_cli(
+  worktree: String,
+  brief: String,
+  timeout_program: String,
+  request_scratch_path: String,
+  events_path: String,
+  repo_root: String,
+  gunbc_program: String,
+) -> ProcessExit {
+  match harness_serving_backend_url(shape: harness_default_wire_shape, seed: worktree) {
+    BackendUrlRefused { detail } => harness_backend_refusal_exit(detail: detail)
+    BackendUrlBound { url, declined_count: _ } =>
+      harness_turn_exit(outcome: harness_run_turn(
+        config: harness_worker_config(
+          worktree: worktree as FilePath,
+          timeout_program: timeout_program as FilePath,
+          request_scratch_path: request_scratch_path as FilePath,
+          events_path: events_path as FilePath,
+          backend_url: url,
+          repo_root: repo_root,
+          gunbc_program: gunbc_program,
+        ),
+        prompt: brief,
+        step_budget: harness_worker_step_budget,
+      ))
+  }
+}
+
+// THE REVIEWER ENTRY THE BELT SPAWNS FOR A VERIFIED HEAD. Same harness, same tool, same worktree
+// argument; a different system prompt (gunbc.harness.harness_review_guidance, the reviewer's own
+// syllogism) and one more fact the worker never receives: the path of the verdict file the review
+// is complete by. The exit says whether a turn completed, exactly as for the worker; whether a verdict
+// was written, and what it says, is read by the belt from that file, never from this exit.
+fn harness_reviewer_system_prompt_at(verdict_path: String) -> String {
+  review_guidance_prose(rows: harness_reviewer_guidance_at(verdict_path: verdict_path, verdict_shape: review_verdict_shape_text()))
+}
+
+// A REVIEW IS READ-MOSTLY AND SHORT. Half the worker's rounds: read the diff, read what it touches,
+// run the check, write one file. A review that needs forty rounds is investigating, not judging.
+data harness_reviewer_step_budget: Int = 20
+
+// THE REVIEWER'S REPLICA IS SEEDED ON ITS VERDICT PATH, NOT THE WORKTREE. The worker seeds on the
+// worktree so one attempt's rounds stay on one engine; six reviewers of one attempt share that
+// worktree, so the same seed put all six on one replica while the other idled -- measured 2026-09-05,
+// eleven connections to .232 against five to .225 with every one of ours on .232. The verdict path
+// carries head and criterion, so an attempt's reviewers spread across the roster.
+fn harness_reviewer_config(
+  worktree: FilePath,
+  timeout_program: FilePath,
+  request_scratch_path: FilePath,
+  events_path: FilePath,
+  verdict_path: String,
+  backend_url: String,
+) -> HarnessTurnConfig {
+  HarnessTurnConfig {
+    backend_url: backend_url,
+    model: harness_default_model(),
+    max_tokens: harness_default_max_tokens,
+    reasoning_mode: harness_reasoning_mode,
+    wire_shape: harness_default_wire_shape,
+    system_prompt: harness_reviewer_system_prompt_at(verdict_path: verdict_path),
+    request_scratch_path: request_scratch_path,
+    events_path: events_path,
+    context_budget: harness_context_budget,
+    request_deadline: harness_request_deadline,
+    environment: HarnessToolEnvironment {
+      working_directory: worktree,
+      timeout_program: timeout_program,
+      duration_limit_seconds: harness_default_duration_limit_seconds,
+    },
+  }
+}
+
+fn harness_reviewer_cli(
+  worktree: String,
+  brief: String,
+  timeout_program: String,
+  request_scratch_path: String,
+  events_path: String,
+  verdict_path: String,
+) -> ProcessExit {
+  match harness_serving_backend_url(shape: harness_default_wire_shape, seed: verdict_path) {
+    BackendUrlRefused { detail } => harness_backend_refusal_exit(detail: detail)
+    BackendUrlBound { url, declined_count: _ } =>
+      harness_turn_exit(outcome: harness_run_turn(
+        config: harness_reviewer_config(
+          worktree: worktree as FilePath,
+          timeout_program: timeout_program as FilePath,
+          request_scratch_path: request_scratch_path as FilePath,
+          events_path: events_path as FilePath,
+          verdict_path: verdict_path,
+          backend_url: url,
+        ),
+        prompt: brief,
+        step_budget: harness_reviewer_step_budget,
+      ))
+  }
+}
+
+// THE AUDITOR ENTRY: the reviewer's harness under the auditor's own prompt (gunbc.harness.harness_goal_audit_guidance).
+fn harness_auditor_system_prompt_at(verdict_path: String) -> String {
+  audit_guidance_prose(rows: harness_auditor_guidance_at(verdict_path: verdict_path, verdict_shape: review_verdict_shape_text()))
+}
+
+fn harness_auditor_config(
+  worktree: FilePath,
+  timeout_program: FilePath,
+  request_scratch_path: FilePath,
+  events_path: FilePath,
+  verdict_path: String,
+  backend_url: String,
+) -> HarnessTurnConfig {
+  HarnessTurnConfig {
+    backend_url: backend_url,
+    model: harness_default_model(),
+    max_tokens: harness_default_max_tokens,
+    reasoning_mode: harness_reasoning_mode,
+    wire_shape: harness_default_wire_shape,
+    system_prompt: harness_auditor_system_prompt_at(verdict_path: verdict_path),
+    request_scratch_path: request_scratch_path,
+    events_path: events_path,
+    context_budget: harness_context_budget,
+    request_deadline: harness_request_deadline,
+    environment: HarnessToolEnvironment {
+      working_directory: worktree,
+      timeout_program: timeout_program,
+      duration_limit_seconds: harness_default_duration_limit_seconds,
+    },
+  }
+}
+
+fn harness_auditor_cli(
+  worktree: String,
+  brief: String,
+  timeout_program: String,
+  request_scratch_path: String,
+  events_path: String,
+  verdict_path: String,
+) -> ProcessExit {
+  match harness_serving_backend_url(shape: harness_default_wire_shape, seed: verdict_path) {
+    BackendUrlRefused { detail } => harness_backend_refusal_exit(detail: detail)
+    BackendUrlBound { url, declined_count: _ } =>
+      harness_turn_exit(outcome: harness_run_turn(
+        config: harness_auditor_config(
+          worktree: worktree as FilePath,
+          timeout_program: timeout_program as FilePath,
+          request_scratch_path: request_scratch_path as FilePath,
+          events_path: events_path as FilePath,
+          verdict_path: verdict_path,
+          backend_url: url,
+        ),
+        prompt: brief,
+        step_budget: harness_reviewer_step_budget,
+      ))
+  }
+}
+
+fn harness_probe_report() -> String {
+  match harness_serving_backend_url(shape: harness_default_wire_shape, seed: "") {
+    BackendUrlRefused { detail } => join(["harness probe refused before the turn: ", detail, "\n"], "")
+    BackendUrlBound { url, declined_count: _ } => {
+      let outcome = harness_probe_outcome(backend_url: url)
+      join([
+        "harness probe outcome: ", harness_outcome_label(outcome: outcome), "\n",
+        harness_outcome_detail(outcome: outcome), "\n",
+      ], "")
+    }
+  }
+}

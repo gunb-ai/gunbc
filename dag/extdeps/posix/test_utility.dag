@@ -43,3 +43,15 @@ data test_program: NonEmptyStr = "test"
 fn test_regular_file_command(path: String) -> ArgvCommand {
   argv_command(program: test_program, arguments: ["-f", path])
 }
+
+fn test_exists_command(path: String) -> ArgvCommand {
+  argv_command(program: test_program, arguments: ["-e", path])
+}
+
+fn test_writable_command(path: String) -> ArgvCommand {
+  argv_command(program: test_program, arguments: ["-w", path])
+}
+
+fn test_executable_command(path: String) -> ArgvCommand {
+  argv_command(program: test_program, arguments: ["-x", path])
+}

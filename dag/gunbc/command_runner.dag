@@ -25,7 +25,7 @@ import v2.std.compilers.cli_surface { cli_surface_of_literal_words, process_argv
 import extdeps.shell.exec {
   ExitZeroSucceeds, process_exit_is_admitted,
   ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused,
-  process_observation, classify_process_observation,
+  ProcessObservation, process_observation, classify_process_observation,
 }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -213,15 +213,32 @@ func run_shell_command(command: ArgvCommand, transport: CommandTransport) -> Pro
 //
 // The coproduct makes the failure unignorable: output is reachable ONLY through the variant that
 // carries it, so a caller cannot read text without having confronted the arm where there is none.
-func run_shell_command_capture(command: ArgvCommand, transport: CommandTransport) -> ProcessOutcome
+// THE RAW OBSERVATION, FOR CALLERS WHOSE PRODUCT IS THE OUTPUT **EVEN WHEN THE PROCESS FAILED**.
+//
+// run_shell_command_capture below answers "what did this print IF it succeeded": classify_process_
+// observation returns ProcessRefused { exit_code, stderr } on a non-admitted exit and DISCARDS
+// stdout. That is right for a caller reading a value out of a command, where output from a failed
+// run is not a value.
+//
+// It is exactly wrong for a caller whose evidence IS the stdout of a run that failed. A Firecracker
+// guest's serial console arrives on the VMM's stdout, so a guest that panics and is then killed by
+// its deadline produces its most important output on the stream the classifier throws away -- and a
+// receipt that then reported stderr as "the console" would be a fabricated label on missing
+// evidence, which DESIGN section 5 forbids by name.
+//
+// So this returns the triple and lets the caller decide, rather than widening ProcessOutcome for
+// every consumer in the fleet. Two different questions, two functions; the classifier is untouched
+// and no existing caller changes.
+func run_shell_command_observe(command: ArgvCommand, transport: CommandTransport) -> ProcessObservation
   uses net: Network
 {
   match command_over_transport(command: command, transport: transport) {
     CommandOverTransportRefused { cause: c } =>
-      ProcessRefused {
+      process_observation(
         exit_code: 0 - 1,
+        stdout: "",
         stderr: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)),
-      }
+      )
     CommandOverTransportBuilt { command: over } =>
       {
         let run = shell.Exec.RunArgv(
@@ -230,16 +247,18 @@ func run_shell_command_capture(command: ArgvCommand, transport: CommandTransport
             surface: cli_surface_of_literal_words(words: over.arguments)
           ),
         )
-        classify_process_observation(
-          policy: ExitZeroSucceeds,
-          observation: process_observation(
-            exit_code: run.exit_code,
-            stdout: run.stdout,
-            stderr: run.stderr,
-          ),
-        )
+        process_observation(exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr)
       }
   }
+}
+
+func run_shell_command_capture(command: ArgvCommand, transport: CommandTransport) -> ProcessOutcome
+  uses net: Network
+{
+  classify_process_observation(
+    policy: ExitZeroSucceeds,
+    observation: run_shell_command_observe(command: command, transport: transport),
+  )
 }
 
 // Did the process do its job? Callers whose product is the EXIT STATUS rather than the output ask

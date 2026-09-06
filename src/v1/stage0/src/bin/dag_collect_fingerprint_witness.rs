@@ -68,6 +68,7 @@ fn shell_node(
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
+        module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
     })
 }

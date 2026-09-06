@@ -53,6 +53,7 @@ type SystemdUnitProperty
   | TasksMax
   | TasksCurrent
   | ControlGroup
+  | SliceProperty
   | ActiveEnterTimestampMonotonic
   | ActiveState
   | MainPID
@@ -61,6 +62,7 @@ type SystemdUnitProperty
   | SubState
   | Result
   | ExecMainStatus
+  | SubState
   | ExecStartProperty
   | User
   | WorkingDirectoryProperty
@@ -81,6 +83,7 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     TasksMax => "TasksMax" as NonEmptyStr
     TasksCurrent => "TasksCurrent" as NonEmptyStr
     ControlGroup => "ControlGroup" as NonEmptyStr
+    SliceProperty => "Slice" as NonEmptyStr
     ActiveEnterTimestampMonotonic => "ActiveEnterTimestampMonotonic" as NonEmptyStr
     ActiveState => "ActiveState" as NonEmptyStr
     MainPID => "MainPID" as NonEmptyStr
@@ -89,6 +92,7 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     SubState => "SubState" as NonEmptyStr
     Result => "Result" as NonEmptyStr
     ExecMainStatus => "ExecMainStatus" as NonEmptyStr
+    SubState => "SubState" as NonEmptyStr
     ExecStartProperty => "ExecStart" as NonEmptyStr
     User => "User" as NonEmptyStr
     WorkingDirectoryProperty => "WorkingDirectory" as NonEmptyStr

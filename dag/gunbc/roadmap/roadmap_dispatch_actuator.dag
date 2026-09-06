@@ -33,6 +33,7 @@ import gunbc.roadmap_model {
   Unsized,
 }
 import gunbc.roadmap_spawner { dispatch_brief_template, node_title }
+import gunbc.roadmap.roadmap_attempt_continuation { AttemptOrigin, FreshFromBase, attempt_origin_base_ref, continuation_brief_prefix }
 import gunbc.dispatch_pipe_pane_emit {
   PipePaneEmission,
   PipeEmitted,
@@ -46,6 +47,11 @@ import gunbc.session_lease {
   classify_process_port_upsert,
 }
 import extdeps.git { shape_git_worktree_add_argv, shape_git_worktree_add_detached_argv }
+import std.measure { ByteSize, byte_size_count }
+import std.algebra { trim }
+import extdeps.systemd.systemctl
+import extdeps.systemd { SystemdUnitProperty, LoadState, SubState, ExecMainStatus }
+import extdeps.systemd.systemd_run { systemd_run_user_transient_arguments, systemd_run_property }
 import extdeps.tmux {
   shape_tmux_new_session_argv,
   shape_tmux_new_session_argv_for,
@@ -87,6 +93,10 @@ import extdeps.llm.cli_lifecycle {
   ClaudeCliProvider,
   CodexCliProvider,
   CursorCliProvider,
+}
+import gunbc.harness.harness_backend {
+  HarnessBackendRoster, HarnessRosterServing, HarnessRosterNoneServing, HarnessRosterUnresolved,
+  harness_observe_roster, harness_declines_detail, harness_roster_unresolved_detail,
 }
 import gunbc.dispatch_selection {
   ExecutionProfile,
@@ -190,10 +200,29 @@ data dispatch_tmux_session_prefix: String = "gunbc-dispatch-"
 // it reports a version-or-node name, this row becomes the observed value (or an accepted set) — a
 // data edit, never a code change.
 
+// THE EXECUTOR AXIS, AND WHY THE HARNESS ARM BELONGS HERE AND NOT IN ProviderKind.
+//
+// ProviderKind lives in extdeps.llm.cli_lifecycle and enumerates three EXTERNAL vendor CLIs. The
+// gunbc harness is not one, and DESIGN's external-upstream decomposition is explicit that a generic
+// hub may not enumerate concrete products -- adding a fourth arm there would widen a vendor
+// enumeration with a thing that has no vendor, no account, no entitlement and no rate limit.
+//
+// It would also multiply. "Which vendor" is currently forked across SIX parallel coproducts --
+// ProviderOffer, ResolvedProviderSelection, DispatchCredentialBindingIdentity,
+// DispatchModelIdentity, DispatchProviderControl and this one -- so a fourth vendor is not one arm
+// but six, plus every match site. The arity is the tell that those axes are realization facts
+// fused into a selection interface.
+//
+// This type is already the right layer: it is gunbc's own "who executes this attempt", and each of
+// its variants owns argv, preflight and pane fingerprint together at the spawn call site. So the
+// harness is one arm HERE, the vendor machinery below is untouched and keeps serving the three
+// vendor arms, and DCH-4's deletion collapses this type toward a single arm rather than unpicking a
+// fourth copy of a fork.
 type DispatchCliProvider
   = ClaudeCodeProvider
   | CodexDispatchProvider
   | CursorDispatchProvider
+  | GunbcHarnessProvider
 
 // Provider choice is resolved by gunbc.dispatch_selection from a per-instance inventory, not a
 // host-wide constant. dispatch_actuator_selection projects the srv1-live Automatic selection for
@@ -211,11 +240,26 @@ fn provider_kind_to_dispatch_cli(kind: ProviderKind) -> DispatchCliProvider {
   }
 }
 
-fn dispatch_cli_to_provider_kind(provider: DispatchCliProvider) -> ProviderKind {
+// THE HARNESS HAS NO ProviderKind, AND THAT IS THE ANSWER RATHER THAN A GAP TO FILL.
+//
+// This map used to be a total bijection because every executor was a vendor. It no longer is, and
+// the honest return is a coproduct: asking "which external vendor kind is the gunbc harness" has no
+// answer, and inventing one -- reusing CodexCliProvider, minting a fourth kind in extdeps -- would
+// put the harness into the credential, entitlement and rate-limit machinery it has none of, where
+// every one of those facts would have to be fabricated to get a verdict.
+type DispatchProviderKindForCli
+  = DispatchProviderKindIs { kind: ProviderKind }
+  | DispatchExecutorHasNoVendorKind { executor: String }
+
+fn dispatch_cli_to_provider_kind(provider: DispatchCliProvider) -> DispatchProviderKindForCli {
   match provider {
-    ClaudeCodeProvider => ClaudeCliProvider
-    CodexDispatchProvider => extdeps.llm.cli_lifecycle.CodexCliProvider
-    CursorDispatchProvider => extdeps.llm.cli_lifecycle.CursorCliProvider
+    ClaudeCodeProvider => DispatchProviderKindIs { kind: ClaudeCliProvider }
+    CodexDispatchProvider => DispatchProviderKindIs { kind: extdeps.llm.cli_lifecycle.CodexCliProvider }
+    CursorDispatchProvider => DispatchProviderKindIs { kind: extdeps.llm.cli_lifecycle.CursorCliProvider }
+    GunbcHarnessProvider =>
+      DispatchExecutorHasNoVendorKind {
+        executor: "gunbc-harness: a local harness process against a local inference backend, with no vendor account, entitlement or rate limit for a ProviderKind to name",
+      }
   }
 }
 
@@ -232,7 +276,45 @@ type DispatchActuatorSelection
 // fingerprint (DESIGN §5; review 47676). Process fingerprints are consumed from the selection
 // kernel via resolved_process_fingerprint, never re-declared here (DESIGN §3).
 
+// THE HARNESS IS THE DEFAULT SELECTION (DCH-3, operator direction 2026-09-02: the dedicated harness
+// is to be the only and default harness). Two things about the shape of this are deliberate.
+//
+// IT REFUSES RATHER THAN FALLING BACK. When the backend is not serving, this returns the harness's
+// own typed cause and stops. Reaching for a vendor would be the absorbing fallback DESIGN section 5
+// names -- a degradation wearing the fail-closed label -- and it would also be a fiction today,
+// because vendor selection cannot resolve at all: every declared offer is built with an unobserved
+// standing and eligibility requires an observed one. There is no fallback to lose.
+//
+// THE EFFORT AXIS IS NOT THE HARNESS'S. ReasoningEffort is a vendor CLI's knob and the harness has
+// no equivalent; a value is supplied here only because DispatchActuatorSelection carries the field
+// for the three vendor arms. It is stated as the neutral middle rather than derived, and the honest
+// reading is that this field does not apply to this executor. Removing it from the tuple is DCH-4's
+// work, when the vendor arms that need it are deleted -- doing it now would be a wide refactor of a
+// type whose other consumers still require the field.
+data harness_selection_process_fingerprint: NonEmptyStr = "gunbc" as NonEmptyStr
+
+fn dispatch_harness_selection() -> DispatchActuatorSelection {
+  match harness_observe_roster() {
+    HarnessRosterServing { model: _, serving: _, declined: _ } =>
+      DispatchActuatorSelectionOk {
+        provider: GunbcHarnessProvider,
+        effort: ReasoningMedium,
+        process_fingerprint: harness_selection_process_fingerprint,
+      }
+    HarnessRosterNoneServing { model: m, declined } =>
+      DispatchActuatorSelectionRefused {
+        reason: join(["no harness replica serves ", m, ": ", harness_declines_detail(declined: declined)], "") as NonEmptyStr,
+      }
+    HarnessRosterUnresolved { hosts } =>
+      DispatchActuatorSelectionRefused { reason: harness_roster_unresolved_detail(hosts: hosts) as NonEmptyStr }
+  }
+}
+
 fn dispatch_actuator_selection(node_sizing: NodeSizing) -> DispatchActuatorSelection {
+  dispatch_harness_selection()
+}
+
+fn dispatch_actuator_vendor_selection(node_sizing: NodeSizing) -> DispatchActuatorSelection {
   match dispatch_selection_for_instance(
     instance: srv1_live_dashboard_instance(),
     request: default_provider_selection_request(),
@@ -249,14 +331,28 @@ fn dispatch_actuator_selection(node_sizing: NodeSizing) -> DispatchActuatorSelec
   }
 }
 
+// ASKING THE VENDOR SELECTOR FOR A NON-VENDOR EXECUTOR REFUSES. This function's entire body is the
+// vendor machinery -- inventory, entitlement, limit buckets -- and the harness has none of the
+// facts it reads. Routing the harness through it would require inventing an account and a quota to
+// get a verdict, so the executor without a vendor kind refuses here and is selected by its own
+// path instead.
 fn dispatch_actuator_selection_for_provider(
   provider: DispatchCliProvider,
   node_sizing: NodeSizing,
 ) -> DispatchActuatorSelection {
+  match dispatch_cli_to_provider_kind(provider: provider) {
+    DispatchExecutorHasNoVendorKind { executor: e } =>
+      DispatchActuatorSelectionRefused {
+        reason: join([
+          "vendor provider selection was asked for a non-vendor executor (", e,
+          "); it has no inventory row, entitlement or limit bucket to select over",
+        ], "") as NonEmptyStr,
+      }
+    DispatchProviderKindIs { kind: vendor_kind } =>
   match dispatch_selection_for_instance(
     instance: srv1_live_dashboard_instance(),
     request: provider_selection_request_for_kind(
-      kind: dispatch_cli_to_provider_kind(provider: provider),
+      kind: vendor_kind,
     ),
     node_sizing: node_sizing,
   ) {
@@ -268,6 +364,7 @@ fn dispatch_actuator_selection_for_provider(
       }
     DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
       DispatchActuatorSelectionRefused { reason: reason }
+  }
   }
 }
 
@@ -295,6 +392,7 @@ fn dispatch_provider_label(provider: DispatchCliProvider) -> String {
     ClaudeCodeProvider => "claude"
     CodexDispatchProvider => "codex"
     CursorDispatchProvider => "cursor"
+    GunbcHarnessProvider => "gunbc-harness"
   }
 }
 
@@ -410,23 +508,39 @@ type DispatchLiveSession {
 // any from deployment prose would fabricate live evidence. A later provider-instance probe replaces
 // those arms independently.
 
+// THE HARNESS'S EXECUTABLE IS OUR OWN BINARY, which is the one fact that makes the whole executor
+// arm cheap: the worker is `gunbc run` against a .dag entry in the attempt's own checkout, so there
+// is no runtime to install, no bundle to place and no version to reconcile. The three vendor arms
+// name programs that must already exist on the host; this one names the binary that is already
+// executing the dispatch.
 fn dispatch_provider_executable(provider: DispatchCliProvider) -> NonEmptyStr {
   match provider {
     ClaudeCodeProvider => claude_cli_program as NonEmptyStr
     CodexDispatchProvider => codex_cli_program as NonEmptyStr
     CursorDispatchProvider => cursor_cli_program as NonEmptyStr
+    GunbcHarnessProvider => gunbc_harness_program as NonEmptyStr
   }
 }
 
-fn dispatch_provider_instance_for(
-  provider: DispatchCliProvider,
+data gunbc_harness_program: String = "gunbc"
+
+// THE DOMAIN IS NARROWED RATHER THAN THE ANSWER FABRICATED. This projects a VENDOR session's
+// provider instance, and every field it fills is a vendor fact -- kind, executable, credential
+// storage. The gunbc harness has no vendor kind, so rather than handing this function an executor
+// it cannot answer for and inventing a placeholder kind to get past the type, the parameter becomes
+// the vendor kind itself: asking it about the harness is now unwritable instead of wrong.
+//
+// Nothing lost a caller. Every call site in the tree passes a literal vendor provider, so the
+// narrowing is a rename at those sites and a wall at the one that does not exist yet.
+fn dispatch_provider_instance_for_kind(
+  kind: ProviderKind,
 ) -> ProviderInstance {
   ProviderInstance {
-    kind: dispatch_cli_to_provider_kind(provider: provider),
+    kind: kind,
     host: ProviderInstanceFieldUnobserved {
       reason: "session observation does not read host identity" as NonEmptyStr,
     },
-    executable: dispatch_provider_executable(provider: provider),
+    executable: dispatch_provider_executable(provider: provider_kind_to_dispatch_cli(kind: kind)),
     observed_version: ProviderInstanceFieldUnobserved {
       reason: "session observation does not execute the provider version probe" as NonEmptyStr,
     },
@@ -442,10 +556,19 @@ fn dispatch_provider_instance_for(
   }
 }
 
+// AN EXECUTOR WITH NO VENDOR INSTANCE ANSWERS ABSENT, which this Optional already meant and now
+// has a second way to be reached. The gunbc harness has no vendor ProviderInstance to observe -- no
+// account, no credential storage, no separately versioned runtime -- and Absent says exactly that.
+// The alternative was to invent one so the shape stayed populated, which would put a fabricated
+// vendor row into every session observation downstream.
 fn dispatch_provider_instance() -> ProviderInstance? {
   match dispatch_actuator_selection(node_sizing: Unsized) {
     DispatchActuatorSelectionOk { provider, effort: _, process_fingerprint: _ } =>
-      Present { value: dispatch_provider_instance_for(provider: provider) }
+      match dispatch_cli_to_provider_kind(provider: provider) {
+        DispatchProviderKindIs { kind: k } =>
+          Present { value: dispatch_provider_instance_for_kind(kind: k) }
+        DispatchExecutorHasNoVendorKind { executor: _ } => none
+      }
     DispatchActuatorSelectionRefused { reason: _ } => none
   }
 }
@@ -565,6 +688,48 @@ fn dispatch_attempt_state_path_for_instance(
   ], "")
 }
 
+// THE WORKER'S OWN STDOUT IS A LOG, NOT AN EVENT STREAM, and separating them is the repair for a
+// conflation this lane shipped. provider-events.jsonl is not "where the attempt's output goes": it
+// carries a DECLARED SCHEMA -- turn.started, item.*, turn.completed, turn.failed, error -- that
+// gunbc.roadmap_provider_events reads through jq with fromjson. Pointing the worker's progress
+// output at it (`[file] write ...`, `✓ ... done in 48 seconds`) made jq exit 5 on the first line
+// and the whole attempt's agent evidence refuse as unreadable.
+//
+// The refusal was correct and is why this was cheap to find: it named the file, the line and the
+// column rather than fabricating an activity state. What was wrong was the producer, and the fix is
+// not to loosen the reader but to stop writing the wrong content into a typed stream. The worker's
+// stdout keeps its own sibling file, and provider-events.jsonl is written only by something that
+// speaks the schema.
+fn dispatch_attempt_worker_log_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> String {
+  join([
+    dispatch_attempt_state_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    "/worker-stdout.log",
+  ], "")
+}
+
+fn dispatch_attempt_request_scratch_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> String {
+  join([
+    dispatch_attempt_state_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    "/harness-request.json",
+  ], "")
+}
+
 fn dispatch_attempt_events_path_for_instance(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
@@ -594,6 +759,26 @@ fn dispatch_attempt_key_path_for_instance(
     "/attempt-key",
   ], "")
 }
+
+// THE TURN NUMBER OF THIS ATTEMPT IN ITS LINEAGE (gunbc.roadmap.roadmap_attempt_continuation), written
+// at state initialization beside the attempt key. A first turn writes 1, so an attempt with no such
+// file predates the continuation and is read as turn 1 by the decision, never guessed at otherwise.
+fn dispatch_attempt_continuation_turn_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> String {
+  join([
+    dispatch_attempt_state_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    "/continuation-turn",
+  ], "")
+}
+
+data dispatch_attempt_continuation_turn_basename: String = "continuation-turn"
 
 fn dispatch_attempt_admission_path_for_instance(
   instance: HostDashboardInstance,
@@ -839,6 +1024,205 @@ fn dispatch_attempt_verification_dir_for_instance(
     "/",
     verification_directory_segment,
   ], "")
+}
+
+// THE REVIEW DIRECTORY: the reviewer's verdict per head, its event stream, its request scratch and
+// its stdout, all beside the attempt's verification directory and prepared with it. It is the ONLY
+// path the reviewer's unit may write, which is how "you may not change the tree" is a wall rather
+// than a sentence (gunbc.harness.harness_review_guidance CapabilityWithheld ChangeTheTree).
+data review_directory_segment: String = "review"
+
+fn dispatch_attempt_review_dir_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> String {
+  join([
+    dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+    "/", review_directory_segment,
+  ], "")
+}
+
+// Every review artifact is addressed by head AND criterion: one reviewer per criterion, so one verdict,
+// one event stream, one scratch and one log per criterion, never shared between them.
+fn dispatch_attempt_review_verdict_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  head_sha: String,
+  criterion_key: String,
+) -> String {
+  join([dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", head_sha, ".", criterion_key, ".json"], "")
+}
+
+fn dispatch_attempt_review_verdict_basename(head_sha: String, criterion_key: String) -> String {
+  join([head_sha, ".", criterion_key, ".json"], "")
+}
+
+fn dispatch_attempt_review_events_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, criterion_key: String) -> String {
+  join([dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", criterion_key, ".provider-events.jsonl"], "")
+}
+
+fn dispatch_attempt_review_request_scratch_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, criterion_key: String) -> String {
+  join([dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", criterion_key, ".harness-request.json"], "")
+}
+
+fn dispatch_attempt_review_log_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, criterion_key: String) -> String {
+  join([dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", criterion_key, ".reviewer-stdout.log"], "")
+}
+
+fn dispatch_review_unit_name(node_id: String, attempt_key: String, criterion_key: String) -> NonEmptyStr {
+  join(["gunbc-review-", node_id, "-", attempt_key, "-", criterion_key, ".service"], "") as NonEmptyStr
+}
+
+// THE REVIEWER'S UNIT: the worker's confinement with ONE writable path, the review directory. The
+// worktree it reads is under the instance root and stays read-only to it, so a reviewer that tried
+// to fix what it was judging gets a refused write, not a contribution. Its WorkingDirectory is the
+// controller's repo root, as the worker's is: `gunbc run` refuses a source root outside its process
+// root (the first reviewer, 2026-09-05, exited 101 on exactly that with the worktree as its cwd), and
+// the worktree reaches the harness as the argument that sets its tools' directory, tool and subject
+// named separately (gunbc_harness_spawn_argv).
+fn dispatch_review_unit_properties(
+  instance: HostDashboardInstance,
+  working_directory: String,
+  log_path: String,
+  review_dir: String,
+) -> List<String> {
+  [
+    systemd_run_property(name: "MemoryMax", value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max))),
+    systemd_run_property(name: "WorkingDirectory", value: working_directory),
+    systemd_run_property(name: "StandardOutput", value: join(["append:", log_path], "")),
+    systemd_run_property(name: "StandardError", value: join(["append:", log_path], "")),
+    systemd_run_property(name: "ProtectSystem", value: "strict"),
+    systemd_run_property(name: "ProtectHome", value: "read-only"),
+    systemd_run_property(name: "PrivateTmp", value: "yes"),
+    systemd_run_property(name: "ReadWritePaths", value: review_dir),
+    systemd_run_property(name: "RemainAfterExit", value: "yes"),
+  ]
+}
+
+data gunbc_harness_reviewer_function: String = "harness_reviewer_cli"
+
+fn gunbc_harness_review_argv(
+  gunbc_program: String,
+  repo_root: String,
+  worktree_path: String,
+  brief: String,
+  timeout_program: String,
+  request_scratch_path: String,
+  events_path: String,
+  verdict_path: String,
+) -> List<String> {
+  [
+    gunbc_program,
+    "run",
+    "--source-root", join([repo_root, "/dag"], ""),
+    "--source-root", join([repo_root, "/src/v2"], ""),
+    "--entry", join([repo_root, "/", gunbc_harness_worker_entry], ""),
+    "--function", gunbc_harness_reviewer_function,
+    "--arg", join(["worktree=", worktree_path], ""),
+    "--arg", join(["brief=", brief], ""),
+    "--arg", join(["timeout_program=", timeout_program], ""),
+    "--arg", join(["request_scratch_path=", request_scratch_path], ""),
+    "--arg", join(["events_path=", events_path], ""),
+    "--arg", join(["verdict_path=", verdict_path], ""),
+  ]
+}
+
+fn dispatch_review_unit_argv(
+  systemd_run_program: FilePath,
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  worktree_path: String,
+  brief: String,
+  head_sha: String,
+  criterion_key: String,
+) -> HostExecArgv {
+  host_exec_argv(
+    program: systemd_run_program as String,
+    args: systemd_run_user_transient_arguments(
+      unit: dispatch_review_unit_name(node_id: node_id as String, attempt_key: attempt_key, criterion_key: criterion_key),
+      properties: dispatch_review_unit_properties(
+        instance: instance,
+        working_directory: instance.repo_root as String,
+        log_path: dispatch_attempt_review_log_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
+        review_dir: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+      ),
+      setenv_bindings: [],
+      command_argv: gunbc_harness_review_argv(
+        gunbc_program: instance.serve_binary as String,
+        repo_root: instance.repo_root as String,
+        worktree_path: worktree_path,
+        brief: brief,
+        timeout_program: instance.toolchain.timeout as String,
+        request_scratch_path: dispatch_attempt_review_request_scratch_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
+        events_path: dispatch_attempt_review_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
+        verdict_path: dispatch_attempt_review_verdict_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha, criterion_key: criterion_key),
+      ),
+    ),
+  )
+}
+
+// THE AUDIT DIRECTORY, the auditor's only writable path, beside review/. One auditor per head, so its
+// artifacts are addressed by head alone.
+data audit_directory_segment: String = "audit"
+
+fn dispatch_attempt_audit_dir_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
+  join([dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", audit_directory_segment], "")
+}
+
+fn dispatch_attempt_audit_verdict_basename(head_sha: String) -> String {
+  join([head_sha, ".json"], "")
+}
+
+fn dispatch_attempt_audit_verdict_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, head_sha: String) -> String {
+  join([dispatch_attempt_audit_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", dispatch_attempt_audit_verdict_basename(head_sha: head_sha)], "")
+}
+
+fn dispatch_audit_unit_name(node_id: String, attempt_key: String) -> NonEmptyStr {
+  join(["gunbc-audit-", node_id, "-", attempt_key, ".service"], "") as NonEmptyStr
+}
+
+data gunbc_harness_auditor_function: String = "harness_auditor_cli"
+
+fn dispatch_audit_unit_argv(
+  systemd_run_program: FilePath,
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  worktree_path: String,
+  brief: String,
+  head_sha: String,
+) -> HostExecArgv {
+  let dir = dispatch_attempt_audit_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  host_exec_argv(
+    program: systemd_run_program as String,
+    args: systemd_run_user_transient_arguments(
+      unit: dispatch_audit_unit_name(node_id: node_id as String, attempt_key: attempt_key),
+      properties: dispatch_review_unit_properties(
+        instance: instance,
+        working_directory: instance.repo_root as String,
+        log_path: join([dir, "/auditor-stdout.log"], ""),
+        review_dir: dir,
+      ),
+      setenv_bindings: [],
+      command_argv: [
+        instance.serve_binary as String,
+        "run",
+        "--source-root", join([instance.repo_root as String, "/dag"], ""),
+        "--source-root", join([instance.repo_root as String, "/src/v2"], ""),
+        "--entry", join([instance.repo_root as String, "/", gunbc_harness_worker_entry], ""),
+        "--function", gunbc_harness_auditor_function,
+        "--arg", join(["worktree=", worktree_path], ""),
+        "--arg", join(["brief=", brief], ""),
+        "--arg", join(["timeout_program=", instance.toolchain.timeout as String], ""),
+        "--arg", join(["request_scratch_path=", dir, "/harness-request.json"], ""),
+        "--arg", join(["events_path=", dir, "/provider-events.jsonl"], ""),
+        "--arg", join(["verdict_path=", dispatch_attempt_audit_verdict_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha)], ""),
+      ],
+    ),
+  )
 }
 
 fn dispatch_attempt_verification_receipt_path_for_instance(
@@ -1291,12 +1675,61 @@ fn codex_spawn_argv_for_instance(
   )
 }
 
+data gunbc_harness_needs_instance_reason: NonEmptyStr = "the gunbc harness worker resolves its modules from the CONTROLLER's repo_root, which only a dashboard instance names; this instance-less spawn path cannot supply one and refuses rather than guessing a checkout" as NonEmptyStr
+
 type DispatchProviderInnerArgv
   = DispatchProviderInnerArgvReady { argv: List<String> }
   | CodexProviderExecutableAbsent { reason: NonEmptyStr }
   | CursorProviderSpawnUnwired { reason: NonEmptyStr }
+  | GunbcHarnessSpawnNeedsInstance { reason: NonEmptyStr }
 
 data cursor_provider_spawn_unwired_reason: NonEmptyStr = "cursor dispatch inner argv is not wired on this actuator path" as NonEmptyStr
+
+// THE HARNESS SPAWN. The worker is this repository's own binary running a .dag entry, so there is
+// no runtime to install, no provider home to seed and no version to reconcile against a committed
+// lock -- most of what the three vendor arms above exist to arrange.
+//
+// THE TOOL COMES FROM THE CONTROLLER, THE SUBJECT IS THE WORKTREE, and conflating them was a real
+// defect caught by the first wet dispatch. The argv originally passed relative source roots, so the
+// worker resolved its own modules out of the attempt's checkout and died with `entry file does not
+// exist` -- the worktree is branched from the base ref, which does not carry the harness.
+//
+// Repointing the base ref would have made that particular run work and left the error in place,
+// because the error is not about which ref: a harness that must exist inside the tree it is editing
+// cannot be used to work ON the harness (an attempt could break its own worker mid-turn), cannot
+// start from any base ref predating it, and would silently change VERSION with the subject under
+// edit. So the entry and source roots are absolute paths under the instance's repo_root -- the
+// controller's own checkout, fixed for the process's life -- while the worktree reaches the worker
+// as the argument that sets its tools' working directory. Tool and subject, named separately.
+fn gunbc_harness_spawn_argv(
+  gunbc_program: String,
+  repo_root: String,
+  worktree_path: String,
+  brief: String,
+  timeout_program: String,
+  request_scratch_path: String,
+  events_path: String,
+) -> List<String> {
+  [
+    gunbc_program,
+    "run",
+    "--source-root", join([repo_root, "/dag"], ""),
+    "--source-root", join([repo_root, "/src/v2"], ""),
+    "--entry", join([repo_root, "/", gunbc_harness_worker_entry], ""),
+    "--function", gunbc_harness_worker_function,
+    "--arg", join(["worktree=", worktree_path], ""),
+    "--arg", join(["brief=", brief], ""),
+    "--arg", join(["timeout_program=", timeout_program], ""),
+    "--arg", join(["request_scratch_path=", request_scratch_path], ""),
+    "--arg", join(["events_path=", events_path], ""),
+    "--arg", join(["repo_root=", repo_root], ""),
+    "--arg", join(["gunbc_program=", gunbc_program], ""),
+  ]
+}
+
+data gunbc_harness_worker_entry: String = "dag/gunbc/harness/harness_cli.dag"
+
+data gunbc_harness_worker_function: String = "harness_worker_cli"
 
 fn dispatch_provider_inner_argv(
   provider: DispatchCliProvider,
@@ -1329,6 +1762,8 @@ fn dispatch_provider_inner_argv(
       }
     CursorDispatchProvider =>
       CursorProviderSpawnUnwired { reason: cursor_provider_spawn_unwired_reason }
+    GunbcHarnessProvider =>
+      GunbcHarnessSpawnNeedsInstance { reason: gunbc_harness_needs_instance_reason }
   }
 }
 
@@ -1338,6 +1773,7 @@ fn dispatch_provider_inner_argv_for_instance(
   effort: ReasoningEffort,
   session_uuid: String,
   node_id: RoadmapNodeId,
+  attempt_key: String,
   worktree_path: String,
   brief: String,
 ) -> DispatchProviderInnerArgv {
@@ -1384,6 +1820,26 @@ fn dispatch_provider_inner_argv_for_instance(
       }
     CursorDispatchProvider =>
       CursorProviderSpawnUnwired { reason: cursor_provider_spawn_unwired_reason }
+    GunbcHarnessProvider =>
+      DispatchProviderInnerArgvReady {
+        argv: gunbc_harness_spawn_argv(
+          gunbc_program: instance.serve_binary as String,
+          repo_root: instance.repo_root as String,
+          worktree_path: worktree_path,
+          brief: brief,
+          timeout_program: instance.toolchain.timeout as String,
+          request_scratch_path: dispatch_attempt_request_scratch_path_for_instance(
+            instance: instance,
+            node_id: node_id,
+            attempt_key: attempt_key,
+          ),
+          events_path: dispatch_attempt_events_path_for_instance(
+            instance: instance,
+            node_id: node_id,
+            attempt_key: attempt_key,
+          ),
+        ),
+      }
   }
 }
 
@@ -1480,6 +1936,21 @@ fn attempt_state_prepare_argv_for_instance(
         node_id: node_id,
         attempt_key: attempt_key,
       ),
+      dispatch_attempt_verification_dir_for_instance(
+        instance: instance,
+        node_id: node_id,
+        attempt_key: attempt_key,
+      ),
+      dispatch_attempt_review_dir_for_instance(
+        instance: instance,
+        node_id: node_id,
+        attempt_key: attempt_key,
+      ),
+      dispatch_attempt_audit_dir_for_instance(
+        instance: instance,
+        node_id: node_id,
+        attempt_key: attempt_key,
+      ),
     ],
   )
 }
@@ -1510,10 +1981,240 @@ fn attempt_current_pointer_argv_for_instance(
   )
 }
 
+// WHICH DIRECTORY THE ATTEMPT PANE STANDS IN, and it is a PROVIDER fact rather than an attempt
+// fact. A vendor CLI is handed the attempt as its WORKING DIRECTORY -- that is how claude and codex
+// are told which tree to edit, so for them the pane cwd IS the subject and must stay the worktree.
+//
+// The gunbc harness is told the same thing as an ARGUMENT (--arg worktree=), because
+// gunbc_harness_spawn_argv resolves the worker's own modules from absolute source roots under the
+// controller's repo_root -- the separation that function's annotation draws between the TOOL and
+// the SUBJECT. Standing that process in the worktree contradicts it: `gunbc run` takes its process
+// workspace root from the cwd, and repo_relative_path_normalized PANICS on any module path outside
+// it, so the controller's own dag/ is rejected by the worker that was pointed at it on purpose.
+//
+// Found by execution, not by reading: the first wet dispatch on srv2-deploy spawned, the pane
+// exited 101, and provider-events.jsonl carried
+// "path /home/briansrls/gunbc-srv2-deploy/dag is not under process workspace root
+// .../attempts/shell-typed-invocation-<key>". The attempt worktree, the branch, the state directory
+// and the current-pointer were all correct -- only the directory the process stood in was wrong,
+// which is why every receipt looked right while nothing ran.
+// THE ATTEMPT'S UNIT NAME. Per attempt, not per node: the attempt key is a content hash, so two
+// attempts on one node get distinct units and the collision the tmux path reports as
+// `duplicate session` has no spelling here. A unit that has exited stays loaded in `failed` or
+// `inactive` carrying its Result, which is the evidence the next step reads; clearing it is an
+// explicit act rather than a side effect of starting the next attempt.
+fn dispatch_attempt_unit_name(node_id: String, attempt_key: String) -> NonEmptyStr {
+  join(["gunbc-attempt-", node_id, "-", attempt_key, ".service"], "") as NonEmptyStr
+}
+
+// THE WORKER'S UNIT PROPERTIES, and every one of them answers something the tmux path either could
+// not express or had to fabricate. MemoryMax is the enforceable cgroup bound `gunbc run` requires
+// before it will size its typed-module cache -- without it the worker refuses, which is exactly the
+// failure this container replaces. WorkingDirectory is the controller checkout for the reason
+// dispatch_pane_working_directory states. StandardOutput and StandardError append to the attempt's
+// own events path, so capture is a unit property rather than a quoted shell payload piped through
+// a terminal multiplexer.
+fn dispatch_worker_unit_properties(
+  instance: HostDashboardInstance,
+  working_directory: String,
+  worker_log_path: String,
+) -> List<String> {
+  [
+    systemd_run_property(
+      name: "MemoryMax",
+      value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)),
+    ),
+    systemd_run_property(name: "WorkingDirectory", value: working_directory),
+    systemd_run_property(name: "StandardOutput", value: join(["append:", worker_log_path], "")),
+    systemd_run_property(name: "StandardError", value: join(["append:", worker_log_path], "")),
+    systemd_run_property(name: "ProtectSystem", value: "strict"),
+    systemd_run_property(name: "ProtectHome", value: "read-only"),
+    systemd_run_property(name: "PrivateTmp", value: "yes"),
+    systemd_run_property(name: "ReadWritePaths", value: dispatch_worker_writable_paths(instance: instance)),
+    systemd_run_property(name: "RemainAfterExit", value: "yes"),
+  ]
+}
+
+// THE UNIT OUTLIVES ITS PROCESS ON PURPOSE. A transient unit whose main process exits 0 is collected
+// by the manager and reads LoadState=not-found a moment later; one that exits nonzero is retained as
+// failed. The process observer below read not-found as "never ran", so a SUCCESSFUL worker was the one
+// case the belt could not commit or verify -- measured 2026-09-05 on the first worker to finish with
+// turn.completed (attempt ce21f99eb2e82ec1: worktree dirty, commit "provider not completed"), while
+// the eight failed attempts before it were all committed. RemainAfterExit keeps the unit loaded as
+// active (exited) with its ExecMainStatus readable until it is stopped, so the exit is an observable
+// fact for as long as the attempt needs it, on both exit paths alike.
+
+// THE WORKER MAY WRITE ONLY UNDER THE INSTANCE ROOT: its worktree, its attempt state, the spool. The
+// second belt-dispatched attempt (2026-09-04) edited the deploy tree instead of its worktree, having
+// inferred the tree from the one absolute path it was shown; ProtectHome=read-only with these paths
+// carved out makes that a refused write rather than a dirty release tree. The repository's own
+// .git/worktrees directory is writable because the attempt worktree's git metadata lives there.
+fn dispatch_worker_writable_paths(instance: HostDashboardInstance) -> String {
+  join([
+    instance.instance_root as String,
+    " ",
+    instance.repo_root as String, "/.git/worktrees",
+  ], "")
+}
+
+fn dispatch_worker_unit_argv(
+  systemd_run_program: FilePath,
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+  working_directory: String,
+  worker_log_path: String,
+  inner_argv: List<String>,
+) -> HostExecArgv {
+  host_exec_argv(
+    program: systemd_run_program as String,
+    args: systemd_run_user_transient_arguments(
+      unit: dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key),
+      properties: dispatch_worker_unit_properties(
+        instance: instance,
+        working_directory: working_directory,
+        worker_log_path: worker_log_path,
+      ),
+      setenv_bindings: [],
+      command_argv: inner_argv,
+    ),
+  )
+}
+
+type DispatchSessionContainerPlan
+  = DispatchSessionContainerReady { container: DispatchSessionContainer }
+  | DispatchSessionContainerUnavailable { step: NonEmptyStr, detail: String }
+
+// WHICH CONTAINER HOLDS THE ATTEMPT, decided per provider with no default arm, so a new provider
+// must state which one it needs rather than inheriting whichever was written first.
+//
+// The harness arm REFUSES on a host whose toolchain declares no systemd-run instead of falling back
+// to tmux. That is deliberate and it is the DESIGN section 5 rule rather than a preference: the tmux
+// path is precisely where this worker cannot get an enforceable memory bound, so a fallback would
+// not be a degraded success, it would be a guaranteed HostBudgetUnreadable wearing the shape of a
+// spawn that worked. macbook_local_toolchain answers `none` here because macOS has no systemd at
+// all, which is why the field is optional rather than a path every toolchain must invent.
+fn dispatch_session_container_for_provider(
+  provider: DispatchCliProvider,
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+  session_name: String,
+  events_path: String,
+  worker_log_path: String,
+  pane_working_directory: String,
+  tmux_spawn: HostExecArgv,
+  pipe_command: TmuxPipeCommand,
+  provider_inner: List<String>,
+) -> DispatchSessionContainerPlan {
+  match provider {
+    GunbcHarnessProvider =>
+      match instance.toolchain.systemd_run {
+        Absent =>
+          DispatchSessionContainerUnavailable {
+            step: "harness-transient-unit" as NonEmptyStr,
+            detail: join([
+              "the gunbc harness worker requires a transient unit for an enforceable memory bound, ",
+              "and the toolchain for host ", instance.host_identity as String,
+              " declares no systemd-run",
+            ], ""),
+          }
+        Present { value: program } =>
+          DispatchSessionContainerReady {
+            container: SystemdUnitContainer {
+              run: dispatch_worker_unit_argv(
+                systemd_run_program: program,
+                instance: instance,
+                node_id: node_id,
+                attempt_key: attempt_key,
+                working_directory: pane_working_directory,
+                worker_log_path: worker_log_path,
+                inner_argv: provider_inner,
+              ),
+            },
+          }
+      }
+    ClaudeCodeProvider =>
+      DispatchSessionContainerReady {
+        container: dispatch_tmux_container(
+          instance: instance,
+          session_name: session_name,
+          tmux_spawn: tmux_spawn,
+          pipe_command: pipe_command,
+          provider_inner: provider_inner,
+        ),
+      }
+    CodexDispatchProvider =>
+      DispatchSessionContainerReady {
+        container: dispatch_tmux_container(
+          instance: instance,
+          session_name: session_name,
+          tmux_spawn: tmux_spawn,
+          pipe_command: pipe_command,
+          provider_inner: provider_inner,
+        ),
+      }
+    CursorDispatchProvider =>
+      DispatchSessionContainerReady {
+        container: dispatch_tmux_container(
+          instance: instance,
+          session_name: session_name,
+          tmux_spawn: tmux_spawn,
+          pipe_command: pipe_command,
+          provider_inner: provider_inner,
+        ),
+      }
+  }
+}
+
+fn dispatch_tmux_container(
+  instance: HostDashboardInstance,
+  session_name: String,
+  tmux_spawn: HostExecArgv,
+  pipe_command: TmuxPipeCommand,
+  provider_inner: List<String>,
+) -> DispatchSessionContainer {
+  TmuxSessionContainer {
+    spawn: tmux_spawn,
+    default_shell: tmux_attempt_default_shell_argv_for_instance(
+      instance: instance,
+      session_name: session_name,
+    ),
+    remain_on_exit: tmux_attempt_remain_argv_for_instance(
+      instance: instance,
+      session_name: session_name,
+    ),
+    event_pipe: tmux_attempt_pipe_argv_for_command(
+      instance: instance,
+      session_name: session_name,
+      command: pipe_command,
+    ),
+    provider_start: tmux_attempt_provider_start_argv_for_instance(
+      instance: instance,
+      session_name: session_name,
+      inner_argv: provider_inner,
+    ),
+  }
+}
+
+fn dispatch_pane_working_directory(
+  provider: DispatchCliProvider,
+  instance: HostDashboardInstance,
+  worktree_path: String,
+) -> String {
+  match provider {
+    GunbcHarnessProvider => instance.repo_root as String
+    ClaudeCodeProvider => worktree_path
+    CodexDispatchProvider => worktree_path
+    CursorDispatchProvider => worktree_path
+  }
+}
+
 fn tmux_idle_spawn_argv_for_instance(
   instance: HostDashboardInstance,
   session_name: String,
   worktree_path: String,
+  pane_working_directory: String,
 ) -> HostExecArgv {
   host_exec_argv(
     program: dispatch_capability_program(
@@ -1523,7 +2224,7 @@ fn tmux_idle_spawn_argv_for_instance(
     args: shape_tmux_new_session_argv_for(
       scope: instance.tmux_server,
       session_name: session_name,
-      working_dir: worktree_path,
+      working_dir: pane_working_directory,
       inner_argv: [
         dispatch_capability_program(
           environment: instance.execution_environment,
@@ -1665,15 +2366,44 @@ type DispatchSpawnPlan
   = DispatchSpawnReady { commands: DispatchSpawnCommands }
   | DispatchSpawnRefused { step: NonEmptyStr, detail: String }
 
+// THE SESSION CONTAINER IS A REALIZATION, NOT A FACT ABOUT DISPATCH, and this coproduct is where
+// that stops being a claim in prose. A dispatched attempt needs four things from whatever holds its
+// process: it must outlive the request that started it, its output must be captured, its liveness
+// must be observable, and it must be killable. tmux supplies all four -- but the REASON it was
+// chosen is that claude and codex are interactive terminal programs and need a pty, which is a fact
+// about those two providers rather than about dispatch.
+//
+// The gunbc harness worker is `gunbc run`, a non-interactive batch process. For it tmux supplies
+// nothing it needs and two things it cannot tolerate: tmux places every pane in its own transient
+// scope (tmux-spawn-<uuid>.scope, memory.max=max), so the worker escapes the serving unit's cgroup
+// and `gunbc run` REFUSES to plan -- HostBudgetUnreadable, measured on srv2-deploy -- and pane
+// capture requires a shell-command payload, which extdeps.tmux's own annotation names as the one
+// foreign-executor seam in attempt capture.
+//
+// A transient systemd unit supplies the same four properties with no pty, and supplies as ordinary
+// unit properties the two things the tmux path had to invent or could not express: MemoryMax, which
+// makes the budget enforceable BY CONSTRUCTION rather than by a check that fails, and Result plus
+// ExecMainStatus, which is the terminal state that distinguishes a finished worker from a crashed
+// or reaped one.
+//
+// The unit is named per ATTEMPT rather than per node, so two attempts on one node cannot collide --
+// the failure the tmux path shows as `duplicate session`, where a dead pane blocks the next
+// dispatch and nothing reaps it.
+type DispatchSessionContainer
+  = TmuxSessionContainer {
+      spawn: HostExecArgv
+      default_shell: HostExecArgv
+      remain_on_exit: HostExecArgv
+      event_pipe: HostExecArgv
+      provider_start: HostExecArgv
+    }
+  | SystemdUnitContainer { run: HostExecArgv }
+
 type DispatchSpawnCommands {
   worktree_add: HostExecArgv
   attempt_state_prepare: HostExecArgv
   attempt_current_pointer: HostExecArgv
-  tmux_spawn: HostExecArgv
-  tmux_default_shell: HostExecArgv
-  tmux_remain_on_exit: HostExecArgv
-  tmux_event_pipe: HostExecArgv
-  provider_start: HostExecArgv
+  session_container: DispatchSessionContainer
 }
 
 fn dispatch_spawn_commands_for_provider(
@@ -1682,15 +2412,24 @@ fn dispatch_spawn_commands_for_provider(
   attempt_key: String,
   provider: DispatchCliProvider,
 ) -> DispatchSpawnPlan {
-  dispatch_spawn_commands_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    node: node,
-    session_uuid: session_uuid,
-    attempt_key: attempt_key,
-    request: provider_selection_request_for_kind(
-      kind: dispatch_cli_to_provider_kind(provider: provider),
-    ),
-  )
+  match dispatch_cli_to_provider_kind(provider: provider) {
+    DispatchExecutorHasNoVendorKind { executor: e } =>
+      DispatchSpawnRefused {
+        step: "vendor-selection-request" as NonEmptyStr,
+        detail: join([
+          "a vendor selection request cannot be built for ", e,
+          "; the harness executor is spawned through its own plan",
+        ], ""),
+      }
+    DispatchProviderKindIs { kind: vendor_kind } =>
+      dispatch_spawn_commands_for_instance(
+        instance: srv1_live_dashboard_instance(),
+        node: node,
+        session_uuid: session_uuid,
+        attempt_key: attempt_key,
+        request: provider_selection_request_for_kind(kind: vendor_kind),
+      )
+  }
 }
 
 fn dispatch_spawn_commands_for_inventory(
@@ -1728,6 +2467,7 @@ fn dispatch_spawn_commands_for_inventory(
             attempt_key: attempt_key,
             provider: provider,
             effort: effort,
+            origin: FreshFromBase,
           )
       }
     }
@@ -1751,6 +2491,11 @@ fn dispatch_spawn_commands_for_instance(
   )
 }
 
+// THE ORIGIN DECIDES TWO THINGS AND ONLY TWO: which ref the worktree branches from, and what leads
+// the brief. A fresh start branches from the instance's base ref with the node brief alone; a
+// continuation branches from the prior attempt's branch, so the committed work is already in the
+// tree, and puts the verdict ahead of the brief. Nothing else about the spawn changes -- same
+// harness, same confinement, same state layout -- which is what makes the second turn ordinary.
 fn dispatch_spawn_commands_for_resolved_instance(
   instance: HostDashboardInstance,
   node: RoadmapNode,
@@ -1758,12 +2503,16 @@ fn dispatch_spawn_commands_for_resolved_instance(
   attempt_key: String,
   provider: DispatchCliProvider,
   effort: ReasoningEffort,
+  origin: AttemptOrigin,
 ) -> DispatchSpawnPlan {
   let fields = dispatch_brief_fields_for_environment(
     node: node,
     environment: instance.execution_environment,
   )
-  let brief = fill_dispatch_brief(template: dispatch_brief_template, fields: fields)
+  let brief = join([
+    continuation_brief_prefix(origin: origin),
+    fill_dispatch_brief(template: dispatch_brief_template, fields: fields),
+  ], "")
   let session_name = dispatch_tmux_session_name(node_id: node.node)
   let worktree_path = dispatch_worktree_path_for_instance(
     instance: instance,
@@ -1777,6 +2526,7 @@ fn dispatch_spawn_commands_for_resolved_instance(
     effort: effort,
     session_uuid: session_uuid,
     node_id: node.node,
+    attempt_key: attempt_key,
     worktree_path: worktree_path,
     brief: brief,
   ) {
@@ -1790,12 +2540,17 @@ fn dispatch_spawn_commands_for_resolved_instance(
         step: "codex-executable-placement" as NonEmptyStr,
         detail: reason as String,
       }
+    GunbcHarnessSpawnNeedsInstance { reason } =>
+      DispatchSpawnRefused {
+        step: "harness-controller-checkout" as NonEmptyStr,
+        detail: reason as String,
+      }
     DispatchProviderInnerArgvReady { argv: provider_inner } => {
   let worktree = git_worktree_add_argv_for_instance(
     instance: instance,
     worktree_path: worktree_path,
     branch_name: branch_name,
-    remote_ref: instance.dispatch_base_ref as String,
+    remote_ref: attempt_origin_base_ref(origin: origin, instance_base_ref: instance.dispatch_base_ref as String),
   )
   let state_prepare = attempt_state_prepare_argv_for_instance(
     instance: instance,
@@ -1806,6 +2561,11 @@ fn dispatch_spawn_commands_for_resolved_instance(
     instance: instance,
     session_name: session_name,
     worktree_path: worktree_path,
+    pane_working_directory: dispatch_pane_working_directory(
+      provider: provider,
+      instance: instance,
+      worktree_path: worktree_path,
+    ),
   )
   let events_path = dispatch_attempt_events_path_for_instance(
     instance: instance,
@@ -1822,35 +2582,42 @@ fn dispatch_spawn_commands_for_resolved_instance(
         detail: detail,
       }
     PipeEmitted { command } =>
-      DispatchSpawnReady {
-        commands: DispatchSpawnCommands {
-          worktree_add: worktree,
-          attempt_state_prepare: state_prepare,
-          attempt_current_pointer: attempt_current_pointer_argv_for_instance(
-            instance: instance,
-            node_id: node.node,
-            attempt_key: attempt_key,
-          ),
-          tmux_spawn: tmux,
-          tmux_default_shell: tmux_attempt_default_shell_argv_for_instance(
-            instance: instance,
-            session_name: session_name,
-          ),
-          tmux_remain_on_exit: tmux_attempt_remain_argv_for_instance(
-            instance: instance,
-            session_name: session_name,
-          ),
-          tmux_event_pipe: tmux_attempt_pipe_argv_for_command(
-            instance: instance,
-            session_name: session_name,
-            command: command,
-          ),
-          provider_start: tmux_attempt_provider_start_argv_for_instance(
-            instance: instance,
-            session_name: session_name,
-            inner_argv: provider_inner,
-          ),
-        },
+      match dispatch_session_container_for_provider(
+        provider: provider,
+        instance: instance,
+        node_id: node.node,
+        attempt_key: attempt_key,
+        session_name: session_name,
+        events_path: events_path,
+        worker_log_path: dispatch_attempt_worker_log_path_for_instance(
+          instance: instance,
+          node_id: node.node,
+          attempt_key: attempt_key,
+        ),
+        pane_working_directory: dispatch_pane_working_directory(
+          provider: provider,
+          instance: instance,
+          worktree_path: worktree_path,
+        ),
+        tmux_spawn: tmux,
+        pipe_command: command,
+        provider_inner: provider_inner,
+      ) {
+        DispatchSessionContainerUnavailable { step: st, detail: d } =>
+          DispatchSpawnRefused { step: st, detail: d }
+        DispatchSessionContainerReady { container: c } =>
+          DispatchSpawnReady {
+            commands: DispatchSpawnCommands {
+              worktree_add: worktree,
+              attempt_state_prepare: state_prepare,
+              attempt_current_pointer: attempt_current_pointer_argv_for_instance(
+                instance: instance,
+                node_id: node.node,
+                attempt_key: attempt_key,
+              ),
+              session_container: c,
+            },
+          }
       }
     }
     }
@@ -2397,6 +3164,109 @@ fn dispatch_session_cleanup_detail(
 // ownership fingerprint. A present session with an absent/refused pane observation remains
 // cleanup-refused. The wire therefore says stop, clear, or unavailable mechanically from
 // DispatchSessionCleanup instead of presenting every tmux container as a live agent.
+
+// THE UNIT-BACKED ATTEMPT'S PROCESS EVIDENCE, answering the same question the pane answers for a
+// tmux-backed one. The Agent obligation deliberately needs BOTH a terminal provider event and a
+// compatible process exit -- provider_execution_reconcile_process refuses a turn.completed whose
+// process exited nonzero as conflicting terminal evidence -- so emitting events was never going to
+// be sufficient on its own. This is the second source, not a second opinion.
+//
+// LoadState IS READ FIRST AND IT IS THE ONLY HONEST ABSENCE. A unit the user manager never heard of
+// answers ActiveState `inactive` with a successful exit, which is indistinguishable from a unit
+// that ran and stopped -- so deciding absence from ActiveState would report every finished attempt
+// as one that never started. `not-found` is the manager saying it has no such unit, and it is the
+// only reading that means absent. That premise needs RemainAfterExit on the unit (see
+// dispatch_worker_unit_properties): without it a unit that exited 0 IS collected and reads
+// not-found, which is how every successful worker was read as never having run until 2026-09-05.
+//
+// SUBSTATE, NOT ACTIVESTATE, DECIDES RUNNING. With RemainAfterExit the unit stays ActiveState=active
+// after its process has exited, so ActiveState cannot separate a working process from a finished
+// one; SubState can -- `running` while the main process lives, `exited` once it has gone, `failed`
+// or `dead` for the retained failure and the stopped unit. Every other SubState is a transition
+// (start-pre, stop-sigterm, auto-restart) and counts as live, because a unit in transition has no
+// final exit to report yet.
+//
+// A REFUSED READ IS NOT AN ABSENT UNIT. Every capture refusal maps to WorkerProcessUnobserved
+// carrying its cause, never to WorkerProcessAbsent: "the manager says no such unit" and "I could
+// not ask the manager" are different facts with different remedies, and collapsing them would let
+// a broken transport read as a worker that never ran.
+type AttemptUnitObservation
+  = AttemptUnitAbsent
+  | AttemptUnitActive
+  | AttemptUnitFinished { exit_status: String }
+  | AttemptUnitUnreadable { reason: String }
+
+// THE READ IS A DIRECT SERVICE CALL, NOT A ROUTED HOST OPERATION, and the reason is the import
+// graph rather than preference. gunbc.systemctl_show_read routes through gunbc.host_operation_exec,
+// which depends on gunbc.host_effect, which reaches this module through
+// live_deploy.candidate -> roadmap_belt -> roadmap_belt_actuate. Importing the routed read here is
+// a cycle, and the acyclicity law is the one structural rule the import graph has. The transport
+// indirection buys local-vs-ssh dispatch, which this observation does not need: the belt runs on
+// the host whose units it is reading, so the local manager IS the subject.
+fn attempt_unit_property(unit: NonEmptyStr, property: SystemdUnitProperty) -> AttemptUnitObservation {
+  let read = systemd.Systemctl.ShowUserProperty(unit: unit, property: property)
+  if read.success {
+    AttemptUnitFinished { exit_status: trim(read.value) }
+  } else {
+    AttemptUnitUnreadable {
+      reason: join(["systemctl --user show refused for ", unit as String], ""),
+    }
+  }
+}
+
+fn attempt_unit_observation(unit: NonEmptyStr) -> AttemptUnitObservation {
+  match attempt_unit_property(unit: unit, property: LoadState) {
+    AttemptUnitUnreadable { reason: why } => AttemptUnitUnreadable { reason: why }
+    AttemptUnitAbsent => AttemptUnitAbsent
+    AttemptUnitActive => AttemptUnitActive
+    AttemptUnitFinished { exit_status: load } =>
+      if load == "not-found" {
+        AttemptUnitAbsent
+      } else {
+        match attempt_unit_property(unit: unit, property: SubState) {
+          AttemptUnitUnreadable { reason: why } => AttemptUnitUnreadable { reason: why }
+          AttemptUnitAbsent => AttemptUnitAbsent
+          AttemptUnitActive => AttemptUnitActive
+          AttemptUnitFinished { exit_status: sub } =>
+            if attempt_unit_substate_has_exited(substate: sub) {
+              attempt_unit_property(unit: unit, property: ExecMainStatus)
+            } else {
+              AttemptUnitActive
+            }
+        }
+      }
+  }
+}
+
+fn attempt_unit_substate_has_exited(substate: String) -> Bool {
+  substate == "exited" || substate == "failed" || substate == "dead"
+}
+
+fn worker_process_from_attempt_unit(
+  observation: AttemptUnitObservation,
+  unit: NonEmptyStr,
+) -> WorkerProcessEvidence {
+  match observation {
+    AttemptUnitAbsent => WorkerProcessAbsent
+    AttemptUnitActive => WorkerProcessRunning { command: unit }
+    AttemptUnitFinished { exit_status: status } =>
+      match parse_int(text: status) {
+        Present { value: code } =>
+          WorkerProcessExited { exit_code: code, last_command: unit as String }
+        Absent =>
+          WorkerProcessUnobserved {
+            reason: join([
+              "unit ", unit as String, " has stopped but ExecMainStatus did not parse as an exit code: ",
+              status,
+            ], "") as NonEmptyStr,
+          }
+      }
+    AttemptUnitUnreadable { reason: why } =>
+      WorkerProcessUnobserved {
+        reason: join(["unit ", unit as String, " could not be read: ", why], "") as NonEmptyStr,
+      }
+  }
+}
 
 fn worker_process_from_attempt_pane(
   pane: TmuxAttemptPaneEntry,

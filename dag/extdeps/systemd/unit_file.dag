@@ -128,7 +128,12 @@ type SystemdUnitDirective
 
 type SystemdServiceDirective
   = ServiceType { mode: NonEmptyStr }
+  | ExecStartPre { command: NonEmptyStr }
   | ExecStart { command: NonEmptyStr }
+  | ExecStop { command: NonEmptyStr }
+  | ExecStopPost { command: NonEmptyStr }
+  | ServiceStandardOutput { stream: SystemdOutputStream }
+  | ServiceStandardError { stream: SystemdOutputStream }
   | Restart { policy: NonEmptyStr }
   | Environment { assignment: NonEmptyStr }
   | EnvironmentFile { path: NonEmptyStr }
@@ -160,6 +165,43 @@ type SystemdServiceDirective
 // carries it as `NonEmptyStr` has re-opened it, and every consumer must then re-validate what the
 // upstream already decided. `Nice=` genuinely is an integer over -20..19 -- a range this type does
 // not narrow, which is a bound left unmodeled and not a value set left open.
+// THE THREE EXEC DIRECTIVES ARE THREE VARIANTS, NOT ONE `phase: String` FIELD, and systemd is why:
+// they run at different points of the unit's lifetime and a failure in each has a different
+// consequence -- an `ExecStartPre=` failure aborts the start, an `ExecStopPost=` command runs even
+// when the main command failed. A single variant carrying the phase as a word would let a consumer
+// write a phase systemd does not define, and would put the ordering back into a string.
+//
+// `ExecStopPost=` is the directive that makes a one-shot guest agent's POWER-OFF unconditional. A
+// poweroff appended to the main command runs only when the main command succeeds, so a failed job
+// would leave the guest running -- exactly the per-job-VM lifetime this fleet is buying. Placed
+// here it runs on both arms, which is the property rather than a tidier spelling of it.
+
+// THE OUTPUT TARGET IS A CLOSED SET, because the serial console is the only place a micro-VM guest's
+// output is observable at all: there is no journal to read afterwards on a VM that has powered off,
+// so `journal+console` is a correctness requirement of that topology rather than a verbosity taste.
+// An open string here would admit a target systemd does not define and defer the refusal to the
+// guest's boot, where nobody is watching.
+type SystemdOutputStream
+  = OutputInherit
+  | OutputJournal
+  | OutputConsole
+  | OutputJournalAndConsole
+  | OutputNull
+  | OutputAppendFile { path: NonEmptyStr }
+
+// `append:PATH` (systemd.exec(5), StandardOutput=): open PATH in append mode, so a restart continues
+// the same log rather than truncating it. The path is the one open field systemd defines here.
+fn systemd_output_stream_wire(stream: SystemdOutputStream) -> String {
+  match stream {
+    OutputInherit => "inherit"
+    OutputJournal => "journal"
+    OutputConsole => "console"
+    OutputJournalAndConsole => "journal+console"
+    OutputNull => "null"
+    OutputAppendFile { path: p } => join(["append:", p as String], "")
+  }
+}
+
 type SystemdIoSchedulingClass
   = IoSchedulingRealtime
   | IoSchedulingBestEffort
@@ -488,7 +530,14 @@ fn systemd_unit_directive_line(directive: SystemdUnitDirective) -> String {
 fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String {
   match directive {
     ServiceType { mode: v } => join(["Type=", v as String], "")
+    ExecStartPre { command: v } => join(["ExecStartPre=", v as String], "")
     ExecStart { command: v } => join(["ExecStart=", v as String], "")
+    ExecStop { command: v } => join(["ExecStop=", v as String], "")
+    ExecStopPost { command: v } => join(["ExecStopPost=", v as String], "")
+    ServiceStandardOutput { stream: v } =>
+      join(["StandardOutput=", systemd_output_stream_wire(stream: v)], "")
+    ServiceStandardError { stream: v } =>
+      join(["StandardError=", systemd_output_stream_wire(stream: v)], "")
     Restart { policy: v } => join(["Restart=", v as String], "")
     Environment { assignment: v } => join(["Environment=", v as String], "")
     EnvironmentFile { path: v } => join(["EnvironmentFile=", v as String], "")

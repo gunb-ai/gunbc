@@ -1,0 +1,194 @@
+module test.claim.runner_guest_image_witness
+
+import std.types { String, Bool, List, NonEmptyStr }
+import extdeps.crypto.hash { sha256_digest }
+import extdeps.github.actions_runner { ActionsRunnerRelease }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.tools.e2fsprogs { Ext4, mke2fs_populate_command }
+import extdeps.systemd.unit_file { serialize_systemd_unit_file, serialize_systemd_drop_in }
+import gunbc.runner_microvm { RunnerGuestImage, gunbc_runner_guest_image }
+import gunbc.runner_guest_image {
+  GuestBaseArtifact, GuestArtifactIntegrity, ArtifactDigestPinned, ArtifactDigestUnpinned,
+  ArtifactDigestNotPinnable, runner_guest_built_image_artifact,
+  GuestArtifactDigestProvenance, FirstObservedOnFetch,
+  GuestArtifactVerdict, ArtifactMatchesPin, ArtifactUnpinnedFirstContact, ArtifactContradictsPin,
+  ArtifactBuildReceipt,
+  ArtifactNotMeasured,
+  guest_artifact_verdict, guest_artifact_verdict_admits_build, guest_artifact_verdict_text,
+  runner_guest_image_name, runner_guest_image_path, runner_guest_tree_dir,
+  runner_guest_agent_unit, runner_guest_agent_unit_path,
+  runner_guest_agent_drop_in_path, runner_guest_agent_target_drop_in,
+  runner_guest_image_size, runner_guest_image_filesystem,
+}
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data a_digest: NonEmptyStr = "1111111111111111111111111111111111111111111111111111111111111111" as NonEmptyStr
+data b_digest: NonEmptyStr = "2222222222222222222222222222222222222222222222222222222222222222" as NonEmptyStr
+
+fn pinned_artifact() -> GuestBaseArtifact {
+  GuestBaseArtifact {
+    url: "https://example.invalid/a" as NonEmptyStr,
+    filename: "a" as NonEmptyStr,
+    integrity: ArtifactDigestPinned {
+      digest: sha256_digest(hex: a_digest),
+      provenance: FirstObservedOnFetch {
+        observed_from: "witness" as NonEmptyStr,
+        observed_on: "2026-09-05" as NonEmptyStr,
+      },
+    },
+  }
+}
+
+fn unpinned_artifact() -> GuestBaseArtifact {
+  GuestBaseArtifact {
+    url: "https://example.invalid/b" as NonEmptyStr,
+    filename: "b" as NonEmptyStr,
+    integrity: ArtifactDigestUnpinned { cause: "not fetched yet" },
+  }
+}
+
+// THE DISCRIMINATING RED. A pin exists and the bytes disagree with it: the build must not proceed.
+// This is the arm the whole integrity type exists for, and it is the one an absorbing implementation
+// would have widened into "accept whatever arrived" -- so it is driven from both sides, with the
+// matching digest admitted in the same test.
+test fn bytes_that_contradict_a_recorded_pin_refuse_the_build() -> Bool {
+  let contradicted = guest_artifact_verdict(
+    artifact: pinned_artifact(),
+    observed: Sha256FileDigest { digest: sha256_digest(hex: b_digest) },
+  )
+  let agreeing = guest_artifact_verdict(
+    artifact: pinned_artifact(),
+    observed: Sha256FileDigest { digest: sha256_digest(hex: a_digest) },
+  )
+  !guest_artifact_verdict_admits_build(verdict: contradicted)
+    && guest_artifact_verdict_admits_build(verdict: agreeing)
+    && (match contradicted {
+      ArtifactContradictsPin { expected_hex: e, observed_hex: o } => e == a_digest as String && o == b_digest as String
+      _ => false
+    })
+    && (match agreeing { ArtifactMatchesPin => true  _ => false })
+}
+
+// FIRST CONTACT IS NOT A MATCH AND IT IS NOT A REFUSAL, and telling those three apart is the point
+// of the coproduct. An unpinned artifact reports the digest it observed so a row can be authored
+// from it; a measurement that could not be TAKEN refuses, because an unreadable file is not the
+// same event as a file whose bytes are new.
+test fn an_unpinned_artifact_reports_first_contact_and_an_unreadable_one_refuses() -> Bool {
+  let first = guest_artifact_verdict(
+    artifact: unpinned_artifact(),
+    observed: Sha256FileDigest { digest: sha256_digest(hex: b_digest) },
+  )
+  let unreadable = guest_artifact_verdict(
+    artifact: unpinned_artifact(),
+    observed: Sha256FileDigestUnavailable { path: "b" as NonEmptyStr, reason: "sha256sum could not read the file" },
+  )
+  guest_artifact_verdict_admits_build(verdict: first)
+    && !guest_artifact_verdict_admits_build(verdict: unreadable)
+    && (match first {
+      ArtifactUnpinnedFirstContact { digest_hex: h } => h == b_digest as String
+      _ => false
+    })
+    && (match unreadable { ArtifactNotMeasured { reason: _ } => true  _ => false })
+}
+
+// THE BUILT IMAGE IS A RECEIPT AND MUST NEVER BE ADVISED AS A PIN, and this control exists because
+// the receipt said the opposite on a real run. fleet-converge run 33996923229 printed "author this
+// as ArtifactDigestPinned with FirstObservedOnFetch provenance" beside the image THAT BUILD had just
+// produced -- advice that, followed, pins a digest which legitimately changes whenever the tree does
+// and demands byte-reproducible mke2fs output to stay green.
+//
+// THE RED IS AUTHORABLE AND IS THE OLD BEHAVIOUR: give the built-image artifact ArtifactDigestUnpinned
+// and this goes red on both halves, because that arm is the one carrying the pin advice. The two
+// halves are separate on purpose -- asserting only that the text differs would pass on any wording
+// change, so the first pins the arm and the second pins what the arm must NOT tell a reader to do.
+test fn the_built_image_reports_a_receipt_and_never_advises_authoring_a_pin() -> Bool {
+  let v = guest_artifact_verdict(
+    artifact: runner_guest_built_image_artifact,
+    observed: Sha256FileDigest { digest: sha256_digest(hex: b_digest) },
+  )
+  let rendered = guest_artifact_verdict_text(artifact: runner_guest_built_image_artifact, verdict: v)
+  (match v { ArtifactBuildReceipt { digest_hex: h } => h == b_digest as String  _ => false })
+    && !string_contains(s: rendered, pattern: "ArtifactDigestPinned")
+    && guest_artifact_verdict_admits_build(verdict: v)
+}
+
+// THE IMAGE PATH CARRIES THE WHOLE IDENTITY, so a runner bump cannot land on the path the previous
+// release's image occupies. The red here is a second image differing ONLY in the runner release.
+test fn two_images_differing_only_in_the_runner_release_do_not_share_a_path() -> Bool {
+  let a = gunbc_runner_guest_image
+  let b = RunnerGuestImage {
+    distribution: a.distribution,
+    release_series: a.release_series,
+    arch: a.arch,
+    runner: ActionsRunnerRelease {
+      version: "0.0.0-witness" as NonEmptyStr,
+      digest_aarch64: sha256_digest(hex: a_digest),
+      digest_x86_64: sha256_digest(hex: b_digest),
+    },
+  }
+  runner_guest_image_name(image: a) != runner_guest_image_name(image: b)
+    && runner_guest_image_path(root: "/r", image: a) != runner_guest_image_path(root: "/r", image: b)
+    && runner_guest_tree_dir(root: "/r", image: a) != runner_guest_tree_dir(root: "/r", image: b)
+}
+
+// THE POWER-OFF IS UNCONDITIONAL, AND THIS IS THE ASSERTION THAT SAYS SO IN BYTES. `ExecStopPost=`
+// runs on both the success and the failure arm; an `ExecStart=` carrying the poweroff would leave a
+// failed job's VM standing. A refactor that "simplifies" the two into one ExecStart reds here.
+test fn the_guest_agent_powers_the_machine_off_on_every_arm() -> Bool {
+  let text = serialize_systemd_unit_file(file: runner_guest_agent_unit())
+  string_contains(s: text, pattern: "ExecStopPost=/usr/sbin/poweroff -f")
+    && string_contains(s: text, pattern: "StandardOutput=journal+console")
+    && string_contains(s: text, pattern: "Type=oneshot")
+    && string_contains(s: text, pattern: "WantedBy=multi-user.target")
+    && string_contains(s: text, pattern: "ExecStopPost=")
+}
+
+// THE REGRESSION CONTROL FOR THE ACTIVATION DEFECT, and it is written against the mechanism systemd
+// actually reads rather than against the unit's own text.
+//
+// The previous witness here asserted that `WantedBy=multi-user.target` appeared in the unit and that
+// a second file landed under multi-user.target.wants/. Both assertions were TRUE and the image still
+// did not start its agent: systemd's dependency loader skips any entry in a .wants/ directory that is
+// not a symlink, so the second file was inert. A correct assertion over the wrong subject -- it could
+// never have gone red for the reason that mattered.
+//
+// This asserts the drop-in instead: a `<target>.d/*.conf` fragment carrying `Wants=` naming the
+// service, which is merged into the target by the ordinary drop-in path and has no symlink
+// requirement. The red is a build that stops emitting that fragment, or emits one that does not name
+// the unit -- which is exactly the state the merged image was in.
+test fn the_agent_is_pulled_in_by_a_drop_in_systemd_will_actually_read() -> Bool {
+  let path = runner_guest_agent_drop_in_path(root: "/r", image: gunbc_runner_guest_image)
+  let body = serialize_systemd_drop_in(drop_in: runner_guest_agent_target_drop_in())
+  string_contains(s: path, pattern: "/etc/systemd/system/multi-user.target.d/")
+    && string_contains(s: path, pattern: ".conf")
+    && string_contains(s: body, pattern: "[Unit]")
+    && string_contains(s: body, pattern: "Wants=gunbc-runner-agent.service")
+    && path != runner_guest_agent_unit_path(root: "/r", image: gunbc_runner_guest_image)
+}
+
+// NOTHING IS WRITTEN INTO A .wants/ DIRECTORY ANY MORE, and this says so directly. A future author
+// restoring the "just copy the unit into .wants/" shortcut reds here even if the drop-in above still
+// stands, because the failure mode was an INERT file that looked like activation.
+test fn no_placement_relies_on_a_regular_file_in_a_wants_directory() -> Bool {
+  !string_contains(s: runner_guest_agent_drop_in_path(root: "/r", image: gunbc_runner_guest_image), pattern: ".wants/")
+    && !string_contains(s: runner_guest_agent_unit_path(root: "/r", image: gunbc_runner_guest_image), pattern: ".wants/")
+}
+
+// THE mke2fs OPERAND CARRIES ITS UNIT. An unsuffixed fs-size is a BLOCK count, so a builder that
+// rendered the bare number would size the image by a host-dependent heuristic. The `m` suffix is the
+// whole reason the size is carried as a Mebibyte rather than an Int.
+test fn the_filesystem_size_operand_is_denominated_rather_than_a_block_count() -> Bool {
+  let c = mke2fs_populate_command(
+    fs: runner_guest_image_filesystem,
+    image_path: "/r/i.ext4",
+    from_directory: "/r/t",
+    size: runner_guest_image_size,
+  )
+  c.program as String == "mke2fs"
+    && any(xs: c.arguments, predicate: fn(w) { w == "8192m" })
+    && any(xs: c.arguments, predicate: fn(w) { w == "ext4" })
+    && any(xs: c.arguments, predicate: fn(w) { w == "-d" })
+}

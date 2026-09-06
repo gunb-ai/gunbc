@@ -21,15 +21,17 @@ module gunbc.executor_privileged_operation
 import std.types { String, NonEmptyStr, List }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.sudo.elevation { sudo_elevate_argv }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import v2.std.algebra { fold_list }
 import extdeps.github.actions_runner { actions_runner_base_dir, actions_runner_cache_dir }
-import extdeps.systemd.systemctl { systemctl_enable_verb, systemctl_start_verb, systemctl_set_property_verb }
+import extdeps.systemd.systemctl { systemctl_enable_verb, systemctl_start_verb, systemctl_set_property_verb, systemctl_reload_verb }
 import gunbc.fleet_posix_accounts {
   ci_runner_sudo_binary_path,
   SudoInstall,
   SudoRm,
   SudoUseradd,
+  SudoUsermod,
   SudoSystemctl,
 }
 
@@ -49,6 +51,15 @@ type ExecutorPrivilegedOperation
   | SystemdStartUnit { unit: NonEmptyStr }
   | SystemdSetUnitProperty { unit: NonEmptyStr, assignment: NonEmptyStr }
   | EnsureSystemAccount { login: NonEmptyStr, shell: NonEmptyStr }
+  | EnsureSupplementaryGroupMembership { login: NonEmptyStr, group: NonEmptyStr }
+  | InstallFile {
+      source: NonEmptyStr
+      destination: NonEmptyStr
+      owner: NonEmptyStr
+      group: NonEmptyStr
+      mode: NonEmptyStr
+    }
+  | SystemdReloadUnit { unit: NonEmptyStr }
 
 // THE ONE PROJECTION. Everything else in this module derives from this function, so there is
 // exactly one place where an operation becomes words.
@@ -77,6 +88,28 @@ fn executor_privileged_operation_argv(op: ExecutorPrivilegedOperation) -> List<N
       "--shell" as NonEmptyStr,
       sh,
       l
+    ]
+    EnsureSupplementaryGroupMembership { login: l, group: g } => [
+      ci_runner_sudo_binary_path(b: SudoUsermod),
+      "-aG" as NonEmptyStr,
+      g,
+      l
+    ]
+    InstallFile { source: src, destination: dst, owner: o, group: g, mode: m } => [
+      ci_runner_sudo_binary_path(b: SudoInstall),
+      "-m" as NonEmptyStr,
+      m,
+      "-o" as NonEmptyStr,
+      o,
+      "-g" as NonEmptyStr,
+      g,
+      src,
+      dst
+    ]
+    SystemdReloadUnit { unit: u } => [
+      ci_runner_sudo_binary_path(b: SudoSystemctl),
+      systemctl_reload_verb,
+      u
     ]
     SystemdDaemonReload => [
       ci_runner_sudo_binary_path(b: SudoSystemctl),
@@ -229,20 +262,27 @@ data executor_privileged_operation_shell_scaffold: Disposition = Scaffold {
   }
 }
 
-// THE SHELL RENDERING IS THE SAME ARGV, QUOTED. Quoting is a property of the shell that carries the
+// THE SHELL RENDERING IS THE ELEVATED ARGV, QUOTED. Quoting is a property of the shell that carries the
 // words, not of the authorization: sudo receives argv AFTER the shell has parsed it, so
-// `sudo '/usr/bin/rm' '-rf' '/opt/actions-runner/srv3-09'` presents sudo with exactly the words the
+// `sudo -n '/usr/bin/rm' '-rf' '/opt/actions-runner/srv3-09'` presents sudo with exactly the words the
 // sudoers match names, unquoted. That is why one argv can ground both renderings without either
 // having to know about the other's escaping.
+//
+// ROUTED THROUGH sudo_elevate, NOT HAND-SPELLED. This function previously carried its own "sudo "
+// prefix, which meant the -n (non-interactive) flag that makes a missing NOPASSWD grant fail closed
+// rather than hang was absent from every shell invocation it produced. Elevation is a module-level
+// fact about an invocation — the binary, the non-interactive flag, the flag's position — and the
+// hand-spelling was a §3 fork: a second authorship of the same calling convention, duplicating the
+// binary path and omitting the flag that distinguishes refusal from a deadlocked tty wait.
 fn executor_privileged_operation_shell_command(op: ExecutorPrivilegedOperation) -> String {
-  join([
-    "sudo ",
-    join(
-      map(
+  join(
+    map(
+      sudo_elevate_argv(command: map(
         executor_privileged_operation_argv(op: op),
-        w => posix_single_quote(spelling: w as String),
-      ),
-      " ",
-    )
-  ], "")
+        w => w as String,
+      )),
+      w => posix_single_quote(spelling: w),
+    ),
+    " ",
+  )
 }

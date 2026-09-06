@@ -132,6 +132,7 @@ fn rlm_tick(instance_id: String, revision: String, mode: SpawnMode, observed_at:
     launches: [],
     spawn_pass: BeltPassRecorded,
     teardown_pass: BeltPassRecorded,
+    commit_pass: BeltPassRecorded,
     verify_pass: BeltPassRecorded,
     publish_pass: BeltPassRecorded,
   }

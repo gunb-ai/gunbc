@@ -1,7 +1,7 @@
 module gunbc.roadmap_publication_helper
 
 import std.algebra { trim }
-import std.types { String, NonEmptyStr, List, Bool, CommitSha }
+import std.types { String, NonEmptyStr, List, Bool, CommitSha, FilePath }
 import std.credentials { CredentialSource }
 import std.content_hash { content_hash_atom }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -25,6 +25,7 @@ import extdeps.languages.json.parse {
   JsonMemberFound,
 }
 import gunbc.host_layout { publication_request_dir, publication_answer_dir }
+import gunbc.roadmap.roadmap_publish_actuate { publish_attempt, PublishActuated, PushRefused, PullRequestRefused }
 import gunbc.repository { gunbc_repository }
 import gunbc.roadmap_publish {
   RoadmapPublicationSubject,
@@ -46,6 +47,7 @@ import gunbc.roadmap_publish {
   SubjectMatches,
   SubjectDiffers,
 }
+import gunbc.roadmap_publish { PublicationOutcome, PublicationBound, PublicationHeadDiverged, PublicationBindingAmbiguous, RemoteBranchAtExpectedHeadWithoutPullRequest, RemoteBranchHeadDiverged, RemoteBranchBindingAmbiguous, BranchNotPublished, PublicationObservationRefused, publication_subject_remote }
 import gunbc.roadmap_publish_observe {
   PublicationCredentialSource,
   CredentialSourceConfigured,
@@ -179,17 +181,18 @@ fn publication_answer_path_for(instance_root: String, key: String) -> String {
 // THE SCHEMA IS A WALL RATHER THAN A HINT, on the precedent publication_receipt_schema_v2_note sets
 // in gunbc.roadmap_publish: a document whose schema is not exactly this string is refused, so a
 // future request shape cannot be silently read as this one with members missing.
-data publication_request_schema: NonEmptyStr = "roadmap-publication-request/v1"
+data publication_request_schema: NonEmptyStr = "roadmap-publication-request/v2"
 
-fn publication_request_json(subject: RoadmapPublicationSubject) -> String {
+fn publication_request_json(subject: RoadmapPublicationSubject, worktree: String) -> String {
   serialize_json(v: json_object(members: [
     json_kv(key: "schema", value: json_string(s: publication_request_schema as String)),
     json_kv(key: "subject", value: publication_subject_json(subject: subject)),
+    json_kv(key: "worktree", value: json_string(s: worktree)),
   ]))
 }
 
 type PublicationRequestDecode
-  = RequestDecoded { subject: RoadmapPublicationSubject }
+  = RequestDecoded { subject: RoadmapPublicationSubject, worktree: String }
   | RequestUndecodable { reason: String }
 
 fn publication_request_decode_document(doc: JsonValue) -> PublicationRequestDecode {
@@ -208,7 +211,11 @@ fn publication_request_decode_document(doc: JsonValue) -> PublicationRequestDeco
           JsonMemberFound { value: subject_doc } =>
             match publication_subject_decode(doc: subject_doc) {
               SubjectUndecodable { reason: r } => RequestUndecodable { reason: r }
-              SubjectDecoded { subject } => RequestDecoded { subject: subject }
+              SubjectDecoded { subject } =>
+                match publication_receipt_member(doc: doc, key: "worktree") {
+                  ReceiptMemberUnreadable { reason: r } => RequestUndecodable { reason: r }
+                  ReceiptMemberRead { value: worktree } => RequestDecoded { subject: subject, worktree: worktree }
+                }
             }
           _ =>
             RequestUndecodable {
@@ -322,11 +329,12 @@ fn publication_request_enqueue(
   instance_root: String,
   key: String,
   subject: RoadmapPublicationSubject,
+  worktree: String,
 ) -> PublicationRequestEnqueue {
   let path = publication_request_path_for(instance_root: instance_root, key: key)
   let write = Filesystem.Write(
     path: path,
-    content: publication_request_json(subject: subject),
+    content: publication_request_json(subject: subject, worktree: worktree),
   )
   if write.success {
     RequestEnqueued { path: path }
@@ -384,6 +392,7 @@ type PublicationAnswerStanding
 fn publication_answer_standing(
   instance_root: String,
   subject: RoadmapPublicationSubject,
+  worktree: String,
 ) -> PublicationAnswerStanding {
   let key = publication_spool_key(subject: subject)
   let found = publication_answer_read(
@@ -393,6 +402,7 @@ fn publication_answer_standing(
   )
   let asked = publication_request_enqueue(
     instance_root: instance_root,
+    worktree: worktree,
     key: key,
     subject: subject,
   )
@@ -570,6 +580,69 @@ fn publication_helper_run_standing(
 // THE ANSWER IS WRITTEN AT AN ADDRESS THE HELPER DERIVES FROM THE SUBJECT IT JUST DECODED, never at
 // one the request named. See publication_request_schema's header: a caller-supplied destination
 // would be a caller-supplied write position for a principal the caller cannot otherwise reach.
+// THE HELPER IS THE ONLY PRINCIPAL THAT MAY SPEND THE CREDENTIAL, so pushing the attempt branch and
+// opening its pull request happen here and nowhere else. The belt has already admitted the head on
+// a passed verification verdict before it enqueued the request. Only two observations may actuate:
+// the branch is not on the remote, or it is there at the expected head with no pull request. Every
+// other observation is answered as observed. After actuating, the helper observes AGAIN and answers
+// with GitHub's own state rather than a receipt it composed from the create call, so the answer is
+// never a claim the observation cannot back.
+fn publication_helper_publish_title(subject: RoadmapPublicationSubject) -> NonEmptyStr {
+  join(["dispatch: ", subject.node_id, " a", subject.attempt_key], "") as NonEmptyStr
+}
+
+fn publication_helper_publish_body(subject: RoadmapPublicationSubject) -> String {
+  join([
+    "Opened by the gunbc roadmap belt for node ", subject.node_id, ", attempt ", subject.attempt_key,
+    ", after verification passed for head ", subject.expected_head as String, ".",
+  ], "")
+}
+
+fn publication_helper_publish_if_unpublished(
+  credential: PublicationCredentialSource,
+  subject: RoadmapPublicationSubject,
+  worktree: String,
+  observed: PublicationOutcome,
+) -> PublicationOutcome {
+  let unpublished = match observed {
+    BranchNotPublished { branch: _, remote_branches_seen: _ } => true
+    RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => true
+    PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
+    PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
+    PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
+    RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
+    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
+    PublicationObservationRefused { detail: _ } => false
+  }
+  if !unpublished {
+    observed
+  } else {
+    match credential {
+      CredentialSourceAbsent { reason } =>
+        PublicationObservationRefused { detail: join(["the branch is unpublished and no credential is configured to publish it: ", reason], "") }
+      CredentialSourceConfigured { source } =>
+        match publish_attempt(
+          repo: worktree as FilePath,
+          remote: publication_subject_remote(subject: subject),
+          branch: subject.branch,
+          base: subject.expected_base,
+          owner: subject.repository.owner,
+          repo_name: subject.repository.name,
+          title: publication_helper_publish_title(subject: subject),
+          body: publication_helper_publish_body(subject: subject),
+          credential: source,
+        ) {
+          PushRefused { exit_code, stderr } =>
+            PublicationObservationRefused { detail: join(["the attempt branch could not be pushed (exit ", to_string(value: exit_code), "): ", stderr], "") }
+          PullRequestRefused { detail } =>
+            PublicationObservationRefused { detail: join(["the pull request could not be opened: ", detail], "") }
+          PublishActuated { pr_number: _, url: _ } =>
+            observe_publication_for_subject(credential: credential, subject: subject)
+        }
+    }
+  }
+}
+
 fn publication_helper_answer_request(
   instance_root: String,
   credential: PublicationCredentialSource,
@@ -579,7 +652,7 @@ fn publication_helper_answer_request(
   match publication_request_decode(request: request_text) {
     RequestUndecodable { reason } =>
       HelperRequestUnreadable { entry: entry, detail: reason }
-    RequestDecoded { subject } =>
+    RequestDecoded { subject, worktree } =>
       match publication_helper_capability_admits(subject: subject) {
         SubjectOutsideCapability { detail } =>
           HelperSubjectOutsideCapability { entry: entry, detail: detail }
@@ -597,9 +670,14 @@ fn publication_helper_answer_request(
           } else {
             let receipt = publication_receipt_of(
               subject: subject,
-              outcome: observe_publication_for_subject(
+              outcome: publication_helper_publish_if_unpublished(
                 credential: credential,
                 subject: subject,
+                worktree: worktree,
+                observed: observe_publication_for_subject(
+                  credential: credential,
+                  subject: subject,
+                ),
               ),
             )
             let write = Filesystem.Write(
@@ -806,7 +884,7 @@ fn publication_helper_run_once_cli_in(instance_root: String) -> ProcessExit {
 }
 
 // THE INSTANCE ROOT IS A REQUIRED ARGUMENT AND HAS NO DEFAULT, for the reason
-// belt_timer_is_a_deploy_member_note gives after the belt's own workdir was a literal projection of
+// gunbc.live_deploy.spec deployment_owned_steps carries, after the belt's own workdir was a literal projection of
 // production's tree: a helper that defaults would answer requests for whichever instance the
 // default names, whatever instance installed it, and two slots on one host would fuse their spools
 // silently. An empty argument REFUSES rather than falling back.

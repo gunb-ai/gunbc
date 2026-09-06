@@ -1,0 +1,53 @@
+module extdeps.accounting.appropriation_period
+
+import std.types { Int, EpochSecs }
+import std.nat { Nat }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// Period of availability and lapse, the upstream this module models. Budget authority is
+// available for obligation only within its period of availability; at the end of that period
+// unobligated authority LAPSES and is no longer available, and the next period opens with its own
+// authority. That is the fixed-window law every "N requests per hour" limit obeys, and it is
+// imported from budget accounting rather than coined beside the rate limits that use it: a window
+// that resets on a boundary is an appropriation that lapses, not a new concept.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gao.gov/assets/gao-05-734sp.pdf"
+  }
+}
+
+// The period is stated by its length and one boundary instant, never by "the current hour": an
+// anchor is a fact an upstream reports (a reset instant) or an operator declares, and every
+// other boundary is derived from it by arithmetic, so two readers of one pool agree on which
+// window an instant falls in without a clock of their own.
+type AppropriationPeriod {
+  period_seconds: Nat
+  anchor: EpochSecs
+}
+
+type PeriodWindow {
+  start: EpochSecs
+  end: EpochSecs
+}
+
+// The window containing an instant, or Absent for an instant before the anchor: windows are not
+// extended backwards from a boundary the upstream never reported, because a reading before the
+// first known boundary has no window to belong to.
+fn appropriation_period_window(period: AppropriationPeriod, at: EpochSecs) -> PeriodWindow? {
+  let anchor = period.anchor
+  let length = period.period_seconds
+  if at < anchor || length <= 0 {
+    none
+  } else {
+    let elapsed = at - anchor
+    let start = anchor + (elapsed / length) * length
+    Present { value: PeriodWindow { start: start, end: (start + length) } }
+  }
+}
+
+fn instant_in_window(window: PeriodWindow, at: EpochSecs) -> Bool {
+  window.start <= at && at < window.end
+}

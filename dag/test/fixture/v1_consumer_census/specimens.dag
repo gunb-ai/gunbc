@@ -135,3 +135,10 @@ data planted_covered_unrealized_population: ConsumerPopulation = PopulationMeasu
   rows: planted_covered_unrealized_rows,
   joined_media: [ WorkflowArgv ],
 }
+
+// Same cardinality as clean_discovered, different required relation. Both the
+// missing-consumer and stale-row joins must see the substitution.
+data planted_same_size_discovered: List<String> = [
+  "test.fixture.v1_consumer_census.specimens.consumer_one -> test.fixture.v1_consumer_census.specimens.old_authority",
+  "test.fixture.v1_consumer_census.specimens.consumer_three_undisposed -> test.fixture.v1_consumer_census.specimens.old_authority",
+]
