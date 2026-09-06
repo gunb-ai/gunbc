@@ -866,9 +866,6 @@ fn floor_route_gap_expectation_chunk_07() -> List<FloorRouteGapExpectation> {
   }
   }
 }
-}
-}
-}
 
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
   Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Empty {} } } } } } } } }
