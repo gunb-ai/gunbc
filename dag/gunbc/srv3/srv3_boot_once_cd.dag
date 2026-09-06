@@ -29,7 +29,7 @@ import gunbc.srv3_bmc_credential_resolve {
 import gunbc.auth.access_token_source { access_token_upsert_required_reason }
 import gunbc.bmc_onboarding { srv3_onboarding_plan }
 import gunbc.auth.netrc_binding {
-  NetrcBindingPlaced, NetrcBindingRefused, place_netrc_binding,
+  NetrcBindingPlaced, NetrcBindingRefused, NetrcBindingRefusedResidueRemains, place_netrc_binding,
 }
 import gunbc.tools.bmc_onboard {
   bmc_onboard_netrc_path,
@@ -245,6 +245,7 @@ func srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessE
   )
   let netrc_placed = match netrc_placement {
     NetrcBindingRefused { cause: _ } => false
+    NetrcBindingRefusedResidueRemains { path: _, cause: _ } => false
     NetrcBindingPlaced { binding: _ } => true
   }
   if netrc_placed == false {

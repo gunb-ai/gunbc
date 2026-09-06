@@ -41,9 +41,17 @@ type NetrcBinding sole_constructor {
 
 fn netrc_binding_path(binding: NetrcBinding) -> FilePath { binding.path }
 
+// A FAILED WRITE IS NOT THE SAME AS NOTHING HAVING BEEN WRITTEN. WriteOwnerOnly reports only
+// success, so a write that failed partway leaves an owner-only file holding some prefix of a netrc
+// -- and the credential is the LAST field on the line, so a truncated one is the likelier shape.
+// The old refusal said "no credential was placed", which is a claim about the disk that the return
+// value could not support. The placement now removes the path on failure and, when removal also
+// fails, names the file so a reader has something to act on. The path is a per-call mktemp location,
+// not the credential; nothing here puts an access code in a diagnostic.
 type NetrcPlacement
   = NetrcBindingPlaced { binding: NetrcBinding }
   | NetrcBindingRefused { cause: NonEmptyStr }
+  | NetrcBindingRefusedResidueRemains { path: NonEmptyStr, cause: NonEmptyStr }
 
 fn netrc_content(machine: NonEmptyStr, login: NonEmptyStr, password: Secret) -> String {
   concat(
@@ -62,6 +70,33 @@ fn netrc_content(machine: NonEmptyStr, login: NonEmptyStr, password: Secret) -> 
 // THE WRITE IS CHECKED. A silently-failed placement leaves the consumer authenticating with nothing,
 // whose 530 reads exactly like a wrong password -- sending the next reader to rotate a credential that
 // was never the problem.
+// THE WRITE-FAILURE CLASSIFICATION IS PURE, for the same reason the delivery ones are: reaching its
+// residue arm through the effect would need a path that O_EXCL refuses AND rm -f cannot delete, and
+// a witness that manufactures one has to chmod a directory and can leave it behind in CI. The two
+// discriminating facts are Bools, so both arms are reachable from a fixture. The path is a per-call
+// mktemp location, never the credential, so naming it in a diagnostic leaks nothing.
+fn netrc_write_refusal(
+  path: FilePath,
+  cleared_before_write: Bool,
+  removed_after_failure: Bool,
+) -> NetrcPlacement {
+  if removed_after_failure {
+    NetrcBindingRefused {
+      cause: "the owner-only netrc could not be created; any partial file was removed, so no credential is on disk for the subprocess to use",
+    }
+  } else if cleared_before_write {
+    NetrcBindingRefusedResidueRemains {
+      path: path as NonEmptyStr,
+      cause: "the owner-only netrc could not be created AND the partial file could not be removed, so credential material may remain at this path",
+    }
+  } else {
+    NetrcBindingRefusedResidueRemains {
+      path: path as NonEmptyStr,
+      cause: "a pre-existing file at this path could not be removed, which is why the O_EXCL create refused, and it could not be removed afterwards either, so material of unknown origin remains at this path",
+    }
+  }
+}
+
 func place_netrc_binding(
   path: FilePath,
   machine: NonEmptyStr,
@@ -69,16 +104,17 @@ func place_netrc_binding(
   password: Secret,
 ) -> NetrcPlacement
 {
-  let _ = shell.Remove.FileForce(path: path)
+  let cleared = shell.Remove.FileForce(path: path).success
   if Filesystem.WriteOwnerOnly(
     path: path as String,
     content: netrc_content(machine: machine, login: login, password: password)
   ).success {
     NetrcBindingPlaced { binding: NetrcBinding { path: path } }
   } else {
-    NetrcBindingRefused {
-      cause: "the owner-only netrc could not be created, so no credential was placed for the subprocess to use",
-    }
+    netrc_write_refusal(
+      path: path,
+      cleared_before_write: cleared,
+      removed_after_failure: shell.Remove.FileForce(path: path).success)
   }
 }
 

@@ -18,7 +18,8 @@ import extdeps.cloud.gcp.secret_manager {
 }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.auth.netrc_binding {
-  NetrcPlacement, NetrcBindingPlaced, NetrcBindingRefused, place_netrc_binding,
+  NetrcPlacement, NetrcBindingPlaced, NetrcBindingRefused, NetrcBindingRefusedResidueRemains,
+  place_netrc_binding,
 }
 import gunbc.bmc_onboarding {
   BmcOnboardingPlan,
@@ -130,6 +131,7 @@ fn write_netrc(host: String, account: String, password: String) -> Bool {
     password: password as Secret
   ) {
     NetrcBindingRefused { cause: _ } => false
+    NetrcBindingRefusedResidueRemains { path: _, cause: _ } => false
     NetrcBindingPlaced { binding: _ } => true
   }
 }

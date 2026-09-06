@@ -11,6 +11,7 @@ import gunbc.auth.gcp_secret_access {
 }
 import gunbc.fleet.printer_project_delivery {
   PrinterProjectPayload, PayloadIdentification, PayloadIdentified, PayloadIdentificationRefused,
+  PayloadIdentificationRefusedResidueRemains,
   ProjectDelivery, ProjectDelivered, ProjectDeliveryRefused, ProjectDeliveryUnattempted,
   ProjectTransferredCleanupRefused, ProjectDeliveryProvisionRequired, ProjectDeliveryRefusedResidueRemains,
   ProjectDeliveryUnattemptedResidueRemains, ProjectDeliveryProvisionRequiredResidueRemains,
@@ -71,6 +72,10 @@ func run() -> ProcessExit uses net: Network {
   match identify_project_payload(payload: PrinterProjectPayload { local_path: payload_path as NonEmptyStr }) {
     PayloadIdentificationRefused { local_path: p, cause: cause } =>
       exit_failure(reason: concat(concat("IDENTIFY REFUSED for ", p as String), concat(": ", cause as String)))
+    PayloadIdentificationRefusedResidueRemains { local_path: p, residue_path: rp, cause: cause } =>
+      exit_failure(reason: concat(
+        concat(concat("IDENTIFY REFUSED, RESIDUE MAY REMAIN AT ", rp as String), concat(" for ", p as String)),
+        concat(": ", cause as String)))
     PayloadIdentified { payload: identified } =>
       match read_supplied_access_token() {
         SuppliedTokenUnavailable { cause: cause } =>

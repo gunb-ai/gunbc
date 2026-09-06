@@ -24,6 +24,7 @@ import gunbc.auth.materialized_secret {
 }
 import gunbc.auth.netrc_binding {
   NetrcBinding, NetrcPlacement, NetrcBindingPlaced, NetrcBindingRefused,
+  NetrcBindingRefusedResidueRemains,
   place_netrc_binding_privately, shred_netrc_binding, netrc_binding_path,
 }
 import extdeps.exec.command { CommandTransport }
@@ -111,9 +112,54 @@ type IdentifiedProjectPayload sole_constructor {
   content: Digest
 }
 
+// IDENTIFICATION FAILS AFTER IT HAS ALREADY MATERIALIZED SOMETHING, which is why refusal here needs
+// the same residue vocabulary the delivery outcomes carry. The hash-failure arm ran with a COMPLETE
+// copy of the payload sitting in a private directory and returned a refusal that mentioned neither;
+// the copy-failure arm could leave a partial destination the same way. Both then dropped the only
+// path that could find it again, so recovery had nothing to act on. The whole workspace is removed
+// rather than just the file, because the mktemp directory leaks per attempt too.
 type PayloadIdentification
   = PayloadIdentified { payload: IdentifiedProjectPayload }
   | PayloadIdentificationRefused { local_path: NonEmptyStr, cause: NonEmptyStr }
+  | PayloadIdentificationRefusedResidueRemains {
+      local_path: NonEmptyStr,
+      residue_path: NonEmptyStr,
+      cause: NonEmptyStr,
+    }
+
+// THE REFUSAL IS BRACKETED SO NO ARM CAN FORGET THE WORKSPACE. Every identification failure that
+// happens after mktemp succeeded routes through here, so adding a future failure mode cannot
+// reintroduce the leak by simply returning a refusal.
+fn refuse_identification(local_path: NonEmptyStr, workspace: FilePath, cause: NonEmptyStr) -> PayloadIdentification {
+  identification_refusal(
+    local_path: local_path,
+    workspace: workspace,
+    cause: cause,
+    removed: shell.Remove.RecursiveForce(path: workspace).success)
+}
+
+// THE CLASSIFICATION IS SPLIT FROM THE REMOVAL SO ITS RED IS AUTHORABLE. Reaching the residue arm
+// through the effect would need a workspace that rm -rf genuinely cannot delete, and the obvious
+// fixture does not work: rm -rf exits 0 on a MISSING path even under an unwritable parent, so a
+// witness built that way would pass while asserting nothing. Making it fail for real means creating
+// a read-only parent directory, which is a witness with effects that can leave that directory
+// behind in CI when it fails. Split, the discriminating input is a Bool.
+fn identification_refusal(
+  local_path: NonEmptyStr,
+  workspace: FilePath,
+  cause: NonEmptyStr,
+  removed: Bool,
+) -> PayloadIdentification {
+  if removed {
+    PayloadIdentificationRefused { local_path: local_path, cause: cause }
+  } else {
+    PayloadIdentificationRefusedResidueRemains {
+      local_path: local_path,
+      residue_path: workspace as NonEmptyStr,
+      cause: residue_cause(what_failed: cause),
+    }
+  }
+}
 
 func identify_project_payload(payload: PrinterProjectPayload) -> PayloadIdentification {
   let created = shell.Mktemp.Dir()
@@ -129,17 +175,17 @@ func identify_project_payload(payload: PrinterProjectPayload) -> PayloadIdentifi
           source: payload.local_path as FilePath,
           destination: destination
         ).success == false {
-          PayloadIdentificationRefused {
+          refuse_identification(
             local_path: payload.local_path,
-            cause: "the project file could not be copied into the run's own materialization",
-          }
+            workspace: created.path as FilePath,
+            cause: "the project file could not be copied into the run's own materialization")
         } else {
           match sha256sum_file_digest_via_shell(path: destination as NonEmptyStr) {
             Sha256FileDigestUnavailable { path: _, reason: _ } =>
-              PayloadIdentificationRefused {
+              refuse_identification(
                 local_path: payload.local_path,
-                cause: "the copied realization could not be read, so its content identity was never observed",
-              }
+                workspace: created.path as FilePath,
+                cause: "the copied realization could not be read, so its content identity was never observed")
             Sha256FileDigest { digest: digest } =>
               PayloadIdentified {
                 payload: IdentifiedProjectPayload {
@@ -561,6 +607,9 @@ func deliver_project_to_printer(
           ) {
             NetrcBindingRefused { cause: cause } =>
               refuse_and_drop(printer: printer, payload: payload, cause: cause)
+            NetrcBindingRefusedResidueRemains { path: netrc_path, cause: cause } =>
+              refuse_and_drop(printer: printer, payload: payload,
+                cause: concat(concat(cause as String, " (at "), concat(netrc_path as String, ")")) as NonEmptyStr)
             NetrcBindingPlaced { binding: binding } => {
             outcome = run_shell_command_capture(
               command: project_upload_command(

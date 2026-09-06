@@ -15,8 +15,14 @@ import gunbc.fleet.printer_project_delivery {
   ProjectDelivered, ProjectDeliveryUnattempted, ProjectTransferredCleanupRefused,
   ProjectDeliveryProvisionRequired, ProjectDeliveryUnattemptedResidueRemains,
   ProjectDeliveryProvisionRequiredResidueRemains, unattempted_delivery,
+  PayloadIdentification, PayloadIdentified, PayloadIdentificationRefused,
+  PayloadIdentificationRefusedResidueRemains, identification_refusal,
 }
 import gunbc.fleet_asset_identity { printer_01 }
+import gunbc.auth.netrc_binding {
+  NetrcPlacement, NetrcBindingPlaced, NetrcBindingRefused, NetrcBindingRefusedResidueRemains,
+  netrc_write_refusal,
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -163,5 +169,79 @@ test fn an_unattempted_delivery_whose_removal_failed_names_the_residue() -> Bool
     ProjectTransferredCleanupRefused { receipt: _, cause: _ } => false
     ProjectDeliveryProvisionRequired { printer: _, desired: _ } => false
     ProjectDeliveryProvisionRequiredResidueRemains { printer: _, desired: _, cause: _ } => false
+  }
+}
+
+// IDENTIFICATION REFUSES AFTER IT HAS ALREADY COPIED SOMETHING, so its refusal has to say whether
+// the copy is still there. Both arms below refuse for the SAME reason; the only difference is
+// whether the workspace removal succeeded, which is what the caller needs in order to know if
+// a human has to go look. Removal success is passed as the discriminating input rather than being
+// provoked through the shell: rm -rf exits 0 on a MISSING path even under an unwritable parent, so
+// the obvious fixture would have been green while asserting nothing at all.
+test fn an_identification_refusal_that_cleaned_up_is_not_reported_as_leaving_residue() -> Bool {
+  match identification_refusal(
+    local_path: "/tmp/does-not-exist.3mf",
+    workspace: "/tmp/print-n-witness-workspace" as FilePath,
+    cause: "the copied realization could not be read, so its content identity was never observed",
+    removed: true
+  ) {
+    PayloadIdentificationRefused { local_path: _, cause: _ } => true
+    PayloadIdentificationRefusedResidueRemains { local_path: _, residue_path: _, cause: _ } => false
+    PayloadIdentified { payload: _ } => false
+  }
+}
+
+test fn an_identification_refusal_whose_workspace_survived_names_the_path() -> Bool {
+  match identification_refusal(
+    local_path: "/tmp/does-not-exist.3mf",
+    workspace: "/tmp/print-n-witness-workspace" as FilePath,
+    cause: "the copied realization could not be read, so its content identity was never observed",
+    removed: false
+  ) {
+    PayloadIdentificationRefusedResidueRemains { local_path: _, residue_path: rp, cause: _ } =>
+      (rp as String) == "/tmp/print-n-witness-workspace"
+    PayloadIdentificationRefused { local_path: _, cause: _ } => false
+    PayloadIdentified { payload: _ } => false
+  }
+}
+
+// A NETRC WRITE THAT FAILED IS NOT EVIDENCE THAT NOTHING WAS WRITTEN. WriteOwnerOnly reports only
+// success, so a write that died partway leaves an owner-only file holding a prefix of the netrc --
+// and the credential is the LAST field on that line, so a truncated one is the likely shape. The
+// old refusal asserted "no credential was placed", a claim about the disk the return value could
+// not support. Three arms, because the two ways of leaving material behind have different stories:
+// a partial write we could not clean, and a pre-existing file we never owned.
+test fn a_netrc_write_failure_that_cleaned_up_reports_no_credential_on_disk() -> Bool {
+  match netrc_write_refusal(
+    path: "/tmp/print-n-witness-netrc" as FilePath,
+    cleared_before_write: true, removed_after_failure: true
+  ) {
+    NetrcBindingRefused { cause: _ } => true
+    NetrcBindingRefusedResidueRemains { path: _, cause: _ } => false
+    NetrcBindingPlaced { binding: _ } => false
+  }
+}
+
+test fn a_netrc_partial_write_that_survived_removal_names_the_path() -> Bool {
+  match netrc_write_refusal(
+    path: "/tmp/print-n-witness-netrc" as FilePath,
+    cleared_before_write: true, removed_after_failure: false
+  ) {
+    NetrcBindingRefusedResidueRemains { path: p, cause: _ } =>
+      (p as String) == "/tmp/print-n-witness-netrc"
+    NetrcBindingRefused { cause: _ } => false
+    NetrcBindingPlaced { binding: _ } => false
+  }
+}
+
+test fn a_netrc_path_that_was_never_ours_is_not_reported_as_our_partial_write() -> Bool {
+  match netrc_write_refusal(
+    path: "/tmp/print-n-witness-netrc" as FilePath,
+    cleared_before_write: false, removed_after_failure: false
+  ) {
+    NetrcBindingRefusedResidueRemains { path: _, cause: c } =>
+      (c as String).contains("unknown origin")
+    NetrcBindingRefused { cause: _ } => false
+    NetrcBindingPlaced { binding: _ } => false
   }
 }
