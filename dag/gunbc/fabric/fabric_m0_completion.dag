@@ -133,6 +133,32 @@ fn readback_digest_verdict(subject: NonEmptyStr, recorded: Sha256Digest, readbac
 // observation-to-slot boundary std.durable_compare_and_set already declares outside its guarantee,
 // and no pure fold can close it. What it does establish is that the AUTHORITY performs the join, so
 // a missing read is structurally distinguishable from a satisfied one instead of being absorbed.
+//
+// THE REMAINING GAP AND ITS TRIGGER, STATED AS A CAPABILITY. An observation's digest is still
+// ASSERTED rather than computed from the bytes read back, which is the rostered class
+// gunbc.recurring_failure_mode.subject_and_its_digest_as_independent_parameters -- a value and a
+// summary of it standing side by side with no arm relating them. That row already declares the
+// repair: derive the digest from the value at the point the value is obtained, never accept it as a
+// peer parameter. It is not applied here because it is not CONSTRUCTIBLE here.
+//
+// NEXT-RUNG TRIGGER, AS A CAPABILITY: a function in the substrate computing SHA-256 over Bytes, so
+// a digest and the bytes it names are produced by one operation. Not "a digest for the manifest" --
+// a trigger naming less than the capability is satisfied while the capability stays dead.
+//
+// THAT TRIGGER IS THE CLIMB, NOT A PREREQUISITE, AND THE DISTINCTION MATTERS BECAUSE TWO DIGEST
+// SHAPES LOOK ALIKE. extdeps.crypto.hash sha256_digest takes HEX -- an author asserts a digest and
+// nothing computes it. extdeps.tools.sha256sum sha256sum_file_digest_via_shell takes a PATH and
+// COMPUTES over the bytes there, with a typed Sha256FileDigestUnavailable arm; by section 3 that is
+// a handler bound to a digest shape, one of N, and it is live in
+// gunbc.instruments.fabric_control_plane_live_probe. No .dag function takes Bytes and returns a
+// digest, so the rostered repair is reachable exactly where the subject bytes EXIST AT A PATH.
+// These subjects are stored objects, so a durable-origin readback that stages what it fetched puts
+// them at a path and the chain is buildable at a mitigatable rung today.
+//
+// THE CONSTRAINT ON THAT REALIZATION: the digested file must be the ORIGIN readback's own output
+// and never a cache copy. Computing a byte-exact digest over locally-sourced bytes would launder
+// the cache-read refusal in gunbc.fabric_m0_commit manifest_readback_for_slot into a confirmation --
+// a correct computation over the wrong provenance.
 type OriginObservation {
   subject: NonEmptyStr
   readback: OriginReadback
