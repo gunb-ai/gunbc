@@ -444,6 +444,117 @@ fn observe_hook_config(jwt_header_file: String, observed_on: NonEmptyStr) -> Hoo
 // the file's contents, which never enter this process. Typing the path as Secret is the same
 // category error mirrored, and the compiler refused it.
 // ---------------------------------------------------------------------------------------------
+// REACHABILITY, AND THE DEFECT THAT MADE IT NECESSARY.
+//
+// The first cut of this phase answered HookConfigConverged for a webhook whose endpoint DID NOT
+// EXIST. Measured 2026-09-05 against the live App: the configured URL named a Cloud Run service
+// (github-runner-autoscaler) that returns a Google frontend 404 byte-identical to a control URL
+// for a service that never existed, and the owning project holds zero Cloud Run services in ANY
+// region. Every workflow_job delivery was being posted into a void, and this phase called that
+// converged.
+//
+// The cause is that all three original axes -- TLS verification, content type, secret presence --
+// are CONFIGURATION properties, and configuration remains perfectly well-formed after the thing it
+// points at is deleted. A green over a corpse is the vacuous-check class DESIGN section 5 names:
+// permanently satisfiable by construction, and worse than absent because it gets cited as coverage.
+//
+// The repair is not a liveness probe of our own. A probe must assume a path and a method the
+// receiver never promised -- a receiver that answers POST /hook and 404s GET / is correct, and our
+// probe would convict it. GitHub already records the status code IT received for every delivery it
+// made, so the reachability question is answered by the delivering party from its own log.
+type HookDelivery {
+  guid: NonEmptyStr
+  event: NonEmptyStr
+  status_code: Int
+}
+
+type HookDeliveryDecode
+  = HookDeliveriesDecoded { deliveries: List<HookDelivery> }
+  | HookDeliveryDecodeRefused { reason: NonEmptyStr }
+
+fn decode_delivery(v: JsonValue) -> HookDelivery? {
+  match json_member_string(v: v, key: "guid") {
+    Absent => none
+    Present { value: guid } => match json_member_string(v: v, key: "event") {
+      Absent => none
+      Present { value: event } => match json_member_int(v: v, key: "status_code") {
+        Absent => none
+        Present { value: code } => Present {
+          value: HookDelivery { guid: guid, event: event, status_code: code }
+        }
+      }
+    }
+  }
+}
+
+fn decode_deliveries_json(body: String) -> HookDeliveryDecode {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap } => HookDeliveryDecodeRefused {
+      reason: concat("app hook deliveries response is ", json_document_gap_text(gap: gap)) as NonEmptyStr
+    }
+    JsonDocumentParsed { value: JsonArray { elements } } => {
+      let decoded = map(elements, e => decode_delivery(v: e))
+      if any(decoded, d => match d { Absent => true, Present { value: _ } => false }) {
+        HookDeliveryDecodeRefused {
+          reason: "app hook deliveries contains an element without exact guid/event/status_code fields"
+        }
+      } else {
+        HookDeliveriesDecoded { deliveries: flat_map(decoded, d => match d {
+          Present { value } => [value]
+          Absent => []
+        }) }
+      }
+    }
+    JsonDocumentParsed { value: _ } => HookDeliveryDecodeRefused {
+      reason: "app hook deliveries response is not a JSON array"
+    }
+  }
+}
+
+// AN EMPTY DELIVERY LIST IS UNOBSERVED, NEVER HEALTHY. Upstream retains deliveries for a bounded
+// window, so "no deliveries" means the window held none -- which is exactly the state a webhook
+// nobody ever exercises is in, and reading it as health would rebuild the vacuous green one layer
+// up. It is a separate arm, and the diff refuses on it.
+type HookDeliveryStanding
+  = DeliveriesAccepted { sampled: Int }
+  | DeliveriesRejected { failing: Int, sampled: Int }
+  | DeliveriesUnobserved { reason: NonEmptyStr }
+
+fn delivery_accepted(d: HookDelivery) -> Bool {
+  d.status_code >= 200 && d.status_code < 300
+}
+
+fn delivery_standing(decode: HookDeliveryDecode) -> HookDeliveryStanding {
+  match decode {
+    HookDeliveryDecodeRefused { reason } => DeliveriesUnobserved { reason: reason }
+    HookDeliveriesDecoded { deliveries } => {
+      let sampled = count(deliveries)
+      if sampled == 0 {
+        DeliveriesUnobserved {
+          reason: "the upstream delivery window holds no deliveries for this App, so reachability is unestablished rather than healthy"
+        }
+      } else {
+        let failing = count(filter(deliveries, d => !delivery_accepted(d: d)))
+        if failing == 0 {
+          DeliveriesAccepted { sampled: sampled }
+        } else {
+          DeliveriesRejected { failing: failing, sampled: sampled }
+        }
+      }
+    }
+  }
+}
+
+fn delivery_standing_wire(st: HookDeliveryStanding) -> String {
+  match st {
+    DeliveriesAccepted { sampled } => join(["accepted:", to_string(sampled)], "")
+    DeliveriesRejected { failing, sampled } =>
+      join(["rejected:", to_string(failing), "/", to_string(sampled)], "")
+    DeliveriesUnobserved { reason: _ } => "unobserved"
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
 // R4: THE RECEIPT CARRIES THE OBSERVATIONS THE VERDICT IS COMPUTED FROM.
 //
 // The first cut recorded app, app_id, endpoint, hook_url and observed_at -- none of which are the
@@ -472,6 +583,7 @@ fn app_control_plane_receipt_text(
   registration: ObservedAppRegistration,
   config: GitHubAppHookConfig,
   standing: AppHookConfigStanding,
+  deliveries: HookDeliveryStanding,
   observed_on: NonEmptyStr
 ) -> String {
   join([
@@ -489,6 +601,7 @@ fn app_control_plane_receipt_text(
     " observed_secret=", hook_secret_wire(s: config.secret),
     " desired_secret=", hook_secret_wire(s: desired_hook_secret),
     " standing=", hook_standing_wire(st: standing),
+    " deliveries=", delivery_standing_wire(st: deliveries),
     " observed_at=", observed_on as String, "\n"
   ], "")
 }
@@ -513,10 +626,19 @@ func app_control_plane_converge_wet() -> ProcessExit {
             exit_failure(reason: concat("AppHookConfigUnobserved: ", reason as String))
           HookConfigRead { config, observed_on: _ } => {
             let standing = app_hook_config_standing(obs: observation)
+            let deliveries_response = github.CliAppRegistration.GetAppHookDeliveriesJson(jwt_header_file: jwt_header_file)
+            let deliveries = if !deliveries_response.success {
+              DeliveriesUnobserved {
+                reason: concat("app hook deliveries read refused: ", deliveries_response.stderr) as NonEmptyStr
+              }
+            } else {
+              delivery_standing(decode: decode_deliveries_json(body: deliveries_response.stdout))
+            }
             let receipt = app_control_plane_receipt_text(
               registration: registration,
               config: config,
               standing: standing,
+              deliveries: deliveries,
               observed_on: observed_on
             )
             let wrote = Filesystem.Write(path: app_control_plane_receipt_path, content: receipt)
@@ -524,7 +646,17 @@ func app_control_plane_converge_wet() -> ProcessExit {
               exit_failure(reason: concat("AppControlPlaneReceiptWriteRefused: ", wrote.error))
             } else {
               match standing {
-                HookConfigConverged { observed_on: _ } => ExitSuccess
+                HookConfigConverged { observed_on: _ } => match deliveries {
+                  DeliveriesAccepted { sampled: _ } => ExitSuccess
+                  DeliveriesRejected { failing, sampled } =>
+                    exit_failure(reason: join([
+                      "AppHookEndpointRejectingDeliveries: ", to_string(failing), " of ",
+                      to_string(sampled),
+                      " deliveries in the upstream window were not accepted by the configured endpoint. Well-formed configuration over an endpoint that does not take the event is not convergence."
+                    ], ""))
+                  DeliveriesUnobserved { reason } =>
+                    exit_failure(reason: concat("AppHookReachabilityUnestablished: ", reason as String))
+                }
                 HookConfigUnobserved { reason, observed_on: _ } =>
                   exit_failure(reason: concat("AppHookConfigUnobserved: ", reason as String))
                 HookConfigDiverged { divergences, observed_on: _ } =>

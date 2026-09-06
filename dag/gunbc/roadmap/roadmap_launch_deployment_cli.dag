@@ -42,7 +42,7 @@ import gunbc.live_deploy.apply_receipt {
 }
 import gunbc.fleet_desired_observe {
   observe_fleet_desired_revision, FleetDesiredAdmitted, FleetDesiredAbsent, FleetDesiredUndecodable, FleetDesiredUnobserved,
-  RevisionConverged, RevisionDrifted, RevisionUnobserved,
+  LocalTreeRevisionObserved, LocalTreeRevisionUnobserved,
 }
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused, fleet_locus_ssh_target }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
@@ -140,7 +140,7 @@ fn rlm_workflow_file_path() -> String {
 // is the belt's own selection path; a selection refusal is recorded as the provider fact's refusal
 // rather than skipped.
 data rlm1_merge_commit: String = "0beef8a2c1a035f4f1f0507e77075bdeaba74cba"
-data rlm1_contract_digest_frozen: String = "8b884d701d7a356e"
+data rlm1_contract_digest_frozen: String = "20ca8a8cde2f7e84"
 data rlm_dashboard_run_id_env_name: String = "RLM_DASHBOARD_RUN_ID"
 data rlm_receipt_host: String = "srv1"
 data rlm_receipt_vantage: String = "."
@@ -340,9 +340,8 @@ fn dispatch_preflight_fact(instance: HostDashboardInstance) -> DispatchPreflight
   match dispatch_preflight_for_instance(instance: instance) {
     PreflightAdmitted { report: r } =>
       match r.revision {
-        RevisionConverged { revision: rev } => DispatchPreflightAdmittedFact { instance_id: r.instance_id, revision_hex: git_object_id_wire_hex(oid: rev) as String }
-        RevisionDrifted { desired: d, local: l } => DispatchPreflightRefusedFact { refused_axis_count: 1, detail: join(["revision drifted desired=", git_object_id_wire_hex(oid: d) as String, " local=", git_object_id_wire_hex(oid: l) as String], "") }
-        RevisionUnobserved { cause: c } => DispatchPreflightRefusedFact { refused_axis_count: 1, detail: join(["revision unobserved: ", c], "") }
+        LocalTreeRevisionObserved { revision: rev } => DispatchPreflightAdmittedFact { instance_id: r.instance_id, revision_hex: git_object_id_wire_hex(oid: rev) as String }
+        LocalTreeRevisionUnobserved { cause: c } => DispatchPreflightRefusedFact { refused_axis_count: 1, detail: join(["revision unobserved: ", c], "") }
       }
     PreflightRefused { report: _, refused_axis_count: n } => DispatchPreflightRefusedFact { refused_axis_count: n, detail: "dispatch preflight refused" }
   }

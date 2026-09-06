@@ -2,7 +2,8 @@ module test.claim.fleet_converge_plan_witness
 
 import std.types { Bool, String, NonEmptyStr, Int, List, list_length }
 import gunbc.fleet_posix_accounts {
-  ci_runner_sudo_binary_path, fleet_posix_ci_runner_sudo_grants,
+  ci_runner_sudo_binary_path, ci_runner_sudo_binary_probe, ci_runner_sudo_binaries,
+  fleet_posix_ci_runner_sudo_grants,
   SudoInstall, SudoSystemctl, SudoRm,
 }
 import extdeps.github.actions_runner {
@@ -847,14 +848,32 @@ test fn slot_extract_sudoes_only_granted_binaries() -> Bool {
     && string_contains(s: sc, pattern: "\ntar xzf /tmp/actions-runner.tar.gz")
 }
 
-// THE ROSTER ITSELF STAYS DERIVED. Six members, each carrying the path its vocabulary member
-// names -- so a grant authored beside the vocabulary instead of from it goes red here.
+// THE ROSTER ITSELF STAYS DERIVED, AND THIS NOW CHECKS THAT RATHER THAN COUNTING IT. The previous
+// form asserted `length(xs: grants) == 6` beside an identity join over three of the vocabulary's
+// members, so four fifths of the claim rested on a number copied out of the tree. It went red the
+// day SudoUseradd joined ci_runner_sudo_binaries (4b7371d1f64, #10357, 2026-09-04) and stayed red,
+// because this witness is in the population the required floor lane never offers to preparation --
+// so nothing could report it. Changing the 6 to a 7 would rebuild the same trap and reset its
+// clock until the eighth binary lands: DESIGN section 5 admits a literal only when it is grounded
+// in a fixture, an external authority, a policy budget or a monotone debt contract, and a number
+// measured from the same current tree is none of those. Completeness is an identity join.
+//
+// The name already stated the right assertion and the body did not implement it. It does now, in
+// both directions: every vocabulary member has a grant carrying the path AND the probe kind that
+// member derives, and every grant traces back to a member. With the two populations also equal in
+// length, the pair is a bijection, so a duplicate grant fails as loudly as a missing one. No
+// literal survives to rot, and an eighth binary is covered on the day it lands rather than
+// breaking this witness a second time.
 test fn ci_runner_grants_derive_from_the_closed_vocabulary() -> Bool {
   let grants = fleet_posix_ci_runner_sudo_grants()
-  length(xs: grants) == 6
-    && any(xs: grants, predicate: fn(g) { g.command_path == ci_runner_sudo_binary_path(b: SudoInstall) })
-    && any(xs: grants, predicate: fn(g) { g.command_path == ci_runner_sudo_binary_path(b: SudoRm) })
-    && any(xs: grants, predicate: fn(g) { g.command_path == ci_runner_sudo_binary_path(b: SudoSystemctl) })
+  all(ci_runner_sudo_binaries, b => any(xs: grants, predicate: fn(g) {
+    g.command_path == ci_runner_sudo_binary_path(b: b)
+      && g.probe == ci_runner_sudo_binary_probe(b: b)
+  }))
+    && all(grants, g => any(xs: ci_runner_sudo_binaries, predicate: fn(b) {
+      g.command_path == ci_runner_sudo_binary_path(b: b)
+    }))
+    && list_length(items: grants) == list_length(items: ci_runner_sudo_binaries)
 }
 
 

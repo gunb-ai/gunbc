@@ -202,6 +202,17 @@ pub mod gunbc_stage0_partition_package_graph;
     suspicious_double_ref_op,
     clippy::all
 )]
+pub mod std_compiler_entry;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
 pub mod std_constructors;
 #[allow(
     unused_imports,

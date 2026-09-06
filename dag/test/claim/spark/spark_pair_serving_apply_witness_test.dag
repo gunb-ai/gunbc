@@ -1,0 +1,70 @@
+module test.claim.spark.spark_pair_serving_apply_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import product.placement_supply { host_identity_eq }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv9, operator_host_srv12 }
+import gunbc.spark.pair_serving_realization { spark_pair_realizations }
+import gunbc.spark.pair_serving_apply {
+  SparkPairApplyPlan, SparkPairApplyPlanned, SparkPairApplyRefused, SparkPairHostApplyPlan,
+  spark_pair_apply_plan, spark_pair_apply_plans, spark_pair_apply_plan_refusals,
+}
+
+fn w_plan() -> SparkPairApplyPlan {
+  match first(spark_pair_realizations()) {
+    Absent => SparkPairApplyRefused { cause: "no realization" }
+    Present { value: r } => spark_pair_apply_plan(r: r)
+  }
+}
+
+fn w_planned(f: fn(List<SparkPairHostApplyPlan>, SparkPairHostApplyPlan) -> Bool) -> Bool {
+  match w_plan() {
+    SparkPairApplyRefused { cause: _ } => false
+    SparkPairApplyPlanned { workers: ws, head: h } => f(ws, h)
+  }
+}
+
+// THE WORKERS ARE APPLIED ON srv5, srv8 AND srv7 AND THE HEAD ON srv6, each script beginning with
+// set -e and ending by enabling and reading back the rendered unit, and each retiring exactly its own
+// hand-authored predecessor and the old container.
+test fn the_plan_applies_workers_then_head_with_each_retiring_its_own_predecessor() -> Bool {
+  w_planned(f: fn(ws, h) {
+    length(ws) == 3 && host_identity_eq(a: h.host, b: operator_host_srv6)
+      && any(ws, w => host_identity_eq(a: w.host, b: operator_host_srv5)) && any(ws, w => host_identity_eq(a: w.host, b: operator_host_srv7)) && any(ws, w => host_identity_eq(a: w.host, b: operator_host_srv8))
+      && all(ws, w => starts_with(s: w.script, prefix: "set -e\n")) && starts_with(s: h.script, prefix: "set -e\n")
+      && all(ws, w => string_contains(s: w.script, pattern: "systemctl disable --now spark-ray-worker.service") && !string_contains(s: w.script, pattern: "spark-vllm.service"))
+      && string_contains(s: h.script, pattern: "systemctl disable --now spark-vllm.service")
+      && string_contains(s: h.script, pattern: "systemctl enable gunbc-spark-pair-head.service >/dev/null 2>&1\nif [ \"$changed\" = 1 ] || ! systemctl is-active --quiet gunbc-spark-pair-head.service; then systemctl restart gunbc-spark-pair-head.service; echo restarted; else echo unchanged; fi\nsystemctl is-active gunbc-spark-pair-head.service\n")
+      && string_contains(s: h.script, pattern: "if cmp -s /etc/systemd/system/gunbc-spark-pair-head.service.next /etc/systemd/system/gunbc-spark-pair-head.service; then changed=0; else changed=1; fi\n")
+      && all(ws, w => string_contains(s: w.script, pattern: "systemctl enable gunbc-spark-pair-worker.service >/dev/null 2>&1\nif [ \"$changed\" = 1 ] || ! systemctl is-active --quiet gunbc-spark-pair-worker.service; then systemctl restart gunbc-spark-pair-worker.service; echo restarted; else echo unchanged; fi\nsystemctl is-active gunbc-spark-pair-worker.service\n"))
+      && string_contains(s: h.script, pattern: "docker stop dsv4")
+  })
+}
+
+// EVERY MUTATING LINE IS A PROJECTION OF THE REALIZATION: the Dockerfile and unit text written
+// whole, the JIT cache carried over before the old container stops, the daemon reload before any
+// enable; the container itself is created by the unit's own lifecycle, never by the script.
+test fn the_script_is_made_of_the_rendered_argv_and_carries_the_cache_over() -> Bool {
+  w_planned(f: fn(_ws, h) {
+    string_contains(s: h.script, pattern: "> /var/lib/gunbc/spark-pair/runtime/Dockerfile\n")
+      && !string_contains(s: h.script, pattern: "\n/usr/bin/docker create")
+      && string_contains(s: h.script, pattern: "> /etc/systemd/system/gunbc-spark-pair-head.service.next\n")
+      && string_contains(s: h.script, pattern: "mv -f /etc/systemd/system/gunbc-spark-pair-head.service.next /etc/systemd/system/gunbc-spark-pair-head.service\nsystemctl daemon-reload\n")
+      && string_contains(s: h.script, pattern: "docker cp dsv4:/cache/huggingface/. /var/lib/gunbc/spark-pair/jit-cache/")
+      && string_contains(s: h.script, pattern: "ExecStartPre=/usr/bin/docker create --name gunbc-spark-pair --network host --ipc host --shm-size 10737418240 --restart unless-stopped --ulimit memlock=-1:-1 --gpus all --device /dev/infiniband:/dev/infiniband:rwm --cap-add IPC_LOCK")
+      && string_contains(s: h.script, pattern: "ExecStart=/usr/bin/docker exec gunbc-spark-pair /opt/env/bin/vllm serve")
+      && !string_contains(s: h.script, pattern: "dsv4-ray:local")
+  })
+}
+
+// BOTH PROMOTED GROUPS PLAN, NONE REFUSES, AND THE SECOND PLAN IS GROUP B: srv9's head with three
+// workers including srv12, so one apply carries the whole desired roster.
+test fn every_promoted_group_plans_and_the_second_is_group_b_headed_by_srv9() -> Bool {
+  let plans = spark_pair_apply_plans()
+  length(plans) == 2 && length(spark_pair_apply_plan_refusals(plans: plans)) == 0
+    && any(plans, p => match p {
+         SparkPairApplyRefused { cause: _ } => false
+         SparkPairApplyPlanned { workers: ws, head: h } =>
+           length(ws) == 3 && host_identity_eq(a: h.host, b: operator_host_srv9)
+             && any(ws, w => host_identity_eq(a: w.host, b: operator_host_srv12))
+       })
+}

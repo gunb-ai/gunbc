@@ -4726,7 +4726,8 @@ data compile_pool_slice_file_mode: NonEmptyStr = "0644" as NonEmptyStr
 // gunbc.live_deploy.emit ALREADY DECLARES AS UNMODELLED. That module's deploy_stage_directory_let_step
 // builds the assignment as a modeled Let over ExprCmdSubst, but it yields a PipelineStep and this
 // realizer's transport takes a script body, so there is no serializer between them to reach for; the
-// trap has no grammar row at all (deploy_stage_trap_is_unmodelled_note). Both are spelled here from the
+// trap has no grammar row at all, which that module's apply_intent_from_effects carries as its
+// annotation. Both are spelled here from the
 // same deploy_stage_dir_var authority the staged-path words read, so the variable name is not a second
 // spelling even though the two lines are.
 //

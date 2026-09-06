@@ -21,11 +21,10 @@ import gunbc.roadmap_dispatch_environment {
   capability_ensure_receipt_json,
 }
 import gunbc.fleet_desired_observe {
-  FleetRevisionStanding,
-  RevisionConverged,
-  RevisionDrifted,
-  RevisionUnobserved,
-  fleet_revision_standing,
+  LocalTreeRevision,
+  LocalTreeRevisionObserved,
+  LocalTreeRevisionUnobserved,
+  local_tree_revision,
 }
 import extdeps.git.object_store { git_object_id_wire_hex }
 import extdeps.languages.json.emit {
@@ -54,7 +53,7 @@ import extdeps.shell
 // This module is the read-only route that answers it independently of whether a spawn is
 // admissible. It observes and it does not actuate: capability_ensure_observe runs
 // shell.Test.IsExecutable and the realization's own declared identity_args (the --version probes),
-// and fleet_revision_standing runs git ls-remote and rev-parse in the deployed tree. No worktree is
+// and local_tree_revision runs git rev-parse in the deployed tree. No worktree is
 // created, no tmux session is started, no file is written, and there is no flag that opens a write
 // path — a preflight that can also change what it measures is a preflight whose green proves
 // nothing.
@@ -148,30 +147,22 @@ fn preflight_capability_receipts(
     capability_ensure_observe(realization: realization))
 }
 
-// The revision axis is the one that decides whether ANY spawn can happen, so it is
-// reported beside the capabilities rather than ahead of them: a host may be perfectly
-// provisioned and still spawn nothing, and a reader needs to see both facts at once.
-fn revision_axis_verdict(standing: FleetRevisionStanding) -> PreflightAxisVerdict {
+// The revision axis names the code the host would dispatch from, so it is reported beside the
+// capabilities rather than ahead of them: a reader needs both facts at once. It refuses only when
+// HEAD cannot be read. Drift from the admitted fleet ref is no longer an axis (operator ruling,
+// 2026-09-05; `gunbc.roadmap_launch_admission` `launch_revision_outcome` carries the argument):
+// convergence is the deploy path's fact, and the deployed-tree report renders it.
+fn revision_axis_verdict(standing: LocalTreeRevision) -> PreflightAxisVerdict {
   match standing {
-    RevisionConverged { revision } =>
+    LocalTreeRevisionObserved { revision } =>
       AxisGrounded {
         axis_label: dispatch_preflight_revision_axis_label,
         evidence: join([
-          "deployed tree is the admitted fleet revision ",
+          "deployed tree is at revision ",
           git_object_id_wire_hex(oid: revision) as String,
         ], ""),
       }
-    RevisionDrifted { desired, local } =>
-      AxisRefused {
-        axis_label: dispatch_preflight_revision_axis_label,
-        reason: join([
-          "deployed tree is not the admitted fleet revision; the belt will withhold spawn and reap on every tick until it converges. desired=",
-          git_object_id_wire_hex(oid: desired) as String,
-          " local=",
-          git_object_id_wire_hex(oid: local) as String,
-        ], ""),
-      }
-    RevisionUnobserved { cause } =>
+    LocalTreeRevisionUnobserved { cause } =>
       AxisRefused {
         axis_label: dispatch_preflight_revision_axis_label,
         reason: join([
@@ -191,7 +182,7 @@ fn revision_axis_verdict(standing: FleetRevisionStanding) -> PreflightAxisVerdic
 // establish the carrier's honesty.
 //
 // The repair is construction rather than a consistency check (DESIGN 5): the report carries the
-// capability receipts and the fleet revision standing — two independent observations, neither
+// capability receipts and the deployed tree revision — two independent observations, neither
 // derived from the other — and preflight_axes projects them on demand for the verdict and for the
 // wire. A report whose axes disagree with its receipts now has no spelling, so there is nothing
 // left to validate.
@@ -200,7 +191,7 @@ type DispatchPreflightReport {
   instance_id: String
   repo_root: String
   capability_receipts: List<CapabilityEnsureReceipt>
-  revision: FleetRevisionStanding
+  revision: LocalTreeRevision
 }
 
 fn preflight_axes(report: DispatchPreflightReport) -> List<PreflightAxisVerdict> {
@@ -225,7 +216,7 @@ fn preflight_report_for_instance(
     instance_id: instance.instance_id as String,
     repo_root: instance.repo_root as String,
     capability_receipts: receipts,
-    revision: fleet_revision_standing(repo: instance.repo_root),
+    revision: local_tree_revision(repo: instance.repo_root),
   }
 }
 

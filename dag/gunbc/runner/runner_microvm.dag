@@ -108,21 +108,6 @@ type RunnerMicroVmSize {
   memory: Mebibyte
 }
 
-// THE MVP SIZE, DECLARED AS THE MVP SIZE AND NOT AS THIS FLEET'S SIZE. It is what was booted on
-// srv4 and it is a RECORD OF ONE BOOT, not a sizing anyone may provision against. It is retained
-// because it is the only configuration here known to have started a VM, which makes it the right
-// fixture for the witnesses; no production path reads it.
-//
-// AN EARLIER VERSION OF THIS ANNOTATION CITED runner_microvm_mvp_size_is_not_the_cell_envelope AS
-// THE EXECUTED STATEMENT OF THAT, and that declaration does not exist -- it went with the withdrawn
-// equality design. An annotation asserting a machine fact no Accepted program can read is exactly
-// what DESIGN 4c forbids, and it is removed rather than repointed: the claim it made belonged to a
-// design that no longer stands.
-data runner_microvm_mvp_size: RunnerMicroVmSize = RunnerMicroVmSize {
-  vcpu_count: hardware_thread_count(count: 4),
-  memory: mebibyte(count: 4096),
-}
-
 // THREE QUANTITIES, NOT ONE -- THIS IS THE REPAIR, AND THE OLD CODE HAD ONLY THE FIRST.
 //
 // The withdrawn derivation set the guest's RAM to the cell's whole MemoryMax. That treated ONE
@@ -298,58 +283,62 @@ fn gunbc_runner_microvm_cell_cpu_entitlement() -> CellCpuEntitlement {
   }
 }
 
-// THE SIZING NAMES WHICH AXIS IS UNAVAILABLE RATHER THAN REFUSING UNIFORMLY.
+// THE GUEST'S TOPOLOGY IS A DECLARED PRODUCT DECISION, WHICH IS THE SECOND OF THE TWO REPAIRS THE
+// CPU PARAGRAPH ABOVE NAMES -- and it is taken because the first one is not this module's to make.
 //
-// Three inputs, three distinguishable refusals, and a reader can act on each: an unresolved core
-// count is a fact about the host survey, a relative-only CPU entitlement is a fact about the cell's
-// directives, and an unmodeled reserve is a fact about extdeps.virtualization.firecracker. A single
-// "sizing unavailable" would collapse three different repairs into one silence, and a refusal that
-// reports WHICH fact is missing cannot be told from one that refuses uniformly unless both execute.
+// The withdrawn derivation asked the cell what a guest should be. The cell cannot answer: it grants
+// a RELATIVE CPU share and no absolute quantity, so there is no entitlement a vCPU count could be
+// derived from, and inventing one would equate a guest to a quantity nothing enforces. That left
+// exactly two honest moves, and the paragraph above states both. Making an absolute cell entitlement
+// real is a change to gunbc.fabric.fabric_cell_effect and would be a fabric decision wearing a
+// runner module's clothes. So this fleet declares its guest topology instead, HERE, as its own fact.
 //
-// All three are parameters for the same reason the reserve is: gunbc_runner_cores_per_slot and the
-// cell entitlement are nullary in production, so at the fleet call site no witness input can reach
-// their unresolved arms and none of these refusals would be authorable.
+// THE CELL DID NOT STOP MATTERING; IT STOPPED SIZING. Containment is still the law, and
+// guest_memory_fits still decides it at admission -- the cell BOUNDS the guest, it does not
+// dimension it. Those were one function and they were two facts.
+//
+// THE NUMBERS ARE THE srv4 MVP'S, AND THAT GROUNDING IS WHY THIS ROW REPLACED runner_microvm_mvp_
+// size RATHER THAN STANDING BESIDE IT. That row carried this exact configuration as "a RECORD OF
+// ONE BOOT, not a sizing anyone may provision against", retained because it was the only
+// configuration known to have started a VM. Once this fleet decides to provision at a declared
+// size, the only defensible number to declare is the one that has actually booted -- so the
+// observation and the decision became one row rather than two rows holding identical values, which
+// is the nicknaming DESIGN section 3 forbids. What changed is not the number but its STANDING: it
+// was an observation nobody could provision against, and it is now a decision, said out loud.
+data gunbc_runner_microvm_declared_size: RunnerMicroVmSize = RunnerMicroVmSize {
+  vcpu_count: hardware_thread_count(count: 4),
+  memory: mebibyte(count: 4096),
+}
+
 type RunnerMicroVmSizing
   = MicroVmSized { size: RunnerMicroVmSize }
   | MicroVmSizeUnresolved { cause: String }
 
-fn runner_microvm_sizing(
-  cores: RunnerCoresPerSlotResolution,
-  cpu: CellCpuEntitlement,
-  reserve: RealizationReserve,
-) -> RunnerMicroVmSizing {
-  match cores {
-    CoresPerSlotUnresolved { cause: c } =>
+// THE ABSOLUTE ARM REFUSES, AND THAT IS THE WHOLE REASON THIS TAKES THE ENTITLEMENT AS AN ARGUMENT
+// RATHER THAN IGNORING IT.
+//
+// A declared product size is honest exactly while the fact that FORCED the declaration still holds.
+// The day the cell grants an absolute CPU entitlement, this declaration is a stale answer to a
+// question that has become derivable -- and a stale answer that keeps returning successfully is
+// worse than no answer, because nothing would ever surface that the repair is now available. So the
+// arm that would silently keep serving the declaration refuses instead, and names the repair.
+//
+// That is what keeps this from being the absorbing fallback DESIGN section 5 forbids. The
+// declaration is not a widened substitute for a computation that failed; it is a product fact
+// standing where no computation exists, and it withdraws the moment one does.
+fn runner_microvm_size_decision(cpu: CellCpuEntitlement) -> RunnerMicroVmSizing {
+  match cpu {
+    CpuEntitlementRelativeOnly { cause: _ } =>
+      MicroVmSized { size: gunbc_runner_microvm_declared_size }
+    CpuEntitlementAbsolute { threads: _ } =>
       MicroVmSizeUnresolved {
-        cause: concat("the cell's core count is unresolved, so nothing about this guest is derivable: ", c),
-      }
-    CoresPerSlotResolved { threads: _ } =>
-      match cpu {
-        CpuEntitlementRelativeOnly { cause: c } =>
-          MicroVmSizeUnresolved {
-            cause: concat("the guest's vCPU count is not derivable from the cell: ", c),
-          }
-        CpuEntitlementAbsolute { threads: _ } =>
-          match reserve {
-            ReserveUnmodeled { cause: c } =>
-              MicroVmSizeUnresolved {
-                cause: concat("the guest's memory is not derivable from the cell: ", c),
-              }
-            ReserveDeclared { bytes: _ } =>
-              MicroVmSizeUnresolved {
-                cause: "the cell grants an absolute CPU entitlement and a reserve is declared, but no rule yet states what GUEST memory a cell envelope minus that reserve permits -- deriving one here would restate the reserve as an answer rather than apply it",
-              }
-          }
+        cause: "the cell now grants an absolute CPU entitlement, so this guest's topology is derivable and the declared product size is a stale answer to a question that has become answerable; derive the topology from the entitlement rather than reading the declaration",
       }
   }
 }
 
-fn runner_microvm_size_from_cell_envelope() -> RunnerMicroVmSizing {
-  runner_microvm_sizing(
-    cores: gunbc_runner_cores_per_slot(),
-    cpu: gunbc_runner_microvm_cell_cpu_entitlement(),
-    reserve: gunbc_runner_microvm_realization_reserve(),
-  )
+fn gunbc_runner_microvm_size() -> RunnerMicroVmSizing {
+  runner_microvm_size_decision(cpu: gunbc_runner_microvm_cell_cpu_entitlement())
 }
 
 fn runner_microvm_isolation_profile() -> IsolationProfile {
@@ -511,12 +500,32 @@ fn runner_microvm_admission_after_credential(
 // Every field a caller could get wrong independently is instead a consequence: the root drive is
 // the image, the second drive is the credential transport's own drive_id, and the size is the
 // declared size. A hand-authored config beside these rows would be a second spelling of one VM.
+// A GUEST WITH NO INTERFACE IS A DIFFERENT KIND OF VM, NOT A VM MISSING AN ARGUMENT.
+//
+// The builder previously required a tap device and a MAC, so the only configuration it could express
+// was one with egress -- and a boot smoke, which has no tap because the per-slot network is a later
+// slice, could not be expressed at all without handing it the name of a device that does not exist.
+// A guest that cannot reach the network is not a degraded runner: it CANNOT REGISTER, so it is not a
+// runner at all, and saying so in the type is what stops a caller from expecting one to appear in
+// the runner list. GuestNetworkAbsent carries its cause for the same reason every refusal here does.
+type RunnerMicroVmNetworking
+  = GuestNetworkTap { device: NonEmptyStr, guest_mac: NonEmptyStr }
+  | GuestNetworkAbsent { cause: String }
+
+fn runner_microvm_network_interfaces(net: RunnerMicroVmNetworking) -> List<FirecrackerNetworkInterface> {
+  match net {
+    GuestNetworkAbsent { cause: _ } => [] as List<FirecrackerNetworkInterface>
+    GuestNetworkTap { device: d, guest_mac: m } => [
+      FirecrackerNetworkInterface { iface_id: "eth0", host_dev_name: d, guest_mac: m },
+    ]
+  }
+}
+
 fn runner_microvm_vm_config(
   rootfs_path: FilePath,
   jit_config_path: FilePath,
   kernel_path: FilePath,
-  tap_device: NonEmptyStr,
-  guest_mac: NonEmptyStr,
+  net: RunnerMicroVmNetworking,
   size: RunnerMicroVmSize,
   transport: JitCredentialTransport,
 ) -> FirecrackerVmConfig {
@@ -539,13 +548,7 @@ fn runner_microvm_vm_config(
         is_read_only: true,
       },
     ],
-    network_interfaces: [
-      FirecrackerNetworkInterface {
-        iface_id: "eth0",
-        host_dev_name: tap_device,
-        guest_mac: guest_mac,
-      },
-    ],
+    network_interfaces: runner_microvm_network_interfaces(net: net),
     machine_config: FirecrackerMachineConfig {
       vcpu_count: hardware_thread_count_value(t: size.vcpu_count),
       mem_size_mib: mebibyte_count(m: size.memory),
@@ -602,10 +605,9 @@ fn gunbc_runner_microvm_vm_config(
   rootfs_path: FilePath,
   jit_config_path: FilePath,
   kernel_path: FilePath,
-  tap_device: NonEmptyStr,
-  guest_mac: NonEmptyStr,
+  net: RunnerMicroVmNetworking,
 ) -> RunnerMicroVmConfigResolution {
-  match runner_microvm_size_from_cell_envelope() {
+  match gunbc_runner_microvm_size() {
     MicroVmSizeUnresolved { cause: c } => MicroVmConfigUnresolved { cause: c }
     MicroVmSized { size: s } =>
       MicroVmConfigResolved {
@@ -613,8 +615,7 @@ fn gunbc_runner_microvm_vm_config(
           rootfs_path: rootfs_path,
           jit_config_path: jit_config_path,
           kernel_path: kernel_path,
-          tap_device: tap_device,
-          guest_mac: guest_mac,
+          net: net,
           size: s,
           transport: gunbc_runner_jit_transport,
         ),
