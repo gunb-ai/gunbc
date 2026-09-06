@@ -59,6 +59,35 @@ type ItemInfo {
   has_non_tail_self_call: Bool
 }
 
+// The item registry is keyed on a declaration's identity — owner module path and declared name — so
+// a leaf spelled the same in two modules occupies two distinct rows and the key itself resolves the
+// old homonym. What the key cannot do is answer the REVERSE question emission still asks: which
+// module declares this leaf. The leaf index answers it, and when two modules declare one leaf it has
+// no answer — so it yields this sentinel row and every consumer that reads a row refuses, rather
+// than receiving whichever module happened to be folded last. That was the old behaviour and it was
+// silent. The sentinel lives here beside ItemInfo because it stands in for an ItemInfo.
+//
+// It is deliberately NOT produced at registry construction. There, a row already under a key names
+// the same owner and the same declared name — that is the whole of what the key says — so a check
+// cannot tell a real duplicate from one declaration contributed twice. When it was written there it
+// fired on the benign case and replaced real rows, and declarations stopped resolving.
+fn duplicate_item_identity_marker(name: String) -> ItemInfo {
+  ItemInfo {
+    name: name,
+    module_name: "__DUPLICATE_ITEM_IDENTITY__",
+    kind: OtherItem,
+    service_names: [],
+    resource_names: [],
+    params: [],
+    is_self_recursive: false,
+    has_non_tail_self_call: false
+  }
+}
+
+fn is_duplicate_item_identity_marker(info: ItemInfo) -> Bool {
+  info.module_name == "__DUPLICATE_ITEM_IDENTITY__"
+}
+
 type ModuleInterface {
   summary: InterfaceSummary
   env: TypeEnv

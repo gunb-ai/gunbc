@@ -68,6 +68,23 @@ pub struct ItemInfo {
     pub has_non_tail_self_call: bool,
 }
 
+pub fn duplicate_item_identity_marker(name: String) -> Rc<ItemInfo> {
+    Rc::new(ItemInfo {
+        name: name.clone(),
+        module_name: "__DUPLICATE_ITEM_IDENTITY__".to_string(),
+        kind: ItemKind::OtherItem,
+        service_names: Rc::new(vec![]),
+        resource_names: Rc::new(vec![]),
+        params: Rc::new(vec![]),
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+    })
+}
+
+pub fn is_duplicate_item_identity_marker(info: Rc<ItemInfo>) -> bool {
+    (info.module_name.clone() == "__DUPLICATE_ITEM_IDENTITY__".to_string())
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleInterface {
     pub summary: Rc<InterfaceSummary>,

@@ -316,6 +316,25 @@ impl CallSemantics {
     }
 }
 
+pub fn callable_identity(id: Rc<DeclaredCallableIdentity>) -> String {
+    v1_rt::concat(
+        v1_rt::concat(id.owner_module_path.clone(), ".".to_string()),
+        id.decl_name.clone(),
+    )
+}
+
+pub fn call_semantics_target(cs: Option<Rc<CallSemantics>>) -> Rc<CallTargetIdentity> {
+    match cs.clone().as_deref().cloned() {
+        Some(CallSemantics::PlainCallSemantics { target: target, .. }) => target.clone(),
+        Some(CallSemantics::ResolvedDirectCallSemantics { target, .. }) => target.clone(),
+        Some(CallSemantics::LookupCallSemantics { target: target, .. }) => target.clone(),
+        Some(CallSemantics::FunctionValueCallSemantics) => {
+            Rc::new(CallTargetIdentity::CallableTargetUndetermined)
+        }
+        std::option::Option::None => Rc::new(CallTargetIdentity::CallableTargetUndetermined),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedFormal {
     pub parameter_identity: String,

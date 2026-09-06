@@ -4,6 +4,7 @@
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::*;
 pub use crate::v1_compiler_infer_env::TypeEnv;
+pub use crate::v1_compiler_infer_items::ItemInfo;
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_service::UniqueAccum;
 pub use crate::v1_compiler_infer_types::{emit_map_has, resolved_type};
@@ -360,6 +361,36 @@ pub fn sanitize_service_name(name: String) -> String {
         });
         pascal_parts.clone().join(&"".to_string())
     }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ServiceSymbolOwners {
+    pub owners: Rc<HashMap<String, String>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+}
+
+pub fn leaf_owner_modules_from_registry(
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+) -> Rc<HashMap<String, String>> {
+    Rc::new(v1_rt::map_keys(&registry)).iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, String>(),
+        |acc: Rc<HashMap<String, String>>, key: String| match v1_rt::map_get(&registry, key.clone())
+        {
+            Some(info) => match v1_rt::map_get(&acc, info.name.clone()) {
+                Some(prior) => {
+                    if (prior.clone() == info.module_name.clone()) {
+                        acc.clone()
+                    } else {
+                        v1_rt::rc_map_insert(acc.clone(), info.name.clone(), "".to_string())
+                    }
+                }
+                std::option::Option::None => {
+                    v1_rt::rc_map_insert(acc.clone(), info.name.clone(), info.module_name.clone())
+                }
+            },
+            std::option::Option::None => acc.clone(),
+        },
+    )
 }
 
 pub fn capitalize_first(s: String) -> String {
