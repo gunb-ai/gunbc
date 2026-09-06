@@ -6,7 +6,7 @@ import std.nat { Nat }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
-import gunbc.spark.vllm_engine_incarnation { VllmEngineIncarnation, vllm_engine_incarnation }
+import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_engine_incarnation }
 import gunbc.spark.pair_serving_launch_receipt {
   LaunchTerminal, LaunchServing, LaunchExited, LaunchKilled, LaunchReadinessTimedOut, LaunchTerminalUnobserved,
   launch_terminal_from_exit, launch_terminal_wire,
@@ -24,8 +24,8 @@ fn w_digest(hex: String) -> ContentHash {
 data w_exe: String = "1111111111111111111111111111111111111111111111111111111111111111"
 data w_unit: String = "3333333333333333333333333333333333333333333333333333333333333333"
 
-fn w_inc(invocation: String) -> VllmEngineIncarnation {
-  vllm_engine_incarnation(
+fn w_inc(invocation: String) -> VllmServingLaunch {
+  vllm_serving_launch(
     group: FabricGroupA,
     head: spark_pair_serving_head(group: FabricGroupA),
     systemd_invocation: invocation as NonEmptyStr,
