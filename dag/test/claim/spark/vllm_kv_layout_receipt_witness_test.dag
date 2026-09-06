@@ -7,7 +7,7 @@ import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex
 import std.measure { TokenCount, token_count, byte_size }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
-import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_engine_incarnation }
+import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
 import extdeps.vllm.log_lines { vllm_startup_reading, GpuKvCacheSize }
 import extdeps.vllm.kv_cache { VllmObservedKvPool, VllmKvPoolAdmission, KvPoolAdmitted, KvPoolRefused, vllm_observed_kv_pool_from_reading }
 import extdeps.vllm.kv_layout {
