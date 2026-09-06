@@ -91,11 +91,12 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // lives here are entry points, run by a person, whose output belongs in a run.
 //
 // AND THE PRICE THAT DECIDES THIS IS NOT THE CORPUS -- IT IS ONE SUBJECT, WHICH IS A HARDER FACT
-// THAN THE ONE THIS FILE FIRST RECORDED. The required floor's per-witness CPU line is 500ms
-// (v2.workflow.required_floor required_floor_claim_cpu_safety_limit_ms, an operator ruling whose
-// two raises were repudiated). Interpreted ingest of a FIVE-LINE fixture measures about 3s, and a
-// four-line String snippet with no filesystem read measures about the same: six times the line, at
-// the smallest subject expressible. So no assertion in this lens that reaches the ingest can be
+// THAN THE ONE THIS FILE FIRST RECORDED. The required floor's per-witness CPU line is
+// v2.workflow.required_floor required_floor_claim_cpu_safety_limit_ms -- named rather than
+// transcribed, because that module's own prose already carries a stale ten-fold figure for it in
+// nine places and this file will not become the tenth. Interpreted ingest of a FIVE-LINE fixture,
+// and of a four-line String snippet with no filesystem read, both measure several times that line,
+// at the smallest subject expressible; claim_batch re-derives both on the host asking. So no assertion in this lens that reaches the ingest can be
 // enrolled at any subject size, which is why every witness this lens ever had is frozen or
 // deferred -- a fact that was visible in the roster and had never been explained. Measured with
 // claim_batch on this branch; run it rather than trusting this sentence.
@@ -147,12 +148,19 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // SUFFICIENT FOR -- AND THE MEASUREMENT THAT SETS THE BAR IS THE SMALLEST SUBJECT, NOT THE CORPUS.
 // This is the finding to carry out of this lane and it belongs in the trigger rather than in a
 // discussion: interpreted ingest of a FIVE-LINE fixture, and of a FOUR-LINE String with no
-// filesystem read, both measure about six times the required floor's 500ms per-witness CPU line.
-// At the smallest subject expressible. So this is not a budget that could be raised to fit the
-// work; it is a floor that no ingest-reaching assertion can ever clear, and it retroactively
-// explains why every witness this lens has ever had is frozen or deferred -- a fact that stood
-// visible in the roster with no stated cause. A trigger that made large subjects affordable and
-// left the smallest one at six times the line would restore nothing.
+// filesystem read, both measure several times the required floor's per-witness CPU line
+// (v2.workflow.required_floor required_floor_claim_cpu_safety_limit_ms) -- at the smallest subject
+// expressible. So the trigger is not "when the per-claim budget accommodates ingest", which reads
+// as waiting for the ceiling to move: the ceiling did not drift, it was deliberately RESTORED by
+// gunbc#9517, which froze the over-cost population as a monotone debt contract at the same time.
+// It is an operator ceiling with a debt contract behind it, and the trigger is what must become
+// true UNDER it: an ingest realization whose cost at corpus grain fits inside that line. A change
+// that made large subjects affordable and left the smallest one over would restore nothing.
+//
+// AND THE DEBT CONTRACT IS NOT A DOOR. v2.workflow.floor_cost_debt is declared shrink-only ("from
+// here the direction is shrink-only in earnest"), so it is the roster of what the restored ceiling
+// caught, not an admissions queue. "Enrolled in nothing" is therefore not a state these entry
+// points can leave by asking to be excused; the only exit is the trigger.
 //
 // Stated because a trigger naming less than the capability it restores is satisfied while the
 // capability stays dead, and because the loss here is CORPUS-grain while the tempting trigger is
@@ -179,7 +187,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // over a discovered root and over an explicit subject list respectively. Their output belongs in a
 // run, never transcribed into this file.
 
-// THE INGEST-PRICED PREDICATES, HOMED HERE WITH THE REST OF WHAT THE 500ms CPU LINE PRICES OUT.
+// THE INGEST-PRICED PREDICATES, HOMED HERE WITH THE REST OF WHAT THE FLOOR'S CPU LINE PRICES OUT.
 // Each costs seconds of interpreted ingest per subject and so cannot be a witness; each is a real
 // question with a real answer, run by a person or by the dissolution named above. a_readable_subject
 // _still_reaches_the_lens is the deep positive control for the typed-read red in

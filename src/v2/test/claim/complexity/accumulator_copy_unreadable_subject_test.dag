@@ -56,7 +56,7 @@ test fn an_unreadable_subject_is_refused_with_its_cause() -> Bool {
 // that -- one channel, two arms, both reachable.
 //
 // Reaching it through file_gate_disposition on a real subject would establish the same thing and
-// cost about 3s of interpreted ingest, six times the floor's 500ms CPU line, so it would be
+// cost several times the floor's per-witness CPU line in interpreted ingest, so it would be
 // enrolled in nothing and would take this red down with it (measured: the required floor reported
 // exactly that, interrupted_before_verdict, for every ingest-priced witness in this lane). The
 // deeper form -- a readable subject reaching the lens and coming back clean -- is kept as the entry

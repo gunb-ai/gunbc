@@ -22,9 +22,10 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// WHAT IS A WITNESS HERE AND WHAT IS NOT IS DECIDED BY THE 500ms CPU LINE, MEASURED PER FUNCTION.
-// The required floor's per-witness CPU deadline is 500ms; interpreted ingest of the five-line
-// fixture below measures about 3s, so every predicate that reaches the ingest reports
+// WHAT IS A WITNESS HERE AND WHAT IS NOT IS DECIDED BY THE FLOOR'S CPU LINE, MEASURED PER FUNCTION.
+// The line is v2.workflow.required_floor required_floor_claim_cpu_safety_limit_ms, named rather
+// than transcribed; interpreted ingest of the five-line fixture below measures several times it,
+// so every predicate that reaches the ingest reports
 // interrupted_before_verdict and BLOCKS rather than running (measured on this branch: seven of
 // them at once, run 34022136976). Those predicates are therefore plain fns -- they pass by
 // execution under claim_batch and are enrolled in nothing, which is the same standing as the
@@ -116,8 +117,8 @@ data clean_path: String = "test/fixture_roots/complexity_accumulator_copy/clean_
 // population and a set of reported rows, does a report that covers less than its population refuse
 // -- and a CorpusFileRow is that join's input, not its producer. Ingesting real subjects to reach
 // it would test the ingest twice and the join once, and it would cost about 3s per witness against
-// the floor's 500ms CPU line, which is how the ingest-priced witnesses in this lens ended up
-// enrolled in nothing. The producer-side claim is a different claim and is priced separately;
+// the floor's CPU line, which is how the ingest-priced witnesses in this lens ended up enrolled in
+// nothing. The producer-side claim is a different claim and is priced separately;
 // see corpus_census.
 //
 // The rows are deliberately NOT all identical: the planted row carries a suspect and the clean row
