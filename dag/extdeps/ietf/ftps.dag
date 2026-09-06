@@ -1,6 +1,6 @@
 module extdeps.ietf.ftps
 
-import std.types { NonEmptyStr, Bool }
+import std.types { NonEmptyStr, Bool, Port }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -68,15 +68,18 @@ type FtpsNegotiation
 // ordinary FTP control port because it BEGINS as ordinary FTP; implicit FTPS was assigned 990
 // precisely so the server could know TLS was coming without being told. Deriving the port from the
 // negotiation keeps a caller from pairing implicit with 21, which connects and then stalls.
-// THE PORT IS A BARE Nat AND THAT IS A KNOWN GAP, RECORDED RATHER THAN LEFT SILENT. A TCP port is a
-// 16-bit unsigned quantity with a registry behind it, not an arbitrary natural: Nat admits 0 and
-// admits 70000, neither of which any endpoint can hold. Modelled properly this is a std-level
-// authority every transport shares, which is exactly why it is not minted here -- a Port coined in
-// extdeps.ietf.ftps would be a second name the moment ssh, http or mqtt needs one, and this lane
-// already carries an MQTT channel it has not built.
-// feature: a shared Port carrier in std, bounded 1-65535, with the IANA registry as its citation.
-// dissolve-on: that carrier existing; this signature takes it and the marker is deleted.
-fn ftps_default_port(negotiation: FtpsNegotiation) -> Nat {
+// THE PORT IS std.types.Port, NOT A BARE Nat, AND THE ROUTE HERE IS WORTH RECORDING. A review asked
+// for a marker on the bare Nat, noting in passing that no Port authority existed to consume. I wrote
+// the marker on that basis WITHOUT CHECKING, and it was born stale: std.types.Port has been
+// `Int where range(min: 1, max: 65535)` all along, consumed by boot artifact delivery, cli dispatch
+// and three spark serving modules. A feature:/dissolve-on: whose trigger is already satisfied is
+// worse than no marker -- it advertises a gap that is really an unconsumed authority, and it will be
+// cited as evidence the question was considered.
+//
+// The lesson is the one this lane keeps relearning in a new costume: an ABSENCE is a census claim,
+// and it is no more checkable when a reviewer supplies it than when I do. Nat admitted 0 and 70000,
+// neither of which any endpoint can hold; Port refuses both by construction.
+fn ftps_default_port(negotiation: FtpsNegotiation) -> Port {
   match negotiation {
     FtpsExplicit => 21
     FtpsImplicit => 990
@@ -133,7 +136,7 @@ fn ftps_verifies_peer(v: FtpsPeerVerification) -> Bool {
 
 type FtpsEndpoint {
   host: NonEmptyStr
-  port: Nat
+  port: Port
   negotiation: FtpsNegotiation
   verification: FtpsPeerVerification
 }

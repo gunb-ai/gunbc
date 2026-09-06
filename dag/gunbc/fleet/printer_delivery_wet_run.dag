@@ -1,6 +1,7 @@
 module gunbc.fleet.printer_delivery_wet_run
 
 import std.types { NonEmptyStr, String }
+import std.resources { Network }
 import extdeps.shell
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import gunbc.fleet_asset_identity { printer_01 }
@@ -34,10 +35,22 @@ import extdeps.cloud.gcp.secret_ref { secret_ref_secret_resource }
 // because a caller wiring this into anything would read the exit code and conclude the transfer
 // failed while the file sat on the printer.
 //
-// NOTHING IS LOST BY DROPPING THE REPORTED NAME. The remote filename is remote_name_for_digest of the
-// payload content -- a pure function of the digest, so it is derivable from the payload at any time
-// rather than being a fact only this run knew. The refusal arms keep their reasons because a refusal
-// genuinely carries information the caller cannot re-derive: WHICH leg refused and why.
+// INFORMATION IS LOST BY DROPPING THE RECEIPT, AND AN EARLIER REVISION DENIED IT. That revision said
+// the remote filename is "derivable from the payload at any time" because it is
+// remote_name_for_digest of the content -- which contradicts the very protection this delivery path
+// is built around. identify_project_payload copies the caller's file into a PRIVATE OWNED
+// REALIZATION and hashes THAT COPY, precisely because the caller path is mutable; once the
+// realization is removed, rehashing the original path need not reproduce the same digest, because
+// its bytes may have changed. So the exact run identity is not reconstructible from a mutable
+// source, and justifying the discard that way used a claim this module's own design refutes.
+//
+// THE HONEST STATEMENT: this actuator's public result is ProcessExit ONLY. A successful run
+// deliberately exposes no receipt metadata -- a person watching a wet run wants to know THAT it
+// landed, and the exit code carries that. A caller that needs the exact remote name must consume
+// ProjectDelivery and its ProjectUploadReceipt directly rather than scraping this surface.
+//
+// The refusal arms keep their reasons for a different and still-valid reason: WHICH leg refused is
+// information no caller can re-derive from anything, mutable or not.
 // THE PAYLOAD IS NAMED BY THE INVOKER, NOT BY THIS FILE. An earlier revision carried one author's
 // scratchpad path as a literal, which is a machine fact wearing a module's name: it is false for
 // every other operator and it rots the moment a scratchpad is cleared. The variable is read rather
