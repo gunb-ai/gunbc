@@ -135,16 +135,31 @@ fn printer_access_code_locus(printer: PhysicalAssetIdentity) -> PrinterAccessCod
 // has it been put there -- has to be asked before a credential fetch is attempted.
 //
 // THE RECEIPT IS THE ONLY THING THAT ANSWERS WHICH VERSION, and it answers exactly. A
-// SecretProvisionReceipt carries the SecretRef that materialization actually produced, so pinning
-// comes from a performed action rather than from a literal an author typed. That is the same rule
-// this lane has applied to every other positive standing tonight: the thing downstream trusts must
-// have been earned, and must carry the identity it was earned for.
+// SecretProvisionReceipt is INTENDED to carry the SecretRef that materialization produced, so that
+// pinning comes from a performed action rather than a literal an author typed. That is the rule this
+// lane has applied to every other positive standing: the thing downstream trusts must have been
+// earned, and must carry the identity it was earned for.
 //
-// THE ROSTER IS EMPTY AND STAYS EMPTY UNTIL A WRITE FILLS IT. It is not a placeholder and it is not
-// where absence is decided -- the remote decides that. The Provisioned arm becomes inhabited when
-// the onboarding workflow runs and appends what it actually received; its trigger is that workflow's
-// actuator, not this declaration. Nothing may be hand-authored here: a receipt written by an author
-// would assert a materialization that never happened, exactly as the deleted version literal did.
+// AND THE RECEIPT DOES NOT YET MEET THAT RULE, WHICH IS STATED HERE BECAUSE AN EARLIER REVISION OF
+// THIS NOTE CLAIMED IT DID. SecretProvisionReceipt has no seal, and secret_provision_receipt is a
+// pure fn whose arguments are all supplied by its caller -- so a receipt can be minted out of
+// nothing, and sealing the type alone would not fix it, because the constructor takes no
+// effect-earned input either. The roster below is an ordinary authored list. What stops a forged
+// entry today is that nobody has written one, which is DISCIPLINE, NOT CONSTRUCTION -- and the tell
+// is exactly the one §5 names: the guarantee can be satisfied by editing a declaration.
+//
+// WHY THAT IS TOLERABLE TODAY AND NOT AFTER ONBOARDING LANDS. The roster is empty, so the positive
+// arm is uninhabited and every printer reaches ProvisionRequired through the remote observation. The
+// defect is latent; it goes live at the exact moment something is allowed to inhabit
+// PrinterCredentialProvisioned, because that arm is what unlocks a credential fetch against a
+// machine on the operator LAN.
+//
+// RUNG: mitigation. CEILING: structural impossibility -- membership is decidable, so the invalid
+// state can be made unwritable. NEXT-RUNG TRIGGER, named as the capability and not as an artifact:
+// a provisioning actuator that is the SOLE minter of SecretProvisionReceipt, constructing it only
+// from the response of a performed AddVersion, with the type sealed so no other module can spell
+// one. A trigger naming merely "the onboarding workflow exists" would be satisfied while a pure
+// public constructor still stood beside it.
 data printer_access_code_provision_receipts: List<SecretProvisionReceipt> = []
 
 // TWO QUESTIONS, ASKED IN ORDER, AND ONLY THE FIRST CAN BE ASKED OF THE REMOTE.
@@ -167,6 +182,20 @@ data printer_access_code_provision_receipts: List<SecretProvisionReceipt> = []
 // RUNG: mitigation, and honestly so -- this is an external fact observed at a boundary, which is its
 // ceiling; it never becomes construction. What changed is that the boundary is now a real read whose
 // refusal arms refuse, instead of a local list whose silence was read as an answer.
+// WHAT THE LOCAL RECORD CAN SAY, WHICH IS MUCH LESS THAN WHAT THE RESOLUTION CAN SAY.
+//
+// The classifier used to take a whole PrinterCredentialResolution as its record input, which made
+// states like ObservationRefused, VersionUnrecorded and MaterializationVanished syntactically
+// admissible as "what our records show" -- transitions a record lookup can never legitimately
+// produce, sitting in the type as though it might. Every one of them had to be forwarded by hand in
+// two separate match arms, and a forwarding arm is exactly where a wrong mapping hides.
+//
+// The record answers one question with two answers, so that is the type. The impossible transitions
+// are now unspellable rather than forwarded.
+type PrinterMaterializationRecord
+  = NoRecordedMaterialization
+  | RecordedMaterialization { exact_ref: SecretRef }
+
 type PrinterCredentialResolution
   = PrinterCredentialProvisioned { exact: SecretRef }
   | PrinterCredentialProvisionRequired { printer: PhysicalAssetIdentity, desired: SecretRef }
@@ -221,46 +250,22 @@ fn classify_container_observation(
   desired: SecretRef,
   outcome: RestOutcome,
   container_name: String,
-  from_roster: PrinterCredentialResolution,
+  record: PrinterMaterializationRecord,
 ) -> PrinterCredentialResolution {
   match outcome {
     RestOk =>
-      match from_roster {
-        PrinterCredentialProvisionRequired { printer: p, desired: _ } =>
-          PrinterCredentialVersionUnrecorded { printer: p, container: container_name }
-        PrinterCredentialProvisioned { exact: e } => PrinterCredentialProvisioned { exact: e }
-        PrinterCredentialProvisionAmbiguous { printer: p, matches: m } =>
-          PrinterCredentialProvisionAmbiguous { printer: p, matches: m }
-        PrinterCredentialObservationRefused { printer: p, cause: c } =>
-          PrinterCredentialObservationRefused { printer: p, cause: c }
-        PrinterCredentialVersionUnrecorded { printer: p, container: c } =>
-          PrinterCredentialVersionUnrecorded { printer: p, container: c }
-        PrinterCredentialMaterializationVanished { printer: p, exact: e } =>
-          PrinterCredentialMaterializationVanished { printer: p, exact: e }
-        PrinterCredentialLocusUndeclared { printer: p } =>
-          PrinterCredentialLocusUndeclared { printer: p }
-        PrinterCredentialLocusConflicted { printer: p, matches: m } =>
-          PrinterCredentialLocusConflicted { printer: p, matches: m }
+      match record {
+        NoRecordedMaterialization =>
+          PrinterCredentialVersionUnrecorded { printer: printer, container: container_name }
+        RecordedMaterialization { exact_ref: e } => PrinterCredentialProvisioned { exact: e }
       }
     RestStatusRefused { status: s, body: b } =>
       if s == 404 {
-        match from_roster {
-          PrinterCredentialProvisioned { exact: e } =>
+        match record {
+          RecordedMaterialization { exact_ref: e } =>
             PrinterCredentialMaterializationVanished { printer: printer, exact: e }
-          PrinterCredentialProvisionRequired { printer: _, desired: _ } =>
+          NoRecordedMaterialization =>
             PrinterCredentialProvisionRequired { printer: printer, desired: desired }
-          PrinterCredentialProvisionAmbiguous { printer: p, matches: m } =>
-            PrinterCredentialProvisionAmbiguous { printer: p, matches: m }
-          PrinterCredentialObservationRefused { printer: p, cause: c } =>
-            PrinterCredentialObservationRefused { printer: p, cause: c }
-          PrinterCredentialVersionUnrecorded { printer: p, container: c } =>
-            PrinterCredentialVersionUnrecorded { printer: p, container: c }
-          PrinterCredentialMaterializationVanished { printer: p, exact: e } =>
-            PrinterCredentialMaterializationVanished { printer: p, exact: e }
-          PrinterCredentialLocusUndeclared { printer: p } =>
-            PrinterCredentialLocusUndeclared { printer: p }
-          PrinterCredentialLocusConflicted { printer: p, matches: m } =>
-            PrinterCredentialLocusConflicted { printer: p, matches: m }
         }
       } else {
         PrinterCredentialObservationRefused {
@@ -331,13 +336,22 @@ func observe_printer_secret_container(
         project_id: desired.project,
         secret: desired.secret,
       )
-      classify_container_observation(
-        printer: printer,
-        desired: desired,
-        outcome: observed.outcome,
-        container_name: observed.name,
-        from_roster: resolution_against(desired: desired, printer: printer),
-      )
+      if recorded_materialization_is_ambiguous(desired: desired) {
+        PrinterCredentialProvisionAmbiguous {
+          printer: printer,
+          matches: printer_access_code_provision_receipts
+            |> filter(r => receipt_names_secret(receipt: r, desired: desired))
+            |> length,
+        }
+      } else {
+        classify_container_observation(
+          printer: printer,
+          desired: desired,
+          outcome: observed.outcome,
+          container_name: observed.name,
+          record: materialization_record_for(desired: desired),
+        )
+      }
     }
   }
     }
@@ -359,20 +373,35 @@ fn receipt_names_secret(receipt: SecretProvisionReceipt, desired: SecretRef) -> 
   secret_ref_secret_resource(ref: receipt.identity) == secret_ref_secret_resource(ref: desired)
 }
 
-// RECEIPT RESOLUTION CONSUMES THE ADMITTED DESIRED IDENTITY, never a second derivation of it. The
-// observer passes the SecretRef it actually queried, so the receipt join and the remote read cannot
-// drift onto different subjects -- which is precisely what independently re-deriving the ref from
-// the printer identity in two places would allow.
-fn resolution_against(desired: SecretRef, printer: PhysicalAssetIdentity) -> PrinterCredentialResolution {
+// THE PRODUCTION ADAPTER: the ONE place a stored receipt becomes a record the classifier will act on.
+//
+// It consumes the admitted desired identity rather than re-deriving it from the printer, so the
+// receipt join and the remote read cannot drift onto different subjects. Ambiguity refuses here
+// rather than being carried into the classifier, because "two receipts claim this secret" is a fact
+// about our records and not about the remote container the classifier is reasoning over.
+//
+// THIS IS THE SEAM WHERE B4 WILL LAND. What this function reads today is an ordinary authored list,
+// so RecordedMaterialization is currently only as trustworthy as the discipline described above the
+// roster. When the provisioning actuator becomes the sole minter of an effect-earned receipt, ONLY
+// THIS FUNCTION CHANGES: the classifier already speaks in records rather than in receipts, and the
+// witnesses already author records directly, so neither has to move. That is the whole reason the
+// narrow type exists before the actuator does.
+fn materialization_record_for(desired: SecretRef) -> PrinterMaterializationRecord {
   let matches = printer_access_code_provision_receipts
     |> filter(r => receipt_names_secret(receipt: r, desired: desired))
   match matches |> first {
-    Absent => PrinterCredentialProvisionRequired { printer: printer, desired: desired }
+    Absent => NoRecordedMaterialization
     Present { value: found } =>
       if (matches |> length) == 1 {
-        PrinterCredentialProvisioned { exact: found.identity }
+        RecordedMaterialization { exact_ref: found.identity }
       } else {
-        PrinterCredentialProvisionAmbiguous { printer: printer, matches: matches |> length }
+        NoRecordedMaterialization
       }
   }
+}
+
+fn recorded_materialization_is_ambiguous(desired: SecretRef) -> Bool {
+  (printer_access_code_provision_receipts
+    |> filter(r => receipt_names_secret(receipt: r, desired: desired))
+    |> length) > 1
 }

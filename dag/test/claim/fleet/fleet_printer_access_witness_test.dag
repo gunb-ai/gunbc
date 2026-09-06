@@ -3,7 +3,7 @@ module test.claim.fleet.fleet_printer_access_witness_test
 import std.types { Bool, List, NonEmptyStr, String }
 import product.placement_supply { PhysicalAssetIdentity }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
-import gunbc.secret_provision { fleet_secret_ref }
+import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
 import gunbc.fleet_asset_identity { printer_01, printer_02 }
 import gunbc.fleet_printer_access {
   PrinterAccessCodeLocus,
@@ -19,7 +19,8 @@ import gunbc.fleet_printer_access {
   PrinterCredentialProvisionAmbiguous, PrinterCredentialObservationRefused,
   PrinterCredentialVersionUnrecorded, PrinterCredentialMaterializationVanished,
   PrinterCredentialLocusUndeclared, PrinterCredentialLocusConflicted,
-  printer_access_code_desired_ref, resolution_against,
+  printer_access_code_desired_ref,
+  PrinterMaterializationRecord, NoRecordedMaterialization, RecordedMaterialization,
   classify_container_observation,
 }
 import extdeps.transports.rest {
@@ -98,16 +99,13 @@ test fn both_human_retrieval_loci_name_the_observed_auth_gated_drive_resources()
     && printer_02_access_code_locus.human_retrieval.locator == "drive.google.com/file/d/12m1vfJmdzSQ_3BxfnwEWaF-MuI0ujwFj/view"
 }
 
-fn classify_for_printer_01(outcome: RestOutcome, container_name: String) -> PrinterCredentialResolution {
+fn classify_for_printer_01_unrecorded(outcome: RestOutcome, container_name: String) -> PrinterCredentialResolution {
   classify_container_observation(
     printer: printer_01,
     desired: printer_access_code_desired_ref(printer: printer_01),
     outcome: outcome,
     container_name: container_name,
-    from_roster: resolution_against(
-      desired: printer_access_code_desired_ref(printer: printer_01),
-      printer: printer_01,
-    ),
+    record: NoRecordedMaterialization,
   )
 }
 
@@ -140,7 +138,7 @@ fn is_observation_refused(r: PrinterCredentialResolution) -> Bool {
 // THE POSITIVE CONTROL. 404 is the one status that means the container is not there, and if this
 // stops holding the observation has stopped being able to answer the question it exists to ask.
 test fn a_404_is_read_as_the_container_being_absent() -> Bool {
-  is_provision_required(r: classify_for_printer_01(
+  is_provision_required(r: classify_for_printer_01_unrecorded(
     outcome: RestStatusRefused { status: 404, body: "{\"error\":{\"code\":404}}" },
     container_name: "",
   ))
@@ -151,15 +149,15 @@ test fn a_404_is_read_as_the_container_being_absent() -> Bool {
 // provision a code over one that already exists. A 401 and a 429 are the same shape of mistake, and
 // a transport refusal is the strongest case: nothing was reached, so nothing is known.
 test fn a_status_that_is_not_404_never_becomes_absence() -> Bool {
-  is_observation_refused(r: classify_for_printer_01(
+  is_observation_refused(r: classify_for_printer_01_unrecorded(
       outcome: RestStatusRefused { status: 403, body: "permission denied" }, container_name: ""))
-    && is_observation_refused(r: classify_for_printer_01(
+    && is_observation_refused(r: classify_for_printer_01_unrecorded(
       outcome: RestStatusRefused { status: 401, body: "unauthenticated" }, container_name: ""))
-    && is_observation_refused(r: classify_for_printer_01(
+    && is_observation_refused(r: classify_for_printer_01_unrecorded(
       outcome: RestStatusRefused { status: 429, body: "rate limited" }, container_name: ""))
-    && is_observation_refused(r: classify_for_printer_01(
+    && is_observation_refused(r: classify_for_printer_01_unrecorded(
       outcome: RestTransportRefused { cause: "connection refused" }, container_name: ""))
-    && is_observation_refused(r: classify_for_printer_01(
+    && is_observation_refused(r: classify_for_printer_01_unrecorded(
       outcome: RestBodyUndecodable { status: 200, cause: "not json" }, container_name: ""))
 }
 
@@ -168,7 +166,7 @@ test fn a_status_that_is_not_404_never_becomes_absence() -> Bool {
 // would mint a second version and leave the printer authenticating against whichever one a later
 // reader pinned.
 test fn a_present_container_with_no_receipt_is_not_reported_as_absent() -> Bool {
-  match classify_for_printer_01(
+  match classify_for_printer_01_unrecorded(
     outcome: RestOk,
     container_name: "projects/gunbai-secrets/secrets/printer-01-lan-access-code",
   ) {
@@ -184,35 +182,44 @@ test fn a_present_container_with_no_receipt_is_not_reported_as_absent() -> Bool 
   }
 }
 
-fn classify_for_printer_01_with_roster(
+fn classify_for_printer_01_with_record(
   outcome: RestOutcome,
   container_name: String,
-  from_roster: PrinterCredentialResolution,
+  record: PrinterMaterializationRecord,
 ) -> PrinterCredentialResolution {
   classify_container_observation(
     printer: printer_01,
     desired: printer_access_code_desired_ref(printer: printer_01),
     outcome: outcome,
     container_name: container_name,
-    from_roster: from_roster,
+    record: record,
   )
 }
 
 // THE SECOND DISCRIMINATING RED, and the one a review found rather than the build. A 404 means
 // "never provisioned" ONLY when no receipt claims otherwise. When a subject-matched receipt records
 // an exact version and the remote then says the container is gone, our record and the remote
-// contradict each other -- something was destroyed, or the read is pointed at a different project
-// than the write was. Answering ProvisionRequired there would erase the receipt from the answer and
-// hand back the remedy "provision it", quietly recreating a secret something deleted and destroying
-// the only signal that a deletion happened.
+// contradict each other. The arm asserts only that contradiction and names no cause: the join is at
+// project+secret grain, so any explanation other than "the container was removed" would itself imply
+// a defect in the receipt or write machinery. Answering ProvisionRequired here would erase the record
+// from the answer and hand back the remedy "provision it", quietly recreating a secret something
+// deleted and destroying the only signal that a deletion happened.
+//
+// THE INPUT IS A RECORD, NOT A FORGED RESOLUTION. An earlier revision of this red constructed
+// PrinterCredentialProvisioned { exact: <the DESIRED pending ref> } -- a value named Provisioned
+// holding something definitionally not an exact provisioned version. It still discriminated the
+// branching law, but it only type-checked because the classifier accepted the whole resolution
+// coproduct as its record input. RecordedMaterialization is the authorable seam by design; what may
+// never be authorable is the effect-earned receipt that produces one in production.
 test fn a_404_over_an_existing_receipt_is_not_read_as_never_provisioned() -> Bool {
-  let provisioned = PrinterCredentialProvisioned {
-    exact: printer_access_code_desired_ref(printer: printer_01),
+  let recorded = RecordedMaterialization {
+    exact_ref: secret_ref_pin_version(
+      ref: printer_access_code_desired_ref(printer: printer_01), version: "7"),
   }
-  match classify_for_printer_01_with_roster(
+  match classify_for_printer_01_with_record(
     outcome: RestStatusRefused { status: 404, body: "not found" },
     container_name: "",
-    from_roster: provisioned,
+    record: recorded,
   ) {
     PrinterCredentialMaterializationVanished { printer: p, exact: _ } => p == printer_01
     PrinterCredentialProvisionRequired { printer: _, desired: _ } => false
