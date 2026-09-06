@@ -88,6 +88,8 @@ import gunbc.cli_dispatch_surface {
   CliInvokesBootstrapDagOperation,
   CliInvokesBoundTargetProducer,
   CliKnownOperationNoRealization,
+  CliExactlyOneOperand,
+  CliAtMostOneOperand,
   CliOperandRow,
   CliRefusesUnwired,
   CliRetainedHostKernel,
@@ -15546,7 +15548,10 @@ fn find_resource_module(resource_name: String, modules: List<TypedModule>) -> St
 
 fn cli_dispatch_field_type(sub: CliSubcommandRow, field: String) -> String {
   match cli_subcommand_generated_dispatch_operands(sub: sub) |> filter(o => o.field == field) |> first {
-    Present { value: _ } => "String"
+    Present { value: operand } => match operand.arity {
+      CliExactlyOneOperand {} => "String"
+      CliAtMostOneOperand {} => "Option<String>"
+    }
     Absent => match cli_subcommand_generated_dispatch_options(sub: sub) |> filter(o => o.field == field) |> first {
       Present { value: opt } => cli_option_rust_type(opt: opt)
       Absent => "compile_error!(\"REFUSED: generated CLI dispatch field has no modeled type\")"
@@ -16113,7 +16118,11 @@ fn emit_modeled_subcommand_variant(sub: CliSubcommandRow, depth: Int) -> String 
 fn emit_modeled_operand_field(operand: CliOperandRow, depth: Int) -> String {
   let indent = make_indent(level: depth)
   let doc_str = operand.doc |> map(d => concat(indent, "/// ", d, "\n")) |> join(separator: "")
-  concat(doc_str, indent, "#[arg(value_name = \"", operand.placeholder, "\")]\n", indent, operand.field, ": String,\n")
+  let field_type = match operand.arity {
+    CliExactlyOneOperand {} => "String"
+    CliAtMostOneOperand {} => "Option<String>"
+  }
+  concat(doc_str, indent, "#[arg(value_name = \"", operand.placeholder, "\")]\n", indent, operand.field, ": ", field_type, ",\n")
 }
 
 // One declared option becomes three rendered things: its doc lines, its clap attribute, and its
