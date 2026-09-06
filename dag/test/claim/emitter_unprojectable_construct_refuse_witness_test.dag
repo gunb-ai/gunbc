@@ -55,6 +55,6 @@ test fn w_supported_guarded_any_lambda_still_emits() -> Bool {
 // observed, so the occupant cannot vanish silently, and it is implied by
 // w_filter_in_branch_condition_refuses_at_emission. It is not evidence the module was
 // withheld. See the failure-mode row's publication-atomicity trigger.
-test fn w_refused_module_is_not_published() -> Bool {
+test fn w_refused_module_refusal_fires_publication_unasserted_on_the_floor() -> Bool {
   unprojectable_blocking_count(source: filter_in_guard_source) == 1
 }
