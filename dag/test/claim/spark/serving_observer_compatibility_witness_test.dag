@@ -1,0 +1,204 @@
+module test.claim.spark.serving_observer_compatibility_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision, vllm_source_revision_read }
+import extdeps.vllm.scheduler_extension {
+  VllmSchedulerSelection, SelectedByQualname, SelectedByTypeObject, SelectedByUpstreamDefault,
+  VllmAsyncSchedulingRequest, AsyncSchedulingOn, AsyncSchedulingOff, AsyncSchedulingUnset,
+  vllm_default_scheduler_qualname,
+  SchedulerSelectionTiming, SelectableWhileRunning, SelectableOnlyAtEngineConstruction,
+  scheduler_selection_timing, vllm_scheduler_extension_point,
+  SchedulerSurfaceBinding, SurfaceBound, SurfaceRefusedForMissingField, SurfaceRefusedForRevisionDrift,
+  surface_binding_for_revision, scheduler_output_fields_read,
+  UpstreamStabilityPosture, UpstreamPublicInterface, UpstreamDisclaimsCompatibility,
+  vllm_scheduler_interface_posture,
+}
+import gunbc.spark.serving_observer_compatibility {
+  ReceiptReadSite, ReadFromSchedulerOutput, ReadFromLiveRequest,
+  ReadSiteAdmission, ReadSiteAdmitted, ReadSiteRefused, read_site_admits,
+  ReceiptFieldBinding, ReceiptFieldSource, FromSchedulerOutputField, FromSchedulerMethod, FromObserverClock,
+  receipt_field_bindings,
+  ObserverProfile, observer_profile, ObserverProfileAdmission, ObserverProfileAdmitted, ObserverProfileRefused,
+  ObserverProfileRefusal, ProfileRevisionDrift, ProfileAlreadyHasForeignScheduler, ProfileAsyncSchedulingUnmodelled,
+  observer_profile_admits,
+  FabricConsumption, AcquiredThroughFabric, ChosenWithinServingLane,
+  FabricConsumptionAdmission, FabricConsumptionConforms, FabricConsumptionDiverges,
+  fabric_consumption_admits, spark_serving_placement_standing,
+  ManifestStanding, ManifestConsumedByWheel, ManifestAwaitingWheel, serving_observer_manifest_standing,
+}
+
+// -- THE READ SITE IS THE WHOLE CONTRACT -------------------------------------------------------
+//
+// This is the discriminating pair for the defect that motivated the manifest: reading the same field
+// from the live Request instead of from SchedulerOutput yields a cached_tokens that already contains
+// this step's own computed_tokens. If read_site_admits ever admitted the live-request site, a wrapper
+// written against this contract would produce internally inconsistent receipts and nothing downstream
+// could detect it, so this going green on both arms is the failure this test exists to catch.
+test fn the_live_request_read_site_is_refused_and_the_output_site_is_admitted() -> Bool {
+  (match read_site_admits(site: ReadFromSchedulerOutput { attribute: "num_scheduled_tokens" as NonEmptyStr }) {
+    ReadSiteAdmitted { attribute: a } => a as String == "num_scheduled_tokens"
+    ReadSiteRefused { because: _ } => false
+  })
+  && (match read_site_admits(site: ReadFromLiveRequest { because: "the wrapper holds the scheduler" as NonEmptyStr }) {
+    ReadSiteRefused { because: b } => string_contains(s: b as String, pattern: "double-counts the step being recorded")
+    ReadSiteAdmitted { attribute: _ } => false
+  })
+}
+
+// -- THE DEFAULT DELEGATE IS CONDITIONAL -------------------------------------------------------
+//
+// A wrapper that hardcodes Scheduler silently converts an async-scheduled engine to a synchronous one
+// while reporting a behaviour-preserving observation. The two arms must name DIFFERENT classes; if a
+// future edit collapsed them this goes red rather than shipping that conversion.
+test fn the_default_delegate_differs_under_async_scheduling() -> Bool {
+  vllm_default_scheduler_qualname(async_scheduling: AsyncSchedulingOn) as String
+    == "vllm.v1.core.sched.async_scheduler.AsyncScheduler"
+  && vllm_default_scheduler_qualname(async_scheduling: AsyncSchedulingOff) as String
+    == "vllm.v1.core.sched.scheduler.Scheduler"
+  && vllm_default_scheduler_qualname(async_scheduling: AsyncSchedulingUnset) as String
+    == "vllm.v1.core.sched.scheduler.Scheduler"
+  && (vllm_default_scheduler_qualname(async_scheduling: AsyncSchedulingOn) as String
+      != vllm_default_scheduler_qualname(async_scheduling: AsyncSchedulingOff) as String)
+}
+
+// -- PROFILE ADMISSION REFUSES WHAT IT CANNOT ESTABLISH ----------------------------------------
+//
+// The positive control comes first: an admitted profile must exist, or every refusal below is
+// vacuous and the admission function is a permanently-red gate rather than a discriminating one.
+test fn the_pinned_default_synchronous_profile_is_admitted() -> Bool {
+  match observer_profile_admits(p: observer_profile(
+    revision: vllm_source_revision_read,
+    selection: SelectedByUpstreamDefault,
+    async_scheduling: AsyncSchedulingOff,
+  )) {
+    ObserverProfileAdmitted { delegate: d, fields: n } =>
+      d as String == "vllm.v1.core.sched.scheduler.Scheduler"
+        && n == length(scheduler_output_fields_read())
+    ObserverProfileRefused { cause: _ } => false
+  }
+}
+
+test fn a_drifted_revision_is_refused_by_naming_what_was_observed() -> Bool {
+  match observer_profile_admits(p: observer_profile(
+    revision: vllm_source_revision(
+      repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+      full_revision: "0000000000000000000000000000000000000000" as NonEmptyStr),
+    selection: SelectedByUpstreamDefault,
+    async_scheduling: AsyncSchedulingOff,
+  )) {
+    ObserverProfileRefused { cause: ProfileRevisionDrift { observed: o, because: _ } } =>
+      o as String == "0000000000000000000000000000000000000000"
+    ObserverProfileRefused { cause: _ } => false
+    ObserverProfileAdmitted { delegate: _, fields: _ } => false
+  }
+}
+
+test fn a_launch_that_already_substitutes_a_scheduler_is_refused() -> Bool {
+  match observer_profile_admits(p: observer_profile(
+    revision: vllm_source_revision_read,
+    selection: SelectedByQualname { qualname: "acme.sched.CustomScheduler" as NonEmptyStr },
+    async_scheduling: AsyncSchedulingOff,
+  )) {
+    ObserverProfileRefused { cause: ProfileAlreadyHasForeignScheduler { qualname: q, because: _ } } =>
+      q as String == "acme.sched.CustomScheduler"
+    ObserverProfileRefused { cause: _ } => false
+    ObserverProfileAdmitted { delegate: _, fields: _ } => false
+  }
+}
+
+// ASYNC IS REFUSED AND NAMES THE DELEGATE IT WOULD HAVE WRAPPED. The refusal is not "async is
+// unsupported" in the abstract: it is that the prefix a receipt would record is optimistic by an
+// amount this manifest has not established, so the refusal carries the class and the reason.
+test fn async_scheduling_is_refused_until_its_placeholder_semantics_are_modelled() -> Bool {
+  match observer_profile_admits(p: observer_profile(
+    revision: vllm_source_revision_read,
+    selection: SelectedByUpstreamDefault,
+    async_scheduling: AsyncSchedulingOn,
+  )) {
+    ObserverProfileRefused { cause: ProfileAsyncSchedulingUnmodelled { delegate: d, because: b } } =>
+      d as String == "vllm.v1.core.sched.async_scheduler.AsyncScheduler"
+        && string_contains(s: b as String, pattern: "num_output_placeholders")
+    ObserverProfileRefused { cause: _ } => false
+    ObserverProfileAdmitted { delegate: _, fields: _ } => false
+  }
+}
+
+// -- THE BINDING TABLE COVERS THE RECEIPT AND NAMES ITS READ SITE ------------------------------
+//
+// The cached_tokens row is the one the read-site rule exists for, so it must cite the output rather
+// than the request in its own note. A row that said "request" would pass every other check here.
+test fn every_binding_names_a_source_and_cached_tokens_cites_the_output() -> Bool {
+  length(receipt_field_bindings()) == 6
+  && fold(receipt_field_bindings(), init: true, f: (acc, b) =>
+       acc && (match b.source {
+         FromSchedulerOutputField { field: _ } => true
+         FromSchedulerMethod { method: _ } => true
+         FromObserverClock { because: _ } => true
+       }))
+  && fold(receipt_field_bindings(), init: false, f: (acc, b) =>
+       acc || (b.receipt_field as String == "RequestStepAllocation.cached_tokens"
+               && string_contains(s: b.note as String, pattern: "never from the live request")))
+}
+
+// -- THE EXTENSION POINT IS START-BOUND, AND UPSTREAM DISCLAIMS IT -----------------------------
+//
+// Two independent sources agree that the observer binds at start: a probe of the live host recorded
+// in gunbc.spark.serving_launch_instrumentation, and this read of the pinned upstream source. A
+// revision that added a reload path would red here, which is the point of writing it twice.
+test fn the_scheduler_selection_is_bound_at_engine_construction() -> Bool {
+  match scheduler_selection_timing(p: vllm_scheduler_extension_point) {
+    SelectableOnlyAtEngineConstruction { because: b } =>
+      string_contains(s: b as String, pattern: "no setter, route or reload path")
+    SelectableWhileRunning { by: _ } => false
+  }
+}
+
+// UPSTREAM'S OWN DISCLAIMER IS WHY THE PIN IS EXACT RATHER THAN A RANGE. If this ever became a
+// public interface the consequence recorded here would be wrong and a range would be admissible.
+test fn upstream_disclaims_compatibility_so_no_version_range_is_admissible() -> Bool {
+  match vllm_scheduler_interface_posture {
+    UpstreamDisclaimsCompatibility { in_words: w, consequence: c } =>
+      string_contains(s: w as String, pattern: "not public and compatibility may not be maintained")
+        && string_contains(s: c as String, pattern: "one exact revision")
+    UpstreamPublicInterface { by: _ } => false
+  }
+}
+
+// -- THE FABRIC IS CONSUMED, NOT REBUILT -------------------------------------------------------
+//
+// The standing state of the serving lane is a DIVERGENCE WITH A STATED REASON, which DESIGN 3b admits
+// and which is the middle of its three values. What this test forbids is the divergence being
+// recorded as conformance -- that is the reading under which the later stages would build rank
+// membership, addressing and capacity accounting inside gunbc.spark and call it serving work.
+test fn the_serving_lane_placement_is_a_stated_divergence_and_not_conformance() -> Bool {
+  match fabric_consumption_admits(c: spark_serving_placement_standing) {
+    FabricConsumptionDiverges { what: w, because: b } =>
+      string_contains(s: w as String, pattern: "spark_pair_serving_head")
+        && string_contains(s: w as String, pattern: "no reservation")
+        && length(b as String) > 0
+    FabricConsumptionConforms { authority: _ } => false
+  }
+}
+
+// AND THE CONFORMING ARM IS REACHABLE, so the admission is a discriminator rather than a function
+// that returns divergence for everything it is handed.
+test fn a_placement_acquired_through_the_fabric_conforms() -> Bool {
+  match fabric_consumption_admits(c: AcquiredThroughFabric { authority: "gunbc.fabric.fabric_control_plane reserve_selected_cell" as NonEmptyStr }) {
+    FabricConsumptionConforms { authority: a } => string_contains(s: a as String, pattern: "fabric_control_plane")
+    FabricConsumptionDiverges { what: _, because: _ } => false
+  }
+}
+
+// -- THE FRONTIER IS DECLARED, NOT DISCHARGED --------------------------------------------------
+//
+// This manifest must not be readable as having built the producer. The trigger names a capability --
+// a wheel that delegates, fills every row from the admitted read site, and refuses what this refuses.
+test fn the_manifest_declares_an_unbuilt_wheel_with_a_capability_trigger() -> Bool {
+  match serving_observer_manifest_standing {
+    ManifestAwaitingWheel { trigger: t } =>
+      string_contains(s: t as String, pattern: "refuses to import under any profile")
+        && string_contains(s: t as String, pattern: "behaviour-preserving")
+    ManifestConsumedByWheel { wheel: _ } => false
+  }
+}

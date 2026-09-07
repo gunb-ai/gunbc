@@ -1,0 +1,282 @@
+module gunbc.spark.serving_observer_compatibility
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
+import extdeps.vllm.scheduler_extension {
+  VllmSchedulerSelection, SelectedByQualname, SelectedByTypeObject, SelectedByUpstreamDefault,
+  VllmAsyncSchedulingRequest, AsyncSchedulingOn, AsyncSchedulingOff, AsyncSchedulingUnset,
+  VllmSchedulerOutputField, NumScheduledTokens, TotalNumScheduledTokens, ScheduledNewReqs, ScheduledCachedReqs,
+  scheduler_output_field_attribute, scheduler_output_fields_read,
+  SchedulerSurfaceBinding, SurfaceBound, SurfaceRefusedForMissingField, SurfaceRefusedForRevisionDrift,
+  surface_binding_for_revision, vllm_default_scheduler_qualname,
+  vllm_scheduler_request_counts_method
+}
+import gunbc.spark.serving_step_receipt {
+  ServingStepReceipt, RequestStepAllocation, RequestPhase, Prefill, Decode, PrefillAndDecodeInSameStep
+}
+
+// -- THE MANIFEST: WHICH UPSTREAM FIELD ANSWERS EACH RECEIPT FIELD, AT ONE PINNED REVISION -----
+//
+// WHY THIS MODULE IS THE FIRST STAGE OF THE EXTRACTION AND NOT PART OF THE OBSERVER. The observer is
+// a Python wheel; nothing in it is checkable by this substrate. What IS checkable is the JOIN it must
+// implement -- which upstream field feeds which receipt field, and under which conditions that join
+// is invalid. Authoring the join here first means the wheel is written against a declared contract
+// rather than becoming its own authority by being the only thing that knows the mapping. That is the
+// same reasoning gunbc.spark.serving_step_receipt gave for authoring the receipt before the observer,
+// applied one layer out.
+//
+// WHAT THIS MODULE DOES NOT DO. It declares no receipt type, no gap, no instrument and no launch
+// identity: those are gunbc.spark.serving_step_receipt's and gunbc.spark.serving_launch_instrumentation's,
+// and are imported. It declares no upstream field name: those are extdeps.vllm.scheduler_extension's.
+// It owns exactly one fact -- the correspondence -- which belonged to neither side.
+
+// -- RULE ONE: READ THE OUTPUT, NEVER THE REQUEST ----------------------------------------------
+//
+// THE MEASUREMENT THAT FIXES THIS, read from the pinned scheduler source rather than inferred:
+// Scheduler.schedule constructs its SchedulerOutput from new_reqs_data and cached_reqs_data, and
+// THEN, as its last act before returning, calls _update_after_schedule, which walks
+// num_scheduled_tokens and does `request.num_computed_tokens += num_scheduled_token`.
+//
+// So there are two different values of num_computed_tokens for one step, and which one an observer
+// sees is decided purely by WHERE it reads:
+//
+//     SchedulerOutput.scheduled_new_reqs[i].num_computed_tokens     the prefix BEFORE this step
+//     SchedulerOutput.scheduled_cached_reqs.num_computed_tokens[i]  the prefix BEFORE this step
+//     self.requests[req_id].num_computed_tokens, after schedule()   the prefix INCLUDING this step
+//
+// A wrapper that calls the delegate and then reads the live Request objects -- the obvious way to
+// write it, since it has the scheduler right there -- records a cached_tokens that already contains
+// the step's own computed_tokens. Every receipt is then internally inconsistent by exactly the amount
+// the step did, the error is largest on the biggest prefill chunks, and nothing at runtime can catch
+// it because both numbers are plausible and the arithmetic succeeds. It is the cumulative-read-as-
+// per-event failure mode wearing a per-event shape, which is worse than the original because it would
+// arrive carrying this programme's own credibility.
+type ReceiptReadSite
+  = ReadFromSchedulerOutput { attribute: NonEmptyStr }
+  | ReadFromLiveRequest { because: NonEmptyStr }
+
+type ReadSiteAdmission
+  = ReadSiteAdmitted { attribute: NonEmptyStr }
+  | ReadSiteRefused { because: NonEmptyStr }
+
+fn read_site_admits(site: ReceiptReadSite) -> ReadSiteAdmission {
+  match site {
+    ReadFromSchedulerOutput { attribute: a } => ReadSiteAdmitted { attribute: a }
+    ReadFromLiveRequest { because: b } =>
+      ReadSiteRefused {
+        because: join(["Scheduler._update_after_schedule advances request.num_computed_tokens by this step's own scheduled tokens before schedule() returns, so a value read from the live request double-counts the step being recorded -- ", b as String], "") as NonEmptyStr
+      }
+  }
+}
+
+// -- THE CORRESPONDENCE ------------------------------------------------------------------------
+//
+// One row per receipt field the observer must fill. The receipt field is named by the thing that owns
+// it and the upstream field by the thing that owns that, so this module can hold neither authority
+// hostage: renaming either side reds here, which is the whole point of writing the join down.
+type ReceiptFieldSource
+  = FromSchedulerOutputField { field: VllmSchedulerOutputField }
+  | FromSchedulerMethod { method: NonEmptyStr }
+  | FromObserverClock { because: NonEmptyStr }
+
+type ReceiptFieldBinding sole_constructor {
+  receipt_field: NonEmptyStr
+  source: ReceiptFieldSource
+  note: NonEmptyStr
+}
+
+fn receipt_field_bindings() -> List<ReceiptFieldBinding> {
+  [
+    ReceiptFieldBinding {
+      receipt_field: "RequestStepAllocation.request_id" as NonEmptyStr,
+      source: FromSchedulerOutputField { field: NumScheduledTokens },
+      note: "the dict key; the allocation population IS this dict's key set, so a request absent from it was not scheduled this step and contributes no allocation" as NonEmptyStr
+    },
+    ReceiptFieldBinding {
+      receipt_field: "RequestStepAllocation.computed_tokens" as NonEmptyStr,
+      source: FromSchedulerOutputField { field: NumScheduledTokens },
+      note: "the dict value; this is the scheduler's own decision for this request in this step and is not derived, reconstructed or apportioned by the observer" as NonEmptyStr
+    },
+    ReceiptFieldBinding {
+      receipt_field: "RequestStepAllocation.cached_tokens" as NonEmptyStr,
+      source: FromSchedulerOutputField { field: ScheduledNewReqs },
+      note: "num_computed_tokens on the request's entry in scheduled_new_reqs, or at its index in scheduled_cached_reqs; read from the output and never from the live request, per read_site_admits" as NonEmptyStr
+    },
+    ReceiptFieldBinding {
+      receipt_field: "ServingStepReceipt.running_after" as NonEmptyStr,
+      source: FromSchedulerMethod { method: vllm_scheduler_request_counts_method },
+      note: "the first element of the published (num_running_reqs, num_waiting_reqs) pair, taken through the delegate rather than by reaching into its private queues" as NonEmptyStr
+    },
+    ReceiptFieldBinding {
+      receipt_field: "ServingStepReceipt.waiting_after" as NonEmptyStr,
+      source: FromSchedulerMethod { method: vllm_scheduler_request_counts_method },
+      note: "the second element of that same pair, taken in the same call so the two counts describe one instant" as NonEmptyStr
+    },
+    ReceiptFieldBinding {
+      receipt_field: "ServingStepReceipt.elapsed_micros" as NonEmptyStr,
+      source: FromObserverClock { because: "no upstream field carries the wall time of one schedule call, so this is the observer's own measurement and is honestly attributed to the observer rather than to the engine" as NonEmptyStr },
+      note: "measured around the delegate call only, so it excludes the observer's own recording cost and does not silently charge the engine for instrumentation" as NonEmptyStr
+    }
+  ]
+}
+
+// -- THE ONE FIELD THAT IS NOT A COPY ----------------------------------------------------------
+//
+// RequestPhase is the only receipt field with no upstream field to read. The scheduler computes a
+// closely-related fact -- request.is_prefill_chunk, set as `num_computed_tokens < num_tokens +
+// num_output_placeholders` -- but it sets it in _update_after_schedule, on the POST-advance value,
+// and it answers "is this a NON-FINAL chunk", which is not the same question. A request whose final
+// prefill chunk lands in this step has is_prefill_chunk false while still being a prefill.
+//
+// So the phase is DERIVED from the two numbers the receipt already carries, and it is derived rather
+// than read precisely so that it cannot disagree with them.
+type PhaseDerivation
+  = PhaseDerivedFromAllocation { rule: NonEmptyStr }
+  | PhaseReadFromUpstreamFlag { attribute: NonEmptyStr }
+
+data request_phase_derivation: PhaseDerivation = PhaseDerivedFromAllocation {
+  rule: "a step that advances a request's prompt prefix is a prefill for that request and a step that emits from a complete prefix is a decode; is_prefill_chunk is deliberately not read because it is computed after the advance and answers whether a chunk is non-final rather than whether the step was a prefill" as NonEmptyStr
+}
+
+// -- PROFILE ADMISSION -------------------------------------------------------------------------
+//
+// EVERY ARM BELOW HAS A PRODUCER IN observer_profile_admits. gunbc.spark.serving_engine ruled twice
+// against carrying a refusal arm no function emits -- once deleting WeightsExceedUsablePool, once
+// deleting counts_device_reservation -- on the ground that a required field or arm with no consumer
+// is a fact the model asserts and never verifies. An arm here for, say, an unsupported tensor-parallel
+// degree would be exactly that: this module has no measurement that makes any degree unsupported.
+type ObserverProfile sole_constructor {
+  revision: VllmSourceRevision
+  selection: VllmSchedulerSelection
+  async_scheduling: VllmAsyncSchedulingRequest
+}
+
+fn observer_profile(
+  revision: VllmSourceRevision,
+  selection: VllmSchedulerSelection,
+  async_scheduling: VllmAsyncSchedulingRequest,
+) -> ObserverProfile {
+  ObserverProfile { revision: revision, selection: selection, async_scheduling: async_scheduling }
+}
+
+type ObserverProfileRefusal
+  = ProfileRevisionDrift { observed: NonEmptyStr, because: NonEmptyStr }
+  | ProfileAlreadyHasForeignScheduler { qualname: NonEmptyStr, because: NonEmptyStr }
+  | ProfileAsyncSchedulingUnmodelled { delegate: NonEmptyStr, because: NonEmptyStr }
+
+type ObserverProfileAdmission
+  = ObserverProfileAdmitted { delegate: NonEmptyStr, fields: Nat }
+  | ObserverProfileRefused { cause: ObserverProfileRefusal }
+
+fn observer_profile_admits(p: ObserverProfile) -> ObserverProfileAdmission {
+  match surface_binding_for_revision(observed: p.revision) {
+    SurfaceRefusedForRevisionDrift { observed: o, because: b } =>
+      ObserverProfileRefused { cause: ProfileRevisionDrift { observed: o, because: b } }
+    SurfaceRefusedForMissingField { attribute: a, because: b } =>
+      ObserverProfileRefused { cause: ProfileRevisionDrift { observed: a, because: b } }
+    SurfaceBound { revision: _, fields: n } =>
+      match p.selection {
+        SelectedByQualname { qualname: q } =>
+          ObserverProfileRefused {
+            cause: ProfileAlreadyHasForeignScheduler {
+              qualname: q,
+              because: "this launch already substitutes a scheduler, so wrapping it would observe that class rather than the upstream default this contract's laws were established against, and the observer cannot establish what its delegate does" as NonEmptyStr
+            }
+          }
+        SelectedByTypeObject { because: r } =>
+          ObserverProfileRefused {
+            cause: ProfileAlreadyHasForeignScheduler {
+              qualname: r,
+              because: "this launch passes a scheduler class object rather than a qualname, so the delegate cannot even be named in a receipt, let alone established" as NonEmptyStr
+            }
+          }
+        SelectedByUpstreamDefault =>
+          match p.async_scheduling {
+            AsyncSchedulingOn =>
+              ObserverProfileRefused {
+                cause: ProfileAsyncSchedulingUnmodelled {
+                  delegate: vllm_default_scheduler_qualname(async_scheduling: AsyncSchedulingOn),
+                  because: "AsyncScheduler advances num_computed_tokens against num_output_placeholders for tokens not yet returned, so the prefix a receipt would record is optimistic by an amount this manifest has not established; admitting it would produce receipts whose cached_tokens means something different from every other receipt in the same population, and a fold over the mixture would be silently wrong" as NonEmptyStr
+                }
+              }
+            AsyncSchedulingOff =>
+              ObserverProfileAdmitted { delegate: vllm_default_scheduler_qualname(async_scheduling: AsyncSchedulingOff), fields: n }
+            AsyncSchedulingUnset =>
+              ObserverProfileAdmitted { delegate: vllm_default_scheduler_qualname(async_scheduling: AsyncSchedulingUnset), fields: n }
+          }
+      }
+  }
+}
+
+fn observer_profile_refusal_wire(cause: ObserverProfileRefusal) -> String {
+  match cause {
+    ProfileRevisionDrift { observed: o, because: _ } => join(["revision-drift(", o as String, ")"], "")
+    ProfileAlreadyHasForeignScheduler { qualname: q, because: _ } => join(["foreign-scheduler(", q as String, ")"], "")
+    ProfileAsyncSchedulingUnmodelled { delegate: d, because: _ } => join(["async-scheduling-unmodelled(", d as String, ")"], "")
+  }
+}
+
+// -- THE FRONTIER THIS MANIFEST OPENS ----------------------------------------------------------
+//
+// gunbc.spark.serving_step_receipt declares spark_step_receipt_producer as ProducerUnbuilt with a
+// capability-shaped trigger. This module does not discharge that trigger and must not be read as
+// doing so: it establishes WHAT the producer must read and WHEN it must refuse, which is the input to
+// building one and not a substitute for it. The remaining work is a wheel, and no wheel exists.
+type ManifestStanding
+  = ManifestConsumedByWheel { wheel: NonEmptyStr }
+  | ManifestAwaitingWheel { trigger: NonEmptyStr }
+
+data serving_observer_manifest_standing: ManifestStanding = ManifestAwaitingWheel {
+  trigger: "a gunbai-vllm observer wheel, built at this exact revision, whose scheduler class delegates to the admitted class named by observer_profile_admits, fills every row of receipt_field_bindings from the SchedulerOutput read site and no other, refuses to import under any profile observer_profile_admits refuses, and is proven behaviour-preserving against an unwrapped matched control on a four-rank canary" as NonEmptyStr,
+}
+
+// -- THE EXTRACTION CONSUMES THE FABRIC; IT DOES NOT BECOME A SECOND ONE -----------------------
+//
+// THE MEASUREMENT, taken over this branch: dag/gunbc/spark imports nothing from gunbc.fabric. Not
+// fabric_control_plane, not fabric_cell_acquire, not fabric_executor_class. It picks its head host
+// directly -- gunbc.spark.pair_serving_desired spark_pair_serving_head matches a group to a
+// HostIdentity constant, one of which its own annotation calls "an arbitrary choice among identical
+// units, written down".
+//
+// So the serving lane is ALREADY a parallel placement authority, and that is the standing condition
+// this programme's later stages act on rather than a risk they might create. DESIGN 3b names the
+// fabric/compute conformance domain and its homes, and states the divergence exactly: a change that
+// picks a host, an address or a budget itself, instead of requesting it through the work contract and
+// provider. Picking a host itself is what this lane does today.
+//
+// WHY IT MATTERS MOST AT THE STAGES THAT LOOK LEAST LIKE PLACEMENT. Replacing Ray with a first-party
+// rank protocol, and bringing placement policy in-house, are the two stages whose names invite
+// building rank membership, addressing, capacity accounting and an event log inside gunbc.spark. Each
+// of those already has a home. Built again here they would not be a serving feature; they would be a
+// second fabric, and DESIGN 3's attractor argument says the cost is not the duplicate code but that
+// every nearby question afterwards gets answered in the duplicate's vocabulary.
+//
+// THIS IS THEREFORE A CONSTRAINT ON THE PROGRAMME, DECLARED AT ITS FIRST STAGE, because by the stage
+// it binds the attractor has already formed.
+type FabricConsumption
+  = AcquiredThroughFabric { authority: NonEmptyStr }
+  | ChosenWithinServingLane { what: NonEmptyStr, because: NonEmptyStr }
+
+type FabricConsumptionAdmission
+  = FabricConsumptionConforms { authority: NonEmptyStr }
+  | FabricConsumptionDiverges { what: NonEmptyStr, because: NonEmptyStr }
+
+// The three-valued reading DESIGN 3b insists on is preserved by the CALLER, not collapsed here: a
+// divergence carries its reason, and a stated reason is an admitted departure rather than a defect.
+// What has no arm is a divergence with no reason, which is the only red.
+fn fabric_consumption_admits(c: FabricConsumption) -> FabricConsumptionAdmission {
+  match c {
+    AcquiredThroughFabric { authority: a } => FabricConsumptionConforms { authority: a }
+    ChosenWithinServingLane { what: w, because: b } => FabricConsumptionDiverges { what: w, because: b }
+  }
+}
+
+// THE STANDING DIVERGENCE, recorded with its reason so that it is an admitted departure with a
+// bounded life rather than an unstated fork. It is stated about the head-host choice specifically,
+// because that is the one this branch can point at.
+data spark_serving_placement_standing: FabricConsumption = ChosenWithinServingLane {
+  what: "gunbc.spark.pair_serving_desired spark_pair_serving_head, which matches a FabricGroup to a HostIdentity constant with no reservation, offer, candidate binding or capacity admission" as NonEmptyStr,
+  because: "the pair was stood up against two fixed hosts before any serving demand could be expressed to the control plane, and recording the observed head was the only attributable choice available at the time" as NonEmptyStr
+}

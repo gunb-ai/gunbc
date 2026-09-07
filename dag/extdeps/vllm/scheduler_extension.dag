@@ -1,0 +1,219 @@
+module extdeps.vllm.scheduler_extension
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
+
+// VLLM'S SUPPORTED SCHEDULER EXTENSION POINT, AND THE OUTPUT FIELDS A WRAPPER MAY READ.
+//
+// WHY THIS MODULE IS SEPARATE FROM ITS THREE SIBLINGS. extdeps.vllm.server owns the served ROUTES,
+// extdeps.vllm.engine_args owns what the engine is LAUNCHED with, extdeps.vllm.metrics owns what the
+// engine REPORTS. None of them owns what upstream lets a third party SUBSTITUTE, which is a fourth
+// kind of fact about the same product: an interface upstream publishes for replacement rather than a
+// surface it serves. Folding it into engine_args would fuse an argument's spelling with the ABC that
+// argument resolves to, and those move independently across revisions.
+//
+// WHAT THIS MODULE DELIBERATELY DOES NOT CARRY. It names no receipt, no allocation, no observation
+// gap and no instrument. gunbc.spark.serving_step_receipt and gunbc.spark.serving_launch_instrumentation
+// already own that vocabulary, and a second spelling of it here -- even a faithful one -- would be the
+// meaning fork this programme is being sequenced to avoid. This module answers only: what does upstream
+// publish, at which revision, and what breaks when that revision moves.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/vllm-project/vllm/blob/1967a5627bc3710b680bbec24ecb99aaddedf22b/vllm/v1/core/sched/interface.py"
+  }
+}
+
+data extdeps_scheduler_output_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/vllm-project/vllm/blob/1967a5627bc3710b680bbec24ecb99aaddedf22b/vllm/v1/core/sched/output.py"
+  }
+}
+
+data extdeps_scheduler_config_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/vllm-project/vllm/blob/1967a5627bc3710b680bbec24ecb99aaddedf22b/vllm/config/scheduler.py"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vllm.scheduler_extension",
+      decl_name: "VllmSchedulerExtensionPoint",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [extdeps_scheduler_output_authority, extdeps_scheduler_config_authority]
+}
+
+// -- THE EXTENSION POINT IS A CONFIG FIELD, WHICH IS WHY THE BINDING IS FIXED AT START ----------
+//
+// gunbc.spark.serving_launch_instrumentation rules that FirstPartyStepObserver binds only at process
+// start, and reached that from an OBSERVATION: nothing loads a scheduler into a running engine. The
+// upstream source says the same thing structurally, and the two agreeing is worth recording because
+// they are independent -- one is a probe of a live host, the other is a read of the pinned source.
+//
+// SchedulerConfig.scheduler_cls is a plain configuration field, and SchedulerConfig.get_scheduler_cls
+// resolves it -- by resolve_obj_by_qualname when it is a string, or by using it directly when it is
+// already a type. The engine calls that resolver ONCE, when it constructs its scheduler. There is no
+// setter, no route, and no reload path, so a launch that started without the field set has no
+// mechanism by which a later request could install one.
+type VllmSchedulerSelection
+  = SelectedByQualname { qualname: NonEmptyStr }
+  | SelectedByTypeObject { because: NonEmptyStr }
+  | SelectedByUpstreamDefault
+
+// -- THE DEFAULT IS CONDITIONAL, AND ASSUMING IT IS NOT IS A BEHAVIOUR-CHANGING BUG -----------
+//
+// The observer's entire correctness claim is that it delegates to what would otherwise have run and
+// returns that answer unchanged. Which class that IS depends on a second field: with scheduler_cls
+// unset, get_scheduler_cls returns AsyncScheduler when async_scheduling is truthy and Scheduler
+// otherwise. Setting scheduler_cls takes the branch away -- upstream resolves the named class and
+// never consults async_scheduling again.
+//
+// So a wrapper that hardcodes Scheduler as its delegate does not merely observe an async-scheduled
+// engine; it SILENTLY CONVERTS IT to a synchronously-scheduled one, changes throughput and latency,
+// and reports the result as a behaviour-preserving observation. That is the exact shape the canary's
+// matched control would be least likely to catch, because both arms would be equally converted if
+// the wrapper were used on both.
+type VllmAsyncSchedulingRequest = AsyncSchedulingOn | AsyncSchedulingOff | AsyncSchedulingUnset
+
+fn vllm_default_scheduler_qualname(async_scheduling: VllmAsyncSchedulingRequest) -> NonEmptyStr {
+  match async_scheduling {
+    AsyncSchedulingOn => "vllm.v1.core.sched.async_scheduler.AsyncScheduler" as NonEmptyStr
+    AsyncSchedulingOff => "vllm.v1.core.sched.scheduler.Scheduler" as NonEmptyStr
+    AsyncSchedulingUnset => "vllm.v1.core.sched.scheduler.Scheduler" as NonEmptyStr
+  }
+}
+
+// -- UPSTREAM DISCLAIMS THIS INTERFACE, IN ITS OWN WORDS ---------------------------------------
+//
+// get_scheduler_cls logs, on every custom selection: "Using custom scheduler class %s. This
+// scheduler interface is not public and compatibility may not be maintained."
+//
+// This is not a caveat to note and move past. It is what makes the revision pin the ONLY thing
+// standing between this programme and silent drift: for a public interface a version range would be
+// a reasonable compatibility statement, and here it is not, because upstream has reserved the right
+// to change the shape without changing anything a range could observe. It is also why the extension
+// point is nevertheless the right choice -- it is a published seam that fails loudly at construction,
+// and the alternative is monkey-patching, which fails silently at any time.
+type UpstreamStabilityPosture
+  = UpstreamPublicInterface { by: NonEmptyStr }
+  | UpstreamDisclaimsCompatibility { in_words: NonEmptyStr, consequence: NonEmptyStr }
+
+data vllm_scheduler_interface_posture: UpstreamStabilityPosture = UpstreamDisclaimsCompatibility {
+  in_words: "This scheduler interface is not public and compatibility may not be maintained" as NonEmptyStr,
+  consequence: "no version range is an admissible compatibility statement for this surface, so a binding is admitted against one exact revision and refuses against every other" as NonEmptyStr
+}
+
+// The ABC a substituted scheduler must satisfy. Instantiating a class that misses an abstract method
+// raises at construction, so an incomplete wrapper fails the launch rather than serving degraded --
+// which is the fail-closed shape we want and did not have to build.
+data vllm_scheduler_interface_qualname: NonEmptyStr = "vllm.v1.core.sched.interface.SchedulerInterface" as NonEmptyStr
+
+type VllmSchedulerExtensionPoint sole_constructor {
+  config_field: NonEmptyStr
+  resolver: NonEmptyStr
+  interface: NonEmptyStr
+  established_against: VllmSourceRevision
+}
+
+data vllm_scheduler_extension_point: VllmSchedulerExtensionPoint = VllmSchedulerExtensionPoint {
+  config_field: "vllm.config.scheduler.SchedulerConfig.scheduler_cls" as NonEmptyStr,
+  resolver: "vllm.config.scheduler.SchedulerConfig.get_scheduler_cls" as NonEmptyStr,
+  interface: vllm_scheduler_interface_qualname,
+  established_against: vllm_source_revision_read
+}
+
+// WHETHER A SELECTION CAN BE MADE AFTER THE ENGINE IS RUNNING. This function exists to be the
+// upstream-sourced half of a claim the live-host probe already made, so that a future revision which
+// added a reload path would red HERE rather than silently making the instrumentation law stale.
+type SchedulerSelectionTiming
+  = SelectableWhileRunning { by: NonEmptyStr }
+  | SelectableOnlyAtEngineConstruction { because: NonEmptyStr }
+
+fn scheduler_selection_timing(p: VllmSchedulerExtensionPoint) -> SchedulerSelectionTiming {
+  SelectableOnlyAtEngineConstruction {
+    because: join(["the class is resolved by ", p.resolver as String, " when the engine core constructs its scheduler, and the pinned revision publishes no setter, route or reload path that would resolve it a second time"], "") as NonEmptyStr
+  }
+}
+
+// -- WHAT ONE SCHEDULE CALL RETURNS, LIMITED TO THE FIELDS AN OBSERVER READS -------------------
+//
+// This is NOT an inventory of SchedulerOutput. It is the closed set of fields the first-party
+// observer depends on, which is the set whose disappearance must break a build rather than quietly
+// produce an emptier receipt. A field vLLM carries that we do not read is upstream's business.
+//
+// THE LOAD-BEARING ONE IS num_scheduled_tokens. It is a dict from request id to token count -- the
+// per-request-per-step fact gunbc.spark.serving_step_receipt was authored around, and the fact
+// gunbc.recurring_failure_mode cumulative_metric_read_as_per_event says no engine-wide counter can
+// reconstruct. It is not derived by the observer; the scheduler already computed it to do its job.
+type VllmSchedulerOutputField
+  = NumScheduledTokens
+  | TotalNumScheduledTokens
+  | ScheduledNewReqs
+  | ScheduledCachedReqs
+
+fn scheduler_output_field_attribute(f: VllmSchedulerOutputField) -> NonEmptyStr {
+  match f {
+    NumScheduledTokens => "num_scheduled_tokens" as NonEmptyStr
+    TotalNumScheduledTokens => "total_num_scheduled_tokens" as NonEmptyStr
+    ScheduledNewReqs => "scheduled_new_reqs" as NonEmptyStr
+    ScheduledCachedReqs => "scheduled_cached_reqs" as NonEmptyStr
+  }
+}
+
+// The declared Python type at the pinned revision. A wrapper that reads a field whose SHAPE changed
+// is a worse failure than one that reads a field which vanished, because the vanished one raises and
+// the reshaped one silently produces a wrong receipt. So the shape is recorded and not only the name.
+fn scheduler_output_field_shape(f: VllmSchedulerOutputField) -> NonEmptyStr {
+  match f {
+    NumScheduledTokens => "dict[str, int] keyed by request id" as NonEmptyStr
+    TotalNumScheduledTokens => "int, documented upstream as equal to the sum of num_scheduled_tokens values" as NonEmptyStr
+    ScheduledNewReqs => "list[NewRequestData], each carrying req_id and num_computed_tokens" as NonEmptyStr
+    ScheduledCachedReqs => "CachedRequestData carrying parallel lists req_ids and num_computed_tokens" as NonEmptyStr
+  }
+}
+
+fn scheduler_output_fields_read() -> List<VllmSchedulerOutputField> {
+  [NumScheduledTokens, TotalNumScheduledTokens, ScheduledNewReqs, ScheduledCachedReqs]
+}
+
+// -- THE COUNTS THAT CLOSE A STEP --------------------------------------------------------------
+//
+// get_request_counts returns (num_running_reqs, num_waiting_reqs) and is on the ABC, so it is
+// available to a wrapper through its delegate rather than by reaching into the concrete scheduler's
+// private queues. Reaching into those queues instead is the shape that makes a wrapper revision
+// fragile, so the published method is named here to make the fragile alternative a visible departure.
+data vllm_scheduler_request_counts_method: NonEmptyStr = "get_request_counts" as NonEmptyStr
+
+// -- BINDING OUTCOME ---------------------------------------------------------------------------
+//
+// A wrapper built against this module either finds every field it declared, or refuses by naming the
+// one it did not. There is no arm that proceeds with a smaller set: an observer that silently omitted
+// cached-token accounting would emit receipts that fold to a confident wrong number, which is exactly
+// the class the receipt contract exists to close.
+type SchedulerSurfaceBinding
+  = SurfaceBound { revision: VllmSourceRevision, fields: Nat }
+  | SurfaceRefusedForMissingField { attribute: NonEmptyStr, because: NonEmptyStr }
+  | SurfaceRefusedForRevisionDrift { observed: NonEmptyStr, because: NonEmptyStr }
+
+fn surface_binding_for_revision(observed: VllmSourceRevision) -> SchedulerSurfaceBinding {
+  if observed.full_revision == vllm_source_revision_read.full_revision {
+    SurfaceBound { revision: vllm_source_revision_read, fields: length(scheduler_output_fields_read()) }
+  } else {
+    SurfaceRefusedForRevisionDrift {
+      observed: observed.full_revision,
+      because: "every field name and shape in this module was read from one pinned revision, and a different revision may carry the same attribute names with different meanings, which is unobservable at runtime and produces a receipt that folds to a wrong answer" as NonEmptyStr
+    }
+  }
+}
