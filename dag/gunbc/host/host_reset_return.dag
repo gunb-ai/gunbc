@@ -803,7 +803,13 @@ data host_reset_return_receipt_path: NonEmptyStr = "target/host-reset-return.txt
 // THE NAMED CONSUMER AND ITS TRIGGER (DESIGN section 3c): the executed rows land when the fleet
 // converge reset mode runs against a rostered subject with a credential the workflow materializes,
 // which is the one part of this lane outside its author's authority and is with the operator.
-data host_reset_return_executed_receipt_frontier: NonEmptyStr = "the executed ResetAttemptReceipt pair lands when the fleet converge host reset-return mode runs, which is blocked on an authorized pinned BMC credential version reachable from that workflow and on nothing in this module"
+//
+// AND THAT TRIGGER IS AN ANNOTATION RATHER THAN A ROW, WHICH IS THE CORRECTION REVIEW 61775 MADE. It
+// stood here as a NonEmptyStr whose only content was this paragraph -- prose in a carrier no fold
+// reads, which section 4c calls misplaced or dead data and section 3c calls dangling. The frontier is
+// stated where a reader meets it and costs the corpus nothing; a typed DissolutionCondition would be
+// the right home the day something folds frontiers, and minting one here with no consumer would only
+// move the same dangling declaration into a better-looking type.
 
 // ── the folds every consumer actually calls ────────────────────────────────────────────────────
 
