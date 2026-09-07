@@ -1,7 +1,7 @@
 module gunbc.auth.approval_ntfy_converge
 
 import std.types { NonEmptyStr, String, List, Int, Bool }
-import gunbc.ownership { Ownership, Owned, Ensured }
+import gunbc.ownership { Ownership, Ensured }
 import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation, EnsureSystemAccount, EnsureOwnedDirectory,
   SystemdDaemonReload, SystemdEnableUnit, SystemdStartUnit,
@@ -66,6 +66,17 @@ fn ntfy_member_ownership(m: NtfyConvergedMember) -> Ownership? {
   Present { value: Ensured }
 }
 
+// THE KEY IS CONSUMED; ITS FORMER COMPANIONS WERE NOT AND ARE DELETED. This module briefly carried
+// ntfy_member_key_eq, ntfy_member_value_eq and approval_ntfy_member_argv, written in anticipation of
+// a membership_reconcile call that was never made -- §3c dangling, three declarations with no
+// consumer and no declared frontier.
+//
+// Deleting them was not tidying. ntfy_member_value_eq compared members by KEY ALONE, so a
+// NtfyStateDirectory and a NtfyConfigDirectory sharing a path compared EQUAL -- a wrong equality
+// that would have silently collapsed two members in the reconcile it was written for. Nothing
+// caught it because nothing ran it, which is §3c's argument in one artifact: unconsumed code is not
+// merely idle, it is unexamined, and it accumulates defects that surface only when someone finally
+// wires it up.
 fn ntfy_member_key(m: NtfyConvergedMember) -> NonEmptyStr {
   match m {
     NtfyServiceAccount => "account"
@@ -75,14 +86,6 @@ fn ntfy_member_key(m: NtfyConvergedMember) -> NonEmptyStr {
     NtfyUnitEnabled => "unit-enabled"
     NtfyUnitStarted => "unit-started"
   }
-}
-
-fn ntfy_member_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
-  (a as String) == (b as String)
-}
-
-fn ntfy_member_value_eq(a: NtfyConvergedMember, b: NtfyConvergedMember) -> Bool {
-  (ntfy_member_key(m: a) as String) == (ntfy_member_key(m: b) as String)
 }
 
 // DERIVED, NOT RE-MINTED. These previously spelled "/var/lib/gunbc-ntfy/attachments" and
@@ -150,10 +153,6 @@ fn ntfy_member_operations(m: NtfyConvergedMember) -> List<ExecutorPrivilegedOper
     NtfyUnitEnabled => [SystemdEnableUnit { unit: approval_ntfy_unit_name }]
     NtfyUnitStarted => [SystemdStartUnit { unit: approval_ntfy_unit_name }]
   }
-}
-
-fn approval_ntfy_member_argv(m: NtfyConvergedMember) -> List<List<NonEmptyStr>> {
-  map(ntfy_member_operations(m: m), op => executor_privileged_operation_argv(op: op))
 }
 
 // THE COMMANDS A CONVERGENCE ACTUALLY RUNS, each carrying its precondition so a second apply is a

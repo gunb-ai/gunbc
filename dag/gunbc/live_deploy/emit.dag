@@ -1190,8 +1190,16 @@ fn install_d_managed_command(dir: ManagedDirectory) -> String {
 // caller the place EnsureSystemAccount's idempotence lived -- so the operation read as idempotent
 // while any second caller inherited `useradd` exiting 9. The precondition now belongs to the
 // operation (gunbc.executor_privileged_operation executor_privileged_operation_converge_command)
-// and this function consumes it. The emitted bytes are unchanged; what changed is that they have
-// one author.
+// and this function consumes it.
+//
+// THE EMITTED BYTES DID CHANGE, and an earlier revision of this very annotation claimed they did
+// not -- a machine claim stated in prose, contradicted by this PR's own witness update, and §4c is
+// explicit that an annotation is never evidence a machine claim holds. The check now runs through
+// the same posix_single_quote authority as the operation it guards, so the login arrives
+// single-quoted: `'id' '-u' 'gunbc-publication'` rather than `id -u gunbc-publication`. Equivalent
+// shell, one fewer place deciding quoting, and the witness asserts the guard's shape rather than a
+// spelling. What is verified is that all 59 live_deploy emit witnesses pass -- not that the bytes
+// are identical, because they are not.
 fn deploy_publication_principal_ensure_command(spec: DeploymentSpec) -> String {
   executor_privileged_operation_converge_command(op: EnsureSystemAccount {
     login: spec.names.publication_principal,
