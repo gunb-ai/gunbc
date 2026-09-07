@@ -640,12 +640,7 @@ fn census_declaration_bound_formals(type_env: TypeEnv, owner_module_path: String
   node.params
     |> filter(p => !(tp_names |> any(tp => tp == param_node_name_at(n: p, source_indices: type_env.source_indices))))
     |> map(p => {
-      let declared_type = qualify_borrowed_type_names(
-        n: param_node_type_expr(n: p),
-        owner_module_path: owner_module_path,
-        env: type_env,
-        excluded: declaration_generic_names
-      )
+      let declared_type = param_node_type_expr(n: p)
       ResolvedFormal {
         parameter_identity: param_node_name_at(n: p, source_indices: type_env.source_indices),
         declared_type: declared_type,
