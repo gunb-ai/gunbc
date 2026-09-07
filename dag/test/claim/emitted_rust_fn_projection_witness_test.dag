@@ -8,21 +8,21 @@ import tools.multi_module_compile_fixture {
   FixtureInstrumentRefused,
   FixtureCompileRefused,
   FixtureCompileCompleted,
-  EmittedRustFnSignature,
-  EmittedRustFnLookup,
-  EmittedRustFnFound,
-  EmittedRustFnAbsent,
+  ResolvedRustFnSignature,
+  ResolvedRustFnLookup,
+  ResolvedRustFnFound,
+  ResolvedRustFnAbsent,
   fixture_source,
   compile_fixture,
-  emitted_rust_fn_lookup,
-  emitted_rust_fn_has_parameter
+  resolved_rust_fn_lookup,
+  resolved_rust_fn_has_parameter
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE INSTRUMENT'S OWN DISCRIMINATING PAIR. Both fixtures COMPILE CLEANLY. The only variable is
 // whether the top-level function's registry row carries the parameter `marker`. A witness asserts
-// over the structured EmittedRustFnSignature projection (resolved-registry grain — never over
+// over the structured ResolvedRustFnSignature projection (resolved-registry grain — never over
 // emitted text), so the green arm is not a substring that could match prose, and the red arm is
 // authorable as a clean compile whose ordered parameter list simply lacks the name (DESIGN 4b:
 // the RED must be authorable or the check is a decoration).
@@ -50,12 +50,12 @@ fn run_without_marker() -> MultiModuleCompileFixtureOutcome {
   })
 }
 
-fn completed_functions(o: MultiModuleCompileFixtureOutcome) -> List<EmittedRustFnSignature> {
+fn completed_functions(o: MultiModuleCompileFixtureOutcome) -> List<ResolvedRustFnSignature> {
   match o {
     FixtureCompileCompleted {
       module_count: _,
       emitted_files: _,
-      emitted_rust_functions: fns,
+      resolved_rust_functions: fns,
       diagnostics: _,
       source_digest: _,
       compiler_digest: _
@@ -71,14 +71,14 @@ fn completed_functions(o: MultiModuleCompileFixtureOutcome) -> List<EmittedRustF
 }
 
 fn observed_has_marker(o: MultiModuleCompileFixtureOutcome) -> Bool {
-  match emitted_rust_fn_lookup(
+  match resolved_rust_fn_lookup(
     functions: completed_functions(o),
     owner_module: "proj.obs",
     declaration_name: "observed"
   ) {
-    EmittedRustFnFound { signature: sig } =>
-      emitted_rust_fn_has_parameter(signature: sig, parameter_name: "marker"),
-    EmittedRustFnAbsent => false
+    ResolvedRustFnFound { signature: sig } =>
+      resolved_rust_fn_has_parameter(signature: sig, parameter_name: "marker"),
+    ResolvedRustFnAbsent => false
   }
 }
 
@@ -87,7 +87,7 @@ fn observed_compiles_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
     FixtureCompileCompleted {
       module_count: n,
       emitted_files: files,
-      emitted_rust_functions: _,
+      resolved_rust_functions: _,
       diagnostics: rows,
       source_digest: _,
       compiler_digest: _

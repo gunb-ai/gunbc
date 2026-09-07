@@ -317,14 +317,14 @@ pub fn compile_dag_multi_module_fixture(
         // Resolved-registry projection BEFORE emit consumes the graph. Subject grain: ItemInfo
         // parameter binding (with emit_ident / service_var_name transforms), keyed by source
         // identity — not emitted file bytes. Emit-path fidelity is the declared next-rung climb.
-        let emitted_rust_functions = project_emitted_rust_fn_signatures(resolved.as_ref());
+        let resolved_rust_functions = project_resolved_rust_fn_signatures(resolved.as_ref());
         let result = v1_compiler_compile::emit_resolved_for_target(
             resolved,
             crate::v1_compiler_artifact::RenderTarget::Rust,
         );
-        (module_count, emitted_rust_functions, result)
+        (module_count, resolved_rust_functions, result)
     }));
-    let (module_count, emitted_rust_functions, result) = match compiled {
+    let (module_count, resolved_rust_functions, result) = match compiled {
         Ok(r) => r,
         Err(_) => {
             return MultiModuleCompileFixtureOutcome::InstrumentRefused {
@@ -346,7 +346,7 @@ pub fn compile_dag_multi_module_fixture(
     MultiModuleCompileFixtureOutcome::CompileCompleted {
         module_count,
         emitted_files: result.files.iter().map(|f| f.path.clone()).collect(),
-        emitted_rust_functions,
+        resolved_rust_functions,
         diagnostics: rows,
         source_digest,
         compiler_digest,
@@ -359,16 +359,16 @@ pub fn compile_dag_multi_module_fixture(
 /// same per-arm transforms `emit_func_params` uses today. Not a text parse of emitted bytes.
 ///
 /// Below ceiling on ORDER and MEMBERSHIP (§3b middle value — deliberate divergence with stated
-/// reason on `EmittedRustFnSignature`): second walk over ItemInfo, not a consumption of
+/// reason on `ResolvedRustFnSignature`): second walk over ItemInfo, not a consumption of
 /// `emit_func_params`. Resource arm reads `info.resource_names`; emit folds `uses` via
 /// `resource_use_name_at` — nothing refuses on disagreement. Next-rung trigger: derive from the
 /// same source `emit_func_params` reads (or from its emit result). Why unbuilt: emit_rust seed
 /// regen would couple this instrument to #10688's live surface. Name spelling via `emit_ident` /
 /// `service_var_name` is required at this grain so membership cannot miss a reserved-word or
 /// camelCase name the registry arms will hand to emit.
-fn project_emitted_rust_fn_signatures(
+fn project_resolved_rust_fn_signatures(
     resolved: &v1_compiler_compile::ResolvedPipelineResult,
-) -> Vec<crate::cli_run::EmittedRustFnSignature> {
+) -> Vec<crate::cli_run::ResolvedRustFnSignature> {
     use crate::v1_compiler_artifact::RenderTarget;
     use crate::v1_compiler_emit::emit_ident;
     use crate::v1_compiler_infer_items::ItemKind;
@@ -377,7 +377,7 @@ fn project_emitted_rust_fn_signatures(
         return Vec::new();
     };
     let source_indices = resolved.source_indices.clone();
-    let mut rows: Vec<crate::cli_run::EmittedRustFnSignature> = Vec::new();
+    let mut rows: Vec<crate::cli_run::ResolvedRustFnSignature> = Vec::new();
     for info in graph.item_registry.values() {
         match info.kind {
             ItemKind::FnItem | ItemKind::FuncItem => {
@@ -396,7 +396,7 @@ fn project_emitted_rust_fn_signatures(
                         sn.clone(),
                     ));
                 }
-                rows.push(crate::cli_run::EmittedRustFnSignature {
+                rows.push(crate::cli_run::ResolvedRustFnSignature {
                     owner_module: info.module_name.clone(),
                     declaration_name: info.name.clone(),
                     ordered_parameter_names: ordered,

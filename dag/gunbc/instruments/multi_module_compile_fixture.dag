@@ -69,7 +69,7 @@ import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
 //
 // SIGNATURE SHAPE IS OBSERVABLE AS A STRUCTURED RUST PROJECTION OVER THE RESOLVED
 // REGISTRY, not as contents-by-path and not as a read of emitted bytes. On
-// FixtureCompileCompleted the field emitted_rust_functions carries List<EmittedRustFnSignature>
+// FixtureCompileCompleted the field resolved_rust_functions carries List<ResolvedRustFnSignature>
 // — per FnItem/FuncItem in item_registry: source owner_module + declaration_name and the
 // ordered parameter name list derived from that registry row (emit_ident / service_var_name
 // transforms applied). Witnesses assert over that list; raw text is not offered as an assertion
@@ -96,8 +96,9 @@ type MultiModuleCompileFixture {
 // resource arms; service_var_name for services), concatenated authored → resource → service.
 // The type name says Rust because compile_fixture is Rust-target only; a target-agnostic name
 // over that reader would be the DESIGN section 3 meaning fork. The field name
-// emitted_rust_functions / EmittedRustFnSignature admits the Rust emit *target*; it does not
-// claim the rows were read from emitted file bytes.
+// resolved_rust_functions / ResolvedRustFnSignature names the registry grain (and the Rust
+// target); it does not claim a read of emitted file bytes — an `emitted_*` spelling over this
+// pre-emit reader would be the meaning fork DESIGN §3 forbids.
 //
 // NAMES ONLY — PERMANENT CEILING, NO NEXT-RUNG TRIGGER. Parameter TYPES and return types are
 // absent on purpose: asserting over emitted type spellings turns a control into a change detector
@@ -120,7 +121,7 @@ type MultiModuleCompileFixture {
 // WHY THE DIVERGENCE IS THE RIGHT SHAPE FOR THIS INSTRUMENT (the §3b reason, not a manager
 // citation). Consumers of compile_fixture need a membership surface over resolved fn bindings
 // without coupling every fixture witness to emit_rust regeneration. The durable contract here is
-// registry-grain lookup + emitted_rust_fn_has_parameter; that API is what must survive. The
+// registry-grain lookup + resolved_rust_fn_has_parameter; that API is what must survive. The
 // second walk is the temporary producer — §6's "will this artifact survive" test applies to the
 // throwaway walk, which the next-rung trigger deletes, not to the carrier or its consumers.
 // Joining emit on this same PR would turn an instrument lane into an emit_rust regen lane and
@@ -143,15 +144,15 @@ type MultiModuleCompileFixture {
 // at this grain. A consumer that wants raw text is outside this instrument's contract — handing
 // String would re-author the permanently-green substring trap this projection exists to make
 // unwritable.
-type EmittedRustFnSignature {
+type ResolvedRustFnSignature {
   owner_module: String
   declaration_name: String
   ordered_parameter_names: List<String>
 }
 
-type EmittedRustFnLookup
-  = EmittedRustFnFound { signature: EmittedRustFnSignature }
-  | EmittedRustFnAbsent
+type ResolvedRustFnLookup
+  = ResolvedRustFnFound { signature: ResolvedRustFnSignature }
+  | ResolvedRustFnAbsent
 
 type MultiModuleCompileFixtureOutcome
   = FixtureInstrumentRefused { cause: NonEmptyStr }
@@ -164,7 +165,7 @@ type MultiModuleCompileFixtureOutcome
   | FixtureCompileCompleted {
       module_count: Int
       emitted_files: List<String>
-      emitted_rust_functions: List<EmittedRustFnSignature>
+      resolved_rust_functions: List<ResolvedRustFnSignature>
       diagnostics: List<CompileDiagnosticCensusRow>
       source_digest: NonEmptyStr
       compiler_digest: NonEmptyStr
@@ -199,24 +200,24 @@ fn fixture_has_class(rows: List<CompileDiagnosticCensusRow>, wanted: String) -> 
 }
 
 // PURE READS OVER THE PROJECTION LIST, never over the outcome. Looking up a function by source
-// identity returns EmittedRustFnAbsent when no row matches — never an empty parameter list wearing
+// identity returns ResolvedRustFnAbsent when no row matches — never an empty parameter list wearing
 // a found answer (DESIGN section 5: blank is not evidence of a nullary function).
-fn emitted_rust_fn_lookup(
-  functions: List<EmittedRustFnSignature>,
+fn resolved_rust_fn_lookup(
+  functions: List<ResolvedRustFnSignature>,
   owner_module: String,
   declaration_name: String
-) -> EmittedRustFnLookup {
+) -> ResolvedRustFnLookup {
   let matches = functions |> filter(f =>
     f.owner_module == owner_module && f.declaration_name == declaration_name
   )
   match matches |> first {
-    Present { value: sig } => EmittedRustFnFound { signature: sig }
-    Absent => EmittedRustFnAbsent
+    Present { value: sig } => ResolvedRustFnFound { signature: sig }
+    Absent => ResolvedRustFnAbsent
   }
 }
 
 // MEMBERSHIP, not position. Prefer this over indexing ordered_parameter_names unless the
 // subject's claim is specifically about emit_func_params layout.
-fn emitted_rust_fn_has_parameter(signature: EmittedRustFnSignature, parameter_name: String) -> Bool {
+fn resolved_rust_fn_has_parameter(signature: ResolvedRustFnSignature, parameter_name: String) -> Bool {
   signature.ordered_parameter_names |> any(n => n == parameter_name)
 }

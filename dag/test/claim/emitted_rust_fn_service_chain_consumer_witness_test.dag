@@ -8,14 +8,14 @@ import tools.multi_module_compile_fixture {
   FixtureInstrumentRefused,
   FixtureCompileRefused,
   FixtureCompileCompleted,
-  EmittedRustFnSignature,
-  EmittedRustFnLookup,
-  EmittedRustFnFound,
-  EmittedRustFnAbsent,
+  ResolvedRustFnSignature,
+  ResolvedRustFnLookup,
+  ResolvedRustFnFound,
+  ResolvedRustFnAbsent,
   fixture_source,
   compile_fixture,
-  emitted_rust_fn_lookup,
-  emitted_rust_fn_has_parameter
+  resolved_rust_fn_lookup,
+  resolved_rust_fn_has_parameter
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -59,12 +59,12 @@ fn run_no_service_sibling() -> MultiModuleCompileFixtureOutcome {
   })
 }
 
-fn completed_functions(o: MultiModuleCompileFixtureOutcome) -> List<EmittedRustFnSignature> {
+fn completed_functions(o: MultiModuleCompileFixtureOutcome) -> List<ResolvedRustFnSignature> {
   match o {
     FixtureCompileCompleted {
       module_count: _,
       emitted_files: _,
-      emitted_rust_functions: fns,
+      resolved_rust_functions: fns,
       diagnostics: _,
       source_digest: _,
       compiler_digest: _
@@ -84,7 +84,7 @@ fn compiles_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
     FixtureCompileCompleted {
       module_count: n,
       emitted_files: files,
-      emitted_rust_functions: _,
+      resolved_rust_functions: _,
       diagnostics: rows,
       source_digest: _,
       compiler_digest: _
@@ -100,14 +100,14 @@ fn compiles_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
 }
 
 fn f0_has_setsw_probe(o: MultiModuleCompileFixtureOutcome) -> Bool {
-  match emitted_rust_fn_lookup(
+  match resolved_rust_fn_lookup(
     functions: completed_functions(o),
     owner_module: "setsw.chain",
     declaration_name: "f0"
   ) {
-    EmittedRustFnFound { signature: sig } =>
-      emitted_rust_fn_has_parameter(signature: sig, parameter_name: "setsw_probe"),
-    EmittedRustFnAbsent => false
+    ResolvedRustFnFound { signature: sig } =>
+      resolved_rust_fn_has_parameter(signature: sig, parameter_name: "setsw_probe"),
+    ResolvedRustFnAbsent => false
   }
 }
 
