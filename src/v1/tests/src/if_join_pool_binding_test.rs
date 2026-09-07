@@ -3,7 +3,10 @@
 //! `gunbc.recurring_failure_mode`
 //! `binding_chosen_by_pool_membership_rather_than_by_the_declared_rule`:
 //! a coproduct arm in `declaring_module` must typecheck the same whether or not
-//! an unrelated same-spelled product is in the compiled closure.
+//! an unrelated same-spelled product, or an unrelated same-spelled unit arm
+//! pulled in by a Dummy import, is in the compiled closure. This does not close
+//! the class: the production Observed/BeltObserve specimen remains a different
+//! channel.
 //!
 //! SCAFFOLD (DESIGN §7 HAND-RUST GATE — explicit deferral): the fixture is
 //! deliberately outside `dag/` / `src/v2` so the collision is source handed to
@@ -59,5 +62,29 @@ fn declaring_module_is_invariant_under_unrelated_pool_product() {
     assert!(
         with_msgs.is_empty(),
         "adding colliding_module to the closure must not rebind declaring_module's arm; got {with_msgs:?}"
+    );
+}
+
+#[test]
+fn declaring_module_is_invariant_under_unrelated_pool_unit_arm() {
+    std::env::set_current_dir(workspace_root()).expect("cwd");
+    let without =
+        compile_declared_import_closure_only_with_pool(&pool_roots(), WITHOUT_COLLISION, None)
+            .expect("compile without collision");
+    let with = compile_declared_import_closure_only_with_pool(
+        &pool_roots(),
+        "fixtures/if_join_pool_binding/closure_with_unit_collision.dag",
+        None,
+    )
+    .expect("compile with unit collision");
+    let without_msgs = hard_messages(&without);
+    let with_msgs = hard_messages(&with);
+    assert!(
+        without_msgs.is_empty(),
+        "positive control must accept; got {without_msgs:?}"
+    );
+    assert!(
+        with_msgs.is_empty(),
+        "adding an off-chain unit arm via an unrelated import must not rebind declaring_module; got {with_msgs:?}"
     );
 }

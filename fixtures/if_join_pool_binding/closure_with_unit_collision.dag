@@ -1,0 +1,15 @@
+module fixtures.if_join_pool_binding.closure_with_unit_collision
+
+// Geometry matches the production specimen: declaring_module is byte-identical and
+// imports nothing from colliding_unit_module; the entry pulls the collider into the
+// closure by importing an unrelated member (PoolSpecimenDummy), not the competing arm.
+import fixtures.if_join_pool_binding.declaring_module { PoolSpecimenShape, pick_shape }
+import fixtures.if_join_pool_binding.colliding_unit_module { PoolSpecimenDummy }
+
+fn refusing_use(c: Bool) -> PoolSpecimenShape {
+  pick_shape(c: c)
+}
+
+fn foreign_dummy() -> PoolSpecimenDummy {
+  PoolSpecimenDummy { x: 0 }
+}
