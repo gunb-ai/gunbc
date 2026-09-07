@@ -15,6 +15,7 @@ import gunbc.guarantee_stall { GuaranteeStall }
 import gunbc.guarantee_stall.emission_provenance_missing_consumer { emission_provenance_missing_consumer }
 import gunbc.guarantee_stall.emit_returns_medium_not_contribution_stall { emit_returns_medium_not_contribution_stall }
 import gunbc.guarantee_stall.emission_apply_generic_r_uninstantiated_stall { emission_apply_generic_r_uninstantiated_stall }
+import gunbc.guarantee_stall.emission_provenance_correspondence_missing_consumer { emission_provenance_correspondence_missing_consumer }
 import gunbc.guarantee_stall.pre_resolve_entry_closure_module_identity_stall { pre_resolve_entry_closure_module_identity_stall }
 import gunbc.guarantee_stall.merge_admission_terminal_verdict_stall { merge_admission_terminal_verdict_stall }
 import gunbc.guarantee_stall.generated_artifact_registry_membership_stall { generated_artifact_registry_membership_stall }
@@ -219,6 +220,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   emission_provenance_missing_consumer,
   emit_returns_medium_not_contribution_stall,
   emission_apply_generic_r_uninstantiated_stall,
+  emission_provenance_correspondence_missing_consumer,
 ]
 
 // THE FOUR SUBJECTS RESTORED TO THE ROSTER, PINNED BY IDENTITY SO THEIR LOSS REFUSES.

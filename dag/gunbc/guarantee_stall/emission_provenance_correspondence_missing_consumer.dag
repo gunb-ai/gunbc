@@ -1,0 +1,25 @@
+module gunbc.guarantee_stall.emission_provenance_correspondence_missing_consumer
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+
+data emission_provenance_correspondence_missing_consumer: GuaranteeStall = GuaranteeStall {
+  subject: "std.emission_provenance declares resolution and correspondence types (EmissionResolutionCoverage, EmissionResolutionCorrespondence, EmissionDeclarationCorrespondence, EmissionModuleCorrespondence) and the folds emission_members_by_address, emission_correspondence, emission_declaration_correspondence, emission_module_correspondence, emission_resolution_correspondence. The only executing readers today are test.claim.emission_provenance_test fixture claims. No production path constructs two observations and reads a correspondence. The emitter-path work in this PR discharges contribution arms only and does not consume these declarations.",
+  current: Mitigatable,
+  ceiling: StructurallyImpossible,
+  blocker: AwaitsOneGrounding {
+    grounding: "a production path constructs two EmissionResolutionCoverage values and reads emission_resolution_correspondence as part of an executing required-floor control."
+  },
+  population: BoundedPopulation { members: [
+    "std.emission_provenance.EmissionResolutionCoverage",
+    "std.emission_provenance.EmissionResolutionCorrespondence",
+    "std.emission_provenance.EmissionDeclarationCorrespondence",
+    "std.emission_provenance.EmissionModuleCorrespondence",
+    "std.emission_provenance.emission_members_by_address",
+    "std.emission_provenance.emission_correspondence",
+    "std.emission_provenance.emission_declaration_correspondence",
+    "std.emission_provenance.emission_module_correspondence",
+    "std.emission_provenance.emission_resolution_correspondence"
+  ] },
+  next_rung_trigger: climbs_when(capability: "a production path (not test.claim.emission_provenance_test) constructs two EmissionResolutionCoverage values and reads emission_resolution_correspondence as part of an executing required-floor control -- SUFFICIENT FOR that control to stay enrolled as the regression evidence rather than retiring. The existing fixture claims in test.claim.emission_provenance_test already call these folds, so a trigger that is satisfied by any call site, or by those fixtures remaining green, does not fire it.")
+}
