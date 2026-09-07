@@ -179,6 +179,7 @@ import gunbc.recurring_failure_mode.evaluation_model_cleanup_undeclared { evalua
 import gunbc.recurring_failure_mode.docs_markdown_projections_have_no_completing_actuator { docs_markdown_projections_have_no_completing_actuator }
 import gunbc.recurring_failure_mode.type_name_field_carries_rendered_value { type_name_field_carries_rendered_value }
 import gunbc.recurring_failure_mode.guarded_filter_branch_dropped_by_emitter { guarded_filter_branch_dropped_by_emitter }
+import gunbc.recurring_failure_mode.match_variant_lookup_does_not_peel_type_alias { match_variant_lookup_does_not_peel_type_alias }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry,
@@ -348,4 +349,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   docs_markdown_projections_have_no_completing_actuator,
   type_name_field_carries_rendered_value,
   guarded_filter_branch_dropped_by_emitter,
+  match_variant_lookup_does_not_peel_type_alias,
 ]
