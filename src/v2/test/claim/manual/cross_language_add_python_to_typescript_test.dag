@@ -178,6 +178,10 @@ type CrossLanguageEmitMatrixRow {
   status: CrossLanguageEmitCellStatus
 }
 
+// The python→typescript row of this matrix moved ChainFailsClosedAtCheck { check:
+// ^infer_grounding_not_derived } → ChainProven on 2026-09-07 when the declared-inhabitant
+// membership derivation widened to the closed ingest set; the round-trip witnesses above are the
+// executing evidence.
 data cross_language_emit_matrix: List<CrossLanguageEmitMatrixRow> = [
 
   CrossLanguageEmitMatrixRow {
@@ -186,9 +190,6 @@ data cross_language_emit_matrix: List<CrossLanguageEmitMatrixRow> = [
     status: ChainProven {}
   },
 
-  // python→typescript moved ChainFailsClosedAtCheck { check: ^infer_grounding_not_derived } →
-  // ChainProven on 2026-09-07 when the declared-inhabitant membership derivation widened to the
-  // closed ingest set; the round-trip witnesses above are the executing evidence.
   CrossLanguageEmitMatrixRow {
     source_language: ^python,
     target_language: ^typescript,

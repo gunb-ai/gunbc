@@ -75,12 +75,13 @@ fn retained_via_eval_agreement(
   }
 }
 
+// The roster's add family row (first element) was promoted InterpreterRetained ->
+// SelfEmittedNative 2026-09-07: the native-only verdict arm for add
+// (emit_host_native_only_add_holds + its wrong-octet broken control) landed in the already
+// file-grain-enrolled native-only verdict entry, so the backing citation is enrolled by
+// construction (coverage_row_backing_is_enrolled). The equals_eval agreement pair stays enrolled
+// as the family's program-side discrimination leg.
 data emit_coverage_frontier_roster: List<EmitCoverageFrontierRow> = [
-  // add family promoted InterpreterRetained -> SelfEmittedNative 2026-09-07: the native-only
-  // verdict arm for add (emit_host_native_only_add_holds + its wrong-octet broken control) landed
-  // in the already file-grain-enrolled native-only verdict entry, so the backing citation is
-  // enrolled by construction (coverage_row_backing_is_enrolled). The equals_eval agreement pair
-  // stays enrolled as the family's program-side discrimination leg.
   EmitCoverageFrontierRow {
     subject: coverage_subject(
       module_path: "v2.test.manual.rust_add_emit_translate",
