@@ -205,6 +205,14 @@ fn operation_argv_row_bindings(row: ShellTransportOperationRow) -> List<Operatio
 // to the same argv list are one concept under two names (DESIGN 3). Unmaterializable rows are a
 // distinct coproduct arm: their argv is not a comparable fact until evaluation lands. Token join is
 // a LABEL for humans, never the join key (review 61887).
+//
+// Unpairable is NOT a slop bucket. Generic materialization refuses argv it cannot evaluate: an
+// ExprCall or a coproduct helper at any position, including argv[0]. git.Plumbing.ReadTreeIntoIndex
+// is the exemplar -- argv starts with git_index_file_env_argv(...) then a literal git, then
+// git_repository_address_argv on GitRepositoryAddress. That is composed domain modeling, and this
+// census is blind to exactly those rows. Pairable-only conclusions systematically under-represent
+// composed argv. The expression-residue pin on the corpus witness is a different cut
+// (ArgvRowExpressionResidue) and does not describe Unpairable's composition.
 
 data operation_argv_token_join_separator: String = " :: "
 
@@ -231,6 +239,11 @@ fn operation_argv_lists_eq(a: List<String>, b: List<String>) -> Bool {
     && list_starts_with(xs: a, prefix: b, eq: fn(x, y) { x == y })
 }
 
+// Unpairable is a materialization refusal, not a slop bucket. Generic binding cannot evaluate
+// ExprCall or coproduct argv helpers, so the dark set is biased toward the best-modeled
+// operations (exemplar: git.Plumbing.ReadTreeIntoIndex). Pairable-only conclusions
+// under-represent composed argv. ArgvRowExpressionResidue on the corpus witness is a different
+// cut and does not describe this arm's composition.
 type OperationArgvCensusItem
   = Pairable { row: ShellTransportOperationRow, argv: List<String> }
   | Unpairable { row: ShellTransportOperationRow, classification: ArgvRowClassification }

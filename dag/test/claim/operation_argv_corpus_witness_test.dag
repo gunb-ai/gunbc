@@ -37,8 +37,12 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // (shell_transport_operation_rows / ArgvCorpusTally.rows), not a number copied into this note.
 // An earlier authoring-time transcription of 141 rows is withdrawn: it was a snapshot, not an
 // authority, and it drifted from the enumerator on the same witness (DESIGN 6: name the
-// instrument; DESIGN 3: one fact, one place). Pins below are the executing floor (non-vacuous
-// lower bound, residue count, unexplained == 0), not a restated census total.
+// Pins below are the executing floor (non-vacuous lower bound, residue count, unexplained == 0),
+// not a restated census total. The expression_residue pin is ArgvRowExpressionResidue only. The
+// census Unpairable arm is a larger, differently composed set: materialization also refuses
+// composed argv (calls and coproduct helpers), which is biased toward the best-modeled
+// operations (git.Plumbing.ReadTreeIntoIndex), not toward residue. Do not read that pin as the
+// unpairable population.
 
 data operation_argv_expression_residue_note: String = "The residue is a DEFICIT HELD CONSTANT, not a regression: 7 operations carry an argv element that is a call or a field access, which materialization does not evaluate. Established by execution against the OLD builtin before this change -- all 7 refused there too (4 with `unsupported expr`, 3 with `unbound param` reached first), so no operation that materialized before refuses now. What changed is the shape of the refusal: an untyped host error string became a typed, located, counted ArgvExpressionUnsupported. The count is pinned so the deficit can only shrink deliberately; the operations are git.Core.DiffUnified0, git.Core.DiffNameStatus, http.Client.GetLocalhostBounded, sudo.NopasswdExecuteProbe.Check, gunbc.Cli.Run, claim_executor.Executor.RunPlan and claim_executor.Executor.VerifyBuildArtifacts. Dissolves when argv element evaluation lands, which is a separate lane."
 
@@ -177,7 +181,9 @@ test fn operation_argv_corpus_RED_smuggled_executable_is_refused_and_located() -
 // count equality against the live tree. The planted Alpha/Beta operations in the executable-position
 // fixture are the discriminating RED: they share one argv and enroll by existing. Live (non-fixture)
 // pairs are the census finding; they are derived, not rostered, and this witness does not pin their
-// cardinality.
+// cardinality. The join is only over Pairable rows; Unpairable (composed argv the generic
+// materializer cannot evaluate) is excluded by construction, so pair conclusions under-represent
+// git.Plumbing-style operations.
 test fn witness_planted_duplicate_authority_pair_is_found() -> Bool {
   operation_argv_planted_duplicate_authority_pair_is_found()
 }
