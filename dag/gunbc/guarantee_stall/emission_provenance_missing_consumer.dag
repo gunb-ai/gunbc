@@ -4,7 +4,7 @@ import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
 import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
 
 data emission_provenance_missing_consumer: GuaranteeStall = GuaranteeStall {
-  subject: "std.emission_provenance defines EmissionContribution and its fold, but no emitter path constructs these values from real output text. The three contribution arms have a consumer enrolled in a required-floor discovery root (test.claim.emission_provenance_test at dag/test/claim) that constructs and reads all three arms. That consumer does NOT execute today because dag/test/claim/emission_provenance_test.dag:179 refuses to compile (gunbc.recurring_failure_mode.match_bound_element_type_mask, blocked on gunbc#10625). It will execute when the compiler repair lands; until then the module has no consumer green by execution. No production consumer constructs these values from real emitted output.",
+  subject: "std.emission_provenance defines EmissionContribution and its fold, but no emitter path constructs these values from real output text. The three contribution arms have an executing consumer on the required floor (test.claim.emission_provenance_test at dag/test/claim) that constructs and reads all three arms and the correspondence/resolution types — these tests compile and pass. The discriminating RED specimen for the match-bound element type mask is separated at dag/test/manual/emission_provenance_specimen_red.dag, outside discovery, until #10625 makes it compile. No production consumer constructs these values from real emitted output.",
   current: Mitigatable,
   ceiling: StructurallyImpossible,
   blocker: AwaitsOneGrounding {
