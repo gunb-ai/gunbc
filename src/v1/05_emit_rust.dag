@@ -131,7 +131,7 @@ import v1.compiler.coercion {
   coerce_primitive_type, is_copy, target_callable, rust_lookup_exact_binding,
   declaration_realizes_natively_on_rust, type_reference_realization, declaration_realization,
   type_realization_decision, realized_checkpoint, realization_host_numeric_spelling,
-  realization_is_host_numeric
+  realization_is_host_numeric, provenance_declares_structurally
 }
 import std.coercion {
   TypeDeclarationProvenance, CorpusDeclared, KernelMinted, DeclarationIdentityAbsent,
@@ -820,11 +820,24 @@ fn rust_host_text_carrier_elem_name(n: Node, source_indices: Map<String, Newline
 // An arrow is never a text carrier, whatever its authored name resolves to: `fn(String) -> String`
 // answered true here (its name reads as its return leaf) ahead of every Arrow arm, so the type
 // argument rendered `String` (E0277 x2 at v2.std.compilers.target_model).
+//
+// The String arm is keyed on the resolved declaration's PROVENANCE, never on the spelling alone
+// (DESIGN section 3, and gunbc.recurring_failure_mode
+// alias_resolution_collides_with_kernel_spelling): v2.std.text declares `type String =
+// FreeMonoid<Char>`, a structural alias whose spelling collides with the kernel scalar, and the
+// namespace lane (gunbc#9907) requalified the v2 corpus's text-carrier fields to
+// `v2.std.text.String` on that basis. A spelling-keyed arm renders every one of those references
+// as the host String while every value-position consumer renders the structure -- the E0308
+// family dominating the self-host compile-phase frontier (receipt_1_eced9d24's successor board:
+// 64 E0308, 41 of them in v2_compiler_tokenize.rs). The structural roster the answer is read from
+// is v1.compiler.coercion structural_declaration_modules_for, the same authority
+// type_realization_decision consults, so this arm and the strict decision cannot diverge on one
+// node. Kernel mints and unresolved references keep the host answer exactly as before.
 fn is_host_text_carrier_type(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   if n.connective == Arrow { return false }
   let nm = authored_name_at(source_indices: source_indices, node: n)
   if nm == "String" {
-    true
+    !provenance_declares_structurally(dag_name: "String", p: type_reference_provenance(n: n))
   } else if nm == "FreeMonoid" || nm == "List" {
     rust_host_text_carrier_elem_name(n: n, source_indices: source_indices) == "Char"
   } else {

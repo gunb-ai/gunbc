@@ -116,9 +116,9 @@ pub use crate::v1_compiler_closure_stub_v2_std_integer_rust::closure_stub_v2_std
 pub use crate::v1_compiler_closure_stub_v2_std_text_rust::closure_stub_v2_std_text_source;
 pub use crate::v1_compiler_coercion::{
     coerce_primitive_type, declaration_realization, declaration_realizes_natively_on_rust, is_copy,
-    realization_host_numeric_spelling, realization_is_host_numeric, realized_checkpoint,
-    rust_lookup_exact_binding, target_callable, type_realization_decision,
-    type_reference_realization,
+    provenance_declares_structurally, realization_host_numeric_spelling,
+    realization_is_host_numeric, realized_checkpoint, rust_lookup_exact_binding, target_callable,
+    type_realization_decision, type_reference_realization,
 };
 pub use crate::v1_compiler_compiler_tests_rust::compiler_tests_source;
 pub use crate::v1_compiler_dag_collect_support::connective_name;
@@ -1290,7 +1290,10 @@ pub fn is_host_text_carrier_type(
         }
         let nm = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
         if (nm.clone() == "String".to_string()) {
-            true
+            !crate::v1_compiler_coercion::provenance_declares_structurally(
+                "String".to_string(),
+                crate::v1_std_core::type_reference_provenance(n.clone()),
+            )
         } else {
             if ((nm.clone() == "FreeMonoid".to_string()) || (nm.clone() == "List".to_string())) {
                 (rust_host_text_carrier_elem_name(n.clone(), source_indices.clone())
