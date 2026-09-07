@@ -965,6 +965,62 @@ fn a_planted_control_that_resolves_has_lost_its_power_and_refuses() {
     );
 }
 
+// PRODUCTION PLANTED_CONTROL_CITATIONS SUPPRESSION SEAM — same shape as
+// `corpus_findings_is_wired_to_the_production_suppression_roster`, for one OutsideModeledGuarantee
+// site enrolled after #10706. A fixture tree cannot drive the PRODUCTION inverse arm (rows whose
+// citers are absent from the fixture look spent — the reason the arm takes a parameter roster);
+// the discriminating RED that PlantedControlNoLongerRefuses fires is
+// `a_planted_control_that_resolves_has_lost_its_power_and_refuses` above. This proves the
+// PRODUCTION constant is in the corpus_findings suppression set at our site identity.
+#[test]
+fn corpus_findings_suppresses_outside_modeled_guarantee_planted_control_site() {
+    let dir = scratch_root("omg_planted_suppression");
+    author(
+        &dir,
+        "grounding.dag",
+        "module v2.lens.grounding\n\n\
+         import std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+         data grounding_name_only_residual_boundary: DeclarationRef = DeclarationRef {\n\
+         \u{20}\u{20}module_path: \"v2.lens.grounding\",\n\
+         \u{20}\u{20}decl_name: \"confirm_judge_should_ground\",\n\
+         \u{20}\u{20}field: WholeDeclaration,\n}\n",
+    );
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    plant_cites(
+        &sweep.index,
+        "v2.lens.grounding",
+        "v2.lens.grounding",
+        "confirm_judge_should_ground",
+    );
+    assert!(
+        !plant(&sweep.index, "v2.lens.grounding")
+            .declared
+            .contains("confirm_judge_should_ground"),
+        "PLANT MALFORMED: confirm_judge_should_ground must stay absent or there is nothing to refuse"
+    );
+
+    let unenrolled: Vec<_> = index_findings(&sweep.index)
+        .into_iter()
+        .filter(|f| f.kind == DeclarationIntegrityKind::CitedDeclarationAbsent)
+        .collect();
+    assert_eq!(
+        unenrolled.len(),
+        1,
+        "with no roster the OutsideModeledGuarantee citation must be judged and refused, got {unenrolled:?}"
+    );
+
+    let enrolled: Vec<_> = corpus_findings(&sweep.index)
+        .into_iter()
+        .filter(|f| f.kind == DeclarationIntegrityKind::CitedDeclarationAbsent)
+        .collect();
+    assert_eq!(
+        enrolled,
+        Vec::new(),
+        "corpus_findings must pass PRODUCTION PLANTED_CONTROL_CITATIONS, which enrolls \
+         v2.lens.grounding / grounding_name_only_residual_boundary citing confirm_judge_should_ground"
+    );
+}
+
 // THE DESYNCHRONIZATION IS ASSERTED HERE RATHER THAN OBSERVED IN A REPORT.
 //
 // The first corpus run reported two CONTRADICTORY findings about ONE citation:

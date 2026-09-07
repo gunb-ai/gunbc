@@ -4254,12 +4254,21 @@ pub struct InterpContext {
     witness_eval_budget_ms: std::cell::Cell<Option<u64>>,
     // Whole-receipt wall budget for Wet self-host receipts (emit+cargo subprocess I/O included).
     witness_wall_budget_ms: std::cell::Cell<Option<u64>>,
-    // Kill-at-deadline arm for the wall budget (Finding 1, 2026-07-25): (start, budget_ms).
+    // Kill-at-deadline arm for the wall budget (Finding 1, 2026-07-25):
+    // (start, budget_ms, shared-artifact fill wall nanos at arm time).
     // Shell waits poll this and SIGKILL the process group at the ceiling; the completion-side
     // `wall_budget_completion_outcome` remains a backstop for non-subprocess spend. Without it
     // the refusal fires only after the overrun is spent (707s on a 600s budget; 21–34min
     // receipts in the original finding).
-    witness_wall_deadline: std::cell::Cell<Option<(Instant, u64)>>,
+    //
+    // THE THIRD ELEMENT IS WHY THE ENFORCED FIGURE EQUALS THE REPORTED ONE. Shared-artifact fill
+    // is not the paying claim's marginal cost (operator ruling, 2026-08-27), and
+    // `required_floor_runner` already nets it out of the wall figure it REPORTS. The CPU deadline
+    // nets it too, through `budgeted_cpu_nanos`. This clock did not, so one question -- has this
+    // claim spent its wall budget -- had two answers, and the repo had already adjudicated which
+    // one is right. The fill nanos standing at arm time are captured here so every poll can
+    // subtract what accrued since, exactly as the CPU side's subtraction cancels its own baseline.
+    witness_wall_deadline: std::cell::Cell<Option<(Instant, u64, u128)>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -4639,8 +4648,11 @@ impl InterpContext {
                 Some(remaining) => remaining.min(requested),
                 None => requested,
             };
-            self.witness_wall_deadline
-                .set(Some((Instant::now(), effective)));
+            self.witness_wall_deadline.set(Some((
+                Instant::now(),
+                effective,
+                crate::cli_run::shared_artifact_fill_wall_nanos(),
+            )));
         }
         if cpu_limit_ms.is_some() || wall_limit_ms.is_some() {
             *self.budget_entry.borrow_mut() = Some(entry.to_string());
@@ -4672,25 +4684,45 @@ impl InterpContext {
     }
 
     pub fn arm_wall_deadline(&self, budget_ms: u64) {
-        self.witness_wall_deadline
-            .set(Some((Instant::now(), budget_ms)));
+        self.witness_wall_deadline.set(Some((
+            Instant::now(),
+            budget_ms,
+            crate::cli_run::shared_artifact_fill_wall_nanos(),
+        )));
     }
 
     pub fn clear_wall_deadline(&self) {
         self.witness_wall_deadline.set(None);
     }
 
+    /// Wall nanos this deadline has to answer for: everything since it was armed, less the
+    /// shared-artifact fill that accrued in that interval. Both halves are still counted and both
+    /// are still reported by `required_floor_runner`; what changes is only WHO is charged, and by
+    /// the 2026-08-27 ruling it is not the claim that happened to pay a fill every later claim
+    /// reads warm. MONOTONE, as a deadline requires: the fill counter only rises, and it rises
+    /// inside the same interval, so the subtraction can never make elapsed time run backwards --
+    /// the saturating subtraction covers sampling skew between the two reads.
+    fn wall_deadline_marginal_nanos(&self) -> Option<(u128, u64)> {
+        let (start, budget_ms, fill_at_arm) = self.witness_wall_deadline.get()?;
+        let fill_since =
+            crate::cli_run::shared_artifact_fill_wall_nanos().saturating_sub(fill_at_arm);
+        Some((
+            start.elapsed().as_nanos().saturating_sub(fill_since),
+            budget_ms,
+        ))
+    }
+
     /// Remaining wall-budget milliseconds, or `None` when no deadline is armed.
     /// `Some(0)` means the ceiling is already past — callers must refuse now.
     pub fn wall_deadline_remaining_ms(&self) -> Option<u64> {
-        let (start, budget_ms) = self.witness_wall_deadline.get()?;
-        let elapsed_ms = start.elapsed().as_millis() as u64;
+        let (elapsed_nanos, budget_ms) = self.wall_deadline_marginal_nanos()?;
+        let elapsed_ms = (elapsed_nanos / 1_000_000) as u64;
         Some(budget_ms.saturating_sub(elapsed_ms))
     }
 
     pub fn wall_deadline_exceeded_error(&self) -> Option<InterpError> {
-        let (start, budget_ms) = self.witness_wall_deadline.get()?;
-        let elapsed = start.elapsed();
+        let (elapsed_nanos, budget_ms) = self.wall_deadline_marginal_nanos()?;
+        let elapsed = std::time::Duration::from_nanos(elapsed_nanos as u64);
         if elapsed.as_millis() as u64 > budget_ms {
             Some(InterpError::EvaluationBudgetExceeded {
                 entry: self.budget_entry_or_unnamed(),
@@ -5353,7 +5385,7 @@ impl EvaluationClock {
 pub struct EvaluationBudgetScope<'a> {
     ctx: &'a InterpContext,
     prior_eval: Option<(u128, u64)>,
-    prior_wall: Option<(Instant, u64)>,
+    prior_wall: Option<(Instant, u64, u128)>,
     prior_stride: u32,
     prior_entry: Option<String>,
 }
@@ -17804,6 +17836,39 @@ macro_rules! v1_builtin_arms {
                 )?))
             },
 
+            arm "free_call.decl_facts_at" { "decl_facts_at" } => {
+                let pool_roots = expect_str_list($positional.first().copied(), "decl_facts_at")?;
+                let qualified_name = expect_value_str($positional.get(1).copied(), "decl_facts_at")?;
+                Ok(Some(crate::coproduct_reflection::eval_decl_facts_at(
+                    $ctx,
+                    &pool_roots,
+                    qualified_name.as_str(),
+                )?))
+            },
+
+            arm "free_call.module_declaration_facts_at" { "module_declaration_facts_at" } => {
+                let pool_roots =
+                    expect_str_list($positional.first().copied(), "module_declaration_facts_at")?;
+                let module_path =
+                    expect_value_str($positional.get(1).copied(), "module_declaration_facts_at")?;
+                // A list of zero or one, not an Optional: the keyed read stays the same SHAPE as the
+                // population read it narrows, so a `.dag` consumer switching to it changes its
+                // source of rows and not its fold.
+                let mut items: Vec<Value> = Vec::new();
+                if let Some(f) =
+                    crate::cli_run::module_declaration_fact_at(&pool_roots, module_path.as_str())
+                {
+                    items.push(Value::Record {
+                        type_name: $ctx.sym("ModuleDeclarationFact"),
+                        fields: Rc::new(sorted_fields(vec![
+                            ($ctx.sym("module"), str_value(f.module)),
+                            ($ctx.sym("path"), str_value(f.path)),
+                        ])),
+                    });
+                }
+                Ok(Some(list_value(items)))
+            },
+
             arm "free_call.module_declaration_facts" { "module_declaration_facts" } => {
                 let pool_roots =
                     expect_str_list($positional.first().copied(), "module_declaration_facts")?;
@@ -20845,6 +20910,44 @@ mod wall_deadline_kill_tests {
             "wall deadline leaked past its scope"
         );
         assert_eq!(ctx.budget_entry(), None, "entry identity leaked past scope");
+    }
+
+    /// THE DISCRIMINATING PAIR FOR THE FILL NETTING, both arms over one budget and one elapsed
+    /// interval so the only variable is whether a shared-artifact fill happened inside it.
+    ///
+    /// The RED arm is the first assertion: before the netting, a claim that paid a fill wider than
+    /// its own budget was refused on the enforced clock while `required_floor_runner` reported its
+    /// marginal wall as a small figure well under the line — one question, two answers, and the
+    /// 2026-08-27 ruling already says the reported one is right. It is authorable exactly here,
+    /// because a fill is a process-wide counter a test can move directly.
+    ///
+    /// The second assertion is the positive control that keeps the first from passing by simply
+    /// never refusing: with no fill recorded, the same elapsed interval past the same budget still
+    /// refuses. Without it, deleting the deadline entirely would satisfy the RED.
+    #[test]
+    fn wall_deadline_charges_marginal_wall_and_still_refuses_without_a_fill() {
+        let ctx = wet_ctx();
+        ctx.arm_wall_deadline(5);
+        std::thread::sleep(std::time::Duration::from_millis(25));
+
+        crate::cli_run::record_shared_artifact_fill_wall(50_000_000);
+        assert!(
+            ctx.wall_deadline_exceeded_error().is_none(),
+            "a shared-artifact fill wider than the interval was charged to the claim that paid it"
+        );
+        assert_eq!(
+            ctx.wall_deadline_remaining_ms(),
+            Some(5),
+            "remaining must be read on the same netted clock the refusal is"
+        );
+
+        let bare = wet_ctx();
+        bare.arm_wall_deadline(5);
+        std::thread::sleep(std::time::Duration::from_millis(25));
+        assert!(
+            bare.wall_deadline_exceeded_error().is_some(),
+            "the same overrun with no fill must still refuse"
+        );
     }
 
     /// An unset clock is a declared policy state and must not disarm what an outer scope armed.
