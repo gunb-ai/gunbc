@@ -23,14 +23,13 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
-pub use crate::v1_std_core::LeafOwner;
-use crate::v1_std_core::LeafOwner::*;
+use crate::v1_std_core::LeafOwner::{LeafAmbiguous, SingleOwner};
 pub use crate::v1_std_core::{
     authored_name_at, expr_has_non_tail_self_call, expr_has_self_call, make_field_node,
     make_param_node, no_span, node_name_span, param_node_name_at, param_node_type_expr,
 };
 pub use crate::v1_std_core::{
-    Cardinality, Connective, ErrorNode, InferredNode, NewlineIndex, Node,
+    Cardinality, Connective, ErrorNode, InferredNode, LeafOwner, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

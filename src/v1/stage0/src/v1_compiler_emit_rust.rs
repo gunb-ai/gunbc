@@ -272,8 +272,7 @@ use crate::v1_std_core::FieldAccessStyle::{
 };
 use crate::v1_std_core::FieldValueShape::OptionalValue;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
-pub use crate::v1_std_core::LeafOwner;
-use crate::v1_std_core::LeafOwner::*;
+use crate::v1_std_core::LeafOwner::{LeafAmbiguous, SingleOwner};
 use crate::v1_std_core::MatchPattern::*;
 use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
@@ -314,8 +313,8 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{
     CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic, Connective,
     DeclaredCallableIdentity, ErrorNode, ExprData, FieldAccessStyle, FieldSummary, FieldValueShape,
-    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, ParsedModuleItemKind,
-    ResolvedCallFormal, StringPart, TextFile, UnaryOpKind, VarBindingKind,
+    InferredNode, LeafOwner, MatchPattern, MethodSemantics, NewlineIndex, Node,
+    ParsedModuleItemKind, ResolvedCallFormal, StringPart, TextFile, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

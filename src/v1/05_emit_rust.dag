@@ -56,7 +56,8 @@ import v1.std.core {
   index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value,
   binop_left, binop_right, no_span, with_required_cardinality, Connective, Conj, Disj,
   NoConnective, Arrow, Cardinality, Required, CardOptional, is_rest_transport,
-  transport_base_path, empty_intern_table
+  transport_base_path, empty_intern_table,
+  LeafOwner, SingleOwner, LeafAmbiguous
 }
 
 import v1.compiler.artifact { RenderTarget, Rust, RustModuleRenderSelection, RenderEveryModule, RenderSelectedMirrors }

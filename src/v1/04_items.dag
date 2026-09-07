@@ -26,6 +26,7 @@ import v1.std.core {
   Connective, Conj, Disj, NoConnective,
   node_name_span, no_span,
   NewlineIndex, authored_name_at,
+  LeafOwner, SingleOwner, LeafAmbiguous,
 }
 import std.occurrence_identity { OccurrenceTransport, OccurrenceSynthetic }
 

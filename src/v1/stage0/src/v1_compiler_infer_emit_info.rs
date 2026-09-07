@@ -20,7 +20,6 @@ use crate::v1_std_core::Connective::{Arrow, Conj, NoConnective};
 use crate::v1_std_core::FieldAccessStyle::{EnumAccessor, StoredField, TupleFirst, TupleSecond};
 use crate::v1_std_core::FieldValueShape::{OptionalValue, PlainValue};
 use crate::v1_std_core::InferredNode::{Resolved, TypeVariable};
-pub use crate::v1_std_core::LeafOwner;
 use crate::v1_std_core::LeafOwner::*;
 use crate::v1_std_core::ParsedModuleItemKind::{
     ModuleItemDataValue, ModuleItemFunction, ModuleItemResource, ModuleItemService,
@@ -32,7 +31,7 @@ pub use crate::v1_std_core::{
 };
 pub use crate::v1_std_core::{
     Cardinality, Connective, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode,
-    NewlineIndex, Node, ParsedModuleItemKind,
+    LeafOwner, NewlineIndex, Node, ParsedModuleItemKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
