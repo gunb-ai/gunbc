@@ -1,0 +1,122 @@
+module gunbc.spark.serving_step_cost
+
+import std.types { Bool, String, Int, NonEmptyStr, List }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import std.measure { TokenCount, token_count, token_count_value }
+
+// ── WHAT ONE ENGINE STEP COSTS ON THIS REALIZATION, AND THE ONE THING IT PREDICTS ─────────────
+//
+// THE MEASUREMENT THAT CLOSED A WEEK OF WRONG ANSWERS. A cold prefill on the idle group A head,
+// polled every 200ms so that each completed engine iteration is bracketed several times over:
+//
+//     158,764 computed tokens, 83 steps, 185.5s wall
+//     inter-step interval  min 0.94s   median 2.30s   max 2.68s
+//     99% of wall time sits in gaps longer than one second
+//
+// Two facts fall out and neither was available from any single metric.
+//
+// FIRST, THE SCHEDULER BUDGET IS ALREADY AT ITS FLOOR. 158,764 / 83 is ~1,913 computed tokens per
+// step, which is the 2048 fallback default -- so GB10 reports under the 70 GiB threshold that would
+// have selected 8192, and every proposal to "add --max-num-batched-tokens" was proposing a value the
+// engine had already chosen, or a larger one that would make the stall WORSE. That thread is closed
+// by measurement rather than by argument.
+//
+// SECOND, A STEP TAKES 2.3 SECONDS TO COMPUTE 2,048 TOKENS. That is the whole problem, and it is not
+// a scheduling problem. Every co-tenant behaviour people have been chasing is downstream of it.
+//
+// WHY THE STEP GRAIN HAD TO BE POLLED RATHER THAN READ. No served metric carries per-step computed
+// tokens -- extdeps.vllm.metrics states that as a refusal, and this measurement confirmed it the
+// hard way: prompt_tokens_by_source{local_compute} books a request's ENTIRE computed total in the
+// single step where its prefill completes (158,764 in one observation here), exactly like
+// prompt_tokens_total does for the booked total. The step COUNT is what carries usable per-step
+// information, and only when polled faster than the steps complete.
+type ServingStepShape {
+  computed_prefill: TokenCount
+  decode_sequences: Nat
+}
+
+// An observation belongs to the realization that produced it. A cell measured on one launch does not
+// silently describe another: the profile is named, and a consumer comparing across profiles is
+// comparing different engines.
+type StepCostObservation sole_constructor {
+  profile: NonEmptyStr
+  shape: ServingStepShape
+  samples: Nat
+  median_millis: Nat
+  min_millis: Nat
+  max_millis: Nat
+  provenance: NonEmptyStr
+}
+
+data spark_group_a_profile: NonEmptyStr = "spark group A, head spark-3bd5, TP=4 over the 50G RoCE rail, deepseek-v4-flash:iq3s-split, fp8_ds_mla, image sha256:f869281d, launch invocation d140fa39c1174403bf2ce4d7ed8c2d74" as NonEmptyStr
+
+data spark_group_a_cold_prefill_step: StepCostObservation = StepCostObservation {
+  profile: spark_group_a_profile,
+  shape: ServingStepShape { computed_prefill: token_count(count: 1913), decode_sequences: 0 },
+  samples: 83,
+  median_millis: 2300,
+  min_millis: 940,
+  max_millis: 2680,
+  provenance: "200ms poll of vllm:iteration_tokens_total_count across one cold 158,764-token prefill on an otherwise idle engine, 2026-09-07; inter-step intervals taken between consecutive count advances, never between polls" as NonEmptyStr,
+}
+
+data spark_serving_step_costs: List<StepCostObservation> = [spark_group_a_cold_prefill_step]
+
+// ── THE ONE PREDICTION THIS CELL SUPPORTS ─────────────────────────────────────────────────────
+//
+// A decoding request cannot emit a token before the current engine step completes. So while any
+// co-tenant is prefilling, a decoder's inter-token latency IS the step duration, and its observed
+// rate is the reciprocal. That is a falsifiable consequence of one measured cell, not a story about
+// starvation.
+//
+// It is stated in thousandths of a token per second because the substrate carries no rationals here
+// and rounding a sub-unit rate to an integer would report zero.
+type CoTenantDecodeRate
+  = DecodeRatePredicted { milli_tokens_per_second: Nat, from: NonEmptyStr }
+  | DecodeRateOutsideCalibration { cause: NonEmptyStr }
+
+fn co_tenant_decode_rate(obs: StepCostObservation) -> CoTenantDecodeRate {
+  if obs.median_millis == 0 {
+    DecodeRateOutsideCalibration { cause: "a zero-duration step predicts an unbounded rate" as NonEmptyStr }
+  } else {
+    DecodeRatePredicted {
+      milli_tokens_per_second: 1000000 / obs.median_millis,
+      from: obs.profile,
+    }
+  }
+}
+
+// COMPUTED PREFILL THROUGHPUT IS DERIVED, NOT DECLARED. Nobody should be able to edit "890 tok/s"
+// as a literal: it is tokens per step over step duration, and it moves when either does.
+fn computed_prefill_tokens_per_second(obs: StepCostObservation) -> Nat? {
+  if obs.median_millis == 0 {
+    none
+  } else {
+    Present { value: (token_count_value(t: obs.shape.computed_prefill) * 1000) / obs.median_millis }
+  }
+}
+
+// ── WHAT THIS CELL DOES NOT COVER ─────────────────────────────────────────────────────────────
+//
+// One cell is one shape. A request for a shape nobody measured refuses rather than interpolating
+// toward it -- the neighbouring cell being close is not evidence about the cell that is missing.
+type StepCostLookup
+  = StepCostKnown { observation: StepCostObservation }
+  | StepCostUnmeasured { cause: NonEmptyStr }
+
+fn step_cost_for(shape: ServingStepShape) -> StepCostLookup {
+  match first(filter(spark_serving_step_costs, o =>
+    token_count_value(t: o.shape.computed_prefill) == token_count_value(t: shape.computed_prefill)
+      && o.shape.decode_sequences == shape.decode_sequences)) {
+    Present { value: o } => StepCostKnown { observation: o }
+    Absent =>
+      StepCostUnmeasured {
+        cause: join([
+          "no step-cost cell for ", to_string(token_count_value(t: shape.computed_prefill)),
+          " computed prefill tokens beside ", to_string(shape.decode_sequences),
+          " decode sequence(s) on this profile; the measured population is one cold-prefill cell and nothing interpolates from it",
+        ], "") as NonEmptyStr,
+      }
+  }
+}

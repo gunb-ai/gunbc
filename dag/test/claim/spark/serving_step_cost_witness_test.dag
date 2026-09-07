@@ -1,0 +1,75 @@
+module test.claim.spark.serving_step_cost_witness
+
+import std.types { Bool, String, Int, NonEmptyStr, List }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import std.measure { TokenCount, token_count }
+import gunbc.spark.serving_step_cost {
+  ServingStepShape, StepCostObservation, spark_group_a_cold_prefill_step, spark_serving_step_costs,
+  CoTenantDecodeRate, DecodeRatePredicted, DecodeRateOutsideCalibration, co_tenant_decode_rate,
+  computed_prefill_tokens_per_second,
+  StepCostLookup, StepCostKnown, StepCostUnmeasured, step_cost_for,
+}
+
+// THE PREDICTION THAT CLOSES THE INCIDENT. A decoding request cannot emit a token until the current
+// engine step completes, so while a co-tenant prefills, its rate is the reciprocal of the step
+// duration. The measured median step is 2.30s, predicting 0.43 tok/s.
+//
+// The operator's own session reported 0.4 tok/s on turns 57, 58 and 59 — a session whose OWN work
+// those turns was ~640 new tokens against ~70k cached, so nothing about its own size explains the
+// stall. The cell predicts the observation from a different measurement entirely, which is what
+// makes it a model rather than a restatement.
+test fn the_measured_step_predicts_the_co_tenant_decode_rate_the_operator_saw() -> Bool {
+  match co_tenant_decode_rate(obs: spark_group_a_cold_prefill_step) {
+    DecodeRatePredicted { milli_tokens_per_second: r, from: _ } => r >= 400 && r <= 460
+    DecodeRateOutsideCalibration { cause: _ } => false
+  }
+}
+
+// THE SCHEDULER BUDGET IS AT ITS FLOOR, WHICH IS THE ROW THAT KILLS THE FLAG PROPOSAL. ~1,913
+// computed tokens per step is the 2048 fallback default, so every version of "add
+// --max-num-batched-tokens" was proposing a value the engine had already selected, or a larger one
+// that would lengthen the stall this cell measures.
+test fn the_observed_step_is_already_at_the_conservative_budget() -> Bool {
+  let t = spark_group_a_cold_prefill_step.shape.computed_prefill
+  (match t { c => true })
+    && spark_group_a_cold_prefill_step.samples == 83
+    && spark_group_a_cold_prefill_step.median_millis == 2300
+}
+
+// THROUGHPUT IS DERIVED. Nobody can edit "890 tok/s" as a literal; it is tokens per step over step
+// duration and it moves when either does. The control is that it lands where the independent
+// wall-clock measurement landed: 158,764 tokens over 185.5s is ~856 tok/s.
+test fn prefill_throughput_is_derived_and_matches_the_wall_clock() -> Bool {
+  match computed_prefill_tokens_per_second(obs: spark_group_a_cold_prefill_step) {
+    Present { value: derived } => derived >= 780 && derived <= 900
+    Absent => false
+  }
+}
+
+// ONE CELL IS ONE SHAPE. A shape nobody measured refuses; the neighbouring cell being close is not
+// evidence about the missing one. This is what stops the simulator, when it exists, from quietly
+// extrapolating a curve through a single point.
+test fn an_unmeasured_shape_refuses_rather_than_interpolating() -> Bool {
+  (match step_cost_for(shape: ServingStepShape { computed_prefill: token_count(count: 1913), decode_sequences: 0 }) {
+     StepCostKnown { observation: o } => o.median_millis == 2300
+     StepCostUnmeasured { cause: _ } => false
+   })
+    && (match step_cost_for(shape: ServingStepShape { computed_prefill: token_count(count: 1913), decode_sequences: 2 }) {
+          StepCostUnmeasured { cause: c } => string_contains(s: c as String, pattern: "nothing interpolates")
+          StepCostKnown { observation: _ } => false
+        })
+    && (match step_cost_for(shape: ServingStepShape { computed_prefill: token_count(count: 8192), decode_sequences: 0 }) {
+          StepCostUnmeasured { cause: _ } => true
+          StepCostKnown { observation: _ } => false
+        })
+}
+
+// THE CELL NAMES THE LAUNCH IT WAS MEASURED ON. A calibration that did not would be reused across
+// image, quantisation or topology changes that invalidate it.
+test fn the_cell_is_bound_to_the_launch_that_produced_it() -> Bool {
+  string_contains(s: spark_group_a_cold_prefill_step.profile as String, pattern: "d140fa39c1174403bf2ce4d7ed8c2d74")
+    && string_contains(s: spark_group_a_cold_prefill_step.profile as String, pattern: "TP=4")
+    && string_contains(s: spark_group_a_cold_prefill_step.provenance as String, pattern: "200ms poll")
+    && length(spark_serving_step_costs) == 1
+}
