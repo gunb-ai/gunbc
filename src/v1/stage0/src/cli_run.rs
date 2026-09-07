@@ -3064,11 +3064,14 @@ pub struct MultiModuleFixtureSource {
 ///
 /// **Names only (permanent ceiling, no next-rung trigger):** no parameter or return types.
 ///
-/// **Registry mirror, not emit join (below ceiling — order and membership):** nothing refuses if
-/// `emit_func_params` / `emit_func_def` and this projection disagree. **Next-rung trigger:**
-/// derive from the same source `emit_func_params` reads (or from its emit result). **Why
-/// unbuilt:** emit_rust seed regeneration + #10688 surface. Stall admission must resolve outside
-/// the diff (DESIGN §5).
+/// **Registry mirror, not emit join (below ceiling — order and membership):** DESIGN §3b middle
+/// value — deliberate divergence with stated reason (see `tools.multi_module_compile_fixture`
+/// `EmittedRustFnSignature`). Nothing refuses if `emit_func_params` / `emit_func_def` and this
+/// projection disagree (resource arm already reads `ItemInfo.resource_names` while emit folds
+/// `uses` via `resource_use_name_at`). **Next-rung trigger:** derive from the same source
+/// `emit_func_params` reads (or from its emit result). **Why unbuilt:** emit_rust seed
+/// regeneration would couple this instrument PR to #10688's live surface. DESIGN §5: an in-diff
+/// approval claim does not authorize the debt; the technical reason does.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EmittedRustFnSignature {
     pub owner_module: String,

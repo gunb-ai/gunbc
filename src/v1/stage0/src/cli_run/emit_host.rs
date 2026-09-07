@@ -358,10 +358,12 @@ pub fn compile_dag_multi_module_fixture(
 /// and resource-use names, then `service_var_name` per service, concatenated in that order — the
 /// same per-arm transforms `emit_func_params` uses today. Not a text parse of emitted bytes.
 ///
-/// Below ceiling on ORDER and MEMBERSHIP: this is a second walk over ItemInfo, not a consumption
-/// of `emit_func_params`. Nothing refuses if the emit path and this projection disagree. Next-rung
-/// trigger: derive from the same source `emit_func_params` reads (or from its emit result). Why
-/// unbuilt: emit_rust seed regen + #10688 surface. Name spelling via `emit_ident` /
+/// Below ceiling on ORDER and MEMBERSHIP (§3b middle value — deliberate divergence with stated
+/// reason on `EmittedRustFnSignature`): second walk over ItemInfo, not a consumption of
+/// `emit_func_params`. Resource arm reads `info.resource_names`; emit folds `uses` via
+/// `resource_use_name_at` — nothing refuses on disagreement. Next-rung trigger: derive from the
+/// same source `emit_func_params` reads (or from its emit result). Why unbuilt: emit_rust seed
+/// regen would couple this instrument to #10688's live surface. Name spelling via `emit_ident` /
 /// `service_var_name` is required at this grain so membership cannot miss a reserved-word or
 /// camelCase name the registry arms will hand to emit.
 fn project_emitted_rust_fn_signatures(

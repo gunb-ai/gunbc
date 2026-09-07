@@ -107,15 +107,26 @@ type MultiModuleCompileFixture {
 // this instrument is waiting on that would lift it; a type-sensitive claim needs a different
 // projection. Do not assert type-sensitivity over it.
 //
-// REGISTRY MIRROR, NOT EMIT JOIN — BELOW CEILING (ORDER AND MEMBERSHIP). The projection is a
-// second walk over ItemInfo, not a consumption of emit_func_params' value. WHAT REFUSES IF
-// emit_func_params (or emit_func_def's use of it) AND THIS PROJECTION DISAGREE — on order OR on
-// who is present? Nothing. A reorder, a dropped service_names arm inside emit, or any other
-// emit-only divergence leaves every witness green while the artifact binds differently
-// (gunbc.recurring_failure_mode subject_and_its_digest_as_independent_parameters). Membership
-// (emitted_rust_fn_has_parameter) is the durable surface *within this registry grain*; it is not
-// evidence about emit-path fidelity. Landing this stall requires admission outside the diff
-// (DESIGN §5: an in-diff row claiming approval does not count).
+// REGISTRY MIRROR, NOT EMIT JOIN — BELOW CEILING (ORDER AND MEMBERSHIP). DESIGN §3b middle
+// value: deliberate divergence from single-authority emit binding, WITH A STATED REASON — not
+// an unstated fork. The projection is a second walk over ItemInfo, not a consumption of
+// emit_func_params' value. WHAT REFUSES IF emit_func_params (or emit_func_def's use of it) AND
+// THIS PROJECTION DISAGREE — on order OR on who is present? Nothing. Concrete drift surface
+// already visible: emit_func_params' resource arm folds `uses` nodes via resource_use_name_at;
+// this walk reads ItemInfo.resource_names. A reorder, a dropped service_names arm inside emit,
+// or resource-name divergence leaves every witness green while the artifact binds differently
+// (gunbc.recurring_failure_mode subject_and_its_digest_as_independent_parameters).
+//
+// WHY THE DIVERGENCE IS THE RIGHT SHAPE FOR THIS INSTRUMENT (the §3b reason, not a manager
+// citation). Consumers of compile_fixture need a membership surface over resolved fn bindings
+// without coupling every fixture witness to emit_rust regeneration. The durable contract here is
+// registry-grain lookup + emitted_rust_fn_has_parameter; that API is what must survive. The
+// second walk is the temporary producer — §6's "will this artifact survive" test applies to the
+// throwaway walk, which the next-rung trigger deletes, not to the carrier or its consumers.
+// Joining emit on this same PR would turn an instrument lane into an emit_rust regen lane and
+// couple it to #10688's live surface on the same files — two held PRs each waiting on the other.
+// DESIGN §5: an in-diff row claiming approval does not authorize the debt; the reason above is
+// what admits the middle value.
 //
 // NEXT-RUNG TRIGGER (DESIGN 4b(2) — the CAPABILITY, not an artifact): the projection is DERIVED
 // from the same source emit_func_params reads (or from the emit result that source produces),
@@ -123,7 +134,9 @@ type MultiModuleCompileFixture {
 // desynchronise from what the Rust emitter binds into the artifact. WHY UNBUILT (reason, not
 // trigger): that derivation lives in the emit_rust / emit_core_support seed surface; landing it
 // here means regenerating those modules and crossing #10688's open edit surface on the same
-// files. Until the trigger capability holds, this remains a registry projection.
+// files. Until the trigger capability holds, this remains a registry projection. The honest rung
+// (§4b(1) minimum across paths) is this order/membership stall, not the names-only permanent
+// ceiling above it.
 //
 // THIS IS NOT A CONTENTS GREP SURFACE. Emitted file paths still travel on FixtureCompileCompleted
 // for provenance; the projection is the only population a witness may ask about signature shape
