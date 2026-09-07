@@ -8,13 +8,16 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 // the live tree. The path is an argument because the diagnostic must name the file; production
 // callers pass artifact_path from gunbc.generated_artifact, the single location authority.
 
+data docs_projection_regen_command: String =
+  "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/docs_projection_gate.dag --function regen"
+
 fn docs_projection_bytes_agree(path: String, expected: String, committed: String) -> ProcessExit {
   if expected == committed {
     ExitSuccess
   } else {
     exit_failure(reason: concat(
       "generated-artifact drift: ",
-      concat(path, " is not derived from its .dag authority; regenerate with gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/docs_projection_gate.dag --function regen")
+      concat(path, concat(" is not derived from its .dag authority; regenerate with ", docs_projection_regen_command))
     ))
   }
 }

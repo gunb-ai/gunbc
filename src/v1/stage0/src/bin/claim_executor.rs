@@ -855,10 +855,6 @@ fn run() -> Result<ExitCode, ExitCode> {
                     eprintln!(
                         "required-ci: generated-artifact population=docs-projections REFUSED {cause}"
                     );
-                    eprintln!(
-                        "required-ci: generated-artifact regenerate docs/*.md with: {}",
-                        v1_compiler::cli_run::DOCS_PROJECTION_REGEN_COMMAND
-                    );
                     phase_failures.push(format!("generated-artifact docs-projections: {cause}"));
                 }
             }

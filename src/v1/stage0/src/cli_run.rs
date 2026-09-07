@@ -42084,7 +42084,7 @@ pub use generated_artifact_boundary_host::{
     generated_artifact_body_for_path, generated_artifact_ctx, run_docs_projection_agreement,
     run_generated_artifact_boundary, AdjudicatedArtifact, ArtifactDisposition,
     DocsProjectionAgreement, GeneratedArtifactBoundaryOutcome, GeneratedArtifactPathBody,
-    UnadjudicatedArtifact, DOCS_PROJECTION_REGEN_COMMAND, GENERATED_ARTIFACT_PRODUCING_COMMAND,
+    UnadjudicatedArtifact, GENERATED_ARTIFACT_PRODUCING_COMMAND,
 };
 
 /// The emitted-closure compile phase: one entry's closure emitted, written as a crate, and

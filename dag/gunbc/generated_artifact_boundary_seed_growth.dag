@@ -187,11 +187,6 @@ data generated_artifact_boundary_seed_growth_justification: SeedGrowthJustificat
     },
     DeclarationRef {
       module_path: "v1_compiler.generated_artifact_boundary_host",
-      decl_name: "DOCS_PROJECTION_REGEN_COMMAND",
-      field: WholeDeclaration
-    },
-    DeclarationRef {
-      module_path: "v1_compiler.generated_artifact_boundary_host",
       decl_name: "DOCS_PROJECTION_GATE_ENTRY",
       field: WholeDeclaration
     },
