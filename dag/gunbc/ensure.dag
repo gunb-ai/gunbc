@@ -37,7 +37,7 @@ type EnsurePlan<P>
 // optional typed convergence plan. ensure_decide projects those facts onto the existing
 // std.upsert_decision authority: satisfied -> Noop; known absent/drift + authorized plan -> Apply;
 // observe-only, no-plan, and inaccessible -> Refuse. Effects remain capability-specific adapters.
-// ensure_readback then projects the independent post-apply observation through
+// ensure_readback then classifies the caller-supplied effective read through
 // std.realization_reconcile, so an Apply receipt cannot claim convergence without grounded
 // readback. Fine grain means one requirement/observation/receipt per semantic capability; it does
 // not mean one ensure function per executable.
@@ -116,8 +116,10 @@ fn ensure_readback<E>(
 // The whole lifecycle as ONE call, so that assembling it is no longer the caller's job to remember.
 // ensure_decide and ensure_readback remain exported because domains that already own the sequence
 // call them directly; what this adds is the single route whose OUTPUT is a sealed receipt, so a sink
-// can demand ReconciledEffect and thereby demand that classify, policy, apply and independent
-// readback were all REPORTED, each with its own value rather than a Boolean. It does not demand they
+// can demand ReconciledEffect and thereby demand that the decision inputs, the application arm, the
+// effective-read report and the grounding report were all SUPPLIED AND CLASSIFIED, each with its own
+// value rather than a Boolean. Not "independent readback was reported": independence is not a
+// property any report carries, so it cannot itself be reported. It does not demand they
 // RAN -- see the paragraph immediately below, which is the authority on what this establishes; an
 // earlier revision of this sentence said "all ran" and contradicted it one paragraph later. The post-observation is a SECOND observation supplied by the caller — the same
 // observation value passed twice is a caller defect this function cannot see, and is what the

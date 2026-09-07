@@ -80,8 +80,8 @@ type DispatchEnvironmentAdmission
 
 // Dispatch admission is requirements -> Ensure -> grounded receipts -> actuation. The work item's
 // typed validation operations derive semantic capabilities; HostDashboardInstance resolves those to
-// exact executable paths and identity probes; one generic Ensure decision is evaluated
-// independently per capability; only independently grounded Noop receipts admit worktree/session
+// exact executable paths and identity probes; one generic Ensure decision is evaluated per
+// capability; only Noop receipts whose capability observation grounds admit worktree/session
 // effects. Generic Ensure never installs a named package. An EnsureMayApply realization still needs
 // a capability-specific typed plan and adapter; this module supplies no ambient package manager
 // fallback, so no-plan refuses. ExecutionContractUnspecified is an explicit migration refusal.
@@ -112,8 +112,10 @@ fn ensure_observation_evidence(observation: EnsureObservation<String>) -> String
 // provisioner is modeled), and grounds a Noop exactly when the readback grounds.
 //
 // The observation is passed as BOTH before and after, and that is a real limitation rather than an
-// oversight: this site holds one observation per capability, so the readback is independent per
-// capability but is not a second read of the host. Making it one is a change to what this module
+// oversight: this site holds ONE observation per capability, and it is not a second read of the host.
+// It was previously described as an independent readback, and the user-visible refusal said so too --
+// a receipt asserting evidence this site does not hold, which is worse than stale prose because a
+// reader acts on it. Making it one is a change to what this module
 // OBSERVES, not to how it reconciles, so it is deliberately not folded in here.
 
 fn capability_mismatch_reason(realization: CapabilityRealization) -> String {
@@ -140,7 +142,7 @@ fn capability_receipt_reason(
       if grounded {
         ""
       } else {
-        "independent Ensure readback did not ground the capability"
+        "capability observation did not ground the requirement"
       }
     Apply { plan: _ } =>
       "capability-specific apply is required before admission; no effect ran in the decision layer"
