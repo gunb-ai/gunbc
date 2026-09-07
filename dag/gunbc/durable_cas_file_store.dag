@@ -395,12 +395,39 @@ type CasGenerationPublished
   = CasGenerationWritten
   | CasGenerationWriteRefused { detail: String }
 
-fn cas_generation_published(
-  publication: CasGenerationPublication,
-  path: String,
-  content: String,
-) -> CasGenerationPublished {
-  match publication {
+// THE ACTUATOR TAKES AN ADMITTED PUBLICATION, NOT A PATH AND SOME BYTES.
+//
+// `cas_generation_published(publication, path, content)` and
+// `cas_commit_at(root, publication, attempt, target)` were both importable, and `.dag` has no module
+// privacy, so the sequence `file_compare_and_set` is supposed to OWN -- verify the attempt, observe
+// the slot, admit the expectation against the real head, derive the target FROM that observation,
+// then publish -- was a convention among its own callers rather than a property of the actuator. A
+// direct caller could supply `ExpectSlotGeneration { 999 }` against an empty store, choose target
+// generation 1, and be answered `CasCommitted`; or write arbitrary content to an arbitrary path,
+// bypassing key admission including the path-escape check. That the one live caller composes them
+// correctly does not constrain their domains. Found by external review.
+//
+// `AdmittedCasPublication` is `sole_constructor`, so it can be built only inside this module, and the
+// only two places that build it are the branches of `file_compare_and_set` reached AFTER the attempt
+// was verified, the slot observed, and the expectation matched against the real head -- each carrying
+// the target DERIVED from that observation. Both the actuator and the raw write now take it, so the
+// path is derived from the admitted key rather than accepted, and the bytes are the verified
+// attempt's rather than an argument.
+type AdmittedCasPublication sole_constructor {
+  root: NonEmptyStr
+  publication: CasGenerationPublication
+  attempt: CasAttempt<NonEmptyStr>
+  target: CasGeneration
+}
+
+fn cas_generation_published(admitted: AdmittedCasPublication) -> CasGenerationPublished {
+  let path = cas_file_slot_path(
+    root: admitted.root,
+    key: admitted.attempt.key,
+    generation: admitted.target,
+  )
+  let content = admitted.attempt.proposed as String
+  match admitted.publication {
     DefaultAccessCreateOnly => {
       let write = Filesystem.WriteCreateNew(path: path, content: content)
       if write.success { CasGenerationWritten } else { CasGenerationWriteRefused { detail: write.error } }
@@ -412,17 +439,11 @@ fn cas_generation_published(
   }
 }
 
-fn cas_commit_at(
-  root: NonEmptyStr,
-  publication: CasGenerationPublication,
-  attempt: CasAttempt<NonEmptyStr>,
-  target: CasGeneration,
-) -> CasOutcome<NonEmptyStr> {
-  match cas_generation_published(
-    publication: publication,
-    path: cas_file_slot_path(root: root, key: attempt.key, generation: target),
-    content: attempt.proposed as String,
-  ) {
+fn cas_commit_at(admitted: AdmittedCasPublication) -> CasOutcome<NonEmptyStr> {
+  let root = admitted.root
+  let attempt = admitted.attempt
+  let target = admitted.target
+  match cas_generation_published(admitted: admitted) {
     CasGenerationWritten =>
       CasCommitted {
         committed: CasSlotVersion { generation: target, content: attempt.proposed_content, value: attempt.proposed }
@@ -543,7 +564,13 @@ fn file_compare_and_set(
       }
     ProbedAbsent =>
       match attempt.expected {
-        ExpectSlotAbsent => cas_commit_at(root: root, publication: publication, attempt: attempt, target: cas_generation_first())
+        ExpectSlotAbsent =>
+          cas_commit_at(
+            admitted: AdmittedCasPublication {
+              root: root, publication: publication, attempt: attempt,
+              target: cas_generation_first(),
+            }
+          )
         ExpectSlotGeneration { generation: _ } =>
           CasPreconditionFailed { expected: attempt.expected, observed: CasReadableAbsent }
       }
@@ -553,7 +580,12 @@ fn file_compare_and_set(
           CasPreconditionFailed { expected: attempt.expected, observed: cas_head_as_readable(generation: h, value: v) }
         ExpectSlotGeneration { generation: g } =>
           if cas_generation_count(g: g) == cas_generation_count(g: h) {
-            cas_commit_at(root: root, publication: publication, attempt: attempt, target: cas_generation_next(g: h))
+            cas_commit_at(
+              admitted: AdmittedCasPublication {
+                root: root, publication: publication, attempt: attempt,
+                target: cas_generation_next(g: h),
+              }
+            )
           } else {
             CasPreconditionFailed { expected: attempt.expected, observed: cas_head_as_readable(generation: h, value: v) }
           }

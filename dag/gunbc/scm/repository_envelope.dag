@@ -870,6 +870,40 @@ fn admit_commit_subject(
 // admission with a question that has no subject removed. The arm is therefore ABSENT from this
 // outcome rather than unreachable within it, which is the difference between a caller that cannot ask
 // and a caller that must match and invent.
+// THE ANCESTRY-TAKING ADMISSION, FOR CALLERS THAT ALREADY ESTABLISHED THE PARENT.
+//
+// `admit_ordinary_commit_subject` asks two questions and can refuse on either. A caller that reached
+// its subject through a route which ALREADY found the parent in this repository's commits -- the
+// staging standing does exactly that, via `commit_at_reference` inside `base_snapshot` -- would then
+// carry a parent-missing arm it cannot reach, and would have to invent a cause or explain in a comment
+// that the arm is dead. That is the `carry_mint` shape this stack has now paid for four times: honest
+// about the callee's domain, dishonest about the operation's.
+//
+// So the fact travels as a `CommitAncestry` and the question is ABSENT from this route. The allocator
+// question is NOT absent, because it is a property of the repository rather than of the parent, and
+// nothing upstream has answered it. Found by external review.
+type OrdinaryAncestralSubjectAdmission
+  = OrdinaryAncestralSubjectAdmitted(AdmittedCommitSubject)
+  | OrdinaryAncestralSubjectAllocatorInvalid { next_ordinal: Int }
+
+fn admit_ordinary_commit_subject_from_ancestry(
+  subject: RepositoryManifestRoot,
+  ancestry: CommitAncestry,
+) -> OrdinaryAncestralSubjectAdmission {
+  match admit_commit_allocator(repository: subject.repository) {
+    CommitAllocatorInvalid { next_ordinal: n } =>
+      OrdinaryAncestralSubjectAllocatorInvalid { next_ordinal: n }
+    CommitAllocatorAdmitted =>
+      OrdinaryAncestralSubjectAdmitted(
+        AdmittedCommitSubject {
+          subject: subject,
+          ancestry: ancestry,
+          integration: NoSquashIntegration,
+        }
+      )
+  }
+}
+
 type OrdinaryCommitSubjectAdmission
   = OrdinaryCommitSubjectAdmitted(AdmittedCommitSubject)
   | OrdinaryCommitSubjectAllocatorInvalid { next_ordinal: Int }

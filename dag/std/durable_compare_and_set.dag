@@ -125,6 +125,20 @@ type CasSlotObservation<T>
 // sent a reader to repair bytes that are not broken, and is the state-space conflation this carrier
 // was split to remove, re-entering through the arm the split did not have yet. Found by external
 // review. The remedy is different from all three siblings: raise the bound, or compact the slot.
+//
+// A DECLARED LAYERING JUDGEMENT, STATED HERE BECAUSE THE ARM IS ARGUABLE AND SILENCE WOULD BE THE
+// UNSTATED DIVERGENCE DESIGN section 3b calls the only red. A probe bound is a property of a
+// realization that DISCOVERS the head by scanning generations; a store holding a head pointer has no
+// such mode, so this arm is realization-shaped in an interface authority, which is the fact/fact/fact
+// split section 3 governs. It is admitted here rather than in the file store for two reasons, both
+// checkable. First, `CasUnreadableSlot` is the vocabulary in which ANY realization reports why an
+// observation could not be completed, and its sibling `CasUnreadableContentMissing` is already
+// shaped by content-addressed storage, so the carrier is not interface-pure today and this arm does
+// not change its character. Second, the alternative is worse in a way this module has already paid
+// for: with no arm to name it, a scanning store must report bound exhaustion as one of the other
+// three, which is exactly the malformed-content fabrication that produced this arm. What is NOT
+// claimed is that every CAS realization can produce it -- most cannot, and a realization that never
+// scans should never construct it.
 type CasUnreadableSlot
   = CasUnreadableMalformed { detail: NonEmptyStr }
   | CasUnreadableContentMissing { referenced: ContentHash }

@@ -68,6 +68,7 @@ import gunbc.scm.repository_envelope {
   RepositoryCommit,
   commit_at_reference,
 }
+import gunbc.scm.ancestry { CommitAncestry, RootCommit, DescendsFrom }
 
 // EVERY REFUSAL NAMES WHAT IT REFUSED ON, and the wrong-kind arms stay separate from the missing one
 // for the reason every wrong-kind population in this stack does: a locator occupied by a source or a
@@ -126,8 +127,12 @@ type StagingRefusal
 // refusing.
 // THE PRESENT ARMS CARRY THE RECORD, NOT A REFERENCE BESIDE A LIST. Both fields came from ONE
 // `CorpusManifestRecord` and splitting them threw away the fact that they did -- so a consumer holding
-// the pair could no longer tell that the entries were the path-unique set some `store_corpus_manifest`
-// had already admitted, and had to re-ask a question the value's own provenance had settled. Carrying
+// the pair could no longer tell that the entries were a path-unique set that the store's one manifest
+// constructor had already admitted -- `insert_canonical_manifest`, reachable only through an
+// `AdmittedManifestEntries` -- and had to re-ask a question the value's own provenance had settled.
+// This sentence used to name `store_corpus_manifest` as that admitter, which stopped covering the
+// whole population once the native `add` began reaching the constructor through
+// `store_path_unique_manifest`. Found by external review. Carrying
 // the record keeps the provenance attached, which is what lets `gunbc.scm.write_spine` derive a
 // `PathUniqueManifestEntries` and stop matching a duplicate arm it cannot reach.
 type EffectiveCandidate
@@ -225,10 +230,23 @@ fn base_snapshot(repository: RepositoryEnvelope) -> BaseSnapshot {
 // on disk after being staged is invisible to it -- reporting unstaged changes needs a working-tree
 // observation this layer does not have, exactly as status.dag's header already states for branches
 // and modified files.
+// THE TWO FREEZABLE ARMS CARRY THE ANCESTRY THEY ALREADY ESTABLISHED, rather than leaving a commit
+// verb to re-derive it from `repository.checked_out` and ask again whether that parent exists.
+// `base_snapshot` reaches `BaseAtCommit` only through `commit_at_reference`, so by the time
+// `StageDiffersFromBase` is constructed the parent has been FOUND in this repository's commits;
+// `StageWithNoBase` is reached only from `NoBaseSelected`, where there is no parent to find. Carrying
+// the `CommitAncestry` hands that established fact forward, so the mint downstream consumes it instead
+// of re-asking a question whose answer this type already knows -- and the parent-missing arm it used
+// to need disappears from `gunbc.scm.write_spine` rather than being carried as an unreachable cause.
+// Found by external review.
 type StageStanding
   = StageMatchesBase { candidate: CorpusManifestObjectRef }
-  | StageDiffersFromBase { candidate: CorpusManifestObjectRef, committed: CorpusManifestObjectRef }
-  | StageWithNoBase { candidate: CorpusManifestObjectRef }
+  | StageDiffersFromBase {
+      candidate: CorpusManifestObjectRef,
+      committed: CorpusManifestObjectRef,
+      ancestry: CommitAncestry
+    }
+  | StageWithNoBase { candidate: CorpusManifestObjectRef, ancestry: CommitAncestry }
   | NoCandidateAndNoBase
   | StageStandingRefused { cause: StagingRefusal }
 
@@ -249,12 +267,16 @@ fn stage_standing_against_base(
 ) -> StageStanding {
   match base_snapshot(repository: repository) {
     BaseRefused { cause: c } => StageStandingRefused { cause: c }
-    NoBaseSelected => StageWithNoBase { candidate: candidate }
-    BaseAtCommit { reference: _, root: root } =>
+    NoBaseSelected => StageWithNoBase { candidate: candidate, ancestry: RootCommit }
+    BaseAtCommit { reference: reference, root: root } =>
       if root.locator == candidate.locator {
         StageMatchesBase { candidate: candidate }
       } else {
-        StageDiffersFromBase { candidate: candidate, committed: root }
+        StageDiffersFromBase {
+          candidate: candidate,
+          committed: root,
+          ancestry: DescendsFrom { parent: reference },
+        }
       }
   }
 }

@@ -25,7 +25,7 @@ module gunbc.scm.ordinary_commit
 // each. What differs is only WHICH QUESTIONS THIS ROUTE ASKS, which is the thing that should differ.
 
 import std.types { String, Int }
-import gunbc.scm.ancestry { RepositoryCommitRef }
+import gunbc.scm.ancestry { RepositoryCommitRef, CommitAncestry }
 
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
@@ -33,7 +33,10 @@ import gunbc.scm.repository_envelope {
   MintedCommit,
   OrdinaryCommitSubjectAdmission, OrdinaryCommitSubjectAdmitted,
   OrdinaryCommitSubjectAllocatorInvalid, OrdinaryCommitSubjectParentMissing,
-  admit_ordinary_commit_subject, mint_repository_commit_admitted,
+  OrdinaryAncestralSubjectAdmission, OrdinaryAncestralSubjectAdmitted,
+  OrdinaryAncestralSubjectAllocatorInvalid,
+  admit_ordinary_commit_subject, admit_ordinary_commit_subject_from_ancestry,
+  mint_repository_commit_admitted,
 }
 
 type OrdinaryCommitMint
@@ -74,5 +77,24 @@ fn mint_ordinary_commit(
     OrdinaryCommitSubjectParentMissing { parent: p } => OrdinaryCommitParentMissing { parent: p }
     OrdinaryCommitSubjectAdmitted(admitted) =>
       OrdinaryCommitMinted(mint_repository_commit_admitted(admitted: admitted, message: message))
+  }
+}
+
+// THE NARROW MINT. Two arms rather than three, because its caller hands it an ancestry that was
+// established where the parent was found rather than a reference this function would have to look up.
+type AncestralCommitMint
+  = AncestralCommitMinted(MintedCommit)
+  | AncestralCommitAllocatorInvalid { next_ordinal: Int }
+
+fn mint_ancestral_commit(
+  subject: RepositoryManifestRoot,
+  message: String,
+  ancestry: CommitAncestry,
+) -> AncestralCommitMint {
+  match admit_ordinary_commit_subject_from_ancestry(subject: subject, ancestry: ancestry) {
+    OrdinaryAncestralSubjectAllocatorInvalid { next_ordinal: n } =>
+      AncestralCommitAllocatorInvalid { next_ordinal: n }
+    OrdinaryAncestralSubjectAdmitted(admitted) =>
+      AncestralCommitMinted(mint_repository_commit_admitted(admitted: admitted, message: message))
   }
 }

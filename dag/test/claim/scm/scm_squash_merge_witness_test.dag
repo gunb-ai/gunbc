@@ -23,7 +23,7 @@ import gunbc.scm.repository_envelope { RepositoryEnvelope, commit_at_reference }
 import gunbc.scm.staging { StagedEntries, StagedEntriesRefused, staged_entries }
 import gunbc.scm.merge_base {
   MergeBaseOutcome, MergeBaseDerived, MergeBaseSourceAlreadyConsumed,
-  MergeBaseHistoryUnwalkable, MergeBaseHistoriesDisjoint,
+  MergeBaseHistoryUnwalkable, MergeBaseHistoriesDisjoint, MergeBaseSourceAlreadyIntegrated,
 }
 import gunbc.scm.manifest_merge { ManifestPathConflict, PathState, PathAbsent, PathPresent }
 import gunbc.scm.squash_merge {
@@ -270,6 +270,7 @@ test fn scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_rece
                     MergeBaseDerived { base: _ } => false
                     MergeBaseHistoryUnwalkable { side: _, walk: _ } => false
                     MergeBaseHistoriesDisjoint { target: _, source: _ } => false
+                    MergeBaseSourceAlreadyIntegrated { target: _, source: _ } => false
                   }
                 SquashMerged { repository: _, reference: _ } => false
                 SquashMergeConflicted { conflicts: _ } => false

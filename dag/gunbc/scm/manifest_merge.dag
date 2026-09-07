@@ -258,8 +258,14 @@ fn close_groups(acc: GroupAcc) -> MergeAcc {
 // a second authority for "did anything conflict", free to disagree with the list it describes.
 //
 // THE OPERANDS ARE STORE-CONSTRUCTED RECORDS, NOT RAW LISTS. `CorpusManifestRecord` is
-// sole_constructor and `store_corpus_manifest` refuses a duplicate path before an identity is
-// derived, so no caller can hand this function a manifest holding two entries for one path. A first
+// sole_constructor and is minted at exactly one place, `gunbc.scm.object_store`
+// `insert_canonical_manifest`, which cannot be reached without an `AdmittedManifestEntries` -- a
+// carrier with two constructors, one that ran the duplicate check and one whose argument is already
+// a `PathUniqueManifestEntries`. So no caller can hand this function a manifest holding two entries
+// for one path. An earlier revision of this sentence named `store_corpus_manifest` as the producer
+// that established it; that was true when written and became FALSE once the native `add` reached the
+// shared constructor through `store_path_unique_manifest`, so the conclusion still held while the
+// cited authority no longer covered the whole population. Found by external review. A first
 // derivation took `List<CorpusManifestEntry>` and carried an annotation asserting that uniqueness
 // held -- an assertion about a guarantee the SIGNATURE did not carry, which is validation-by-comment
 // standing where construction was available. Under raw lists, a source of [a -> X, a -> Y] merged

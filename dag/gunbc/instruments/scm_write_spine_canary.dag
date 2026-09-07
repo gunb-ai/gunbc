@@ -40,7 +40,7 @@ import gunbc.scm.ancestry { RepositoryCommitRef }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, empty_repository }
 import gunbc.scm.write_spine {
   StagedCommit, StagedCommitMinted, StagedCommitCandidateRefused, StagedCommitNothingToFreeze,
-  StagedCommitAllocatorInvalid, StagedCommitParentMissing,
+  StagedCommitAllocatorInvalid,
   StageIngress, Staged, StageCandidateRefused, StageSourceLocatorCollision,
   StageManifestLocatorCollision,
   stage_source_at_path, commit_staged,
@@ -57,6 +57,22 @@ import gunbc.scm.checkout {
 import gunbc.scm.object_store { AuthoredSourceContent, AuthoredSourceEmpty, AuthoredSourceText }
 import gunbc.scm.squash_merge {
   SquashMergeOutcome, SquashMerged, SquashMergeConflicted, squash_merge,
+  SquashMergeBaseRefused,
+  SquashMergeRootMissing, SquashMergeRootIsAuthoredSource, SquashMergeRootIsSemanticNode,
+  SquashMergeCommitMissing,
+  SquashMergeResultDuplicatePath, SquashMergeResultLocatorCollision,
+  SquashMergeAllocatorInvalid, SquashMergeMintParentMissing,
+  SquashMergeMintIntegrationSourceMissing,
+}
+import gunbc.scm.merge_base {
+  MergeBaseOutcome, MergeBaseDerived, MergeBaseSourceAlreadyConsumed,
+  MergeBaseHistoryUnwalkable, MergeBaseHistoriesDisjoint,
+  MergeBaseSourceAlreadyIntegrated,
+  MergeBaseSide, MergeBaseTargetSide, MergeBaseSourceSide,
+}
+import gunbc.scm.ancestry {
+  AncestryWalk, AncestryTraced, AncestryBrokenAt,
+  AncestryStartNotInHistory, AncestryRevisitsACommit,
 }
 
 // THE SLOT COMES FROM ARGV AS TWO STRINGS AND IS REFUSED WHEN EITHER IS EMPTY, once, here. `--arg`
@@ -224,8 +240,6 @@ func spine_commit_loaded(loaded: LoadedRepositoryGeneration, message: String) ->
       )
     StagedCommitAllocatorInvalid { next_ordinal: _ } =>
       exit_failure(reason: "commit refused: the commit allocator is invalid")
-    StagedCommitParentMissing { parent: _ } =>
-      exit_failure(reason: "commit refused: the parent commit is not in this repository")
     StagedCommitMinted { repository: committed, reference: _ } =>
       publication_exit(publication: republish_repository(loaded: loaded, repo: committed))
   }
@@ -706,7 +720,10 @@ func squash_from(
         SquashMergeConflicted { conflicts: _ } => ExitSuccess
         SquashMerged { repository: _, reference: _ } =>
           exit_failure(reason: "squash failed: a genuine conflict MERGED instead of conflicting")
-        other => exit_failure(reason: "squash failed: expected a conflict and got another refusal")
+        other =>
+          exit_failure(
+            reason: join(["squash failed: expected a conflict and got ", squash_outcome_wire(outcome: other)], "")
+          )
       }
     ExpectMerge =>
       match outcome {
@@ -714,7 +731,65 @@ func squash_from(
           publish_merge_selected(loaded: loaded, merged: merged, reference: reference)
         SquashMergeConflicted { conflicts: _ } =>
           exit_failure(reason: "squash failed: independent edits reported a conflict")
-        other => exit_failure(reason: "squash failed: the merge was refused")
+        other =>
+          exit_failure(
+            reason: join(["squash failed: the merge was refused with ", squash_outcome_wire(outcome: other)], "")
+          )
       }
+  }
+}
+
+// EVERY REFUSAL NAMES ITSELF. Both expectation arms above used to end at one sentence -- "the merge
+// was refused" -- for eleven structurally different outcomes, so an operator reading a red saw that
+// something declined and nothing about WHICH authority declined or what the remedy is. That is the
+// undifferentiated-failure shape this stack refuses in production code, sitting in the instrument
+// that is supposed to make production legible. Found while probing degenerate merge topology, where
+// the whole question was which refusal fires.
+fn squash_outcome_wire(outcome: SquashMergeOutcome) -> String {
+  match outcome {
+    SquashMerged { repository: _, reference: _ } => "merged"
+    SquashMergeBaseRefused { refusal: r } =>
+      join(["base-refused|", merge_base_refusal_wire(refusal: r)], "")
+    SquashMergeConflicted { conflicts: _ } => "conflicted"
+    SquashMergeRootMissing { side: _, root: _ } => "root-missing"
+    SquashMergeRootIsAuthoredSource { side: _, root: _ } => "root-is-authored-source"
+    SquashMergeRootIsSemanticNode { side: _, root: _ } => "root-is-semantic-node"
+    SquashMergeCommitMissing { side: _, reference: _ } => "commit-missing"
+    SquashMergeResultDuplicatePath { path: _ } => "result-duplicate-path"
+    SquashMergeResultLocatorCollision { identity: _ } => "result-locator-collision"
+    SquashMergeAllocatorInvalid => "allocator-invalid"
+    SquashMergeMintParentMissing { parent: _ } => "mint-parent-missing"
+    SquashMergeMintIntegrationSourceMissing { source: _ } => "mint-integration-source-missing"
+  }
+}
+
+fn merge_base_refusal_wire(refusal: MergeBaseOutcome) -> String {
+  match refusal {
+    MergeBaseDerived { base: _ } => "derived"
+    MergeBaseSourceAlreadyConsumed { recorded_at: _, consumed: _, source: _ } =>
+      "source-already-consumed"
+    MergeBaseHistoryUnwalkable { side: side, walk: walk } =>
+      join([
+        "history-unwalkable|side=", merge_base_side_wire(side: side),
+        "|walk=", ancestry_walk_wire(walk: walk),
+      ], "")
+    MergeBaseHistoriesDisjoint { target: _, source: _ } => "histories-disjoint"
+    MergeBaseSourceAlreadyIntegrated { target: _, source: _ } => "source-already-integrated"
+  }
+}
+
+fn merge_base_side_wire(side: MergeBaseSide) -> String {
+  match side {
+    MergeBaseTargetSide => "target"
+    MergeBaseSourceSide => "source"
+  }
+}
+
+fn ancestry_walk_wire(walk: AncestryWalk) -> String {
+  match walk {
+    AncestryTraced { chain: c } => join(["traced|len=", length(c) as String], "")
+    AncestryBrokenAt { commit: _, missing_parent: _ } => "broken-at"
+    AncestryStartNotInHistory { start: _ } => "start-not-in-history"
+    AncestryRevisitsACommit { detected_from: _ } => "revisits-a-commit"
   }
 }

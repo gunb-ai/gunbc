@@ -69,6 +69,7 @@ import gunbc.scm.merge_base {
   MergeBaseSourceAlreadyConsumed,
   MergeBaseHistoryUnwalkable,
   MergeBaseHistoriesDisjoint,
+  MergeBaseSourceAlreadyIntegrated,
   MergeBaseTargetSide,
   MergeBaseSourceSide,
   merge_base,
@@ -203,6 +204,7 @@ test fn scm_mb_a_source_descending_from_a_consumed_source_has_no_valid_base() ->
         MergeBaseDerived { base: _ } => false
         MergeBaseHistoryUnwalkable { side: _, walk: _ } => false
         MergeBaseHistoriesDisjoint { target: _, source: _ } => false
+        MergeBaseSourceAlreadyIntegrated { target: _, source: _ } => false
       }
   }
 }
@@ -220,6 +222,7 @@ test fn scm_mb_an_independent_lineage_sharing_content_still_derives_its_base() -
         MergeBaseSourceAlreadyConsumed { recorded_at: _, consumed: _, source: _ } => false
         MergeBaseHistoryUnwalkable { side: _, walk: _ } => false
         MergeBaseHistoriesDisjoint { target: _, source: _ } => false
+        MergeBaseSourceAlreadyIntegrated { target: _, source: _ } => false
       }
   }
 }
@@ -239,6 +242,7 @@ test fn scm_mb_replaying_the_consumed_source_itself_has_no_valid_base() -> Bool 
         MergeBaseDerived { base: _ } => false
         MergeBaseHistoryUnwalkable { side: _, walk: _ } => false
         MergeBaseHistoriesDisjoint { target: _, source: _ } => false
+        MergeBaseSourceAlreadyIntegrated { target: _, source: _ } => false
       }
   }
 }
@@ -301,6 +305,7 @@ test fn scm_mb_the_integration_record_survives_a_document_round_trip() -> Bool {
                 MergeBaseDerived { base: _ } => false
                 MergeBaseHistoryUnwalkable { side: _, walk: _ } => false
                 MergeBaseHistoriesDisjoint { target: _, source: _ } => false
+                MergeBaseSourceAlreadyIntegrated { target: _, source: _ } => false
               }
           }
       }
@@ -429,4 +434,54 @@ test fn scm_merge_base_witnesses_hold() -> Bool {
     && scm_mb_a_document_whose_integration_anchor_comes_later_refuses()
     && scm_mb_checked_encode_refuses_an_absent_integration_anchor()
     && scm_mb_checked_encode_refuses_an_integration_anchor_that_comes_later()
+}
+
+// DEGENERATE TOPOLOGY: A BASE THAT IS THE SOURCE MEANS THERE IS NOTHING TO INTEGRATE.
+//
+// Both rows MERGED before this arm existed, measured wet on the canary. The damage is not the empty
+// commit -- it is that the mint also writes a `SquashIntegrated { source }`, the very row
+// `consumed_join` reads to refuse a LATER merge of that source. So merging a branch into itself, or
+// re-merging an ancestor, silently spent the source and made the honest merge afterwards refuse
+// against a receipt for work that never happened.
+//
+// THE POSITIVE CONTROL FOR BOTH ROWS IS ALREADY IN THIS FILE, AND DRAFTING A SECOND ONE WAS THE
+// MISTAKE. `scm_mb_an_independent_lineage_sharing_content_still_derives_its_base` asserts a DERIVED
+// base for a genuinely divergent pair (t1 against i1), so a `merge_base` answering
+// `SourceAlreadyIntegrated` for everything is already refuted. The control drafted beside these rows
+// instead used t1 and s1 -- a pair this scene DELIBERATELY consumes via m1 -- so it asserted a derived
+// base for the one relationship the scene exists to make impossible, and went red on its first run. A
+// control that fails because its own premise contradicts the fixture is evidence about its author,
+// not about the verb.
+test fn scm_mb_merging_a_commit_into_itself_has_nothing_to_integrate() -> Bool {
+  match mb_scene() {
+    MbSceneUnavailable => false
+    MbScene { repository: r, c0: _, s1: _, m1: _, t1: t1, s2: _, i1: _ } =>
+      match merge_base(commits: r.commits, target: t1, source: t1) {
+        MergeBaseSourceAlreadyIntegrated { target: t, source: s } =>
+          repository_commit_ref_eq(left: t, right: t1)
+            && repository_commit_ref_eq(left: s, right: t1)
+        MergeBaseDerived { base: _ } => false
+        MergeBaseSourceAlreadyConsumed { recorded_at: _, consumed: _, source: _ } => false
+        MergeBaseHistoryUnwalkable { side: _, walk: _ } => false
+        MergeBaseHistoriesDisjoint { target: _, source: _ } => false
+      }
+  }
+}
+
+// THE SAME RULE FROM THE OTHER DEGENERATE DIRECTION: the source is an ANCESTOR of the target, so the
+// nearest common ancestor is the source itself and the source side carries no changes against it.
+test fn scm_mb_squashing_an_ancestor_into_its_descendant_has_nothing_to_integrate() -> Bool {
+  match mb_scene() {
+    MbSceneUnavailable => false
+    MbScene { repository: r, c0: c0, s1: _, m1: _, t1: t1, s2: _, i1: _ } =>
+      match merge_base(commits: r.commits, target: t1, source: c0) {
+        MergeBaseSourceAlreadyIntegrated { target: t, source: s } =>
+          repository_commit_ref_eq(left: t, right: t1)
+            && repository_commit_ref_eq(left: s, right: c0)
+        MergeBaseDerived { base: _ } => false
+        MergeBaseSourceAlreadyConsumed { recorded_at: _, consumed: _, source: _ } => false
+        MergeBaseHistoryUnwalkable { side: _, walk: _ } => false
+        MergeBaseHistoriesDisjoint { target: _, source: _ } => false
+      }
+  }
 }

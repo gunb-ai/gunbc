@@ -62,8 +62,28 @@ import gunbc.scm.repository_envelope {
 // tell whether they asked for a replay or a continuation. A reader given only "no base" would
 // reasonably conclude the histories are unrelated, which is the opposite of the truth -- they are
 // related by an integration that already happened.
+// A BASE THAT IS THE SOURCE MEANS THERE IS NOTHING TO INTEGRATE, AND IT IS ITS OWN REFUSAL.
+//
+// Two degenerate topologies reach it: merging a commit into ITSELF, where the nearest common ancestor
+// of one chain with itself is that commit; and squashing an ANCESTOR into its own descendant, where
+// the ancestor is already the base. Both used to derive a base and merge cleanly -- the source side
+// carries no changes against a base that IS the source, so the algebra returned the target's own
+// entries, and the verb minted a child whose root equals its parent's root.
+//
+// THAT IS WORSE THAN AN EMPTY COMMIT, and the receipt is why. The mint also writes a
+// `SquashIntegrated { source }`, which is exactly the row `consumed_join` reads to refuse a LATER
+// merge of that source. So merging a branch into itself, or re-merging an ancestor, silently spent
+// the source: the no-op is recorded as an integration, and the honest merge that follows is refused
+// by a receipt for work that never happened. The write path already refuses a commit that freezes
+// nothing (`gunbc.scm.write_spine`); the merge path did not, and nothing joined the two rules.
+//
+// Found by probing degenerate topology after external review asked whether the seals held there.
 type MergeBaseOutcome
   = MergeBaseDerived { base: RepositoryCommitRef }
+  | MergeBaseSourceAlreadyIntegrated {
+      target: RepositoryCommitRef,
+      source: RepositoryCommitRef,
+    }
   | MergeBaseSourceAlreadyConsumed {
       recorded_at: RepositoryCommitRef,
       consumed: RepositoryCommitRef,
@@ -186,7 +206,12 @@ fn merge_base(
               MergeBaseSourceAlreadyConsumed { recorded_at: r, consumed: c, source: source }
             ConsumedJoinNone =>
               match nearest_common_ancestor(target_chain: target_chain, source_chain: source_chain) {
-                Present { value: base } => MergeBaseDerived { base: base }
+                Present { value: base } =>
+                  if repository_commit_ref_eq(left: base, right: source) {
+                    MergeBaseSourceAlreadyIntegrated { target: target, source: source }
+                  } else {
+                    MergeBaseDerived { base: base }
+                  }
                 Absent => MergeBaseHistoriesDisjoint { target: target, source: source }
               }
           }

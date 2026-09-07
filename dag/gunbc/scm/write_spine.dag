@@ -28,6 +28,7 @@ import gunbc.scm.object_store {
   UniqueManifestStoreOutcome, UniqueManifestStored, UniqueManifestLocatorCollision,
   store_path_unique_manifest,
 }
+import gunbc.scm.ancestry { CommitAncestry }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope, RepositoryCommitRef,
   RepositoryManifestRoot,
@@ -36,9 +37,8 @@ import gunbc.scm.repository_envelope {
   repository_root_by_resolving,
 }
 import gunbc.scm.ordinary_commit {
-  OrdinaryCommitMint, OrdinaryCommitMinted,
-  OrdinaryCommitAllocatorInvalid, OrdinaryCommitParentMissing,
-  mint_ordinary_commit,
+  AncestralCommitMint, AncestralCommitMinted, AncestralCommitAllocatorInvalid,
+  mint_ancestral_commit,
 }
 import gunbc.scm.staging {
   StagingRefusal, EffectiveCandidate,
@@ -201,6 +201,15 @@ fn stage_into(
 // commit a deletion of everything the author never asked for, which is the same widening the staging
 // module refuses one level down.
 //
+// AND THERE IS NO PARENT-MISSING ARM EITHER, FOR THE SAME REASON ONE LEVEL ALONG. `stage_standing`
+// reaches its two freezable arms only through `base_snapshot`, which finds the checked-out commit in
+// this repository's commits before it can report a base at all -- so by the time there is something to
+// freeze, the parent has been FOUND, and `StageWithNoBase` is the arm where there is no parent to
+// find. Both arms now carry the `CommitAncestry` that establishes it, and this verb mints through
+// `mint_ancestral_commit`, whose admission does not ask. An earlier revision carried the generic
+// mint's parent-missing arm here and could not have produced it; that is the same `carry_mint` shape
+// as the integration arm below, found by external review one layer later than the last time.
+//
 // AND THERE IS NO INTEGRATION-SOURCE ARM, BECAUSE THE CONSTRUCTION THIS VERB INVOKES HAS NO
 // INTEGRATION SOURCE. An earlier revision carried one and admitted in its own comment that it could
 // not arise -- the `carry_mint` error this stack has already paid for once: honest about the callee's
@@ -212,7 +221,6 @@ type StagedCommit
   | StagedCommitCandidateRefused { cause: StagingRefusal }
   | StagedCommitNothingToFreeze
   | StagedCommitAllocatorInvalid { next_ordinal: Int }
-  | StagedCommitParentMissing { parent: RepositoryCommitRef }
 
 // THE COMMITTABLE STAGE -- THE CARRIER THAT SAYS THIS ROOT IS *THIS WORKSPACE'S PENDING CHANGE*.
 //
@@ -236,6 +244,7 @@ type StagedCommit
 type CommittableStage sole_constructor {
   repository: RepositoryEnvelope
   root: CorpusManifestObjectRef
+  ancestry: CommitAncestry
 }
 
 fn commit_staged(repository: RepositoryEnvelope, message: String) -> StagedCommit {
@@ -243,14 +252,18 @@ fn commit_staged(repository: RepositoryEnvelope, message: String) -> StagedCommi
     StageStandingRefused { cause: c } => StagedCommitCandidateRefused { cause: c }
     NoCandidateAndNoBase => StagedCommitNothingToFreeze
     StageMatchesBase { candidate: _ } => StagedCommitNothingToFreeze
-    StageWithNoBase { candidate: root } =>
+    StageWithNoBase { candidate: root, ancestry: ancestry } =>
       freeze_committable(
-        committable: CommittableStage { repository: repository, root: root },
+        committable: CommittableStage {
+          repository: repository, root: root, ancestry: ancestry,
+        },
         message: message,
       )
-    StageDiffersFromBase { candidate: root, committed: _ } =>
+    StageDiffersFromBase { candidate: root, committed: _, ancestry: ancestry } =>
       freeze_committable(
-        committable: CommittableStage { repository: repository, root: root },
+        committable: CommittableStage {
+          repository: repository, root: root, ancestry: ancestry,
+        },
         message: message,
       )
   }
@@ -288,15 +301,14 @@ fn freeze_committable(committable: CommittableStage, message: String) -> StagedC
     RepositoryManifestRootIsSemanticNode { root: r } =>
       StagedCommitCandidateRefused { cause: StageManifestIsSemanticNode { staged: r } }
     RepositoryManifestRootResolved(subject) =>
-      match mint_ordinary_commit(
+      match mint_ancestral_commit(
         subject: subject,
         message: message,
-        parent: repository.checked_out,
+        ancestry: committable.ancestry,
       ) {
-        OrdinaryCommitAllocatorInvalid { next_ordinal: n } =>
+        AncestralCommitAllocatorInvalid { next_ordinal: n } =>
           StagedCommitAllocatorInvalid { next_ordinal: n }
-        OrdinaryCommitParentMissing { parent: p } => StagedCommitParentMissing { parent: p }
-        OrdinaryCommitMinted(minted) =>
+        AncestralCommitMinted(minted) =>
           StagedCommitMinted {
             repository: RepositoryEnvelope {
               store: minted.repository.store,

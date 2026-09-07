@@ -47,6 +47,7 @@ import gunbc.scm.merge_base {
   MergeBaseSourceAlreadyConsumed,
   MergeBaseHistoryUnwalkable,
   MergeBaseHistoriesDisjoint,
+  MergeBaseSourceAlreadyIntegrated,
   merge_base,
 }
 import gunbc.scm.manifest_merge {
@@ -258,6 +259,8 @@ fn squash_merge(
       SquashMergeBaseRefused { refusal: MergeBaseHistoryUnwalkable { side: s, walk: w } }
     MergeBaseHistoriesDisjoint { target: t, source: s } =>
       SquashMergeBaseRefused { refusal: MergeBaseHistoriesDisjoint { target: t, source: s } }
+    MergeBaseSourceAlreadyIntegrated { target: t, source: s } =>
+      SquashMergeBaseRefused { refusal: MergeBaseSourceAlreadyIntegrated { target: t, source: s } }
     MergeBaseDerived { base: base_ref } =>
       match read_side_manifest(repository: repository, side: MergeBaseCommit, reference: base_ref) {
         MergeSideManifestRefused { outcome: o } => o
