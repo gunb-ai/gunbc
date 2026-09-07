@@ -1,0 +1,120 @@
+module gunbc.runner.runner_guest_egress_attempt
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+
+// AN ATTEMPT THAT DID NOT REACH ITS GOAL, recorded because two of its by-products are worth more
+// than the goal was. Attempt slice7c-bridge-e6a5b5c2 on the Mt. Collins unit, 2026-09-07. The aim
+// was guest egress -- a runner cannot register with GitHub over a /30 to its host -- by bridging the
+// attempt's tap and the host NIC onto the LAN. The guest did not obtain egress.
+//
+// IT IS ITS OWN RECEIPT RATHER THAN A FOOTNOTE ON A SUCCESS, because a reader looking for "does the
+// guest have egress" must find the answer no, and because the two findings below were produced by
+// this run and would otherwise be attributed to whichever later run happens to succeed.
+data egress_attempt: NonEmptyStr = "slice7c-bridge-e6a5b5c2"
+data egress_attempt_evidence: NonEmptyStr = "artifacts/bmc/mtcollins1-bridge-egress-attempt.log"
+data egress_attempt_evidence_sha256: NonEmptyStr = "694f5a64bcd8f3739091f28a0b1f4bdfde94e0c144d0bf9c6efa43e87bf688a9"
+data egress_attempt_evidence_byte_count: Int = 225444
+
+type EgressAttemptOutcome
+  = GuestEgressEstablished { via: NonEmptyStr }
+  | GuestEgressNotEstablished { reached: NonEmptyStr, blocked_at: NonEmptyStr }
+
+data egress_outcome: EgressAttemptOutcome = GuestEgressNotEstablished {
+  reached: "the bridge carries eth0 and the attempt tap, and the host NIC reports link up at 1000 Mbps full duplex",
+  blocked_at: "the host obtained no address on the bridge, so neither host nor guest had a route off the segment",
+}
+
+// ── the NIC actually carries a link ─────────────────────────────────────────────────────────────
+
+// PREVIOUSLY UNOBSERVED AND NOW READ. runner_host_hardware_observation listed "that either
+// interface carries traffic" among the things a PCI identity cannot establish, and every boot since
+// has only shown igb BINDING. This run shows the physical link negotiated:
+//
+//   igb 0002:02:00.0 eth0: igb: eth0 NIC Link is Up 1000 Mbps Full Duplex, Flow Control: RX/TX
+//
+// That is layer 1 and 2 on the port whose MAC the firmware used for PXE -- the same port the fleet
+// would reach. It is not egress, and it is the half of egress that hardware owns.
+data nic_link_observed: NonEmptyStr = "igb eth0 negotiated 1000 Mbps full duplex; the physical link on the fleet-facing port is established for the first time"
+
+// ── the bridge was correct, and only its readback was broken ────────────────────────────────────
+
+// AN EARLIER RUN REPORTED AN EMPTY BRIDGE AND THE BRIDGE WAS FINE. `brctl show br0` takes no
+// argument in busybox, so passing one printed nothing, and nothing read as no members. Reading
+// /sys/class/net/br0/brif instead shows both interfaces enslaved.
+//
+// THE LESSON IS THE ONE THIS LANE KEEPS RELEARNING: an instrument that cannot express the question
+// returns an answer that looks like a measurement. The sysfs read is unambiguous because it is the
+// kernel's own representation rather than a tool's rendering of it.
+data bridge_membership: List<NonEmptyStr> = [
+  "eth0 -- the host NIC",
+  "the attempt's tap device",
+]
+
+data bridge_readback_defect: NonEmptyStr = "brctl show br0 takes no argument in busybox and printed nothing, which read as an empty bridge; /sys/class/net/br0/brif shows both members"
+
+// ── the cpu bound has a cause now ───────────────────────────────────────────────────────────────
+
+// THE PREVIOUS RECEIPT SAID NO CAUSE IS CLAIMED, and this run produced one. Writing cpu.max fails
+// with a located error rather than silently doing nothing:
+//
+//   /init: can't create /sys/fs/cgroup/gunbc/attempt-<id>/cpu.max: Permission denied
+//
+// WITH THE ROOT'S SUBTREE CARRYING cpu. cgroup-root-subtree reads "cpu memory pids", so the
+// controller is delegated from the root -- and the interface file still cannot be created in the
+// leaf. memory.max and pids.max in the same leaf apply.
+//
+// THIS IS A NARROWING, NOT A DIAGNOSIS. What changed is that the failure is now an errno at a path
+// instead of an empty read, which is the difference between an open question and an invisible one.
+// The next slice owes the actual cause.
+type CpuBoundFailure
+  = CpuBoundAppliedNow { value: NonEmptyStr }
+  | CpuBoundRefusedWithErrno { errno: NonEmptyStr, path_shape: NonEmptyStr, root_subtree: NonEmptyStr }
+
+data cpu_bound_failure: CpuBoundFailure = CpuBoundRefusedWithErrno {
+  errno: "EPERM -- Permission denied, creating the interface file",
+  path_shape: "the attempt leaf's cpu.max",
+  root_subtree: "cpu memory pids -- the controller IS delegated from the root",
+}
+
+// ── what stopped the egress, at the grain observed ──────────────────────────────────────────────
+
+// THE DHCP CLIENT REPORTED SUCCESS AND APPLIED NOTHING, TWICE, FOR TWO DIFFERENT REASONS -- and the
+// second is unresolved.
+//
+// FIRST: busybox udhcpc obtains a lease and configures nothing without a -s script. It exited 0 with
+// no address, which reads exactly like a working client. A script was added.
+//
+// SECOND, AND OPEN: the script is present in the initramfs at a known path and was never invoked.
+// It logs unconditionally on entry, and /run/dhcp.log is empty -- so udhcpc did not call it, while
+// still exiting 0 under -n, which is the flag that should make a lease-less run exit non-zero.
+// Those two facts do not reconcile and no explanation is offered here.
+//
+// A THIRD POSSIBILITY NOT YET EXCLUDED: that the segment simply did not answer DHCP for the bridge's
+// MAC. Nothing in this run distinguishes "no offer" from "offer discarded", which is exactly the
+// distinction the lease log was added to make and which it failed to produce.
+data egress_blocked_by: List<NonEmptyStr> = [
+  "busybox udhcpc applies nothing without a -s script; it exited 0 with no address, which is indistinguishable from a working client",
+  "with a script supplied and present in the image, udhcpc still never invoked it -- the script logs on entry and its log is empty",
+  "and no observation distinguishes 'the segment offered no lease' from 'a lease was obtained and discarded'",
+]
+
+// ── the policy debt this incurred ───────────────────────────────────────────────────────────────
+
+// BRIDGING IS WIDER THAN THE ISOLATION PROFILE ALLOWS AND WAS CHOSEN ANYWAY. runner_isolation_admission
+// requires DefaultDenyEgress for every untrusted class; a bridge gives a guest unfiltered access to
+// the whole segment. It is admissible for RunnerHostQualificationProbe running one digest-pinned
+// image and is NOT admissible for any real job.
+//
+// THE REASON IT WAS CHOSEN IS A CAPABILITY GAP, NOT A PREFERENCE. This image has no netfilter
+// userspace at all -- busybox carries brctl and ip and neither nft nor iptables -- and CONFIG_MODULES=n
+// means anything the kernel defconfig marks modular is absent outright. A filtered egress path needs
+// its own kernel options and its own binary, which is its own slice.
+data egress_policy_debt: NonEmptyStr = "the bridge grants unfiltered segment access, which DefaultDenyEgress forbids; admissible only for the qualification profile with one pinned image, and a prerequisite for any real job"
+
+data egress_open: List<NonEmptyStr> = [
+  "why udhcpc exits 0 without invoking its own script, and whether the segment offered a lease at all",
+  "the actual cause of EPERM on cpu.max in a leaf whose parent delegates cpu",
+  "a filtered egress path: netfilter built in, an nft or equivalent binary in the image, and a default-deny ruleset",
+  "guest egress itself, which nothing here established",
+  "the JIT-registered runner, which egress is the prerequisite for",
+]
