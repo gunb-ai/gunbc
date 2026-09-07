@@ -1,0 +1,93 @@
+module gunbc.namespace_qualified_reference_host_closure_gap
+
+import std.types { FilePath, List, NonEmptyStr, String }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+// TYPED REFUSAL for the two zero-import dotted pairs that HostScannerClosureRefused
+// still surfaces on the generated-artifact carrier after the XL-6 scanner wall:
+//   src/v2/std/artifact.dag → src/v2/std/refinement.dag
+//   src/v2/std/cross_tree/resolution.dag → src/v2/std/layer.dag
+//
+// Reference-derived binding cannot supply a host-closure EDGE for either pair today.
+// The missing capability is named below; this row does NOT encode the join, does NOT
+// reclassify TypeOccurrence, and does NOT widen the scanner wall. The continuing red
+// on those pairs is the correct terminal for the prepared cut until the capability
+// lands and can be measured by the named instrument.
+
+type JoinedQualifiedReferencePathInductionCapability sole_constructor {
+  name: NonEmptyStr
+  sufficient_for: NonEmptyStr
+}
+
+data joined_qualified_reference_path_induction: JoinedQualifiedReferencePathInductionCapability =
+  JoinedQualifiedReferencePathInductionCapability {
+    name: "joined qualified-reference path induction for host file dependency" as NonEmptyStr,
+    sufficient_for:
+      "producing a host-closure edge from a zero-import dotted cross-module reference, not merely projecting a provider name"
+        as NonEmptyStr,
+  }
+
+type HostClosurePairObligation {
+  source_path: FilePath
+  proposed_dependency_path: FilePath
+}
+
+type HostClosurePairRefusalCause
+  = MissingJoinedQualifiedReferencePathInduction {
+      capability: JoinedQualifiedReferencePathInductionCapability,
+    }
+
+type HostClosurePairRefusal {
+  pair: HostClosurePairObligation
+  cause: HostClosurePairRefusalCause
+}
+
+data host_closure_pairs_refused_for_missing_joined_qualified_path_induction:
+  List<HostClosurePairRefusal> = [
+  HostClosurePairRefusal {
+    pair: HostClosurePairObligation {
+      source_path: "src/v2/std/artifact.dag" as FilePath,
+      proposed_dependency_path: "src/v2/std/refinement.dag" as FilePath,
+    },
+    cause: MissingJoinedQualifiedReferencePathInduction {
+      capability: joined_qualified_reference_path_induction,
+    },
+  },
+  HostClosurePairRefusal {
+    pair: HostClosurePairObligation {
+      source_path: "src/v2/std/cross_tree/resolution.dag" as FilePath,
+      proposed_dependency_path: "src/v2/std/layer.dag" as FilePath,
+    },
+    cause: MissingJoinedQualifiedReferencePathInduction {
+      capability: joined_qualified_reference_path_induction,
+    },
+  },
+]
+
+// Evidence for whether the capability is still missing is RE-DERIVED by this
+// instrument (occurrence-category census at file grain). Cite the entry point
+// by its Cargo bin name; do not copy its numbers into this row. Dated BuildBuddy
+// runs may corroborate but are not the sole provenance once the instrument is enrolled.
+data occurrence_category_file_census_instrument: NonEmptyStr =
+  "occurrence_category_file_census" as NonEmptyStr
+
+data occurrence_category_file_census_crate: NonEmptyStr =
+  "v1-compiler" as NonEmptyStr
+
+data occurrence_category_file_census_source_path: NonEmptyStr =
+  "src/v1/stage0/src/bin/occurrence_category_file_census.rs" as NonEmptyStr
+
+data occurrence_category_file_census_invocation: String =
+  "cargo build --release -p v1-compiler --bin occurrence_category_file_census && ./target/release/occurrence_category_file_census <path.dag>..."
+
+data occurrence_category_file_census_measures: String =
+  "per named source path: decls, refs, clause_e_selected, ns_segment_refs, dotted_type_refs"
+
+// Retires when joined qualified-reference path induction produces a host-closure
+// edge for every pair in host_closure_pairs_refused_for_missing_joined_qualified_path_induction
+// under the ordinary loader — measured by the named instrument showing the
+// occurrence shape that supplies those edges, with no scanner or pool fallback.
+data host_closure_joined_qualified_path_gap_dissolve_on: DissolutionCondition =
+  unbound_dissolution(description:
+    "Retire this refusal roster when joined qualified-reference path induction for host file dependency is sufficient to produce a host-closure edge from each zero-import dotted cross-module reference named in host_closure_pairs_refused_for_missing_joined_qualified_path_induction, with no DottedModulePathScanner or BareReferenceScanner addition answering behind the loaded closure. Re-derive the occurrence-category evidence via the occurrence_category_file_census instrument entry point; transcribed counts do not satisfy this trigger."
+  )

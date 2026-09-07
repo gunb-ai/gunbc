@@ -95,6 +95,14 @@ path = "src/bin/carrier_realization_census.rs"
 name = "type_occurrence_binding_census"
 path = "src/bin/type_occurrence_binding_census.rs"
 
+# Per-file occurrence-category census (decls / refs / clause-e-selected /
+# NamespaceSegment refs / dotted TypeOccurrence refs). Named instrument for the
+# joined-qualified-reference host-closure gap; cite this entry point, never
+# transcribe its output (DESIGN §6).
+[[bin]]
+name = "occurrence_category_file_census"
+path = "src/bin/occurrence_category_file_census.rs"
+
 # Whole-tree `.dag` source read discovery for Stage C Lane 3a SourceRootIngest.
 [[bin]]
 name = "discover_source_root_ingest"
