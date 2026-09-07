@@ -5,7 +5,8 @@ import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure {
   Bandwidth, BitWidth, ByteSize, Hertz, MegatransfersPerSecond, Millimeter, RackUnit, Watt,
-  bandwidth, bandwidth_count, bit_width, byte_size, hertz, megatransfers_per_second, millimeter, rack_unit, watt,
+  bandwidth, bit_width, byte_size, hertz, measure_le, megatransfers_per_second, millimeter,
+  rack_unit, watt,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.ampere.mt_collins_1u_product_brief.subject {
@@ -68,8 +69,13 @@ data mt_collins_1u_ocp_slot: OcpSlotStanding = OcpMezzanineSlotPresent {
   occupancy_note: "The brief states the slot and its multi-host support. It states no bundled card, so a populated NIC is not a platform fact and any 10G capability on a given unit is an observation about that unit.",
 }
 
+data ten_gigabit_ethernet_rate: Bandwidth = bandwidth(count: 10000000000)
+
 fn mt_collins_1u_has_onboard_ten_gigabit() -> Bool {
-  bandwidth_count(b: mt_collins_1u_onboard_data_network.per_port_bandwidth) >= 10000000000
+  measure_le(
+    a: ten_gigabit_ethernet_rate,
+    b: mt_collins_1u_onboard_data_network.per_port_bandwidth,
+  )
 }
 
 fn mt_collins_1u_ten_gigabit_requires_ocp_card() -> Bool {
