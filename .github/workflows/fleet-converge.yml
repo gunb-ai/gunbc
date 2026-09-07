@@ -52,7 +52,7 @@ on:
 jobs:
   build:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 65
+    timeout-minutes: 70
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -111,6 +111,7 @@ jobs:
       - name: "Reset-return dispatch admission: refuse an unnamed observer before anything is scheduled"
         id: reset_observer_dispatch_admission
         run: |
+          # 🟡 dissolve-on: fleet_converge_reset_observer_dispatch_admission_step — concat-built foreign-executor (GitHub Actions run:) dispatch-admission gate; the REFUSAL it enforces is modeled (an unnamed observer names no subject through gunbc.host_reset_return reset_dispatch_pairings), but the gate itself is medium-as-string because it must run before any modeled entry point exists on the runner; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes a dispatch-admission gate through orchestration emit or typed host_effect_apply without a concat scaffold
           if [ "${{ github.event.inputs.mode }}" = "host_reset_return" ] && [ -z "${{ github.event.inputs.reset_observer }}" ]; then
             echo "::error::ResetObserverUnnamed: mode=host_reset_return was dispatched with an empty reset_observer. The reset job's runs-on interpolates that label, so an empty value asks for a runner carrying no label and the job would queue until its backstop with no receipt. The subject is DERIVED from the observer through gunbc.host_reset_return reset_dispatch_pairings, so an unnamed observer names no subject and there is nothing to reset. Re-dispatch naming one of the rostered observers the form offers." >&2
             exit 1

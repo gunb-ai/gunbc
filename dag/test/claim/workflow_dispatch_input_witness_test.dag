@@ -8,7 +8,7 @@ import gunbc.fleet_converge_workflow {
   fleet_converge_mode_step_if, fleet_converge_mode_scope,
   FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, DashboardDeploy,
   fleet_converge_spark_bootstrap_step_if, fleet_converge_mode_options,
-  fleet_converge_reset_observer_dispatch_admission_step,
+  fleet_converge_reset_observer_dispatch_admission_step, fleet_converge_build_job_steps,
   fleet_converge_workflow, expected_fleet_converge_yml,
   FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused,
 }
@@ -171,8 +171,22 @@ fn expected_fleet_converge_yml_content() -> String {
   }
 }
 
-test fn fleet_converge_workflow_has_no_heal_revalidation_paste_through() -> Bool {
-  !string_contains(s: expected_fleet_converge_yml_content(), pattern: "expected_healed_sha")
+// TWO ABSENCES, ONE RENDER. Both patterns are facts about the same emitted workflow, and rendering it
+// is the expensive part -- roughly the whole 500ms claim budget on its own. Asking them in separate
+// witnesses renders it twice for no additional information, which is DESIGN section 2's authored
+// duplication rather than a cache question: the two demands share this frame as their least common
+// ancestor, so the first value is carried.
+//
+// THE ORG-ADMIN SECRET CLAIM MOVED HERE, and its route is worth recording. It began as a last
+// conjunct of the org-actions witness, where it was the second subject in a witness about the invoke
+// string; splitting it out was right on subject and wrong on cost, because the new identity rendered
+// the workflow a second time and was interrupted at cpu_at_least=509ms with no verdict (review 61958
+// round). Its subject is the rendered workflow, which is exactly this witness's subject, so this is
+// where it belongs on both counts.
+test fn the_rendered_workflow_carries_neither_a_pasted_heal_sha_nor_an_org_admin_secret() -> Bool {
+  let yml = expected_fleet_converge_yml_content()
+  !string_contains(s: yml, pattern: "expected_healed_sha")
+    && !string_contains(s: yml, pattern: "secrets.GUNBC_ORG_ADMIN_TOKEN")
 }
 
 // ONE EMISSION, READ TWICE. Both conjuncts ask about the same rendered workflow, so emitting it
@@ -215,19 +229,6 @@ test fn fleet_converge_org_actions_mode_binds_secret_and_modeled_entry_holds() -
     && !string_contains(s: invoke, pattern: "curl -sSf -H @\"$HDR_FILE\" \"https://secretmanager")
 }
 
-// THE ABSENT REPOSITORY SECRET IS A FACT ABOUT THE WHOLE WORKFLOW, not about the org-actions invoke,
-// and it sat as a last conjunct of the witness above until this change. Two subjects in one witness
-// is the defect; that it also made the witness emit the entire workflow to answer a question the
-// other seven conjuncts do not need is the cost of the defect rather than a separate one.
-//
-// THE COST WAS MEASURED, NOT SUPPOSED. That witness is enrolled cost debt, normally withheld; adding
-// a job to the workflow grew the emission enough that when this branch's edit forced it to execute
-// for a verdict it was interrupted at cpu_at_least=501ms against the 500ms line, so it produced no
-// verdict at all. Splitting on the subject boundary is the repair the roster was asking for, and
-// widening the line to fit a witness answering two questions would have been the wrong direction.
-test fn the_fleet_converge_workflow_carries_no_org_admin_repository_secret() -> Bool {
-  !string_contains(s: expected_fleet_converge_yml_content(), pattern: "secrets.GUNBC_ORG_ADMIN_TOKEN")
-}
 
 
 // THE UNNAMED OBSERVER REFUSES WHERE IT CAN STILL BE HEARD (review 61950). reset_observer is
@@ -252,15 +253,21 @@ test fn an_unnamed_reset_observer_refuses_in_the_always_schedulable_job() -> Boo
 
 // AND IT IS ACTUALLY IN THE JOB. A step function nothing calls is the dangling-declaration shape
 // (DESIGN section 3c) and would leave the guard passing its own witness while never running.
+//
+// IT ASKS THE STEP LIST, NOT THE WHOLE WORKFLOW, and that is a cost fact rather than a style one:
+// fleet_converge_build_job_steps() is the single authority the job's `steps:` field consumes, so
+// folding it answers the same question as indexing fleet_converge_workflow.jobs[0] while building one
+// job's steps instead of five jobs. The first draft indexed the workflow and was interrupted at
+// cpu_at_least=507ms against the 500ms line, producing no verdict at all.
 test fn the_build_job_carries_the_reset_observer_dispatch_admission() -> Bool {
   any(
-    fleet_converge_workflow.jobs[0].steps,
+    fleet_converge_build_job_steps(),
     st => match st {
-      RunStep { name: n, id: i, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      RunStep { name: _, id: i, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
         match i { Present { value: v } => v == "reset_observer_dispatch_admission"  Absent => false }
       UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
     }
-  ) && fleet_converge_workflow.jobs[0].id == "build"
+  )
 }
 
 // THE VOCABULARY IS THE ONLY SPELLING AUTHORITY, and these are the facts that make that a claim

@@ -101,6 +101,7 @@ import gunbc.host_reset_return {
   host_reset_observer_label_env,
 }
 import gunbc.host_reset_subject_roster { reset_observer_peer_roster, reset_subject_roster }
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 import gunbc.live_deploy.apply_receipt { rlm_plan_run_id_env_name, rlm_apply_run_id_env_name, rlm_plan_artifact_hash_env_name }
 import gunbc.roadmap_launch_deployment_cli { rlm_dashboard_run_id_env_name }
 import gunbc.fleet_converge_plan { fleet_converge_plan_artifact_dir, FleetConvergeScope, FullHost, LaunchEnvironment, FabricAllocationStoreOnly }
@@ -354,12 +355,49 @@ fn fleet_converge_host_reset_return_receipt_upload_step() -> Step {
 
 data fleet_converge_host_runner_expression: String = "${{ fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host)) }}"
 
-fn gunbc_fleet_converge_build_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+// THE BACKSTOP NOW DERIVES FROM THE STEPS IT GUARDS, rather than restating their budgets in a
+// hand-kept sum. It was such a sum, and review 61958 found what that costs: this change inserted a
+// fourth step into the build job carrying its own five-minute budget and did not add a term, so the
+// job backstop could fire while every step was still inside its declared budget -- a timeout that no
+// longer derives the job it guards, and one that reads as a hung build rather than as a miscount.
+//
+// A SUM OVER THE STEP LIST CANNOT MISS A STEP, which is the point: the invalid state is not caught by
+// a check, it stops being writable, because adding a step to fleet_converge_build_job_steps() is the
+// same act as adding its budget. The step list is bound once here and consumed by both the job and
+// this sum, so the two cannot disagree; a step with no declared budget contributes nothing and is
+// visible as such rather than silently costing the prelude allowance.
+fn fleet_converge_build_job_steps() -> List<Step> {
+  concat(
+    ci_prelude_steps_with_checkout(checkout: fleet_converge_checkout_step(), exact_head_preflight: []),
+    [
+      fleet_converge_reset_observer_dispatch_admission_step(),
+      ci_release_build_step(),
+      ci_release_bins_pack_step(),
+      ci_release_bins_upload_step(),
+    ],
+  )
 }
 
-// The build job is the prelude plus three steps of its own. The release build CONSUMES cargo; the
-// pack and upload steps handle files the build produced and need no toolchain. Annotated here
+fn step_declared_timeout_minutes(st: Step) -> Int {
+  match st {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: tm } =>
+      match tm { Present { value: v } => v  Absent => 0 }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: tm } =>
+      match tm { Present { value: v } => v  Absent => 0 }
+  }
+}
+
+fn gunbc_fleet_converge_build_job_backstop_timeout_minutes() -> Int {
+  fold(
+    fleet_converge_build_job_steps(),
+    init: gunbc_ci_prelude_allowance_minutes,
+    f: (acc, st) => acc + step_declared_timeout_minutes(st: st),
+  )
+}
+
+// The build job is the prelude plus four steps of its own. The dispatch admission gate reads two
+// dispatch inputs and touches nothing else; the release build CONSUMES cargo; the pack and upload
+// steps handle files the build produced and need no toolchain. Annotated here
 // rather than in fleet_workflow_steps because these are this job's steps, not the shared prelude's.
 fn fleet_converge_build_job_annotations() -> List<CapabilityAnnotatedStep> {
   concat(
@@ -384,6 +422,8 @@ fn fleet_converge_build_job_capability_closure_holds() -> Bool {
     v: workflow_job_capability_closure(steps: fleet_converge_build_job_annotations()),
   )
 }
+
+data fleet_converge_reset_observer_admission_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: fleet_converge_reset_observer_dispatch_admission_step — concat-built foreign-executor (GitHub Actions run:) dispatch-admission gate; the REFUSAL it enforces is modeled (an unnamed observer names no subject through gunbc.host_reset_return reset_dispatch_pairings), but the gate itself is medium-as-string because it must run before any modeled entry point exists on the runner; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes a dispatch-admission gate through orchestration emit or typed host_effect_apply without a concat scaffold")
 
 // THE ONE PAIRING STATE REACHABLE AT DISPATCH TIME, REFUSED WHERE IT CAN STILL BE HEARD. Review 61950
 // found the hole: reset_observer is required:false because it is meaningful for exactly one mode, and
@@ -410,6 +450,7 @@ fn fleet_converge_reset_observer_dispatch_admission_step() -> Step {
     name: Present { value: "Reset-return dispatch admission: refuse an unnamed observer before anything is scheduled" },
     id: Present { value: "reset_observer_dispatch_admission" },
     run: join([
+      "# ", dissolution_description(condition: fleet_converge_reset_observer_admission_shell_emit_dissolution_trigger), "\n",
       "if [ \"${{ github.event.inputs.mode }}\" = \"host_reset_return\" ] && [ -z \"${{ github.event.inputs.reset_observer }}\" ]; then\n",
       "  echo \"::error::ResetObserverUnnamed: mode=host_reset_return was dispatched with an empty reset_observer. ",
       "The reset job's runs-on interpolates that label, so an empty value asks for a runner carrying no label and the job would queue until its backstop with no receipt. ",
@@ -433,15 +474,7 @@ fn fleet_converge_build_job() -> Job {
     id: "build",
     name: none,
     runner: gunbc_ci_runner_spec(),
-    steps: concat(
-      ci_prelude_steps_with_checkout(checkout: fleet_converge_checkout_step(), exact_head_preflight: []),
-      [
-        fleet_converge_reset_observer_dispatch_admission_step(),
-        ci_release_build_step(),
-        ci_release_bins_pack_step(),
-        ci_release_bins_upload_step(),
-      ],
-    ),
+    steps: fleet_converge_build_job_steps(),
     needs: [],
     env: none,
     outputs: none,
