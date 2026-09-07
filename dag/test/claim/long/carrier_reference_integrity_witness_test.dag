@@ -30,7 +30,7 @@ import gunbc.doc_graph_roots {
   hand_authored_works_refs_all_resolve,
   hand_authored_works_resolution_pool_roots,
 }
-import std.decl_ref { CitableThroughDeclIndex, DeclarationRef, WholeDeclaration, NamedField, decl_ref }
+import std.decl_ref { CitableThroughDeclIndex, DeclarationRef, WholeDeclaration, decl_ref }
 import v2.lens.roster_registry {
   roster_registry_declaration_refs,
   roster_registry_declaration_refs_from,
@@ -38,12 +38,7 @@ import v2.lens.roster_registry {
 import v2.std.decl_ref_resolution {
   cited_declaration_ref_refusal_count_live,
   declaration_ref_resolution_census_live,
-  DeclarationRefAmbiguous,
   DeclarationRefResolutionCensus,
-  DeclarationRefResolved,
-  DeclarationRefModuleAbsent,
-  DeclarationRefDeclarationAbsent,
-  DeclarationRefFieldAbsent,
 }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
