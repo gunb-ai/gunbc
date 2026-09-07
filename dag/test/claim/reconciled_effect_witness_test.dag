@@ -47,18 +47,19 @@ fn apply_decision() -> UpsertDecision<String> {
   Apply { plan: "the plan" }
 }
 
-// The domain evidence value. In a real domain this is a SEALED carrier minted only behind the
-// authority that performed the effect — gunbc.typed_remote_file_write RemoteFileConverged is the
-// worked example. "The observation that EARNS it", as an earlier revision read, overstated it: the
-// mint is admitted to the func that ran the four legs, which is a restriction on WHO may mint, not a
-// proof that the legs ran. Here it is a String because these witnesses are about the generic truth table, and the
-// point being fixed is that the Apply route now demands a REPORTED evidence value at all rather than a Bool
-// any caller could write.
+// The reported application ARM, carrying nothing. An earlier revision of this helper returned
+// Applied { evidence: A } and this comment justified the payload; review established that no fold
+// read it, so both are gone. Picking this arm is exactly as cheap as writing a Bool, and no claim to
+// the contrary belongs here.
+//
+// Where a domain DOES need evidence bound to its subject, that is the domain's own sealed carrier --
+// gunbc.typed_remote_file_write RemoteFileConverged is the worked example, minted only behind the
+// func that ran the four legs. That is a restriction on WHO may mint, not a proof that the legs ran.
 fn reported_application() -> Application {
   Applied
 }
 
-// THE DISCRIMINATING RED. The application is REPORTED as applied with evidence, and the carrier still
+// THE DISCRIMINATING RED. The application arm is REPORTED as Applied, and the carrier still
 // refuses to call that convergence, because convergence is classified from the reported effective read
 // rather than from the application arm beside it. Nothing here executes an effect or performs a read:
 // this witness constructs a String report, a ReadObserved and a Grounds locally, and what it

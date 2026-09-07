@@ -124,7 +124,38 @@ fn grounding_qualified_by_durability<E, Target, ReadbackSubject>(
 // representation of something already carried twice.
 type ReconciledEffect<P, E> sole_constructor {
   decision: UpsertDecision<P>
-  outcome: Reconciliation<Bool, E>
+  classified_grounding: Grounding<E>
+}
+
+// WHY Grounding<E> AND NOT Reconciliation<Bool, E>. Removing the top-level applied: Bool closed only
+// half the finding: the Boolean stayed reachable as reconciled.outcome.applied, because this
+// report-only carrier was instantiating an older EFFECT-PAYLOAD carrier with Bool. Every arm mapped
+// the caller's Application report into that field and classify_reconciled then matched it as `_`.
+//
+// Reconciliation<A, E> itself is NOT the problem and is deliberately untouched. Its A is broadly
+// consumed as an effect INTENT -- host_effect_plan binds it, host_identity_converge reads
+// intent.privilege_denial off it to separate an access denial from another refusal, and live_deploy
+// propagates it so a later refusal still names the mutation attempted. A review corrected me here: I
+// had claimed the payload was read as `_` everywhere, which was false at corpus grain because my
+// search looked for field ACCESS and every real consumer binds it in a MATCH PATTERN.
+//
+// So the fix is not to change the shared carrier but to stop this one instantiating it. Grounding<E>
+// is already the grounding vocabulary of this module, so reusing it avoids a second converged/
+// not-converged pair in the same authority. Reconciliation<Application, E> was considered and
+// rejected: no sink reads it, so it would keep a field only to satisfy the older shape -- the exact
+// dangling-data move this carrier just removed twice.
+
+// Normalizes the two reported inputs into the single grounding verdict the carrier claims. An absent
+// read cannot ground, whatever the grounding report says beside it; an observed read defers to that
+// report. Neither branch establishes that anyone looked.
+fn classify_reported_grounding<R, E>(
+  show_read: ShowEffectiveRead<R>,
+  grounding: Grounding<E>,
+) -> Grounding<E> {
+  match show_read {
+    ReadAbsent { reason: why } => DoesNotGround { reason: why }
+    ReadObserved { value: _ } => grounding
+  }
 }
 
 // WHAT THIS IS, STATED AT THE WEAKEST TRUE STRENGTH.
@@ -146,7 +177,9 @@ type ReconciledEffect<P, E> sole_constructor {
 // thing is a sealed RELATION (decided plan <-> performed plan <-> evidence), and std cannot express
 // it without a law it would have to accept from the caller -- which is where this started.
 //
-// So std stops claiming it. Application carries evidence and no plan; there is no comparator; the
+// So std stops claiming it. Application carries NEITHER a plan NOR evidence -- it is the bare
+// lifecycle arm, the payload having been removed once review established no fold read it (see the
+// Application declaration below). There is no comparator; the
 // plan-to-evidence binding is the DOMAIN's obligation, discharged by a domain carrier that is minted
 // only by the authority that performed the effect. gunbc.typed_remote_file_write is the worked
 // example: RemoteFileConverged is sole_constructor, carries the EXACT WRITE so it names the bytes it
@@ -201,14 +234,13 @@ fn reconcile_effect<P, R, E>(
         NotApplied =>
           ReconciledEffect {
             decision: decision,
-            outcome: NotConverged { reason: why as String, applied: false },
+            classified_grounding: DoesNotGround { reason: why as String },
           }
         Applied =>
           ReconciledEffect {
             decision: decision,
-            outcome: NotConverged {
+            classified_grounding: DoesNotGround {
               reason: "reconcile_effect: Refuse was paired with an application report",
-              applied: true,
             },
           }
       }
@@ -217,14 +249,13 @@ fn reconcile_effect<P, R, E>(
         NotApplied =>
           ReconciledEffect {
             decision: decision,
-            outcome: reconcile_grounded(apply_effect: false, show_read: show_read, grounding: grounding),
+            classified_grounding: classify_reported_grounding(show_read: show_read, grounding: grounding),
           }
         Applied =>
           ReconciledEffect {
             decision: decision,
-            outcome: NotConverged {
+            classified_grounding: DoesNotGround {
               reason: "reconcile_effect: Noop was paired with an application report",
-              applied: true,
             },
           }
       }
@@ -233,22 +264,24 @@ fn reconcile_effect<P, R, E>(
         NotApplied =>
           ReconciledEffect {
             decision: decision,
-            outcome: NotConverged {
+            classified_grounding: DoesNotGround {
               reason: "reconcile_effect: Apply was paired with NotApplied",
-              applied: false,
             },
           }
         Applied =>
           ReconciledEffect {
             decision: decision,
-            outcome: reconcile_grounded(apply_effect: true, show_read: show_read, grounding: grounding),
+            classified_grounding: classify_reported_grounding(show_read: show_read, grounding: grounding),
           }
       }
   }
 }
 
 fn reconciled_effect_converged<P, E>(r: ReconciledEffect<P, E>) -> Bool {
-  reconciliation_converged(r: r.outcome)
+  match r.classified_grounding {
+    Grounds { evidence: _ } => true
+    DoesNotGround { reason: _ } => false
+  }
 }
 
 // ReconciledEffect is an OUTCOME, not a success witness: it faithfully carries a refusal or an
@@ -268,7 +301,8 @@ fn reconciled_effect_converged<P, E>(r: ReconciledEffect<P, E>) -> Bool {
 // establish that this evidence is about its subject and not a neighbouring one.
 //
 // AND IT IS A GROUNDED REPORT, NOT A PERFORMANCE PROOF. ConvergedEffect says: this decision was
-// classified, an application was REPORTED with evidence, and a REPORTED effective read was classified
+// classified, an application ARM was reported -- the arm only, carrying nothing -- and a REPORTED
+// effective read was classified
 // as grounding the desired relation. Not "an INDEPENDENT observation" -- std receives a ReadObserved
 // and a Grounds and has no independence evidence about either. It does NOT say the decided plan is the one that ran — std has no way to witness
 // that without a law supplied by the same caller it would be checking. A sink that needs performance
@@ -284,12 +318,12 @@ type ReconciledOutcome<P, E>
   | EffectNotConverged { reason: String, attempt: ReconciledEffect<P, E> }
 
 fn classify_reconciled<P, E>(r: ReconciledEffect<P, E>) -> ReconciledOutcome<P, E> {
-  match r.outcome {
-    Converged { evidence: e, applied: _ } =>
+  match r.classified_grounding {
+    Grounds { evidence: e } =>
       EffectConverged {
         converged: ConvergedEffect { decision: r.decision, evidence: e },
       }
-    NotConverged { reason: why, applied: _ } =>
+    DoesNotGround { reason: why } =>
       EffectNotConverged { reason: why, attempt: r }
   }
 }
