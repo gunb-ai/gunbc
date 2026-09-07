@@ -304,24 +304,20 @@ type AlgebraFieldTemplate {
   callback_element_position: Int?
 }
 
-// Collection filter is this template shape, not the spelling of `name`. A rename of
-// the method token must not disarm emission membership.
-fn is_collection_filter_template(t: AlgebraFieldTemplate) -> Bool {
-  match t.return_type {
-    ReceiverSelf =>
-      t.size_effect == Present { value: IdentityEffect }
-        && t.cost_shape == Present { value: ShapeIterateBody }
-        && t.callback_element_position == Present { value: 0 }
-        && is_collection_filter_param_types(param_types: t.param_types)
-    _ => false
-  }
+// Collection filter is this one template, not a second encoding of its fields and not the
+// spelling of `name`. Roster rows and emission membership both consume it; a rename of the
+// method token must not disarm the wall.
+fn collection_filter_shape() -> AlgebraFieldTemplate {
+  { name: "filter", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: ReceiverSelf, size_effect: Present { value: IdentityEffect }, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 0 } }
 }
 
-fn is_collection_filter_param_types(param_types: List<AlgebraTypeTemplate>) -> Bool {
-  match param_types {
-    Cons { head: ReceiverSelf, tail: Cons { head: CallableOf { params: Cons { head: ReceiverElement, tail: Empty }, return_type: NamedTemplate { name: "Bool" } }, tail: Empty } } => true
-    _ => false
-  }
+fn is_collection_filter_template(t: AlgebraFieldTemplate) -> Bool {
+  let proto = collection_filter_shape()
+  t.return_type == proto.return_type
+    && t.size_effect == proto.size_effect
+    && t.cost_shape == proto.cost_shape
+    && t.callback_element_position == proto.callback_element_position
+    && t.param_types == proto.param_types
 }
 
 // ONE ROSTER, DECLARED ONCE, AND EVERY SPELLING-KEYED MAP BELOW IS A FOLD OVER IT.
@@ -715,7 +711,7 @@ fn finite_power_set_templates() -> List<AlgebraFieldTemplate> {
     { name: "diff", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "member", param_types: [ReceiverSelf, ReceiverElement], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "contains", param_types: [ReceiverSelf, ReceiverElement], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
-    { name: "filter", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: ReceiverSelf, size_effect: Present { value: IdentityEffect }, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 0 } },
+    collection_filter_shape(),
     { name: "map", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: AlgebraTypeVariable { id: "MappedElement" } }], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } }, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 0 } },
     { name: "flat_map", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } } }], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } }, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 0 } },
     { name: "fold", param_types: [AlgebraTypeVariable { id: "FoldAccumulator" }, CallableOf { params: [AlgebraTypeVariable { id: "FoldAccumulator" }, ReceiverElement], return_type: AlgebraTypeVariable { id: "FoldAccumulator" } }], return_type: AlgebraTypeVariable { id: "FoldAccumulator" }, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 1 } },
@@ -761,7 +757,7 @@ fn free_monoid_scalar_templates() -> List<AlgebraFieldTemplate> {
 fn free_monoid_collection_templates() -> List<AlgebraFieldTemplate> {
   [
     { name: "map", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: AlgebraTypeVariable { id: "MappedElement" } }], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } }, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 0 } },
-    { name: "filter", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: ReceiverSelf, size_effect: Present { value: IdentityEffect }, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 0 } },
+    collection_filter_shape(),
     { name: "flat_map", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } } }], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } }, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 0 } },
     { name: "fold", param_types: [AlgebraTypeVariable { id: "FoldAccumulator" }, CallableOf { params: [AlgebraTypeVariable { id: "FoldAccumulator" }, ReceiverElement], return_type: AlgebraTypeVariable { id: "FoldAccumulator" } }], return_type: AlgebraTypeVariable { id: "FoldAccumulator" }, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 1 } },
     { name: "any", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 0 } },

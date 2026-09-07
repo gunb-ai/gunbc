@@ -435,38 +435,32 @@ pub struct AlgebraFieldTemplate {
     pub callback_element_position: Option<i64>,
 }
 
-pub fn is_collection_filter_template(t: Rc<AlgebraFieldTemplate>) -> bool {
-    matches!(t.return_type.as_ref(), AlgebraTypeTemplate::ReceiverSelf)
-        && matches!(t.size_effect, Some(CollectionSizeEffect::IdentityEffect))
-        && matches!(t.cost_shape, Some(CostShape::ShapeIterateBody))
-        && matches!(t.callback_element_position, Some(0))
-        && is_collection_filter_param_types(t.param_types.clone())
+pub fn collection_filter_shape() -> Rc<AlgebraFieldTemplate> {
+    Rc::new(AlgebraFieldTemplate {
+        name: "filter".to_string(),
+        param_types: Rc::new(vec![
+            Rc::new(AlgebraTypeTemplate::ReceiverSelf),
+            Rc::new(AlgebraTypeTemplate::CallableOf {
+                params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
+                return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+                    name: "Bool".to_string(),
+                }),
+            }),
+        ]),
+        return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
+        size_effect: Some(CollectionSizeEffect::IdentityEffect),
+        cost_shape: Some(CostShape::ShapeIterateBody),
+        callback_element_position: Some(0),
+    })
 }
 
-fn is_collection_filter_param_types(param_types: Rc<Vec<Rc<AlgebraTypeTemplate>>>) -> bool {
-    if param_types.len() != 2 {
-        return false;
-    }
-    let recv = param_types.get(0).cloned().unwrap();
-    let pred = param_types.get(1).cloned().unwrap();
-    matches!(recv.as_ref(), AlgebraTypeTemplate::ReceiverSelf)
-        && match pred.as_ref() {
-            AlgebraTypeTemplate::CallableOf {
-                params,
-                return_type,
-            } => {
-                params.len() == 1
-                    && matches!(
-                        params.get(0).map(|el| el.as_ref()),
-                        Some(AlgebraTypeTemplate::ReceiverElement)
-                    )
-                    && matches!(
-                        return_type.as_ref(),
-                        AlgebraTypeTemplate::NamedTemplate { name } if name == "Bool"
-                    )
-            }
-            _ => false,
-        }
+pub fn is_collection_filter_template(t: Rc<AlgebraFieldTemplate>) -> bool {
+    let proto = collection_filter_shape();
+    t.return_type == proto.return_type
+        && t.size_effect == proto.size_effect
+        && t.cost_shape == proto.cost_shape
+        && t.callback_element_position == proto.callback_element_position
+        && t.param_types == proto.param_types
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1160,22 +1154,7 @@ pub fn finite_power_set_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             cost_shape: std::option::Option::None,
             callback_element_position: std::option::Option::None,
         }),
-        Rc::new(AlgebraFieldTemplate {
-            name: "filter".to_string(),
-            param_types: Rc::new(vec![
-                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-                Rc::new(AlgebraTypeTemplate::CallableOf {
-                    params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
-                    return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-                        name: "Bool".to_string(),
-                    }),
-                }),
-            ]),
-            return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-            size_effect: Some(CollectionSizeEffect::IdentityEffect),
-            cost_shape: Some(CostShape::ShapeIterateBody),
-            callback_element_position: Some(0),
-        }),
+        collection_filter_shape(),
         Rc::new(AlgebraFieldTemplate {
             name: "map".to_string(),
             param_types: Rc::new(vec![
@@ -1576,22 +1555,7 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             cost_shape: Some(CostShape::ShapeIterateBody),
             callback_element_position: Some(0),
         }),
-        Rc::new(AlgebraFieldTemplate {
-            name: "filter".to_string(),
-            param_types: Rc::new(vec![
-                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-                Rc::new(AlgebraTypeTemplate::CallableOf {
-                    params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
-                    return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-                        name: "Bool".to_string(),
-                    }),
-                }),
-            ]),
-            return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-            size_effect: Some(CollectionSizeEffect::IdentityEffect),
-            cost_shape: Some(CostShape::ShapeIterateBody),
-            callback_element_position: Some(0),
-        }),
+        collection_filter_shape(),
         Rc::new(AlgebraFieldTemplate {
             name: "flat_map".to_string(),
             param_types: Rc::new(vec![
