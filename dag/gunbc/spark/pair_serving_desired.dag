@@ -102,6 +102,7 @@ fn spark_pair_serving_head(group: FabricGroup) -> HostIdentity {
 
 fn spark_pair_serving_engine_args(tensor_parallel: Nat, max_num_seqs: Nat) -> VllmEngineArgs {
   VllmEngineArgs {
+    prefill_scheduling: none,
     tensor_parallel_size: tensor_parallel,
     gpu_memory_utilization: vllm_memory_utilization(fraction: percent(count: 82)),
     max_model_len: token_count(count: 1048576),

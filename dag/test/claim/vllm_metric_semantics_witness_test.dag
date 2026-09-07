@@ -80,11 +80,18 @@ test fn thrash_is_answered_by_hit_rate_and_preemptions_not_by_a_full_pool() -> B
 // THE OFF-METRIC READING, same mode: RDMA bytes never reach the Ethernet netdev counters, so a
 // 176-second prefill measured as ~0 GB of inter-node traffic while the RoCE ports carried ~175 GB
 // per rank.
-test fn ethernet_netdev_counters_do_not_see_rdma() -> Bool {
+//
+// AND THE ROCE NOTE MUST NOT CONCLUDE MORE THAN BULK SATURATION. A low average utilisation bounds
+// bandwidth and nothing else: it is equally consistent with latency-bound collectives, a straggler
+// rank, or host gaps between kernels. This row pins that limit, because the first version of the
+// note said "about 16% utilised, so the rail was not the constraint" -- deriving a critical-path
+// share from an average, which is the same over-reading one layer up.
+test fn ethernet_netdev_counters_do_not_see_rdma_and_roce_bounds_only_bandwidth() -> Bool {
   !interconnect_counter_sees_rdma(c: EthernetNetdevBytes)
     && interconnect_counter_sees_rdma(c: RocePortDataCounters)
     && string_contains(s: interconnect_counter_note(c: EthernetNetdevBytes) as String, pattern: "bypasses the netdev path")
-    && string_contains(s: interconnect_counter_note(c: RocePortDataCounters) as String, pattern: "16%")
+    && string_contains(s: interconnect_counter_note(c: RocePortDataCounters) as String, pattern: "BULK-TRANSFER")
+    && string_contains(s: interconnect_counter_note(c: RocePortDataCounters) as String, pattern: "does not establish what share of the critical path")
 }
 
 test fn the_metric_names_are_the_served_ones() -> Bool {

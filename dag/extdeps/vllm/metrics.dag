@@ -249,6 +249,6 @@ fn interconnect_counter_note(c: InterconnectCounter) -> NonEmptyStr {
     EthernetNetdevBytes =>
       "RDMA bypasses the netdev path, so these read ~0 while the link is carrying gigabytes; they are not an interconnect-utilisation source on a RoCE fabric" as NonEmptyStr
     RocePortDataCounters =>
-      "port_xmit_data and port_rcv_data, in 4-byte words, are the RoCE traffic; measured 2026-09-07 at ~7.9 Gb/s per rank on a 50 Gb/s link during a cold prefill -- about 16% utilised, so the rail was not the constraint" as NonEmptyStr
+      "port_xmit_data and port_rcv_data, in 4-byte words, are the RoCE traffic; measured 2026-09-07 at ~7.9 Gb/s per rank on a 50 Gb/s link during a cold prefill. That is a BULK-TRANSFER reading and bounds bandwidth saturation only: a low average is equally consistent with latency-bound collectives, a straggler rank, or host gaps between kernels, so it does not establish what share of the critical path was communication" as NonEmptyStr
   }
 }
