@@ -392,8 +392,24 @@ thread_local! {
     /// `DeclFactRaw` population (the walk sorts its output, so the key may be canonicalized),
     /// same marshaled rows; different ownership of the shared construction cost.
     ///
-    /// Outside the floor there is no prepared authority to bound the memo's lifetime, so the
-    /// cell is `None` and every call walks — the existing behaviour, unchanged.
+    /// Outside the floor the cell is `None` unless an entry point registers it for a subject of
+    /// its own; `claim_batch` does, for its invocation. A caller that registers nothing walks on
+    /// every call — the original behaviour, unchanged.
+    ///
+    /// DO NOT PROPOSE WARMING THIS CENSUS AS A CROSS-CLAIM SHARED VALUE. It was tried and it is
+    /// closed by execution, not by argument. Two required-floor runs differing by exactly one
+    /// roster line — 34088506991 with the producer ABSENT, 34088508298 with it PRESENT — answered:
+    /// the PRESENT arm returned `PureProducerShareWarmNotStored` for
+    /// `v2.lens.common.outside_modeled_guarantee_join.witness_layer_decl_index`. The producer
+    /// resolved AND EVALUATED; the cross-claim store then refused the VALUE as
+    /// `ByteBudgetExceeded`. The arms are verified to have varied (unrelated producers report
+    /// `disposition=Stored` in both, and the refusal appears three times in PRESENT and zero times
+    /// in ABSENT), so this is not a wiring failure.
+    ///
+    /// The reading that follows is the reason the keyed reads exist: a value too large to be a
+    /// shared value is a value that should not have been built to answer one question. Sharing it
+    /// harder is the wrong lever, and raising the store's byte budget to admit it would destroy the
+    /// signal that produced this sentence.
     static FLOOR_DECL_FACTS_MEMO: RefCell<
         Option<StdDeclParseMemoMap<Vec<String>, Rc<Vec<DeclFactRaw>>>>,
     > = RefCell::new(None);
