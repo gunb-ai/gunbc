@@ -175,6 +175,39 @@ test fn h_two_walks_one_frame_same_pool() -> Bool {
 // These arms reproduce the floor's own subject term by term, so the question "does the directory
 // grain magnify the floor claim, or measure something else" is settled by execution rather than by
 // reading the two call sites side by side and judging them similar.
+// ── PRE-REGISTERED: WHAT THE AFTER-PARTITION MUST LOOK LIKE ───────────────────────────────────
+//
+// WRITTEN AND COMMITTED BEFORE THE REPAIR WAS MEASURED, so that what comes back is read against a
+// stated expectation rather than fitted to one. The repair changes three sites in one family --
+// building or rescanning an intermediate proportional to the whole input on every step -- and it
+// changes them as ONE change because three distributions over a 1.379x spread cannot separate
+// three effects.
+//
+// WHAT THE REPAIR TOUCHES, AND WHICH ARM PRICES EACH:
+//   callees_from_node   materialize-then-filter  ->  extract during one fold        p, and o-minus-p
+//   callees_from_node   per-hit accumulator scan ->  Map-keyed dedup                o-minus-p
+//   call_reachable_go   decl_in_list linear scan ->  Map lookup on qualified_name   n-minus-i
+//   call_reachable_go   list_snoc_item per hit   ->  Cons plus one final reverse    n-minus-i
+//   call_reachable_go   unconditional list_append of an empty callee list -> guarded   n-minus-i
+//
+// THE EXPECTATION, ARM BY ARM. Acquisition (i) and the determinism fold (l minus n) are UNTOUCHED
+// code and must come back unchanged; if either moves, the arms are not measuring what they claim
+// and nothing else here is readable. p should fall to near nothing, because the intermediate it
+// prices is no longer built. o minus i should fall with it. n minus i is the arm that decides the
+// repair: it must land at or below a THIRD of its before value.
+//
+// AND THE FALSIFIER IS THE POINT OF WRITING THIS DOWN. If n minus i comes back only somewhat
+// cheaper -- still a large fraction of the walk -- that is NOT a partial win to be reported as
+// progress. It is a payer this partition never named, revealed by removing the four it did, and it
+// must be reported as a new finding rather than absorbed into the credit for this change. The same
+// reading applies to a walk that stays expensive in a NEW place: a flat profile becoming lumpy
+// somewhere else is a discovery, not a residue.
+//
+// THE DIRECTORY-GRAIN ACCEPTANCE IS SEPARATE AND IS NOT THESE ARMS. These run on a machine
+// population roughly 1.8x away from the one that enforces, so no arm here can accept the change.
+// Acceptance is the retained CI cost artifact over COMPLETED rows only, read by header name, and
+// the question asked of it is whether the TOP of the after-distribution clears the line with
+// margin -- never whether a run went green.
 data floor_roots: List<String> = []
 data floor_files: List<String> = ["src/v2/lens/affected_set.dag"]
 
