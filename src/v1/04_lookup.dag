@@ -1,6 +1,7 @@
 module v1.compiler.infer_lookup
 
 import std.induction { SubValueRelation }
+import v1.compiler.infer_items { ItemKind, FnItem, FuncItem, TypeItem, ServiceItem, DataItem, OtherItem, item_kind }
 import std.types { is_kernel_type }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.primitive_projection {
@@ -17,7 +18,7 @@ import v1.std.core {
   InferredNode, Resolved, TypeVariable,
   Cardinality, Required,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
-  CallTargetIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined,
+  CallTargetIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined, LocallyBoundCall,
   FieldAccessStyle, OptionalUnwrap,
   FieldValueShape, PlainValue, OptionalValue,
   FieldSummary,
@@ -291,39 +292,63 @@ fn resolved_declaration_call_target(declared: DeclaredCallableIdentity) -> CallT
 // same registry the ExprCall arm already routes such calls through -- and anything else is
 // genuinely undetermined. Ambiguity is refused upstream and carries no single target, so it is
 // Undetermined here rather than a guess at which candidate emission should prefer.
+// THE CENSUS DECLARATION BEHIND AN UNRESOLVED SIGNATURE, AS AN IDENTITY AND NOTHING MORE.
+//
+// This answers the producer, not a downstream consumer: `call_target_for_direct_call` calls it at
+// the point that would otherwise construct CallableUnresolved, so the direct-call decision is still
+// made ONCE and every later reader takes the answer off the constructor. Resolving it below the
+// seam instead would leave other consumers of the same outcome reading "unresolved" while this one
+// reads "declared" -- the authority-substitution geometry the outcome type exists to remove.
+//
+// THE KIND GATE EXCLUDES WHAT IS NOT CALLABLE; IT DOES NOT DEMAND PROOF OF WHAT IS.
+// `item_kind` reads FnItem and FuncItem off the presence of a BODY, and a census node is a
+// borrowed declaration surface that carries a signature without one -- so a nullary fn reached
+// this way reads as OtherItem, and an admit-list of the two callable kinds refuses every member
+// of the population this arm exists to serve. The call position is what establishes that the name
+// is being called; what the kind can still tell us is that the declaration is a TYPE, a SERVICE or
+// a DATA row, none of which a call may target.
+fn census_declaration_identity(type_env: TypeEnv, func_name: String) -> BorrowedCensusDecl? {
+  match borrowed_census_decl(type_env: type_env, name: func_name) {
+    BorrowedCensusDeclFound { declaration: bd } =>
+      match item_kind(item: bd.node) {
+        TypeItem => Absent
+        ServiceItem => Absent
+        DataItem => Absent
+        _ => Present { value: bd }
+      }
+    BorrowedCensusDeclAmbiguous { candidates: _ } => Absent
+    BorrowedCensusDeclNotFound => Absent
+  }
+}
+
+
 // THE SAME MAPPING resolved_plain_call_target MAKES, READ OFF THE PARTITIONED OUTCOME.
 //
 // Behaviour is identical by construction: FuncSigResolved answered the declaration target and
 // still does; FuncSigUnresolved consulted builtin_call_target_or_undetermined, and the builtin
 // half of that question is now decided one seam earlier by infer_builtin_call_type -- THE SAME
-// AUTHORITY, asked once instead of twice -- so BuiltinCallableResolved answers the primitive and
-// the states that were "no builtin either" answer undetermined, exactly as before.
+// AUTHORITY, asked once instead of twice -- so BuiltinCallableResolved answers the primitive.
+//
+// CallableUnresolved NO LONGER ANSWERS UNDETERMINED. That arm used to inherit the signature
+// lookup's silence, and the sig is silent about a nullary borrowed declaration for a reason that
+// has nothing to do with identity: `func_sig_from_global_bare` admits a census declaration only
+// when it can also produce a RETURN TYPE, evidenced by `params > 0 || inferred != none ||
+// type_annotation != none`, and a nullary census node carries none of the three. Identity does not
+// depend on the return type -- the census already names the owning module -- so this arm asks the
+// census directly instead.
 fn resolved_plain_call_target_for_outcome(outcome: CallTargetOutcome) -> CallTargetIdentity {
   match outcome {
     DeclaredCallableResolved { sig: _, declared: d } => resolved_declaration_call_target(declared: d)
+    DeclaredCallableIdentityResolved { declared: d } => resolved_declaration_call_target(declared: d)
     BuiltinCallableResolved { primitive_name: n } => RuntimePrimitiveCall { primitive_name: n, projected_from: none }
-    LocallyBoundCallee { name: _, binding: _ } => CallableTargetUndetermined
+    LocallyBoundCallee { name: n, binding: _ } => LocallyBoundCall { name: n }
     CallableUnresolved { name: _ } => CallableTargetUndetermined
     CallableAmbiguous { candidates: _ } => CallableTargetUndetermined
     LocallyBoundBindingMissing { name: _ } => CallableTargetUndetermined
   }
 }
 
-fn resolved_plain_call_target(func_name: String, sig_lookup: FuncSigLookup) -> CallTargetIdentity {
-  match sig_lookup {
-    FuncSigResolved { sig: _, declared: declared } =>
-      resolved_declaration_call_target(declared: declared)
-    FuncSigUnresolved => builtin_call_target_or_undetermined(func_name: func_name)
-    FuncSigAmbiguous { candidates: _ } => CallableTargetUndetermined
-  }
-}
 
-fn builtin_call_target_or_undetermined(func_name: String) -> CallTargetIdentity {
-  match infer_builtin_call_type(name: func_name) {
-    Present { value: _ } => RuntimePrimitiveCall { primitive_name: func_name, projected_from: none }
-    Absent => CallableTargetUndetermined
-  }
-}
 
 // COLLECT EVERY ADMISSIBLE CANDIDATE, THEN DECIDE.
 //
@@ -685,6 +710,31 @@ fn census_declaration_bound_formals(type_env: TypeEnv, owner_module_path: String
     })
 }
 
+// A BINDING IN THIS MODULE'S ENVIRONMENT IS NOT A DECLARATION BY THIS MODULE.
+//
+// The arm below reads `lookup_binding_by_name_local`, which searches `env.str_bindings` and
+// `env.bindings` -- the module's type environment, which is exactly where an IMPORT puts a name. It
+// then stamped `type_env.module_path` as the declaration's owner, so every imported callable was
+// identified as belonging to the module that imported it. That is the owner-discarding join this
+// branch exists to remove, surviving one level up: the effect registry is keyed on the DECLARING
+// module, so an identity naming the importer addresses a key that cannot exist, and the callee's
+// summary silently contributed nothing. Measured on the corpus it produced 13 such identities --
+// v1.compiler.parse.make_file_span among them, whose declaration is in v1.std.core.
+//
+// The census already knows the declaring module, so it is asked. The importer is used only where
+// the census has no answer at all, which is the genuinely-local case: a module that declares a name
+// and calls it, where the environment binding and the declaration are the same thing.
+//
+// Only the OWNER is taken from the census. The node stays the local binding, so this changes which
+// module the callee is identified as, and changes nothing about how the call is typed.
+fn declaring_module_for_local_binding(type_env: TypeEnv, name: String) -> String {
+  match borrowed_census_decl(type_env: type_env, name: name) {
+    BorrowedCensusDeclFound { declaration: bd } => bd.owner_module_path
+    BorrowedCensusDeclAmbiguous { candidates: _ } => type_env.module_path
+    BorrowedCensusDeclNotFound => type_env.module_path
+  }
+}
+
 fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
   if algebra_method_template_name(name: name) {
     FuncSigUnresolved
@@ -693,7 +743,10 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
     Present { value: _ } => FuncSigUnresolved
     Absent =>
   let borrowed = match lookup_binding_by_name_local(env: type_env, name: name) {
-    Present { value: binding } => BorrowedCensusDeclFound { declaration: BorrowedCensusDecl { owner_module_path: type_env.module_path, node: binding.resolved } }
+    Present { value: binding } => BorrowedCensusDeclFound { declaration: BorrowedCensusDecl {
+      owner_module_path: declaring_module_for_local_binding(type_env: type_env, name: name),
+      node: binding.resolved
+    } }
     Absent => borrowed_census_decl(type_env: type_env, name: name)
   }
   match borrowed {

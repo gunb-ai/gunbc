@@ -173,7 +173,7 @@ pub fn declared_import_closure_binding_observation_from_resolved(
         return DeclaredImportClosureBindingObservation::NotRunnable(cause);
     }
     let definer = definer_module_for_name(graph, symbol);
-    let symbol_resolves = definer.is_some();
+    let symbol_resolves = symbol_resolves_for_name(graph, symbol);
     let binding_source = if symbol_resolves {
         Some(classify_unlisted_import_binding_source(graph, consumer_module, symbol).0)
     } else {

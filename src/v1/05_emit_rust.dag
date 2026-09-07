@@ -18,6 +18,7 @@ import extdeps.languages.rust.capabilities { phantom_opaque_carrier_derive_trait
 import std.algebra { trim }
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
 import v1.std.core {
+  call_semantics_target,
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
   ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
   resolved_node_is_kernel_identity_for_name,
@@ -34,7 +35,7 @@ import v1.std.core {
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn, make_expr_node, FieldSummary,
   StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond, OptionalValue,
   VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding,
-  MatchBoundBinding, CallTargetIdentity, DeclaredCallableIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined,
+  MatchBoundBinding, CallTargetIdentity, DeclaredCallableIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined, LocallyBoundCall,
   CallSemantics, PlainCallSemantics, ResolvedDirectCallSemantics, ResolvedCallFormal, LookupCallSemantics, FunctionValueCallSemantics, MethodSemantics,
   PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, MatchPattern,
   field_binding_pattern, TextFile, ErrorNode, make_error_node, InternalError,
@@ -182,6 +183,7 @@ import v1.compiler.infer_method {
 }
 import v1.compiler.infer_sigs { ResolvedFuncEnv }
 import v1.compiler.infer_items {
+  ItemLookup, ItemFound, ItemLeafAmbiguous, ItemNotFound,
   ResolvedGraph, TypedModule,
   ItemInfo, DataItem, TypeItem, OtherItem,
   item_kind
@@ -224,7 +226,7 @@ import v1.compiler.emit {
   emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr,
   emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr,
   emit_typed_cast_shared, emit_string_literal, emit_simple_expr, escape_rust_interp_text,
-  module_emit_scope, scope_after_expr, lookup_item, has_nested_records_node,
+  module_emit_scope, scope_after_expr, lookup_item_by_identity, has_nested_records_node,
   emit_data_value_json, EmitterOutcome, Emitted, Refused, is_null_coalesce, has_service_items,
   order_typed_call_args_from_semantics, is_tco_eligible, is_self_recursive, emit_shared_tco_expr,
   tco_reassign_core, is_tco_identity_passthrough, service_fallback_transport,
@@ -2547,63 +2549,19 @@ fn build_data_item_index(modules: List<TypedModule>) -> Map<String, Node> {
   )
 }
 
-fn build_qualified_item_registry(modules: List<TypedModule>) -> Map<String, ItemInfo> {
-  modules |> fold(init: empty_map(), f: (acc, tm) =>
-    let module_name = authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)
-    tm.item_registry |> map_keys |> fold(init: acc, f: (acc2, item_name) =>
-      match map_get(tm.item_registry, item_name) {
-        Present { value: info } =>
-          let qualified_name = concat(module_name, ".", item_name)
-          match map_get(acc2, qualified_name) {
-            Present { value: _ } =>
-              map_insert(acc2, qualified_name, duplicate_qualified_item_registry_marker(name: qualified_name))
-            Absent => map_insert(acc2, qualified_name, info)
-          }
-        Absent => acc2
-      }
-    )
-  )
-}
-
-fn merge_item_registries(bare: Map<String, ItemInfo>, qualified: Map<String, ItemInfo>) -> Map<String, ItemInfo> {
-  qualified |> map_keys |> fold(init: bare, f: (acc, key) =>
-    match map_get(qualified, key) {
-      Present { value: info } => map_insert(acc, key, info)
-      Absent => acc
-    }
-  )
-}
-
 // Construction wall for the cross-module half of the qualified-value-reference dotted-render class
 // (sibling of value_ref_self_module_normalization_note for the same-module half). #7685 keyed
 // registry lookup on the leaf name so the is_data call-suffix decision fired for dotted references,
-// but the flat item_registry is keyed by bare name with last-write-wins across the closure — so
+// but the item_registry was keyed by bare name with last-write-wins across the closure — so
 // module_a.homonym_value could consult module_b's ItemInfo when both modules declare the same leaf.
-// Fix: merge a qualified-name overlay (module.leaf -> ItemInfo, one authority per declaring module)
-// at emit time and key cross-module lookups on the full normalized spelling; same-module references
-// still normalize to bare before lookup. Rendering uses the exact qualified registry row for BOTH
-// declaration kind and declaring module — never the authored qualifier string alone (§5
-// fabricated-plausible-output refusal). Duplicate exact module.leaf overlay keys refuse via
-// duplicate_qualified_item_registry_marker rather than last-write-wins.
-
-data duplicate_qualified_item_registry_marker_note: String = "Fail-closed marker row for duplicate exact module.leaf keys in the qualified item_registry overlay. build_qualified_item_registry inserts this sentinel instead of last-write-wins. Consumers: emit_qualified_value_ref_crate_ident (dotted Present path), value_ref_item_info_refusal (emit_var_ref / emit_typed_expr_base Present arms) — both refuse via emit_error_expr when is_duplicate_qualified_item_registry_marker holds. DEFINE-AND-CONSUME, not define-only."
-
-fn duplicate_qualified_item_registry_marker(name: String) -> ItemInfo {
-  ItemInfo {
-    name: name,
-    module_name: "__DUPLICATE_QUALIFIED_ITEM_REGISTRY_KEY__",
-    kind: OtherItem,
-    service_names: [],
-    resource_names: [],
-    params: [],
-    is_self_recursive: false,
-    has_non_tail_self_call: false
-  }
-}
-
-fn is_duplicate_qualified_item_registry_marker(info: ItemInfo) -> Bool {
-  info.module_name == "__DUPLICATE_QUALIFIED_ITEM_REGISTRY_KEY__"
-}
+// That was first repaired by merging a qualified overlay at emit time. The overlay is GONE: it was a
+// SECOND key space rebuilt from the per-module pre-expansion registries, so it answered the same
+// question as the top-level registry and answered it from staler facts. The registry is now keyed on
+// the declaration's own identity at construction, in fold_module_contributions, so there is one key
+// space and the homonym cannot arise from the key. What survives is the REVERSE question — which
+// module declares a bare leaf — and where two modules answer it, lookup_item_by_leaf yields
+// ItemLeafAmbiguous, which a consumer cannot read past without writing an arm for it, so the
+// consumers below refuse instead of taking whichever module was folded last.
 
 fn value_ref_registry_lookup_key(resolved_name: String) -> String {
   let qualifier = value_ref_qualifier_prefix(name: resolved_name)
@@ -2611,20 +2569,74 @@ fn value_ref_registry_lookup_key(resolved_name: String) -> String {
   else { resolved_name }
 }
 
-fn lookup_item_for_value_ref(resolved_name: String, registry: Map<String, ItemInfo>) -> ItemInfo? {
-  lookup_item(registry: registry, name: value_ref_registry_lookup_key(resolved_name: resolved_name))
-}
-
-fn emit_qualified_value_ref_crate_ident(leaf: String, info: ItemInfo, registry: Map<String, ItemInfo>) -> String {
-  if is_duplicate_qualified_item_registry_marker(info: info) {
-    emit_error_expr(message: "duplicate qualified item_registry key — refuse ambiguous module.leaf overlay", target: Rust)
-  } else {
-    concat("crate::", module_to_filename(name: info.module_name), "::", emit_import_name(n: leaf, registry: registry))
+// A value reference carries its own qualifier when it crosses a module, and carries nothing when it
+// does not — so the qualifier decides which identity is being asked for, and an unqualified
+// reference is asked of the enclosing module rather than of whichever module last wrote the leaf.
+// The bare arm below is not this module's declaration, so it is imported: the leaf index names its
+// owner, or names the empty string when two modules claim the leaf, and no declaration has an empty
+// module path, so the ambiguous case resolves to Absent and the caller refuses.
+// A value reference carries its own qualifier when it names another module, and carries nothing
+// when the author wrote it bare. A qualifier names the owner, so the identity is exact. A BARE
+// spelling does not: it is the enclosing module's own declaration OR an imported one, and which is
+// a fact this function does not hold. So it asks for the enclosing module's declaration first --
+// the answer that is certainly right when it exists -- and falls back to the leaf projection, whose
+// ambiguous entries are the refusal sentinel. Keying a bare reference on self_module alone was
+// wrong and was caught by the seed failing to build: an imported `data` value stopped resolving,
+// so the emitted Rust named the initializer function instead of calling it.
+// THE ONE WAY TO ASK THE REGISTRY FOR A LEAF.
+// The registry is keyed on identity, so a bare leaf is not a key. Emission still has to ask -- an
+// import line, a use-line plan, a service roster, the is_data call-suffix decision all hold a
+// spelling and nothing else. This completes the leaf to an identity through the shared owner index
+// and then reads the one registry, so the answer is a real row for a real declaration or it is
+// Absent. A leaf two modules declare maps to the empty owner, which is not a legal module path, so
+// it lands in Absent and the caller takes its own refusal path -- never a row from the wrong module,
+// which is exactly what the old leaf-keyed map returned.
+fn item_lookup_of_optional(found: ItemInfo?) -> ItemLookup {
+  match found {
+    Present { value: info } => ItemFound { info: info }
+    Absent => ItemNotFound
   }
 }
 
-fn value_ref_item_info_refusal(info: ItemInfo) -> String {
-  emit_error_expr(message: "duplicate qualified item_registry key — refuse ambiguous module.leaf overlay", target: Rust)
+fn lookup_item_by_leaf(leaf: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> ItemLookup {
+  match map_get(emit_info.item_leaf_owner_modules, leaf) {
+    Present { value: owner } =>
+      if owner == "" {
+        ItemLeafAmbiguous { leaf: leaf }
+      } else {
+        item_lookup_of_optional(found: lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: owner, decl_name: leaf }))
+      }
+    Absent => ItemNotFound
+  }
+}
+
+// THE FALLBACK GOES THROUGH lookup_item_by_leaf, WHICH IS THE WHOLE REPAIR HERE.
+// It used to read the owner index itself and hand the raw owner to lookup_item_by_identity. On an
+// ambiguous leaf that owner is the empty string, which is not a legal module path, so the identity
+// missed and this returned "not found" -- and the ambiguity guards in its callers, which tested for
+// the in-band marker this function never produced, could not fire. Routing the fallback through the
+// one leaf-completing authority means the ambiguous case arrives as ItemLeafAmbiguous and the
+// callers' arms are reachable.
+fn lookup_item_for_value_ref(resolved_name: String, self_module: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> ItemLookup {
+  let qualifier = value_ref_qualifier_prefix(name: resolved_name)
+  let leaf = value_ref_qualified_leaf(name: resolved_name)
+  if qualifier != "" {
+    item_lookup_of_optional(found: lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: qualifier, decl_name: leaf }))
+  } else {
+    match lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: self_module, decl_name: leaf }) {
+      Present { value: info } => ItemFound { info: info }
+      Absent => lookup_item_by_leaf(leaf: leaf, registry: registry, emit_info: emit_info)
+    }
+  }
+}
+
+fn emit_qualified_value_ref_crate_ident(leaf: String, info: ItemInfo, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> String {
+  concat("crate::", module_to_filename(name: info.module_name), "::", emit_import_name(emit_info: emit_info, n: leaf, registry: registry))
+}
+
+// ONE REFUSAL TEXT FOR THE AMBIGUOUS LEAF, NAMED SO THE ARMS BELOW CANNOT DRIFT APART.
+fn ambiguous_leaf_refusal(leaf: String) -> String {
+  emit_error_expr(message: concat("ambiguous leaf '", leaf, "' — two modules declare it, so no single declaration can be named"), target: Rust)
 }
 
 fn insert_scoped_data_item(scoped: Map<String, List<Node>>, name: String, item: Node) -> Map<String, List<Node>> {
@@ -3045,7 +3057,7 @@ type EmitRustContext {
 }
 
 fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
-  let base_info = build_emit_graph_info(modules: typed.modules)
+  let base_info = build_emit_graph_info(modules: typed.modules, registry: typed.item_registry)
   let ownership = build_ownership_results(modules: typed.modules)
   let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust)
   let clone_bounded = v1_clone_bounded_type_params(
@@ -3063,6 +3075,7 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     source_indices: merged_module_source_indices(modules: typed.modules)
   )
   let emit_info = EmitGraphInfo {
+    item_leaf_owner_modules: base_info.item_leaf_owner_modules,
     type_summaries: base_info.type_summaries,
     type_decl_items: base_info.type_decl_items,
     fn_decl_items: base_info.fn_decl_items,
@@ -3084,10 +3097,7 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     fn_return_type: none,
     expected_type: none
   }
-  let registry = merge_item_registries(
-    bare: typed.item_registry,
-    qualified: build_qualified_item_registry(modules: typed.modules)
-  )
+  let registry = typed.item_registry
   let data_items = build_data_item_index(modules: typed.modules)
   let workflow_funcs = collect_workflow_funcs(modules: typed.modules, registry: registry, read_only_params_index: emit_info.read_only_params_index)
   let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs: workflow_funcs)
@@ -3101,7 +3111,7 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
   )
   let test_projections = extract_test_projections(typed: typed)
   let export_sets = build_module_export_sets(modules: typed.modules)
-  let module_index = build_module_index(modules: typed.modules)
+  let module_index = build_module_index(modules: typed.modules, leaf_owner_modules: emit_info.item_leaf_owner_modules)
   let unlisted_type_names_by_module = group_unlisted_type_names(diags: typed.diagnostics)
   EmitRustContext {
     emit_info: emit_info,
@@ -3686,7 +3696,7 @@ fn emit_lib_rs_from_paths(all_module_paths: List<String>, has_compiler_tests: Bo
 }
 
 fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> TextFile {
-  let base_info = build_emit_graph_info(modules: [typed_module])
+  let base_info = build_emit_graph_info(modules: [typed_module], registry: registry)
   let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust)
   let clone_bounded = v1_clone_bounded_type_params(
     type_decl_items: base_info.type_decl_items,
@@ -3703,6 +3713,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     source_indices: merged_module_source_indices(modules: [typed_module])
   )
   let emit_info = EmitGraphInfo {
+    item_leaf_owner_modules: base_info.item_leaf_owner_modules,
     type_summaries: base_info.type_summaries,
     type_decl_items: base_info.type_decl_items,
     fn_decl_items: base_info.fn_decl_items,
@@ -3726,7 +3737,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
   }
   let shared_types = emit_info.shared_types
   let export_sets = build_module_export_sets(modules: [typed_module])
-  let module_index = build_module_index(modules: [typed_module])
+  let module_index = build_module_index(modules: [typed_module], leaf_owner_modules: emit_info.item_leaf_owner_modules)
   emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map(), data_items: build_data_item_index(modules: [typed_module]), export_sets: export_sets, typed_modules: [typed_module], module_index: module_index, unlisted_type_names: []).file
 }
 
@@ -4574,6 +4585,7 @@ type ReferenceDerivedCandidateDisposition
   | CandidateVariantDelegatedToParent { parent_enum: String }
   | CandidateVariantParentUnresolved
   | CandidateRegistryAbsent
+  | CandidateLeafAmbiguous
   | CandidateExportProofFailed { provider_module: String }
 
 // One decided candidate, at the grain the census reports: (module, name, disposition). The module is
@@ -4591,7 +4603,7 @@ type ReferenceDerivedCandidateRow {
 // emitted before; the census takes the same rows and counts them. Byte-identity of the emitted crate
 // is therefore STRUCTURAL rather than asserted: the emitted use-lines cannot move unless this
 // function's answer moves, because there is no second copy of the decision to drift from.
-fn reference_derived_candidate_disposition(name: String, this_module_name: String, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, type_summaries: Map<String, TypeSummary>, variant_to_enum: Map<String, String>, in_type_position: Bool) -> ReferenceDerivedCandidateDisposition {
+fn reference_derived_candidate_disposition(name: String, this_module_name: String, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, type_summaries: Map<String, TypeSummary>, variant_to_enum: Map<String, String>, in_type_position: Bool) -> ReferenceDerivedCandidateDisposition {
   if is_known_variant(type_summaries: type_summaries, name: name) && !in_type_position {
     match map_get(variant_to_enum, name) {
       Present { value: parent } =>
@@ -4600,8 +4612,9 @@ fn reference_derived_candidate_disposition(name: String, this_module_name: Strin
       Absent => CandidateVariantParentUnresolved
     }
   } else {
-  match map_get(registry, name) {
-    Present { value: info } =>
+  match lookup_item_by_leaf(leaf: name, registry: registry, emit_info: emit_info) {
+    ItemLeafAmbiguous { leaf: _ } => CandidateLeafAmbiguous
+    ItemFound { info: info } =>
       if info.module_name == this_module_name {
         CandidateOwnModule
       } else if provider_proven_exports_symbol(name: name, provider_module: info.module_name, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
@@ -4609,7 +4622,7 @@ fn reference_derived_candidate_disposition(name: String, this_module_name: Strin
       } else {
         CandidateExportProofFailed { provider_module: info.module_name }
       }
-    Absent => CandidateRegistryAbsent
+    ItemNotFound => CandidateRegistryAbsent
   }
   }
 }
@@ -4694,6 +4707,7 @@ fn reference_derived_row_diagnostics(rows: List<ReferenceDerivedCandidateRow>, m
       CandidateVariantDelegatedToParent { parent_enum: _ } => []
       CandidateVariantParentUnresolved => []
       CandidateRegistryAbsent => []
+      CandidateLeafAmbiguous => []
     }
   )
 }
@@ -4715,6 +4729,7 @@ fn reference_derived_disposition_name(disposition: ReferenceDerivedCandidateDisp
     CandidateVariantDelegatedToParent { parent_enum: _ } => "variant-delegated-to-parent"
     CandidateVariantParentUnresolved => "variant-parent-unresolved"
     CandidateRegistryAbsent => "registry-absent"
+    CandidateLeafAmbiguous => "leaf-ambiguous"
     CandidateExportProofFailed { provider_module: _ } => "export-proof-failed"
   }
 }
@@ -4756,6 +4771,7 @@ type ReferenceDerivedCensus {
   variant_delegated_to_parent: Int
   variant_parent_unresolved: Int
   registry_absent: Int
+  leaf_ambiguous: Int
   export_proof_failed: Int
 }
 
@@ -4773,7 +4789,7 @@ type ReferenceDerivedCensus {
 // whose parts do not add up to its whole is unrepresentable rather than merely unlikely.
 fn reference_derived_census(rows: List<ReferenceDerivedCandidateRow>) -> ReferenceDerivedCensus {
   rows |> fold(
-    init: ReferenceDerivedCensus { candidates: 0, survived: 0, own_module: 0, variant_delegated_to_parent: 0, variant_parent_unresolved: 0, registry_absent: 0, export_proof_failed: 0 },
+    init: ReferenceDerivedCensus { candidates: 0, survived: 0, own_module: 0, variant_delegated_to_parent: 0, variant_parent_unresolved: 0, registry_absent: 0, leaf_ambiguous: 0, export_proof_failed: 0 },
     f: (acc, r) =>
       match r.disposition {
         CandidateSurvived { provider_module: _ } =>
@@ -4784,6 +4800,7 @@ fn reference_derived_census(rows: List<ReferenceDerivedCandidateRow>) -> Referen
             variant_delegated_to_parent: acc.variant_delegated_to_parent,
             variant_parent_unresolved: acc.variant_parent_unresolved,
             registry_absent: acc.registry_absent,
+            leaf_ambiguous: acc.leaf_ambiguous,
             export_proof_failed: acc.export_proof_failed
           }
         CandidateOwnModule =>
@@ -4794,6 +4811,7 @@ fn reference_derived_census(rows: List<ReferenceDerivedCandidateRow>) -> Referen
             variant_delegated_to_parent: acc.variant_delegated_to_parent,
             variant_parent_unresolved: acc.variant_parent_unresolved,
             registry_absent: acc.registry_absent,
+            leaf_ambiguous: acc.leaf_ambiguous,
             export_proof_failed: acc.export_proof_failed
           }
         CandidateVariantDelegatedToParent { parent_enum: _ } =>
@@ -4804,6 +4822,7 @@ fn reference_derived_census(rows: List<ReferenceDerivedCandidateRow>) -> Referen
             variant_delegated_to_parent: acc.variant_delegated_to_parent + 1,
             variant_parent_unresolved: acc.variant_parent_unresolved,
             registry_absent: acc.registry_absent,
+            leaf_ambiguous: acc.leaf_ambiguous,
             export_proof_failed: acc.export_proof_failed
           }
         CandidateVariantParentUnresolved =>
@@ -4814,6 +4833,7 @@ fn reference_derived_census(rows: List<ReferenceDerivedCandidateRow>) -> Referen
             variant_delegated_to_parent: acc.variant_delegated_to_parent,
             variant_parent_unresolved: acc.variant_parent_unresolved + 1,
             registry_absent: acc.registry_absent,
+            leaf_ambiguous: acc.leaf_ambiguous,
             export_proof_failed: acc.export_proof_failed
           }
         CandidateRegistryAbsent =>
@@ -4824,6 +4844,18 @@ fn reference_derived_census(rows: List<ReferenceDerivedCandidateRow>) -> Referen
             variant_delegated_to_parent: acc.variant_delegated_to_parent,
             variant_parent_unresolved: acc.variant_parent_unresolved,
             registry_absent: acc.registry_absent + 1,
+            leaf_ambiguous: acc.leaf_ambiguous,
+            export_proof_failed: acc.export_proof_failed
+          }
+        CandidateLeafAmbiguous =>
+          ReferenceDerivedCensus {
+            candidates: acc.candidates + 1,
+            survived: acc.survived,
+            own_module: acc.own_module,
+            variant_delegated_to_parent: acc.variant_delegated_to_parent,
+            variant_parent_unresolved: acc.variant_parent_unresolved,
+            registry_absent: acc.registry_absent,
+            leaf_ambiguous: acc.leaf_ambiguous + 1,
             export_proof_failed: acc.export_proof_failed
           }
         CandidateExportProofFailed { provider_module: _ } =>
@@ -4834,6 +4866,7 @@ fn reference_derived_census(rows: List<ReferenceDerivedCandidateRow>) -> Referen
             variant_delegated_to_parent: acc.variant_delegated_to_parent,
             variant_parent_unresolved: acc.variant_parent_unresolved,
             registry_absent: acc.registry_absent,
+            leaf_ambiguous: acc.leaf_ambiguous,
             export_proof_failed: acc.export_proof_failed + 1
           }
       }
@@ -4861,7 +4894,20 @@ type ReferenceDerivedUseLinePlan {
 // (gunbc compile --source-root src/v1 --source-root dag --entry src/v1/compile.dag). The predicate
 // is unchanged: emitted_source_token_set holds exactly the tokens the list holds, so emit_map_has
 // answers what `any` answered, for the same names in the same order.
-fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> ReferenceDerivedUseLinePlan {
+// THE PROVIDER DECISION IS CARRIED, NOT REDISCOVERED FROM THE SPELLING.
+// The planner used to resolve each surviving candidate to a provider, throw that answer away, and
+// then ask the registry for the same name AGAIN to group names under each provider. The second ask
+// was keyed on the bare leaf, which is not a key once the registry is keyed on identity, so it
+// answered Absent and the filter answered false -- and a name whose provider had just been decided
+// correctly was dropped from every group. Nothing said so: a grouping miss is a false, not a
+// refusal, and not an export-proof failure either. One decision, carried to the place that consumes
+// it, is both the repair and the reason the second lookup cannot drift from the first again.
+type ReferenceDerivedProviderBinding {
+  name: String
+  provider_module: String
+}
+
+fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> ReferenceDerivedUseLinePlan {
   {
     let module_source = match typed_modules |> filter(tm => authored_name_at(source_indices: source_indices, node: tm.module) == this_module_name) |> first {
       Present { value: tm } => module_authored_source_text(module: tm.module, source_indices: source_indices)
@@ -4912,26 +4958,23 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
         [ReferenceDerivedCandidateRow {
           module_name: this_module_name,
           name: name,
-          disposition: reference_derived_candidate_disposition(name: name, this_module_name: this_module_name, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum, in_type_position: emit_map_has(m: type_position_set, key: name))
+          disposition: reference_derived_candidate_disposition(emit_info: emit_info, name: name, this_module_name: this_module_name, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum, in_type_position: emit_map_has(m: type_position_set, key: name))
         }]
       }
     )
     let unlisted = rows
       |> filter(r => reference_derived_candidate_survived(disposition: r.disposition))
       |> map(r => r.name)
-    let providers = unique_strings(items: unlisted |> flat_map(name =>
-      match map_get(registry, name) {
-        Present { value: info } => [info.module_name]
-        Absent => []
+    let resolved = unlisted |> flat_map(name =>
+      match lookup_item_by_leaf(leaf: name, registry: registry, emit_info: emit_info) {
+        ItemFound { info: info } => [ReferenceDerivedProviderBinding { name: name, provider_module: info.module_name }]
+        ItemLeafAmbiguous { leaf: _ } => []
+        ItemNotFound => []
       }
-    ))
+    )
+    let providers = unique_strings(items: resolved |> map(b => b.provider_module))
     let lines = providers |> flat_map(provider =>
-      let names = unlisted |> filter(name =>
-        match map_get(registry, name) {
-          Present { value: info } => info.module_name == provider
-          Absent => false
-        }
-      )
+      let names = resolved |> filter(b => b.provider_module == provider) |> map(b => b.name)
       let plan_module_env = match map_get(module_index.by_name, this_module_name) {
         Present { value: tm } => Present { value: tm.type_env }
         Absent => none
@@ -4943,7 +4986,7 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
         if (emitted_here |> any(e => e == nm)) || (is_known_variant(type_summaries: emit_info.type_summaries, name: nm) && !emit_map_has(m: type_position_set, key: nm)) {
           []
         } else if provider_proven_exports_symbol(name: nm, provider_module: provider, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
-          [concat(rust_visibility_prefix(), concat("use crate::", concat(module_to_filename(name: provider), concat("::", concat(emit_import_name(n: nm, registry: registry), ";")))))]
+          [concat(rust_visibility_prefix(), concat("use crate::", concat(module_to_filename(name: provider), concat("::", concat(emit_import_name(emit_info: emit_info, n: nm, registry: registry), ";")))))]
         } else {
           []
         }
@@ -4951,8 +4994,8 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
       concat(block_lines, fallback)
     )
     let names_already_in_lines = lines |> flat_map(l => imported_names_in_use_line(line: l))
-    let qualified_rows = qualified_type_reference_rows(names: qualified_item_emit_surface_compatibility_names(candidates: origin_candidates) |> filter(nm => emit_map_has(m: emitted_source_token_set, key: qualified_last_segment(name: nm))), this_module_name: this_module_name, already: already, names_already_in_lines: names_already_in_lines, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
-    let qualified_lines = qualified_type_reference_use_lines(rows: qualified_rows, registry: registry)
+    let qualified_rows = qualified_type_reference_rows(emit_info: emit_info, names: qualified_item_emit_surface_compatibility_names(candidates: origin_candidates) |> filter(nm => emit_map_has(m: emitted_source_token_set, key: qualified_last_segment(name: nm))), this_module_name: this_module_name, already: already, names_already_in_lines: names_already_in_lines, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+    let qualified_lines = qualified_type_reference_use_lines(emit_info: emit_info, rows: qualified_rows, registry: registry)
     ReferenceDerivedUseLinePlan { lines: concat(lines, qualified_lines), rows: concat(rows, qualified_rows) }
   }
 }
@@ -4979,7 +5022,7 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
 // the named qualifier before any line is synthesized; every other qualified name is the value
 // route's, and this route says nothing about it. Each decision this route does take is a census row
 // beside the bare-name rows -- the qualified spelling is the row's name, so the two never collide.
-fn qualified_type_reference_rows(names: List<String>, this_module_name: String, already: Map<String, Bool>, names_already_in_lines: List<String>, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<ReferenceDerivedCandidateRow> {
+fn qualified_type_reference_rows(names: List<String>, this_module_name: String, emit_info: EmitGraphInfo, already: Map<String, Bool>, names_already_in_lines: List<String>, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<ReferenceDerivedCandidateRow> {
   let leaves_done = names_already_in_lines |> fold(init: empty_map(), f: (acc, nm) => map_insert(acc, nm, true))
   names |> flat_map(name =>
     if !string_contains(s: name, pattern: ".") { [] } else {
@@ -4989,9 +5032,10 @@ fn qualified_type_reference_rows(names: List<String>, this_module_name: String, 
       if qualifier == this_module_name || emit_map_has(m: already, key: leaf) || emit_map_has(m: leaves_done, key: leaf) || is_kernel_type(name: leaf) {
         []
       } else {
-        match map_get(registry, leaf) {
-          Absent => [ReferenceDerivedCandidateRow { module_name: this_module_name, name: name, disposition: CandidateRegistryAbsent }]
-          Present { value: info } =>
+        match lookup_item_by_leaf(leaf: leaf, registry: registry, emit_info: emit_info) {
+          ItemNotFound => [ReferenceDerivedCandidateRow { module_name: this_module_name, name: name, disposition: CandidateRegistryAbsent }]
+          ItemLeafAmbiguous { leaf: _ } => [ReferenceDerivedCandidateRow { module_name: this_module_name, name: name, disposition: CandidateLeafAmbiguous }]
+          ItemFound { info: info } =>
             if !(registry_row_is_type_declared_in(info: info, module_name: qualifier)) {
               []
             } else if provider_proven_exports_symbol(name: leaf, provider_module: qualifier, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
@@ -5010,11 +5054,11 @@ fn registry_row_is_type_declared_in(info: ItemInfo, module_name: String) -> Bool
   if info.module_name != module_name { false } else { match info.kind { TypeItem => true  _ => false } }
 }
 
-fn qualified_type_reference_use_lines(rows: List<ReferenceDerivedCandidateRow>, registry: Map<String, ItemInfo>) -> List<String> {
+fn qualified_type_reference_use_lines(rows: List<ReferenceDerivedCandidateRow>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> List<String> {
   unique_strings(items: rows |> flat_map(r =>
     match r.disposition {
       CandidateSurvived { provider_module: provider } =>
-        [concat(rust_visibility_prefix(), "use crate::", module_to_filename(name: provider), "::", emit_import_name(n: qualified_last_segment(name: r.name), registry: registry), ";")]
+        [concat(rust_visibility_prefix(), "use crate::", module_to_filename(name: provider), "::", emit_import_name(emit_info: emit_info, n: qualified_last_segment(name: r.name), registry: registry), ";")]
       _ => []
     }
   ))
@@ -5056,6 +5100,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let m = typed_module.module
   let scope = module_emit_scope(typed_module: typed_module)
   let emit_info = EmitGraphInfo {
+    item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
     type_summaries: emit_info.type_summaries,
     type_decl_items: emit_info.type_decl_items,
     fn_decl_items: emit_info.fn_decl_items,
@@ -5149,9 +5194,10 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let imports_section = if merged_imports == "" { "" } else { concat("\n", merged_imports) }
   let this_mod_filename = module_to_filename(name: authored_name(env: scope.type_env, node: m))
   let all_svc_names = typed_module.items |> flat_map(item =>
-    match map_get(registry, authored_name(env: scope.type_env, node: item)) {
-      Present { value: info } => info.service_names
-      Absent => []
+    match lookup_item_by_leaf(leaf: authored_name(env: scope.type_env, node: item), registry: registry, emit_info: emit_info) {
+      ItemFound { info: info } => info.service_names
+      ItemLeafAmbiguous { leaf: _ } => []
+      ItemNotFound => []
     }
   )
   let extern_svc_imports = unique_strings(items: all_svc_names) |> flat_map(sn =>
@@ -5192,10 +5238,11 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   }
 }
 
-fn emit_import_name(n: String, registry: Map<String, ItemInfo>) -> String {
-  let is_data = match map_get(registry, n) {
-    Present { value: info } => info.kind == DataItem
-    Absent => false
+fn emit_import_name(n: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> String {
+  let is_data = match lookup_item_by_leaf(leaf: n, registry: registry, emit_info: emit_info) {
+    ItemFound { info: info } => info.kind == DataItem
+    ItemLeafAmbiguous { leaf: _ } => false
+    ItemNotFound => false
   }
   if is_data { to_snake(n) } else { n }
 }
@@ -5223,9 +5270,10 @@ fn is_import_graph_type_name(name: String, import_module: String, typed_modules:
   }
 }
 
-fn item_defining_module_filename(name: String, registry: Map<String, ItemInfo>, fallback: String) -> String {
-  match lookup_item(registry: registry, name: name) {
-    Present { value: info } => module_to_filename(name: info.module_name)
+fn item_defining_module_filename(name: String, module_index: ModuleIndex, fallback: String) -> String {
+  match map_get(module_index.leaf_owner_modules, name) {
+    Present { value: owner } =>
+      if owner == "" { fallback } else { module_to_filename(name: owner) }
     Absent => fallback
   }
 }
@@ -5233,9 +5281,10 @@ fn item_defining_module_filename(name: String, registry: Map<String, ItemInfo>, 
 type ModuleIndex {
   by_name: Map<String, TypedModule>
   by_filename: Map<String, List<TypedModule>>
+  leaf_owner_modules: Map<String, String>
 }
 
-fn build_module_index(modules: List<TypedModule>) -> ModuleIndex {
+fn build_module_index(modules: List<TypedModule>, leaf_owner_modules: Map<String, String>) -> ModuleIndex {
   let by_name = modules |> fold(init: empty_map(), f: (acc, tm) =>
     let nm = authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)
     match map_get(acc, nm) {
@@ -5250,7 +5299,7 @@ fn build_module_index(modules: List<TypedModule>) -> ModuleIndex {
       Absent => map_insert(acc, fname, [tm])
     }
   )
-  ModuleIndex { by_name: by_name, by_filename: by_filename }
+  ModuleIndex { by_name: by_name, by_filename: by_filename, leaf_owner_modules: leaf_owner_modules }
 }
 
 fn typed_module_by_name(module_name: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> TypedModule? {
@@ -5600,7 +5649,7 @@ fn variant_parent_defining_module_filename(parent_enum: String, variant_name: St
           typed_modules: typed_modules,
           export_sets: export_sets,
           source_indices: source_indices,
-          fallback: item_defining_module_filename(name: parent_enum, registry: registry, fallback: fallback),
+          fallback: item_defining_module_filename(name: parent_enum, module_index: module_index, fallback: fallback),
         module_index: module_index)
       }
     Absent =>
@@ -5610,7 +5659,7 @@ fn variant_parent_defining_module_filename(parent_enum: String, variant_name: St
         typed_modules: typed_modules,
         export_sets: export_sets,
         source_indices: source_indices,
-        fallback: item_defining_module_filename(name: parent_enum, registry: registry, fallback: fallback),
+        fallback: item_defining_module_filename(name: parent_enum, module_index: module_index, fallback: fallback),
       module_index: module_index)
   }
 }
@@ -5686,9 +5735,16 @@ fn alias_rhs_rust_qualify_module_filename(name: String, alias_module: String, im
   }
 }
 
+// The leaf index says which module owns the spelling; the ROW still comes from the registry, by the
+// identity that index just completed. Two lookups, one authority.
 fn alias_rhs_base_module_filename(name: String, alias_module: String, imports: List<Node>, source_indices: Map<String, NewlineIndex>, scope: InferScope, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex) -> String {
   let local_mod = module_to_filename(name: alias_module)
-  match lookup_item(registry: scope.item_registry, name: name) {
+  let owner_info = match map_get(module_index.leaf_owner_modules, name) {
+    Present { value: owner } =>
+      lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: owner, decl_name: name })
+    Absent => Absent
+  }
+  match owner_info {
     Present { value: info } =>
       if info.module_name == alias_module && (info.kind == TypeItem || info.kind == OtherItem) && has_physical_type_def_in_module_filename(rhs_name: name, mod_filename: local_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
         local_mod
@@ -5711,7 +5767,7 @@ fn alias_rhs_base_module_from_import_or_registry(name: String, imports: List<Nod
         name_in_transitive_export_surface(name: name, module_name: import_module, visited: [], export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
       ) |> map(imp => authored_name_at(source_indices: source_indices, node: imp)) |> first {
         Present { value: import_module } => module_to_filename(name: import_module)
-        Absent => item_defining_module_filename(name: name, registry: registry, fallback: local_mod)
+        Absent => item_defining_module_filename(name: name, module_index: module_index, fallback: local_mod)
       }
   }
 }
@@ -6123,14 +6179,14 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
       )
       if group |> count > 0 {
         let names_str = group |> map(n =>
-          emit_import_name(n: n, registry: registry)
+          emit_import_name(emit_info: emit_info, n: n, registry: registry)
         ) |> join(separator: ", ")
         concat(rust_visibility_prefix(), "use crate::", def_mod, "::{", names_str, "};")
       } else { "" }
     )
     let other_direct_line = if other_direct_names |> count > 0 {
       let names_str = other_direct_names |> map(n =>
-        emit_import_name(n: n, registry: registry)
+        emit_import_name(emit_info: emit_info, n: n, registry: registry)
       ) |> join(separator: ", ")
       concat(rust_visibility_prefix(), "use crate::", mod_name, "::{", names_str, "};")
     } else { "" }
@@ -6148,7 +6204,7 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
       ) |> first
       match rep_variant {
         Present { value: v } => variant_parent_defining_module_filename(parent_enum: p, variant_name: v, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, registry: registry, fallback: mod_name, module_index: module_index)
-        Absent => item_defining_module_filename(name: p, registry: registry, fallback: mod_name)
+        Absent => item_defining_module_filename(name: p, module_index: module_index, fallback: mod_name)
       }
     ))
     let parent_main_lines = parent_defining_mods |> map(def_mod =>
@@ -6165,7 +6221,7 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
         ) |> first
         match rep_variant {
           Present { value: v } => variant_parent_defining_module_filename(parent_enum: p, variant_name: v, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, registry: registry, fallback: mod_name, module_index: module_index) == def_mod
-          Absent => item_defining_module_filename(name: p, registry: registry, fallback: mod_name) == def_mod
+          Absent => item_defining_module_filename(name: p, module_index: module_index, fallback: mod_name) == def_mod
         }
       )
       if group |> count > 0 {
@@ -6204,7 +6260,7 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
       )
       let parent_mod = match variants |> first {
         Present { value: v } => variant_parent_defining_module_filename(parent_enum: parent, variant_name: v, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, registry: registry, fallback: mod_name, module_index: module_index)
-        Absent => item_defining_module_filename(name: parent, registry: registry, fallback: mod_name)
+        Absent => item_defining_module_filename(name: parent, module_index: module_index, fallback: mod_name)
       }
       let vars_str = variants |> join(separator: ", ")
       concat("use crate::", parent_mod, "::", parent, "::{", vars_str, "};")
@@ -6923,7 +6979,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
             Present { value: m } => m
             Absent => empty_set()
           }
-          let item_is_tco = is_tco_eligible(name: authored_name(env: env, node: item), body: fn_body, registry: registry, source_indices: env.source_indices)
+          let item_is_tco = is_tco_eligible(id: DeclaredCallableIdentity { owner_module_path: module_name, decl_name: authored_name(env: env, node: item) }, body: fn_body, registry: registry, source_indices: env.source_indices)
           let fn_read_only = if item_is_tco { empty_set() } else {
             match map_get(emit_info.read_only_params_index, qualified_name) {
               Present { value: m } => m
@@ -6931,6 +6987,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
             }
           }
           let fn_emit_info = EmitGraphInfo {
+            item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
             type_summaries: emit_info.type_summaries,
             type_decl_items: emit_info.type_decl_items,
             fn_decl_items: emit_info.fn_decl_items,
@@ -6953,7 +7010,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
             expected_type: emit_info.expected_type
           }
 
-          let is_effectful = match lookup_item(registry: registry, name: authored_name(env: env, node: item)) {
+          let is_effectful = match lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: module_name, decl_name: authored_name(env: env, node: item) }) {
             Present { value: info } => info.service_names |> count > 0 || info.resource_names |> count > 0
             Absent => false
           }
@@ -8485,8 +8542,8 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   let ret_str = emit_inferred(inferred: inferred, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
   let body_scope = build_params_scope(scope: scope, params: value_params)
   let depth = 0
-  let use_tco = is_tco_eligible(name: name, body: body, registry: registry, source_indices: si)
-  let needs_stacker = is_self_recursive(name: name, body: body, registry: registry, source_indices: si) && use_tco == false
+  let use_tco = is_tco_eligible(id: DeclaredCallableIdentity { owner_module_path: scope.module_name, decl_name: name }, body: body, registry: registry, source_indices: si)
+  let needs_stacker = is_self_recursive(id: DeclaredCallableIdentity { owner_module_path: scope.module_name, decl_name: name }, body: body, registry: registry, source_indices: si) && use_tco == false
   if rust_host_seam_is_unrealized(module_path: scope.module_name, name: name, body: body, source_indices: si) {
     let kw = rust_items().func_keyword
     return concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), type_params_str, "(", params_str, ")", ret_str, " {\n",
@@ -8683,7 +8740,7 @@ fn emit_func_def(
     return concat("compile_error!(\"emit_func_def saw type params in `", name, "` — func/pattern/interface don't route through the generic-fn split today; the parser invariant at parse_block_body_from_prefix has changed. Plumb type_params through this path or dissolve via ParamKind/params-slot partition.\");\n")
   }
   let depth = 0
-  let service_names = match lookup_item(registry: registry, name: name) {
+  let service_names = match lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: scope.module_name, decl_name: name }) {
     Present { value: info } => info.service_names
     Absent => []
   }
@@ -9730,22 +9787,24 @@ fn variant_ref_self_wraps(name: String, enum_name: String, shared_types: Set<Str
 // normalization (value_ref_normalize_self_module) remains the sibling wall for the qualifier ==
 // current-module case.
 
-fn emit_value_ref_ident(name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> String {
+fn emit_value_ref_ident(name: String, self_module: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> String {
   if string_contains(s: name, pattern: ".") {
     let leaf = value_ref_qualified_leaf(name: name)
     let qualifier = value_ref_qualifier_prefix(name: name)
     if qualifier != "" {
-      match lookup_item_for_value_ref(resolved_name: name, registry: registry) {
-        Present { value: info } =>
-          emit_qualified_value_ref_crate_ident(leaf: leaf, info: info, registry: registry)
-        Absent =>
+      match lookup_item_for_value_ref(resolved_name: name, self_module: self_module, registry: registry, emit_info: emit_info) {
+        ItemFound { info: info } =>
+          emit_qualified_value_ref_crate_ident(leaf: leaf, info: info, registry: registry, emit_info: emit_info)
+        ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_refusal(leaf: ambiguous_leaf)
+        ItemNotFound =>
           emit_error_expr(message: "qualified value reference missing exact registry row — refuse authored qualifier", target: Rust)
       }
     } else {
-      match map_get(registry, leaf) {
-        Present { value: info } =>
-          emit_qualified_value_ref_crate_ident(leaf: leaf, info: info, registry: registry)
-        Absent =>
+      match lookup_item_by_leaf(leaf: leaf, registry: registry, emit_info: emit_info) {
+        ItemFound { info: info } =>
+          emit_qualified_value_ref_crate_ident(leaf: leaf, info: info, registry: registry, emit_info: emit_info)
+        ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_refusal(leaf: ambiguous_leaf)
+        ItemNotFound =>
           if freemonoid_empty_from_emit_info(leaf_name: leaf, emit_info: emit_info) { emit_freemonoid_empty_rc_value() }
           else { emit_ident(name: leaf, target: Rust) }
       }
@@ -9799,19 +9858,18 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
           rust_shared_wrap_ctor(inner_expr: body)
         } else { body }
       Absent =>
-        match lookup_item_for_value_ref(resolved_name: resolved_name, registry: registry) {
-          Present { value: info } =>
-            if is_duplicate_qualified_item_registry_marker(info: info) {
-              value_ref_item_info_refusal(info: info)
-            } else {
+        match lookup_item_for_value_ref(resolved_name: resolved_name, self_module: module_name, registry: registry, emit_info: emit_info) {
+          ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_refusal(leaf: ambiguous_leaf)
+          ItemFound { info: info } =>
+            {
               let is_data = info.kind == DataItem
-              if is_data { concat(emit_value_ref_ident(name: name, registry: registry, emit_info: emit_info), "()") }
+              if is_data { concat(emit_value_ref_ident(name: name, self_module: module_name, registry: registry, emit_info: emit_info), "()") }
               else {
               let is_function_value = match binding_kind {
                 Present { value: FunctionValueBinding } => true
                 _ => false
               }
-              let ident = emit_value_ref_ident(name: resolved_name, registry: registry, emit_info: emit_info)
+              let ident = emit_value_ref_ident(name: resolved_name, self_module: module_name, registry: registry, emit_info: emit_info)
               let ident_str = if is_function_value {
                 ident
               } else if moves_by_value {
@@ -9823,8 +9881,8 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
               ident_str
               }
             }
-          Absent =>
-            let ident = emit_value_ref_ident(name: resolved_name, registry: registry, emit_info: emit_info)
+          ItemNotFound =>
+            let ident = emit_value_ref_ident(name: resolved_name, self_module: module_name, registry: registry, emit_info: emit_info)
             let ident_str = if moves_by_value {
               ident
             } else { match resolved_type {
@@ -9866,18 +9924,17 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
             let resolved_name = value_ref_normalize_self_module(name: n, module_name: scope.module_name)
             match lookup_item_for_value_ref(
               resolved_name: resolved_name,
-              registry: registry
+              self_module: scope.module_name,
+              registry: registry,
+              emit_info: emit_info
             ) {
-              Present { value: info } =>
-                if is_duplicate_qualified_item_registry_marker(info: info) {
-                  value_ref_item_info_refusal(info: info)
-                } else {
-                  let is_data = info.kind == DataItem
-                  if is_data { concat(emit_value_ref_ident(name: n, registry: registry, emit_info: emit_info), "()") }
-                  else { emit_value_ref_ident(name: resolved_name, registry: registry, emit_info: emit_info) }
-                }
-              Absent =>
-                emit_value_ref_ident(name: resolved_name, registry: registry, emit_info: emit_info)
+              ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_refusal(leaf: ambiguous_leaf)
+              ItemFound { info: info } =>
+                let is_data = info.kind == DataItem
+                if is_data { concat(emit_value_ref_ident(name: n, self_module: scope.module_name, registry: registry, emit_info: emit_info), "()") }
+                else { emit_value_ref_ident(name: resolved_name, self_module: scope.module_name, registry: registry, emit_info: emit_info) }
+              ItemNotFound =>
+                emit_value_ref_ident(name: resolved_name, self_module: scope.module_name, registry: registry, emit_info: emit_info)
             }
         }
       }
@@ -10261,24 +10318,14 @@ fn call_semantics_supplied_application_plan(cs: CallSemantics?) -> List<Resolved
 // THE TARGET INFERENCE CHOSE, READ RATHER THAN RE-DERIVED.
 //
 // Every seam below that used to ask `is this name in rt_functions()` is asking a question the
-// resolver already answered with the imports in hand. A function value has no callable
-// declaration to name, and a call that reached emission with no recorded semantics predates the
-// carrier -- both are Undetermined, and Undetermined refuses at the one seam that must produce
-// an identifier rather than silently reverting to name matching.
-fn call_semantics_target(cs: CallSemantics?) -> CallTargetIdentity {
-  match cs {
-    Present { value: PlainCallSemantics { target: target } } => target
-    Present { value: ResolvedDirectCallSemantics { target: target, application_plan: _ } } => target
-    Present { value: LookupCallSemantics { target: target } } => target
-    Present { value: FunctionValueCallSemantics } => CallableTargetUndetermined
-    Absent => CallableTargetUndetermined
-  }
-}
-
+// resolver already answered with the imports in hand. The projection that reads the target off
+// the carrier is `v1.std.core.call_semantics_target`, declared beside `CallSemantics` because
+// transitive effect analysis asks it too.
 fn call_target_runtime_primitive_name(target: CallTargetIdentity) -> String? {
   match target {
     RuntimePrimitiveCall { primitive_name: primitive_name, projected_from: _ } => Present { value: primitive_name }
     SourceDeclarationCall { owner_module_path: _, decl_name: _ } => none
+    LocallyBoundCall { name: _ } => none
     CallableTargetUndetermined => none
   }
 }
@@ -10295,6 +10342,7 @@ fn call_target_projected_declaration(target: CallTargetIdentity) -> DeclaredCall
   match target {
     RuntimePrimitiveCall { primitive_name: _, projected_from: projected_from } => projected_from
     SourceDeclarationCall { owner_module_path: _, decl_name: _ } => none
+    LocallyBoundCall { name: _ } => none
     CallableTargetUndetermined => none
   }
 }
@@ -10933,7 +10981,10 @@ fn emit_typed_call(func: String, args: List<Node>, call_semantics: CallSemantics
   let application_plan = call_semantics_supplied_application_plan(cs: call_semantics)
   let callee = match call_target {
     SourceDeclarationCall { owner_module_path: owner, decl_name: decl } =>
-      lookup_item(registry: registry, name: concat(owner, ".", decl))
+      lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity {
+        owner_module_path: owner,
+        decl_name: decl
+      })
     _ => none
   }
   let filled_args = fill_default_args(ordered: ordered_args, callee: callee, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
@@ -10984,6 +11035,7 @@ fn emit_typed_call(func: String, args: List<Node>, call_semantics: CallSemantics
       SourceDeclarationCall { owner_module_path: owner, decl_name: decl } =>
         if owner == scope.module_name { emit_ident(name: decl, target: Rust) }
         else { concat("crate::", module_to_filename(name: owner), "::", emit_ident(name: decl, target: Rust)) }
+      LocallyBoundCall { name: n } => emit_ident(name: n, target: Rust)
       CallableTargetUndetermined =>
         emit_error_expr(message: "call target identity was not established before Rust emission", target: Rust)
       RuntimePrimitiveCall { primitive_name: unbridged_primitive, projected_from: projected_from } =>
@@ -11381,6 +11433,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
         match ps |> first {
           Present { value: acc_name } =>
             EmitGraphInfo {
+              item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
               type_summaries: emit_info.type_summaries,
               type_decl_items: emit_info.type_decl_items,
               fn_decl_items: emit_info.fn_decl_items,
@@ -11413,6 +11466,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
         match ps |> first {
           Present { value: acc_name } =>
             EmitGraphInfo {
+              item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
               type_summaries: emit_info.type_summaries,
               type_decl_items: emit_info.type_decl_items,
               fn_decl_items: emit_info.fn_decl_items,
@@ -15407,7 +15461,7 @@ fn resolve_param_default(param: Node, index: DataDeclIndex, module_path: String,
 
 fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemInfo>, index: DataDeclIndex, source_indices: Map<String, NewlineIndex>, read_only_params_index: Map<String, Set<String>>) -> WorkflowFunc {
   let item_name = authored_name_at(source_indices: source_indices, node: item)
-  let svc_names = match lookup_item(registry: registry, name: item_name) {
+  let svc_names = match lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: module_name, decl_name: item_name }) {
     Present { value: info } => info.service_names
     Absent => []
   }
@@ -15444,12 +15498,12 @@ fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemI
   }
 }
 
-fn is_workflow_item(item: Node, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn is_workflow_item(item: Node, module_name: String, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>) -> Bool {
   if item.body == none { false }
   else if item.uses |> count > 0 { true }
   else {
 
-    match lookup_item(registry: registry, name: authored_name_at(source_indices: source_indices, node: item)) {
+    match lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: module_name, decl_name: authored_name_at(source_indices: source_indices, node: item) }) {
       Present { value: info } => info.service_names |> count > 0 || info.resource_names |> count > 0
       Absent => true
     }
@@ -15460,7 +15514,7 @@ fn collect_workflow_funcs(modules: List<TypedModule>, registry: Map<String, Item
   let index = build_data_decl_index(modules: modules)
   modules |> flat_map(tm =>
     tm.items
-      |> filter(item => is_workflow_item(item: item, registry: registry, source_indices: tm.type_env.source_indices))
+      |> filter(item => is_workflow_item(item: item, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module), registry: registry, source_indices: tm.type_env.source_indices))
       |> map(item => to_workflow_func(item: item, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module), registry: registry, index: index, source_indices: tm.type_env.source_indices, read_only_params_index: read_only_params_index))
   )
 }

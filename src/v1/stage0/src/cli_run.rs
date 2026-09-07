@@ -4856,6 +4856,10 @@ pub enum UnlistedImportBindingSource {
     ListedImport,
     PoolCoincidence,
     DefinerResolvable,
+    /// Two or more modules declare this bare leaf, so no single definer can be named.
+    /// It is NOT a binding source that was determined; it is the state of not being determinable,
+    /// and it is a variant rather than a `None` definer so a consumer cannot read it as "unresolved".
+    AmbiguousLeaf,
 }
 
 impl UnlistedImportBindingSource {
@@ -4864,6 +4868,7 @@ impl UnlistedImportBindingSource {
             Self::ListedImport => "listed-import",
             Self::PoolCoincidence => "pool-coincidence",
             Self::DefinerResolvable => "definer-resolvable",
+            Self::AmbiguousLeaf => "ambiguous-leaf",
         }
     }
 }
@@ -4886,17 +4891,58 @@ fn import_module_paths_for_typed_module(tm: &Rc<TypedModule>) -> HashSet<String>
         .collect()
 }
 
-fn definer_module_for_name(graph: &ResolvedGraph, name: &str) -> Option<String> {
+/// WHICH MODULE DEFINES A NAME, OR THE FACT THAT THE QUESTION HAS NO SINGLE ANSWER.
+///
+/// This used to answer a bare leaf with `.values().find(...)` -- the first matching row, silently,
+/// for exactly the question the `.dag` side refuses (`lookup_item_by_leaf` -> `ItemLeafAmbiguous`).
+/// An annotation saying "it is a guess either way" made the guess visible to a READER and not to a
+/// CONSUMER, which is the distinction DESIGN section 5 turns on: every path succeeds fully or fails
+/// with a typed outcome, and a first-row-wins answer is a fabricated one.
+///
+/// The registry is keyed on `owner.decl`, so a qualified spelling is a direct hit. A bare spelling
+/// names no owner, so it is answered by scanning -- and the scan now collects the DISTINCT owning
+/// modules rather than stopping at the first, because whether there is one is the whole question.
+enum DefinerLookup {
+    Definer(String),
+    /// Several modules declare the leaf. The symbol RESOLVES; its definer is not nameable.
+    AmbiguousLeaf,
+    Unresolved,
+}
+
+fn definer_lookup_for_name(graph: &ResolvedGraph, name: &str) -> DefinerLookup {
     if let Some(info) = graph.item_registry.get(name) {
-        return Some(info.module_name.clone());
+        return DefinerLookup::Definer(info.module_name.clone());
     }
-    if name.contains('.') {
-        let base = name.rsplit('.').next().unwrap_or(name);
-        if let Some(info) = graph.item_registry.get(base) {
-            return Some(info.module_name.clone());
+    let mut owners: BTreeSet<String> = BTreeSet::new();
+    for info in graph.item_registry.values() {
+        if info.name == name {
+            owners.insert(info.module_name.clone());
         }
     }
-    None
+    let mut it = owners.into_iter();
+    match (it.next(), it.next()) {
+        (None, _) => DefinerLookup::Unresolved,
+        (Some(only), None) => DefinerLookup::Definer(only),
+        (Some(_), Some(_)) => DefinerLookup::AmbiguousLeaf,
+    }
+}
+
+fn definer_module_for_name(graph: &ResolvedGraph, name: &str) -> Option<String> {
+    match definer_lookup_for_name(graph, name) {
+        DefinerLookup::Definer(m) => Some(m),
+        DefinerLookup::AmbiguousLeaf => None,
+        DefinerLookup::Unresolved => None,
+    }
+}
+
+/// Whether the symbol resolves at all, which is a DIFFERENT question from whether its definer can
+/// be named. An ambiguous leaf answers yes here and `None` above, and conflating the two is how a
+/// census reports a resolvable symbol as unresolved.
+fn symbol_resolves_for_name(graph: &ResolvedGraph, name: &str) -> bool {
+    !matches!(
+        definer_lookup_for_name(graph, name),
+        DefinerLookup::Unresolved
+    )
 }
 
 /// Classify how a single `UnlistedImportUse` site obtained its binding.
@@ -4905,6 +4951,10 @@ pub fn classify_unlisted_import_binding_source(
     referencing_module: &str,
     referenced_name: &str,
 ) -> (UnlistedImportBindingSource, Option<String>) {
+    let lookup = definer_lookup_for_name(graph, referenced_name);
+    if matches!(lookup, DefinerLookup::AmbiguousLeaf) {
+        return (UnlistedImportBindingSource::AmbiguousLeaf, None);
+    }
     let definer = definer_module_for_name(graph, referenced_name);
     let tm = graph
         .modules
@@ -8181,7 +8231,7 @@ pub fn cross_module_binding_receipts_for_symbols(
         .iter()
         .map(|sym| {
             let definer = definer_module_for_name(graph, sym);
-            let binding_source = if definer.is_some() {
+            let binding_source = if symbol_resolves_for_name(graph, sym) {
                 Some(classify_unlisted_import_binding_source(graph, consumer_module, sym).0)
             } else {
                 None
@@ -13918,7 +13968,8 @@ pub struct ResolveStageNanos {
     pub assembly_diagnostics: u128,
     /// `item_registry` merge fold across the closure's typed modules.
     pub assembly_registry: u128,
-    /// `expand_transitive_services` (bounded 5-pass fixpoint over every bodied item).
+    /// `expand_transitive_services` (monotone fixpoint over every bodied item, under a bound
+    /// derived from the registry rather than a chosen pass count).
     pub assembly_services: u128,
     /// The three `rewire_*` passes (type-env parents, import-str identity, func-env parents).
     pub assembly_rewire: u128,
@@ -15277,8 +15328,81 @@ fn finish_resolved_graph_assembly(
     });
     resolve_stage_slot_add(|s| s.assembly_registry += registry_started.elapsed().as_nanos());
     let services_started = std::time::Instant::now();
-    let expanded_registry =
-        v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry, 5);
+    let effect_analysis =
+        v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry);
+    // Mirrors typecheck_with_census_extra: the registry is reachable only through the complete arm,
+    // and an incomplete summary carries its causes onto the graph's diagnostics rather than being
+    // unwrapped into something indistinguishable from a fixed point.
+    let (expanded_registry, incompleteness_diagnostics): (
+        Rc<im::HashMap<String, Rc<ItemInfo>>>,
+        Vec<Rc<ErrorNode>>,
+    ) = match effect_analysis.as_ref() {
+        crate::v1_compiler_infer_service::ServiceEffectAnalysis::EffectsComplete { registry } => {
+            (registry.clone(), Vec::new())
+        }
+        crate::v1_compiler_infer_service::ServiceEffectAnalysis::EffectsIncomplete {
+            partial,
+            causes,
+        } => {
+            let diags = causes
+                .iter()
+                .map(|cause| match cause.as_ref() {
+                    crate::v1_compiler_infer_service::EffectIncompleteness::UnresolvedCalleeEdge {
+                        item_identity,
+                        spelling,
+                    } => v1_compiler_infer::inference_error(
+                        format!(
+                            "effect summary incomplete: call to '{}' in {} has no established callee identity, so its effects cannot be joined",
+                            spelling,
+                            crate::v1_std_core::callable_identity(item_identity.clone())
+                        ),
+                        crate::v1_std_core::no_span(),
+                        item_identity.owner_module_path.clone(),
+                    ),
+                    crate::v1_compiler_infer_service::EffectIncompleteness::ExpansionBudgetExhausted {
+                        remaining_delta: _,
+                    } => v1_compiler_infer::inference_error(
+                        "effect summary incomplete: transitive service expansion exhausted its pass budget while dependencies were still propagating, so the published summary is a truncation rather than a fixed point".to_string(),
+                        crate::v1_std_core::no_span(),
+                        String::new(),
+                    ),
+                    crate::v1_compiler_infer_service::EffectIncompleteness::ResolvedCalleeRegistryRowAbsent {
+                        caller,
+                        callee,
+                    } => v1_compiler_infer::inference_error(
+                        format!(
+                            "effect summary incomplete: {} calls {}, whose identity is established but names no registry row, so the join contributed nothing and the caller's summary omits whatever that callee does",
+                            crate::v1_std_core::callable_identity(caller.clone()),
+                            crate::v1_std_core::callable_identity(callee.clone())
+                        ),
+                        crate::v1_std_core::no_span(),
+                        caller.owner_module_path.clone(),
+                    ),
+                    crate::v1_compiler_infer_service::EffectIncompleteness::FunctionValueEffectsUnresolved {
+                        caller,
+                    } => crate::v1_std_core::make_error_node(
+                        Rc::new(crate::v1_std_core::CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue {
+                            caller: crate::v1_std_core::callable_identity(caller.clone()),
+                            span: crate::v1_std_core::no_span(),
+                        }),
+                        caller.owner_module_path.clone(),
+                    ),
+                    crate::v1_compiler_infer_service::EffectIncompleteness::LocalBindingEffectsUnresolved {
+                        caller,
+                        name,
+                    } => crate::v1_std_core::make_error_node(
+                        Rc::new(crate::v1_std_core::CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding {
+                            caller: crate::v1_std_core::callable_identity(caller.clone()),
+                            name: name.clone(),
+                            span: crate::v1_std_core::no_span(),
+                        }),
+                        caller.owner_module_path.clone(),
+                    ),
+                })
+                .collect();
+            (partial.clone(), diags)
+        }
+    };
     resolve_stage_slot_add(|s| s.assembly_services += services_started.elapsed().as_nanos());
     let diagnostics_started = std::time::Instant::now();
     let diagnostics: Rc<im::Vector<Rc<ErrorNode>>> = Rc::new({
@@ -15286,6 +15410,7 @@ fn finish_resolved_graph_assembly(
         for chunk in &diag_chunks {
             acc.extend(chunk.iter().cloned());
         }
+        acc.extend(incompleteness_diagnostics.iter().cloned());
         acc
     });
     let total_fork_count = same_tree_fork_count + cross_tree_fork_count;
@@ -15313,7 +15438,8 @@ fn finish_resolved_graph_assembly(
     resolve_stage_slot_add(|s| s.assembly_rewire_func_env += rewire3_started.elapsed().as_nanos());
     resolve_stage_slot_add(|s| s.assembly_rewire += rewire_started.elapsed().as_nanos());
     let emit_info_started = std::time::Instant::now();
-    let emit_graph_info = v1_compiler_infer::build_emit_graph_info(modules.clone());
+    let emit_graph_info =
+        v1_compiler_infer::build_emit_graph_info(modules.clone(), expanded_registry.clone());
     resolve_stage_slot_add(|s| s.assembly_emit_info += emit_info_started.elapsed().as_nanos());
     let graph_started = std::time::Instant::now();
     let graph = Rc::new(ResolvedGraph {
@@ -40115,7 +40241,14 @@ fn claim_scope_for_with_memos(
                 continue;
             };
             let authored = position < authored_region;
-            for (name, info) in module.item_registry.iter() {
+            // The registry's KEY is now the declaration's identity (owner module path plus
+            // declared name). This scope index is deliberately keyed by BARE leaf name and
+            // resolved by the precedence order above, so it takes the leaf from the VALUE rather
+            // than from the key -- the leaf is still exactly one field away, and taking it from
+            // `info` keeps this subsystem's bare-name-with-precedence semantics unchanged while
+            // the registry underneath it stops being ambiguous.
+            for (_identity, info) in module.item_registry.iter() {
+                let name = &info.name;
                 match winner_of.get(name) {
                     None => {
                         item_registry.insert(name.clone(), info.clone());

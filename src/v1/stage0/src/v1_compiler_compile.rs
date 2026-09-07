@@ -76,7 +76,7 @@ use crate::v1_std_core::CallSemantics::{
     ResolvedDirectCallSemantics,
 };
 use crate::v1_std_core::CallTargetIdentity::{
-    CallableTargetUndetermined, RuntimePrimitiveCall, SourceDeclarationCall,
+    CallableTargetUndetermined, LocallyBoundCall, RuntimePrimitiveCall, SourceDeclarationCall,
 };
 use crate::v1_std_core::Cardinality::*;
 use crate::v1_std_core::CompilerDiagnostic::{
@@ -833,6 +833,9 @@ pub fn serialize_call_target_identity(value: Rc<CallTargetIdentity>) -> String {
             ),
             "}".to_string(),
         ),
+        CallTargetIdentity::LocallyBoundCall { name: _, .. } => {
+            "{\"kind\": \"LocallyBoundCall\"}".to_string()
+        }
         CallTargetIdentity::CallableTargetUndetermined => {
             "{\"kind\": \"CallableTargetUndetermined\"}".to_string()
         }

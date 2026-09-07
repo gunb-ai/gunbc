@@ -4,6 +4,7 @@
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::*;
 pub use crate::v1_compiler_infer_env::TypeEnv;
+pub use crate::v1_compiler_infer_items::leaf_owner_modules_from_registry;
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_service::UniqueAccum;
 pub use crate::v1_compiler_infer_types::{emit_map_has, resolved_type};
@@ -360,6 +361,12 @@ pub fn sanitize_service_name(name: String) -> String {
         });
         pascal_parts.clone().join(&"".to_string())
     }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ServiceSymbolOwners {
+    pub owners: Rc<HashMap<String, String>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn capitalize_first(s: String) -> String {

@@ -59,6 +59,32 @@ type ItemInfo {
   has_non_tail_self_call: Bool
 }
 
+// THE ANSWER TO "WHICH MODULE DECLARES THIS LEAF" HAS THREE SHAPES, SO IT IS A COPRODUCT.
+//
+// The registry is keyed on a declaration's identity -- owner module path and declared name -- so a
+// leaf spelled the same in two modules occupies two distinct rows and the key itself resolves the
+// old homonym. What the key cannot answer is the REVERSE question emission still asks: which module
+// declares this leaf. The leaf index answers it, and when two modules declare one leaf it has no
+// answer.
+//
+// That third state was previously encoded IN BAND, as an ItemInfo row carrying the reserved
+// module_name "__DUPLICATE_ITEM_IDENTITY__", with a predicate to recognise it. That is validation
+// standing where construction was available (DESIGN section 5): the illegal state stayed
+// representable, it flowed through Map<String, ItemInfo> typed as an ordinary row, and safety
+// depended on every producer remembering to mint the tag and every reader remembering to test for
+// it. Both halves of that bargain were already broken -- lookup_item_for_value_ref never minted the
+// tag on its fallback path, so the readers that tested for it could not fire, and a comment here
+// claimed "every consumer that reads a row refuses" while one consumer silently could not.
+//
+// As a coproduct there is no row to obtain without deciding the ambiguous case: a consumer cannot
+// reach ItemFound's payload without writing an arm for ItemLeafAmbiguous, and the compiler's
+// exhaustiveness check is what enforces it rather than reviewer memory.
+type ItemLookup
+  = ItemFound { info: ItemInfo }
+  | ItemLeafAmbiguous { leaf: String }
+  | ItemNotFound
+
+
 type ModuleInterface {
   summary: InterfaceSummary
   env: TypeEnv
@@ -228,4 +254,28 @@ fn item_kind(item: Node) -> ItemKind {
     OtherItem
   }
   kind
+}
+
+// THE LEAF INDEX IS DERIVED FROM THE REGISTRY THAT EMISSION ACTUALLY HOLDS.
+// Building it from a module LIST makes its contents depend on which list reached the builder, and
+// emission has several: the whole graph, one partition, a single module. On the narrow ones a leaf
+// declared elsewhere is simply missing, the reverse lookup returns nothing, and a use-line the
+// emitted Rust needs is never synthesized -- the seed then fails to build on a function it cannot
+// name. The merged registry is the same object every consumer of this index is already reading, and
+// it holds one row per declaration identity, so deriving from it makes the index complete exactly
+// when the registry is. A leaf two modules declare gets the empty owner, which is not a legal module
+// path, so consumers refuse rather than taking whichever row was folded last.
+fn leaf_owner_modules_from_registry(registry: Map<String, ItemInfo>) -> Map<String, String> {
+  registry |> map_keys |> fold(init: empty_map(), f: (acc, key) =>
+    match map_get(registry, key) {
+      Present { value: info } =>
+        match map_get(acc, info.name) {
+          Present { value: prior } =>
+            if prior == info.module_name { acc }
+            else { map_insert(acc, info.name, "") }
+          Absent => map_insert(acc, info.name, info.module_name)
+        }
+      Absent => acc
+    }
+  )
 }

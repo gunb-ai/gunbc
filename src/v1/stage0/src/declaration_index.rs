@@ -2454,6 +2454,12 @@ mod import_binding_authority_tests {
             primitive_name: String,
         },
         TargetUndetermined,
+        /// A call whose callee is a LOCAL BINDING. Its own arm rather than TargetUndetermined,
+        /// because the resolver named this target and folding it into "undetermined" is the
+        /// collapse this observer exists to detect.
+        LocallyBoundTarget {
+            name: String,
+        },
         FunctionValueCall,
         CallSemanticsAbsent,
         NoCallNodeFound,
@@ -2559,6 +2565,9 @@ mod import_binding_authority_tests {
                 ObservedTarget::RuntimePrimitiveTarget {
                     primitive_name: primitive_name.clone(),
                 }
+            }
+            CallTargetIdentity::LocallyBoundCall { name } => {
+                ObservedTarget::LocallyBoundTarget { name: name.clone() }
             }
             CallTargetIdentity::CallableTargetUndetermined => ObservedTarget::TargetUndetermined,
         }

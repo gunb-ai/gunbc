@@ -48,6 +48,7 @@ type UnlistedImportBindingSource
   = ListedImport
   | PoolCoincidence
   | DefinerResolvable
+  | AmbiguousLeaf
 
 // Binding-source attribution for the UnlistedImportUse census (issue 11). ListedImport = the
 // referencing module has an import edge to the definer module but the specific name is absent from
@@ -55,7 +56,13 @@ type UnlistedImportBindingSource
 // the definer; the name resolves only because the definer module is already in the compilation pool
 // via an unrelated import elsewhere (#6985 Class B). DefinerResolvable = the reference binds via
 // namespace/containment (qualified projection) without an import edge or pool accident — the
-// terminal namespace-lane shape every row must eventually reach.
+// terminal namespace-lane shape every row must eventually reach. AmbiguousLeaf = two or more
+// modules declare the bare leaf, so no single definer can be named and the attribution question
+// HAS NO ANSWER rather than a first-row one. It is a variant instead of an absent definer module
+// because those are different facts: absent means nothing declares the name, this means several
+// do. The host transport used to answer it by scanning the registry and taking the first matching
+// row, with an annotation calling that a guess -- which made it visible to a READER and not to a
+// CONSUMER, the distinction DESIGN section 5 turns on.
 
 data unlisted_import_use_census_hand_rust_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: compile_clean_unlisted_import_census hand-Rust transport (CLI_RUN_COMPILE_CLEAN_UNLISTED_IMPORT_CENSUS_SCAFFOLD_MARKER) — DISSOLVES WHEN namespace-only resolution deletes the import grammar and binding-source classification is modeled in the substrate (namespace-resolution-design.md section 8), or a floor-enrolled census lens subsumes the host transport; receipt rg cli_run_compile_clean_unlisted_import_census src/v1/stage0 == 1 until deletion.")
 

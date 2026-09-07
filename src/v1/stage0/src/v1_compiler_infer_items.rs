@@ -2,6 +2,7 @@
 // Source module: v1.compiler.infer_items
 
 use self::ItemKind::*;
+use self::ItemLookup::*;
 use self::ModuleTypecheckProgress::*;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
@@ -66,6 +67,14 @@ pub struct ItemInfo {
     pub params: Rc<Vec<Rc<Node>>>,
     pub is_self_recursive: bool,
     pub has_non_tail_self_call: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ItemLookup {
+    ItemFound { info: Rc<ItemInfo> },
+    ItemLeafAmbiguous { leaf: String },
+    ItemNotFound,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -261,6 +270,30 @@ pub fn item_kind(item: Rc<Node>) -> ItemKind {
         };
         kind
     }
+}
+
+pub fn leaf_owner_modules_from_registry(
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+) -> Rc<HashMap<String, String>> {
+    Rc::new(v1_rt::map_keys(&registry)).iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, String>(),
+        |acc: Rc<HashMap<String, String>>, key: String| match v1_rt::map_get(&registry, key.clone())
+        {
+            Some(info) => match v1_rt::map_get(&acc, info.name.clone()) {
+                Some(prior) => {
+                    if (prior.clone() == info.module_name.clone()) {
+                        acc.clone()
+                    } else {
+                        v1_rt::rc_map_insert(acc.clone(), info.name.clone(), "".to_string())
+                    }
+                }
+                std::option::Option::None => {
+                    v1_rt::rc_map_insert(acc.clone(), info.name.clone(), info.module_name.clone())
+                }
+            },
+            std::option::Option::None => acc.clone(),
+        },
+    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -5,7 +5,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // PERMANENT REGRESSION CONTROL for post-resolution callable identity at Rust emission (v1.std.core
-// CallTargetIdentity, v1.compiler.infer_lookup resolved_plain_call_target, v1.compiler.emit_rust
+// CallTargetIdentity, v1.compiler.infer_lookup resolved_plain_call_target_for_outcome, v1.compiler.emit_rust
 // emit_typed_call). THE DEFECT: a call's target was decided TWICE. Inference resolved the callee
 // with the module's imports in hand; emission then re-decided it from the authored LEAF SPELLING --
 // map_contains_key(rt_functions(), func) -- at a grain where those imports no longer exist. An

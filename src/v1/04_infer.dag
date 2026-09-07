@@ -25,6 +25,7 @@ import v1.compiler.type_head_exposure {
   type_head_exposure_is_kernel_scalar, type_head_exposure_is_product, type_head_exposure_is_coproduct
 }
 import v1.std.core {
+  callable_identity, DeclaredCallableIdentity,
   resolved_node_is_kernel_identity_for_name,
   Node, InternTable,
   intern, intern_str, empty_intern_table,
@@ -184,15 +185,18 @@ import v1.compiler.infer_emit_info {
 }
 import v1.compiler.infer_items {
   ItemKind, FnItem, FuncItem, TypeItem, DataItem, ServiceItem, OtherItem,
-  ItemInfo, TypedModule, TypedGraph, ResolvedGraph, ModuleInterface,
+  ItemInfo, TypedModule, TypedGraph, ResolvedGraph, ModuleInterface, leaf_owner_modules_from_registry,
   ModuleTypecheckProgress, ItemsChecked, AbandonedBeforeItems,
   inferred_to_outputs, item_kind
 }
 import v1.compiler.infer_service {
   UniqueAccum, OpEntry, ServiceMethodResult,
   is_typed_service_call_receiver, extract_typed_service_name,
-  collect_typed_service_calls, collect_called_func_names,
+  collect_typed_service_calls,
   expand_transitive_services,
+  EffectIncompleteness, UnresolvedCalleeEdge, ExpansionBudgetExhausted,
+  ResolvedCalleeRegistryRowAbsent, FunctionValueEffectsUnresolved, LocalBindingEffectsUnresolved,
+  ServiceEffectAnalysis, EffectsComplete, EffectsIncomplete,
   check_service_field_access_node, check_service_method_call_node,
   service_op_entry
 }
@@ -213,7 +217,7 @@ import v1.compiler.infer_lookup {
   lookup_field_type_node, lookup_coproduct_common_field_node, product_field_result_type,
   map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
   lookup_in_scope, lookup_func_sig,
-  resolved_plain_call_target, resolved_declaration_call_target, builtin_call_target_or_undetermined,
+  resolved_plain_call_target_for_outcome, resolved_declaration_call_target, census_declaration_identity,
   global_bare_callable_node, func_decl_binding_for_call,
   ConstructorDeclarationLookup, ExactConstructorDeclaration,
   NotAdmissionBearingReference, AdmissionBearingDeclarationUnavailable,
@@ -6289,6 +6293,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           KernelGroundedFormals { formals: formals } => (formals |> count) == (call_sig_split.value_params |> count)
           LocalFormalsAwaitingModuleContext {} => false
         }
+        DeclaredCallableIdentityResolved { declared: _, borrowed_declaration: _ } => false
         BuiltinCallableResolved { primitive_name: _ } => true
         LocallyBoundCallee { name: _, binding: _ } => true
         CallableUnresolved { name: _ } => false
@@ -6301,6 +6306,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           KernelGroundedFormals { formals: formals } => if (formals |> count) == (call_sig_split.value_params |> count) { "" } else { "kernel-grounded formal count does not match the primitive declaration" }
           LocalFormalsAwaitingModuleContext {} => "local declaration has not passed through build_module_context"
         }
+        DeclaredCallableIdentityResolved { declared: _, borrowed_declaration: _ } => "the callee's declaration identity is known but no declaration-bound signature was available"
         BuiltinCallableResolved { primitive_name: _ } => ""
         LocallyBoundCallee { name: _, binding: _ } => ""
         CallableUnresolved { name: n } => concat("no declaration, builtin or local binding answers the call to ", n)
@@ -6317,6 +6323,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       }
       let declared_formal_authority_failed = match call_target {
         DeclaredCallableResolved { sig: _, declared: _ } => !formal_authority_available
+        DeclaredCallableIdentityResolved { declared: _, borrowed_declaration: _ } => false
         BuiltinCallableResolved { primitive_name: _ } => false
         LocallyBoundCallee { name: _, binding: _ } => false
         CallableUnresolved { name: _ } => false
@@ -6730,7 +6737,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               let type_match = lookup_type_by_name(env: scope.type_env, name: func_name)
               let global_bare_callable = match type_match {
                 Present { value: _ } => none
-                Absent => global_bare_callable_node(type_env: scope.type_env, name: func_name)
+                Absent => match call_target {
+                  DeclaredCallableIdentityResolved { declared: _, borrowed_declaration: bn } => Present { value: bn }
+                  _ => global_bare_callable_node(type_env: scope.type_env, name: func_name)
+                }
               }
               let resolved_type = match type_match {
                 Present { value: tn } => tn
@@ -10970,7 +10980,14 @@ fn call_target_for_direct_call(scope: InferScope, func_name: String) -> CallTarg
         FuncSigUnresolved =>
           match infer_builtin_call_type(name: func_name) {
             Present { value: _ } => BuiltinCallableResolved { primitive_name: func_name }
-            Absent => CallableUnresolved { name: func_name }
+            Absent =>
+              match census_declaration_identity(type_env: scope.type_env, func_name: func_name) {
+                Present { value: bd } => DeclaredCallableIdentityResolved {
+                  declared: DeclaredCallableIdentity { owner_module_path: bd.owner_module_path, decl_name: qualified_last_segment(name: func_name) },
+                  borrowed_declaration: bd.node
+                }
+                Absent => CallableUnresolved { name: func_name }
+              }
           }
       }
   }
@@ -12711,7 +12728,8 @@ fn refresh_one_item_service_names(
   module_name: String
 ) -> Map<String, ItemInfo> {
   let item_name = authored_name_at(source_indices: source_indices, node: item)
-  match map_get(acc, item_name) {
+  let key = callable_identity(id: DeclaredCallableIdentity { owner_module_path: module_name, decl_name: item_name })
+  match map_get(acc, key) {
     Absent => acc
     Present { value: info } =>
       if info.module_name != module_name {
@@ -12719,7 +12737,7 @@ fn refresh_one_item_service_names(
       } else if item.body == none {
         acc
       } else {
-        map_insert(acc, item_name, with(info, {
+        map_insert(acc, key, with(info, {
           service_names: collect_typed_service_calls(texpr: item.body.value, source_indices: source_indices)
         }))
       }
@@ -12821,6 +12839,22 @@ fn analyze_item(item: Node, env: TypeEnv, module_name: String) -> ItemContributi
   }
 }
 
+// The registry's key IS the declaration's identity, projected, so an insert is idempotent: a row
+// already present under this key names the same owner module and the same declared name, which is
+// the whole of what the key says. A collision check here therefore cannot discriminate -- it fires
+// on a benign re-contribution of one declaration exactly as it would on a real duplicate, and when
+// it did, it replaced the real row with a sentinel and the declaration stopped resolving. Two
+// declarations of one leaf inside one module is a real class, but its subject is a MODULE'S ITEMS,
+// not this fold, and it is not walled here. Trigger: a per-module declaration census that counts
+// authored names before the registry flattens them, at which point the refusal has a subject that
+// can tell the two cases apart.
+fn insert_item_by_identity(registry: Map<String, ItemInfo>, info: ItemInfo) -> Map<String, ItemInfo> {
+  map_insert(registry, callable_identity(id: DeclaredCallableIdentity {
+    owner_module_path: info.module_name,
+    decl_name: info.name
+  }), info)
+}
+
 fn fold_module_contributions(remaining: List<ItemContribution>,
     resolved_items: List<Node>,
     func_sigs: Map<String, DeclaredFuncSig>,
@@ -12859,7 +12893,7 @@ fn fold_module_contributions(remaining: List<ItemContribution>,
         func_sigs: next_func_sigs,
         svc_registry: next_svc_registry,
         svc_locals: next_svc_locals,
-        item_registry: map_insert(item_registry, contribution.item_info.name, contribution.item_info),
+        item_registry: insert_item_by_identity(registry: item_registry, info: contribution.item_info),
         diag_chunks: list_push(diag_chunks, contribution.resolve_diagnostics),
         source_indices: source_indices
       )
@@ -13595,7 +13629,7 @@ fn build_enum_variant_shape_sets(modules: List<TypedModule>, type_summaries: Map
   )
 }
 
-fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
+fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> EmitGraphInfo {
   let init = EmitInfoBuildState {
     type_summaries: empty_map(),
     type_decl_items: empty_map(),
@@ -13617,6 +13651,7 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   let variant_shapes = build_enum_variant_shape_sets(modules: modules, type_summaries: built.type_summaries)
   let vtoe = derive_variant_to_enum(type_summaries: built.type_summaries)
   EmitGraphInfo {
+    item_leaf_owner_modules: leaf_owner_modules_from_registry(registry: registry),
     type_summaries: built.type_summaries,
     type_decl_items: built.type_decl_items,
     fn_decl_items: built.fn_decl_items,
@@ -13695,8 +13730,52 @@ fn typecheck_with_census_extra(graph: ModuleGraph, source_indices: Map<String, N
       Absent => []
     }
   )
-  let expanded_registry = expand_transitive_services(modules: modules, registry: state.item_registry, remaining_passes: 5)
-  TypedGraph { modules: modules, item_registry: expanded_registry, diagnostics: flat_map(diag_chunks, c => c) }
+  let analysis = expand_transitive_services(modules: modules, registry: state.item_registry)
+  let analysed_registry = match analysis {
+    EffectsComplete { registry: registry } => registry
+    EffectsIncomplete { partial: partial, causes: _ } => partial
+  }
+  let incompleteness_causes = match analysis {
+    EffectsComplete { registry: _ } => []
+    EffectsIncomplete { partial: _, causes: causes } => causes
+  }
+  let incompleteness_diagnostics = incompleteness_causes |> map(reason =>
+    match reason {
+      UnresolvedCalleeEdge { item_identity: item_identity, spelling: spelling } =>
+        inference_error(
+          message: concat("effect summary incomplete: call to '", spelling, "' in ", callable_identity(id: item_identity), " has no established callee identity, so its effects cannot be joined"),
+          span: no_span(),
+          module_name: item_identity.owner_module_path
+        )
+      ExpansionBudgetExhausted { remaining_delta: _ } =>
+        inference_error(
+          message: "effect summary incomplete: transitive service expansion exhausted its pass budget while dependencies were still propagating, so the published summary is a truncation rather than a fixed point",
+          span: no_span(),
+          module_name: ""
+        )
+      ResolvedCalleeRegistryRowAbsent { caller: caller, callee: callee } =>
+        inference_error(
+          message: concat("effect summary incomplete: ", callable_identity(id: caller), " calls ", callable_identity(id: callee), ", whose identity is established but names no registry row, so the join contributed nothing and the caller's summary omits whatever that callee does"),
+          span: no_span(),
+          module_name: caller.owner_module_path
+        )
+      FunctionValueEffectsUnresolved { caller: caller } =>
+        make_error_node(
+          diagnostic: EffectSummaryIncompleteAtFunctionValue { caller: callable_identity(id: caller), span: no_span() },
+          module_name: caller.owner_module_path
+        )
+      LocalBindingEffectsUnresolved { caller: caller, name: name } =>
+        make_error_node(
+          diagnostic: EffectSummaryIncompleteAtLocalBinding { caller: callable_identity(id: caller), name: name, span: no_span() },
+          module_name: caller.owner_module_path
+        )
+    }
+  )
+  TypedGraph {
+    modules: modules,
+    item_registry: analysed_registry,
+    diagnostics: concat(flat_map(diag_chunks, c => c), incompleteness_diagnostics)
+  }
 }
 
 fn realize_module(
@@ -14147,7 +14226,7 @@ fn reconcile_with_census_extra(graph: ModuleGraph, source_indices: Map<String, N
   let modules = rewire_type_env_parent_links(modules: typed.modules, source_indices: source_indices)
   let modules = rewire_type_env_import_str_binding_identity(modules: modules, source_indices: source_indices)
   let modules = rewire_func_env_parent_links(modules: modules, source_indices: source_indices)
-  let emit_info = build_emit_graph_info(modules: modules)
+  let emit_info = build_emit_graph_info(modules: modules, registry: typed.item_registry)
   ResolvedGraph {
     modules: modules,
     item_registry: typed.item_registry,

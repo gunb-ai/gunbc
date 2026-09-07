@@ -11,7 +11,7 @@ import v1.std.core {
 
 import v1.compiler.artifact { RenderTarget }
 
-import v1.compiler.infer_items { ResolvedGraph, TypedModule }
+import v1.compiler.infer_items { ResolvedGraph, TypedModule, leaf_owner_modules_from_registry }
 
 import v1.compiler.infer_service { UniqueAccum }
 
@@ -179,6 +179,28 @@ fn sanitize_service_name(name: String) -> String {
   let parts = name |> split(delimiter: ".")
   let pascal_parts = parts |> map(p => capitalize_first(s: p))
   pascal_parts |> join(separator: "")
+}
+
+// THE PROJECTION IS NOT INJECTIVE, SO THE ALLOCATION REFUSES WHERE IT COLLIDES.
+//
+// sanitize_service_name splits the authored name on "." and joins the capitalized segments with
+// nothing, so the segment boundary is erased: `collision.Probe` and `CollisionProbe` are two
+// distinct service identities that project to one symbol. All three targets share this projection,
+// so the collision is a fact about the shared allocation rather than about any one emitter, and the
+// refusal lives here beside module_filename_collision_diagnostics, which guards the same grain in
+// the same shape. Executed red: two services so named in one module emitted two `pub struct
+// CollisionProbe` definitions and bound one parameter for both, with zero blocking diagnostics.
+// service_var_name is the second channel, since to_snake of one symbol is one symbol.
+//
+// This wall is not a scaffold waiting on the injective allocation. It stays after that lands, as the
+// control that says the allocation is still injective; its next-rung trigger is an allocation whose
+// distinct service identities cannot share a symbol by construction, at which point this refusal
+// becomes permanently green rather than being deleted.
+
+
+type ServiceSymbolOwners {
+  owners: Map<String, String>
+  diagnostics: List<ErrorNode>
 }
 
 fn capitalize_first(s: String) -> String {
