@@ -54,6 +54,7 @@ pub use crate::gunbc_structural_realization_bindings::{
     structural_connective_rows, structural_ordering_rows,
 };
 pub use crate::std_algebra::trim;
+pub use crate::std_algebra::AlgebraFieldTemplate;
 pub use crate::std_coercion::TypeCheckpoint;
 use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
@@ -10452,22 +10453,21 @@ pub fn collect_unprojectable_construct_refusals(
             _ => Rc::new(vec![]),
         };
         let from_children = match (*n.expr_data.clone()).clone() {
-            ExprData::ExprIf => {
-                let then_refusals = collect_unprojectable_construct_refusals(
+            ExprData::ExprIf => v1_rt::concat(
+                collect_unprojectable_construct_refusals(
                     crate::v1_std_core::if_then_branch(n.clone()),
                     module_name.clone(),
                     source_indices.clone(),
-                );
-                let else_refusals = match crate::v1_std_core::if_else_branch(n.clone()) {
+                ),
+                match crate::v1_std_core::if_else_branch(n.clone()) {
                     Some(e) => collect_unprojectable_construct_refusals(
                         e.clone(),
                         module_name.clone(),
                         source_indices.clone(),
                     ),
                     std::option::Option::None => Rc::new(vec![]),
-                };
-                v1_rt::concat(then_refusals.clone(), else_refusals.clone())
-            }
+                },
+            ),
             _ => Rc::new({
                 let mut __result = Vec::new();
                 for c in n.children.clone().iter().cloned() {
@@ -10536,7 +10536,6 @@ pub fn is_algebra_filter_method(
     method_semantics: Option<Rc<MethodSemantics>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    let _ = source_indices;
     if (method_semantics.clone() != std::option::Option::None) {
         match (*method_semantics.clone().unwrap()).clone() {
             MethodSemantics::AlgebraMethodSemantics {
