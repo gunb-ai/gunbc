@@ -288,6 +288,61 @@ data fleet_converge_reset_observer_options: List<String> = match fleet_converge_
   DispatchAssignmentRefused { cause: _ } => []
 }
 
+// THE RESET JOB BELONGS TO ITS SUBJECT'S MUTATION DOMAIN, NOT ITS OBSERVER'S, and it landed in
+// neither until review 62030. gunbc.fleet_workflow_steps
+// fleet_host_mutation_concurrency_group_expression states the rule -- ONE MUTATION DOMAIN PER HOST,
+// SHARED BY EVERY JOB THAT CONVERGES OR READS BACK THAT HOST (RLM-2 ruling section 9) -- and the
+// reason it gives is this mode's exact subject: a readback observing another transaction's mutation.
+// This is the most mutating job in the workflow, because it power-cycles a physical machine, and it
+// was the only host-touching one carrying no group at all. A section 3b divergence in the
+// leasing/locking domain with no stated reason, which is the only red that section admits.
+//
+// THE FABRICATION IT ADMITS IS THE ONE THIS MODULE EXISTS TO REFUSE. Two dispatches naming different
+// observers can resolve to the SAME subject; B's power cycle then lands inside A's watch window, and
+// A mints HostObservedDownThenBack for a return it did not cause. The pre-issuance baseline cannot
+// see it, because B issues while the subject is still up during A's handoff -- so the reading arrives
+// through the one route SubjectNotUpBeforeIssuance is blind to, and a receipt would carry a measured
+// downtime for someone else's reboot.
+//
+// THE GROUP KEYS ON THE SUBJECT, WHICH THE DISPATCH DOES NOT CARRY, so the observer-to-subject map is
+// emitted from the same assignment the option list comes from and indexed by the dispatch input. It
+// is derived rather than spelled: a pairing this mint refused cannot appear in it, and an observer
+// absent from the map yields an empty subject, which cannot collide with a real host's domain.
+fn fleet_converge_reset_subject_map_json() -> String {
+  match fleet_converge_reset_assignment {
+    DispatchAssignmentRefused { cause: _ } => "{}"
+    DispatchAssignment { pairings: ps } =>
+      join([
+        "{",
+        join(
+          map(ps, pr => join(["\"", pr.observer as String, "\": \"", pr.subject as String, "\""], "")),
+          ", ",
+        ),
+        "}",
+      ], "")
+  }
+}
+
+// WHAT THIS DOES NOT COVER, STATED BECAUSE A CONCURRENCY GROUP IS EXACTLY THE ARTIFACT A LATER READER
+// CITES AS THE SERIALIZATION AUTHORITY. GitHub admits ONE group per job, and this job needs two
+// domains: the SUBJECT's, because it reboots that machine, and the OBSERVER's, because a
+// mode=apply or dashboard_deploy dispatch naming the observer can reboot the watcher mid-watch. The
+// subject's is the one taken, because a fabricated down-then-back reading is a WRONG RECEIPT while a
+// rebooted observer is a LOST one -- the watch dies with the runner and the upload never happens, so
+// that failure is loud and this one would not have been.
+//
+// THE RESIDUAL IS THE OBSERVER SIDE AND IT IS NOT CLOSABLE HERE. Its trigger is already named one
+// module over: gunbc.fleet_workflow_steps records that the host lease exists and is witnessed and
+// that this workflow does not yet acquire it, and a lease can hold two hosts where a group holds one.
+// Binding the mutating ingresses to that lease closes the observer side and this row becomes belt
+// rather than braces; until then the observer exposure is real and undefended, and saying so is the
+// difference between a declared gap and the silent one review 62030 found.
+data fleet_converge_reset_subject_mutation_concurrency_group_expression: String = join([
+  "gunbc-host-mutation-${{ fromJSON('",
+  fleet_converge_reset_subject_map_json(),
+  "')[github.event.inputs.reset_observer] }}",
+], "")
+
 data fleet_converge_reset_observer_runner_expression: String = "${{ fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.reset_observer)) }}"
 
 fn fleet_converge_reset_observer_runner_spec() -> RunnerSpec {
@@ -317,7 +372,13 @@ fn fleet_converge_host_reset_return_job() -> Job {
     if_condition: Present { value: fleet_converge_host_reset_return_step_if },
     timeout_minutes: Present { value: gunbc_ci_fleet_job_backstop_timeout_minutes() },
     continue_on_error: none,
-    concurrency: none,
+    concurrency: Present {
+      value: ConcurrencyMappingQueueNotMax {
+        group: fleet_converge_reset_subject_mutation_concurrency_group_expression,
+        cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
+        explicit_single: none
+      }
+    },
     permissions: none,
   }
 }

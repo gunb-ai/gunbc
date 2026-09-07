@@ -9,6 +9,7 @@ import gunbc.fleet_converge_workflow {
   FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, DashboardDeploy,
   fleet_converge_spark_bootstrap_step_if, fleet_converge_mode_options,
   fleet_converge_reset_observer_dispatch_admission_step, fleet_converge_build_job_steps,
+  fleet_converge_reset_subject_mutation_concurrency_group_expression, fleet_converge_reset_subject_map_json,
   fleet_converge_workflow, expected_fleet_converge_yml,
   FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused,
 }
@@ -276,6 +277,22 @@ test fn the_build_job_carries_the_reset_observer_dispatch_admission() -> Bool {
       UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
     }
   )
+}
+
+// THE RESET JOB SHARES ITS SUBJECT'S MUTATION DOMAIN. Review 62030 found it carrying no concurrency
+// group at all while being the most mutating job in the workflow, which let two dispatches naming
+// different observers resolve to one subject and interleave -- B's power cycle inside A's watch
+// window, so A mints a down-then-back for a return it did not cause.
+//
+// THE DISCRIMINATING CONJUNCT IS THE LAST. A group keyed on the OBSERVER would satisfy "has a group"
+// and still admit exactly the collision, because the observers differ and the subject does not; this
+// holds that the emitted group is the same gunbc-host-mutation- domain every other host-touching job
+// uses, resolved through the modeled assignment rather than through the dispatch input directly.
+test fn the_reset_job_shares_the_mutation_domain_of_its_subject() -> Bool {
+  string_contains(s: fleet_converge_reset_subject_mutation_concurrency_group_expression, pattern: "gunbc-host-mutation-")
+    && string_contains(s: fleet_converge_reset_subject_mutation_concurrency_group_expression, pattern: "github.event.inputs.reset_observer")
+    && string_contains(s: fleet_converge_reset_subject_map_json(), pattern: "mtcollins1")
+    && !string_contains(s: fleet_converge_reset_subject_mutation_concurrency_group_expression, pattern: "gunbc-host-mutation-${{ github.event.inputs.reset_observer")
 }
 
 // THE VOCABULARY IS THE ONLY SPELLING AUTHORITY, and these are the facts that make that a claim

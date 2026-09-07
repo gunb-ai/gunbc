@@ -554,6 +554,9 @@ jobs:
     needs: [build]
     timeout-minutes: 105
     if: github.event.inputs.mode == 'host_reset_return'
+    concurrency:
+      group: "gunbc-host-mutation-${{ fromJSON('{\"srv1\": \"mtcollins1\", \"srv2\": \"mtcollins1\", \"srv3\": \"mtcollins1\", \"srv4\": \"mtcollins1\"}')[github.event.inputs.reset_observer] }}"
+      cancel-in-progress: false
     steps:
       - name: Checkout
         uses: actions/checkout@v5
