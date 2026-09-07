@@ -58,7 +58,7 @@ The 2026-06-21 measurement above is left as measured. Four of its rows name `com
 
 | carrier | reached via |
 | --- | --- |
-| `realization_width` · `HardwareThreadCount` (11) · `AxisGoal` | `ci_floor_plan` → `realization_width.width_fold_objective_goals` / `memory_aware_spawn_width` — the memory-aware width landed; the *schedule/width* arm of realization is live. `RealizationObjective.goals` was deleted 2026-09-06 as an empty carrier; width-fold axes stay local `AxisGoal` values, decision completeness lives in `std.realization_selection`. |
+| `realization_width` · `HardwareThreadCount` (11) · `AxisGoal` | `ci_floor_plan` → `realization_width.width_fold_objective_goals` / `memory_aware_spawn_width` — the memory-aware width landed; the *schedule/width* arm of realization is live. `RealizationObjective.goals` was deleted 2026-09-06 as an empty carrier; width-fold axes stay local `AxisGoal` values, decision completeness lives in `std.decision`. |
 
 The reading: the **schedule/width** arm of the realization layer is now wired; the **cache-plan** arm and the **work-demand / sharding / receipt-digest** arm are the inert load-bearing layers. Exactly the realization-loop thesis ("shape-complete but input-starved"), now with names.
 
