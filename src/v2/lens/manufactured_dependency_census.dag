@@ -1,0 +1,185 @@
+module v2.lens.manufactured_dependency_census
+
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
+import std.algebra { Cons, Empty, FreeMonoid }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import v2.std.algebra { contains, fold_list, length, list_reverse, list_snoc_item }
+import v2.std.collection { List, Map, empty_map, map_get, map_insert }
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.lens.module_graph {
+  ImportResolutionFact,
+  import_resolution_facts_live,
+  reference_derived_import_resolution_facts_live
+}
+
+// THE INSTRUMENT FOR A DEPENDENCY THE AUTHOR NEVER WROTE.
+//
+// `v1.compiler.cli_run` carries two edge producers over one corpus. `adjacency` is the edges an
+// author AUTHORED, read off import lines. `selection_adjacency` is the edges the compiler DERIVES
+// from bare references, and the compile that judges a program walks the second. Their difference
+// is therefore not a bookkeeping detail: it is the set of dependencies the compiler MANUFACTURED
+// for a module, each one a cross-module edge no line of the corpus states. This lens is that
+// difference, counted, and it exists because the figure was being quoted from prose.
+//
+// It adds NO third edge producer -- `v2.lens.module_graph` `dependency_edge_source_migration_note`
+// forbids one and is right to; this is a pure reader over the two that module already owns, in the
+// idiom DESIGN section 6 gives a lens.
+//
+// WHAT THE COUNT IS AND IS NOT, because the honest bound matters more than the number. The two
+// producers agree on an import-BEARING file (`ModuleGraphFactsLive::reference_only_direct_import_paths`
+// returns empty for one), so this census sees the manufactured edges of import-LESS modules and
+// NOT the bare cross-module references of modules that carry an import line. Those exist --
+// `src/v2/lens/grounding.dag` has three import lines and calls functions it never imports, each one
+// named by that file's own entry-scoped compile refusal -- and they are invisible here BY
+// CONSTRUCTION, not by measuring zero. So this figure is a LOWER BOUND on
+// the population that binds without an authored dependency, and quoting it as the population is the
+// denominator error. The upper half needs a per-REFERENCE census on the value channel, which does
+// not exist: the mask check that emits `UnlistedImportUse` lives in the TYPE resolver
+// (`v1.compiler.infer_resolve` `resolve_node`, keyed on `type_name`), so a bare cross-module CALL
+// produces neither a refusal nor an advisory and no census can currently see it.
+//
+// SUBJECT: `gunbc.recurring_failure_mode`
+// `binding_chosen_by_pool_membership_rather_than_by_the_declared_rule`, whose next-rung trigger
+// names free calls as one of the occurrence channels its capability must cover. This lens is that
+// row's measurement on the value channel; it is not a repair, and the rule it measures belongs to
+// the namespace cut.
+//
+// RUN IT:
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry src/v2/lens/manufactured_dependency_census.dag --function main
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}
+
+data census_pool_roots: List<String> = ["dag", "src/v2"]
+
+data census_exclude_substrings: List<String> = []
+
+data no_targets: FreeMonoid<String> = Empty
+
+type ManufacturedDependencyTally {
+  import_edges: Int
+  reference_edges: Int
+  manufactured_edges: Int
+  modules_with_manufactured_edges: Int
+}
+
+fn string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn map_lookup_where_rejected_absent<K, V>(m: Map<K, V>, key: K) -> Optional<V> {
+  match map_get(m: m, key: key) {
+    Accepted { value: v, diagnostics: _ } => v
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn snoc_unseen(acc: List<String>, item: String) -> List<String> {
+  if contains(xs: acc, item: item, eq: string_eq) {
+    acc
+  } else {
+    list_snoc_item(xs: acc, item: item)
+  }
+}
+
+// Import targets bucketed by importing file, so the difference below is one map lookup per
+// reference edge rather than a scan of every import edge (DESIGN section 6, bare minimum cost --
+// this module's own neighbour paid 105 seconds for the quadratic spelling of exactly this join).
+fn import_targets_by_path(edges: List<ImportResolutionFact>) -> Map<String, List<String>> {
+  fold_list(
+    xs: edges,
+    empty: empty_map(),
+    cons: fn(acc, edge) {
+      match map_lookup_where_rejected_absent(m: acc, key: edge.path) {
+        Present { value: existing } =>
+          map_insert(m: acc, key: edge.path, value: snoc_unseen(acc: existing, item: edge.import_module))
+        Absent =>
+          map_insert(m: acc, key: edge.path, value: list_snoc_item(xs: no_targets, item: edge.import_module))
+      }
+    }
+  )
+}
+
+fn edge_is_manufactured(
+  by_path: Map<String, List<String>>,
+  edge: ImportResolutionFact
+) -> Bool {
+  match map_lookup_where_rejected_absent(m: by_path, key: edge.path) {
+    Present { value: targets } => contains(xs: targets, item: edge.import_module, eq: string_eq) == false
+    Absent => true
+  }
+}
+
+fn manufactured_edge_rows(
+  imports: List<ImportResolutionFact>,
+  references: List<ImportResolutionFact>
+) -> List<ImportResolutionFact> {
+  let by_path = import_targets_by_path(edges: imports)
+  list_reverse(xs: fold_list(
+    xs: references,
+    empty: Empty,
+    cons: fn(acc, edge) {
+      if edge_is_manufactured(by_path: by_path, edge: edge) {
+        Cons { head: edge, tail: acc }
+      } else {
+        acc
+      }
+    }
+  ))
+}
+
+fn distinct_paths(edges: List<ImportResolutionFact>) -> List<String> {
+  fold_list(
+    xs: edges,
+    empty: no_targets,
+    cons: fn(acc, edge) { snoc_unseen(acc: acc, item: edge.path) }
+  )
+}
+
+fn tally() -> ManufacturedDependencyTally {
+  let imports = import_resolution_facts_live(
+    pool_roots: census_pool_roots,
+    importer_roots: census_pool_roots,
+    exclude_substrings: census_exclude_substrings
+  )
+  let references = reference_derived_import_resolution_facts_live(
+    pool_roots: census_pool_roots,
+    importer_roots: census_pool_roots,
+    exclude_substrings: census_exclude_substrings
+  )
+  let manufactured = manufactured_edge_rows(imports: imports, references: references)
+  ManufacturedDependencyTally {
+    import_edges: length(xs: imports),
+    reference_edges: length(xs: references),
+    manufactured_edges: length(xs: manufactured),
+    modules_with_manufactured_edges: length(xs: distinct_paths(edges: manufactured))
+  }
+}
+
+// THE VERDICT IS A DISCRIMINATING ONE, not a report. Each arm is a distinct way the instrument
+// could be measuring nothing while still returning a number, and each would have to be repaired
+// rather than re-read.
+fn main() -> ProcessExit {
+  let t = tally()
+  if t.import_edges == 0 {
+    exit_failure(
+      reason: "the import-edge producer returned nothing over dag and src/v2, so the difference below it is a subtraction from an empty set and no manufactured edge it reports is trustworthy"
+    )
+  } else if t.reference_edges == 0 {
+    exit_failure(
+      reason: "the reference-derived edge producer returned nothing, so this census cannot distinguish a corpus with no manufactured dependencies from a producer that stopped deriving them"
+    )
+  } else if t.manufactured_edges == 0 {
+    exit_failure(
+      reason: "no reference-derived edge is missing from the authored import edges, which would mean the compiler manufactures no dependency any author omitted -- if that is genuinely true the class this lens measures has closed and the lens should be deleted, not left reporting zero"
+    )
+  } else {
+    ExitSuccess
+  }
+}

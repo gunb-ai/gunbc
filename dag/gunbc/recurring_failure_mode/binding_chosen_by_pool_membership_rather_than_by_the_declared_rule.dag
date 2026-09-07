@@ -119,6 +119,64 @@ data binding_chosen_by_pool_membership_rather_than_by_the_declared_rule: Recurri
 
     "That is the same capability gunbc.recurring_failure_mode empty_observation_narrow already names from the census direction -- one namespace census over the one Node tree, not a second check beside the type-name one -- and reaching rung 4 additionally needs the second declaration to be unwritable, which is a further, separate capability. ",
 
+    "**THE VALUE CHANNEL, MEASURED 2026-09-07 BY calm-ferret-398, AND IT IS A DIFFERENT MECHANISM FROM EVERY PROBE ABOVE.** Every specimen in this row until now varies pool membership at a TYPE or coproduct-arm occurrence. ",
+
+    "The occurrence channel this row's own next-rung trigger names last -- free calls -- had never been probed, and it does not behave the way the type channel does. ",
+
+    "THE SPECIMEN THAT STARTED IT: src/v2/lens/grounding.dag calls layer_prefix_from_dotted_qualified_name, declared in v2.std.cross_tree.resolution, as a bare name with no import; the module carries three import lines and calls a number of functions it does not import, and it is accepted under one required run and refused under another over identical bytes; the calls are enumerated by the refusal itself -- gunbc compile --source-root dag --source-root src/v2 --entry src/v2/lens/grounding.dag emits one function not found in scope per unimported callee, so the population at that site is re-derivable rather than transcribed. ",
+
+    "THE FIRST FINDING IS AN ABSENCE, and it is larger than the specimen: THE VALUE CHANNEL HAS NO DIAGNOSTIC AT ALL. ",
+
+    "The mask check that emits the UnlistedImportUse advisory lives in the TYPE resolver -- v1.compiler.infer_resolve resolve_node, keyed on type_name -- so a bare cross-module CALL produces neither a refusal nor an advisory, and the emitter then synthesises the use-line the author never wrote. ",
+
+    "That is not thin coverage, it is DESIGN section 5's fabricated-plausible-output arm: the compiler invents the dependency that makes the program work and says nothing. ",
+
+    "The type channel additionally has a whole-tree census (v1.compiler.cli_run compile_clean_unlisted_import_census); the value channel had neither a census nor a diagnostic. ",
+
+    "THE MECHANISM, EXECUTED RATHER THAN READ, and it is sharper than pool membership as this row has stated it so far: A MODULE WITH ZERO IMPORT LINES HAS ITS CROSS-MODULE DEPENDENCIES MANUFACTURED FROM ITS BARE REFERENCES, AND A MODULE WITH AT LEAST ONE IMPORT LINE DOES NOT. ",
+
+    "v1.compiler.cli_run ModuleGraphFactsLive reference_only_direct_import_paths derives reference edges as selection_adjacency minus adjacency and the two agree on an import-bearing file, so the compiler follows a bare call to its definer for the first and never for the second. ",
+
+    "So the binding of a bare call is not decided by the call, by the definer, or by the entry's imports: it is decided by whether the REFERENCING module happens to carry an import line naming something else entirely, and after that by whether some unrelated module in the entry's closure happens to import the definer. ",
+
+    "COMMITTED DISCRIMINATING FIXTURE, beside if_join_pool_binding and in its idiom -- fixtures.free_call_pool_binding, with the perturbation reduced to ONE LINE. ",
+
+    "ARM A, ACCEPTED: subject_module imports nothing and calls definer_module's pool_specimen_free_call; the closure comes back with three sources although no file in it names definer_module in an import line, and the compile reports 0 diagnostics. ",
+
+    "ARM B, REFUSED: subject_with_import is the same call with one import of unrelated_module -- a module that neither declares nor mentions the call or its definer -- and the same command refuses with function pool_specimen_free_call not found in scope. ",
+
+    "ARM C, ACCEPTED, excluding the containment confound: subject_offchain calls a definer under a DIFFERENT top-level container, sharing no ancestor below the root, and resolves identically, so ancestor-chain distance is not the variable and the import line is. ",
+
+    "Reproduce all three with gunbc compile --source-root dag --source-root src/v2 --source-root fixtures/free_call_pool_binding --source-root fixtures/free_call_pool_binding_offchain --entry fixtures/free_call_pool_binding/closure_without_definer.dag, and the same at closure_with_import.dag and closure_offchain.dag. ",
+
+    "The fixture is outside the compiled source roots for the same reason if_join_pool_binding is: an authentic specimen committed into dag or src/v2 would be a real corpus fork. ",
+
+    "THE POPULATION, WITH ITS PRODUCER NAMED RATHER THAN ITS NUMBERS TRANSCRIBED: v2.lens.manufactured_dependency_census, run as gunbc run --source-root dag --source-root src/v2 --entry src/v2/lens/manufactured_dependency_census.dag --function main, folds the difference between the two edge producers v2.lens.module_graph already owns -- it adds no third producer, which that module's dependency_edge_source_migration_note forbids -- and its tally reports authored import edges, reference-derived edges, manufactured edges and the modules carrying them. ",
+
+    "Its main is a gate rather than a report: it refuses on an empty import set, on an empty reference set, and on a zero difference, so a producer that stopped deriving cannot be read as a corpus with nothing to find. ",
+
+    "ONE MEASURED FACT THE LENS ESTABLISHES THAT WAS PREVIOUSLY ASSUMED: the two edge sets are already DISJOINT on this corpus -- every reference-derived edge is manufactured, none coincides with an authored import -- so the subtraction is currently the identity. ",
+
+    "It is kept because nothing guarantees that: the host union deduplicates reference-first on exact identity, which is only necessary if overlap is possible. ",
+
+    "THE FIGURE IS A LOWER BOUND AND MUST BE QUOTED AS ONE, which is the denominator error this class invites. ",
+
+    "The lens can only see modules whose edges are manufactured, that is import-LESS ones; the bare cross-module calls of import-BEARING modules -- the specimen's own among them -- produce no edge, no advisory and no row, so they are invisible to it BY CONSTRUCTION rather than measured at zero. ",
+
+    "That invisible half is not quoted here as a figure, because no committed producer derives it: the only instrument that reached it was a static scan with no entry point, and a number without one is the transcription this row already refuses elsewhere. Its existence is established by the specimen and its size is an open measurement, which is itself part of what the capability owes. ",
+
+    "RUNG FOUND AT, on this channel: below the ladder, and for a strictly worse reason than the type channel's. ",
+
+    "There the wrong binding is taken silently and a downstream refusal at least fires at an innocent site; here the MISSING binding is manufactured silently and the program is accepted, so on the arm that matters most there is no refusal anywhere. ",
+
+    "CEILING AND TRIGGER ARE THIS ROW'S EXISTING ONES AND ARE NOT RESTATED, with one obligation added to the trigger's sufficiency rather than to its name: the capability is not sufficient while it can be demonstrated on the type channel alone. ",
+
+    "Its acceptance must include the value channel -- arm B of the fixture above must keep refusing, arm A must JOIN it in refusing rather than continuing to resolve, and a value-channel census must exist for the import-bearing population, because a rule that binds free calls without one is unfalsifiable over exactly the modules this specimen came from. ",
+
+    "WHAT IS NOT CLAIMED: no repair is attempted here and none should be read into it. ",
+
+    "The resolution rule is the namespace cut's subject; this is its measurement, and the ordering between them is unchanged.",
+
     "CROSS-LINK: this class is what makes join_judged_against_its_sibling_rather_than_its_declared_context visible; repairing that join alone would silence the diagnostic while leaving the wrong binding in place, so the ordering is resolution first.",
   ],
 

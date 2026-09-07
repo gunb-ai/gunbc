@@ -1,0 +1,13 @@
+module fixtures.free_call_pool_binding.closure_without_definer
+
+// ARM A -- ACCEPTED. Nothing in this closure imports `definer_module`; the compiler adds it from
+// the bare call in `subject_module` and reports 0 diagnostics.
+//
+//   gunbc compile --source-root dag --source-root src/v2 \
+//     --source-root fixtures/free_call_pool_binding \
+//     --entry fixtures/free_call_pool_binding/closure_without_definer.dag --target dag
+import fixtures.free_call_pool_binding.subject_module { subject_use }
+
+fn plain() -> Int {
+  subject_use()
+}
