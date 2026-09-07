@@ -1590,7 +1590,9 @@ pub fn lookup_structural_method(
                 if ((((Rc::new({
                     let mut __result = Vec::new();
                     for d in method_diagnostics.iter().cloned() {
-                        if crate::v1_std_core::is_interpreter_blocking_diagnostic(d.clone()) {
+                        if crate::v1_std_core::is_interpreter_blocking_diagnostic(
+                            d.diagnostic.clone(),
+                        ) {
                             __result.push(d);
                         }
                     }
