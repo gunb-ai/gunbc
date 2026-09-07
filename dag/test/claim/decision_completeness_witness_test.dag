@@ -58,6 +58,7 @@ import std.decision {
   CandidateComparisonRefused,
   PhysicalModelEstablished,
   CausalModelEstablished,
+  CausalModelUnestablished,
   FleetObservedCoupling,
   term_set_join,
   TermSetsJoinComplete,
@@ -241,6 +242,36 @@ fn settled_assessment() -> DecisionAssessment {
     term_drops: [],
     physical_model: fixture_physical,
     causal_model: fixture_causal,
+  }
+}
+
+test fn violated_constraint_refuses_when_causal_model_is_unestablished() -> Bool {
+  match mint_settled_policy(assessment: DecisionAssessment {
+    subject: subject,
+    sensitivities: closed_sensitivities(),
+    constraints: [
+      ConstraintViolated {
+        constraint: id_constraint,
+        evidence: "fixture budget exceeded" as NonEmptyStr,
+      },
+    ],
+    parameters: closed_parameters(),
+    selected_candidate: Present { value: id_candidate },
+    term_drops: [],
+    physical_model: fixture_physical,
+    causal_model: CausalModelUnestablished {
+      subject: id_subject,
+      read_obligation: "causal unestablished fixture" as NonEmptyStr,
+    },
+  }) {
+    DecisionRefused { cause: c } =>
+      match c {
+        ConstraintViolatedCause { constraint: id, evidence: _ } =>
+          declaration_ref_eq(a: id, b: id_constraint)
+        _ => false
+      }
+    Settled { policy: _ } => false
+    Deferred { obligations: _, reopen_trigger: _ } => false
   }
 }
 
@@ -722,6 +753,8 @@ fn decision_completeness_witness_main() -> ProcessExit {
     ExitFailure { code: 1, reason: "fail: positive_control_settled" as NonEmptyStr }
   } else if !violated_constraint_blocks_settlement() {
     ExitFailure { code: 1, reason: "fail: violated_constraint" as NonEmptyStr }
+  } else if !violated_constraint_refuses_when_causal_model_is_unestablished() {
+    ExitFailure { code: 1, reason: "fail: violated_constraint_unestablished_causal" as NonEmptyStr }
   } else if !consumer_accepts_settled_and_rejects_deferred() {
     ExitFailure { code: 1, reason: "fail: consumer_wall" as NonEmptyStr }
   } else if !shrinking_choice_domain_makes_extra_cells_foreign() {

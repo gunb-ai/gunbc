@@ -557,6 +557,9 @@ fn structural_join_refuses(
 // Settled — that invalid state is unwritable because SettledPolicy is sole_constructor and this
 // mint is the only admitted constructor, and it refuses incomplete structure.
 fn decision_closure(assessment: DecisionAssessment) -> DecisionClosure {
+  match first_constraint_violation(rows: assessment.constraints) {
+    Present { value: violated } => DecisionClosureRefused { cause: violated }
+    Absent =>
   match assessment.physical_model {
     PhysicalModelUnestablished { subject: _, read_obligation: o } =>
       DecisionClosureDeferred {
@@ -605,9 +608,6 @@ fn decision_closure(assessment: DecisionAssessment) -> DecisionClosure {
                   match structural_join_refuses(sensitivity: sens, constraints: cons, parameters: params) {
                     Present { value: cause } => DecisionClosureRefused { cause: cause }
                     Absent =>
-                      match first_constraint_violation(rows: assessment.constraints) {
-                        Present { value: violated } => DecisionClosureRefused { cause: violated }
-                        Absent =>
                       match first_term_drop_refusal(drops: assessment.term_drops) {
                         Present { value: cause } => DecisionClosureRefused { cause: TermDropWithoutOrderPreservation { cause: cause } }
                         Absent => {
@@ -633,7 +633,6 @@ fn decision_closure(assessment: DecisionAssessment) -> DecisionClosure {
                           }
                         }
                       }
-                      }
                   }
                 }
                 _ => DecisionClosureRefused { cause: CausalCouplingIncomplete { detail: coup } }
@@ -641,6 +640,7 @@ fn decision_closure(assessment: DecisionAssessment) -> DecisionClosure {
             }
           }
       }
+  }
   }
 }
 
