@@ -344,7 +344,7 @@ fn harness_worker_cli(
   repo_root: String,
   gunbc_program: String,
 ) -> ProcessExit {
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["worker:", worktree], "") as NonEmptyStr, policy: harness_seat_policy)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["worker:", worktree], "") as NonEmptyStr, policy: harness_seat_policy, prompt_tokens: harness_prompt_tokens_estimate(text: brief))
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatBound { url, grant: _, partition: _, group_wire: _, layout: _ } => {
@@ -420,7 +420,7 @@ fn harness_reviewer_cli(
   events_path: String,
   verdict_path: String,
 ) -> ProcessExit {
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["reviewer:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["reviewer:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy, prompt_tokens: harness_prompt_tokens_estimate(text: brief))
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatBound { url, grant: _, partition: _, group_wire: _, layout: _ } => {
@@ -482,7 +482,7 @@ fn harness_auditor_cli(
   events_path: String,
   verdict_path: String,
 ) -> ProcessExit {
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["auditor:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["auditor:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy, prompt_tokens: harness_prompt_tokens_estimate(text: brief))
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatBound { url, grant: _, partition: _, group_wire: _, layout: _ } => {

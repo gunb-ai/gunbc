@@ -306,7 +306,7 @@ type SeatAttemptState {
 // That is an outcome, and a caller who needs to know the standing BEFORE deciding cannot use it:
 // asking costs an attempt, and a refusal is indistinguishable from a race it lost.
 //
-// gunbc.serving.placement needs the standing as an observation, because its whole discipline is that
+// gunbc.serving.turn_dispatch needs the standing as an observation, because its whole discipline is that
 // an unread axis refuses rather than admitting -- and a seat inferred from a failed CAS is exactly
 // the fabricated reading it exists to forbid.
 //

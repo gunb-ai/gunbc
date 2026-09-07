@@ -7,8 +7,8 @@ import extdeps.languages.json.parse {
   JsonDocumentParse, JsonDocumentParsed, JsonDocumentUnreadable,
   JsonMemberFound, parse_json_document, json_object_unique_member, json_document_gap_text,
 }
-import extdeps.vllm.metrics { VllmServingMetric, NumRequestsWaiting, vllm_metric_name }
-import gunbc.serving.placement { QueueObservation, QueueEmptyObserved, QueueOccupiedObserved, QueueUnobserved }
+import extdeps.vllm.metrics { VllmServingMetric, NumRequestsWaiting, NumRequestsRunning, vllm_metric_name }
+import gunbc.serving.turn_dispatch { ServingQueueReading, QueueDepthRead, QueueDepthUnread }
 import gunbc.harness.harness_wire {
   harness_engine_replica_roster, HarnessReplicaRoster, HarnessReplicasResolved, HarnessReplicasUnresolved,
   harness_engine_port, harness_engine_model,
@@ -228,8 +228,9 @@ fn harness_addresses_report(addresses: List<String>) -> String {
 // damage to three seats, but the decision itself was made on ignorance -- the same class of defect
 // as the router's, milder only because a CAS stood behind it.
 //
-// gunbc.serving.placement makes that unrepresentable: QueueObservation has no default, and an
-// unread queue refuses rather than admitting. This is the reading that lets the harness answer.
+// gunbc.serving.turn_dispatch makes that unrepresentable: ServingQueueReading has no default, and
+// an unread queue reaches selection as AvailabilityUnobserved carrying an obligation rather than as
+// an idle engine. This is the reading that lets the harness answer.
 //
 // THE METRIC NAME COMES FROM THE UPSTREAM AUTHORITY, not from a literal here. extdeps.vllm.metrics
 // owns what vLLM exposes and what each series means; a second spelling in this module would be a
@@ -240,43 +241,63 @@ fn harness_metrics_url(address: String) -> String {
 }
 
 // A PROMETHEUS LINE IS name{labels} value. The gauge is found by its authored name and the value is
-// the last space-separated field; anything that does not parse that way is UNOBSERVED rather than
-// zero, because a gauge that could not be read is not a gauge reading nothing.
-fn harness_queue_line_value(line: String) -> String? {
-  let parts = split(s: line, delimiter: " ")
-  if length(parts) < 2 { none } else { last(parts) }
-}
-
-// vLLM PRINTS GAUGES AS FLOATS, so "0.0" is the ordinary shape and an integer parse fails on it. A
-// leading "0." is zero waiting; anything else is occupied by an amount this parse cannot name, which
-// is still not a licence to call it empty.
-fn harness_queue_from_body(body: String) -> QueueObservation {
-  let wanted = vllm_metric_name(m: NumRequestsWaiting) as String
+// the last space-separated field; anything that does not parse that way is UNREAD rather than zero,
+// because a gauge that could not be read is not a gauge reading nothing.
+fn harness_gauge_line_value(body: String, metric: VllmServingMetric) -> String? {
+  let wanted = vllm_metric_name(m: metric) as String
   let lines = split(s: body, delimiter: "\n")
   let matching = filter(lines, l => string_contains(s: l, pattern: join([wanted, "{"], "")))
   match first(matching) {
+    Absent => none
+    Present { value: line } => {
+      let parts = split(s: line, delimiter: " ")
+      if length(parts) < 2 { none } else { last(parts) }
+    }
+  }
+}
+
+// vLLM PRINTS GAUGES AS FLOATS, so "0.0" is the ordinary shape and an integer parse fails on it. A
+// leading "0." is zero; anything else is a count this parse cannot name, which is still not a
+// licence to call it zero.
+fn harness_gauge_count(text: String) -> Nat? {
+  let t = trim(s: text)
+  match parse_int(s: t) {
+    Present { value: n } =>
+      if n <= 0 { Present { value: 0 as Nat } } else { Present { value: n as Nat } }
     Absent =>
-      QueueUnobserved { because: join(["the served metrics carried no ", wanted, " series"], "") as NonEmptyStr }
-    Present { value: line } =>
-      match harness_queue_line_value(line: line) {
-        Absent => QueueUnobserved { because: "the waiting-requests series had no value field" as NonEmptyStr }
-        Present { value: text } =>
-          match parse_int(s: trim(s: text)) {
-            Absent =>
-              if starts_with(s: trim(s: text), prefix: "0.") { QueueEmptyObserved }
-              else { QueueOccupiedObserved { waiting: 1 } }
-            Present { value: n } =>
-              if n <= 0 { QueueEmptyObserved } else { QueueOccupiedObserved { waiting: n as Nat } }
+      if starts_with(s: t, prefix: "0.") { Present { value: 0 as Nat } }
+      else { Present { value: 1 as Nat } }
+  }
+}
+
+// BOTH GAUGES OR NEITHER. gunbc.serving.turn_dispatch prices a queue as the delay before an arriving
+// turn can start, and it needs waiting AND running: waiting says how much is ahead in line, running
+// says whether the group is already displacing someone. A reading carrying one and defaulting the
+// other would be an observation half-invented, so a body missing either is unread.
+fn harness_queue_from_body(body: String) -> ServingQueueReading {
+  match harness_gauge_line_value(body: body, metric: NumRequestsWaiting) {
+    Absent => QueueDepthUnread { obligation: "the served metrics carried no waiting-requests series" as NonEmptyStr }
+    Present { value: waiting_text } =>
+      match harness_gauge_line_value(body: body, metric: NumRequestsRunning) {
+        Absent => QueueDepthUnread { obligation: "the served metrics carried no running-requests series" as NonEmptyStr }
+        Present { value: running_text } =>
+          match harness_gauge_count(text: waiting_text) {
+            Absent => QueueDepthUnread { obligation: "the waiting-requests gauge had no readable value" as NonEmptyStr }
+            Present { value: w } =>
+              match harness_gauge_count(text: running_text) {
+                Absent => QueueDepthUnread { obligation: "the running-requests gauge had no readable value" as NonEmptyStr }
+                Present { value: r } => QueueDepthRead { waiting: w, running: r }
+              }
           }
       }
   }
 }
 
-fn harness_observe_queue(address: String) -> QueueObservation {
+fn harness_observe_queue(address: String) -> ServingQueueReading {
   let url = harness_metrics_url(address: address)
   let read = http.Client.Get(url: url as NonEmptyStr)
   if !read.success {
-    QueueUnobserved { because: join(["the metrics endpoint at ", url, " did not answer"], "") as NonEmptyStr }
+    QueueDepthUnread { obligation: join(["the metrics endpoint at ", url, " did not answer"], "") as NonEmptyStr }
   } else {
     harness_queue_from_body(body: read.body)
   }
