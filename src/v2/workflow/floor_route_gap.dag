@@ -577,7 +577,7 @@ fn floor_route_gap_expectation_chunk_02() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.interpreter_dispatch_bijection_real_roster_witness_test.interpreter_dispatch_bijection_real_roster_red_holds", operation: "Check", ground: NoMockResponse {} },
     tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.namespace_import_closure_witness.namespace_import_closure_receipt_holds", operation: "Run", ground: NoMockResponse {} },
+    head: FloorRouteGapExpectation { identity: "test.claim.namespace_import_closure_witness.namespace_import_closure_receipt_holds", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.json_protocol_schema_memory_split_wet_witness_test.wet_finish_parse_largest_protocol_schema_only", operation: "Check", ground: NoMockResponse {} },
     tail: Cons {
