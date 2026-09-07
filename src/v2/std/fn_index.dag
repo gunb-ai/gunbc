@@ -9,7 +9,6 @@ import v2.std.algebra {
   HeadFound,
   TailAbsent,
   TailFound,
-  any,
   contains,
   filter,
   fold_list,
