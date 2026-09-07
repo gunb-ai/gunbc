@@ -3056,23 +3056,19 @@ pub struct MultiModuleFixtureSource {
     pub content: String,
 }
 
-/// Per-function projection of a completed Rust emit: source identity plus the ordered parameter
-/// name list the Rust emitter binds (authored params, resource-use names, then service-var names).
-/// Types and return types are deliberately absent — see `tools.multi_module_compile_fixture`
-/// `EmittedRustFnSignature`. The type name admits the Rust target; this fixture instrument has no
-/// other emission target.
+/// Per-function **resolved-registry** projection for the Rust emit target: source identity plus
+/// the ordered parameter name list taken from `ItemInfo` with `emit_ident` /
+/// `service_var_name` transforms. See `tools.multi_module_compile_fixture`
+/// `EmittedRustFnSignature`. Not a read of emitted file bytes — the type name admits the Rust
+/// target, not emit-path observation.
 ///
-/// **Names only (permanent ceiling, no next-rung trigger):** no parameter or return types —
-/// type spellings would make witnesses change-detectors on `Rc<Vec<T>>` renderings.
-/// Same-name/different-type pairs and type-only changes are invisible here by contract, not
-/// because a lift is unbuilt. Do not assert type-sensitivity over this carrier.
+/// **Names only (permanent ceiling, no next-rung trigger):** no parameter or return types.
 ///
-/// **Order is convention, not a join (below ceiling):** `ordered_parameter_names` mirrors today's
-/// `emit_func_params` walk (authored → resource uses → `service_var_name`). Nothing refuses if
-/// that emitter reorder and this projection disagree. Prefer membership asserts.
-/// **Next-rung trigger:** the projection is derived from the same source `emit_func_params`
-/// reads, so a reorder cannot desynchronise them. **Why unbuilt (reason, not trigger):** that
-/// derivation sits in the emit_rust seed surface and would regenerate modules #10688 is editing.
+/// **Registry mirror, not emit join (below ceiling — order and membership):** nothing refuses if
+/// `emit_func_params` / `emit_func_def` and this projection disagree. **Next-rung trigger:**
+/// derive from the same source `emit_func_params` reads (or from its emit result). **Why
+/// unbuilt:** emit_rust seed regeneration + #10688 surface. External admission for this stall:
+/// merry-bear-25 accepted "nothing refuses" as this instrument's ceiling for the PR done bar.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EmittedRustFnSignature {
     pub owner_module: String,

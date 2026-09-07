@@ -67,11 +67,18 @@ import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
 // list. A control comparing it against the manifest is therefore a join between two different
 // producers rather than measure() == measure().
 //
-// EMITTED OUTPUT IS OBSERVABLE AS A STRUCTURED RUST PROJECTION, not as contents-by-path. On
-// FixtureCompileCompleted the field emitted_rust_functions carries List<EmittedRustFnSignature> —
-// per function, source owner_module + declaration_name and the ordered parameter name list the
-// Rust emitter binds. Witnesses assert over that list; raw text is not offered as an assertion
+// SIGNATURE SHAPE IS OBSERVABLE AS A STRUCTURED RUST PROJECTION OVER THE RESOLVED
+// REGISTRY, not as contents-by-path and not as a read of emitted bytes. On
+// FixtureCompileCompleted the field emitted_rust_functions carries List<EmittedRustFnSignature>
+// — per FnItem/FuncItem in item_registry: source owner_module + declaration_name and the
+// ordered parameter name list derived from that registry row (emit_ident / service_var_name
+// transforms applied). Witnesses assert over that list; raw text is not offered as an assertion
 // surface. Discriminating RED: test.claim.emitted_rust_fn_projection_witness.
+//
+// THIS IS NOT AN EMITTED-ARTIFACT OBSERVATION. The projection runs on the resolved graph before
+// emit_resolved_for_target; a defect solely inside emit_func_params / emit_func_def can leave
+// witnesses green. The subject grain is the registry binding the emitter *will read*, not the
+// bytes it writes. Next-rung trigger below covers climbing to a true emit join.
 
 type FixtureSource {
   path: NonEmptyStr
@@ -83,13 +90,14 @@ type MultiModuleCompileFixture {
   entry: NonEmptyStr
 }
 
-// THE STRUCTURED PROJECTION WITNESSES ASSERT OVER. Per emitted Rust function: source identity
-// (owning module + declaration name) and the PARAMETER NAME LIST the Rust emitter binds —
-// authored params, then resource-use names, then service-var names, each name spelling the
-// same transform emit_func_params applies (emit_ident for authored and resource arms;
-// service_var_name for services), intended to match emit_func_params. The type name says Rust
-// because compile_fixture is Rust-target only; a target-agnostic name over that reader would be
-// the DESIGN section 3 meaning fork.
+// THE STRUCTURED PROJECTION WITNESSES ASSERT OVER. Per resolved FnItem/FuncItem: source identity
+// (owning module + declaration name) and the PARAMETER NAME LIST taken from ItemInfo with the
+// same per-arm name transforms emit_func_params applies today (emit_ident for authored and
+// resource arms; service_var_name for services), concatenated authored → resource → service.
+// The type name says Rust because compile_fixture is Rust-target only; a target-agnostic name
+// over that reader would be the DESIGN section 3 meaning fork. The field name
+// emitted_rust_functions / EmittedRustFnSignature admits the Rust emit *target*; it does not
+// claim the rows were read from emitted file bytes.
 //
 // NAMES ONLY — PERMANENT CEILING, NO NEXT-RUNG TRIGGER. Parameter TYPES and return types are
 // absent on purpose: asserting over emitted type spellings turns a control into a change detector
@@ -99,27 +107,30 @@ type MultiModuleCompileFixture {
 // this instrument is waiting on that would lift it; a type-sensitive claim needs a different
 // projection. Do not assert type-sensitivity over it.
 //
-// ORDER IS A CONVENTION, NOT A JOINED FACT — BELOW CEILING. The field is named
-// ordered_parameter_names because the host projection walks ItemInfo in the same authored →
-// resource → service_var_name order emit_func_params concatenates today. WHAT REFUSES IF
-// emit_func_params AND THIS PROJECTION DISAGREE? Nothing. There is no shared derivation and no
-// arm that compares the two; a reorder of emit_func_params that left ItemInfo unchanged would
-// leave every positional witness green while describing an order the artifact no longer has
+// REGISTRY MIRROR, NOT EMIT JOIN — BELOW CEILING (ORDER AND MEMBERSHIP). The projection is a
+// second walk over ItemInfo, not a consumption of emit_func_params' value. WHAT REFUSES IF
+// emit_func_params (or emit_func_def's use of it) AND THIS PROJECTION DISAGREE — on order OR on
+// who is present? Nothing. A reorder, a dropped service_names arm inside emit, or any other
+// emit-only divergence leaves every witness green while the artifact binds differently
 // (gunbc.recurring_failure_mode subject_and_its_digest_as_independent_parameters). Membership
-// (emitted_rust_fn_has_parameter) is the durable assertion surface; use position only when the
-// subject IS that layout.
+// (emitted_rust_fn_has_parameter) is the durable surface *within this registry grain*; it is not
+// evidence about emit-path fidelity. External admission for landing this stall on this PR:
+// merry-bear-25 (parent) accepted "nothing refuses" as the instrument's honest ceiling for the
+// done bar; the next-rung trigger below is the climb, not a self-license.
 //
 // NEXT-RUNG TRIGGER (DESIGN 4b(2) — the CAPABILITY, not an artifact): the projection is DERIVED
-// from the same source emit_func_params reads, rather than mirroring its order by a second walk,
-// so a reorder cannot desynchronise them. WHY UNBUILT (reason, not trigger): that derivation
-// lives in the emit_rust / emit_core_support seed surface; landing it here means regenerating
-// those modules and crossing #10688's open edit surface on the same files. Until the trigger
-// capability holds, order remains convention.
+// from the same source emit_func_params reads (or from the emit result that source produces),
+// rather than mirroring ItemInfo by a second walk, so neither order nor membership can
+// desynchronise from what the Rust emitter binds into the artifact. WHY UNBUILT (reason, not
+// trigger): that derivation lives in the emit_rust / emit_core_support seed surface; landing it
+// here means regenerating those modules and crossing #10688's open edit surface on the same
+// files. Until the trigger capability holds, this remains a registry projection.
 //
 // THIS IS NOT A CONTENTS GREP SURFACE. Emitted file paths still travel on FixtureCompileCompleted
-// for provenance; the projection is the only population a witness may ask about signature shape.
-// A consumer that wants raw text is outside this instrument's contract — handing String would
-// re-author the permanently-green substring trap this projection exists to make unwritable.
+// for provenance; the projection is the only population a witness may ask about signature shape
+// at this grain. A consumer that wants raw text is outside this instrument's contract — handing
+// String would re-author the permanently-green substring trap this projection exists to make
+// unwritable.
 type EmittedRustFnSignature {
   owner_module: String
   declaration_name: String

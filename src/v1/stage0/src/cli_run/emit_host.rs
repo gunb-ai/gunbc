@@ -314,11 +314,9 @@ pub fn compile_dag_multi_module_fixture(
             Some(g) => g.modules.len() as i64,
             None => 0,
         };
-        // Project BEFORE emit consumes the resolved graph. Name list = emit_func_params' per-arm
-        // transforms (emit_ident on authored + resource names, service_var_name on services) in
-        // that arm order. Keyed by source identity so a witness never encodes module_to_filename
-        // mangling. Order of the three arms remains a declared below-ceiling convention until
-        // derived from the same source emit_func_params reads.
+        // Resolved-registry projection BEFORE emit consumes the graph. Subject grain: ItemInfo
+        // parameter binding (with emit_ident / service_var_name transforms), keyed by source
+        // identity — not emitted file bytes. Emit-path fidelity is the declared next-rung climb.
         let emitted_rust_functions = project_emitted_rust_fn_signatures(resolved.as_ref());
         let result = v1_compiler_compile::emit_resolved_for_target(
             resolved,
@@ -355,20 +353,17 @@ pub fn compile_dag_multi_module_fixture(
     }
 }
 
-/// Emit-binding projection for the Rust target: one row per `FnItem` / `FuncItem` in the resolved
-/// registry. `ordered_parameter_names` applies the same name transforms `emit_func_params` uses for
-/// each arm — `emit_ident(..., Rust)` on authored params and resource-use names, then
-/// `service_var_name` per service — and concatenates them in that order. Not a text parse of
-/// emitted bytes.
+/// Resolved-registry projection for the Rust emit target: one row per `FnItem` / `FuncItem` in
+/// `item_registry`. `ordered_parameter_names` applies `emit_ident(..., Rust)` on authored params
+/// and resource-use names, then `service_var_name` per service, concatenated in that order — the
+/// same per-arm transforms `emit_func_params` uses today. Not a text parse of emitted bytes.
 ///
-/// Below ceiling on ORDER only: nothing joins this walk to `emit_func_params`' three-way concat.
-/// If the emitter reorders while ItemInfo stays shaped the same way, this projection keeps
-/// reporting the old convention and no arm refuses. Next-rung trigger: derive the name list from
-/// the same source `emit_func_params` reads. Why unbuilt: that shared source lives in the
-/// emit_rust seed (regeneration + #10688 surface). Membership is the durable consumer surface
-/// until the trigger holds. Name SPELLING fidelity (`emit_ident` / `service_var_name`) is not
-/// part of that stall — it is required now so a membership assert cannot silently miss a
-/// reserved-word or camelCase param the emitter actually bound.
+/// Below ceiling on ORDER and MEMBERSHIP: this is a second walk over ItemInfo, not a consumption
+/// of `emit_func_params`. Nothing refuses if the emit path and this projection disagree. Next-rung
+/// trigger: derive from the same source `emit_func_params` reads (or from its emit result). Why
+/// unbuilt: emit_rust seed regen + #10688 surface. Name spelling via `emit_ident` /
+/// `service_var_name` is required at this grain so membership cannot miss a reserved-word or
+/// camelCase name the registry arms will hand to emit.
 fn project_emitted_rust_fn_signatures(
     resolved: &v1_compiler_compile::ResolvedPipelineResult,
 ) -> Vec<crate::cli_run::EmittedRustFnSignature> {

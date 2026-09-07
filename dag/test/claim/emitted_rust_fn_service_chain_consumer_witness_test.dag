@@ -22,21 +22,24 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // REAL CONSUMER OF THE PROJECTION (DESIGN section 3c third leg). The instrument's own
 // present/absent pair only self-tests the carrier. This file asserts a fact a product lane
-// actually needs: after service-effect propagation, the TOP of a call chain carries the leaf
-// service parameter name the Rust emitter binds (service_var_name of setsw.Probe → setsw_probe).
+// actually needs at REGISTRY grain: after service-effect propagation, the TOP of a call chain's
+// ItemInfo carries the leaf service parameter name (service_var_name of setsw.Probe →
+// setsw_probe). It does NOT prove that emit_func_params wrote that name into the artifact — that
+// join is the instrument's declared next-rung trigger; #10688's deep-chain discriminator after
+// merge is the propagation-depth claim on top of this grain.
 //
 // WHY DEPTH 3, NOT DEEPER. On main, expand_transitive_services runs under a FIXED FIVE-pass
 // budget and walks one hop per pass. A chain deeper than that budget stops mid-propagation and
-// callers above the cut emit WITHOUT the service parameter — a real defect owned by #10688, which
-// derives the bound instead of choosing one. Depth 3 is comfortably inside five, so this witness
-// stays green on main and RED only if the projection lies. Do NOT deepen this fixture to "test
-// more hops": that couples this instrument PR to the propagation repair and hands a reviewer a
-// red that belongs to #10688. Quiet-moth-632 takes the deep chain after this merges.
+// callers above the cut lack the service name in the registry (and therefore in this projection).
+// Depth 3 is comfortably inside five, so this witness stays green on main and RED only if the
+// projection lies about the registry. Do NOT deepen this fixture to "test more hops": that
+// couples this instrument PR to the propagation repair and hands a reviewer a red that belongs
+// to #10688. Quiet-moth-632 takes the deep chain after this merges.
 //
-// DISCRIMINATING PAIR. Both fixtures compile clean. The service chain puts setsw_probe on f0; the
-// no-service sibling does not. A projection that always answers present fails the sibling; one
-// that always answers absent fails the chain. That is the consumer's own RED, independent of the
-// instrument self-test.
+// DISCRIMINATING PAIR. Both fixtures compile clean. The service chain puts setsw_probe on f0's
+// registry row; the no-service sibling does not. A projection that always answers present fails
+// the sibling; one that always answers absent fails the chain. That is the consumer's own RED,
+// independent of the instrument self-test.
 
 data shallow_service_chain_source: String = "module setsw.chain\nservice setsw.Probe \{\n  operation Ping \{\n    input \{ tag: String \}\n    output \{ line: String from \"stdout\" \}\n    readonly\n    transport shell \{ argv: [\"echo\", \"\{tag\}\"] \}\n    exit \{\n      0 => Unit\n    \}\n  \}\n\}\nfn f0(tag: String) -> String \{ f1(tag: tag) \}\nfn f1(tag: String) -> String \{ f2(tag: tag) \}\nfn f2(tag: String) -> String \{ setsw.Probe.Ping(tag: tag).line \}\n"
 
