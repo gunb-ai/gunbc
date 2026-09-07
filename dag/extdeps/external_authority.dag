@@ -17,13 +17,6 @@ type CitedFigureStanding
   = CeilingCitedToAuthority { authority: ExternalAuthority }
   | CeilingTranscribedUncited { read_obligation: NonEmptyStr }
 
-fn cited_figure_is_cited(standing: CitedFigureStanding) -> Bool {
-  match standing {
-    CeilingCitedToAuthority { authority: _ } => true
-    CeilingTranscribedUncited { read_obligation: _ } => false
-  }
-}
-
 fn cited_figure_read_obligation(standing: CitedFigureStanding) -> NonEmptyStr? {
   match standing {
     CeilingCitedToAuthority { authority: _ } => Absent

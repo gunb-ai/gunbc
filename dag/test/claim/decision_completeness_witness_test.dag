@@ -3,6 +3,13 @@ module test.claim.decision_completeness_witness
 import std.types { Bool, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.observation_completeness {
+  ObservationComplete,
+  ObservationForeignObserved,
+  ObservationMissingExpected,
+  ObservationRepeatedExpected,
+  ObservationRepeatedObserved,
+}
 import extdeps.external_authority { ExternalAuthority, CeilingCitedToAuthority, CeilingTranscribedUncited }
 import extdeps.uri { Uri, Https }
 import std.pareto {
@@ -43,11 +50,6 @@ import std.decision {
   SettledPolicyRejectedRefused,
   required_sensitivity_cells,
   sensitivity_closure,
-  SensitivityClosureComplete,
-  SensitivityClosureMissing,
-  SensitivityClosureForeign,
-  SensitivityClosureRepeatedObserved,
-  SensitivityClosureRepeatedExpected,
   candidate_comparison_standing,
   CandidatesIncomparableTradeoff,
   CandidatesUndecidedOnEvidence,
@@ -312,7 +314,7 @@ test fn shrinking_choice_domain_makes_extra_cells_foreign() -> Bool {
     choice_domain: truncated_domain,
   }
   match sensitivity_closure(subject: truncated, rows: closed_sensitivities()) {
-    SensitivityClosureForeign { cells: cells } =>
+    ObservationForeignObserved { keys: cells } =>
       any(cells, c => declaration_ref_eq(a: c.variable, b: id_var_b))
         && standing_refused(s: mint_settled_policy(assessment: DecisionAssessment {
           subject: truncated,
@@ -324,10 +326,10 @@ test fn shrinking_choice_domain_makes_extra_cells_foreign() -> Bool {
           physical_model: fixture_physical,
           causal_model: fixture_causal,
         }))
-    SensitivityClosureComplete => false
-    SensitivityClosureMissing { cells: _ } => false
-    SensitivityClosureRepeatedObserved { cells: _ } => false
-    SensitivityClosureRepeatedExpected { cells: _ } => false
+    ObservationComplete => false
+    ObservationMissingExpected { keys: _ } => false
+    ObservationRepeatedObserved { keys: _ } => false
+    ObservationRepeatedExpected { keys: _ } => false
   }
 }
 
@@ -350,7 +352,7 @@ test fn omitting_objective_term_cell_makes_sensitivity_closure_missing() -> Bool
     },
   ]
   match sensitivity_closure(subject: subject, rows: without_power_cells) {
-    SensitivityClosureMissing { cells: cells } =>
+    ObservationMissingExpected { keys: cells } =>
       any(cells, c => declaration_ref_eq(a: c.term, b: id_term_power))
         && standing_refused(s: mint_settled_policy(assessment: DecisionAssessment {
           subject: subject,
@@ -362,10 +364,10 @@ test fn omitting_objective_term_cell_makes_sensitivity_closure_missing() -> Bool
     physical_model: fixture_physical,
     causal_model: fixture_causal,
         }))
-    SensitivityClosureComplete => false
-    SensitivityClosureForeign { cells: _ } => false
-    SensitivityClosureRepeatedObserved { cells: _ } => false
-    SensitivityClosureRepeatedExpected { cells: _ } => false
+    ObservationComplete => false
+    ObservationForeignObserved { keys: _ } => false
+    ObservationRepeatedObserved { keys: _ } => false
+    ObservationRepeatedExpected { keys: _ } => false
   }
 }
 
@@ -394,7 +396,7 @@ test fn omitting_one_required_sensitivity_cell_blocks_settlement() -> Bool {
     },
   ]
   match sensitivity_closure(subject: subject, rows: missing_one) {
-    SensitivityClosureMissing { cells: cells } =>
+    ObservationMissingExpected { keys: cells } =>
       any(cells, c =>
         declaration_ref_eq(a: c.term, b: id_term_power) && declaration_ref_eq(a: c.variable, b: id_var_b)
       )
@@ -408,10 +410,10 @@ test fn omitting_one_required_sensitivity_cell_blocks_settlement() -> Bool {
     physical_model: fixture_physical,
     causal_model: fixture_causal,
         }))
-    SensitivityClosureComplete => false
-    SensitivityClosureForeign { cells: _ } => false
-    SensitivityClosureRepeatedObserved { cells: _ } => false
-    SensitivityClosureRepeatedExpected { cells: _ } => false
+    ObservationComplete => false
+    ObservationForeignObserved { keys: _ } => false
+    ObservationRepeatedObserved { keys: _ } => false
+    ObservationRepeatedExpected { keys: _ } => false
   }
 }
 
@@ -425,7 +427,7 @@ test fn two_answers_for_one_cell_refuse_as_repeated_observed() -> Bool {
     },
   ])
   match sensitivity_closure(subject: subject, rows: dup) {
-    SensitivityClosureRepeatedObserved { cells: cells } =>
+    ObservationRepeatedObserved { keys: cells } =>
       any(cells, c =>
         declaration_ref_eq(a: c.term, b: id_term_power) && declaration_ref_eq(a: c.variable, b: id_var_a)
       )
@@ -439,10 +441,10 @@ test fn two_answers_for_one_cell_refuse_as_repeated_observed() -> Bool {
     physical_model: fixture_physical,
     causal_model: fixture_causal,
         }))
-    SensitivityClosureComplete => false
-    SensitivityClosureMissing { cells: _ } => false
-    SensitivityClosureForeign { cells: _ } => false
-    SensitivityClosureRepeatedExpected { cells: _ } => false
+    ObservationComplete => false
+    ObservationMissingExpected { keys: _ } => false
+    ObservationForeignObserved { keys: _ } => false
+    ObservationRepeatedExpected { keys: _ } => false
   }
 }
 
@@ -455,7 +457,7 @@ test fn foreign_term_or_variable_refuses_rather_than_ignored() -> Bool {
     },
   ])
   match sensitivity_closure(subject: subject, rows: foreign) {
-    SensitivityClosureForeign { cells: cells } =>
+    ObservationForeignObserved { keys: cells } =>
       any(cells, c => declaration_ref_eq(a: c.term, b: id_foreign_term))
         && standing_refused(s: mint_settled_policy(assessment: DecisionAssessment {
           subject: subject,
@@ -467,10 +469,10 @@ test fn foreign_term_or_variable_refuses_rather_than_ignored() -> Bool {
     physical_model: fixture_physical,
     causal_model: fixture_causal,
         }))
-    SensitivityClosureComplete => false
-    SensitivityClosureMissing { cells: _ } => false
-    SensitivityClosureRepeatedObserved { cells: _ } => false
-    SensitivityClosureRepeatedExpected { cells: _ } => false
+    ObservationComplete => false
+    ObservationMissingExpected { keys: _ } => false
+    ObservationRepeatedObserved { keys: _ } => false
+    ObservationRepeatedExpected { keys: _ } => false
   }
 }
 
@@ -657,11 +659,11 @@ test fn required_population_oracle_is_not_the_disposition_list() -> Bool {
   (required |> count) == 4
     && (dispositions |> count) == 1
     && match sensitivity_closure(subject: subject, rows: dispositions) {
-      SensitivityClosureMissing { cells: cells } => (cells |> count) == 3
-      SensitivityClosureComplete => false
-      SensitivityClosureForeign { cells: _ } => false
-      SensitivityClosureRepeatedObserved { cells: _ } => false
-      SensitivityClosureRepeatedExpected { cells: _ } => false
+      ObservationMissingExpected { keys: cells } => (cells |> count) == 3
+      ObservationComplete => false
+      ObservationForeignObserved { keys: _ } => false
+      ObservationRepeatedObserved { keys: _ } => false
+      ObservationRepeatedExpected { keys: _ } => false
     }
 }
 

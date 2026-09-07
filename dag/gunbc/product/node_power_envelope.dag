@@ -1,6 +1,6 @@
 module product.node_power_envelope
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
+import std.types { EpochMs, Int, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure {
   Bandwidth,
@@ -30,7 +30,6 @@ import extdeps.external_authority {
   CitedFigureStanding,
   CeilingCitedToAuthority,
   CeilingTranscribedUncited,
-  cited_figure_is_cited,
 }
 import extdeps.cpu.types { CpuModelCatalogRow }
 import extdeps.memory.types {
@@ -98,10 +97,6 @@ type TwoDpcRateCeiling {
 
 type TwoDpcRateCeilingTable {
   rows: List<TwoDpcRateCeiling>
-}
-
-fn ceiling_is_cited(evidence: RateCeilingEvidence) -> Bool {
-  cited_figure_is_cited(standing: evidence)
 }
 
 // The ceilings held today, all uncited. One declaration so the population is countable and a later

@@ -32,13 +32,13 @@ import gunbc.memory_provisioning {
   asrock_altrad8ud_1l2t_geometry,
   mt_collins_per_socket_geometry,
 }
+import extdeps.external_authority { CeilingCitedToAuthority, CeilingTranscribedUncited }
 import product.node_power_envelope {
   DerivationReadsHigh,
   EnvelopeAgrees,
   Gold,
   MemoryElectricalContext,
   altra_two_dpc_ceilings,
-  ceiling_is_cited,
   NodeElectricalInputs,
   PsuAdequate,
   PsuUndersized,
@@ -205,7 +205,10 @@ test fn downclock_is_rank_dependent() -> Bool {
 test fn the_two_dpc_ceilings_declare_themselves_uncited() -> Bool {
   count(altra_two_dpc_ceilings.rows) == 2
     && fold(altra_two_dpc_ceilings.rows, init: true, f: fn(acc, row) {
-      acc && !ceiling_is_cited(evidence: row.evidence)
+      acc && match row.evidence {
+        CeilingTranscribedUncited { read_obligation: _ } => true
+        CeilingCitedToAuthority { authority: _ } => false
+      }
     })
 }
 
