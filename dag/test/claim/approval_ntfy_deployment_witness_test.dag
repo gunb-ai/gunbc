@@ -104,10 +104,25 @@ test fn witness_install_instruction_does_not_carry_an_unrelated_endpoint() -> Bo
   !string_contains(s: approval_ntfy_server_install_intervention().instruction as String, pattern: "0.0.0.0:2586")
 }
 
-// THE ENDPOINT IS BUILT FROM THE LOOPBACK ADDRESS, so the security property asserted by
-// witness_server_binds_loopback_only reaches the string the operator actually follows.
-test fn witness_endpoint_is_the_loopback_one() -> Bool {
-  approval_ntfy_endpoint() == "127.0.0.1:2586"
+// THE ENDPOINT IS BUILT FROM THE DECLARED ADDRESS, which is a join between two declarations and
+// not a transcription of either. An earlier revision asserted `== "127.0.0.1:2586"`, which pinned
+// the port by copying it out of the data row three files away -- automating that literal's update
+// would have collapsed the check to `measure() == measure()` for the port half, the same tell that
+// removed the upstream-URL and roster-count witnesses from this file.
+//
+// What is worth asserting is the RELATION: the endpoint a client dials must be built from the
+// address the server is policy-bound to listen on. Combined with witness_server_binds_loopback_only
+// -- which holds that address to loopback as an explicit policy requirement -- this says the
+// endpoint is loopback-based, without either witness restating the other's literal. Changing the
+// port freely is correct and does not redden anything; widening the address does.
+test fn witness_endpoint_is_built_from_the_declared_address() -> Bool {
+  starts_with(s: approval_ntfy_endpoint(), prefix: concat(approval_ntfy_listen_address as String, ":"))
+}
+
+// POSITIVE CONTROL: the prefix check must be capable of answering false, or the assertion above
+// would hold over any endpoint at all.
+test fn witness_endpoint_is_not_built_from_a_wildcard_address() -> Bool {
+  !starts_with(s: approval_ntfy_endpoint(), prefix: "0.0.0.0:")
 }
 
 // The notification principal's realization standing is persistent and unallocated until a host uid

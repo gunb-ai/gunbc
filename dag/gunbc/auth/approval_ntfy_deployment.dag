@@ -9,6 +9,7 @@ import std.human_intervention {
 }
 import gunbc.auth.approval_notification { approval_ntfy_topic }
 import extdeps.ntfy.ntfy { NtfyTopic, NtfyPublishReceipt, NtfyErrorShape }
+import extdeps.transports.rest { RestOutcome }
 import extdeps.uri { Uri, Https }
 import std.types { Secret }
 import v2.std.network { POST }
