@@ -3319,18 +3319,29 @@ fn declared_type_position_label(position: DeclaredTypePosition, subject: String)
 // decides the same way a brand over NonEmptyStr does and a two-level chain decides the same way a
 // one-level chain does.
 //
-// THE NARROWING DIRECTION DECLINES, AND THAT IS A MEASUREMENT, NOT A PREFERENCE. std's brand
-// prose refuses narrowing, and the first build of this relation refused it here -- which turned
-// 10 corpus refusals into 4928, of which 3870 were a plain String reaching a NonEmptyStr formal.
-// That is not four thousand defects. Refinement values are INTRODUCED through literal elaboration
-// and declared casts, and by the time a produced node reaches this seam it no longer carries
-// which introduction produced it. So "the produced type sits at or above the declared refinement"
-// does not settle inhabitance, and refusing on it would fabricate a verdict in the direction
-// DESIGN section 5 forbids just as firmly as fabricating a success. The pair is reported
-// UndecidableRefinementIntroduction: located, per-reason and countable, so the deficit can rank.
-// NEXT-RUNG TRIGGER: the refinement-introduction authority reaching this seam -- the elaboration
-// or declared cast that produced the value, carried on the produced node -- at which point this
-// arm refuses narrowing instead of declining it.
+// THE NARROWING DIRECTION DECLINES, AND BOTH HALVES OF THAT ARE MEASURED, NOT REASONED.
+// std's brand prose refuses narrowing, and the first build of this relation refused it here --
+// which turned 10 corpus refusals into 4928, every one of them a base value at a refinement
+// formal, 3870 of those a plain String at a NonEmptyStr formal. That is not four thousand
+// defects, so the refusal was withdrawn and the pair is declined instead.
+//
+// WHAT THE DECLINE IS AND IS NOT, because the first account of it was wrong and the check that
+// refuted it is cheap. It is NOT that introduction is uncarried: an EXPLICIT CAST IS ALREADY
+// VISIBLE HERE. dag/test/fixture/compile_phase_frontier_receipt_fixture calls
+// sha256_digest(hex: "..." as NonEmptyStr) at a refinement formal and produces no diagnostic from
+// this relation at all, while the sites that do decline are bare literals -- "feedFwdOffsetCoeff",
+// 168, "declaration-worker" -- handed straight to a refinement formal with no cast. So the
+// discriminating fact exists and the seam already reads one of its two forms.
+//
+// The remaining form is LITERAL ELABORATION at the declared boundary, which std.literal_elaboration
+// owns and this relation does not consult -- the same shape the numeric note above records, where
+// the class was never undecidable, it was unconsulted. Refusing on a fact one is declining to look
+// up would fabricate a verdict in the direction DESIGN section 5 forbids as firmly as fabricating
+// a success, so the pair is reported UndecidableRefinementIntroduction: located, per-reason and
+// countable, so the deficit ranks instead of vanishing.
+// NEXT-RUNG TRIGGER: the elaboration verdict for a literal at its destination refinement reaching
+// this seam on the produced node, at which point this arm refuses an unelaborated base value at a
+// refinement formal instead of declining it.
 //
 // WHY IT IS REACHABLE ONLY NOW. Every site this relation answers had its declared side rewritten
 // into a generic formal before any arm ran, so the refinement question was never put. Measured on
@@ -3854,7 +3865,7 @@ fn inhabitance_undecidable_reason_label(reason: InhabitanceUndecidableReason) ->
     UndecidableOptionalCarrier => "optional carrier: the language's own cardinality carrier, where a T standing in an Optional<T> position is the declared spelling rather than a payload escape"
     UndecidableFormalUnresolved => "formal unresolved: the declared type did not resolve to a declaration, so there is nothing to judge inhabitance against"
     UndecidableProducedIdentityErased => "produced identity erased: the produced value's type identity is not recoverable at this seam"
-    UndecidableRefinementIntroduction => "refinement introduction: the produced value sits at or above the declared refinement on its own chain, and whether it was INTRODUCED at that refinement is carried by the elaboration or declared cast that produced it, not by the type pair at this seam"
+    UndecidableRefinementIntroduction => "refinement introduction: the produced value sits at or above the declared refinement on its own chain and carries no cast to it, so whether it was INTRODUCED at that refinement is the literal-elaboration verdict for its destination, which this seam does not consult"
   }
 }
 

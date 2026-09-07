@@ -5286,7 +5286,7 @@ pub fn inhabitance_undecidable_reason_label(reason: InhabitanceUndecidableReason
     InhabitanceUndecidableReason::UndecidableOptionalCarrier => "optional carrier: the language's own cardinality carrier, where a T standing in an Optional<T> position is the declared spelling rather than a payload escape".to_string(),
     InhabitanceUndecidableReason::UndecidableFormalUnresolved => "formal unresolved: the declared type did not resolve to a declaration, so there is nothing to judge inhabitance against".to_string(),
     InhabitanceUndecidableReason::UndecidableProducedIdentityErased => "produced identity erased: the produced value's type identity is not recoverable at this seam".to_string(),
-    InhabitanceUndecidableReason::UndecidableRefinementIntroduction => "refinement introduction: the produced value sits at or above the declared refinement on its own chain, and whether it was INTRODUCED at that refinement is carried by the elaboration or declared cast that produced it, not by the type pair at this seam".to_string(),
+    InhabitanceUndecidableReason::UndecidableRefinementIntroduction => "refinement introduction: the produced value sits at or above the declared refinement on its own chain and carries no cast to it, so whether it was INTRODUCED at that refinement is the literal-elaboration verdict for its destination, which this seam does not consult".to_string(),
 }
 }
 
