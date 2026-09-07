@@ -33,7 +33,7 @@ import gunbc.runner_unit {
   lifecycle_intent_cannot_orphan,
   gunbc_runner_listener_is_main_process,
 }
-import extdeps.github.actions_runner { ActionsRunnerRelease, actions_runner_release_2_336_0 }
+import extdeps.github.actions_runner { ActionsRunnerRelease, actions_runner_release_2_337_0 }
 import extdeps.virtualization.firecracker {
   FirecrackerVmConfig,
   FirecrackerBootSource,
@@ -66,11 +66,30 @@ type RunnerGuestImage {
   runner: ActionsRunnerRelease
 }
 
+// THE GUEST IMAGE PINS 2.337.0 AND THE FLEET'S HOST SLOTS PIN 2.336.0, AND THAT DIVERGENCE IS NOW
+// DECLARED RATHER THAN ACCIDENTAL. It arrived accidentally: the Mt. Collins guest image was built
+// against the then-latest runner while this row still said 2.336.0, and the canary reported
+// "Current runner version: 2.337.0" to GitHub -- one concept answering two ways, found in review and
+// not by anything in this repository.
+//
+// IT IS RESOLVED FORWARD RATHER THAN BACKWARD because 2.337.0 is what actually ran and was verified:
+// the shipped tarball's digest equals the one extdeps.github.actions_runner records from upstream's
+// release body. Pinning back to 2.336.0 would make the model agree with itself by describing an
+// artifact no run has exercised.
+//
+// THE FLEET'S HOST-SLOT PIN IS DELIBERATELY NOT MOVED HERE. gunbc.runner_slot_provision,
+// gunbc.runner_lifecycle and gunbc.fleet_converge_plan all install 2.336.0, and changing that
+// re-provisions every slot on every host -- a fleet migration with its own blast radius, which must
+// not ride along inside a canary receipt. Converging the two pins is its own change.
+//
+// SO THE STANDING OBLIGATION IS EXPLICIT: two live pins is the state this row leaves behind, and it
+// is a divergence to close rather than a design. What makes it survivable meanwhile is that each
+// names its own release row and neither is a version string typed twice.
 data gunbc_runner_guest_image: RunnerGuestImage = RunnerGuestImage {
   distribution: "ubuntu",
   release_series: "24.04",
   arch: "aarch64",
-  runner: actions_runner_release_2_336_0,
+  runner: actions_runner_release_2_337_0,
 }
 
 // THE CREDENTIAL REACHES THE GUEST AS A READ-ONLY BLOCK DEVICE, AND THAT IS THE WHOLE POINT.

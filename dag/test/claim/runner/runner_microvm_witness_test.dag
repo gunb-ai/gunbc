@@ -59,7 +59,7 @@ import gunbc.runner_microvm {
   gunbc_runner_jit_transport,
   gunbc_runner_guest_image,
 }
-import extdeps.github.actions_runner { actions_runner_release_2_336_0 }
+import extdeps.github.actions_runner { actions_runner_release_2_337_0 }
 import std.measure { hardware_thread_count_value, hardware_thread_count, byte_size }
 import gunbc.runner_slot_allocation { gunbc_runner_cores_per_slot, CoresPerSlotResolved, CoresPerSlotUnresolved }
 
@@ -316,9 +316,24 @@ test fn direct_exec_still_refuses_the_shared_slot_credential() -> Bool {
   )
 }
 
-// THE GUEST IMAGE CARRIES THE FLEET'S OWN CITED RUNNER RELEASE, NOT A SECOND VERSION ROW.
-test fn guest_image_runner_is_the_cited_fleet_release() -> Bool {
-  gunbc_runner_guest_image.runner.version == actions_runner_release_2_336_0.version
+// THE GUEST IMAGE CARRIES A CITED RUNNER RELEASE ROW, NOT A SECOND VERSION ROW.
+//
+// THIS TEST USED TO ASSERT EQUALITY WITH THE FLEET'S HOST-SLOT PIN AND WAS GREEN THROUGHOUT THE
+// FORK IT WAS NAMED FOR. Both sides read from the same declaration, so it compared 2.336.0 to
+// itself while the artifact that actually reached GitHub was 2.337.0. What it established was that
+// no version literal had been typed twice IN THE MODEL -- worth having, and not what its name
+// claimed.
+//
+// SO IT NOW NAMES THE GUEST IMAGE'S OWN PIN. The fleet's host-slot path still installs 2.336.0 and
+// gunbc.runner_microvm states why that divergence stands; asserting the two are equal would make
+// this test red for a condition the model deliberately holds.
+//
+// AND IT STILL CANNOT SEE THE CLASS THAT BIT US. No comparison between two declarations can catch a
+// model that disagrees with a RUNNING artifact -- that needs an observation, and
+// gunbc.runner_microvm_boot_probe's boot_probe_verdict is the comparator that performs it. The
+// Mt. Collins path never invoked it, which is the actual gap.
+test fn guest_image_runner_is_the_cited_release_row() -> Bool {
+  gunbc_runner_guest_image.runner.version == actions_runner_release_2_337_0.version
 }
 
 // THE FCI-1 RECONCILIATION, STATED AS EXECUTED WITNESSES RATHER THAN AS A PARAGRAPH IN THE MODULE.

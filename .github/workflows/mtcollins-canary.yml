@@ -5,18 +5,28 @@
 # tell, and naming it here is not a defence -- it is the disposition. The terminal form is a carrier
 # in .dag whose emission produces this file, exactly as witnesses.yml is produced.
 #
-# IT MAKES NO STANDING CLAIM ON A PAID RUNNER. The trigger is a push to this one branch, so it never
-# fires on main, on a pull request, or on any other branch. The runner-job roster the design closes
-# to growth is the roster of jobs that run on every push and every pull request; this is not one.
-#
 # DISSOLUTION: delete this file when the host-image build is driven from the model, at which point
-# the canary job is a row in that carrier rather than a file. It must not outlive the first green
-# run plus whatever follow-up that run makes necessary.
+# the canary job is a row in that carrier rather than a file. It must not outlive the qualification
+# work that needs it.
+#
+# THE TRIGGER IS workflow_dispatch, AND A PUSH TRIGGER WAS THE WRONG SHAPE FOR A REASON WORTH
+# KEEPING. This job can only be serviced by a runner that exists for ONE job and is destroyed with
+# its VM -- so a queued job with no live registration is not waiting, it is unservicable. On a push
+# trigger, committing the receipt for a successful run immediately queued a second run against a
+# registration that had already been spent, and that run had to be cancelled by hand.
+#
+# A JOB THAT REQUIRES A HUMAN TO BOOT A MACHINE MUST BE REQUESTED, NOT IMPLIED BY AN EDIT. The
+# dispatch input records which attempt it belongs to, so the run and the host-side receipt can be
+# joined afterwards rather than matched by timestamp.
 name: mtcollins-canary
 
 on:
-  push:
-    branches: [runner-mtcollins-job]
+  workflow_dispatch:
+    inputs:
+      attempt:
+        description: "The host attempt this dispatch is queued for (e.g. runner-canary-5)"
+        required: true
+        type: string
 
 jobs:
   canary:
@@ -31,12 +41,22 @@ jobs:
       - name: Say where this ran
         run: |
           echo "=== MT COLLINS CANARY ==="
+          echo "attempt:    ${{ inputs.attempt }}"
           echo "uname:      $(uname -a)"
           echo "cpus:       $(nproc)"
           echo "memory:     $(free -m | awk '/Mem:/{print $2}') MB"
           echo "runner:     $RUNNER_NAME"
           echo "os-release: $(. /etc/os-release; echo $PRETTY_NAME)"
           echo "=== END ==="
+
+      # THE RUNNER VERSION IS REPORTED SO THE MODEL CAN BE CHECKED AGAINST IT. The first canary ran
+      # 2.337.0 while gunbc.runner_microvm's guest image row said 2.336.0, and nothing in this
+      # repository noticed -- the mismatch was found by a human reading a job log. Printing it here
+      # does not close that; gunbc.runner_microvm_boot_probe's boot_probe_verdict is the comparator
+      # that does, and this line is what such a check would read.
+      - name: Report the runner artifact this guest actually carries
+        run: |
+          echo "runner-version: $(/mnt/runner/bin/Runner.Listener --version 2>/dev/null || echo unknown)"
 
       - name: Prove the sandbox is what the model says it is
         run: |
@@ -49,3 +69,19 @@ jobs:
             exit 1
           fi
           echo "ok: the BMC is unreachable from inside the job"
+
+      # THE WORKSPACE IS THE THING THE FIRST CANARY DID NOT HAVE. GitHub warned "only 0 MB of
+      # available disk space left", which is why two echo steps could pass while a checkout could
+      # not. This step fails loudly if the attempt workspace is missing or unwritable, so a future
+      # green run cannot mean "the job was too small to notice".
+      - name: Prove the attempt has a writable workspace
+        run: |
+          echo "workspace:  $GITHUB_WORKSPACE"
+          df -Pm "$RUNNER_TEMP" | awk 'NR==2 {print "temp-free:  " $4 " MB"}'
+          probe="$RUNNER_TEMP/gunbc-write-probe"
+          head -c 16777216 /dev/urandom > "$probe"
+          sz=$(stat -c%s "$probe")
+          rm -f "$probe"
+          test "$sz" -eq 16777216 || { echo "FAIL: short write to the attempt workspace"; exit 1; }
+          test ! -e "$probe" || { echo "FAIL: workspace file survived deletion"; exit 1; }
+          echo "ok: wrote, read back and removed 16 MiB in the attempt workspace"
