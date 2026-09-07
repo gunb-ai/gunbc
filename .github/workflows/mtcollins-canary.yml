@@ -24,15 +24,22 @@ on:
   workflow_dispatch:
     inputs:
       attempt:
-        description: "The host attempt this dispatch is queued for (e.g. runner-canary-5)"
+        description: "The attempt label minted into this attempt's JIT registration -- it is REQUIRED in runs-on, so a mismatch queues forever rather than running on the wrong host"
         required: true
         type: string
 
 jobs:
   canary:
-    # THE LABELS ARE THE ONES THE JIT CONFIG MINTS, and they must match exactly or the job queues
-    # forever against a runner that is online and ineligible -- which reads as a dead host.
-    runs-on: [self-hosted, mtcollins]
+    # THE ATTEMPT LABEL IS PART OF runs-on, AND THAT IS THE WHOLE BINDING.
+    #
+    # With only [self-hosted, mtcollins] any runner this fleet registers could take this job, so the
+    # attempt input below was an assertion echoed by whoever happened to serve it. A receipt was
+    # published on that basis joining a successful run to a capture of a DIFFERENT boot of the same
+    # image -- the build label was shared by every power cycle, so it could not name the one that ran.
+    #
+    # REQUIRING THE ATTEMPT LABEL MAKES THE JOB UNSERVICABLE BY ANY OTHER REGISTRATION. GitHub's own
+    # record of which runner ran the job then IS the join, rather than a string both sides print.
+    runs-on: [self-hosted, mtcollins, "${{ inputs.attempt }}"]
     steps:
       # NO actions/checkout. A JS action would pull node from the runner's externals and drag the
       # whole action-download path into a proof about whether this host can execute a step at all.

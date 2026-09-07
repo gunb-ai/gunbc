@@ -164,15 +164,14 @@ type SandboxOffer {
 data mtcollins_dedicated_kernel_offer: SandboxOffer = SandboxOffer {
   provider_class: DedicatedKernelSandboxProvider,
   evidenced: [
-    FreshWritableRoot,
     PrivateProcessNamespace,
     PrivateUserNamespace,
     AttemptScopedSecrets,
     DedicatedKernel,
     DefaultDenyEgress,
   ],
-  withheld: [PrivateNetworkNamespace],
-  standing: "DefaultDenyEgress moved from withheld to evidenced on build filtered-egress-4: gunbc.runner.runner_filtered_egress_receipt records four denials and two grants each proven by BOTH the guest's outcome and its own rule counter, with the default-drop never firing. PrivateNetworkNamespace stays withheld and is a different fact -- the VMM still shares the host network namespace, which no amount of forward filtering supplies",
+  withheld: [PrivateNetworkNamespace, FreshWritableRoot],
+  standing: "FreshWritableRoot is WITHHELD because this offer deliberately does not provide it: the guest root is an immutable read-only squashfs verified by digest, and the attempt gets a separate fresh writable workspace mounted under the runner tree. That is stronger than a writable root for the property tenants care about and DIFFERENT from what the name asserts, and GitHub's own runner reads it as zero free space on the root device. The vocabulary needs splitting into an immutable-root guarantee and a fresh-attempt-workspace guarantee; that is a fabric-wide coproduct change affecting the shared-kernel offers too, so it is named here rather than smuggled into a canary receipt. DefaultDenyEgress moved from withheld to evidenced on build filtered-egress-4: gunbc.runner.runner_filtered_egress_receipt records four denials and two grants each proven by BOTH the guest's outcome and its own rule counter, with the default-drop never firing. PrivateNetworkNamespace stays withheld and is a different fact -- the VMM still shares the host network namespace, which no amount of forward filtering supplies",
 }
 
 fn offer_profile(o: SandboxOffer) -> IsolationProfile {

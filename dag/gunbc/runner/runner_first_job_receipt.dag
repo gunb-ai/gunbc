@@ -216,8 +216,11 @@ data cleanup_readings: List<CleanupReading> = [
 //
 // THE SERIAL CAPTURE IS COMMITTED AND ADDRESSED. It is an extract -- the console carries firmware
 // checkpoints and a full kernel boot before this repository writes anything -- so the full
-// capture's digest and the cut point travel with it, which makes the extraction checkable rather
-// than merely described.
+// capture's digest and the cut point travel with it.
+//
+// AN EARLIER REVISION CALLED THAT "checkable" AND IT IS NOT. The full bytes are not committed, so a
+// reader can verify this extract against its own digest but cannot re-cut it from a source they do
+// not have. The digest IDENTIFIES the source; it does not make the extraction reproducible.
 data host_capture_artifact: NonEmptyStr = "docs/probes/mtcollins_first_job_host_capture_2026-09-07.txt"
 data host_capture_full_digest: NonEmptyStr = "ea32a067a9fac8b764d8f41636d4a48f6b06484a6ebbd772c63c9344aa720266"
 data host_capture_extract_digest: NonEmptyStr = "d38c39ed7bcfc42b161b784f2c0c5094a91b9be09a343782f70fa0df60812d7d"
