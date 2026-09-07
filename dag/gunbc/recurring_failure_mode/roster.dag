@@ -28,6 +28,7 @@ import gunbc.recurring_failure_mode.parallel_representation_debt { parallel_repr
 import gunbc.recurring_failure_mode.internal_review_finds_missing_tests_external { internal_review_finds_missing_tests_external }
 import gunbc.recurring_failure_mode.unmarked_workaround { unmarked_workaround }
 import gunbc.recurring_failure_mode.self_authorized_dissolution { self_authorized_dissolution }
+import gunbc.recurring_failure_mode.field_carried_on_arms_where_it_has_no_meaning { field_carried_on_arms_where_it_has_no_meaning }
 import gunbc.recurring_failure_mode.positional_citation { positional_citation }
 import gunbc.recurring_failure_mode.bound_shaped_closure { bound_shaped_closure }
 import gunbc.recurring_failure_mode.authority_substitution { authority_substitution }
@@ -350,4 +351,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   docs_markdown_projections_have_no_completing_actuator,
   type_name_field_carries_rendered_value,
   capability_arrives_outside_the_converged_path,
+  field_carried_on_arms_where_it_has_no_meaning,
 ]
