@@ -2802,11 +2802,11 @@ mod tests {
         );
         assert!(
             free_named,
-            "free-call algebra filter in a branch condition must refuse with EmissionConstructUnprojectable"
+            "written-as-free-call filter in a guard must refuse via the method arm after infer rewrite"
         );
         assert!(
             !free_published && !free_has_fn,
-            "the refused free-call module must be absent from EmitResult.files"
+            "the rewritten free-call spelling must still withhold the module from EmitResult.files"
         );
     }
 
