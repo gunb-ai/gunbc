@@ -59,8 +59,6 @@ service Clock {
     }
   }
 
-  // Convert an ISO-8601 timestamp to Unix epoch seconds. Used for timestamp arithmetic
-  // (subtracting two timestamps to get a duration) in the superseded-run census.
   operation TimestampToUnixSecs {
     input { timestamp: Timestamp }
     output { unix_secs: String from "stdout" }
