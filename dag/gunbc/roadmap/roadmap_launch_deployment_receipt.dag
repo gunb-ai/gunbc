@@ -19,7 +19,7 @@ import gunbc.fleet_converge_receipt {
   fleet_converge_apply_receipt_json,
 }
 import gunbc.live_deploy.apply_receipt {
-  LiveDeployApplyReceipt, DecisionProceed, DecisionTerminalNoOp, DecisionRefused,
+  LiveDeployApplyReceipt,
   LiveDeployApplyConverged, LiveDeployApplyNotConverged,
   LiveDeployReadinessObserved, LiveDeployReadinessRefused,
   live_deploy_apply_receipt_identity_hex,
@@ -382,11 +382,6 @@ fn dashboard_receipt_blockers(s: RoadmapLaunchDeploymentSubject, plan: PlanRecei
         ),
         concat(
           concat(
-            match d.target_decision {
-              DecisionProceed => []
-              DecisionTerminalNoOp => blocker(member: "dashboard_receipt", detail: "deploy was a terminal no-op; R was not installed by this transaction")
-              DecisionRefused => blocker(member: "dashboard_receipt", detail: "deploy target decision refused")
-            },
             match d.apply_outcome {
               LiveDeployApplyConverged => []
               LiveDeployApplyNotConverged { reason: why } => blocker(member: "dashboard_receipt", detail: join(["deploy did not converge: ", why], ""))

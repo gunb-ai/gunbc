@@ -94,24 +94,11 @@ fn read_live_deploy_fleet_provenance() -> LiveDeployFleetProvenanceRead {
   }
 }
 
-type LiveDeployTargetDecisionLabel = DecisionProceed | DecisionTerminalNoOp | DecisionRefused
+// THE target_decision FIELD AND ITS LABEL WERE DELETED 2026-09-07 (operator ruling). They recorded
+// the verdict of the deploy ordering gate -- proceed / terminal-no-op / refused -- and that gate is
+// gone, so the field had no referent left. A field whose only reachable value is a constant is dead
+// data, not a receipt.
 
-fn target_decision_label_text(d: LiveDeployTargetDecisionLabel) -> String {
-  match d {
-    DecisionProceed => "proceed"
-    DecisionTerminalNoOp => "terminal_no_op"
-    DecisionRefused => "refused"
-  }
-}
-
-fn target_decision_label_of_text(s: String) -> LiveDeployTargetDecisionLabel? {
-  match s {
-    "proceed" => Present { value: DecisionProceed }
-    "terminal_no_op" => Present { value: DecisionTerminalNoOp }
-    "refused" => Present { value: DecisionRefused }
-    _ => none
-  }
-}
 
 type LiveDeployApplyOutcome
   = LiveDeployApplyConverged
@@ -128,7 +115,6 @@ type LiveDeployApplyReceipt {
   candidate_revision: String
   candidate_surface_identity: String
   candidate_tree_oid: String
-  target_decision: LiveDeployTargetDecisionLabel
   apply_outcome: LiveDeployApplyOutcome
   readiness: LiveDeployReadinessOutcome
   provenance: LiveDeployFleetProvenance
@@ -153,7 +139,7 @@ fn live_deploy_apply_receipt_identity_text(r: LiveDeployApplyReceipt) -> String 
   join([
     actions_run_binding_identity_text(binding: r.run), "|", r.target, "|", r.expected_revision, "|",
     r.candidate_revision, "|", r.candidate_surface_identity, "|", r.candidate_tree_oid, "|",
-    target_decision_label_text(d: r.target_decision), "|", live_deploy_apply_outcome_text(o: r.apply_outcome), "|",
+    live_deploy_apply_outcome_text(o: r.apply_outcome), "|",
     live_deploy_readiness_text(o: r.readiness), "|",
     r.provenance.plan_run_id, "|", r.provenance.apply_run_id, "|", r.provenance.plan_artifact_hash, "|",
     r.provenance.plan_receipt_identity, "|", r.provenance.apply_receipt_identity, "|",
@@ -204,7 +190,6 @@ fn live_deploy_apply_receipt_json(r: LiveDeployApplyReceipt) -> JsonValue {
     json_kv(key: "candidate_revision", value: json_string(s: r.candidate_revision)),
     json_kv(key: "candidate_surface_identity", value: json_string(s: r.candidate_surface_identity)),
     json_kv(key: "candidate_tree_oid", value: json_string(s: r.candidate_tree_oid)),
-    json_kv(key: "target_decision", value: json_string(s: target_decision_label_text(d: r.target_decision))),
     json_kv(key: "apply_outcome", value: live_deploy_apply_outcome_json(o: r.apply_outcome)),
     json_kv(key: "readiness", value: live_deploy_readiness_json(o: r.readiness)),
     json_kv(key: "provenance", value: json_object(members: [
@@ -352,12 +337,6 @@ fn live_deploy_apply_receipt_decode(raw: String) -> LiveDeployApplyReceiptDecode
                                 match json_required_string_member(doc: doc, key: "candidate_tree_oid") {
                                   JsonStringMemberRefused { reason: r } => LiveDeployApplyReceiptUnreadable { reason: r }
                                   JsonStringMemberFound { value: tree_oid } =>
-                                    match json_required_string_member(doc: doc, key: "target_decision") {
-                                      JsonStringMemberRefused { reason: r } => LiveDeployApplyReceiptUnreadable { reason: r }
-                                      JsonStringMemberFound { value: decision_text } =>
-                                        match target_decision_label_of_text(s: decision_text) {
-                                          Absent => LiveDeployApplyReceiptUnreadable { reason: join(["target_decision is unknown: ", decision_text], "") }
-                                          Present { value: decision } =>
                                             match live_deploy_apply_outcome_of_member(doc: doc) {
                                               OutcomeUnreadable { reason: r } => LiveDeployApplyReceiptUnreadable { reason: r }
                                               OutcomeDecoded { outcome: apply_outcome } =>
@@ -377,7 +356,6 @@ fn live_deploy_apply_receipt_decode(raw: String) -> LiveDeployApplyReceiptDecode
                                                           candidate_revision: candidate,
                                                           candidate_surface_identity: surface,
                                                           candidate_tree_oid: tree_oid,
-                                                          target_decision: decision,
                                                           apply_outcome: apply_outcome,
                                                           readiness: readiness,
                                                           provenance: provenance,
@@ -397,8 +375,6 @@ fn live_deploy_apply_receipt_decode(raw: String) -> LiveDeployApplyReceiptDecode
                                                     }
                                                 }
                                             }
-                                        }
-                                    }
                                 }
                             }
                         }
