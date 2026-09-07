@@ -15334,9 +15334,17 @@ fn finish_resolved_graph_assembly(
     let services_started = std::time::Instant::now();
     let effect_analysis =
         v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry);
-    // Mirrors typecheck_with_census_extra: the registry is reachable only through the complete arm,
-    // and an incomplete summary carries its causes onto the graph's diagnostics rather than being
-    // unwrapped into something indistinguishable from a fixed point.
+    // ONE AUTHORITY FOR THE CAUSE-TO-DIAGNOSTIC MAPPING, called rather than mirrored by hand. This
+    // block used to hand-copy `typecheck_with_census_extra`'s five-arm `EffectIncompleteness` match,
+    // three of its message strings verbatim included -- two sources for one fact, which DESIGN §2
+    // calls the forked-logic trap and §3 an authority fork, and whose failure is silent: a message
+    // edited on one side, or a sixth arm added on one side and defaulted on the other, disagrees
+    // with nothing that would refuse. It now calls the generated mirror of the `.dag` declaration
+    // `v1.compiler.infer` `effect_incompleteness_diagnostics`, so the two paths cannot disagree and
+    // a new arm is a compile error on both. What stays mirrored here is only the SHAPE of the
+    // unwrap: the registry is reachable through the complete arm alone, and an incomplete summary
+    // carries its causes onto the graph's diagnostics rather than being unwrapped into something
+    // indistinguishable from a fixed point.
     let (expanded_registry, incompleteness_diagnostics): (
         Rc<im::HashMap<String, Rc<ItemInfo>>>,
         Vec<Rc<ErrorNode>>,
@@ -15347,65 +15355,13 @@ fn finish_resolved_graph_assembly(
         crate::v1_compiler_infer_service::ServiceEffectAnalysis::EffectsIncomplete {
             partial,
             causes,
-        } => {
-            let diags = causes
+        } => (
+            partial.clone(),
+            v1_compiler_infer::effect_incompleteness_diagnostics(causes.clone())
                 .iter()
-                .map(|cause| match cause.as_ref() {
-                    crate::v1_compiler_infer_service::EffectIncompleteness::UnresolvedCalleeEdge {
-                        item_identity,
-                        spelling,
-                    } => v1_compiler_infer::inference_error(
-                        format!(
-                            "effect summary incomplete: call to '{}' in {} has no established callee identity, so its effects cannot be joined",
-                            spelling,
-                            crate::v1_std_core::callable_identity(item_identity.clone())
-                        ),
-                        crate::v1_std_core::no_span(),
-                        item_identity.owner_module_path.clone(),
-                    ),
-                    crate::v1_compiler_infer_service::EffectIncompleteness::ExpansionBudgetExhausted {
-                        remaining_delta: _,
-                    } => v1_compiler_infer::inference_error(
-                        "effect summary incomplete: transitive service expansion exhausted its pass budget while dependencies were still propagating, so the published summary is a truncation rather than a fixed point".to_string(),
-                        crate::v1_std_core::no_span(),
-                        String::new(),
-                    ),
-                    crate::v1_compiler_infer_service::EffectIncompleteness::ResolvedCalleeRegistryRowAbsent {
-                        caller,
-                        callee,
-                    } => v1_compiler_infer::inference_error(
-                        format!(
-                            "effect summary incomplete: {} calls {}, whose identity is established but names no registry row, so the join contributed nothing and the caller's summary omits whatever that callee does",
-                            crate::v1_std_core::callable_identity(caller.clone()),
-                            crate::v1_std_core::callable_identity(callee.clone())
-                        ),
-                        crate::v1_std_core::no_span(),
-                        caller.owner_module_path.clone(),
-                    ),
-                    crate::v1_compiler_infer_service::EffectIncompleteness::FunctionValueEffectsUnresolved {
-                        caller,
-                    } => crate::v1_std_core::make_error_node(
-                        Rc::new(crate::v1_std_core::CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue {
-                            caller: crate::v1_std_core::callable_identity(caller.clone()),
-                            span: crate::v1_std_core::no_span(),
-                        }),
-                        caller.owner_module_path.clone(),
-                    ),
-                    crate::v1_compiler_infer_service::EffectIncompleteness::LocalBindingEffectsUnresolved {
-                        caller,
-                        name,
-                    } => crate::v1_std_core::make_error_node(
-                        Rc::new(crate::v1_std_core::CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding {
-                            caller: crate::v1_std_core::callable_identity(caller.clone()),
-                            name: name.clone(),
-                            span: crate::v1_std_core::no_span(),
-                        }),
-                        caller.owner_module_path.clone(),
-                    ),
-                })
-                .collect();
-            (partial.clone(), diags)
-        }
+                .cloned()
+                .collect(),
+        ),
     };
     resolve_stage_slot_add(|s| s.assembly_services += services_started.elapsed().as_nanos());
     let diagnostics_started = std::time::Instant::now();

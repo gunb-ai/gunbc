@@ -13692,6 +13692,50 @@ fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, inte
   typecheck_with_census_extra(graph: graph, source_indices: source_indices, intern_table: intern_table, census_fill_modules: [], census_si: source_indices)
 }
 
+// ONE HOME FOR THE CAUSE-TO-DIAGNOSTIC MAPPING, BECAUSE IT HAD TWO AND THEY COULD DRIFT.
+// The seed's graph assembly renders the same five EffectIncompleteness arms the moment it unwraps a
+// ServiceEffectAnalysis, and it did so by HAND-COPYING this match -- three of the message strings
+// verbatim. Two sources for one fact is the section 2 forked-logic trap and the section 3 authority
+// fork, and the failure it buys is silent: a message edited here and not there, or a sixth arm added
+// here and defaulted there, disagrees with nothing that would refuse. The construction was available
+// rather than deferred, which is what makes deferring it wrong -- this is a pure fold over a
+// coproduct with no host effect, so the seed calls the generated mirror of THIS declaration and the
+// two paths become incapable of disagreeing.
+fn effect_incompleteness_diagnostics(causes: List<EffectIncompleteness>) -> List<ErrorNode> {
+  causes |> map(reason =>
+    match reason {
+      UnresolvedCalleeEdge { item_identity: item_identity, spelling: spelling } =>
+        inference_error(
+          message: concat("effect summary incomplete: call to '", spelling, "' in ", callable_identity(id: item_identity), " has no established callee identity, so its effects cannot be joined"),
+          span: no_span(),
+          module_name: item_identity.owner_module_path
+        )
+      ExpansionBudgetExhausted { remaining_delta: _ } =>
+        inference_error(
+          message: "effect summary incomplete: transitive service expansion exhausted its pass budget while dependencies were still propagating, so the published summary is a truncation rather than a fixed point",
+          span: no_span(),
+          module_name: ""
+        )
+      ResolvedCalleeRegistryRowAbsent { caller: caller, callee: callee } =>
+        inference_error(
+          message: concat("effect summary incomplete: ", callable_identity(id: caller), " calls ", callable_identity(id: callee), ", whose identity is established but names no registry row, so the join contributed nothing and the caller's summary omits whatever that callee does"),
+          span: no_span(),
+          module_name: caller.owner_module_path
+        )
+      FunctionValueEffectsUnresolved { caller: caller } =>
+        make_error_node(
+          diagnostic: EffectSummaryIncompleteAtFunctionValue { caller: callable_identity(id: caller), span: no_span() },
+          module_name: caller.owner_module_path
+        )
+      LocalBindingEffectsUnresolved { caller: caller, name: name } =>
+        make_error_node(
+          diagnostic: EffectSummaryIncompleteAtLocalBinding { caller: callable_identity(id: caller), name: name, span: no_span() },
+          module_name: caller.owner_module_path
+        )
+    }
+  )
+}
+
 fn typecheck_with_census_extra(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, census_fill_modules: List<Node>, census_si: Map<String, NewlineIndex>) -> TypedGraph {
   let intern_table = seed_kernel_intern_table(intern_table: intern_table)
   let resolved_by_name = graph.modules |> fold(init: empty_map(), f: (acc, rm) =>
@@ -13739,38 +13783,7 @@ fn typecheck_with_census_extra(graph: ModuleGraph, source_indices: Map<String, N
     EffectsComplete { registry: _ } => []
     EffectsIncomplete { partial: _, causes: causes } => causes
   }
-  let incompleteness_diagnostics = incompleteness_causes |> map(reason =>
-    match reason {
-      UnresolvedCalleeEdge { item_identity: item_identity, spelling: spelling } =>
-        inference_error(
-          message: concat("effect summary incomplete: call to '", spelling, "' in ", callable_identity(id: item_identity), " has no established callee identity, so its effects cannot be joined"),
-          span: no_span(),
-          module_name: item_identity.owner_module_path
-        )
-      ExpansionBudgetExhausted { remaining_delta: _ } =>
-        inference_error(
-          message: "effect summary incomplete: transitive service expansion exhausted its pass budget while dependencies were still propagating, so the published summary is a truncation rather than a fixed point",
-          span: no_span(),
-          module_name: ""
-        )
-      ResolvedCalleeRegistryRowAbsent { caller: caller, callee: callee } =>
-        inference_error(
-          message: concat("effect summary incomplete: ", callable_identity(id: caller), " calls ", callable_identity(id: callee), ", whose identity is established but names no registry row, so the join contributed nothing and the caller's summary omits whatever that callee does"),
-          span: no_span(),
-          module_name: caller.owner_module_path
-        )
-      FunctionValueEffectsUnresolved { caller: caller } =>
-        make_error_node(
-          diagnostic: EffectSummaryIncompleteAtFunctionValue { caller: callable_identity(id: caller), span: no_span() },
-          module_name: caller.owner_module_path
-        )
-      LocalBindingEffectsUnresolved { caller: caller, name: name } =>
-        make_error_node(
-          diagnostic: EffectSummaryIncompleteAtLocalBinding { caller: callable_identity(id: caller), name: name, span: no_span() },
-          module_name: caller.owner_module_path
-        )
-    }
-  )
+  let incompleteness_diagnostics = effect_incompleteness_diagnostics(causes: incompleteness_causes)
   TypedGraph {
     modules: modules,
     item_registry: analysed_registry,
