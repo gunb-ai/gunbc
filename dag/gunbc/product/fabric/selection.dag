@@ -1060,34 +1060,50 @@ fn candidate_digest<P>(c: PricedCandidate<P>, demand_key: NonEmptyStr) -> Fnv1a6
   rendezvous_digest(demand_key: demand_key, offer_key: c.candidate.offer.id.key).digest
 }
 
-fn cohort_maximum_digest<P>(cohort: List<PricedCandidate<P>>, demand_key: NonEmptyStr) -> Fnv1a64StructuralDigestHex? {
-  fold(cohort, init: none, f: (acc, c) => {
-    let d = candidate_digest(c: c, demand_key: demand_key)
-    match acc {
-      Absent => Present { value: d }
-      Present { value: m } => if d > m { Present { value: d } } else { Present { value: m } }
+// EACH CANDIDATE IS DIGESTED EXACTLY ONCE. The obvious shape -- ask, for each member, how many
+// members share its digest -- is a quadratic fold that recomputes the hash inside its own inner loop,
+// and §6's bare-minimum-cost rule fixes a proven cost shape regardless of the realized n. n is not
+// fixed by any one caller: select_supply is the shared fabric selector. So the cohort is keyed once,
+// and every later question -- the maximum, whether a digest repeats, which candidate carries it -- is
+// a linear pass over the keyed list.
+type KeyedCandidate<P> {
+  candidate: PricedCandidate<P>
+  digest: Fnv1a64StructuralDigestHex
+}
+
+fn key_cohort<P>(cohort: List<PricedCandidate<P>>, demand_key: NonEmptyStr) -> List<KeyedCandidate<P>> {
+  map(cohort, c => KeyedCandidate { candidate: c, digest: candidate_digest(c: c, demand_key: demand_key) })
+}
+
+// THE COHORT IS SORTED BY DIGEST ONCE, AND EVERY REMAINING QUESTION IS ADJACENCY IN THAT ORDER. A
+// repeat is two neighbours that agree, and the winner is the element the walk ends on -- both linear,
+// and both independent of the roster order the candidates arrived in, because the sort is on the
+// digest alone.
+//
+// A DUPLICATE ANYWHERE IN THE COHORT REFUSES, not only one at the winning digest. Two candidates the
+// policy cannot tell apart are unresolvable whether or not a third would have beaten them: answering
+// with the third would make the outcome depend on which offers happened to sit beside an ambiguity
+// the policy never resolved.
+type DigestScan<P> {
+  latest: KeyedCandidate<P>?
+  duplicate: Fnv1a64StructuralDigestHex?
+}
+
+fn adjacent_repeat<P>(previous: KeyedCandidate<P>?, k: KeyedCandidate<P>) -> Fnv1a64StructuralDigestHex? {
+  match previous {
+    Absent => none
+    Present { value: p } => if p.digest == k.digest { Present { value: k.digest } } else { none }
+  }
+}
+
+fn scan_sorted<P>(sorted: List<KeyedCandidate<P>>) -> DigestScan<P> {
+  fold(sorted, init: DigestScan { latest: none, duplicate: none }, f: (acc, k) => {
+    let repeat = match acc.duplicate {
+      Present { value: d } => Present { value: d }
+      Absent => adjacent_repeat(previous: acc.latest, k: k)
     }
+    DigestScan { latest: Present { value: k }, duplicate: repeat }
   })
-}
-
-fn cohort_count_at_digest<P>(cohort: List<PricedCandidate<P>>, demand_key: NonEmptyStr, digest: Fnv1a64StructuralDigestHex) -> Nat {
-  fold(cohort, init: 0, f: (n, c) => if candidate_digest(c: c, demand_key: demand_key) == digest { n + 1 } else { n })
-}
-
-fn cohort_at_digest<P>(cohort: List<PricedCandidate<P>>, demand_key: NonEmptyStr, digest: Fnv1a64StructuralDigestHex) -> PricedCandidate<P>? {
-  first(filter(cohort, c => candidate_digest(c: c, demand_key: demand_key) == digest))
-}
-
-// A DUPLICATE ANYWHERE IN THE COHORT REFUSES, not only a duplicate at the winning digest. Two
-// candidates the policy cannot tell apart are unresolvable whether or not a third would have beaten
-// them: answering with the third would make the outcome depend on which offers happened to be in the
-// roster beside an ambiguity the policy never resolved. The digest reported is the maximum duplicated
-// one so the refusal is the same value in every roster order.
-fn cohort_duplicated_digest<P>(cohort: List<PricedCandidate<P>>, demand_key: NonEmptyStr) -> Fnv1a64StructuralDigestHex? {
-  cohort_maximum_digest(
-    cohort: filter(cohort, c => cohort_count_at_digest(cohort: cohort, demand_key: demand_key, digest: candidate_digest(c: c, demand_key: demand_key)) > 1),
-    demand_key: demand_key,
-  )
 }
 
 // A COLLISION REFUSES RATHER THAN FALLING BACK. Returning the roster-first candidate when two
@@ -1108,19 +1124,17 @@ fn resolve_cohort<P>(
         Absent => none
         Present { value: c } => Present { value: TieResolved { winner: c } }
       }
-    DemandKeyedRendezvous =>
-      match cohort_duplicated_digest(cohort: cohort, demand_key: demand_key) {
+    DemandKeyedRendezvous => {
+      let scanned = scan_sorted(sorted: sort_by(key_cohort(cohort: cohort, demand_key: demand_key), k => k.digest as String))
+      match scanned.duplicate {
         Present { value: d } => Present { value: TieUnresolvedCollision { digest: d } }
         Absent =>
-          match cohort_maximum_digest(cohort: cohort, demand_key: demand_key) {
+          match scanned.latest {
             Absent => none
-            Present { value: d } =>
-              match cohort_at_digest(cohort: cohort, demand_key: demand_key, digest: d) {
-                Absent => none
-                Present { value: c } => Present { value: TieResolved { winner: c } }
-              }
+            Present { value: k } => Present { value: TieResolved { winner: k.candidate } }
           }
       }
+    }
   }
 }
 

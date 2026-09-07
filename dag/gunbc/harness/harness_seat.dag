@@ -37,34 +37,29 @@ import product.fabric.work {
   Shape, CapabilityManifestRef, TrustDomainRef, ExecutionRequirements, CapacityClass, ControlPlaneCapacity,
 }
 import product.fabric.isolation { IsolationProfile }
-import product.fabric.supply {
-  SupplierOffer, GrantDuration, EstimatedGrantDuration,
-  EqualCostOfferTieBreak, StableRosterOrder, DemandKeyedRendezvous,
-}
+import product.fabric.supply { EstimatedGrantDuration, DemandKeyedRendezvous }
 import product.fabric.selection {
-  DispatchInputs, CandidateOffer, CandidateBinding, CandidateBound, DispatchInputsNameAnotherOffer, bind_candidate,
-  CommitmentState, PayAsYouGo,
+  CandidateOffer, CandidateBound, DispatchInputsNameAnotherOffer, bind_candidate,
+  PayAsYouGo,
   SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, OfferCandidacy, select_supply,
 }
 import product.fabric.demand { ObservationReceiptRef }
-import std.measure { MoneyAmountMicro, money_amount_micro }
+import std.measure { money_amount_micro }
 import extdeps.currency.currency { Usd }
 import gunbc.spark.vllm_endpoint_process_launch {
   VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key,
   VllmEndpointProcessLaunchObservation, LaunchObserved, LaunchUnobserved,
 }
 import gunbc.spark.serving_offer {
-  SparkOfferBinding, SparkOfferBound, SparkOfferBindingRefused,
+  SparkOfferBound, SparkOfferBindingRefused,
   SparkServingReadiness, ServingObserved, ServingUnobserved,
-  SparkOfferProjection, spark_serving_capability, spark_serving_shape, bind_spark_serving_offer,
+  spark_serving_capability, spark_serving_shape, bind_spark_serving_offer,
 }
 import gunbc.serving.turn_admission {
-  ServingQueueReading, QueueDepthRead, QueueDepthUnread,
-  ServingCoTenancy, GroupIdle, GroupServingInteractiveTurn, CoTenancyUnread, serving_co_tenancy,
+  serving_co_tenancy,
   ServingSeatOccupancy, NoSeatHeld, SeatsHeldForTurns, SeatOccupancyUnread,
-  ServingGroupAdmission, AdmissibleForColdPrefill, InadmissibleActiveInteractiveTurn, AdmissibilityUnread,
-  serving_group_admission, serving_admission_detail,
   AdmissibleForColdPrefill, InadmissibleActiveInteractiveTurn, AdmissibilityUnread,
+  serving_group_admission, serving_admission_detail,
   serving_dispatch_inputs, serving_isolation_profile, spark_serving_trust_domain, serving_delay_valuation,
 }
 import gunbc.serving.turn_demand { serving_turn_requirements }
