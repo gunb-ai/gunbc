@@ -88,7 +88,7 @@ test fn an_application_reported_with_a_non_grounding_read_is_not_converged() -> 
   )
 }
 
-// The positive control on that detector. Without it a runner that returned NotConverged
+// The positive control on that detector. Without it a classifier that returned NotConverged
 // unconditionally would satisfy the RED above and establish nothing.
 
 test fn an_application_reported_with_a_grounding_read_is_converged() -> Bool {
@@ -155,6 +155,31 @@ test fn a_noop_whose_read_is_absent_is_not_converged() -> Bool {
       grounding: does_not_ground(),
     )
   )
+}
+
+// AN ABSENT READ OVERRIDES A CONTRADICTORY GROUNDING REPORT, and this is the witness that
+// DISCRIMINATES that rule rather than merely reaching it. The witness directly above passes
+// DoesNotGround alongside the absent read, so both arms of classify_reported_grounding return
+// non-grounding and a mutation collapsing the ReadAbsent arm to `grounding` would leave it green:
+// it establishes that the two agreeing inputs agree. Here the two inputs CONTRADICT -- the read is
+// absent and the caller's report claims it grounds anyway -- so only the absence-wins rule produces
+// a non-converged outcome, and the assertion is on the ABSENCE REASON rather than the verdict
+// Boolean, so an implementation that refused for some other cause does not satisfy it either.
+//
+// That table now sits beneath every reconcile_grounded consumer, not only beneath the report
+// carrier, which is why the control is on the rule and not on this call site.
+test fn an_absent_read_does_not_ground_even_when_the_grounding_report_says_it_does() -> Bool {
+  match classify_reconciled(
+    r: reconcile_effect(
+      decision: Noop,
+      application: NotApplied,
+      show_read: ReadAbsent { reason: "target absent" },
+      grounding: Grounds { evidence: "caller claims it grounds" },
+    )
+  ) {
+    EffectNotConverged { reason: why, attempt: _ } => why == "target absent"
+    EffectConverged { converged: _ } => false
+  }
 }
 
 // The decision survives onto the receipt unchanged. A carrier that recorded convergence while losing

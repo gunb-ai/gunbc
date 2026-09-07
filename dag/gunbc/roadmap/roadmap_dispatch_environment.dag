@@ -3,8 +3,6 @@ module gunbc.roadmap_dispatch_environment
 import std.types { String, Bool, List, FilePath, NonEmptyStr }
 import std.upsert_decision {
   UpsertDecision,
-  Noop,
-  Apply,
   Refuse,
   upsert_decision_label,
 }
@@ -110,12 +108,26 @@ fn ensure_observation_evidence(observation: EnsureObservation<String>) -> String
 // the Noop arm from the readback, and the Apply and Refuse arms from a hand-written `false`. Two of
 // the three were literals standing where a derivation belongs, so the arms could disagree with the
 // lifecycle silently and a fourth arm would arrive with no obligation to derive anything at all.
-// ensure_reconcile now answers it once, from the post-apply observation, and the match survives only
-// to choose the human-readable reason — which is genuinely per-arm.
+// ensure_reconcile now answers it once, from the REPORTED effective read, and each arm takes the
+// reason std already classified rather than re-deriving one.
 //
 // Behaviour is unchanged by construction rather than by inspection: reconcile_effect refuses a
-// Refuse, refuses an Apply that did not apply (applied is false here because no capability-specific
-// provisioner is modeled), and grounds a Noop exactly when the readback grounds.
+// Refuse, refuses an Apply reported as NotApplied (this site reports NotApplied because no
+// capability-specific provisioner is modeled), and grounds a Noop exactly when the read grounds.
+//
+// EACH ARM TAKES THE REASON std CLASSIFIED. An earlier revision of this change routed both arms
+// through a capability_receipt_reason helper that re-branched on the decision, which preserved the
+// classified reason only for Noop: Apply substituted a literal and Refuse re-read the decision's own
+// reason. That discards exactly the reasons the classifier adds -- Refuse-paired-with-an-application
+// is a REPORT CONTRADICTION, not the original policy refusal -- so a receipt would have named the
+// wrong cause the moment this site gains a real provisioner. EffectNotConverged.reason is now used
+// directly, and the converged arm is the empty string because classify_reconciled reaches it only
+// through Grounds.
+//
+// The converged arm's evidence is c.evidence, from the sealed result, NOT re-derived from the raw
+// observation. The two are equal today only because the same observation is passed as before and
+// after; consuming the sealed value is what stops that parallel source from diverging when a real
+// second read lands.
 //
 // The observation is passed as BOTH before and after, and that is a real limitation rather than an
 // oversight: this site holds ONE observation per capability, and it is not a second read of the host.
@@ -137,23 +149,6 @@ fn capability_readback_reason(realization: CapabilityRealization) -> String {
     execution_capability_label(capability: realization.capability),
     " identity readback did not ground the requirement",
   ], "")
-}
-
-// Takes the REFUSAL REASON the outcome already carries rather than a Bool the caller re-branches on.
-// An earlier revision took `grounded: Bool`, which meant the coproduct was collapsed to a Boolean at
-// the call site and then immediately re-expanded here -- and the reason std had classified was
-// discarded and a fresh string invented in its place. The empty string is the converged arm, which
-// classify_reconciled reaches only through Grounds.
-fn capability_receipt_reason(
-  decision: UpsertDecision<String>,
-  refusal: String,
-) -> String {
-  match decision {
-    Noop => refusal
-    Apply { plan: _ } =>
-      "capability-specific apply is required before admission; no effect ran in the decision layer"
-    Refuse { reason: reason } => reason as String
-  }
 }
 
 fn capability_ensure_receipt(
@@ -186,8 +181,8 @@ fn capability_ensure_receipt(
         executable: realization.executable as String,
         decision: c.decision,
         grounded: true,
-        evidence: ensure_observation_evidence(observation: observation),
-        reason: capability_receipt_reason(decision: c.decision, refusal: ""),
+        evidence: c.evidence,
+        reason: "",
       }
     EffectNotConverged { reason: why, attempt: a } =>
       CapabilityEnsureReceipt {
@@ -197,7 +192,7 @@ fn capability_ensure_receipt(
         decision: a.decision,
         grounded: false,
         evidence: ensure_observation_evidence(observation: observation),
-        reason: capability_receipt_reason(decision: a.decision, refusal: why),
+        reason: why,
       }
   }
 }

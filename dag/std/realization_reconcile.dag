@@ -137,8 +137,11 @@ fn grounding_qualified_by_durability<E, Target, ReadbackSubject>(
 // was only ever WRITTEN and then matched as `_`, and no consumer in the corpus projects it. A field
 // every producer sets and no fold reads is DESIGN 3c's dangling declaration exactly, and keeping it
 // after removing the evidence payload for that reason would have been indefensible. The Application
-// arm is the lifecycle fact; `outcome` is the verdict; a Boolean restating the arm is a third
-// representation of something already carried twice.
+// argument is the caller's REPORT of which lifecycle arm it took; a Boolean field restating that
+// argument was a second spelling of it, and the classified grounding below is the verdict. This
+// sentence is HISTORY: the present carrier holds no application report at all, because a later
+// review found the Boolean still reachable through the Reconciliation the outcome field was
+// instantiated with, and that field is gone too.
 type ReconciledEffect<P, E> sole_constructor {
   decision: UpsertDecision<P>
   classified_grounding: Grounding<E>
@@ -208,8 +211,11 @@ type ReconciledEffect<P, E> sole_constructor {
 // roadmap_dispatch_environment passes NotApplied -- which moves the dangling declaration up a level
 // instead of removing it. What genuinely earns its keep is the REFUSAL TABLE below: Noop-with-an-
 // application and Refuse-with-an-application are real lifecycle contradictions that a Bool in a
-// separate field could not express as one argument. This arm names which lifecycle branch the caller
-// reports; it does not make the report harder to fabricate than a Bool, and does not claim to.
+// separate field could not NAME. A decision plus a Boolean expresses the same six combinations, so
+// what the coproduct buys is a closed named vocabulary and an exhaustive match over it, not more
+// expressive power -- and an earlier revision of this line claimed the latter. This arm names which
+// lifecycle branch the caller reports; it does not make the report harder to fabricate than a Bool,
+// and does not claim to.
 type Application
   = NotApplied
   | Applied

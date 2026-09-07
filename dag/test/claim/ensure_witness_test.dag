@@ -123,7 +123,7 @@ test fn ensure_inaccessible_never_mutates() -> Bool {
   }
 }
 
-// FOUR DIRECT CONTROLS OVER ensure_reconcile, replacing the deleted ensure_readback witness rather
+// FIVE DIRECT CONTROLS OVER ensure_reconcile, replacing the deleted ensure_readback witness rather
 // than merely dropping it. The generic witnesses in reconciled_effect_witness_test establish the
 // classifier's truth table; these establish that ensure_reconcile CONSTRUCTS and FEEDS that table
 // correctly -- that the decision it derives and the reports it forwards land on the arm they should.
@@ -155,6 +155,37 @@ test fn ensure_reconcile_noop_not_applied_over_a_grounding_report_converges() ->
   converged(r: reconcile_noop_case())
 }
 
+// THE EXACT REASON THE CLASSIFIER PRODUCED REACHES THE OUTCOME, not one reconstructed downstream
+// from the decision. gunbc.roadmap.roadmap_dispatch_environment used to route both receipt arms
+// through a helper that re-branched on the UpsertDecision, so an Apply substituted a literal and a
+// Refuse re-read its own policy reason -- meaning the classifier's reason survived for Noop alone.
+// That is invisible at a Boolean verdict, so this control asserts the STRING.
+//
+// The after mismatch reason here is deliberately distinct from the before mismatch reason: an
+// implementation that carried mismatch_reason forward, or that rebuilt a reason from the Apply arm,
+// fails this and passes every verdict witness above. This is the site the reviewer named as the one
+// where distinct before and after reports are expressible -- the capability receipt cannot express
+// it, because it passes one observation as both.
+test fn ensure_reconcile_carries_the_exact_after_mismatch_reason_onto_the_outcome() -> Bool {
+  match classify_reconciled(
+    r: ensure_reconcile(
+      policy: EnsureMayApply,
+      before: EnsureObserved { evidence: "other-program" },
+      before_satisfies: false,
+      mismatch_reason: "before identity mismatch",
+      plan: EnsurePlanAvailable { plan: "would-install" },
+      application: Applied,
+      after: EnsureObserved { evidence: "other-program" },
+      after_satisfies: false,
+      after_mismatch_reason: "after identity readback did not ground the requirement",
+    )
+  ) {
+    EffectNotConverged { reason: why, attempt: _ } =>
+      why == "after identity readback did not ground the requirement"
+    EffectConverged { converged: _ } => false
+  }
+}
+
 test fn generic_ensure_keystone_holds() -> Bool {
   ensure_satisfied_is_noop_for_every_policy()
     && ensure_known_absence_applies_only_with_authority_and_plan()
@@ -163,4 +194,5 @@ test fn generic_ensure_keystone_holds() -> Bool {
     && ensure_reconcile_apply_applied_over_a_non_grounding_after_report_does_not_converge()
     && ensure_reconcile_apply_not_applied_does_not_converge_even_over_a_grounding_report()
     && ensure_reconcile_noop_not_applied_over_a_grounding_report_converges()
+    && ensure_reconcile_carries_the_exact_after_mismatch_reason_onto_the_outcome()
 }

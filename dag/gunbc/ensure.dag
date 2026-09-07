@@ -100,10 +100,10 @@ fn ensure_decide<P, E>(
 // TWO EARLIER JUSTIFICATIONS FOR THIS FUNCTION ARE RETRACTED, and both were the same mistake --
 // describing a rename as a guarantee. The first said a sink demanding ReconciledEffect thereby
 // demands the lifecycle "all ran"; it does not, and the paragraph above is the authority. The second
-// said a caller "can no longer get a CONVERGED receipt merely by writing a Bool". That was true only
-// while Application carried an evidence payload, and review established that no fold ever read it --
-// so the payload is gone and the sentence with it. Picking the Applied arm is exactly as cheap as
-// writing true. What the carrier actually buys is the REFUSAL TABLE in std.realization_reconcile:
+// said a caller "can no longer get a CONVERGED receipt merely by writing a Bool". That was NEVER
+// true, not even while Application carried an evidence payload: no fold read the payload, so
+// Applied with an empty evidence string was exactly as writable as true. The payload is gone and the
+// sentence with it. Picking the Applied arm is exactly as cheap as writing true. What the carrier actually buys is the REFUSAL TABLE in std.realization_reconcile:
 // Noop-with-an-application and Refuse-with-an-application are lifecycle contradictions that now
 // refuse. That is a real property and it is the only one claimed here.
 //
