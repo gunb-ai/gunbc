@@ -2,6 +2,7 @@ module gunbc.spark.serving_critical_path
 
 import std.types { Bool, String, Int, NonEmptyStr, List }
 import std.nat { Nat }
+import std.measure { Watt, watt }
 import v2.std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -35,14 +36,14 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // wall, not CPU, not the ConnectX-7, not storage -- so an observed 36-44W is roughly 30-37% of the
 // GPU ceiling. Low, but not the far more dramatic fraction a 240W denominator would suggest.
 type PowerEnvelope {
-  watts: Nat
+  watts: Watt
   covers: NonEmptyStr
 }
 
-data spark_system_power_supply: PowerEnvelope = PowerEnvelope { watts: 240, covers: "external power supply for the whole unit" as NonEmptyStr }
-data spark_soc_thermal_envelope: PowerEnvelope = PowerEnvelope { watts: 140, covers: "GB10 SoC TDP, integrated CPU and GPU together" as NonEmptyStr }
-data spark_gpu_power_envelope: PowerEnvelope = PowerEnvelope { watts: 120, covers: "GPU alone, the denominator nvidia-smi power.draw belongs to; nested inside the 140W SoC envelope" as NonEmptyStr }
-data spark_peripheral_power_envelope: PowerEnvelope = PowerEnvelope { watts: 100, covers: "other system components" as NonEmptyStr }
+data spark_system_power_supply: PowerEnvelope = PowerEnvelope { watts: watt(count: 240), covers: "external power supply for the whole unit" as NonEmptyStr }
+data spark_soc_thermal_envelope: PowerEnvelope = PowerEnvelope { watts: watt(count: 140), covers: "GB10 SoC TDP, integrated CPU and GPU together" as NonEmptyStr }
+data spark_gpu_power_envelope: PowerEnvelope = PowerEnvelope { watts: watt(count: 120), covers: "GPU alone, the denominator nvidia-smi power.draw belongs to; nested inside the 140W SoC envelope" as NonEmptyStr }
+data spark_peripheral_power_envelope: PowerEnvelope = PowerEnvelope { watts: watt(count: 100), covers: "other system components" as NonEmptyStr }
 
 // ── WHAT THE TRACE OBSERVED, AS OBSERVATIONS ──────────────────────────────────────────────────
 //
