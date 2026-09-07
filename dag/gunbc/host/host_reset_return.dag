@@ -365,6 +365,42 @@ type ResetIssuanceRoute
 // reset was unattended and went through converge. The unidentified arm therefore refuses BEFORE
 // issuance rather than recording a gap after it, which is the same ordering the observer-identity and
 // pairing walls take, and for the same reason.
+// A REFUSAL BEFORE THE ATTEMPT IS STILL A RECEIPT, and review 62016 found that it was not being
+// written. Five arms refuse before any pairing is minted -- no credential path, no observer label, an
+// unidentified run, an observer the assignment does not place, a subject with no roster row -- and
+// each exited without touching the evidence file. The upload step runs `if: always()` with
+// `if-no-files-found: error` precisely so that "the refused case is the one somebody needs to read",
+// so on every refusal reachable today the run's final red named a MISSING FILE rather than the
+// missing credential. The located diagnostic was displaced by an artifact-plumbing error, which is
+// the annotation-claims-what-the-code-does-not shape this module keeps finding in itself.
+//
+// THESE ARE THEIR OWN VOCABULARY RATHER THAN ResetReturnRefusalCause ARMS, because that type answers
+// for an attempt that was MINTED: every one of its causes presupposes a pairing, a route and an
+// observation to reason about. A preflight refusal has none of those, and widening the verdict type to
+// admit causes it can never receive from reset_return_verdict would make its match arms unreachable
+// while reading as coverage. Two carriers, two subjects, and the receipt line says which it is.
+type ResetPreflightRefusal
+  = BmcCredentialPathUnset { variable: NonEmptyStr }
+  | ObserverLabelUnset { variable: NonEmptyStr }
+  | IssuingRunUnidentified { variable: NonEmptyStr, detail: NonEmptyStr }
+  | ObserverNotAssigned { observer: NonEmptyStr }
+  | SubjectHasNoRosterRow { subject: NonEmptyStr }
+
+fn reset_preflight_refusal_wire(refusal: ResetPreflightRefusal) -> String {
+  match refusal {
+    BmcCredentialPathUnset { variable: v } =>
+      join(["bmc-credential-path-unset variable=", v as String], "")
+    ObserverLabelUnset { variable: v } =>
+      join(["observer-label-unset variable=", v as String], "")
+    IssuingRunUnidentified { variable: v, detail: d } =>
+      join(["issuing-run-unidentified variable=", v as String, " detail=", d as String], "")
+    ObserverNotAssigned { observer: o } =>
+      join(["observer-not-assigned observer=", o as String], "")
+    SubjectHasNoRosterRow { subject: sj } =>
+      join(["subject-has-no-roster-row subject=", sj as String], "")
+  }
+}
+
 type ResetIssuanceRouteRead
   = RouteEstablished { route: ResetIssuanceRoute }
   | RouteUnidentified { variable: NonEmptyStr, detail: NonEmptyStr }

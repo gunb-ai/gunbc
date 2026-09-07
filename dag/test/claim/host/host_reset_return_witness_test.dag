@@ -78,6 +78,12 @@ import gunbc.host_reset_return {
   mint_reset_attempt_receipt,
   reset_return_verdict_of_commit,
   reset_return_refusal_cause_wire,
+  reset_preflight_refusal_wire,
+  BmcCredentialPathUnset,
+  ObserverLabelUnset,
+  IssuingRunUnidentified,
+  ObserverNotAssigned,
+  SubjectHasNoRosterRow,
   second_attempt_property_of_commits,
   select_reset_observer,
 }
@@ -470,6 +476,33 @@ test fn the_issuance_block_and_the_verdict_name_the_same_identity_cause() -> Boo
         HostDrivenBackToKnownState { downtime: _ } => false
       }
   }
+}
+
+// EVERY PREFLIGHT REFUSAL RENDERS A DISTINCT, ACTIONABLE LINE. These are the arms that refuse before a
+// pairing exists, and before review 62016 they exited without writing the receipt at all -- so the
+// always-upload step failed on a missing file and the run's red named the plumbing rather than the
+// credential. The wire function is what the written line carries, so this is the discriminating half:
+// arms that collapsed into one another would leave a reader unable to tell an unnamed observer from an
+// unidentified run, which are different remedies at different layers.
+test fn w_preflight_refusals_do_not_collapse_into_one_another() -> Bool {
+  let a = reset_preflight_refusal_wire(refusal: BmcCredentialPathUnset { variable: "GUNBC_HOST_RESET_BMC_CREDENTIAL_FILE" })
+  let b = reset_preflight_refusal_wire(refusal: ObserverLabelUnset { variable: "GUNBC_HOST_RESET_OBSERVER" })
+  let c = reset_preflight_refusal_wire(refusal: IssuingRunUnidentified { variable: "GITHUB_RUN_ID", detail: "not set" })
+  let d = reset_preflight_refusal_wire(refusal: ObserverNotAssigned { observer: "srv9" })
+  let e = reset_preflight_refusal_wire(refusal: SubjectHasNoRosterRow { subject: "mtcollins1" })
+  a != b && a != c && a != d && a != e
+    && b != c && b != d && b != e
+    && c != d && c != e
+    && d != e
+}
+
+// AND EACH CARRIES THE VALUE A READER HAS TO ACT ON. A wire that named only the class would pass the
+// witness above while telling an operator nothing about WHICH variable was unset or WHICH host.
+test fn w_a_preflight_refusal_names_the_variable_or_host_it_is_about() -> Bool {
+  string_contains(s: reset_preflight_refusal_wire(refusal: ObserverLabelUnset { variable: "GUNBC_HOST_RESET_OBSERVER" }), pattern: "GUNBC_HOST_RESET_OBSERVER")
+    && string_contains(s: reset_preflight_refusal_wire(refusal: IssuingRunUnidentified { variable: "GITHUB_RUN_ID", detail: "set but empty" }), pattern: "set but empty")
+    && string_contains(s: reset_preflight_refusal_wire(refusal: ObserverNotAssigned { observer: "srv9" }), pattern: "srv9")
+    && string_contains(s: reset_preflight_refusal_wire(refusal: SubjectHasNoRosterRow { subject: "mtcollins1" }), pattern: "mtcollins1")
 }
 
 test fn w_a_subject_already_down_at_issuance_has_no_downtime_not_a_zero() -> Bool {

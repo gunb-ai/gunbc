@@ -45,6 +45,13 @@ import gunbc.host_reset_return {
   ResetCommandAcknowledgement,
   ResetIssuanceRoute,
   ResetIssuanceRouteRead,
+  ResetPreflightRefusal,
+  BmcCredentialPathUnset,
+  ObserverLabelUnset,
+  IssuingRunUnidentified,
+  ObserverNotAssigned,
+  SubjectHasNoRosterRow,
+  reset_preflight_refusal_wire,
   RouteEstablished,
   RouteUnidentified,
   ResetNotAttempted,
@@ -484,6 +491,29 @@ func host_reset_return_issue_and_watch(
 // diagnostic and wrote it down.
 data host_reset_bmc_credential_path_env: NonEmptyStr = "GUNBC_HOST_RESET_BMC_CREDENTIAL_FILE" as NonEmptyStr
 
+// THE PREFLIGHT REFUSAL WRITES ITS RECEIPT AND THEN EXITS, in that order, because the upload step
+// that carries the evidence off the runner runs `if: always()` and errors when the file is absent.
+// Before review 62016 these arms exited straight away, so the file the upload demanded never existed
+// and the run's final red named the missing artifact instead of the missing credential -- the located
+// diagnostic displaced by plumbing, on every refusal the mode can actually reach today.
+//
+// attempt=none-minted IS THE HONEST FIELD, not a placeholder. These refusals happen before a pairing
+// exists, so there is no attempt label and no subject to name; writing "unknown" into those fields
+// would be the fabricated-plausible-output shape, and a reader sorting receipts by subject would find
+// a row claiming one. The line says which vocabulary answered it so the two are never confused.
+func host_reset_return_preflight_exit(refusal: ResetPreflightRefusal, remedy: String) -> ProcessExit
+  uses net: std.resources.Network
+{
+  let wire = reset_preflight_refusal_wire(refusal: refusal)
+  let _w = Filesystem.Write(
+    path: host_reset_return_receipt_path as String,
+    content: join(["attempt=none-minted verdict=refused-before-attempt downtime_ms=unavailable cause=", wire, "\n"], ""),
+  )
+  return exit_failure(
+    reason: join(["host reset-return refused before any attempt: ", wire, " -- ", remedy, " (receipt at ", host_reset_return_receipt_path as String, ")"], ""),
+  )
+}
+
 func host_reset_return_wet() -> ProcessExit
   uses net: std.resources.Network
 {
@@ -493,12 +523,9 @@ func host_reset_return_wet() -> ProcessExit
     Present { value: raw } => trim(s: raw)
   }
   if password_file_raw == "" {
-    return exit_failure(
-      reason: join(
-        ["host reset-return: no ", host_reset_bmc_credential_path_env as String,
-         " in the environment, so no controller credential was materialized; refusing before any controller write"],
-        "",
-      )
+    return host_reset_return_preflight_exit(
+      refusal: BmcCredentialPathUnset { variable: host_reset_bmc_credential_path_env },
+      remedy: "no controller credential was materialized, so nothing was written to any controller; the workflow step that would materialize it is the declared frontier for this mode",
     )
   }
   let label = shell.Env.Get(name: host_reset_observer_label_env).value
@@ -507,23 +534,17 @@ func host_reset_return_wet() -> ProcessExit
     Present { value: raw } => trim(s: raw)
   }
   if observer_raw == "" {
-    return exit_failure(
-      reason: join(
-        ["host reset-return: no ", host_reset_observer_label_env as String,
-         " in the environment, so this run does not know which observer the dispatch placed it as. It deliberately does NOT fall back to its own hostname: that would make the label and the machine one reading, and the corroboration between them is the only thing standing between a mislabelled runner and a host resetting itself"],
-        "",
-      )
+    return host_reset_return_preflight_exit(
+      refusal: ObserverLabelUnset { variable: host_reset_observer_label_env },
+      remedy: "this run does not know which observer the dispatch placed it as, and it deliberately does NOT fall back to its own hostname: that would make the label and the machine one reading, and the corroboration between them is the only thing standing between a mislabelled runner and a host resetting itself",
     )
   }
   let observer = observer_raw as NonEmptyStr
   let route = match host_reset_return_converge_route_read() {
     RouteUnidentified { variable: v, detail: d } =>
-      return exit_failure(
-        reason: join(
-          ["host reset-return: the issuing run is unidentified (", v as String, ": ", d as String,
-           "), so a receipt minted here could not name the run that drove the machine. This mode's whole claim is that the reset was unattended and went through converge, and a receipt no reader can trace back to its run does not establish that. Refusing before any controller write rather than recording the gap afterwards"],
-          "",
-        )
+      return host_reset_return_preflight_exit(
+        refusal: IssuingRunUnidentified { variable: v, detail: d },
+        remedy: "a receipt minted here could not name the run that drove the machine, and this mode's whole claim is that the reset was unattended and went through converge, which a receipt no reader can trace back to its run does not establish",
       )
     RouteEstablished { route: r } => r
   }
@@ -533,17 +554,16 @@ func host_reset_return_wet() -> ProcessExit
   )
   return match subject_for_observer(assignment: assignment, observer: observer) {
     Absent =>
-      exit_failure(
-        reason: join(
-          ["host reset-return: this runner is not an assigned observer, so it has no subject to watch: ", observer as String],
-          "",
-        )
+      host_reset_return_preflight_exit(
+        refusal: ObserverNotAssigned { observer: observer },
+        remedy: "this runner is not an assigned observer, so it has no subject to watch",
       )
     Present { value: subject } =>
       match reset_subject_candidate_for(host: subject) {
         Absent =>
-          exit_failure(
-            reason: join(["host reset-return: the assigned subject has no roster row carrying its controller evidence: ", subject as String], "")
+          host_reset_return_preflight_exit(
+            refusal: SubjectHasNoRosterRow { subject: subject },
+            remedy: "the assigned subject has no roster row carrying its controller evidence",
           )
         Present { value: candidate } =>
           host_reset_return_exit(
