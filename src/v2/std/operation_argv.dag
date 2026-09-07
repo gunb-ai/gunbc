@@ -4,9 +4,7 @@ import std.types { String, List, Bool }
 import v2.std.algebra {
   Empty,
   any,
-  filter,
   fold_list,
-  for_all,
   length,
   list_append,
   list_map,
@@ -203,8 +201,7 @@ fn operation_argv_row_bindings(row: ShellTransportOperationRow) -> List<Operatio
 // Census identity is the MATERIALIZED argv LIST (generic bindings of the operation's own declared
 // inputs), not a grep of `transport shell` and not a joined String. Two operations that materialize
 // to the same argv list are one concept under two names (DESIGN 3). Unmaterializable rows are a
-// distinct coproduct arm: their argv is not a comparable fact until evaluation lands. Token join is
-// a LABEL for humans, never the join key (review 61887).
+// distinct coproduct arm: their argv is not a comparable fact until evaluation lands.
 //
 // Unpairable is NOT a slop bucket. Generic materialization refuses argv it cannot evaluate: an
 // ExprCall or a coproduct helper at any position, including argv[0]. git.Plumbing.ReadTreeIntoIndex
@@ -213,26 +210,6 @@ fn operation_argv_row_bindings(row: ShellTransportOperationRow) -> List<Operatio
 // census is blind to exactly those rows. Pairable-only conclusions systematically under-represent
 // composed argv. The expression-residue pin on the corpus witness is a different cut
 // (ArgvRowExpressionResidue) and does not describe Unpairable's composition.
-
-data operation_argv_token_join_separator: String = " :: "
-
-fn operation_argv_token_join(tokens: List<String>) -> String {
-  fold_list(
-    xs: tokens,
-    empty: "",
-    cons: fn(acc, t) {
-      if acc == "" {
-        t
-      } else {
-        concat(acc, concat(operation_argv_token_join_separator, t))
-      }
-    }
-  )
-}
-
-fn operation_ref_eq(a: OperationRef, b: OperationRef) -> Bool {
-  a.path == b.path && a.service == b.service && a.operation == b.operation
-}
 
 fn operation_argv_lists_eq(a: List<String>, b: List<String>) -> Bool {
   length(xs: a) == length(xs: b)
@@ -395,31 +372,6 @@ fn operation_argv_duplicate_authority_pairs() -> List<DuplicateAuthorityOperatio
   operation_argv_duplicate_authority_pairs_from_items(items: operation_argv_census_items())
 }
 
-fn operation_argv_pair_is_fixture(pair: DuplicateAuthorityOperationPair) -> Bool {
-  pair.a.at.path == "dag/test/fixture/argv_executable_position_probe.dag"
-    || pair.b.at.path == "dag/test/fixture/argv_executable_position_probe.dag"
-}
-
-fn operation_argv_live_duplicate_authority_pairs() -> List<DuplicateAuthorityOperationPair> {
-  filter(
-    xs: operation_argv_duplicate_authority_pairs(),
-    predicate: fn(pair) { !operation_argv_pair_is_fixture(pair: pair) }
-  )
-}
-
-fn operation_argv_pair_refs_are_distinct(pair: DuplicateAuthorityOperationPair) -> Bool {
-  !operation_ref_eq(a: pair.a.at, b: pair.b.at)
-}
-
-fn operation_argv_pair_is_planted_duplicate(pair: DuplicateAuthorityOperationPair) -> Bool {
-  let a = pair.a.at.operation
-  let b = pair.b.at.operation
-  pair.a.at.path == "dag/test/fixture/argv_executable_position_probe.dag"
-    && pair.b.at.path == "dag/test/fixture/argv_executable_position_probe.dag"
-    && ((a == "DuplicateAuthorityAlpha" && b == "DuplicateAuthorityBeta")
-      || (a == "DuplicateAuthorityBeta" && b == "DuplicateAuthorityAlpha"))
-}
-
 fn operation_argv_materializations_share_argv(
   left: ArgvMaterialization,
   right: ArgvMaterialization
@@ -432,90 +384,4 @@ fn operation_argv_materializations_share_argv(
     }
     ArgvMaterializationRefused { at: _, cause: _ } => false
   }
-}
-
-fn operation_argv_planted_duplicate_authority_pair_is_found() -> Bool {
-  operation_argv_materializations_share_argv(
-    left: shell_materialize_operation_argv(
-      "dag/test/fixture/argv_executable_position_probe.dag",
-      "ArgvExecutablePositionProbe",
-      "DuplicateAuthorityAlpha",
-      []
-    ),
-    right: shell_materialize_operation_argv(
-      "dag/test/fixture/argv_executable_position_probe.dag",
-      "ArgvExecutablePositionProbe",
-      "DuplicateAuthorityBeta",
-      []
-    )
-  )
-}
-
-fn operation_argv_pair_is_shell_cgroup_directory_duplicate(
-  pair: DuplicateAuthorityOperationPair
-) -> Bool {
-  let a_shell = pair.a.at.path == "dag/extdeps/shell.dag" && pair.a.at.operation == "IsDirectory"
-  let b_shell = pair.b.at.path == "dag/extdeps/shell.dag" && pair.b.at.operation == "IsDirectory"
-  let a_cgroup = pair.a.at.path == "dag/extdeps/linux/cgroup_v2.dag"
-    && pair.a.at.operation == "PathIsDirectory"
-  let b_cgroup = pair.b.at.path == "dag/extdeps/linux/cgroup_v2.dag"
-    && pair.b.at.operation == "PathIsDirectory"
-  (a_shell && b_cgroup) || (a_cgroup && b_shell)
-}
-
-fn operation_argv_shell_cgroup_directory_pair_is_found() -> Bool {
-  let bindings = [operation_argv_bind_text(name: "path", text: "bound-path")]
-  operation_argv_materializations_share_argv(
-    left: shell_materialize_operation_argv(
-      "dag/extdeps/shell.dag",
-      "shell.Test",
-      "IsDirectory",
-      bindings
-    ),
-    right: shell_materialize_operation_argv(
-      "dag/extdeps/linux/cgroup_v2.dag",
-      "linux.CgroupV2",
-      "PathIsDirectory",
-      bindings
-    )
-  )
-}
-
-fn operation_argv_duplicate_authority_pairs_are_well_formed(
-  pairs: List<DuplicateAuthorityOperationPair>
-) -> Bool {
-  for_all(
-    xs: pairs,
-    predicate: fn(pair) {
-      operation_argv_pair_refs_are_distinct(pair: pair) && length(xs: pair.argv) > 0
-    }
-  )
-}
-
-fn operation_argv_pair_label(pair: DuplicateAuthorityOperationPair) -> String {
-  concat(
-    operation_argv_ref_label(at: pair.a.at),
-    concat(" == ", operation_argv_ref_label(at: pair.b.at))
-  )
-}
-
-fn operation_argv_live_duplicate_authority_pair_labels() -> List<String> {
-  list_map(
-    xs: operation_argv_live_duplicate_authority_pairs(),
-    f: fn(pair) { operation_argv_pair_label(pair: pair) }
-  )
-}
-
-fn operation_argv_live_duplicate_authority_pair_labels_joined() -> String {
-  fold_list(
-    xs: operation_argv_live_duplicate_authority_pair_labels(),
-    empty: "",
-    cons: fn(acc, label) {
-      if acc == "" {
-        label
-      } else {
-        concat(acc, concat("\n", label))
-      }
-    }
-  )
 }
