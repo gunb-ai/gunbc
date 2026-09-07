@@ -470,10 +470,10 @@ fn training_manifest_reference(m: TrainingResolvedManifest) -> NonEmptyStr {
 // manifest reference, so a change to ANY coordinate changes the contract and therefore the key;
 // runtime_closure and output_contract additionally travel in their own fields because the fabric
 // reads them for its own purposes and flattening them into the reference would hide them.
+// Content-hash wire as opaque OutputContractRef identity (not content-serialised
+// obligations). The owed subject is that same identity as a single obligation id.
 fn training_work_contract(evidence: TrainingResolutionEvidence) -> WorkContract {
   let m = training_resolved_manifest(evidence: evidence)
-  // Content-hash wire as opaque OutputContractRef identity (not content-serialised
-  // obligations). The owed subject is that same identity as a single obligation id.
   let contract_id = serialize_content_hash(hash: m.output_contract)
   WorkContract {
     program: "gunbc-training-run-low-rank-adaptation",
