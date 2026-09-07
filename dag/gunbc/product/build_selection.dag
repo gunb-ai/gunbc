@@ -45,9 +45,10 @@ import product.build_fulfillment {
   OwnedInventory,
 }
 
-// THE DOMAIN PROJECTOR. std.pareto is the universal selection spine and knows
+// THE DOMAIN PROJECTOR. std.pareto is the Pareto-assessment spine and knows
 // nothing about hardware; this module is the one place that turns a resolved
-// build into the spine's vocabulary. It is the last stage of the pipeline —
+// build into that vocabulary. It projects five axes and never chooses a build
+// — choosing one realization is std.decision. Pipeline:
 // memory_provisioning derives populations, the qualification seam grades them,
 // product.build_fulfillment resolves and prices the lines, and this projects
 // what survives into a comparable field.

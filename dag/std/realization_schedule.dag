@@ -10,7 +10,6 @@ import std.measure {
   byte_size, byte_size_count, watt, time_measure, measure_count,
   second_count, millisecond_count
 }
-import std.pareto { AxisGoal }
 import std.content_hash { ContentHash }
 import std.content_hash {
   Fnv1a64Structural,
@@ -29,18 +28,25 @@ type CostBasis
   = Predicted
   | Measured
 
+// POWER NOT OBSERVED IS NOT AN OBSERVED 0 W. A time-only measurement must not claim Measured
+// watts or bytes it did not see. Selection consumes std.pareto readings and AxisGap rows, never
+// zero-filled CostAccount fields as if they were observations.
+type CostAxisObservation<T>
+  = CostAxisObserved { value: T }
+  | CostAxisUnobserved { obligation: NonEmptyStr }
+
 type CostAccount<S> {
   time: Measure<Time, S, Nat>
-  space: ByteSize
-  power: Watt
+  space: CostAxisObservation<ByteSize>
+  power: CostAxisObservation<Watt>
   basis: CostBasis
 }
 
 fn cost_account_predicted_zero<S>() -> CostAccount<S> {
   CostAccount {
     time: time_measure(count: 0)
-    space: byte_size(count: 0)
-    power: watt(count: 0)
+    space: CostAxisObserved { value: byte_size(count: 0) }
+    power: CostAxisObserved { value: watt(count: 0) }
     basis: Predicted
   }
 }
@@ -48,8 +54,12 @@ fn cost_account_predicted_zero<S>() -> CostAccount<S> {
 fn cost_account_measured<S>(time: Measure<Time, S, Nat>) -> CostAccount<S> {
   CostAccount {
     time: time
-    space: byte_size(count: 0)
-    power: watt(count: 0)
+    space: CostAxisUnobserved {
+      obligation: "space not observed by time-only measurement" as NonEmptyStr
+    }
+    power: CostAxisUnobserved {
+      obligation: "power not observed by time-only measurement" as NonEmptyStr
+    }
     basis: Measured
   }
 }
@@ -58,9 +68,11 @@ fn cost_account_time_count<S>(account: CostAccount<S>) -> Nat {
   measure_count(m: account.time)
 }
 
-type RealizationObjective {
-  goals: List<AxisGoal>
-}
+// RealizationObjective { goals: List<AxisGoal> } DELETED 2026-09-06.
+// It was constructed empty at every corpus site; width_fold_objective_goals ignored the field and
+// hard-coded [LowerIsBetter, LowerIsBetter]. Width-fold axis goals remain local std.pareto
+// AxisGoal values owned by the width fold; realization selection (std.decision)
+// consumes identified SelectionAxis rows and must not be a second objectives roster here.
 
 type WitnessKind
   = CorpusWitnessKind
@@ -541,7 +553,6 @@ type Schedule = List<List<Runnable>>
 
 type RealizationPlan<S> {
   target: ContentHash
-  objective: RealizationObjective
   schedule: Schedule
 
   total: CostAccount<S>

@@ -1,0 +1,303 @@
+module product.mt_collins_power_policy
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.pareto { HigherIsBetter }
+import extdeps.external_authority { CeilingCitedToAuthority, CeilingTranscribedUncited }
+import extdeps.cpu.ampere { ampere_altra_classic_rev_a1_datasheet_authority }
+import std.decision {
+  DecisionVariable,
+  ContextParameter,
+  DecisionConstraint,
+  ObjectiveTerm,
+  ObjectiveMeasure,
+  ChoiceDomain,
+  DecisionSubject,
+  ObjectiveTermSensitivity,
+  SensitivityUnestablished,
+  ConstraintDisposition,
+  ConstraintUnestablished,
+  ParameterDisposition,
+  ParameterUnestablished,
+  DecisionAssessment,
+  DecisionStanding,
+  mint_settled_policy,
+  accept_settled_policy,
+  SettledPolicyAcceptance,
+  SettledPolicyAccepted,
+  SettledPolicyRejectedDeferred,
+  SettledPolicyRejectedRefused,
+  required_sensitivity_cells,
+  PhysicalModelPopulation,
+  PhysicalModelEstablished,
+  PhysicalModelUnestablished,
+  CausalModelPopulation,
+  CausalModelUnestablished,
+  term_set_join,
+  ObjectiveUnderModeled,
+}
+
+// FIRST CONSUMER OF std.decision: fleet operating-point selection, Deferred/NeedsEvidence.
+//
+// Question: which admitted socket-power-cap and active-chassis policy should the Mt. Collins
+// deployment use within its declared workload and site constraints.
+//
+// Objective identity is structural and singular: maximum admitted service capacity under the site
+// power limit. Throughput-per-watt and friends are different objectives and are not silently
+// substituted here.
+//
+// First honest standing is Deferred. Do not encode the withdrawn ~250 W platform constant or the
+// inferred 2.6-2.8 GHz optimum. Obligations join the existing refusal in strategy.mt_collins_power
+// (PowerAssumedOnly while memory population is unread / node_draw refuses) and name the missing
+// controlled BMC power-cap sweep of wall draw and achieved frequency.
+
+data var_socket_power_cap: DecisionVariable = DecisionVariable {
+  identity: decl_ref(module_path: "product.mt_collins_power_policy", decl_name: "var_socket_power_cap"),
+}
+
+data var_powered_chassis_count: DecisionVariable = DecisionVariable {
+  identity: decl_ref(module_path: "product.mt_collins_power_policy", decl_name: "var_powered_chassis_count"),
+}
+
+data param_workload_class: ContextParameter = ContextParameter {
+  identity: decl_ref(module_path: "product.mt_collins_power_policy", decl_name: "param_workload_class"),
+}
+
+data param_installed_hardware: ContextParameter = ContextParameter {
+  identity: decl_ref(module_path: "product.mt_collins_power_policy", decl_name: "param_installed_hardware"),
+}
+
+data param_electricity_tariff: ContextParameter = ContextParameter {
+  identity: decl_ref(module_path: "product.mt_collins_power_policy", decl_name: "param_electricity_tariff"),
+}
+
+data param_thermal_region: ContextParameter = ContextParameter {
+  identity: decl_ref(module_path: "product.mt_collins_power_policy", decl_name: "param_thermal_region"),
+}
+
+data constraint_site_rack_power: DecisionConstraint = DecisionConstraint {
+  identity: decl_ref(module_path: "product.mt_collins_power_policy", decl_name: "constraint_site_rack_power"),
+}
+
+data constraint_available_chassis: DecisionConstraint = DecisionConstraint {
+  identity: decl_ref(module_path: "product.mt_collins_power_policy", decl_name: "constraint_available_chassis"),
+}
+
+data constraint_min_service_capacity: DecisionConstraint = DecisionConstraint {
+  identity: decl_ref(module_path: "product.mt_collins_power_policy", decl_name: "constraint_min_service_capacity"),
+}
+
+data constraint_hardware_cap_range: DecisionConstraint = DecisionConstraint {
+  identity: decl_ref(module_path: "product.mt_collins_power_policy", decl_name: "constraint_hardware_cap_range"),
+}
+
+data term_platform_power: ObjectiveTerm = ObjectiveTerm {
+  identity: decl_ref(module_path: "product.mt_collins_power_policy", decl_name: "term_platform_power"),
+  ground: CeilingTranscribedUncited {
+    read_obligation: "cite platform/fan/PSU wall-draw decomposition; PowerAssumedOnly / unread memory is not an observed 0 W" as NonEmptyStr,
+  },
+}
+
+data term_service_capacity: ObjectiveTerm = ObjectiveTerm {
+  identity: decl_ref(module_path: "product.mt_collins_power_policy", decl_name: "term_service_capacity"),
+  ground: CeilingCitedToAuthority { authority: ampere_altra_classic_rev_a1_datasheet_authority },
+}
+
+data term_fan_power: ObjectiveTerm = ObjectiveTerm {
+  identity: decl_ref(module_path: "product.mt_collins_power_policy", decl_name: "term_fan_power"),
+  ground: CeilingTranscribedUncited {
+    read_obligation: "cite BMC fan curve against temperature or type the fleet-observed coupling receipt; fan power is in the physical model and absent from the declared objective" as NonEmptyStr,
+  },
+}
+
+data objective_max_capacity_under_site_power: ObjectiveMeasure = ObjectiveMeasure {
+  identity: decl_ref(
+    module_path: "product.mt_collins_power_policy",
+    decl_name: "objective_max_capacity_under_site_power",
+  ),
+  goal: HigherIsBetter,
+  terms: [term_service_capacity, term_platform_power],
+}
+
+// Choice domain includes both socket cap and chassis count. "Power 16 chassis at 3.0 and switch 4
+// off" is a point in this domain; an exhaustive disposition of frequency alone never surfaces it.
+data mt_collins_power_choice_domain: ChoiceDomain = ChoiceDomain {
+  identity: decl_ref(
+    module_path: "product.mt_collins_power_policy",
+    decl_name: "mt_collins_power_choice_domain",
+  ),
+  variables: [var_socket_power_cap, var_powered_chassis_count],
+}
+
+data mt_collins_power_policy_subject: DecisionSubject = DecisionSubject {
+  identity: decl_ref(
+    module_path: "product.mt_collins_power_policy",
+    decl_name: "mt_collins_power_policy_subject",
+  ),
+  question: "which admitted socket-power-cap and active-chassis policy should the Mt. Collins deployment use within its declared workload and site constraints" as NonEmptyStr,
+  parameters: [
+    param_workload_class,
+    param_installed_hardware,
+    param_electricity_tariff,
+    param_thermal_region,
+  ],
+  constraints: [
+    constraint_site_rack_power,
+    constraint_available_chassis,
+    constraint_min_service_capacity,
+    constraint_hardware_cap_range,
+  ],
+  objective: objective_max_capacity_under_site_power,
+  choice_domain: mt_collins_power_choice_domain,
+}
+
+data available_chassis_confirm_obligation: NonEmptyStr = "available chassis count must be bound from the held-unit census before settlement; a figure authored in this module is not that census" as NonEmptyStr
+
+data obligation_memory_population_unread: NonEmptyStr = "JOIN strategy.mt_collins_power power_standing PowerAssumedOnly: product.node_power_envelope node_draw refuses while MemoryPopulationEvidence is PopulationModuleUnread — host-side per-slot memory census required before any derived wall figure may close platform-power cells" as NonEmptyStr
+
+data obligation_bmc_power_cap_sweep: NonEmptyStr = "controlled workload and BMC power-cap sweep reading actual wall draw and ACHIEVED frequency across the hardware-supported socket-power-cap range; TDP and cubic fits over rounded SKU ratings are withdrawn and must not close these cells" as NonEmptyStr
+
+data obligation_chassis_policy_measurement: NonEmptyStr = "measure or derive how powered_chassis_count jointly with socket_power_cap moves service capacity and platform power under the site/rack power limit and the twenty available chassis" as NonEmptyStr
+
+fn mt_collins_power_sensitivities() -> List<ObjectiveTermSensitivity> {
+  [
+    SensitivityUnestablished {
+      term: term_platform_power.identity,
+      variable: var_socket_power_cap.identity,
+      obligation: obligation_bmc_power_cap_sweep,
+    },
+    SensitivityUnestablished {
+      term: term_platform_power.identity,
+      variable: var_powered_chassis_count.identity,
+      obligation: obligation_chassis_policy_measurement,
+    },
+    SensitivityUnestablished {
+      term: term_service_capacity.identity,
+      variable: var_socket_power_cap.identity,
+      obligation: obligation_bmc_power_cap_sweep,
+    },
+    SensitivityUnestablished {
+      term: term_service_capacity.identity,
+      variable: var_powered_chassis_count.identity,
+      obligation: obligation_chassis_policy_measurement,
+    },
+  ]
+}
+
+fn mt_collins_power_constraints() -> List<ConstraintDisposition> {
+  [
+    ConstraintUnestablished {
+      constraint: constraint_site_rack_power.identity,
+      obligation: "site/rack power limit must be bound from the live electrical plan once strategy.mt_collins_power can derive rather than assume node wall draw" as NonEmptyStr,
+    },
+    ConstraintUnestablished {
+      constraint: constraint_available_chassis.identity,
+      obligation: available_chassis_confirm_obligation,
+    },
+    ConstraintUnestablished {
+      constraint: constraint_min_service_capacity.identity,
+      obligation: "minimum admitted service capacity has no grounded threshold yet for this deployment" as NonEmptyStr,
+    },
+    ConstraintUnestablished {
+      constraint: constraint_hardware_cap_range.identity,
+      obligation: "hardware-supported socket power-cap range must come from the BMC/SCP surface for the installed Q80-30 build, not from SKU TDP tables" as NonEmptyStr,
+    },
+  ]
+}
+
+fn mt_collins_power_parameters() -> List<ParameterDisposition> {
+  [
+    ParameterUnestablished {
+      parameter: param_workload_class.identity,
+      obligation: "workload class for the controlled sweep is not yet named" as NonEmptyStr,
+    },
+    ParameterUnestablished {
+      parameter: param_installed_hardware.identity,
+      obligation: obligation_memory_population_unread,
+    },
+    ParameterUnestablished {
+      parameter: param_electricity_tariff.identity,
+      obligation: "electricity tariff is a context parameter for this subject and is unbound; it does not substitute for the capacity-under-power objective" as NonEmptyStr,
+    },
+    ParameterUnestablished {
+      parameter: param_thermal_region.identity,
+      obligation: "thermal region for the deployment site is unbound" as NonEmptyStr,
+    },
+  ]
+}
+
+fn mt_collins_physical_model() -> PhysicalModelPopulation {
+  PhysicalModelEstablished {
+    terms: [term_service_capacity.identity, term_platform_power.identity],
+  }
+}
+
+fn mt_collins_physical_model_with_fan() -> List<DeclarationRef> {
+  concat(
+    match mt_collins_physical_model() {
+      PhysicalModelEstablished { terms: ts } => ts
+      PhysicalModelUnestablished { subject: _, read_obligation: _ } => [],
+    },
+    [term_fan_power.identity],
+  )
+}
+
+fn mt_collins_fan_power_under_modeling() -> Bool {
+  match term_set_join(
+    terms: mt_collins_physical_model_with_fan(),
+    objective: objective_max_capacity_under_site_power,
+    subject: mt_collins_power_policy_subject.identity,
+  ) {
+    ObjectiveUnderModeled { subject: _, missing_from_objective: missing } =>
+      (missing |> count) == 1
+    _ => false
+  }
+}
+
+fn mt_collins_causal_model() -> CausalModelPopulation {
+  CausalModelUnestablished {
+    subject: mt_collins_power_policy_subject.identity,
+    read_obligation: "establish vendor-documented BMC fan-curve coupling in extdeps or a gunbc-layer fleet observation receipt; the .dag import graph is not the causal authority" as NonEmptyStr,
+  }
+}
+
+fn mt_collins_power_assessment() -> DecisionAssessment {
+  DecisionAssessment {
+    subject: mt_collins_power_policy_subject,
+    sensitivities: mt_collins_power_sensitivities(),
+    constraints: mt_collins_power_constraints(),
+    parameters: mt_collins_power_parameters(),
+    selected_candidate: Absent,
+    term_drops: [],
+    physical_model: mt_collins_physical_model(),
+    causal_model: mt_collins_causal_model(),
+  }
+}
+
+fn mt_collins_power_policy_standing() -> DecisionStanding {
+  mint_settled_policy(assessment: mt_collins_power_assessment())
+}
+
+fn mt_collins_power_policy_is_deferred() -> Bool {
+  match mt_collins_power_policy_acceptance() {
+    SettledPolicyRejectedDeferred { obligations: _, reopen_trigger: _ } => true
+    SettledPolicyAccepted { policy: _ } => false
+    SettledPolicyRejectedRefused { cause: _ } => false
+  }
+}
+
+fn mt_collins_power_policy_cannot_settle() -> Bool {
+  match mt_collins_power_policy_acceptance() {
+    SettledPolicyAccepted { policy: _ } => false
+    SettledPolicyRejectedDeferred { obligations: _, reopen_trigger: _ } => true
+    SettledPolicyRejectedRefused { cause: _ } => true
+  }
+}
+
+fn mt_collins_power_policy_acceptance() -> SettledPolicyAcceptance {
+  accept_settled_policy(standing: mt_collins_power_policy_standing())
+}
+
+fn mt_collins_required_cell_count() -> Int {
+  required_sensitivity_cells(subject: mt_collins_power_policy_subject) |> count
+}

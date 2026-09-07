@@ -6,7 +6,7 @@
 
 A declared concept is **inert** iff it is **not reachable from a live run-root** over the reference graph. The subtlety that makes this a real lens and not a grep:
 
-- **Reference-count overstates liveness.** A carrier with N>0 consumers can still be inert if all N consumers are themselves inert — a self-referencing cluster. Measured example: `RealizationObjective` and `ComputeOffer` each have 4 consumer files, but `RealizationObjective` is **live** (`ci_floor_plan`, a run-root, imports `realization_width`→it) while the work-demand cluster around `ComputeOffer` reaches nothing that runs. Same count, opposite verdict. **Reachability, not count.**
+- **Reference-count overstates liveness.** A carrier with N>0 consumers can still be inert if all N consumers are themselves inert — a self-referencing cluster. Measured example: `ComputeOffer` has consumer files that reach nothing that runs, while `realization_width` is live via `ci_floor_plan`. Same count-style reading, opposite verdict. **Reachability, not count.**
 - **Run-roots ≠ test-roots.** The existing #5433 backstop seeds reachability from *discovered test witnesses* — it answers "is this lens **covered**?". Inert-layer detection must seed from the *run* roots — what actually executes in production: the CI floor plan, the compiler pipeline driver, the emit entry. A module reached only by tests but by nothing that runs is *inert in production yet covered* — a distinct, also-interesting state. The lens reports both, labeled.
 
 So: **inert = declared ∧ ¬reachable(run-roots)**. Decidable (graph reachability), a pure Node read.
@@ -58,7 +58,7 @@ The 2026-06-21 measurement above is left as measured. Four of its rows name `com
 
 | carrier | reached via |
 | --- | --- |
-| `RealizationObjective` · `realization_width` · `HardwareThreadCount` (11) · `AxisGoal` | `ci_floor_plan` → `realization_width.width_fold_objective_goals` / `memory_aware_spawn_width` — the memory-aware width landed; the *schedule/width* arm of realization is live |
+| `realization_width` · `HardwareThreadCount` (11) · `AxisGoal` | `ci_floor_plan` → `realization_width.width_fold_objective_goals` / `memory_aware_spawn_width` — the memory-aware width landed; the *schedule/width* arm of realization is live. `RealizationObjective.goals` was deleted 2026-09-06 as an empty carrier; width-fold axes stay local `AxisGoal` values, decision completeness lives in `std.decision`. |
 
 The reading: the **schedule/width** arm of the realization layer is now wired; the **cache-plan** arm and the **work-demand / sharding / receipt-digest** arm are the inert load-bearing layers. Exactly the realization-loop thesis ("shape-complete but input-starved"), now with names.
 

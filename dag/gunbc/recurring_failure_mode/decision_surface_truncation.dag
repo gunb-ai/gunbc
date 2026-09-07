@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.decision_surface_truncation
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data decision_surface_truncation: RecurringFailureMode = RecurringFailureMode {
+  identity: "decision_surface_truncation" as NonEmptyStr,
+
+  receipts: [
+    "**decision surface truncation** (INVALID STATE: a recommendation or settlement is produced while the decision subject's required populations are incomplete — a term, variable, constraint, context parameter, sensitivity cell, or choice-domain candidate lacks a disposition — and the absence is read as irrelevance or as license to optimize over the truncated surface. HARM: the truncated surface can rank a policy that a complete subject would refuse or would never even consider; later evidence reopens the same question at interest, and the interim recommendation looks grounded because it carries numbers. ",
+
+    "MECHANISM ON THIS INCIDENT — `axis_relative_invariant_omission`: a platform-power term was treated as droppable because it looked invariant along a socket-power-cap axis, without proving that eliminating it preserved candidate order under the actual objective composition. Under additive minimization an additive constant may be irrelevant to order; under a ratio objective the same constant moves the best ratio. The failure is not that an invariant \"dominated the axis\" — dominance was never established — it is that a term was eliminated without an order-preservation derivation against the objective that was actually being optimized. ",
+
+    "DISTINGUISHING FACTS: (1) Pareto / incomparability is a completed finding when axes trade off, not a fallback to scalarization; scalarization requires a grounded order-preserving authority. (2) Invariance is a three-place relation over (objective term, decision variable, region), not a property of an axis. (3) Closing one variable's axis does not close the choice population — candidates that vary other variables (e.g. powered chassis count) are outside an exhaustive frequency disposition. (4) Required populations come from named authorities; the disposition list is not their oracle. ",
+
+    "Repair: `std.decision` consuming `std.pareto` — completeness as an identity join over required (term, variable) cells; SelectedWithin only over a complete closure and a policy-bound survivor; SelectionNeedsEvidence for unresolved evidence; refuse missing/contradictory/foreign structure; term drops require order-preservation authority. First consumer: `product.fleet_operating_point` / `product.mt_collins_power_policy`, SelectionNeedsEvidence pending aggregate throughput and AC power/energy by operating point, joining strategy.mt_collins_power PowerAssumedOnly / unread memory. ",
+
+    "Rung: mitigatable — incomplete closure refuses settlement through the ordinary mint. ",
+
+    "Ceiling: structurally guaranteed once Settled is unreachable except through a sole-constructor mint that demands complete joins. ",
+
+    "Next-rung trigger: selection-precedes-convergence domain enrolled as a conformance row once `std.decision` is the consumed home, and plan admission derives required cells before worker runs.",
+  ],
+
+  evidence: [],
+}

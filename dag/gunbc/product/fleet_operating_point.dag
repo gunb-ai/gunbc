@@ -1,0 +1,100 @@
+module product.fleet_operating_point
+
+import std.types { List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.pareto {
+  AxisGap,
+  LowerIsBetter,
+  HigherIsBetter,
+  ParetoEntry,
+  SelectionAxis,
+}
+import std.decision {
+  RealizationSelectionResult,
+  UniqueSurvivorRequired,
+  select_realization,
+}
+import product.mt_collins_power_policy { mt_collins_power_assessment }
+
+// FIRST SUBJECT OF REALIZATION SELECTION: an operating point, not a clock.
+// The actuator is what the platform exposes — a socket/chassis power limit is the
+// variable; achieved frequency is an observation. Do not encode a withdrawn 250 W
+// platform constant or a 2.6–2.8 GHz optimum.
+
+data throughput_by_operating_point_axis: DeclarationRef = decl_ref(
+  module_path: "product.fleet_operating_point",
+  decl_name: "throughput_by_operating_point_axis",
+)
+data ac_power_by_operating_point_axis: DeclarationRef = decl_ref(
+  module_path: "product.fleet_operating_point",
+  decl_name: "ac_power_by_operating_point_axis",
+)
+data fleet_operating_point_field: DeclarationRef = decl_ref(
+  module_path: "product.fleet_operating_point",
+  decl_name: "fleet_operating_point_field",
+)
+data fleet_operating_point_constraints: DeclarationRef = decl_ref(
+  module_path: "product.fleet_operating_point",
+  decl_name: "fleet_operating_point_constraints",
+)
+data fleet_operating_point_evidence: DeclarationRef = decl_ref(
+  module_path: "product.fleet_operating_point",
+  decl_name: "fleet_operating_point_evidence",
+)
+data fleet_operating_point_policy: DeclarationRef = decl_ref(
+  module_path: "product.fleet_operating_point",
+  decl_name: "fleet_operating_point_policy",
+)
+data candidate_cap_low: DeclarationRef = decl_ref(
+  module_path: "product.fleet_operating_point",
+  decl_name: "candidate_cap_low",
+)
+data candidate_cap_high: DeclarationRef = decl_ref(
+  module_path: "product.fleet_operating_point",
+  decl_name: "candidate_cap_high",
+)
+
+data gap_aggregate_throughput: AxisGap = AxisGap {
+  axis: throughput_by_operating_point_axis,
+  cause: "aggregate throughput by operating point is unmeasured" as NonEmptyStr,
+}
+data gap_ac_power_energy: AxisGap = AxisGap {
+  axis: ac_power_by_operating_point_axis,
+  cause: "JOIN strategy.mt_collins_power PowerAssumedOnly / MemoryPopulationEvidence unread: AC power/energy by operating point is unmeasured; power not observed is not an observed 0 W" as NonEmptyStr,
+}
+
+fn fleet_operating_point_axes() -> List<SelectionAxis> {
+  [
+    SelectionAxis { identity: throughput_by_operating_point_axis, goal: HigherIsBetter },
+    SelectionAxis { identity: ac_power_by_operating_point_axis, goal: LowerIsBetter },
+  ]
+}
+
+fn unevidenced_point(identity: DeclarationRef, label: NonEmptyStr) -> ParetoEntry {
+  ParetoEntry {
+    identity: identity,
+    display_label: label,
+    readings: [],
+    missing_inputs: [gap_aggregate_throughput, gap_ac_power_energy],
+  }
+}
+
+fn fleet_operating_point_field_rows() -> List<ParetoEntry> {
+  [
+    unevidenced_point(identity: candidate_cap_low, label: "power-limit low, chassis count open" as NonEmptyStr),
+    unevidenced_point(identity: candidate_cap_high, label: "power-limit high, chassis count open" as NonEmptyStr),
+  ]
+}
+
+fn fleet_operating_point_selection() -> RealizationSelectionResult<ParetoEntry> {
+  select_realization(
+    assessment: mt_collins_power_assessment(),
+    candidate_field_identity: fleet_operating_point_field,
+    field: fleet_operating_point_field_rows(),
+    axes: fleet_operating_point_axes(),
+    constraints: [],
+    constraint_authority: fleet_operating_point_constraints,
+    policy: UniqueSurvivorRequired { identity: fleet_operating_point_policy },
+    evidence_snapshot: fleet_operating_point_evidence,
+  )
+}
