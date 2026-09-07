@@ -228,7 +228,7 @@ fn floor_route_gap_chunk_01() -> List<String> {
       head: "test.claim.materialized_ssh_key_file_real_execution_witness.witness_write_owner_only_refuses_when_path_already_exists",
       tail: Cons {
       head: "test.claim.namespace_import_closure_witness.namespace_import_closure_receipt_holds",
-      tail: Cons {
+      tail:    Cons {
       head: "test.claim.parse_test.parse_witness_floor_holds",
       tail: Cons {
       head: "test.claim.parse_test.parse_witness_perf_holds",
@@ -279,6 +279,7 @@ fn floor_route_gap_chunk_01() -> List<String> {
       tail: Cons {
       head: "test.claim.self_host_03_ingest_behavioral_witness.self_host_03_ingest_behavioral_receipt_holds",
       tail: Empty {}
+    }
     }
     }
     }
@@ -615,7 +616,6 @@ fn floor_route_gap_expectation_chunk_02() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.stage0_rust_host_observation_live_witness.scaffold_host_observation_reaches_path_derived_verdict", operation: "git.Inspect.HeadCommit", ground: UnpublishedMockCase {} },
     tail: Empty {}
-  }
   }
   }
   }
