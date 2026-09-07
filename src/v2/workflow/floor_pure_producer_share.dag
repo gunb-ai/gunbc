@@ -214,7 +214,8 @@ import v2.std.collection { List }
 // three.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
-  "v2.extdeps.languages.bash_command_fold.bash_fold_lex"
+  "v2.extdeps.languages.bash_command_fold.bash_fold_lex",
+  "v2.lens.common.outside_modeled_guarantee_join.witness_layer_decl_index"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.
