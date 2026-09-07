@@ -1,11 +1,5 @@
 module v2.test.lens_enforcement.gate_test
 
-import v2.lens.common.construction_justification {
-  ConstructionJustification,
-  WallAfterGrounding
-}
-import std.disposition { SingleAuthority }
-
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -33,7 +27,7 @@ data synthetic_contract: LensContract = {
   claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: NoConsumerWitness,
   exemptions: [],
-  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
+  boundary: ConstructionJustification { class: RatchetForever }
 }
 
 data synthetic_contract_audit_only: LensContract = {
@@ -42,7 +36,7 @@ data synthetic_contract_audit_only: LensContract = {
   claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: NoConsumerWitness,
   exemptions: [],
-  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
+  boundary: ConstructionJustification { class: RatchetForever }
 }
 
 data synthetic_receipt_good: EnrollmentDiscoveryReceipt = {

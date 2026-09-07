@@ -2,31 +2,7 @@ module v2.lens.common.construction_justification
 
 import std.disposition { ConstructionMechanism }
 
-import std.decl_ref {
-  DeclarationRef,
-  WholeDeclaration,
-  declaration_ref_eq
-}
-
-// DESIGN section 4b column beside the ladder. OutsideModeledGuarantee is an identity join
-// against the declaration population via v2.std.decl_ref_resolution.resolve_declaration_ref
-// (the runtime resolution authority). The join lives in
-// v2.lens.common.outside_modeled_guarantee_join so this module stays a type carrier and does
-// not import module_graph. capability_inventory_authority names that producer
-// (`v2.std.decl_index.decl_facts`); boundary_kind is explanatory.
-type GuaranteeBoundaryKind
-  = CapabilityNotRepresented { required: DeclarationRef }
-  | CandidateDomainNotClosed { domain: DeclarationRef }
-  | EquivalenceRelationNotRepresented { relation: DeclarationRef }
-  | ExternalEvidenceRequired { evidence: DeclarationRef }
-  | PolicyJudgmentRequired { judgment: DeclarationRef }
-
-type GuaranteeBoundary {
-  subject: DeclarationRef
-  required_capability: DeclarationRef
-  capability_inventory_authority: DeclarationRef
-  boundary_kind: GuaranteeBoundaryKind
-}
+import std.decl_ref { DeclarationRef }
 
 type ConstructionClass
 
@@ -34,46 +10,8 @@ type ConstructionClass
 
   | WallAfterGrounding { dissolves_to: ConstructionMechanism }
 
-  | OutsideModeledGuarantee { boundary: GuaranteeBoundary }
+  | RatchetForever
 
 type ConstructionJustification {
   class: ConstructionClass
-}
-
-data decl_facts_inventory_authority: DeclarationRef = DeclarationRef {
-  module_path: "v2.std.decl_index",
-  decl_name: "decl_facts",
-  field: WholeDeclaration
-}
-
-fn modeled_outside_boundary(
-  subject: DeclarationRef,
-  required_capability: DeclarationRef,
-  capability_inventory_authority: DeclarationRef,
-  boundary_kind: GuaranteeBoundaryKind
-) -> GuaranteeBoundary {
-  GuaranteeBoundary {
-    subject: subject,
-    required_capability: required_capability,
-    capability_inventory_authority: capability_inventory_authority,
-    boundary_kind: boundary_kind
-  }
-}
-
-fn guarantee_boundary_required_is_not_subject(boundary: GuaranteeBoundary) -> Bool {
-  !declaration_ref_eq(a: boundary.subject, b: boundary.required_capability)
-}
-
-fn wall_now_total_projection_forbids_outside_modeled_guarantee(
-  upstream: ConstructionClass,
-  downstream: ConstructionClass
-) -> Bool {
-  match upstream {
-    WallNow { mechanism: _, authority: _ } =>
-      match downstream {
-        OutsideModeledGuarantee { boundary: _ } => false
-        _ => true
-      }
-    _ => true
-  }
 }

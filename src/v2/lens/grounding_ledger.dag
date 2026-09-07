@@ -1,13 +1,9 @@
 module v2.lens.grounding_ledger
 
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SingleAuthority }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: RatchetForever
 }
-
-// Next-rung: gunbc.guarantee_stall.grounding_ledger_residue_uninhabited_stall.
 
 type ResidueReason
   = DecodeReturnedNone

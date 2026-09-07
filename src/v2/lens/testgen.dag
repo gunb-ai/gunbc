@@ -1,8 +1,7 @@
 module v2.lens.testgen
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SingleAuthority }
+import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
 
 import v2.std.collection { List }
 import std.algebra { FreeMonoid, Empty, Cons }
@@ -2158,7 +2157,5 @@ fn bootstrap_claim_generator_for_manual_anchor(
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: RatchetForever
 }
-
-// Next-rung: gunbc.guarantee_stall.testgen_anchor_generator_totality_stall.
