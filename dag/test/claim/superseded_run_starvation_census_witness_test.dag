@@ -30,8 +30,6 @@ import extdeps.github.workflow_runs {
   Failure,
 }
 
-// ── dead_head_start_standing tests ──────────────────────────────────────���─
-
 test fn dead_start_before_registered_live_job_is_starvation() -> Bool {
   match dead_head_start_standing(
     dead_first_job_started_at: Present { value: "2026-09-04T00:00:10Z" },
@@ -75,8 +73,6 @@ test fn absent_job_rosters_remain_a_coverage_obligation() -> Bool {
     NeitherRunRegisteredAJob => true
   }
 }
-
-// ── pr_number_for_run tests ───────────────────────────────────────────────
 
 data run_with_pull_request: WorkflowRun = WorkflowRun {
   id: 1,
@@ -125,8 +121,6 @@ test fn pr_number_for_run_without_pr_returns_none() -> Bool {
     Absent => true
   }
 }
-
-// ── first_run_with_different_head tests ───────────────────────────────────
 
 data run_sha_abc: WorkflowRun = WorkflowRun {
   id: 3,
@@ -190,8 +184,6 @@ test fn first_run_with_different_head_returns_none_when_empty() -> Bool {
   }
 }
 
-// ── find_group tests ──────────────────────────────────────────────────────
-
 data group_pr_42: PrGroup = PrGroup { pr: 42, runs: [run_sha_abc] }
 data group_pr_99: PrGroup = PrGroup { pr: 99, runs: [run_sha_def] }
 
@@ -208,8 +200,6 @@ test fn find_group_returns_none_for_absent_pr() -> Bool {
     Absent => true
   }
 }
-
-// ── Job counting tests ────────────────────────────────────────────────────
 
 data job_cancelled: WorkflowJobRun = WorkflowJobRun {
   id: 100,
@@ -291,8 +281,6 @@ test fn filter_completed_jobs_only_returns_completed_jobs() -> Bool {
   count_jobs(jobs: completed) == 2
 }
 
-// ── earliest_started_at tests ─────────────────────────────────────────────
-
 test fn earliest_started_at_finds_min_timestamp() -> Bool {
   match earliest_started_at(jobs: [job_success, job_cancelled, job_failed]) {
     Present { value: ts } => ts == "2026-09-01T00:00:00Z"
@@ -314,8 +302,6 @@ test fn earliest_started_at_skips_jobs_without_started_at() -> Bool {
   }
 }
 
-// ── earliest_created_at tests ─────────────────────────────────────────────
-
 test fn earliest_created_at_finds_min_timestamp() -> Bool {
   match earliest_created_at(jobs: [job_success, job_cancelled, job_failed]) {
     Present { value: ts } => ts == "2026-09-01T00:00:00Z"
@@ -331,7 +317,6 @@ test fn earliest_created_at_returns_none_when_no_jobs() -> Bool {
 }
 
 test fn earliest_created_at_returns_none_when_no_created_at() -> Bool {
-  // Jobs without created_at field (not set by the API for in-flight jobs)
   data job_no_created: WorkflowJobRun = WorkflowJobRun {
     id: 200,
     run_id: 1,

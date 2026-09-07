@@ -109,7 +109,6 @@ type CensusResult {
 }
 
 // ── PHASE 1: Paginated run discovery ──────────────────────────────────────
-
 fn collect_runs_in_window(
   auth_token: String,
   owner: String,
@@ -169,7 +168,6 @@ fn runs_from_outcome(outcome: RunCollectionOutcome) -> List<WorkflowRun> {
 }
 
 // ── PHASE 2: Pair extraction ──────────────────────────────────────────────
-
 fn pr_number_for_run(run: WorkflowRun) -> Int? {
   match run.pull_requests {
     Cons { head: pr, tail: _ } => Present { value: pr.number }
@@ -294,7 +292,6 @@ fn extract_boundary_obligations(groups: List<PrGroup>, from: Timestamp) -> List<
 }
 
 // ── PHASE 3: Per-pair refresh ─────────────────────────────────────────────
-
 // Compute elapsed seconds between two ISO-8601 timestamps by converting each
 // to Unix epoch seconds, subtracting, and wrapping in Second.
 fn timestamp_diff_seconds(end: Timestamp, start: Timestamp) -> Second? {
@@ -526,7 +523,6 @@ fn count_jobs(jobs: List<WorkflowJobRun>) -> Int {
 }
 
 // ── PHASE 4: Per-pair enrichment (convert RefreshedPair → CancelledRunJobStanding) ────
-
 fn pair_to_cancellation_row(pair: SupersededRunPair, rp: RefreshedPair) -> CancellationRow {
   CancellationRow {
     pr: pair.pull_request,
@@ -547,7 +543,6 @@ fn pair_to_cancellation_row(pair: SupersededRunPair, rp: RefreshedPair) -> Cance
 }
 
 // ── START STANDINGS AGGREGATION ────────────────────────────────────────────
-
 fn count_start_standing(rows: List<RefreshedPair>, target: String) -> Int {
   match rows {
     Empty {} => 0
@@ -605,7 +600,6 @@ fn collect_cancellation_rows(pairs: List<SupersededRunPair>, refreshed: List<Ref
 }
 
 // ── MAIN ENTRY POINT ──────────────────────────────────────────────────────
-
 func superseded_run_starvation_census(
   auth_token: String,
   owner: String,
@@ -652,7 +646,7 @@ fn extract_pairs_from_groups(groups: List<PrGroup>, from: Timestamp, through: Ti
   match groups {
     Empty {} => []
     Cons { head: g, tail: rest } =>
-      pairs_from_sorted_group(pr: g.pr, runs: sort_by(g.runs, fn(r) { r.created_at }), from: from, through: through)
+      pairs_from_sorted_group(pr: g.pr, sorted: sort_by(g.runs, fn(r) { r.created_at }), from: from, through: through)
       |> concat(extract_pairs_from_groups(groups: rest, from: from, through: through))
   }
 }
