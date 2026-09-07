@@ -35,6 +35,8 @@ data filter_free_call_in_guard_source: String = "module fx.filter_call_guard\nim
 
 data nested_if_filter_in_guard_source: String = "module fx.filter_nested_if_guard\nimport std.types { List, Bool, Int }\nfn f(xs: List<Int>) -> Int {\n  if (if (xs |> filter(x => x > 0) |> count) > 0 { true } else { false }) {\n    1\n  } else {\n    0\n  }\n}\n"
 
+data filter_in_then_of_if_used_as_guard_source: String = "module fx.filter_then_of_guard\nimport std.types { List, Bool, Int }\nfn f(xs: List<Int>) -> Int {\n  if (if (xs |> any(x => x > 0)) { (xs |> filter(x => x > 0) |> count) > 0 } else { false }) {\n    1\n  } else {\n    0\n  }\n}\n"
+
 fn unprojectable_blocking_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {
     CensusObserved { rows: rows } =>
@@ -61,4 +63,9 @@ test fn w_rewritten_free_call_spelling_refuses_via_method_arm_at_emission() -> B
 
 test fn w_nested_if_filter_in_guard_refuses_once() -> Bool {
   unprojectable_blocking_count(source: nested_if_filter_in_guard_source) == 1
+}
+
+test fn w_filter_in_then_of_if_used_as_guard_still_emits() -> Bool {
+  unprojectable_blocking_count(source: filter_in_then_of_if_used_as_guard_source) == 0
+    && compile_dag_rust_emit_check(filter_in_then_of_if_used_as_guard_source, "src/fx_filter_then_of_guard.rs", ["fn f"], [])
 }

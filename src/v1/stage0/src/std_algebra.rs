@@ -435,6 +435,40 @@ pub struct AlgebraFieldTemplate {
     pub callback_element_position: Option<i64>,
 }
 
+pub fn is_collection_filter_template(t: Rc<AlgebraFieldTemplate>) -> bool {
+    matches!(t.return_type.as_ref(), AlgebraTypeTemplate::ReceiverSelf)
+        && matches!(t.size_effect, Some(CollectionSizeEffect::IdentityEffect))
+        && matches!(t.cost_shape, Some(CostShape::ShapeIterateBody))
+        && matches!(t.callback_element_position, Some(0))
+        && is_collection_filter_param_types(t.param_types.clone())
+}
+
+fn is_collection_filter_param_types(param_types: Rc<Vec<Rc<AlgebraTypeTemplate>>>) -> bool {
+    if param_types.len() != 2 {
+        return false;
+    }
+    let recv = param_types.get(0).cloned().unwrap();
+    let pred = param_types.get(1).cloned().unwrap();
+    matches!(recv.as_ref(), AlgebraTypeTemplate::ReceiverSelf)
+        && match pred.as_ref() {
+            AlgebraTypeTemplate::CallableOf {
+                params,
+                return_type,
+            } => {
+                params.len() == 1
+                    && matches!(
+                        params.get(0).map(|el| el.as_ref()),
+                        Some(AlgebraTypeTemplate::ReceiverElement)
+                    )
+                    && matches!(
+                        return_type.as_ref(),
+                        AlgebraTypeTemplate::NamedTemplate { name } if name == "Bool"
+                    )
+            }
+            _ => false,
+        }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CarrierRowMembership {

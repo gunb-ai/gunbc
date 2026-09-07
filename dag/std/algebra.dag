@@ -304,6 +304,26 @@ type AlgebraFieldTemplate {
   callback_element_position: Int?
 }
 
+// Collection filter is this template shape, not the spelling of `name`. A rename of
+// the method token must not disarm emission membership.
+fn is_collection_filter_template(t: AlgebraFieldTemplate) -> Bool {
+  match t.return_type {
+    ReceiverSelf =>
+      t.size_effect == Present { value: IdentityEffect }
+        && t.cost_shape == Present { value: ShapeIterateBody }
+        && t.callback_element_position == Present { value: 0 }
+        && is_collection_filter_param_types(param_types: t.param_types)
+    _ => false
+  }
+}
+
+fn is_collection_filter_param_types(param_types: List<AlgebraTypeTemplate>) -> Bool {
+  match param_types {
+    Cons { head: ReceiverSelf, tail: Cons { head: CallableOf { params: Cons { head: ReceiverElement, tail: Empty }, return_type: NamedTemplate { name: "Bool" } }, tail: Empty } } => true
+    _ => false
+  }
+}
+
 // ONE ROSTER, DECLARED ONCE, AND EVERY SPELLING-KEYED MAP BELOW IS A FOLD OVER IT.
 //
 // What stood here was `kernel_algebra_profile` written out as a nest of ten `map_insert` calls

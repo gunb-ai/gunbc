@@ -15,7 +15,7 @@ import std.primitive_projection {
 
 import extdeps.languages.rust.capabilities { phantom_opaque_carrier_derive_traits }
 
-import std.algebra { trim, AlgebraFieldTemplate }
+import std.algebra { trim, AlgebraFieldTemplate, is_collection_filter_template }
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
 import v1.std.core {
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
@@ -5208,8 +5208,9 @@ fn module_projection_refusals(items: List<Node>, module_name: String) -> List<Er
   items |> flat_map(item => collect_unprojectable_construct_refusals(n: item, module_name: module_name))
 }
 
-// Skip the condition child of ExprIf: collect_filter_in_guard_refusals already walked that
-// tree. Recursing into it would mint a second diagnostic for a nested if in the same guard.
+// Guard membership is the condition spine only: collect_filter_method_calls does not
+// enter nested ExprIf. Recurse into the condition so nested ifs get their own guard
+// scan, and into then/else so a filter in those bodies is not named FilterInBranchCondition.
 fn collect_unprojectable_construct_refusals(n: Node, module_name: String) -> List<ErrorNode> {
   let here = match n.expr_data {
     ExprIf => collect_filter_in_guard_refusals(n: if_condition(texpr: n), module_name: module_name)
@@ -5217,6 +5218,7 @@ fn collect_unprojectable_construct_refusals(n: Node, module_name: String) -> Lis
   }
   let from_children = match n.expr_data {
     ExprIf => concat(
+      collect_unprojectable_construct_refusals(n: if_condition(texpr: n), module_name: module_name),
       collect_unprojectable_construct_refusals(n: if_then_branch(texpr: n), module_name: module_name),
       match if_else_branch(texpr: n) {
         Present { value: e } => collect_unprojectable_construct_refusals(n: e, module_name: module_name)
@@ -5244,16 +5246,12 @@ fn collect_filter_in_guard_refusals(n: Node, module_name: String) -> List<ErrorN
   )
 }
 
-fn is_algebra_filter_name(decl_name: String) -> Bool {
-  decl_name == "filter"
-}
-
 fn is_algebra_filter_method(method_semantics: MethodSemantics?) -> Bool {
   if method_semantics != none {
     match method_semantics.value {
       AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: t } =>
         match t {
-          Present { value: tmpl } => is_algebra_filter_name(decl_name: tmpl.name)
+          Present { value: tmpl } => is_collection_filter_template(t: tmpl)
           Absent => false
         }
       _ => false
@@ -5262,17 +5260,25 @@ fn is_algebra_filter_method(method_semantics: MethodSemantics?) -> Bool {
 }
 
 fn collect_filter_method_calls(n: Node) -> List<Node> {
-  let self_hit = match n.expr_data {
+  match n.expr_data {
+    ExprIf => []
     ExprMethodCall { method_semantics: method_semantics } =>
-      if is_algebra_filter_method(method_semantics: method_semantics) { [n] } else { [] }
-    _ => []
+      concat(
+        if is_algebra_filter_method(method_semantics: method_semantics) { [n] } else { [] },
+        n.children |> flat_map(c => collect_filter_method_calls(n: c)),
+        match n.body {
+          Present { value: b } => collect_filter_method_calls(n: b)
+          Absent => []
+        }
+      )
+    _ => concat(
+      n.children |> flat_map(c => collect_filter_method_calls(n: c)),
+      match n.body {
+        Present { value: b } => collect_filter_method_calls(n: b)
+        Absent => []
+      }
+    )
   }
-  let from_children = n.children |> flat_map(c => collect_filter_method_calls(n: c))
-  let from_body = match n.body {
-    Present { value: b } => collect_filter_method_calls(n: b)
-    Absent => []
-  }
-  concat(self_hit, from_children, from_body)
 }
 
 fn emit_import_name(n: String, registry: Map<String, ItemInfo>) -> String {
