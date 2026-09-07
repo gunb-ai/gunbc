@@ -12,6 +12,7 @@ fn witness_srv3_grant() -> OperatorGrant<Srv3BootOverrideSubject> {
   match srv3_boot_once_cd_operator_granted_approval {
     AuthorizationGranted { grant: g, claim: _ } => g
     AuthorizationPending { request: _ } => witness_unreachable_grant()
+    AuthorizationDenied { escalation_id: _, denied_by: _, denied_at: _, reason: _ } => witness_unreachable_grant()
   }
 }
 
@@ -494,5 +495,62 @@ fn srv3_intent_hashes_differ(a: ContentHash, b: ContentHash) -> Bool {
     ContentHashDifferent => true
     ContentHashEqual => false
     ContentHashCrossFamilyIncomparable => false
+  }
+}
+
+// ── A denial blocks the step; it does not re-open the question ────────────────────────────────
+// srv3_boot_once_cd_default_approval_blocks_execution above asserts that an UNANSWERED request
+// routes to StepAwaitingApproval -- the arm whose whole meaning is "ask the operator". That arm is
+// correct for absence and catastrophic for a denial: a workflow that answers "no" by asking again
+// terminates only when the operator says yes.
+//
+// These two run the same disposition fold over the same escalation, differing only in whether the
+// operator answered, and assert the routing splits.
+
+data witness_denied_approval: ScopedAuthorization<Srv3BootOverrideSubject> = AuthorizationDenied {
+  escalation_id: srv3_boot_once_cd_authorization_request.escalation_id,
+  denied_by: "operator" as NonEmptyStr,
+  denied_at: "2026-09-14T00:00:00Z",
+  reason: "srv3 is serving; do not reboot it from CD today" as NonEmptyStr,
+}
+
+// THE DISCRIMINATING RED. Before AuthorizationDenied existed this state was unrepresentable, so
+// this specimen had to be spelled AuthorizationPending -- and this assertion would have failed
+// against StepAwaitingApproval. It is the routing, not the type, that carries the property.
+test fn a_denied_approval_blocks_the_step_instead_of_asking_again() -> Bool {
+  match srv3_boot_once_cd_workflow_disposition(
+    approval: witness_denied_approval,
+    observed_at: witness_before_expiry,
+  ) {
+    StepBlocked { reason: _ } => true
+    StepAwaitingApproval { request: _ } => false
+    StepRunnable => false
+  }
+}
+
+// THE OPERATOR'S WORDS SURVIVE TO THE BLOCKED REASON. A block that says only "not authorized"
+// sends the next reader back to the operator to ask what they already answered.
+test fn the_denial_reason_reaches_the_blocked_disposition() -> Bool {
+  match srv3_boot_once_cd_workflow_disposition(
+    approval: witness_denied_approval,
+    observed_at: witness_before_expiry,
+  ) {
+    StepBlocked { reason: r } => string_contains(s: r, pattern: "do not reboot it from CD today")
+    StepAwaitingApproval { request: _ } => false
+    StepRunnable => false
+  }
+}
+
+// THE POSITIVE CONTROL ON THE SPLIT. The unanswered request must STILL route to
+// StepAwaitingApproval at the same instant, or the change would have blocked everything and the
+// two tests above would pass for the wrong reason.
+test fn an_unanswered_request_still_routes_to_awaiting_approval() -> Bool {
+  match srv3_boot_once_cd_workflow_disposition(
+    approval: srv3_boot_once_cd_default_approval,
+    observed_at: witness_before_expiry,
+  ) {
+    StepAwaitingApproval { request: _ } => true
+    StepBlocked { reason: _ } => false
+    StepRunnable => false
   }
 }

@@ -8,8 +8,9 @@ import extdeps.languages.json.parse {
   JsonMemberFound, parse_json_document, json_object_unique_member, json_document_gap_text,
 }
 import gunbc.harness.harness_wire {
-  harness_engine_replica_addresses, harness_engine_port, harness_engine_model,
-  HarnessWireShape, harness_replica_pick, harness_backend_url_for_address,
+  harness_engine_replica_roster, HarnessReplicaRoster, HarnessReplicasResolved, HarnessReplicasUnresolved,
+  harness_engine_port, harness_engine_model,
+  HarnessWireShape, harness_backend_url_for_address,
 }
 
 // THE HARNESS REPORTS ITS OWN STANDING, WHICH IS THE POINT RATHER THAN A CONVENIENCE.
@@ -137,6 +138,7 @@ type HarnessReplicaDecline {
 type HarnessBackendRoster
   = HarnessRosterServing { model: String, serving: List<String>, declined: List<HarnessReplicaDecline> }
   | HarnessRosterNoneServing { model: String, declined: List<HarnessReplicaDecline> }
+  | HarnessRosterUnresolved { hosts: List<String> }
 
 type HarnessRosterFold {
   serving: List<String>
@@ -144,7 +146,14 @@ type HarnessRosterFold {
 }
 
 fn harness_observe_roster() -> HarnessBackendRoster {
-  let folded = fold(harness_engine_replica_addresses, init: HarnessRosterFold { serving: [], declined: [] }, f: (acc, a) => {
+  match harness_engine_replica_roster() {
+    HarnessReplicasUnresolved { hosts } => HarnessRosterUnresolved { hosts: map(hosts, h => h as String) }
+    HarnessReplicasResolved { addresses } => harness_observe_addresses(addresses: addresses)
+  }
+}
+
+fn harness_observe_addresses(addresses: List<String>) -> HarnessBackendRoster {
+  let folded = fold(addresses, init: HarnessRosterFold { serving: [], declined: [] }, f: (acc, a) => {
     let standing = harness_observe_replica(address: a)
     if harness_standing_is_serving(standing: standing) {
       HarnessRosterFold { serving: concat(acc.serving, [a]), declined: acc.declined }
@@ -165,6 +174,10 @@ fn harness_declines_detail(declined: List<HarnessReplicaDecline>) -> String {
   ], "")), "; ")
 }
 
+fn harness_roster_unresolved_detail(hosts: List<String>) -> String {
+  join(["harness replica roster unresolved: pair head(s) with no LAN endpoint row in gunbc.fleet_intent_network: ", join(hosts, ", ")], "")
+}
+
 // THE URL AN ATTEMPT POSTS TO, bound at process start from the replicas serving at that moment. The
 // seed spreads concurrent attempts across the serving set; a roster with nothing serving is a typed
 // refusal the entry point exits on, never a URL that will fail on the first turn.
@@ -172,20 +185,32 @@ type HarnessBackendUrl
   = BackendUrlBound { url: String, declined_count: Int }
   | BackendUrlRefused { detail: String }
 
-fn harness_serving_backend_url(shape: HarnessWireShape, seed: String) -> HarnessBackendUrl {
+// THE PROBE BINDS TO THE FIRST REPLICA OBSERVED SERVING. This is an observation entry, not a turn:
+// a turn takes its endpoint from a granted seat (gunbc.harness.harness_seat), and the seed hash
+// that used to spread turns here is gone with the picker it belonged to.
+fn harness_serving_backend_url(shape: HarnessWireShape) -> HarnessBackendUrl {
   match harness_observe_roster() {
     HarnessRosterServing { model: _, serving, declined } =>
-      BackendUrlBound {
-        url: harness_backend_url_for_address(shape: shape, address: harness_replica_pick(seed: seed, replicas: serving)),
-        declined_count: count(declined),
+      match first(serving) {
+        Present { value: a } => BackendUrlBound { url: harness_backend_url_for_address(shape: shape, address: a), declined_count: count(declined) }
+        Absent => BackendUrlRefused { detail: "the serving roster is empty" }
       }
     HarnessRosterNoneServing { model: m, declined } =>
       BackendUrlRefused { detail: join(["no harness replica serves ", m, ": ", harness_declines_detail(declined: declined)], "") }
+    HarnessRosterUnresolved { hosts } => BackendUrlRefused { detail: harness_roster_unresolved_detail(hosts: hosts) }
   }
 }
 
 fn harness_backend_report() -> String {
-  join(map(harness_engine_replica_addresses, a => {
+  match harness_engine_replica_roster() {
+    HarnessReplicasUnresolved { hosts } =>
+      join(["harness replica roster unresolved: no LAN endpoint row for ", join(map(hosts, h => h as String), ", "), "\n"], "")
+    HarnessReplicasResolved { addresses } => harness_addresses_report(addresses: addresses)
+  }
+}
+
+fn harness_addresses_report(addresses: List<String>) -> String {
+  join(map(addresses, a => {
     let standing = harness_observe_replica(address: a)
     join([
       "harness engine ", a, ": ", harness_standing_label(standing: standing), " -- ",

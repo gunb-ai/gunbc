@@ -1,0 +1,334 @@
+module product.capacity.pool
+
+import std.types { Bool, Int, NonEmptyStr, List, Timestamp, EpochSecs }
+import std.nat { Nat }
+import std.measure { Measure, measure_add, measure_le }
+import extdeps.accounting.budget { Appropriation }
+import extdeps.accounting.encumbrance {
+  Encumbrance, EncumbranceState, Held, Expended, Released,
+  EncumbranceLedger, EncumbranceOutcome, LedgerAdvanced, EncumbranceRefused,
+  EncumbranceRefusal, DuplicateReference,
+  reserve_encumbrance, settle_encumbrance, release_encumbrance, encumbrance_charge,
+}
+import extdeps.accounting.appropriation_period {
+  AppropriationPeriod, PeriodWindow, appropriation_period_window, instant_in_window,
+}
+
+// ONE POOL, EVERY CAPACITY. A serving seat, a GitHub core call, a token of a per-minute limit and
+// a micro of budget are the same object: an appropriation with a ceiling, encumbered by leases,
+// settled by consumption, returned by release, and replenished by a law. The census of 2026-09-06
+// found that object modeled in eight vocabularies with one of them carrying the full algebra, so
+// this module is the single authority the others converge onto. It coins nothing: the ledger is
+// extdeps.accounting.encumbrance, the lapse law is extdeps.accounting.appropriation_period, and
+// what this module adds is the join of the two with time.
+//
+// WHAT TIME ADDS, and why the accounting kernel could not carry it: a lease is held FOR A TERM,
+// and a term that has run out returns its capacity whether or not the holder ever spoke again.
+// The kernel records when a commitment ended; it cannot say when one WILL end, because that is
+// not an accounting fact. Here the term is a fact of the lease, expiry is a verdict DERIVED at an
+// instant from the term, and the ledger transition that records the lapse is a separate act any
+// actor may perform once the verdict holds. No process holds a lease; a fold over the pool at an
+// instant says who holds what.
+//
+// WHAT THIS DOES NOT CARRY: a fence. Generation, epoch and ref compare-and-set are the carrier's
+// concern -- which write wins -- and unifying them is the next cut, over the carriers. This module
+// answers what the pool holds at an instant given the entries; it does not decide which entries
+// exist.
+
+// THE REPLENISHMENT LAW. No replenishment is a seat count or a money budget: capacity returns by
+// release only. Lapse at period end is every fixed-window limit: the ledger is scoped to the window
+// an instant falls in, and a new window opens with the full ceiling. A continuous-accrual law (the
+// token bucket) is the third law the algebra admits; it is not declared here because no consumer
+// in the corpus is denominated that way today, and a law with no consumer is a row nothing tests.
+type Replenishment
+  = NoReplenishment
+  | LapseAtPeriodEnd { period: AppropriationPeriod }
+
+// The term a lease was taken for, keyed by the encumbrance reference it governs. Held beside the
+// ledger rather than inside it so the accounting kernel stays about accounting.
+type LeaseTerm {
+  reference: NonEmptyStr
+  acquired_at: EpochSecs
+  expires_at: EpochSecs
+}
+
+type Pool<Q, S> {
+  identity: NonEmptyStr
+  ledger: EncumbranceLedger<Q, S>
+  replenishment: Replenishment
+  terms: List<LeaseTerm>
+}
+
+fn pool_of<Q, S>(identity: NonEmptyStr, ceiling: Measure<Q, S, Nat>, replenishment: Replenishment) -> Pool<Q, S> {
+  Pool {
+    identity: identity,
+    ledger: EncumbranceLedger { appropriation: Appropriation { ceiling: ceiling }, entries: [] },
+    replenishment: replenishment,
+    terms: [],
+  }
+}
+
+fn pool_with<Q, S>(pool: Pool<Q, S>, ledger: EncumbranceLedger<Q, S>, terms: List<LeaseTerm>) -> Pool<Q, S> {
+  Pool { identity: pool.identity, ledger: ledger, replenishment: pool.replenishment, terms: terms }
+}
+
+// A LEASE'S STANDING AT AN INSTANT IS DERIVED, NEVER SUPPLIED. Live until its term runs out,
+// lapsed from that instant on; a reference with no term is a ledger entry this pool never leased,
+// which is answered as its own arm rather than as live-by-default.
+type LeaseStanding
+  = LeaseLive { until: EpochSecs }
+  | LeaseLapsed { at: EpochSecs }
+  | LeaseTermUnknown
+
+fn lease_term_for<Q, S>(pool: Pool<Q, S>, reference: NonEmptyStr) -> LeaseTerm? {
+  first(filter(pool.terms, t => (t.reference as String) == (reference as String)))
+}
+
+fn lease_standing_at<Q, S>(pool: Pool<Q, S>, reference: NonEmptyStr, at: EpochSecs) -> LeaseStanding {
+  match lease_term_for(pool: pool, reference: reference) {
+    Absent => LeaseTermUnknown
+    Present { value: t } =>
+      if at < t.expires_at { LeaseLive { until: t.expires_at } } else { LeaseLapsed { at: t.expires_at } }
+  }
+}
+
+// THE WINDOW AN INSTANT FALLS IN under the pool's law: every instant on a non-lapsing pool, the
+// period's window on a lapsing one, and a typed refusal for an instant before the first known
+// boundary rather than a window invented for it.
+type PoolWindow
+  = WholeLifetime
+  | WindowResolved { window: PeriodWindow }
+  | InstantBeforeAnchor { anchor: EpochSecs, at: EpochSecs }
+
+fn pool_window_at<Q, S>(pool: Pool<Q, S>, at: EpochSecs) -> PoolWindow {
+  match pool.replenishment {
+    NoReplenishment => WholeLifetime
+    LapseAtPeriodEnd { period: p } =>
+      match appropriation_period_window(period: p, at: at) {
+        Absent => InstantBeforeAnchor { anchor: p.anchor, at: at }
+        Present { value: w } => WindowResolved { window: w }
+      }
+  }
+}
+
+fn term_in_window(term: LeaseTerm, window: PoolWindow) -> Bool {
+  match window {
+    WholeLifetime => true
+    WindowResolved { window: w } => instant_in_window(window: w, at: term.acquired_at)
+    InstantBeforeAnchor { anchor: _, at: _ } => false
+  }
+}
+
+// WHAT AN ENTRY CHARGES THE POOL AT AN INSTANT. A held lease charges while live and nothing once
+// lapsed, because a term that ran out returned its capacity by construction. Consumption charges
+// as settled regardless of the term, because what was spent was spent. Anything outside the
+// instant's window charges nothing: that window's authority lapsed with it.
+fn entry_charge_at<Q, S>(pool: Pool<Q, S>, e: Encumbrance<Q, S>, at: EpochSecs, window: PoolWindow) -> Measure<Q, S, Nat> {
+  match lease_term_for(pool: pool, reference: e.reference) {
+    Absent => Measure { count: 0 }
+    Present { value: term } =>
+      if !term_in_window(term: term, window: window) {
+        Measure { count: 0 }
+      } else {
+        match e.state {
+          Held { maximum_liability: m } =>
+            if at < term.expires_at { m } else { Measure { count: 0 } }
+          Expended { actual: a, settled_at: _ } => a
+          Released { reason: _, released_at: _ } => Measure { count: 0 }
+        }
+      }
+  }
+}
+
+fn entries_charging_at<Q, S>(pool: Pool<Q, S>, at: EpochSecs, window: PoolWindow) -> List<Encumbrance<Q, S>> {
+  filter(pool.ledger.entries, e => (entry_charge_at(pool: pool, e: e, at: at, window: window).count) > 0)
+}
+
+// THE READING: committed and ceiling side by side, and the headroom only when the committed total
+// is within the ceiling. An over-committed pool (possible only through an upstream reading that
+// said less than the ledger predicted) reports zero headroom and says it is over, rather than
+// fabricating a negative quantity.
+type PoolReading<Q, S>
+  = PoolRead {
+      committed: Measure<Q, S, Nat>,
+      ceiling: Measure<Q, S, Nat>,
+      headroom: Measure<Q, S, Nat>,
+      over_committed: Bool,
+    }
+  | PoolReadingRefused { at: EpochSecs, anchor: EpochSecs }
+
+fn pool_reading_at<Q, S>(pool: Pool<Q, S>, at: EpochSecs) -> PoolReading<Q, S> {
+  match pool_window_at(pool: pool, at: at) {
+    InstantBeforeAnchor { anchor: a, at: t } => PoolReadingRefused { at: t, anchor: a }
+    WholeLifetime => pool_reading_in(pool: pool, at: at, window: WholeLifetime)
+    WindowResolved { window: w } => pool_reading_in(pool: pool, at: at, window: WindowResolved { window: w })
+  }
+}
+
+fn pool_reading_in<Q, S>(pool: Pool<Q, S>, at: EpochSecs, window: PoolWindow) -> PoolReading<Q, S> {
+  let committed = fold(pool.ledger.entries, init: Measure { count: 0 }, f: (acc, e) =>
+    measure_add(a: acc, b: entry_charge_at(pool: pool, e: e, at: at, window: window)))
+  let ceiling = pool.ledger.appropriation.ceiling
+  if measure_le(a: committed, b: ceiling) {
+    PoolRead { committed: committed, ceiling: ceiling, headroom: Measure { count: ceiling.count - committed.count }, over_committed: false }
+  } else {
+    PoolRead { committed: committed, ceiling: ceiling, headroom: Measure { count: 0 }, over_committed: true }
+  }
+}
+
+type PoolRefusal<Q, S>
+  = LedgerRefusal { refusal: EncumbranceRefusal<Q, S> }
+  | LeaseCrossesLapse { reference: NonEmptyStr, expires_at: EpochSecs, window_end: EpochSecs }
+  | PoolInstantBeforeAnchor { anchor: EpochSecs, at: EpochSecs }
+  | LeaseAlreadyLapsed { reference: NonEmptyStr, lapsed_at: EpochSecs, at: EpochSecs }
+  | LeaseUnknownToPool { reference: NonEmptyStr }
+  | EmptyTerm { reference: NonEmptyStr }
+
+type PoolOutcome<Q, S>
+  = PoolAdvanced { pool: Pool<Q, S> }
+  | PoolRefused { refusal: PoolRefusal<Q, S> }
+
+// ACQUIRE: a lease for a term against the headroom AT THIS INSTANT. The duplicate-reference wall
+// is checked over the whole ledger, because a reference is a key for the pool's lifetime; the
+// ceiling is checked over the entries charging in this window, because that is the authority the
+// instant has. A term that would outlive its window is refused rather than split: the caller
+// leases again after the lapse, in the window that will actually carry the work.
+fn pool_acquire<Q, S>(pool: Pool<Q, S>, reference: NonEmptyStr, amount: Measure<Q, S, Nat>, at: EpochSecs, term_seconds: Nat) -> PoolOutcome<Q, S> {
+  if term_seconds == 0 {
+    PoolRefused { refusal: EmptyTerm { reference: reference } }
+  } else if length(filter(pool.ledger.entries, e => (e.reference as String) == (reference as String))) > 0 {
+    PoolRefused { refusal: LedgerRefusal { refusal: DuplicateReference { reference: reference } } }
+  } else {
+    let expires_at = (at + (term_seconds))
+    match pool_window_at(pool: pool, at: at) {
+      InstantBeforeAnchor { anchor: a, at: t } => PoolRefused { refusal: PoolInstantBeforeAnchor { anchor: a, at: t } }
+      WindowResolved { window: w } =>
+        if expires_at > w.end {
+          PoolRefused { refusal: LeaseCrossesLapse { reference: reference, expires_at: expires_at, window_end: w.end } }
+        } else {
+          acquire_in(pool: pool, reference: reference, amount: amount, at: at, expires_at: expires_at, window: WindowResolved { window: w })
+        }
+      WholeLifetime => acquire_in(pool: pool, reference: reference, amount: amount, at: at, expires_at: expires_at, window: WholeLifetime)
+    }
+  }
+}
+
+fn acquire_in<Q, S>(pool: Pool<Q, S>, reference: NonEmptyStr, amount: Measure<Q, S, Nat>, at: EpochSecs, expires_at: EpochSecs, window: PoolWindow) -> PoolOutcome<Q, S> {
+  let view = EncumbranceLedger { appropriation: pool.ledger.appropriation, entries: entries_charging_at(pool: pool, at: at, window: window) }
+  match reserve_encumbrance(ledger: view, reference: reference, maximum_liability: amount) {
+    EncumbranceRefused { refusal: r } => PoolRefused { refusal: LedgerRefusal { refusal: r } }
+    LedgerAdvanced { ledger: _ } =>
+      PoolAdvanced { pool: pool_with(
+        pool: pool,
+        ledger: EncumbranceLedger {
+          appropriation: pool.ledger.appropriation,
+          entries: concat(pool.ledger.entries, [Encumbrance { reference: reference, state: Held { maximum_liability: amount } }]),
+        },
+        terms: concat(pool.terms, [LeaseTerm { reference: reference, acquired_at: at, expires_at: expires_at }]),
+      ) }
+  }
+}
+
+// SETTLE: consumption against a LIVE lease only. Consuming after the term ran out is spending
+// authority the pool already returned to others, so it refuses with the instant the lease lapsed;
+// the caller leases again rather than the pool absorbing an unauthorized spend.
+fn pool_settle<Q, S>(pool: Pool<Q, S>, reference: NonEmptyStr, actual: Measure<Q, S, Nat>, at: EpochSecs) -> PoolOutcome<Q, S> {
+  match lease_standing_at(pool: pool, reference: reference, at: at) {
+    LeaseTermUnknown => PoolRefused { refusal: LeaseUnknownToPool { reference: reference } }
+    LeaseLapsed { at: lapsed } => PoolRefused { refusal: LeaseAlreadyLapsed { reference: reference, lapsed_at: lapsed, at: at } }
+    LeaseLive { until: _ } =>
+      match settle_encumbrance(ledger: pool.ledger, reference: reference, actual: actual, settled_at: to_string(at) as Timestamp) {
+        EncumbranceRefused { refusal: r } => PoolRefused { refusal: LedgerRefusal { refusal: r } }
+        LedgerAdvanced { ledger: l } => PoolAdvanced { pool: pool_with(pool: pool, ledger: l, terms: pool.terms) }
+      }
+  }
+}
+
+fn pool_release<Q, S>(pool: Pool<Q, S>, reference: NonEmptyStr, reason: NonEmptyStr, at: EpochSecs) -> PoolOutcome<Q, S> {
+  match release_encumbrance(ledger: pool.ledger, reference: reference, reason: reason, released_at: to_string(at) as Timestamp) {
+    EncumbranceRefused { refusal: r } => PoolRefused { refusal: LedgerRefusal { refusal: r } }
+    LedgerAdvanced { ledger: l } => PoolAdvanced { pool: pool_with(pool: pool, ledger: l, terms: pool.terms) }
+  }
+}
+
+// THE LAPSE PASS: record, as released, every held lease whose term has run out by this instant.
+// The verdict was already true in every reading since the term ended; this act makes the ledger
+// say so durably and names the references it touched, so a carrier can write one event per lapse.
+type LapsePass<Q, S> {
+  pool: Pool<Q, S>
+  lapsed: List<NonEmptyStr>
+}
+
+fn lease_is_held_and_lapsed_at<Q, S>(pool: Pool<Q, S>, e: Encumbrance<Q, S>, at: EpochSecs) -> Bool {
+  match e.state {
+    Held { maximum_liability: _ } =>
+      match lease_standing_at(pool: pool, reference: e.reference, at: at) {
+        LeaseLapsed { at: _ } => true
+        LeaseLive { until: _ } => false
+        LeaseTermUnknown => false
+      }
+    Expended { actual: _, settled_at: _ } => false
+    Released { reason: _, released_at: _ } => false
+  }
+}
+
+fn lapse_pass<Q, S>(pool: Pool<Q, S>, at: EpochSecs) -> LapsePass<Q, S> {
+  let lapsed = map(filter(pool.ledger.entries, e => lease_is_held_and_lapsed_at(pool: pool, e: e, at: at)), e => e.reference)
+  let ledger = fold(lapsed, init: pool.ledger, f: (acc, r) =>
+    match release_encumbrance(ledger: acc, reference: r, reason: join(["lapsed at ", to_string(at)], "") as NonEmptyStr, released_at: to_string(at) as Timestamp) {
+      LedgerAdvanced { ledger: l } => l
+      EncumbranceRefused { refusal: _ } => acc
+    })
+  LapsePass { pool: pool_with(pool: pool, ledger: ledger, terms: pool.terms), lapsed: lapsed }
+}
+
+// AN UPSTREAM READING THAT SAYS LESS REMAINS THAN THE LEDGER PREDICTS SHRINKS THE POOL, and it
+// does so as an encumbrance rather than by editing the ceiling: the shortfall is held under a
+// reference that names the reading, for the rest of the window, so the fold shows it and a later
+// reading can supersede it. A reading that says more remains changes nothing: the ledger's
+// outstanding leases are the thing the upstream cannot see.
+fn observe_upstream_remaining<Q, S>(pool: Pool<Q, S>, remaining: Measure<Q, S, Nat>, at: EpochSecs, term_seconds: Nat) -> PoolOutcome<Q, S> {
+  match pool_reading_at(pool: pool, at: at) {
+    PoolReadingRefused { at: t, anchor: a } => PoolRefused { refusal: PoolInstantBeforeAnchor { anchor: a, at: t } }
+    PoolRead { committed: _, ceiling: _, headroom: h, over_committed: _ } =>
+      if measure_le(a: h, b: remaining) {
+        PoolAdvanced { pool: pool }
+      } else {
+        pool_acquire(
+          pool: pool,
+          reference: join(["upstream-observation@", to_string(at)], "") as NonEmptyStr,
+          amount: Measure { count: h.count - remaining.count },
+          at: at,
+          term_seconds: term_seconds,
+        )
+      }
+  }
+}
+
+// A RESET INSTANT THE UPSTREAM REPORTED RE-ANCHORS THE PERIOD so that a window ends exactly there:
+// the anchor becomes the reset instant reduced modulo the period, which is the earliest boundary in
+// the same phase. A pool with no replenishment has no window to anchor and is unchanged. This is a
+// change to the law the fold applies from here on, never a rewrite of an earlier event.
+fn pool_reanchor<Q, S>(pool: Pool<Q, S>, reset_at: EpochSecs) -> Pool<Q, S> {
+  match pool.replenishment {
+    NoReplenishment => pool
+    LapseAtPeriodEnd { period: p } =>
+      Pool {
+        identity: pool.identity,
+        ledger: pool.ledger,
+        replenishment: LapseAtPeriodEnd { period: AppropriationPeriod { period_seconds: p.period_seconds, anchor: reset_at % p.period_seconds } },
+        terms: pool.terms,
+      }
+  }
+}
+
+fn pool_refusal_wire<Q, S>(r: PoolRefusal<Q, S>) -> String {
+  match r {
+    LedgerRefusal { refusal: _ } => "ledger-refused"
+    LeaseCrossesLapse { reference: _, expires_at: _, window_end: _ } => "lease-crosses-lapse"
+    PoolInstantBeforeAnchor { anchor: _, at: _ } => "instant-before-anchor"
+    LeaseAlreadyLapsed { reference: _, lapsed_at: _, at: _ } => "lease-already-lapsed"
+    LeaseUnknownToPool { reference: _ } => "lease-unknown"
+    EmptyTerm { reference: _ } => "empty-term"
+  }
+}

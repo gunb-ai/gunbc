@@ -1,5 +1,6 @@
 module extdeps.http.server
 
+import extdeps.tailscale.identity { TailnetIdentity }
 import extdeps.uri_path { PathTemplate, PathParamBinding }
 import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, HttpStatus, Port }
 import extdeps.external_authority { ExternalAuthority }
@@ -210,10 +211,21 @@ type ServedStaticRouteTable {
   routes: List<ServedStaticRoute>
 }
 
+// THE AUTHENTICATED IDENTITY IS PART OF THE REQUEST, not something a handler fetches.
+//
+// It is carried here rather than passed alongside because a route that needs to know who is asking
+// needs it at the same moment it needs the path, and a second channel for "who" would let the two
+// disagree -- a handler holding request A's path and request B's identity is a shape worth making
+// unwritable rather than merely avoiding. Handlers with nothing to authenticate ignore the field.
+//
+// TailnetIdentityAbsent is a real inhabitant and the correct one for every request that did not
+// arrive through the authenticating proxy. It is not anonymity; extdeps.tailscale.identity carries
+// the argument for why resolving it to a caller would be an absorbing fallback.
 type ServeHttpRequest {
   method: HttpMethod
   path: String
   body: String
+  identity: TailnetIdentity
 }
 
 type ServeHttpResponse {

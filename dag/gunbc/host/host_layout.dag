@@ -290,7 +290,7 @@ data fleet_converge_receipt_dir: String = "/opt/gunbc/receipts"
 //
 // fleet_converge_receipt_dir above is byte-identical to instance_receipts_dir applied to
 // production's instance root ("/opt/gunbc"), which is the half-parameterization
-// live_deploy.emit serve_binary_parent_was_a_literal_note describes: the value that varies
+// live_deploy.emit path_parent_dir's annotation describes: the value that varies
 // became a parameter and the directory holding it stayed a literal. That fork is PRE-EXISTING
 // and is not created here — gunbc.fleet_converge_cli is parameterized by host, not by
 // instance, so de-forking it needs an instance on that path and is not this change's scope.
@@ -328,6 +328,26 @@ fn publication_request_dir(instance_root: String) -> String {
 
 fn publication_answer_dir(instance_root: String) -> String {
   join([publication_spool_root(instance_root: instance_root), "/answers"], "")
+}
+
+// A THIRD DIRECTORY BECAUSE A REQUEST THE HELPER CANNOT DECODE IS NEITHER PENDING NOR ANSWERED.
+//
+// Decoding is a pure function of the request's bytes, so a document that refuses once refuses on
+// every later run: it is a TERMINAL judgment about that document, not a transient one. Left in
+// `requests/` it is a poison pill -- the helper stops the line on it, correctly, and then stops the
+// line on the SAME document forever, at one full run's cost per tick, while every request queued
+// behind it waits. That is the absorbing arm read from the refusing side: the deficit's frequency is
+// unbounded rather than counted, and no analysis can ever restart the line.
+//
+// The quarantine is not an answer and must not be reachable as one. An undecodable request has no
+// decoded subject, so the helper cannot derive an answer address for it (see the helper's own
+// header: the answer address comes from the subject, never from the caller), and writing one at the
+// caller's entry name is exactly the forgery the request/answer permission split makes unwritable.
+// So the bytes move sideways into a directory only the publication principal holds, where they stay
+// readable for the analysis the stopped line demands. The requester is not told anything, which is
+// correct: its question was never understood, and its own gate re-asks while the question is open.
+fn publication_refused_dir(instance_root: String) -> String {
+  join([publication_spool_root(instance_root: instance_root), "/requests-refused"], "")
 }
 
 // srv1 observation (2026-08-13, parent eager-koi-458): directory already briansrls-owned;

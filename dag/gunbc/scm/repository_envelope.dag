@@ -43,6 +43,11 @@ import extdeps.languages.json.emit {
   json_int,
 }
 
+import gunbc.scm.integration {
+  CommitIntegration,
+  NoSquashIntegration,
+  SquashIntegrated,
+}
 import gunbc.scm.ancestry {
   CommitAncestry,
   RootCommit,
@@ -172,7 +177,46 @@ import gunbc.scm.load_standing {
 // designates a CORPUS MANIFEST, so the same bytes in the same member mean different things. A reader
 // that accepted both would resolve a v3 root against the manifest population and answer wrong-kind
 // for a document that was never malformed. The identity rule does NOT move with it -- see below.
-data repository_envelope_format_tag: String = "gunbc-scm-repository-v4"
+// v5 BECAUSE THE ENVELOPE GREW A MEMBER, AND THE BUMP IS FOR THE READER GOING FORWARD RATHER THAN
+// BACK. `staged` is a new envelope member, so a v4 reader meeting a v5 document refuses it at
+// `repository_member_set_refusal` as an unexpected member -- which is the correct outcome and only
+// happens because the tag moved. Holding the tag still would have left a v4 build silently reading a
+// v5 document with the stage member rejected as corruption, or, had the member set been widened,
+// discarding a stage the document declares.
+// v6 BECAUSE THE COMMIT MEMBER SET GREW, WHICH IS A DIFFERENT AXIS FROM v5's ENVELOPE GROWTH AND
+// NEEDS THE TAG TO MOVE FOR THE SAME REASON. `integration` is a new member of every commit record, so
+// a v5 reader meeting a v6 document refuses it at the commit member set -- loudly, as an unexpected
+// member -- rather than reading a document whose provenance it cannot represent. Holding the tag
+// still would have left a v5 build discarding the member on read and DELETING IT ON THE NEXT
+// RE-ENCODE, which is the information loss the closed member set exists to prevent.
+//
+// v5 ABSENCE NORMALIZES TO NoSquashIntegration, AND THAT IS HISTORICAL FACT RATHER THAN A CONVENIENT
+// DEFAULT. No v5 writer had a squash producer -- this cut introduces the first one -- so a v5
+// document's silence about integration is not missing information, it is the complete truth about a
+// repository in which no squash could have occurred. That is the same test v4's `staged` absence had
+// to pass, and it passes for the same reason: the absence has ONE truthful value, and a format whose
+// absence had two would have to refuse instead.
+//
+// THE NEW WRITER EMITS THE MEMBER EXPLICITLY and never leans on absence to mean the canonical state.
+// An optional member whose omission means NoSquashIntegration would make "this commit integrated
+// nothing" and "this writer forgot to say" the same bytes, which is the conflation the arm was
+// spelled as a state to avoid, arriving through the wire instead of through the type.
+data repository_envelope_format_tag: String = "gunbc-scm-repository-v6"
+
+data repository_envelope_format_tag_v5: String = "gunbc-scm-repository-v5"
+
+// v4 IS READ, NOT RETIRED, AND THE DIFFERENCE FROM v3 IS WHETHER A READER CAN PRODUCE THE VALUE.
+//
+// v3 has no reader because its `root` designates a semantic node and this carrier's designates a
+// corpus manifest: producing the v4 type from a v3 document requires inventing authored bytes the
+// semantic projection discarded, so there is nothing honest to return. The staging member is the
+// opposite case. A v4 document was written by a build in which staging did not exist, so nothing was
+// staged when it was written -- `Absent` is not a default chosen to make the read succeed, it is what
+// that document actually says about its stage. A reader supplying it fabricates nothing.
+//
+// SO THE TEST IS NOT "IS THE PREDECESSOR OLD" BUT "CAN THE MISSING FACT BE ANSWERED WITHOUT INVENTING
+// IT". Both v3 and v4 lack something v5 carries; only one of the two absences has a truthful value.
+data repository_envelope_format_tag_v4: String = "gunbc-scm-repository-v4"
 
 // THE FORMER TAG, CARRIED SO THE READER CAN REFUSE IT BY NAME. A v3 image is not corruption; it is a
 // document this build's commit carrier cannot represent, and those are different facts with
@@ -241,11 +285,17 @@ data repository_object_identity_rule_tag: String = "scm-object-identity-v2"
 // and cannot represent source that does not ingest -- so a commit rooted at one could not freeze a
 // comment-only edit or a malformed file, both of which a source-control system must be able to hold.
 // The semantic reading of a commit is now DERIVED from the snapshot rather than stored beside it.
+// `integration` IS NOT A SECOND ANCESTRY MEMBER, and the two sit side by side here precisely so the
+// difference is visible at the carrier. `ancestry` answers WHERE THIS COMMIT SITS IN THIS HISTORY;
+// `integration` answers WHAT SOURCE STATE PRODUCING IT CONSUMED. A squash-integrated commit has one
+// immediate parent and one consumed source, and gunbc.scm.integration owns the second because
+// admitting the source as a parent would make an operation INPUT into an ancestry EDGE.
 type RepositoryCommit sole_constructor {
   reference: RepositoryCommitRef
   root: CorpusManifestObjectRef
   message: String
   ancestry: CommitAncestry
+  integration: CommitIntegration
 }
 
 // THE SELECTION IS A COMMIT REFERENCE, NOT A ROOT IDENTITY, and this carrier was LOSSY until
@@ -264,11 +314,51 @@ type RepositoryCommit sole_constructor {
 // A root still identifies the program reconstructed by a commit; the minted reference identifies
 // the commit record that carries that root, message, and ancestry. Two commits may therefore share
 // a root without sharing an identity or making checkout ambiguous.
+// THE STAGE IS A LOCATOR, NOT A STAGING AREA, and that is what makes an `add` verb a re-pointing.
+//
+// THE VERB ITSELF IS NOT IN THIS TREE YET, and the sentences below are about the shape this member
+// admits rather than about a landed caller: `add` and `commit` must PUBLISH, and a safe conditional
+// publication cannot be spelled while extdeps.filesystem declares no rename. They land with that
+// capability. What is landed is the member, its codec, and gunbc.scm.staging's observation of it.
+//
+// What an author accumulates before committing is a set of path -> authored-source bindings. That is
+// EXACTLY what a CorpusManifestObject is, and it is exactly what a commit root is, so a separate
+// staging representation would be a second answer to one question (DESIGN section 3) and would need
+// its own identity rule, its own codec, its own duplicate-path law and its own migration. The stage
+// is therefore an ordinary manifest OBJECT in the ordinary store, and this member is one reference
+// into it. An `add` mints a new manifest from the old one and moves this pointer; nothing accumulates
+// anywhere else.
+//
+// WHICH MAKES A `commit` A RE-DESIGNATION AND NOT A CONVERSION. mint_repository_commit takes a
+// CorpusManifestTarget, which is precisely what this member already holds, so committing translates
+// nothing and can lose nothing in translation.
+//
+// AND MAKES "IS THERE ANYTHING TO COMMIT" DERIVED RATHER THAN STORED. It is the comparison of this
+// locator with the checked-out commit's root, so committing does not have to CLEAR the stage: after a
+// commit this member and that root would be the same manifest, and the comparison reports clean by
+// construction. No reset step is required, so there is none to forget, and no third state where a
+// stale flag and the actual objects disagree.
+//
+// ONE SELECTION PER DOCUMENT, WHICH IS ONE WORKSPACE, AND THAT SCOPE IS STATED RATHER THAN HIDDEN.
+// A candidate selection is a fact about one working context's pending intent, not about the
+// repository's content or history, so two independently mutable workspaces over one document hold two
+// selections and this member carries one. Next-rung trigger: a workspace subject this selection is
+// keyed by, with contention over the shared commit allocator resolved at the repository's own
+// authority. NOT "author identity" -- one author holds several workspaces, so that subsystem could
+// land entire and leave this exactly where it is. gunbc.scm.staging's header carries the reasoning.
+//
+// ABSENT MEANS NO EXPLICIT OVERRIDE, NOT AN EMPTY CORPUS, and the difference is a data-loss defect
+// rather than a nicety. gunbc.scm.staging derives the effective candidate: with no override it is the
+// checked-out commit's own snapshot, so a first `add` over existing history will extend that corpus
+// instead of replacing it with the single path just bound. `Present` over an empty manifest stays a
+// different value -- an author explicitly selecting the empty corpus, which is a deletion of every
+// tracked path and must remain expressible.
 type RepositoryEnvelope {
   store: ObjectStore
   commits: List<RepositoryCommit>
   commit_allocator: MintedIdAllocator<RepositoryCommitSubject>
   checked_out: RepositoryCommitRef?
+  staged: CorpusManifestObjectRef?
 }
 
 // ENCODE AND DECODE HAVE DIFFERENT FAILURE POPULATIONS, SO THEY ARE DIFFERENT TYPES.
@@ -305,6 +395,15 @@ type RepositoryEnvelope {
 // -- an identity left as text is one nobody can resolve back); one concerns a commit root absent from
 // the store; and four concern the commit table (checkout selection, duplication, allocator range,
 // parent order), carrying RepositoryCommitRef for the same reason.
+//
+// THE INTEGRATION ARM IS NAMED FOR PRIOR ADMISSION, NOT FOR MEMBERSHIP, AND THE DISTINCTION IS THE
+// WHOLE INVARIANT. The rule producing it refuses an anchor that is not admitted BEFORE the row naming
+// it, so an anchor PRESENT in the commit table but listed later is refused too. A name saying
+// `NotInCommits` would describe a weaker check than the one that runs -- a reader deciding whether the
+// ordering case is covered would read the name and conclude it is not -- and the decode sibling
+// already carries the accurate spelling. One rule answering under two names is the meaning fork
+// DESIGN section 3 refuses. The neighbouring parent arm keeps its older membership spelling because
+// renaming it is a separate subject with its own consumers, not because the two are equivalent.
 type RepositoryEncodeRefusal
   = RepositoryEncodeUncontainedTarget { target: ObjectId }
   | RepositoryEncodeTargetIsAuthoredSource { target: ObjectId }
@@ -314,10 +413,14 @@ type RepositoryEncodeRefusal
   | RepositoryEncodeManifestSourceIsSemanticNode { source: ObjectId }
   | RepositoryEncodeManifestSourceIsCorpusManifest { source: ObjectId }
   | RepositoryCommitRootNotInStore { root: ObjectId }
+  | RepositoryEncodeStagedNotInStore { staged: ObjectId }
+  | RepositoryEncodeStagedIsAuthoredSource { staged: ObjectId }
+  | RepositoryEncodeStagedIsSemanticNode { staged: ObjectId }
   | RepositoryCheckoutNotInCommits { selected: RepositoryCommitRef }
   | RepositoryCommitReferenceDuplicated { reference: RepositoryCommitRef }
   | RepositoryCommitReferenceOutsideAllocator { reference: RepositoryCommitRef, next_ordinal: Int }
   | RepositoryCommitParentNotInCommits { parent: RepositoryCommitRef }
+  | RepositoryEncodeIntegrationSourceNotPreviouslyAdmitted { source: RepositoryCommitRef }
 
 // THE SAME MISATTRIBUTION THIS TYPE ALREADY CLOSED ONCE, CLOSED AGAIN ONE LAYER OVER. The
 // member-read arm below exists because dropping the envelope's own identity_rule member used to
@@ -347,9 +450,14 @@ type RepositoryDecodeRefusal
   | RepositoryDecodedManifestSourceIsCorpusManifest { source: ObjectId }
   | RepositoryDecodedTargetIsAuthoredSource { target: ObjectId }
   | RepositoryDecodedTargetIsCorpusManifest { target: ObjectId }
+  | RepositoryStagedReferenceUnresolved { reference: String }
+  | RepositoryStagedNotInObjectTable { staged: ObjectId }
+  | RepositoryStagedIsAuthoredSource { staged: ObjectId }
+  | RepositoryStagedIsSemanticNode { staged: ObjectId }
   | RepositoryCheckoutReferenceUnresolved { reference: RepositoryCommitRef }
   | RepositoryCommitReferenceDuplicatedOnWire { reference: RepositoryCommitRef }
   | RepositoryCommitParentNotPreviouslyAdmitted { parent: RepositoryCommitRef }
+  | RepositoryCommitIntegrationSourceNotPreviouslyAdmitted { source: RepositoryCommitRef }
   | RepositoryDecodedCommitReferenceOutsideAllocator { reference: RepositoryCommitRef, next_ordinal: Int }
   | RepositoryUnexpectedMember { context: RepositoryMemberContext, key: String }
   | RepositoryTargetReferenceRefused { cause: TargetReferenceRefusal }
@@ -386,6 +494,7 @@ fn empty_repository() -> RepositoryEnvelope {
     commits: [],
     commit_allocator: MintedIdAllocator { next_ordinal: 0 },
     checked_out: none,
+    staged: none,
   }
 }
 
@@ -396,6 +505,7 @@ type RepositoryCommitMint
   | RepositoryCommitMintRootIsAuthoredSource { root: ObjectId }
   | RepositoryCommitMintRootIsSemanticNode { root: ObjectId }
   | RepositoryCommitMintParentMissing { parent: RepositoryCommitRef }
+  | RepositoryCommitMintIntegrationSourceMissing { source: RepositoryCommitRef }
 
 // PURE CONSTRUCTION WALL FOR INTERNAL HISTORIES. The allocator is carried by the repository and
 // advanced atomically with the new row; it is never reconstructed as max+1, because deleting the
@@ -436,11 +546,18 @@ type RepositoryCommitMint
 // and a found manifest establishes nothing about its entries' targets. PUBLICATION ADMISSION --
 // may THIS operation publish given the observed availability? -- belongs to the publishing verb.
 // Answering the second or third here would make a mint refuse for a fact that is not about minting.
+// THE INTEGRATION ANCHOR IS CHECKED FOR PREEXISTENCE IN THE INPUT REPOSITORY, on exactly the ground
+// that already forces the parent check one line down: OUTPUT MEMBERSHIP IS NOT EVIDENCE OF INPUT
+// MEMBERSHIP. A squash can only have consumed a source that existed when it ran, so without this the
+// mint could produce a result and its supposed consumed source in one motion -- a self-consistent
+// repository whose provenance describes an event that could not have happened, and whose consumed
+// join would then refuse or admit on a record nothing ever integrated.
 fn mint_repository_commit(
   repository: RepositoryEnvelope,
   root: CorpusManifestTarget,
   message: String,
   parent: RepositoryCommitRef?,
+  integration: CommitIntegration,
 ) -> RepositoryCommitMint {
   if repository.commit_allocator.next_ordinal < 0 {
     RepositoryCommitMintAllocatorInvalid { next_ordinal: repository.commit_allocator.next_ordinal }
@@ -455,27 +572,50 @@ fn mint_repository_commit(
       CorpusManifestIsSemanticNode { identity: r } =>
         RepositoryCommitMintRootIsSemanticNode { root: r }
       CorpusManifestFound(record) =>
-        match parent {
-          Present { value: parent_ref } =>
-            match commit_at_reference(commits: repository.commits, reference: parent_ref) {
-              Absent => RepositoryCommitMintParentMissing { parent: parent_ref }
-              Present { value: _ } =>
+        match integration_anchor_resolves(repository: repository, integration: integration) {
+          Present { value: missing } =>
+            RepositoryCommitMintIntegrationSourceMissing { source: missing }
+          Absent =>
+            match parent {
+              Present { value: parent_ref } =>
+                match commit_at_reference(commits: repository.commits, reference: parent_ref) {
+                  Absent => RepositoryCommitMintParentMissing { parent: parent_ref }
+                  Present { value: _ } =>
+                    mint_repository_commit_admitted(
+                      repository: repository,
+                      root: record.identity,
+                      message: message,
+                      ancestry: DescendsFrom { parent: parent_ref },
+                      integration: integration,
+                    )
+                }
+              Absent =>
                 mint_repository_commit_admitted(
                   repository: repository,
                   root: record.identity,
                   message: message,
-                  ancestry: DescendsFrom { parent: parent_ref },
+                  ancestry: RootCommit,
+                  integration: integration,
                 )
             }
-          Absent =>
-            mint_repository_commit_admitted(
-              repository: repository,
-              root: record.identity,
-              message: message,
-              ancestry: RootCommit,
-            )
         }
     }
+  }
+}
+
+// It answers with the UNRESOLVABLE ANCHOR rather than a Bool, because the refusal has to name which
+// reference could not be found and a Bool would force the caller to rediscover it.
+fn integration_anchor_resolves(
+  repository: RepositoryEnvelope,
+  integration: CommitIntegration,
+) -> RepositoryCommitRef? {
+  match integration {
+    NoSquashIntegration => none
+    SquashIntegrated { source: s } =>
+      match commit_at_reference(commits: repository.commits, reference: s) {
+        Present { value: _ } => none
+        Absent => Present { value: s }
+      }
   }
 }
 
@@ -484,6 +624,7 @@ fn mint_repository_commit_admitted(
   root: CorpusManifestObjectRef,
   message: String,
   ancestry: CommitAncestry,
+  integration: CommitIntegration,
 ) -> RepositoryCommitMint {
   let allocation = mint_id(alloc: repository.commit_allocator)
   let reference = RepositoryCommitRef { identity: allocation.id }
@@ -495,9 +636,11 @@ fn mint_repository_commit_admitted(
         root: root,
         message: message,
         ancestry: ancestry,
+        integration: integration,
       }]),
       commit_allocator: allocation.alloc,
       checked_out: repository.checked_out,
+      staged: repository.staged,
     },
     reference: reference,
   }
@@ -548,6 +691,19 @@ fn encode_optional_reference(selected: RepositoryCommitRef?) -> JsonValue {
   }
 }
 
+// THE STAGE IS SPELLED AS A TARGET REFERENCE, NOT AN ORDINAL, and the asymmetry with
+// encode_optional_reference above is the subjects' rather than a style split. A checkout selects a
+// COMMIT, which is a row in this document's own commit table and is named by its minted ordinal. A
+// stage selects an OBJECT, which lives in the object table and is named the way every other object
+// reference in this document is named -- by encoded_root_reference, the same spelling a commit root
+// uses, because it is the same kind of thing pointing into the same table.
+fn encode_optional_manifest_reference(acc: EncodeAcc, staged: CorpusManifestObjectRef?) -> JsonValue {
+  match staged {
+    Absent => JsonNull
+    Present { value: reference } => encoded_root_reference(acc: acc, root: reference.locator)
+  }
+}
+
 fn encode_commit_record(acc: EncodeAcc, commit: RepositoryCommit) -> JsonValue {
   json_object(
     members: [
@@ -555,8 +711,20 @@ fn encode_commit_record(acc: EncodeAcc, commit: RepositoryCommit) -> JsonValue {
       json_kv(key: "root", value: encoded_root_reference(acc: acc, root: commit.root.locator)),
       json_kv(key: "message", value: json_string(s: commit.message)),
       json_kv(key: "ancestry", value: encode_ancestry(ancestry: commit.ancestry)),
+      json_kv(key: "integration", value: encode_integration(integration: commit.integration)),
     ]
   )
+}
+
+// JsonNull FOR NoSquashIntegration AND AN ORDINAL FOR A CONSUMED SOURCE, which are disjoint shapes,
+// so a damaged document cannot silently become an unintegrated commit. It is deliberately the SAME
+// spelling `encode_ancestry` uses for the same kind of thing -- an optional commit reference into
+// this document's own commit table -- because a second spelling for one wire concept is a nickname.
+fn encode_integration(integration: CommitIntegration) -> JsonValue {
+  match integration {
+    NoSquashIntegration => JsonNull
+    SquashIntegrated { source: s } => json_int(n: minted_id_ordinal(id: s.identity))
+  }
 }
 
 // A root commit is JsonNull; a parent is the minted commit ordinal encoded as a JSON integer. These
@@ -609,20 +777,20 @@ fn encode_commit_records(acc: EncodeAcc, commits: List<RepositoryCommit>) -> Lis
 // the sentence itself was complaining about, one version later. A writer whose name says v2 and
 // whose bytes say v3 is a meaning fork in the only place a reader looks.
 fn encode_repository(repo: RepositoryEnvelope) -> JsonValue {
-  encode_repository_v4(repo: repo)
+  encode_repository_v6(repo: repo)
 }
 
-fn encode_repository_v4(repo: RepositoryEnvelope) -> JsonValue {
-  encode_repository_v4_over_table(repo: repo, acc: encode_object_table(store: repo.store))
+fn encode_repository_v6(repo: RepositoryEnvelope) -> JsonValue {
+  encode_repository_v6_over_table(repo: repo, acc: encode_object_table(store: repo.store))
 }
 
 // THE ADMITTED ENVELOPE IS ASSEMBLED OVER THE TABLE ITS ADMISSION WAS DECIDED ON. The checked writer
 // builds the object table to resolve commit roots against it, and then reached encode_repository,
 // whose first act was to build the same table again from the same store -- two full walks of every
 // object to produce, by construction, the identical accumulator. Taking the table as a parameter is
-// what lets one derivation serve both the decision and the document; encode_repository_v4 keeps its
+// what lets one derivation serve both the decision and the document; encode_repository_v6 keeps its
 // store-only shape for the unchecked callers, which have no accumulator to hand it.
-fn encode_repository_v4_over_table(repo: RepositoryEnvelope, acc: EncodeAcc) -> JsonValue {
+fn encode_repository_v6_over_table(repo: RepositoryEnvelope, acc: EncodeAcc) -> JsonValue {
   json_object(
     members: [
       json_kv(key: "format", value: json_string(s: repository_envelope_format_tag)),
@@ -637,6 +805,10 @@ fn encode_repository_v4_over_table(repo: RepositoryEnvelope, acc: EncodeAcc) -> 
         value: json_array(elements: encode_commit_records(acc: acc, commits: repo.commits))
       ),
       json_kv(key: "checked_out", value: encode_optional_reference(selected: repo.checked_out)),
+      json_kv(
+        key: "staged",
+        value: encode_optional_manifest_reference(acc: acc, staged: repo.staged),
+      ),
     ]
   )
 }
@@ -775,13 +947,21 @@ fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcom
       RepositoryEncodeRefused { cause: RepositoryEncodeUncontainedTarget { target: target } }
     Absent =>
       match unresolved_commit_root(acc: acc, commits: repo.commits) {
-        CommitRootAbsent { root: root } =>
+        ManifestLocatorAbsent { root: root } =>
           RepositoryEncodeRefused { cause: RepositoryCommitRootNotInStore { root: root } }
-        CommitRootIsAuthoredSource { root: root } =>
+        ManifestLocatorIsAuthoredSource { root: root } =>
           RepositoryEncodeRefused { cause: RepositoryEncodeCommitRootIsAuthoredSource { root: root } }
-        CommitRootIsSemanticNode { root: root } =>
+        ManifestLocatorIsSemanticNode { root: root } =>
           RepositoryEncodeRefused { cause: RepositoryEncodeCommitRootIsSemanticNode { root: root } }
-        CommitRootResolved =>
+        ManifestLocatorResolved =>
+          match staged_locator_standing(acc: acc, staged: repo.staged) {
+            ManifestLocatorAbsent { root: staged } =>
+              RepositoryEncodeRefused { cause: RepositoryEncodeStagedNotInStore { staged: staged } }
+            ManifestLocatorIsAuthoredSource { root: staged } =>
+              RepositoryEncodeRefused { cause: RepositoryEncodeStagedIsAuthoredSource { staged: staged } }
+            ManifestLocatorIsSemanticNode { root: staged } =>
+              RepositoryEncodeRefused { cause: RepositoryEncodeStagedIsSemanticNode { staged: staged } }
+            ManifestLocatorResolved =>
           match unresolved_checkout_selection(commits: repo.commits, selected: repo.checked_out) {
             Present { value: reference } =>
               RepositoryEncodeRefused { cause: RepositoryCheckoutNotInCommits { selected: reference } }
@@ -794,6 +974,8 @@ fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcom
                   RepositoryEncodeRefused { cause: RepositoryCommitReferenceDuplicated { reference: reference } }
                 Present { value: CommitParentNotPreviouslyAdmitted { parent: parent } } =>
                   RepositoryEncodeRefused { cause: RepositoryCommitParentNotInCommits { parent: parent } }
+                Present { value: CommitIntegrationSourceNotPreviouslyAdmitted { source: source } } =>
+                  RepositoryEncodeRefused { cause: RepositoryEncodeIntegrationSourceNotPreviouslyAdmitted { source: source } }
                 Present { value: CommitReferenceOutsideAllocator { reference: reference, next_ordinal: _ } } =>
                   RepositoryEncodeRefused {
                     cause: RepositoryCommitReferenceOutsideAllocator {
@@ -801,8 +983,9 @@ fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcom
                       next_ordinal: repo.commit_allocator.next_ordinal,
                     }
                   }
-                Absent => RepositoryEncoded { value: encode_repository_v4_over_table(repo: repo, acc: acc) }
+                Absent => RepositoryEncoded { value: encode_repository_v6_over_table(repo: repo, acc: acc) }
               }
+          }
           }
       }
   }
@@ -815,10 +998,10 @@ fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcom
 // These answer with the ObjectId the CALLER supplied, not with a wire string derived from it. The
 // caller holds that identity and can act on it; a hex key it would have to parse back is the same
 // fact rendered into a shape that has lost its type.
-fn unresolved_commit_root(acc: EncodeAcc, commits: List<RepositoryCommit>) -> CommitRootStanding {
+fn unresolved_commit_root(acc: EncodeAcc, commits: List<RepositoryCommit>) -> ManifestLocatorStanding {
   fold(
     commits,
-    init: CommitRootResolved,
+    init: ManifestLocatorResolved,
     f: fn(found, c) { unresolved_commit_root_step(acc: acc, found: found, commit: c) }
   )
 }
@@ -850,40 +1033,58 @@ fn unresolved_commit_root(acc: EncodeAcc, commits: List<RepositoryCommit>) -> Co
 // THE RESOLVED KIND IS NOW THE MANIFEST, AND THE WRONG-KIND ARMS SWAPPED PLACES RATHER THAN THINNING.
 // Three kinds occupy one locator space, so a root that fails to resolve as a manifest is still one of
 // three distinct facts, and the population that used to be named `CommitRootIsCorpusManifest` is now
-// `CommitRootIsSemanticNode`. Collapsing either wrong-kind arm into `CommitRootAbsent` would report an
+// `ManifestLocatorIsSemanticNode`. Collapsing either wrong-kind arm into `ManifestLocatorAbsent` would report an
 // occupied locator as empty -- the same well-formed-answer-about-the-wrong-subject this type's own
 // note above was written to stop.
-type CommitRootStanding
-  = CommitRootResolved
-  | CommitRootAbsent { root: ObjectId }
-  | CommitRootIsAuthoredSource { root: ObjectId }
-  | CommitRootIsSemanticNode { root: ObjectId }
+type ManifestLocatorStanding
+  = ManifestLocatorResolved
+  | ManifestLocatorAbsent { root: ObjectId }
+  | ManifestLocatorIsAuthoredSource { root: ObjectId }
+  | ManifestLocatorIsSemanticNode { root: ObjectId }
 
-fn commit_root_standing(acc: EncodeAcc, root: ObjectId) -> CommitRootStanding {
+fn manifest_locator_standing(acc: EncodeAcc, root: ObjectId) -> ManifestLocatorStanding {
   match manifest_position_of(positions: acc.positions, identity: root) {
-    Present { value: _ } => CommitRootResolved
+    Present { value: _ } => ManifestLocatorResolved
     Absent =>
       match source_position_of(positions: acc.positions, identity: root) {
-        Present { value: _ } => CommitRootIsAuthoredSource { root: root }
+        Present { value: _ } => ManifestLocatorIsAuthoredSource { root: root }
         Absent =>
           match node_position_of(positions: acc.positions, identity: root) {
-            Present { value: _ } => CommitRootIsSemanticNode { root: root }
-            Absent => CommitRootAbsent { root: root }
+            Present { value: _ } => ManifestLocatorIsSemanticNode { root: root }
+            Absent => ManifestLocatorAbsent { root: root }
           }
       }
   }
 }
 
+// NO STAGE IS RESOLVED, NOT ABSENT, AND THE COLLAPSE IS DELIBERATE HERE WHERE IT IS FORBIDDEN
+// ELSEWHERE. ManifestLocatorAbsent means "a locator was designated and this table does not hold it",
+// which is a fault; a repository with nothing staged designates no locator at all, so there is
+// nothing for the table to fail to hold and nothing to refuse. Answering ManifestLocatorResolved for
+// it says exactly that -- this envelope's stage raises no objection to being written -- rather than
+// pretending an absent stage was found.
+//
+// The alternative shape, returning ManifestLocatorStanding?, forces every caller to handle a fourth
+// case whose only content is "the question did not arise", and the caller cannot construct a refusal
+// for it without inventing a digest to name. That was the first shape written here and it required
+// exactly that fabrication, which is how the collapse was found to be the honest one.
+fn staged_locator_standing(acc: EncodeAcc, staged: CorpusManifestObjectRef?) -> ManifestLocatorStanding {
+  match staged {
+    Absent => ManifestLocatorResolved
+    Present { value: reference } => manifest_locator_standing(acc: acc, root: reference.locator)
+  }
+}
+
 fn unresolved_commit_root_step(
   acc: EncodeAcc,
-  found: CommitRootStanding,
+  found: ManifestLocatorStanding,
   commit: RepositoryCommit
-) -> CommitRootStanding {
+) -> ManifestLocatorStanding {
   match found {
-    CommitRootResolved => commit_root_standing(acc: acc, root: commit.root.locator)
-    CommitRootAbsent { root: _ } => found
-    CommitRootIsAuthoredSource { root: _ } => found
-    CommitRootIsSemanticNode { root: _ } => found
+    ManifestLocatorResolved => manifest_locator_standing(acc: acc, root: commit.root.locator)
+    ManifestLocatorAbsent { root: _ } => found
+    ManifestLocatorIsAuthoredSource { root: _ } => found
+    ManifestLocatorIsSemanticNode { root: _ } => found
   }
 }
 
@@ -906,14 +1107,39 @@ fn unresolved_commit_root_step(
 // This replaces the deleted all-start ancestry walk: history_step_at O(n) inside ancestry_walk O(n²)
 // inside a_cyclic_commit O(n³) on every healthy encode and decode. Map membership makes this pass
 // linear in rows under the substrate's keyed-map realization; no cycle traversal remains.
+// THE INTEGRATION ANCHOR IS ADMITTED ON THE SAME RULE AS THE PARENT AND FOR A DIFFERENT REASON, so
+// it is a separate arm rather than a second producer of the parent's. The parent rule exists to make
+// a cycle unwritable; this one exists because A SQUASH CONSUMED A SOURCE THAT EXISTED WHEN IT RAN, so
+// the anchor must already be admitted when the result is. The mint enforces exactly this against the
+// INPUT repository, and without the same rule here the wire is the weaker of the two paths -- which
+// DESIGN section 4b reads as the class's rung, since a rung is the MINIMUM across a class's in-scope
+// paths and never the strongest one.
 type CommitOrderRefusal
   = CommitReferenceDuplicated { reference: RepositoryCommitRef }
   | CommitParentNotPreviouslyAdmitted { parent: RepositoryCommitRef }
+  | CommitIntegrationSourceNotPreviouslyAdmitted { source: RepositoryCommitRef }
   | CommitReferenceOutsideAllocator { reference: RepositoryCommitRef, next_ordinal: Int }
 
 type CommitOrderAdmission {
   seen: Map<Int, Bool>
   refusal: CommitOrderRefusal?
+}
+
+// Two helpers rather than one returning a pair: the predicate is what the guard needs, and the
+// reference is what the refusal needs, and folding them together would force the caller to destructure
+// a value in the arm that does not use it.
+fn integration_anchor_previously_admitted(seen: Map<Int, Bool>, integration: CommitIntegration) -> Bool {
+  match integration {
+    NoSquashIntegration => true
+    SquashIntegrated { source: s } => map_contains_key(seen, minted_id_ordinal(id: s.identity))
+  }
+}
+
+fn integration_anchor_or(integration: CommitIntegration, fallback: RepositoryCommitRef) -> RepositoryCommitRef {
+  match integration {
+    NoSquashIntegration => fallback
+    SquashIntegrated { source: s } => s
+  }
 }
 
 fn admit_commit_order_step(next_ordinal: Int, acc: CommitOrderAdmission, c: RepositoryCommit) -> CommitOrderAdmission {
@@ -930,6 +1156,15 @@ fn admit_commit_order_step(next_ordinal: Int, acc: CommitOrderAdmission, c: Repo
         CommitOrderAdmission {
           seen: acc.seen,
           refusal: Present { value: CommitReferenceDuplicated { reference: c.reference } },
+        }
+      } else if !integration_anchor_previously_admitted(seen: acc.seen, integration: c.integration) {
+        CommitOrderAdmission {
+          seen: acc.seen,
+          refusal: Present {
+            value: CommitIntegrationSourceNotPreviouslyAdmitted {
+              source: integration_anchor_or(integration: c.integration, fallback: c.reference),
+            }
+          },
         }
       } else {
         match c.ancestry {
@@ -1001,6 +1236,7 @@ type PendingCommit {
   root: ObjectId
   message: String
   parent_reference: RepositoryCommitRef?
+  integration: CommitIntegration
 }
 
 type ResolvedCommitAcc {
@@ -1109,6 +1345,16 @@ fn resolve_pending_step_admitted(
           seen: acc.seen,
           refusal: Present { value: RepositoryCommitReferenceDuplicatedOnWire { reference: c.reference } },
         }
+      } else if !integration_anchor_previously_admitted(seen: acc.seen, integration: c.integration) {
+        ResolvedCommitAcc {
+          commits: acc.commits,
+          seen: acc.seen,
+          refusal: Present {
+            value: RepositoryCommitIntegrationSourceNotPreviouslyAdmitted {
+              source: integration_anchor_or(integration: c.integration, fallback: c.reference),
+            }
+          },
+        }
       } else {
         match c.parent_reference {
           Present { value: parent } =>
@@ -1126,6 +1372,7 @@ fn resolve_pending_step_admitted(
                     root: root,
                     message: c.message,
                     ancestry: DescendsFrom { parent: parent },
+                    integration: c.integration,
                   }],
                   acc.commits
                 ),
@@ -1141,6 +1388,7 @@ fn resolve_pending_step_admitted(
                   root: root,
                   message: c.message,
                   ancestry: RootCommit,
+                  integration: c.integration,
                 }],
                 acc.commits
               ),
@@ -1155,18 +1403,35 @@ fn resolve_pending_step_admitted(
 // A commit record's member set is closed for the same reason the envelope's is: a writer that states
 // a fact this reader discards, and then has it deleted on the next re-encode, has lost information
 // while every operation reported success.
-fn decode_commit_step(positions: DecodePositions, acc: CommitDecodeAcc, value: JsonValue) -> CommitDecodeAcc {
+fn commit_allowed_members(commit_policy: IntegrationMemberPolicy) -> List<String> {
+  match commit_policy {
+    IntegrationMemberDeclared => ["id", "root", "message", "ancestry", "integration"]
+    IntegrationMemberAbsentByFormat => ["id", "root", "message", "ancestry"]
+  }
+}
+
+fn decode_commit_step(
+  positions: DecodePositions,
+  acc: CommitDecodeAcc,
+  value: JsonValue,
+  commit_policy: IntegrationMemberPolicy,
+) -> CommitDecodeAcc {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
       match repository_member_set_refusal(
         v: value,
-        allowed: ["id", "root", "message", "ancestry"],
+        allowed: commit_allowed_members(commit_policy: commit_policy),
         context: RepositoryCommitMembers
       ) {
         Present { value: c } =>
           CommitDecodeAcc { commits: acc.commits, refusal: Present { value: c } }
-        Absent => decode_commit_members(positions: positions, acc: acc, value: value)
+        Absent => decode_commit_members(
+          positions: positions,
+          acc: acc,
+          value: value,
+          commit_policy: commit_policy,
+        )
       }
   }
 }
@@ -1252,7 +1517,46 @@ fn read_pending_parent_reference(value: JsonValue) -> PendingParentRead {
   }
 }
 
-fn decode_commit_members(positions: DecodePositions, acc: CommitDecodeAcc, value: JsonValue) -> CommitDecodeAcc {
+// A DECLARED `integration` MEMBER IS REQUIRED, NOT OPTIONAL, for the reason stated at the format tag:
+// an omission that meant NoSquashIntegration would make "this commit integrated nothing" and "this
+// writer said nothing" the same bytes. The absent-by-format arm is the ONLY place NoSquashIntegration
+// is supplied without the document saying so, and it is sound only because no writer of that format
+// had a squash producer.
+type PendingIntegrationRead
+  = PendingIntegrationRead { integration: CommitIntegration }
+  | PendingIntegrationRefused { cause: RepositoryDecodeRefusal }
+
+fn read_pending_integration(
+  value: JsonValue,
+  commit_policy: IntegrationMemberPolicy,
+) -> PendingIntegrationRead {
+  match commit_policy {
+    IntegrationMemberAbsentByFormat => PendingIntegrationRead { integration: NoSquashIntegration }
+    IntegrationMemberDeclared =>
+      match read_member_value(v: value, key: "integration") {
+        MemberLookupFailed { cause: c } =>
+          PendingIntegrationRefused { cause: RepositoryMemberReadRefused { cause: c } }
+        MemberValue { value: found } =>
+          match found {
+            JsonNull => PendingIntegrationRead { integration: NoSquashIntegration }
+            _ => match repository_commit_ref_from_json(value: found) {
+              Present { value: reference } =>
+                PendingIntegrationRead { integration: SquashIntegrated { source: reference } }
+              Absent => PendingIntegrationRefused {
+                cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "integration" } }
+              }
+            }
+          }
+      }
+  }
+}
+
+fn decode_commit_members(
+  positions: DecodePositions,
+  acc: CommitDecodeAcc,
+  value: JsonValue,
+  commit_policy: IntegrationMemberPolicy,
+) -> CommitDecodeAcc {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
@@ -1270,6 +1574,7 @@ fn decode_commit_members(positions: DecodePositions, acc: CommitDecodeAcc, value
               acc: acc,
               value: value,
               commit_reference: reference,
+              commit_policy: commit_policy,
             )
           }
       }
@@ -1280,7 +1585,8 @@ fn decode_commit_members_after_reference(
   positions: DecodePositions,
   acc: CommitDecodeAcc,
   value: JsonValue,
-  commit_reference: RepositoryCommitRef
+  commit_reference: RepositoryCommitRef,
+  commit_policy: IntegrationMemberPolicy,
 ) -> CommitDecodeAcc {
       match read_member(v: value, key: "root") {
         MemberFailed { cause: c } =>
@@ -1298,17 +1604,23 @@ fn decode_commit_members_after_reference(
                     PendingParentRefused { cause: c } =>
                       CommitDecodeAcc { commits: acc.commits, refusal: Present { value: c } }
                     PendingParentRead { reference: parent_reference } =>
-                      CommitDecodeAcc {
-                        commits: concat(
-                          [PendingCommit {
-                            reference: commit_reference,
-                            root: root,
-                            message: message,
-                            parent_reference: parent_reference,
-                          }],
-                          acc.commits
-                        ),
-                        refusal: acc.refusal,
+                      match read_pending_integration(value: value, commit_policy: commit_policy) {
+                        PendingIntegrationRefused { cause: c } =>
+                          CommitDecodeAcc { commits: acc.commits, refusal: Present { value: c } }
+                        PendingIntegrationRead { integration: integration } =>
+                          CommitDecodeAcc {
+                            commits: concat(
+                              [PendingCommit {
+                                reference: commit_reference,
+                                root: root,
+                                message: message,
+                                parent_reference: parent_reference,
+                                integration: integration,
+                              }],
+                              acc.commits
+                            ),
+                            refusal: acc.refusal,
+                          }
                       }
                   }
                 _ =>
@@ -1350,19 +1662,34 @@ fn decode_commit_members_after_reference(
 // the projection discarded -- comments, original placement, anything that did not survive ingestion.
 // A migration needs authored-source and association evidence; where that evidence is absent the
 // migration must say so rather than fabricate a snapshot. So this build refuses, loudly and by name.
+//
+// v4 IS A THIRD ARM RATHER THAN A SECOND SPELLING OF v5, and the arms are what keep the two readers
+// from becoming one reader with a flag. Each arm names a member population, and a document is read by
+// the reader for the population its own tag declares -- so a v4 document carrying a `staged` member
+// refuses as an unexpected member, and a v5 document omitting one refuses as a missing member. A
+// single tolerant reader admitting both would accept each of those, and each is a document nobody
+// could have written.
 type RepositoryFormat
-  = RepositoryFormatV4
+  = RepositoryFormatV6
+  | RepositoryFormatV5
+  | RepositoryFormatV4
   | RepositoryFormatRetiredV3
   | RepositoryFormatUnknown { found: String }
 
 fn repository_format_of(tag: String) -> RepositoryFormat {
   if tag == repository_envelope_format_tag {
-    RepositoryFormatV4
+    RepositoryFormatV6
+  } else if tag == repository_envelope_format_tag_v5 {
+    RepositoryFormatV5
   } else {
-    if tag == repository_envelope_format_tag_v3 {
-      RepositoryFormatRetiredV3
+    if tag == repository_envelope_format_tag_v4 {
+      RepositoryFormatV4
     } else {
-      RepositoryFormatUnknown { found: tag }
+      if tag == repository_envelope_format_tag_v3 {
+        RepositoryFormatRetiredV3
+      } else {
+        RepositoryFormatUnknown { found: tag }
+      }
     }
   }
 }
@@ -1378,6 +1705,8 @@ fn decode_repository(v: JsonValue) -> RepositoryDecodeOutcome {
           RepositoryDecodeRefused {
             cause: RepositoryFormatRetired { found: repository_envelope_format_tag_v3 }
           }
+        RepositoryFormatV6 => decode_repository_v6(v: v)
+        RepositoryFormatV5 => decode_repository_v5(v: v)
         RepositoryFormatV4 => decode_repository_v4(v: v)
       }
     _ => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "format" } } }
@@ -1388,7 +1717,71 @@ fn decode_repository(v: JsonValue) -> RepositoryDecodeOutcome {
 // anywhere -- at which point a v5 arrives as its own reader beside this one rather than as an edit to
 // it. v3's reader is NOT beside it: v3 was retired rather than kept, because its commit root names a
 // population this carrier cannot hold, and a reader that cannot produce the type is not a reader.
+// WHETHER THE DOCUMENT DECLARES A STAGE IS THE FORMAT'S FACT, SO THE FORMAT'S READER SUPPLIES IT.
+//
+// The two readers below differ in exactly this and nothing else, and it is carried as a value rather
+// than duplicated as a second body because a duplicated body drifts: the next member added to v5
+// would have to be added twice, and the reader that was missed would go on decoding documents into a
+// value that omits it, silently.
+//
+// IT IS A TYPE AND NOT A Bool because the two states have different content. "The document declares
+// a stage member, read it" and "this format has no stage, and Absent is what such a document says
+// about staging" are different propositions, and a Bool named `has_staged` records only the first
+// one's truth value while the annotation carrying the second lives somewhere a reader may not look.
+type StageMemberPolicy
+  = StageMemberDeclared
+  | StageMemberAbsentByFormat
+
+// WHETHER A COMMIT RECORD DECLARES ITS INTEGRATION IS THE FORMAT'S FACT, SO THE FORMAT'S READER
+// SUPPLIES IT -- the same shape `StageMemberPolicy` already carries one level up, and a type rather
+// than a Bool for the same reason: "the record declares the member, read it" and "this format has no
+// integration member, and NoSquashIntegration is what such a document SAYS about integration" are
+// different propositions, and only the second needs the historical argument that no v5 writer had a
+// squash producer.
+type IntegrationMemberPolicy
+  = IntegrationMemberDeclared
+  | IntegrationMemberAbsentByFormat
+
+fn decode_repository_v6(v: JsonValue) -> RepositoryDecodeOutcome {
+  decode_repository_versioned(
+    v: v,
+    allowed: ["format", "identity_rule", "objects", "commits", "next_commit_ordinal", "checked_out", "staged"],
+    policy: StageMemberDeclared,
+    commit_policy: IntegrationMemberDeclared,
+  )
+}
+
+// EXACTLY v5, AND FROZEN. Its envelope member population is v6's -- the two differ only inside a
+// commit record -- so the split is carried by `commit_policy` and by nothing else. A v5 document
+// carrying an `integration` member refuses here as an unexpected member, correctly, because no v5
+// writer could have produced one.
+fn decode_repository_v5(v: JsonValue) -> RepositoryDecodeOutcome {
+  decode_repository_versioned(
+    v: v,
+    allowed: ["format", "identity_rule", "objects", "commits", "next_commit_ordinal", "checked_out", "staged"],
+    policy: StageMemberDeclared,
+    commit_policy: IntegrationMemberAbsentByFormat,
+  )
+}
+
+// EXACTLY v4, AND FROZEN. Its member population is v4's, which is v5's without `staged`, so a v4
+// document carrying one refuses here as an unexpected member -- correctly, because no v4 writer could
+// have produced it. This body does not grow: a v6 arrives as its own reader beside these two.
 fn decode_repository_v4(v: JsonValue) -> RepositoryDecodeOutcome {
+  decode_repository_versioned(
+    v: v,
+    allowed: ["format", "identity_rule", "objects", "commits", "next_commit_ordinal", "checked_out"],
+    policy: StageMemberAbsentByFormat,
+    commit_policy: IntegrationMemberAbsentByFormat,
+  )
+}
+
+fn decode_repository_versioned(
+  v: JsonValue,
+  allowed: List<String>,
+  policy: StageMemberPolicy,
+  commit_policy: IntegrationMemberPolicy,
+) -> RepositoryDecodeOutcome {
   match read_string_member(v: v, key: "identity_rule") {
     MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: c } }
     MemberString { value: rule } =>
@@ -1397,18 +1790,18 @@ fn decode_repository_v4(v: JsonValue) -> RepositoryDecodeOutcome {
       } else {
         match repository_member_set_refusal(
           v: v,
-          allowed: ["format", "identity_rule", "objects", "commits", "next_commit_ordinal", "checked_out"],
+          allowed: allowed,
           context: RepositoryEnvelopeMembers
         ) {
           Present { value: c } => RepositoryDecodeRefused { cause: c }
-          Absent => decode_repository_body(v: v)
+          Absent => decode_repository_body(v: v, policy: policy, commit_policy: commit_policy)
         }
       }
     _ => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "identity_rule" } } }
   }
 }
 
-fn decode_repository_body(v: JsonValue) -> RepositoryDecodeOutcome {
+fn decode_repository_body(v: JsonValue, policy: StageMemberPolicy, commit_policy: IntegrationMemberPolicy) -> RepositoryDecodeOutcome {
   match read_member_value(v: v, key: "next_commit_ordinal") {
     MemberLookupFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: c } }
     MemberValue { value: found } =>
@@ -1419,6 +1812,8 @@ fn decode_repository_body(v: JsonValue) -> RepositoryDecodeOutcome {
         Present { value: next_ordinal } => decode_repository_body_with_allocator(
           v: v,
           next_ordinal: next_ordinal,
+          policy: policy,
+          commit_policy: commit_policy,
         )
       }
   }
@@ -1462,7 +1857,12 @@ fn decode_repository_body(v: JsonValue) -> RepositoryDecodeOutcome {
 // absent locator passes them whatever its subject, and the absent semantic child is refused by the
 // writer's own guard rather than here. The refusals carry the ObjectId they actually know rather
 // than a wire position, because at this point there is no position -- the reference was a digest.
-fn decode_repository_body_with_allocator(v: JsonValue, next_ordinal: Int) -> RepositoryDecodeOutcome {
+fn decode_repository_body_with_allocator(
+  v: JsonValue,
+  next_ordinal: Int,
+  policy: StageMemberPolicy,
+  commit_policy: IntegrationMemberPolicy,
+) -> RepositoryDecodeOutcome {
   match read_member(v: v, key: "objects") {
     MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: c } }
     MemberArray { elements: object_values } =>
@@ -1503,7 +1903,14 @@ fn decode_repository_body_with_allocator(v: JsonValue, next_ordinal: Int) -> Rep
                   match fold(
                     commit_values,
                     init: CommitDecodeAcc { commits: [], refusal: none },
-                    f: fn(acc, cv) { decode_commit_step(positions: positions, acc: acc, value: cv) }
+                    f: fn(acc, cv) {
+                      decode_commit_step(
+                        positions: positions,
+                        acc: acc,
+                        value: cv,
+                        commit_policy: commit_policy,
+                      )
+                    }
                   ) {
                     CommitDecodeAcc { commits: reversed_commits, refusal: commit_refusal } =>
                       match commit_refusal {
@@ -1518,11 +1925,13 @@ fn decode_repository_body_with_allocator(v: JsonValue, next_ordinal: Int) -> Rep
                               match resolve_refusal {
                                 Present { value: c } => RepositoryDecodeRefused { cause: c }
                                 Absent =>
-                                  decode_repository_checkout(
+                                  decode_repository_selections(
                                     v: v,
                                     store: store,
+                                    positions: positions,
                                     commits: commits,
                                     next_ordinal: next_ordinal,
+                                    policy: policy,
                                   )
                               }
                           }
@@ -1544,43 +1953,126 @@ fn decode_repository_body_with_allocator(v: JsonValue, next_ordinal: Int) -> Rep
 // different states: one is an ordinary empty repository, the other is a document whose workspace
 // selection names an object the table does not contain. Answering the first for the second would
 // silently discard the user's position and present the result as a healthy repository.
+//
+// THE TWO SELECTIONS ARE DECODED SEPARATELY AND THE ENVELOPE IS ASSEMBLED ONCE. This function used
+// to construct a whole RepositoryEnvelope in each of its two success arms, so every member added to
+// the carrier had to be written into both, and a member written into one was a decoded document
+// silently missing a field on the other path. Returning the SELECTION and assembling in one place
+// removes the site where that divergence can be authored, rather than adding a check that the two
+// literals agree.
+type CheckoutSelectionDecode
+  = CheckoutSelectionDecoded { selected: RepositoryCommitRef? }
+  | CheckoutSelectionRefused { cause: RepositoryDecodeRefusal }
+
 fn decode_repository_checkout(
   v: JsonValue,
-  store: ObjectStore,
   commits: List<RepositoryCommit>,
-  next_ordinal: Int
-) -> RepositoryDecodeOutcome {
+) -> CheckoutSelectionDecode {
   match read_member_value(v: v, key: "checked_out") {
-    MemberLookupFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: c } }
+    MemberLookupFailed { cause: c } =>
+      CheckoutSelectionRefused { cause: RepositoryMemberReadRefused { cause: c } }
     MemberValue { value: found } =>
       match found {
-        JsonNull =>
+        JsonNull => CheckoutSelectionDecoded { selected: none }
+        _ => match repository_commit_ref_from_json(value: found) {
+          Absent => CheckoutSelectionRefused {
+            cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "checked_out" } }
+          }
+          Present { value: reference } =>
+            match commit_at_reference(commits: commits, reference: reference) {
+              Absent =>
+                CheckoutSelectionRefused { cause: RepositoryCheckoutReferenceUnresolved { reference: reference } }
+              Present { value: _ } =>
+                CheckoutSelectionDecoded { selected: Present { value: reference } }
+            }
+        }
+      }
+  }
+}
+
+// A DANGLING STAGE REFUSES FOR THE SAME REASON A DANGLING CHECKOUT DOES, and the wrong-kind arms are
+// separate from the absent one for the reason every wrong-kind population in this module is: a
+// locator occupied by a source or a node is not an empty locator, and reporting it as one tells the
+// operator to restore an object that is already there.
+type StagedDecode
+  = StagedDecoded { staged: CorpusManifestObjectRef? }
+  | StagedRefused { cause: RepositoryDecodeRefusal }
+
+fn decode_repository_stage(
+  v: JsonValue,
+  store: ObjectStore,
+  positions: DecodePositions,
+  policy: StageMemberPolicy,
+) -> StagedDecode {
+  match policy {
+    StageMemberAbsentByFormat => StagedDecoded { staged: none }
+    StageMemberDeclared =>
+      match read_member_value(v: v, key: "staged") {
+        MemberLookupFailed { cause: c } =>
+          StagedRefused { cause: RepositoryMemberReadRefused { cause: c } }
+        MemberValue { value: found } =>
+          match found {
+            JsonNull => StagedDecoded { staged: none }
+            _ => decode_declared_stage(store: store, positions: positions, found: found)
+          }
+      }
+  }
+}
+
+fn decode_declared_stage(
+  store: ObjectStore,
+  positions: DecodePositions,
+  found: JsonValue,
+) -> StagedDecode {
+  match decode_target_reference(target_value: found) {
+    TargetReferenceRefused { cause: c } =>
+      StagedRefused { cause: RepositoryTargetReferenceRefused { cause: c } }
+    TargetUncontained { digest: digest } => resolve_stage_locator(store: store, staged: digest)
+    TargetContainedAt { reference: reference } =>
+      match resolve_reference(positions: positions, reference: reference) {
+        Present { value: object } =>
+          resolve_stage_locator(store: store, staged: scm_object_ref_locator(reference: object))
+        Absent =>
+          StagedRefused { cause: RepositoryStagedReferenceUnresolved { reference: reference } }
+      }
+  }
+}
+
+fn resolve_stage_locator(store: ObjectStore, staged: ObjectId) -> StagedDecode {
+  match find_corpus_manifest_record(store: store, identity: staged) {
+    CorpusManifestAbsent { identity: r } =>
+      StagedRefused { cause: RepositoryStagedNotInObjectTable { staged: r } }
+    CorpusManifestIsAuthoredSource { identity: r } =>
+      StagedRefused { cause: RepositoryStagedIsAuthoredSource { staged: r } }
+    CorpusManifestIsSemanticNode { identity: r } =>
+      StagedRefused { cause: RepositoryStagedIsSemanticNode { staged: r } }
+    CorpusManifestFound(record) => StagedDecoded { staged: Present { value: record.identity } }
+  }
+}
+
+fn decode_repository_selections(
+  v: JsonValue,
+  store: ObjectStore,
+  positions: DecodePositions,
+  commits: List<RepositoryCommit>,
+  next_ordinal: Int,
+  policy: StageMemberPolicy,
+) -> RepositoryDecodeOutcome {
+  match decode_repository_checkout(v: v, commits: commits) {
+    CheckoutSelectionRefused { cause: c } => RepositoryDecodeRefused { cause: c }
+    CheckoutSelectionDecoded { selected: selected } =>
+      match decode_repository_stage(v: v, store: store, positions: positions, policy: policy) {
+        StagedRefused { cause: c } => RepositoryDecodeRefused { cause: c }
+        StagedDecoded { staged: staged } =>
           RepositoryDecoded {
             envelope: RepositoryEnvelope {
               store: store,
               commits: commits,
               commit_allocator: MintedIdAllocator { next_ordinal: next_ordinal },
-              checked_out: none,
+              checked_out: selected,
+              staged: staged,
             }
           }
-        _ => match repository_commit_ref_from_json(value: found) {
-          Absent => RepositoryDecodeRefused {
-            cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "checked_out" } }
-          }
-          Present { value: reference } => match commit_at_reference(commits: commits, reference: reference) {
-            Absent =>
-              RepositoryDecodeRefused { cause: RepositoryCheckoutReferenceUnresolved { reference: reference } }
-            Present { value: _ } =>
-              RepositoryDecoded {
-                envelope: RepositoryEnvelope {
-                  store: store,
-                  commits: commits,
-                  commit_allocator: MintedIdAllocator { next_ordinal: next_ordinal },
-                  checked_out: Present { value: reference },
-                }
-              }
-          }
-        }
       }
   }
 }
@@ -1712,9 +2204,14 @@ fn repository_envelope_load_standing(cause: RepositoryDecodeRefusal) -> LoadStan
     RepositoryDecodedManifestSourceIsCorpusManifest { source: _ } => LoadRequirementAtWrongKind
     RepositoryDecodedTargetIsAuthoredSource { target: _ } => LoadRequirementAtWrongKind
     RepositoryDecodedTargetIsCorpusManifest { target: _ } => LoadRequirementAtWrongKind
+    RepositoryStagedReferenceUnresolved { reference: _ } => LoadDocumentMalformed
+    RepositoryStagedNotInObjectTable { staged: _ } => LoadDocumentMalformed
+    RepositoryStagedIsAuthoredSource { staged: _ } => LoadDocumentMalformed
+    RepositoryStagedIsSemanticNode { staged: _ } => LoadDocumentMalformed
     RepositoryCheckoutReferenceUnresolved { reference: _ } => LoadDocumentMalformed
     RepositoryCommitReferenceDuplicatedOnWire { reference: _ } => LoadDocumentMalformed
     RepositoryCommitParentNotPreviouslyAdmitted { parent: _ } => LoadDocumentMalformed
+    RepositoryCommitIntegrationSourceNotPreviouslyAdmitted { source: _ } => LoadDocumentMalformed
     RepositoryDecodedCommitReferenceOutsideAllocator { reference: _, next_ordinal: _ } => LoadDocumentMalformed
     RepositoryUnexpectedMember { context: _, key: _ } => LoadDocumentMalformed
   }

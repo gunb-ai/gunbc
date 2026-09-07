@@ -1,6 +1,7 @@
 module gunbc.live_deploy.spec
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.dissolution { DissolutionCondition, retires_dissolution, unbound_dissolution }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 import std.types { String, NonEmptyStr, List, Int, Bool, FilePath }
 import std.evaluation_budget { EvaluationLimit, LimitSet, LimitUnset }
@@ -43,6 +44,7 @@ import gunbc.roadmap_dashboard_instance {
   srv1_live_dashboard_instance,
   dashboard_instance_dispatch_worktree_root,
   dashboard_instance_dispatch_attempt_state_root,
+  dashboard_instance_compute_root,
 }
 import extdeps.http.server { HttpServerListenConfig }
 import product.network_topology { NetworkEndpoint }
@@ -80,14 +82,15 @@ data gunbc_service_uid: Int = 1000
 // progress row reading `legacy attempt`. Ownership is Owned, not Ensured, because the deploy
 // creates it; teardown mirrors DispatchWorktreeRoot's empty-directory refusal rather than a
 // recursive remove, since a non-empty attempt-state root means published attempt evidence for
-// sessions that may still be live (teardown_worktree_rmdir_note carries the same argument for the
-// same reason).
+// sessions that may still be live (the annotation on gunbc.live_deploy.emit emit_artifact_teardown
+// carries the same argument for the same reason).
 
 type OwnedArtifactKind =
     ServeBinary
   | GunbcSourceTree
   | DispatchWorktreeRoot
   | AttemptStateRoot
+  | ComputeRoot
   | SystemdUnit
   | BeltTimerUnit
   | FleetConvergeTimerUnit
@@ -182,6 +185,7 @@ fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDispo
     GunbcSourceTree => TeardownActs
     DispatchWorktreeRoot => TeardownActs
     AttemptStateRoot => TeardownActs
+    ComputeRoot => TeardownActs
     SystemdUnit => TeardownActs
     BeltTimerUnit => TeardownActs
     FleetConvergeTimerUnit => TeardownActs
@@ -290,8 +294,18 @@ fn dashboard_serve_cpu_limit() -> EvaluationLimit {
   LimitSet { limit: positive_millisecond(count: positive_measure_count(predecessor: 29999)) }
 }
 
+// THE WALL CAP WAS RAISED TO 120 S ON A SECOND MEASUREMENT (2026-09-06, srv1 serve journal at
+// 03:57Z, three POST /dispatch requests refused at 30.06-30.21 s). The dispatch route is not a
+// render: it observes every current attempt's session through host processes (about twenty
+// gunbc.WitnessBin.Run steps at roughly 0.8 s each in that journal), observes both engine replicas
+// twice (six http.Client.Get at about 0.5 s), and prepares a worktree -- all wait, almost no CPU,
+// which is exactly the clock this cap exists to bound. The 30 s basis above was a page render; a
+// dispatch is an operator click that may take a minute, and refusing it at 30 s spawned nothing
+// while still paying the whole cost. The CPU cap stays at 30 s: a spin is still a spin. The route's
+// per-step cost (a host process spawn near 0.8 s) is the thing to shrink; this row is the cap that
+// lets the click complete meanwhile, and it is falsifiable against the journal that set it.
 fn dashboard_serve_wall_limit() -> EvaluationLimit {
-  LimitSet { limit: positive_millisecond(count: positive_measure_count(predecessor: 29999)) }
+  LimitSet { limit: positive_millisecond(count: positive_measure_count(predecessor: 119999)) }
 }
 
 // THE SPEC ANSWERS WHERE, THE CANDIDATE ANSWERS WHAT, AND THE FIELD THAT FUSED THEM IS GONE.
@@ -324,10 +338,28 @@ fn dashboard_serve_wall_limit() -> EvaluationLimit {
 // disjoint roots and distinct named tmux servers. So this is a de-fork onto an existing authority,
 // not new modeling — two placement models existed, one was right, and the deploy path consumed
 // neither.\n\nUnit and tailscale-mapping names travel together as DeploymentNames, supplied by the
-// caller. deployment_unit_naming_note explains why they are passed rather than derived, and why
-// that is a deliberate stop short of the stronger model rather than the model itself.
+// caller. The annotation on DeploymentNames explains why they are passed rather than derived, and
+// why that is a deliberate stop short of the stronger model rather than the model itself.
 
-data deployment_unit_naming_note: String = "THE UNIT NAME IS PASSED, NOT DERIVED, AND THAT IS A DELIBERATE STOP RATHER THAN THE WEAKER MODEL. Deriving it from instance_id is what this module should eventually do — it is what dashboard_instance_service_session_name already does for the tmux session, and derivation is what makes a collision unwritable instead of merely unlikely. But srv1-live is RUNNING as gunbc-roadmap.service right now, and instance_id srv1-live derives gunbc-srv1-live.service. Deriving here would rename a live unit as a side effect of an abstraction change: the next apply installs the new unit while the old one keeps serving, and retract then targets the new path and orphans the running process.\\n\\nSo the caller states them. srv1_live_deployment_names preserves production byte-identically and carries the reason with it; derived_deployment_names is the shape new instances use, and it is a real function rather than a comment so the second deployment does not re-litigate the question. Nothing inherits a default silently — deployment_spec_for takes identity as a required parameter.\\n\\nDISSOLVES ON: a scheduled unit rename for srv1-live (stop old, install derived, verify health, remove old), after which srv1 passes derived_deployment_names like everyone else and this row deletes. Until then the collision guard is the witness that every declared spec has a distinct unit name, path and port — validation standing where a construction wall belongs, and marked as such rather than presented as the wall."
+// THE UNIT NAME IS PASSED, NOT DERIVED, AND THAT IS A DELIBERATE STOP RATHER THAN THE WEAKER MODEL.
+// Deriving it from instance_id is what this module should eventually do — it is what
+// dashboard_instance_service_session_name already does for the tmux session, and derivation is what
+// makes a collision unwritable instead of merely unlikely. But srv1-live is RUNNING as gunbc-
+// roadmap.service right now, and instance_id srv1-live derives gunbc-srv1-live.service. Deriving
+// here would rename a live unit as a side effect of an abstraction change: the next apply installs
+// the new unit while the old one keeps serving, and retract then targets the new path and orphans
+// the running process.
+//
+// So the caller states them. srv1_live_deployment_names preserves production byte-identically and
+// carries the reason with it; derived_deployment_names is the shape new instances use, and it is a
+// real function rather than a comment so the second deployment does not re-litigate the question.
+// Nothing inherits a default silently — deployment_spec_for takes identity as a required parameter.
+//
+// The condition that ends this stop is carried by srv1_live_unit_naming_debt_dissolution rather
+// than by this prose, because a retirement no mechanism can read is a retirement nothing will ever
+// fire. Until it fires the collision guard is the witness that every declared spec has a distinct
+// unit name, path and port — validation standing where a construction wall belongs, and marked as
+// such rather than presented as the wall.
 
 // THIS FIELD USED TO BE A NAME NOTHING CONFIGURED, and that is the whole of the twin-collision
 // defect. tailscale_serve_path held \"tailscale-serve\" for production and
@@ -355,7 +387,8 @@ data deployment_unit_naming_note: String = "THE UNIT NAME IS PASSED, NOT DERIVED
 // carries that allocated handle to the two places a POSIX name is unavoidable: systemd's User= and
 // install's -o. Neither parses it back into anything.
 //
-// It is passed rather than derived for the same reason unit_name is (deployment_unit_naming_note),
+// It is passed rather than derived for the same reason unit_name is (the annotation on
+// DeploymentNames),
 // with one difference that makes the case stronger rather than weaker: a unit name derived wrongly
 // renames a unit, while a principal derived wrongly names an account that does not exist, and the
 // deploy would then install a unit systemd refuses to start. The account is created out of band, so
@@ -371,8 +404,6 @@ type DeploymentNames {
 fn deployment_systemd_unit_path(names: DeploymentNames) -> NonEmptyStr {
   join(["/etc/systemd/system/", names.unit_name as String], "") as NonEmptyStr
 }
-
-data belt_timer_is_a_deploy_member_note: String = "THE BELT HAD NO DRIVER, AND THE HOST-LEVEL PATTERN THAT LOOKED LIKE ITS HOME DOES NOT INSTALL ANYTHING. belt_run_once_cli (gunbc.roadmap_belt_actuate) is a complete ProcessExit entrypoint with a fail-closed exit mapping, and nothing invoked it — so a dispatched roadmap item reached Verification and stopped there, which is what the operator observed on the live site. gunbc.roadmap_serve's serve_publish_note already names the consequence from the other side: POST /publish/\{node_id\} 'exists because belt_tick has none'.\\n\\nThe obvious home was a host timer beside gunbc.host_hygiene_reaper, and that is the wrong precedent for a reason worth recording rather than rediscovering: the reaper is modeled, scripted and witnessed, and it is installed by NOBODY. gunbc.host_hygiene_reaper_script has zero consumers and is a declared Scaffold; the only reference to the reaper outside its own module is a residue row about a fold shape; and the module's own header describes its precedent, ctrl-runner-reclaim.timer, as 'a hand-deployed host timer with no prior .dag model'. Copying it would have produced a second modeled timer that never runs — the specification-without-execution trap in DESIGN section 5, reproduced while fixing an instance of it.\\n\\nSo the belt timer rides the one host-effect path this repo can show executing: this deployment. That also makes its lifecycle honest rather than merely convenient — the belt drives THIS instance's roadmap, spawns into THIS instance's dispatch worktree root and writes THIS instance's attempt state, so a belt that outlived its deployment would be acting on roots the retract had already removed. Retract disabling it is the correct behavior, not a limitation, and the twin case falls out for free: srv1-lab gets its own timer against its own roots instead of a host singleton that two instances would have to share.\\n\\nTHAT SENTENCE WAS FALSE WHEN FIRST WRITTEN, AND MAKING IT TRUE IS WHY gunbc.roadmap_belt_actuate CHANGED IN THE SAME CHANGE. belt_actuate_workdir was a literal projection of srv1_gunbc_repo_root and belt_run_once_cli took no argument, so every timer actuated PRODUCTION's tree whatever instance installed it. The first cut of this member papered over that by making membership conditional — production got a timer, the twin got none — which is the author-side workaround DESIGN §5 names: it routed around the defect instead of fixing it, and it silently broke the one-for-one twin mirror that a_twin_deployment_on_one_host_collides_with_nothing asserts as its non-degeneracy guard (review 46541 caught both). The spawn root is now a per-deployment parameter carried to the tick through the unit's Environment= line, so every instance actuates its own tree and this member is unconditional again — the mirror holds because the twin genuinely has a correct timer, not because the asymmetry was argued away.\\n\\nOne member, two files, exactly as GunbcSourceTree owns gunbc-tree-sync.service plus its env file: the member's identity is the .timer path and its teardown removes the .service beside it. The names DERIVE from unit_name rather than being carried as DeploymentNames fields the way tree-sync's are, and the difference is that tree-sync had migration debt to express — production runs under names the derivation would not mint, so both constructors must state them. No belt unit exists on any host, so there is no live name to preserve and no silent-rename hazard (deployment_unit_naming_note's concern); storing a value that would be identical in every constructor is the second representation DESIGN section 2 forbids."
 
 // THE DEPLOYMENT'S SLICE, DERIVED LIKE THE BELT'S NAMES. Every gunbc process this deployment runs --
 // the server, the belt tick, the tree-sync and convergence oneshots -- is the same admitted binary,
@@ -487,7 +518,8 @@ fn deployment_credential_env_path(names: DeploymentNames) -> NonEmptyStr {
 
 // THE DEPLOYED TREE'S REMOTE IS A MEMBER, and it needs a unit of its own for an ordering reason
 // rather than an aesthetic one. The convergence must run AS THE SERVICE USER -- the tree is
-// service-user-owned and the deploy principal is the unprivileged ci-runner (emit_deploy_principal_note),
+// service-user-owned and the deploy principal is the unprivileged ci-runner
+// (gunbc.fleet_posix_accounts FleetAccountCiRunner),
 // so a `git config` from the apply is EACCES on one side and outside the six sudo grants on the
 // other. That argues for the tree-sync unit, which already has the right principal.
 //
@@ -499,7 +531,8 @@ fn deployment_credential_env_path(names: DeploymentNames) -> NonEmptyStr {
 //
 // It sits THIRD -- immediately after GunbcSourceTree and ServeBinary, and before the belt timer.
 // An earlier cut of this change said "last" and placed it last; that was an inversion of
-// deployment_apply_order_note's own rule that dependencies precede their consumers, because the
+// the rule deployment_steps_apply_order's annotation states, that dependencies precede their
+// consumers, because the
 // remote is a prerequisite of every belt tick and a candidate belt would otherwise fire once
 // against the known-broken observation state before the correction ran. Third is the EARLIEST
 // position satisfying the fresh-instance constraint above, so it satisfies both; last satisfied
@@ -590,8 +623,10 @@ data gunbc_roadmap_unit_name: NonEmptyStr = "gunbc-roadmap.service"
 // PRODUCTION STAYS ON THE ROOT MOUNT, and it is the one place a derived mount would be wrong.
 // srv1-live is serving https://srv1.tailecbe08.ts.net/ today; giving it --set-path=/srv1-live would
 // move the dashboard to a different URL as a side effect of an abstraction change, which is the
-// same silent-rename hazard deployment_unit_naming_note refuses for the unit name and refuses here
-// for the same reason.\n\nThe root mount is therefore a DECLARED PLACEMENT for production and
+// same silent-rename hazard the annotation on DeploymentNames refuses for the unit name and
+// refuses here for the same reason.
+//
+// The root mount is therefore a DECLARED PLACEMENT for production and
 // derived for everyone else — the identical shape, and the identical stop, as
 // gunbc-roadmap.service.\n\nThe backend is NOT transcribed. It reads the instance's listen_port, so
 // this row states only what genuinely differs from the derivation (the mount) and inherits
@@ -602,9 +637,11 @@ data gunbc_roadmap_unit_name: NonEmptyStr = "gunbc-roadmap.service"
 // required, because the upstream `off` form demands every original flag, so a mapping applied
 // without the listener flag cannot state the listener flag when removing itself. 443 is the
 // listener production already serves on, so the resulting mapping is the one that is
-// live.\n\nDISSOLVES ON the same scheduled migration as the unit name: once srv1-live moves to its
-// derived names it takes a derived mount with them, and this function collapses into
-// derived_deployment_names.
+// live.
+//
+// It dissolves on the same condition as the unit name, carried by
+// srv1_live_unit_naming_debt_dissolution: once srv1-live moves to its derived names it takes a
+// derived mount with them, and this function collapses into derived_deployment_names.
 
 fn srv1_live_deployment_names(instance: HostDashboardInstance) -> DeploymentNames {
   DeploymentNames {
@@ -620,14 +657,45 @@ fn srv1_live_deployment_names(instance: HostDashboardInstance) -> DeploymentName
   }
 }
 
+// THE MIGRATION DEBT ENDS BY DELETION, WHICH IS WHY THE TRIGGER IS A RETIREMENT AND NOT A PROSE
+// SENTENCE. srv1_live_deployment_names exists for one reason: production runs under names the
+// derivation would not mint, and renaming a live unit as a side effect of an abstraction change
+// orphans the running process. So the scheduled rename (stop old, install derived, verify health,
+// remove old) does not ADD a declaration that could be named forward — it removes this one, and
+// its absence IS the discharge. That makes the condition verifiable today over a declaration that
+// exists, rather than a forward reference to a name nobody has chosen.
+data srv1_live_unit_naming_debt_dissolution: DissolutionCondition = retires_dissolution(
+  ref: DeclarationRef {
+    module_path: "gunbc.live_deploy.spec",
+    decl_name: "srv1_live_deployment_names",
+    field: WholeDeclaration,
+  }
+)
+
 // gunbc-tree-sync.service is the GunbcSourceTree member's sync TRANSPORT, not an independent
 // member: a oneshot unit running AS the service user (the tree's owner writes its own tree —
 // ownership by construction, no chown), installed/started by the deploy through the granted
 // install+systemctl channel because the ci-runner principal holds no rsync grant and no write
-// access to the service-user-owned tree (emit_deploy_principal_note). Its EnvironmentFile carries
+// access to the service-user-owned tree (gunbc.fleet_posix_accounts FleetAccountCiRunner). Its
+// EnvironmentFile carries
 // the runner checkout path (varies per runner slot), written by the apply at run time. Both files
 // are owned host state and are torn down with the tree in the GunbcSourceTree teardown arm.
-data tree_sync_was_a_host_singleton_note: String = "THE SYNC TRANSPORT WAS ONE SET OF FILES FOR THE WHOLE HOST, and it never appeared in the five-member footprint the twin witness compares. gunbc-tree-sync.service and /etc/gunbc-tree-sync.env were fixed literals, so a twin apply OVERWROTE both with its own tree destination and restarted the shared unit — pointing production's sync at the lab's tree — and a twin retract DELETED both, disabling production's sync entirely. Neither effect is a path in DeploymentArtifactStep, so a claim over declared members could not see either (review, 2026-07-30).\\n\\nThey are derived from the deployment identity now, for the same reason the unit and binary are: the collision becomes unwritable rather than unlikely, because two deployments cannot produce one filename without sharing an identity the registry already forbids. gunbc_tree_sync_note calls these files owned host state torn down with the tree; that description is only true once they are per-deployment, and it was describing an intent the literals contradicted.\\n\\nThe names still derive from the SERVICE unit name rather than from instance_id directly, so srv1-live's migration-debt unit name carries through to its sync files and its emitted paths stay byte-identical."
+// THE SYNC TRANSPORT WAS ONE SET OF FILES FOR THE WHOLE HOST, and it never appeared in the five-
+// member footprint the twin witness compares. gunbc-tree-sync.service and /etc/gunbc-tree-sync.env
+// were fixed literals, so a twin apply OVERWROTE both with its own tree destination and restarted
+// the shared unit — pointing production's sync at the lab's tree — and a twin retract DELETED both,
+// disabling production's sync entirely. Neither effect is a path in DeploymentArtifactStep, so a
+// claim over declared members could not see either (review, 2026-07-30).
+//
+// They are derived from the deployment identity now, for the same reason the unit and binary are:
+// the collision becomes unwritable rather than unlikely, because two deployments cannot produce one
+// filename without sharing an identity the registry already forbids. gunbc_tree_sync_note calls
+// these files owned host state torn down with the tree; that description is only true once they are
+// per-deployment, and it was describing an intent the literals contradicted.
+//
+// The names still derive from the SERVICE unit name rather than from instance_id directly, so
+// srv1-live's migration-debt unit name carries through to its sync files and its emitted paths stay
+// byte-identical.
 
 data gunbc_tree_sync_unit_name: NonEmptyStr = "gunbc-tree-sync.service"
 data gunbc_tree_sync_env_path: NonEmptyStr = "/etc/gunbc-tree-sync.env"
@@ -642,8 +710,6 @@ fn tree_sync_unit_path(names: DeploymentNames) -> NonEmptyStr {
 fn srv1_os_package_manager() -> OsPackageManager {
   ubuntu_distribution_catalog_row(distro: NobleNumbat2404Lts).package_manager
 }
-
-data deployment_apply_order_note: String = "Apply order is dependency-honest: the tree lands before the binary (the binary serves that tree), both before the two belt-spawn roots (the worktree root and the attempt-state root, which a dispatch writes in that order — worktree first, then the published attempt evidence), all before the unit (ExecStart references binary + tree), then the belt timer (its ExecStart references that same binary and tree, and every tick it fires writes the two roots above — so it is ordered after them for the same dependency reason the unit is), and the tailscale mapping last (routes to a live service). FleetConvergeTimerUnit is RETIRED from deployment membership (operator directive 2026-08-13, sleek-heron-218): unattended cadence is replaced by the emitted fleet-converge.yml on-demand plan/apply workflow; timer teardown for hosts that still carry legacy units is owned by gunbc.fleet_converge_plan timer-retirement reconcile, not this spec's apply pole. Retract is the reverse, with DispatchWorktreeRoot AND AttemptStateRoot torn down by empty-directory removal — LOUD failure when worktrees or published attempts exist, so a retract cannot silently destroy live agent sessions or the evidence of what they did (a construction-level refusal, not a check)."
 
 type DeploymentSpec {
   target: DeploymentHostTarget
@@ -670,19 +736,64 @@ type DeploymentSpec {
 // ScopedKey rather than NonEmptyStr — a wider change than unifying the two projections. Document
 // the precondition now; revisit scoped art.path when a cross-host consumer exists.
 
+// THE BELT HAD NO DRIVER, AND THE HOST-LEVEL PATTERN THAT LOOKED LIKE ITS HOME DOES NOT INSTALL
+// ANYTHING. belt_run_once_cli (gunbc.roadmap_belt_actuate) is a complete ProcessExit entrypoint
+// with a fail-closed exit mapping, and nothing invoked it — so a dispatched roadmap item reached
+// Verification and stopped there, which is what the operator observed on the live site.
+// gunbc.roadmap_serve's serve_publish_note already names the consequence from the other side: POST
+// /publish/{node_id} 'exists because belt_tick has none'.
+//
+// The obvious home was a host timer beside gunbc.host_hygiene_reaper, and that is the wrong
+// precedent for a reason worth recording rather than rediscovering: the reaper is modeled, scripted
+// and witnessed, and it is installed by NOBODY. gunbc.host_hygiene_reaper_script has zero consumers
+// and is a declared Scaffold; the only reference to the reaper outside its own module is a residue
+// row about a fold shape; and the module's own header describes its precedent, ctrl-runner-
+// reclaim.timer, as 'a hand-deployed host timer with no prior .dag model'. Copying it would have
+// produced a second modeled timer that never runs — the specification-without-execution trap in
+// DESIGN section 5, reproduced while fixing an instance of it.
+//
+// So the belt timer rides the one host-effect path this repo can show executing: this deployment.
+// That also makes its lifecycle honest rather than merely convenient — the belt drives THIS
+// instance's roadmap, spawns into THIS instance's dispatch worktree root and writes THIS instance's
+// attempt state, so a belt that outlived its deployment would be acting on roots the retract had
+// already removed. Retract disabling it is the correct behavior, not a limitation, and the twin
+// case falls out for free: srv1-lab gets its own timer against its own roots instead of a host
+// singleton that two instances would have to share.
+//
+// THAT SENTENCE WAS FALSE WHEN FIRST WRITTEN, AND MAKING IT TRUE IS WHY gunbc.roadmap_belt_actuate
+// CHANGED IN THE SAME CHANGE. belt_actuate_workdir was a literal projection of srv1_gunbc_repo_root
+// and belt_run_once_cli took no argument, so every timer actuated PRODUCTION's tree whatever
+// instance installed it. The first cut of this member papered over that by making membership
+// conditional — production got a timer, the twin got none — which is the author-side workaround
+// DESIGN §5 names: it routed around the defect instead of fixing it, and it silently broke the one-
+// for-one twin mirror that a_twin_deployment_on_one_host_collides_with_nothing asserts as its non-
+// degeneracy guard (review 46541 caught both). The spawn root is now a per-deployment parameter
+// carried to the tick through the unit's Environment= line, so every instance actuates its own tree
+// and this member is unconditional again — the mirror holds because the twin genuinely has a
+// correct timer, not because the asymmetry was argued away.
+//
+// One member, two files, exactly as GunbcSourceTree owns gunbc-tree-sync.service plus its env file:
+// the member's identity is the .timer path and its teardown removes the .service beside it. The
+// names DERIVE from unit_name rather than being carried as DeploymentNames fields the way tree-
+// sync's are, and the difference is that tree-sync had migration debt to express — production runs
+// under names the derivation would not mint, so both constructors must state them. No belt unit
+// exists on any host, so there is no live name to preserve and no silent-rename hazard
+// (the concern the annotation on DeploymentNames states); storing a value that would be identical in every
+// constructor is the second representation DESIGN section 2 forbids.
 fn deployment_owned_steps(
   instance: HostDashboardInstance,
   names: DeploymentNames,
 ) -> List<DeploymentArtifactStep> {
   [
-    DeploymentArtifactStep { kind: GunbcSourceTree, path: instance.repo_root as String as NonEmptyStr },
     DeploymentArtifactStep { kind: ServeBinary, path: instance.serve_binary as String as NonEmptyStr },
+    DeploymentArtifactStep { kind: GunbcSourceTree, path: instance.repo_root as String as NonEmptyStr },
     DeploymentArtifactStep {
       kind: DeployedTreeRemoteUnit,
       path: deployment_tree_remote_unit_path(names: names),
     },
     DeploymentArtifactStep { kind: DispatchWorktreeRoot, path: dashboard_instance_dispatch_worktree_root(instance: instance) as String as NonEmptyStr },
     DeploymentArtifactStep { kind: AttemptStateRoot, path: dashboard_instance_dispatch_attempt_state_root(instance: instance) as String as NonEmptyStr },
+    DeploymentArtifactStep { kind: ComputeRoot, path: dashboard_instance_compute_root(instance: instance) as String as NonEmptyStr },
     DeploymentArtifactStep { kind: SystemdUnit, path: deployment_systemd_unit_path(names: names) },
     DeploymentArtifactStep {
       kind: PublicationHelperTimerUnit,
@@ -742,6 +853,23 @@ fn deployment_ensured_steps() -> List<DeploymentDependencyStep> {
   ]
 }
 
+// Apply order is dependency-honest: the binary lands before the tree, because the tree is published
+// by a service-user oneshot that RUNS the admitted binary (gunbc.live_deploy.repository_convergence_placement
+// convergence_unit_doc) -- the order used to read tree-then-binary on the grounds that the binary serves
+// the tree, which is true of the running process but not of the installation, and the identity emitter
+// had to override it downstream until this authority said it (review on PR #10696); both before the
+// two belt-spawn roots (the worktree root and the attempt-state root, which a
+// dispatch writes in that order — worktree first, then the published attempt evidence), all before
+// the unit (ExecStart references binary + tree), then the belt timer (its ExecStart references that
+// same binary and tree, and every tick it fires writes the two roots above — so it is ordered after
+// them for the same dependency reason the unit is), and the tailscale mapping last (routes to a
+// live service). FleetConvergeTimerUnit is RETIRED from deployment membership (operator directive
+// 2026-08-13, sleek-heron-218): unattended cadence is replaced by the emitted fleet-converge.yml
+// on-demand plan/apply workflow; timer teardown for hosts that still carry legacy units is owned by
+// gunbc.fleet_converge_plan timer-retirement reconcile, not this spec's apply pole. Retract is the
+// reverse, with DispatchWorktreeRoot AND AttemptStateRoot torn down by empty-directory removal —
+// LOUD failure when worktrees or published attempts exist, so a retract cannot silently destroy
+// live agent sessions or the evidence of what they did (a construction-level refusal, not a check).
 fn deployment_steps_apply_order(
   instance: HostDashboardInstance,
   names: DeploymentNames,
@@ -777,7 +905,9 @@ fn deployment_steps_apply_order(
 // beside it. It used to be a second hand-written list repeating the same five steps in opposite
 // order — one fact in two places, so editing either alone makes them disagree, and the disagreement
 // surfaces as a teardown that removes the binary while the unit still references it.
-// deployment_apply_order_note states the ordering law in prose; this computes it.\n\nDeriving from
+// deployment_steps_apply_order carries the ordering law as prose on itself; this computes it.
+//
+// Deriving from
 // spec.steps rather than re-deriving from instance and identity matters: it makes the retract order
 // the reverse of THE ORDER THIS SPEC ACTUALLY APPLIED, not the reverse of what a freshly built spec
 // would apply. Those differ exactly when a spec is constructed with something other than the

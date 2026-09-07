@@ -18,7 +18,9 @@ import extdeps.llm.anthropic_messages_api {
   ModelContextWindowExceeded,
 }
 import extdeps.ollama.api { ollama_default_port }
-import gunbc.fleet_intent_network { srv5_host_lan_endpoint, srv6_host_lan_endpoint }
+import gunbc.fleet_intent_network { srv5_host_lan_endpoint, srv6_host_lan_endpoint, host_lan_address }
+import gunbc.spark.pair_serving_desired { spark_pair_serving_groups, spark_pair_serving_head }
+import product.placement_supply { HostIdentity }
 
 // THE WIRE CODEC FOR THE DEDICATED HARNESS, over the shape DCH-1 already hoisted off the vendor.
 //
@@ -345,47 +347,38 @@ fn harness_backend_url(address: String, shape: HarnessWireShape) -> String {
 // 2026-09-04 (/v1/models 200 on both, advertising harness_engine_model). A replica is chosen per
 // worker from a seed (the worktree path) so concurrent attempts spread across both machines
 // without a process in the middle; a transport refusal stays a typed turn failure, never a widen.
-// .225 is srv6's LAN address (gunbc.fleet_intent_network); .232 is the second serving NIC on the
-// other Spark, which the fleet model does not yet carry as a row -- it is declared here beside the
-// port for the same reason the model is, and moves to the fleet when that row exists.
+// THE ROSTER IS DERIVED, NOT AUTHORED: one replica per serving pair, at the pair's HEAD, because the
+// vLLM front door of a TP=2 pair answers on its head unit only. Which unit is a pair's head is the
+// attributable row `gunbc.spark.pair_serving_desired` `spark_pair_serving_head`, and the address is
+// the fleet topology's LAN endpoint for that host (`gunbc.fleet_intent_network` `host_lan_address`).
+// A head with no LAN endpoint row makes the roster UNRESOLVED, which the backend observer refuses on
+// naming the host -- never a shorter list. History, because it is the reason this is a derivation:
+// the row was `[srv6.address, "192.168.1.232"]`, .232 being srv7 as the first pair's front door;
+// the heads moved to srv6 and srv9, nothing observed the literal, and a dispatch on 2026-09-05
+// refused against a dead address while both heads served. NEXT MOVE, deliberately not here: the LAN
+// answer is still a locality choice made by this module. The fabric owes a locus-to-locus resolution
+// (dispatching host -> head's front door), the same relation `gunbc.fleet_ssh_locus`
+// `fleet_locus_ssh_target` computes for ssh; when it exists this fn asks it and stops naming Lan.
 data harness_engine_port: Int = 30000
 
-data harness_engine_replica_addresses: List<String> = [srv6_host_lan_endpoint.address, "192.168.1.232"]
+type HarnessReplicaRoster
+  = HarnessReplicasResolved { addresses: List<String> }
+  | HarnessReplicasUnresolved { hosts: List<HostIdentity> }
 
-fn harness_engine_replica_index(seed: String) -> Int {
-  let n = list_length(items: harness_engine_replica_addresses)
-  let sum = fold(chars(s: seed), init: 0, f: (acc, cp) => acc + cp)
-  sum % n
-}
-
-fn harness_engine_replica_address(seed: String) -> String {
-  harness_replica_pick(seed: seed, replicas: harness_engine_replica_addresses)
-}
-
-// THE PICK OVER AN ARBITRARY ROSTER, so an attempt binds to a replica chosen from the ones OBSERVED
-// SERVING (gunbc.harness.harness_backend harness_serving_backend_url) rather than from the declared
-// list. A declared replica that is down is a typed, counted decline there; here it is simply not in
-// the roster handed in, so the seed spreads attempts over the machines that can take them. Callers
-// hand in a non-empty roster (the serving arm carries at least one address by construction).
-fn harness_replica_pick(seed: String, replicas: List<String>) -> String {
-  let want = fold(chars(s: seed), init: 0, f: (acc, cp) => acc + cp) % list_length(items: replicas)
-  let picked = fold(replicas, init: ReplicaPick { at: 0, chosen: "" }, f: (acc, a) =>
-    ReplicaPick { at: acc.at + 1, chosen: if acc.at == want { a } else { acc.chosen } })
-  picked.chosen
+fn harness_engine_replica_roster() -> HarnessReplicaRoster {
+  let heads = map(spark_pair_serving_groups, g => spark_pair_serving_head(group: g))
+  let unresolved = filter(heads, h => match host_lan_address(host: h) { Present { value: _ } => false  Absent => true })
+  if count(unresolved) > 0 {
+    HarnessReplicasUnresolved { hosts: unresolved }
+  } else {
+    HarnessReplicasResolved { addresses: flat_map(heads, h => match host_lan_address(host: h) { Present { value: a } => [a as String]  Absent => [] }) }
+  }
 }
 
 fn harness_backend_url_for_address(shape: HarnessWireShape, address: String) -> String {
   harness_backend_url_on_port(address: address, port: harness_engine_port, shape: shape)
 }
 
-type ReplicaPick {
-  at: Int
-  chosen: String
-}
-
-fn harness_engine_backend_url(shape: HarnessWireShape, seed: String) -> String {
-  harness_backend_url_on_port(address: harness_engine_replica_address(seed: seed), port: harness_engine_port, shape: shape)
-}
 
 // THE SERVING STACK THE OPERATOR ACTUALLY RUNS FOR THIS WORK, which is not the one every row above
 // assumes, and the difference is worth stating because it invalidated four probes before it was

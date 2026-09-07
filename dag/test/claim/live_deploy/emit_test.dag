@@ -1,7 +1,11 @@
 module test.claim.live_deploy.emit
 
-import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision, deploy_witness_other_release_revision }
-import std.types { Bool, String, List, NonEmptyStr }
+import gunbc.live_deploy.member_identity {
+  ReleaseEffectPlan, converged_effect_plan, InstallExecutable, TreeKept, UnitFileKept, ManagerKept, RestartService,
+  ConvergedMember, TreePublication, Executable, UnitFile, UnitManager, ServiceProcess,
+}
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable_digest, deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan, deploy_witness_release_target }
+import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.os.types { Apt }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
@@ -22,9 +26,14 @@ import gunbc.live_deploy.spec {
   srv1_live_deployment_names,
   ArtifactStep,
   Dependency,
+  DeploymentStep,
   deployment_tailnet_url,
   gunbc_roadmap_unit_name,
   ServeBinary,
+  OwnedArtifactKind,
+  GunbcSourceTree,
+  AttemptStateRoot,
+  SystemdUnit,
   FleetConvergeTimerUnit,
   TailscaleServeMapping,
   TeardownDisposition,
@@ -74,6 +83,7 @@ import gunbc.live_deploy.effect_leaf {
   dpkg_status_effect,
 }
 import gunbc.live_deploy.emit {
+  emit_release_member_effects,
   deploy_receipt_command,
   install_d_shared_mode,
   path_parent_dir,
@@ -85,6 +95,8 @@ import gunbc.live_deploy.emit {
   live_deploy_wholesale_refused_poison,
   live_deploy_apply_script_for,
   live_deploy_retract_script_for,
+  deploy_apply_preamble_steps,
+  deploy_publication_principal_ensure_command,
   live_deploy_emit_shell_dissolution_trigger,
   live_deploy_remote_mutation_service_op_realization_dissolution_trigger,
   live_deploy_intent_dependency_graph_emit_dissolution_trigger,
@@ -92,6 +104,7 @@ import gunbc.live_deploy.emit {
 import gunbc.ci_deploy_access {
   DeployAccessJobPrincipalRefusal,
   deploy_access_job_principal_refused_emit_poison,
+  ci_deploy_srv1_access_or_refusal, DeployAccessReady, DeployAccessJobPrincipalRefused,
 }
 import gunbc.fleet_posix_accounts { DeployRunnerPrincipal }
 import gunbc.host_axis_caps {
@@ -102,7 +115,7 @@ import gunbc.host_axis_caps {
 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import std.measure { byte_size_count }
-import v2.std.orchestration { Do, Run }
+import v2.std.orchestration { Do, Run, PipelineStep, Comment, Exit, If, For, While, Retry, Let, Call }
 import std.disposition { Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.generated_artifact {
@@ -121,15 +134,29 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data witness_script_producers_note: String = "THE COMMITTED SCRIPT ARTIFACTS ARE GONE, SO THESE WITNESSES CALL THE EMITTER DIRECTLY. Nothing executed .github/live-deploy-srv1-apply.sh or -retract.sh — the real deploy runs live_deploy_apply_srv1_wet through gunbc run — and their registry rows named a HostReconciler consumer that does not exist. A committed artifact nobody reads is not coverage; it is a false architectural claim that happened to be convenient as a byte oracle.\\n\\nThe coverage did not need the artifact. A fixture sha is forbidden in a committed PRODUCTION artifact, never in a witness, so these call live_deploy_apply_script_for with RevisionBoundAtEmission at the fixture revision and assert the same bytes the golden used to pin — with the ExecStart line now pinned EXACTLY, which the golden never did."
 
+// ONE RENDER, NOT ONE PER CLAIM. Every claim below that reads the apply script reads the SAME bytes,
+// so rendering it inside a fn made the module pay for the emitter once per call site — fifteen full
+// renders of one artifact, which is the copied-accumulator cost shape §6 rules is always fixed
+// regardless of the realized n. As module-scope data the FIRST claim to touch it pays the render and
+// every later one reads it. Measured over the module's 59 witnesses, hoisting moved
+// witness_apply_script_contains_systemd_and_tailscale from 5131ms to 1052ms and
+// repository_convergence_is_ordered_after_binary_and_before_readback from 5128ms to 0ms. It does
+// NOT reduce the claims that render a DIFFERENT spec or plan (the twin, the converged plan): those
+// have their own renders and still pay them, which is why the zero-mutation claim below is still
+// the expensive one and had to lose its second render outright.
+data witness_apply_script_text: String = live_deploy_apply_script_for(
+  spec: deployment_spec_srv1(),
+  plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()),
+)
+
+data witness_retract_script_text: String = live_deploy_retract_script_for(spec: deployment_spec_srv1())
+
 fn witness_apply_script() -> String {
-  live_deploy_apply_script_for(
-    spec: deployment_spec_srv1(),
-    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
-  )
+  witness_apply_script_text
 }
 
 fn witness_retract_script() -> String {
-  live_deploy_retract_script_for(spec: deployment_spec_srv1())
+  witness_retract_script_text
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -305,7 +332,7 @@ test fn witness_apply_script_wires_memory_cap_deploy_consumer() -> Bool {
     && string_contains(s: sh, pattern: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_max)))
 }
 
-data unprivileged_principal_witness_note: String = "Discriminating RED for the run-29822498755 regression class: the ci-runner principal (fleet_posix_accounts FleetAccountCiRunner) holds NO rsync/chown/rmdir grant and no write on the service-user-owned tree, so a bare rsync/chown/rmdir in either script is a deploy that fails on the host again. Working-byte rsync and repository convergence must instead ride the service-user oneshot unit (principal User=briansrls), and every mutation outside it must be one of the six roster-granted sudo -n commands. Post-hoc admission of each sudo -n command against the ci_deploy_access grant envelope is the named residue (emit_deploy_principal_note)."
+data unprivileged_principal_witness_note: String = "Discriminating RED for the run-29822498755 regression class: the ci-runner principal (fleet_posix_accounts FleetAccountCiRunner) holds NO rsync/chown/rmdir grant and no write on the service-user-owned tree, so a bare rsync/chown/rmdir in either script is a deploy that fails on the host again. Working-byte rsync and repository convergence must instead ride the service-user oneshot unit (principal User=briansrls), and every mutation outside it must be one of the roster-granted sudo -n commands (fleet_posix_ci_runner_sudo_grants). Post-hoc admission of each sudo -n command against the ci_deploy_access grant envelope is the named residue (carried by the annotation on gunbc.live_deploy.emit install_d_owned_command)."
 
 test fn retract_script_stays_within_ci_runner_grants() -> Bool {
   let retract = witness_retract_script()
@@ -493,7 +520,7 @@ test fn witness_execstart_carries_exactly_the_admitted_revision() -> Bool {
     " --host 0.0.0.0 --port 8080",
     " --release-revision ", deploy_witness_release_revision as String,
     " --eval-budget-cpu-ms 30000",
-    " --eval-budget-wall-ms 30000",
+    " --eval-budget-wall-ms 120000",
   ], "")
   string_contains(s: unit, pattern: expected)
     && !string_contains(s: unit, pattern: concat(expected, " --release-revision"))
@@ -661,13 +688,13 @@ test fn retract_is_the_reverse_of_what_this_spec_applies() -> Bool {
 data emitted_effect_twin_note: String = "THE PATH-LIST TWIN CLAIM WAS COVERAGE BY ILLUSION AND THIS IS ITS REPLACEMENT. The previous claim compared five declared artifact paths and pinned count == 5, so its proof was bounded by the symbolic footprint — and three destructive effects lived outside it: the systemd unit hardcoded --function roadmap_serve_handle so a twin would IDENTIFY as production, tree-sync installed and deleted one host-wide unit and env file, and teardown ran a node-global `tailscale serve reset`. Every one of those passes a declared-member comparison while the emitted script is unsafe (review, 2026-07-30).\\n\\nSo this reads the SCRIPTS. It asserts over the actual apply and retract text that production's identifying strings — its handler, its unit, its tree-sync files — appear in production's emission and are ABSENT from the twin's, and that the twin's own names are absent from production's. A string a reviewer can see in the emitted output is exactly the grain the previous claim could not reach.\\n\\nThe negative direction is the load-bearing half. Asserting the twin contains its own names would pass even if it ALSO contained production's; only absence proves it cannot touch them. The tailscale conjunct asserts the refusal marker rather than a scoped command, because the CLI offers no per-port removal and the honest emission is a refusal — a claim expecting a scoped teardown would demand a widen that cannot be written safely."
 
 test fn production_apply_carries_its_own_handler_and_tree_sync_env() -> Bool {
-  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()))
   string_contains(s: live, pattern: "--function roadmap_serve_handle ")
     && string_contains(s: live, pattern: "/etc/gunbc-tree-sync.env")
 }
 
 test fn emitted_twin_apply_touches_none_of_productions_effects() -> Bool {
-  let twin = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  let twin = live_deploy_apply_script_for(spec: srv1_twin_spec(), plan: deploy_witness_full_install_plan(spec: srv1_twin_spec()))
   string_contains(s: twin, pattern: "--function roadmap_serve_handle_srv1_lab ")
     && !string_contains(s: twin, pattern: "--function roadmap_serve_handle ")
     && !string_contains(s: twin, pattern: "/etc/gunbc-tree-sync.env")
@@ -679,7 +706,7 @@ data belt_spawn_root_witness_note: String = "THE CLAIM THE BELT-TIMER MEMBER MOS
 test fn twin_belt_unit_carries_the_twins_spawn_root_and_not_productions() -> Bool {
   let live_instance = srv1_live_dashboard_instance()
   let lab_instance = srv1_lab_dashboard_instance()
-  let twin = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  let twin = live_deploy_apply_script_for(spec: srv1_twin_spec(), plan: deploy_witness_full_install_plan(spec: srv1_twin_spec()))
   let env = concat(belt_spawn_workdir_env_var as String, "=")
   string_contains(s: twin, pattern: concat(env, lab_instance.repo_root as String))
     && !string_contains(s: twin, pattern: concat(env, live_instance.repo_root as String))
@@ -688,7 +715,7 @@ test fn twin_belt_unit_carries_the_twins_spawn_root_and_not_productions() -> Boo
 
 test fn production_belt_unit_carries_productions_spawn_root() -> Bool {
   let live_instance = srv1_live_dashboard_instance()
-  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()))
   string_contains(s: live, pattern: concat(concat(belt_spawn_workdir_env_var as String, "="), live_instance.repo_root as String))
 }
 
@@ -713,12 +740,12 @@ test fn shell_quote_escapes_an_embedded_apostrophe() -> Bool {
 data twin_creates_its_own_bin_dir_note: String = "THE PARENT DIRECTORY WAS THE LAST srv1 LITERAL IN THE APPLY (review 45197). serve_binary became instance-derived while the step that creates its containing directory kept production's `/opt/gunbc/bin`, and `install` does not create missing parents — so a twin apply would reach the copy with nowhere to copy to and fail on what reads as a permissions problem.\\n\\nThe claim is stated in BOTH directions because only the negative half proves it. Asserting the twin creates its own bin directory passes even if the emission ALSO still creates production's; asserting production's literal is absent from the twin script is what closes it. The production conjunct pins that the derivation did not move production — /opt/gunbc/bin/gunbc has parent /opt/gunbc/bin, so its emitted command is unchanged, which the committed golden independently confirms."
 
 test fn production_apply_creates_productions_binary_parent_directory() -> Bool {
-  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()))
   string_contains(s: live, pattern: serve_binary_parent_install_command(instance: srv1_live_dashboard_instance()))
 }
 
 test fn twin_apply_creates_its_own_binary_parent_directory_and_not_productions() -> Bool {
-  let twin = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  let twin = live_deploy_apply_script_for(spec: srv1_twin_spec(), plan: deploy_witness_full_install_plan(spec: srv1_twin_spec()))
   !string_contains(s: twin, pattern: serve_binary_parent_install_command(instance: srv1_live_dashboard_instance()))
     && string_contains(s: twin, pattern: serve_binary_parent_install_command(instance: srv1_lab_dashboard_instance()))
 }
@@ -729,7 +756,7 @@ test fn twin_apply_creates_its_own_binary_parent_directory_and_not_productions()
 // claim did until the emitter's quoting became the grammar's job — pinned a spelling, not the
 // fact: the discriminating half is the PATH differing between the two instances, and a literal
 // re-states production's path a second time, which is exactly the half-parameterization
-// serve_binary_parent_was_a_literal_note records the cost of.
+// gunbc.live_deploy.emit path_parent_dir's annotation records the cost of.
 fn serve_binary_parent_install_command(instance: HostDashboardInstance) -> String {
   install_directory_command(
     mode: install_d_shared_mode,
@@ -766,13 +793,13 @@ test fn teardown_disposition_separates_owned_from_ensured() -> Bool {
 data endpoint_identity_is_the_collision_axis_note: String = "THE CLAIM THE TWIN PROOF WAS MISSING, and its absence is why a green twin suite shipped a production-destroying apply. Every earlier twin claim in this file compares roots, ports, units, handlers and tree-sync files, and all of them passed while BOTH deployments configured the identical tailscale endpoint - because tailscale_serve_path was an invented label the emitter never read, and the emitted command derived from the port alone, which a bare `serve` ignores in favour of the default listener at the root mount.\\n\\nSo this asserts over the axis tailscale actually keys on, in BOTH directions and on BOTH scripts. The positive half - the twin carries its own --set-path - would pass against an emission that also bound production's endpoint, which is exactly the broken state. Only the negative half closes it: production's endpoint spelling must be ABSENT from the twin's apply and from the twin's retract, so the twin can neither steal the route nor remove it.\\n\\nThe retract conjuncts are not a restatement of the apply ones. The upstream requires every original flag on an off command, so apply and off can drift independently - an off missing --set-path targets the ROOT mount, which is production's, and would remove production's routing while exiting zero. Asserting the exact off spelling on each side is what ties the two directions to one endpoint value.\\n\\nONE CLAIM BECAME FOUR, ONE PER EMITTED SCRIPT, AND NOTHING WAS DROPPED (2026-08-23). The seven conjuncts below are the seven that were here; only their grouping changed. The regrouping is lossless because NO CONJUNCT EVER COMPARED TWO EMITTED SCRIPTS: disjointness is asserted by pattern negation against a command spelling derived from the OTHER spec, which is a cheap argv join, never that spec's emitted script. A reader who assumes a disjointness claim needs both scripts by construction will re-fuse these and re-cross the line - this row said exactly that in a PR body and it was wrong, caught by two independent readers of the conjuncts.\\n\\nWHY THE GROUPING MATTERED AT ALL, stated so this is not mistaken for tidiness: emitting a script costs about 6,714 interpreter node-evals per emitted shell WORD, so a claim's cost is the number of SCRIPTS it builds. Four scripts in one claim put this row at ~5009ms against the 5000ms required_floor_claim_cpu_safety_limit_ms and it was INTERRUPTED BEFORE VERDICT - not passing, not failing, unknown - which is a strictly worse outcome than either verdict. One script per claim puts each row where the module's ordinary rows already sit, and a red now locates which script and which direction rather than which of seven conjuncts.\\n\\nTHIS IS A LOCAL UNBLOCK AND NOT THE REPAIR, AND CONFLATING THEM IS THE REAL RISK HERE. Sixteen rows in this module sit at 70-96% of the same limit; this regrouping moves the one row that crossed and leaves the population where it was. The cost is systemic - every emit consumer in the corpus pays the same per-word rate - and its measurement, its falsified hypotheses and its next-rung trigger are docs/probes/live_deploy_emit_witness_cost_attribution_2026-08-23.md. The next fleet runner-slot width increase lengthens the emitted script again and the next-highest row crosses.\\n\\nONE THING THIS REGROUPING MAKES HARDER, DECLARED RATHER THAN DISCOVERED LATER. The claim as written is LITERAL: it negates a spelling. The strictly stronger form is RELATIONAL - assert the two emitted endpoint values differ FROM EACH OTHER, which catches a drift that keeps both spellings absent from each other's script while still colliding. That form genuinely needs both scripts in one claim, so adopting it re-fuses two of these rows and re-crosses the line at today's per-word cost. It is therefore gated on the emit-cost lane rather than on anyone's appetite, and it is named here so the stronger claim is a known deferral and not an idea nobody had."
 
 test fn production_apply_serves_its_own_endpoint_and_scopes_no_path() -> Bool {
-  let live_apply = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  let live_apply = live_deploy_apply_script_for(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()))
   string_contains(s: live_apply, pattern: tailscale_enable_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
     && !string_contains(s: live_apply, pattern: "--set-path")
 }
 
 test fn twin_apply_serves_its_own_endpoint_and_not_productions() -> Bool {
-  let twin_apply = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  let twin_apply = live_deploy_apply_script_for(spec: srv1_twin_spec(), plan: deploy_witness_full_install_plan(spec: srv1_twin_spec()))
   string_contains(s: twin_apply, pattern: tailscale_enable_command(endpoint: srv1_twin_spec().names.tailscale_serve_endpoint))
     && !string_contains(s: twin_apply, pattern: tailscale_enable_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
 }
@@ -844,7 +871,7 @@ test fn retract_is_not_emitted_without_an_observed_scoped_removal() -> Bool {
 // is emitted via fleet-converge.yml instead of a deploy-installed timer.
 test fn fleet_converge_timer_not_installed_by_deploy_apply() -> Bool {
   let spec = deployment_spec_srv1()
-  let live = live_deploy_apply_script_for(spec: spec, revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  let live = live_deploy_apply_script_for(spec: spec, plan: deploy_witness_full_install_plan(spec: spec))
   !any(
     deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names),
     s => match s.kind { FleetConvergeTimerUnit => true  _ => false }
@@ -905,13 +932,147 @@ fn tailscale_off_command(endpoint: TailscaleServeEndpoint) -> String {
 // deploy through `gunbc converge --mode deploy` on srv1 refused `install: invalid user
 // 'gunbc-publication'` because the member installed spool directories for a principal nobody had
 // created. The id-guard is what makes the second deploy a no-op; --system and nologin are what keep
-// it a service identity rather than a login.
+// it a service identity rather than a login. The claim reads the preamble PRODUCER and the preamble
+// step list, not a full apply render: the full render costs more than the floor's per-claim line and
+// this claim's subject is two commands, so rendering the whole deployment to find them was a second
+// full render whose cost belonged to the sibling claims that need it (required floor on PR #10696).
+fn preamble_step_command(step: PipelineStep) -> String {
+  match step {
+    Do { run } => run.command
+    _ => ""
+  }
+}
+
 test fn the_preamble_ensures_the_publication_principal_as_a_nologin_system_account() -> Bool {
-  let apply = witness_apply_script()
-  string_contains(s: apply, pattern: "id -u gunbc-publication >/dev/null 2>&1 || ")
-    && string_contains(s: apply, pattern: "useradd")
-    && string_contains(s: apply, pattern: "--system")
-    && string_contains(s: apply, pattern: "--no-create-home")
-    && string_contains(s: apply, pattern: "/usr/sbin/nologin")
-    && string_contains(s: apply, pattern: "gunbc-publication")
+  let spec = deployment_spec_srv1()
+  let ensure = deploy_publication_principal_ensure_command(spec: spec)
+  let preamble = match ci_deploy_srv1_access_or_refusal() {
+    DeployAccessReady { access } => deploy_apply_preamble_steps(access: access, spec: spec)
+    DeployAccessJobPrincipalRefused { refusal: _ } => []
+  }
+  string_contains(s: ensure, pattern: "id -u gunbc-publication >/dev/null 2>&1 || ")
+    && string_contains(s: ensure, pattern: "useradd")
+    && string_contains(s: ensure, pattern: "--system")
+    && string_contains(s: ensure, pattern: "--no-create-home")
+    && string_contains(s: ensure, pattern: "/usr/sbin/nologin")
+    && count(preamble) == 2
+    && any(preamble, step => preamble_step_command(step: step) == ensure)
+}
+
+
+// A CONVERGED HOST'S APPLY MUTATES NONE OF THE RELEASE-CONSUMING MEMBERS. The plan with no mutations
+// renders a script that installs no executable, publishes no tree (so no repository-convergence
+// oneshot, the five-minute source-compiling evaluator of 2026-09-06), writes no serve unit and
+// restarts no serve process. The other owned artifacts still appear: they are the declared apply-all
+// frontier. The positive control -- the full plan renders every one of those -- is
+// repository_convergence_is_ordered_after_binary_and_before_readback and
+// the_full_plan_lands_its_members_in_the_deployments_order below, over the one full render the module
+// shares; rendering it here too put this claim over the floor's per-claim line.
+// ── The member projection, read without rendering the whole apply script ────────────────────────
+//
+// A CLAIM ABOUT ONE MEMBER'S FRAGMENTS SHOULD NOT COST A WHOLE DEPLOYMENT RENDER, and the floor
+// charges per witness, so paying one was not a style question: both claims below were preempted by
+// the changed-witness CPU deadline before they reached a verdict, twice. The projection they
+// actually assert over is emit_release_member_effects -- the steps ONE member contributes -- and
+// reading those directly is both cheaper and a closer statement of the subject than grepping the
+// serialized script for their absence.
+//
+// THE ORDERING HALF IS NOT ASSERTED OVER TEXT EITHER, and it does not need to be: the emitter folds
+// flat_map over spec.steps, so the order of the emitted fragments IS the order of the deployment's
+// own step list, by construction rather than by coincidence. What is worth witnessing is therefore
+// the AUTHORITY -- that the tree, the runtime roots and the unit sit in that order in the
+// deployment's steps -- because that is the fact a regression would change. A rendered-text control
+// still exists in the sibling claims that hold the shared render.
+fn member_fragment_text(member: ConvergedMember, plan: ReleaseEffectPlan) -> String {
+  join(
+    map(
+      emit_release_member_effects(member: member, plan: plan, spec: deployment_spec_srv1()),
+      st => match st {
+        Do { run } => run.command
+        Comment { text: _ } => ""
+        Exit { status: _ } => ""
+        If { cond: _, then_: _, else_: _ } => ""
+        For { binder: _, over: _, body: _ } => ""
+        While { cond: _, body: _ } => ""
+        Retry { body: _, escalations: _, on_exhausted: _ } => ""
+        Let { name: _, value: _ } => ""
+        Call { callee: _, args: _ } => ""
+      },
+    ),
+    "\n",
+  )
+}
+
+// THE STEP LIST IS TAKEN ONCE AND PASSED, not rebuilt per lookup: reading it from
+// deployment_spec_srv1() inside the fold made four ordering comparisons construct the whole
+// deployment spec four times. That is the copied-accumulator shape and the standing rule fixes it
+// regardless of the realized n -- but THE MEASUREMENT DOES NOT CREDIT IT, and saying so is the
+// point of this note. The claim read 469ms before the change and 496ms after, which is noise: the
+// spec rebuild was not where its cost was, and the cost that remains is unattributed. What actually
+// moved this claim was giving up the full apply render (4830ms -> ~480ms). A reader who takes this
+// parameterization as the cost repair will look for the next one in the wrong place.
+fn owned_step_index(steps: List<DeploymentStep>, kind: OwnedArtifactKind) -> Int {
+  fold(
+    steps,
+    init: StepScan { at: 0, found: 0 - 1 },
+    f: (acc, st) => StepScan {
+      at: acc.at + 1,
+      found: match st {
+        ArtifactStep { step: art } => if art.kind == kind && acc.found < 0 { acc.at } else { acc.found }
+        Dependency { step: _ } => acc.found
+      },
+    },
+  ).found
+}
+
+type StepScan {
+  at: Int
+  found: Int
+}
+
+test fn a_zero_mutation_plan_installs_publishes_and_restarts_nothing_of_the_release() -> Bool {
+  let idle = converged_effect_plan(target: deploy_witness_release_target(spec: deployment_spec_srv1()))
+  member_fragment_text(member: Executable, plan: idle) == ""
+    && member_fragment_text(member: TreePublication, plan: idle) == ""
+    && member_fragment_text(member: UnitFile, plan: idle) == ""
+    && member_fragment_text(member: UnitManager, plan: idle) == ""
+    && member_fragment_text(member: ServiceProcess, plan: idle) == ""
+}
+
+// THE FULL PLAN LANDS ITS MEMBERS IN THE DEPLOYMENT'S ORDER, NOT AHEAD OF IT. The repository
+// convergence (tree publication) precedes the attempt-state root's creation, which precedes the serve
+// restart: the roots the process writes exist before the process starts, and the release mutations
+// are interleaved at their steps' positions rather than prepended as a block. The executable's
+// install carries its identity: the planned digest is verified against the source before the copy and
+// against the destination after it, so the two verify lines bracket the install.
+test fn the_full_plan_lands_its_members_in_the_deployments_order() -> Bool {
+  let spec = deployment_spec_srv1()
+  let full = deploy_witness_full_install_plan(spec: spec)
+  let executable = member_fragment_text(member: Executable, plan: full)
+  let verify_source = "echo '5555555555555555555555555555555555555555555555555555555555555555  target/release/gunbc' | sha256sum -c -"
+  let verify_dest = join(["echo '5555555555555555555555555555555555555555555555555555555555555555  ", spec.service.serve_binary as String, "' | sha256sum -c -"], "")
+  let steps = spec.steps
+  three_markers_in_order(text: executable, first: verify_source, second: "target/release/gunbc' '", third: verify_dest)
+    && owned_step_index(steps: steps, kind: ServeBinary) < owned_step_index(steps: steps, kind: GunbcSourceTree)
+    && owned_step_index(steps: steps, kind: GunbcSourceTree) < owned_step_index(steps: steps, kind: AttemptStateRoot)
+    && owned_step_index(steps: steps, kind: AttemptStateRoot) < owned_step_index(steps: steps, kind: SystemdUnit)
+    && member_fragment_text(member: ServiceProcess, plan: full) == ""
+}
+
+// A BINARY-ONLY PLAN INSTALLS THE EXECUTABLE AND RESTARTS, AND DOES NOT PUBLISH THE TREE: the
+// emitter honours the plan's population, so the repository-convergence oneshot is not started for a
+// change that touched no tree.
+test fn a_binary_only_plan_installs_and_restarts_without_publishing_the_tree() -> Bool {
+  let spec = deployment_spec_srv1()
+  let sh = live_deploy_apply_script_for(spec: spec, plan: ReleaseEffectPlan {
+    target: deploy_witness_release_target(spec: spec),
+    executable: InstallExecutable,
+    tree: TreeKept,
+    unit_file: UnitFileKept,
+    manager: ManagerKept,
+    process: RestartService,
+  })
+  string_contains(s: sh, pattern: "target/release/gunbc")
+    && string_contains(s: sh, pattern: deploy_effect_command(inv: systemctl_restart_effect(unit: spec.service.unit_name)))
+    && !string_contains(s: sh, pattern: "--function repository_converge_srv1_owner_wet")
 }

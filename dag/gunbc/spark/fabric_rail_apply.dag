@@ -18,6 +18,7 @@ import gunbc.spark.pair_serving_apply {
   SparkPairHostApplyPlan, SparkPairHostApplyOutcome, spark_pair_privileged_leg, spark_pair_host_apply_outcome_line, spark_pair_host_applied,
 }
 import gunbc.spark.fabric_rail_desired { FabricRailDesired, fabric_rail_desired, fabric_rail_netplan_path, fabric_rail_connection_name }
+import gunbc.spark.fabric_reach { ReachManagementLan }
 
 // APPLY THE RAIL ADDRESSING TO EVERY HOST ON THE FABRIC, over the administrator password session,
 // one privileged script per host made of the desired row: write the rendered netplan document whole,
@@ -59,8 +60,10 @@ fn fabric_rail_all_applied(outcomes: List<SparkPairHostApplyOutcome>) -> Bool {
   all(outcomes, o => spark_pair_host_applied(o: o))
 }
 
+// THE RAIL APPLY ALWAYS TAKES THE MANAGEMENT LAN: it is the run that creates the rail, so the rail
+// is not a path it may depend on.
 fn fabric_rail_apply_legs(trust: FleetOpenSshTrustPolicy, plans: List<SparkPairHostApplyPlan>, administrator: Secret, file: NonEmptyStr) -> List<SparkPairHostApplyOutcome> {
-  map(plans, p => spark_pair_privileged_leg(trust: trust, plan: p, admin_credential: administrator, admin_credential_file: file))
+  map(plans, p => spark_pair_privileged_leg(trust: trust, path: ReachManagementLan, plan: p, admin_credential: administrator, admin_credential_file: file))
 }
 
 func fabric_rail_apply_wet() -> ProcessExit

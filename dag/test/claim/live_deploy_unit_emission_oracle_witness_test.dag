@@ -1,6 +1,7 @@
 module test.claim.live_deploy_unit_emission_oracle_witness
 
-import std.types { Bool, String, CommitSha }
+import std.types { Bool, String, NonEmptyStr, CommitSha, List, Port }
+import std.measure { ByteSize }
 import std.layout { render }
 import gunbc.live_deploy.emit {
   emit_slice_unit_doc,
@@ -9,10 +10,61 @@ import gunbc.live_deploy.emit {
   emit_belt_timer_unit_doc,
   emit_systemd_unit_doc,
   emit_tree_sync_unit_doc,
+  live_deploy_belt_service_unit_file,
+  live_deploy_belt_timer_unit_file,
+  live_deploy_serve_unit_file,
+  live_deploy_slice_unit_file,
+  live_deploy_tree_sync_unit_file,
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
+  user_manager_environment_directives,
+  belt_tick_cadence,
 }
-import gunbc.live_deploy.spec { DeploymentSpec, deployment_spec_srv1 }
+import gunbc.live_deploy.spec {
+  DeploymentSpec,
+  DeploymentServiceConfig,
+  deployment_spec_srv1,
+  deployment_slice_unit_name,
+  deployment_belt_service_unit_name,
+}
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.live_deploy.deployed_tree_scope { deployed_tree_rsync_exclude_flags }
+import extdeps.systemd { MemoryMax, MemoryHigh }
+import extdeps.http.server { HttpServerListenConfig }
+import v2.std.algebra { any, for_all }
+import extdeps.systemd.unit_file {
+  SystemdUnitFile,
+  ServiceUnitFile,
+  TimerUnitFile,
+  SliceUnitFile,
+  SystemdInstallSection,
+  NotInstallable,
+  Installable,
+  SystemdUnitDirective,
+  Description,
+  After,
+  Wants,
+  SystemdServiceDirective,
+  ServiceType,
+  ExecStart,
+  Restart,
+  Environment,
+  EnvironmentFile,
+  WorkingDirectory,
+  ServiceUser,
+  ServiceGroup,
+  ServiceSlice,
+  SystemdTimerDirective,
+  TimerUnit,
+  OnBootSec,
+  OnUnitInactiveSec,
+  AccuracySec,
+  SystemdInstallDirective,
+  WantedBy,
+  SystemdSliceDirective,
+  DirectiveByteCount,
+}
+import gunbc.host_layout { belt_spawn_workdir_env_var }
 
 // A DATED, INDEPENDENTLY TRANSCRIBED REALIZATION FIXTURE — NOT LIVE DRIFT DETECTION.
 //
@@ -31,14 +83,45 @@ import gunbc.live_deploy.spec { DeploymentSpec, deployment_spec_srv1 }
 // the mechanism does not support. The deployed file is an observed realization, not the authority
 // for systemd syntax or for desired deployment state.
 //
-// What it IS good for, and why it exists: the expected bytes were obtained independently of the
-// functions under test, so this is not a self-capture golden — it cannot certify a renderer as
-// correct merely because nobody edited it, which is the change detector DESIGN section 5 rejects.
-// That makes it a sound BASELINE for refactoring these renderers: a red means the emitter moved
-// off the last observed deployed baseline, which during a migration is exactly the question.
+// What it WAS good for: the expected bytes were obtained independently of the functions under
+// test, so a row transcribed from the host and left alone is not a self-capture golden — it
+// cannot certify a renderer as correct merely because nobody edited it, which is the change
+// detector DESIGN section 5 rejects. A row that still holds its transcription is a sound BASELINE
+// for refactoring these renderers: a red means the emitter moved off the last observed deployed
+// baseline, which during a migration is exactly the question.
 //
-// It is needed because nothing else pins these bytes. dag/test/claim/live_deploy/long/emit_test.dag
-// carries 47 witnesses and not one asserts a unit doc's text; the emitted deploy script is not a
+// THAT PROPERTY IS NOW TRUE OF ONE ROW OUT OF FIVE, AND THIS PARAGRAPH USED TO CLAIM IT FOR ALL OF
+// THEM. Independence is not a property of the fixture's design; it is a property of each row's
+// EDIT HISTORY, and it is destroyed the moment an author updates an expected literal so that a
+// code change goes green. Since the 2026-08-19 transcription (#8496, 8b20599960) that has happened
+// three times:
+//
+//   4b7371d1f6 (#10357, 2026-09-04)  belt-service, serve, tree-sync edited; slice row ADDED
+//   75e1cf68b3 (#10446, 2026-09-04)  belt-service edited
+//   6a4ca1c5bc (#10590, 2026-09-05)  belt-service and serve edited (user-manager Environment)
+//
+// So per row, as of this writing: the_belt_timer_unit_matches_the_deployed_bytes still holds its
+// 2026-08-19 transcription and is the only row carrying an external referent. belt-service, serve
+// and tree-sync have each been edited to follow the emitter and are now EMITTER-REGRESSION PINS —
+// they still refuse an unintended emission change, which is worth keeping, but they are no longer
+// evidence that the emitter agrees with anything outside this tree. The slice row never had a
+// transcription at all: it was authored with the emitter in #10357.
+//
+// The decay is legible in a name: the_tree_sync_unit_matches_the_deployed_bytes_PLUS_THE_EXCLUSION
+// _WIDENING says out loud that its expectation is host bytes plus an emitter change.
+//
+// THE OBLIGATION THIS CREATES, stated rather than left to the next reader: an edit to an expected
+// literal is a rung change on that row, not a maintenance chore. Either re-transcribe from the
+// host and say so with a date, or move the row to a directive-level assertion over the typed
+// SystemdUnitFile (gunbc.live_deploy.emit live_deploy_belt_service_unit_file and
+// live_deploy_serve_unit_file return one before rendering), which asserts the DECISION — principal,
+// slice, working tree, environment derivation — and cannot be satisfied by editing the expectation.
+// What is forbidden is what happened here: editing the bytes while a paragraph three screens up
+// keeps vouching for their independence. That is DESIGN section 4b rung inflation, and the
+// inflated claim was load-bearing — it was cited to justify keeping these rows.
+//
+// It is needed because nothing else pins these bytes. dag/test/claim/live_deploy/emit_test.dag
+// carries 57 witnesses and not one asserts a unit doc's text; the emitted deploy script is not a
 // committed artifact, so git shows no diff; and the generated-artifact drift gate was deleted by
 // the 2026-08-15 floor cut (.github/workflows now holds only fleet-converge.yml and witnesses.yml).
 //
@@ -56,7 +139,8 @@ import gunbc.live_deploy.spec { DeploymentSpec, deployment_spec_srv1 }
 // rows. It said the members were still in deployment_spec_srv1's step list and would appear at the
 // next apply, so the oracle would re-arm then. They are not. gunbc.live_deploy.spec
 // deployment_owned_steps lists eight members and FleetConvergeTimerUnit is not among them —
-// deployment_apply_order_note in that module records it as RETIRED from deployment membership by
+// the annotation on that module's deployment_steps_apply_order records it as RETIRED from
+// deployment membership by
 // operator directive 2026-08-13, and test.claim.live_deploy.emit carries an enrolled claim
 // asserting exactly that absence. So the re-arm trigger I wrote could never fire: no apply will
 // ever install those units. That is the stalled-trigger shape DESIGN section 4b names, a `cannot
@@ -140,4 +224,596 @@ test fn the_tree_sync_unit_matches_the_deployed_bytes_plus_the_exclusion_widenin
 test fn the_slice_unit_matches_the_deployed_bytes() -> Bool {
   let emitted = render(doc: emit_slice_unit_doc(spec: live_spec()), proto: live_deploy_protocol)
   emitted == "[Unit]\nDescription=gunbc deployment cgroup bound for gunbc-roadmap.service\n\n[Slice]\nMemoryMax=17179869184\nMemoryHigh=16106127360\n"
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// DIRECTIVE-LEVEL CLAIMS — each relates one directive to the SPEC FIELD it should derive from
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════���══════════════════════════════════════════════
+// BELT SERVICE UNIT — directive-level assertions through the typed model
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// DECISIONS ASSERTED:
+//   - the belt runs as the deployment's service principal (User=, Group=)
+//   - the belt runs inside the deployment's cgroup slice
+//   - the belt works in the deployment's service repository tree
+//   - the belt carries a user-manager bus environment for the principal's uid
+//   - the belt tick entrypoint is belt_run_once_cli
+//   - the belt spawn workdir environment variable names the repo root
+
+fn belt_service_file() -> SystemdUnitFile {
+  live_deploy_belt_service_unit_file(spec: live_spec())
+}
+
+// THE SECTION ACCESSORS ARE PREDICATES OVER THE COPRODUCT, AND THE WRONG-VARIANT ARM IS `false`,
+// NOT AN EMPTY LIST. SystemdUnitFile is closed over three variants; every emitter here returns one
+// of them, so an extractor returning a section list needs an arm for the two it does not expect.
+// The tempting arm is `_ => []`, and it is the fabricated plausible output DESIGN section 5
+// forbids: every membership test over an empty list is false, so an ABSENCE assertion would pass
+// VACUOUSLY -- and three of the six REDs below assert absence. That one arm would green the
+// evidence while the emitter did anything at all.
+//
+// `false` in the same position is not a default but the correct answer: if the belt-service
+// emitter returned a TimerUnitFile, the claim that the belt unit runs as the service principal IS
+// false, and the witness should say so rather than extract nothing and shrug.
+//
+// unit_has carries no default arm, deliberately. Every variant has a `unit` section, so all three
+// arms are real and the match is exhaustive without one; a `_ => false` there would be a dead arm
+// asserting the accessor can fail in a way it cannot.
+
+fn service_has(file: SystemdUnitFile, target: SystemdServiceDirective) -> Bool {
+  match file {
+    ServiceUnitFile { unit: _, service: s, install: _ } => has_directive(dirs: s, target: target)
+    _ => false
+  }
+}
+
+fn unit_has(file: SystemdUnitFile, target: SystemdUnitDirective) -> Bool {
+  match file {
+    ServiceUnitFile { unit: u, service: _, install: _ } => has_directive_unit(dirs: u, target: target)
+    TimerUnitFile { unit: u, timer: _, install: _ } => has_directive_unit(dirs: u, target: target)
+    SliceUnitFile { unit: u, slice: _, install: _ } => has_directive_unit(dirs: u, target: target)
+  }
+}
+
+fn timer_has(file: SystemdUnitFile, target: SystemdTimerDirective) -> Bool {
+  match file {
+    TimerUnitFile { unit: _, timer: t, install: _ } => has_directive_timer(dirs: t, target: target)
+    _ => false
+  }
+}
+
+fn slice_has_bytes(file: SystemdUnitFile, target: ByteSize, as_max: Bool) -> Bool {
+  match file {
+    SliceUnitFile { unit: _, slice: sl, install: _ } =>
+      has_slice_directive_val(dirs: sl, target: target, as_max: as_max)
+    _ => false
+  }
+}
+
+// THE EXEC-START COMPARISON REFUSES ON A VARIANT MISMATCH RATHER THAN COMPARING NOTHING. Both
+// sides must be service units and both must carry an ExecStart; a comparison that quietly held
+// because one side yielded no directives would be a RED that passes while testing nothing, which
+// is the failure this file exists to remove.
+fn exec_start_changed(baseline: SystemdUnitFile, mutated: SystemdUnitFile) -> Bool {
+  match baseline {
+    ServiceUnitFile { unit: _, service: b, install: _ } =>
+      match mutated {
+        ServiceUnitFile { unit: _, service: m, install: _ } =>
+          any(b, predicate: fn(d) {
+            match d {
+              ExecStart { command: c } => !has_directive(dirs: m, target: ExecStart { command: c })
+              _ => false
+            }
+          })
+            && any(m, predicate: fn(d) {
+              match d {
+                ExecStart { command: _ } => true
+                _ => false
+              }
+            })
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// DECISION: the belt runs as the deployment's service principal.
+test fn belt_service_runs_as_service_principal() -> Bool {
+  let svc = live_spec().service
+  service_has(file: belt_service_file(), target: ServiceUser { name: svc.service_user })
+    && service_has(file: belt_service_file(), target: ServiceGroup { name: svc.service_user })
+}
+
+// DECISION: the belt runs inside the deployment's cgroup slice.
+test fn belt_service_joins_deployment_slice() -> Bool {
+  let spec = live_spec()
+  service_has(file: belt_service_file(), target: ServiceSlice { name: deployment_slice_unit_name(names: spec.names) })
+}
+
+// DECISION: the belt works in the deployment's repo tree.
+test fn belt_service_works_in_repo_tree() -> Bool {
+  let spec = live_spec()
+  service_has(file: belt_service_file(), target: WorkingDirectory { path: spec.service.repo_root })
+}
+
+// DECISION: the belt carries a user-manager bus environment for the principal's uid.
+test fn belt_service_carries_user_manager_environment() -> Bool {
+  let svc = live_spec().service
+  let envs = user_manager_environment_directives(uid: svc.service_uid)
+  for_all(envs, predicate: fn(e) { service_has(file: belt_service_file(), target: e) })
+}
+
+// DECISION: the belt spawn workdir env var names the repo root.
+test fn belt_service_carries_spawn_workdir() -> Bool {
+  let svc = live_spec().service
+  service_has(file: belt_service_file(), target: Environment {
+    assignment: join([belt_spawn_workdir_env_var as String, "=", svc.repo_root as String], "") as NonEmptyStr,
+  })
+}
+
+// DECISION: the belt ticks via the declared belt-run-once CLI entrypoint.
+test fn belt_service_execstart_is_belt_tick_cli() -> Bool {
+  let svc = live_spec().service
+  service_has(file: belt_service_file(), target: ExecStart { command: join([
+    svc.serve_binary as String,
+    " run --source-root dag --source-root src/v2",
+    " --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function belt_run_once_cli",
+  ], "") as NonEmptyStr })
+}
+
+// DECISION: the belt unit is Type=oneshot (it runs once per tick and exits).
+test fn belt_service_type_is_oneshot() -> Bool {
+  service_has(file: belt_service_file(), target: ServiceType { mode: "oneshot" as NonEmptyStr })
+}
+
+// DECISION: the belt unit has a Description, After=network-online.target, and Wants=network-online.target.
+test fn belt_service_has_unit_directives() -> Bool {
+  let f = belt_service_file()
+  unit_has(file: f, target: Description { text: "gunbc roadmap belt tick (one reconcile pass over the ready frontier)" as NonEmptyStr })
+    && unit_has(file: f, target: After { target: "network-online.target" as NonEmptyStr })
+    && unit_has(file: f, target: Wants { target: "network-online.target" as NonEmptyStr })
+}
+
+// DECISION: the belt unit is NOT installable (no [Install] section).
+test fn belt_service_is_not_installable() -> Bool {
+  match belt_service_file() {
+    ServiceUnitFile { unit: _, service: _, install: NotInstallable } => true
+    _ => false
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// BELT TIMER UNIT — directive-level assertions through the typed model
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// DECISIONS ASSERTED:
+//   - the timer targets the belt service unit
+//   - the timer cadence is the declared policy values (OnBootSec=2min, OnUnitInactiveSec=60s, AccuracySec=5s)
+//   - the timer is installable as WantedBy=timers.target
+
+fn belt_timer_file() -> SystemdUnitFile {
+  live_deploy_belt_timer_unit_file(spec: live_spec())
+}
+
+// DECISION: the timer targets the belt service unit, consuming the canonical name.
+test fn belt_timer_targets_belt_service() -> Bool {
+  let spec = live_spec()
+  timer_has(file: belt_timer_file(), target: TimerUnit { target: deployment_belt_service_unit_name(names: spec.names) })
+}
+
+// DECISION: the timer cadence is the declared policy values.
+// OnUnitInactiveSec derives from belt_tick_cadence ("60s") in emit.dag.
+// OnBootSec and AccuracySec are transcribed from the same source the emitter uses
+// and are additionally pinned by the_belt_timer_unit_matches_the_deployed_bytes below.
+test fn belt_timer_has_declared_cadence() -> Bool {
+  timer_has(file: belt_timer_file(), target: OnBootSec { duration: "2min" as NonEmptyStr })
+    && timer_has(file: belt_timer_file(), target: OnUnitInactiveSec { duration: belt_tick_cadence as NonEmptyStr })
+    && timer_has(file: belt_timer_file(), target: AccuracySec { duration: "5s" as NonEmptyStr })
+}
+
+// DECISION: the timer has a Description.
+test fn belt_timer_has_description() -> Bool {
+  unit_has(file: belt_timer_file(), target: Description {
+    text: "gunbc roadmap belt tick cadence" as NonEmptyStr,
+  })
+}
+
+// DECISION: the timer is installable as WantedBy=timers.target.
+test fn belt_timer_is_installable_as_timers_target() -> Bool {
+  match belt_timer_file() {
+    TimerUnitFile { unit: _, timer: _, install: Installable { directives: ds } } =>
+      has_directive_install(dirs: ds, target: WantedBy { target: "timers.target" as NonEmptyStr })
+    _ => false
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// SERVE UNIT — directive-level assertions through the typed model
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// DECISIONS ASSERTED:
+//   - the serve unit runs as the deployment's service principal
+//   - the serve unit joins the deployment's cgroup slice
+//   - the serve unit works in the deployment's repo tree
+//   - the serve unit carries a user-manager bus environment for the principal's uid
+//   - the serve entrypoint is serve_handle, on the declared host/port, with the admitted revision
+//   - the serve unit restarts on failure
+//   - the serve unit is installable as WantedBy=multi-user.target
+
+fn serve_file() -> SystemdUnitFile {
+  live_deploy_serve_unit_file(spec: live_spec(), revision: live_revision())
+}
+
+// DECISION: the serve unit runs as the deployment's service principal.
+test fn serve_unit_runs_as_service_principal() -> Bool {
+  let svc = live_spec().service
+  service_has(file: serve_file(), target: ServiceUser { name: svc.service_user })
+    && service_has(file: serve_file(), target: ServiceGroup { name: svc.service_user })
+}
+
+// DECISION: the serve unit joins the deployment's cgroup slice.
+test fn serve_unit_joins_deployment_slice() -> Bool {
+  let spec = live_spec()
+  service_has(file: serve_file(), target: ServiceSlice { name: deployment_slice_unit_name(names: spec.names) })
+}
+
+// DECISION: the serve unit works in the deployment's repo tree.
+test fn serve_unit_works_in_repo_tree() -> Bool {
+  let spec = live_spec()
+  service_has(file: serve_file(), target: WorkingDirectory { path: spec.service.repo_root })
+}
+
+// DECISION: the serve unit carries a user-manager bus environment for the principal's uid.
+test fn serve_unit_carries_user_manager_environment() -> Bool {
+  let svc = live_spec().service
+  let envs = user_manager_environment_directives(uid: svc.service_uid)
+  for_all(envs, predicate: fn(e) { service_has(file: serve_file(), target: e) })
+}
+
+// DECISION: the serve unit is Type=simple (long-running process).
+test fn serve_unit_type_is_simple() -> Bool {
+  service_has(file: serve_file(), target: ServiceType { mode: "simple" as NonEmptyStr })
+}
+
+// DECISION: the serve unit restarts on failure.
+test fn serve_unit_restarts_on_failure() -> Bool {
+  service_has(file: serve_file(), target: Restart { policy: "on-failure" as NonEmptyStr })
+}
+
+// DECISION: the serve ExecStart carries the admitted entrypoint, host/port, and revision.
+test fn serve_unit_execstart_carries_admitted_entrypoint() -> Bool {
+  let svc = live_spec().service
+  let port = to_string(svc.listen.port)
+  let host = svc.listen.host
+  let rev = match live_revision() {
+    RevisionBoundAtEmission { revision: r } => r as String
+    RevisionNotInstalled => ""
+  }
+  service_has(file: serve_file(), target: ExecStart { command: join([
+    svc.serve_binary as String,
+    " serve --source-root dag --source-root src/v2",
+    " --entry dag/gunbc/roadmap/roadmap_serve.dag --function ", svc.serve_function as String,
+    " --host ", host, " --port ", port,
+    " --release-revision ", rev,
+    " --eval-budget-cpu-ms 30000 --eval-budget-wall-ms 30000",
+  ], "") as NonEmptyStr })
+}
+
+// DECISION: the serve unit has a Description, After=network-online.target tailscaled.service, Wants=network-online.target.
+test fn serve_unit_has_unit_directives() -> Bool {
+  let f = serve_file()
+  unit_has(file: f, target: Description { text: "gunbc roadmap HTTP server (gunbc serve)" as NonEmptyStr })
+    && unit_has(file: f, target: After { target: "network-online.target tailscaled.service" as NonEmptyStr })
+    && unit_has(file: f, target: Wants { target: "network-online.target" as NonEmptyStr })
+}
+
+// DECISION: the serve unit is installable as WantedBy=multi-user.target.
+test fn serve_unit_is_installable_as_multi_user_target() -> Bool {
+  match serve_file() {
+    ServiceUnitFile { unit: _, service: _, install: Installable { directives: ds } } =>
+      has_directive_install(dirs: ds, target: WantedBy { target: "multi-user.target" as NonEmptyStr })
+    _ => false
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// TREE SYNC UNIT — directive-level assertions through the typed model
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// DECISIONS ASSERTED:
+//   - the tree sync runs as the service principal
+//   - the tree sync joins the deployment's cgroup slice
+//   - the tree sync reads its environment from the deployment's tree-sync env file
+//   - the tree sync ExecStart carries rsync with the deployed-tree exclude flags
+//   - the tree sync unit is Type=oneshot
+//   - the tree sync unit is NotInstallable (no [Install] section)
+
+fn tree_sync_file() -> SystemdUnitFile {
+  live_deploy_tree_sync_unit_file(spec: live_spec(), tree_path: live_spec().service.repo_root as String)
+}
+
+// DECISION: the tree sync runs as the service principal.
+test fn tree_sync_runs_as_service_principal() -> Bool {
+  let svc = live_spec().service
+  service_has(file: tree_sync_file(), target: ServiceUser { name: svc.service_user })
+    && service_has(file: tree_sync_file(), target: ServiceGroup { name: svc.service_user })
+}
+
+// DECISION: the tree sync joins the deployment's cgroup slice.
+test fn tree_sync_joins_deployment_slice() -> Bool {
+  let spec = live_spec()
+  service_has(file: tree_sync_file(), target: ServiceSlice { name: deployment_slice_unit_name(names: spec.names) })
+}
+
+// DECISION: the tree sync reads its environment from the deployment's tree-sync env path.
+test fn tree_sync_has_environment_file() -> Bool {
+  let spec = live_spec()
+  service_has(file: tree_sync_file(), target: EnvironmentFile { path: spec.names.tree_sync_env_path })
+}
+
+// DECISION: the tree sync ExecStart carries rsync with all deployed-tree excluded prefixes.
+test fn tree_sync_execstart_rsyncs_with_excludes() -> Bool {
+  let spec = live_spec()
+  service_has(file: tree_sync_file(), target: ExecStart { command: join([
+    "/usr/bin/rsync -rlpt --delete ", deployed_tree_rsync_exclude_flags(),
+    " \"$\{GUNBC_TREE_SRC\}/\" ", spec.service.repo_root as String, "/",
+  ], "") as NonEmptyStr })
+}
+
+// DECISION: the tree sync unit is Type=oneshot.
+test fn tree_sync_type_is_oneshot() -> Bool {
+  service_has(file: tree_sync_file(), target: ServiceType { mode: "oneshot" as NonEmptyStr })
+}
+
+// DECISION: the tree sync unit is NotInstallable.
+test fn tree_sync_is_not_installable() -> Bool {
+  match tree_sync_file() {
+    ServiceUnitFile { unit: _, service: _, install: NotInstallable } => true
+    _ => false
+  }
+}
+
+// DECISION: the tree sync has a Description.
+test fn tree_sync_has_description() -> Bool {
+  unit_has(file: tree_sync_file(), target: Description {
+    text: "gunbc source tree sync (service-user-principal rsync from CI runner checkout)" as NonEmptyStr,
+  })
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// SLICE UNIT — directive-level assertions through the typed model
+// ═══════════════════════════════════════════════════════════════════════════════════════��══════════
+//
+// DECISIONS ASSERTED:
+//   - the slice is derived from the deployment's unit name
+//   - the memory bounds come from gunbc_runner_slot_desired()
+
+fn slice_file() -> SystemdUnitFile {
+  live_deploy_slice_unit_file(spec: live_spec())
+}
+
+// DECISION: the slice's Description names the deployment's unit.
+test fn slice_description_names_the_unit() -> Bool {
+  let spec = live_spec()
+  match slice_file() {
+    SliceUnitFile { unit: u, slice: _, install: _ } =>
+      has_directive_unit(dirs: u, target: Description {
+        text: join(["gunbc deployment cgroup bound for ", spec.names.unit_name as String], "") as NonEmptyStr
+      })
+    _ => false
+  }
+}
+
+// DECISION: the slice's MemoryMax and MemoryHigh derive from gunbc_runner_slot_desired().
+test fn slice_memory_bounds_match_runner_slot() -> Bool {
+  let slot = gunbc_runner_slot_desired()
+  slice_has_bytes(file: slice_file(), target: slot.memory_max, as_max: true)
+    && slice_has_bytes(file: slice_file(), target: slot.memory_high, as_max: false)
+}
+
+// DECISION: the slice unit has NotInstallable (no [Install] section).
+test fn slice_unit_is_not_installable() -> Bool {
+  match slice_file() {
+    SliceUnitFile { unit: _, slice: _, install: NotInstallable } => true
+    _ => false
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// RED (EXECUTED) — each builds a spec with ONE field mutated and shows the positive claim FAIL
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+fn spec_with_principal(wrong_user: NonEmptyStr) -> DeploymentSpec {
+  let base = live_spec()
+  match base {
+    DeploymentSpec { target: t, steps: s, names: n, service: svc } =>
+      match svc {
+        DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_function: f,
+          instance_root: ir, repo_root: rr, service_uid: uid,
+          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
+          DeploymentSpec {
+            target: t, steps: s, names: n,
+            service: DeploymentServiceConfig {
+              unit_name: u, serve_binary: b, serve_function: f,
+              instance_root: ir, repo_root: rr,
+              service_user: wrong_user,
+              service_uid: uid, listen: l,
+              serve_cpu_limit: cpu, serve_wall_limit: wall,
+            }
+          }
+      }
+  }
+}
+
+// THE MUTATED VALUES ARE DERIVED FROM THE REAL ONES, NOT TYPED OUT. A hand-written "wrong" value
+// is a literal that stops diverging the moment the real value changes to match it, which turns a
+// RED silently green -- the same decay #10613 documents for the byte rows one section up.
+
+fn divergent_principal() -> NonEmptyStr {
+  join(["not-", live_spec().service.service_user as String], "") as NonEmptyStr
+}
+
+fn divergent_port() -> Port {
+  live_spec().service.listen.port + 1
+}
+
+fn divergent_repo_root() -> NonEmptyStr {
+  join([live_spec().service.repo_root as String, "-divergent"], "") as NonEmptyStr
+}
+
+fn spec_with_repo_root(wrong_root: NonEmptyStr) -> DeploymentSpec {
+  match live_spec() {
+    DeploymentSpec { target: t, steps: s, names: n, service: svc } =>
+      match svc {
+        DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_function: f,
+          instance_root: ir, service_user: su, service_uid: uid,
+          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
+          DeploymentSpec {
+            target: t, steps: s, names: n,
+            service: DeploymentServiceConfig {
+              unit_name: u, serve_binary: b, serve_function: f,
+              instance_root: ir, repo_root: wrong_root,
+              service_user: su, service_uid: uid, listen: l,
+              serve_cpu_limit: cpu, serve_wall_limit: wall,
+            }
+          }
+      }
+  }
+}
+
+fn belt_service_file_of(spec: DeploymentSpec) -> SystemdUnitFile {
+  live_deploy_belt_service_unit_file(spec: spec)
+}
+
+fn serve_file_of(spec: DeploymentSpec) -> SystemdUnitFile {
+  live_deploy_serve_unit_file(spec: spec, revision: live_revision())
+}
+
+fn tree_sync_file_of(spec: DeploymentSpec) -> SystemdUnitFile {
+  live_deploy_tree_sync_unit_file(spec: spec, tree_path: spec.service.repo_root as String)
+}
+
+// RED: a spec with a different service_user makes belt_service_runs_as_service_principal go red.
+test fn belt_service_user_goes_red_under_different_user() -> Bool {
+  let wrong_user = divergent_principal()
+  let f = belt_service_file_of(spec: spec_with_principal(wrong_user: wrong_user))
+  !service_has(file: f, target: ServiceUser { name: live_spec().service.service_user })
+    && service_has(file: f, target: ServiceUser { name: wrong_user })
+}
+
+// RED: a spec with a different service_user makes serve_unit_runs_as_service_principal go red.
+test fn serve_unit_user_goes_red_under_different_user() -> Bool {
+  let wrong_user = divergent_principal()
+  let f = serve_file_of(spec: spec_with_principal(wrong_user: wrong_user))
+  !service_has(file: f, target: ServiceUser { name: live_spec().service.service_user })
+    && service_has(file: f, target: ServiceUser { name: wrong_user })
+}
+
+// RED: a spec with a different service_user makes tree_sync_runs_as_service_principal go red.
+test fn tree_sync_user_goes_red_under_different_user() -> Bool {
+  let wrong_user = divergent_principal()
+  let f = tree_sync_file_of(spec: spec_with_principal(wrong_user: wrong_user))
+  !service_has(file: f, target: ServiceUser { name: live_spec().service.service_user })
+    && service_has(file: f, target: ServiceUser { name: wrong_user })
+}
+
+fn spec_with_port(wrong_port: Port) -> DeploymentSpec {
+  match live_spec() {
+    DeploymentSpec { target: t, steps: s, names: n, service: svc } =>
+      match svc {
+        DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_function: f,
+          instance_root: ir, repo_root: rr, service_user: su, service_uid: uid,
+          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
+          DeploymentSpec {
+            target: t, steps: s, names: n,
+            service: DeploymentServiceConfig {
+              unit_name: u, serve_binary: b, serve_function: f,
+              instance_root: ir, repo_root: rr,
+              service_user: su, service_uid: uid,
+              listen: HttpServerListenConfig { host: l.host, port: wrong_port },
+              serve_cpu_limit: cpu, serve_wall_limit: wall,
+            }
+          }
+      }
+  }
+}
+
+// RED: the serve unit's ExecStart tracks the listen port.
+//
+// BOTH SIDES ARE READ BACK FROM EMISSIONS, NEITHER IS TYPED. The serve ExecStart carries the
+// binary, the entry, the function, the host, the port, the release revision and two budgets in
+// one string; spelling either side out here would bake all seven into the evidence and pin a
+// revision that changes on every deploy. Emitting twice and requiring the two commands to DIFFER
+// asserts exactly the property -- the port reaches ExecStart -- without asserting anything about
+// the other six.
+test fn serve_unit_execstart_goes_red_under_different_port() -> Bool {
+  exec_start_changed(
+    baseline: serve_file_of(spec: live_spec()),
+    mutated: serve_file_of(spec: spec_with_port(wrong_port: divergent_port())),
+  )
+}
+
+// RED: a spec with a different repo_root makes belt_service_works_in_repo_tree go red. The
+// emitted WorkingDirectory must follow the spec field rather than a baked-in path.
+test fn belt_service_working_directory_goes_red_under_different_root() -> Bool {
+  let wrong_root = divergent_repo_root()
+  let f = belt_service_file_of(spec: spec_with_repo_root(wrong_root: wrong_root))
+  !service_has(file: f, target: WorkingDirectory { path: live_spec().service.repo_root })
+    && service_has(file: f, target: WorkingDirectory { path: wrong_root })
+}
+
+// RED: a spec with a different repo_root makes the tree-sync ExecStart go red.
+//
+// THE EXPECTED COMMAND IS READ BACK FROM THE UNMUTATED SPEC, NOT RETYPED. Spelling the rsync line
+// out here would reintroduce a golden string inside the RED, and it would fail OPEN rather than
+// closed: once the exclusion list changed, the typed-out command would match nothing, the absence
+// assertion would hold vacuously, and the RED would pass while testing nothing.
+test fn tree_sync_execstart_goes_red_under_different_root() -> Bool {
+  exec_start_changed(
+    baseline: tree_sync_file_of(spec: live_spec()),
+    mutated: tree_sync_file_of(spec: spec_with_repo_root(wrong_root: divergent_repo_root())),
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// HELPER FUNCTIONS
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+// `any` IS IMPORTED, NOT DEFINED. v2.std.algebra already carries it, and a second definition here
+// would be the re-invention DESIGN section 2 forbids -- net concepts must not grow. The first cut
+// of this file hand-rolled both `any` and `all` over a `[first, ..rest]` match arm, which this
+// parser does not admit (src/v2/lens/fn_index_depth_agreement records the same refusal) and which
+// produced 194 parse errors before the file ran anywhere. The universal is `for_all`, imported from the same module --
+// it is NOT called `all` there, which is how a live call site survived a claim that nothing used
+// it: a grep for `all(xs:` missed `all(envs, e => ...)` entirely.
+
+fn has_directive(dirs: List<SystemdServiceDirective>, target: SystemdServiceDirective) -> Bool {
+  any(dirs, predicate: fn(d) { d == target })
+}
+
+fn has_directive_unit(dirs: List<SystemdUnitDirective>, target: SystemdUnitDirective) -> Bool {
+  any(dirs, predicate: fn(d) { d == target })
+}
+
+fn has_directive_timer(dirs: List<SystemdTimerDirective>, target: SystemdTimerDirective) -> Bool {
+  any(dirs, predicate: fn(d) { d == target })
+}
+
+fn has_directive_install(dirs: List<SystemdInstallDirective>, target: SystemdInstallDirective) -> Bool {
+  any(dirs, predicate: fn(d) { d == target })
+}
+
+fn has_slice_directive_val(dirs: List<SystemdSliceDirective>, target: ByteSize, as_max: Bool) -> Bool {
+  any(dirs, predicate: fn(d) {
+    match d {
+      SystemdSliceDirective { property: MemoryMax, value: DirectiveByteCount { bytes: b } } =>
+        as_max && b == target
+      SystemdSliceDirective { property: MemoryHigh, value: DirectiveByteCount { bytes: b } } =>
+        !as_max && b == target
+      _ => false
+    }
+  })
 }

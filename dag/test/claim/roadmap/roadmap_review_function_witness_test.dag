@@ -1,0 +1,117 @@
+module test.claim.roadmap.roadmap_review_function_witness_test
+
+import std.types { Bool, String, List, NonEmptyStr }
+import gunbc.roadmap.roadmap_review_criteria { review_criteria, review_criterion_identities_are_unique, review_criterion_by_key, GroundedOnDesignProposition, GroundedOnTheNodeContract, ReviewCriterion }
+import gunbc.roadmap.roadmap_review_role { ReviewReceiptPresent, ReviewReceiptAbsent, ReviewReceiptSource }
+import gunbc.roadmap.roadmap_review_function {
+  ReviewSubject, ReviewPlan, ReviewCall, ReviewObservation, review_plan, review_plan_revision, review_plan_revision_of, review_subject_id,
+  review_join, ReviewJoined, ReviewJoinRefused, ReviewObservationForUnknownCall, ReviewObservationDuplicated, ReviewObservationForOtherSubject, ReviewObservationForOtherRevision,
+  review_aggregate, review_report_approved, review_report_worker_text,
+}
+import gunbc.roadmap_workflow_stage { WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentComplete, WorkflowSegmentPending }
+import gunbc.worker_lifecycle { WorkerProcessAbsent, WorkerProcessRunning }
+
+fn subject() -> ReviewSubject {
+  ReviewSubject { node_id: "n1", headline: "H", boundary: "B", out_of_scope: "O", red_control: "R", acceptance_command: "gunbc run x", base_sha: "aaa", head_sha: "bbb", verification_detail: "passed" }
+}
+
+fn plan() -> ReviewPlan { review_plan(subject: subject()) }
+
+fn obs(plan: ReviewPlan, key: String, text: String) -> ReviewObservation {
+  ReviewObservation { call_id: key, subject_id: review_subject_id(s: plan.subject), plan_revision: plan.revision, source: ReviewReceiptPresent { text: text }, process: WorkerProcessAbsent }
+}
+
+fn approve_text() -> String { "{\"schema\":\"roadmap-review-verdict/v1\",\"verdict\":\"approve\",\"summary\":\"fits\"}" }
+
+fn changes_text(path: String, reason: String) -> String {
+  join(["{\"schema\":\"roadmap-review-verdict/v1\",\"verdict\":\"request_changes\",\"reasons\":[{\"path\":\"", path, "\",\"reason\":\"", reason, "\"}]}"], "")
+}
+
+fn all_approved(plan: ReviewPlan) -> List<ReviewObservation> {
+  map(plan.calls, c => obs(plan: plan, key: c.id, text: approve_text()))
+}
+
+// THE PARTS: identities are unique, the roster carries the conformance-extdeps domain grounded on the
+// conformance proposition (DESIGN section 3b), and the revision is the roster's content -- change a question
+// and the revision moves; the same roster gives the same revision.
+test fn the_roster_is_derived_with_unique_identities_and_a_content_revision() -> Bool {
+  review_criterion_identities_are_unique()
+    && count(review_criteria) >= 6
+    && (match review_criterion_by_key(key: "conformance-extdeps") {
+      Present { value: c } => match c.ground { GroundedOnDesignProposition { proposition_id } => proposition_id == "s3b.conformance"  GroundedOnTheNodeContract => false }
+      Absent => false
+    })
+    && review_plan_revision() == review_plan_revision_of(criteria: review_criteria)
+    && review_plan_revision_of(criteria: review_criteria) != review_plan_revision_of(criteria: filter(review_criteria, c => c.key != "fail-closed"))
+    && review_plan_revision_of(criteria: review_criteria) != review_plan_revision_of(criteria: map(review_criteria, c => ReviewCriterion { key: c.key, ground: c.ground, question: c.question, tells: c.tells, answer: c.answer, homes: [] }))
+    && review_plan_revision().length() == 16
+}
+
+// THE MAP: one call per criterion, each brief names only its own criterion and carries no verdict path
+// (that is the realization's), and the plan is bound to its subject and revision.
+test fn the_plan_hands_each_call_only_its_own_question() -> Bool {
+  let p = plan()
+  count(p.calls) == count(review_criteria)
+    && p.revision == review_plan_revision()
+    && review_subject_id(s: p.subject) == "n1@bbb"
+    && all(p.calls, call =>
+         call.id == call.criterion.key
+           && string_contains(s: call.brief, pattern: join(["Criterion (", call.criterion.key, ","], ""))
+           && string_contains(s: call.brief, pattern: "git diff aaa..bbb")
+           && !string_contains(s: call.brief, pattern: "Write your verdict")
+           && all(review_criteria, other => other.key == call.criterion.key || !string_contains(s: call.brief, pattern: join(["Criterion (", other.key, ","], ""))))
+}
+
+// THE JOIN IS EXACT (review 5125854144): a subset of approvals is NOT complete -- the missing calls
+// stay in the denominator as awaiting -- and an observation that names an unknown call, another
+// subject, another revision, or the same call twice refuses the whole review naming the call.
+test fn the_join_keeps_the_plan_as_denominator_and_refuses_foreign_or_duplicate_observations() -> Bool {
+  let p = plan()
+  let two = [obs(plan: p, key: "fail-closed", text: approve_text()), obs(plan: p, key: "single-authority", text: approve_text())]
+  let subset = review_aggregate(plan: p, observations: two)
+  let full = review_aggregate(plan: p, observations: all_approved(plan: p))
+  let unknown = review_aggregate(plan: p, observations: concat(all_approved(plan: p), [obs(plan: p, key: "no-such-criterion", text: approve_text())]))
+  let dup = review_aggregate(plan: p, observations: concat(all_approved(plan: p), [obs(plan: p, key: "fail-closed", text: approve_text())]))
+  let foreign = ReviewObservation { call_id: "fail-closed", subject_id: "n1@ccc", plan_revision: p.revision, source: ReviewReceiptPresent { text: approve_text() }, process: WorkerProcessAbsent }
+  let stale = ReviewObservation { call_id: "fail-closed", subject_id: review_subject_id(s: p.subject), plan_revision: "0000000000000000", source: ReviewReceiptPresent { text: approve_text() }, process: WorkerProcessAbsent }
+  (match subset.reconciliation.state { WorkflowSegmentPending => true  _ => false })
+    && !review_report_approved(report: subset)
+    && count(subset.feedback.incomplete) == count(review_criteria) - 2
+    && review_report_approved(report: full)
+    && (match unknown.reconciliation.state { WorkflowSegmentRefused => true  _ => false })
+    && string_contains(s: unknown.reconciliation.detail, pattern: "no-such-criterion")
+    && (match dup.reconciliation.state { WorkflowSegmentRefused => true  _ => false })
+    && string_contains(s: dup.reconciliation.detail, pattern: "more than one observation")
+    && (match review_join(plan: p, observations: [foreign]) { ReviewJoinRefused { cause: ReviewObservationForOtherSubject { call_id: _, expected, observed } } => expected == "n1@bbb" && observed == "n1@ccc"  _ => false })
+    && (match review_join(plan: p, observations: [stale]) { ReviewJoinRefused { cause: ReviewObservationForOtherRevision { call_id: _, expected: _, observed } } => observed == "0000000000000000"  _ => false })
+}
+
+// THE FOLD: findings regroup by file for the worker, identical rows fold once, a file named by two
+// criteria is the counted residual, and an early report says which calls are still incomplete.
+test fn the_aggregate_regroups_by_file_counts_the_overlap_and_names_the_incomplete_calls() -> Bool {
+  let p = plan()
+  let running = ReviewObservation { call_id: "how-to-work", subject_id: review_subject_id(s: p.subject), plan_revision: p.revision, source: ReviewReceiptAbsent, process: WorkerProcessRunning { command: "gunbc" as NonEmptyStr } }
+  let evidence = [
+    obs(plan: p, key: "fail-closed", text: changes_text(path: "dag/x.dag", reason: "an arm widens")),
+    obs(plan: p, key: "single-authority", text: changes_text(path: "dag/x.dag", reason: "a second name for one concept")),
+    obs(plan: p, key: "minimize-redundancy", text: changes_text(path: "dag/y.dag", reason: "a copied fold")),
+    obs(plan: p, key: "closed-grounded-substrate", text: approve_text()),
+    running,
+  ]
+  let report = review_aggregate(plan: p, observations: evidence)
+  let f = report.feedback
+  let text = review_report_worker_text(report: report)
+  (match report.reconciliation.state { WorkflowSegmentFailed => true  _ => false })
+    && count(f.must_fix) == 2
+    && f.overlap_count == 1
+    && (match f.must_fix.first() { Present { value: g } => g.path == "dag/y.dag" && count(g.findings) == 1  Absent => false })
+    && any(f.must_fix, g => g.path == "dag/x.dag" && count(g.findings) == 2)
+    && f.approved == ["closed-grounded-substrate"]
+    && any(f.incomplete, k => k == "how-to-work")
+    && any(f.incomplete, k => k == "conformance-extdeps")
+    && string_contains(s: text, pattern: "Fix, by file: dag/y.dag — minimize-redundancy: changes requested — a copied fold · dag/x.dag — single-authority: changes requested — a second name for one concept; fail-closed: changes requested — an arm widens")
+    && string_contains(s: text, pattern: "1 file(s) were named by more than one criterion")
+    && string_contains(s: text, pattern: "Still reviewing (6, this report is not complete): conformance-extdeps, conformance-realization, conformance-leasing, conformance-compute, consumption, how-to-work")
+    && !string_contains(s: text, pattern: "closed-grounded")
+    && report.reconciliation.detail == text
+}

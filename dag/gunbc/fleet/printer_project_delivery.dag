@@ -1,0 +1,739 @@
+module gunbc.fleet.printer_project_delivery
+
+import std.types { NonEmptyStr, String, Bool, Secret, FilePath }
+import std.nat { Nat }
+import std.resources { Network }
+import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_version_resource }
+import extdeps.crypto.hash { Digest, sha256_digest }
+import extdeps.tools.sha256sum {
+  Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell,
+}
+import extdeps.exec.command { ArgvCommand }
+import extdeps.tools.curl { curl_ftps_upload_command }
+import extdeps.ietf.ftps {
+  FtpsEndpoint, ftps_endpoint, FtpsNegotiation, FtpsExplicit, FtpsImplicit,
+  FtpsPeerVerification, FtpsVerifyPeer, FtpsPeerVerificationDisabled,
+  ftps_default_port, ftps_verifies_peer,
+}
+import product.placement_supply { PhysicalAssetIdentity }
+import extdeps.shell
+import gunbc.auth.materialized_secret {
+  private_scoped_materialization_root, gunbc_private_materialization_dir,
+  ensure_gunbc_private_materialization_dir,
+}
+import gunbc.auth.netrc_binding {
+  NetrcBinding, NetrcPlacement, NetrcBindingPlaced, NetrcBindingRefused,
+  NetrcBindingRefusedResidueRemains,
+  place_netrc_binding_privately, shred_netrc_binding, netrc_binding_path,
+}
+import extdeps.exec.command { CommandTransport }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.command_runner { run_shell_command_capture }
+import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
+import gunbc.auth.secret_ref_credential {
+  SecretCredentialFetch, SecretCredentialReady, SecretCredentialAccessUpsertRequired,
+  SecretCredentialWireDecodeRefused, SecretCredentialFetchRefused,
+  fetch_secret_ref_credential,
+}
+import gunbc.auth.access_token_source { AccessTokenSource }
+import product.network_topology {
+  NetworkEndpoint, NetworkEndpointSubject, EndpointAsset, EndpointHost,
+  EndpointSubjectUnregistered, NetworkTopology,
+  NetworkAttachmentRole, FabricationAppliance,
+  NetworkLocality, Lan,
+}
+import gunbc.fleet_intent_network { fleet_intent_network_topology }
+import gunbc.fleet_printer_access {
+  PrinterCredentialResolution, PrinterCredentialProvisioned,
+  PrinterCredentialProvisionRequired, PrinterCredentialProvisionAmbiguous,
+  PrinterCredentialObservationRefused, PrinterCredentialVersionUnrecorded,
+  PrinterCredentialMaterializationVanished,
+  PrinterCredentialLocusUndeclared, PrinterCredentialLocusConflicted,
+  observe_printer_secret_container,
+}
+
+// DELIVERING A PROJECT TO A PRINTER, AND DELIBERATELY NOTHING ABOUT HOW IT WAS PRODUCED.
+//
+// THE INPUT IS A PAYLOAD, NOT A SLICE PLAN. product.printed_chassis.slicing_toolchain owns whether
+// THIS repository may run OrcaSlicer; that question is currently answered "no" and its positive
+// capability is uninhabited. Coupling delivery to it would make the transport unprovable behind a
+// producer-side blocker, and would also be a category error: the printer does not care who sliced
+// the file. A project that already exists -- sliced elsewhere, by a human, months ago -- is a
+// legitimate input here and says nothing false about this repository's slicing.
+//
+// THE PAYLOAD IS NOT CALLED A BAMBU PROJECT, and that restraint is deliberate. No authority in this
+// tree establishes the .3mf project format: there is no BambuProject type, and naming one here
+// would mint a format claim out of a filename. What IS known is that the machine consumes a file
+// and that this repository can identify the bytes it is sending. That is what the type says.
+type PrinterProjectPayload {
+  local_path: NonEmptyStr
+}
+
+// THE CONTENT IDENTITY IS TAKEN FROM THE BYTES, NEVER ACCEPTED FROM THE CALLER.
+//
+// An earlier draft carried `content: Digest` and `byte_length: Nat` as ORDINARY FIELDS of the payload
+// -- which meant the digest that named the remote file, justified the upload, and was sealed into the
+// receipt was a number the caller simply asserted, with nothing in the graph having read the file. It
+// is the same defect as every other one on this lane, one layer further out: a positive standing that
+// downstream trusts, supplied rather than earned. A caller could have handed a correct-looking digest
+// for bytes that were never at that path, and every consumer of the receipt would have believed it.
+//
+// So identification is an EFFECT, and the identified payload is sealed. Possessing an
+// IdentifiedProjectPayload is the evidence that sha256sum actually read the file at that exact path;
+// there is no other way to obtain one. An unreadable file REFUSES rather than yielding the digest of
+// nothing -- extdeps.tools.sha256sum already draws that distinction, and this consumes it rather than
+// re-deciding it.
+// THE BYTES ARE COPIED INTO AN OWNED REALIZATION BEFORE THEY ARE HASHED, AND IT IS THAT COPY THAT IS
+// UPLOADED. Hashing the caller's path and then handing the same path to curl would have been B13 for
+// the third time on this lane: a correct observation decaying into a mutable locator before it is
+// spent. The digest would have proved what was at that path WHEN sha256sum ran, while curl opens the
+// path LATER -- so replacing or truncating the file in between ships different bytes under a receipt
+// that still names the old digest, and every downstream consumer believes it. The property that has
+// to hold is not "path identified == path later opened" but "bytes identified == bytes curl reads",
+// and only an owned copy gives that.
+//
+// A COPY RATHER THAN A READ, because a .3mf is binary and Filesystem.Read carries String content; a
+// read-then-write round trip would corrupt the payload it was meant to preserve. shell.Copy.File is
+// the modeled cp.
+//
+// The realization lands under private_scoped_materialization_root -- RUNNER_TEMP when set, else a
+// mktemp -d, which is 0700 -- rather than a fixed /tmp name, so two concurrent deliveries cannot
+// collide on one path and nothing outside the run holds a writable handle to it. RESIDUE, stated
+// rather than absorbed: this narrows the window to the private directory's own lifetime; it does not
+// make mutation impossible, and a genuinely structural close is content-addressed storage where the
+// name IS the digest. That is the trigger this arm is waiting on.
+type OwnedProjectRealization sole_constructor {
+  path: FilePath
+}
+
+type IdentifiedProjectPayload sole_constructor {
+  realization: OwnedProjectRealization
+  content: Digest
+}
+
+// IDENTIFICATION FAILS AFTER IT HAS ALREADY MATERIALIZED SOMETHING, which is why refusal here needs
+// the same residue vocabulary the delivery outcomes carry. The hash-failure arm ran with a COMPLETE
+// copy of the payload sitting in a private directory and returned a refusal that mentioned neither;
+// the copy-failure arm could leave a partial destination the same way. Both then dropped the only
+// path that could find it again, so recovery had nothing to act on. The whole workspace is removed
+// rather than just the file, because the mktemp directory leaks per attempt too.
+type PayloadIdentification
+  = PayloadIdentified { payload: IdentifiedProjectPayload }
+  | PayloadIdentificationRefused { local_path: NonEmptyStr, cause: NonEmptyStr }
+  | PayloadIdentificationRefusedResidueRemains {
+      local_path: NonEmptyStr,
+      residue_path: NonEmptyStr,
+      cause: NonEmptyStr,
+    }
+
+// THE REFUSAL IS BRACKETED SO NO ARM CAN FORGET THE WORKSPACE. Every identification failure that
+// happens after mktemp succeeded routes through here, so adding a future failure mode cannot
+// reintroduce the leak by simply returning a refusal.
+fn refuse_identification(local_path: NonEmptyStr, workspace: FilePath, cause: NonEmptyStr) -> PayloadIdentification {
+  identification_refusal(
+    local_path: local_path,
+    workspace: workspace,
+    cause: cause,
+    removed: shell.Remove.RecursiveForce(path: workspace).success)
+}
+
+// THE CLASSIFICATION IS SPLIT FROM THE REMOVAL SO ITS RED IS AUTHORABLE. Reaching the residue arm
+// through the effect would need a workspace that rm -rf genuinely cannot delete, and the obvious
+// fixture does not work: rm -rf exits 0 on a MISSING path even under an unwritable parent, so a
+// witness built that way would pass while asserting nothing. Making it fail for real means creating
+// a read-only parent directory, which is a witness with effects that can leave that directory
+// behind in CI when it fails. Split, the discriminating input is a Bool.
+fn identification_refusal(
+  local_path: NonEmptyStr,
+  workspace: FilePath,
+  cause: NonEmptyStr,
+  removed: Bool,
+) -> PayloadIdentification {
+  if removed {
+    PayloadIdentificationRefused { local_path: local_path, cause: cause }
+  } else {
+    PayloadIdentificationRefusedResidueRemains {
+      local_path: local_path,
+      residue_path: workspace as NonEmptyStr,
+      cause: residue_cause(what_failed: cause),
+    }
+  }
+}
+
+func identify_project_payload(payload: PrinterProjectPayload) -> PayloadIdentification {
+  let created = shell.Mktemp.Dir()
+  if created.success == false {
+    PayloadIdentificationRefused {
+      local_path: payload.local_path,
+      cause: "no private directory could be created, so the payload could not be copied anywhere this run owns",
+    }
+  } else {
+      {
+        let destination = concat(created.path as String, "/project-payload") as FilePath
+        if shell.Copy.File(
+          source: payload.local_path as FilePath,
+          destination: destination
+        ).success == false {
+          refuse_identification(
+            local_path: payload.local_path,
+            workspace: created.path as FilePath,
+            cause: "the project file could not be copied into the run's own materialization")
+        } else {
+          match sha256sum_file_digest_via_shell(path: destination as NonEmptyStr) {
+            Sha256FileDigestUnavailable { path: _, reason: _ } =>
+              refuse_identification(
+                local_path: payload.local_path,
+                workspace: created.path as FilePath,
+                cause: "the copied realization could not be read, so its content identity was never observed")
+            Sha256FileDigest { digest: digest } =>
+              PayloadIdentified {
+                payload: IdentifiedProjectPayload {
+                  realization: OwnedProjectRealization { path: destination },
+                  content: digest,
+                },
+              }
+          }
+        }
+      }
+  }
+}
+
+// THE NAMING RULE IS SEPARATED FROM THE PROVENANCE SEAL, and the separation is what keeps this
+// checkable. IdentifiedProjectPayload is sole_constructor precisely so nobody outside this module can
+// assert a content identity -- which also means no witness can build one, so a rule reachable only
+// through the sealed type would have no authorable RED and its check would be a decoration. The rule
+// itself is a pure function of a Digest and is exercised directly; the seal governs where that Digest
+// is allowed to come from. Two different questions, kept apart rather than fused into one signature.
+fn remote_name_for_digest(content: Digest) -> NonEmptyStr {
+  concat(concat("gunbc-", content.hex as String), ".3mf") as NonEmptyStr
+}
+
+fn project_remote_name(payload: IdentifiedProjectPayload) -> NonEmptyStr {
+  remote_name_for_digest(content: payload.content)
+}
+
+// WHAT AN UPLOAD ESTABLISHED, STATED AT THE STRENGTH FTPS ACTUALLY OBSERVES.
+//
+// THE FIELD IS NAMED FOR THE LOCAL BYTES ON PURPOSE. A completed curl transfer establishes that the
+// server accepted a transfer of the realization this invocation selected, under this remote name. It
+// does NOT establish that the printer's storage now holds bytes whose digest is D: nothing here read
+// anything back off the device. An earlier field named `delivered: Digest` implied exactly that
+// stronger claim, and it would have been spent by MQTT as though the remote object had been verified
+// -- rung inflation on the one value the control channel trusts. Narrowing the NAME is the fix,
+// because the receipt is consumed by a lane that cannot re-derive what it means.
+//
+// Establishing remote-equals-local needs an independent readback -- a size, a listing, a hash the
+// device will report -- and if the Bambu FTPS surface exposes one, that is a separate climb with its
+// own evidence. Until then this receipt says: THESE local bytes were what this upload was instructed
+// to send, and the server accepted the transfer.
+//
+// THE CREDENTIAL VERSION IS CARRIED because a delivery that authenticated with a rotated code is a
+// different event from one that did not, and fleet_printer_access pins exact Secret Manager versions
+// precisely so that distinction survives.
+type ProjectUploadReceipt sole_constructor {
+  printer: PhysicalAssetIdentity
+  uploaded_local_digest: Digest
+  remote_name: NonEmptyStr
+  endpoint_host: NonEmptyStr
+  resolved_credential_version: SmResolvedVersionIdentity
+}
+
+fn receipt_printer(r: ProjectUploadReceipt) -> PhysicalAssetIdentity { r.printer }
+fn receipt_uploaded_local_digest(r: ProjectUploadReceipt) -> Digest { r.uploaded_local_digest }
+fn receipt_remote_name(r: ProjectUploadReceipt) -> NonEmptyStr { r.remote_name }
+
+// ProjectTransferredCleanupRefused IS NEITHER SUCCESS NOR FAILURE AND IS NOT SPELLED AS EITHER.
+// Assigning the shred results to `_` meant a completed upload whose credential shred failed still
+// returned ProjectDelivered -- an access code left on disk, reported as a clean delivery. Collapsing
+// it into ProjectDeliveryRefused would be the opposite lie, since the bytes DID reach the printer and
+// a caller that retried would upload them twice. The transfer fact is preserved and the residue named:
+// MQTT must not consume that arm as ordinary readiness.
+//
+// THE SAME ARGUMENT HAS A MIRROR, AND IT WAS MISSING UNTIL A REVIEW FOUND IT. The refused arm also
+// computed the shred results and then discarded them, so a failed transfer whose credential shred
+// ALSO failed returned a plain ProjectDeliveryRefused -- byte-identical to a refusal that left
+// nothing behind. That is the residue fact deleted on exactly the path where it is most likely:
+// a transfer that died mid-flight is a transfer whose cleanup had the least chance to run.
+// ProjectDeliveryRefusedResidueRemains is not a severity label on the refusal; it names a SECOND
+// fact with a different remedy. A caller of ProjectDeliveryRefused may retry; a caller of this arm
+// must go look at the disk first, and the two must never be one message.
+type ProjectDelivery
+  = ProjectDelivered { receipt: ProjectUploadReceipt }
+  | ProjectDeliveryRefused { printer: PhysicalAssetIdentity, cause: NonEmptyStr }
+  | ProjectDeliveryUnattempted { printer: PhysicalAssetIdentity, cause: NonEmptyStr }
+  | ProjectTransferredCleanupRefused { receipt: ProjectUploadReceipt, cause: NonEmptyStr }
+  | ProjectDeliveryRefusedResidueRemains { printer: PhysicalAssetIdentity, cause: NonEmptyStr }
+  | ProjectDeliveryUnattemptedResidueRemains { printer: PhysicalAssetIdentity, cause: NonEmptyStr }
+  | ProjectDeliveryProvisionRequiredResidueRemains { printer: PhysicalAssetIdentity, desired: SecretRef, cause: NonEmptyStr }
+  | ProjectDeliveryProvisionRequired { printer: PhysicalAssetIdentity, desired: SecretRef }
+
+// THE ROSTER OF PEERS THIS FLEET WILL DIAL WITHOUT VERIFICATION LIVES HERE, not in the FTPS model.
+// It is closed, so the weakening is still not self-authorising -- a caller cannot mint a fresh
+// excuse at the call site -- but it is closed in the layer that OWNS the policy. extdeps.ietf.ftps
+// carries the shape (verification on, or off for a reason of a supplied type) and knows nothing
+// about which devices this repository permits.
+//
+// THE ARM IS NAMED FOR THE LOSS, NOT THE CERTIFICATE, and the measurement is the reason it can be.
+// A TLS handshake against both printers returns a certificate issued by C=CN, O=BBL Technologies
+// Co., Ltd, CN=BBL CA -- a vendor chain, not a self-signed leaf, which is what an earlier arm name
+// wrongly assumed without looking. What actually defeats verification is the SUBJECT: the CN is the
+// machine's serial, not the address a client dials, so hostname verification cannot succeed against
+// an IP however the chain is trusted, and curl's -k surrenders both checks together.
+//
+// THAT MAKES THE CLIMB CONCRETE. Pinning the BBL CA with --cacert recovers chain verification,
+// leaving only the name mismatch to be waived deliberately and narrowly. That is the named trigger
+// for this arm, and it is a construction rather than a rename.
+type PrinterUnverifiablePeerClass
+  = | PrinterCertificateSubjectIsSerialNotAddress
+
+// THE ENDPOINT THE MACHINE ACTUALLY PRESENTS, recorded as an observation of THIS device rather than
+// a general claim about its model line. The A1 mini's LAN file channel is implicit FTPS on 990 and
+// the account name is fixed by the firmware.
+//
+// TWO CLAIMS THAT STOOD HERE WERE WRONG, and both were contradicted by facts this same branch had
+// already established -- which is worse than being unverified, because the correction was sitting
+// one import away.
+//
+// The certificate is NOT self-signed. extdeps.ietf.ftps records the measured result: the segment
+// returns a certificate issued by C=CN, O=BBL Technologies Co., Ltd, CN=BBL CA -- a vendor CA
+// chain. "Self-signed" was authored from an expectation about cheap devices and never observed, and
+// it matters because it is the sentence that makes disabling verification sound inevitable rather
+// than a declared weakening with --cacert as its named trigger.
+//
+// The access code does NOT "live only in Secret Manager". At this head neither printer's code has
+// been materialized there -- which is precisely why PrinterCredentialProvisionRequired and
+// ProjectDeliveryProvisionRequired exist and why the wet run refuses. The code is resolved per
+// delivery FROM Secret Manager when a provisioning receipt names a version; until then, delivery
+// refuses rather than proceeding. Describing the destination state as the current one is how a
+// refusal path comes to look like an edge case instead of the state we are actually in.
+data bambu_lan_ftps_user: NonEmptyStr = "bblp"
+
+fn bambu_lan_endpoint(host: NonEmptyStr) -> FtpsEndpoint<PrinterUnverifiablePeerClass> {
+  ftps_endpoint(
+    host: host,
+    negotiation: FtpsImplicit,
+    verification: FtpsPeerVerificationDisabled {
+      peer: PrinterCertificateSubjectIsSerialNotAddress,
+    },
+  )
+}
+
+// THE SCHEME FOLLOWS THE NEGOTIATION, AND HARDCODING IT MADE THE TYPE A DECORATION. curl reads
+// ftps:// as IMPLICIT TLS from the first byte (conventionally 990) and ftp:// plus --ssl-reqd as
+// EXPLICIT upgrade (conventionally 21). This function derived the PORT from the negotiation and
+// then emitted "ftps://" unconditionally, so a modelled FtpsExplicit endpoint produced
+// ftps://host:21 -- implicit TLS aimed at the explicit port, which is exactly the mismatch the
+// FtpsNegotiation type's own commentary claims it makes unspellable. The Bambu path is implicit, so
+// the wet run never exercised it; the generic authority was false anyway, and a type that is only
+// right on the path someone happened to measure is not an authority.
+fn ftps_scheme(negotiation: FtpsNegotiation) -> String {
+  match negotiation {
+    FtpsImplicit => "ftps://"
+    FtpsExplicit => "ftp://"
+  }
+}
+
+fn ftps_upload_url<PeerClass>(endpoint: FtpsEndpoint<PeerClass>, remote_name: NonEmptyStr) -> String {
+  concat(
+    concat(
+      concat(ftps_scheme(negotiation: endpoint.negotiation), endpoint.host as String),
+      concat(":", to_string(n: endpoint.port))),
+    concat("/", remote_name as String),
+  )
+}
+
+// THE UPLOAD COMMAND, WHICH TAKES A CREDENTIAL BINDING AND CANNOT BE HANDED A SECRET.
+//
+// AN EARLIER DRAFT OF THIS FUNCTION TOOK `credential: Secret` AND RENDERED IT INTO curl's --user.
+// That was not a lapse in an unexplored area -- it re-created, verbatim, the class
+// gunbc.credential_argv_exposure exists to enumerate and retire, on a fleet where /proc carries no
+// hidepid and /proc/PID/cmdline is mode 0444, and where the identical defect had already been found
+// and repaired on the Redfish side by DELETING the `-u {username}:{password}` arms in favour of a
+// 0600 netrc. The comment that stood here even argued the parameter was the safe design because the
+// secret was "a parameter and never a literal", which is the failure this session keeps meeting in
+// new costumes: a justification supplied beside the thing it is supposed to justify.
+//
+// So the secret never becomes an argument. The account name and the access code live together in a
+// netrc file, and what crosses into argv is a PATH.
+// THE PRODUCT-LEVEL BUILDER CONSUMES THE SEALED BINDING, NOT A PATH. Taking a bare FilePath here
+// meant the seal proved nothing at this boundary: a caller could hand over any path at all and the
+// emitted argv would be indistinguishable from the safe one -- and a witness in this very file did
+// exactly that, supplying a fixture path it had never placed. The PR body claimed this function
+// took a NetrcBinding while the signature said otherwise, which is the overclaim that made the gap
+// invisible. curl_ftps_upload_command stays FilePath-parametric on purpose: it is a syntax helper
+// for curl and is not where a credential guarantee can live. The boundary that represents an
+// AUTHENTICATED TRANSFER is this one, so this is where the binding must be required.
+fn upload_command_for<PeerClass>(
+  endpoint: FtpsEndpoint<PeerClass>,
+  local_path: NonEmptyStr,
+  remote_name: NonEmptyStr,
+  binding: NetrcBinding,
+) -> ArgvCommand {
+  curl_ftps_upload_command(
+    url: ftps_upload_url(endpoint: endpoint, remote_name: remote_name),
+    local_path: local_path as String,
+    netrc_path: netrc_binding_path(binding: binding),
+    skip_verification: ftps_verifies_peer(v: endpoint.verification) == false,
+  )
+}
+
+fn project_upload_command<PeerClass>(
+  endpoint: FtpsEndpoint<PeerClass>,
+  payload: IdentifiedProjectPayload,
+  binding: NetrcBinding,
+) -> ArgvCommand {
+  upload_command_for(
+    endpoint: endpoint,
+    local_path: payload.realization.path as NonEmptyStr,
+    remote_name: project_remote_name(payload: payload),
+    binding: binding,
+  )
+}
+
+
+// THE DELIVERY EFFECT, WHICH OWNS THE WHOLE CHAIN FROM PRINTER IDENTITY TO RECEIPT.
+//
+// printer -> locus -> fetch -> owner-only binding -> curl -> shred -> receipt. Every link is here
+// rather than split across the caller, because a chain assembled by the caller is a chain the caller
+// can shortcut: the reason this function takes a PhysicalAssetIdentity and not a Secret is that the
+// only way to reach an upload is to have gone through the locus roster and Secret Manager. The
+// mechanics of the binding itself -- the 0600 creation, the O_EXCL rewrite order, why the write is
+// checked -- are gunbc.auth.netrc_binding's facts and are stated there, once.
+//
+// THE SHRED RUNS ON EVERY ARM OUT OF THE TRANSFER, including the failing one: a refused upload that
+// leaves the access code on disk has turned a transient failure into a standing exposure.
+//
+// THE RECEIPT IS MINTED FROM payload.content -- the same digest that named the remote file and the
+// same value curl was pointed at -- and only inside the exit-zero arm of a real transfer. It cannot
+// be reached by any path that did not move bytes.
+// THE EXIT CLASSIFICATION IS ALREADY MADE, and deliver_project_to_printer below does not re-derive
+// it. Nothing in its match compares an exit code: run_shell_command_capture applies ExitZeroSucceeds
+// and returns ProcessRefused for a non-zero exit, carrying the code and stderr. An earlier draft
+// invented `exit_code` and `output` fields on the OUTPUT arms and re-tested `code == 0` -- two
+// defects at once, since those fields do not exist on those variants and the test duplicated a
+// policy this module does not own. With -fsS a completed transfer is precisely the admitted-exit
+// arms, and the empty/non-empty stdout split that separates them says nothing about whether the file
+// arrived, which is why both map to one receipt.
+//
+// DELIVERY EXECUTES LOCALLY, AND THAT IS A CONSTRUCTION RATHER THAN A CHECK.
+//
+// An earlier draft took `transport: CommandTransport`, which admits SshExec -- and that arm is not a
+// deployment option here, it is a broken one. The payload realization and the netrc are materialized
+// on THIS filesystem; the SSH realization only wraps the argv for remote execution and copies
+// nothing. So a caller passing SshExec would run curl on another machine against paths that exist
+// only in this container: at best a confusing failure, at worst a read of whatever those paths happen
+// to name over there. The parameter is removed rather than validated, because a transport this
+// function cannot honour should not be spellable at its boundary.
+//
+// Hosting delivery on srv2 is a DIFFERENT realization, not this one with a flag changed: it would
+// fetch the credential on srv2, materialize the project on srv2, and execute there. That belongs in
+// its own module when it is wanted.
+//
+// THE ADDRESS COMES FROM THE PRINTER IDENTITY, NEVER FROM THE CALLER.
+//
+// An earlier draft took `host: NonEmptyStr` beside `printer: PhysicalAssetIdentity` and that was a
+// CREDENTIAL EXFILTRATION HOLE, not a tidiness problem: the Secret Manager locus was keyed on the
+// printer while the endpoint came from the caller, so `printer_01 + attacker-host` was spellable and
+// would fetch printer-01's access code and deliberately send it to a caller-chosen peer -- with peer
+// verification disabled, so nothing would object. Two facts that must agree were free to disagree.
+//
+// I ALSO WROTE A SECOND ENDPOINT AUTHORITY BEFORE FINDING THIS ONE. gunbc.fleet_intent_network
+// already carries printer_01_lan_endpoint and printer_02_lan_endpoint, transcribed from the
+// operator's reservation table, because my branch base predates them and I searched my own branch
+// rather than the authority surface. That duplicate is deleted; this consumes the existing rows.
+// PrinterAddressWrongClass REFUSES SEPARATELY FROM PrinterAddressUnknown, because "no endpoint for
+// this asset" and "an endpoint that is not a LAN fabrication appliance" have different remedies: the
+// first is a missing row, the second is a row that would send an access code somewhere structurally
+// wrong -- a tailscale or BMC attachment that happens to name the same asset.
+type PrinterAddressLookup
+  = PrinterAddressFound { address: NonEmptyStr }
+  | PrinterAddressUnknown { printer: PhysicalAssetIdentity }
+  | PrinterAddressAmbiguous { printer: PhysicalAssetIdentity }
+  | PrinterAddressWrongClass { printer: PhysicalAssetIdentity }
+
+// IDENTITIES COMPARE AS IDENTITIES. This coerced both sides to String and compared the renderings,
+// which is an equality on the PROJECTION rather than on the subject: it holds for any two assets that
+// happen to render alike, and it silently survives a change to how an identity prints. The carrier
+// compares directly -- the same equality gunbc.fleet_printer_access already uses on this type when
+// matching a locus row to its printer.
+fn endpoint_names_printer(e: NetworkEndpoint, printer: PhysicalAssetIdentity) -> Bool {
+  match e.subject {
+    EndpointAsset { asset: a } => a == printer
+    EndpointHost { host: _ } => false
+    EndpointSubjectUnregistered => false
+  }
+}
+
+fn endpoint_is_lan_fabrication_appliance(e: NetworkEndpoint) -> Bool {
+  let role_ok = match e.role {
+    FabricationAppliance => true
+    HostOperatingSystem => false
+    BmcOutOfBand => false
+    ContainerBridgeDefault => false
+    ContainerBridgeSecondary => false
+    TailscaleEndpoint => false
+    LanGateway => false
+  }
+  let locality_ok = match e.locality {
+    Lan => true
+    Loopback => false
+    Internet => false
+    WslNat => false
+    WslBridged => false
+    DockerBridge => false
+    TailscaleOverlay => false
+  }
+  role_ok && locality_ok
+}
+
+fn printer_endpoint_address(printer: PhysicalAssetIdentity) -> PrinterAddressLookup {
+  let for_printer = fleet_intent_network_topology().endpoints
+    |> filter(e => endpoint_names_printer(e: e, printer: printer))
+  let admissible = for_printer |> filter(e => endpoint_is_lan_fabrication_appliance(e: e))
+  match admissible |> first {
+    Absent =>
+      if (for_printer |> length) == 0 {
+        PrinterAddressUnknown { printer: printer }
+      } else {
+        PrinterAddressWrongClass { printer: printer }
+      }
+    Present { value: found } =>
+      if (admissible |> length) == 1 {
+        PrinterAddressFound { address: found.address }
+      } else {
+        PrinterAddressAmbiguous { printer: printer }
+      }
+  }
+}
+
+// ONE MINT, reached only from the admitted-exit arms of a real execution. Two inline copies of this
+// literal would be two places a receipt could be authored, and the point of sealing it is that there
+// is exactly one.
+// EVERY EXIT PATH DROPS THE REALIZATION, and this is written as a helper rather than repeated so no
+// arm can be added later that forgets. The first wet run proved the need: the credential leg refused,
+// evaluation left by an arm that had no cleanup on it, and a 226915-byte copy stayed in /tmp -- one
+// per attempt, indefinitely. Cleanup that only runs after a transfer is attempted is cleanup that
+// does not run on the paths most likely to be taken.
+// THE REMOVAL RESULT WAS BOUND TO `_`, WHICH IS THE SAME DELETION THIS FILE ARGUES AGAINST TWICE
+// ABOVE. The annotation over this function was written to add cleanup to a path that had none, and
+// in adding it introduced a fresh dropped signal: a refusal whose payload removal failed was
+// spelled exactly like one whose removal succeeded. The residue is a SECOND fact with a different
+// remedy on every path that can produce it, so it is named on every such path rather than only on
+// the one a review happened to look at.
+// CALLERS THAT ABANDON A PAYLOAD BEFORE DELIVERY IS ENTERED NEED THIS BRACKET, because the private
+// copy is made by identify_project_payload and every exit between there and here leaks one per
+// attempt. It returns whether the removal succeeded rather than swallowing it: a caller that cannot
+// clean up must be able to say so, which is the whole point of the arms above.
+fn abandon_payload(payload: IdentifiedProjectPayload) -> Bool {
+  shell.Remove.FileForce(path: payload.realization.path).success
+}
+
+fn refuse_and_drop(
+  printer: PhysicalAssetIdentity,
+  payload: IdentifiedProjectPayload,
+  cause: NonEmptyStr,
+) -> ProjectDelivery {
+  refuse_and_drop_carrying(printer: printer, payload: payload, cause: cause, residue_already: false)
+}
+
+// RESIDUE HAS TWO SOURCES AND CLEANING ONE CANNOT DISCHARGE THE OTHER. The netrc refusal arm routes
+// through here already knowing a CREDENTIAL may be on disk, and this function used to classify
+// cleanliness from the PAYLOAD removal alone -- so a credential-residue refusal whose payload copy
+// happened to delete cleanly returned an ordinary ProjectDeliveryUnattempted. The obligation
+// survived in the cause TEXT and was erased from the TYPE, which is worse than either losing both
+// or keeping both: a consumer matching the outcome sees a clean refusal and a human reading the
+// message sees a credential on disk, and only one of those is machine-checkable.
+//
+// This is the fifth appearance of one class in this PR -- a distinction preserved in prose and
+// dropped from the carrier -- and the second I introduced while fixing an earlier one.
+fn refuse_and_drop_carrying(
+  printer: PhysicalAssetIdentity,
+  payload: IdentifiedProjectPayload,
+  cause: NonEmptyStr,
+  residue_already: Bool,
+) -> ProjectDelivery {
+  let removed = shell.Remove.FileForce(path: payload.realization.path).success
+  unattempted_delivery(
+    printer: printer,
+    cause: cause,
+    clean: delivery_is_clean(payload_removed: removed, residue_already: residue_already))
+}
+
+// THE JOIN IS ITS OWN FUNCTION BECAUSE A WITNESS BELOW IT PROVES NOTHING ABOUT IT. The first
+// discriminating pair for this defect called unattempted_delivery(clean: ...) directly -- so it
+// varied the ALREADY-COLLAPSED Bool and never exercised the collapse itself. It would have stayed
+// green if this expression regressed to `clean: removed`, which is precisely the defect it was
+// written to prevent, and I described that pair in a commit message as holding payload removal
+// fixed while varying residue when it did neither.
+//
+// A pure two-input join is the smallest thing whose RED is authorable: nothing here is an effect,
+// so both inputs are free, and "payload removed but credential residue known" is a state a fixture
+// can name directly instead of approximating one layer down.
+fn delivery_is_clean(payload_removed: Bool, residue_already: Bool) -> Bool {
+  payload_removed && residue_already == false
+}
+
+// THE RESIDUE MESSAGE HAS ONE AUTHORITY. Three paths can now leave a payload copy or a credential
+// on disk, and writing the sentence three times would fork it on the next edit.
+fn residue_cause(what_failed: NonEmptyStr) -> NonEmptyStr {
+  concat(what_failed as String, ", so material may remain on disk") as NonEmptyStr
+}
+
+fn unattempted_delivery(printer: PhysicalAssetIdentity, cause: NonEmptyStr, clean: Bool) -> ProjectDelivery {
+  if clean {
+    ProjectDeliveryUnattempted { printer: printer, cause: cause }
+  } else {
+    ProjectDeliveryUnattemptedResidueRemains {
+      printer: printer,
+      cause: residue_cause(
+        what_failed: concat(cause as String, " -- and the payload copy could not be removed") as NonEmptyStr),
+    }
+  }
+}
+
+fn delivered_receipt(
+  printer: PhysicalAssetIdentity,
+  payload: IdentifiedProjectPayload,
+  endpoint: FtpsEndpoint<PrinterUnverifiablePeerClass>,
+  credential_version: SmResolvedVersionIdentity,
+  cleaned: Bool,
+) -> ProjectDelivery {
+  let receipt = ProjectUploadReceipt {
+      printer: printer,
+      uploaded_local_digest: payload.content,
+      remote_name: project_remote_name(payload: payload),
+      endpoint_host: endpoint.host,
+      resolved_credential_version: credential_version,
+  }
+  if cleaned {
+    ProjectDelivered { receipt: receipt }
+  } else {
+    ProjectTransferredCleanupRefused {
+      receipt: receipt,
+      cause: residue_cause(
+        what_failed: "the transfer completed but the credential shred or the payload removal did not"),
+    }
+  }
+}
+
+// THE REFUSAL CLASSIFICATION IS PURE AND LIVES OUT HERE SO ITS RED IS AUTHORABLE. Inside the
+// effectful func it could only be reached by actually failing a network transfer, which means the
+// discriminating case -- refused AND unclean -- would never be exercised by any witness. Split out,
+// both arms are reachable from a fixture with no shell and no network.
+fn refused_delivery(printer: PhysicalAssetIdentity, stderr: String, cleaned: Bool) -> ProjectDelivery {
+  if cleaned {
+    ProjectDeliveryRefused {
+      printer: printer,
+      cause: concat("the transfer did not complete: ", stderr) as NonEmptyStr,
+    }
+  } else {
+    ProjectDeliveryRefusedResidueRemains {
+      printer: printer,
+      cause: residue_cause(
+        what_failed: concat(
+          "the transfer did not complete AND the credential shred or payload removal did not: ",
+          stderr) as NonEmptyStr),
+    }
+  }
+}
+
+func deliver_project_to_printer(
+  printer: PhysicalAssetIdentity,
+  payload: IdentifiedProjectPayload,
+  token_source: AccessTokenSource,
+) -> ProjectDelivery
+  uses net: Network
+{
+  match printer_endpoint_address(printer: printer) {
+    PrinterAddressUnknown { printer: p } =>
+      refuse_and_drop(printer: p, payload: payload,
+        cause: "no LAN endpoint is recorded for this printer in gunbc.fleet_intent_network")
+    PrinterAddressAmbiguous { printer: p } =>
+      refuse_and_drop(printer: p, payload: payload,
+        cause: "more than one LAN fabrication endpoint matches this printer; the roster is ambiguous and delivery refuses rather than picking one by list order")
+    PrinterAddressWrongClass { printer: p } =>
+      refuse_and_drop(printer: p, payload: payload,
+        cause: "an endpoint names this printer but is not a LAN fabrication appliance, so it is not the file channel and delivery refuses rather than authenticating to it")
+    PrinterAddressFound { address: lan_address } =>
+  match observe_printer_secret_container(printer: printer, token_source: token_source) {
+    PrinterCredentialObservationRefused { printer: p, cause: cause } =>
+      refuse_and_drop(printer: p, payload: payload, cause: cause)
+    PrinterCredentialLocusUndeclared { printer: p } =>
+      refuse_and_drop(printer: p, payload: payload,
+        cause: "this printer has no access-code locus declared in gunbc.fleet_printer_access, so there is no secret to observe: delivery refuses rather than spelling a plausible secret name by convention and asking Secret Manager about a row nobody wrote")
+    PrinterCredentialLocusConflicted { printer: p, matches: _ } =>
+      refuse_and_drop(printer: p, payload: payload,
+        cause: "more than one access-code locus is declared for this printer, so which secret holds its code is ambiguous and delivery refuses rather than taking one by list order")
+    PrinterCredentialMaterializationVanished { printer: p, exact: e } =>
+      refuse_and_drop(printer: p, payload: payload,
+        cause: concat(concat("a provisioning receipt records this printer's access code at ", secret_ref_version_resource(ref: e)), ", but Secret Manager answers 404 for the container: the secret our record says we wrote is gone, so delivery refuses rather than treating a deletion as a printer that was never onboarded") as NonEmptyStr)
+    PrinterCredentialVersionUnrecorded { printer: p, container: c } =>
+      refuse_and_drop(printer: p, payload: payload,
+        cause: concat(concat("this printer's access code secret exists at ", c), " but no provisioning receipt records which version holds it, so delivery refuses rather than guessing a version or re-provisioning a code that is already there") as NonEmptyStr)
+    PrinterCredentialProvisionRequired { printer: p, desired: d } => {
+      let removed = shell.Remove.FileForce(path: payload.realization.path).success
+      if removed {
+        ProjectDeliveryProvisionRequired { printer: p, desired: d }
+      } else {
+        ProjectDeliveryProvisionRequiredResidueRemains {
+          printer: p, desired: d,
+          cause: residue_cause(what_failed: "provisioning is required and the payload copy could not be removed"),
+        }
+      }
+    }
+    PrinterCredentialProvisionAmbiguous { printer: p, matches: _ } =>
+      refuse_and_drop(printer: p, payload: payload,
+        cause: "more than one provisioning receipt names this printer's secret, so the exact version is ambiguous and delivery refuses rather than choosing one")
+    PrinterCredentialProvisioned { exact: exact_ref } =>
+      match fetch_secret_ref_credential(secret_ref: exact_ref, token_source: token_source) {
+        SecretCredentialAccessUpsertRequired { plan: _ } =>
+          refuse_and_drop(printer: printer, payload: payload, cause: "the access code could not be read: Secret Manager access has not been granted to this identity")
+        SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
+          refuse_and_drop(printer: printer, payload: payload, cause: "the Secret Manager response for the access code did not decode")
+        SecretCredentialFetchRefused { reason: reason } =>
+          refuse_and_drop(printer: printer, payload: payload, cause: reason)
+        SecretCredentialReady { credential: credential, resolved_version: credential_version } => {
+          endpoint = bambu_lan_endpoint(host: lan_address)
+          match place_netrc_binding_privately(
+            machine: endpoint.host,
+            login: bambu_lan_ftps_user,
+            password: credential
+          ) {
+            NetrcBindingRefused { cause: cause } =>
+              refuse_and_drop(printer: printer, payload: payload, cause: cause)
+            NetrcBindingRefusedResidueRemains { cause: cause } =>
+              refuse_and_drop_carrying(
+                printer: printer, payload: payload, cause: cause, residue_already: true)
+            NetrcBindingPlaced { binding: binding } => {
+            outcome = run_shell_command_capture(
+              command: project_upload_command(
+                endpoint: endpoint,
+                payload: payload,
+                binding: binding
+              ),
+              transport: LocalExec
+            )
+            let credential_shredded = shred_netrc_binding(binding: binding)
+            let realization_removed = shell.Remove.FileForce(path: payload.realization.path).success
+            let cleaned = credential_shredded && realization_removed
+            match outcome {
+              ProcessRefused { exit_code: _, stderr: stderr } =>
+                refused_delivery(printer: printer, stderr: stderr, cleaned: cleaned)
+              ProcessOutputAbsent =>
+                delivered_receipt(
+                  printer: printer, payload: payload, endpoint: endpoint,
+                  credential_version: credential_version, cleaned: cleaned
+                )
+              ProcessOutputPresent { text: _ } =>
+                delivered_receipt(
+                  printer: printer, payload: payload, endpoint: endpoint,
+                  credential_version: credential_version, cleaned: cleaned
+                )
+            }
+          }
+        }
+      }
+  }
+  }
+  }
+}
