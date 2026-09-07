@@ -7796,8 +7796,13 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
     // reader finds and concludes the class is walled, which DESIGN 4b rates worse than an absent
     // check. The class it appeared to cover is
     // `gunbc.recurring_failure_mode` `binding_chosen_by_pool_membership_rather_than_by_the_declared_rule`,
-    // whose executing evidence is `test.claim.if_join_pool_binding_witness_test` on the required
-    // floor and not this arm.
+    // and THAT CLASS HAS NO EXECUTING INSTRUMENT IN THIS TREE, which is what its row says and
+    // is why the sentence is written this way rather than pointing somewhere reassuring. Its
+    // evidence today is a manual reproduction over `fixtures/if_join_pool_binding`, which is
+    // committed but which nothing runs. A required-floor witness over those same four modules is
+    // enrolled in gunbc#10740 and had not landed when this was written; citing it here as though
+    // it resolved would have replaced one false claim of coverage with another, in the paragraph
+    // that deletes the first.
     let disposition = match refusal {
         Some(cause) => CompileDisposition::Refused {
             phase: "emit".to_string(),
