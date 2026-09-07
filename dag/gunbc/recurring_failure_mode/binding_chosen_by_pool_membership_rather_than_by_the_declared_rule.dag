@@ -83,7 +83,7 @@ data binding_chosen_by_pool_membership_rather_than_by_the_declared_rule: Recurri
 
     "THE HOOK IS NOT MERELY INERT, IT IS INERT IN TWO SEPARATE WAYS, and both were read rather than assumed. ",
 
-    "FIRST, the SILENT-PICK-GATE in the gunbc binary consults only the fn_parent_first_hits field of the telemetry and exits 1 on it; the global_bare_lcp_picks and global_bare_lcp_ties vectors -- the type and value channel, which is this class -- are COLLECTED AND NEVER READ. ",
+    "FIRST, the SILENT-PICK-GATE in the gunbc binary CONSULTED only the fn_parent_first_hits field of the telemetry and exited 1 on it; the global_bare_lcp_picks and global_bare_lcp_ties vectors -- the type and value channel, which is this class -- were COLLECTED AND NEVER READ. Past tense throughout, because THAT GATE NO LONGER EXISTS: it was deleted as permanently green, and the disposition and its reasons are recorded further down this row. The observation is kept because it is what made the gate worth examining at all, and a reader who meets only the deletion cannot tell what was wrong with the thing deleted -- but in the present tense it describes a mechanism nobody can find. ",
 
     "SECOND, resolution_silent_pick_enable is reached only after the --source-root arm has already exited, so on every modern compile the telemetry is never armed at all and the gate guards only the legacy --source-dir flat scan. ",
 
