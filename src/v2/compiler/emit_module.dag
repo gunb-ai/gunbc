@@ -33,8 +33,7 @@ data emit_module_decl_separator: String = "\n\n"
 // emit_module_contribution built, so there is one authority for what bytes this fold produces and
 // where they came from. A refused declaration still REFUSES -- EmissionUnobservedFragment records
 // missing ORIGINS, never a missing emission, so this is not a widening failure arm (DESIGN.md S5).
-data emit_module_emit_origins_unobserved_cause: String =
-  "v2.compiler.emit yields Medium<String> carrying no contribution structure, so the origins of one declaration's emitted text are not observed at this seam"
+data emit_module_emit_origins_unobserved_cause: String = "v2.compiler.emit yields Medium<String> carrying no contribution structure, so the origins of one declaration's emitted text are not observed at this seam"
 
 fn emit_module_emit_unobserved_fragment(source: String) -> EmissionContribution {
   EmissionUnobservedFragment {

@@ -18,6 +18,7 @@ import v2.std.text { String }
 import v2.std.algebra { fold_list, list_append }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra { Empty }
+import std.decl_ref { decl_ref, declaration_ref_eq }
 import std.emission_provenance {
   EmissionAuthoredFragment,
   EmissionContribution,
@@ -249,7 +250,10 @@ fn emc_unobserved_producers(n: Int) -> Int {
         xs: emission_contribution_unobserved(contribution: contribution),
         empty: 0,
         cons: fn(acc, producer) {
-          if (producer.module_path == "v2.compiler.emit") && (producer.decl_name == "emit") {
+          if declaration_ref_eq(
+            a: producer,
+            b: decl_ref(module_path: "v2.compiler.emit", decl_name: "emit")
+          ) {
             acc + 1
           } else {
             0 - 1
