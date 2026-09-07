@@ -2,9 +2,7 @@ module v2.test.claim.construction_justification.complexity_wall_after_grounding_
 
 import v2.lens.common.construction_justification {
   ConstructionClass,
-  WallAfterGrounding,
-  RatchetForever,
-  WallNow
+  WallAfterGrounding
 }
 import v2.lens.enforcement.complexity_contract_subject {
   complexity_derived_kernel_boundary_is_wall_after_grounding,
@@ -22,8 +20,7 @@ fn class_is_wall_after_grounding(class: ConstructionClass) -> Bool {
 test fn complexity_module_is_wall_after_grounding_not_ratchet_forever() -> Bool {
   match v2.lens.complexity.construction_justification.class {
     WallAfterGrounding { dissolves_to: SingleAuthority } => true
-    RatchetForever => false
-    WallNow { mechanism: _, authority: _ } => false
+    _ => false
   }
 }
 
