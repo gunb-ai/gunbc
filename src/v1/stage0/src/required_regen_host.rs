@@ -3746,12 +3746,18 @@ fn seed_cargo_build(workspace: &Path, label: &str) -> Result<CargoBuildObservati
 /// that file, Linux reports the running image as `<path> (deleted)`; digesting the path itself
 /// compares "installed there now" against "installed there before the build" -- the refusal's
 /// question.
-fn current_exe_digest() -> Result<String, String> {
+fn current_exe_on_disk() -> Result<PathBuf, String> {
     let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
     let shown = exe.to_string_lossy().into_owned();
-    let on_disk = PathBuf::from(shown.strip_suffix(" (deleted)").unwrap_or(&shown));
+    Ok(PathBuf::from(
+        shown.strip_suffix(" (deleted)").unwrap_or(&shown),
+    ))
+}
+
+fn current_exe_digest() -> Result<String, String> {
+    let on_disk = current_exe_on_disk()?;
     let bytes = fs::read(&on_disk).map_err(|e| format!("read {}: {e}", on_disk.display()))?;
-    Ok(v1_rt::bytes_identity_hash(&bytes))
+    Ok(bytes_digest(&bytes))
 }
 
 fn git_tree_dirty(workspace: &Path) -> Result<bool, String> {
@@ -4096,7 +4102,7 @@ fn partitioned_rebuild_from_installed(
 fn next_pass_executable_digest(workspace: &Path) -> Result<String, String> {
     let executable = workspace.join("target/release/claim_executor");
     fs::read(&executable)
-        .map(|bytes| v1_rt::bytes_identity_hash(&bytes))
+        .map(|bytes| bytes_digest(&bytes))
         .map_err(|e| {
             format!(
                 "StageOutputExecutableUnbound: read {}: {e}",
@@ -4163,10 +4169,8 @@ fn run_built_seed_regen(
             )
         })?;
     }
-    let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
-    let shown = exe.to_string_lossy().into_owned();
-    let on_disk = PathBuf::from(shown.strip_suffix(" (deleted)").unwrap_or(&shown));
-    let observed_executable_digest = path_digest(&on_disk)?;
+    let on_disk = current_exe_on_disk()?;
+    let observed_executable_digest = current_exe_digest()?;
     if observed_executable_digest != admitted_executable_digest {
         return Err(format!(
             "CandidateGeneratedByDifferentSeed: stage admitted executable {} but next generation would run {} at {}",
@@ -8027,5 +8031,33 @@ diff --git a/src/v1/stage0/src/v1_rt.rs b/src/v1/stage0/src/v1_rt.rs
         .expect("emitter edit answers");
         assert_eq!(emitter.arm, "WholePopulation", "{}", emitter.line);
         assert!(emitter.members.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod seed_executable_digest_spelling_tests {
+    use super::*;
+
+    /// The two sides of `run_built_seed_regen`'s `!=` must be produced by ONE renderer.
+    ///
+    /// The admitted side of that comparison is a stage's `output_seed_digest`, and the observed
+    /// side is read back from the same file on disk. Before this control, the first was rendered
+    /// bare by `v1_rt::bytes_identity_hash` and the second carried `bytes_digest`'s `fnv1a64:`
+    /// prefix, so the comparison could never hold and generation 2 refused with two spellings of
+    /// one value printed side by side. The convergence tests above never caught it because they
+    /// INJECT the seed-digest producer as a literal (`|| Ok("seed-2".to_string())`), so no real
+    /// renderer runs in them.
+    #[test]
+    fn every_seed_executable_digest_producer_renders_one_spelling() {
+        let on_disk = current_exe_on_disk().expect("current exe resolves");
+        let bytes = fs::read(&on_disk).expect("current exe readable");
+
+        // Both producers, over the same bytes, must agree with the shared renderer.
+        assert_eq!(current_exe_digest().unwrap(), bytes_digest(&bytes));
+        assert_eq!(path_digest(&on_disk).unwrap(), bytes_digest(&bytes));
+
+        // And the rendering is the prefixed one, so a digest read from a receipt is
+        // self-describing rather than a bare integer whose family must be guessed.
+        assert!(current_exe_digest().unwrap().starts_with("fnv1a64:"));
     }
 }
