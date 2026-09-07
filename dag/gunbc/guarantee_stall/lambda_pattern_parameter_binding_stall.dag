@@ -4,11 +4,16 @@ import v2.std.algebra { Cons, Empty }
 import gunbc.guarantee_rung { OutsideTheLadder, StructurallyImpossible }
 import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
 
-// The three in-tree receiver controls now pass under the candidate compiler and remain
-// enrolled as positive regression controls.  The external specimen is retained as a
-// shape-similar pointer only; its causal relationship remains unmeasured.
+// CORRECTED 2026-09-07: the previous sentence here claimed all three in-tree receiver controls
+// pass under the candidate compiler.  One does not compile, and two readers in a row -- review
+// 62191 and the adjudication built on it -- concluded from that sentence that this row's trigger
+// was already discharged and the row should be deleted.  A DESIGN 4c annotation is exactly the
+// kind of claim no Accepted program can check, so a false one never reds and drifts in the
+// direction that flatters its row; this correction is recorded rather than silently substituted
+// so the next reader knows the population was measured against the tree, not against this prose.
+// The collection members are not re-asserted here: they were not measured for this correction.
 data lambda_pattern_parameter_binding_stall: GuaranteeStall = GuaranteeStall {
-  subject: "match-pattern-bound collection or callable binding at the lambda consumer boundary",
+  subject: "match-pattern-bound CALLABLE binding surviving into application at the lambda consumer boundary",
   current: OutsideTheLadder,
   ceiling: StructurallyImpossible,
   blocker: AwaitsOneGrounding {
@@ -16,9 +21,9 @@ data lambda_pattern_parameter_binding_stall: GuaranteeStall = GuaranteeStall {
   },
   population: BoundedPopulation {
     members: Cons {
-      head: "algebra_receiver_application_witness_test.dag and algebra_receiver_forwarding_witness_test.dag (repaired, enrolled positive controls)",
+      head: "algebra_receiver_callable_witness_test.dag -- THE LIVE RED AND THE DECLARED SUBJECT, not a passing control. It refuses on the required floor at dag/test/claim/algebra_receiver_callable_witness_test.dag:17:35, error: function 'invoke' not found in scope, on the arm CallbackPresent { invoke } => invoke(41) == 42: a callable bound by a match pattern and applied in the body, which is this row's grounding verbatim. Byte-identical across 8931ebde40f, 5e1dbb80178 and 82d986981b1, so the refusal is neither introduced nor repaired by the mirror work on this branch.",
       tail: Cons {
-        head: "algebra_receiver_callable_witness_test.dag (repaired, enrolled positive control; scope relationship remains unproven)",
+        head: "algebra_receiver_application_witness_test.dag and algebra_receiver_forwarding_witness_test.dag (collection-side receiver controls; NOT re-measured for this correction and asserted neither green nor red here -- the earlier claim that they pass is withdrawn rather than restated, because it is the claim that misled two readers)",
         tail: Cons {
           head: "emission_provenance_test (external specimen, shape-similar; causal relationship UNMEASURED)",
           tail: Empty {}
