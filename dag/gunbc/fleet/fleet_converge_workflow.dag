@@ -257,9 +257,20 @@ data fleet_converge_mode_options: List<String> = map(fleet_converge_workflow_mod
 // land on its subject by ordinary scheduling.
 //
 // SO THE INPUT IS INVERTED: the dispatch field carries the OBSERVER label, runs-on consumes it
-// directly, and the SUBJECT is not a dispatch field at all -- gunbc.host_reset_return_run learns it
-// from the machine it is running on, through the assignment below. The invalid pairing is not
-// rejected downstream; there is no form field in which to state it.
+// directly, and the SUBJECT is not a dispatch field at all -- gunbc.host_reset_return_run reads the
+// CARRIED LABEL back out of the environment and looks it up in the assignment below. The invalid
+// pairing is not rejected downstream; there is no form field in which to state it.
+//
+// NOT FROM THE MACHINE IT IS RUNNING ON, which is what this paragraph said until review 61989 caught
+// it -- the collapsed design review 61761 had already removed from the code, left standing in the
+// prose beside it. Keying the entry on `hostname -s` made the label that decided WHERE the job ran
+// and the name the machine ANSWERS TO one reading, so a mislabelled or unconverged runner failed the
+// assignment lookup and never reached the identity check; the walls were then fixture-only on the
+// production route. The entry now refuses rather than falling back to its own hostname, and the
+// hostname is the independent second reading that must agree. A stale account of that is not a
+// wording slip: it is one fact with two incompatible spellings (DESIGN section 3's meaning fork), and
+// the one a later worker would most plausibly act on is the one that disarms the corroboration.
+// gunbc.host_reset_return carries the full argument, above reset_return_verdict_of_mint.
 data fleet_converge_reset_assignment: ResetDispatchAssignment = reset_dispatch_pairings(
   subject_roster: reset_subject_roster(),
   peer_roster: reset_observer_peer_roster(),
