@@ -92,8 +92,30 @@ fn remote_file_mode_octal(mode: RemoteFileMode) -> String {
   }
 }
 
+// The converged verdict is SEALED and the refusal is not, and the asymmetry is the whole point --
+// the same one gunbc.readback_independence argues for on probes: only the POSITIVE is poisoned. A
+// caller minting a refusal has declined to claim anything, which is always safe and is sometimes the
+// only honest thing a caller can say (spark.remote_step_sequence refuses before the write is even
+// attempted). A caller minting a CONVERGED verdict asserts that the declared bytes are at the
+// declared path, and nothing structural required it to have looked. This section's own authority
+// note says "FOUR STEPS, and the ORDER is the property" -- until now that order was a claim in prose
+// with no constructor enforcing it, so a fabricated TypedRemoteFileConverged was writable anywhere
+// in the corpus and would read as a completed convergence.
+//
+// RemoteFileConverged is sole_constructor, so classify_typed_remote_file_comparison is the only
+// producer, and it produces one only on cmp exit 0. The invalid state has no constructor rather than
+// being validated for (DESIGN 5, construction over validation). Same rung and same shape as
+// std.realization_reconcile ConvergedEffect, which is the generic authority this instantiates: the
+// framework owns "exit zero is not convergence", this module owns what an observation MEANS for a
+// remote file.
+
+type RemoteFileConverged sole_constructor {
+  path: FilePath
+  mode: RemoteFileMode
+}
+
 type TypedRemoteFileConvergence
-  = TypedRemoteFileConverged { path: FilePath, mode: RemoteFileMode }
+  = TypedRemoteFileConverged { converged: RemoteFileConverged }
   | TypedRemoteFileConvergenceRefused { step: String, reason: String }
 
 // The staging sibling. It MUST share a directory with the destination: `mv` is atomic only within
@@ -154,7 +176,7 @@ fn classify_typed_remote_file_comparison(
   compare_stderr: String,
 ) -> TypedRemoteFileConvergence {
   if compare_exit_code == 0 {
-    TypedRemoteFileConverged { path: write.path, mode: mode }
+    TypedRemoteFileConverged { converged: RemoteFileConverged { path: write.path, mode: mode } }
   } else if compare_exit_code == 1 {
     TypedRemoteFileConvergenceRefused {
       step: "compare",

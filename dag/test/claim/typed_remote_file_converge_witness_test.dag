@@ -42,14 +42,14 @@ fn subject_write() -> TypedRemoteFileWrite? {
 
 fn converged(c: TypedRemoteFileConvergence) -> Bool {
   match c {
-    TypedRemoteFileConverged { path: _, mode: _ } => true
+    TypedRemoteFileConverged { converged: _ } => true
     TypedRemoteFileConvergenceRefused { step: _, reason: _ } => false
   }
 }
 
 fn refusal_step(c: TypedRemoteFileConvergence) -> String {
   match c {
-    TypedRemoteFileConverged { path: _, mode: _ } => "converged"
+    TypedRemoteFileConverged { converged: _ } => "converged"
     TypedRemoteFileConvergenceRefused { step: s, reason: _ } => s
   }
 }
@@ -188,11 +188,11 @@ test fn a_comparison_that_could_not_run_refuses_separately_from_a_difference() -
   let c = classify(exit_code: 2, stderr: "cmp: No such file or directory")
   !converged(c: c) && refusal_step(c: c) == "compare"
     && string_contains(
-      match c { TypedRemoteFileConverged { path: _, mode: _ } => "" TypedRemoteFileConvergenceRefused { step: _, reason: r } => r },
+      match c { TypedRemoteFileConverged { converged: _ } => "" TypedRemoteFileConvergenceRefused { step: _, reason: r } => r },
       "No such file or directory",
     )
     && string_contains(
-      match c { TypedRemoteFileConverged { path: _, mode: _ } => "" TypedRemoteFileConvergenceRefused { step: _, reason: r } => r },
+      match c { TypedRemoteFileConverged { converged: _ } => "" TypedRemoteFileConvergenceRefused { step: _, reason: r } => r },
       "could not compare",
     )
 }
@@ -202,11 +202,11 @@ test fn a_comparison_that_could_not_run_refuses_separately_from_a_difference() -
 // situations whose remedies differ.
 test fn the_difference_and_the_error_do_not_render_the_same_reason() -> Bool {
   let differ = match classify(exit_code: 1, stderr: "") {
-    TypedRemoteFileConverged { path: _, mode: _ } => ""
+    TypedRemoteFileConverged { converged: _ } => ""
     TypedRemoteFileConvergenceRefused { step: _, reason: r } => r
   }
   let errored = match classify(exit_code: 2, stderr: "boom") {
-    TypedRemoteFileConverged { path: _, mode: _ } => ""
+    TypedRemoteFileConverged { converged: _ } => ""
     TypedRemoteFileConvergenceRefused { step: _, reason: r } => r
   }
   differ != errored

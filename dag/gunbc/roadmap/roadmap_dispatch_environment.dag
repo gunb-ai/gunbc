@@ -8,7 +8,7 @@ import std.upsert_decision {
   Refuse,
   upsert_decision_label,
 }
-import std.realization_reconcile { ReconciledEffect, reconciled_effect_converged }
+import std.realization_reconcile { ReconciledEffect, reconciled_effect_converged, NotApplied }
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.ensure {
   EnsureObservation,
@@ -116,6 +116,16 @@ fn ensure_observation_evidence(observation: EnsureObservation<String>) -> String
 // capability but is not a second read of the host. Making it one is a change to what this module
 // OBSERVES, not to how it reconciles, so it is deliberately not folded in here.
 
+// The plan equality this site owes reconcile_effect. It is exact string equality because the plan
+// type here IS the reason string generic Ensure carries, and there is exactly one plan shape per
+// capability. It is never reached in production today — this site decides no Apply it can perform,
+// so the application is always NotApplied — but it is authored rather than stubbed to `true`,
+// because a `(a, b) => true` equality is precisely the freely-constructible evidence the carrier
+// exists to refuse, and it would silently start lying the moment a provisioner is modeled here.
+fn capability_plan_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
 fn capability_mismatch_reason(realization: CapabilityRealization) -> String {
   join([
     execution_capability_label(capability: realization.capability),
@@ -165,7 +175,8 @@ fn capability_ensure_receipt(
         "; generic Ensure cannot choose an installer",
       ], ""),
     ),
-    applied: false,
+    application: NotApplied,
+    plan_eq: (a, b) => capability_plan_eq(a: a, b: b),
     after: observation,
     after_satisfies: identity_matches,
     after_mismatch_reason: capability_readback_reason(realization: realization),
