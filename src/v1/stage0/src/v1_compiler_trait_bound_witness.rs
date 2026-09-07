@@ -15,7 +15,6 @@ use std::rc::Rc;
 #[serde(tag = "_variant")]
 pub enum TraitBoundWitnessScope {
     BoundedToDirectTopLevelMatchBody,
-    BoundedToDirectSingleCallLambdaBody,
 }
 
 pub fn v1_rc_match_scrutinee_clone_bound_param_names(
@@ -209,5 +208,3 @@ pub fn v1_equality_bound_param_name(
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BoundedToDirectTopLevelMatchBody;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct BoundedToDirectSingleCallLambdaBody;
