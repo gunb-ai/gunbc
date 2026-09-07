@@ -61,7 +61,7 @@ data host_toolchain_ensure_apply_dispatch_scaffold: Disposition = Scaffold {
 }
 
 // Access is DERIVED FROM THE TARGET HOST, never looked up independently from the requested host.
-// Before 2026-07-24 these were two parallel decisions: host_toolchain_ensure_target_host was
+// Before 2026-07-24 these were two parallel decisions: host_toolchain_target_host_under was
 // kind-aware (srv3 + OsInstallActuator resolves to the SELECTED actuator host) while the access
 // lookup keyed on the requested host alone and pinned srv3 to ci_deploy_srv1_operator_access. Two
 // silent defects followed. (1) A BuildCache request for srv3 targeted srv3 but authenticated to
@@ -151,17 +151,6 @@ fn host_toolchain_inventory_target_host(host: HostIdentity) -> HostToolchainTarg
     Present { value: h } => TargetHostResolved { host: h }
     Absent => TargetHostAbsentFromInventory {}
   }
-}
-
-fn host_toolchain_ensure_target_host(
-  kind: HostToolchainKind,
-  host: HostIdentity,
-) -> HostToolchainTargetHost {
-  host_toolchain_target_host_under(
-    kind: kind,
-    host: host,
-    selection: srv3_os_install_actuator_selection,
-  )
 }
 
 fn host_toolchain_target_host_under(

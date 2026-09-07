@@ -120,13 +120,6 @@ fn srv3_shell_stdout_from_reconciliation(
   }
 }
 
-fn srv3_shell_stdout_from_apply(d: Srv3ApplyDisposition) -> String? {
-  match d {
-    Srv3ApplyRefused { reason: _ } => none
-    Srv3ApplyAttempted { reconciliation: r } => srv3_shell_stdout_from_reconciliation(r: r)
-  }
-}
-
 fn srv3_reconciliation_failure_reason(
   r: Reconciliation<HostEffectIntent, HostEffectEvidence>,
 ) -> String? {
