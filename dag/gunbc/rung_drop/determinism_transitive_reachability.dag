@@ -30,82 +30,29 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutRep
 // move the number.
 //
 // AND THE REPLACEMENT SENTENCE WAS ITSELF REFUTED, 2026-09-07, BY THE FIRST LANE THAT TRIED TO
-// SATISFY IT. That correction named the mechanism as decls_matching_callee RESCANNING the
-// candidate pool -- filter(decls_in_modules(decls, modules), name == callee) evaluated once per
-// callee per reached declaration -- and the trigger it derived prescribed an index over that
-// lookup. gunbc#10753 built the index and measured it at directory grain: three alternating
-// BEFORE/AFTER repetitions in ONE dispatch on one machine, with only src/v2/std/fn_index.dag
-// swapped between arms. The index does not reach the line -- both arms are twelve to fourteen
-// times it -- and it is measurably WORSE than the lookup it replaced.
+// SATISFY IT. Only the irreducible reasoning is kept here; the executed evidence, the instrument
+// that re-derives it, and the prescription all live in `restoration_trigger` below, because a
+// second copy of them beside the field would be the fork this row exists to prevent.
 //
-// THE VERDICT RULE WAS WRITTEN BEFORE THE NUMBERS EXISTED, which is the only reason it can be
-// quoted here as a result rather than as a rationalisation. Each run is normalised by ITS OWN
-// positive control (the_live_subject_is_not_empty, which does not call the walk at all) so that
-// machine drift cancels within the run; the index is HARMFUL iff the AFTER normalised range lies
-// entirely above the BEFORE range, BENEFICIAL iff entirely below, NEUTRAL if they overlap.
-// BEFORE normalised: 20.11, 20.06, 19.90. AFTER normalised: 23.07, 23.51, 23.56. The ranges are
-// disjoint, so the verdict is HARMFUL -- the index ADDS about 1.1 seconds (6068-6139ms before,
-// 7129-7304ms after) and removes nothing.
+// WHY A TRIGGER IS WITHDRAWN RATHER THAN WEAKENED. A restoration trigger is a repair
+// PRESCRIPTION, not a note. Once the mechanism it was derived from is false, leaving it standing
+// as the declared way out with a "that repair did not help" remark beside it is worse than
+// deleting it: the next reader follows the prescription, not the remark. So the prescription is
+// removed and nothing replaces it until the cost is attributed to a construct that executes.
 //
-// THE FIRST PAIR TAKEN DID NOT DISCRIMINATE AND IS RECORDED RATHER THAN DISCARDED. At n=1 per arm
-// the control moved +24.3% against the subject's +19.8% -- a control that cannot be affected by
-// the change moving MORE than the thing under test, which licenses no conclusion in either
-// direction. At n=3 the control is stable (303-310ms across all six runs) and that excursion is
-// visible as a cold-start artifact of the first run in a dispatch. The non-discriminating reading
-// was correct for the data available when it was taken, and the rule that caught it is the one
-// worth keeping: a negative is trustworthy only beside a positive control that fires.
+// WHY A CORRECT FIT CARRYING A FALSE MECHANISM IS THE DANGEROUS ARTIFACT, and the reason this row
+// has now been corrected twice. A fit that survives its tests looks like a diagnosis, so the
+// mechanism sentence beside it is read as established rather than as the hypothesis it is -- and
+// every repair it recruits is aimed at a construct nobody measured. That is not hypothetical here:
+// it recruited gunbc#10753, which built the prescribed repair, measured it, and found it worse
+// than what it replaced. The fit and the mechanism are therefore carried as SEPARATE claims with
+// separate standing, and this row states which is which.
 //
-// WHY THAT MECHANISM CANNOT BE WHAT EXECUTES. decls_in_modules(decls, closure_modules) is a
-// plain-valued call with hashable arguments, and the v1 interpreter carries an eval-frame call
-// memo that is ON BY DEFAULT (GUNBC_EVAL_MEMO), keyed by fn identity x argument identity. So the
-// loop-invariant the trigger asked a lane to hoist HAD ALREADY BEEN HOISTED by the interpreter:
-// it is evaluated once per walk and served from the memo thereafter, as are repeated lookups of
-// the same callee. The rescan named as the cost was not being paid.
-//
-// WHAT THIS ROW NOW SEPARATES, AND WHY THE SEPARATION IS THE POINT. The FIT is unchanged and is
-// still good evidence: directory-grain cost remains consistent with a term involving the reached
-// set and the candidate-pool size, and O(reached^2) remains refuted by 44x. The MECHANISM behind
-// that fit is UNESTABLISHED. A correct fit carrying a false mechanism is the more dangerous
-// artifact of the two, because it keeps recruiting repairs aimed at the wrong thing while
-// looking like it has already been diagnosed -- which is exactly what it did to gunbc#10753.
-//
-// THE TRIGGER IS WITHDRAWN, NOT WEAKENED, and the distinction is load-bearing. A restoration
-// trigger is a repair PRESCRIPTION, not a note; once its mechanism is false, leaving it standing
-// as the declared way out with an "an index did not help" remark beside it would be precisely
-// the misleading artifact this row exists to prevent. Nothing is prescribed until the charged
-// cost is attributed to something that actually executes.
-//
-// A FIRST ATTRIBUTION EXISTS AND IS RECORDED, THOUGH IT DOES NOT YET NAME THE EXECUTING
-// MECHANISM. Six arms, two repetitions, one dispatch, agreeing within 1%: acquisition over the
-// lens pool 592-597ms; the closure list 9ms; the reachability WALK 4399-4412ms; the walk PLUS the
-// determinism fold 4341-4351ms.
-//
-// THE FOLD IS FREE, WHICH REFUTES THE OTHER OBVIOUS HYPOTHESIS. Adding determinism_findings over
-// every reached declaration's whole subtree measured BELOW the walk alone in both repetitions --
-// it does not rise above run-to-run noise. So determinism_findings and its concat accumulator are
-// not the cost either, and a lane that optimises them will move nothing. The cost is inside the
-// REACHABILITY WALK.
-//
-// AND THE WALK IS POOL-SENSITIVE AT A FIXED REACHED SET, which is the arm neither gunbc#10744 nor
-// gunbc#10753 ran and the one that separates the fit from the mechanism. Holding the entry and the
-// CLOSURE fixed (lens modules only, so the reachable set is identical) while enlarging only the
-// candidate POOL from src/v2/lens to src/v2/lens plus src/v2/std: acquisition 592-597ms -> 1905-1950ms,
-// and the walk 4399-4412ms -> 8474-8637ms. The pool roughly trebles by its acquisition proxy and the
-// walk roughly doubles, with the reached set unchanged. So the POOL TERM IS REAL and it lives in the
-// walk -- gunbc#10744's fit is corroborated at the grain that can corroborate it.
-//
-// WHAT THIS STILL DOES NOT ESTABLISH, and the row does not pretend otherwise: WHICH construct
-// inside the walk is pool-proportional. The per-lookup rescan is refuted, so it is something else,
-// and one candidate a reader should NOT skip is the memo itself -- an eval-frame memo keyed by
-// argument identity must derive a key from the pool-sized argument on every call, so the provider
-// that removes a pool-sized scan can reintroduce a pool-sized cost in its own keying. That is a
-// hypothesis, not a finding, and it is written as one.
-//
-// ONE ACCOUNTING CAVEAT THAT A RE-DERIVER MUST NOT SKIP: whether each arm re-pays its acquisition
-// or is served from a cross-witness share is not pinned by this run, so the walk figures above may
-// be read as net-of-acquisition or as inclusive. Both readings give the same qualitative answer --
-// the walk dominates, the fold is free, and the pool term is real -- but the exact ratio is not
-// quotable until the sharing is pinned.
+// WHY THE NUMBERS ARE NOT WRITTEN DOWN HERE. DESIGN §6 -- name the instrument, never transcribe
+// its output. The lane that wrote this correction transcribed a full result table into the field
+// below on its first attempt, which would have reproduced, one layer up, exactly the failure this
+// row records: a pile of figures unreachable from the thing that owns them, rotting without
+// anyone touching either end, while the recipe to re-derive them had been deleted to make room.
 
 // ONE OBSERVATION, AT THE GRAIN IT WAS TAKEN AND NO WIDER. Under claim_batch on a BuildBuddy
 // runner the directory-grain walk EXECUTES, COMPLETES AND PASSES at 6-7 seconds -- it is not
@@ -143,6 +90,6 @@ data determinism_transitive_reachability: RungDrop = RungDrop {
       "v2.lens.affected_set.corpus_dependency_view (fn-arrow composition, deleted)",
       "v2.lens.affected_set.entry_selection (fn-arrow declarations, deleted)",
     ],
-    restoration_trigger: "CAPABILITY WITHDRAWN, NOT WEAKENED, 2026-09-07 -- THIS ROW PRESCRIBES NO REPAIR UNTIL THE COST IS ATTRIBUTED. The previously declared capability (the callee lookup answering BY INDEX rather than by scanning the candidate pool) is withdrawn because the mechanism it was derived from is refuted by execution: v2.std.fn_index.decls_in_modules is a plain-valued call with hashable arguments and the v1 interpreter eval-frame call memo (GUNBC_EVAL_MEMO, on by default, keyed by fn identity x argument identity) had already collapsed it to one evaluation per walk, so the per-lookup rescan that trigger asked a lane to remove was not being paid. gunbc#10753 built exactly that index and measured it at directory grain, both arms in ONE dispatch on one machine with only src/v2/std/fn_index.dag swapped between arms, three alternating repetitions: 6068-6139ms before, 7129-7304ms after, all six PASS, all twelve to fourteen times the 500ms required_floor_claim_cpu_safety_limit_ms. THE VERDICT RULE WAS PRE-REGISTERED BEFORE THE NUMBERS EXISTED -- normalise each run by its own positive control (the_live_subject_is_not_empty, which does not call the walk), HARMFUL iff the AFTER normalised range lies entirely above the BEFORE range -- and the ranges are disjoint (BEFORE 19.90/20.06/20.11, AFTER 23.07/23.51/23.56), so the index is HARMFUL: it adds about 1.1 seconds and removes nothing. The FIRST pair taken did not discriminate at all and that is recorded rather than discarded: at n=1 per arm the control moved +24.3% against the subject +19.8%, licensing no conclusion in either direction, and at n=3 the control is stable at 303-310ms across all six runs with the excursion visible as a cold-start artifact of the first run in a dispatch. WHAT SURVIVES: the O(reached x pool) FIT, unchanged, agreeing within 1.9x across file and directory grain where O(reached^2) misses by 44x. WHAT DOES NOT: the causal sentence behind that fit, which is now UNESTABLISHED. THE NEXT TRIGGER IS AN ATTRIBUTION, NOT A REPAIR, AND ITS FIRST HALF IS NOW DONE -- CAPABILITY: the charged directory-grain cost of determinism_transitive_holds over pool_roots=['src/v2/lens'] is attributed by MEASUREMENT to an executing CONSTRUCT. Measured so far, six arms over two repetitions agreeing within 1%: acquisition 592-597ms, closure list 9ms, reachability walk 4399-4412ms, walk PLUS the determinism fold 4341-4351ms -- the fold measures BELOW the walk alone in both repetitions, so determinism_findings and its concat accumulator are NOT the cost and optimising them will move nothing. Holding entry and CLOSURE fixed while enlarging only the candidate POOL from src/v2/lens to src/v2/lens+src/v2/std, with the reached set therefore unchanged: acquisition 592-597ms -> 1905-1950ms and the walk 4399-4412ms -> 8474-8637ms, so the POOL TERM IS REAL and it lives in the reachability walk. WHAT REMAINS UNATTRIBUTED is WHICH construct inside that walk is pool-proportional, given that the per-lookup rescan is refuted; one candidate not to skip is the eval-frame memo's own keying, which must derive a key from the pool-sized argument on every call, so a provider that removes a pool-sized scan can reintroduce a pool-sized cost in its key -- a hypothesis, not a finding. A re-deriver must also pin whether each arm re-pays acquisition or is served from a cross-witness share, which this run does not settle, so the ratios above are directional and not quotable as exact. Only once the construct is named may this row name a repair, and the repair it names must be derived from it. SUFFICIENT FOR (unchanged, and still the thing being restored): determinism_transitive_holds with pool_roots=['src/v2/lens'] and pool_files=[] reaching a verdict within the per-claim line at directory grain, WITHOUT NARROWING THE SUBJECT -- scoping pool_roots to the modules the walk happens to reach remains the trap and not the repair, for the reason it always was: it lowers the number by shrinking the population, leaves the cost shape intact, and re-breaks the moment the subject widens, which is the widening this drop exists to restore. THREE COST SHAPES IN THIS WALK ARE REAL AND ARE EXPLICITLY NOT KNOWN TO BE THE COST, recorded so a later reader does not fix them and believe the defect is gone: call_reachable_decls_go scans `reached` linearly per seed (decl_in_list) and appends with a copied accumulator (list_snoc_item), and list_append(rest, callee_decls) copies the seed list per step; determinism_transitive_findings folds with concat(acc, determinism_findings(...)), a copied accumulator that is FREE while the corpus is clean and degrades quadratically exactly when findings appear, so it is invisible in every green run; determinism_live_closure_modules folds list_snoc_item over a list that is empty today. Until an attribution exists, determinism over the fn-arrow call graph is unverified and this row states no way out.",
+    restoration_trigger: "CAPABILITY WITHDRAWN, NOT WEAKENED, 2026-09-07 -- THIS ROW PRESCRIBES NO REPAIR UNTIL THE COST IS ATTRIBUTED TO A CONSTRUCT THAT EXECUTES. The previously declared capability (the callee lookup answering BY INDEX rather than by scanning the candidate pool) is withdrawn because the mechanism it was derived from is refuted by execution. THE REFUTATION, BY REASONING: v2.std.fn_index.decls_in_modules is a plain-valued call with hashable arguments, and the v1 interpreter's eval-frame call memo is on by default (GUNBC_EVAL_MEMO), keyed by fn identity x argument identity -- so the loop-invariant that trigger asked a lane to hoist had already been hoisted by the interpreter, and the per-lookup rescan named as the cost was not being paid. THE REFUTATION, BY MEASUREMENT: gunbc#10753 built exactly the prescribed index and measured it against the unindexed lookup at directory grain under a verdict rule pre-registered before the numbers existed; that PR carries the method, the pre-registration and the figures, and is the citation for them rather than a copy here. Its verdict is that the index is HARMFUL -- it adds cost and removes none -- and that both arms remain far above the per-claim line, so the prescription was not merely insufficient but wrong. WHAT SURVIVES: the O(reached x pool) FIT, unchanged and still good evidence. WHAT DOES NOT: the causal sentence behind it. ATTRIBUTION SO FAR, RE-DERIVED BY NAMING ITS INSTRUMENT RATHER THAN ITS OUTPUT -- run test.claim.fn_index_attribution_probe (scratch-probe/test/claim/fn_index_attribution_probe.dag) under claim_batch --source-root dag --source-root src/v2 --source-root scratch-probe, whose six arms separate acquisition, the closure list, the reachability walk, and the walk plus the determinism fold, and whose last two arms hold the entry and the CLOSURE fixed while enlarging only the candidate POOL so the reached set is unchanged. What it establishes: the determinism fold is NOT the cost -- adding determinism_findings over every reached declaration's whole subtree does not rise above run-to-run noise, so a lane optimising it or its concat accumulator will move nothing; and the reachability WALK is pool-sensitive at a fixed reached set, which corroborates the pool term and locates it inside the walk. WHAT REMAINS UNATTRIBUTED, and is the next trigger: WHICH construct inside that walk is pool-proportional, given that the per-lookup rescan is refuted. One candidate a reader should not skip is the eval-frame memo's own keying, which must derive a key from the pool-sized argument on every call -- so a provider that removes a pool-sized scan can reintroduce a pool-sized cost in its key. That is a hypothesis and is not to be prescribed as a repair. A re-deriver must also pin whether each arm re-pays its acquisition or is served from a cross-witness share, which the probe does not settle. Only once the construct is named may this row name a repair, and the repair it names must be derived from that attribution. SUFFICIENT FOR (unchanged, and still the thing being restored): determinism_transitive_holds with pool_roots=['src/v2/lens'] and pool_files=[] reaching a verdict within the per-claim line at directory grain, WITHOUT NARROWING THE SUBJECT -- scoping pool_roots to the modules the walk happens to reach remains the trap and not the repair, because it lowers the number by shrinking the population, leaves the cost shape intact, and re-breaks the moment the subject widens, which is the widening this drop exists to restore. THREE COST SHAPES IN THIS WALK ARE REAL AND ARE MEASURED NOT TO BE THE COST, recorded so a later reader does not fix them and believe the defect is gone: call_reachable_decls_go scans `reached` linearly per seed (decl_in_list), appends with a copied accumulator (list_snoc_item), and list_append(rest, callee_decls) copies the seed list per step; determinism_transitive_findings folds with concat(acc, determinism_findings(...)), free while the corpus is clean and quadratic exactly when findings appear, so it is invisible in every green run; determinism_live_closure_modules folds list_snoc_item over a list that is empty today. Until the construct is attributed, determinism over the fn-arrow call graph is unverified and this row states no way out.",
   }
 }

@@ -1,5 +1,33 @@
 module test.claim.fn_index_attribution_probe
 
+// THE INSTRUMENT FOR gunbc.rung_drop.determinism_transitive_reachability, NAMED BY THAT ROW SO ITS
+// FIGURES ARE RE-DERIVED RATHER THAN TRANSCRIBED (DESIGN §6). Run it as
+//   claim_batch --source-root dag --source-root src/v2 --source-root scratch-probe
+//     --entry scratch-probe/test/claim/fn_index_attribution_probe.dag --functions <the six below>
+// which charges each arm separately, and read the differences between arms rather than any arm's
+// absolute value.
+//
+// IT LIVES IN scratch-probe BECAUSE IT IS AN INSTRUMENT AND NOT A FLOOR WITNESS. These rows assert
+// only non-emptiness; they establish nothing about the corpus and must never be read as coverage.
+// What they are for is the SHAPE of the cost, which is why each arm is chosen to differ from its
+// neighbour in exactly one term.
+//
+// THE ARMS, AND WHAT EACH DIFFERENCE ISOLATES. a is the acquisition alone. b is the closure list
+// alone. c adds the reachability walk over the same pool and closure, so c minus a is the walk. d
+// adds the determinism fold over the reached set, so d minus c is the fold -- and that difference
+// is the one that refuted the fold as a candidate cause.
+//
+// f IS THE ARM THAT SEPARATES THE FIT FROM THE MECHANISM, and it is the one neither gunbc#10744
+// nor gunbc#10753 ran. It holds the entry and the CLOSURE fixed at the lens modules -- so the
+// reachable set is identical to c's, because the walk is bounded by the closure and not by the
+// pool -- while enlarging ONLY the candidate pool. If cost tracks the pool the walk was handed, f
+// rises against c with the reached set unchanged; if cost tracks what the walk REACHES, the two
+// agree. e is f's own acquisition, so f can be netted against its own pool rather than against a's.
+//
+// WHAT A RE-DERIVER MUST PIN AND THIS PROBE DOES NOT: whether each arm re-pays its acquisition or
+// is served from a cross-witness share. Until that is pinned the arm differences are directional
+// and the ratios are not quotable as exact.
+
 import v2.lens.determinism { determinism_transitive_holds }
 import v2.lens.module_graph { module_declaration_facts_live }
 import v2.std.algebra { fold_list, length, list_snoc_item }
