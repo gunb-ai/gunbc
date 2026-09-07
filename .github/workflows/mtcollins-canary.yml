@@ -77,6 +77,50 @@ jobs:
           fi
           echo "ok: the BMC is unreachable from inside the job"
 
+      # CHECKOUT IS THE FIRST STEP THAT NEEDS THE NETWORK POLICY TO BE RIGHT RATHER THAN MERELY
+      # PRESENT. It resolves DNS, opens TLS to more than one host, and writes a working tree -- so it
+      # exercises the resolver grant, the 443 grant and the attempt workspace together, which no
+      # previous canary step did.
+      #
+      # IT IS ALSO THE FIRST STEP CARRYING A CREDENTIAL WORTH STEALING. It runs only now that the
+      # envelope path is authenticated in both directions: the control plane signs, and the host
+      # proves possession of a secret delivered over its console.
+      #
+      # fetch-depth: 1 BECAUSE THE HISTORY IS NOT THE SUBJECT. A full clone would measure this
+      # repository's size rather than whether the host can check out at all, and the attempt
+      # workspace is bounded.
+      - name: Check out this repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # THE CHECKOUT IS ASSERTED, NOT ASSUMED. A step that "completed" tells us the action exited
+      # zero; that the working tree exists and contains this repository's own files is a different
+      # fact, and it is the one worth having.
+      - name: Prove the working tree is really here
+        run: |
+          echo "git:        $(git --version)"
+          echo "head:       $(git rev-parse HEAD)"
+          echo "tracked:    $(git ls-files | wc -l) files"
+          test -f DESIGN.md || { echo "FAIL: DESIGN.md absent from the checkout"; exit 1; }
+          test -d dag/gunbc/runner || { echo "FAIL: the runner tree is absent"; exit 1; }
+          # THE COMMIT MUST BE THE ONE THIS RUN WAS DISPATCHED FOR, not merely some commit.
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA" || { echo "FAIL: checked out $(git rev-parse HEAD), expected $GITHUB_SHA"; exit 1; }
+          echo "ok: the working tree is this repository at the dispatched commit"
+
+      # A JAVASCRIPT ACTION THAT IS NOT checkout, so the action-download path and the runner's
+      # bundled node are exercised by something whose success does not depend on git.
+      - name: Run a JavaScript action
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const os = require('os');
+            core.info(`node:     ${process.version}`);
+            core.info(`arch:     ${process.arch}`);
+            core.info(`platform: ${process.platform}`);
+            core.info(`cpus:     ${os.cpus().length}`);
+            core.info('ok: a JavaScript action executed on this host');
+
       # THE WORKSPACE IS THE THING THE FIRST CANARY DID NOT HAVE. GitHub warned "only 0 MB of
       # available disk space left", which is why two echo steps could pass while a checkout could
       # not. This step fails loudly if the attempt workspace is missing or unwritable, so a future
