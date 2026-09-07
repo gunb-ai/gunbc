@@ -20,6 +20,8 @@ import gunbc.runner_microvm {
   gunbc_runner_microvm_vm_config, gunbc_runner_jit_transport, runner_microvm_admission,
   gunbc_runner_microvm_realization_reserve,
 }
+import product.fabric.execution { ExecutionGrant, grant_lease_generation }
+import product.fabric.budget { MoneyAccount, fence_admits }
 import gunbc.runner_microvm_attempt {
   MicroVmAttempt, MicroVmCellBinding, VmBoundToOwnedCell, VmUnboundCellNotOwned,
   bind_microvm_to_cell,
@@ -62,6 +64,7 @@ type MicroVmLaunchPlan
       mint_endpoint_path: String
       mint_request: JitRunnerConfigRequest
     }
+  | LaunchRefusedGrant { cause: String }
   | LaunchRefusedCell { cause: String }
   | LaunchRefusedConfig { cause: String }
   | LaunchRefusedAdmission { reason: String }
@@ -120,11 +123,29 @@ fn launch_after_admission(
 // plausible-output failure DESIGN forbids, sitting in the one place nothing can observe it.
 // Matched in place, a new admission arm fails to compile exactly where a launch must rule on it.
 //
-// THE FOUR STAGES ARE ORDERED CHEAPEST-AND-MOST-FUNDAMENTAL FIRST, and the order is load-bearing
-// rather than stylistic: cell ownership, then the VM config, then admission, then the mint. Every
+// THE GRANT IS AN INPUT RATHER THAN SOMETHING THIS MODULE LOOKS UP, and that is what keeps the
+// micro-VM a realization UNDER the fabric contract instead of a second execution system beside it.
+// gunbc.fabric_ci_program FCI-3 owns the question this function answers -- what causes the target
+// process -- and its exit predicate is that a persistent executor re-reads the committed Grant
+// before starting, so an absent, corrupt or expired Grant yields ZERO target processes. Taking the
+// grant as a required parameter makes the absent case unconstructible rather than validated: there
+// is no arm a caller can reach without one. The fence check covers the other two, because a grant
+// whose lease generation no longer admits against the issuing account is precisely a superseded or
+// expired authorization.
+//
+// FCI-1's non-goals name Work-process-start and ExecutionGrant explicitly, and FCI-2's name
+// process-start. A launch composed straight from a cell binding would therefore perform FCI-3's job
+// while skipping FCI-2 -- which is the shape ROADMAP forbids when it says the fabric is four
+// consumers of one contract and not four execution systems.
+//
+// THE FIVE STAGES ARE ORDERED CHEAPEST-AND-MOST-FUNDAMENTAL FIRST, and the order is load-bearing
+// rather than stylistic: grant authorization, cell ownership, the VM config, admission, then the
+// mint. Authorization leads because nothing may start without it whatever the cell's state. Every
 // stage before the last is pure and free to refuse; the mint is not, so it runs only once nothing
 // else can refuse.
 fn plan_microvm_launch_of_binding(
+  grant: ExecutionGrant<NonEmptyStr>,
+  account: MoneyAccount,
   binding: MicroVmCellBinding,
   reserve: RealizationReserve,
   kernel_path: String,
@@ -138,6 +159,15 @@ fn plan_microvm_launch_of_binding(
   runner_group_id: JitRunnerGroupId,
   labels: List<JitRunnerLabel>,
 ) -> MicroVmLaunchPlan {
+  if !fence_admits(
+    a: account,
+    reference: grant.money_reservation,
+    presented: grant_lease_generation(g: grant),
+  ) {
+    LaunchRefusedGrant {
+      cause: "the execution grant presented for this launch does not fence against the account that issued it, so the authorization is stale or superseded and no target process may start",
+    }
+  } else {
   match binding {
     VmUnboundCellNotOwned { cause: c } => LaunchRefusedCell { cause: c }
     VmBoundToOwnedCell {
@@ -187,6 +217,7 @@ fn plan_microvm_launch_of_binding(
           }
       }
   }
+  }
 }
 
 
@@ -215,6 +246,8 @@ fn plan_microvm_launch_of_binding(
 // snapshot into a binding. A defect here is a wiring defect visible in five lines; a defect in the
 // ordering is a live runner identity minted for a VM that never starts, and that one is tested.
 fn plan_microvm_launch(
+  grant: ExecutionGrant<NonEmptyStr>,
+  account: MoneyAccount,
   snapshot: RequiredBuildCellSnapshot,
   kernel_path: String,
   net: RunnerMicroVmNetworking,
@@ -228,6 +261,8 @@ fn plan_microvm_launch(
   labels: List<JitRunnerLabel>,
 ) -> MicroVmLaunchPlan {
   plan_microvm_launch_of_binding(
+    grant: grant,
+    account: account,
     binding: bind_microvm_to_cell(snapshot: snapshot),
     reserve: gunbc_runner_microvm_realization_reserve(),
     kernel_path: kernel_path,
