@@ -843,6 +843,22 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             }
 
+            // DOCS LEDGER HALF. A dedicated ProcessExit entry whose closure is the two ledger
+            // renderers, not gunbc.generated_artifact_emit. Run even after a mirror refusal, and
+            // before the whole-registry resolve, so a stale docs/design-failure-modes.md cannot
+            // hide behind a SIGKILL or MemoryStall of the whole-registry fold.
+            match v1_compiler::cli_run::run_docs_projection_agreement(&source_roots) {
+                v1_compiler::cli_run::DocsProjectionAgreement::Clean => {
+                    eprintln!("required-ci: generated-artifact population=docs-projections OK");
+                }
+                v1_compiler::cli_run::DocsProjectionAgreement::Refused { cause } => {
+                    eprintln!(
+                        "required-ci: generated-artifact population=docs-projections REFUSED {cause}"
+                    );
+                    phase_failures.push(format!("generated-artifact docs-projections: {cause}"));
+                }
+            }
+
             // REGISTRY HALF. Run even after a mirror refusal so the one outcome names the complete
             // population rather than allowing the first failure to hide the second.
             let registry_failures_before = phase_failures.len();
