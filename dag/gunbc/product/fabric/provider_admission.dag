@@ -41,6 +41,23 @@ import product.fabric.provider_route {
 // exhausted budget - are unauthorable until then, because none of them can be expressed without a
 // selection that takes a permit.
 
+// STATED DIVERGENCE FROM std.scoped_authorization (DESIGN section 3b). That module already models
+// a permit-shaped answer - AuthorizationDecision<Subject> is Permitted { grant } | Refused { cause }
+// over a located AuthorizationRefusalCause, which is the same SHAPE as the admission below - and it
+// is Subject-parametric precisely so a domain can bring its own payload. This module does not
+// inhabit it, and the reason is that its enforcing authority is AuthorizationScope: verb x
+// namespace position x named action, decided by an OPERATOR CLICKING on one escalation, bounded by
+// expires_at, and single-use through AuthorizationClaimState. A route sanction has none of those
+// facts. There is no escalation and no operator in the loop; it does not expire on a clock, it goes
+// STALE against a posture revision, which is a different relation with a different remedy; and it is
+// not depleted by use, so the claim lifecycle that module exists to make race-free has no subject
+// here. Forcing a route sanction into an AuthorizationScope would put a jurisdiction into a
+// namespace position and a posture revision into an expiry, which is nicknaming twice over. The
+// shared part is the allow/deny authority, and that IS reused rather than re-coined:
+// std.access.AccessDecision, through access_policy_refusal below. If a posture ever acquires an
+// operator-approval step, that step is a ScopedAuthorization over this permit as its Subject, not a
+// second set of arms grown here.
+
 // A DISPOSITION IS A STANDING, NOT A POINTER. These were once bare DeclarationRef fields on the
 // use scope, which meant the sanctions, export and prohibited-use programs could hand this
 // decision anything at all and it would neither read it nor record it - dangling inputs on the
