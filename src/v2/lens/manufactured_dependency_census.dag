@@ -5,9 +5,8 @@ import std.disposition { SingleAuthority }
 import std.algebra { Cons, Empty, FreeMonoid }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import v2.std.algebra { contains, fold_list, length, list_reverse, list_snoc_item }
-import v2.std.collection { List, Map, empty_map, map_get, map_insert }
-import v2.std.optional { Absent, Optional, Present }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
+import v2.std.optional { Absent, Present }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.lens.module_graph {
@@ -73,13 +72,6 @@ fn string_eq(a: String, b: String) -> Bool {
   a == b
 }
 
-fn map_lookup_where_rejected_absent<K, V>(m: Map<K, V>, key: K) -> Optional<V> {
-  match map_get(m: m, key: key) {
-    Accepted { value: v, diagnostics: _ } => v
-    Rejected { diagnostics: _ } => Absent
-  }
-}
-
 fn snoc_unseen(acc: List<String>, item: String) -> List<String> {
   if contains(xs: acc, item: item, eq: string_eq) {
     acc
@@ -96,7 +88,7 @@ fn import_targets_by_path(edges: List<ImportResolutionFact>) -> Map<String, List
     xs: edges,
     empty: empty_map(),
     cons: fn(acc, edge) {
-      match map_lookup_where_rejected_absent(m: acc, key: edge.path) {
+      match map_lookup(m: acc, key: edge.path) {
         Present { value: existing } =>
           map_insert(m: acc, key: edge.path, value: snoc_unseen(acc: existing, item: edge.import_module))
         Absent =>
@@ -110,7 +102,7 @@ fn edge_is_manufactured(
   by_path: Map<String, List<String>>,
   edge: ImportResolutionFact
 ) -> Bool {
-  match map_lookup_where_rejected_absent(m: by_path, key: edge.path) {
+  match map_lookup(m: by_path, key: edge.path) {
     Present { value: targets } => contains(xs: targets, item: edge.import_module, eq: string_eq) == false
     Absent => true
   }
@@ -134,12 +126,34 @@ fn manufactured_edge_rows(
   ))
 }
 
-fn distinct_paths(edges: List<ImportResolutionFact>) -> List<String> {
+type DistinctPathCount {
+  seen: Map<String, Bool>
+  count: Int
+}
+
+data no_distinct_paths: DistinctPathCount = DistinctPathCount { seen: empty_map(), count: 0 }
+
+// A MAP AS THE SET, not a list with a membership scan. The corpus-wide manufactured-edge
+// population is the one place in this file where the accumulator is unbounded, and the list
+// spelling would be a linear `contains` plus a `list_snoc_item` that copies the accumulator every
+// item -- the copied-accumulator-and-quadratic-fold pair DESIGN section 6 says is always fixed
+// regardless of the realized n. `import_targets_by_path` keeps the list spelling deliberately: its
+// accumulator is one file's import targets, which is bounded by what an author can type.
+fn distinct_path_count(edges: List<ImportResolutionFact>) -> Int {
   fold_list(
     xs: edges,
-    empty: no_targets,
-    cons: fn(acc, edge) { snoc_unseen(acc: acc, item: edge.path) }
-  )
+    empty: no_distinct_paths,
+    cons: fn(acc, edge) {
+      match map_lookup(m: acc.seen, key: edge.path) {
+        Present { value: _ } => acc
+        Absent =>
+          DistinctPathCount {
+            seen: map_insert(m: acc.seen, key: edge.path, value: true),
+            count: acc.count + 1
+          }
+      }
+    }
+  ).count
 }
 
 fn tally() -> ManufacturedDependencyTally {
@@ -158,7 +172,7 @@ fn tally() -> ManufacturedDependencyTally {
     import_edges: length(xs: imports),
     reference_edges: length(xs: references),
     manufactured_edges: length(xs: manufactured),
-    modules_with_manufactured_edges: length(xs: distinct_paths(edges: manufactured))
+    modules_with_manufactured_edges: distinct_path_count(edges: manufactured)
   }
 }
 
