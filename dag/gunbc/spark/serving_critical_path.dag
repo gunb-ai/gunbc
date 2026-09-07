@@ -2,7 +2,7 @@ module gunbc.spark.serving_critical_path
 
 import std.types { Bool, String, Int, NonEmptyStr, List }
 import std.nat { Nat }
-import std.measure { Watt, watt }
+import std.measure { Watt, watt, Microsecond, microsecond, microsecond_count }
 import v2.std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -58,14 +58,14 @@ data spark_peripheral_power_envelope: PowerEnvelope = PowerEnvelope { watts: wat
 //     .233       96%       1%       37.8W      43.9W     2405MHz  233.6 GB  7.80 Gb/s
 type CriticalPathObservation
   = GpuKernelBusyFraction { percent: Nat }
-  | GpuReportedPowerDraw { median_watts: Nat, max_watts: Nat }
+  | GpuReportedPowerDraw { median_watts: Watt, max_watts: Watt }
   | GpuClockObservation { median_mhz: Nat }
   | RoceByteRate { gigabits_per_second_tenths: Nat, link_gigabits: Nat }
   | RankCoarseSymmetry { power_spread_deciwatts: Nat, util_spread_percent: Nat }
 
 data spark_group_a_cold_prefill_observations: List<CriticalPathObservation> = [
   GpuKernelBusyFraction { percent: 96 },
-  GpuReportedPowerDraw { median_watts: 36, max_watts: 44 },
+  GpuReportedPowerDraw { median_watts: watt(count: 36), max_watts: watt(count: 44) },
   GpuClockObservation { median_mhz: 2408 },
   RoceByteRate { gigabits_per_second_tenths: 78, link_gigabits: 50 },
   RankCoarseSymmetry { power_spread_deciwatts: 17, util_spread_percent: 0 },
@@ -176,7 +176,7 @@ type PrefillScalingSample {
   computed_tokens: Nat
   cached_tokens: Nat
   iteration_delta: Nat
-  wall_micros: Nat
+  wall_micros: Microsecond
   arrived_with: ConcurrencyWitness
   concurrency: ConcurrencyWitness
 }
@@ -242,28 +242,28 @@ data spark_group_a_prefill_scaling_experiment: PrefillScalingExperiment = Prefil
     because: "max_num_batched_tokens is carried by no served metric and the process environment is unreadable unprivileged; the effective value is instead bounded behaviourally by spark_group_a_effective_batch_budget" as NonEmptyStr
   },
   ordered_samples: [
-    PrefillScalingSample { sequence: 1, computed_tokens: 1910, cached_tokens: 0, iteration_delta: 1, wall_micros: 2050000, arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
-    PrefillScalingSample { sequence: 2, computed_tokens: 512, cached_tokens: 0, iteration_delta: 1, wall_micros: 649000, arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
-    PrefillScalingSample { sequence: 3, computed_tokens: 4072, cached_tokens: 0, iteration_delta: 1, wall_micros: 4288000, arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 1, max_waiting: 0 } },
-    PrefillScalingSample { sequence: 4, computed_tokens: 2067, cached_tokens: 0, iteration_delta: 1, wall_micros: 2323000, arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 1, max_waiting: 0 } },
-    PrefillScalingSample { sequence: 5, computed_tokens: 1046, cached_tokens: 0, iteration_delta: 1, wall_micros: 1176000, arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
-    PrefillScalingSample { sequence: 6, computed_tokens: 9154, cached_tokens: 233728, iteration_delta: 4, wall_micros: 10050000, arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
-    PrefillScalingSample { sequence: 7, computed_tokens: 2052, cached_tokens: 0, iteration_delta: 5, wall_micros: 2321000, arrived_with: ConcurrencyWitness { max_running: 1, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
-    PrefillScalingSample { sequence: 8, computed_tokens: 3910, cached_tokens: 0, iteration_delta: 5, wall_micros: 4180000, arrived_with: ConcurrencyWitness { max_running: 1, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
-    PrefillScalingSample { sequence: 9, computed_tokens: 513, cached_tokens: 0, iteration_delta: 4, wall_micros: 710000, arrived_with: ConcurrencyWitness { max_running: 1, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
-    PrefillScalingSample { sequence: 10, computed_tokens: 2082, cached_tokens: 0, iteration_delta: 5, wall_micros: 2440000, arrived_with: ConcurrencyWitness { max_running: 1, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
-    PrefillScalingSample { sequence: 11, computed_tokens: 1564, cached_tokens: 0, iteration_delta: 17, wall_micros: 2173000, arrived_with: ConcurrencyWitness { max_running: 1, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
-    PrefillScalingSample { sequence: 12, computed_tokens: 4165, cached_tokens: 0, iteration_delta: 7, wall_micros: 4653000, arrived_with: ConcurrencyWitness { max_running: 1, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
-    PrefillScalingSample { sequence: 13, computed_tokens: 1905, cached_tokens: 0, iteration_delta: 4, wall_micros: 2082000, arrived_with: ConcurrencyWitness { max_running: 1, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
-    PrefillScalingSample { sequence: 14, computed_tokens: 2065, cached_tokens: 0, iteration_delta: 5, wall_micros: 2384000, arrived_with: ConcurrencyWitness { max_running: 1, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
-    PrefillScalingSample { sequence: 15, computed_tokens: 2049, cached_tokens: 0, iteration_delta: 5, wall_micros: 2299000, arrived_with: ConcurrencyWitness { max_running: 1, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
-    PrefillScalingSample { sequence: 16, computed_tokens: 4126, cached_tokens: 0, iteration_delta: 1, wall_micros: 4520000, arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
-    PrefillScalingSample { sequence: 17, computed_tokens: 5969, cached_tokens: 0, iteration_delta: 1, wall_micros: 6310000, arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
-    PrefillScalingSample { sequence: 18, computed_tokens: 8117, cached_tokens: 0, iteration_delta: 1, wall_micros: 8560000, arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
-    PrefillScalingSample { sequence: 19, computed_tokens: 8281, cached_tokens: 0, iteration_delta: 1, wall_micros: 8900000, arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
-    PrefillScalingSample { sequence: 20, computed_tokens: 12023, cached_tokens: 0, iteration_delta: 1, wall_micros: 12700000, arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
-    PrefillScalingSample { sequence: 21, computed_tokens: 16397, cached_tokens: 0, iteration_delta: 1, wall_micros: 17420000, arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
-    PrefillScalingSample { sequence: 22, computed_tokens: 20082, cached_tokens: 0, iteration_delta: 1, wall_micros: 21260000, arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 1, computed_tokens: 1910, cached_tokens: 0, iteration_delta: 1, wall_micros: microsecond(count: 2050000), arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 2, computed_tokens: 512, cached_tokens: 0, iteration_delta: 1, wall_micros: microsecond(count: 649000), arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 3, computed_tokens: 4072, cached_tokens: 0, iteration_delta: 1, wall_micros: microsecond(count: 4288000), arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 1, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 4, computed_tokens: 2067, cached_tokens: 0, iteration_delta: 1, wall_micros: microsecond(count: 2323000), arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 1, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 5, computed_tokens: 1046, cached_tokens: 0, iteration_delta: 1, wall_micros: microsecond(count: 1176000), arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 6, computed_tokens: 9154, cached_tokens: 233728, iteration_delta: 4, wall_micros: microsecond(count: 10050000), arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 7, computed_tokens: 2052, cached_tokens: 0, iteration_delta: 5, wall_micros: microsecond(count: 2321000), arrived_with: ConcurrencyWitness { max_running: 1, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 8, computed_tokens: 3910, cached_tokens: 0, iteration_delta: 5, wall_micros: microsecond(count: 4180000), arrived_with: ConcurrencyWitness { max_running: 1, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 9, computed_tokens: 513, cached_tokens: 0, iteration_delta: 4, wall_micros: microsecond(count: 710000), arrived_with: ConcurrencyWitness { max_running: 1, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 10, computed_tokens: 2082, cached_tokens: 0, iteration_delta: 5, wall_micros: microsecond(count: 2440000), arrived_with: ConcurrencyWitness { max_running: 1, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 11, computed_tokens: 1564, cached_tokens: 0, iteration_delta: 17, wall_micros: microsecond(count: 2173000), arrived_with: ConcurrencyWitness { max_running: 1, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 12, computed_tokens: 4165, cached_tokens: 0, iteration_delta: 7, wall_micros: microsecond(count: 4653000), arrived_with: ConcurrencyWitness { max_running: 1, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 13, computed_tokens: 1905, cached_tokens: 0, iteration_delta: 4, wall_micros: microsecond(count: 2082000), arrived_with: ConcurrencyWitness { max_running: 1, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 14, computed_tokens: 2065, cached_tokens: 0, iteration_delta: 5, wall_micros: microsecond(count: 2384000), arrived_with: ConcurrencyWitness { max_running: 1, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 15, computed_tokens: 2049, cached_tokens: 0, iteration_delta: 5, wall_micros: microsecond(count: 2299000), arrived_with: ConcurrencyWitness { max_running: 1, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 16, computed_tokens: 4126, cached_tokens: 0, iteration_delta: 1, wall_micros: microsecond(count: 4520000), arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 17, computed_tokens: 5969, cached_tokens: 0, iteration_delta: 1, wall_micros: microsecond(count: 6310000), arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 18, computed_tokens: 8117, cached_tokens: 0, iteration_delta: 1, wall_micros: microsecond(count: 8560000), arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 19, computed_tokens: 8281, cached_tokens: 0, iteration_delta: 1, wall_micros: microsecond(count: 8900000), arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 20, computed_tokens: 12023, cached_tokens: 0, iteration_delta: 1, wall_micros: microsecond(count: 12700000), arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 21, computed_tokens: 16397, cached_tokens: 0, iteration_delta: 1, wall_micros: microsecond(count: 17420000), arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 22, computed_tokens: 20082, cached_tokens: 0, iteration_delta: 1, wall_micros: microsecond(count: 21260000), arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
   ],
 }
 
@@ -272,13 +272,13 @@ data spark_group_a_prefill_scaling_experiment: PrefillScalingExperiment = Prefil
 // attributes nothing, and the contrast below is what actually measures co-tenant cost.
 type ScalingSampleExcludedFromFit {
   computed_tokens: Nat
-  wall_micros: Nat
+  wall_micros: Microsecond
   cause: NonEmptyStr
 }
 
 data spark_group_a_co_tenant_outlier: ScalingSampleExcludedFromFit = ScalingSampleExcludedFromFit {
   computed_tokens: 4840,
-  wall_micros: 290960000,
+  wall_micros: microsecond(count: 290960000),
   cause: "a co-tenant was running; 290.96s against a described 5.1s, roughly 57x, while larger windows at the same co-tenant count sat on the curve -- an extreme event observed beside a co-tenant, far outside the +130ms that the controlled contrast attributes to co-tenancy, and unexplained" as NonEmptyStr,
 }
 
@@ -322,9 +322,9 @@ fn arm_fit(arm: FitArm) -> PrefillScalingStanding {
     ScalingUnderObserved { cause: "fewer than four admitted samples cannot separate a fixed term from a slope" as NonEmptyStr }
   } else {
     let sx = fold(xs, init: 0, f: (a, s) => a + s.computed_tokens)
-    let sy = fold(xs, init: 0, f: (a, s) => a + s.wall_micros)
+    let sy = fold(xs, init: 0, f: (a, s) => a + microsecond_count(m: s.wall_micros))
     let sxx = fold(xs, init: 0, f: (a, s) => a + (s.computed_tokens * s.computed_tokens))
-    let sxy = fold(xs, init: 0, f: (a, s) => a + (s.computed_tokens * s.wall_micros))
+    let sxy = fold(xs, init: 0, f: (a, s) => a + (s.computed_tokens * microsecond_count(m: s.wall_micros)))
     let denom = (n * sxx) - (sx * sx)
     if denom == 0 {
       ScalingUnderObserved { cause: "every admitted sample carries the same token count, so no slope is determined" as NonEmptyStr }
@@ -351,7 +351,7 @@ fn abs_int(x: Int) -> Int {
 
 fn arm_worst_residual_micros(arm: FitArm, fit: AffineFit) -> Int {
   fold(arm_samples(arm), init: 0, f: (worst, s) => {
-    let e = abs_int(x: predicted_micros(fit: fit, tokens: s.computed_tokens) - s.wall_micros)
+    let e = abs_int(x: predicted_micros(fit: fit, tokens: s.computed_tokens) - microsecond_count(m: s.wall_micros))
     if e > worst { e } else { worst }
   })
 }

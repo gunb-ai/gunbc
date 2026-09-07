@@ -2,6 +2,7 @@ module test.claim.spark.serving_step_receipt_witness
 
 import std.types { Bool, String, NonEmptyStr, List }
 import std.nat { Nat }
+import std.measure { Microsecond, microsecond }
 import v2.std.optional { Present, Absent }
 import gunbc.spark.serving_launch_instrumentation {
   LaunchInstrumentation, AttributionInstrument, FirstPartyStepObserver,
@@ -30,8 +31,8 @@ fn observed_launch() -> LaunchInstrumentation {
 fn one_request_step(seq: Nat, tokens: Nat) -> ServingStepReceipt {
   ServingStepReceipt {
     step_sequence: seq,
-    started_micros: 0,
-    elapsed_micros: 2000000,
+    started_micros: microsecond(count: 0),
+    elapsed_micros: microsecond(count: 2000000),
     allocations: [RequestStepAllocation { request_id: "req-a" as NonEmptyStr, phase: Prefill, computed_tokens: tokens, cached_tokens: 0 }],
     running_after: 1,
     waiting_after: 0,
@@ -41,8 +42,8 @@ fn one_request_step(seq: Nat, tokens: Nat) -> ServingStepReceipt {
 fn shared_step(seq: Nat) -> ServingStepReceipt {
   ServingStepReceipt {
     step_sequence: seq,
-    started_micros: 0,
-    elapsed_micros: 2000000,
+    started_micros: microsecond(count: 0),
+    elapsed_micros: microsecond(count: 2000000),
     allocations: [
       RequestStepAllocation { request_id: "req-a" as NonEmptyStr, phase: Prefill, computed_tokens: 2000, cached_tokens: 0 },
       RequestStepAllocation { request_id: "req-b" as NonEmptyStr, phase: Decode, computed_tokens: 1, cached_tokens: 0 },

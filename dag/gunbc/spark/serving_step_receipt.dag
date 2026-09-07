@@ -2,6 +2,7 @@ module gunbc.spark.serving_step_receipt
 
 import std.types { Bool, String, NonEmptyStr, List }
 import std.nat { Nat }
+import std.measure { Microsecond, microsecond }
 import v2.std.optional { Present, Absent }
 import gunbc.spark.serving_launch_instrumentation { LaunchInstrumentation, AttributionInstrument, FirstPartyStepObserver }
 
@@ -43,8 +44,8 @@ type RequestStepAllocation {
 // for the same quantity.
 type ServingStepReceipt {
   step_sequence: Nat
-  started_micros: Nat
-  elapsed_micros: Nat
+  started_micros: Microsecond
+  elapsed_micros: Microsecond
   allocations: List<RequestStepAllocation>
   running_after: Nat
   waiting_after: Nat

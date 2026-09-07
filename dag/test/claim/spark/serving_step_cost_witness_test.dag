@@ -3,7 +3,7 @@ module test.claim.spark.serving_step_cost_witness
 import std.types { Bool, String, Int, NonEmptyStr, List }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
-import std.measure { TokenCount, token_count }
+import std.measure { TokenCount, token_count, millisecond_count }
 import gunbc.spark.serving_step_cost {
   ServingStepShape, StepCostObservation, ColdPrefillRunAggregate,
   spark_group_a_cold_prefill_run, spark_serving_step_costs,
@@ -44,10 +44,10 @@ test fn prefill_throughput_is_derived_from_run_level_terms() -> Bool {
 // StepCostObservation, which was a fabricated measurement dressed as a calibration cell.
 test fn the_aggregate_carries_totals_and_a_distribution_not_a_step_pairing() -> Bool {
   spark_group_a_cold_prefill_run.completed_iterations == 83
-    && spark_group_a_cold_prefill_run.elapsed_millis == 185500
-    && spark_group_a_cold_prefill_run.inter_iteration_min_millis == 940
-    && spark_group_a_cold_prefill_run.inter_iteration_median_millis == 2300
-    && spark_group_a_cold_prefill_run.inter_iteration_max_millis == 2680
+    && millisecond_count(m: spark_group_a_cold_prefill_run.elapsed_millis) == 185500
+    && millisecond_count(m: spark_group_a_cold_prefill_run.inter_iteration_min_millis) == 940
+    && millisecond_count(m: spark_group_a_cold_prefill_run.inter_iteration_median_millis) == 2300
+    && millisecond_count(m: spark_group_a_cold_prefill_run.inter_iteration_max_millis) == 2680
 }
 
 // THE EXACT PER-STEP POPULATION IS EMPTY, AND EVERY LOOKUP REFUSES. This is what stops the run

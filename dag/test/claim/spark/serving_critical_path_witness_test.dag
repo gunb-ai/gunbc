@@ -2,6 +2,7 @@ module test.claim.spark.serving_critical_path_witness
 
 import std.types { Bool, String, Int, NonEmptyStr, List }
 import std.nat { Nat }
+import std.measure { microsecond_count, watt_count }
 import v2.std.optional { Present, Absent }
 import gunbc.spark.serving_critical_path {
   PowerEnvelope, spark_system_power_supply, spark_soc_thermal_envelope,
@@ -63,10 +64,10 @@ test fn neither_saturation_nor_underutilisation_is_constructible_from_coarse_tel
 
 // THE ENVELOPES NEST, and adding them is the first mistake available.
 test fn the_power_envelopes_nest_rather_than_sum() -> Bool {
-  spark_system_power_supply.watts == 240
-    && spark_soc_thermal_envelope.watts == 140
-    && spark_gpu_power_envelope.watts == 120
-    && spark_gpu_power_envelope.watts < spark_soc_thermal_envelope.watts
+  watt_count(w: spark_system_power_supply.watts) == 240
+    && watt_count(w: spark_soc_thermal_envelope.watts) == 140
+    && watt_count(w: spark_gpu_power_envelope.watts) == 120
+    && watt_count(w: spark_gpu_power_envelope.watts) < watt_count(w: spark_soc_thermal_envelope.watts)
     && string_contains(s: spark_gpu_power_envelope.covers as String, pattern: "nested inside")
 }
 
@@ -205,7 +206,7 @@ test fn the_proportional_mechanisms_remain_unresolved() -> Bool {
 // rather than absorbed into the contrast.
 test fn the_outlier_is_kept_and_is_not_explained_by_the_measured_co_tenant_cost() -> Bool {
   spark_group_a_co_tenant_outlier.computed_tokens == 4840
-    && spark_group_a_co_tenant_outlier.wall_micros == 290960000
+    && microsecond_count(m: spark_group_a_co_tenant_outlier.wall_micros) == 290960000
     && string_contains(s: spark_group_a_co_tenant_outlier.cause as String, pattern: "unexplained")
 }
 
