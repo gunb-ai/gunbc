@@ -76,14 +76,23 @@ fn retained_via_eval_agreement(
 }
 
 data emit_coverage_frontier_roster: List<EmitCoverageFrontierRow> = [
-  retained_via_eval_agreement(
+  // add family promoted InterpreterRetained -> SelfEmittedNative 2026-09-07: the native-only
+  // verdict arm for add (emit_host_native_only_add_holds + its wrong-octet broken control) landed
+  // in the already file-grain-enrolled native-only verdict entry, so the backing citation is
+  // enrolled by construction (coverage_row_backing_is_enrolled). The equals_eval agreement pair
+  // stays enrolled as the family's program-side discrimination leg.
+  EmitCoverageFrontierRow {
     subject: coverage_subject(
       module_path: "v2.test.manual.rust_add_emit_translate",
       decl_name: "rust_add_inferred_tree"
     ),
-    entry: "src/v2/test/claim/execution/emit_host_add_equals_eval_test.dag",
-    f: "emit_host_add_equals_eval_holds"
-  ),
+    witness_entry: "src/v2/test/claim/execution/emit_host_add_equals_eval_test.dag",
+    witness_function: "emit_host_add_equals_eval_holds",
+    disposition: SelfEmittedNative {
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_function: "emit_host_native_only_add_holds"
+    }
+  },
   EmitCoverageFrontierRow {
     subject: coverage_subject(
       module_path: "v2.test.long.emit_host_classical_not_ingested_equals_eval",
