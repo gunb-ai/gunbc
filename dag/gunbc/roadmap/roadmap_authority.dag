@@ -385,7 +385,7 @@ fn superseded(identity: String,
 // is the failure that note itself documents. The floor executes.
 fn shell_typed_invocation_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/shell_to_dag_stub_witness_test.dag" as FilePath,
+    entry: "dag/test/claim/shell/shell_typed_invocation_witness_test.dag" as FilePath,
     function: "usb_gadget_setup_emits_no_shell_control_word" as NonEmptyStr,
   )
 }
@@ -2113,10 +2113,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         headline: "Describe what a command should do, instead of writing shell text",
         boundary: "Callers say which operation and which arguments; nobody hands over an opaque string of shell as the instruction.",
         displaced_cost: "Shell syntax embedded in decision-making code cannot be checked before it runs, and cannot be reused anywhere else.",
-        first_slice: "Move one family of existing calls onto a described operation.",
-        red_control: "Bad arguments or an unavailable operation refuse before any shell is produced.",
-        out_of_scope: "Genuinely shell-shaped leftovers stay in the shell layer.",
-        handback: "The described version, proof it does the same thing, and the deleted string-building."
+        first_slice: "Move the USB gadget configfs setup (extdeps.linux.usb_gadget: usb_gadget_setup_ops renders through configfs_op_line and usb_gadget_setup_script joins `set -e` and `|| true`) onto described operations: each ConfigfsOp becomes a typed command (extdeps.exec.command ArgvCommand or a typed filesystem write) with a typed refusal for bad arguments, and the string-building is DELETED, not stubbed to return an empty string. Two consumers must stay green by execution: the acceptance oracle dag/test/claim/shell/shell_typed_invocation_witness_test.dag (its function usb_gadget_setup_emits_no_shell_control_word is red today and turns green when no shell control word is rendered; re-point what it reads if the surface moves, never its name) and dag/test/claim/bmc/bmc_virtual_media_witness_test.dag, whose srv4 gadget tests assert what the setup produces and are migrated to the described form, not deleted.",
+        red_control: "Bad arguments or an unavailable operation refuse before any shell is produced; the acceptance oracle refuses while `set -e`, `||`, `&&`, `;` or `2>/dev/null` appear in the rendered setup.",
+        out_of_scope: "Genuinely shell-shaped leftovers stay in the shell layer. A function that returns an empty string in place of the deleted rendering is not a deletion; a `posix_sh_program_command` wrapping the old shell text is not a described operation.",
+        handback: "The described version, both witness modules green by execution, and the deleted string-building."
       )
     )
     ),
