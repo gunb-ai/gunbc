@@ -101,11 +101,13 @@ import gunbc.host_reset_return {
   host_reset_observer_label_env,
 }
 import gunbc.host_reset_subject_roster { reset_observer_peer_roster, reset_subject_roster }
+import gunbc.host_reset_return { ResetObserverPairing }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 import gunbc.live_deploy.apply_receipt { rlm_plan_run_id_env_name, rlm_apply_run_id_env_name, rlm_plan_artifact_hash_env_name }
 import gunbc.roadmap_launch_deployment_cli { rlm_dashboard_run_id_env_name }
 import gunbc.fleet_converge_plan { fleet_converge_plan_artifact_dir, FleetConvergeScope, FullHost, LaunchEnvironment, FabricAllocationStoreOnly }
 import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.json.emit { json_kv, json_object, json_string, serialize_json }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import std.types { NonEmptyStr, List, String, Int, list_length }
 
@@ -308,18 +310,34 @@ data fleet_converge_reset_observer_options: List<String> = match fleet_converge_
 // emitted from the same assignment the option list comes from and indexed by the dispatch input. It
 // is derived rather than spelled: a pairing this mint refused cannot appear in it, and an observer
 // absent from the map yields an empty subject, which cannot collide with a real host's domain.
+// THE MAP GOES THROUGH THE JSON EMITTER, NOT THROUGH concat. It hand-built the object with string
+// literals until review 62097, which is the medium-as-string shape and a section 2 re-invention: the
+// authority already exists at extdeps.languages.json.emit, and this module already consumes its YAML
+// sibling, so reaching for the JSON one is the same move rather than a new dependency.
+//
+// THE CONCRETE FAILURE IT REMOVES IS NOT HYPOTHETICAL IN SHAPE. Quoting and escaping were unmodeled,
+// and nothing in NonEmptyStr or HostIdentity forbids a label carrying a quote or a backslash. Such a
+// label emitted malformed JSON, fromJSON failed at JOB-SETUP time before any step existed, and the
+// reset job died with no receipt and no upload -- the same silent-stall class this workflow's own
+// dispatch-admission gate was added to close, reintroduced one function away from it by the fix.
+// serialize_json escapes through escape_json_string, so the emitter owns that fact and this row does
+// not restate it.
+// TAKING THE PAIRINGS AS AN ARGUMENT IS WHAT MAKES THE ESCAPING CHECK AUTHORABLE. Reading the module
+// data row directly left no way to hand this function a hostile label, so a witness could only have
+// restated what the emitter does -- permanently green by construction, which section 4b calls a
+// decoration and worse than absent. Split so the fold is exercisable and the data row is one call.
+fn reset_subject_map_json(pairings: List<ResetObserverPairing>) -> String {
+  serialize_json(
+    v: json_object(
+      members: map(pairings, pr => json_kv(key: pr.observer as String, value: json_string(s: pr.subject as String))),
+    ),
+  )
+}
+
 fn fleet_converge_reset_subject_map_json() -> String {
   match fleet_converge_reset_assignment {
-    DispatchAssignmentRefused { cause: _ } => "{}"
-    DispatchAssignment { pairings: ps } =>
-      join([
-        "{",
-        join(
-          map(ps, pr => join(["\"", pr.observer as String, "\": \"", pr.subject as String, "\""], "")),
-          ", ",
-        ),
-        "}",
-      ], "")
+    DispatchAssignmentRefused { cause: _ } => reset_subject_map_json(pairings: [])
+    DispatchAssignment { pairings: ps } => reset_subject_map_json(pairings: ps)
   }
 }
 

@@ -10,9 +10,11 @@ import gunbc.fleet_converge_workflow {
   fleet_converge_spark_bootstrap_step_if, fleet_converge_mode_options,
   fleet_converge_reset_observer_dispatch_admission_step, fleet_converge_build_job_steps,
   fleet_converge_reset_subject_mutation_concurrency_group_expression, fleet_converge_reset_subject_map_json,
+  reset_subject_map_json,
   fleet_converge_workflow, expected_fleet_converge_yml,
   FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused,
 }
+import gunbc.host_reset_return { DispatchAssignment, DispatchAssignmentRefused, reset_dispatch_pairings }
 import gunbc.ci_spec { gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_org_actions_converge_invoke, gunbc_ci_spark_bootstrap_invoke }
 import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
 import extdeps.languages.yaml.types {
@@ -293,6 +295,29 @@ test fn the_reset_job_shares_the_mutation_domain_of_its_subject() -> Bool {
     && string_contains(s: fleet_converge_reset_subject_mutation_concurrency_group_expression, pattern: "github.event.inputs.reset_observer")
     && string_contains(s: fleet_converge_reset_subject_map_json(), pattern: "mtcollins1")
     && !string_contains(s: fleet_converge_reset_subject_mutation_concurrency_group_expression, pattern: "gunbc-host-mutation-${{ github.event.inputs.reset_observer")
+}
+
+// THE SUBJECT MAP IS EMITTED, NOT CONCATENATED, AND A HOSTILE LABEL IS HOW YOU CAN TELL. Review 62097
+// found this object hand-built from string literals: nothing in NonEmptyStr or HostIdentity forbids a
+// label carrying a quote or a backslash, and such a label emitted malformed JSON, so fromJSON failed
+// at JOB-SETUP time before any step existed and the reset job died with no receipt and no upload --
+// the silent-stall class this workflow's own dispatch-admission gate exists to close, reintroduced
+// one function away from it.
+//
+// THIS IS THE WHOLE REASON THE FOLD TAKES AN ARGUMENT. Reading the assignment data row directly, the
+// only witness available would have restated what the emitter does and been green by construction.
+// Handing it a pairing whose observer carries a quote is a red that the concat form fails and the
+// emitted form passes, which is the difference between a check and a decoration.
+test fn a_reset_subject_map_escapes_a_label_that_would_break_the_json() -> Bool {
+  let rendered = match reset_dispatch_pairings(
+    subject_roster: ["mtcollins1"],
+    peer_roster: ["srv\"1"],
+  ) {
+    DispatchAssignmentRefused { cause: _ } => ""
+    DispatchAssignment { pairings: ps } => reset_subject_map_json(pairings: ps)
+  }
+  string_contains(s: rendered, pattern: "\\\"")
+    && !string_contains(s: rendered, pattern: "\"srv\"1\"")
 }
 
 // THE VOCABULARY IS THE ONLY SPELLING AUTHORITY, and these are the facts that make that a claim
