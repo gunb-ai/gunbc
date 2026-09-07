@@ -14,7 +14,12 @@ data emission_provenance_missing_consumer: GuaranteeStall = GuaranteeStall {
     "std.emission_provenance.EmissionAuthoredFragment",
     "std.emission_provenance.EmissionSourceComposition",
     "std.emission_provenance.EmissionUnobservedFragment",
-    "std.emission_provenance.emission_contribution_read"
+    "std.emission_provenance.EmissionResolutionCoverage",
+    "std.emission_provenance.EmissionResolutionCorrespondence",
+    "std.emission_provenance.EmissionDeclarationCorrespondence",
+    "std.emission_provenance.emission_contribution_read",
+    "std.emission_provenance.emission_contribution_origins",
+    "std.emission_provenance.emission_resolution_correspondence"
   ] },
-  next_rung_trigger: climbs_when(capability: "a required executing control constructs an EmissionContribution from a real emitter path (not a hand-built fixture), reads it through emission_contribution_read, and asserts the materialized source and origins match the contributed text and metadata. The constructed values must exercise at least EmissionAuthoredFragment and EmissionSourceComposition; EmissionUnobservedFragment may remain UNEXERCISED if declared as such with a next-rung trigger naming the producer.")
+  next_rung_trigger: climbs_when(capability: "a required executing control constructs an EmissionContribution from a real emitter path (not a hand-built fixture), reads it through emission_contribution_read, and asserts the materialized source and origins match the contributed text and metadata. The control must exercise EmissionAuthoredFragment, EmissionSourceComposition and EmissionUnobservedFragment — all three contribution arms — through emission_contribution_fold.")
 }
