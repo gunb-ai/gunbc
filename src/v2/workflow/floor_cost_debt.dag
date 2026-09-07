@@ -808,7 +808,9 @@ fn floor_cost_debt_straddling_chunk_00() -> List<String> {
 // witnesses execute on ordinary floors as well.
 //
 // THE COMPLETED CHANGED-DEBT VERDICT MEASURED THE COST honestly: 587ms marginal CPU, versus 563ms
-// for `apply_script_and_tree_sync_unit_stay_within_ci_runner_grants` over the same production
+// for `apply_script_stays_within_ci_runner_grants` -- gunbc#10724 renamed that witness from
+// `apply_script_and_tree_sync_unit_stay_within_ci_runner_grants` when the publication member stopped
+// writing a tree-sync unit; the subject and the withhold are unchanged -- over the same production
 // apply-script subject. The ordering predicate contributes about 24ms; the emitted subject, not
 // the predicate, is the demonstrated cost boundary. Three earlier executions were preempted at
 // the ceiling and supplied no cost measurement; those interrupt points are not reused as figures.
