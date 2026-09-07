@@ -165,6 +165,7 @@ import gunbc.recurring_failure_mode.modifier_accepted_on_a_shape_its_check_canno
 import gunbc.recurring_failure_mode.setup_failure_substitutes_a_specimen_the_claim_still_admits { setup_failure_substitutes_a_specimen_the_claim_still_admits }
 import gunbc.recurring_failure_mode.native_stack_recursion_unbounded_over_corpus_shaped_structure { native_stack_recursion_unbounded_over_corpus_shaped_structure }
 import gunbc.recurring_failure_mode.match_bound_element_type_mask { match_bound_element_type_mask }
+import gunbc.recurring_failure_mode.string_comparison_type_identity { string_comparison_type_identity }
 
 import gunbc.recurring_failure_mode.binder_renaming_changes_variant_field_lookup { binder_renaming_changes_variant_field_lookup }
 
@@ -324,4 +325,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   setup_failure_substitutes_a_specimen_the_claim_still_admits,
   native_stack_recursion_unbounded_over_corpus_shaped_structure,
   match_bound_element_type_mask,
+  string_comparison_type_identity,
 ]
