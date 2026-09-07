@@ -4,6 +4,7 @@
 use self::CallTargetOutcome::*;
 use self::CallableIdentity::*;
 use self::CallableOccurrenceAccounting::*;
+use self::CallableOccurrenceRow::*;
 use self::DerivedCalleeSig::*;
 use self::FuncSigLookup::*;
 use self::NoDerivableSigReason::*;
@@ -15,7 +16,7 @@ use crate::std_occurrence_identity::NodeOccurrenceIdentity::{
 };
 use crate::std_occurrence_identity::OccurrenceCategory::CallableOccurrence;
 pub use crate::std_occurrence_identity::{
-    NodeOccurrenceIdentity, OccurrenceCategory, OccurrenceId,
+    NodeOccurrenceIdentity, OccurrenceCategory, OccurrenceId, OccurrenceProjection,
 };
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_env::TypeBinding;
@@ -831,6 +832,19 @@ pub fn containment_admits_owner(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
+pub enum CallableOccurrenceRow {
+    CallableOccurrenceIdentified {
+        projection: Rc<OccurrenceProjection>,
+        category: OccurrenceCategory,
+    },
+    CallableOccurrenceUnidentified {
+        authored_name: String,
+        diagnostic_span: Rc<SourceSpan>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
 pub enum CallableOccurrenceAccounting {
     CallableOccurrenceAdmitted {
         occurrence: OccurrenceId,
@@ -884,7 +898,20 @@ pub fn callable_occurrence_identity(identity: Rc<NodeOccurrenceIdentity>) -> Opt
     }
 }
 
-pub fn callable_occurrence_authored_name(row: Rc<CallableOccurrenceAccounting>) -> String {
+pub fn callable_occurrence_authored_name(row: Rc<CallableOccurrenceRow>) -> String {
+    match (*row.clone()).clone() {
+        CallableOccurrenceRow::CallableOccurrenceIdentified { projection, .. } => {
+            projection.authored_name.clone()
+        }
+        CallableOccurrenceRow::CallableOccurrenceUnidentified { authored_name, .. } => {
+            authored_name.clone()
+        }
+    }
+}
+
+pub fn callable_occurrence_accounting_authored_name(
+    row: Rc<CallableOccurrenceAccounting>,
+) -> String {
     match (*row.clone()).clone() {
         CallableOccurrenceAccounting::CallableOccurrenceAdmitted { authored_name, .. } => {
             authored_name.clone()
@@ -907,23 +934,24 @@ pub fn callable_occurrence_authored_name(row: Rc<CallableOccurrenceAccounting>) 
 pub fn callable_occurrence_row(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<CallableOccurrenceAccounting> {
+) -> Rc<CallableOccurrenceRow> {
     {
         let authored = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
         match callable_occurrence_identity(n.occurrence_identity.clone()) {
-            Some(id) => Rc::new(
-                CallableOccurrenceAccounting::CallableOccurrenceNoProviderDeclared {
+            Some(id) => Rc::new(CallableOccurrenceRow::CallableOccurrenceIdentified {
+                projection: Rc::new(OccurrenceProjection {
                     occurrence: id.clone(),
-                    category: OccurrenceCategory::CallableOccurrence,
-                    authored_name: authored.clone(),
-                },
-            ),
-            std::option::Option::None => Rc::new(
-                CallableOccurrenceAccounting::CallableOccurrenceIdentityUnavailable {
                     authored_name: authored.clone(),
                     diagnostic_span: n.span.clone(),
-                },
-            ),
+                }),
+                category: OccurrenceCategory::CallableOccurrence,
+            }),
+            std::option::Option::None => {
+                Rc::new(CallableOccurrenceRow::CallableOccurrenceUnidentified {
+                    authored_name: authored.clone(),
+                    diagnostic_span: n.span.clone(),
+                })
+            }
         }
     }
 }
@@ -931,7 +959,7 @@ pub fn callable_occurrence_row(
 pub fn callable_occurrence_rows_in_node(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<CallableOccurrenceAccounting>>> {
+) -> Rc<Vec<Rc<CallableOccurrenceRow>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let here = match (*n.expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => Rc::new(vec![callable_occurrence_row(
@@ -997,7 +1025,7 @@ pub fn callable_occurrence_rows_in_node(
 pub fn callable_occurrence_rows(
     items: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<CallableOccurrenceAccounting>>> {
+) -> Rc<Vec<Rc<CallableOccurrenceRow>>> {
     Rc::new({
         let mut __result = Vec::new();
         for item in items.iter().cloned() {
@@ -1015,6 +1043,7 @@ pub fn callable_occurrence_rows(
 pub struct ParentEnvSupplyAccum {
     pub by_owner: Rc<HashMap<String, Rc<HashMap<String, Rc<ResolvedFuncSig>>>>>,
     pub owner_order: Rc<Vec<String>>,
+    pub accounting: Rc<Vec<Rc<CallableOccurrenceAccounting>>>,
 }
 
 pub fn supply_admit_row(
@@ -1031,6 +1060,7 @@ pub fn supply_admit_row(
                 v1_rt::rc_map_insert(locals.clone(), key.clone(), sig.clone()),
             ),
             owner_order: acc.owner_order.clone(),
+            accounting: acc.accounting.clone(),
         }),
         std::option::Option::None => Rc::new(ParentEnvSupplyAccum {
             by_owner: v1_rt::rc_map_insert(
@@ -1043,8 +1073,91 @@ pub fn supply_admit_row(
                 ),
             ),
             owner_order: v1_rt::rc_list_push(acc.owner_order.clone(), owner.clone()),
+            accounting: acc.accounting.clone(),
         }),
     }
+}
+
+pub fn supply_record_accounting(
+    acc: Rc<ParentEnvSupplyAccum>,
+    row: Rc<CallableOccurrenceAccounting>,
+) -> Rc<ParentEnvSupplyAccum> {
+    Rc::new(ParentEnvSupplyAccum {
+        by_owner: acc.by_owner.clone(),
+        owner_order: acc.owner_order.clone(),
+        accounting: v1_rt::rc_list_push(acc.accounting.clone(), row.clone()),
+    })
+}
+
+pub fn reference_derived_supply(
+    items: Rc<Vec<Rc<Node>>>,
+    index: Rc<CallableOwnerIndex>,
+    module_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<ParentEnvSupplyAccum> {
+    {
+        let rows = callable_occurrence_rows(items.clone(), source_indices.clone());
+        rows.iter().cloned().fold(Rc::new(ParentEnvSupplyAccum {
+    by_owner: v1_rt::rc_empty_map::<String, Rc<HashMap<String, Rc<ResolvedFuncSig>>>>(),
+    owner_order: Rc::new(vec![]),
+    accounting: Rc::new(vec![]),
+}), |acc: _, row: Rc<CallableOccurrenceRow>| match (*row.clone()).clone() {
+    CallableOccurrenceRow::CallableOccurrenceUnidentified { authored_name, diagnostic_span, .. } => supply_record_accounting(acc.clone(), Rc::new(CallableOccurrenceAccounting::CallableOccurrenceIdentityUnavailable {
+    authored_name: authored_name.clone(),
+    diagnostic_span: diagnostic_span.clone(),
+})),
+    CallableOccurrenceRow::CallableOccurrenceIdentified { projection, category, .. } => {
+            let name = projection.authored_name.clone();
+let leaf = crate::v1_std_core::qualified_last_segment(name.clone());
+let qualifier = reference_containment_qualifier(name.clone());
+match v1_rt::map_get(&index.by_name.clone(), leaf.clone()) {
+    std::option::Option::None => supply_record_accounting(acc.clone(), Rc::new(CallableOccurrenceAccounting::CallableOccurrenceNoProviderDeclared {
+    occurrence: projection.occurrence.clone(),
+    category: category.clone(),
+    authored_name: name.clone(),
+})),
+    Some(declared) => {
+                let admitted = Rc::new({ let mut __result = Vec::new(); for candidate in declared.iter().cloned() { if if (v1_rt::string_length(&qualifier) == 0) {
+                    containment_chain_admits_owner(candidate.owner_module_path.clone(), module_name.clone())
+                } else {
+                    containment_admits_owner(candidate.owner_module_path.clone(), qualifier.clone(), module_name.clone())
+                } { __result.push(candidate); } } __result });
+let with_envs = admitted.iter().cloned().fold(acc.clone(), |inner: _, candidate: _| supply_admit_row(inner, candidate.owner_module_path.clone(), name.clone(), candidate.sig.clone()));
+if (admitted.clone() == Rc::new(vec![])) {
+                    supply_record_accounting(with_envs.clone(), Rc::new(CallableOccurrenceAccounting::CallableOccurrenceFilteredByContainment {
+    occurrence: projection.occurrence.clone(),
+    category: category.clone(),
+    authored_name: name.clone(),
+}))
+                } else {
+                    supply_record_accounting(with_envs.clone(), Rc::new(CallableOccurrenceAccounting::CallableOccurrenceAdmitted {
+    occurrence: projection.occurrence.clone(),
+    category: category.clone(),
+    authored_name: name.clone(),
+    owner_module_paths: Rc::new({ let mut __result = Vec::new(); for candidate in admitted.iter().cloned() { __result.push(candidate.owner_module_path.clone()); } __result }),
+}))
+                }
+},
+}
+},
+})
+    }
+}
+
+pub fn reference_supply_accounting(
+    items: Rc<Vec<Rc<Node>>>,
+    index: Rc<CallableOwnerIndex>,
+    module_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<CallableOccurrenceAccounting>>> {
+    reference_derived_supply(
+        items.clone(),
+        index.clone(),
+        module_name.clone(),
+        source_indices.clone(),
+    )
+    .accounting
+    .clone()
 }
 
 pub fn reference_derived_parent_envs(
@@ -1054,43 +1167,11 @@ pub fn reference_derived_parent_envs(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<ResolvedFuncEnv>>> {
     {
-        let rows = callable_occurrence_rows(items.clone(), source_indices.clone());
-        let supply = rows.clone().iter().cloned().fold(
-            Rc::new(ParentEnvSupplyAccum {
-                by_owner: v1_rt::rc_empty_map::<String, Rc<HashMap<String, Rc<ResolvedFuncSig>>>>(),
-                owner_order: Rc::new(vec![]),
-            }),
-            |acc: _, row: Rc<CallableOccurrenceAccounting>| {
-                let name = callable_occurrence_authored_name(row.clone());
-                let leaf = crate::v1_std_core::qualified_last_segment(name.clone());
-                let qualifier = reference_containment_qualifier(name.clone());
-                match v1_rt::map_get(&index.by_name.clone(), leaf.clone()) {
-                    Some(rows) => rows.iter().cloned().fold(acc.clone(), |inner: _, row: _| {
-                        if if (v1_rt::string_length(&qualifier) == 0) {
-                            containment_chain_admits_owner(
-                                row.owner_module_path.clone(),
-                                module_name.clone(),
-                            )
-                        } else {
-                            containment_admits_owner(
-                                row.owner_module_path.clone(),
-                                qualifier.clone(),
-                                module_name.clone(),
-                            )
-                        } {
-                            supply_admit_row(
-                                inner.clone(),
-                                row.owner_module_path.clone(),
-                                name.clone(),
-                                row.sig.clone(),
-                            )
-                        } else {
-                            inner.clone()
-                        }
-                    }),
-                    std::option::Option::None => acc.clone(),
-                }
-            },
+        let supply = reference_derived_supply(
+            items.clone(),
+            index.clone(),
+            module_name.clone(),
+            source_indices.clone(),
         );
         Rc::new({
             let mut __result = Vec::new();

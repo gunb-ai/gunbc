@@ -28,7 +28,7 @@ import std.types { SourceSpan }
 import std.occurrence_identity {
   OccurrenceId,
   NodeOccurrenceIdentity, OccurrenceSynthetic, OccurrenceMinted, OccurrenceProjected,
-  OccurrenceCategory, CallableOccurrence,
+  OccurrenceCategory, CallableOccurrence, OccurrenceProjection,
 }
 
 type ResolvedFuncSig {
@@ -672,6 +672,33 @@ fn containment_admits_owner(owner_module_path: String, qualifier: String, refere
 // The category is `std.occurrence_identity.OccurrenceCategory`, not a parallel channel enum: this
 // collector only ever mints `CallableOccurrence`, and carrying the shared category is what lets the
 // type, method and field collectors join these rows instead of coining a second vocabulary.
+// WHAT THE COLLECTOR CAN ACTUALLY COMPUTE, AND NOTHING MORE. It sees one node and the source
+// indices; no owner index is in scope, so it has no basis for any statement about providers. This
+// type therefore carries identity, category, authored name and span -- and HAS NO DISPOSITION TO
+// STATE. That is construction rather than validation: a caller cannot ask this row whether a
+// provider was declared, so it cannot be told something the collector never checked.
+//
+// IT REPLACES A TYPE THAT COULD LIE AND DID. The collector previously returned
+// CallableOccurrenceAccounting and stamped every identified occurrence
+// `CallableOccurrenceNoProviderDeclared` -- a name asserting a fact it had not computed, on rows
+// that demonstrably have providers -- while `CallableOccurrenceAdmitted` and
+// `CallableOccurrenceFilteredByContainment` had no constructor anywhere in the repository. Fixing
+// the VALUE and checking it would have left the invalid state writable; removing the field is what
+// makes it unwritable.
+//
+// `OccurrenceProjection` is std.occurrence_identity's existing carrier for exactly
+// (occurrence, authored_name, diagnostic_span) and is reused rather than re-listed, so this
+// declares one new fact -- the category -- and mints no second vocabulary.
+type CallableOccurrenceRow
+  = CallableOccurrenceIdentified {
+      projection: OccurrenceProjection
+      category: OccurrenceCategory
+    }
+  | CallableOccurrenceUnidentified {
+      authored_name: String
+      diagnostic_span: SourceSpan
+    }
+
 type CallableOccurrenceAccounting
   = CallableOccurrenceAdmitted {
       occurrence: OccurrenceId
@@ -708,7 +735,14 @@ fn callable_occurrence_identity(identity: NodeOccurrenceIdentity) -> OccurrenceI
   }
 }
 
-fn callable_occurrence_authored_name(row: CallableOccurrenceAccounting) -> String {
+fn callable_occurrence_authored_name(row: CallableOccurrenceRow) -> String {
+  match row {
+    CallableOccurrenceIdentified { projection: projection, category: _ } => projection.authored_name
+    CallableOccurrenceUnidentified { authored_name: authored_name, diagnostic_span: _ } => authored_name
+  }
+}
+
+fn callable_occurrence_accounting_authored_name(row: CallableOccurrenceAccounting) -> String {
   match row {
     CallableOccurrenceAdmitted { occurrence: _, category: _, authored_name: authored_name, owner_module_paths: _ } => authored_name
     CallableOccurrenceNoProviderDeclared { occurrence: _, category: _, authored_name: authored_name } => authored_name
@@ -717,17 +751,20 @@ fn callable_occurrence_authored_name(row: CallableOccurrenceAccounting) -> Strin
   }
 }
 
-fn callable_occurrence_row(n: Node, source_indices: Map<String, NewlineIndex>) -> CallableOccurrenceAccounting {
+fn callable_occurrence_row(n: Node, source_indices: Map<String, NewlineIndex>) -> CallableOccurrenceRow {
   let authored = authored_name_at(source_indices: source_indices, node: n)
   match callable_occurrence_identity(identity: n.occurrence_identity) {
     Present { value: id } =>
-      CallableOccurrenceNoProviderDeclared {
-        occurrence: id,
-        category: CallableOccurrence,
-        authored_name: authored
+      CallableOccurrenceIdentified {
+        projection: OccurrenceProjection {
+          occurrence: id,
+          authored_name: authored,
+          diagnostic_span: n.span
+        },
+        category: CallableOccurrence
       }
     Absent =>
-      CallableOccurrenceIdentityUnavailable {
+      CallableOccurrenceUnidentified {
         authored_name: authored,
         diagnostic_span: n.span
       }
@@ -744,7 +781,7 @@ fn callable_occurrence_row(n: Node, source_indices: Map<String, NewlineIndex>) -
 // An empty arm below is a claim about THE CALLABLE CHANNEL ONLY. `ExprFieldAccess` and
 // `ExprRecordLit` do carry occurrences -- in the field and constructor channels -- and this
 // collector is not their accounting; that is what the per-occurrence coverage carrier is for.
-fn callable_occurrence_rows_in_node(n: Node, source_indices: Map<String, NewlineIndex>) -> List<CallableOccurrenceAccounting> {
+fn callable_occurrence_rows_in_node(n: Node, source_indices: Map<String, NewlineIndex>) -> List<CallableOccurrenceRow> {
   let here = match n.expr_data {
     ExprCall => [callable_occurrence_row(n: n, source_indices: source_indices)]
     ExprVar { binding_kind: _ } => [callable_occurrence_row(n: n, source_indices: source_indices)]
@@ -787,7 +824,7 @@ fn callable_occurrence_rows_in_node(n: Node, source_indices: Map<String, Newline
 // or nested lets could not be accounted at occurrence grain at all. Rows now flow through
 // undeduplicated; the env supply is keyed by owner and lookup key, so repeats collapse where they
 // are actually redundant rather than in the collector where the identity would be lost.
-fn callable_occurrence_rows(items: List<Node>, source_indices: Map<String, NewlineIndex>) -> List<CallableOccurrenceAccounting> {
+fn callable_occurrence_rows(items: List<Node>, source_indices: Map<String, NewlineIndex>) -> List<CallableOccurrenceRow> {
   flat_map(items, item => callable_occurrence_rows_in_node(n: item, source_indices: source_indices))
 }
 
@@ -798,18 +835,103 @@ fn callable_occurrence_rows(items: List<Node>, source_indices: Map<String, Newli
 type ParentEnvSupplyAccum {
   by_owner: Map<String, Map<String, ResolvedFuncSig>>
   owner_order: List<String>
+  accounting: List<CallableOccurrenceAccounting>
 }
 
 fn supply_admit_row(acc: ParentEnvSupplyAccum, owner: String, key: String, sig: ResolvedFuncSig) -> ParentEnvSupplyAccum {
   match map_get(acc.by_owner, owner) {
     Present { value: locals } =>
-      ParentEnvSupplyAccum { by_owner: map_insert(acc.by_owner, owner, map_insert(locals, key, sig)), owner_order: acc.owner_order }
+      ParentEnvSupplyAccum {
+        by_owner: map_insert(acc.by_owner, owner, map_insert(locals, key, sig)),
+        owner_order: acc.owner_order,
+        accounting: acc.accounting
+      }
     Absent =>
       ParentEnvSupplyAccum {
         by_owner: map_insert(acc.by_owner, owner, map_insert(empty_map(), key, sig)),
-        owner_order: list_push(acc.owner_order, owner)
+        owner_order: list_push(acc.owner_order, owner),
+        accounting: acc.accounting
       }
   }
+}
+
+fn supply_record_accounting(acc: ParentEnvSupplyAccum, row: CallableOccurrenceAccounting) -> ParentEnvSupplyAccum {
+  ParentEnvSupplyAccum {
+    by_owner: acc.by_owner,
+    owner_order: acc.owner_order,
+    accounting: list_push(acc.accounting, row)
+  }
+}
+
+// THE DISPOSITION IS MINTED WHERE THE DECISION IS MADE, AND NOWHERE ELSE.
+//
+// Every arm below is produced from the same containment answer that decides whether the row enters
+// the supply, so the accounting cannot drift from the envs it describes -- they are one fold, not a
+// measurement of one by the other. This is the reason the collector no longer returns this type: it
+// has no owner index, so at the collector every arm but one is unconstructible and that one is a
+// claim rather than a result.
+fn reference_derived_supply(
+  items: List<Node>,
+  index: CallableOwnerIndex,
+  module_name: String,
+  source_indices: Map<String, NewlineIndex>
+) -> ParentEnvSupplyAccum {
+  let rows = callable_occurrence_rows(items: items, source_indices: source_indices)
+  fold(rows, init: ParentEnvSupplyAccum { by_owner: empty_map(), owner_order: [], accounting: [] }, f: (acc, row) =>
+    match row {
+      CallableOccurrenceUnidentified { authored_name: authored_name, diagnostic_span: diagnostic_span } =>
+        supply_record_accounting(acc: acc, row: CallableOccurrenceIdentityUnavailable {
+          authored_name: authored_name,
+          diagnostic_span: diagnostic_span
+        })
+      CallableOccurrenceIdentified { projection: projection, category: category } =>
+        let name = projection.authored_name
+        let leaf = qualified_last_segment(name: name)
+        let qualifier = reference_containment_qualifier(name: name)
+        match map_get(index.by_name, leaf) {
+          Absent =>
+            supply_record_accounting(acc: acc, row: CallableOccurrenceNoProviderDeclared {
+              occurrence: projection.occurrence,
+              category: category,
+              authored_name: name
+            })
+          Present { value: declared } =>
+            let admitted = declared |> filter(candidate =>
+              if string_length(s: qualifier) == 0 {
+                containment_chain_admits_owner(owner_module_path: candidate.owner_module_path, referencing_module_path: module_name)
+              } else {
+                containment_admits_owner(owner_module_path: candidate.owner_module_path, qualifier: qualifier, referencing_module_path: module_name)
+              }
+            )
+            let with_envs = fold(admitted, init: acc, f: (inner, candidate) =>
+              supply_admit_row(acc: inner, owner: candidate.owner_module_path, key: name, sig: candidate.sig)
+            )
+            if admitted == [] {
+              supply_record_accounting(acc: with_envs, row: CallableOccurrenceFilteredByContainment {
+                occurrence: projection.occurrence,
+                category: category,
+                authored_name: name
+              })
+            } else {
+              supply_record_accounting(acc: with_envs, row: CallableOccurrenceAdmitted {
+                occurrence: projection.occurrence,
+                category: category,
+                authored_name: name,
+                owner_module_paths: admitted |> map(candidate => candidate.owner_module_path)
+              })
+            }
+        }
+    }
+  )
+}
+
+fn reference_supply_accounting(
+  items: List<Node>,
+  index: CallableOwnerIndex,
+  module_name: String,
+  source_indices: Map<String, NewlineIndex>
+) -> List<CallableOccurrenceAccounting> {
+  reference_derived_supply(items: items, index: index, module_name: module_name, source_indices: source_indices).accounting
 }
 
 fn reference_derived_parent_envs(
@@ -818,25 +940,7 @@ fn reference_derived_parent_envs(
   module_name: String,
   source_indices: Map<String, NewlineIndex>
 ) -> List<ResolvedFuncEnv> {
-  let rows = callable_occurrence_rows(items: items, source_indices: source_indices)
-  let supply = fold(rows, init: ParentEnvSupplyAccum { by_owner: empty_map(), owner_order: [] }, f: (acc, row) =>
-    let name = callable_occurrence_authored_name(row: row)
-    let leaf = qualified_last_segment(name: name)
-    let qualifier = reference_containment_qualifier(name: name)
-    match map_get(index.by_name, leaf) {
-      Present { value: rows } =>
-        fold(rows, init: acc, f: (inner, row) =>
-          if (if string_length(s: qualifier) == 0 {
-                containment_chain_admits_owner(owner_module_path: row.owner_module_path, referencing_module_path: module_name)
-              } else {
-                containment_admits_owner(owner_module_path: row.owner_module_path, qualifier: qualifier, referencing_module_path: module_name)
-              }) {
-            supply_admit_row(acc: inner, owner: row.owner_module_path, key: name, sig: row.sig)
-          } else { inner }
-        )
-      Absent => acc
-    }
-  )
+  let supply = reference_derived_supply(items: items, index: index, module_name: module_name, source_indices: source_indices)
   supply.owner_order |> flat_map(owner =>
     match map_get(supply.by_owner, owner) {
       Present { value: locals } => [ResolvedFuncEnv { name: owner, local: locals, parents: [] }]
