@@ -202,7 +202,7 @@ fn refusal_tag(c: ProviderUseRefusal) -> String {
     PostureRevisionStale { evaluated, active } => "posture-stale",
     CustomerScopeUnsupported { cause } => "customer-unsupported",
     DataHandlingUnsupported { cause } => "data-handling-unsupported",
-    RequiredAgreementAuthorityAbsent { obligation } => "agreement-absent",
+    RequiredAgreementAuthorityAbsent { accepted } => "agreement-absent",
     ProhibitedUseNotCleared { obligation } => "prohibited-use-not-cleared",
     SanctionsNotCleared { obligation } => "sanctions-not-cleared",
     ExportNotCleared { obligation } => "export-not-cleared",
@@ -219,7 +219,7 @@ fn refusal_located(c: ProviderUseRefusal) -> List<DeclarationRef> {
     PostureRevisionStale { evaluated, active } => [],
     CustomerScopeUnsupported { cause } => [cause],
     DataHandlingUnsupported { cause } => [cause],
-    RequiredAgreementAuthorityAbsent { obligation } => [obligation],
+    RequiredAgreementAuthorityAbsent { accepted } => accepted,
     ProhibitedUseNotCleared { obligation } => [obligation],
     SanctionsNotCleared { obligation } => [obligation],
     ExportNotCleared { obligation } => [obligation],
@@ -426,6 +426,31 @@ fn unresolved_prohibited_use_refuses() -> Bool {
   )
 }
 
+// RED - an agreement the roster does not accept refuses, and the refusal reports the agreement
+// that WOULD have bound. Every other input is identical to the positive control.
+fn wrong_agreement_refuses() -> Bool {
+  denied_with(
+    a: decide(
+      route: "acme/cx/region-one" as ProviderRouteRef,
+      paths: closure_all_located(where_it_is: "jurisdiction-one"),
+      downstream: no_downstream(),
+      active: posture(seed: "posture-r1"),
+      scope: ProviderUseScope {
+        demand: FabricIdentity { principal: "tenant-a", key: "demand-1" as DemandKey },
+        work: FabricIdentity { principal: "tenant-a", key: "work-1" as WorkKey },
+        customer_profile: ref_of(name: "us-business-pilot"),
+        data_handling_profile: ref_of(name: "ordinary-build-source"),
+        agreement: ref_of(name: "some-other-agreement"),
+        prohibited_use_disposition: cleared(what: "prohibited-use-cleared"),
+        sanctions_disposition: cleared(what: "sanctions-cleared"),
+        export_disposition: cleared(what: "export-cleared"),
+      },
+    ),
+    tag: "agreement-absent",
+    located: ref_of(name: "pilot-agreement-v1"),
+  )
+}
+
 // Non-vacuity for the closure predicates, so a green above cannot come from both arms of the
 // path helpers being accidentally equal.
 fn closure_predicates_discriminate() -> Bool {
@@ -447,9 +472,10 @@ fn provider_admission_witness_main() -> ProcessExit {
   let sanctions = unresolved_sanctions_refuses()
   let export = refused_export_refuses()
   let prohibited = unresolved_prohibited_use_refuses()
+  let agreement = wrong_agreement_refuses()
   let discriminating = closure_predicates_discriminate()
   if positive && unclassified && two_regions && telemetry && downstream && stale
-     && data_class && customer && sanctions && export && prohibited && discriminating {
+     && data_class && customer && sanctions && export && prohibited && agreement && discriminating {
     ExitSuccess
   } else {
     ExitFailure

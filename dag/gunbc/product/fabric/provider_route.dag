@@ -159,10 +159,3 @@ fn downstream_is_assessed(d: DownstreamProviderPopulation) -> Bool {
     DownstreamProvidersUnread { obligation } => false,
   }
 }
-
-// Route facts are usable only when every governed path is resolved AND the downstream
-// population is assessed. Both conjuncts refuse on the unread arm, so a route whose facts were
-// never gathered cannot reach the posture join at all.
-fn route_facts_are_complete(f: ProviderRouteFacts) -> Bool {
-  data_path_closure_is_complete(c: f.data_paths) && downstream_is_assessed(d: f.downstream)
-}

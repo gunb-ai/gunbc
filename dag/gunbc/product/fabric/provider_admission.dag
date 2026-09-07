@@ -147,10 +147,10 @@ type ProviderUseRefusal
   = ProviderRouteUnclassified { route: ProviderRouteRef }
   | ProviderRouteFactsIncomplete { route: ProviderRouteRef, obligation: DeclarationRef }
   | DownstreamProviderUnassessed { obligation: DeclarationRef }
-  | PostureRevisionStale { evaluated: ContentHash, active: ContentHash }
+  | PostureRevisionStale { evaluated: List<ContentHash>, active: ContentHash }
   | CustomerScopeUnsupported { cause: DeclarationRef }
   | DataHandlingUnsupported { cause: DeclarationRef }
-  | RequiredAgreementAuthorityAbsent { obligation: DeclarationRef }
+  | RequiredAgreementAuthorityAbsent { accepted: List<DeclarationRef> }
   | ProhibitedUseNotCleared { obligation: DeclarationRef }
   | SanctionsNotCleared { obligation: DeclarationRef }
   | ExportNotCleared { obligation: DeclarationRef }
@@ -219,13 +219,47 @@ fn posture_is_current(evaluated: CompliancePostureRevision, active: CompliancePo
   evaluated.revision == active.revision
 }
 
-fn dispositions_refusal_for(which: String, obligation: DeclarationRef) -> ProviderUseRefusal {
-  if which == "prohibited-use" {
-    ProhibitedUseNotCleared { obligation: obligation }
-  } else if which == "sanctions" {
-    SanctionsNotCleared { obligation: obligation }
-  } else {
-    ExportNotCleared { obligation: obligation }
+// EVERY stale revision found, not one extracted through a fold that needed an unreachable seed.
+// The seed was PostureRevisionStale with evaluated and active set to the SAME hash - a cause
+// asserting staleness between a revision and itself, which is self-contradicting, and which this
+// module's own rule about unreachable values ("even the unreachable value would not lie")
+// forbids. A list has no seed to fabricate: empty reads as "none recorded" rather than as a
+// false equality, and the guard below only builds this refusal when it is non-empty.
+fn stale_revisions(
+  matched: List<RouteScopeSanction>,
+  active: CompliancePostureRevision,
+) -> List<ContentHash> {
+  map(
+    filter(matched, s => !posture_is_current(evaluated: s.posture, active: active)),
+    s => s.posture.revision,
+  )
+}
+
+// The agreements that WOULD have bound, for the same reason stale_revisions is a list: reporting
+// every accepted agreement needs no fabricated seed, and it tells the caller which agreement to
+// present rather than merely that the one they brought was wrong.
+fn accepted_agreements(sanctions: List<RouteScopeSanction>) -> List<DeclarationRef> {
+  map(sanctions, s => s.requires_agreement)
+}
+
+// THE PROGRAM IS A CLOSED COPRODUCT, NOT A STRING. This dispatch was briefly a stringly-typed
+// discriminator - if which == "prohibited-use" ... else if "sanctions" ... else Export - which is
+// an undeclared sum whose illegal values are representable, and which FAILED OPEN in exactly the
+// way this module condemns elsewhere: a typo or a future fourth program silently routed to
+// ExportNotCleared, a refusal with the wrong cause and the wrong remedy. That is the fabricated
+// diagnosis of DESIGN section 5, and it is the same defect the DataHandlingUnsupported split was
+// written to fix. As a coproduct the match is exhaustive, so a fourth program fails to compile
+// rather than quietly becoming an export refusal.
+type DispositionProgram
+  = ProhibitedUseProgram
+  | SanctionsProgram
+  | ExportProgram
+
+fn disposition_program_refusal(p: DispositionProgram, obligation: DeclarationRef) -> ProviderUseRefusal {
+  match p {
+    ProhibitedUseProgram => ProhibitedUseNotCleared { obligation: obligation },
+    SanctionsProgram => SanctionsNotCleared { obligation: obligation },
+    ExportProgram => ExportNotCleared { obligation: obligation },
   }
 }
 
@@ -251,12 +285,12 @@ fn downstream_unassessed_refusal(facts: ProviderRouteFacts) -> ProviderUseRefusa
 fn disposition_refusal(
   d: DispositionStanding,
   fallback: DeclarationRef,
-  which: String,
+  program: DispositionProgram,
 ) -> ProviderUseRefusal {
   fold(
     disposition_obligation(d: d),
-    init: dispositions_refusal_for(which: which, obligation: fallback),
-    f: fn(acc, o) { dispositions_refusal_for(which: which, obligation: o) },
+    init: disposition_program_refusal(p: program, obligation: fallback),
+    f: fn(acc, o) { disposition_program_refusal(p: program, obligation: o) },
   )
 }
 
@@ -265,6 +299,12 @@ fn disposition_refusal(
 // the three use dispositions, reconcile posture, bind the agreement. Reporting the first failure
 // rather than all of them is deliberate - a caller acts on one obligation at a time, and a
 // refusal listing five causes invites picking the cheapest.
+//
+// THE POSTURE AND AGREEMENT CHECKS ARE GUARDS, NOT A FOLD. They were briefly a fold over the
+// matched sanctions seeded with a self-contradicting PostureRevisionStale whose evaluated and
+// active hashes were the same value. The fold was never needed: the permit reads no field of the
+// matched sanction, so selecting one was pure control flow. As guards there is no seed to
+// fabricate.
 fn admit_provider_use<P>(
   roster: List<RouteScopeSanction>,
   facts: ProviderRouteFacts,
@@ -275,6 +315,8 @@ fn admit_provider_use<P>(
 ) -> ProviderUseAdmission<P> {
   let by_customer = sanctions_for_route_and_customer(roster: roster, route: facts.route, scope: scope)
   let matched = sanctions_for_route(roster: roster, route: facts.route, scope: scope)
+  let current = filter(matched, s => posture_is_current(evaluated: s.posture, active: active))
+  let bound = filter(current, s => declaration_ref_eq(a: s.requires_agreement, b: scope.agreement))
   if !route_is_classified(roster: roster, route: facts.route) {
     deny(reason: "route unclassified", cause: ProviderRouteUnclassified { route: facts.route })
   } else if !downstream_is_assessed(d: facts.downstream) {
@@ -290,54 +332,47 @@ fn admit_provider_use<P>(
   } else if !disposition_is_cleared(d: scope.prohibited_use_disposition) {
     deny(reason: "prohibited use not cleared",
          cause: disposition_refusal(d: scope.prohibited_use_disposition,
-                                    fallback: scope.customer_profile, which: "prohibited-use"))
+                                    fallback: scope.customer_profile, program: ProhibitedUseProgram))
   } else if !disposition_is_cleared(d: scope.sanctions_disposition) {
     deny(reason: "sanctions not cleared",
          cause: disposition_refusal(d: scope.sanctions_disposition,
-                                    fallback: scope.customer_profile, which: "sanctions"))
+                                    fallback: scope.customer_profile, program: SanctionsProgram))
   } else if !disposition_is_cleared(d: scope.export_disposition) {
     deny(reason: "export not cleared",
          cause: disposition_refusal(d: scope.export_disposition,
-                                    fallback: scope.customer_profile, which: "export"))
+                                    fallback: scope.customer_profile, program: ExportProgram))
+  } else if count(current) == 0 {
+    deny(reason: "posture stale",
+         cause: PostureRevisionStale {
+           evaluated: stale_revisions(matched: matched, active: active),
+           active: active.revision,
+         })
+  } else if count(bound) == 0 {
+    deny(reason: "agreement absent",
+         cause: RequiredAgreementAuthorityAbsent { accepted: accepted_agreements(sanctions: current) })
   } else {
-    fold(matched, init: deny(reason: "posture stale",
-           cause: PostureRevisionStale { evaluated: active.revision, active: active.revision }),
-      f: fn(acc, s) {
-        match acc {
-          ProviderUseAdmitted { permit } => acc,
-          ProviderUseDenied { decision, cause } =>
-            if !posture_is_current(evaluated: s.posture, active: active) {
-              deny(reason: "posture stale",
-                   cause: PostureRevisionStale { evaluated: s.posture.revision, active: active.revision })
-            } else if !declaration_ref_eq(a: s.requires_agreement, b: scope.agreement) {
-              deny(reason: "agreement absent",
-                   cause: RequiredAgreementAuthorityAbsent { obligation: s.requires_agreement })
-            } else {
-              ProviderUseAdmitted {
-                permit: ProviderUsePermit {
-                  demand: scope.demand,
-                  work: scope.work,
-                  offer: offer,
-                  route: facts.route,
-                  posture: active,
-                  evidence: ProviderUseEvidence {
-                    posture_revision: active.revision,
-                    route_facts_revision: facts.facts_revision,
-                    customer_profile: scope.customer_profile,
-                    agreement: scope.agreement,
-                    prohibited_use_evidence: disposition_evidence_or(
-                      d: scope.prohibited_use_disposition, fallback: scope.customer_profile),
-                    sanctions_evidence: disposition_evidence_or(
-                      d: scope.sanctions_disposition, fallback: scope.customer_profile),
-                    export_evidence: disposition_evidence_or(
-                      d: scope.export_disposition, fallback: scope.customer_profile),
-                    decision_receipt: decision_receipt,
-                  },
-                },
-              }
-            },
-        }
-      })
+    ProviderUseAdmitted {
+      permit: ProviderUsePermit {
+        demand: scope.demand,
+        work: scope.work,
+        offer: offer,
+        route: facts.route,
+        posture: active,
+        evidence: ProviderUseEvidence {
+          posture_revision: active.revision,
+          route_facts_revision: facts.facts_revision,
+          customer_profile: scope.customer_profile,
+          agreement: scope.agreement,
+          prohibited_use_evidence: disposition_evidence_or(
+            d: scope.prohibited_use_disposition, fallback: scope.customer_profile),
+          sanctions_evidence: disposition_evidence_or(
+            d: scope.sanctions_disposition, fallback: scope.customer_profile),
+          export_evidence: disposition_evidence_or(
+            d: scope.export_disposition, fallback: scope.customer_profile),
+          decision_receipt: decision_receipt,
+        },
+      },
+    }
   }
 }
 
