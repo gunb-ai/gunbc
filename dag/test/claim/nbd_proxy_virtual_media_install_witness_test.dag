@@ -111,13 +111,11 @@ test fn unrealized_actuator_steps_refuse_rather_than_reporting_absent() -> Bool 
     && match actuator_step_realization(step: ActuatorPxeNetworkBootStaging) {
          ActuatorStepRefused { cause: ActuatorStepRealizationAbsent { step: _ } } => true
          ActuatorStepRefused { cause: ActuatorStepActuatorHostUnsatisfiable { step: _, reason: _ } } => false
-    ActuatorStepRefused { cause: ActuatorStepActuatorHostUnsatisfiable { step: _, reason: _ } } => false
          ActuatorStepReady { intent: _ } => false
        }
     && match actuator_step_realization(step: ActuatorFirmwareUpdate) {
          ActuatorStepRefused { cause: ActuatorStepRealizationAbsent { step: _ } } => true
          ActuatorStepRefused { cause: ActuatorStepActuatorHostUnsatisfiable { step: _, reason: _ } } => false
-    ActuatorStepRefused { cause: ActuatorStepActuatorHostUnsatisfiable { step: _, reason: _ } } => false
          ActuatorStepReady { intent: _ } => false
        }
 }
