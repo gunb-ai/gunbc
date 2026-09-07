@@ -1,0 +1,152 @@
+module gunbc.runner_jit_perform
+
+import std.types { String, NonEmptyStr, Int, Bool }
+import std.algebra { trim }
+import std.resources { Network }
+import std.disposition { Disposition, SingleAuthority }
+import extdeps.shell
+import extdeps.github.actions_jit_runner {
+  JitRunnerConfigRequest,
+  jit_config_request_body,
+  org_generate_jitconfig_url,
+  jit_config_created_status,
+}
+import gunbc.runner_jit_mint {
+  JitMintPlan,
+  JitMintAuthorized,
+  JitMintRefusedCellNotOwned,
+  JitMintRefusedCredential,
+}
+
+data runner_jit_perform_disposition: Disposition = SingleAuthority
+
+// THE PLANNER REFUSED TO PERFORM AND THIS MODULE IS THE PERFORMER, which is the split
+// gunbc.runner_jit_mint states as its whole point rather than a gap it left. That module joins two
+// authorities -- the cell must be OWNED and the App credential must hold organization
+// self-hosted-runners write -- and yields a plan only when both hold. This module executes exactly
+// that plan and re-derives neither, so the ordering stays unwritable: nothing here can mint before
+// ownership was proven, because the only value naming a drive destination is produced by the arm
+// that already proved it.
+
+// WHERE A MINTED CREDENTIAL IS ALLOWED TO GO IS A POLICY FACT AND SO IT LIVES HERE, not in
+// extdeps.github.actions_jit_runner. That module models what GitHub returns, and GitHub really does
+// answer with the blob in the response body -- JitConfigMinted carrying an EncodedJitConfig is a
+// faithful model of the API and stays. What this repository will PERMIT is narrower than what the
+// API offers: the credential moves response-file to drive-file and is never a value in this
+// process. DESIGN section 3 puts the interface in extdeps and the policy in the workflow layer, so
+// the outcome that names a PATH rather than a blob is this module's to own.
+//
+// SO THE SUCCESS ARM CARRIES THE RUNNER NAME AND NOT THE CREDENTIAL. The name is the reconciliation
+// key the mint planner already established -- an orphaned registration can only be matched to a
+// host by name -- so it is the value a teardown proof and an orphan sweep both need, and the blob
+// is the one value neither needs.
+type JitCredentialPlacement
+  = JitCredentialPlaced { drive_file: String, runner_name: NonEmptyStr }
+  | JitCredentialRefused { cause: String }
+
+fn jit_placement_admitted(p: JitCredentialPlacement) -> Bool {
+  match p {
+    JitCredentialPlaced { drive_file: _, runner_name: _ } => true
+    JitCredentialRefused { cause: _ } => false
+  }
+}
+
+fn jit_placement_text(p: JitCredentialPlacement) -> String {
+  match p {
+    JitCredentialPlaced { drive_file: d, runner_name: n } =>
+      join(["jit=placed runner=", n as String, " drive=", d], "")
+    JitCredentialRefused { cause: c } => join(["jit=refused ", c], "")
+  }
+}
+
+// A NON-201 IS A REFUSAL AND NEVER AN EMPTY DRIVE, which extdeps already rules on: GitHub answers
+// 201 with the blob, and treating any other status as "no config yet" would let a guest boot with
+// an empty drive and sit waiting for work it can never be assigned -- a VM burning its whole
+// deadline looking healthy. The status arrives as curl's own -w output on stdout, which is the only
+// thing this path reads from stdout; the response BODY went to a file.
+fn jit_status_is_created(status_text: String) -> Bool {
+  trim(s: status_text) == to_string(jit_config_created_status)
+}
+
+// THE MINT IS PERFORMED HERE AND THE CREDENTIAL IS NEVER READ BACK INTO THIS PROCESS.
+//
+// curl writes the response body to response_file and prints only the HTTP status; the extractor
+// then moves the single documented field from that file to the drive the plan named. No arm of this
+// function holds the blob, so no receipt derived from it can leak one, and the opaque-credential
+// rule extdeps states is enforced by the SHAPE of the path rather than by a caller remembering it.
+//
+// IT IS NOT IDEMPOTENT AND MUST NOT BE RETRIED BLINDLY. Each call that reaches 201 creates a
+// SEPARATE runner identity against the organization, reconcilable only by name, so a retry that
+// re-enters this function mints an orphan rather than repairing one. The caller owns that decision.
+func perform_jit_mint_wet(
+  plan: JitMintPlan,
+  organization: NonEmptyStr,
+  token_header_file: String,
+  request_body_file: String,
+  response_file: String,
+) -> JitCredentialPlacement
+  uses net: Network
+{
+  match plan {
+    JitMintRefusedCellNotOwned { cause: c } =>
+      JitCredentialRefused {
+        cause: join(["the cell is not owned, so no guest may use it and no credential was minted: ", c], ""),
+      }
+    JitMintRefusedCredential { organization: org, unsatisfied: _ } =>
+      JitCredentialRefused {
+        cause: join([
+          "the App credential does not hold organization self-hosted-runners write for ",
+          org as String,
+          ", so no credential was minted",
+        ], ""),
+      }
+    JitMintAuthorized {
+      attempt: _,
+      endpoint_path: _,
+      request: request,
+      drive_destination: drive,
+    } => {
+      let body = Filesystem.Write(path: request_body_file, content: jit_config_request_body(request: request))
+      if !body.success {
+        JitCredentialRefused {
+          cause: join(["the mint request body could not be written, so nothing was sent: ", body.error], ""),
+        }
+      } else {
+        let response = github.CliActionsJitRunner.GenerateOrgJitConfig(
+          token_header_file: token_header_file,
+          request_body_file: request_body_file,
+          response_file: response_file,
+          endpoint_url: org_generate_jitconfig_url(org_login: organization),
+        )
+        if !response.success {
+          JitCredentialRefused {
+            cause: join(["the mint call did not complete: ", response.stderr], ""),
+          }
+        } else if !jit_status_is_created(status_text: response.stdout) {
+          JitCredentialRefused {
+            cause: join([
+              "GitHub answered ", trim(s: response.stdout),
+              " rather than ", to_string(jit_config_created_status),
+              "; no runner identity was created",
+            ], ""),
+          }
+        } else {
+          let placed = github.CliJitConfigDrive.WriteEncodedJitConfigToDrive(
+            response_file: response_file,
+            drive_file: drive,
+          )
+          if !placed.success {
+            JitCredentialRefused {
+              cause: join([
+                "GitHub created a runner identity but its credential could not be placed on the drive, so an orphan registration now exists under the attempt's name: ",
+                placed.stderr,
+              ], ""),
+            }
+          } else {
+            JitCredentialPlaced { drive_file: drive, runner_name: request.name.value }
+          }
+        }
+      }
+    }
+  }
+}

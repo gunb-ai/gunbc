@@ -5,6 +5,12 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions_jit_runner {
   JitConfigMintOutcome, JitConfigMinted, JitConfigMintRefused,
   jit_config_mint_outcome, org_generate_jitconfig_path,
+  org_generate_jitconfig_url, jit_config_request_body, jit_config_created_status,
+  JitRunnerConfigRequest, JitRunnerName, JitRunnerGroupId, JitRunnerLabel, JitWorkFolder,
+}
+import gunbc.runner_jit_perform {
+  JitCredentialPlacement, JitCredentialPlaced, JitCredentialRefused,
+  jit_status_is_created, jit_placement_admitted,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -54,4 +60,54 @@ test fn the_jitconfig_path_is_derived_per_organization() -> Bool {
     == "/orgs/gunb-ai/actions/runners/generate-jitconfig"
     && org_generate_jitconfig_path(org_login: "other-org" as NonEmptyStr)
        == "/orgs/other-org/actions/runners/generate-jitconfig"
+}
+
+
+data witness_jit_request: JitRunnerConfigRequest = JitRunnerConfigRequest {
+  name: JitRunnerName { value: "gunbc-microvm-srv1-01-a1" as NonEmptyStr },
+  runner_group_id: JitRunnerGroupId { value: 1 },
+  labels: [
+    JitRunnerLabel { value: "self-hosted" as NonEmptyStr },
+    JitRunnerLabel { value: "gunbc-microvm" as NonEmptyStr },
+  ],
+  work_folder: JitWorkFolder { value: "_work" as NonEmptyStr },
+}
+
+// THE REQUEST BODY IS PINNED BYTE FOR BYTE, because it is the one artifact here whose defects are
+// entirely invisible to the type checker. Every field spelling is GitHub's, a missing quote or a
+// dropped comma is still a String, and the first thing that would notice is the live endpoint
+// answering 422 -- after a call that may already have created a runner identity.
+test fn the_mint_request_body_renders_the_documented_shape() -> Bool {
+  jit_config_request_body(request: witness_jit_request)
+    == "{\"name\":\"gunbc-microvm-srv1-01-a1\",\"runner_group_id\":1,\"labels\":[\"self-hosted\",\"gunbc-microvm\"],\"work_folder\":\"_work\"}"
+}
+
+// THE URL JOINS THE TWO AUTHORITIES THAT OWN ITS HALVES and addresses the org the caller named. A
+// path assembled at a call site is how one organization's runners get addressed while a different
+// one was intended, which is not a failure any type here would catch.
+test fn the_mint_url_addresses_the_named_organization() -> Bool {
+  org_generate_jitconfig_url(org_login: "gunb-ai" as NonEmptyStr)
+    == "https://api.github.com/orgs/gunb-ai/actions/runners/generate-jitconfig"
+}
+
+// ONLY 201 IS CREATED, AND THE TRIMMING IS LOAD-BEARING because the status arrives as curl's own
+// -w output rather than as a parsed field. A reader that accepted any 2xx would treat a 200 -- which
+// this endpoint does not answer on success -- as a minted credential and place an empty drive.
+test fn only_a_created_status_counts_as_created() -> Bool {
+  jit_status_is_created(status_text: "201")
+    && jit_status_is_created(status_text: " 201\n")
+    && !jit_status_is_created(status_text: "200")
+    && !jit_status_is_created(status_text: "422")
+    && !jit_status_is_created(status_text: "")
+    && to_string(jit_config_created_status) == "201"
+}
+
+// A REFUSED PLACEMENT IS NOT ADMITTED, which is the arm every caller branches on. Without this the
+// placement type could carry a refusal that reads as success at the one call site that matters.
+test fn a_refused_placement_is_not_admitted() -> Bool {
+  !jit_placement_admitted(p: JitCredentialRefused { cause: "the cell is not owned" })
+    && jit_placement_admitted(p: JitCredentialPlaced {
+         drive_file: "/opt/fabric-cells/srv1-01/attempts/a1/jit.img",
+         runner_name: "gunbc-microvm-srv1-01-a1" as NonEmptyStr,
+       })
 }
