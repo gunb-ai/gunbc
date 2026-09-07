@@ -6,9 +6,10 @@ import std.measure { MoneyAmountMicro, MoneyPerSecond }
 import product.fabric.identity { FabricIdentity, DemandKey, WorkKey }
 import product.fabric.demand { Demand, BudgetAccountId, ObservationReceiptRef }
 import product.fabric.selection {
-  CandidateOffer, SupplySelection, OfferSelected, NoAdmissibleOffer,
+  CandidateOffer, SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved,
   select_supply,
 }
+import product.fabric.supply { EqualCostOfferTieBreak, StableRosterOrder, DemandKeyedRendezvous }
 import gunbc.fabric_witness_run {
   floor_execution_requirements,
   floor_grant_duration,
@@ -76,10 +77,19 @@ fn floor_demand(
 // from the caller, because they are facts about what the floor IS -- eight threads, the rust
 // toolchain capability, the internal-fleet trust domain, a thirty-minute estimate. A caller free
 // to restate them could select an offer for a Work this floor is not.
+// THE TIE POLICY IS PINNED TO WHAT THIS CONSUMER ALREADY HAD. supply.dag now names the equal-cost
+// arm, and roster order is the arm this selection has been running all along -- so it is stated here
+// rather than changed. Spreading equal CI cells across a fleet is a different question with a
+// different owner, and turning it on as a side effect of naming it would be a behaviour change
+// nobody asked this lane for.
+//
+// THE DEMAND KEY TRAVELS EVEN THOUGH ROSTER ORDER IGNORES IT, because the alternative is a
+// placeholder at the call site that becomes wrong the moment the policy changes.
 fn floor_supply_selection(
   candidates: List<CandidateOffer<NonEmptyStr>>,
   maximum_buy_order: MoneyAmountMicro,
   delay_valuation: MoneyPerSecond,
+  demand_key: NonEmptyStr,
 ) -> SupplySelection<NonEmptyStr> {
   select_supply(
     requirements: floor_execution_requirements(),
@@ -88,6 +98,8 @@ fn floor_supply_selection(
     maximum_buy_order: maximum_buy_order,
     budget_currency: Usd,
     delay_valuation: delay_valuation,
+    tie: StableRosterOrder,
+    demand_key: demand_key,
   )
 }
 
@@ -97,7 +109,8 @@ fn floor_supply_selection(
 // `considered`, which is empty in the second case and populated in the first.
 fn floor_selection_selected_offer_count(selection: SupplySelection<NonEmptyStr>) -> Int {
   match selection {
-    OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _ } => 1
+    OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => 1
     NoAdmissibleOffer { considered: _ } => 0
+    EqualCostTieUnresolved { digest: _, considered: _ } => 0
   }
 }

@@ -60,7 +60,7 @@ type ServingQueueReading
 // it.
 type ServingCoTenancy
   = GroupIdle
-  | GroupServingInteractiveTurn { running: Nat }
+  | GroupServingInteractiveTurn { occupied_by: Nat }
   | CoTenancyUnread { obligation: NonEmptyStr }
 
 fn serving_co_tenancy(reading: ServingQueueReading) -> ServingCoTenancy {
@@ -68,9 +68,9 @@ fn serving_co_tenancy(reading: ServingQueueReading) -> ServingCoTenancy {
     QueueDepthUnread { obligation: o } => CoTenancyUnread { obligation: o }
     QueueDepthRead { waiting: w, running: r } =>
       if r == 0 {
-        if w == 0 { GroupIdle } else { GroupServingInteractiveTurn { running: w } }
+        if w == 0 { GroupIdle } else { GroupServingInteractiveTurn { occupied_by: w } }
       } else {
-        GroupServingInteractiveTurn { running: r }
+        GroupServingInteractiveTurn { occupied_by: r }
       }
   }
 }
@@ -78,8 +78,10 @@ fn serving_co_tenancy(reading: ServingQueueReading) -> ServingCoTenancy {
 // A GROUP WITH WORK WAITING IS NOT IDLE EITHER, which is why the reading above folds waiting into
 // the occupied arm rather than looking only at running. A request admitted and waiting is a request
 // that will start the moment the engine is free, so placing a cold prefill in front of it produces
-// the same overlap one scheduler step later. The count carried is whichever gauge established the
-// occupancy; nothing downstream prices it, so no ordering depends on which one it was.
+// the same overlap one scheduler step later. The field is named occupied_by rather than running
+// BECAUSE it carries whichever gauge established the occupancy: calling it running would be a second
+// name for one of the two readings, and the wrong one half the time. Nothing downstream prices it,
+// so no ordering depends on which gauge it came from.
 
 // ── THE ADMISSION VERDICT ─────────────────────────────────────────────────────────────────────
 //
@@ -102,7 +104,7 @@ fn serving_group_admission(tenancy: ServingCoTenancy, receipt: ObservationReceip
   match tenancy {
     CoTenancyUnread { obligation: o } => AdmissibilityUnread { obligation: o }
     GroupIdle => AdmissibleForColdPrefill { receipt: receipt }
-    GroupServingInteractiveTurn { running: r } =>
+    GroupServingInteractiveTurn { occupied_by: r } =>
       InadmissibleActiveInteractiveTurn { occupied_by: r, basis: serving_co_tenancy_overlap_receipt }
   }
 }

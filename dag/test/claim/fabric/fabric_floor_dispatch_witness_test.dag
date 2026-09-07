@@ -38,7 +38,7 @@ import product.fabric.selection {
   TransitionCostObservation, NoTransitionRequired,
   OperatingCostObservation, OperatingCostMeasured,
   OpportunityCostObservation, NoFeasibleAlternativeUse,
-  SupplySelection, OfferSelected, NoAdmissibleOffer,
+  SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved,
 }
 import gunbc.fabric_floor_dispatch {
   floor_demand, floor_supply_selection, floor_selection_selected_offer_count,
@@ -112,13 +112,15 @@ fn d_select(candidates: List<CandidateOffer<NonEmptyStr>>) -> SupplySelection<No
     candidates: candidates,
     maximum_buy_order: money_amount_micro(count: 1000000),
     delay_valuation: d_no_delay_valuation(),
+    demand_key: "test.floor-demand" as NonEmptyStr,
   )
 }
 
 fn d_considered_count(selection: SupplySelection<NonEmptyStr>) -> Int {
   match selection {
-    OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: c } => list_length(items: c)
+    OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: c, tie_policy: _ } => list_length(items: c)
     NoAdmissibleOffer { considered: c } => list_length(items: c)
+    EqualCostTieUnresolved { digest: _, considered: c } => list_length(items: c)
   }
 }
 
