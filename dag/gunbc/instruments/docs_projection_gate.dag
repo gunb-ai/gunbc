@@ -24,11 +24,9 @@ fn write_docs_projection(path: String, content: String) -> ProcessExit {
 // gunbc.generated_artifact_gate main_wet folds the WHOLE committed registry, and resolving
 // gunbc.generated_artifact_emit pulls every generator (plans, workflows, CAD, stage0 mirrors).
 // This entry still imports gunbc.generated_artifact for artifact_path only — the location
-// authority — not generated_artifact_emit. Authors filing a recurring-failure-mode row then
-// ran claim_executor --required-regen (which never owns these files) or main_wet (which does
-// not return a ProcessExit on the runners that SIGKILL it), so three rostered rows sat in the
-// authority while docs/design-failure-modes.md stayed stale and nothing that completes could
-// say so.
+// authority — not generated_artifact_emit. claim_executor --required-regen never owns these
+// files: is_compared_generated_basename is ends_with .rs. That ownership gap is the motive;
+// this entry returns ProcessExit over the two ledger paths.
 func regen() -> ProcessExit {
   let first = write_docs_projection(
     path: artifact_path(a: DesignFailureModesArtifact),

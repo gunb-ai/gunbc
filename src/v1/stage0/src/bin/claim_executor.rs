@@ -846,7 +846,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             // DOCS LEDGER HALF. A dedicated ProcessExit entry whose closure is the two ledger
             // renderers, not gunbc.generated_artifact_emit. Run even after a mirror refusal, and
             // before the whole-registry resolve, so a stale docs/design-failure-modes.md cannot
-            // hide behind a SIGKILL or MemoryStall of the 35-artifact fold.
+            // hide behind a SIGKILL or MemoryStall of the whole-registry fold.
             match v1_compiler::cli_run::run_docs_projection_agreement(&source_roots) {
                 v1_compiler::cli_run::DocsProjectionAgreement::Clean => {
                     eprintln!("required-ci: generated-artifact population=docs-projections OK");
