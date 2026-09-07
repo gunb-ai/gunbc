@@ -7,7 +7,7 @@ data constant_verdict_gate_stops_discriminating: RecurringFailureMode = Recurrin
   identity: "constant_verdict_gate_stops_discriminating" as NonEmptyStr,
 
   receipts: [
-    "**a gate whose verdict has stopped being a function of the change carries no information, and the RED direction is the one nobody files** (THE SYMMETRY IS THE POINT: DESIGN section 4b already names the permanently-GREEN check a decoration, worse than absent because it will be cited as coverage. A gate that refuses on EVERY run, for a cause outside the change under test, has lost exactly the same property from the other side, and there is no roster row for it because a red check does not LOOK like a missing wall -- it looks like a working one. ",
+    "**a gate whose verdict has stopped being a function of the change carries no information, and the RED direction is the one nobody files** (THE SYMMETRY IS THE POINT: DESIGN section 4b already names the permanently-GREEN check a decoration, worse than absent because it will be cited as coverage. A gate that refuses on EVERY run, for a cause outside the change under test, has lost exactly the same property from the other side, and there is no roster row for it because a red check does not LOOK like a missing wall -- it looks like a working one.) ",
 
     "INVALID STATE: a required gate whose verdict is constant across the population it gates, so that reading it tells a reader nothing about the change in front of them. ",
 
