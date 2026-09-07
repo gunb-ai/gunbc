@@ -27,13 +27,15 @@ data declared_trigger_names_a_term_that_is_not_the_cause: RecurringFailureMode =
 
     "The quadratic-in-reached premise is refuted by measurement rather than by argument: the cost is POOL-PROPORTIONAL, and the term the row named is not the term being paid. ",
 
-    "**WHICH MECHANISM PAYS THE POOL TERM IS DELIBERATELY NOT NAMED HERE, AND THE OMISSION IS THIS ROW OBEYING ITSELF.** A full scan of the candidate pool per callee lookup was the first candidate and was refuted BY EXECUTION: `decls_in_modules` is a plain-valued call with hashable arguments, so the eval-frame memo had already collapsed the repeats to one evaluation, and an index built to remove the rescan made the witness about 1.1s WORSE. ",
+    "**WHICH MECHANISM PAYS THE POOL TERM IS DELIBERATELY NOT NAMED HERE, AND THE OMISSION IS THIS ROW OBEYING ITSELF.** A full scan of the candidate pool per callee lookup was the first candidate and was refuted BY EXECUTION: `decls_in_modules` is a plain-valued call with hashable arguments, so the eval-frame memo had already collapsed the repeats to one evaluation, and an index built to remove the rescan made the witness WORSE rather than faster. ",
 
-    "The FIT survives that refutation and has since been confirmed at mechanism level with the reached set pinned identical at 89 of 89: cost tracks the pool the walk is HANDED, not what it reaches. What is unattributed is the mechanism, not the shape -- and writing a plausible unverified mechanism into this row would commit this row's own error inside the row that names it. ",
+    "The FIT survives that refutation and has since been confirmed at mechanism level with the reached set pinned identical across both arms: cost tracks the pool the walk is HANDED, not what it reaches. What is unattributed is the mechanism, not the shape -- and writing a plausible unverified mechanism into this row would commit this row's own error inside the row that names it. ",
 
     "**WHY SOURCE READING PRODUCES THIS CLASS RATHER THAN CATCHING IT.** The same walk contains three genuinely quadratic-in-reached shapes, all real, all subject to the bare-minimum-cost rule, and NONE of them is what is being paid. ",
 
     "Reading source finds every CANDIDATE term; only a measurement in which the candidates make different predictions finds the CAUSE. ",
+
+    "**THE INSTRUMENT, SO NO FIGURE ABOVE HAS TO BE TRUSTED.** Every number in these receipts is re-derived by the producer `gunbc.rung_drop.determinism_transitive_reachability` names for its own figures: `claim_batch` over a probe calling `call_reachable_decls` at both grains, bracketing the reached count and the pool size by threshold ladder. The two-model scores are that probe read at file grain and at directory grain; the refutation of the index is the same probe with the index arm present and absent, which is also what pins the reached set identical across the two arms. ",
 
     "A row whose cause was written from a source reading is therefore the expected outcome of ordinary diligence, not of carelessness, which is why the class needs a rule rather than an exhortation. ",
 
