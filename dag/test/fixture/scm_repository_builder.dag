@@ -36,7 +36,7 @@ import gunbc.scm.repository_envelope {
 }
 import gunbc.scm.write_spine {
   StageIngress, Staged, StageCandidateRefused, StageSourceLocatorCollision,
-  StageDuplicatePath, StageManifestLocatorCollision,
+  StageManifestLocatorCollision,
   stage_source_at_path,
 }
 
@@ -82,7 +82,6 @@ fn mb_stage(build: MbBuild, path: String, text: String) -> MbBuild {
       match stage_source_at_path(repository: repository, path: path as NonEmptyStr, text: text) {
         StageCandidateRefused { cause: _ } => MbSetupFailed
         StageSourceLocatorCollision { identity: _ } => MbSetupFailed
-        StageDuplicatePath { path: _ } => MbSetupFailed
         StageManifestLocatorCollision { identity: _ } => MbSetupFailed
         Staged { repository: staged, manifest: _, source: _ } =>
           MbBuilt { repository: staged, at: at }

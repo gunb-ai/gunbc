@@ -179,10 +179,10 @@ fn stg_commit(build: StgBuild, message: String) -> StgBuild {
       match effective_candidate(repository: repository) {
         CandidateRefused { cause: _ } => StgSetupFailed
         CandidateEmptyCorpus => StgSetupFailed
-        CandidateFromStage { manifest: m, entries: _ } =>
-          stg_mint(repository: repository, candidate: m, message: message)
-        CandidateInheritedFromBase { manifest: m, entries: _ } =>
-          stg_mint(repository: repository, candidate: m, message: message)
+        CandidateFromStage { record: r } =>
+          stg_mint(repository: repository, candidate: r.identity, message: message)
+        CandidateInheritedFromBase { record: r } =>
+          stg_mint(repository: repository, candidate: r.identity, message: message)
       }
   }
 }

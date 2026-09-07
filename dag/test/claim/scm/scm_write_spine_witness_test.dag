@@ -26,7 +26,7 @@ import gunbc.scm.repository_envelope { RepositoryEnvelope, commit_at_reference, 
 import gunbc.scm.staging { StagedEntries, StagedEntriesRefused, staged_entries }
 import gunbc.scm.write_spine {
   StageIngress, Staged, StageCandidateRefused, StageSourceLocatorCollision,
-  StageDuplicatePath, StageManifestLocatorCollision,
+  StageManifestLocatorCollision,
   StagedCommit, StagedCommitMinted, StagedCommitCandidateRefused, StagedCommitNothingToFreeze,
   StagedCommitAllocatorInvalid, StagedCommitParentMissing,
   stage_source_at_path, commit_staged,
@@ -90,7 +90,6 @@ fn staged_paths(ingress: StageIngress) -> List<String>? {
       }
     StageCandidateRefused { cause: _ } => none
     StageSourceLocatorCollision { identity: _ } => none
-    StageDuplicatePath { path: _ } => none
     StageManifestLocatorCollision { identity: _ } => none
   }
 }
@@ -145,7 +144,6 @@ fn staged_manifest(ingress: StageIngress) -> CorpusManifestObjectRef? {
     Staged { repository: _, manifest: manifest, source: _ } => Present { value: manifest }
     StageCandidateRefused { cause: _ } => none
     StageSourceLocatorCollision { identity: _ } => none
-    StageDuplicatePath { path: _ } => none
     StageManifestLocatorCollision { identity: _ } => none
   }
 }
@@ -155,7 +153,6 @@ fn staged_repository(ingress: StageIngress) -> RepositoryEnvelope? {
     Staged { repository: repository, manifest: _, source: _ } => Present { value: repository }
     StageCandidateRefused { cause: _ } => none
     StageSourceLocatorCollision { identity: _ } => none
-    StageDuplicatePath { path: _ } => none
     StageManifestLocatorCollision { identity: _ } => none
   }
 }
@@ -302,7 +299,6 @@ test fn scm_ws_staging_content_identical_to_the_base_still_freezes_nothing() -> 
       }
     StageCandidateRefused { cause: _ } => false
     StageSourceLocatorCollision { identity: _ } => false
-    StageDuplicatePath { path: _ } => false
     StageManifestLocatorCollision { identity: _ } => false
   }
 }

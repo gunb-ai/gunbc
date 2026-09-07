@@ -2,7 +2,7 @@ module gunbc.durable_cas_file_store
 
 import std.types { NonEmptyStr, String, Int, Bool }
 import std.content_hash { ContentHash, content_hash_of_value, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
-import std.durable_compare_and_set { CasAttempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, cas_generation_first, cas_generation_next, cas_generation_count }
+import std.durable_compare_and_set { CasAttempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_generation_first, cas_generation_next, cas_generation_count }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
 // The first production realization of std.durable_compare_and_set: one keyed
@@ -406,13 +406,13 @@ fn cas_commit_at(
 // carried into the refusal and never parsed -- classifying by matching on an error string is the
 // anemic leaf this module already refuses one screen up.
 //
-// THE COST OF THE REMAINING VOCABULARY MISMATCH IS NAMED RATHER THAN HIDDEN: the refusal travels in
-// `CasStoreRefused`, whose cause type `CasUnreadableSlot` is spelled for READ failures. The OUTCOME is
-// right -- the caller's remedy is to investigate the store, not to re-derive against a new head -- and
-// widening `std.durable_compare_and_set`'s coproduct is a separate cut across every consumer of it.
-// NEXT-RUNG TRIGGER, naming the capability: a store-refusal cause vocabulary that distinguishes a slot
-// that could not be READ from a generation that could not be PUBLISHED, at which point this detail
-// stops being a malformed-slot report and becomes a publication refusal in its own right.
+// AND THE REFUSAL NOW HAS ITS OWN CONSTRUCTOR. An earlier revision routed it through
+// `CasUnreadableMalformed`, on the ground that the caller's remedy -- investigate the store -- is the
+// same either way. That reasoning was wrong and is worth keeping visible: identical remedies do not
+// make two facts one fact, and the fact is what a caller reads back, logs and counts. A write failure
+// wearing a read failure's constructor reports "the head I read is garbage" for an event in which
+// nothing was read and the head is fine. `std.durable_compare_and_set.CasStoreFailure` now carries the
+// distinction, so this says what happened.
 fn cas_failed_publication(
   root: NonEmptyStr,
   attempt: CasAttempt<NonEmptyStr>,
@@ -437,7 +437,7 @@ fn cas_failed_publication(
 
 fn cas_publication_refused(detail: String) -> CasOutcome<NonEmptyStr> {
   CasStoreRefused {
-    cause: CasUnreadableMalformed {
+    cause: CasGenerationPublicationRefused {
       detail: concat("generation publication refused by the store: ", detail) as NonEmptyStr
     }
   }
@@ -460,8 +460,10 @@ fn file_compare_and_set(
   match probe {
     ProbedBeyondBound { bound: b } =>
       CasStoreRefused {
-        cause: CasUnreadableMalformed {
-          detail: concat("slot exceeds the generation probe bound of ", b as String) as NonEmptyStr
+        cause: CasSlotObservationRefused {
+          cause: CasUnreadableMalformed {
+            detail: concat("slot exceeds the generation probe bound of ", b as String) as NonEmptyStr
+          }
         }
       }
     ProbedAbsent =>

@@ -28,7 +28,7 @@ import std.durable_compare_and_set { CasGeneration, cas_generation_count }
 import gunbc.scm.repository_slot {
   RepositorySlot, LoadedRepositoryGeneration,
   RepositoryPublication, RepositoryPublished,
-  RepositoryPublicationSuperseded, RepositoryPublicationStoreUnreadable,
+  RepositoryPublicationSuperseded, RepositoryPublicationStoreUnavailable,
   RepositoryPublicationEncodeRefused, RepositoryPublicationKeyNotAddressable,
   RepositoryPublicationDigestDisagreed,
   RepositorySlotRead, RepositorySlotAbsent, RepositorySlotHead,
@@ -42,7 +42,7 @@ import gunbc.scm.write_spine {
   StagedCommit, StagedCommitMinted, StagedCommitCandidateRefused, StagedCommitNothingToFreeze,
   StagedCommitAllocatorInvalid, StagedCommitParentMissing,
   StageIngress, Staged, StageCandidateRefused, StageSourceLocatorCollision,
-  StageDuplicatePath, StageManifestLocatorCollision,
+  StageManifestLocatorCollision,
   stage_source_at_path, commit_staged,
 }
 import gunbc.scm.write_spine_ingress {
@@ -93,8 +93,8 @@ fn publication_exit(publication: RepositoryPublication) -> ProcessExit {
     RepositoryPublished { generation: g } => ExitSuccess
     RepositoryPublicationSuperseded { expected: _, observed: _ } =>
       exit_failure(reason: "publication refused: the slot moved under this writer")
-    RepositoryPublicationStoreUnreadable { cause: _ } =>
-      exit_failure(reason: "publication refused: the store could not be read")
+    RepositoryPublicationStoreUnavailable { cause: _ } =>
+      exit_failure(reason: "publication refused: the store could not be read or could not publish")
     RepositoryPublicationEncodeRefused { cause: _ } =>
       exit_failure(reason: "publication refused: the repository value did not encode")
     RepositoryPublicationKeyNotAddressable { key: _ } =>
@@ -193,8 +193,6 @@ func publish_staged(loaded: LoadedRepositoryGeneration, ingress: StageIngress) -
       exit_failure(reason: "add refused: the effective candidate could not be read")
     StageSourceLocatorCollision { identity: _ } =>
       exit_failure(reason: "add refused: a different object already holds this file's identity")
-    StageDuplicatePath { path: _ } =>
-      exit_failure(reason: "add refused: the resulting manifest names one path twice")
     StageManifestLocatorCollision { identity: _ } =>
       exit_failure(reason: "add refused: a different object already holds this manifest's identity")
     Staged { repository: staged, manifest: _, source: _ } =>
@@ -391,6 +389,55 @@ func checkout_from(loaded: LoadedRepositoryGeneration, reference: RepositoryComm
     RepositoryCheckedOut { repository: moved, corpus: _ } =>
       publication_exit(publication: republish_repository(loaded: loaded, repo: moved))
     other => exit_failure(reason: "checkout refused")
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// head -- what the reader says the current generation is, and whether it decoded
+// ------------------------------------------------------------------------------------------------
+
+// A CORRUPT HEAD MUST REFUSE AT THE GENERATION THAT IS CORRUPT, NOT FALL BACK TO THE LAST GOOD ONE.
+//
+// This is the fail-closed reader control, and getting its SHAPE right matters more than the run. The
+// tempting claim is "a truncated `.N+1` must not become the head" -- which is backwards. If bytes
+// exist at `.N+1` then `.N+1` IS the current generation, and answering `.N` would be the store hiding
+// a corruption by silently serving a stale document. That is the absorbing fallback, arriving through
+// the reader instead of the writer.
+//
+// So the correct behaviour, and what this entry executes: read the CURRENT generation, and refuse
+// there. `RepositorySlotDocumentUnparseable { generation: N+1 }` names both the fault and where it is,
+// which is what an operator needs to repair the right file.
+//
+// WHAT THIS IS NOT. Hand-placing bytes at `.N+1` authors an external corruption state; it does not
+// prove an interruption produced one, and this entry does not claim it. The producer-side property --
+// that a publication cannot leave a readable prefix at a generation name -- is held by construction
+// through `DefaultAccessCreateOnly`, and the specimen for the unsafe binding belongs with retiring its
+// last consumer. Two facts, two controls; neither stands as evidence for the other.
+func spine_head(root: String, key: String, expect: String) -> ProcessExit {
+  match admit_slot(root: root, key: key) {
+    SlotRootEmpty => exit_failure(reason: slot_refusal(admission: SlotRootEmpty))
+    SlotKeyEmpty => exit_failure(reason: slot_refusal(admission: SlotKeyEmpty))
+    SlotAdmitted(slot) => head_verdict(read: read_repository_slot(slot: slot), expect: expect)
+  }
+}
+
+fn head_verdict(read: RepositorySlotRead, expect: String) -> ProcessExit {
+  if expect == "decoded" {
+    match read {
+      RepositorySlotHead(_) => ExitSuccess
+      other => exit_failure(reason: join(["head expected to decode, but ", slot_read_failure(read: other)], ""))
+    }
+  } else if expect == "unparseable" {
+    match read {
+      RepositorySlotDocumentUnparseable { generation: _, gap: _ } => ExitSuccess
+      RepositorySlotHead(_) =>
+        exit_failure(
+          reason: "head decoded cleanly -- the reader served an older generation instead of refusing at the corrupt one"
+        )
+      other => exit_failure(reason: join(["head expected to be unparseable, but ", slot_read_failure(read: other)], ""))
+    }
+  } else {
+    exit_failure(reason: join(["--arg expect must be decoded or unparseable, not ", expect], ""))
   }
 }
 

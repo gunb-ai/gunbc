@@ -909,6 +909,85 @@ fn a_duplicated_manifest_path(entries: List<CorpusManifestEntry>) -> NonEmptyStr
   ).duplicate
 }
 
+// ENTRIES WHOSE PATHS ARE UNIQUE BY CONSTRUCTION, SO THE DUPLICATE QUESTION CAN BE ABSENT DOWNSTREAM.
+//
+// `store_corpus_manifest` must ask about duplicates, because it accepts an arbitrary list and a caller
+// really can hand it one path twice. But a caller that DERIVED its list by replacing one path in an
+// already-stored manifest cannot produce a duplicate, and until this carrier existed it had no way to
+// say so: it matched a `CorpusManifestDuplicatePath` arm it could not reach, and
+// `gunbc.scm.write_spine` carried that unreachable arm out into its own public outcome with a comment
+// admitting as much. That is the same shape as the integration arm one module over -- honest about the
+// callee's domain, dishonest about the operation's -- and external review caught both.
+//
+// THE UNIQUENESS CHAIN IS REAL AND IT ENDS AT A sole_constructor. `CorpusManifestRecord` can only be
+// minted by `store_corpus_manifest`, and only after `a_duplicated_manifest_path` answered `Absent`. So
+// a record's entries ARE path-unique, as a fact about how the value was obtained rather than a
+// property someone asserts. Removing one path from that set and appending exactly one entry preserves
+// it. Both constructors below are exactly that move, and there is no other way to build this carrier.
+type PathUniqueManifestEntries sole_constructor {
+  entries: List<CorpusManifestEntry>
+}
+
+fn manifest_entries_with_path_replaced(
+  base: CorpusManifestRecord,
+  path: NonEmptyStr,
+  source: AuthoredSourceTarget,
+) -> PathUniqueManifestEntries {
+  PathUniqueManifestEntries {
+    entries: concat(
+      fold(base.entries, init: [], f: fn(acc, entry) {
+        if entry.path == path { acc } else { concat(acc, [entry]) }
+      }),
+      [CorpusManifestEntry { path: path, source: source }],
+    ),
+  }
+}
+
+// THE EMPTY CORPUS IS ITS OWN CONSTRUCTOR RATHER THAN AN EMPTY RECORD, because there is no record to
+// take one from: a repository with no history and no stage has never stored a manifest. One entry is
+// trivially path-unique.
+fn manifest_entries_of_single(
+  path: NonEmptyStr,
+  source: AuthoredSourceTarget,
+) -> PathUniqueManifestEntries {
+  PathUniqueManifestEntries { entries: [CorpusManifestEntry { path: path, source: source }] }
+}
+
+// THE NARROW STORE ROUTE. It is not a second authority: the identity is `corpus_manifest_identity`,
+// the canonicalization is `canonical_manifest_entries` and the admission is `insert_admission`, all
+// shared with `store_corpus_manifest`. What it omits is the duplicate CHECK, and it may omit it
+// because its argument cannot carry a duplicate -- so the outcome has two arms instead of three, and
+// a caller on this route is not asked about a state it cannot reach.
+type UniqueManifestStoreOutcome
+  = UniqueManifestStored { store: ObjectStore, manifest: CorpusManifestObjectRef }
+  | UniqueManifestLocatorCollision {
+      identity: ObjectId,
+      existing: ScmObject,
+      incoming: ScmObject
+    }
+
+fn store_path_unique_manifest(
+  store: ObjectStore,
+  unique: PathUniqueManifestEntries,
+) -> UniqueManifestStoreOutcome {
+  let canonical = canonical_manifest_entries(entries: unique.entries)
+  let reference = CorpusManifestObjectRef {
+    locator: corpus_manifest_identity(entries: canonical),
+  }
+  let object = CorpusManifestObject(
+    CorpusManifestRecord { identity: reference, entries: canonical },
+  )
+  match insert_admission(store: store, object: object) {
+    AdmitStored(next) => UniqueManifestStored { store: next, manifest: reference }
+    AdmitCollision { existing: existing } =>
+      UniqueManifestLocatorCollision {
+        identity: reference.locator,
+        existing: existing,
+        incoming: object,
+      }
+  }
+}
+
 fn store_corpus_manifest(
   store: ObjectStore,
   entries: List<CorpusManifestEntry>

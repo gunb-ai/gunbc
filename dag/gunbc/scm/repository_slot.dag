@@ -52,6 +52,7 @@ import std.durable_compare_and_set {
   CasGeneration, CasSlotVersion, CasReadableSlot, CasReadableAbsent, CasReadablePresent,
   CasUnreadableSlot,
   CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
+  CasStoreFailure,
   CasSlotObservation, CasObservedReadable, CasObservedUnreadable,
   cas_attempt,
 }
@@ -77,7 +78,11 @@ import gunbc.scm.repository_envelope {
 //   Superseded           this writer, and it can act: the observed head is carried, so the caller
 //                        can re-derive against what actually won rather than re-reading and racing
 //                        again from a fresh guess.
-//   StoreUnreadable      an operator. The slot could not be read at all; NOTHING is known about
+//   StoreUnavailable     an operator, and the carried cause says WHICH store failure it was: the slot
+//                        could not be read, or the generation could not be published. Those are
+//                        different events -- a corrupt head versus a write that did not land -- and
+//                        this arm used to carry only the first, so a publication refusal arrived
+//                        wearing an unreadable-slot constructor. Either way nothing is known about
 //                        whether anyone won.
 //   EncodeRefused        the author of the repository value. It never reached the store.
 //   KeyNotAddressable    the caller. A key that would escape the store root or carry a separator is
@@ -111,7 +116,7 @@ type LoadedRepositoryGeneration sole_constructor {
 type RepositoryPublication
   = RepositoryPublished { generation: CasGeneration }
   | RepositoryPublicationSuperseded { expected: CasExpectation, observed: CasReadableSlot<NonEmptyStr> }
-  | RepositoryPublicationStoreUnreadable { cause: CasUnreadableSlot }
+  | RepositoryPublicationStoreUnavailable { cause: CasStoreFailure }
   | RepositoryPublicationEncodeRefused { cause: RepositoryEncodeRefusal }
   | RepositoryPublicationKeyNotAddressable { key: NonEmptyStr }
   | RepositoryPublicationDigestDisagreed
@@ -267,7 +272,7 @@ fn publish_prepared(preparation: PreparedRepositoryPublication) -> RepositoryPub
           RepositoryPublished { generation: committed.generation }
         CasPreconditionFailed { expected: e, observed: o } =>
           RepositoryPublicationSuperseded { expected: e, observed: o }
-        CasStoreRefused { cause: c } => RepositoryPublicationStoreUnreadable { cause: c }
+        CasStoreRefused { cause: c } => RepositoryPublicationStoreUnavailable { cause: c }
       }
   }
 }

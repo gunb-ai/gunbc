@@ -124,6 +124,29 @@ type CasUnreadableSlot
   | CasUnreadableContentMissing { referenced: ContentHash }
   | CasUnreadableReadRefused { detail: NonEmptyStr }
 
+// WHY THE STORE FAILED, AND READING AND WRITING ARE TWO WAYS FOR IT TO FAIL.
+//
+// `CasStoreRefused` used to carry a `CasUnreadableSlot` directly, which was right while the only way
+// a store could refuse was that it could not READ the slot. It is not the only way: a conditional
+// write reaches the store, satisfies its precondition, and can still fail to PUBLISH -- no space, no
+// permission, a staging candidate budget exhausted. A realization that reported that as a malformed
+// or unreadable slot would be a write failure wearing a read failure's constructor.
+//
+// AND THE SHARED REMEDY IS NOT AN ARGUMENT FOR ONE ARM. Both send an operator to look at the store,
+// which is exactly why they belong under one OUTCOME -- but identical remedies do not make the facts
+// identical, and the fact is what a caller reads back, logs, and counts. "The head I read is garbage"
+// and "my write did not land" are different events with different populations and different repairs,
+// and a store that conflates them cannot report either honestly.
+//
+// THE OUTER COPRODUCT IS DELIBERATELY NOT WIDENED. A fourth `CasOutcome` arm would make every caller
+// re-decide a question it has already answered -- committed, lost, or refused -- when what changed is
+// only the DETAIL of the third. So the three-way outcome stands and its payload gains the
+// distinction. A caller with no use for it matches `CasStoreRefused` and carries the value on, which
+// is honest; a caller that needs to tell a corrupt head from a failed write can now do so.
+type CasStoreFailure
+  = CasSlotObservationRefused { cause: CasUnreadableSlot }
+  | CasGenerationPublicationRefused { detail: NonEmptyStr }
+
 // The outcome of one attempt.
 //
 // There is deliberately no arm meaning "retried and assume it worked" and no
@@ -142,7 +165,7 @@ type CasOutcome<T>
       expected: CasExpectation
       observed: CasReadableSlot<T>
     }
-  | CasStoreRefused { cause: CasUnreadableSlot }
+  | CasStoreRefused { cause: CasStoreFailure }
 
 type CasAttempt<T> {
   key: NonEmptyStr
@@ -219,7 +242,8 @@ fn cas_decide<T>(
   observed: CasSlotObservation<T>
 ) -> CasOutcome<T> {
   match observed {
-    CasObservedUnreadable { cause: c } => CasStoreRefused { cause: c }
+    CasObservedUnreadable { cause: c } =>
+      CasStoreRefused { cause: CasSlotObservationRefused { cause: c } }
     CasObservedReadable { readable: r } => cas_decide_readable(attempt: attempt, readable: r)
   }
 }

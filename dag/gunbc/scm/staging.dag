@@ -121,9 +121,15 @@ type StagingRefusal
 // empty corpus when the base cannot be read reintroduces the deletion through the failure arm, which
 // is the absorbing fallback DESIGN section 5 names -- a failure widening to the superset instead of
 // refusing.
+// THE PRESENT ARMS CARRY THE RECORD, NOT A REFERENCE BESIDE A LIST. Both fields came from ONE
+// `CorpusManifestRecord` and splitting them threw away the fact that they did -- so a consumer holding
+// the pair could no longer tell that the entries were the path-unique set some `store_corpus_manifest`
+// had already admitted, and had to re-ask a question the value's own provenance had settled. Carrying
+// the record keeps the provenance attached, which is what lets `gunbc.scm.write_spine` derive a
+// `PathUniqueManifestEntries` and stop matching a duplicate arm it cannot reach.
 type EffectiveCandidate
-  = CandidateFromStage { manifest: CorpusManifestObjectRef, entries: List<CorpusManifestEntry> }
-  | CandidateInheritedFromBase { manifest: CorpusManifestObjectRef, entries: List<CorpusManifestEntry> }
+  = CandidateFromStage { record: CorpusManifestRecord }
+  | CandidateInheritedFromBase { record: CorpusManifestRecord }
   | CandidateEmptyCorpus
   | CandidateRefused { cause: StagingRefusal }
 
@@ -131,8 +137,7 @@ fn effective_candidate(repository: RepositoryEnvelope) -> EffectiveCandidate {
   match repository.staged {
     Present { value: reference } =>
       match find_corpus_manifest_record(store: repository.store, identity: reference.locator) {
-        CorpusManifestFound(record) =>
-          CandidateFromStage { manifest: record.identity, entries: record.entries }
+        CorpusManifestFound(record) => CandidateFromStage { record: record }
         CorpusManifestAbsent { identity: r } =>
           CandidateRefused { cause: StageManifestMissingFromStore { staged: r } }
         CorpusManifestIsAuthoredSource { identity: r } =>
@@ -152,8 +157,7 @@ fn candidate_inherited_from_base(repository: RepositoryEnvelope) -> EffectiveCan
         Absent => CandidateRefused { cause: StageBaseUnresolved { reference: reference } }
         Present { value: commit } =>
           match find_corpus_manifest_record(store: repository.store, identity: commit.root.locator) {
-            CorpusManifestFound(record) =>
-              CandidateInheritedFromBase { manifest: record.identity, entries: record.entries }
+            CorpusManifestFound(record) => CandidateInheritedFromBase { record: record }
             CorpusManifestAbsent { identity: r } =>
               CandidateRefused { cause: StageBaseManifestMissingFromStore { root: r } }
             CorpusManifestIsAuthoredSource { identity: r } =>
@@ -176,8 +180,8 @@ fn staged_entries(repository: RepositoryEnvelope) -> StagedEntries {
   match effective_candidate(repository: repository) {
     CandidateRefused { cause: c } => StagedEntriesRefused { cause: c }
     CandidateEmptyCorpus => StagedEntries { entries: [] }
-    CandidateFromStage { manifest: _, entries: entries } => StagedEntries { entries: entries }
-    CandidateInheritedFromBase { manifest: _, entries: entries } => StagedEntries { entries: entries }
+    CandidateFromStage { record: record } => StagedEntries { entries: record.entries }
+    CandidateInheritedFromBase { record: record } => StagedEntries { entries: record.entries }
   }
 }
 
@@ -229,10 +233,10 @@ fn stage_standing(repository: RepositoryEnvelope) -> StageStanding {
   match effective_candidate(repository: repository) {
     CandidateRefused { cause: c } => StageStandingRefused { cause: c }
     CandidateEmptyCorpus => NoCandidateAndNoBase
-    CandidateInheritedFromBase { manifest: manifest, entries: _ } =>
-      stage_standing_against_base(repository: repository, candidate: manifest)
-    CandidateFromStage { manifest: manifest, entries: _ } =>
-      stage_standing_against_base(repository: repository, candidate: manifest)
+    CandidateInheritedFromBase { record: record } =>
+      stage_standing_against_base(repository: repository, candidate: record.identity)
+    CandidateFromStage { record: record } =>
+      stage_standing_against_base(repository: repository, candidate: record.identity)
   }
 }
 

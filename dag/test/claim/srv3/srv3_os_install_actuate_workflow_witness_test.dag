@@ -366,7 +366,7 @@ test fn srv3_claim_loser_learns_who_holds_it() -> Bool {
 test fn srv3_unreadable_claim_store_refuses() -> Bool {
   match authorization_claim_outcome(
     proposed: claim_transition_claimed(attempt: srv3_boot_once_cd_attempt, at: witness_before_expiry),
-    outcome: CasStoreRefused { cause: CasUnreadableReadRefused { detail: "witness: claim slot read refused" as NonEmptyStr } },
+    outcome: CasStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableReadRefused { detail: "witness: claim slot read refused" as NonEmptyStr } } },
   ) {
     ClaimUndecided { reason: _ } => true
     ClaimHeld { state: _, generation: _ } => false
