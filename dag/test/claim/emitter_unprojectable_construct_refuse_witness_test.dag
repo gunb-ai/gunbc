@@ -32,6 +32,8 @@ data filter_in_guard_source: String = "module fx.filter_guard\nimport std.types 
 
 data any_in_guard_source: String = "module fx.any_guard\nimport std.types { List, Bool, Int }\nfn f(xs: List<Int>) -> Int {\n  if xs |> any(x => x > 0) {\n    1\n  } else {\n    0\n  }\n}\n"
 
+data filter_free_call_in_guard_source: String = "module fx.filter_call_guard\nimport std.types { List, Bool, Int }\nfn f(xs: List<Int>) -> Int {\n  if (filter(xs, x => x > 0) |> count) > 0 {\n    1\n  } else {\n    0\n  }\n}\n"
+
 fn unprojectable_blocking_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {
     CensusObserved { rows: rows } =>
@@ -47,6 +49,11 @@ test fn w_filter_in_branch_condition_refuses_at_emission() -> Bool {
 test fn w_supported_guarded_any_lambda_still_emits() -> Bool {
   unprojectable_blocking_count(source: any_in_guard_source) == 0
     && compile_dag_rust_emit_check(any_in_guard_source, "src/fx_any_guard.rs", ["fn f"], [])
+}
+
+test fn w_free_call_algebra_filter_in_guard_still_emits() -> Bool {
+  unprojectable_blocking_count(source: filter_free_call_in_guard_source) == 0
+    && compile_dag_rust_emit_check(filter_free_call_in_guard_source, "src/fx_filter_call_guard.rs", ["fn f"], [])
 }
 
 // Named occupant of publication atomicity. A discriminating RED over the published path set
