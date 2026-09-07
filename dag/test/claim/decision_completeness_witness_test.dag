@@ -55,7 +55,6 @@ import std.decision {
   CandidatesUndecidedOnEvidence,
   CandidatesComparable,
   CandidateComparisonRefused,
-  variable_irrelevance_is_derived,
   PhysicalModelEstablished,
   CausalModelEstablished,
   FleetObservedCoupling,
@@ -577,40 +576,6 @@ test fn proved_tradeoff_is_incomparable_coarse_evidence_is_undecided() -> Bool {
   }
 }
 
-test fn variable_irrelevance_is_derived_never_authored() -> Bool {
-  let all_invariant_for_a = [
-    InvariantAlong {
-      term: id_term_power,
-      variable: id_var_a,
-      region: region_r,
-      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
-    },
-    InvariantAlong {
-      term: id_term_throughput,
-      variable: id_var_a,
-      region: region_r,
-      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
-    },
-    VariesAlong {
-      term: id_term_power,
-      variable: id_var_b,
-      region: region_r,
-      relation: MonotoneDecreasing,
-      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
-    },
-    VariesAlong {
-      term: id_term_throughput,
-      variable: id_var_b,
-      region: region_r,
-      relation: MonotoneDecreasing,
-      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
-    },
-  ]
-  variable_irrelevance_is_derived(subject: subject, variable: id_var_a, rows: all_invariant_for_a)
-    && !variable_irrelevance_is_derived(subject: subject, variable: id_var_b, rows: all_invariant_for_a)
-    && !variable_irrelevance_is_derived(subject: subject, variable: id_var_a, rows: closed_sensitivities())
-}
-
 test fn fan_power_missing_from_throughput_per_wall_watt_is_objective_under_modeling() -> Bool {
   let physical = [id_term_throughput, id_term_power, id_term_fan]
   match term_set_join(terms: physical, objective: objective_capacity, subject: id_subject) {
@@ -746,8 +711,6 @@ fn decision_completeness_witness_main() -> ProcessExit {
     ExitFailure { code: 1, reason: "fail: order_preservation_admits" as NonEmptyStr }
   } else if !proved_tradeoff_is_incomparable_coarse_evidence_is_undecided() {
     ExitFailure { code: 1, reason: "fail: incomparable_vs_undecided" as NonEmptyStr }
-  } else if !variable_irrelevance_is_derived_never_authored() {
-    ExitFailure { code: 1, reason: "fail: variable_irrelevance" as NonEmptyStr }
   } else if !fan_power_missing_from_throughput_per_wall_watt_is_objective_under_modeling() {
     ExitFailure { code: 1, reason: "fail: fan_under_modeling_join" as NonEmptyStr }
   } else if !objective_under_modeling_refuses_settlement() {

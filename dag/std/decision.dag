@@ -689,37 +689,6 @@ fn candidate_comparison_standing(verdict: DominanceVerdict) -> CandidateComparis
   }
 }
 
-// A variable is irrelevant only when EVERY applicable objective term and constraint has a closed
-// relation to it and those relations jointly prove changing it cannot change feasibility or
-// ordering. It may never be authored as Invariant or Ignored as a whole-axis claim.
-fn variable_irrelevance_is_derived(
-  subject: DecisionSubject,
-  variable: DeclarationRef,
-  rows: List<ObjectiveTermSensitivity>,
-) -> Bool {
-  let required = required_sensitivity_cells(subject: subject)
-    |> filter(c => declaration_ref_eq(a: c.variable, b: variable))
-  let for_var = rows |> filter(r => declaration_ref_eq(a: sensitivity_cell_of(row: r).variable, b: variable))
-  match observation_completeness(
-    expected: required,
-    observed: assessed_sensitivity_cells(rows: for_var),
-    key_eq: sensitivity_cell_eq,
-  ) {
-    ObservationComplete =>
-      all(for_var, r =>
-        match r {
-          InvariantAlong { term: _, variable: _, region: _, coupling: _ } => true
-          VariesAlong { term: _, variable: _, region: _, relation: _, coupling: _ } => false
-          SensitivityUnestablished { term: _, variable: _, obligation: _ } => false
-        }
-      )
-    ObservationRepeatedExpected { keys: _ } => false
-    ObservationMissingExpected { keys: _ } => false
-    ObservationForeignObserved { keys: _ } => false
-    ObservationRepeatedObserved { keys: _ } => false
-  }
-}
-
 type CandidateFieldStanding
   = CandidateFieldEstablished { identities: List<DeclarationRef> }
   | CandidateFieldUnestablishedStanding { causes: List<NonEmptyStr> }
