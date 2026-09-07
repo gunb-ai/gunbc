@@ -189,6 +189,15 @@ fn nic_emitted_crate_evidence(
             if emit.success {
               let emitted_lib = shell.Test.IsFile(path: concat(out.path, "/src/lib.rs"))
               let outcome = if emitted_lib.is_file {
+                // The emitted Cargo.toml might not declare the features the emitted
+                // v1_rt.rs references (e.g. text_lookup_work_counter). Read the manifest,
+                // ensure the features stanza is present, and write a corrected version.
+                let manifest = Filesystem.Read(path: concat(out.path, "/Cargo.toml"))
+                let has_features = string_contains(s: manifest.content, pattern: "[features]")
+                let fixed = if manifest.success && !has_features {
+                  concat(manifest.content, "\n[features]\ntext_lookup_work_counter = []\n")
+                } else { manifest.content }
+                let wrote_manifest = Filesystem.Write(path: concat(out.path, "/Cargo.toml"), content: fixed)
                 let build = cargo.Build.BuildManifest(
                   workdir: out.path,
                   manifest_path: concat(out.path, "/Cargo.toml"),
