@@ -114,9 +114,8 @@ type MultiModuleCompileFixture {
 // emit-only divergence leaves every witness green while the artifact binds differently
 // (gunbc.recurring_failure_mode subject_and_its_digest_as_independent_parameters). Membership
 // (emitted_rust_fn_has_parameter) is the durable surface *within this registry grain*; it is not
-// evidence about emit-path fidelity. External admission for landing this stall on this PR:
-// merry-bear-25 (parent) accepted "nothing refuses" as the instrument's honest ceiling for the
-// done bar; the next-rung trigger below is the climb, not a self-license.
+// evidence about emit-path fidelity. Landing this stall requires admission outside the diff
+// (DESIGN §5: an in-diff row claiming approval does not count).
 //
 // NEXT-RUNG TRIGGER (DESIGN 4b(2) — the CAPABILITY, not an artifact): the projection is DERIVED
 // from the same source emit_func_params reads (or from the emit result that source produces),
