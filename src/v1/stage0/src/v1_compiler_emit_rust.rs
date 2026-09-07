@@ -6374,21 +6374,30 @@ pub fn emit_rust_selected(
         });
         let unpublished_module_paths = Rc::new({
             let mut __result = Vec::new();
-            for e in module_emissions.iter().cloned() {
-                if ((Rc::new({
-                    let mut __result = Vec::new();
-                    for r in e.import_refusals.clone().iter().cloned() {
-                        if crate::v1_std_core::is_error_diagnostic(r.diagnostic.clone()) {
-                            __result.push(r);
+            for e in Rc::new({
+                let mut __result = Vec::new();
+                for e in module_emissions.iter().cloned() {
+                    if ((Rc::new({
+                        let mut __result = Vec::new();
+                        for r in e.import_refusals.clone().iter().cloned() {
+                            if crate::v1_std_core::is_error_diagnostic(r.diagnostic.clone()) {
+                                __result.push(r);
+                            }
                         }
+                        __result
+                    })
+                    .len() as i64)
+                        > 0)
+                    {
+                        __result.push(e);
                     }
-                    __result
-                })
-                .len() as i64)
-                    > 0)
-                {
-                    __result.push(e.file.clone().path.clone());
                 }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.push(e.file.clone().path.clone());
             }
             __result
         });
