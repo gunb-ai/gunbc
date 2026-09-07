@@ -807,6 +807,13 @@ fn floor_cost_debt_straddling_chunk_00() -> List<String> {
 // production-apply ordering coverage. The two repository-transition admission consultation
 // witnesses execute on ordinary floors as well.
 //
+// THAT WITNESS WAS RENAMED BY #10724 AND THE ROSTER FOLLOWED IT: the identity is now
+// `apply_script_stays_within_ci_runner_grants`, because the publication member stopped writing two
+// programs to one unit name and the tree-sync half of the subject went away. The measurement below
+// keeps the OLD spelling deliberately -- it was taken against the two-program subject, and
+// rewriting it to the new name would attribute a figure to a subject that did not exist when it was
+// measured.
+//
 // THE COMPLETED CHANGED-DEBT VERDICT MEASURED THE COST honestly: 587ms marginal CPU, versus 563ms
 // for `apply_script_stays_within_ci_runner_grants` -- gunbc#10724 renamed that witness from
 // `apply_script_and_tree_sync_unit_stay_within_ci_runner_grants` when the publication member stopped
