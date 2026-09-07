@@ -202,8 +202,8 @@ type Application
 // Refuse, and an Apply reported as not applied, are NOT delegated to the grounding predicate. Passing
 // them through reconcile_grounded would let a caller that refused and then reported a satisfying read
 // mint Converged — the read would ground and nothing would record the contradiction. So each is
-// answered from the decision alone, and only an Apply reported as applied, or a Noop, reaches the
-// read report.
+// answered from the decision alone, and only an Apply paired with Applied, or a Noop paired with
+// NotApplied, reaches the read report -- Noop paired with Applied refuses too.
 //
 // THE REFUSAL REASONS BELOW SAY "an application was REPORTED", not "an effect was applied anyway".
 // They are runtime strings, so they are receipts, and std knows only which arm the caller passed --

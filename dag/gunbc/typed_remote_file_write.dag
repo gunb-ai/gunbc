@@ -146,7 +146,7 @@ fn remote_file_mode_octal(mode: RemoteFileMode) -> String {
 // while skipping the four legs that earn the right to call it, and the claim that would justify it --
 // that a receipt naming a different subject "has no constructor" -- is FALSE. sole_constructor stops
 // an OUTSIDE module from writing the record literal; it does nothing about this module, where
-//   RemoteFileConverged { write: TypedRemoteFileWrite { path: write.path, content: "other" } }
+//   RemoteFileConverged { target: target, write: TypedRemoteFileWrite { path: write.path, content: "other" } }
 // is perfectly authorable. `write: write` is correct source WIRING, not a type-level proof. What is
 // actually established is narrower and is all that should ever be claimed here: outside callers cannot
 // forge the positive carrier, and the admitted mint's exact-subject passthrough is MUTATION-WITNESSED.

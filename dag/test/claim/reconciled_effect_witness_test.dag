@@ -199,7 +199,7 @@ test fn the_receipt_carries_the_decision_that_produced_it() -> Bool {
 }
 
 // The classified split is what a SINK consumes. These two witnesses are not a restatement of the
-// convergence witnesses above: those establish that the runner derives the right verdict, these
+// convergence witnesses above: those establish that the classifier derives the right verdict, these
 // establish that the verdict controls which carrier exists. A sink parameterised on ConvergedEffect
 // is unreachable from the refusing arm, and that is the property the witnesses fix in place.
 

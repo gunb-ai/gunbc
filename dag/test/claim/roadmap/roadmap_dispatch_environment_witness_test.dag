@@ -33,6 +33,9 @@ import gunbc.roadmap_dispatch_environment {
   EnvironmentRefused,
   capability_ensure_receipt,
   missing_capability_receipt,
+  receipt_grounded,
+  receipt_decision,
+  receipt_reason,
   dispatch_environment_admission_decision,
   dispatch_environment_admission_json,
 }
@@ -80,16 +83,23 @@ fn grounded_receipt(
   )
 }
 
+// THROUGH THE PRODUCTION CLASSIFIER, not by writing the positive record. This fixture used to author
+// CapabilityEnsureReceipt { grounded: true } directly for seven platform capabilities, which meant the
+// witness corpus was itself the demonstration that any importer could manufacture the positive standing
+// the admission fold trusts. The positive arm is sealed now, so this shape is no longer authorable here
+// at all -- the fixture goes through capability_ensure_receipt, which runs the consistency table.
 fn grounded_capability(cap: ExecutionCapability) -> CapabilityEnsureReceipt {
-  CapabilityEnsureReceipt {
-    capability: cap,
-    capability_label: execution_capability_label(capability: cap),
-    executable: "/fixture/executable",
-    decision: Noop,
-    grounded: true,
-    evidence: "fixture identity evidence",
-    reason: "",
-  }
+  capability_ensure_receipt(
+    realization: CapabilityRealization {
+      capability: cap,
+      executable: "/fixture/executable" as FilePath,
+      identity_args: [],
+      identity_contains: "fixture identity evidence" as NonEmptyStr,
+      ensure_policy: EnsureObserveOnly,
+    },
+    observation: EnsureObserved { evidence: "fixture identity evidence" },
+    identity_matches: true,
+  )
 }
 
 fn platform_grounded_receipts() -> List<CapabilityEnsureReceipt> {
@@ -149,9 +159,9 @@ test fn observe_only_absence_never_fabricates_apply() -> Bool {
     observation: EnsureAbsent { reason: "gunbc missing" },
     identity_matches: false,
   )
-  !receipt.grounded
-    && upsert_decision_label(decision: receipt.decision) == "refuse"
-    && string_contains(s: receipt.reason, pattern: "gunbc missing")
+  !receipt_grounded(receipt: receipt)
+    && upsert_decision_label(decision: receipt_decision(receipt: receipt)) == "refuse"
+    && string_contains(s: receipt_reason(receipt: receipt), pattern: "gunbc missing")
 }
 
 test fn may_apply_without_a_typed_plan_still_refuses() -> Bool {
@@ -167,9 +177,9 @@ test fn may_apply_without_a_typed_plan_still_refuses() -> Bool {
     observation: EnsureAbsent { reason: "cargo missing" },
     identity_matches: false,
   )
-  !receipt.grounded
-    && upsert_decision_label(decision: receipt.decision) == "refuse"
-    && string_contains(s: receipt.reason, pattern: "generic Ensure cannot choose an installer")
+  !receipt_grounded(receipt: receipt)
+    && upsert_decision_label(decision: receipt_decision(receipt: receipt)) == "refuse"
+    && string_contains(s: receipt_reason(receipt: receipt), pattern: "generic Ensure cannot choose an installer")
 }
 
 test fn unspecified_contract_refuses_before_capability_checks() -> Bool {
