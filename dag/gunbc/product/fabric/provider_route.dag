@@ -1,0 +1,140 @@
+module product.fabric.provider_route
+
+import std.types { Bool, List, NonEmptyStr, Timestamp }
+import std.decl_ref { DeclarationRef }
+import std.content_hash { ContentHash }
+
+// THE ADMITTED SUBJECT IS A ROUTE, NEVER A COMPANY. "Provider X is compliant" is not a fact
+// this substrate can hold, because the same provider is admissible in one region and not
+// another, for ordinary build source and not for regulated data, under one contract revision
+// and not the next, and before a downstream-provider change but not after it. So the identity
+// that carries an admission is provider x service x region x data-path closure x contract
+// revision, and a price row naming only a company can never stand in for it.
+//
+// AUTHORITY DIRECTION IS FIXED HERE AND IS THE REASON THIS MODULE EXISTS SEPARATELY. Provider
+// modules under extdeps carry facts about the provider - its regions, its service terms, its
+// published subprocessors, its data-handling representations. Whether we are presently willing
+// and authorised to use those facts is a fact about US. An extdeps provider module that
+// imported our posture would let the supplier declare what it is sanctioned to serve, which is
+// exactly the inversion gunbc.fabric_executor_class already refuses by keeping the executor
+// sanction roster on our side and refusing an unclassified executor. This module holds only the
+// provider-side route facts; the join against posture and use scope lives one layer up.
+type ProviderRouteRef = NonEmptyStr where brand("ProviderRouteRef")
+
+// The posture is a REVISION, never an ambient "current". A permit records the exact revision it
+// was evaluated against, so a posture change makes standing permits STALE rather than silently
+// tolerated - the difference between a decision that can be re-derived and one that merely
+// happened to be true when nobody was looking.
+type CompliancePostureRevision {
+  authority: DeclarationRef
+  revision: ContentHash
+}
+
+// ONE LOCATION IS NOT A DATA PATH. A Helsinki VM whose backups, telemetry or administrators sit
+// elsewhere is not a Helsinki-contained path, and a vendor region label establishes none of
+// those. Each path answers for itself.
+//
+// THE ABSENT AND UNREAD ARMS ARE SEPARATE AND THAT SEPARATION IS THE WHOLE POINT. An empty
+// backup destination must never ambiguously mean either "backups are disabled" or "nobody
+// examined backups" - the first is a fact that can support an admission and the second is an
+// obligation that must refuse. Collapsing them is how an unexamined path reads as a clean one,
+// which is the same move product.supplier.ubicloud already refuses by carrying
+// IsolationNotObserved beside its catalog rows rather than inventing a guarantee from a price
+// list.
+type ProviderPathStanding
+  = ProviderPathLocated {
+      operator: DeclarationRef,
+      jurisdiction: DeclarationRef,
+      evidence: DeclarationRef,
+    }
+  | ProviderPathAbsent { evidence: DeclarationRef }
+  | ProviderPathUnread { obligation: DeclarationRef }
+
+// CLOSED OVER THE PATHS WE PRESENTLY KNOW WE MUST GOVERN, and closed deliberately: adding a
+// material path forces EVERY route to answer for it rather than letting existing rows stay
+// silently incomplete. The membership is the one strategy.compliance_posture already names as
+// the scope of region-as-admission - object storage, logs, telemetry, backups, support access
+// and spill, and not merely the runner VM - plus the control plane and administrative access
+// that reach customer material without appearing in any customer-visible topology.
+type ProviderDataPathClosure {
+  execution: ProviderPathStanding
+  durable_storage: ProviderPathStanding
+  backups: ProviderPathStanding
+  logs: ProviderPathStanding
+  telemetry: ProviderPathStanding
+  control_plane: ProviderPathStanding
+  support_access: ProviderPathStanding
+  administrative_access: ProviderPathStanding
+  spill: ProviderPathStanding
+}
+
+// A provider's own downstream providers are part of our data path whether or not they appear in
+// its price list. The three arms carry the same discipline the path standing does: an
+// enumerated population with its coverage evidence, an explicit and evidenced none, or an
+// unread obligation that refuses.
+type DownstreamProviderPopulation
+  = NoDownstreamProviders { evidence: DeclarationRef }
+  | DownstreamProvidersEnumerated {
+      first: DeclarationRef,
+      further: List<DeclarationRef>,
+      coverage: DeclarationRef,
+    }
+  | DownstreamProvidersUnread { obligation: DeclarationRef }
+
+// JURISDICTIONS ARE OPEN DECLARATION REFERENCES AND THERE IS DELIBERATELY NO CENTRAL ENUM.
+// "Asia" is not a jurisdiction, a US-or-EU-or-other kernel is a nickname for N distinct legal
+// systems, and adding Germany must be a row in a provider population rather than an edit to a
+// generic type every unrelated consumer recompiles against. The generic fabric knows that a
+// jurisdiction is cited; which jurisdictions exist is not its fact to hold.
+type ProviderRouteFacts {
+  route: ProviderRouteRef
+  provider: DeclarationRef
+  service: DeclarationRef
+  contract_terms: DeclarationRef
+  data_paths: ProviderDataPathClosure
+  downstream: DownstreamProviderPopulation
+  observed_at: Timestamp
+  facts_revision: ContentHash
+}
+
+// A path supports an admission only when it is LOCATED or evidenced ABSENT. Unread is neither a
+// yes nor a no: it is the obligation to go and look, and it must refuse rather than default.
+fn path_is_resolved(p: ProviderPathStanding) -> Bool {
+  match p {
+    ProviderPathLocated { operator, jurisdiction, evidence } => true,
+    ProviderPathAbsent { evidence } => true,
+    ProviderPathUnread { obligation } => false,
+  }
+}
+
+// The unread path, if any, that a refusal should name. Returned as the closure's own first
+// unresolved member in a fixed order so the refusal is deterministic rather than reporting
+// whichever arm a fold happened to visit last.
+fn first_unresolved_path(c: ProviderDataPathClosure) -> List<ProviderPathStanding> {
+  filter(
+    [
+      c.execution, c.durable_storage, c.backups, c.logs, c.telemetry,
+      c.control_plane, c.support_access, c.administrative_access, c.spill,
+    ],
+    p => !path_is_resolved(p: p),
+  )
+}
+
+fn data_path_closure_is_complete(c: ProviderDataPathClosure) -> Bool {
+  count(first_unresolved_path(c: c)) == 0
+}
+
+fn downstream_is_assessed(d: DownstreamProviderPopulation) -> Bool {
+  match d {
+    NoDownstreamProviders { evidence } => true,
+    DownstreamProvidersEnumerated { first, further, coverage } => true,
+    DownstreamProvidersUnread { obligation } => false,
+  }
+}
+
+// Route facts are usable only when every governed path is resolved AND the downstream
+// population is assessed. Both conjuncts refuse on the unread arm, so a route whose facts were
+// never gathered cannot reach the posture join at all.
+fn route_facts_are_complete(f: ProviderRouteFacts) -> Bool {
+  data_path_closure_is_complete(c: f.data_paths) && downstream_is_assessed(d: f.downstream)
+}

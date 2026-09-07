@@ -1,0 +1,244 @@
+module product.fabric.provider_admission
+
+import std.types { Bool, List, String }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import std.content_hash { ContentHash }
+import std.access { AccessDecision, access_policy_refusal }
+import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
+import product.fabric.provider_route {
+  ProviderRouteRef, CompliancePostureRevision, ProviderRouteFacts,
+  data_path_closure_is_complete, downstream_is_assessed,
+}
+
+// THE EXECUTABLE JOIN. strategy.compliance_posture already claims that regional admission
+// covers object storage, logs, telemetry, backups, support access and spill - not merely the
+// runner VM - and the code that actually places work admits on architecture, dedication,
+// interruption and price. Two authorities answer "may this job run here" and the deciding one
+// carries no compliance term, so the claim is prose over an unenforced path. This module is the
+// missing relation:
+//
+//   active posture revision x exact demand/work/customer/data scope x provider route
+//     -> provider-use admission
+//
+// and only the admitted arm may enter fabric selection.
+//
+// WHERE IT SITS IN THE ORDER, which is load-bearing and not a performance detail. Route
+// resolution and posture admission run FIRST, then executor capacity sanction, then fungibility,
+// then affordability, then cheapest. product.fabric.supply already states why price is last -
+// so price can never rescue an offer that cannot run the work. The same argument applies one
+// step earlier and more strongly: a sufficiently cheap offer must never buy its way through a
+// missing legal or data-handling authority. Compliance is not depleted by use, so it is not a
+// budget, and it does not belong anywhere in a selection cost.
+
+// OUR ROSTER, NOT THE SUPPLIER'S. gunbc.fabric_executor_class already establishes the shape: we
+// keep the sanction, an unclassified executor refuses, and the sanction is evaluated before
+// fungibility. A supplier does not get to declare what it is sanctioned to serve, and a
+// provider module that imported this one would be that inversion.
+//
+// The sanction is per posture revision by construction: a row admits a scope on a route UNDER a
+// stated posture, so re-posturing does not silently re-admit anything.
+type RouteScopeSanction {
+  route: ProviderRouteRef
+  posture: CompliancePostureRevision
+  customer_profile: DeclarationRef
+  data_handling_profile: DeclarationRef
+  requires_agreement: DeclarationRef
+}
+
+// THE USE SCOPE. Admission is never a property of a route alone - the same route is admissible
+// for ordinary build source and refused for regulated data - so the subject of a decision is
+// always a route AND a use. The work stays provider-neutral; the demand side supplies the
+// organisation and agreement facts; the dispositions are the already-resolved outputs of the
+// sanctions, export and prohibited-use programs rather than judgements made here.
+type ProviderUseScope<P> {
+  demand: FabricIdentity<P, DemandKey>
+  work: FabricIdentity<P, WorkKey>
+  customer_profile: DeclarationRef
+  data_handling_profile: DeclarationRef
+  agreement: DeclarationRef
+  prohibited_use_disposition: DeclarationRef
+  sanctions_disposition: DeclarationRef
+  export_disposition: DeclarationRef
+}
+
+// CapacityClass is deliberately NOT a field here, which is a stated divergence from the
+// directive's sketch rather than an oversight. Capacity sanction and provider-use admission are
+// two non-economic gates that refuse for different reasons and produce different remediation:
+// one is answered by classifying an executor, the other by gathering route facts or changing
+// posture. Folding them into one scope would give the partition a single refused population and
+// lose which of the two a caller must go fix.
+
+// Every revision the decision actually read, recorded on the permit. This is what makes a
+// permit re-derivable rather than merely historical: a later reader can ask whether the same
+// inputs still hold instead of trusting that they did.
+type ProviderUseEvidence {
+  posture_revision: ContentHash
+  route_facts_revision: ContentHash
+  customer_profile: DeclarationRef
+  agreement: DeclarationRef
+  decision_receipt: DeclarationRef
+}
+
+// SEALED. sole_constructor confines minting to admit_provider_use below, so a permit cannot be
+// authored beside the decision that is supposed to produce it. DESIGN section 4b's ceiling
+// applies unchanged: this establishes WHO may construct one and nothing about whether the route
+// facts were honestly observed, which stays a boundary obligation on whoever produced them.
+type ProviderUsePermit<P> sole_constructor {
+  demand: FabricIdentity<P, DemandKey>
+  work: FabricIdentity<P, WorkKey>
+  offer: FabricIdentity<P, OfferKey>
+  route: ProviderRouteRef
+  posture: CompliancePostureRevision
+  evidence: ProviderUseEvidence
+}
+
+// EVERY REFUSAL IS CONSTRUCTIBLE AND NAMES ITS OWN REMEDY. The spill policy this replaces could
+// express exactly four rejections - architecture, dedication, interruption, cost - so a
+// jurisdiction refusal had no spelling at all and was not merely unimplemented but unwritable.
+// Each arm below is a different thing to go and do, which is the whole reason they are not one
+// arm carrying a string.
+type ProviderUseRefusal
+  = ProviderRouteUnclassified { route: ProviderRouteRef }
+  | ProviderRouteFactsIncomplete { route: ProviderRouteRef, obligation: DeclarationRef }
+  | PostureRevisionStale { evaluated: ContentHash, active: ContentHash }
+  | CustomerScopeUnsupported { cause: DeclarationRef }
+  | DataHandlingUnsupported { cause: DeclarationRef }
+  | RequiredAgreementAuthorityAbsent { obligation: DeclarationRef }
+  | TransferOrLocationUnresolved { obligation: DeclarationRef }
+  | DownstreamProviderUnassessed { obligation: DeclarationRef }
+  | ProviderAccessPathUnsupported { cause: DeclarationRef }
+
+// std.access.AccessDecision stays the allow/deny authority. This coproduct transports the
+// sealed positive permit and the typed domain cause; it deliberately does NOT make a second,
+// independent policy decision, because two policy authorities for one question is the fork this
+// whole module exists to close.
+type ProviderUseAdmission<P>
+  = ProviderUseAdmitted { permit: ProviderUsePermit<P> }
+  | ProviderUseDenied { decision: AccessDecision, cause: ProviderUseRefusal }
+
+// There is deliberately no UnknownButProceed arm and no default route. An unresolved input
+// refuses; it never widens.
+
+// access_policy_refusal already returns a Deny-shaped AccessDecision, so this names the
+// location once rather than letting each call site invent a profile/subject/action/object tuple.
+fn provider_use_denial(reason: String) -> AccessDecision {
+  access_policy_refusal(
+    profile: "provider-use",
+    subject: "provider-route",
+    action: "execute",
+    object: "customer-work",
+    reason: reason,
+  )
+}
+
+fn sanction_matches_scope<P>(
+  s: RouteScopeSanction,
+  route: ProviderRouteRef,
+  scope: ProviderUseScope<P>,
+) -> Bool {
+  s.route == route
+    && declaration_ref_eq(a: s.customer_profile, b: scope.customer_profile)
+    && declaration_ref_eq(a: s.data_handling_profile, b: scope.data_handling_profile)
+}
+
+fn sanctions_for_route<P>(
+  roster: List<RouteScopeSanction>,
+  route: ProviderRouteRef,
+  scope: ProviderUseScope<P>,
+) -> List<RouteScopeSanction> {
+  filter(roster, s => sanction_matches_scope(s: s, route: route, scope: scope))
+}
+
+fn route_is_classified(roster: List<RouteScopeSanction>, route: ProviderRouteRef) -> Bool {
+  count(filter(roster, s => s.route == route)) > 0
+}
+
+// Posture staleness compares two revisions minted by our own posture pipeline, so they are the
+// same hash family by construction. Cross-family ContentHash comparison is separately governed
+// by std.content_hash - refused at R0 today, a typecheck refusal after its Phase B - and this
+// call site never straddles families because both operands come from the same producer.
+fn posture_is_current(evaluated: CompliancePostureRevision, active: CompliancePostureRevision) -> Bool {
+  evaluated.revision == active.revision
+}
+
+// THE DECISION. The order of the conjuncts is the order of the remedies: classify the route,
+// then gather its facts, then reconcile posture, then match the use scope, then bind the
+// agreement. Reporting the first failure rather than all of them is deliberate - a caller acts
+// on one obligation at a time, and a refusal listing five causes invites picking the cheapest.
+fn admit_provider_use<P>(
+  roster: List<RouteScopeSanction>,
+  facts: ProviderRouteFacts,
+  active: CompliancePostureRevision,
+  scope: ProviderUseScope<P>,
+  offer: FabricIdentity<P, OfferKey>,
+  decision_receipt: DeclarationRef,
+) -> ProviderUseAdmission<P> {
+  let matched = sanctions_for_route(roster: roster, route: facts.route, scope: scope)
+  if !route_is_classified(roster: roster, route: facts.route) {
+    ProviderUseDenied {
+      decision: provider_use_denial(reason: "route unclassified"),
+      cause: ProviderRouteUnclassified { route: facts.route },
+    }
+  } else if !downstream_is_assessed(d: facts.downstream) {
+    ProviderUseDenied {
+      decision: provider_use_denial(reason: "downstream unassessed"),
+      cause: DownstreamProviderUnassessed { obligation: facts.provider },
+    }
+  } else if !data_path_closure_is_complete(c: facts.data_paths) {
+    ProviderUseDenied {
+      decision: provider_use_denial(reason: "data path unread"),
+      cause: TransferOrLocationUnresolved { obligation: facts.provider },
+    }
+  } else if count(matched) == 0 {
+    ProviderUseDenied {
+      decision: provider_use_denial(reason: "scope unsupported"),
+      cause: CustomerScopeUnsupported { cause: scope.customer_profile },
+    }
+  } else {
+    fold(matched, init: ProviderUseDenied {
+      decision: provider_use_denial(reason: "posture stale"),
+      cause: PostureRevisionStale { evaluated: active.revision, active: active.revision },
+    }, f: fn(acc, s) {
+      match acc {
+        ProviderUseAdmitted { permit } => acc,
+        ProviderUseDenied { decision, cause } =>
+          if !posture_is_current(evaluated: s.posture, active: active) {
+            ProviderUseDenied {
+              decision: provider_use_denial(reason: "posture stale"),
+              cause: PostureRevisionStale { evaluated: s.posture.revision, active: active.revision },
+            }
+          } else if !declaration_ref_eq(a: s.requires_agreement, b: scope.agreement) {
+            ProviderUseDenied {
+              decision: provider_use_denial(reason: "agreement absent"),
+              cause: RequiredAgreementAuthorityAbsent { obligation: s.requires_agreement },
+            }
+          } else {
+            ProviderUseAdmitted {
+              permit: ProviderUsePermit {
+                demand: scope.demand,
+                work: scope.work,
+                offer: offer,
+                route: facts.route,
+                posture: active,
+                evidence: ProviderUseEvidence {
+                  posture_revision: active.revision,
+                  route_facts_revision: facts.facts_revision,
+                  customer_profile: scope.customer_profile,
+                  agreement: scope.agreement,
+                  decision_receipt: decision_receipt,
+                },
+              },
+            }
+          },
+      }
+    })
+  }
+}
+
+
+fn admission_is_admitted<P>(a: ProviderUseAdmission<P>) -> Bool {
+  match a {
+    ProviderUseAdmitted { permit } => true,
+    ProviderUseDenied { decision, cause } => false,
+  }
+}
