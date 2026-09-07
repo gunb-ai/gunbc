@@ -1,0 +1,248 @@
+module test.claim.approval_broker_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.auth.approval_broker {
+  DecisionMethodAdmission, DecisionMethodCommits, DecisionMethodRetrievesOnly,
+  DecisionMethodUnsupported, decision_method_admission,
+  Redemption, RedemptionAdmitted, RedemptionRefused, RedemptionRefusal,
+  RedemptionMethodNotCommitting, RedemptionMethodUnsupported,
+  RedemptionCapabilityRefused, RedemptionIdentityRefused,
+  redeem_capability, redemption_refusal_reason,
+  SubmissionAdmission, SubmissionAdmitted, SubmissionRequesterNotEnrolled,
+  SubmissionAuthorityNotPermittedForRequester, admit_submission,
+  TakeoverAdmission, TakeoverFencedByProvider, TakeoverUnfencedAndRefused,
+  takeover_is_admissible,
+}
+import gunbc.auth.approval_capability {
+  ApprovalCapability, ApprovalCapabilityClaims, CapabilityExpectation,
+  ProposeApprove, approval_capability_protocol, approval_capability_signing_input,
+}
+import extdeps.crypto.mac {
+  MacVerification, HmacSha256, MacKeyId, mac_verification_from_implementation,
+}
+import extdeps.tailscale.identity { TailnetIdentity, TailnetIdentityAbsent, tailnet_identity_of }
+import std.scoped_authorization { AttemptIdentity }
+import std.types { NonEmptyStr, Timestamp, HttpMethod, GET, POST, HEAD, OPTIONS, PUT, PATCH, DELETE }
+import std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data operator_login: NonEmptyStr = "briansrls@github" as NonEmptyStr
+data witness_key_id: MacKeyId = "broker-2026-09" as MacKeyId
+data witness_now: Timestamp = "2026-09-06T00:07:00Z"
+
+data witness_expectation: CapabilityExpectation = CapabilityExpectation {
+  issuer: "gunbc-approval-broker" as NonEmptyStr,
+  audience: "srv1" as NonEmptyStr,
+  authority: "gcp.secret_manager" as NonEmptyStr,
+  suite: HmacSha256,
+}
+
+fn broker_claims() -> ApprovalCapabilityClaims {
+  ApprovalCapabilityClaims {
+    protocol: approval_capability_protocol,
+    issuer: "gunbc-approval-broker" as NonEmptyStr,
+    audience: "srv1" as NonEmptyStr,
+    authority: "gcp.secret_manager" as NonEmptyStr,
+    escalation_id: "org-actions-secret-access-1" as NonEmptyStr,
+    request_revision: "rev-1" as NonEmptyStr,
+    decision: ProposeApprove,
+    attempt: "attempt-1" as AttemptIdentity,
+    issued_at: "2026-09-06T00:00:00Z",
+    expires_at: "2026-09-06T00:15:00Z",
+    key_id: witness_key_id,
+  }
+}
+
+fn good_capability() -> ApprovalCapability {
+  ApprovalCapability { claims: broker_claims(), tag_b64url: "dGFn" as NonEmptyStr }
+}
+
+fn good_mac() -> MacVerification {
+  mac_verification_from_implementation(
+    key_id: witness_key_id,
+    suite: HmacSha256,
+    message: approval_capability_signing_input(c: broker_claims()),
+    implementation_verified: true,
+  )
+}
+
+fn redeem_with(method: HttpMethod, identity: TailnetIdentity) -> Redemption {
+  redeem_capability(
+    method: method,
+    capability: good_capability(),
+    expectation: witness_expectation,
+    mac_result: good_mac(),
+    presented_identity: identity,
+    expected_operator: operator_login,
+    observed_at: witness_now,
+  )
+}
+
+fn operator_identity() -> TailnetIdentity {
+  tailnet_identity_of(header_value: operator_login as String)
+}
+
+fn is_admitted(r: Redemption) -> Bool {
+  match r {
+    RedemptionAdmitted { claims: _, decided_by: _ } => true
+    RedemptionRefused { cause: _ } => false
+  }
+}
+
+// ── The whole point: a POST decides and nothing else does ────────────────────────────────────
+// THE POSITIVE CONTROL FIRST. An operator, on the tailnet, POSTing a live capability, is admitted.
+// Without this every refusal below could be a broker that refuses everything.
+test fn an_operator_posting_a_live_capability_is_admitted() -> Bool {
+  match redeem_with(method: POST, identity: operator_identity()) {
+    RedemptionAdmitted { claims: c, decided_by: who } =>
+      who == operator_login && c.escalation_id == "org-actions-secret-access-1"
+    RedemptionRefused { cause: _ } => false
+  }
+}
+
+// THE DISCRIMINATING RED FOR THE SAFE METHODS. Everything about this request is correct -- the
+// operator, the tailnet, a live and authentic capability -- and only the method is safe. It must
+// not decide. A link preview, a mail scanner, a chat unfurler and a browser prefetch all issue
+// exactly this request at a URL nobody has looked at, and if it decided, the audit row would name
+// the operator for a decision no person made.
+test fn a_get_at_the_approval_url_does_not_decide() -> Bool {
+  match redeem_with(method: GET, identity: operator_identity()) {
+    RedemptionRefused { cause: c } =>
+      match c {
+        RedemptionMethodNotCommitting { method: _ } => true
+        _ => false
+      }
+    RedemptionAdmitted { claims: _, decided_by: _ } => false
+  }
+}
+
+test fn head_and_options_do_not_decide_either() -> Bool {
+  !is_admitted(r: redeem_with(method: HEAD, identity: operator_identity()))
+    && !is_admitted(r: redeem_with(method: OPTIONS, identity: operator_identity()))
+}
+
+// The safe-method refusal must READ as "not here", because the operator will see it when their
+// phone opens the link -- it is the confirmation page's normal path, not an error.
+test fn the_safe_method_refusal_points_at_the_button() -> Bool {
+  match redeem_with(method: GET, identity: operator_identity()) {
+    RedemptionRefused { cause: c } =>
+      string_contains(s: redemption_refusal_reason(r: c), pattern: "committed by the button")
+    RedemptionAdmitted { claims: _, decided_by: _ } => false
+  }
+}
+
+test fn the_other_methods_are_unsupported_rather_than_silently_safe() -> Bool {
+  match decision_method_admission(m: PUT) {
+    DecisionMethodUnsupported { method: _ } => true
+    _ => false
+  }
+  && match decision_method_admission(m: DELETE) {
+    DecisionMethodUnsupported { method: _ } => true
+    _ => false
+  }
+  && match decision_method_admission(m: PATCH) {
+    DecisionMethodUnsupported { method: _ } => true
+    _ => false
+  }
+}
+
+// ── The link alone is not enough ─────────────────────────────────────────────────────────────
+// THE LEAKED-LINK RED. This is the whole reason recipient authentication exists: someone who
+// obtained the URL, POSTing it, with a perfectly valid capability. Signed, live, correct verb --
+// and no tailnet identity, which is what a request that did not come through the authenticating
+// proxy looks like. It must refuse.
+test fn a_valid_capability_without_a_tailnet_identity_is_refused() -> Bool {
+  match redeem_with(method: POST, identity: TailnetIdentityAbsent) {
+    RedemptionRefused { cause: c } =>
+      match c {
+        RedemptionIdentityRefused { detail: _ } => true
+        _ => false
+      }
+    RedemptionAdmitted { claims: _, decided_by: _ } => false
+  }
+}
+
+// AND THE INSIDE CASE. A different tailnet user is authenticated -- the proxy did its job -- and
+// still is not the operator this request names. Network reachability is not identity, which is why
+// the two checks are separate.
+test fn another_tailnet_user_cannot_spend_the_operators_decision() -> Bool {
+  match redeem_with(method: POST, identity: tailnet_identity_of(header_value: "someone-else@github")) {
+    RedemptionRefused { cause: c } =>
+      match c {
+        RedemptionIdentityRefused { detail: _ } => true
+        _ => false
+      }
+    RedemptionAdmitted { claims: _, decided_by: _ } => false
+  }
+}
+
+// ORDER MATTERS AND IS ASSERTED. A request that is wrong in BOTH ways -- safe method and no
+// identity -- reports the method, because a safe request must never reach a decision path at all.
+// Reporting the identity would mean the identity check ran on a request that was only ever
+// rendering a page.
+test fn a_safe_method_refuses_before_identity_is_considered() -> Bool {
+  match redeem_with(method: GET, identity: TailnetIdentityAbsent) {
+    RedemptionRefused { cause: c } =>
+      match c {
+        RedemptionMethodNotCommitting { method: _ } => true
+        RedemptionIdentityRefused { detail: _ } => false
+        _ => false
+      }
+    RedemptionAdmitted { claims: _, decided_by: _ } => false
+  }
+}
+
+// ── Submission is not approval ───────────────────────────────────────────────────────────────
+// A refusal nominating a request establishes that a capability is MISSING, never that the
+// requester may hold it. Without this check, a worker that can provoke a refusal can put any
+// capability it names in front of the operator, whose only defence is noticing.
+test fn an_unenrolled_requester_cannot_put_a_request_to_the_operator() -> Bool {
+  match admit_submission(
+    requester: "some-worker" as NonEmptyStr,
+    authority: "gcp.secret_manager" as NonEmptyStr,
+    requester_enrolled: false,
+    authority_permitted: true,
+  ) {
+    SubmissionRequesterNotEnrolled { requester: r } => r == "some-worker"
+    _ => false
+  }
+}
+
+test fn an_enrolled_requester_cannot_reach_an_authority_it_is_not_permitted() -> Bool {
+  match admit_submission(
+    requester: "fleet-cloud-convergence" as NonEmptyStr,
+    authority: "host.sudoers" as NonEmptyStr,
+    requester_enrolled: true,
+    authority_permitted: false,
+  ) {
+    SubmissionAuthorityNotPermittedForRequester { requester: _, authority: a } => a == "host.sudoers"
+    _ => false
+  }
+}
+
+test fn a_permitted_requester_and_authority_is_admitted() -> Bool {
+  match admit_submission(
+    requester: "fleet-cloud-convergence" as NonEmptyStr,
+    authority: "gcp.secret_manager" as NonEmptyStr,
+    requester_enrolled: true,
+    authority_permitted: true,
+  ) {
+    SubmissionAdmitted { requester: _, authority: _ } => true
+    _ => false
+  }
+}
+
+// ── Lease expiry is not fencing ──────────────────────────────────────────────────────────────
+// An expired lease means the holder stopped REPORTING, not that it stopped executing. Without a
+// fence the external effect itself checks, takeover may run the effect twice, so the unfenced arm
+// refuses rather than proceeding.
+test fn an_unfenced_takeover_is_refused_and_a_fenced_one_is_not() -> Bool {
+  !takeover_is_admissible(
+    t: TakeoverUnfencedAndRefused {
+      holder: "attempt-1" as AttemptIdentity,
+      lease_until: "2026-09-06T00:05:00Z",
+    }
+  )
+  && takeover_is_admissible(t: TakeoverFencedByProvider { fence: "etag-observed" as NonEmptyStr })
+}

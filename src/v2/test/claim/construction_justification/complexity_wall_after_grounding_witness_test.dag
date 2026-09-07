@@ -1,0 +1,31 @@
+module v2.test.claim.construction_justification.complexity_wall_after_grounding_witness_test
+
+import v2.lens.common.construction_justification {
+  ConstructionClass,
+  WallAfterGrounding
+}
+import v2.lens.enforcement.complexity_contract_subject {
+  complexity_derived_kernel_boundary_is_wall_after_grounding,
+  complexity_optimality_boundary_is_ratchet_forever
+}
+import std.disposition { SingleAuthority }
+
+fn class_is_wall_after_grounding(class: ConstructionClass) -> Bool {
+  match class {
+    WallAfterGrounding { dissolves_to: _ } => true
+    _ => false
+  }
+}
+
+test fn complexity_module_is_wall_after_grounding_not_ratchet_forever() -> Bool {
+  match v2.lens.complexity.construction_justification.class {
+    WallAfterGrounding { dissolves_to: SingleAuthority } => true
+    _ => false
+  }
+}
+
+test fn complexity_module_aligns_derived_kernel_contract_holds() -> Bool {
+  class_is_wall_after_grounding(class: v2.lens.complexity.construction_justification.class)
+    && complexity_derived_kernel_boundary_is_wall_after_grounding()
+    && complexity_optimality_boundary_is_ratchet_forever()
+}
