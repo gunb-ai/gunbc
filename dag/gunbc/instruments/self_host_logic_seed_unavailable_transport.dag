@@ -1,0 +1,227 @@
+module tools.self_host_logic_seed_unavailable_transport
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import extdeps.cargo_build
+import extdeps.git
+import extdeps.git.inspect
+import extdeps.gunbc
+import std.types { NonEmptyStr, list_length }
+import std.logic { Bool }
+import std.integer { Int }
+import v2.std.algebra { fold_list }
+import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
+
+// Seed-unavailable behavioral receipt for dag/std/logic.dag (Control (b), LocalRepoWetLane).
+// The emitted candidate STILL EXECUTES SUCCESSFULLY when no seed implementation is
+// available. Standard infrastructure crate dependencies (im, serde, etc.) are present
+// because v1_rt.rs (the v2 runtime shim, emitted unconditionally by emit_v2_rt_module)
+// references them -- these are emitted-crate infrastructure deps, NOT seed linkage.
+// v1-compiler (the seed crate) is deliberately absent.
+//
+// NEXT-RUNG TRIGGER: emit a crate whose runtime fragments are DERIVED FROM THE MODELED
+// SOURCE rather than copied from the seed's runtime module -- makes the spelling-search
+// check unnecessary by construction.
+
+data slbu_logic_source_rel: String = "dag/std/logic.dag"
+
+// ADMITTED DEBT: hand-authored Rust test harness (medium-as-string). This is a
+// subject-specific behavioral driver exercising the emitted dag/std/logic.dag module.
+// Unlike the hand-authored Cargo.toml (which duplicates the emitter's dependency list),
+// there is no emitter-produced test driver for this subject — the emitter does not
+// produce behavioral test harnesses. DISSOLVES WHEN the emitter produces a behavioral
+// witness driver for a modeled subject from the modeled source, at which point this
+// hand-authored string is replaced by a reference to the emitted driver.
+
+data slbu_driver_main_source: String = "use v1_compiled::std_logic;\n\nfn eq(e: std_logic::Classical, v: std_logic::Classical) -> bool {\n    matches!((e, v),\n        (std_logic::Classical::True, std_logic::Classical::True)\n            | (std_logic::Classical::False, std_logic::Classical::False)\n    )\n}\n\nfn main() {\n    let tru = std_logic::Classical::True;\n    let fls = std_logic::Classical::False;\n    let mut all_pass = true;\n    let mut cases = 0;\n\n    // classical_not\n    all_pass = all_pass && eq(std_logic::classical_not(tru), fls); cases += 1;\n    all_pass = all_pass && eq(std_logic::classical_not(fls), tru); cases += 1;\n\n    // classical_and\n    all_pass = all_pass && eq(std_logic::classical_and(tru, tru), tru); cases += 1;\n    all_pass = all_pass && eq(std_logic::classical_and(tru, fls), fls); cases += 1;\n    all_pass = all_pass && eq(std_logic::classical_and(fls, tru), fls); cases += 1;\n    all_pass = all_pass && eq(std_logic::classical_and(fls, fls), fls); cases += 1;\n\n    // classical_or\n    all_pass = all_pass && eq(std_logic::classical_or(tru, tru), tru); cases += 1;\n    all_pass = all_pass && eq(std_logic::classical_or(tru, fls), tru); cases += 1;\n    all_pass = all_pass && eq(std_logic::classical_or(fls, tru), tru); cases += 1;\n    all_pass = all_pass && eq(std_logic::classical_or(fls, fls), fls); cases += 1;\n\n    println!(\"SELF_HOST_LOGIC_SEED_UNAVAIL_CASES: {}\", cases);\n\n    if all_pass {\n        println!(\"SELF_HOST_LOGIC_SEED_UNAVAIL: PASS\");\n        std::process::exit(0);\n    } else {\n        println!(\"SELF_HOST_LOGIC_SEED_UNAVAIL: FAIL\");\n        std::process::exit(1);\n    }\n}\n"
+
+data slbu_pass_marker: String = "SELF_HOST_LOGIC_SEED_UNAVAIL: PASS"
+
+data slbu_fail_marker: String = "SELF_HOST_LOGIC_SEED_UNAVAIL: FAIL"
+
+// classical_not: 2 cases, classical_and: 4 cases, classical_or: 4 cases
+data slbu_expected_cases: Int = 10
+
+fn slbu_cases_marker() -> String {
+  concat("SELF_HOST_LOGIC_SEED_UNAVAIL_CASES: ", to_string(slbu_expected_cases))
+}
+
+fn slbu_repo_path(root: String, rel: String) -> String {
+  concat(root, concat("/", rel))
+}
+
+// Check all emitted .rs files for v1_compiler:: references, which would indicate seed linkage
+// (the v1-compiler crate is deliberately absent from the build manifest). Returns true when NO
+// file contains a v1_compiler:: reference. Refuses on a failed find, an empty file list, or a
+// missing subject module.
+//
+// The check uses a CONTAINMENT TEST (string_contains) for the spelling `v1_compiler::`.
+// This catches call-site references to the v1-compiler crate. A spelling search cannot
+// detect trait-method calls (the trait name does not appear at the call site), so what it
+// delivers is a call-site heuristic, not self-containment.
+//
+// The STRUCTURAL half is the manifest: v1-compiler is absent from Cargo.toml, making seed
+// linkage structurally impossible at link time. The spelling search is a VALIDATOR that
+// flags violations of that manifest commitment — it is not a construction wall and does
+// not enforce self-containment.
+//
+// writes_ok enforces structural ORDERING, not an error signal. It is a conjunct in the final
+// return expression, making the scan impossible to evaluate before the writes have produced their
+// values. If the writes fail, writes_ok is false and the receipt returns false — but the write
+// failure is separately typed as slb_stage_incomplete through the `staged` conjunction, so the
+// conflation is unreachable on the real path: writes_ok is a sequencing dependency, not a second
+// error arm. The scan must run AFTER the Cargo.toml and main.rs writes because what it scans must
+// be the tree that cargo builds (not an intermediate emit-only tree). By consuming cargo_toml.success
+// && main_rs.success, the scan cannot be evaluated until both writes have completed -- reordering
+// the block so the scan precedes either write would need a variable that is not yet bound at that
+// point (a compile-time refusal in this substrate, since let bindings are evaluated in declaration
+// order and a forward reference is unbound). The fixture passes writes_ok: true as a literal
+// because the writes are a deployment guarantee tested by the wet lane, not by the fixture —
+// the fixture CANNOT detect an ordering regression, which is deliberate.
+fn slbu_check_no_seed_crate_refs(src_dir: String, writes_ok: Bool) -> Bool {
+  let found = shell.Find.FilesByNameSorted(root: src_dir, name_glob: "*.rs" as NonEmptyStr)
+  let ok = found.success
+  let files = filter(split(s: found.stdout, delimiter: "\n"), p: fn(s) { s != "" })
+  let subject_present = list_length(items: filter(files, p: fn(f) { string_contains(s: f, pattern: "std_logic.rs") })) > 0
+  fold_list(
+    xs: files,
+    empty: true,
+    cons: fn(ok, path) {
+      if string_contains(s: path, pattern: "/v1_rt.rs") || path == "v1_rt.rs" {
+        ok
+      } else {
+        let read = Filesystem.Read(path: path)
+        ok && read.success && !string_contains(s: read.content, pattern: "v1_compiler::")
+      }
+    }
+  ) && writes_ok && ok && subject_present
+}
+
+// NO SEED CRATE DEPENDENCY. The emitted crate always includes v1_rt.rs (the v2 runtime
+// shim module, emitted unconditionally by emit_v2_rt_module), which depends on im, serde
+// etc. -- those are standard emitted-crate infrastructure dependencies, NOT seed linkage.
+// What is ABSENT is v1-compiler (the seed crate), so the COMPARISON LEG (emitted vs seed)
+// cannot link. The CONSTRUCT LEG (emit, build as standalone, run) proves the emitted LOGIC
+// module (dag/std/logic.dag) is self-contained. Seed linkage is checked two ways: the manifest
+// omits v1-compiler (structural — no seed dependency at link time), and the per-subject
+// spelling search for `v1_compiler::` refuses if any emitted file references the seed crate
+// namespace. The spelling search is a VALIDATOR, not a construction wall — it flags the symptom
+// but does not make the violation structurally unwritable. A failed read or a match both return
+// false (fail-closed). The stronger half is the manifest: no v1-compiler dependency means seed
+// linkage is structurally impossible at link time.
+//
+// ADMITTED DEBT: this Cargo.toml is HAND-AUTHORED as literal TOML text, duplicating
+// dependency names and versions that the real emitter owns. It is a parallel authority
+// that will drift from the emitter's dependency list. DISSOLVES WHEN the emitter
+// produces its own Cargo.toml from the modeled dependency declaration, at which point
+// this hand-authored string should be replaced by a reference to the emitted manifest
+// and all version-duplication drift sites become structurally impossible.
+fn slbu_cargo_toml(root: String) -> String {
+  concat(
+    "[package]\nname = \"v1_compiled\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n",
+    "[features]\ntext_lookup_work_counter = []\n\n",
+    "[[bin]]\nname = \"witness\"\npath = \"src/main.rs\"\n\n",
+    "[dependencies]\n",
+    "im = { version = \"15.1\", features = [\"serde\"] }\n",
+    "serde = { version = \"1\", features = [\"derive\", \"rc\"] }\n",
+    "serde_json = \"1\"\n",
+    "stacker = \"0.1\"\n",
+    "clap = { version = \"4\", features = [\"derive\"] }\n",
+    "lazy_static = \"1\"\n",
+    "unicode-ident = \"1\"\n",
+    "unicode-properties = { version = \"0.1\", features = [\"emoji\"] }\n",
+    "# v1-compiler deliberately ABSENT -- seed crate not available at build time\n"
+  )
+}
+
+// The ordering between the Cargo.toml and main.rs writes and the v1_compiler:: scan
+// is enforced structurally rather than by line order: the scan consumes writes_ok, which
+// is cargo_toml.success && main_rs.success, so the scan cannot be evaluated until both
+// writes have completed. Reordering the scan above either write would require referencing
+// a variable that is not yet bound at that point (a compile-time refusal, since let bindings
+// are evaluated in declaration order and a forward reference is unbound in this substrate).
+// The check scans what cargo actually builds — the final src/ tree with the transport's
+// own main.rs in place — not an intermediate tree from the emit step alone.
+//
+// Temp-directory cleanup is let-bound after verdict and the results are ANDed into the
+// receipt, matching the house pattern (emit_host_transport, dag_compile_clean_seam_transport).
+// Measured (probes let_is_eager_when_unused): let is eager; cleanups fire at the binding
+// regardless of verdict. Cleanup always runs. Residual: this depends on EAGER LET, which
+// no declared property of the substrate guarantees (gunbc#10647, pending).
+fn slbu_seed_unavailable_receipt() -> Bool {
+  let root = git.Inspect.Toplevel()
+  let logic_read = Filesystem.Read(path: slbu_repo_path(root: root.path, rel: slbu_logic_source_rel))
+
+  let stage_root = shell.Mkdir.Parents(path: concat(root.path, "/target/wet-stage-seed-unavail"))
+  let scratch_src = shell.Mktemp.DirWithTemplate(
+    template: concat(root.path, "/target/wet-stage-seed-unavail/logic-src-XXXXXX")
+  )
+  let scratch_src_std = shell.Mkdir.Parents(path: concat(scratch_src.path, "/std"))
+  let logic_written = Filesystem.Write(
+    path: concat(scratch_src.path, "/std/logic.dag"),
+    content: logic_read.content
+  )
+
+  let out_dir = shell.Mktemp.Dir()
+  let gunbc_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
+  let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
+
+  let emitted_src_dir = concat(out_dir.path, "/src")
+
+  let emit = gunbc.WitnessBin.Run(
+    workdir: root.path,
+    bin_path: gunbc_bin,
+    args: [
+      "compile",
+      "--source-root", scratch_src.path,
+      "--entry", concat(scratch_src.path, "/std/logic.dag"),
+      "--output-dir", out_dir.path,
+      "--target", "rust",
+      "--dependency-pool-index", "primary-precedence"
+    ]
+  )
+
+  let cargo_toml = Filesystem.Write(
+    path: concat(out_dir.path, "/Cargo.toml"),
+    content: slbu_cargo_toml(root: root.path)
+  )
+
+  let main_rs = Filesystem.Write(
+    path: concat(out_dir.path, "/src/main.rs"),
+    content: slbu_driver_main_source
+  )
+
+  let no_seed_crate_refs = slbu_check_no_seed_crate_refs(src_dir: emitted_src_dir, writes_ok: cargo_toml.success && main_rs.success)
+
+  let build = cargo.Build.BuildManifest(
+    workdir: out_dir.path,
+    manifest_path: concat(out_dir.path, "/Cargo.toml"),
+    target_dir: concat(out_dir.path, "/target"),
+    extra_args: ["--release"]
+  )
+
+  let witness_bin_path = concat(out_dir.path, "/target/release/witness")
+  let pass_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path)
+
+  let staged = logic_read.success
+    && stage_root.success
+    && scratch_src.success && scratch_src_std.success && logic_written.success
+    && out_dir.success && gunbc_built && emit.success
+    && cargo_toml.success && main_rs.success
+
+  let verdict = staged
+    && no_seed_crate_refs
+    && build.success
+    && string_contains(s: pass_run.stdout, pattern: slbu_cases_marker())
+    && pass_run.success
+    && string_contains(s: pass_run.stdout, pattern: slbu_pass_marker)
+
+  let cleanup_out = shell.Remove.RecursiveForce(path: out_dir.path).success
+  let cleanup_src = shell.Remove.RecursiveForce(path: scratch_src.path).success
+
+  verdict && cleanup_out && cleanup_src
+}
+
+fn slbu_seed_unavailable_receipt_holds() -> Bool {
+  slbu_seed_unavailable_receipt()
+}

@@ -65,7 +65,11 @@ import v2.lens.enforcement.vocab {
   SelfApplicationStatus, LensModuleFunctionObserved, SelfExemptObserved, SelfApplicationAbsent,
   ReceiptRef, HasReceiptRef, NoReceiptRef
 }
-import v2.lens.common.construction_justification { ConstructionJustification, WallNow, WallAfterGrounding, RatchetForever }
+import v2.lens.common.construction_justification {
+  ConstructionJustification,
+  WallNow,
+  WallAfterGrounding
+}
 import std.disposition { SingleAuthority, RealizationDispatch, SubstrateMandatoryTag }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.realization_schedule { ScheduleWitnessEntry, CorpusWitnessKind }
@@ -295,13 +299,15 @@ data lens_contract_fn_family: LensContract = {
   boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
 }
 
+// EXTRACT only (name_coincides / closed-set comparison). Name-only judge residual:
+// v2.lens.grounding.grounding_name_only_residual_boundary (OutsideModeledGuarantee).
 data lens_contract_grounding: LensContract = {
   entry: lens_registry_v0_grounding,
   mode: AuditOnly,
   claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: NoConsumerWitness,
   exemptions: [],
-  boundary: ConstructionJustification { class: RatchetForever }
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
 }
 
 data lens_contract_host_language_transport_script: LensContract = {
@@ -478,13 +484,15 @@ data lens_contract_subsumption: LensContract = {
   boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
 }
 
+// Established-bound vs declared technique. Rice residue:
+// v2.lens.synthesis.synthesis_rice_residual_boundary (OutsideModeledGuarantee).
 data lens_contract_synthesis: LensContract = {
   entry: lens_registry_v0_synthesis,
   mode: AuditOnly,
   claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: NoConsumerWitness,
   exemptions: [],
-  boundary: ConstructionJustification { class: RatchetForever }
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
 }
 
 data lens_contract_test_migration_debt: LensContract = {
@@ -502,7 +510,7 @@ data lens_contract_unit_modeling: LensContract = {
   claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: NoConsumerWitness,
   exemptions: [],
-  boundary: ConstructionJustification { class: RatchetForever }
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
 }
 
 data lens_contract_vacuity: LensContract = {

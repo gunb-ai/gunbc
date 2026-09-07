@@ -14,6 +14,8 @@ import std.realization_reconcile {
   Grounds,
   DoesNotGround,
   reconcile_grounded,
+  ReconciledEffect,
+  reconcile_effect,
 }
 
 type EnsurePolicy
@@ -104,6 +106,72 @@ fn ensure_readback<E>(
     EnsureInaccessible { reason } =>
       reconcile_grounded(
         apply_effect: applied,
+        show_read: ReadAbsent { reason: reason },
+        grounding: DoesNotGround { reason: reason },
+      )
+  }
+}
+
+// The whole lifecycle as ONE call, so that assembling it is no longer the caller's job to remember.
+// ensure_decide and ensure_readback remain exported because domains that already own the sequence
+// call them directly; what this adds is the single route whose OUTPUT is a sealed receipt, so a sink
+// can demand ReconciledEffect and thereby demand that classify, policy, apply and independent
+// readback all ran. The post-observation is a SECOND observation supplied by the caller — the same
+// observation value passed twice is a caller defect this function cannot see, and is what the
+// independent-readback witnesses in gunbc.readback_independence exist to catch.
+
+fn ensure_reconcile<P, E>(
+  policy: EnsurePolicy,
+  before: EnsureObservation<E>,
+  before_satisfies: Bool,
+  mismatch_reason: String,
+  plan: EnsurePlan<P>,
+  applied: Bool,
+  after: EnsureObservation<E>,
+  after_satisfies: Bool,
+  after_mismatch_reason: String,
+) -> ReconciledEffect<P, E> {
+  match after {
+    EnsureObserved { evidence: evidence } =>
+      reconcile_effect(
+        decision: ensure_decide(
+          policy: policy,
+          observation: before,
+          observation_satisfies: before_satisfies,
+          mismatch_reason: mismatch_reason,
+          plan: plan,
+        ),
+        applied: applied,
+        show_read: ReadObserved { value: evidence },
+        grounding: if after_satisfies {
+          Grounds { evidence: evidence }
+        } else {
+          DoesNotGround { reason: after_mismatch_reason }
+        },
+      )
+    EnsureAbsent { reason: reason } =>
+      reconcile_effect(
+        decision: ensure_decide(
+          policy: policy,
+          observation: before,
+          observation_satisfies: before_satisfies,
+          mismatch_reason: mismatch_reason,
+          plan: plan,
+        ),
+        applied: applied,
+        show_read: ReadAbsent { reason: reason },
+        grounding: DoesNotGround { reason: reason },
+      )
+    EnsureInaccessible { reason: reason } =>
+      reconcile_effect(
+        decision: ensure_decide(
+          policy: policy,
+          observation: before,
+          observation_satisfies: before_satisfies,
+          mismatch_reason: mismatch_reason,
+          plan: plan,
+        ),
+        applied: applied,
         show_read: ReadAbsent { reason: reason },
         grounding: DoesNotGround { reason: reason },
       )

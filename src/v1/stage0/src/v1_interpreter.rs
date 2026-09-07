@@ -17228,6 +17228,49 @@ macro_rules! v1_builtin_arms {
                 None => Ok(None),
             },
 
+            // THE ONE PLACE A MAC IS ACTUALLY COMPUTED, and it is a host builtin rather than a
+            // shell transport for a specific reason: every shell form of HMAC
+            // (`openssl dgst -hmac <key>`) puts the KEY IN THE ARGV, which is the exposure
+            // gunbc.credential_argv_exposure exists to forbid. A process listing is enough to
+            // learn a signing key, and with a symmetric MAC the signing key is also the
+            // verification key, so leaking it forges approvals rather than merely reading them.
+            //
+            // The comparison is RustCrypto's `verify_slice`, not an equality on bytes we
+            // computed. That is the whole reason extdeps.crypto.mac exposes no accessor for a
+            // computed tag: an ordinary `==` over MAC bytes leaks, through timing, how many
+            // leading bytes of a forged tag were correct, which turns forging a 32-byte tag from
+            // infeasible into a few thousand requests.
+            //
+            // Key and tag arrive as lowercase hex because the corpus already models digests that
+            // way (extdeps.crypto.hash Digest.hex) and hex has one spelling per value -- base64
+            // has several, and a decoder that accepts more spellings than it should is how one
+            // envelope acquires two representations.
+            //
+            // Every malformed input answers FALSE rather than raising: a caller cannot tell a
+            // bad key encoding from a wrong tag, which is correct here, because both mean the
+            // same thing to the only consumer -- this message is not authenticated.
+            arm "free_call.hmac_sha256_verify_hex" { "hmac_sha256_verify_hex" } => {
+                use hmac::{Hmac, Mac};
+                use sha2::Sha256;
+                let key_hex = expect_value_str($positional.first().copied(), "hmac_sha256_verify_hex key")?;
+                let message = expect_value_str($positional.get(1).copied(), "hmac_sha256_verify_hex message")?;
+                let tag_hex = expect_value_str($positional.get(2).copied(), "hmac_sha256_verify_hex tag")?;
+                let key = match hex::decode(key_hex.as_str()) {
+                    Ok(k) => k,
+                    Err(_) => return Ok(Some(Value::Bool(false))),
+                };
+                let tag = match hex::decode(tag_hex.as_str()) {
+                    Ok(t) => t,
+                    Err(_) => return Ok(Some(Value::Bool(false))),
+                };
+                let mut mac = match Hmac::<Sha256>::new_from_slice(&key) {
+                    Ok(m) => m,
+                    Err(_) => return Ok(Some(Value::Bool(false))),
+                };
+                mac.update(message.as_str().as_bytes());
+                Ok(Some(Value::Bool(mac.verify_slice(&tag).is_ok())))
+            },
+
             arm "free_call.string_length" { "string_length" } => {
                 let s = expect_value_str($positional.first().copied(), "string_length")?;
                 Ok(Some(Value::Int(s.string_length())))
