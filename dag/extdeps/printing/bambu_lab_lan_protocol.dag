@@ -1,0 +1,127 @@
+module extdeps.printing.bambu_lab_lan_protocol
+
+import std.types { Bool, String, NonEmptyStr, Port }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.oasis.mqtt { MqttEndpoint, MqttTopic, MqttOverTls, MqttQos, ExactlyOnce, AtLeastOnce }
+
+// THE LAN CONTROL PROTOCOL OF BAMBU LAB PRINTERS IN LAN-ONLY MODE, modeled because the delivery leg
+// already speaks FTPS and the leg that STARTS a job speaks MQTT -- and that second leg was
+// previously actuated by a hand-written client outside the substrate, which is the out-of-band
+// actuation DESIGN section 6 names.
+//
+// THIS IS NOT A PUBLISHED SPECIFICATION AND THE CITATION SAYS SO. Bambu documents LAN mode as a
+// feature; the request topic and command payloads are established by the community-maintained
+// reference and by observation of the machines this repository owns. Citing the vendor page as
+// though it specified the wire format would attribute to a source a fact it does not contain, which
+// is the nicknaming failure aimed at an authority rather than a symbol.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "wiki.bambulab.com/en/general/lan-mode"
+  }
+}
+
+data bambu_lan_wire_reference: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/Doridian/OpenBambuAPI/blob/main/mqtt.md"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.printing.bambu_lab_lan_protocol",
+      decl_name: "bambu_request_topic",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.printing.bambu_lab_lan_protocol.extdeps_external_authority_anchor,
+  further_citations: [extdeps.printing.bambu_lab_lan_protocol.bambu_lan_wire_reference],
+}
+
+// THE TOPIC IS DERIVED FROM THE SERIAL, NEVER AUTHORED. A printer's request topic is
+// "device/<serial>/request", so carrying the topic as its own datum would be a second spelling of
+// the serial that drifts the moment a machine is replaced. The serial already lives in the fleet's
+// physical inventory as an observed fact about a specific machine.
+fn bambu_request_topic(serial: NonEmptyStr) -> MqttTopic {
+  concat(concat("device/", serial as String), "/request") as MqttTopic
+}
+
+fn bambu_report_topic(serial: NonEmptyStr) -> MqttTopic {
+  concat(concat("device/", serial as String), "/report") as MqttTopic
+}
+
+// THE LAN BROKER IS TLS ON 8883 WITH A CERTIFICATE THAT CANNOT BE CHAIN-VERIFIED, and that is stated
+// rather than silently worked around. The printer presents a self-signed certificate for an IP
+// address, so a verifying client refuses; this is the same peer-verification situation the FTPS leg
+// already models and records, and it is a property of the DEVICE, not a preference of the caller.
+data bambu_lan_mqtt_port: Port = 8883 as Port
+data bambu_lan_mqtt_user: NonEmptyStr = "bblp"
+
+fn bambu_lan_mqtt_endpoint(host: NonEmptyStr) -> MqttEndpoint {
+  MqttEndpoint { host: host, port: bambu_lan_mqtt_port, security: MqttOverTls }
+}
+
+// THE START COMMAND NAMES A FILE ALREADY ON THE MACHINE. project_file does not carry the payload --
+// the .3mf must already have been transferred, which is what the FTPS leg does -- so this command is
+// meaningless unless delivery has completed, and the sequencing is a real dependency rather than a
+// convention.
+//
+// use_ams IS FALSE BECAUSE THESE MACHINES HAVE NO AMS BOUND TO THIS PRINT. The operator's constraint
+// is one filament per printer -- printer-01 white, printer-02 black -- which is exactly what the
+// design wants, since the logo is a slot-in insert rather than a multi-colour feature.
+type BambuPrintStartCommand {
+  file_url: NonEmptyStr
+  plate_gcode: NonEmptyStr
+  subtask_name: NonEmptyStr
+  use_ams: Bool
+  bed_leveling: Bool
+}
+
+fn bambu_sd_file_url(remote_name: NonEmptyStr) -> NonEmptyStr {
+  concat("file:///sdcard/", remote_name as String) as NonEmptyStr
+}
+
+// ONE PLATE, NAMED EXPLICITLY. A sliced Bambu project can carry several plates; the command must say
+// which, and defaulting silently to the first would start whichever plate the slicer happened to
+// order first rather than the one the caller meant.
+data bambu_first_plate_gcode: NonEmptyStr = "Metadata/plate_1.gcode"
+
+fn bambu_start_command(remote_name: NonEmptyStr) -> BambuPrintStartCommand {
+  BambuPrintStartCommand {
+    file_url: bambu_sd_file_url(remote_name: remote_name),
+    plate_gcode: bambu_first_plate_gcode,
+    subtask_name: remote_name,
+    use_ams: false,
+    bed_leveling: true,
+  }
+}
+
+// A START COMMAND IS PUBLISHED AT LEAST ONCE, AND THE CHOICE IS ARGUED RATHER THAN INHERITED.
+// AtMostOnce may be dropped silently by the broker, so a start command would never arrive and
+// nothing would report why. ExactlyOnce is what a caller reaches for to avoid a duplicate job, but
+// the printer's broker does not honour QoS 2 as an idempotence guarantee over PRINT COMMANDS -- it
+// governs delivery of the packet, not the semantics of the action -- so choosing it would buy a
+// guarantee that does not exist at the layer that matters. AtLeastOnce is therefore the honest
+// selection, and duplicate-start protection is the PRINTER's state machine refusing a second job
+// while one is running, which is an external fact this module observes rather than assumes.
+data bambu_start_command_qos: MqttQos = AtLeastOnce
+
+fn bambu_start_payload_json(command: BambuPrintStartCommand, sequence_id: NonEmptyStr) -> String {
+  join([
+    "{\"print\":{\"sequence_id\":\"", sequence_id as String,
+    "\",\"command\":\"project_file\",\"param\":\"", command.plate_gcode as String,
+    "\",\"url\":\"", command.file_url as String,
+    "\",\"subtask_name\":\"", command.subtask_name as String,
+    "\",\"use_ams\":", bool_json(b: command.use_ams),
+    ",\"bed_leveling\":", bool_json(b: command.bed_leveling),
+    ",\"flow_cali\":false,\"vibration_cali\":true,\"layer_inspect\":false,\"timelapse\":false,\"profile_id\":\"0\",\"project_id\":\"0\",\"subtask_id\":\"0\",\"task_id\":\"0\"}}"
+  ], "")
+}
+
+fn bool_json(b: Bool) -> String {
+  if b { "true" } else { "false" }
+}
