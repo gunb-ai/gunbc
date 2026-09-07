@@ -111,6 +111,19 @@ fn f0_has_setsw_probe(o: MultiModuleCompileFixtureOutcome) -> Bool {
   }
 }
 
+fn f0_lacks_setsw_probe(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match resolved_rust_fn_lookup(
+    functions: completed_functions(o),
+    owner_module: "setsw.chain",
+    declaration_name: "f0"
+  ) {
+    ResolvedRustFnFound { signature: sig } =>
+      !resolved_rust_fn_has_parameter(signature: sig, parameter_name: "setsw_probe"),
+    // Absent must not green a "lacks parameter" RED — that is the fail-open the collision finding named.
+    ResolvedRustFnAbsent => false
+  }
+}
+
 // GREEN: depth-3 service chain compiles and f0 carries the propagated service parameter.
 test fn shallow_service_chain_f0_carries_leaf_service_parameter() -> Bool {
   let o = run_shallow_service_chain()
@@ -121,5 +134,5 @@ test fn shallow_service_chain_f0_carries_leaf_service_parameter() -> Bool {
 // greens while the chain arm is green, the projection has stopped discriminating service params.
 test fn no_service_sibling_f0_lacks_service_parameter() -> Bool {
   let o = run_no_service_sibling()
-  compiles_clean(o) && !f0_has_setsw_probe(o)
+  compiles_clean(o) && f0_lacks_setsw_probe(o)
 }

@@ -82,6 +82,19 @@ fn observed_has_marker(o: MultiModuleCompileFixtureOutcome) -> Bool {
   }
 }
 
+fn observed_lacks_marker(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match resolved_rust_fn_lookup(
+    functions: completed_functions(o),
+    owner_module: "proj.obs",
+    declaration_name: "observed"
+  ) {
+    ResolvedRustFnFound { signature: sig } =>
+      !resolved_rust_fn_has_parameter(signature: sig, parameter_name: "marker"),
+    // Absent is not evidence the parameter is missing — the row itself is missing (DESIGN §5).
+    ResolvedRustFnAbsent => false
+  }
+}
+
 fn observed_compiles_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
   match o {
     FixtureCompileCompleted {
@@ -113,5 +126,5 @@ test fn resolved_rust_fn_projection_reports_present_parameter() -> Bool {
 // discriminating and every consumer citing it is citing a decoration.
 test fn resolved_rust_fn_projection_reports_absent_parameter_on_clean_sibling() -> Bool {
   let o = run_without_marker()
-  observed_compiles_clean(o) && !observed_has_marker(o)
+  observed_compiles_clean(o) && observed_lacks_marker(o)
 }
