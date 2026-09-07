@@ -3,9 +3,12 @@ module test.claim.fn_index_attribution_probe
 // THE INSTRUMENT FOR gunbc.rung_drop.determinism_transitive_reachability, NAMED BY THAT ROW SO ITS
 // FIGURES ARE RE-DERIVED RATHER THAN TRANSCRIBED (DESIGN §6). Run it as
 //   claim_batch --source-root dag --source-root src/v2 --source-root scratch-probe
-//     --entry scratch-probe/test/claim/fn_index_attribution_probe.dag --functions <the six below>
+//     --entry scratch-probe/test/claim/fn_index_attribution_probe.dag --functions <the arms below>
 // which charges each arm separately, and read the differences between arms rather than any arm's
-// absolute value.
+// absolute value. RUN ONE ARM PER INVOCATION WHEN YOU WANT MEMORY: claim_batch reports VmHWM for
+// the PROCESS at exit and not per witness, so peak RSS is attributable to an arm only when that
+// arm is the only one in the process. Frame structure is itself a variable here -- c and f are
+// separate witness frames, g and h are one frame each -- so name it whenever you quote a ratio.
 //
 // IT LIVES IN scratch-probe BECAUSE IT IS AN INSTRUMENT AND NOT A FLOOR WITNESS. These rows assert
 // only non-emptiness; they establish nothing about the corpus and must never be read as coverage.
@@ -123,3 +126,36 @@ test fn g_reached_sets_agree_across_pools() -> Bool {
   ))
 }
 
+
+data second_entry: String = "v2.lens.complexity"
+
+// h IS THE ARM THAT SEPARATES KEYING FROM MEMORY PRESSURE, and it exists because the obvious
+// falsifier does not discriminate. Turning the eval-frame memo off removes the key comparisons AND
+// the retained entries in one move, so a collapse under GUNBC_EVAL_MEMO=0 confirms the keying
+// hypothesis and the allocation-pressure hypothesis EQUALLY -- an arm that cannot come out against
+// the thing it is testing establishes nothing.
+//
+// h does the same amount of WALKING as g -- two full reachability walks in ONE eval frame -- while
+// holding the pool at ONE pool rather than two. So frame retention and key diversity are halved
+// while the walking is not. Read it against c, whose frame does one walk over that same pool:
+//
+//   h ~ 2x c   the blowup needs pool DIVERSITY in the frame; keying survives, pressure dies.
+//   h ~ 13x c  two walks in a frame suffice regardless of pool; points at retention, or at
+//              something per-frame that is not keying at all.
+//
+// The two walks use DIFFERENT entry modules on purpose. Repeating one entry would hand the second
+// walk an argument-identical call the memo serves outright, which measures the memo working rather
+// than the frame cost under test.
+test fn h_two_walks_one_frame_same_pool() -> Bool {
+  length(xs: call_reachable_decls(
+    entry_module: entry,
+    terminal_callee_symbols: no_terminals,
+    closure_modules: closure_of(roots: lens_roots),
+    decls: decls_of(roots: lens_roots)
+  )) + length(xs: call_reachable_decls(
+    entry_module: second_entry,
+    terminal_callee_symbols: no_terminals,
+    closure_modules: closure_of(roots: lens_roots),
+    decls: decls_of(roots: lens_roots)
+  )) > 0
+}
