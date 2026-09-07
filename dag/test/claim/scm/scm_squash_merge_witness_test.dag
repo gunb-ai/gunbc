@@ -97,14 +97,17 @@ fn scene() -> Scene {
   }
 }
 
-fn scene_repository(s: Scene) -> RepositoryEnvelope? {
-  match s {
-    SceneUnavailable => none
-    Scene { build: b, base: _, target: _, source: _ } =>
-      match b {
-        MbSetupFailed => none
-        MbBuilt { repository: r, at: _ } => Present { value: r }
-      }
+// THE BUILD IS TAKEN FROM THE SCENE THE CLAIM ALREADY MATCHED, never re-derived from a second
+// `scene()` call. An earlier head of these claims bound the scene, DISCARDED its `build` field, and
+// then ran the whole builder again one line later to recover the repository that field carries --
+// two demands for one semantic fact with a shared-state least common ancestor a line apart, which is
+// authored duplication rather than unavoidable recurrence (DESIGN section 2). It also made each claim
+// construct two separate repositories and assert about the second, which is a fixture that quietly
+// stopped being the one the surrounding match described.
+fn build_repository(b: MbBuild) -> RepositoryEnvelope? {
+  match b {
+    MbSetupFailed => none
+    MbBuilt { repository: r, at: _ } => Present { value: r }
   }
 }
 
@@ -157,8 +160,8 @@ fn holds(paths: List<String>, path: String) -> Bool {
 test fn scm_sm_a_merge_carries_both_sides_paths() -> Bool {
   match scene() {
     SceneUnavailable => false
-    Scene { build: _, base: _, target: target, source: source } =>
-      match scene_repository(s: scene()) {
+    Scene { build: b, base: _, target: target, source: source } =>
+      match build_repository(b: b) {
         Absent => false
         Present { value: repository } =>
           match squash_merge(
@@ -197,8 +200,8 @@ test fn scm_sm_a_merge_carries_both_sides_paths() -> Bool {
 test fn scm_sm_the_result_parents_the_target_and_records_the_source_consumed() -> Bool {
   match scene() {
     SceneUnavailable => false
-    Scene { build: _, base: _, target: target, source: source } =>
-      match scene_repository(s: scene()) {
+    Scene { build: b, base: _, target: target, source: source } =>
+      match build_repository(b: b) {
         Absent => false
         Present { value: repository } =>
           match squash_merge(
@@ -245,8 +248,8 @@ test fn scm_sm_the_result_parents_the_target_and_records_the_source_consumed() -
 test fn scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_receipt() -> Bool {
   match scene() {
     SceneUnavailable => false
-    Scene { build: _, base: _, target: target, source: source } =>
-      match scene_repository(s: scene()) {
+    Scene { build: b, base: _, target: target, source: source } =>
+      match build_repository(b: b) {
         Absent => false
         Present { value: repository } =>
           match squash_merge(

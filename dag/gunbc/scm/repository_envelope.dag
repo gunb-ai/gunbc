@@ -568,73 +568,145 @@ fn integration_anchor_resolves(
   }
 }
 
-// A ROOT THE STORE ITSELF JUST BRANDED HAS NOTHING LEFT TO RESOLVE, so this route cannot refuse for
-// root resolution and its outcome type does not carry the arms.
+// A BRANDED REFERENCE PROVES KIND. IT DOES NOT PROVE WHICH STORE.
 //
-// THE ROUTE EXISTS BECAUSE A CALLER CAN HOLD STRONGER EVIDENCE THAN `mint_repository_commit`
-// ACCEPTS. That function takes a `CorpusManifestTarget`, which is a PROPOSITION about a locator, so
-// its return type honestly carries the three ways resolving that proposition can fail. But a caller
-// that has just received `CorpusManifestStored { store, manifest }` does not hold a proposition: it
-// holds the `CorpusManifestObjectRef` THE STORE HANDED BACK, for an object that store demonstrably
-// contains -- had the locator been absent or occupied by another kind, the store call would have
-// returned its own refusal instead. Re-asking `find_corpus_manifest_record` there is asking a
-// question that has already been answered, and then having to say something about an answer that
-// cannot arrive.
+// An earlier head of this branch took `(repository, root: CorpusManifestObjectRef)` as two
+// independent parameters and claimed the root needed no resolution because the store had just
+// branded it. `CorpusManifestObjectRef` is sole_constructor, so no caller can forge one -- but its
+// brand says "some store minted this locator at this kind", never WHICH store. So this was
+// authorable: store a manifest into store A, take the reference, and hand it to a repository whose
+// store is B. Allocator valid, parent absent, integration absent -- and the mint writes a commit
+// whose root is absent from B. The annotation claimed "the store itself just branded it"; the
+// SIGNATURE established a repository and a brand from somewhere, which is not the same fact.
 //
-// THE ALTERNATIVE THAT WAS BUILT FIRST AND REJECTED was for the caller to keep the generic route and
-// TRANSLATE the three impossible root refusals into one coarser cause. That is worse than it looks.
-// It fabricates a public arm no execution can produce, and it does so by REASONING ABOUT THE
-// CALLER'S CONTEXT INSIDE A FUNCTION THAT CANNOT SEE IT -- a translator handed a
-// `RepositoryCommitMint` has no evidence its argument came from the store one line earlier. And the
-// three arms are not one fact even in the impossible case: a missing root would mean the object
-// vanished, while a wrong-kind root would mean the locator now denotes something else, which
-// contradicts a collision-aware insertion far more strongly. Collapsing them would erase the
-// evidence needed to tell which invariant had failed.
+// THAT IS THE SAME DEFECT THIS LANE FIXED ONE LEVEL UP AND REINTRODUCED HERE WHILE FIXING SOMETHING
+// ELSE: an annotation asserting a guarantee the signature does not carry. "Only squash calls it
+// correctly" is no defence -- .dag has no module privacy, so an importable entry point is a public
+// one, which is why this repository already reaches for sealed carriers rather than for discipline.
 //
-// So the question is REMOVED rather than answered more elegantly, which is DESIGN section 5's
-// construction over validation and section 4b's top rung: the invalid state has no constructor on
-// this route.
+// SO THE RELATION IS SEALED, NOT ITS TWO ENDPOINTS. `RepositoryManifestRoot` is sole_constructor and
+// pairs a repository with a root that repository's own store is known to contain. It has exactly two
+// producers, and each ESTABLISHES the pairing rather than accepting it:
 //
-// EVERY OTHER ADMISSION STILL RUNS. This is not a fast path around the mint's rules -- the allocator,
-// the integration anchor's preexistence and the parent's existence are all still decided here, and
-// `mint_repository_commit` now reaches them THROUGH this function rather than beside it, so there is
-// one authority for those rules rather than two copies free to drift.
+//   repository_root_by_resolving  resolves a CorpusManifestTarget against repository.store, and
+//                                 refuses in the three ways resolution can fail.
+//   repository_root_by_storing    performs the store call ITSELF and pairs the reference with the
+//                                 store that returned it, so no caller ever holds the two halves
+//                                 separately and cannot mismatch what it never had.
+//
+// The invariant, stated once: a branded reference proves KIND; this carrier proves MEMBERSHIP IN
+// THIS REPOSITORY'S STORE.
+type RepositoryManifestRoot sole_constructor {
+  repository: RepositoryEnvelope
+  root: CorpusManifestObjectRef
+}
+
+type RepositoryManifestRootResolution
+  = RepositoryManifestRootResolved(RepositoryManifestRoot)
+  | RepositoryManifestRootMissing { root: ObjectId }
+  | RepositoryManifestRootIsAuthoredSource { root: ObjectId }
+  | RepositoryManifestRootIsSemanticNode { root: ObjectId }
+
+fn repository_root_by_resolving(
+  repository: RepositoryEnvelope,
+  root: CorpusManifestTarget,
+) -> RepositoryManifestRootResolution {
+  match find_corpus_manifest_record(
+    store: repository.store,
+    identity: corpus_manifest_target_locator(target: root)
+  ) {
+    CorpusManifestAbsent { identity: r } => RepositoryManifestRootMissing { root: r }
+    CorpusManifestIsAuthoredSource { identity: r } =>
+      RepositoryManifestRootIsAuthoredSource { root: r }
+    CorpusManifestIsSemanticNode { identity: r } =>
+      RepositoryManifestRootIsSemanticNode { root: r }
+    CorpusManifestFound(record) =>
+      RepositoryManifestRootResolved(
+        RepositoryManifestRoot { repository: repository, root: record.identity }
+      )
+  }
+}
+
+type RepositoryManifestRootStore
+  = RepositoryManifestRootStored(RepositoryManifestRoot)
+  | RepositoryManifestRootDuplicatePath { path: NonEmptyStr }
+  | RepositoryManifestRootLocatorCollision { identity: ObjectId }
+
+// THE STORE CALL HAPPENS HERE RATHER THAN IN THE CALLER, and that is the whole construction. A caller
+// that received `CorpusManifestStored { store, manifest }` and then paired the two itself would be
+// back to holding separable halves; this way the pairing exists only as this carrier, and the
+// repository handed onward is the one carrying the store that did the writing.
+fn repository_root_by_storing(
+  repository: RepositoryEnvelope,
+  entries: List<CorpusManifestEntry>,
+) -> RepositoryManifestRootStore {
+  match store_corpus_manifest(store: repository.store, entries: entries) {
+    CorpusManifestDuplicatePath { path: p } => RepositoryManifestRootDuplicatePath { path: p }
+    CorpusManifestLocatorCollision { identity: i, existing: _, incoming: _ } =>
+      RepositoryManifestRootLocatorCollision { identity: i }
+    CorpusManifestStored { store: stored, manifest: reference } =>
+      RepositoryManifestRootStored(
+        RepositoryManifestRoot {
+          repository: RepositoryEnvelope {
+            store: stored,
+            commits: repository.commits,
+            commit_allocator: repository.commit_allocator,
+            checked_out: repository.checked_out,
+            staged: repository.staged,
+          },
+          root: reference,
+        }
+      )
+  }
+}
+
+// THE ONE MINT. It runs every admission that is still a real question -- allocator, integration
+// anchor preexistence, parent existence -- and carries NO root arm, because the subject it takes
+// already establishes the root. There is no longer a helper below this that appends a RepositoryCommit
+// without admission: `mint_repository_commit_admitted` was exactly that, an importable forge factory
+// taking a raw repository, a raw brand and a decided ancestry, and no rung-4 claim can stand while a
+// bypass like it remains authorable. Its body is inlined here, where the admissions guard it.
 type BrandedRootMint
   = BrandedRootMinted { repository: RepositoryEnvelope, reference: RepositoryCommitRef }
   | BrandedRootAllocatorInvalid { next_ordinal: Int }
   | BrandedRootParentMissing { parent: RepositoryCommitRef }
   | BrandedRootIntegrationSourceMissing { source: RepositoryCommitRef }
 
-fn mint_commit_from_stored_manifest(
-  repository: RepositoryEnvelope,
-  root: CorpusManifestObjectRef,
+fn mint_commit_from_repository_manifest(
+  subject: RepositoryManifestRoot,
   message: String,
   parent: RepositoryCommitRef?,
   integration: CommitIntegration,
 ) -> BrandedRootMint {
-  if repository.commit_allocator.next_ordinal < 0 {
-    BrandedRootAllocatorInvalid { next_ordinal: repository.commit_allocator.next_ordinal }
+  if subject.repository.commit_allocator.next_ordinal < 0 {
+    BrandedRootAllocatorInvalid {
+      next_ordinal: subject.repository.commit_allocator.next_ordinal,
+    }
   } else {
-    match integration_anchor_resolves(repository: repository, integration: integration) {
+    match integration_anchor_resolves(
+      repository: subject.repository,
+      integration: integration,
+    ) {
       Present { value: missing } => BrandedRootIntegrationSourceMissing { source: missing }
       Absent =>
         match parent {
           Present { value: parent_ref } =>
-            match commit_at_reference(commits: repository.commits, reference: parent_ref) {
+            match commit_at_reference(
+              commits: subject.repository.commits,
+              reference: parent_ref,
+            ) {
               Absent => BrandedRootParentMissing { parent: parent_ref }
               Present { value: _ } =>
-                mint_repository_commit_admitted(
-                  repository: repository,
-                  root: root,
+                minted_commit(
+                  subject: subject,
                   message: message,
                   ancestry: DescendsFrom { parent: parent_ref },
                   integration: integration,
                 )
             }
           Absent =>
-            mint_repository_commit_admitted(
-              repository: repository,
-              root: root,
+            minted_commit(
+              subject: subject,
               message: message,
               ancestry: RootCommit,
               integration: integration,
@@ -644,9 +716,37 @@ fn mint_commit_from_stored_manifest(
   }
 }
 
-// THE GENERIC ROUTE RESOLVES THE ROOT AND THEN DELEGATES, so the admission rules live in exactly one
-// place. A caller holding only a locator still gets the three root refusals, because for that caller
-// they are reachable and real.
+// The append itself, reachable only from the admission above because it takes the sealed subject and
+// an ancestry the admission decided.
+fn minted_commit(
+  subject: RepositoryManifestRoot,
+  message: String,
+  ancestry: CommitAncestry,
+  integration: CommitIntegration,
+) -> BrandedRootMint {
+  let allocation = mint_id(alloc: subject.repository.commit_allocator)
+  let reference = RepositoryCommitRef { identity: allocation.id }
+  BrandedRootMinted {
+    repository: RepositoryEnvelope {
+      store: subject.repository.store,
+      commits: concat(subject.repository.commits, [RepositoryCommit {
+        reference: reference,
+        root: subject.root,
+        message: message,
+        ancestry: ancestry,
+        integration: integration,
+      }]),
+      commit_allocator: allocation.alloc,
+      checked_out: subject.repository.checked_out,
+      staged: subject.repository.staged,
+    },
+    reference: reference,
+  }
+}
+
+// THE GENERIC ROUTE RESOLVES A TARGET AND THEN DELEGATES, so a caller holding only a locator still
+// gets the three root refusals -- for that caller they are reachable and real -- and the admission
+// rules live in exactly one place rather than in two copies free to drift.
 fn mint_repository_commit(
   repository: RepositoryEnvelope,
   root: CorpusManifestTarget,
@@ -657,20 +757,16 @@ fn mint_repository_commit(
   if repository.commit_allocator.next_ordinal < 0 {
     RepositoryCommitMintAllocatorInvalid { next_ordinal: repository.commit_allocator.next_ordinal }
   } else {
-    match find_corpus_manifest_record(
-      store: repository.store,
-      identity: corpus_manifest_target_locator(target: root)
-    ) {
-      CorpusManifestAbsent { identity: r } => RepositoryCommitMintRootMissing { root: r }
-      CorpusManifestIsAuthoredSource { identity: r } =>
+    match repository_root_by_resolving(repository: repository, root: root) {
+      RepositoryManifestRootMissing { root: r } => RepositoryCommitMintRootMissing { root: r }
+      RepositoryManifestRootIsAuthoredSource { root: r } =>
         RepositoryCommitMintRootIsAuthoredSource { root: r }
-      CorpusManifestIsSemanticNode { identity: r } =>
+      RepositoryManifestRootIsSemanticNode { root: r } =>
         RepositoryCommitMintRootIsSemanticNode { root: r }
-      CorpusManifestFound(record) =>
+      RepositoryManifestRootResolved(subject) =>
         widen_branded_root_mint(
-          mint: mint_commit_from_stored_manifest(
-            repository: repository,
-            root: record.identity,
+          mint: mint_commit_from_repository_manifest(
+            subject: subject,
             message: message,
             parent: parent,
             integration: integration,
@@ -689,34 +785,6 @@ fn widen_branded_root_mint(mint: BrandedRootMint) -> RepositoryCommitMint {
     BrandedRootParentMissing { parent: p } => RepositoryCommitMintParentMissing { parent: p }
     BrandedRootIntegrationSourceMissing { source: s } =>
       RepositoryCommitMintIntegrationSourceMissing { source: s }
-  }
-}
-
-
-fn mint_repository_commit_admitted(
-  repository: RepositoryEnvelope,
-  root: CorpusManifestObjectRef,
-  message: String,
-  ancestry: CommitAncestry,
-  integration: CommitIntegration,
-) -> BrandedRootMint {
-  let allocation = mint_id(alloc: repository.commit_allocator)
-  let reference = RepositoryCommitRef { identity: allocation.id }
-  BrandedRootMinted {
-    repository: RepositoryEnvelope {
-      store: repository.store,
-      commits: concat(repository.commits, [RepositoryCommit {
-        reference: reference,
-        root: root,
-        message: message,
-        ancestry: ancestry,
-        integration: integration,
-      }]),
-      commit_allocator: allocation.alloc,
-      checked_out: repository.checked_out,
-      staged: repository.staged,
-    },
-    reference: reference,
   }
 }
 

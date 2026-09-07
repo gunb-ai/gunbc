@@ -28,11 +28,6 @@ import gunbc.scm.object_store {
   CorpusManifestRecord,
   CorpusManifestEntry,
 
-  CorpusManifestObjectRef,
-  store_corpus_manifest,
-  CorpusManifestStored,
-  CorpusManifestDuplicatePath,
-  CorpusManifestLocatorCollision,
   find_corpus_manifest_record,
   CorpusManifestFound,
   CorpusManifestAbsent,
@@ -64,8 +59,13 @@ import gunbc.scm.repository_envelope {
   BrandedRootAllocatorInvalid,
   BrandedRootParentMissing,
   BrandedRootIntegrationSourceMissing,
+  RepositoryManifestRootStore,
+  RepositoryManifestRootStored,
+  RepositoryManifestRootDuplicatePath,
+  RepositoryManifestRootLocatorCollision,
   commit_at_reference,
-  mint_commit_from_stored_manifest,
+  repository_root_by_storing,
+  mint_commit_from_repository_manifest,
 }
 
 // WHICH SIDE'S ROOT FAILED TO RESOLVE IS PART OF THE FACT, NOT CONTEXT FOR A LOG LINE. Three commits
@@ -111,10 +111,11 @@ type MergeSideName
 // honest about the cause and still dishonest about the DOMAIN, leaving three states in this type that
 // no run of `squash_merge` can reach.
 //
-// The question is removed rather than answered: `store_corpus_manifest` hands back a
-// CorpusManifestObjectRef for an object that store demonstrably contains, and
-// `mint_commit_from_stored_manifest` consumes that brand instead of re-resolving a locator. Root
-// refusal is unrepresentable here because there is nothing left to resolve (DESIGN section 4b rung 4).
+// The question is removed rather than answered: `repository_root_by_storing` performs the store call
+// and hands back a SEALED pairing of this repository with a root its own store now contains, and
+// `mint_commit_from_repository_manifest` consumes that pairing instead of re-resolving a locator.
+// Root refusal is unrepresentable here because there is nothing left to resolve, and the pairing is
+// unforgeable because the carrier is sole_constructor (DESIGN section 4b rung 4).
 type SquashMergeOutcome
   = SquashMerged { repository: RepositoryEnvelope, reference: RepositoryCommitRef }
 
@@ -190,10 +191,13 @@ fn carry_mint(mint: BrandedRootMint) -> SquashMergeOutcome {
 // source is not lost: the SquashIntegrated below is precisely the record merge_base reads to refuse
 // the second merge.
 //
-// THE COMMIT IS MINTED ONTO THE STORE THE MANIFEST WAS WRITTEN INTO, never onto the caller's
-// repository value. Minting against the pre-store envelope would produce a commit whose root names a
-// manifest that repository does not contain -- a dangling root written by the one operation that
-// knows better.
+// THE STORE-AND-PAIR IS ONE STEP, SO THIS FUNCTION NEVER HOLDS A STORE AND A REFERENCE SEPARATELY.
+// An earlier head stored the manifest here, rebuilt the envelope around the returned store, and
+// passed the returned reference alongside it -- correct in this control flow, and erased at the
+// callee's boundary, where the two arrived as independent parameters that a different caller could
+// mismatch across stores. `repository_root_by_storing` returns the sealed pairing instead, so the
+// fact that this repository's store contains this root survives the call rather than living in this
+// function's local reasoning.
 fn commit_merged_manifest(
   repository: RepositoryEnvelope,
   target: RepositoryCommitRef,
@@ -201,22 +205,15 @@ fn commit_merged_manifest(
   message: String,
   entries: List<CorpusManifestEntry>,
 ) -> SquashMergeOutcome {
-  match store_corpus_manifest(store: repository.store, entries: entries) {
-    CorpusManifestDuplicatePath { path: p } =>
+  match repository_root_by_storing(repository: repository, entries: entries) {
+    RepositoryManifestRootDuplicatePath { path: p } =>
       SquashMergeResultDuplicatePath { path: p as String }
-    CorpusManifestLocatorCollision { identity: i, existing: _, incoming: _ } =>
+    RepositoryManifestRootLocatorCollision { identity: i } =>
       SquashMergeResultLocatorCollision { identity: i }
-    CorpusManifestStored { store: stored, manifest: reference } =>
+    RepositoryManifestRootStored(subject) =>
       carry_mint(
-        mint: mint_commit_from_stored_manifest(
-          repository: RepositoryEnvelope {
-            store: stored,
-            commits: repository.commits,
-            commit_allocator: repository.commit_allocator,
-            checked_out: repository.checked_out,
-            staged: repository.staged,
-          },
-          root: reference,
+        mint: mint_commit_from_repository_manifest(
+          subject: subject,
           message: message,
           parent: Present { value: target },
           integration: SquashIntegrated { source: source },
