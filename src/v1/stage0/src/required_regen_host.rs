@@ -1762,19 +1762,15 @@ fn copy_dir_recursive(source: &Path, dest: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn digest_label(bytes: &[u8]) -> String {
-    format!("fnv1a64:{}", v1_rt::bytes_identity_hash(bytes))
-}
-
 fn authority_digest_from_sources(sources: &[(String, String)]) -> Result<String, String> {
     let mut payload = String::new();
     for (path, content) in sources {
         payload.push_str(path);
         payload.push('\0');
-        payload.push_str(&digest_label(content.as_bytes()));
+        payload.push_str(&bytes_digest(content.as_bytes()));
         payload.push('\n');
     }
-    Ok(digest_label(payload.as_bytes()))
+    Ok(bytes_digest(payload.as_bytes()))
 }
 
 fn tree_digest_for_basenames(
@@ -1797,10 +1793,10 @@ fn tree_digest_for_basenames(
             .map_err(|e| format!("normalize {label} {name}: {e}"))?;
         payload.push_str(name);
         payload.push('\0');
-        payload.push_str(&digest_label(norm.as_bytes()));
+        payload.push_str(&bytes_digest(norm.as_bytes()));
         payload.push('\n');
     }
-    Ok(digest_label(payload.as_bytes()))
+    Ok(bytes_digest(payload.as_bytes()))
 }
 
 fn tree_digest_from_map(
@@ -1819,10 +1815,10 @@ fn tree_digest_from_map(
             .map_err(|e| format!("normalize candidate {name}: {e}"))?;
         payload.push_str(name);
         payload.push('\0');
-        payload.push_str(&digest_label(norm.as_bytes()));
+        payload.push_str(&bytes_digest(norm.as_bytes()));
         payload.push('\n');
     }
-    Ok(digest_label(payload.as_bytes()))
+    Ok(bytes_digest(payload.as_bytes()))
 }
 
 /// Maximum rustfmt passes taken while seeking the formatter's fixed point. Exceeding it is a
