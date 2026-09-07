@@ -1,10 +1,9 @@
 module test.claim.emission_provenance_test
 
 import std.content_hash { as_content_hash_structural, content_hash_atom }
-import std.algebra { FreeMonoid, Cons, Empty }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.decl_ref { decl_ref, declaration_ref_eq }
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted }
-import std.types { NonEmptyStr, String }
+import std.types { NonEmptyStr }
 import std.emission_provenance {
   EmissionDeclarationMember,
   EmissionDeclarationPreserved, EmissionDeclarationRemoved, EmissionDeclarationAdded,
@@ -150,22 +149,6 @@ test fn emission_nested_unobserved_producer_remains_named() -> Bool {
     }
 }
 
-fn observed_origin_names(observed: FreeMonoid<DeclarationRef>) -> String {
-  match observed {
-    Empty => ""
-    Cons { head, tail } =>
-      concat(head.decl_name, observed_origin_names_rest(rest: tail))
-  }
-}
-
-fn observed_origin_names_rest(rest: FreeMonoid<DeclarationRef>) -> String {
-  match rest {
-    Empty => ""
-    Cons { head, tail } =>
-      concat("|", concat(head.decl_name, observed_origin_names_rest(rest: tail)))
-  }
-}
-
 
 test fn emission_combined_read_preserves_content_order_and_origin_multiplicity() -> Bool {
   let root = decl_ref(module_path: "fixture.runtime", decl_name: "root")
@@ -193,7 +176,7 @@ test fn emission_combined_read_preserves_content_order_and_origin_multiplicity()
     && result.origins == emission_contribution_origins(contribution: contribution)
     && result.source == "ABCD" && match result.origins {
     EmissionOriginsIncomplete { observed, missing } =>
-      observed_origin_names(observed: observed) == "root|empty|leaf|nested|leaf"
+      (observed |> map(origin => origin.decl_name) |> join(separator: "|")) == "root|empty|leaf|nested|leaf"
         && declaration_ref_eq(a: missing.head.producer, b: unknown)
         && missing.head.cause == ("first" as NonEmptyStr)
         && (missing.tail |> count == 1)
