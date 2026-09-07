@@ -114,6 +114,15 @@ data occurrence_category_file_census_invocation: String =
 data occurrence_category_file_census_measures: String =
   "per named source path: decls, refs, clause_e_selected, ns_segment_refs, dotted_type_refs"
 
+// REACHABILITY: cargo build of the named bin from source is enough. This instrument is
+// the same class as carrier_realization_census — an on-demand census cited by a gap row,
+// not a floor/WitnessBin consumer. It is deliberately NOT enrolled in
+// gunbc.ci_release_bins (that pack is for bins the floor or a WitnessBin transport
+// invokes; packing it would be a standing fleet claim without a production invoker).
+// The dissolve-on trigger's "re-derive via … entry point" means the Cargo argv above.
+data occurrence_category_file_census_reachability: String =
+  "Cargo bin entry point from source (same class as carrier_realization_census); not a gunbc.ci_release_bins member."
+
 // Retires only when the std/v2 reference-derived host-closure carrier gains the
 // scoped capability below — not when a v1 infer_sigs/callable-supply repair greens.
 data host_closure_joined_qualified_path_gap_dissolve_on: DissolutionCondition =
