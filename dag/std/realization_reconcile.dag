@@ -113,24 +113,36 @@ type ReconciledEffect<P, E> sole_constructor {
   outcome: Reconciliation<Bool, E>
 }
 
-// WHAT STD CAN AND CANNOT POLICE, stated exactly so no consumer reads more into it.
+// WHAT THIS IS, STATED AT THE WEAKEST TRUE STRENGTH.
 //
-// `applied: Bool` was the hole: any caller could write `true`. Application replaces it, and its
-// Applied arm carries the plan actually performed plus a domain evidence value A. std cannot police
-// A's PROVENANCE — it is generic over A, so it cannot know how the value was made — but it can
-// require that one EXIST, which moves the obligation to the domain, where the evidence type can be
-// sealed. gunbc.typed_remote_file_write RemoteFileConverged is the worked example: sole_constructor,
-// its only producer the far-side cmp comparison, so a caller cannot conjure one. The guarantee is
-// therefore exactly as strong as the domain's evidence carrier and no stronger; a domain that passes
-// a freely-constructible A has a hole in the domain, not here.
+// This produces a RECONCILIATION REPORT. It is not proof that the decided plan was performed, and an
+// earlier revision of this module advertised exactly that. Two attempts to make it proof both failed
+// in the same way and the second failure is the instructive one.
 //
-// The plan join is CHECKED rather than assumed. plan_eq is the domain's own equality, and Apply's
-// success route requires the APPLIED plan to equal the DECIDED plan — otherwise an execution of plan
-// B discharges a decision carrying plan A, which is evidence that is real but not about this subject.
+// First `applied: Bool` -- any caller could write true. Replacing it with an Application carrying a
+// plan plus a `plan_eq` callback moved the untrusted Boolean rather than removing it: the same
+// caller supplied the decided plan, the performed plan AND the law deciding whether they matched, so
+// `plan_eq: (a, b) => true` minted convergence for Apply(A) beside Applied(B). A caller-supplied law
+// that LOOKS like a check is worse than no check, because a reader believes the join happened.
+//
+// And even an honest comparator would not have finished it: Applied { plan: a, evidence: for_b } is
+// openly constructible, a lawful comparator compares a with a, and nothing structurally witnesses
+// that the evidence AROSE from the plan beside it. Sealing the evidence type proves an authority
+// minted that VALUE; it does not prove an outside caller paired it with the right plan. The missing
+// thing is a sealed RELATION (decided plan <-> performed plan <-> evidence), and std cannot express
+// it without a law it would have to accept from the caller -- which is where this started.
+//
+// So std stops claiming it. Application carries evidence and no plan; there is no comparator; the
+// plan-to-evidence binding is the DOMAIN's obligation, discharged by a domain carrier that is minted
+// only by the authority that performed the effect. gunbc.typed_remote_file_write is the worked
+// example: RemoteFileConverged is sole_constructor, carries the content digest so it names the bytes
+// it is evidence for, and is reachable only through a mint admitted to the func that ran the four
+// steps. What std still does is refuse the contradictory lifecycles below, and derive grounding from
+// the post-apply observation rather than from anything asserted.
 
-type Application<P, A>
+type Application<A>
   = NotApplied
-  | Applied { plan: P, evidence: A }
+  | Applied { evidence: A }
 
 // Refuse and an unapplied Apply are NOT delegated to the grounding predicate. Passing them through
 // reconcile_grounded would let a caller that refused, then observed some unrelated satisfying state,
@@ -140,8 +152,7 @@ type Application<P, A>
 
 fn reconcile_effect<P, A, R, E>(
   decision: UpsertDecision<P>,
-  application: Application<P, A>,
-  plan_eq: fn(P, P) -> Bool,
+  application: Application<A>,
   show_read: ShowEffectiveRead<R>,
   grounding: Grounding<E>,
 ) -> ReconciledEffect<P, E> {
@@ -154,7 +165,7 @@ fn reconcile_effect<P, A, R, E>(
             applied: false,
             outcome: NotConverged { reason: why as String, applied: false },
           }
-        Applied { plan: _, evidence: _ } =>
+        Applied { evidence: _ } =>
           ReconciledEffect {
             decision: decision,
             applied: true,
@@ -172,7 +183,7 @@ fn reconcile_effect<P, A, R, E>(
             applied: false,
             outcome: reconcile_grounded(apply_effect: false, show_read: show_read, grounding: grounding),
           }
-        Applied { plan: _, evidence: _ } =>
+        Applied { evidence: _ } =>
           ReconciledEffect {
             decision: decision,
             applied: true,
@@ -182,7 +193,7 @@ fn reconcile_effect<P, A, R, E>(
             },
           }
       }
-    Apply { plan: decided } =>
+    Apply { plan: _ } =>
       match application {
         NotApplied =>
           ReconciledEffect {
@@ -193,22 +204,11 @@ fn reconcile_effect<P, A, R, E>(
               applied: false,
             },
           }
-        Applied { plan: performed, evidence: _ } =>
-          if plan_eq(decided, performed) {
-            ReconciledEffect {
-              decision: decision,
-              applied: true,
-              outcome: reconcile_grounded(apply_effect: true, show_read: show_read, grounding: grounding),
-            }
-          } else {
-            ReconciledEffect {
-              decision: decision,
-              applied: true,
-              outcome: NotConverged {
-                reason: "reconcile_effect: the applied plan is not the decided plan",
-                applied: true,
-              },
-            }
+        Applied { evidence: _ } =>
+          ReconciledEffect {
+            decision: decision,
+            applied: true,
+            outcome: reconcile_grounded(apply_effect: true, show_read: show_read, grounding: grounding),
           }
       }
   }
@@ -230,6 +230,12 @@ fn reconciled_effect_converged<P, E>(r: ReconciledEffect<P, E>) -> Bool {
 // The evidence is carried rather than dropped because a converged receipt whose observation is
 // discarded cannot answer WHAT it converged to — which is the join a domain consumer needs to
 // establish that this evidence is about its subject and not a neighbouring one.
+//
+// AND IT IS A GROUNDED REPORT, NOT A PERFORMANCE PROOF. ConvergedEffect says: this decision was
+// classified, an application was reported with evidence, and an INDEPENDENT observation grounded the
+// desired relation. It does NOT say the decided plan is the one that ran — std has no way to witness
+// that without a law supplied by the same caller it would be checking. A sink that needs performance
+// proof must demand its DOMAIN's sealed carrier, not this one.
 
 type ConvergedEffect<P, E> sole_constructor {
   decision: UpsertDecision<P>

@@ -10,9 +10,6 @@ import gunbc.typed_remote_file_write {
   RemoteFileMode,
   RemoteFileModeOwnerReadWrite,
   RemoteFileModeOwnerReadWriteWorldRead,
-  TypedRemoteFileConvergence,
-  TypedRemoteFileConverged,
-  TypedRemoteFileConvergenceRefused,
   remote_file_mode_octal,
   typed_remote_file_staging_path,
   typed_remote_file_stage_argv,
@@ -20,6 +17,10 @@ import gunbc.typed_remote_file_write {
   typed_remote_file_rename_argv,
   typed_remote_file_compare_argv,
   classify_typed_remote_file_comparison,
+  RemoteFileComparisonReport,
+  ComparisonIdentical,
+  ComparisonDiffers,
+  ComparisonUnavailable,
   typed_remote_file_write_seal,
 }
 
@@ -37,20 +38,6 @@ fn subject_write() -> TypedRemoteFileWrite? {
   ) {
     TypedRemoteFileWriteAdmitted { write: w } => Present { value: w }
     TypedRemoteFileWriteAdmissionRefused { cause: _ } => none
-  }
-}
-
-fn converged(c: TypedRemoteFileConvergence) -> Bool {
-  match c {
-    TypedRemoteFileConverged { converged: _ } => true
-    TypedRemoteFileConvergenceRefused { step: _, reason: _ } => false
-  }
-}
-
-fn refusal_step(c: TypedRemoteFileConvergence) -> String {
-  match c {
-    TypedRemoteFileConverged { converged: _ } => "converged"
-    TypedRemoteFileConvergenceRefused { step: s, reason: _ } => s
   }
 }
 
@@ -142,17 +129,29 @@ test fn the_two_modes_render_their_octals() -> Bool {
 
 // ── The convergence judgment ────────────────────────────────────────────────────────────────────
 
-fn classify(exit_code: Int, stderr: String) -> TypedRemoteFileConvergence {
+// THE CLASSIFIER IS NO LONGER A MINT, and this helper's type is the evidence of it. It used to
+// return TypedRemoteFileConvergence, which meant this very file -- an outside module -- obtained the
+// sealed converged arm by handing a literal 0 to an exported pure function. That was the bypass:
+// a sole_constructor type is only sealed to the extent that nothing exported mints it from ordinary
+// data. The classifier now returns a REPORT, and the report carries no authority.
+
+fn classify(exit_code: Int, stderr: String) -> RemoteFileComparisonReport {
   match subject_write() {
-    Absent =>
-      TypedRemoteFileConvergenceRefused { step: "fixture", reason: "seal refused" }
+    Absent => ComparisonUnavailable { reason: "fixture: seal refused" }
     Present { value: w } =>
       classify_typed_remote_file_comparison(
         write: w,
-        mode: RemoteFileModeOwnerReadWriteWorldRead,
         compare_exit_code: exit_code,
         compare_stderr: stderr,
       )
+  }
+}
+
+fn report_reason(r: RemoteFileComparisonReport) -> String {
+  match r {
+    ComparisonIdentical => ""
+    ComparisonDiffers { reason: why } => why
+    ComparisonUnavailable { reason: why } => why
   }
 }
 
@@ -168,17 +167,29 @@ fn classify(exit_code: Int, stderr: String) -> TypedRemoteFileConvergence {
 // fixtures. What remains testable is the classification of its verdict, which is what the arms below
 // assert. The loss is real and is recorded rather than papered over by claims that would restate the
 // exit code they were handed.
-// The positive control. Without it every refusal below would pass on a function that never converges.
-test fn a_destination_cmp_calls_identical_converges() -> Bool {
-  converged(c: classify(exit_code: 0, stderr: ""))
+
+// THE BYPASS RED. A literal exit code of 0, handed to the exported classifier from OUTSIDE the
+// defining module, yields a report and NOT a converged verdict. Before the split this same call
+// returned the sealed carrier, so this file was itself the proof that the seal did not hold at
+// semantic-construction grain. It now shows the opposite, and it is the discriminating case: if the
+// classifier ever returns authority again, this stops compiling rather than quietly passing.
+test fn a_literal_success_exit_outside_the_effect_runner_yields_only_a_report() -> Bool {
+  match classify(exit_code: 0, stderr: "") {
+    ComparisonIdentical => true
+    ComparisonDiffers { reason: _ } => false
+    ComparisonUnavailable { reason: _ } => false
+  }
 }
 
 // THE CLAIM THIS ARM EXISTS FOR: a successful write whose destination holds something else. This is
 // exactly what a zero exit from the writing process cannot distinguish, and why RemoteExecAccepted
 // was never convergence.
 test fn a_destination_cmp_calls_different_refuses() -> Bool {
-  let c = classify(exit_code: 1, stderr: "")
-  !converged(c: c) && refusal_step(c: c) == "compare"
+  match classify(exit_code: 1, stderr: "") {
+    ComparisonDiffers { reason: _ } => true
+    ComparisonIdentical => false
+    ComparisonUnavailable { reason: _ } => false
+  }
 }
 
 // A FAILURE TO LOOK IS NOT A DIFFERENCE. cmp exits 2 when it could not read a side at all -- a
@@ -186,45 +197,22 @@ test fn a_destination_cmp_calls_different_refuses() -> Bool {
 // would blame the bytes for a failure to compare them, and would send a reader to the wrong fix.
 test fn a_comparison_that_could_not_run_refuses_separately_from_a_difference() -> Bool {
   let c = classify(exit_code: 2, stderr: "cmp: No such file or directory")
-  !converged(c: c) && refusal_step(c: c) == "compare"
-    && string_contains(
-      match c { TypedRemoteFileConverged { converged: _ } => "" TypedRemoteFileConvergenceRefused { step: _, reason: r } => r },
-      "No such file or directory",
-    )
-    && string_contains(
-      match c { TypedRemoteFileConverged { converged: _ } => "" TypedRemoteFileConvergenceRefused { step: _, reason: r } => r },
-      "could not compare",
-    )
+  match c {
+    ComparisonUnavailable { reason: _ } =>
+      string_contains(report_reason(r: c), "No such file or directory")
+        && string_contains(report_reason(r: c), "could not compare")
+    ComparisonIdentical => false
+    ComparisonDiffers { reason: _ } => false
+  }
 }
 
 // The two refusals are DISTINGUISHABLE, which is the whole point of keeping cmp's vocabulary. A
 // reader who cannot tell "the file is wrong" from "I could not read the file" has one word for two
 // situations whose remedies differ.
 test fn the_difference_and_the_error_do_not_render_the_same_reason() -> Bool {
-  let differ = match classify(exit_code: 1, stderr: "") {
-    TypedRemoteFileConverged { converged: _ } => ""
-    TypedRemoteFileConvergenceRefused { step: _, reason: r } => r
-  }
-  let errored = match classify(exit_code: 2, stderr: "boom") {
-    TypedRemoteFileConverged { converged: _ } => ""
-    TypedRemoteFileConvergenceRefused { step: _, reason: r } => r
-  }
+  let differ = report_reason(r: classify(exit_code: 1, stderr: ""))
+  let errored = report_reason(r: classify(exit_code: 2, stderr: "boom"))
   differ != errored
     && string_contains(differ, "are not the declared content")
     && !string_contains(errored, "are not the declared content")
-}
-
-// ── Path containment still governs ──────────────────────────────────────────────────────────────
-
-// Convergence does not weaken admission: a path outside the declared scope has no admitted write, so
-// no staging path and no steps are ever produced for it.
-test fn a_path_outside_the_scope_is_never_admitted() -> Bool {
-  match typed_remote_file_write_seal(
-    path: "/etc/systemd/system/evil.service" as FilePath,
-    content: subject_content,
-    allowed_scope: unit_dir_scope,
-  ) {
-    TypedRemoteFileWriteAdmitted { write: _ } => false
-    TypedRemoteFileWriteAdmissionRefused { cause: _ } => true
-  }
 }

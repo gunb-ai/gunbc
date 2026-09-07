@@ -97,22 +97,40 @@ fn remote_file_mode_octal(mode: RemoteFileMode) -> String {
 // caller minting a refusal has declined to claim anything, which is always safe and is sometimes the
 // only honest thing a caller can say (spark.remote_step_sequence refuses before the write is even
 // attempted). A caller minting a CONVERGED verdict asserts that the declared bytes are at the
-// declared path, and nothing structural required it to have looked. This section's own authority
-// note says "FOUR STEPS, and the ORDER is the property" -- until now that order was a claim in prose
-// with no constructor enforcing it, so a fabricated TypedRemoteFileConverged was writable anywhere
-// in the corpus and would read as a completed convergence.
+// declared path, and nothing structural required it to have looked.
 //
-// RemoteFileConverged is sole_constructor, so classify_typed_remote_file_comparison is the only
-// producer, and it produces one only on cmp exit 0. The invalid state has no constructor rather than
-// being validated for (DESIGN 5, construction over validation). Same rung and same shape as
-// std.realization_reconcile ConvergedEffect, which is the generic authority this instantiates: the
-// framework owns "exit zero is not convergence", this module owns what an observation MEANS for a
-// remote file.
+// SEALING THE RECORD LITERAL WAS NOT ENOUGH, and this module's own witness was the proof. While
+// classify_typed_remote_file_comparison returned the sealed carrier, any importer could pass a
+// literal compare_exit_code of 0 and receive a converged verdict having executed nothing. The census
+// sentence "nothing outside the module constructs the converged arm" was true only at RECORD-LITERAL
+// grain; at semantic construction grain every importer of the classifier was a constructor. A
+// sole_constructor type behind an exported pure mint that accepts an ordinary Int is a public
+// constructor wearing a seal.
+//
+// So the pure JUDGMENT and the authority to MINT are now different things. The classifier returns
+// RemoteFileComparisonReport, which is ordinary data: freely constructible, carrying no authority,
+// safe for anyone to compute or test. Only remote_file_converged_from_report upgrades a report into
+// RemoteFileConverged, and it is admitted to exactly one caller -- converge_typed_remote_file, the
+// func that actually staged, chmod'd, renamed and ran the far-side cmp. The exit code reaching it
+// came from a process rather than from a literal.
+//
+// RemoteFileConverged also carries the CONTENT DIGEST rather than only path and mode.
+// TypedRemoteFileWrite carries path AND exact content, so evidence naming only the path left "these
+// exact bytes landed" resting on a caller-assembled pairing between the plan and its evidence.
+// Binding the digest into the sealed value makes the evidence name the bytes it is evidence FOR.
 
 type RemoteFileConverged sole_constructor {
   path: FilePath
   mode: RemoteFileMode
+  content_digest: String
 }
+
+// Ordinary data on purpose. A report is a judgment ABOUT AN EXIT CODE and nothing more; it asserts
+// no execution, so anyone may build one and nothing is lost when they do.
+type RemoteFileComparisonReport
+  = ComparisonIdentical
+  | ComparisonDiffers { reason: String }
+  | ComparisonUnavailable { reason: String }
 
 type TypedRemoteFileConvergence
   = TypedRemoteFileConverged { converged: RemoteFileConverged }
@@ -171,15 +189,13 @@ fn typed_remote_file_compare_argv(write: TypedRemoteFileWrite) -> List<String> {
 // the third as a difference would blame the content for a failure to look at it.
 fn classify_typed_remote_file_comparison(
   write: TypedRemoteFileWrite,
-  mode: RemoteFileMode,
   compare_exit_code: Int,
   compare_stderr: String,
-) -> TypedRemoteFileConvergence {
+) -> RemoteFileComparisonReport {
   if compare_exit_code == 0 {
-    TypedRemoteFileConverged { converged: RemoteFileConverged { path: write.path, mode: mode } }
+    ComparisonIdentical
   } else if compare_exit_code == 1 {
-    TypedRemoteFileConvergenceRefused {
-      step: "compare",
+    ComparisonDiffers {
       reason: join([
         "the bytes at ", write.path as String,
         " are not the declared content: the write reported success and the file is something else",
@@ -187,8 +203,7 @@ fn classify_typed_remote_file_comparison(
       ], ""),
     }
   } else {
-    TypedRemoteFileConvergenceRefused {
-      step: "compare",
+    ComparisonUnavailable {
       reason: join([
         "could not compare ", write.path as String,
         " against the declared content after rename: cmp exit=",
@@ -197,6 +212,44 @@ fn classify_typed_remote_file_comparison(
     }
   }
 }
+
+// THE MINT, and the admission list is the wall. Everything above this line is pure judgment that
+// anyone may compute; this is the only place a report becomes authority, and it is reachable only
+// from converge_typed_remote_file -- the func that performed the four steps and read a real exit
+// code off a process. An unadmitted caller is a ConstructorCallAdmissionRefused at compile time, so
+// the bypass this replaced (import the classifier, hand it a literal 0) has no spelling left.
+//
+// WHAT IS ENROLLED AND WHAT IS NOT, because the difference decides what this wall is worth.
+// ConstructorCallAdmissionRefused is a witnessed class: gunbc.guarantee_probe_corpus carries
+// sole_ctor_unadmitted_caller_red_probe expecting that refusal, with an admitted-caller green
+// control beside it. That fixture admits a caller in ANOTHER module. This mint admits one in its
+// OWN module, a configuration the enrolled fixture does not cover, so the same-module case rests on
+// the class rather than on a probe of its own. The behavioural half IS enrolled and executes:
+// a_literal_success_exit_outside_the_effect_runner_yields_only_a_report hands the exported
+// classifier a literal success exit from outside the module and receives a report, not authority.
+
+fn remote_file_converged_from_report(
+  write: TypedRemoteFileWrite,
+  mode: RemoteFileMode,
+  report: RemoteFileComparisonReport,
+) -> TypedRemoteFileConvergence
+  admit_callers: [
+    decl_ref(module_path: "gunbc.typed_remote_file_write", decl_name: "converge_typed_remote_file"),
+  ]
+  = match report {
+      ComparisonIdentical =>
+        TypedRemoteFileConverged {
+          converged: RemoteFileConverged {
+            path: write.path,
+            mode: mode,
+            content_digest: typed_remote_file_write_content_digest_hex(write: write),
+          },
+        }
+      ComparisonDiffers { reason: why } =>
+        TypedRemoteFileConvergenceRefused { step: "compare", reason: why }
+      ComparisonUnavailable { reason: why } =>
+        TypedRemoteFileConvergenceRefused { step: "compare", reason: why }
+    }
 
 data typed_remote_file_write_tee_command: String = "tee"
 
@@ -409,11 +462,14 @@ func converge_typed_remote_file(
                         reason: "remote argv refused as non-portable under the far-side shell re-parse allowlist",
                       }
                     Present { value: back } =>
-                      classify_typed_remote_file_comparison(
+                      remote_file_converged_from_report(
                         write: write,
                         mode: mode,
-                        compare_exit_code: back.exit_code,
-                        compare_stderr: back.stderr,
+                        report: classify_typed_remote_file_comparison(
+                          write: write,
+                          compare_exit_code: back.exit_code,
+                          compare_stderr: back.stderr,
+                        ),
                       )
                   }
               }
