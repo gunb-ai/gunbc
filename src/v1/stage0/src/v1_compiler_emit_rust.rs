@@ -10531,7 +10531,7 @@ pub fn collect_filter_method_calls(
                 method_semantics: method_semantics,
                 ..
             } => {
-                if is_algebra_filter_method(method_semantics, source_indices.clone()) {
+                if is_algebra_filter_method(method_semantics.clone(), source_indices.clone()) {
                     Rc::new(vec![n.clone()])
                 } else {
                     Rc::new(vec![])
