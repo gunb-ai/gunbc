@@ -133,11 +133,28 @@ type OperatorGrant<Subject> {
 // std.durable_compare_and_set, whose losing arm IS the concurrent-claim refusal. AuthorizationConsumed
 // is gone rather than kept alongside CompletedBy, because two spellings of one fact is the fork this
 // module exists to remove.
+// DENIAL IS A THIRD STATE, NOT THE ABSENCE OF THE SECOND. An operator who reads the request and
+// says no has produced a DECISION; a request nobody has answered yet has not. Collapsing them
+// leaves the workflow with one observation -- "not granted" -- which it answers by asking again,
+// so a deny becomes a re-notification loop and the operator is asked the same question until they
+// give in. That is the fail-open arm of a consent mechanism: the only durable outcome is yes.
+//
+// So AuthorizationDenied is terminal for its escalation. Nothing here re-opens it; a new decision
+// needs a new escalation id, which is what makes "ask me again" a deliberate act with its own
+// audit row rather than a retry. denied_by and denied_at carry who and when for the same reason
+// OperatorGrant does, and `reason` is REQUIRED for the same reason `purpose` is required on the
+// request: a refusal that cannot say why is not an answer the requester can act on.
 type ScopedAuthorization<Subject>
   = AuthorizationPending { request: AuthorizationRequest<Subject> }
   | AuthorizationGranted {
       grant: OperatorGrant<Subject>
       claim: AuthorizationClaimState
+    }
+  | AuthorizationDenied {
+      escalation_id: NonEmptyStr
+      denied_by: NonEmptyStr
+      denied_at: Timestamp
+      reason: NonEmptyStr
     }
 
 // The claim lifecycle of ONE grant. AbortedBy is a distinct terminal from CompletedBy because the
@@ -169,6 +186,12 @@ type AuthorizationRefusalCause
   | AuthorizationAttemptMismatch { requested: AttemptIdentity, granted: AttemptIdentity }
   | AuthorizationIntentMismatch { requested: ContentHash, granted: ContentHash }
   | AuthorizationIntentIncomparable { requested: ContentHash, granted: ContentHash }
+  | AuthorizationDeniedByOperator {
+      escalation_id: NonEmptyStr
+      denied_by: NonEmptyStr
+      denied_at: Timestamp
+      reason: NonEmptyStr
+    }
 
 type AuthorizationDecision<Subject>
   = AuthorizationPermitted { grant: OperatorGrant<Subject> }
@@ -323,6 +346,15 @@ fn authorize<Subject>(
     AuthorizationPending { request: _ } =>
       AuthorizationRefused {
         cause: AuthorizationNotGranted { escalation_id: request.escalation_id },
+      }
+    AuthorizationDenied { escalation_id: eid, denied_by: who, denied_at: when, reason: why } =>
+      AuthorizationRefused {
+        cause: AuthorizationDeniedByOperator {
+          escalation_id: eid,
+          denied_by: who,
+          denied_at: when,
+          reason: why,
+        },
       }
     AuthorizationGranted { grant: grant, claim: claim } =>
       match claim {
@@ -527,5 +559,16 @@ fn authorization_refusal_reason(cause: AuthorizationRefusalCause) -> String {
       concat("operator authorization issued for a different planned action: requested intent ", concat(serialize_content_hash(hash: req) as String, concat(", granted intent ", serialize_content_hash(hash: got) as String)))
     AuthorizationIntentIncomparable { requested: req, granted: got } =>
       concat("operator authorization intent hash is cross-family incomparable: requested ", concat(serialize_content_hash(hash: req) as String, concat(", granted ", serialize_content_hash(hash: got) as String)))
+    AuthorizationDeniedByOperator { escalation_id: id, denied_by: who, denied_at: when, reason: why } =>
+      concat(
+        "operator DENIED escalation ",
+        concat(
+          id as String,
+          concat(
+            " at ",
+            concat(when, concat(" by ", concat(who as String, concat(": ", why as String)))),
+          ),
+        ),
+      )
   }
 }
