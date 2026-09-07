@@ -137,15 +137,28 @@ test fn an_unrelated_pool_member_refuses_the_declaring_modules_own_if_join() -> 
   if_join_refused_at_the_branch_join(o: if_join_with_collision_outcome())
 }
 
+// A THIRD ARM STOOD HERE AND WAS DELETED AS A DECORATION, recorded rather than silently removed
+// because the reasoning is the same one this whole fixture exists to demonstrate (review 61981).
+//
+// `the_verdict_flips_on_pool_membership_alone` asserted
+// `refused(with) != refused(without)`. Its RED IS UNAUTHORABLE while its two neighbours are green,
+// and that follows from the outcome type rather than from any tree: arm 2 green means the without
+// outcome is `FixtureCompileCompleted`, and `if_join_refused_at_the_branch_join` answers false on
+// that constructor by construction. So with arm 1 green the third arm is `true != false` on every
+// tree where its siblings hold, and on every tree where they do not, one of THEM reds first. It
+// could never be the arm that discovered anything.
+//
+// THE JUSTIFICATION WRITTEN ABOVE IT NAMED THE ONE IMPOSSIBLE CASE: "a future tree in which both
+// arms happen to agree cannot leave this file green". If the two arms agreed, arm 1 or arm 2 is
+// already red by construction -- the state it claimed to guard against cannot be reached. That is
+// DESIGN section 4b's question asked too late: whether the RED is authorable is decidable BEFORE
+// the check is written, and a rostered identity on the required floor is priced per run.
+//
+// The flip is not lost with it. Arms 1 and 2 assert it between them, each with a LOCATED subject --
+// one pins the specific if-join diagnostic, the other pins clean completion -- so a failure says
+// which side moved, which the single combined proposition could not.
+//
 // THE SAME BYTES, WITHOUT THE POOL MEMBER, COMPILE CLEAN.
 test fn the_same_declaring_module_compiles_clean_without_the_pool_member() -> Bool {
   if_join_completed_clean(o: if_join_without_collision_outcome())
-}
-
-// THE INVARIANCE STATED AS ONE PROPOSITION RATHER THAN AS TWO NEIGHBOURING FACTS. Read together the
-// two arms above say the verdict FLIPPED; asserted here as a single claim so that a future tree in
-// which both arms happen to agree cannot leave this file green with its subject dissolved.
-test fn the_verdict_flips_on_pool_membership_alone() -> Bool {
-  if_join_refused_at_the_branch_join(o: if_join_with_collision_outcome())
-    != if_join_refused_at_the_branch_join(o: if_join_without_collision_outcome())
 }

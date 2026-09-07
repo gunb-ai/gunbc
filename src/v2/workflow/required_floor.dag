@@ -536,8 +536,11 @@ fn fixture_home_prefixes() -> List<String> {
 // DESIGN section 4b rates worse than an absent check.
 //
 // PRICE, and it is stated because this roster's own rule is that a row is a wall-clock decision.
-// The module holds FOUR identities. Measured locally through `claim_batch --entry` on this branch:
-// one resolve of the entry at 687ms wall, and all four witnesses folding in 27ms wall together
+// The module holds THREE identities -- it held four, and the fourth was deleted as a decoration
+// whose RED was unauthorable while its two neighbours were green (review 61981; the reasoning is
+// recorded in the witness file itself, above the arm it used to follow). Measured locally through
+// `claim_batch --entry` on this branch at the four-identity size: one resolve of the entry at
+// 687ms wall, and the witnesses folding in 27ms wall together
 // (the two subject arms each run a nested compile of a two- or three-module manifest with no
 // corpus roots, so the nested compiles are denominated in the fixture and not in the corpus).
 // Preparation growth is this module's import closure: `tools.multi_module_compile_fixture`, which
