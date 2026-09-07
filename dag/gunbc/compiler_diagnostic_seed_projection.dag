@@ -1,5 +1,6 @@
 module gunbc.compiler_diagnostic_seed_projection
 
+import gunbc.capability_origin { CapabilityOrigin, ModeledCapability, NoNewCapability }
 import gunbc.roadmap_model { RoadmapNodeId }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { List, NonEmptyStr, String }
@@ -88,13 +89,34 @@ fn compiler_diagnostic_dag_authority() -> DeclarationRef {
 // SURFACES that could live in .dag and therefore do owe a schedule. That distinction was the old
 // row's opening argument and is the reason this is a disposition rather than a
 // SeedGrowthJustification: nothing is ADDED to the seed, an existing item is MODIFIED.
+// THE SHAPE OF THE CHANGE IS A TYPED FIELD, NOT A SENTENCE AND NOT A CONSTANT. It was both until
+// this revision: `anchor_paragraph` spelled "originates no capability" in English while
+// `anchor_disposition` in the sibling constructed `NoNewCapability` independently, so the rendered
+// receipt and the typed disposition asserted one fact twice with nothing joining them -- a fork of
+// exactly the kind this migration exists to remove, rebuilt inside the migration. Both are now
+// TOTAL MATCHES over this closed shape, so a future anchor whose change is a different shape
+// cannot render one claim and dispose as another: neither match compiles until both are extended.
 type CoproductProjectionAnchor {
   item: DeclarationRef
+  origin: CapabilityOrigin
   boundary: NonEmptyStr
+}
+
+// NO NEW SHAPE TYPE IS MINTED HERE, AND THE FIRST ATTEMPT AT THIS REPAIR DID MINT ONE. A fresh
+// AnchorChangeShape whose sole variant meant "modified, no new capability" would have been a second
+// authority for a distinction gunbc.capability_origin CapabilityOrigin already owns -- section 2's
+// test is that net concepts must not grow by re-invention, and a decomposition that mints a fresh
+// authority for an existing concept is a failed decomposition. The anchor carries the existing type.
+fn anchor_origin_clause(o: CapabilityOrigin) -> String {
+  match o {
+    NoNewCapability => "is MODIFIED, never added, and originates no capability",
+    ModeledCapability { origin: _ } => "is MODIFIED and ORIGINATES CAPABILITY, which this receipt does not admit"
+  }
 }
 
 data compiler_diagnostic_seed_projection_anchors: List<CoproductProjectionAnchor> = [
   CoproductProjectionAnchor {
+    origin: NoNewCapability,
     item: DeclarationRef {
       module_path: "v1_compiler.cli_run.compile_clean" as NonEmptyStr,
       decl_name: "compile_clean_diagnostic_histogram_key" as NonEmptyStr,
@@ -216,7 +238,7 @@ fn anchor_paragraph(a: CoproductProjectionAnchor) -> String {
   concat(
     concat(
       concat("**Seed disposition — `", anchor_item_key(a: a)),
-      concat("` is MODIFIED, never added, and originates no capability.** Extending `", concat(compiler_diagnostic_dag_authority().module_path, concat(" ", compiler_diagnostic_dag_authority().decl_name)))
+      concat(concat("` ", concat(anchor_origin_clause(o: a.origin), ".** Extending `")), concat(compiler_diagnostic_dag_authority().module_path, concat(" ", compiler_diagnostic_dag_authority().decl_name)))
     ),
     concat("` forces the arms; without them the seed does not compile, so they are the mechanical consequence of the `.dag` change rather than host capability chosen in Rust. BOUNDARY: ", a.boundary)
   )

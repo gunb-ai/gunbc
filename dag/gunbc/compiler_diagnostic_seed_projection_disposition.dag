@@ -35,11 +35,16 @@ import v2.std.algebra { fold_list, length, list_append, list_map }
 // justification would have inflated the addition census by an item nobody added.
 data compiler_diagnostic_seed_projection_dispositions: List<SeedGrowthChangeDisposition> = list_map(xs: compiler_diagnostic_seed_projection_anchors, f: anchor_disposition)
 
+// THE OTHER HALF OF THE JOIN. This match and `anchor_shape_clause` in the leaf are both TOTAL over
+// AnchorChangeShape, so the sentence the receipt RENDERS and the CapabilityOrigin it DISPOSES are
+// two projections of one field rather than two independent assertions. This function used to
+// construct NoNewCapability as a constant while the leaf spelled the same fact in English; either
+// could have been edited alone and nothing would have refused.
 fn anchor_disposition(a: CoproductProjectionAnchor) -> SeedGrowthChangeDisposition {
   ExistingSeedItemModified {
     item: a.item,
     dag_authority: compiler_diagnostic_dag_authority(),
-    capability_origin: NoNewCapability,
+    capability_origin: a.origin,
     current_boundary: a.boundary as String
   }
 }
