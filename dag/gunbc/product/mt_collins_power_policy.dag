@@ -1,7 +1,7 @@
 module product.mt_collins_power_policy
 
-import std.types { Bool, Int, List, NonEmptyStr }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.types { List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.pareto { HigherIsBetter }
 import extdeps.external_authority { CeilingCitedToAuthority, CeilingTranscribedUncited }
 import extdeps.cpu.ampere { ampere_altra_classic_rev_a1_datasheet_authority }
@@ -24,17 +24,11 @@ import std.decision {
   mint_settled_policy,
   accept_settled_policy,
   SettledPolicyAcceptance,
-  SettledPolicyAccepted,
-  SettledPolicyRejectedDeferred,
-  SettledPolicyRejectedRefused,
-  required_sensitivity_cells,
   PhysicalModelPopulation,
   PhysicalModelEstablished,
   PhysicalModelUnestablished,
   CausalModelPopulation,
   CausalModelUnestablished,
-  term_set_join,
-  ObjectiveUnderModeled,
 }
 
 // FIRST CONSUMER OF std.decision: fleet operating-point selection, Deferred/NeedsEvidence.
@@ -242,18 +236,6 @@ fn mt_collins_physical_model_with_fan() -> List<DeclarationRef> {
   )
 }
 
-fn mt_collins_fan_power_under_modeling() -> Bool {
-  match term_set_join(
-    terms: mt_collins_physical_model_with_fan(),
-    objective: objective_max_capacity_under_site_power,
-    subject: mt_collins_power_policy_subject.identity,
-  ) {
-    ObjectiveUnderModeled { subject: _, missing_from_objective: missing } =>
-      any(missing, id => declaration_ref_eq(a: id, b: term_fan_power.identity))
-    _ => false
-  }
-}
-
 fn mt_collins_causal_model() -> CausalModelPopulation {
   CausalModelUnestablished {
     subject: mt_collins_power_policy_subject.identity,
@@ -278,18 +260,6 @@ fn mt_collins_power_policy_standing() -> DecisionStanding {
   mint_settled_policy(assessment: mt_collins_power_assessment())
 }
 
-fn mt_collins_power_policy_is_deferred() -> Bool {
-  match mt_collins_power_policy_acceptance() {
-    SettledPolicyRejectedDeferred { obligations: _, reopen_trigger: _ } => true
-    SettledPolicyAccepted { policy: _ } => false
-    SettledPolicyRejectedRefused { cause: _ } => false
-  }
-}
-
 fn mt_collins_power_policy_acceptance() -> SettledPolicyAcceptance {
   accept_settled_policy(standing: mt_collins_power_policy_standing())
-}
-
-fn mt_collins_required_cell_count() -> Int {
-  required_sensitivity_cells(subject: mt_collins_power_policy_subject) |> count
 }

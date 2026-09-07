@@ -5,15 +5,14 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.decl_ref { declaration_ref_eq }
 import product.mt_collins_power_policy {
   mt_collins_power_policy_standing,
-  mt_collins_power_policy_is_deferred,
-  mt_collins_required_cell_count,
-  mt_collins_fan_power_under_modeling,
   obligation_memory_population_unread,
   obligation_bmc_power_cap_sweep,
   mt_collins_power_policy_subject,
+  mt_collins_physical_model_with_fan,
   objective_max_capacity_under_site_power,
   term_platform_power,
   term_service_capacity,
+  term_fan_power,
   var_socket_power_cap,
   var_powered_chassis_count,
 }
@@ -22,10 +21,18 @@ import std.decision {
   Settled,
   DecisionRefused,
   required_sensitivity_cells,
+  term_set_join,
+  TermSetsJoinComplete,
+  ObjectiveUnderModeled,
+  ObjectiveDeclaresUnwarrantedTerms,
 }
 
 test fn mt_collins_power_policy_standing_is_deferred() -> Bool {
-  mt_collins_power_policy_is_deferred()
+  match mt_collins_power_policy_standing() {
+    Deferred { obligations: _, reopen_trigger: _ } => true
+    Settled { policy: _ } => false
+    DecisionRefused { cause: _ } => false
+  }
 }
 
 test fn mt_collins_joins_memory_unread_and_bmc_sweep_obligations() -> Bool {
@@ -49,17 +56,39 @@ test fn mt_collins_objective_is_one_structural_measure() -> Bool {
 
 test fn mt_collins_required_cells_cover_both_variables_and_both_terms() -> Bool {
   let cells = required_sensitivity_cells(subject: mt_collins_power_policy_subject)
-  mt_collins_required_cell_count() == 4
-    && any(
-      cells,
-      c => declaration_ref_eq(a: c.variable, b: var_powered_chassis_count.identity)
-        && declaration_ref_eq(a: c.term, b: term_platform_power.identity),
-    )
+  any(
+    cells,
+    c => declaration_ref_eq(a: c.variable, b: var_powered_chassis_count.identity)
+      && declaration_ref_eq(a: c.term, b: term_platform_power.identity),
+  )
     && any(
       cells,
       c => declaration_ref_eq(a: c.variable, b: var_socket_power_cap.identity)
         && declaration_ref_eq(a: c.term, b: term_service_capacity.identity),
     )
+    && any(
+      cells,
+      c => declaration_ref_eq(a: c.variable, b: var_powered_chassis_count.identity)
+        && declaration_ref_eq(a: c.term, b: term_service_capacity.identity),
+    )
+    && any(
+      cells,
+      c => declaration_ref_eq(a: c.variable, b: var_socket_power_cap.identity)
+        && declaration_ref_eq(a: c.term, b: term_platform_power.identity),
+    )
+}
+
+test fn mt_collins_fan_power_is_objective_under_modeling() -> Bool {
+  match term_set_join(
+    terms: mt_collins_physical_model_with_fan(),
+    objective: objective_max_capacity_under_site_power,
+    subject: mt_collins_power_policy_subject.identity,
+  ) {
+    ObjectiveUnderModeled { subject: _, missing_from_objective: missing } =>
+      any(missing, id => declaration_ref_eq(a: id, b: term_fan_power.identity))
+    TermSetsJoinComplete => false
+    ObjectiveDeclaresUnwarrantedTerms { subject: _, extras: _ } => false
+  }
 }
 
 fn mt_collins_power_policy_witness_main() -> ProcessExit {
@@ -68,7 +97,7 @@ fn mt_collins_power_policy_witness_main() -> ProcessExit {
       && mt_collins_joins_memory_unread_and_bmc_sweep_obligations()
       && mt_collins_objective_is_one_structural_measure()
       && mt_collins_required_cells_cover_both_variables_and_both_terms()
-      && mt_collins_fan_power_under_modeling()
+      && mt_collins_fan_power_is_objective_under_modeling()
   if all_pass {
     ExitSuccess
   } else {
