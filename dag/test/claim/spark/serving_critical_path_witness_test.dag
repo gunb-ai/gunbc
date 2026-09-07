@@ -9,7 +9,8 @@ import gunbc.spark.serving_critical_path {
   SaturationClaim, GpuComputeSaturated, GpuComputeUnderutilised,
   ClaimConstruction, ClaimConstructible, ClaimNotConstructible,
   busy_fraction_constructs, power_below_ceiling_excludes_saturation,
-  EffectiveBatchBudget, BatchBudgetAtLeast, BatchBudgetExact, BatchBudgetUnobserved,
+  EffectiveBatchBudget, BehaviouralPerIterationCapacityAtLeast, ConfiguredSchedulerBudgetRead,
+  ConfiguredSchedulerBudgetUnread,
   spark_group_a_effective_batch_budget,
   EffectiveSchedulerConfigStanding, EffectiveSchedulerConfigRead, EffectiveSchedulerConfigUnread,
   ConcurrencyWitness, co_tenant_present,
@@ -21,7 +22,9 @@ import gunbc.spark.serving_critical_path {
   FitArm, ArrivedIdle, ArrivedWithCoTenant, sample_in_arm, arm_samples,
   AffineFit, PrefillScalingStanding, AffineDescription, ScalingUnderObserved,
   arm_fit, predicted_micros, abs_int, arm_worst_residual_micros,
-  CoTenantCostDecomposition, co_tenant_cost,
+  SharedMinusIdleFitContrast, shared_minus_idle_contrast,
+  ServingCostSubject, PrefillSelfCost, CoTenantExternality,
+  PolicyLeverage, OuterPolicyCanAddress, RequiresInnerExecutionChange, policy_leverage,
   PerStepCostStanding, PerStepCostBounded, PerStepCostNotSeparable,
   spark_group_a_per_step_cost_standing,
   BudgetTradeStanding, BudgetTradeUnestablished, spark_group_a_budget_trade,
@@ -78,9 +81,9 @@ test fn no_idle_window_chunks_anywhere_in_the_measured_range() -> Bool {
     && length(filter(idle, s => s.computed_tokens == 20082)) == 1
     && length(filter(idle, s => s.computed_tokens > 20082)) == 0
     && (match spark_group_a_effective_batch_budget {
-          BatchBudgetAtLeast { tokens: t, by: _ } => t == 20082
-          BatchBudgetExact { tokens: _, source: _ } => false
-          BatchBudgetUnobserved { because: _ } => false
+          BehaviouralPerIterationCapacityAtLeast { computed_tokens: t, by: _ } => t == 20082
+          ConfiguredSchedulerBudgetRead { tokens: _, source: _ } => false
+          ConfiguredSchedulerBudgetUnread { because: _ } => false
         })
 }
 
@@ -106,25 +109,41 @@ test fn co_tenancy_is_read_from_the_field_rather_than_assumed() -> Bool {
          match sample_standing(s: s) { ForeignCachedBookingObserved { cached_tokens: c } => c > 100000  _ => false })) == 1
 }
 
-// THE ARMS ARE FITTED SEPARATELY AND THE MARGINAL RATE IS INVARIANT BETWEEN THEM. This is the
-// finding: within half a percent, a co-tenant does not slow per-token work at all.
-test fn the_marginal_rate_is_invariant_to_co_tenancy() -> Bool {
-  match co_tenant_cost() {
+// THE ARMS AGREE ON THE MARGINAL RATE TO WITHIN A FEW PERCENT, and the difference is not resolved in
+// sign -- the idle slope estimate moves across that band depending on which idle subset is fitted. So
+// the tolerance here is the claim: moderate co-tenancy did not materially change per-token cost.
+// Asserting a tighter band would assert a resolution the samples do not have.
+test fn the_arms_agree_on_the_marginal_rate_within_a_few_percent() -> Bool {
+  match shared_minus_idle_contrast() {
     Absent => false
     Present { value: c } =>
-      c.marginal_percent_change <= 2
-        && c.marginal_percent_change >= (0 - 2)
+      c.marginal_percent_difference <= 4
+        && c.marginal_percent_difference >= (0 - 4)
         && c.at_observed_concurrency == 2
   }
 }
 
-// AND THE ENTIRE CO-TENANT COST LANDS IN THE FIXED PER-REQUEST TERM, which roughly triples. That is
-// a scheduling cost, and it is the only part admission and routing can recover.
-test fn the_whole_co_tenant_cost_is_a_fixed_per_request_term() -> Bool {
-  match co_tenant_cost() {
+// THE INTERCEPT DIFFERENCE IS LARGER AND SURVIVES RANGE MATCHING, but it is a contrast between two
+// FITTED intercepts and is not named a co-tenant cost.
+test fn the_intercept_contrast_is_carried_as_a_fit_contrast_not_a_cost() -> Bool {
+  match shared_minus_idle_contrast() {
     Absent => false
-    Present { value: c } => c.fixed_micros_added > 60000 && c.fixed_micros_added < 220000
+    Present { value: c } => c.intercept_difference_micros > 100000 && c.intercept_difference_micros < 260000
   }
+}
+
+// SELF-COST AND EXTERNALITY ARE DIFFERENT SUBJECTS WITH OPPOSITE POLICY ANSWERS. This is the
+// discriminator against the reading that outer layers "recover the fixed term and nothing else":
+// that conflated the two and argued against the most useful relief available.
+test fn policy_leverage_differs_between_self_cost_and_externality() -> Bool {
+  (match policy_leverage(subject: PrefillSelfCost) {
+     RequiresInnerExecutionChange { by: b } => string_contains(s: b as String, pattern: "only the execution layers")
+     OuterPolicyCanAddress { by: _ } => false
+   })
+    && (match policy_leverage(subject: CoTenantExternality) {
+          OuterPolicyCanAddress { by: b } => string_contains(s: b as String, pattern: "3.8s against 63.5s")
+          RequiresInnerExecutionChange { by: _ } => false
+        })
 }
 
 // THE IDLE FIT IS DERIVED AND TIGHT ACROSS A 39x TOKEN RANGE. The slope is a least squares projection
@@ -172,11 +191,11 @@ test fn the_proportional_mechanisms_remain_unresolved() -> Bool {
     && (match cold_prefill_mechanism_standing(m: CollectiveSynchronisationWait) { Unresolved { needs: _ } => true  _ => false })
     && (match cold_prefill_mechanism_standing(m: MemoryOrKernelEfficiency) { Unresolved { needs: _ } => true  _ => false })
     && (match cold_prefill_mechanism_standing(m: FixedPerRequestCost) {
-          Observed { by: b } => string_contains(s: b as String, pattern: "not a per-STEP cost")
+          Unresolved { needs: b } => string_contains(s: b as String, pattern: "INTERCEPT ESTIMATES")
           _ => false
         })
     && (match cold_prefill_mechanism_standing(m: CoTenantDelay) {
-          Observed { by: b } => string_contains(s: b as String, pattern: "nothing per token")
+          Observed { by: b } => string_contains(s: b as String, pattern: "matched treatment and control")
           _ => false
         })
 }

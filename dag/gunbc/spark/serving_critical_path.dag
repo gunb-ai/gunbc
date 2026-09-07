@@ -122,13 +122,18 @@ fn power_below_ceiling_excludes_saturation() -> ClaimConstruction {
 // No chunking occurs anywhere below 20,082 computed tokens. The budget is therefore at least that,
 // which is an order of magnitude above the 2048 that three separate conclusions rested on, and well
 // above the 8192 that the larger-memory default would have selected.
+// TWO FACTS, NOT ONE. What was measured is a floor on the work one iteration CARRIED; the configured
+// value may be higher, and max_num_batched_tokens may not even be the immediately governing quantity
+// -- a scheduled-token law or another runtime rule could bind first. Collapsing the observation into
+// a configuration readback would launder behaviour into config, which is the same move that turned
+// 158,764/83 into a scheduler budget.
 type EffectiveBatchBudget
-  = BatchBudgetAtLeast { tokens: Nat, by: NonEmptyStr }
-  | BatchBudgetExact { tokens: Nat, source: NonEmptyStr }
-  | BatchBudgetUnobserved { because: NonEmptyStr }
+  = BehaviouralPerIterationCapacityAtLeast { computed_tokens: Nat, by: NonEmptyStr }
+  | ConfiguredSchedulerBudgetRead { tokens: Nat, source: NonEmptyStr }
+  | ConfiguredSchedulerBudgetUnread { because: NonEmptyStr }
 
-data spark_group_a_effective_batch_budget: EffectiveBatchBudget = BatchBudgetAtLeast {
-  tokens: 20082,
+data spark_group_a_effective_batch_budget: EffectiveBatchBudget = BehaviouralPerIterationCapacityAtLeast {
+  computed_tokens: 20082,
   by: "on an idle engine, where the engine-wide iteration counter is the per-request step count, a single 20,082-computed-token request completed in one iteration; no chunking was observed at any size probed from 512 upward" as NonEmptyStr,
 }
 
@@ -355,30 +360,65 @@ fn arm_worst_residual_micros(arm: FitArm, fit: AffineFit) -> Int {
 //     arrived idle   12   ~0.08s     ~1.055 ms/token   ~0.09s
 //     co-tenant       9   ~0.26s     ~1.032 ms/token   ~0.30s
 //
-// THE MARGINAL RATE IS INVARIANT. Within half a percent, a co-tenant does not slow the per-token
-// work at all. The entire cost of co-tenancy lands in the FIXED per-request term, which roughly
-// triples. That is a scheduling and queueing cost, not an execution one.
+// THE MARGINAL RATE AGREES ACROSS THE ARMS to within about three percent, and the difference is not
+// resolved even in SIGN: the idle slope estimate moves between 1.026 and 1.057 microseconds per token
+// depending on which idle subset is fitted, spanning the co-tenant arm's 1.032. So the honest claim
+// is that moderate co-tenancy did not materially change the per-token cost, not that it changed it by
+// a measured amount in a measured direction.
 //
-// The consequence is the sharpest thing this investigation has produced, and it is a limit as much as
-// a finding: admission and routing -- the layers we own outright -- can recover the fixed term and
-// nothing else. At 158,000 tokens the proportional term alone is about 167 seconds, and no amount of
-// isolating that work makes it smaller. Only the inner execution layers can.
-type CoTenantCostDecomposition {
-  fixed_micros_added: Int
-  marginal_percent_change: Int
+// The intercept difference is larger and robust to range matching. What it is NOT is a measurement of
+// what a co-tenant costs.
+//
+// ── TWO DIFFERENT SUBJECTS, AND CONFLATING THEM POINTS THE OPERATOR THE WRONG WAY ─────────────
+//
+// SELF-COST is what this experiment measures: what a cold prefill costs ITSELF, idle versus beside a
+// co-tenant. On that subject the proportional term dominates and outer policy cannot reduce it -- no
+// routing decision makes 20,082 tokens of execution cheaper than about 21 seconds.
+//
+// EXTERNALITY is a different subject entirely: what that execution costs OTHER requests. It is not
+// bounded by the self-cost contrast and is far larger -- a controlled decode-alone versus
+// decode-beside-prefill comparison measured 3.8s against 63.5s. That is the number a user feels, and
+// it is exactly what admission and routing can address: send a cold prefill to an idle replica,
+// reserve a replica for interactive decode, defer a new cold prefill while both heads carry decoders,
+// separate the workload classes.
+//
+// An earlier reading of this module's own result said outer layers could recover the fixed term "and
+// nothing else". That conflated the two subjects and would have argued AGAINST the most immediately
+// useful relief available. The correct statement is narrower and points the other way: outer layers
+// cannot make the expensive step cheap, and they can decide who is exposed to it.
+type ServingCostSubject
+  = PrefillSelfCost
+  | CoTenantExternality
+
+type PolicyLeverage
+  = OuterPolicyCanAddress { by: NonEmptyStr }
+  | RequiresInnerExecutionChange { by: NonEmptyStr }
+
+fn policy_leverage(subject: ServingCostSubject) -> PolicyLeverage {
+  match subject {
+    PrefillSelfCost =>
+      RequiresInnerExecutionChange { by: "the cost is proportional to computed tokens at about 1.03 microseconds per token and holds on an idle engine, so no admission, routing or batching decision outside the engine reduces it; only the execution layers can" as NonEmptyStr }
+    CoTenantExternality =>
+      OuterPolicyCanAddress { by: "a controlled decode-alone versus decode-beside-prefill comparison measured 3.8s against 63.5s, so the latency a co-tenant suffers is far larger than anything in the self-cost contrast and is addressable by placement, reservation, deferral and workload-class separation" as NonEmptyStr }
+  }
+}
+
+type SharedMinusIdleFitContrast {
+  intercept_difference_micros: Int
+  marginal_percent_difference: Int
   at_observed_concurrency: Nat
 }
 
-fn co_tenant_cost() -> CoTenantCostDecomposition? {
+fn shared_minus_idle_contrast() -> SharedMinusIdleFitContrast? {
   match arm_fit(ArrivedIdle) {
     ScalingUnderObserved { cause: _ } => none
     AffineDescription { fit: i } =>
       match arm_fit(ArrivedWithCoTenant) {
         ScalingUnderObserved { cause: _ } => none
         AffineDescription { fit: b } =>
-          Present { value: CoTenantCostDecomposition {
-            fixed_micros_added: b.intercept_micros - i.intercept_micros,
-            marginal_percent_change: ((b.micros_per_thousand_tokens - i.micros_per_thousand_tokens) * 100) / i.micros_per_thousand_tokens,
+          Present { value: SharedMinusIdleFitContrast {
+            intercept_difference_micros: b.intercept_micros - i.intercept_micros,
+            marginal_percent_difference: ((b.micros_per_thousand_tokens - i.micros_per_thousand_tokens) * 100) / i.micros_per_thousand_tokens,
             at_observed_concurrency: 2,
           } }
       }
@@ -460,7 +500,7 @@ fn cold_prefill_mechanism_standing(m: CriticalPathMechanism) -> MechanismStandin
     BulkInterconnectBandwidth =>
       NotObservedAtThisGrain { by: "7.8 Gb/s sustained on a 50 Gb/s link, and about 9.8 Gb/s within a step; bulk saturation is not present, which does not speak to latency" as NonEmptyStr }
     FixedPerRequestCost =>
-      Observed { by: "about 0.08s per request on an idle engine, rising to about 0.26s when a co-tenant is present; measured as the intercept of each arm's fit, and the only term co-tenancy moves. It is not a per-STEP cost: every idle window in range ran in one step, so the two are not separable here" as NonEmptyStr }
+      Unresolved { needs: "a direct measurement of the fixed-only path; about 0.08s idle and 0.26s beside a co-tenant are affine INTERCEPT ESTIMATES, which absorb request setup, tokenizer and API overhead, fixed model-runner work, measurement-boundary bias and any curvature the affine form cannot carry. It is also not a per-STEP cost: every idle window in range ran in one step, so the two are not separable here" as NonEmptyStr }
     TokenProportionalCompute =>
       Unresolved { needs: "compute-kernel span attribution; token proportionality alone does not distinguish model compute from collective payload, and package power does not either" as NonEmptyStr }
     TokenProportionalCollectivePayload =>
@@ -472,7 +512,7 @@ fn cold_prefill_mechanism_standing(m: CriticalPathMechanism) -> MechanismStandin
     PowerOrThermalThrottle =>
       Unresolved { needs: "throttle-reason and temperature observations, neither of which this trace captured" as NonEmptyStr }
     CoTenantDelay =>
-      Observed { by: "a within-experiment contrast across one sweep, either side of a co-tenant arriving: the marginal rate moves by under half a percent while the fixed per-request term roughly triples, so co-tenancy costs about 0.13s of scheduling latency per request at this concurrency and nothing per token. The 290.96s outlier is far outside that and stays unexplained" as NonEmptyStr }
+      Observed { by: "the controlled decode-alone versus decode-beside-prefill comparison, 3.8s against 63.5s, which is a matched treatment and control differing in the co-tenancy. The separate idle-versus-shared FIT CONTRAST in this module is descriptive evidence that moderate co-tenancy did not materially change the prefill's own per-token cost, and is not itself a measurement of what a co-tenant costs. The 290.96s outlier stays unexplained by either" as NonEmptyStr }
   }
 }
 
