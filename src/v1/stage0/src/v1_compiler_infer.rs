@@ -9,6 +9,7 @@ use self::InhabitanceRefusalReason::*;
 use self::InhabitanceUndecidableReason::*;
 use self::InhabitanceVerdict::*;
 use self::LiteralBoundary::*;
+use self::RefinementInhabitance::*;
 use self::ServiceConfigFieldJudgment::*;
 pub use crate::extdeps_container_oci_digest::{
     oci_other_digest_algorithm, oci_other_digest_encoded,
@@ -4584,6 +4585,7 @@ pub enum InhabitanceUndecidableReason {
     UndecidableOptionalCarrier,
     UndecidableFormalUnresolved,
     UndecidableProducedIdentityErased,
+    UndecidableRefinementIntroduction,
 }
 
 #[derive(
@@ -4634,6 +4636,141 @@ pub fn declared_type_position_label(position: DeclaredTypePosition, subject: Str
                     "'".to_string(),
                 )
             }
+        }
+    }
+}
+
+pub fn refinement_chain_names(n: Rc<Node>, scope: Rc<InferScope>) -> Rc<Vec<String>> {
+    {
+        let source_indices = scope.type_env.clone().source_indices.clone();
+        let name = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+        if (name.clone() == "".to_string()) {
+            Rc::new(vec![])
+        } else {
+            match crate::v1_compiler_infer_env::lookup_type_by_name(
+                scope.type_env.clone(),
+                name.clone(),
+            ) {
+                Some(decl) => Rc::new({
+                    let mut __result = Vec::new();
+                    for link_name in Rc::new({
+                        let mut __result = Vec::new();
+                        for link in where_refinement_chain(decl.clone(), scope.type_env.clone())
+                            .iter()
+                            .cloned()
+                        {
+                            __result.push(crate::v1_std_core::qualified_last_segment(
+                                crate::v1_std_core::authored_name_at(
+                                    source_indices.clone(),
+                                    link.clone(),
+                                ),
+                            ));
+                        }
+                        __result
+                    })
+                    .iter()
+                    .cloned()
+                    {
+                        if (link_name.clone() != "".to_string()) {
+                            __result.push(link_name);
+                        }
+                    }
+                    __result
+                }),
+                std::option::Option::None => {
+                    Rc::new(vec![crate::v1_std_core::qualified_last_segment(
+                        name.clone(),
+                    )])
+                }
+            }
+        }
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum RefinementInhabitance {
+    RefinementWidensToDeclaredBase,
+    RefinementNarrowsToDeclaredBrand,
+    RefinementSiblingBrands,
+}
+
+pub fn refinement_inhabitance(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Option<RefinementInhabitance> {
+    {
+        let declared_chain = refinement_chain_names(declared.clone(), scope.clone());
+        let produced_chain = refinement_chain_names(produced.clone(), scope.clone());
+        match declared_chain.clone().first().cloned() {
+            std::option::Option::None => std::option::Option::None,
+            Some(declared_head) => match produced_chain.clone().first().cloned() {
+                std::option::Option::None => std::option::Option::None,
+                Some(produced_head) => {
+                    if (declared_head.clone() == produced_head.clone()) {
+                        std::option::Option::None
+                    } else {
+                        if (((declared_chain.clone().len() as i64) <= 1)
+                            && ((produced_chain.clone().len() as i64) <= 1))
+                        {
+                            std::option::Option::None
+                        } else {
+                            if {
+                                let mut __found = false;
+                                for link in produced_chain.iter().cloned() {
+                                    if (link.clone() == declared_head.clone()) {
+                                        __found = true;
+                                        break;
+                                    }
+                                }
+                                __found
+                            } {
+                                Some(RefinementInhabitance::RefinementWidensToDeclaredBase)
+                            } else {
+                                if {
+                                    let mut __found = false;
+                                    for link in declared_chain.iter().cloned() {
+                                        if (link.clone() == produced_head.clone()) {
+                                            __found = true;
+                                            break;
+                                        }
+                                    }
+                                    __found
+                                } {
+                                    Some(RefinementInhabitance::RefinementNarrowsToDeclaredBrand)
+                                } else {
+                                    if {
+                                        let mut __found = false;
+                                        for d in declared_chain.iter().cloned() {
+                                            if {
+                                                let mut __found = false;
+                                                for p in produced_chain.iter().cloned() {
+                                                    if (p.clone() == d.clone()) {
+                                                        __found = true;
+                                                        break;
+                                                    }
+                                                }
+                                                __found
+                                            } {
+                                                __found = true;
+                                                break;
+                                            }
+                                        }
+                                        __found
+                                    } {
+                                        Some(RefinementInhabitance::RefinementSiblingBrands)
+                                    } else {
+                                        std::option::Option::None
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
         }
     }
 }
@@ -4712,41 +4849,33 @@ pub fn declared_type_inhabitance(
                                                 InhabitanceRefusalReason::RefusedKernelAtStructured,
                                         })
                                     } else {
-                                        if kernel_value_declared_type_mismatch(
-                                            declared.clone(),
-                                            produced.clone(),
-                                            scope.type_env.clone(),
-                                            source_indices.clone(),
-                                        ) {
+                                        match refinement_inhabitance(declared.clone(), produced.clone(), scope.clone()) {
+    Some(RefinementInhabitance::RefinementWidensToDeclaredBase) => Rc::new(InhabitanceVerdict::Inhabits),
+    Some(RefinementInhabitance::RefinementNarrowsToDeclaredBrand) => Rc::new(InhabitanceVerdict::InhabitanceUndecidable {
+    reason: InhabitanceUndecidableReason::UndecidableRefinementIntroduction,
+}),
+    Some(RefinementInhabitance::RefinementSiblingBrands) => Rc::new(InhabitanceVerdict::InhabitanceUndecidable {
+    reason: InhabitanceUndecidableReason::UndecidableRefinementIntroduction,
+}),
+    std::option::Option::None => if kernel_value_declared_type_mismatch(declared.clone(), produced.clone(), scope.type_env.clone(), source_indices.clone()) {
                                             Rc::new(InhabitanceVerdict::InhabitanceRefused {
     reason: InhabitanceRefusalReason::RefusedKernelAtStructured,
 })
                                         } else {
-                                            if coproduct_payload_where_parent_required(
-                                                declared.clone(),
-                                                produced.clone(),
-                                                scope.clone(),
-                                            ) {
+                                            if coproduct_payload_where_parent_required(declared.clone(), produced.clone(), scope.clone()) {
                                                 Rc::new(InhabitanceVerdict::InhabitanceRefused {
     reason: InhabitanceRefusalReason::RefusedPayloadAtParent,
 })
                                             } else {
-                                                match nominal_product_inhabitance_refusal(
-                                                    declared.clone(),
-                                                    produced.clone(),
-                                                    scope.clone(),
-                                                ) {
-                                                    Some(r) => Rc::new(
-                                                        InhabitanceVerdict::InhabitanceRefused {
-                                                            reason: r.clone(),
-                                                        },
-                                                    ),
-                                                    std::option::Option::None => {
-                                                        Rc::new(InhabitanceVerdict::Inhabits)
-                                                    }
-                                                }
+                                                match nominal_product_inhabitance_refusal(declared.clone(), produced.clone(), scope.clone()) {
+    Some(r) => Rc::new(InhabitanceVerdict::InhabitanceRefused {
+    reason: r.clone(),
+}),
+    std::option::Option::None => Rc::new(InhabitanceVerdict::Inhabits),
+}
                                             }
-                                        }
+                                        },
+}
                                     }
                                 }
                             }
@@ -4972,12 +5101,16 @@ pub fn nominal_product_head_name_if_declared_product(
                     scope.type_env.clone(),
                     scope.module_name.clone(),
                 );
-                if ((peeled.connective.clone() == Connective::Conj)
-                    && ((peeled.children.clone().len() as i64) > 0))
-                {
-                    name.clone()
-                } else {
+                if is_where_refinement_type(peeled.clone()) {
                     "".to_string()
+                } else {
+                    if ((peeled.connective.clone() == Connective::Conj)
+                        && ((peeled.children.clone().len() as i64) > 0))
+                    {
+                        name.clone()
+                    } else {
+                        "".to_string()
+                    }
                 }
             }
             std::option::Option::None => "".to_string(),
@@ -5153,6 +5286,7 @@ pub fn inhabitance_undecidable_reason_label(reason: InhabitanceUndecidableReason
     InhabitanceUndecidableReason::UndecidableOptionalCarrier => "optional carrier: the language's own cardinality carrier, where a T standing in an Optional<T> position is the declared spelling rather than a payload escape".to_string(),
     InhabitanceUndecidableReason::UndecidableFormalUnresolved => "formal unresolved: the declared type did not resolve to a declaration, so there is nothing to judge inhabitance against".to_string(),
     InhabitanceUndecidableReason::UndecidableProducedIdentityErased => "produced identity erased: the produced value's type identity is not recoverable at this seam".to_string(),
+    InhabitanceUndecidableReason::UndecidableRefinementIntroduction => "refinement introduction: the produced value sits at or above the declared refinement on its own chain, and whether it was INTRODUCED at that refinement is carried by the elaboration or declared cast that produced it, not by the type pair at this seam".to_string(),
 }
 }
 
@@ -26561,6 +26695,8 @@ pub struct UndecidableFormalUnresolved;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct UndecidableProducedIdentityErased;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UndecidableRefinementIntroduction;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RefusedPayloadAtParent;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RefusedKernelAtStructured;
@@ -26568,3 +26704,9 @@ pub struct RefusedKernelAtStructured;
 pub struct RefusedDistinctProductConstructor;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RefusedDistinctAppliedTypeArgument;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RefinementWidensToDeclaredBase;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RefinementNarrowsToDeclaredBrand;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RefinementSiblingBrands;

@@ -3269,12 +3269,14 @@ type InhabitanceUndecidableReason
   | UndecidableOptionalCarrier
   | UndecidableFormalUnresolved
   | UndecidableProducedIdentityErased
+  | UndecidableRefinementIntroduction
 
 type InhabitanceRefusalReason
   = RefusedPayloadAtParent
   | RefusedKernelAtStructured
   | RefusedDistinctProductConstructor
   | RefusedDistinctAppliedTypeArgument
+
 
 type InhabitanceVerdict
   = Inhabits
@@ -3297,6 +3299,91 @@ fn declared_type_position_label(position: DeclaredTypePosition, subject: String)
     PositionDirectCallArgument =>
       if subject == "" { "direct call argument" }
       else { concat("direct call argument for parameter '", subject, "'") }
+  }
+}
+
+// REFINEMENT INHABITANCE, DECIDED FROM THE CHAIN AND IN BOTH DIRECTIONS BY ONE AUTHORITY.
+//
+// std.types declares refinements in layers -- NonEmptyStr = String where non_empty,
+// PathSegment = NonEmptyStr where brand("PathSegment"), Char = Int where unicode_scalar,
+// brand("Char") -- so a refinement pair is not two unrelated names, it is two positions on one
+// chain, and which position each side occupies is the whole verdict. std states the direction it
+// cares about on the RenderedTerminalText declaration: a raw stdout pipe cannot inhabit the brand,
+// so feeding one to a parser that requires it is a type error. That is NARROWING refused. It says
+// nothing against widening, and the PathSegment note reasons about a branded NonEmptyStr as
+// though it simply is one.
+//
+// ONE RELATION, EVERY DIRECTION, DELIBERATELY. Deciding widening in one predicate and the other
+// directions in another lets them drift apart, and only one would carry a test. All three arms
+// are read off where_refinement_chain rather than off any particular pair, so a brand over Int
+// decides the same way a brand over NonEmptyStr does and a two-level chain decides the same way a
+// one-level chain does.
+//
+// THE NARROWING DIRECTION DECLINES, AND THAT IS A MEASUREMENT, NOT A PREFERENCE. std's brand
+// prose refuses narrowing, and the first build of this relation refused it here -- which turned
+// 10 corpus refusals into 4928, of which 3870 were a plain String reaching a NonEmptyStr formal.
+// That is not four thousand defects. Refinement values are INTRODUCED through literal elaboration
+// and declared casts, and by the time a produced node reaches this seam it no longer carries
+// which introduction produced it. So "the produced type sits at or above the declared refinement"
+// does not settle inhabitance, and refusing on it would fabricate a verdict in the direction
+// DESIGN section 5 forbids just as firmly as fabricating a success. The pair is reported
+// UndecidableRefinementIntroduction: located, per-reason and countable, so the deficit can rank.
+// NEXT-RUNG TRIGGER: the refinement-introduction authority reaching this seam -- the elaboration
+// or declared cast that produced the value, carried on the produced node -- at which point this
+// arm refuses narrowing instead of declining it.
+//
+// WHY IT IS REACHABLE ONLY NOW. Every site this relation answers had its declared side rewritten
+// into a generic formal before any arm ran, so the refinement question was never put. Measured on
+// the corpus at the moment that stamp was removed: HostIdentity flowing into a NonEmptyStr formal
+// -- widening to its own declared base, correct code -- refused as a distinct product
+// constructor. This is the arm that state was hiding, not a widening of scope.
+fn refinement_chain_names(n: Node, scope: InferScope) -> List<String> {
+  let source_indices = scope.type_env.source_indices
+  let name = authored_name_at(source_indices: source_indices, node: n)
+  if name == "" {
+    []
+  } else {
+    match lookup_type_by_name(env: scope.type_env, name: name) {
+      Present { value: decl } =>
+        where_refinement_chain(ty: decl, type_env: scope.type_env)
+          |> map(link => qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: link)))
+          |> filter(link_name => link_name != "")
+      Absent => [qualified_last_segment(name: name)]
+    }
+  }
+}
+
+type RefinementInhabitance
+  = RefinementWidensToDeclaredBase
+  | RefinementNarrowsToDeclaredBrand
+  | RefinementSiblingBrands
+
+// ABSENT MEANS "NOT THIS RELATION'S SUBJECT", NEVER "COMPATIBLE". Every guard hands the pair back
+// to the arms below rather than admitting it, so this can only convert a silence into a decision
+// for a pair whose two chains are both established and actually meet.
+fn refinement_inhabitance(declared: Node, produced: Node, scope: InferScope) -> RefinementInhabitance? {
+  let declared_chain = refinement_chain_names(n: declared, scope: scope)
+  let produced_chain = refinement_chain_names(n: produced, scope: scope)
+  match declared_chain |> first {
+    Absent => none
+    Present { value: declared_head } =>
+      match produced_chain |> first {
+        Absent => none
+        Present { value: produced_head } =>
+          if declared_head == produced_head {
+            none
+          } else if (declared_chain |> count) <= 1 && (produced_chain |> count) <= 1 {
+            none
+          } else if produced_chain |> any(link => link == declared_head) {
+            Present { value: RefinementWidensToDeclaredBase }
+          } else if declared_chain |> any(link => link == produced_head) {
+            Present { value: RefinementNarrowsToDeclaredBrand }
+          } else if declared_chain |> any(d => produced_chain |> any(p => p == d)) {
+            Present { value: RefinementSiblingBrands }
+          } else {
+            none
+          }
+      }
   }
 }
 
@@ -3332,16 +3419,26 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
     InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
   } else if coproduct_at_record_declared_type(declared: declared, produced: produced, scope: scope) {
     InhabitanceRefused { reason: RefusedKernelAtStructured }
-  } else if kernel_value_declared_type_mismatch(
-      formal: declared, actual: produced,
-      type_env: scope.type_env, source_indices: source_indices) {
-    InhabitanceRefused { reason: RefusedKernelAtStructured }
-  } else if coproduct_payload_where_parent_required(formal: declared, actual: produced, scope: scope) {
-    InhabitanceRefused { reason: RefusedPayloadAtParent }
   } else {
-    match nominal_product_inhabitance_refusal(declared: declared, produced: produced, scope: scope) {
-      Present { value: r } => InhabitanceRefused { reason: r }
-      Absent => Inhabits
+    match refinement_inhabitance(declared: declared, produced: produced, scope: scope) {
+      Present { value: RefinementWidensToDeclaredBase } => Inhabits
+      Present { value: RefinementNarrowsToDeclaredBrand } =>
+        InhabitanceUndecidable { reason: UndecidableRefinementIntroduction }
+      Present { value: RefinementSiblingBrands } =>
+        InhabitanceUndecidable { reason: UndecidableRefinementIntroduction }
+      Absent =>
+        if kernel_value_declared_type_mismatch(
+            formal: declared, actual: produced,
+            type_env: scope.type_env, source_indices: source_indices) {
+          InhabitanceRefused { reason: RefusedKernelAtStructured }
+        } else if coproduct_payload_where_parent_required(formal: declared, actual: produced, scope: scope) {
+          InhabitanceRefused { reason: RefusedPayloadAtParent }
+        } else {
+          match nominal_product_inhabitance_refusal(declared: declared, produced: produced, scope: scope) {
+            Present { value: r } => InhabitanceRefused { reason: r }
+            Absent => Inhabits
+          }
+        }
     }
   }
 }
@@ -3545,6 +3642,26 @@ fn nominal_product_head_name(n: Node, scope: InferScope) -> String {
   }
 }
 
+// A WHERE-REFINEMENT IS NOT A NOMINAL PRODUCT, and the Conj test alone cannot tell them apart.
+// `type NonEmptyStr = String where non_empty` and `type HostIdentity = NonEmptyStr where
+// brand("HostIdentity")` both carry connective Conj with one child, which is the shape a
+// one-field record also has -- so the bare Conj-with-children test admitted them to the
+// nominal-product arm, where two distinct refinement names disagree and the pair refuses.
+// Measured on the corpus: HostIdentity flowing into a NonEmptyStr formal, which is WIDENING TO
+// ITS OWN DECLARED BASE and is correct code, refused as RefusedDistinctProductConstructor.
+//
+// WHY THE EXCLUSION IS THE HONEST FIX RATHER THAN A WIDENING. This arm's own contract is
+// "concrete named products and their transparent aliases", and it names the shapes it does not
+// handle rather than implying coverage. A where-refinement is a fourth such shape: deciding it
+// needs the refinement CHAIN and its direction -- widening to a base admits, narrowing to a
+// brand must not -- which is a different judgment with a different authority
+// (where_refinement_chain), not a case of this one. Refusing it here would fabricate a verdict
+// from a name comparison that carries no direction at all. It reaches this arm only because the
+// declared side used to be stamped a generic formal and declined before any arm ran.
+//
+// NEXT-RUNG TRIGGER: a refinement-inhabitance relation that consumes where_refinement_chain and
+// decides the two directions separately, at which point brand narrowing becomes a refusal here
+// rather than an abstention.
 fn nominal_product_head_name_if_declared_product(name: String, scope: InferScope) -> String {
   let representative = transparent_alias_representative(
     index: scope.type_env.symbol_index, name: name)
@@ -3552,7 +3669,9 @@ fn nominal_product_head_name_if_declared_product(name: String, scope: InferScope
     Present { value: decl } =>
       let peeled = peel_nominal_alias_identity(
         n: decl, env: scope.type_env, module_name: scope.module_name)
-      if peeled.connective == Conj && (peeled.children |> count) > 0 { name } else { "" }
+      if is_where_refinement_type(ty: peeled) {
+        ""
+      } else if peeled.connective == Conj && (peeled.children |> count) > 0 { name } else { "" }
     Absent => ""
   }
 }
@@ -3735,6 +3854,7 @@ fn inhabitance_undecidable_reason_label(reason: InhabitanceUndecidableReason) ->
     UndecidableOptionalCarrier => "optional carrier: the language's own cardinality carrier, where a T standing in an Optional<T> position is the declared spelling rather than a payload escape"
     UndecidableFormalUnresolved => "formal unresolved: the declared type did not resolve to a declaration, so there is nothing to judge inhabitance against"
     UndecidableProducedIdentityErased => "produced identity erased: the produced value's type identity is not recoverable at this seam"
+    UndecidableRefinementIntroduction => "refinement introduction: the produced value sits at or above the declared refinement on its own chain, and whether it was INTRODUCED at that refinement is carried by the elaboration or declared cast that produced it, not by the type pair at this seam"
   }
 }
 
