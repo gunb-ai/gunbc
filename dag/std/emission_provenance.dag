@@ -46,18 +46,12 @@ type EmissionResolutionCoverage
 // Authored target text remains authored when its declaration lives in a .dag file. Derived
 // means the producer observed a fold of modeled structure, never that the producer's path has
 // a particular extension. Neither leaf arm absorbs an unobserved nested contributor.
-// EXECUTION BOUNDARY: test.claim.emission_provenance_test exercises authored fragments,
-// composition and named unobserved contributors. DerivedFragment is representable but
-// UNEXERCISED; it must not be reported as positive derived coverage on that evidence.
-// Next-rung trigger: a modeled-structure producer constructs EmissionDerivedFragment under
-// an executing control. Constructing a labeled string alone does not witness that capability.
 type EmissionContribution
   = EmissionAuthoredFragment { origin: DeclarationRef, source: String }
   | EmissionSourceComposition {
       origin: DeclarationRef
       parts: FreeMonoid<EmissionContribution>
     }
-  | EmissionDerivedFragment { producer: DeclarationRef, source: String }
   | EmissionUnobservedFragment {
       producer: DeclarationRef
       cause: NonEmptyStr
@@ -322,7 +316,6 @@ fn emission_source_read_layer(contribution: EmissionContribution, children: Free
       init: EmissionSourceBuilder { append_fragments: emission_source_builder_identity },
       f: emission_source_builders_compose
     )
-    EmissionDerivedFragment { producer: _, source } => emission_source_fragment(source: source)
     EmissionUnobservedFragment { producer: _, cause: _, source } => emission_source_fragment(source: source)
   }
 }
@@ -334,7 +327,6 @@ fn emission_origin_read_layer(contribution: EmissionContribution, children: Free
     EmissionAuthoredFragment { origin, source: _ } => emission_origin_observed_builder(origin: origin)
     EmissionSourceComposition { origin, parts: _ } =>
       children |> fold(init: emission_origin_observed_builder(origin: origin), f: emission_origin_builders_compose)
-    EmissionDerivedFragment { producer, source: _ } => emission_origin_observed_builder(origin: producer)
     EmissionUnobservedFragment { producer, cause, source: _ } => emission_origin_missing_builder(producer: producer, cause: cause)
   }
 }
