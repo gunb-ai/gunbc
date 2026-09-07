@@ -33,10 +33,14 @@ test fn witness_measured_total_uses_critical_path_basis() -> Bool {
     ],
   ]
   let account = cost_account_measured_from_schedule_critical_path(batch_times: batches)
-  match account.basis {
-    Measured =>
-      cost_account_time_count(account: account) == 200
-    Predicted => false
+  match account.time {
+    CostAxisMeasured { value: _ } =>
+      match cost_account_time_count(account: account) {
+        Present { value: n } => n == 200
+        Absent => false
+      }
+    CostAxisPredicted { value: _ } => false
+    CostAxisUnestablished => false
   }
 }
 

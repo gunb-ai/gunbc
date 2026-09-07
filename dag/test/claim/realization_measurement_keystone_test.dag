@@ -3,7 +3,11 @@ module test.claim.realization_measurement_keystone
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.realization_schedule {
   CostAccount,
-  CostBasis,
+  CostAxis,
+  CostAxisMeasured,
+  CostAxisPredicted,
+  CostAxisUnestablished,
+  cost_account_measured,
   cost_account_predicted_zero,
   cost_account_time_count,
 }
@@ -12,6 +16,7 @@ import std.realization_measurement {
   witness_measured_rollup_differs_from_predicted_zero,
   witness_concurrent_memory_peak_per_share_divides,
 }
+import std.realization_width { shard_balance_slot_for_cost }
 import extdeps.realization.v1_handler { v1_eval_expr_measure_handler_id }
 import gunbc.fleet_intent {
   WorkUnitId,
@@ -36,9 +41,10 @@ data sample_measure_effect: RealizationMeasureEffect = ObserveElapsedAtSubject {
 }
 
 fn witness_predicted_zero_is_predicted_basis() -> Bool {
-  match cost_account_predicted_zero().basis {
-    Predicted => true
-    Measured => false
+  match cost_account_predicted_zero().time {
+    CostAxisPredicted { value: _ } => true
+    CostAxisMeasured { value: _ } => false
+    CostAxisUnestablished => false
   }
 }
 
@@ -49,13 +55,20 @@ fn witness_measured_receipt_rollup_uses_lens() -> Bool {
     space: sample_space_a,
   )
   let total = cost_account_from_performance_receipts(receipts: [receipt])
-  let rolled = cost_account_time_count(account: total)
-  let observed = nanosecond_count(
-    n: performance_receipts_total_time(receipts: [receipt])
-  )
-  match total.basis {
-    Measured => rolled == observed
-    Predicted => false
+  match performance_receipts_total_time(receipts: [receipt]) {
+    Absent => false
+    Present { value: observed_time } => {
+      let observed = nanosecond_count(n: observed_time)
+      match total.time {
+        CostAxisMeasured { value: _ } =>
+          match cost_account_time_count(account: total) {
+            Present { value: rolled } => rolled == observed
+            Absent => false
+          }
+        CostAxisPredicted { value: _ } => false
+        CostAxisUnestablished => false
+      }
+    }
   }
 }
 
@@ -91,4 +104,50 @@ test fn realization_measurement_keystone_witnesses() -> Bool {
     && witness_measured_rollup_red_on_predicted_zero()
     && witness_v1_handler_id_declared()
     && witness_concurrent_memory_peak_per_share_divides()
+}
+
+// DISCRIMINATING RED CONTROL for the absence-rendered-as-a-value defect this lane closed. Before
+// the repair, cost_account_measured filled space and power with byte_size(0) / watt(0) and stamped
+// the WHOLE account Measured, so an account that measured only a time reported a measured zero for
+// two axes nobody looked at, indistinguishable from a genuinely zero-space run (DESIGN section 5,
+// fabricated plausible output). The value now lives inside the constructor that says how it was
+// come by, so the fabricated zero has no constructor at all.
+test fn measuring_only_time_leaves_space_and_power_unestablished() -> Bool {
+  let account = cost_account_measured(time: nanosecond(count: 7))
+  let space_unestablished = match account.space {
+    CostAxisUnestablished => true
+    CostAxisMeasured { value: _ } => false
+    CostAxisPredicted { value: _ } => false
+  }
+  let power_unestablished = match account.power {
+    CostAxisUnestablished => true
+    CostAxisMeasured { value: _ } => false
+    CostAxisPredicted { value: _ } => false
+  }
+  space_unestablished && power_unestablished
+}
+
+// POSITIVE CONTROL: the axis that WAS measured still reads back, so the witness above discriminates
+// the unmeasured axes rather than reporting a universally unestablished account.
+test fn the_measured_axis_still_carries_its_value() -> Bool {
+  match cost_account_time_count(account: cost_account_measured(time: nanosecond(count: 7))) {
+    Present { value: n } => n == 7
+    Absent => false
+  }
+}
+
+// An unestablished time has no substitute to reach for, so the shard slot refuses rather than
+// inventing a balance from an axis nobody measured. The fixture is authored directly because no
+// constructor in std can produce an unestablished time -- which is the wall, and is exactly why
+// the refusal has to be exercised from a fixture or it would be unreachable and decorative.
+test fn unestablished_time_refuses_a_shard_balance_slot() -> Bool {
+  let unestablished = CostAccount {
+    time: CostAxisUnestablished,
+    space: CostAxisUnestablished,
+    power: CostAxisUnestablished,
+  }
+  match shard_balance_slot_for_cost(cost: unestablished, baseline: cost_account_predicted_zero()) {
+    Absent => true
+    Present { value: _ } => false
+  }
 }

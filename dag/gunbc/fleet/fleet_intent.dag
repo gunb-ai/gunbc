@@ -40,8 +40,10 @@ import std.credentials { CredentialFlow, Stored }
 import std.measure { hertz, ByteSize, byte_size, byte_size_count, Bandwidth, HardwareThreadCount, hardware_thread_count_value, Nano, measure_count, Nanosecond, nanosecond }
 import std.os.types { OperatingSystemSurface, Linux, Posix, PosixProcess }
 import std.types { List, NonEmptyStr, Bool, Int, String }
-import std.realization_schedule { CostAccount }
-import std.realization_measurement { cost_account_measured_from_time_and_space, space_measure_list_seq }
+import std.realization_schedule {
+  CostAccount, CostAxis, CostAxisMeasured, CostAxisPredicted, CostAxisUnestablished,
+}
+import std.realization_measurement { cost_account_measured_from_time_and_space, space_measure_seq }
 import std.nat { Nat }
 import std.float { Float }
 
@@ -188,21 +190,59 @@ fn performance_receipt_host_single_sample(
   }
 }
 
-fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> Nanosecond {
-  nanosecond(
-    count: fold(
-      receipts,
-      init: 0,
-      f: (acc, receipt) => acc + measure_count(m: receipt.cost.time)
-    )
+// A TOTAL OVER RECEIPTS IS ONLY AS ESTABLISHED AS ITS WEAKEST TERM. One receipt whose time was
+// never measured makes the sum unknown, not smaller: adding zero for it would report a total that
+// is confidently wrong and indistinguishable from a genuinely faster run. Both established arms
+// are summed here, which leaves open the separate C5 question of what basis a total mixing
+// measured and predicted terms carries; the arm this settles is that an unestablished term
+// refuses the whole total.
+fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> Nanosecond? {
+  match fold(
+    receipts,
+    init: Present { value: 0 },
+    f: (acc, receipt) =>
+      match acc {
+        Absent => none
+        Present { value: sofar } =>
+          match receipt.cost.time {
+            CostAxisMeasured { value: t } => Present { value: sofar + measure_count(m: t) }
+            CostAxisPredicted { value: t } => Present { value: sofar + measure_count(m: t) }
+            CostAxisUnestablished => none
+          }
+      }
+  ) {
+    Present { value: total } => Present { value: nanosecond(count: total) }
+    Absent => none
+  }
+}
+
+fn performance_receipts_peak_space(receipts: List<PerformanceReceipt>) -> ByteSize? {
+  fold(
+    receipts,
+    init: Present { value: byte_size(count: 0) },
+    f: (acc, receipt) =>
+      match acc {
+        Absent => none
+        Present { value: sofar } =>
+          match receipt.cost.space {
+            CostAxisMeasured { value: sp } => Present { value: space_measure_seq(a: sofar, b: sp) }
+            CostAxisPredicted { value: sp } => Present { value: space_measure_seq(a: sofar, b: sp) }
+            CostAxisUnestablished => none
+          }
+      }
   )
 }
 
 fn cost_account_from_performance_receipts(receipts: List<PerformanceReceipt>) -> CostAccount<Nano> {
-  cost_account_measured_from_time_and_space(
-    time: performance_receipts_total_time(receipts: receipts),
-    space: space_measure_list_seq(spaces: map(receipts, receipt => receipt.cost.space))
-  )
+  let time_axis = match performance_receipts_total_time(receipts: receipts) {
+    Present { value: t } => CostAxisMeasured { value: t }
+    Absent => CostAxisUnestablished
+  }
+  let space_axis = match performance_receipts_peak_space(receipts: receipts) {
+    Present { value: sp } => CostAxisMeasured { value: sp }
+    Absent => CostAxisUnestablished
+  }
+  CostAccount { time: time_axis, space: space_axis, power: CostAxisUnestablished }
 }
 
 data fleet_intent_cpu: CpuFacts = CpuFacts {

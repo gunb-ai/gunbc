@@ -9,7 +9,7 @@ import std.realization_measurement {
   space_measure_par,
   space_measure_list_seq,
 }
-import std.realization_schedule { Measured, Predicted }
+import std.realization_schedule { CostAxis, CostAxisMeasured, CostAxisPredicted, CostAxisUnestablished }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -33,10 +33,10 @@ test fn peak_resident_measured_holds() -> Bool {
     space: byte_size(count: peak)
   )
   peak > 0
-    && byte_size_count(account.space) == peak
-    && match account.basis {
-      Measured => true
-      Predicted => false
+    && match account.space {
+      CostAxisMeasured { value: sp } => byte_size_count(sp) == peak
+      CostAxisPredicted { value: _ } => false
+      CostAxisUnestablished => false
     }
 }
 

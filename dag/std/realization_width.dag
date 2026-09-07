@@ -22,7 +22,10 @@ import std.realization_schedule {
   RealizationPlan,
   RealizationObjective,
   CostAccount,
-  CostBasis,
+  CostAxis,
+  CostAxisMeasured,
+  CostAxisPredicted,
+  CostAxisUnestablished,
   schedule_eq,
   cost_account_measured,
   cost_account_predicted_zero,
@@ -205,10 +208,18 @@ fn witness_budget_ignoring_fold_fails(
   ) != shard_count
 }
 
-fn shard_balance_slot_for_cost(cost: CostAccount<Nano>, baseline: CostAccount<Nano>) -> Int {
-  match cost.basis {
-    Measured => cost_account_time_count(account: cost)
-    Predicted => cost_account_time_count(account: baseline)
+// THE PREDICTED ARM IS AN OPEN QUESTION, NOT A SETTLED POLICY. Substituting the baseline's time
+// for a predicted cost's own time is a quiet substitution of one quantity for another under a
+// computed Int; it may well survive as DESIGN section 5's structural-over-approximation neighbour
+// (an approximation computed AS the answer), but it has never been named as one, and it is carried
+// here unchanged so this change does not silently decide it. What this change does decide is the
+// third arm: an UNESTABLISHED time has no substitute to reach for, so the slot refuses rather than
+// inventing a balance from an axis nobody measured.
+fn shard_balance_slot_for_cost(cost: CostAccount<Nano>, baseline: CostAccount<Nano>) -> Int? {
+  match cost.time {
+    CostAxisMeasured { value: _ } => cost_account_time_count(account: cost)
+    CostAxisPredicted { value: _ } => cost_account_time_count(account: baseline)
+    CostAxisUnestablished => none
   }
 }
 
@@ -218,7 +229,14 @@ fn witness_measured_cost_affects_shard_balance() -> Bool {
   let baseline = nano_predicted_zero()
   let left = shard_balance_slot_for_cost(cost: high, baseline: baseline)
   let right = shard_balance_slot_for_cost(cost: low, baseline: baseline)
-  left != right
+  match left {
+    Present { value: l } =>
+      match right {
+        Present { value: r } => l != r
+        Absent => false
+      }
+    Absent => false
+  }
 }
 
 fn memory_aware_width_value(

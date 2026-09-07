@@ -11,7 +11,9 @@ import std.measure {
 import std.realization_width { byte_size_saturating_sub, cpu_cores_available }
 import std.realization { RealizedStep, Placement, LocalFilesystem, Materialization, Share }
 import std.effects { EffectShape, CreateEffect, CreateCause, CreateIfAbsent, KeySource, CompositeKey }
-import std.realization_schedule { CostAccount, CostBasis, Predicted }
+import std.realization_schedule {
+  CostAccount, CostAxis, CostAxisPredicted, CostAxisUnestablished,
+}
 import extdeps.accounting.budget { Appropriation, LineItem }
 import product.budget_tree { BudgetNode, BudgetClaim, Guaranteed, node_conserves }
 import product.placement_supply { HostIdentity }
@@ -73,12 +75,15 @@ import gunbc.oomd_install {
   gunbc_oomd_sessions_policy,
 }
 
+// Only the space axis is a fact here: mib_per_job is the declared per-job memory envelope this
+// jobserver config is derived from. The time and power of a compile step are not predicted by
+// this config and were previously rendered as a predicted ZERO, which is a claim about a build
+// taking no time and drawing no power. They are unestablished, and say so.
 fn build_cost_account(cfg: JobserverConfig) -> CostAccount<Nano> {
   CostAccount {
-    time: time_measure(count: 0),
-    space: cfg.mib_per_job,
-    power: watt(count: 0),
-    basis: Predicted,
+    time: CostAxisUnestablished,
+    space: CostAxisPredicted { value: cfg.mib_per_job },
+    power: CostAxisUnestablished,
   }
 }
 
