@@ -134,6 +134,15 @@ fn jit_config_request_body(request: JitRunnerConfigRequest) -> String {
 // reason extdeps.github.app already gives -- an argv is world-readable in /proc for the life of the
 // call, and gunbc.credential_argv_exposure measures what that cost this fleet once.
 //
+// IT USES curl WHERE THE REST OF THIS REPOSITORY REACHES FOR `gh api`, AND THE DIVERGENCE IS THE
+// CREDENTIAL. extdeps.github.org_actions reaches the same API as `gh api orgs/{org}/...`, which is
+// the house style and is right for every response this fleet reads -- but `gh api` can only write
+// its response to STDOUT. This endpoint's response body IS the credential, so the house style would
+// put a secret on stdout, into any captured output, and into every receipt derived from one. curl
+// is the transport that can write a body to a file and a status to stdout SEPARATELY, which is the
+// only shape that keeps the blob off both. The divergence is therefore forced by the payload, not a
+// preference, and it does not extend to the observing operations next door.
+//
 // IT IS NOT `readonly`. Every other operation modeled against this API observes; this one CREATES a
 // runner identity against the organization. A retry is not free: it mints a second identity that
 // must be reconciled by name, which is why the runner name is the attempt's unit name rather than a
