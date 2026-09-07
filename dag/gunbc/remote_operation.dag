@@ -83,7 +83,7 @@ fn remote_execution_permits_continuation(execution: RemoteOperationExecution) ->
     RemoteFileExecution { outcome: o } =>
       match o {
         TypedRemoteFileConvergenceRefused { step: _, reason: _ } => false
-        TypedRemoteFileConverged { path: _, mode: _ } => true
+        TypedRemoteFileConverged { converged: _ } => true
       }
   }
 }
@@ -134,7 +134,7 @@ fn remote_step_failure_cause(standing: RemoteStepStanding) -> String? {
           match o {
             TypedRemoteFileConvergenceRefused { step: st, reason: why } =>
               Present { value: join(["file-write refused at ", st, ": ", why], "") }
-            TypedRemoteFileConverged { path: _, mode: _ } => none
+            TypedRemoteFileConverged { converged: _ } => none
           }
       }
   }
