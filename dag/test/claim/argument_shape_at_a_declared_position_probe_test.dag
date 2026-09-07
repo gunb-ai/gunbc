@@ -27,15 +27,26 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // The refusal is authorable here, so the evidence is enrollable here, and declining it would be
 // specification-without-execution.
 //
-// WHAT THE FOUR ARMS ISOLATE, each differing from a neighbour in exactly one term. The declared
-// position is either CONCRETE (a parameter declared Map<String, Bool>) or GENERIC (a parameter whose
-// payload types are type variables). The argument is either a STRING -- an obviously wrong
-// non-function shape -- or an UNAPPLIED nullary function whose return type is the declared type.
+// WHAT THE THREE SHAPE ARMS ISOLATE, each differing from a neighbour in exactly one term. The
+// declared position is either CONCRETE (a parameter declared Map<String, Bool>) or GENERIC (a
+// parameter whose payload types are type variables). The argument is either a STRING -- an obviously
+// wrong non-function shape -- or an UNAPPLIED nullary function whose return type is the declared
+// type. A fourth row is a well-typed control that is not a shape arm at all.
 //
-//   concrete + string   MUST refuse    the positive control: the checker decides shape here
-//   generic  + string   observed accept   the generic-formal deferral
-//   concrete + function observed accept   the defect: silent where a String at the SAME position refuses
-//   generic  + function observed accept
+//   concrete + string    MUST refuse       the positive control: the checker decides shape here
+//   concrete + function  observed accept   the defect: silent where a String at the SAME position refuses
+//   generic  + string    observed accept   the generic-formal deferral
+//   (well-typed call)    MUST stay clean   the fixture is not broken in some unrelated way
+//
+// THE FOURTH CELL OF THE 2x2 -- generic + function -- IS DELIBERATELY NOT MEASURED HERE, and saying
+// so is the same discipline as the closing paragraph rather than an exception to it. It cannot come
+// out against anything: acceptance there is already entailed by the two arms above it, since the
+// position defers on every argument and the argument is refused at no position. An arm that cannot
+// produce a result contradicting what its neighbours already establish is not a measurement, it is a
+// fifth witness to author, review, maintain and eventually run, which DESIGN section 2 counts as
+// redundant work on all three of section 1's quantities. It was compiled once during the
+// investigation and behaved as entailed; that is not evidence this module carries, and it is not
+// cited as any.
 //
 // THE TWO ASSERTIONS BELOW ARE THE CORRECT BEHAVIOUR, NOT THE OBSERVED ONE, and that is the whole
 // discipline of this file. Written the other way -- asserting that the function arm is accepted --
