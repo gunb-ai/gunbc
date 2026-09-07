@@ -1,0 +1,60 @@
+module test.claim.emitter_unprojectable_construct_refuse_witness_test
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Permanent regression control (DESIGN 4b(4)) for stage0 emission fail-closed on an
+// unprojectable construct. THE DEFECT: filter-in-a-branch-condition produced no refusal and
+// published a truncated module. THE WALL: EmissionConstructUnprojectable at the construct's
+// span. Do not teach the emitter this shape.
+//
+// PUBLICATION ATOMICITY IS NOT ASKABLE ON THIS PATH. compile_dag_rust_emit_check,
+// compile_dag_diagnostic_census, and compile_fixture all fold a hard diagnostic into a
+// refused/false arm and never hand back the published file set on that arm, so a probe that
+// used them to assert "src/fx_filter_guard.rs is absent" would be false for the refusal
+// alone — truncated-file-plus-diagnostic and withheld-file would be indistinguishable.
+// Atomicity is asserted over EmitResult.files by the native walk
+// cli_run.required_regen_host.filter_in_branch_condition_refuses_and_does_not_publish_the_module.
+// That test is off the merge path (gunbc.rung_drop rust_unit_tests_off_the_merge_path). The
+// third claim below stays enrolled as the named occupant of the publication question; its
+// executable content is only that the refusal still fires. The missing harness is the
+// next-rung trigger on the failure-mode row.
+
+data filter_in_guard_source: String = "module fx.filter_guard\nimport std.types { List, Bool, Int }\nfn f(xs: List<Int>) -> Int {\n  if (xs |> filter(x => x > 0) |> count) > 0 {\n    1\n  } else {\n    0\n  }\n}\n"
+
+data any_in_guard_source: String = "module fx.any_guard\nimport std.types { List, Bool, Int }\nfn f(xs: List<Int>) -> Int {\n  if xs |> any(x => x > 0) {\n    1\n  } else {\n    0\n  }\n}\n"
+
+fn unprojectable_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "EmissionConstructUnprojectable")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+test fn w_filter_in_branch_condition_refuses_at_emission() -> Bool {
+  unprojectable_blocking_count(source: filter_in_guard_source) == 1
+}
+
+test fn w_supported_guarded_any_lambda_still_emits() -> Bool {
+  unprojectable_blocking_count(source: any_in_guard_source) == 0
+    && compile_dag_rust_emit_check(any_in_guard_source, "src/fx_any_guard.rs", ["fn f"], [])
+}
+
+// Named occupant of publication atomicity. A discriminating RED over the published path set
+// is unauthorable from .dag: every existing compile builtin discards the file list once a
+// hard diagnostic exists. This claim therefore asserts only that the refusal is still
+// observed, so the occupant cannot vanish silently, and it is implied by
+// w_filter_in_branch_condition_refuses_at_emission. It is not evidence the module was
+// withheld. See the failure-mode row's publication-atomicity trigger.
+test fn w_refused_module_refusal_fires_publication_unasserted_on_the_floor() -> Bool {
+  unprojectable_blocking_count(source: filter_in_guard_source) == 1
+}

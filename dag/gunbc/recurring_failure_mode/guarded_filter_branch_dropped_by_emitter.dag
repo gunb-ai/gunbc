@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.guarded_filter_branch_dropped_by_emitter
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data guarded_filter_branch_dropped_by_emitter: RecurringFailureMode = RecurringFailureMode {
+  identity: "guarded_filter_branch_dropped_by_emitter" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: stage0 rust emission accepts a .dag module containing a construct it cannot project, and publishes a file that silently omits the unprojectable subtree — a guarded branch dropped because a filter sat in the condition — so the mirror builds cleanly and runs a floor whose diagnostics are unfounded. ",
+
+    "HARM: DESIGN section 5 fabricated plausible output, outside the guarantee ladder and forbidden outright: the compiler reports success beside a truncated realization of its own source. Eight functions vanished transitively on the measured #10625 candidate (branch gone, callee uncalled). ",
+
+    "DISTINGUISHING FACTS: the cheap tell is a caller in .dag whose callee has zero occurrences in the committed stage0 mirror. A self-consistent missing path is indistinguishable from a correct one by any green/red signal on the truncated artifact. ",
+
+    "SPECIMEN: FilterInBranchCondition. Discovery census of src/v1/*.dag found the shape zero times on main and once on the #10625 candidate; that census named the discovery site, not the wall's population. The wall's boundary is every module emit_rust_selected renders. The same surface is live elsewhere on main (gunbc.occurrence_identity_acceptance_closure duplicate_receipts / duplicate_deferrals, gunbc.auth.secret_rotation). Those sites now take GateBlocking EmissionConstructUnprojectable rather than a truncated file — that is the repair, not over-refusal. Population-one of the discovery census argues neither way for the wall: it is the sole src/v1 site of THIS shape, not the only shape that can silently truncate, and not the wall's denominator. ",
+
+    "RECOGNITION RULE: if emission produced a file, every source construct contributing to that file received a total projection. A diagnostic beside a truncated file is the same hazard with better logging. ",
+
+    "REPAIR: the unprojectable construct feeds ModuleEmission.import_refusals as a blocking EmissionConstructUnprojectable, and emit_rust_selected publishes a module file only when that channel carries no error diagnostic. Do not teach the emitter filter-in-a-guard; refuse the module. ",
+
+    "RUNG FOUND AT, AND IT IS TWO PATHS. The refusal class is mechanically preventable on the floor: test.claim.emitter_unprojectable_construct_refuse_witness_test w_filter_in_branch_condition_refuses_at_emission counts one blocking EmissionConstructUnprojectable, and w_supported_guarded_any_lambda_still_emits is the positive control. Publication atomicity — the module absent from EmitResult.files — is asserted only by the native walk cli_run.required_regen_host.filter_in_branch_condition_refuses_and_does_not_publish_the_module, which is off the merge path (gunbc.rung_drop rust_unit_tests_off_the_merge_path). Citing the floor census as coverage for non-publication would be rung inflation: compile_dag_rust_emit_check, compile_dag_diagnostic_census and tools.multi_module_compile_fixture.compile_fixture all fold a hard diagnostic into a refused/false arm and never return the published path set on that arm, so truncated-file-plus-diagnostic and withheld-file are indistinguishable there. w_refused_module_refusal_fires_publication_unasserted_on_the_floor remains enrolled as the named occupant of the publication question and does not pretend to inspect files. ",
+
+    "CEILING: structurally guaranteed — a published EmitResult.files member cannot contain a module whose emission produced a projection refusal, derived from the same ModuleEmission unit that already carried import refusals. ",
+
+    "NEXT TRIGGER, two capabilities, and the row retires only when both hold: (i) an emission-stage census that every source expression node either received a rendered projection or contributed a blocking diagnostic on the same ModuleEmission, sufficient that a new unprojectable shape cannot publish by remaining silent; (ii) a .dag-callable that returns the published file-path set of an emit independently of whether any diagnostic was hard — membership of a named path, not content of a named file through a builtin that already failed — sufficient that a floor claim can go red when a refused module is still in EmitResult.files. (ii) is the missing harness for publication atomicity, DESIGN 4b: where no fixture harness can express the subject, that missing harness is the class's next-rung trigger, not a permanent ceiling. Naming the native unit test as the current assertion does not discharge (ii), because that test is not on the merge path.",
+  ],
+
+  evidence: [],
+}

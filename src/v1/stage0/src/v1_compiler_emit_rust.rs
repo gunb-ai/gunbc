@@ -254,8 +254,8 @@ use crate::v1_std_core::CallTargetIdentity::{
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
     AmbiguousAnonymousRecordLiteral, AmbiguousReference, DataReferenceVisibilityBudgetExceeded,
-    InternalError, ParameterDefaultFormNotAdmitted, ReferenceDerivedImportExportUnproven,
-    ReferenceDerivedImportProviderUnknown, UnlistedImportUse,
+    EmissionConstructUnprojectable, InternalError, ParameterDefaultFormNotAdmitted,
+    ReferenceDerivedImportExportUnproven, ReferenceDerivedImportProviderUnknown, UnlistedImportUse,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -279,6 +279,7 @@ use crate::v1_std_core::ParsedModuleItemKind::{
 };
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 use crate::v1_std_core::UnaryOpKind::*;
+use crate::v1_std_core::UnprojectableConstruct::FilterInBranchCondition;
 use crate::v1_std_core::VarBindingKind::{
     FunctionValueBinding, LocalValueBinding, MatchBoundBinding, VariantValueBinding,
 };
@@ -291,7 +292,7 @@ pub use crate::v1_std_core::{
     field_init_node_value, field_node_name_at, field_node_type_expr, find_child_named,
     find_property, foreach_body, foreach_collection, foreach_variable_at, generic_param_name_at,
     if_condition, if_else_branch, if_then_branch, import_is_all, import_specific_names_at,
-    index_base, index_expr, is_compiler_error, is_rest_transport, lambda_body,
+    index_base, index_expr, is_compiler_error, is_error_diagnostic, is_rest_transport, lambda_body,
     lambda_param_names_at, let_binding_name_at, let_body, let_value, make_arg_node,
     make_error_node, make_expr_node, make_named_expr_node, match_arm_nodes,
     match_pattern_is_irrefutable, match_scrutinee, method_arg_nodes, method_receiver,
@@ -310,7 +311,7 @@ pub use crate::v1_std_core::{
     CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic, Connective,
     DeclaredCallableIdentity, ErrorNode, ExprData, FieldAccessStyle, FieldSummary, FieldValueShape,
     InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, ParsedModuleItemKind,
-    ResolvedCallFormal, StringPart, TextFile, UnaryOpKind, VarBindingKind,
+    ResolvedCallFormal, StringPart, TextFile, UnaryOpKind, UnprojectableConstruct, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -6350,9 +6351,29 @@ pub fn emit_rust_selected(
             }
             __result
         });
-        let module_files = Rc::new({
+        let published_module_emissions = Rc::new({
             let mut __result = Vec::new();
             for e in module_emissions.iter().cloned() {
+                if ((Rc::new({
+                    let mut __result = Vec::new();
+                    for r in e.import_refusals.clone().iter().cloned() {
+                        if crate::v1_std_core::is_error_diagnostic(r.diagnostic.clone()) {
+                            __result.push(r);
+                        }
+                    }
+                    __result
+                })
+                .len() as i64)
+                    == 0)
+                {
+                    __result.push(e);
+                }
+            }
+            __result
+        });
+        let module_files = Rc::new({
+            let mut __result = Vec::new();
+            for e in published_module_emissions.iter().cloned() {
                 __result.push(e.file.clone());
             }
             __result
@@ -10382,12 +10403,162 @@ pub fn emit_module_full(
                 content: content.clone(),
             }),
             reference_rows: reference_plan.rows.clone(),
-            import_refusals: reference_derived_row_diagnostics(
-                reference_plan.rows.clone(),
-                m.span.clone(),
+            import_refusals: v1_rt::concat(
+                reference_derived_row_diagnostics(reference_plan.rows.clone(), m.span.clone()),
+                module_projection_refusals(
+                    typed_module.items.clone(),
+                    crate::v1_compiler_infer_env::authored_name(scope.type_env.clone(), m.clone()),
+                    scope.type_env.clone().source_indices.clone(),
+                ),
             ),
         })
     }
+}
+
+pub fn module_projection_refusals(
+    items: Rc<Vec<Rc<Node>>>,
+    module_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for item in items.iter().cloned() {
+            __result.extend(
+                (*collect_unprojectable_construct_refusals(
+                    item.clone(),
+                    module_name.clone(),
+                    source_indices.clone(),
+                ))
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    })
+}
+
+pub fn collect_unprojectable_construct_refusals(
+    n: Rc<Node>,
+    module_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let here = match (*n.expr_data.clone()).clone() {
+            ExprData::ExprIf => collect_filter_in_guard_refusals(
+                crate::v1_std_core::if_condition(n.clone()),
+                module_name.clone(),
+                source_indices.clone(),
+            ),
+            _ => Rc::new(vec![]),
+        };
+        let from_children = Rc::new({
+            let mut __result = Vec::new();
+            for c in n.children.clone().iter().cloned() {
+                __result.extend(
+                    (*collect_unprojectable_construct_refusals(
+                        c.clone(),
+                        module_name.clone(),
+                        source_indices.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let from_body = match n.body.clone() {
+            Some(b) => collect_unprojectable_construct_refusals(
+                b.clone(),
+                module_name.clone(),
+                source_indices.clone(),
+            ),
+            std::option::Option::None => Rc::new(vec![]),
+        };
+        v1_rt::concat(
+            v1_rt::concat(here.clone(), from_children.clone()),
+            from_body.clone(),
+        )
+    })
+}
+
+pub fn collect_filter_in_guard_refusals(
+    n: Rc<Node>,
+    module_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for call in collect_filter_method_calls(n.clone(), source_indices.clone())
+            .iter()
+            .cloned()
+        {
+            __result.push(crate::v1_std_core::make_error_node(
+                Rc::new(CompilerDiagnostic::EmissionConstructUnprojectable {
+                    construct: UnprojectableConstruct::FilterInBranchCondition {},
+                    span: call.span.clone(),
+                }),
+                module_name.clone(),
+            ));
+        }
+        __result
+    })
+}
+
+pub fn is_algebra_filter_method(
+    method_semantics: Option<Rc<MethodSemantics>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if (method_semantics.clone() != std::option::Option::None) {
+        match (*method_semantics.clone().unwrap()).clone() {
+            MethodSemantics::AlgebraMethodSemantics { method_def, .. } => {
+                (crate::v1_std_core::authored_name_at(source_indices.clone(), method_def.clone())
+                    == "filter".to_string())
+            }
+            _ => false,
+        }
+    } else {
+        false
+    }
+}
+
+pub fn collect_filter_method_calls(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<Node>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let self_hit = match (*n.expr_data.clone()).clone() {
+            ExprData::ExprMethodCall {
+                method_semantics: method_semantics,
+                ..
+            } => {
+                if is_algebra_filter_method(method_semantics.clone(), source_indices.clone()) {
+                    Rc::new(vec![n.clone()])
+                } else {
+                    Rc::new(vec![])
+                }
+            }
+            _ => Rc::new(vec![]),
+        };
+        let from_children = Rc::new({
+            let mut __result = Vec::new();
+            for c in n.children.clone().iter().cloned() {
+                __result.extend(
+                    (*collect_filter_method_calls(c.clone(), source_indices.clone()))
+                        .iter()
+                        .cloned(),
+                );
+            }
+            __result
+        });
+        let from_body = match n.body.clone() {
+            Some(b) => collect_filter_method_calls(b.clone(), source_indices.clone()),
+            std::option::Option::None => Rc::new(vec![]),
+        };
+        v1_rt::concat(
+            v1_rt::concat(self_hit.clone(), from_children.clone()),
+            from_body.clone(),
+        )
+    })
 }
 
 pub fn emit_import_name(n: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> String {
