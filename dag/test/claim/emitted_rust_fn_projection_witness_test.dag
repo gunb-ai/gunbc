@@ -27,9 +27,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // ordered parameter list simply lacks the name (DESIGN 4b: the RED must be authorable or the
 // check is a decoration).
 //
-// WHAT THIS DOES NOT ESTABLISH. It does not prove service-effect propagation; that consumer lives
-// on gunbc#10688 and will assert the same projection once this instrument lands. Ordinary authored
-// parameters are enough to prove the projection discriminates, which is this file's whole job.
+// WHAT THIS DOES NOT ESTABLISH. It does not prove service-effect propagation to the top of a
+// call chain. That real consumer is test.claim.emitted_rust_fn_service_chain_consumer_witness
+// (shallow depth-3 chain); #10688 takes the deep-chain discriminator after this instrument merges.
+// Ordinary authored parameters are enough to prove the projection discriminates, which is this
+// file's whole job.
 
 data with_marker_source: String = "module proj.obs\nfn observed(a: String, marker: String) -> String { a }\n"
 data without_marker_source: String = "module proj.obs\nfn observed(a: String) -> String { a }\n"

@@ -355,9 +355,13 @@ pub fn compile_dag_multi_module_fixture(
 }
 
 /// Emit-binding projection for the Rust target: one row per `FnItem` / `FuncItem` in the resolved
-/// registry, with `ordered_parameter_names` matching `emit_func_params` (authored params, then
-/// resource-use names, then `service_var_name` for each service). Not a text parse of emitted
-/// bytes — the parameter list is the one the emitter binds into the artifact.
+/// registry. `ordered_parameter_names` walks ItemInfo as authored params → resource-use names →
+/// `service_var_name` per service — the same concatenation order `emit_func_params` uses today.
+/// Not a text parse of emitted bytes.
+///
+/// CEILING: nothing joins this walk to `emit_func_params`. If the emitter reorders while ItemInfo
+/// stays shaped the same way, this projection keeps reporting the old convention and no arm
+/// refuses. Membership is the durable consumer surface until a shared derivation exists.
 fn project_emitted_rust_fn_signatures(
     resolved: &v1_compiler_compile::ResolvedPipelineResult,
 ) -> Vec<crate::cli_run::EmittedRustFnSignature> {

@@ -3061,6 +3061,15 @@ pub struct MultiModuleFixtureSource {
 /// Types and return types are deliberately absent — see `tools.multi_module_compile_fixture`
 /// `EmittedRustFnSignature`. The type name admits the Rust target; this fixture instrument has no
 /// other emission target.
+///
+/// **Names only (ceiling):** no parameter or return types — type spellings would make witnesses
+/// change-detectors on `Rc<Vec<T>>` renderings. Same-name/different-type pairs and type-only
+/// changes are invisible here; do not assert type-sensitivity over this carrier.
+///
+/// **Order is convention, not a join (ceiling):** `ordered_parameter_names` mirrors today's
+/// `emit_func_params` walk (authored → resource uses → `service_var_name`). Nothing refuses if
+/// that emitter reorder and this projection disagree — there is no shared derivation. Prefer
+/// membership asserts; treat position as coupled to an unjoined layout.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EmittedRustFnSignature {
     pub owner_module: String,

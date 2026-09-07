@@ -85,18 +85,25 @@ type MultiModuleCompileFixture {
 
 // THE STRUCTURED PROJECTION WITNESSES ASSERT OVER. Per emitted Rust function: source identity
 // (owning module + declaration name) and the PARAMETER NAME LIST the Rust emitter binds —
-// authored params, then resource-use names, then service-var names, matching emit_func_params.
-// Parameter TYPES and return types are deliberately absent: asserting over emitted type spellings
-// turns a control into a change detector for Rc<Vec<T>> renderings. The type name says Rust because
-// compile_fixture is Rust-target only; a target-agnostic name over that reader would be the
-// DESIGN section 3 meaning fork.
+// authored params, then resource-use names, then service-var names, intended to match
+// emit_func_params. The type name says Rust because compile_fixture is Rust-target only; a
+// target-agnostic name over that reader would be the DESIGN section 3 meaning fork.
 //
-// ORDER IS PART OF THE CONTRACT AND IS ALSO A TRAP IF MISREAD. The field is named
-// ordered_parameter_names because the list is emit_func_params order — a fact about how the
-// emitter binds the signature, not an incidental bag. Membership in that list is the durable
-// assertion surface (emitted_rust_fn_has_parameter); asserting on POSITION couples the witness to
-// emit_func_params' layout and reds when that layout reorders without changing who is present.
-// Use position only when the subject IS that layout.
+// NAMES ONLY — DELIBERATE CEILING. Parameter TYPES and return types are absent on purpose:
+// asserting over emitted type spellings turns a control into a change detector for Rc<Vec<T>>
+// renderings. Consequence: this projection cannot distinguish two parameters that differ only
+// in type, and cannot see a type-only change that matters. Do not assert type-sensitivity over
+// it; that claim has no carrier here.
+//
+// ORDER IS A CONVENTION, NOT A JOINED FACT — INSTRUMENT CEILING. The field is named
+// ordered_parameter_names because the host projection walks ItemInfo in the same authored →
+// resource → service_var_name order emit_func_params concatenates today. WHAT REFUSES IF
+// emit_func_params AND THIS PROJECTION DISAGREE? Nothing. There is no shared derivation and no
+// arm that compares the two; a reorder of emit_func_params that left ItemInfo unchanged would
+// leave every positional witness green while describing an order the artifact no longer has
+// (gunbc.recurring_failure_mode subject_and_its_digest_as_independent_parameters). Membership
+// (emitted_rust_fn_has_parameter) is the durable assertion surface; use position only when the
+// subject IS that layout, knowing the layout is convention until a shared helper joins them.
 //
 // THIS IS NOT A CONTENTS GREP SURFACE. Emitted file paths still travel on FixtureCompileCompleted
 // for provenance; the projection is the only population a witness may ask about signature shape.
@@ -174,6 +181,8 @@ fn emitted_rust_fn_lookup(
   }
 }
 
+// MEMBERSHIP, not position. Prefer this over indexing ordered_parameter_names unless the
+// subject's claim is specifically about emit_func_params layout.
 fn emitted_rust_fn_has_parameter(signature: EmittedRustFnSignature, parameter_name: String) -> Bool {
   signature.ordered_parameter_names |> any(n => n == parameter_name)
 }
