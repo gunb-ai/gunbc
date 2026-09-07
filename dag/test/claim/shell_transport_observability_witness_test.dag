@@ -20,9 +20,12 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 //
 // What these tests establish: the classifier answers WhollyUnobservable on an
 // authorable planted RED (exit_code only) and Observable on a planted
-// termination Bool. They establish NOTHING about useful failure (E1S0 /
-// Clock.UnixMillis still cannot represent failure as a Bool). Unrepresentability
-// is mechanical; a "declared shape vs contract" inference is not.
+// termination Bool. They establish NOTHING about useful failure.
+// witness_clock_unix_millis_is_observable_and_cannot_represent_failure is the
+// executing pin of that hole: Clock.UnixMillis is Observable (stdout from-key)
+// and has no termination Bool. Citing the planted tests as coverage of
+// representable failure is contradicted by that witness, not by a note.
+// Unrepresentability is mechanical; a "declared shape vs contract" inference is not.
 //
 // Would an emptiness wall have caught anything real? It catches members today.
 // That is why emptiness is not claimed here.
@@ -41,9 +44,17 @@ fn from_key_is_termination_report(key: String) -> Bool {
   key == "exit_success" || key == "success" || key == "exists"
 }
 
+fn shell_transport_row_declares_stdout_product(row: ShellTransportOperationRow) -> Bool {
+  any(xs: row.output_from_keys, predicate: fn(k) { from_key_is_stdout_product(key: k) })
+}
+
+fn shell_transport_row_declares_termination_report(row: ShellTransportOperationRow) -> Bool {
+  any(xs: row.output_from_keys, predicate: fn(k) { from_key_is_termination_report(key: k) })
+}
+
 fn shell_transport_row_observability(row: ShellTransportOperationRow) -> ShellTransportDeclaredObservability {
-  let e = any(xs: row.output_from_keys, predicate: fn(k) { from_key_is_stdout_product(key: k) })
-  let s = any(xs: row.output_from_keys, predicate: fn(k) { from_key_is_termination_report(key: k) })
+  let e = shell_transport_row_declares_stdout_product(row: row)
+  let s = shell_transport_row_declares_termination_report(row: row)
   if e || s {
     Observable
   } else {
@@ -81,5 +92,26 @@ test fn witness_planted_termination_report_is_observable() -> Bool {
   any(
     xs: shell_transport_operation_rows(),
     predicate: fn(row) { shell_transport_row_is_planted_termination_control(row: row) }
+  )
+}
+
+// BLIND-SPOT PIN. Clock.UnixMillis is Observable under this classifier (stdout) and
+// declares no termination Bool, so failure is unrepresentable. Green by the definition
+// of E, not by excluding the row. Anyone citing planted observability as coverage of
+// useful failure is contradicted here.
+fn shell_transport_row_is_clock_unix_millis_e1s0_blind_spot(
+  row: ShellTransportOperationRow
+) -> Bool {
+  let is_clock = row.at.service == "Clock" && row.at.operation == "UnixMillis"
+  let observable = !shell_transport_row_is_wholly_unobservable(row: row)
+  let stdout_only = shell_transport_row_declares_stdout_product(row: row)
+    && !shell_transport_row_declares_termination_report(row: row)
+  is_clock && observable && stdout_only
+}
+
+test fn witness_clock_unix_millis_is_observable_and_cannot_represent_failure() -> Bool {
+  any(
+    xs: shell_transport_operation_rows(),
+    predicate: fn(row) { shell_transport_row_is_clock_unix_millis_e1s0_blind_spot(row: row) }
   )
 }
