@@ -2026,13 +2026,6 @@ pub fn citation_debt_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// corpus run reported all four controls as ordinary refusals, which caught the claim. A false
 /// statement inside the carrier built to stop false statements is the specimen this change
 /// exists to make impossible; recorded here rather than quietly corrected.
-/// RE-OCCUPIED BY #10706's OutsideModeledGuarantee stamps (repair on the same subject as the
-/// parse/call-shape floor red). Those stamps cite a `required_capability` that MUST stay
-/// absent: `guarantee_boundary_still_outside` is true only on `DeclarationRefDeclarationAbsent`,
-/// and `construction_justification_rule` says authoring the capability makes the stamp wrong.
-/// The citations are therefore deliberately false — planted controls, not debt and not
-/// missing declarations. Enrolling them here is the other half #10706 omitted: without these
-/// rows the declarations phase refuses the same absences the join requires.
 ///
 /// THOSE EMPTIED ROWS WERE TESTS OF THE CITATION WALL. A controlled fixture authoring both
 /// input and expected population is the stronger oracle (§5); a planted row over the live

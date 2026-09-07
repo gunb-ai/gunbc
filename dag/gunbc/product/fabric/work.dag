@@ -163,6 +163,8 @@ type OutputObligationsJudgment
 // caller-supplied coproduct. Until the trigger fires, DeclaredOutputObligations
 // in work_identity_material is the live production consumer of the roster half;
 // the seal exists so the gate cannot mint terminal-success without resolving.
+// required is the typed roster (id AND kind). Projecting to ids at this seal
+// would make artifact "a" and terminal "a" indistinguishable to #10641.
 type ResolvedOutputObligations sole_constructor {
   contract: OutputContractRef
   revision: OutputObligationsRevision
