@@ -56,7 +56,6 @@ import gunbc.rung_drop.witness_deferral_freeze_forward_rule_rung_drop { witness_
 import gunbc.rung_drop.deleted_cadence_reference_drop { deleted_cadence_reference_drop }
 import gunbc.rung_drop.floor_cost_debt_straddling_produced_decl { floor_cost_debt_straddling_produced_decl }
 import gunbc.rung_drop.determinism_transitive_reachability { determinism_transitive_reachability }
-import gunbc.rung_drop.match_bound_element_type_discriminating_red { match_bound_element_type_discriminating_red }
 
 data rung_drop_roster: List<RungDrop> = [
   floor_cut_heal,
@@ -96,7 +95,6 @@ data rung_drop_roster: List<RungDrop> = [
   deleted_cadence_reference_drop,
   floor_cost_debt_straddling_produced_decl,
   determinism_transitive_reachability,
-  match_bound_element_type_discriminating_red,
 ]
 
 // THE DERIVATION THE PROJECTION USES, so "standing today" has one authority and not two. The
