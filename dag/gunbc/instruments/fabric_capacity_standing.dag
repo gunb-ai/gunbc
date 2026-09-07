@@ -12,6 +12,7 @@ import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { host_lan_address }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_groups, spark_pair_serving_head }
+import gunbc.spark.managed_access_apply { spark_managed_login }
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
 import extdeps.vllm.server { vllm_source_revision_read }
 import extdeps.vllm.log_lines { vllm_startup_reading, GpuKvCacheSize }
@@ -50,7 +51,17 @@ data capacity_probe_unit: String = "gunbc-spark-pair-head"
 data capacity_probe_container: String = "gunbc-spark-pair"
 data capacity_probe_log: String = "/var/log/gunbc/spark-pair-head.log"
 data capacity_probe_identity_file: String = "/home/briansrls/.ssh/fleet-automation"
-data capacity_probe_principal: String = "briansrls"
+// THE PRINCIPAL IS THE DECLARED ONE, READ FROM ITS AUTHORITY.
+//
+// This said "briansrls" — a human login that happens to exist on the group A head and not on the
+// group B head, so the first run of this instrument reported group B as unreachable and I wrote it
+// up as a fleet key-distribution gap. It was not. gunbc.spark.managed_access_apply already declares
+// gunbc-automation as the convergence principal, managed_access_apply provisions it, and both heads
+// answer to it on the fleet key. The gap was in this file: a second spelling of "who automation is",
+// which read as evidence about the fleet.
+//
+// So it is not spelled here at all. A probe that names its own principal can disagree with the one
+// convergence uses, and the disagreement looks exactly like a broken host.
 
 // TWELVE LINES, FIXED ORDER, "-" FOR ANYTHING THIS HOST CANNOT ANSWER.
 //
@@ -263,7 +274,7 @@ fn group_report(group: FabricGroup) -> GroupStanding {
           "-i", capacity_probe_identity_file,
           "-o", "BatchMode=yes",
           "-o", "ConnectTimeout=10",
-          join([capacity_probe_principal, "@", address as String], ""),
+          join([spark_managed_login, "@", address as String], ""),
           "bash", "-s",
         ],
         stdin_payload: capacity_probe_script(),
