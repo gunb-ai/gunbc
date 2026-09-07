@@ -190,8 +190,35 @@ type SupplierOffer<P> {
 // explicit-zero rule above exists to prevent. What is actually a consequence is
 // only this: nothing in the ranking knows which offers are ours.
 
+// ── THE EQUAL-COST ARM WAS ALREADY A POLICY, AND IT WAS ROSTER ORDER ──────────────────────────
+//
+// selection.dag's comparator replaces the held candidate only on strict less-than, and the ranking
+// fold walks the candidate population in the order it was given. So the first candidate is held first
+// and never displaced by an equal-cost challenger: ROSTER ORDER ALREADY DECIDES TIES. Omitting an
+// explicit tie policy was never neutral; it was one particular policy, chosen implicitly and
+// invisible to anyone reading the outcome.
+//
+// WHY THAT IS NOT MERELY UNTIDY, on a fleet of identical owned offers. Two Spark serving groups quote
+// zero, start at zero, and price the same transition and opportunity for a fresh demand, so their
+// totals tie exactly. Sequential fresh demands then all select the roster-first offer -- no
+// compare-and-set conflict ever occurs, because each finishes and releases before the next arrives --
+// and each retains that offer as its incumbent. The second group receives nothing, and later several
+// incumbent turns queue on the first while the second sits free.
+//
+// A CAPACITY WALL CANNOT SUBSTITUTE. Exclusivity is a different question from preference: a seat pool
+// establishes that two demands cannot both hold one seat, and says nothing about which of two FREE
+// offers a demand should try. Relying on a one-seat ceiling to spread load would make workload timing
+// the hidden tie policy -- it spreads overlapping demands, because the first offer is occupied when
+// the second selection runs, and cannot spread sequential ones at all.
+//
+// So the arm is named. Existing consumers keep the behaviour they have; a consumer that wants spread
+// asks for it, and the outcome says which policy decided.
+type EqualCostOfferTieBreak
+  = StableRosterOrder
+  | DemandKeyedRendezvous
+
 type SupplySelectionPolicy =
-  | CheapestFungibleWithDelayValuation
+  | CheapestFungibleWithDelayValuation { equal_cost: EqualCostOfferTieBreak }
 
 // FUNGIBILITY IS THE FABRIC'S QUESTION, NOT A CONSUMER'S.
 //
