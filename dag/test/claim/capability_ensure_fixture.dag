@@ -26,6 +26,25 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // gunbc.typed_remote_file_write converge_typed_remote_file -- which receives a FleetSshExecutionContext
 // and is therefore drivable over a hermetic fixture -- there is nothing to substitute.
 //
+// AND IT IS ITSELF CALLER-SEALED, because being a fixture module is not confinement. An earlier
+// revision left this function unrestricted and argued that living under test.claim confined it. It
+// does not: admit_callers adjudicates the DECLARATION CONTAINING THE MINT CALL and attaches nothing
+// to the values flowing through it, so an unrestricted permitted wrapper simply relocates the forgery
+// one hop out -- any module that could import this one would obtain CapabilityGrounded for an
+// arbitrary capability and a nonexistent executable. That no production module imports test.claim
+// today is a zero-consumer census, not a rule preventing the first one.
+//
+// The chain is sealed at every link that MINTS a positive receipt, terminating at the exact test
+// declarations: this fixture, then grounded_receipt / grounded_capability, then
+// platform_grounded_receipts, then admitted_fixture. Helpers that merely CARRY receipts a caller
+// already holds are deliberately left open -- dispatch_preflight_witness report_of takes its receipts
+// as a parameter and mints nothing, so sealing it would restrict a combinator rather than an
+// authority.
+//
+// gunbc.typed_remote_file_write's own fixture had this right already:
+// fleet_ssh_execution_context_hermetic_witness_fixture names the exact witness functions permitted to
+// receive the authoritative context, and its location under test.claim was never the wall.
+//
 // NEXT-RUNG TRIGGER, naming the CAPABILITY and not this file: an injected execution context for the
 // capability observation route, so a witness can drive capability_ensure_observe itself over a
 // hermetic context and receive a receipt from the production observer. When that exists this fixture
@@ -36,7 +55,13 @@ fn grounded_capability_ensure_witness_fixture(
   executable: FilePath,
   identity: NonEmptyStr,
   evidence: String,
-) -> CapabilityEnsureReceipt {
+) -> CapabilityEnsureReceipt
+  admit_callers: [
+    decl_ref(module_path: "test.claim.roadmap_dispatch_environment_witness_test", decl_name: "grounded_receipt"),
+    decl_ref(module_path: "test.claim.roadmap_dispatch_environment_witness_test", decl_name: "grounded_capability"),
+    decl_ref(module_path: "test.claim.dispatch_preflight_witness", decl_name: "grounded_receipt"),
+  ]
+{
   capability_ensure_receipt(
     realization: CapabilityRealization {
       capability: cap,

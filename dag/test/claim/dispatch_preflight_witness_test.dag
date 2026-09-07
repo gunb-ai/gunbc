@@ -58,7 +58,13 @@ data local_hex: String = "517fdac4ddf92d0dd636c1f66fdb95b508525067"
 // admission fold trusts grounded receipts to decide whether dispatch runs, so a fixture that wrote
 // one directly would be manufacturing exactly the standing that fold consumes. The NEGATIVE arm stays
 // hand-authored and is meant to be -- nothing is admitted on the strength of a refusal.
-fn grounded_receipt() -> CapabilityEnsureReceipt {
+fn grounded_receipt() -> CapabilityEnsureReceipt
+  admit_callers: [
+    decl_ref(module_path: "test.claim.dispatch_preflight_witness", decl_name: "preflight_capability_axis_follows_the_shared_receipt"),
+    decl_ref(module_path: "test.claim.dispatch_preflight_witness", decl_name: "preflight_counts_every_refusal_not_the_first"),
+    decl_ref(module_path: "test.claim.dispatch_preflight_witness", decl_name: "preflight_axes_are_derived_from_the_observations"),
+  ]
+{
   grounded_capability_ensure_witness_fixture(
     cap: GitWorkspaceCapability,
     executable: "/usr/bin/git" as FilePath,

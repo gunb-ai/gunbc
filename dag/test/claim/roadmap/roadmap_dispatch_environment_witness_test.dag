@@ -77,7 +77,12 @@ fn admitted_contract() -> gunbc.roadmap_execution_contract.WorkItemExecutionCont
 fn grounded_receipt(
   realization: CapabilityRealization,
   evidence: String,
-) -> CapabilityEnsureReceipt {
+) -> CapabilityEnsureReceipt
+  admit_callers: [
+    decl_ref(module_path: "test.claim.roadmap_dispatch_environment_witness_test", decl_name: "platform_grounded_receipts"),
+    decl_ref(module_path: "test.claim.roadmap_dispatch_environment_witness_test", decl_name: "admitted_fixture"),
+  ]
+{
   grounded_capability_ensure_witness_fixture(
     cap: realization.capability,
     executable: realization.executable,
@@ -91,7 +96,11 @@ fn grounded_receipt(
 // witness corpus was itself the demonstration that any importer could manufacture the positive standing
 // the admission fold trusts. The positive arm is sealed now, so this shape is no longer authorable here
 // at all -- the fixture goes through capability_ensure_receipt, which runs the consistency table.
-fn grounded_capability(cap: ExecutionCapability) -> CapabilityEnsureReceipt {
+fn grounded_capability(cap: ExecutionCapability) -> CapabilityEnsureReceipt
+  admit_callers: [
+    decl_ref(module_path: "test.claim.roadmap_dispatch_environment_witness_test", decl_name: "platform_grounded_receipts"),
+  ]
+{
   grounded_capability_ensure_witness_fixture(
     cap: cap,
     executable: "/fixture/executable" as FilePath,
@@ -100,7 +109,12 @@ fn grounded_capability(cap: ExecutionCapability) -> CapabilityEnsureReceipt {
   )
 }
 
-fn platform_grounded_receipts() -> List<CapabilityEnsureReceipt> {
+fn platform_grounded_receipts() -> List<CapabilityEnsureReceipt>
+  admit_callers: [
+    decl_ref(module_path: "test.claim.roadmap_dispatch_environment_witness_test", decl_name: "admitted_fixture"),
+    decl_ref(module_path: "test.claim.roadmap_dispatch_environment_witness_test", decl_name: "missing_capability_realization_refuses"),
+  ]
+{
   [
     grounded_receipt(
       realization: git_realization(),
@@ -116,7 +130,12 @@ fn platform_grounded_receipts() -> List<CapabilityEnsureReceipt> {
   ]
 }
 
-fn admitted_fixture() -> DispatchEnvironmentAdmission {
+fn admitted_fixture() -> DispatchEnvironmentAdmission
+  admit_callers: [
+    decl_ref(module_path: "test.claim.roadmap_dispatch_environment_witness_test", decl_name: "all_required_grounded_receipts_admit"),
+    decl_ref(module_path: "test.claim.roadmap_dispatch_environment_witness_test", decl_name: "admission_receipt_is_structured_and_located"),
+  ]
+{
   dispatch_environment_admission_decision(
     contract: admitted_contract(),
     receipts: concat(
