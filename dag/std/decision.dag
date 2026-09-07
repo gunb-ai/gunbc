@@ -440,6 +440,7 @@ type StructuralClosureCause
   | ObjectiveUnderModeledCause { missing_from_objective: List<DeclarationRef> }
   | ObjectiveDeclaresUnwarrantedTermsCause { extras: List<DeclarationRef> }
   | CausalCouplingIncomplete { detail: ObservationCompleteness<SensitivityCell> }
+  | ConstraintViolatedCause { constraint: DeclarationRef, evidence: NonEmptyStr }
 
 type DecisionClosure
   = DecisionClosureSettledReady
@@ -496,9 +497,22 @@ fn collect_constraint_obligations(rows: List<ConstraintDisposition>) -> List<Non
     match row {
       ConstraintUnestablished { constraint: _, obligation: o } => [o]
       ConstraintSatisfied { constraint: _, evidence: _ } => []
+      // Violations are not obligations: first_constraint_violation refuses them as
+      // ConstraintViolatedCause. Putting them here would convert a loud refusal into Deferred.
       ConstraintViolated { constraint: _, evidence: _ } => []
     }
   )
+}
+
+fn first_constraint_violation(rows: List<ConstraintDisposition>) -> StructuralClosureCause? {
+  flat_map(rows, row =>
+    match row {
+      ConstraintViolated { constraint: c, evidence: e } =>
+        [ConstraintViolatedCause { constraint: c, evidence: e }]
+      ConstraintSatisfied { constraint: _, evidence: _ } => []
+      ConstraintUnestablished { constraint: _, obligation: _ } => []
+    }
+  ).first()
 }
 
 fn collect_parameter_obligations(rows: List<ParameterDisposition>) -> List<NonEmptyStr> {
@@ -590,6 +604,9 @@ fn decision_closure(assessment: DecisionAssessment) -> DecisionClosure {
                   match structural_join_refuses(sensitivity: sens, constraints: cons, parameters: params) {
                     Present { value: cause } => DecisionClosureRefused { cause: cause }
                     Absent =>
+                      match first_constraint_violation(rows: assessment.constraints) {
+                        Present { value: violated } => DecisionClosureRefused { cause: violated }
+                        Absent =>
                       match first_term_drop_refusal(drops: assessment.term_drops) {
                         Present { value: cause } => DecisionClosureRefused { cause: TermDropWithoutOrderPreservation { cause: cause } }
                         Absent => {
@@ -614,6 +631,7 @@ fn decision_closure(assessment: DecisionAssessment) -> DecisionClosure {
                             DecisionClosureSettledReady
                           }
                         }
+                      }
                       }
                   }
                 }
