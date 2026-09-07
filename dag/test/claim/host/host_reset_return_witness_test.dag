@@ -947,6 +947,7 @@ test fn w_one_refused_candidate_refuses_the_whole_assignment() -> Bool {
         AssignmentPairingRefused { cause: inner } =>
           match inner { ObserverNotRostered { observer: _ } => true  _ => false }
         ObserverAssignedToTwoSubjects { observer: _, first_subject: _, second_subject: _ } => false
+        NoResetSubjectRostered => false
       }
     DispatchAssignment { pairings: _ } => false
   }
@@ -962,6 +963,7 @@ test fn w_a_host_rostered_as_both_subject_and_peer_refuses_the_assignment() -> B
         AssignmentPairingRefused { cause: inner } =>
           match inner { ObserverIsSubject { host: _ } => true  _ => false }
         ObserverAssignedToTwoSubjects { observer: _, first_subject: _, second_subject: _ } => false
+        NoResetSubjectRostered => false
       }
     DispatchAssignment { pairings: _ } => false
   }
@@ -977,6 +979,7 @@ test fn w_an_observer_assigned_to_two_subjects_refuses_from_a_fixture() -> Bool 
       match c {
         ObserverAssignedToTwoSubjects { observer: _, first_subject: _, second_subject: _ } => true
         AssignmentPairingRefused { cause: _ } => false
+        NoResetSubjectRostered => false
       }
     DispatchAssignment { pairings: _ } => false
   }
