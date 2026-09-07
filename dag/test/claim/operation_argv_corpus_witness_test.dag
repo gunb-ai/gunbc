@@ -12,7 +12,7 @@ import v2.std.operation_argv {
   ArgvRowExpressionResidue,
   ArgvRowExecutablePositionRefused,
   ArgvRowOtherRefusal,
-  DuplicateAuthorityOperationPair,
+  MaterializedArgvIdentityPair,
   OperationRef,
   Pairable,
   ShellTransportOperationRow,
@@ -20,7 +20,7 @@ import v2.std.operation_argv {
   operation_argv_bind_text,
   operation_argv_census_item,
   operation_argv_classify,
-  operation_argv_duplicate_authority_pairs_from_items,
+  operation_argv_materialized_identity_pairs_from_items,
   operation_argv_refusal_label,
   operation_argv_row_bindings,
 }
@@ -53,6 +53,8 @@ data operation_argv_fixture_path: String = "dag/test/fixture/argv_executable_pos
 data operation_argv_shell_test_path: String = "dag/extdeps/shell.dag"
 
 data operation_argv_cgroup_v2_path: String = "dag/extdeps/linux/cgroup_v2.dag"
+
+data operation_argv_shell_codegen_path: String = "dag/extdeps/gunbc/gunbc.dag"
 
 type ArgvCorpusTally {
   rows: Int
@@ -235,26 +237,31 @@ fn operation_argv_closed_census_rows() -> List<ShellTransportOperationRow> {
   ]
 }
 
-fn operation_argv_pair_ops(pair: DuplicateAuthorityOperationPair, left: String, right: String) -> Bool {
+fn operation_argv_pair_ops(pair: MaterializedArgvIdentityPair, left: String, right: String) -> Bool {
   (pair.a.at.operation == left && pair.b.at.operation == right)
     || (pair.a.at.operation == right && pair.b.at.operation == left)
 }
 
-fn operation_argv_closed_census_pairs() -> List<DuplicateAuthorityOperationPair> {
-  operation_argv_duplicate_authority_pairs_from_items(
+fn operation_argv_materialized_identity_pairs_of(
+  rows: List<ShellTransportOperationRow>
+) -> List<MaterializedArgvIdentityPair> {
+  operation_argv_materialized_identity_pairs_from_items(
     items: list_map(
-      xs: operation_argv_closed_census_rows(),
+      xs: rows,
       f: fn(row) { operation_argv_census_item(row: row) }
     )
   )
 }
 
-// Duplicate-authority identity is the Pairable|Unpairable join on a CLOSED row list (planted
-// Alpha/Beta, Unpairable Smuggle, singleton Literal, live shell/cgroup directory ops). That is
-// census_item then duplicate_authority_pairs_from_items -- the same fold the live enumerator would
-// use -- not two hand-typed materializations and not a full-corpus rematerialization (floor CPU
-// deadline / changed-witness interrupted_before_verdict).
-test fn witness_closed_duplicate_authority_join_finds_planted_and_shell_cgroup() -> Bool {
+fn operation_argv_closed_census_pairs() -> List<MaterializedArgvIdentityPair> {
+  operation_argv_materialized_identity_pairs_of(rows: operation_argv_closed_census_rows())
+}
+
+// This fold establishes MATERIALIZED-ARGV IDENTITY on a closed row list (planted Alpha/Beta,
+// Unpairable Smuggle, singleton Literal, live shell/cgroup directory ops). Same join the live
+// enumerator would use; not a full-corpus rematerialization (floor CPU). It is not the
+// duplicate-authority class -- see witness_codegen_check_does_not_identity_join_is_file.
+test fn witness_closed_materialized_argv_identity_join_finds_planted_and_shell_cgroup() -> Bool {
   let pairs = operation_argv_closed_census_pairs()
   length(xs: pairs) == 2
     && any(xs: pairs, predicate: fn(p) {
@@ -284,6 +291,32 @@ test fn witness_closed_census_smuggle_is_unpairable() -> Bool {
           ArgvRowOtherRefusal => false
         }
   }
+}
+
+// HOLE PIN. shell.Codegen.Check bakes test -f target/codegen/.stamp; shell.Test.IsFile slots
+// {path}. Same program and flag, different materialized lists, so identity-join produces ZERO
+// pairs. This is the current boundary of what the join establishes, not a missing test. Citing
+// the planted/shell-cgroup witness as duplicate-authority coverage is false: this is the RED
+// that coverage would have to go red on, and it stays green by construction of identity.
+test fn witness_codegen_check_does_not_identity_join_is_file() -> Bool {
+  length(
+    xs: operation_argv_materialized_identity_pairs_of(
+      rows: [
+        operation_argv_closed_census_row(
+          path: operation_argv_shell_codegen_path,
+          service: "shell.Codegen",
+          operation: "Check",
+          declared_inputs: []
+        ),
+        operation_argv_closed_census_row(
+          path: operation_argv_shell_test_path,
+          service: "shell.Test",
+          operation: "IsFile",
+          declared_inputs: ["path"]
+        )
+      ]
+    )
+  ) == 0
 }
 
 test fn operation_argv_corpus_RED_literal_executable_control_materializes() -> Bool {

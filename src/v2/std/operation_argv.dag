@@ -198,22 +198,31 @@ fn operation_argv_row_bindings(row: ShellTransportOperationRow) -> List<Operatio
   )
 }
 
-// Census identity is the MATERIALIZED argv LIST (generic bindings of the operation's own declared
-// inputs), not a grep of `transport shell` and not a joined String. Two operations that materialize
-// to the same argv list are one concept under two names (DESIGN 3). Unmaterializable rows are a
-// distinct coproduct arm: their argv is not a comparable fact until evaluation lands. The join is
-// operation_argv_census_item then operation_argv_duplicate_authority_pairs_from_items; the live
-// enumerator remains shell_transport_operation_rows (already consumed by the corpus tally). A
-// convenience wrapper that rematerializes every live row is not a second authority -- it is a
-// floor-CPU bomb -- so it is not provided. Compose at a consumer that can pay that cost.
+// This join establishes CROSS-MODULE IDENTITY OF MATERIALIZED argv, not the duplicate-authority
+// class. Two operations that materialize to the same argv list (generic bindings of each
+// operation's own declared inputs) share one executable fact under two names. That is a real,
+// checkable property and it found a real defect (shell.Test.IsDirectory vs
+// linux.CgroupV2.PathIsDirectory). It is not coverage of "two names for one concept" in general.
 //
-// Unpairable is NOT a slop bucket. Generic materialization refuses argv it cannot evaluate: an
-// ExprCall or a coproduct helper at any position, including argv[0]. git.Plumbing.ReadTreeIntoIndex
-// is the exemplar -- argv starts with git_index_file_env_argv(...) then a literal git, then
-// git_repository_address_argv on GitRepositoryAddress. That is composed domain modeling, and this
-// census is blind to exactly those rows. Pairable-only conclusions systematically under-represent
-// composed argv. The expression-residue pin on the corpus witness is a different cut
-// (ArgvRowExpressionResidue) and does not describe Unpairable's composition.
+// HOLE, current boundary, not a future improvement: a declaration that BAKES its parameter as a
+// literal will not identity-join the generic operation it duplicates. Named instance:
+// shell.Codegen.Check argv ["test", "-f", "target/codegen/.stamp"] versus shell.Test.IsFile
+// argv ["test", "-f", "{path}"]. The worse declaration is the one the join cannot see. The
+// witness witness_codegen_check_does_not_identity_join_is_file is the executing pin of that
+// hole -- cite that, never this fold, as duplicate-authority coverage.
+//
+// Blind at the other end too: Unpairable (composed argv the generic binder cannot evaluate,
+// exemplar git.Plumbing.ReadTreeIntoIndex) never enters a bucket. Pairable-only conclusions
+// under-represent composed argv. ArgvRowExpressionResidue on the corpus witness is a different
+// cut and does not describe that arm.
+//
+// The join is operation_argv_census_item then operation_argv_materialized_identity_pairs_from_items.
+// Live enumerator remains shell_transport_operation_rows (already consumed by the corpus tally).
+// A convenience wrapper that rematerializes every live row is a floor-CPU bomb, not a second
+// authority, so it is not provided.
+//
+// A second relation (Hamming-1 literal vs generic slot, same program/flags) could catch Check vs
+// IsFile. That is not this join, not "same policy" (undecidable), and is not built here.
 
 fn operation_argv_lists_eq(a: List<String>, b: List<String>) -> Bool {
   length(xs: a) == length(xs: b)
@@ -229,7 +238,7 @@ type OperationArgvCensusItem
   = Pairable { row: ShellTransportOperationRow, argv: List<String> }
   | Unpairable { row: ShellTransportOperationRow, classification: ArgvRowClassification }
 
-type DuplicateAuthorityOperationPair {
+type MaterializedArgvIdentityPair {
   a: ShellTransportOperationRow
   b: ShellTransportOperationRow
   argv: List<String>
@@ -258,7 +267,7 @@ type OperationArgvCensusBucket {
 
 data operation_argv_empty_census_buckets: List<OperationArgvCensusBucket> = Empty {}
 data operation_argv_empty_rows: List<ShellTransportOperationRow> = Empty {}
-data operation_argv_empty_duplicate_pairs: List<DuplicateAuthorityOperationPair> = Empty {}
+data operation_argv_empty_identity_pairs: List<MaterializedArgvIdentityPair> = Empty {}
 
 fn operation_argv_bucket_snoc_row(
   buckets: List<OperationArgvCensusBucket>,
@@ -298,11 +307,11 @@ fn operation_argv_pairs_from_seen(
   seen: List<ShellTransportOperationRow>,
   incoming: ShellTransportOperationRow,
   argv: List<String>
-) -> List<DuplicateAuthorityOperationPair> {
+) -> List<MaterializedArgvIdentityPair> {
   list_map(
     xs: seen,
     f: fn(prior) {
-      DuplicateAuthorityOperationPair {
+      MaterializedArgvIdentityPair {
         a: prior,
         b: incoming,
         argv: argv
@@ -313,17 +322,17 @@ fn operation_argv_pairs_from_seen(
 
 type OperationArgvPairFold {
   seen: List<ShellTransportOperationRow>
-  pairs: List<DuplicateAuthorityOperationPair>
+  pairs: List<MaterializedArgvIdentityPair>
 }
 
 fn operation_argv_pairs_from_bucket(
   bucket: OperationArgvCensusBucket
-) -> List<DuplicateAuthorityOperationPair> {
+) -> List<MaterializedArgvIdentityPair> {
   let folded = fold_list(
     xs: bucket.rows,
     empty: OperationArgvPairFold {
       seen: operation_argv_empty_rows,
-      pairs: operation_argv_empty_duplicate_pairs
+      pairs: operation_argv_empty_identity_pairs
     },
     cons: fn(acc, row) {
       OperationArgvPairFold {
@@ -342,9 +351,9 @@ fn operation_argv_pairs_from_bucket(
   folded.pairs
 }
 
-fn operation_argv_duplicate_authority_pairs_from_items(
+fn operation_argv_materialized_identity_pairs_from_items(
   items: List<OperationArgvCensusItem>
-) -> List<DuplicateAuthorityOperationPair> {
+) -> List<MaterializedArgvIdentityPair> {
   let buckets = fold_list(
     xs: items,
     empty: operation_argv_empty_census_buckets,
@@ -358,7 +367,7 @@ fn operation_argv_duplicate_authority_pairs_from_items(
   )
   fold_list(
     xs: buckets,
-    empty: operation_argv_empty_duplicate_pairs,
+    empty: operation_argv_empty_identity_pairs,
     cons: fn(acc, bucket) {
       list_append(left: acc, right: operation_argv_pairs_from_bucket(bucket: bucket))
     }
