@@ -232,3 +232,25 @@ test fn m_two_pools_retained_one_pool_walked() -> Bool {
         decls: decls_of(roots: lens_roots)
       )) > 0
 }
+
+// n IS THE FLOOR-GRAIN ARM THAT WAS MISSING, and its absence is why no repair could be aimed. l
+// runs the floor claim's whole body -- the reachability walk AND the determinism fold over every
+// reached declaration's subtree -- so l alone cannot say which of the two to make cheaper. n runs
+// the walk at the floor's own terms and nothing else, so l minus n is the fold at the grain that
+// actually blocks.
+//
+// AND IT MATTERS THAT THE DIRECTORY-GRAIN ANSWER DOES NOT TRANSFER. At directory grain the fold
+// measured below the walk and was refuted as the cost. But the floor's closure is EMPTY, so
+// decls_in_modules returns nothing for every callee and the walk follows NO edges at all: it drains
+// its seeds and stops. A walk that follows no edges cannot be pool-proportional, which means the
+// term this drop's trigger names is not even exercised at the floor's grain -- and whatever costs
+// 200ms there is a DIFFERENT construct from the one the directory arms measure. Aiming the repair
+// from the directory arms would fix a real defect that this claim does not pay.
+test fn n_floor_walk_only() -> Bool {
+  length(xs: call_reachable_decls(
+    entry_module: entry,
+    terminal_callee_symbols: no_terminals,
+    closure_modules: closure_of(roots: floor_roots),
+    decls: fn_arrow_decl_facts_live(pool_roots: floor_roots, pool_files: floor_files)
+  )) > 0
+}
