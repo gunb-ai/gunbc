@@ -47,7 +47,20 @@ service Clock {
       nonzero => String "date command failed"
     }
   }
+
+  operation TimestampOffsetDays {
+    input { timestamp: Timestamp, offset_days: Int }
+    output { result: Timestamp from "stdout" }
+    readonly
+    transport shell { argv: ["date", "-u", "-d", "{timestamp} {offset_days} days", "+%Y-%m-%dT%H:%M:%SZ"] }
+    exit {
+      0 => Unit
+      nonzero => String "date offset failed"
+    }
+  }
 }
+
+data timestamp_offset_days_documentation: String = "Clock.TimestampOffsetDays: ISO-8601 timestamp offset by a whole number of days. Used for lookback windows in the superseded-run census. GNU date(1) coreutils parses ISO-8601 input and applies the day offset; Timestamp is String (ISO-8601 text) in std.types, and no pure-language ISO-8601 arithmetic exists, so this operation fills that gap through the shell transport the clock module already owns."
 
 // UnixMillis exists because a throttle needs to ANSWER `has 20 hours passed`, and answering it from Clock.Now is not possible without a date parser: Timestamp is `String` in std.types, so Clock.Now's apparent typing is an alias over rendered ISO-8601 text, not a magnitude. UnixSecs was no better for a different reason — it declared its output as String, so the one operation in the tree that produces a number produced it as text and every consumer would have owned the decode. The output is therefore EpochMs (std.types, `Int where range(min: 0)`), which is the existing magnitude carrier for exactly this quantity, so no new time type is minted.
 //

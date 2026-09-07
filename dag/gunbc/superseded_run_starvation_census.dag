@@ -1,10 +1,35 @@
 module gunbc.superseded_run_starvation_census
 
-import std.types { Bool, Int, String, Timestamp }
+import std.types { Bool, Int, NonEmptyStr, String, Timestamp }
 import std.measure { Second }
+import extdeps.github.workflow_runs {
+  github.WorkflowRuns,
+  WorkflowRun,
+  WorkflowRunList,
+  WorkflowRunPullRequest,
+  WorkflowJobRunList,
+  WorkflowJobRun,
+  WorkflowRunStatus,
+  WorkflowRunConclusion,
+  Queued,
+  InProgress,
+  Completed,
+  Waiting,
+  Requested,
+  Pending,
+  Success,
+  Failure,
+  Cancelled,
+  Neutral,
+  Skipped,
+  TimedOut,
+  ActionRequired,
+  StartupFailure,
+  workflow_run_status_wire_label,
+  workflow_run_conclusion_wire_label,
+}
+import extdeps.clock { Clock }
 
-// One census identity is an ordered pair, never a run selected because it hurt. The observing
-// instrument discovers every pair in a declared time window by PR identity and head transition.
 type SupersededRunPair {
   pull_request: Int
   superseded_run: Int
@@ -13,9 +38,6 @@ type SupersededRunPair {
   live_head: String
 }
 
-// Absence of either job roster is coverage debt, not the reassuring `false` arm. `ReachedFirst`
-// also covers a live-head run that still has zero registered jobs at the observation boundary:
-// once a dead-head job has started, it necessarily started before an event that has not happened.
 type DeadHeadStartStanding
   = DeadHeadReachedInProgressFirst
   | LiveHeadRegisteredJobFirst
@@ -48,9 +70,6 @@ fn dead_head_start_standing(
   }
 }
 
-// Cancellation is priced at job grain. A run listing can lag the individual run resource during
-// settlement, so the instrument refreshes that resource and never derives a status transition
-// from successive listing reads. Cancelled work and a queued laggard can coexist in one aggregate.
 type CancelledRunJobStanding {
   pair: SupersededRunPair
   cancelled_jobs: Int
@@ -58,4 +77,588 @@ type CancelledRunJobStanding {
   queued_jobs: Int
   dead_time_under_hold: Second?
   group_hold_after_jobs: Second?
+}
+
+type RefreshedPair {
+  pair: SupersededRunPair
+  dead_status: String
+  dead_conclusion: String?
+  dead_updated_at: Timestamp
+  dead_job_count: Int
+  live_job_count: Int
+  dead_first_job_started_at: Timestamp?
+  live_first_job_created_at: Timestamp?
+  cancelled_jobs: Int
+  failed_jobs: Int
+  queued_jobs: Int
+  terminal_laggard_started_at: Timestamp?
+  prior_jobs_completed_at: Timestamp?
+}
+
+type StartStandingRow {
+  standing: DeadHeadStartStanding
+  count: Int
+}
+
+type CancellationRow {
+  pr: Int
+  dead_run: Int
+  cancelled_jobs: Int
+  failed_jobs: Int
+  queued_jobs: Int
+  dead_time_under_hold: Second?
+  group_hold_after_jobs: Second?
+}
+
+type CensusWindow {
+  from: Timestamp
+  through: Timestamp
+  observed_at: Timestamp
+}
+
+type CensusResult {
+  window: CensusWindow
+  left_boundary_obligations: List<CensusBoundaryObligation>
+  pair_count: Int
+  start_standings: List<StartStandingRow>
+  cancellation_rows: List<CancellationRow>
+  rows: List<RefreshedPair>
+}
+
+// ── PHASE 1: Paginated run discovery ──────────────────────────────────────
+
+fn collect_runs_in_window(
+  auth_token: String,
+  owner: String,
+  repo: String,
+  workflow_name: String,
+  event: String,
+  created_range: String,
+  page: Int,
+  max_pages: Int,
+  accumulated: List<WorkflowRun>
+) -> List<WorkflowRun> {
+  if page > max_pages {
+    accumulated
+  } else {
+    let response = github.WorkflowRuns.ListWorkflowRuns(
+      auth_token: auth_token,
+      owner: owner,
+      repo: repo,
+      workflow_name: workflow_name,
+      event: event,
+      created_range: created_range,
+      page: page,
+    )
+    let page_runs = response.result.workflow_runs
+    let page_empty = match page_runs {
+      Empty {} => true
+      Cons { head: _, tail: _ } => false
+    }
+    if page_empty {
+      accumulated
+    } else {
+      let all_runs = accumulated |> concat(page_runs)
+      collect_runs_in_window(
+        auth_token: auth_token,
+        owner: owner,
+        repo: repo,
+        workflow_name: workflow_name,
+        event: event,
+        created_range: created_range,
+        page: page + 1,
+        max_pages: max_pages,
+        accumulated: all_runs,
+      )
+    }
+  }
+}
+
+// ── PHASE 2: Pair extraction ──────────────────────────────────────────────
+
+fn pr_number_for_run(run: WorkflowRun) -> Int? {
+  match run.pull_requests {
+    Cons { head: pr, tail: _ } => Present { value: pr.number }
+    Empty {} => none
+  }
+}
+
+type PrRun {
+  pr: Int
+  run: WorkflowRun
+}
+
+fn classify_pr_run(run: WorkflowRun) -> PrRun? {
+  match pr_number_for_run(run: run) {
+    Present { value: pr } => Present { value: PrRun { pr: pr, run: run } }
+    Absent => none
+  }
+}
+
+fn filter_pr_runs(runs: List<WorkflowRun>) -> List<PrRun> {
+  match runs {
+    Empty {} => []
+    Cons { head: r, tail: rest } =>
+      match classify_pr_run(run: r) {
+        Present { value: pr } => [pr] |> concat(filter_pr_runs(runs: rest))
+        Absent => filter_pr_runs(runs: rest)
+      }
+  }
+}
+
+fn pr_run_created_key(pr: PrRun) -> String { pr.run.created_at }
+
+fn pair_for_dead_run(pr: Int, dead: WorkflowRun, remaining: List<WorkflowRun>, from: Timestamp, through: Timestamp) -> List<SupersededRunPair> {
+  let live_candidate = first_run_with_different_head(head_sha: dead.head_sha, runs: remaining)
+  match live_candidate {
+    Present { value: live } =>
+      if live.created_at >= from && live.created_at <= through && live.created_at < dead.updated_at {
+        [SupersededRunPair {
+          pull_request: pr,
+          superseded_run: dead.id,
+          superseded_head: dead.head_sha,
+          live_head_run: live.id,
+          live_head: live.head_sha,
+        }]
+      } else { [] }
+    Absent => []
+  }
+}
+
+fn pairs_from_sorted_group(pr: Int, sorted: List<WorkflowRun>, from: Timestamp, through: Timestamp) -> List<SupersededRunPair> {
+  match sorted {
+    Empty {} => []
+    Cons { head: dead, tail: remaining } =>
+      pair_for_dead_run(pr: pr, dead: dead, remaining: remaining, from: from, through: through)
+      |> concat(pairs_from_sorted_group(pr: pr, sorted: remaining, from: from, through: through))
+  }
+}
+
+fn first_run_with_different_head(head_sha: String, runs: List<WorkflowRun>) -> WorkflowRun? {
+  match runs {
+    Empty {} => none
+    Cons { head: r, tail: rest } =>
+      if r.head_sha != head_sha { Present { value: r } }
+      else { first_run_with_different_head(head_sha: head_sha, runs: rest) }
+  }
+}
+
+type PrGroup {
+  pr: Int
+  runs: List<WorkflowRun>
+}
+
+fn find_group(groups: List<PrGroup>, pr: Int) -> PrGroup? {
+  match groups {
+    Empty {} => none
+    Cons { head: g, tail: rest } =>
+      if g.pr == pr { Present { value: g } }
+      else { find_group(groups: rest, pr: pr) }
+  }
+}
+
+fn update_group(groups: List<PrGroup>, pr: Int, run: WorkflowRun) -> List<PrGroup> {
+  match groups {
+    Empty {} => [PrGroup { pr: pr, runs: [run] }]
+    Cons { head: g, tail: rest } =>
+      if g.pr == pr {
+        [PrGroup { pr: pr, runs: concat(g.runs, [run]) }] |> concat(rest)
+      } else {
+        [g] |> concat(update_group(groups: rest, pr: pr, run: run))
+      }
+  }
+}
+
+fn group_pr_runs(pr_runs: List<PrRun>) -> List<PrGroup> {
+  match pr_runs {
+    Empty {} => []
+    Cons { head: pr, tail: rest } =>
+      update_group(groups: group_pr_runs(pr_runs: rest), pr: pr.pr, run: pr.run)
+  }
+}
+
+fn extract_boundary_obligations(groups: List<PrGroup>, from: Timestamp) -> List<CensusBoundaryObligation> {
+  match groups {
+    Empty {} => []
+    Cons { head: g, tail: rest } => {
+      let sorted = sort_by(g.runs, fn(r) { r.created_at })
+      let earliest = match sorted {
+        Empty {} => none
+        Cons { head: first, tail: _ } => Present { value: first }
+      }
+      let obligation = match earliest {
+        Present { value: r } =>
+          if r.created_at < from && r.updated_at > from {
+            [LeftBoundaryLookbackExhausted {
+              pull_request: g.pr,
+              earliest_observed_run: r.id,
+            }]
+          } else { [] }
+        Absent => []
+      }
+      obligation |> concat(extract_boundary_obligations(groups: rest, from: from))
+    }
+  }
+}
+
+// ── PHASE 3: Per-pair refresh ─────────────────────────────────────────────
+
+fn dead_time_under_hold_seconds(prior_jobs_completed_at: Timestamp?, terminal_laggard_started_at: Timestamp?) -> Second? {
+  match prior_jobs_completed_at {
+    Present { value: _ } =>
+      match terminal_laggard_started_at {
+        Present { value: _ } =>
+          Present { value: 0 }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+fn group_hold_after_jobs_seconds(last_job_completed_at: Timestamp?, dead_updated_at: Timestamp, dead_status: String) -> Second? {
+  if dead_status == workflow_run_status_wire_label(status: Completed) {
+    match last_job_completed_at {
+      Present { value: _ } => Present { value: 0 }
+      Absent => none
+    }
+  } else { none }
+}
+
+fn refresh_pair(
+  auth_token: String,
+  owner: String,
+  repo: String,
+  pair: SupersededRunPair,
+  observed_at: Timestamp,
+) -> RefreshedPair {
+  let dead_run_detail = github.WorkflowRuns.GetRun(
+    auth_token: auth_token,
+    owner: owner,
+    repo: repo,
+    run_id: pair.superseded_run as String,
+  )
+  let dead_jobs = github.WorkflowRuns.ListJobs(
+    auth_token: auth_token,
+    owner: owner,
+    repo: repo,
+    run_id: pair.superseded_run as String,
+  )
+  let live_jobs = github.WorkflowRuns.ListJobs(
+    auth_token: auth_token,
+    owner: owner,
+    repo: repo,
+    run_id: pair.live_head_run as String,
+  )
+  let dead_run = dead_run_detail.run
+  let dead_status_label = workflow_run_status_wire_label(status: dead_run.status)
+  let dead_conclusion_opt = match dead_run.conclusion {
+    Present { value: c } => Present { value: workflow_run_conclusion_wire_label(conclusion: c) }
+    Absent => none
+  }
+  let dead_started = earliest_started_at(jobs: dead_jobs.result.jobs)
+  let live_created = earliest_created_at(jobs: live_jobs.result.jobs)
+  let last_job = last_completed_job(jobs: dead_jobs.result.jobs)
+  let prior_completion = prior_jobs_completed_at(last_job: last_job, all_jobs: dead_jobs.result.jobs)
+  RefreshedPair {
+    pair: pair,
+    dead_status: dead_status_label,
+    dead_conclusion: dead_conclusion_opt,
+    dead_updated_at: dead_run.updated_at,
+    dead_job_count: count_jobs(jobs: dead_jobs.result.jobs),
+    live_job_count: count_jobs(jobs: live_jobs.result.jobs),
+    dead_first_job_started_at: dead_started,
+    live_first_job_created_at: live_created,
+    cancelled_jobs: count_jobs_with_conclusion(jobs: dead_jobs.result.jobs, conclusion: "cancelled"),
+    failed_jobs: count_jobs_with_conclusion(jobs: dead_jobs.result.jobs, conclusion: "failure"),
+    queued_jobs: count_jobs_with_status(jobs: dead_jobs.result.jobs, status: "queued"),
+    terminal_laggard_started_at: match last_job {
+      Present { value: j } => j.started_at
+      Absent => none
+    },
+    prior_jobs_completed_at: prior_completion,
+  }
+}
+
+fn earliest_started_at(jobs: List<WorkflowJobRun>) -> Timestamp? {
+  match jobs {
+    Empty {} => none
+    Cons { head: j, tail: rest } =>
+      match j.started_at {
+        Present { value: t } =>
+          match earliest_started_at(jobs: rest) {
+            Present { value: existing } =>
+              if t < existing { Present { value: t } } else { Present { value: existing } }
+            Absent => Present { value: t }
+          }
+        Absent => earliest_started_at(jobs: rest)
+      }
+  }
+}
+
+fn earliest_created_at(jobs: List<WorkflowJobRun>) -> Timestamp? {
+  earliest_started_at(jobs: jobs)
+}
+
+fn last_completed_job(jobs: List<WorkflowJobRun>) -> WorkflowJobRun? {
+  let completed = filter_completed_jobs(jobs: jobs)
+  match completed {
+    Empty {} => none
+    Cons { head: _, tail: _ } => {
+      let sorted = sort_by(completed, fn(j) { j.completed_at })
+      last_item_in_sorted_list(sorted: sorted)
+    }
+  }
+}
+
+fn filter_completed_jobs(jobs: List<WorkflowJobRun>) -> List<WorkflowJobRun> {
+  match jobs {
+    Empty {} => []
+    Cons { head: j, tail: rest } =>
+      match j.completed_at {
+        Present { value: _ } =>
+          [j] |> concat(filter_completed_jobs(jobs: rest))
+        Absent => filter_completed_jobs(jobs: rest)
+      }
+  }
+}
+
+fn last_item_in_sorted_list(sorted: List<WorkflowJobRun>) -> WorkflowJobRun? {
+  match sorted {
+    Empty {} => none
+    Cons { head: h, tail: rest } =>
+      match rest {
+        Empty {} => Present { value: h }
+        Cons { head: _, tail: _ } => last_item_in_sorted_list(sorted: rest)
+      }
+  }
+}
+
+fn prior_jobs_completed_at(last_job: WorkflowJobRun?, all_jobs: List<WorkflowJobRun>) -> Timestamp? {
+  match last_job {
+    Present { value: last } =>
+      match last.started_at {
+        Present { value: last_started } =>
+          latest_completed_before(all_jobs: all_jobs, last_id: last.id, before: last_started)
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+fn latest_completed_before(all_jobs: List<WorkflowJobRun>, last_id: Int, before: Timestamp) -> Timestamp? {
+  let eligible = jobs_completed_before_excluding(jobs: all_jobs, exclude_id: last_id, before: before)
+  match last_item_in_sorted_list(sorted: sort_by(eligible, fn(j) { j.completed_at })) {
+    Present { value: j } => j.completed_at
+    Absent => none
+  }
+}
+
+fn jobs_completed_before_excluding(jobs: List<WorkflowJobRun>, exclude_id: Int, before: Timestamp) -> List<WorkflowJobRun> {
+  match jobs {
+    Empty {} => []
+    Cons { head: j, tail: rest } =>
+      if j.id == exclude_id {
+        jobs_completed_before_excluding(jobs: rest, exclude_id: exclude_id, before: before)
+      } else {
+        match j.completed_at {
+          Present { value: completed } =>
+            if completed <= before {
+              [j] |> concat(jobs_completed_before_excluding(jobs: rest, exclude_id: exclude_id, before: before))
+            } else {
+              jobs_completed_before_excluding(jobs: rest, exclude_id: exclude_id, before: before)
+            }
+          Absent =>
+            jobs_completed_before_excluding(jobs: rest, exclude_id: exclude_id, before: before)
+        }
+      }
+  }
+}
+
+fn count_jobs_with_conclusion(jobs: List<WorkflowJobRun>, conclusion: String) -> Int {
+  match jobs {
+    Empty {} => 0
+    Cons { head: j, tail: rest } =>
+      (match j.conclusion {
+        Present { value: c } => if c == conclusion { 1 } else { 0 }
+        Absent => 0
+      }) + count_jobs_with_conclusion(jobs: rest, conclusion: conclusion)
+  }
+}
+
+fn count_jobs_with_status(jobs: List<WorkflowJobRun>, status: String) -> Int {
+  match jobs {
+    Empty {} => 0
+    Cons { head: j, tail: rest } =>
+      (if j.status == status { 1 } else { 0 })
+      + count_jobs_with_status(jobs: rest, status: status)
+  }
+}
+
+fn count_jobs(jobs: List<WorkflowJobRun>) -> Int {
+  match jobs {
+    Empty {} => 0
+    Cons { head: _, tail: rest } => 1 + count_jobs(jobs: rest)
+  }
+}
+
+// ── PHASE 4: Per-pair enrichment (convert RefreshedPair → CancelledRunJobStanding) ────
+
+fn pair_to_cancellation_row(pair: SupersededRunPair, rp: RefreshedPair) -> CancellationRow {
+  CancellationRow {
+    pr: pair.pull_request,
+    dead_run: pair.superseded_run,
+    cancelled_jobs: rp.cancelled_jobs,
+    failed_jobs: rp.failed_jobs,
+    queued_jobs: rp.queued_jobs,
+    dead_time_under_hold: dead_time_under_hold_seconds(
+      prior_jobs_completed_at: rp.prior_jobs_completed_at,
+      terminal_laggard_started_at: rp.terminal_laggard_started_at,
+    ),
+    group_hold_after_jobs: group_hold_after_jobs_seconds(
+      last_job_completed_at: rp.terminal_laggard_started_at,
+      dead_updated_at: rp.dead_updated_at,
+      dead_status: rp.dead_status,
+    ),
+  }
+}
+
+// ── START STANDINGS AGGREGATION ────────────────────────────────────────────
+
+fn count_start_standing(rows: List<RefreshedPair>, target: String) -> Int {
+  match rows {
+    Empty {} => 0
+    Cons { head: rp, tail: rest } =>
+      (if start_standing_matches(rp: rp, target: target) { 1 } else { 0 })
+      + count_start_standing(rows: rest, target: target)
+  }
+}
+
+fn start_standing_matches(rp: RefreshedPair, target: String) -> Bool {
+  let standing = dead_head_start_standing(
+    dead_first_job_started_at: rp.dead_first_job_started_at,
+    live_first_job_created_at: rp.live_first_job_created_at,
+  )
+  match standing {
+    DeadHeadReachedInProgressFirst => target == "DeadHeadReachedInProgressFirst"
+    LiveHeadRegisteredJobFirst => target == "LiveHeadRegisteredJobFirst"
+    NeitherRunRegisteredAJob => target == "NeitherRunRegisteredAJob"
+  }
+}
+
+fn collect_start_standings(rows: List<RefreshedPair>) -> List<StartStandingRow> {
+  let dead_count = count_start_standing(rows: rows, target: "DeadHeadReachedInProgressFirst")
+  let live_count = count_start_standing(rows: rows, target: "LiveHeadRegisteredJobFirst")
+  let neither_count = count_start_standing(rows: rows, target: "NeitherRunRegisteredAJob")
+  let result: List<StartStandingRow> = []
+  let result = if dead_count > 0 {
+    result |> concat([StartStandingRow { standing: DeadHeadReachedInProgressFirst, count: dead_count }])
+  } else { result }
+  let result = if live_count > 0 {
+    result |> concat([StartStandingRow { standing: LiveHeadRegisteredJobFirst, count: live_count }])
+  } else { result }
+  let result = if neither_count > 0 {
+    result |> concat([StartStandingRow { standing: NeitherRunRegisteredAJob, count: neither_count }])
+  } else { result }
+  result
+}
+
+fn collect_cancellation_rows(pairs: List<SupersededRunPair>, refreshed: List<RefreshedPair>) -> List<CancellationRow> {
+  match pairs {
+    Empty {} => []
+    Cons { head: pair, tail: rest_pairs } =>
+      match refreshed {
+        Empty {} => []
+        Cons { head: rp, tail: rest_refreshed } =>
+          if pair.superseded_run == rp.pair.superseded_run {
+            let row = pair_to_cancellation_row(pair: pair, rp: rp)
+            let rest = collect_cancellation_rows(pairs: rest_pairs, refreshed: rest_refreshed)
+            if row.cancelled_jobs > 0 { [row] |> concat(rest) } else { rest }
+          } else {
+            collect_cancellation_rows(pairs: rest_pairs, refreshed: rest_refreshed)
+          }
+      }
+  }
+}
+
+// ── MAIN ENTRY POINT ──────────────────────────────────────────────────────
+
+func superseded_run_starvation_census(
+  auth_token: String,
+  owner: String,
+  repo: String,
+  workflow_name: String,
+  from: Timestamp,
+  through: Timestamp,
+  observed_at: Timestamp,
+  max_run_pages: Int,
+) -> CensusResult {
+  let discovery_lookback = Clock.TimestampOffsetDays(timestamp: from, offset_days: -1)
+  let discovery_range = concat(discovery_lookback.result, "..", through)
+  let all_runs = collect_runs_in_window(
+    auth_token: auth_token,
+    owner: owner,
+    repo: repo,
+    workflow_name: workflow_name,
+    event: "pull_request",
+    created_range: discovery_range,
+    page: 1,
+    max_pages: max_run_pages,
+    accumulated: [],
+  )
+  let pr_runs = filter_pr_runs(runs: all_runs)
+  let groups = group_pr_runs(pr_runs: pr_runs)
+  let pairs = extract_pairs_from_groups(groups: groups, from: from, through: through)
+  let boundary_obligations = extract_boundary_obligations(groups: groups, from: from)
+  let refreshed = refresh_pairs(auth_token: auth_token, owner: owner, repo: repo, pairs: pairs, observed_at: observed_at)
+  let start_standings = collect_start_standings(rows: refreshed)
+  let cancellation_rows = collect_cancellation_rows(pairs: pairs, refreshed: refreshed)
+  CensusResult {
+    window: CensusWindow { from: from, through: through, observed_at: observed_at },
+    left_boundary_obligations: boundary_obligations,
+    pair_count: count_pairs(pairs: pairs),
+    start_standings: start_standings,
+    cancellation_rows: cancellation_rows,
+    rows: refreshed,
+  }
+}
+
+fn extract_pairs_from_groups(groups: List<PrGroup>, from: Timestamp, through: Timestamp) -> List<SupersededRunPair> {
+  match groups {
+    Empty {} => []
+    Cons { head: g, tail: rest } =>
+      extract_pairs_from_group(pr: g.pr, runs: g.runs, from: from, through: through)
+      |> concat(extract_pairs_from_groups(groups: rest, from: from, through: through))
+  }
+}
+
+fn extract_pairs_from_group(pr: Int, runs: List<WorkflowRun>, from: Timestamp, through: Timestamp) -> List<SupersededRunPair> {
+  let sorted = sort_by(runs, fn(r) { r.created_at })
+  pairs_from_sorted_group(pr: pr, sorted: sorted, from: from, through: through)
+}
+
+fn refresh_pairs(
+  auth_token: String,
+  owner: String,
+  repo: String,
+  pairs: List<SupersededRunPair>,
+  observed_at: Timestamp,
+) -> List<RefreshedPair> {
+  match pairs {
+    Empty {} => []
+    Cons { head: pair, tail: rest } =>
+      [refresh_pair(
+        auth_token: auth_token,
+        owner: owner,
+        repo: repo,
+        pair: pair,
+        observed_at: observed_at,
+      )] |> concat(refresh_pairs(auth_token: auth_token, owner: owner, repo: repo, pairs: rest, observed_at: observed_at))
+  }
+}
+
+fn count_pairs(pairs: List<SupersededRunPair>) -> Int {
+  match pairs {
+    Empty {} => 0
+    Cons { head: _, tail: rest } => 1 + count_pairs(pairs: rest)
+  }
 }

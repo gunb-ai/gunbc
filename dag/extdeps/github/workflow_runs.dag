@@ -52,6 +52,17 @@ data conclusion_authority_consolidation_frontier_rows: List<FrontierRow> = [
   )
 ]
 
+// THE DEPLOYED PULL REQUEST EMBEDDING. GitHub's workflow runs API embeds a pull_requests array
+// when the run was triggered by a pull_request event; each element carries the PR number and
+// head repository. Only the number is modeled here because that is what every consumer in this tree
+// asks of it — adding head_repo/full_name and url would be modeling fields no consumer reads,
+// which is a maintenance burden without a consumer, and the DESIGN §3 authority rule forbids
+// modeling an upstream field that no code asks a question of (it is either dead code or a future
+// question waiting to be answered with no one to falsify it).
+type WorkflowRunPullRequest {
+  number: Int
+}
+
 type WorkflowRun {
   id: Int
   name: String?
@@ -61,14 +72,38 @@ type WorkflowRun {
   conclusion: WorkflowRunConclusion?
   workflow_id: Int
   run_number: Int
+  event: String
   html_url: NonEmptyStr
   created_at: Timestamp
   updated_at: Timestamp
+  run_started_at: Timestamp?
+  pull_requests: List<WorkflowRunPullRequest>
 }
 
 type WorkflowRunList {
   total_count: Int
   workflow_runs: List<WorkflowRun>
+}
+
+// THE JOB-RUN RESOURCE, separate from the job SYNTAX (type Job in extdeps.github.actions).
+// The API returns a list of job runs — each is one execution of a workflow job against a
+// specific commit — with timestamps and conclusion. The `steps` field is excluded because
+// no census consumer reads individual step data; if a future consumer needs it, adding it
+// here is a backward-compatible extension (the field is optional in the API response and
+// would become an optional field here).
+type WorkflowJobRun {
+  id: Int
+  run_id: Int
+  name: String
+  status: String
+  conclusion: String?
+  started_at: Timestamp?
+  completed_at: Timestamp?
+}
+
+type WorkflowJobRunList {
+  total_count: Int
+  jobs: List<WorkflowJobRun>
 }
 
 fn parse_workflow_run_status(raw: String) -> WorkflowRunStatus? {
@@ -175,6 +210,66 @@ service github.WorkflowRuns {
     }
     response {
       200 => WorkflowRunList
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      500 => GitHubErrorShape
+    }
+  }
+
+  operation ListWorkflowRuns {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      workflow_name: String
+      event: String
+      created_range: String
+      per_page: Int = 100
+      page: Int = 1
+    }
+    output {
+      result: WorkflowRunList
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/actions/workflows/\{workflow_name\}/runs",
+      query: {
+        event: event,
+        per_page: per_page,
+        page: page,
+        created: created_range
+      }
+    }
+    response {
+      200 => WorkflowRunList
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      500 => GitHubErrorShape
+    }
+  }
+
+  operation ListJobs {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      run_id: String
+      per_page: Int = 100
+    }
+    output {
+      result: WorkflowJobRunList
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/actions/runs/\{run_id\}/jobs",
+      query: { per_page: per_page, filter: "latest" }
+    }
+    response {
+      200 => WorkflowJobRunList
       401 => GitHubErrorShape
       403 => GitHubErrorShape
       404 => GitHubErrorShape
