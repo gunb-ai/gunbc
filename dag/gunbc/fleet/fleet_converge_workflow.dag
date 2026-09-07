@@ -53,6 +53,7 @@ import gunbc.fleet_workflow_steps {
   JobTimeoutExceedsCeiling,
 }
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
+import gunbc.host_reset_return_run { host_reset_dispatch_mode_env }
 import gunbc.ci_spec {
   gunbc_ci_fleet_converge_plan_invoke,
   gunbc_ci_fleet_converge_launch_environment_plan_invoke,
@@ -102,7 +103,6 @@ import gunbc.host_reset_return {
 }
 import gunbc.host_reset_subject_roster { reset_observer_peer_roster, reset_subject_roster }
 import gunbc.host_reset_return { ResetObserverPairing }
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 import gunbc.live_deploy.apply_receipt { rlm_plan_run_id_env_name, rlm_apply_run_id_env_name, rlm_plan_artifact_hash_env_name }
 import gunbc.roadmap_launch_deployment_cli { rlm_dashboard_run_id_env_name }
 import gunbc.fleet_converge_plan { fleet_converge_plan_artifact_dir, FleetConvergeScope, FullHost, LaunchEnvironment, FabricAllocationStoreOnly }
@@ -460,8 +460,8 @@ fn fleet_converge_build_job_steps() -> List<Step> {
   concat(
     ci_prelude_steps_with_checkout(checkout: fleet_converge_checkout_step(), exact_head_preflight: []),
     [
-      fleet_converge_reset_observer_dispatch_admission_step(),
       ci_release_build_step(),
+      fleet_converge_reset_observer_dispatch_admission_step(),
       ci_release_bins_pack_step(),
       ci_release_bins_upload_step(),
     ],
@@ -513,45 +513,47 @@ fn fleet_converge_build_job_capability_closure_holds() -> Bool {
   )
 }
 
-data fleet_converge_reset_observer_admission_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: fleet_converge_reset_observer_dispatch_admission_step — concat-built foreign-executor (GitHub Actions run:) dispatch-admission gate; the REFUSAL it enforces is modeled (an unnamed observer names no subject through gunbc.host_reset_return reset_dispatch_pairings), but the gate itself is medium-as-string because it must run before any modeled entry point exists on the runner; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes a dispatch-admission gate through orchestration emit or typed host_effect_apply without a concat scaffold")
-
 // THE ONE PAIRING STATE REACHABLE AT DISPATCH TIME, REFUSED WHERE IT CAN STILL BE HEARD. Review 61950
 // found the hole: reset_observer is required:false because it is meaningful for exactly one mode, and
 // its value is interpolated into the reset job's runs-on. A dispatch of mode=host_reset_return that
 // omits it -- which an API or `gh workflow run` dispatch does by supplying "" -- passes the job's if:
 // gate and asks for labels ["self-hosted","linux","arm64",""]. No runner carries an empty label, so
 // the job QUEUES until the 105-minute backstop and then dies with no diagnostic, no receipt and no
-// upload; the upload step never runs, so not even its if-no-files-found: error fires. A silent stall
-// standing exactly where the rest of this mode puts a loud refusal.
+// upload; the upload step never runs, so not even its if-no-files-found: error fires.
 //
 // WHY THE CHECK CANNOT LIVE IN THE RESET JOB. runs-on is resolved before any step of that job exists,
 // so a refusal step inside it is unreachable in precisely the state it would diagnose. The build job
 // is this workflow's only always-schedulable job -- generic labels, no interpolation -- and every
-// host-scoped job needs it, so a refusal here stops the line before anything is scheduled rather than
-// after something has queued.
+// host-scoped job needs it, so a refusal here stops the line before anything is scheduled.
 //
-// WHY NOT A DEFAULT, which was the other arm the review offered. Defaulting the observer would make an
-// omitted field silently select a machine and POWER-CYCLE ITS PAIRED SUBJECT. A default is the right
-// shape for a preference and the wrong one for an effect nobody asked for: the dispatcher who omits
-// the field has not chosen a subject, and inventing one for them is the fabricated-plausible-output
-// arm of DESIGN section 5, not a convenience. Refusing costs one re-dispatch; defaulting costs a reboot.
+// IT IS A MODELED ENTRY AND NOT A HAND-SHELL GATE, WHICH IS THE SECOND VERSION OF THIS STEP. The
+// first was a concat-built `run:` carrying a net-new dissolution obligation and no operator verdict,
+// which the scaffold-admission doctrine calls a hard reject -- and the doctrine's own test decided
+// it rather than any judgement of mine: the modeled route existed, so the scaffold bought nothing
+// but authoring, review, maintenance, deletion and review of the deletion. The obligation is gone
+// with the shell; there is no marker here because there is no debt to mark.
+//
+// THE COST OF DOING IT MODELED, STATED SO NOBODY REDISCOVERS IT AS A REGRESSION: the gate needs the
+// gunbc binary, so it runs AFTER the release build rather than before it, and a malformed dispatch
+// therefore wastes one build. The safety property is unchanged -- the reset job needs `build` either
+// way, so it is never scheduled in the state this refuses.
+//
+// WHY NOT A DEFAULT ON THE INPUT, which was the review's other arm. Defaulting the observer would
+// make an omitted field silently select a machine and POWER-CYCLE ITS PAIRED SUBJECT. A default is
+// the right shape for a preference and the wrong one for an effect nobody asked for. Refusing costs
+// a re-dispatch; defaulting costs a reboot.
 fn fleet_converge_reset_observer_dispatch_admission_step() -> Step {
   RunStep {
     name: Present { value: "Reset-return dispatch admission: refuse an unnamed observer before anything is scheduled" },
     id: Present { value: "reset_observer_dispatch_admission" },
-    run: join([
-      "# ", dissolution_description(condition: fleet_converge_reset_observer_admission_shell_emit_dissolution_trigger), "\n",
-      "if [ \"${{ github.event.inputs.mode }}\" = \"host_reset_return\" ] && [ -z \"${{ github.event.inputs.reset_observer }}\" ]; then\n",
-      "  echo \"::error::ResetObserverUnnamed: mode=host_reset_return was dispatched with an empty reset_observer. ",
-      "The reset job's runs-on interpolates that label, so an empty value asks for a runner carrying no label and the job would queue until its backstop with no receipt. ",
-      "The subject is DERIVED from the observer through gunbc.host_reset_return reset_dispatch_pairings, so an unnamed observer names no subject and there is nothing to reset. ",
-      "Re-dispatch naming one of the rostered observers the form offers.\" >&2\n",
-      "  exit 1\n",
-      "fi\n",
-      "echo \"reset-observer dispatch admission: ok\"\n",
-    ], ""),
+    run: gunbc_ci_host_reset_dispatch_admission_invoke(),
     shell: none,
-    env: none,
+    env: Present {
+      value: [
+        kv(key: host_reset_dispatch_mode_env as String, value: yaml_string(s: "${{ github.event.inputs.mode }}")),
+        kv(key: host_reset_observer_label_env as String, value: yaml_string(s: "${{ github.event.inputs.reset_observer }}")),
+      ]
+    },
     working_directory: none,
     if_condition: none,
     continue_on_error: none,

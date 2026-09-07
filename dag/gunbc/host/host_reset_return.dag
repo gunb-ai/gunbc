@@ -1,6 +1,7 @@
 module gunbc.host_reset_return
 
 import std.types { Bool, EpochMs, Int, List, Milliseconds, NonEmptyStr, String, list_length }
+import std.algebra { trim }
 import std.observation { Measured, MeasuredValue, MeasuredUnavailable }
 import std.content_hash {
   ContentHash,
@@ -379,6 +380,37 @@ type ResetIssuanceRoute
 // observation to reason about. A preflight refusal has none of those, and widening the verdict type to
 // admit causes it can never receive from reset_return_verdict would make its match arms unreachable
 // while reading as coverage. Two carriers, two subjects, and the receipt line says which it is.
+// THE DISPATCH FORM IS ITS OWN ADMISSION QUESTION, asked before a runner is chosen rather than after.
+// reset_observer is required:false because it is meaningful for exactly one mode, and its value is
+// interpolated into the reset job's runs-on -- so a dispatch of that mode omitting it asks for a
+// runner carrying an empty label and the job queues to its backstop with no receipt. The admission
+// below is what refuses that, and it answers with a CAUSE rather than by declining to run: a gate
+// that silently skips reads as a pass to anyone looking at the job list, which is the absorbing
+// fallback one layer up from the one this module already refuses.
+type ResetDispatchAdmission
+  = ResetDispatchAdmitted { mode: NonEmptyStr }
+  | ResetDispatchNotThisMode { mode: NonEmptyStr }
+  | ResetDispatchObserverUnnamed { mode: NonEmptyStr }
+
+fn admit_reset_dispatch(mode: String, reset_observer: String) -> ResetDispatchAdmission {
+  let wire = host_reset_return_mode_wire as String
+  if trim(s: mode) != wire {
+    ResetDispatchNotThisMode { mode: "not-host-reset-return" as NonEmptyStr }
+  } else {
+    if trim(s: reset_observer) == "" {
+      ResetDispatchObserverUnnamed { mode: host_reset_return_mode_wire }
+    } else {
+      ResetDispatchAdmitted { mode: host_reset_return_mode_wire }
+    }
+  }
+}
+
+// THE MODE NAME LIVES HERE BECAUSE BOTH ENDS NEED IT: the workflow spells it as a dispatch option
+// through its own vocabulary, and this admission compares against it. One spelling, consumed twice.
+data host_reset_return_mode_wire: NonEmptyStr = "host_reset_return"
+
+data reset_dispatch_observer_unnamed_diagnostic: NonEmptyStr = "ResetObserverUnnamed: mode=host_reset_return was dispatched with an empty reset_observer. The reset job's runs-on interpolates that label, so an empty value asks for a runner carrying no label and the job would queue until its backstop with no receipt. The subject is DERIVED from the observer through reset_dispatch_pairings, so an unnamed observer names no subject and there is nothing to reset. Re-dispatch naming one of the rostered observers the form offers." as NonEmptyStr
+
 type ResetPreflightRefusal
   = BmcCredentialPathUnset { variable: NonEmptyStr }
   | ObserverLabelUnset { variable: NonEmptyStr }

@@ -52,6 +52,11 @@ import gunbc.host_reset_return {
   ObserverNotAssigned,
   SubjectHasNoRosterRow,
   reset_preflight_refusal_wire,
+  ResetDispatchAdmitted,
+  ResetDispatchNotThisMode,
+  ResetDispatchObserverUnnamed,
+  admit_reset_dispatch,
+  reset_dispatch_observer_unnamed_diagnostic,
   RouteEstablished,
   RouteUnidentified,
   ResetNotAttempted,
@@ -513,6 +518,44 @@ func host_reset_return_preflight_exit(refusal: ResetPreflightRefusal, remedy: St
     reason: join(["host reset-return refused before any attempt: ", wire, " -- ", remedy, " (receipt at ", host_reset_return_receipt_path as String, ")"], ""),
   )
 }
+
+// THE DISPATCH ADMISSION ENTRY, RUN IN THE BUILD JOB RATHER THAN THE RESET JOB. The reset job's
+// runs-on is resolved before any of its steps exist, so a gate inside it is unreachable in exactly
+// the state it would diagnose; `build` carries generic labels, is always schedulable, and every
+// host-scoped job needs it, so refusing here stops the line before anything is scheduled.
+//
+// IT WAS A HAND-SHELL STEP FIRST, AND THAT WAS THE DEFECT. A concat-built `run:` gate carried a
+// net-new dissolution obligation with no operator verdict, which the scaffold-admission doctrine
+// calls a hard reject -- and the doctrine's own test applies: the modeled route existed, so the
+// scaffold bought nothing but authoring, review, maintenance, deletion and review of the deletion.
+// The only cost of doing it modeled is that the refusal lands after the release build rather than
+// before it, wasting one build on a dispatch that was already wrong; the safety property is
+// identical, because the reset job needs `build` either way.
+//
+// IT REFUSES WITH A CAUSE RATHER THAN SKIPPING. A gate that silently declines to run reads as a pass
+// to anyone looking at the job list, which is the absorbing fallback one layer up from the one this
+// module refuses -- so the not-this-mode arm exits SUCCESSFULLY and says so, and the unnamed-observer
+// arm exits non-zero with the located diagnostic.
+func host_reset_return_dispatch_admission_wet() -> ProcessExit
+  uses net: std.resources.Network
+{
+  let mode_raw = match shell.Env.Get(name: host_reset_dispatch_mode_env).value {
+    Absent => ""
+    Present { value: v } => v
+  }
+  let observer_raw = match shell.Env.Get(name: host_reset_observer_label_env).value {
+    Absent => ""
+    Present { value: v } => v
+  }
+  return match admit_reset_dispatch(mode: mode_raw, reset_observer: observer_raw) {
+    ResetDispatchNotThisMode { mode: _ } => ExitSuccess
+    ResetDispatchAdmitted { mode: _ } => ExitSuccess
+    ResetDispatchObserverUnnamed { mode: _ } =>
+      exit_failure(reason: reset_dispatch_observer_unnamed_diagnostic as String)
+  }
+}
+
+data host_reset_dispatch_mode_env: NonEmptyStr = "GUNBC_HOST_RESET_DISPATCH_MODE" as NonEmptyStr
 
 func host_reset_return_wet() -> ProcessExit
   uses net: std.resources.Network

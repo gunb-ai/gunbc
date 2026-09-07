@@ -14,7 +14,10 @@ import gunbc.fleet_converge_workflow {
   fleet_converge_workflow, expected_fleet_converge_yml,
   FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused,
 }
-import gunbc.host_reset_return { DispatchAssignment, DispatchAssignmentRefused, reset_dispatch_pairings }
+import gunbc.host_reset_return {
+  DispatchAssignment, DispatchAssignmentRefused, reset_dispatch_pairings,
+  ResetDispatchAdmitted, ResetDispatchNotThisMode, ResetDispatchObserverUnnamed, admit_reset_dispatch,
+}
 import gunbc.ci_spec { gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_org_actions_converge_invoke, gunbc_ci_spark_bootstrap_invoke }
 import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
 import extdeps.languages.yaml.types {
@@ -242,23 +245,43 @@ test fn fleet_converge_org_actions_mode_binds_secret_and_modeled_entry_holds() -
 
 
 
-// THE UNNAMED OBSERVER REFUSES WHERE IT CAN STILL BE HEARD (review 61950). reset_observer is
-// required:false, and its value is interpolated into the reset job's runs-on -- so a dispatch that
-// omits it asks for a runner carrying an empty label, and the job queues silently until its backstop.
-// The refusal cannot live in that job, whose runs-on is resolved before any of its steps exist, so it
-// lives in `build`: generic labels, always schedulable, and needed by every host-scoped job.
+// THE UNNAMED OBSERVER REFUSES THROUGH A MODELED ADMISSION, NOT A HAND-SHELL GATE. reset_observer is
+// required:false and its value is interpolated into the reset job's runs-on, so a dispatch omitting it
+// asks for a runner carrying an empty label and the job queues silently until its backstop (review
+// 61950). The refusal cannot live in that job -- runs-on resolves before any of its steps exist -- so
+// it lives in `build`, which is always schedulable and which every host-scoped job needs.
 //
-// THE DISCRIMINATING CONJUNCTS ARE THE LAST TWO. A guard that fired on the mode alone would refuse
-// every correctly-dispatched reset, and one that tested emptiness without the mode would refuse every
-// OTHER mode's dispatch -- both would satisfy a witness that only looked for the error string.
+// THE ARMS ARE THE SUBJECT HERE, not a rendered string. The first version of this gate was concat-built
+// shell and the witness read its text; the fold is now modeled, so the witness exercises the decision.
+// THE DISCRIMINATING CONJUNCTS ARE THE LAST TWO: an admission that refused on the mode alone would
+// reject every correctly-dispatched reset, and one that ignored the mode would reject every OTHER
+// mode's dispatch. Both would satisfy a witness that only checked the unnamed case refuses.
 test fn an_unnamed_reset_observer_refuses_in_the_always_schedulable_job() -> Bool {
-  match fleet_converge_reset_observer_dispatch_admission_step() {
-    RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
-      string_contains(s: r, pattern: "ResetObserverUnnamed")
-        && string_contains(s: r, pattern: "exit 1")
-        && string_contains(s: r, pattern: "mode }}\" = \"host_reset_return\"")
-        && string_contains(s: r, pattern: "-z \"$\{\{ github.event.inputs.reset_observer \}\}\"")
-    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  match admit_reset_dispatch(mode: "host_reset_return", reset_observer: "") {
+    ResetDispatchObserverUnnamed { mode: _ } =>
+      match admit_reset_dispatch(mode: "host_reset_return", reset_observer: "srv1") {
+        ResetDispatchAdmitted { mode: _ } =>
+          match admit_reset_dispatch(mode: "apply", reset_observer: "") {
+            ResetDispatchNotThisMode { mode: _ } => true
+            ResetDispatchAdmitted { mode: _ } => false
+            ResetDispatchObserverUnnamed { mode: _ } => false
+          }
+        ResetDispatchNotThisMode { mode: _ } => false
+        ResetDispatchObserverUnnamed { mode: _ } => false
+      }
+    ResetDispatchAdmitted { mode: _ } => false
+    ResetDispatchNotThisMode { mode: _ } => false
+  }
+}
+
+// A WHITESPACE-ONLY OBSERVER IS UNNAMED TOO, which the shell `-z` test caught for free and a modeled
+// comparison does not unless it trims. GitHub hands an omitted input over as an empty string, but a
+// form field carrying a space is the same dispatch with the same silent stall behind it.
+test fn a_whitespace_only_observer_is_refused_as_unnamed() -> Bool {
+  match admit_reset_dispatch(mode: "host_reset_return", reset_observer: "   ") {
+    ResetDispatchObserverUnnamed { mode: _ } => true
+    ResetDispatchAdmitted { mode: _ } => false
+    ResetDispatchNotThisMode { mode: _ } => false
   }
 }
 
