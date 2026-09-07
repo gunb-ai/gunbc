@@ -7,6 +7,8 @@ import extdeps.languages.json.parse {
   JsonDocumentParse, JsonDocumentParsed, JsonDocumentUnreadable,
   JsonMemberFound, parse_json_document, json_object_unique_member, json_document_gap_text,
 }
+import extdeps.vllm.metrics { VllmServingMetric, NumRequestsWaiting, vllm_metric_name }
+import gunbc.serving.placement { QueueObservation, QueueEmptyObserved, QueueOccupiedObserved, QueueUnobserved }
 import gunbc.harness.harness_wire {
   harness_engine_replica_roster, HarnessReplicaRoster, HarnessReplicasResolved, HarnessReplicasUnresolved,
   harness_engine_port, harness_engine_model,
@@ -217,4 +219,65 @@ fn harness_addresses_report(addresses: List<String>) -> String {
       harness_standing_detail(standing: standing), "\n",
     ], "")
   }), "")
+}
+
+// ── THE QUEUE THE HARNESS NEVER READ ──────────────────────────────────────────────────────────
+//
+// harness_observe_replica reads /v1/models and nothing else, so until now the harness took a seat
+// without ever asking whether the group already had work queued. Its capacity pool bounded the
+// damage to three seats, but the decision itself was made on ignorance -- the same class of defect
+// as the router's, milder only because a CAS stood behind it.
+//
+// gunbc.serving.placement makes that unrepresentable: QueueObservation has no default, and an
+// unread queue refuses rather than admitting. This is the reading that lets the harness answer.
+//
+// THE METRIC NAME COMES FROM THE UPSTREAM AUTHORITY, not from a literal here. extdeps.vllm.metrics
+// owns what vLLM exposes and what each series means; a second spelling in this module would be a
+// nickname for the same fact, and the last time this repository read a vLLM gauge by guessing what
+// its name implied it concluded a warm cache was a saturated engine.
+fn harness_metrics_url(address: String) -> String {
+  join(["http://", address, ":", to_string(value: harness_engine_port), "/metrics"], "")
+}
+
+// A PROMETHEUS LINE IS name{labels} value. The gauge is found by its authored name and the value is
+// the last space-separated field; anything that does not parse that way is UNOBSERVED rather than
+// zero, because a gauge that could not be read is not a gauge reading nothing.
+fn harness_queue_line_value(line: String) -> String? {
+  let parts = split(s: line, delimiter: " ")
+  if length(parts) < 2 { none } else { last(parts) }
+}
+
+// vLLM PRINTS GAUGES AS FLOATS, so "0.0" is the ordinary shape and an integer parse fails on it. A
+// leading "0." is zero waiting; anything else is occupied by an amount this parse cannot name, which
+// is still not a licence to call it empty.
+fn harness_queue_from_body(body: String) -> QueueObservation {
+  let wanted = vllm_metric_name(m: NumRequestsWaiting) as String
+  let lines = split(s: body, delimiter: "\n")
+  let matching = filter(lines, l => string_contains(s: l, pattern: join([wanted, "{"], "")))
+  match first(matching) {
+    Absent =>
+      QueueUnobserved { because: join(["the served metrics carried no ", wanted, " series"], "") as NonEmptyStr }
+    Present { value: line } =>
+      match harness_queue_line_value(line: line) {
+        Absent => QueueUnobserved { because: "the waiting-requests series had no value field" as NonEmptyStr }
+        Present { value: text } =>
+          match parse_int(s: trim(s: text)) {
+            Absent =>
+              if starts_with(s: trim(s: text), prefix: "0.") { QueueEmptyObserved }
+              else { QueueOccupiedObserved { waiting: 1 } }
+            Present { value: n } =>
+              if n <= 0 { QueueEmptyObserved } else { QueueOccupiedObserved { waiting: n as Nat } }
+          }
+      }
+  }
+}
+
+fn harness_observe_queue(address: String) -> QueueObservation {
+  let url = harness_metrics_url(address: address)
+  let read = http.Client.Get(url: url as NonEmptyStr)
+  if !read.success {
+    QueueUnobserved { because: join(["the metrics endpoint at ", url, " did not answer"], "") as NonEmptyStr }
+  } else {
+    harness_queue_from_body(body: read.body)
+  }
 }

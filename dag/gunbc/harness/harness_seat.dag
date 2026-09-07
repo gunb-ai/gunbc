@@ -23,8 +23,21 @@ import gunbc.fabric_event_log {
   HeadObservation, HeadObserved, HeadObservationRefused, event_log_observe_head,
   EventAppend, EventAppended, EventAppendStale, EventAppendRefused, event_log_append,
   SeatAcquisition, SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, fabric_seat_acquire, seat_acquisition_wire,
+  SeatStandingObservation, SeatRoomObserved, SeatFullObserved, SeatStandingUnobserved, fabric_seat_observe,
 }
-import gunbc.harness.harness_backend { HarnessBackendStanding, harness_observe_replica, harness_standing_is_serving, harness_standing_label, harness_standing_detail }
+import gunbc.harness.harness_backend {
+  HarnessBackendStanding, HarnessBackendServing, HarnessBackendModelAbsent,
+  HarnessBackendUnreachable, HarnessBackendUnreadable,
+  harness_observe_replica, harness_standing_is_serving, harness_standing_label, harness_standing_detail,
+  harness_observe_queue,
+}
+import gunbc.serving.placement {
+  ModelServiceObservation, ModelServedObserved, ModelAbsentObserved, ModelServiceUnobserved,
+  QueueObservation, QueueEmptyObserved, QueueOccupiedObserved, QueueUnobserved,
+  QualitySeatObservation, QualitySeatAvailableObserved, QualitySeatHeldObserved, QualitySeatUnobserved,
+  GroupEvidence, GroupCandidate, GroupAdmissibility, GroupAdmissible, GroupNotAdmissible,
+  group_admissibility, candidate_note,
+}
 import gunbc.harness.harness_wire { HarnessWireShape, harness_backend_url_for_address }
 
 // THE HARNESS TAKES A SEAT BEFORE IT TAKES A TURN. A serving group's seats are a pool on the
@@ -107,6 +120,70 @@ type SeatBindFold {
 
 fn seat_bind_detail(group: FabricGroup, text: String) -> String {
   join([fabric_group_wire(g: group) as String, ": ", text], "")
+}
+
+// ── THE OBSERVATIONS THE PLACEMENT AUTHORITY NEEDS, BUILT BEFORE THE DECISION MOVES ───────────
+//
+// The fold below IS currently the selection policy: try each group in roster order, take the first
+// that observes as serving and grants a seat. That makes the harness a second placement authority
+// beside the ctrl router's, and the two disagree -- the router ranks by running requests and takes no
+// seat at all, so a turn it places is invisible to this pool. gunbc.serving.placement exists to be
+// the single authority, and these functions are the observations it consumes.
+//
+// THE DECISION HAS NOT MOVED YET, AND THIS SAYS SO RATHER THAN DESCRIBING THE INTENT AS DONE.
+// Delegating to place_serving_turn today would stop the harness placing anything: the seat standing
+// below is honestly Unobserved, unobserved never admits, and every fresh turn would return Pending.
+// That trades a working live path for a correct-looking refusal, which is worse than the fork it
+// removes. So the observations land first, the seat reading lands next, and the decision moves only
+// when the authority can actually answer.
+//
+// BUILDING THEM ALREADY EXPOSED WHAT THIS PATH NEVER READ. The fold consults /v1/models and nothing
+// else, so it takes seats without asking whether a group already has work queued -- a decision made
+// on ignorance, bounded to three seats by the pool but informed by nothing. QueueObservation has no
+// default, which is what forced the reading to exist.
+fn harness_model_observation(standing: HarnessBackendStanding) -> ModelServiceObservation {
+  match standing {
+    HarnessBackendServing { model: _ } => ModelServedObserved
+    HarnessBackendModelAbsent { model: _, advertised: _ } => ModelAbsentObserved
+    HarnessBackendUnreachable { url: u } =>
+      ModelServiceUnobserved { because: join(["the replica at ", u, " did not answer"], "") as NonEmptyStr }
+    HarnessBackendUnreadable { cause: c } =>
+      ModelServiceUnobserved { because: join(["the replica's model list was unreadable: ", c], "") as NonEmptyStr }
+  }
+}
+
+// THE SEAT STANDING IS NOW A READING, NOT A RETRY OUTCOME. Until fabric_seat_observe existed this
+// path could only learn whether a pool had room by PROPOSING an acquire and being refused -- which
+// costs an attempt and cannot be told apart from losing a race, so reporting it as an observation
+// would have been the fabricated reading gunbc.serving.placement refuses.
+//
+// The observation does not replace the compare-and-set and is not meant to: a seat can be taken
+// between this read and the acquire. THE CAS REMAINS THE ARBITER. What the reading buys is that the
+// POLICY can refuse early and say why, instead of every refusal arriving as an indistinguishable
+// SeatFull after the fact.
+fn harness_seat_observation(group: FabricGroup, layout: EventLogLayout, now: EpochSecs) -> QualitySeatObservation {
+  match harness_seat_capacity(group: group) {
+    AdmissionCapacityUnestablished { group: _, cause: why } =>
+      QualitySeatUnobserved { because: why }
+    SeatCapacityByOperatorPolicy { pool: root, seats: _ } =>
+      match fabric_seat_observe(layout: layout, partition: harness_seat_partition(group: group), root: root, at: now, budget: 4096) {
+        SeatStandingUnobserved { step: s, reason: why } =>
+          QualitySeatUnobserved { because: join(["the seat pool could not be read at ", s, ": ", why], "") as NonEmptyStr }
+        SeatFullObserved { generation: _ } => QualitySeatHeldObserved
+        SeatRoomObserved { headroom: _, generation: _ } => QualitySeatAvailableObserved
+      }
+  }
+}
+
+fn harness_group_candidate(group: FabricGroup, address: String, layout: EventLogLayout, now: EpochSecs) -> GroupCandidate {
+  GroupCandidate {
+    group: group,
+    evidence: GroupEvidence {
+      model: harness_model_observation(standing: harness_observe_replica(address: address)),
+      queue: harness_observe_queue(address: address),
+      quality_seat: harness_seat_observation(group: group, layout: layout, now: now),
+    },
+  }
 }
 
 fn harness_try_group(acc: SeatBindFold, group: FabricGroup, layout: EventLogLayout, shape: HarnessWireShape, actor: NonEmptyStr, policy: LeasePolicy, now: EpochSecs) -> SeatBindFold {
