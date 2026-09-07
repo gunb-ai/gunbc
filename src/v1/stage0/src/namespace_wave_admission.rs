@@ -1561,36 +1561,6 @@ pub struct TransitionAdmission {
 /// and all four report CONSUMED, coming due on this roster's next touch. Adjudicate that deletion
 /// by joining each row against main's tree on its own tuple, not by trusting this sentence.
 
-/// THE SCM REPOSITORY BUILDER MOVES TO A SHARED FIXTURE (2026-09-06, gunbc#10676). No ordinal is
-/// claimed, for the reason the entries above give.
-///
-/// `test.claim.scm_merge_base_witness` authored a repository builder -- `MbBuild` with its two arms
-/// `MbBuilt` and `MbSetupFailed`, and the six operations `mb_start`, `mb_stage`, `mb_commit`,
-/// `mb_at`, `mb_head`, `mb_root_of` -- to construct scenes through the real store and mint rather
-/// than by forging rows. The squash-merge verb's witness needs that construction VERBATIM. Copying
-/// it would put one construction rule in two files, and the drift would be INVISIBLE: each copy
-/// would keep passing its own claims while the two fixtures quietly stopped describing the same
-/// repository (DESIGN.md §2). So the builder is rehomed to `test.fixture.scm_repository_builder`,
-/// which is where this repository already puts fixtures shared across claims, and both witnesses
-/// import it.
-///
-/// NINE BINDINGS IN ONE MODULE resolve to the new declarer, which is `TargetChanged` and is not
-/// auto-admitted: seven inside `mb_scene` and two inside
-/// `scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on`. Every spelling is identical
-/// on both sides; only the declaring module differs, which is the membership motion this roster
-/// exists to adjudicate.
-///
-/// ONE CHANGE CLASS, AND NOTHING IS REQUALIFIED. No spelling changes, no behaviour changes, and the
-/// evidence that the move is behaviour-preserving is executed rather than asserted: all twelve
-/// `scm_merge_base_witness` claims pass unchanged against the shared fixture. That is the positive
-/// control for a rehome -- a builder that had silently changed would show up as a claim that
-/// stopped discriminating, not as a compile error.
-///
-/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10676 merges. Main then declares
-/// the builder in `test.fixture.scm_repository_builder`, base and head bind each spelling
-/// identically, and all nine report CONSUMED, coming due on this roster's next touch. Adjudicate
-/// that deletion by joining each row against main's tree on its own
-/// (module, in_declaration, spelling, target) tuple, not by trusting this sentence.
 /// THE gunbc#10671 ROWS DISSOLVED HERE (2026-09-06), BY THEIR OWN TRIGGER AND ON THE ROSTER TOUCH
 /// THEY NAMED. gunbc#10671 merged, so the four cable-leg rows reported CONSUMED and came due on the
 /// next roster-touching change, which is this one.
@@ -1604,99 +1574,101 @@ pub struct TransitionAdmission {
 /// `test.claim.cable_order_admission_witness`, import the spelling from the new declarer. So base and
 /// head bind it identically, no run can produce those four deltas, and CONSUMED is the correct
 /// reading rather than an author error.
-const SCM_REPOSITORY_BUILDER_REHOME_LABEL: &str =
-    "gunbc#10676 scm fixture extraction: the repository builder moves from \
-     test.claim.scm_merge_base_witness to test.fixture.scm_repository_builder, so the merge_base \
-     and squash_merge witnesses read one construction rule instead of two copies";
+///
+/// THE gunbc#10676 ROWS DISSOLVE HERE (2026-09-07), BY THEIR OWN TRIGGER AND ON THIS ROSTER TOUCH.
+/// gunbc#10676 merged; the nine builder-rehome rows reported CONSUMED. Joined on origin/main against
+/// each row's (module, in_declaration, spelling, target), not the trigger sentence:
+///
+///   `test.fixture.scm_repository_builder` DECLARES `MbBuild` with arms `MbBuilt` and
+///   `MbSetupFailed`, and `fn mb_start`, `mb_stage`, `mb_commit`, `mb_at`, `mb_head`, `mb_root_of`.
+///   `test.claim.scm_merge_base_witness` DECLARES none of those nine spellings -- they appear only
+///   as an import from the fixture (and as uses inside `mb_scene` and
+///   `scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on`). Both consumers --
+///   `test.claim.scm_merge_base_witness` and `test.claim.scm_squash_merge_witness` -- import every
+///   one of those spellings from the new declarer. So base and head bind identically; CONSUMED is
+///   the correct reading for all nine.
+///
+/// EXIT_OK RELOCATES TO std.process. Seven `TargetChanged` bindings in
+/// `tools.floor_effect_gate_witness` (`<gate>_passes` for emit_host_gate, cheap_claim_pool_gate,
+/// extdeps_external_authority_gate, dag_compile_clean_gate, generated_artifact_drift_gate,
+/// extdeps_scope_placement_gate, prose_row_introduction_gate) resolve `exit_ok` at base to
+/// `tools.ci_gates` and at head to `std.process`. Spelling unchanged; predicate exhaustive with no
+/// wildcard arm; behaviour unchanged; the witnesses that consume it are unchanged. TRIGGER: they
+/// go when this relocation is on main, then report CONSUMED and come due on the roster's next touch.
+/// Adjudicate that deletion by joining each row against main on its own tuple, not this sentence.
+const EXIT_OK_REHOME_LABEL: &str =
+    "exit_ok relocates from tools.ci_gates to std.process: spelling unchanged, behaviour \
+     unchanged, the predicate is exhaustive with no wildcard arm, and the floor witnesses \
+     that consume it are unchanged";
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: SCM_REPOSITORY_BUILDER_REHOME_LABEL,
+        label: EXIT_OK_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "mb_scene",
-            spelling: "MbBuilt",
-            target: "test.fixture.scm_repository_builder",
+            module: "tools.floor_effect_gate_witness",
+            in_declaration: "emit_host_gate_passes",
+            spelling: "exit_ok",
+            target: "std.process",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_REPOSITORY_BUILDER_REHOME_LABEL,
+        label: EXIT_OK_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "mb_scene",
-            spelling: "MbSetupFailed",
-            target: "test.fixture.scm_repository_builder",
+            module: "tools.floor_effect_gate_witness",
+            in_declaration: "cheap_claim_pool_gate_passes",
+            spelling: "exit_ok",
+            target: "std.process",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_REPOSITORY_BUILDER_REHOME_LABEL,
+        label: EXIT_OK_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "mb_scene",
-            spelling: "mb_start",
-            target: "test.fixture.scm_repository_builder",
+            module: "tools.floor_effect_gate_witness",
+            in_declaration: "extdeps_external_authority_gate_passes",
+            spelling: "exit_ok",
+            target: "std.process",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_REPOSITORY_BUILDER_REHOME_LABEL,
+        label: EXIT_OK_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "mb_scene",
-            spelling: "mb_stage",
-            target: "test.fixture.scm_repository_builder",
+            module: "tools.floor_effect_gate_witness",
+            in_declaration: "dag_compile_clean_gate_passes",
+            spelling: "exit_ok",
+            target: "std.process",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_REPOSITORY_BUILDER_REHOME_LABEL,
+        label: EXIT_OK_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "mb_scene",
-            spelling: "mb_commit",
-            target: "test.fixture.scm_repository_builder",
+            module: "tools.floor_effect_gate_witness",
+            in_declaration: "generated_artifact_drift_gate_passes",
+            spelling: "exit_ok",
+            target: "std.process",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_REPOSITORY_BUILDER_REHOME_LABEL,
+        label: EXIT_OK_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "mb_scene",
-            spelling: "mb_at",
-            target: "test.fixture.scm_repository_builder",
+            module: "tools.floor_effect_gate_witness",
+            in_declaration: "extdeps_scope_placement_gate_passes",
+            spelling: "exit_ok",
+            target: "std.process",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_REPOSITORY_BUILDER_REHOME_LABEL,
+        label: EXIT_OK_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "mb_scene",
-            spelling: "mb_head",
-            target: "test.fixture.scm_repository_builder",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_REPOSITORY_BUILDER_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on",
-            spelling: "MbBuilt",
-            target: "test.fixture.scm_repository_builder",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_REPOSITORY_BUILDER_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on",
-            spelling: "mb_root_of",
-            target: "test.fixture.scm_repository_builder",
+            module: "tools.floor_effect_gate_witness",
+            in_declaration: "prose_row_introduction_gate_passes",
+            spelling: "exit_ok",
+            target: "std.process",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
