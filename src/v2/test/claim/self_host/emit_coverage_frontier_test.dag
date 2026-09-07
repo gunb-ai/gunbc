@@ -43,17 +43,18 @@ test fn witness_unlisted_subject_has_no_row() -> Bool {
 }
 
 test fn witness_split_matches_expected() -> Bool {
-  (length(xs: self_emitted_native_rows()) == 2)
-    && (length(xs: interpreter_retained_rows()) == 13)
+  (length(xs: self_emitted_native_rows()) == 3)
+    && (length(xs: interpreter_retained_rows()) == 12)
 }
 
 // Identity-grain census of the native rows (DESIGN section 5: completeness is an identity join,
 // not a count equality — the count leg above is the budget cross-check, this leg names the
 // members). 2026-09-07: the add family joined classical_not when its native-only verdict arm
-// landed; the two decl names are the closed membership.
-test fn witness_native_rows_are_exactly_classical_not_and_add() -> Bool {
+// landed, and the complement family followed on the same arm shape run through the logic family
+// crate; the three decl names are the closed membership.
+test fn witness_native_rows_are_exactly_classical_not_add_and_complement() -> Bool {
   let natives = self_emitted_native_rows()
-  (length(xs: natives) == 2)
+  (length(xs: natives) == 3)
     && fold(
       natives,
       init: true,
@@ -61,6 +62,7 @@ test fn witness_native_rows_are_exactly_classical_not_and_add() -> Bool {
         acc && (
           (row.subject.decl_name == "ingested_classical_not_source")
             || (row.subject.decl_name == "rust_add_inferred_tree")
+            || (row.subject.decl_name == "emit_complement_eval_subject")
         )
       }
     )
