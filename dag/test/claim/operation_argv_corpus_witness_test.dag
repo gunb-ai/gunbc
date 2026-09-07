@@ -1,7 +1,7 @@
 module test.claim.operation_argv_corpus_witness
 
 import std.types { String, List, Bool, Int }
-import v2.std.algebra { fold_list, any, length, list_head, HeadFound, HeadAbsent }
+import v2.std.algebra { fold_list, any, length, list_head, list_map, HeadFound, HeadAbsent }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.operation_argv {
   ArgvMaterialization,
@@ -12,10 +12,15 @@ import v2.std.operation_argv {
   ArgvRowExpressionResidue,
   ArgvRowExecutablePositionRefused,
   ArgvRowOtherRefusal,
+  DuplicateAuthorityOperationPair,
+  OperationRef,
+  Pairable,
   ShellTransportOperationRow,
+  Unpairable,
   operation_argv_bind_text,
+  operation_argv_census_item,
   operation_argv_classify,
-  operation_argv_materializations_share_argv,
+  operation_argv_duplicate_authority_pairs_from_items,
   operation_argv_refusal_label,
   operation_argv_row_bindings,
 }
@@ -176,45 +181,109 @@ test fn operation_argv_corpus_RED_smuggled_executable_is_refused_and_located() -
   string_contains(label, "ExecutablePositionNotLiteral") && string_contains(label, "ArgvExecutablePositionProbe.SmuggleExecutable")
 }
 
-// Duplicate-authority identity is two targeted materializations of the planted Alpha/Beta
-// operations, not a fold of the live enumerator. A full-corpus pair list exceeds the floor CPU
-// deadline (changed-witness interrupted_before_verdict on required-witnesses-floor). The
-// enumerator remains the census instrument; these witnesses check join identity, not cardinality.
-test fn witness_planted_duplicate_authority_pair_is_found() -> Bool {
-  operation_argv_materializations_share_argv(
-    left: shell_materialize_operation_argv(
-      operation_argv_fixture_path,
-      "ArgvExecutablePositionProbe",
-      "DuplicateAuthorityAlpha",
-      []
+fn operation_argv_closed_census_row(
+  path: String,
+  service: String,
+  operation: String,
+  declared_inputs: List<String>
+) -> ShellTransportOperationRow {
+  ShellTransportOperationRow {
+    at: OperationRef { path: path, service: service, operation: operation },
+    declared_inputs: declared_inputs,
+    argv_input_refs: declared_inputs
+  }
+}
+
+fn operation_argv_closed_census_rows() -> List<ShellTransportOperationRow> {
+  [
+    operation_argv_closed_census_row(
+      path: operation_argv_fixture_path,
+      service: "ArgvExecutablePositionProbe",
+      operation: "DuplicateAuthorityAlpha",
+      declared_inputs: []
     ),
-    right: shell_materialize_operation_argv(
-      operation_argv_fixture_path,
-      "ArgvExecutablePositionProbe",
-      "DuplicateAuthorityBeta",
-      []
+    operation_argv_closed_census_row(
+      path: operation_argv_fixture_path,
+      service: "ArgvExecutablePositionProbe",
+      operation: "DuplicateAuthorityBeta",
+      declared_inputs: []
+    ),
+    operation_argv_closed_census_row(
+      path: operation_argv_fixture_path,
+      service: "ArgvExecutablePositionProbe",
+      operation: "SmuggleExecutable",
+      declared_inputs: ["bin"]
+    ),
+    operation_argv_closed_census_row(
+      path: operation_argv_fixture_path,
+      service: "ArgvExecutablePositionProbe",
+      operation: "LiteralExecutable",
+      declared_inputs: ["flag"]
+    ),
+    operation_argv_closed_census_row(
+      path: operation_argv_shell_test_path,
+      service: "shell.Test",
+      operation: "IsDirectory",
+      declared_inputs: ["path"]
+    ),
+    operation_argv_closed_census_row(
+      path: operation_argv_cgroup_v2_path,
+      service: "linux.CgroupV2",
+      operation: "PathIsDirectory",
+      declared_inputs: ["path"]
+    )
+  ]
+}
+
+fn operation_argv_pair_ops(pair: DuplicateAuthorityOperationPair, left: String, right: String) -> Bool {
+  (pair.a.at.operation == left && pair.b.at.operation == right)
+    || (pair.a.at.operation == right && pair.b.at.operation == left)
+}
+
+fn operation_argv_closed_census_pairs() -> List<DuplicateAuthorityOperationPair> {
+  operation_argv_duplicate_authority_pairs_from_items(
+    items: list_map(
+      xs: operation_argv_closed_census_rows(),
+      f: fn(row) { operation_argv_census_item(row: row) }
     )
   )
 }
 
-// Population control: the two live declarations that share test -d, materialized with the same
-// generic bound-path binding the census uses. Does not fold the live pair list.
-test fn witness_shell_cgroup_directory_pair_is_found() -> Bool {
-  let bindings = [operation_argv_bind_text(name: "path", text: "bound-path")]
-  operation_argv_materializations_share_argv(
-    left: shell_materialize_operation_argv(
-      operation_argv_shell_test_path,
-      "shell.Test",
-      "IsDirectory",
-      bindings
-    ),
-    right: shell_materialize_operation_argv(
-      operation_argv_cgroup_v2_path,
-      "linux.CgroupV2",
-      "PathIsDirectory",
-      bindings
+// Duplicate-authority identity is the Pairable|Unpairable join on a CLOSED row list (planted
+// Alpha/Beta, Unpairable Smuggle, singleton Literal, live shell/cgroup directory ops). That is
+// census_item then duplicate_authority_pairs_from_items -- the same fold the live enumerator would
+// use -- not two hand-typed materializations and not a full-corpus rematerialization (floor CPU
+// deadline / changed-witness interrupted_before_verdict).
+test fn witness_closed_duplicate_authority_join_finds_planted_and_shell_cgroup() -> Bool {
+  let pairs = operation_argv_closed_census_pairs()
+  length(xs: pairs) == 2
+    && any(xs: pairs, predicate: fn(p) {
+      operation_argv_pair_ops(pair: p, left: "DuplicateAuthorityAlpha", right: "DuplicateAuthorityBeta")
+    })
+    && any(xs: pairs, predicate: fn(p) {
+      operation_argv_pair_ops(pair: p, left: "IsDirectory", right: "PathIsDirectory")
+    })
+}
+
+test fn witness_closed_census_smuggle_is_unpairable() -> Bool {
+  match operation_argv_census_item(
+    row: operation_argv_closed_census_row(
+      path: operation_argv_fixture_path,
+      service: "ArgvExecutablePositionProbe",
+      operation: "SmuggleExecutable",
+      declared_inputs: ["bin"]
     )
-  )
+  ) {
+    Pairable { row: _, argv: _ } => false
+    Unpairable { row: row, classification: c } =>
+      row.at.operation == "SmuggleExecutable"
+        && match c {
+          ArgvRowMaterialized => false
+          ArgvRowExpressionResidue => false
+          ArgvRowExecutablePositionRefused => true
+          ArgvRowOtherRefusal => false
+        }
+  }
 }
 
 test fn operation_argv_corpus_RED_literal_executable_control_materializes() -> Bool {
