@@ -524,6 +524,30 @@ fn fixture_home_prefixes() -> List<String> {
 //
 // A ROW IS ADDED HERE AND NOWHERE ELSE, and adding one is a wall-clock decision: the floor's
 // per-claim cost receipt names what each row costs.
+//
+// test.claim.if_join_pool_binding_witness_test IS ADMITTED AT EXACT MODULE GRAIN, and it is a
+// compiler-floor row by the same test as the rows above: its subject is NAME RESOLUTION -- which
+// declaration a bare reference binds to -- which is the `test.claim.namespace_` family's subject
+// under a different perturbation axis. It is the executing consumer for `fixtures.if_join_pool_binding`,
+// the isolating synthetic committed by `gunbc.recurring_failure_mode`
+// `binding_chosen_by_pool_membership_rather_than_by_the_declared_rule`, which until now had NO
+// consumer in the tree: four modules, a ratified rule and a next-rung trigger with nothing that
+// could go red. A committed fixture nobody runs is cited as coverage by the next reader, which
+// DESIGN section 4b rates worse than an absent check.
+//
+// PRICE, and it is stated because this roster's own rule is that a row is a wall-clock decision.
+// The module holds FOUR identities. Measured locally through `claim_batch --entry` on this branch:
+// one resolve of the entry at 687ms wall, and all four witnesses folding in 27ms wall together
+// (the two subject arms each run a nested compile of a two- or three-module manifest with no
+// corpus roots, so the nested compiles are denominated in the fixture and not in the corpus).
+// Preparation growth is this module's import closure: `tools.multi_module_compile_fixture`, which
+// the admitted `test.claim.namespace_` and `test.claim.match_exhaustiveness_coproduct_witness`
+// rows already carry, plus `extdeps.filesystem.filesystem_io` and `v2.std.live_tree`. The
+// required run's own per-claim cost receipt is the authority for what it costs in CI; the figures
+// here are this branch's local measurement and are named as such.
+//
+// IT DECLARES ReadsLiveTree TRUTHFULLY -- it reads the four fixture files from the checkout -- and
+// that is no longer a decline: `DeclinedLiveTree` is deleted at the root above.
 fn required_gate_prefixes() -> List<String> {
   [
     "v2.test.",
@@ -555,6 +579,7 @@ fn required_gate_prefixes() -> List<String> {
     "test.claim.typed_module_cache_capacity_witness",
     "test.claim.whole_corpus_compile_admission_witness",
     "test.claim.memory_stall_refusal_witness",
+    "test.claim.if_join_pool_binding_witness_test",
   ]
 }
 

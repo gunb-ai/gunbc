@@ -1,0 +1,151 @@
+module test.claim.if_join_pool_binding_witness_test
+
+import extdeps.filesystem.filesystem_io
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  FixtureSource,
+  fixture_source,
+  compile_fixture
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE EXECUTING CONSUMER FOR fixtures.if_join_pool_binding, WHICH HAD NONE.
+//
+// gunbc.recurring_failure_mode binding_chosen_by_pool_membership_rather_than_by_the_declared_rule
+// committed its isolating synthetic rather than describing it, on the stated ground that a row
+// citing a probe nobody runs is a transcription wearing a citation's clothes. The four modules
+// landed and nothing read them: no Rust test, no gate, no witness row named the directory, so the
+// class had a ratified rule, a fixture and a next-rung trigger and NOTHING THAT COULD GO RED. That
+// is the tier DESIGN section 4b calls worse than an absent check, because a committed fixture is
+// cited as coverage by the next reader. This file is the routing, and it adds no new specimen:
+// the bytes it compiles are read from those four files, so the fixture stays the single authority
+// for the specimen and this row is its consumer (DESIGN section 3, section 3c).
+//
+// WHAT IT WITNESSES IS THE INVARIANT, NOT A MESSAGE. The row names it IRRELEVANT-SCOPE EXTENSION
+// INVARIANCE: for source S with resolved closure C, an environment E1 derived from C and an E2
+// that is E1 plus declarations UNREACHABLE from S must typecheck S the same. Both manifests below
+// supply the SAME BYTES of declaring_module -- one read, handed to both -- and differ only in
+// whether colliding_module is a member. So a difference in verdict is a difference the subject's
+// own text cannot explain, which is the whole instrument.
+//
+// WHY THE MANIFEST INSTRUMENT AND NOT THE CLI COMMAND THE ROW QUOTES. Both are real; only one
+// executes on the merge path. tools.multi_module_compile_fixture compiles a caller-authored source
+// vector with NO module index and NO corpus roots, so the pool is EXACTLY the manifest -- which is
+// what makes pool membership the isolated variable here rather than a property of whatever else
+// the checkout contains. The quoted --source-root command remains correct and remains the way a
+// human reproduces it by hand.
+//
+// THE RED ARM IS PINNED, AND IT IS PINNED AS A DEFECT RATHER THAN AS A CONTRACT. Today the collided
+// manifest REFUSES, at an innocent site, with a branch-join mismatch; that refusal is the harm the
+// row records, not behaviour to preserve. When the repair the row names lands -- a declaration
+// identity authority deciding a reference's binder from the referencing module's own containment
+// chain -- this arm must FLIP: declaring_module compiles clean under both manifests, and the
+// remaining refusal, if any, is located at the reference rather than at the join. A flip is the
+// wall landing, not this witness breaking, and whoever lands it rewrites this file's red arm and
+// says so. Until then the arm asserts what the compiler DOES, so any silent change to it is loud.
+
+data if_join_declaring_path: String = "fixtures/if_join_pool_binding/declaring_module.dag"
+data if_join_colliding_path: String = "fixtures/if_join_pool_binding/colliding_module.dag"
+data if_join_with_collision_path: String = "fixtures/if_join_pool_binding/closure_with_collision.dag"
+data if_join_without_collision_path: String = "fixtures/if_join_pool_binding/closure_without_collision.dag"
+
+fn if_join_text(path: String) -> String {
+  filesystem_read(path: path).content
+}
+
+fn if_join_source(path: String) -> FixtureSource {
+  fixture_source(path: path, content: if_join_text(path: path))
+}
+
+// THE PERTURBED MANIFEST. Three modules; colliding_module is the whole of the difference and the
+// entry does not name its colliding SPELLING for the class to fire -- membership is the variable.
+fn if_join_with_collision_outcome() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      if_join_source(path: if_join_declaring_path),
+      if_join_source(path: if_join_colliding_path),
+      if_join_source(path: if_join_with_collision_path)
+    ],
+    entry: if_join_with_collision_path
+  })
+}
+
+// THE POSITIVE CONTROL. Same declaring_module bytes, colliding_module absent from the manifest.
+// Without it the red arm above is equally satisfied by a broken harness, an unreadable fixture and
+// a specimen that is simply ill-typed -- three failures indistinguishable from the red side.
+fn if_join_without_collision_outcome() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      if_join_source(path: if_join_declaring_path),
+      if_join_source(path: if_join_without_collision_path)
+    ],
+    entry: if_join_without_collision_path
+  })
+}
+
+// THE OUTCOME IS READ BY MATCHING, NEVER BY AN ACCESSOR, so FixtureInstrumentRefused -- the arm
+// that says the HARNESS broke rather than the subject -- returns false to every reader here and
+// therefore fails BOTH claims instead of silently satisfying the control.
+fn if_join_refused_at_the_branch_join(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(rows |> filter(r =>
+        r.blocking
+          && (r.diagnostic_class as String) == "InternalError"
+          && string_contains(
+               s: r.subject_name,
+               pattern: "if branches resolve to incompatible types: Coproduct(PoolSpecimenShape)"
+             )
+      )) > 0,
+    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+fn if_join_completed_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(rows) == 0 && count(files) > 0 && n > 0,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+// THE HARNESS CONTROL, READ FIRST. An empty read renders as an empty module and every downstream
+// claim would then be measuring the reader rather than the compiler; the subject-shaped assertion
+// on declaring_module's own text is what distinguishes "the fixture was read" from "a file with
+// that name exists".
+test fn the_fixture_modules_are_readable() -> Bool {
+  string_length(s: if_join_text(path: if_join_declaring_path)) > 0
+    && string_length(s: if_join_text(path: if_join_colliding_path)) > 0
+    && string_length(s: if_join_text(path: if_join_with_collision_path)) > 0
+    && string_length(s: if_join_text(path: if_join_without_collision_path)) > 0
+    && string_contains(s: if_join_text(path: if_join_declaring_path), pattern: "type PoolSpecimenShape")
+    && string_contains(s: if_join_text(path: if_join_colliding_path), pattern: "type PoolSpecimenSquare")
+}
+
+// THE DISCRIMINATING RED. An unrelated module joins the pool and declaring_module -- which neither
+// declares, imports nor is imported by it -- stops typechecking, at its own if-join.
+test fn an_unrelated_pool_member_refuses_the_declaring_modules_own_if_join() -> Bool {
+  if_join_refused_at_the_branch_join(o: if_join_with_collision_outcome())
+}
+
+// THE SAME BYTES, WITHOUT THE POOL MEMBER, COMPILE CLEAN.
+test fn the_same_declaring_module_compiles_clean_without_the_pool_member() -> Bool {
+  if_join_completed_clean(o: if_join_without_collision_outcome())
+}
+
+// THE INVARIANCE STATED AS ONE PROPOSITION RATHER THAN AS TWO NEIGHBOURING FACTS. Read together the
+// two arms above say the verdict FLIPPED; asserted here as a single claim so that a future tree in
+// which both arms happen to agree cannot leave this file green with its subject dissolved.
+test fn the_verdict_flips_on_pool_membership_alone() -> Bool {
+  if_join_refused_at_the_branch_join(o: if_join_with_collision_outcome())
+    != if_join_refused_at_the_branch_join(o: if_join_without_collision_outcome())
+}
