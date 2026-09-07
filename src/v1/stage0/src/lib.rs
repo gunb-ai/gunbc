@@ -235,6 +235,17 @@ pub mod std_integer;
     suspicious_double_ref_op,
     clippy::all
 )]
+pub mod std_logic;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
 pub mod std_machine_constraints;
 #[allow(
     unused_imports,
