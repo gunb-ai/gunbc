@@ -134,16 +134,27 @@ test fn keyed_and_population_routes_agree_on_ambiguous_with_two_candidates() -> 
   )
 }
 
-// A NAMED FIELD THAT IS PRESENT, so the field-absent row above cannot pass by a keyed read that
-// reports every named field missing. The two rows are a pair: one resolver answering "absent" to
-// both fields satisfies neither.
-test fn keyed_and_population_routes_agree_on_present_named_field() -> Bool {
+// A FIELD THAT IS AUTHORED IN THE SOURCE AND STILL RESOLVES FieldAbsent, which is a boundary of
+// the resolver rather than a defect of the keyed read, and is recorded here because it was found by
+// EXECUTION. `disposition_scaffold` really is written `Scaffold { dissolves_to: ..., bind: ... }`,
+// so a reader would expect this citation to resolve; it does not, because for a DataItem the
+// DeclFact node is the initializer PROJECTION and `decl_ref_named_field_present` reads
+// node_labeled_child_edges of that node, which are the projection's own edges and not the record's
+// field labels. Both routes say so, which is the point: the keyed feed does not invent an answer
+// where the population feed refuses, and it does not refuse where the population feed answers.
+//
+// WHAT KEEPS THE FIELD ROWS DISCRIMINATING is therefore not a present-field positive — the
+// resolver has none to offer on a `data` declaration — but the pair with
+// keyed_and_population_routes_agree_on_resolved, which cites the SAME declaration with
+// WholeDeclaration and requires Resolved. A resolver answering FieldAbsent to everything fails that
+// row; one answering Resolved to everything fails these two.
+test fn keyed_and_population_routes_agree_that_an_authored_field_is_still_field_absent() -> Bool {
   routes_agree_on(
     ref: DeclarationRef {
       module_path: "test.fixture.decl_facts_reflection.specimens",
       decl_name: "disposition_scaffold",
       field: NamedField { field_name: "dissolves_to" },
     },
-    expected: "Resolved:test.fixture.decl_facts_reflection.specimens.disposition_scaffold"
+    expected: "FieldAbsent"
   )
 }
