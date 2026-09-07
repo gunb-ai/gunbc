@@ -3,6 +3,8 @@ module gunbc.fabric_m0_commit
 import std.types { List, NonEmptyStr }
 import std.content_hash { Sha256Digest }
 import std.scoped_authorization { AttemptIdentity }
+import product.fabric.identity { WorkKey }
+import product.fabric.work { OutputObligationsResolution }
 import std.durable_compare_and_set {
   CasOutcome,
   CasCommitted,
@@ -10,13 +12,12 @@ import std.durable_compare_and_set {
   CasStoreRefused,
 }
 import gunbc.fabric_m0_completion {
-  ArtifactObligations,
-  ReceiptObligations,
   ComputationOutcome,
-  CommittedArtifact,
-  CommittedReceipt,
+  CommittedOutput,
   CommitManifest,
   OriginObservation,
+  ObservationSubject,
+  CommitManifestSubject,
   ManifestMember,
   OriginReadback,
   ReadbackConfirmed,
@@ -191,7 +192,7 @@ fn manifest_observation(
   observed: ManifestReadbackObservation
 ) -> OriginObservation {
   OriginObservation {
-    subject: "commit-manifest",
+    subject: CommitManifestSubject {},
     readback: manifest_readback(namespace: namespace, attempt: attempt, transport: transport, observed: observed),
   }
 }
@@ -201,10 +202,9 @@ fn publish_after_commit(
   namespace: CommitNamespace,
   attempt: AttemptIdentity,
   computation: ComputationOutcome,
-  artifacts: ArtifactObligations,
-  receipts: ReceiptObligations,
-  committed_artifacts: List<CommittedArtifact>,
-  committed_receipts: List<CommittedReceipt>,
+  resolution: OutputObligationsResolution,
+  judged_work: WorkKey,
+  committed: List<CommittedOutput>,
   observations: List<OriginObservation>,
   manifest_digest: Sha256Digest,
   members: List<ManifestMember>,
@@ -214,10 +214,9 @@ fn publish_after_commit(
   admit_job_publication(
     attempt: attempt,
     computation: computation,
-    artifacts: artifacts,
-    receipts: receipts,
-    committed_artifacts: committed_artifacts,
-    committed_receipts: committed_receipts,
+    resolution: resolution,
+    judged_work: judged_work,
+    committed: committed,
     observations: concat(
       observations,
       [manifest_observation(namespace: namespace, attempt: attempt, transport: transport, observed: observed)]

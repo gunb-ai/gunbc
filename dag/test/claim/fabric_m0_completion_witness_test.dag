@@ -1,17 +1,22 @@
 module test.claim.fabric_m0_completion_witness
 
-import std.types { Bool, List, String }
+import std.types { Bool, List, String, NonEmptyStr }
+import std.measure { hardware_thread_count }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import std.scoped_authorization { AttemptIdentity }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.fabric.identity { WorkKey }
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { shared_kernel_sandbox_profile }
+import product.fabric.work {
+  WorkContract, WorkStep, ReceiptSatisfiable, ExecutionRequirements,
+  Shape, HardRequirements, ControlPlaneCapacity, derive_work_key,
+  OutputObligation, OutputArtifactObligation, TerminalResultObligation,
+  DeclaredOutputObligations,
+  resolve_output_obligations, ObligationsJudgedAtJobStart,
+  OutputObligationsResolution,
+}
 import gunbc.fabric_m0_completion {
-  RequiredArtifactId,
-  RequiredReceiptId,
-  ArtifactObligations,
-  ArtifactObligationsDeclared,
-  ArtifactObligationsUnreadable,
-  ReceiptObligations,
-  ReceiptObligationsDeclared,
-  ReceiptObligationsUnreadable,
   ComputationOutcome,
   ComputationSucceeded,
   ComputationFailed,
@@ -19,22 +24,90 @@ import gunbc.fabric_m0_completion {
   ReadbackConfirmed,
   ReadbackAbsent,
   ReadbackUnknown,
-  CommittedArtifact,
-  CommittedReceipt,
-  CommitManifest,
+  ObservationSubject,
+  ObligationSubject,
+  CommitManifestSubject,
   OriginObservation,
+  CommittedOutput,
+  CommitManifest,
   JobPublication,
   PublishSuccess,
   PublishComputationFailed,
   PublishFinalizationFailed,
   PublishObligationsUnreadable,
+  PublishPendingReconciliation,
   ObligationVerdict,
   ManifestMember,
-  PublishPendingReconciliation,
   admit_job_publication,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE TWO SUBJECTS EXERCISE BOTH KINDS, which the earlier two-roster shape could not: an artifact
+// obligation and a terminal-result obligation are different owed subjects even under one id, so a
+// fixture that only ever used one kind could not tell a kind-blind join from a correct one.
+fn build_output() -> OutputObligation {
+  OutputObligation { id: "build-output", kind: OutputArtifactObligation {} }
+}
+
+fn execution_receipt() -> OutputObligation {
+  OutputObligation { id: "execution-receipt", kind: TerminalResultObligation {} }
+}
+
+// The same id under the OTHER kind. Nothing may let this discharge build_output().
+fn build_output_as_terminal() -> OutputObligation {
+  OutputObligation { id: "build-output", kind: TerminalResultObligation {} }
+}
+
+fn fixture_requirements() -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: ControlPlaneCapacity,
+    shape: Shape {
+      hard: HardRequirements { threads: hardware_thread_count(8) },
+      envelope: unstated_envelope(),
+    },
+    capabilities: "linux-arm64",
+    trust_domain: "fleet-owned",
+    isolation: shared_kernel_sandbox_profile(),
+  }
+}
+
+fn contract_owing(required: List<OutputObligation>) -> WorkContract {
+  WorkContract {
+    program: "gunbc.fabric-m0.program:1",
+    steps: [WorkStep { step_id: "fabric-m0", resumability: ReceiptSatisfiable }],
+    source: "source:1",
+    inputs: "inputs:1",
+    runtime_closure: "runtime:1",
+    effect_contract: "effects:1",
+    output_contract: "outputs:1",
+    output_obligations: DeclaredOutputObligations { required: required },
+  }
+}
+
+fn the_work() -> WorkKey {
+  derive_work_key(contract: contract_owing(required: both_required()), requirements: fixture_requirements())
+}
+
+fn both_required() -> List<OutputObligation> {
+  [build_output(), execution_receipt()]
+}
+
+// A REAL RESOLUTION, NOT A HAND-BUILT ONE. ResolvedOutputObligations is sole_constructor, so these
+// fixtures must go through resolve_output_obligations -- which is the point: the gate cannot be fed
+// a roster that no resolution produced.
+fn resolution_for(required: List<OutputObligation>, work: WorkKey) -> OutputObligationsResolution {
+  resolve_output_obligations(
+    contract: contract_owing(required: required),
+    requirements: fixture_requirements(),
+    work_key: work,
+    judgment: ObligationsJudgedAtJobStart,
+  )
+}
+
+fn the_resolution() -> OutputObligationsResolution {
+  resolution_for(required: both_required(), work: the_work())
+}
 
 // Two distinct fixture digests. The witness needs a SECOND value so the digest comparison is shown
 // to separate rather than answer true for everything -- an equality that never fails would satisfy
@@ -57,8 +130,8 @@ fn other_attempt() -> AttemptIdentity {
 
 fn full_membership() -> List<ManifestMember> {
   [
-    ManifestMember { subject: "build-output", content: digest_a() },
-    ManifestMember { subject: "execution-receipt", content: digest_a() },
+    ManifestMember { obligation: build_output(), content: digest_a() },
+    ManifestMember { obligation: execution_receipt(), content: digest_a() },
   ]
 }
 
@@ -78,58 +151,37 @@ fn manifest_with(members: List<ManifestMember>) -> CommitManifest {
   }
 }
 
-fn one_required_artifact() -> ArtifactObligations {
-  ArtifactObligationsDeclared { required: ["build-output" as RequiredArtifactId] }
-}
-
-fn one_required_receipt() -> ReceiptObligations {
-  ReceiptObligationsDeclared { required: ["execution-receipt" as RequiredReceiptId] }
-}
-
 // THE READ POPULATION, SUPPLIED SEPARATELY FROM THE WRITE POPULATION. Every fixture below states
 // which subjects were actually read back at the origin; a subject absent from this list was never
 // read, which is the state the previous shape could not express.
-fn obs_of(subject: String, r: OriginReadback) -> OriginObservation {
+fn obs_of(subject: ObservationSubject, r: OriginReadback) -> OriginObservation {
   OriginObservation { subject: subject, readback: r }
 }
 
-fn confirmed(subject: String) -> OriginObservation {
+fn confirmed(subject: ObservationSubject) -> OriginObservation {
   obs_of(subject: subject, r: ReadbackConfirmed { observed_digest: digest_a() })
 }
 
 fn all_confirmed() -> List<OriginObservation> {
-  [confirmed(subject: "build-output"), confirmed(subject: "execution-receipt"), confirmed(subject: "commit-manifest")]
+  [confirmed(subject: ObligationSubject { obligation: build_output() }), confirmed(subject: ObligationSubject { obligation: execution_receipt() }), confirmed(subject: CommitManifestSubject {})]
 }
 
 fn reads_with_output(r: OriginReadback) -> List<OriginObservation> {
-  [obs_of(subject: "build-output", r: r), confirmed(subject: "execution-receipt"), confirmed(subject: "commit-manifest")]
+  [obs_of(subject: ObligationSubject { obligation: build_output() }, r: r), confirmed(subject: ObligationSubject { obligation: execution_receipt() }), confirmed(subject: CommitManifestSubject {})]
 }
 
 fn reads_with_receipt(r: OriginReadback) -> List<OriginObservation> {
-  [confirmed(subject: "build-output"), obs_of(subject: "execution-receipt", r: r), confirmed(subject: "commit-manifest")]
+  [confirmed(subject: ObligationSubject { obligation: build_output() }), obs_of(subject: ObligationSubject { obligation: execution_receipt() }, r: r), confirmed(subject: CommitManifestSubject {})]
 }
 
 fn reads_with_manifest(r: OriginReadback) -> List<OriginObservation> {
-  [confirmed(subject: "build-output"), confirmed(subject: "execution-receipt"), obs_of(subject: "commit-manifest", r: r)]
+  [confirmed(subject: ObligationSubject { obligation: build_output() }), confirmed(subject: ObligationSubject { obligation: execution_receipt() }), obs_of(subject: CommitManifestSubject {}, r: r)]
 }
 
-fn committed_output() -> List<CommittedArtifact> {
+fn committed_both() -> List<CommittedOutput> {
   [
-    CommittedArtifact {
-      id: "build-output" as RequiredArtifactId,
-      attempt: the_attempt(),
-      recorded_digest: digest_a(),
-    },
-  ]
-}
-
-fn committed_execution_receipt() -> List<CommittedReceipt> {
-  [
-    CommittedReceipt {
-      id: "execution-receipt" as RequiredReceiptId,
-      attempt: the_attempt(),
-      recorded_digest: digest_a(),
-    },
+    CommittedOutput { obligation: build_output(), attempt: the_attempt(), recorded_digest: digest_a() },
+    CommittedOutput { obligation: execution_receipt(), attempt: the_attempt(), recorded_digest: digest_a() },
   ]
 }
 
@@ -161,25 +213,85 @@ fn is_pending(p: JobPublication) -> Bool {
   }
 }
 
-fn publish(
+fn committed_receipt_only() -> List<CommittedOutput> {
+  [CommittedOutput { obligation: execution_receipt(), attempt: the_attempt(), recorded_digest: digest_a() }]
+}
+
+fn committed_build_only() -> List<CommittedOutput> {
+  [CommittedOutput { obligation: build_output(), attempt: the_attempt(), recorded_digest: digest_a() }]
+}
+
+fn second_output() -> OutputObligation {
+  OutputObligation { id: "second-output", kind: OutputArtifactObligation {} }
+}
+
+// A resolution whose work_key does not derive from its contract. resolve_output_obligations refuses
+// it with WorkKeyDoesNotMatchContract, which is the only Unreadable cause that exists.
+fn unreadable_resolution() -> OutputObligationsResolution {
+  resolution_for(required: both_required(), work: "not-the-derived-work-key" as WorkKey)
+}
+
+// A VALID resolution for a DIFFERENT work. The seal is intact and the roster is real; only the
+// binding is foreign. This is the substitution the seal cannot catch.
+fn foreign_work_resolution() -> OutputObligationsResolution {
+  let foreign_contract = contract_owing(required: [second_output()])
+  let foreign_key = derive_work_key(contract: foreign_contract, requirements: fixture_requirements())
+  resolve_output_obligations(
+    contract: foreign_contract,
+    requirements: fixture_requirements(),
+    work_key: foreign_key,
+    judgment: ObligationsJudgedAtJobStart,
+  )
+}
+
+fn publish_judging(
   computation: ComputationOutcome,
-  artifacts: ArtifactObligations,
-  receipts: ReceiptObligations,
-  arts: List<CommittedArtifact>,
-  recs: List<CommittedReceipt>,
+  resolution: OutputObligationsResolution,
+  judged_work: WorkKey,
+  committed: List<CommittedOutput>,
   obs: List<OriginObservation>,
   manifest: CommitManifest
 ) -> JobPublication {
   admit_job_publication(
     attempt: the_attempt(),
     computation: computation,
-    artifacts: artifacts,
-    receipts: receipts,
-    committed_artifacts: arts,
-    committed_receipts: recs,
+    resolution: resolution,
+    judged_work: judged_work,
+    committed: committed,
     observations: obs,
     manifest: manifest,
   )
+}
+
+fn publish(
+  computation: ComputationOutcome,
+  resolution: OutputObligationsResolution,
+  committed: List<CommittedOutput>,
+  obs: List<OriginObservation>,
+  manifest: CommitManifest
+) -> JobPublication {
+  publish_judging(
+    computation: computation,
+    resolution: resolution,
+    judged_work: the_work(),
+    committed: committed,
+    obs: obs,
+    manifest: manifest,
+  )
+}
+
+// The two rosters below are owed by DIFFERENT contracts, so they derive different work keys. Judging
+// them against the_work() is not a test of anything but the work-key wall, so each names its own.
+fn empty_contract_work() -> WorkKey {
+  derive_work_key(contract: contract_owing(required: []), requirements: fixture_requirements())
+}
+
+fn three_required() -> List<OutputObligation> {
+  [build_output(), execution_receipt(), second_output()]
+}
+
+fn three_contract_work() -> WorkKey {
+  derive_work_key(contract: contract_owing(required: three_required()), requirements: fixture_requirements())
 }
 
 // THE POSITIVE CONTROL. Without it every refusal below is satisfied by an authority that never
@@ -188,10 +300,8 @@ fn publish(
 test fn a_complete_attempt_publishes_success() -> Bool {
   is_success(p: publish(
     computation: ComputationSucceeded,
-    artifacts: one_required_artifact(),
-    receipts: one_required_receipt(),
-    arts: committed_output(),
-    recs: committed_execution_receipt(),
+    resolution: the_resolution(),
+    committed: committed_both(),
     obs: all_confirmed(),
     manifest: good_manifest(),
   ))
@@ -201,10 +311,8 @@ test fn a_complete_attempt_publishes_success() -> Bool {
 test fn a_withheld_required_artifact_prevents_success() -> Bool {
   is_finalization_failure(p: publish(
     computation: ComputationSucceeded,
-    artifacts: one_required_artifact(),
-    receipts: one_required_receipt(),
-    arts: [],
-    recs: committed_execution_receipt(),
+    resolution: the_resolution(),
+    committed: committed_receipt_only(),
     obs: all_confirmed(),
     manifest: good_manifest(),
   ))
@@ -213,10 +321,8 @@ test fn a_withheld_required_artifact_prevents_success() -> Bool {
 test fn a_withheld_required_receipt_prevents_success() -> Bool {
   is_finalization_failure(p: publish(
     computation: ComputationSucceeded,
-    artifacts: one_required_artifact(),
-    receipts: one_required_receipt(),
-    arts: committed_output(),
-    recs: [],
+    resolution: the_resolution(),
+    committed: committed_build_only(),
     obs: all_confirmed(),
     manifest: good_manifest(),
   ))
@@ -229,22 +335,19 @@ test fn a_withheld_required_receipt_prevents_success() -> Bool {
 test fn an_unreadable_artifact_declaration_prevents_success() -> Bool {
   is_obligations_unreadable(p: publish(
     computation: ComputationSucceeded,
-    artifacts: ArtifactObligationsUnreadable { cause: "declaration unreadable" },
-    receipts: one_required_receipt(),
-    arts: committed_output(),
-    recs: committed_execution_receipt(),
+    resolution: unreadable_resolution(),
+    committed: committed_both(),
     obs: all_confirmed(),
     manifest: good_manifest(),
   ))
 }
 
 test fn a_declared_empty_artifact_roster_still_succeeds() -> Bool {
-  is_success(p: publish(
+  is_success(p: publish_judging(
     computation: ComputationSucceeded,
-    artifacts: ArtifactObligationsDeclared { required: [] },
-    receipts: one_required_receipt(),
-    arts: [],
-    recs: committed_execution_receipt(),
+    resolution: resolution_for(required: [], work: empty_contract_work()),
+    judged_work: empty_contract_work(),
+    committed: [],
     obs: all_confirmed(),
     manifest: good_manifest(),
   ))
@@ -253,10 +356,8 @@ test fn a_declared_empty_artifact_roster_still_succeeds() -> Bool {
 test fn an_unreadable_receipt_declaration_prevents_success() -> Bool {
   is_obligations_unreadable(p: publish(
     computation: ComputationSucceeded,
-    artifacts: one_required_artifact(),
-    receipts: ReceiptObligationsUnreadable { cause: "declaration unreadable" },
-    arts: committed_output(),
-    recs: committed_execution_receipt(),
+    resolution: unreadable_resolution(),
+    committed: committed_both(),
     obs: all_confirmed(),
     manifest: good_manifest(),
   ))
@@ -266,10 +367,8 @@ test fn an_unreadable_receipt_declaration_prevents_success() -> Bool {
 test fn a_failed_build_stays_failed_though_every_receipt_commits() -> Bool {
   match publish(
     computation: ComputationFailed { cause: "compile error" },
-    artifacts: one_required_artifact(),
-    receipts: one_required_receipt(),
-    arts: committed_output(),
-    recs: committed_execution_receipt(),
+    resolution: the_resolution(),
+    committed: committed_both(),
     obs: all_confirmed(),
     manifest: good_manifest(),
   ) {
@@ -282,16 +381,10 @@ test fn a_failed_build_stays_failed_though_every_receipt_commits() -> Bool {
 test fn a_readback_digest_mismatch_prevents_success() -> Bool {
   is_finalization_failure(p: publish(
     computation: ComputationSucceeded,
-    artifacts: one_required_artifact(),
-    receipts: one_required_receipt(),
-    arts: [
-      CommittedArtifact {
-        id: "build-output" as RequiredArtifactId,
-        attempt: the_attempt(),
-        recorded_digest: digest_a(),
-      },
-    ],
-    recs: committed_execution_receipt(),
+    resolution: the_resolution(),
+    committed: concat([
+      CommittedOutput { obligation: build_output(), attempt: the_attempt(), recorded_digest: digest_a() },
+    ], committed_receipt_only()),
     obs: reads_with_output(r: ReadbackConfirmed { observed_digest: digest_b() }),
     manifest: good_manifest(),
   ))
@@ -300,16 +393,10 @@ test fn a_readback_digest_mismatch_prevents_success() -> Bool {
 test fn an_absent_object_at_origin_prevents_success() -> Bool {
   is_finalization_failure(p: publish(
     computation: ComputationSucceeded,
-    artifacts: one_required_artifact(),
-    receipts: one_required_receipt(),
-    arts: [
-      CommittedArtifact {
-        id: "build-output" as RequiredArtifactId,
-        attempt: the_attempt(),
-        recorded_digest: digest_a(),
-      },
-    ],
-    recs: committed_execution_receipt(),
+    resolution: the_resolution(),
+    committed: concat([
+      CommittedOutput { obligation: build_output(), attempt: the_attempt(), recorded_digest: digest_a() },
+    ], committed_receipt_only()),
     obs: reads_with_output(r: ReadbackAbsent),
     manifest: good_manifest(),
   ))
@@ -321,16 +408,10 @@ test fn an_absent_object_at_origin_prevents_success() -> Bool {
 test fn a_lost_acknowledgement_is_pending_not_decided() -> Bool {
   is_pending(p: publish(
     computation: ComputationSucceeded,
-    artifacts: one_required_artifact(),
-    receipts: one_required_receipt(),
-    arts: [
-      CommittedArtifact {
-        id: "build-output" as RequiredArtifactId,
-        attempt: the_attempt(),
-        recorded_digest: digest_a(),
-      },
-    ],
-    recs: committed_execution_receipt(),
+    resolution: the_resolution(),
+    committed: concat([
+      CommittedOutput { obligation: build_output(), attempt: the_attempt(), recorded_digest: digest_a() },
+    ], committed_receipt_only()),
     obs: reads_with_output(r: ReadbackUnknown { cause: "upload acknowledgement lost" }),
     manifest: good_manifest(),
   ))
@@ -339,20 +420,11 @@ test fn a_lost_acknowledgement_is_pending_not_decided() -> Bool {
 // A DEFINITELY-MISSING OBJECT DOMINATES AN UNKNOWN ONE, so a job that is already incomplete is not
 // parked in pending forever waiting on a reconcile that cannot complete it.
 test fn a_missing_object_dominates_an_unknown_one() -> Bool {
-  is_finalization_failure(p: publish(
+  is_finalization_failure(p: publish_judging(
     computation: ComputationSucceeded,
-    artifacts: ArtifactObligationsDeclared {
-      required: ["build-output" as RequiredArtifactId, "second-output" as RequiredArtifactId],
-    },
-    receipts: one_required_receipt(),
-    arts: [
-      CommittedArtifact {
-        id: "build-output" as RequiredArtifactId,
-        attempt: the_attempt(),
-        recorded_digest: digest_a(),
-      },
-    ],
-    recs: committed_execution_receipt(),
+    resolution: resolution_for(required: three_required(), work: three_contract_work()),
+    judged_work: three_contract_work(),
+    committed: committed_both(),
     obs: reads_with_output(r: ReadbackUnknown { cause: "upload acknowledgement lost" }),
     manifest: good_manifest(),
   ))
@@ -362,16 +434,10 @@ test fn a_missing_object_dominates_an_unknown_one() -> Bool {
 test fn a_foreign_attempts_artifact_does_not_satisfy_this_one() -> Bool {
   is_finalization_failure(p: publish(
     computation: ComputationSucceeded,
-    artifacts: one_required_artifact(),
-    receipts: one_required_receipt(),
-    arts: [
-      CommittedArtifact {
-        id: "build-output" as RequiredArtifactId,
-        attempt: other_attempt(),
-        recorded_digest: digest_a(),
-      },
-    ],
-    recs: committed_execution_receipt(),
+    resolution: the_resolution(),
+    committed: concat([
+      CommittedOutput { obligation: build_output(), attempt: other_attempt(), recorded_digest: digest_a() },
+    ], committed_receipt_only()),
     obs: all_confirmed(),
     manifest: good_manifest(),
   ))
@@ -380,10 +446,8 @@ test fn a_foreign_attempts_artifact_does_not_satisfy_this_one() -> Bool {
 test fn a_manifest_bound_to_another_attempt_prevents_success() -> Bool {
   is_finalization_failure(p: publish(
     computation: ComputationSucceeded,
-    artifacts: one_required_artifact(),
-    receipts: one_required_receipt(),
-    arts: committed_output(),
-    recs: committed_execution_receipt(),
+    resolution: the_resolution(),
+    committed: committed_both(),
     obs: all_confirmed(),
     manifest: CommitManifest {
       attempt: other_attempt(),
@@ -396,10 +460,8 @@ test fn a_manifest_bound_to_another_attempt_prevents_success() -> Bool {
 test fn an_uncommitted_manifest_prevents_success() -> Bool {
   is_finalization_failure(p: publish(
     computation: ComputationSucceeded,
-    artifacts: one_required_artifact(),
-    receipts: one_required_receipt(),
-    arts: committed_output(),
-    recs: committed_execution_receipt(),
+    resolution: the_resolution(),
+    committed: committed_both(),
     obs: reads_with_manifest(r: ReadbackAbsent),
     manifest: CommitManifest {
       attempt: the_attempt(),
@@ -415,15 +477,9 @@ test fn an_uncommitted_manifest_prevents_success() -> Bool {
 test fn a_dominating_failure_still_reports_the_unresolved_receipt() -> Bool {
   match publish(
     computation: ComputationSucceeded,
-    artifacts: one_required_artifact(),
-    receipts: one_required_receipt(),
-    arts: [],
-    recs: [
-      CommittedReceipt {
-        id: "execution-receipt" as RequiredReceiptId,
-        attempt: the_attempt(),
-        recorded_digest: digest_a(),
-      },
+    resolution: the_resolution(),
+    committed: [
+      CommittedOutput { obligation: execution_receipt(), attempt: the_attempt(), recorded_digest: digest_a() },
     ],
     obs: reads_with_receipt(r: ReadbackUnknown { cause: "receipt upload acknowledgement lost" }),
     manifest: good_manifest(),
@@ -439,10 +495,8 @@ test fn a_dominating_failure_still_reports_the_unresolved_receipt() -> Bool {
 test fn the_work_list_carries_only_the_unresolved_obligations() -> Bool {
   match publish(
     computation: ComputationSucceeded,
-    artifacts: one_required_artifact(),
-    receipts: one_required_receipt(),
-    arts: [],
-    recs: committed_execution_receipt(),
+    resolution: the_resolution(),
+    committed: committed_receipt_only(),
     obs: all_confirmed(),
     manifest: good_manifest(),
   ) {
@@ -457,16 +511,10 @@ test fn the_work_list_carries_only_the_unresolved_obligations() -> Bool {
 test fn a_receipt_content_mismatch_prevents_success() -> Bool {
   is_finalization_failure(p: publish(
     computation: ComputationSucceeded,
-    artifacts: one_required_artifact(),
-    receipts: one_required_receipt(),
-    arts: committed_output(),
-    recs: [
-      CommittedReceipt {
-        id: "execution-receipt" as RequiredReceiptId,
-        attempt: the_attempt(),
-        recorded_digest: digest_a(),
-      },
-    ],
+    resolution: the_resolution(),
+    committed: concat(committed_build_only(), [
+      CommittedOutput { obligation: execution_receipt(), attempt: the_attempt(), recorded_digest: digest_a() },
+    ]),
     obs: reads_with_receipt(r: ReadbackConfirmed { observed_digest: digest_b() }),
     manifest: good_manifest(),
   ))
@@ -477,26 +525,22 @@ test fn a_receipt_content_mismatch_prevents_success() -> Bool {
 test fn a_manifest_omitting_a_required_object_prevents_success() -> Bool {
   is_finalization_failure(p: publish(
     computation: ComputationSucceeded,
-    artifacts: one_required_artifact(),
-    receipts: one_required_receipt(),
-    arts: committed_output(),
-    recs: committed_execution_receipt(),
+    resolution: the_resolution(),
+    committed: committed_both(),
     obs: all_confirmed(),
-    manifest: manifest_with(members: [ManifestMember { subject: "execution-receipt", content: digest_a() }]),
+    manifest: manifest_with(members: [ManifestMember { obligation: execution_receipt(), content: digest_a() }]),
   ))
 }
 
 test fn a_manifest_naming_the_wrong_content_prevents_success() -> Bool {
   is_finalization_failure(p: publish(
     computation: ComputationSucceeded,
-    artifacts: one_required_artifact(),
-    receipts: one_required_receipt(),
-    arts: committed_output(),
-    recs: committed_execution_receipt(),
+    resolution: the_resolution(),
+    committed: committed_both(),
     obs: all_confirmed(),
     manifest: manifest_with(members: [
-      ManifestMember { subject: "build-output", content: digest_b() },
-      ManifestMember { subject: "execution-receipt", content: digest_a() },
+      ManifestMember { obligation: build_output(), content: digest_b() },
+      ManifestMember { obligation: execution_receipt(), content: digest_a() },
     ]),
   ))
 }
@@ -505,21 +549,11 @@ test fn a_manifest_naming_the_wrong_content_prevents_success() -> Bool {
 test fn conflicting_rows_for_one_identity_refuse() -> Bool {
   is_finalization_failure(p: publish(
     computation: ComputationSucceeded,
-    artifacts: one_required_artifact(),
-    receipts: one_required_receipt(),
-    arts: [
-      CommittedArtifact {
-        id: "build-output" as RequiredArtifactId,
-        attempt: the_attempt(),
-        recorded_digest: digest_a(),
-      },
-      CommittedArtifact {
-        id: "build-output" as RequiredArtifactId,
-        attempt: the_attempt(),
-        recorded_digest: digest_b(),
-      },
-    ],
-    recs: committed_execution_receipt(),
+    resolution: the_resolution(),
+    committed: concat([
+      CommittedOutput { obligation: build_output(), attempt: the_attempt(), recorded_digest: digest_a() },
+      CommittedOutput { obligation: build_output(), attempt: the_attempt(), recorded_digest: digest_b() },
+    ], committed_receipt_only()),
     obs: all_confirmed(),
     manifest: good_manifest(),
   ))
@@ -529,16 +563,10 @@ test fn conflicting_rows_for_one_identity_refuse() -> Bool {
 test fn a_failed_build_still_reports_an_unresolved_receipt() -> Bool {
   match publish(
     computation: ComputationFailed { cause: "compile error" },
-    artifacts: one_required_artifact(),
-    receipts: one_required_receipt(),
-    arts: committed_output(),
-    recs: [
-      CommittedReceipt {
-        id: "execution-receipt" as RequiredReceiptId,
-        attempt: the_attempt(),
-        recorded_digest: digest_a(),
-      },
-    ],
+    resolution: the_resolution(),
+    committed: concat(committed_build_only(), [
+      CommittedOutput { obligation: execution_receipt(), attempt: the_attempt(), recorded_digest: digest_a() },
+    ]),
     obs: reads_with_receipt(r: ReadbackUnknown { cause: "receipt upload acknowledgement lost" }),
     manifest: good_manifest(),
   ) {
@@ -552,10 +580,8 @@ test fn a_failed_build_still_reports_an_unresolved_receipt() -> Bool {
 test fn a_failed_build_with_resolved_storage_reports_no_work() -> Bool {
   match publish(
     computation: ComputationFailed { cause: "compile error" },
-    artifacts: one_required_artifact(),
-    receipts: one_required_receipt(),
-    arts: committed_output(),
-    recs: committed_execution_receipt(),
+    resolution: the_resolution(),
+    committed: committed_both(),
     obs: all_confirmed(),
     manifest: good_manifest(),
   ) {
@@ -564,23 +590,18 @@ test fn a_failed_build_with_resolved_storage_reports_no_work() -> Bool {
   }
 }
 
-// AN UNREADABLE ROSTER DOES NOT STOP THE OTHER ROSTER BEING ASSESSED. "Cannot enumerate this
-// population" is not "stop examining every other population": the undetermined receipt below must
-// still reach the work list beside the unenumerable artifact roster.
-test fn an_unreadable_artifact_roster_still_assesses_the_receipts() -> Bool {
+// AN UNENUMERABLE ROSTER DOES NOT STOP THE MANIFEST BEING ASSESSED. The earlier form of this
+// witness said "the other roster", which the one-roster collapse retired -- there is no sibling
+// roster to assess any more. The property that survives is the one that mattered: "cannot enumerate
+// this population" is not "stop examining every other population", so an undetermined manifest must
+// still reach the work list beside an unenumerable roster. Asserting a count of 2 is what
+// distinguishes that from an early return.
+test fn an_unenumerable_roster_still_assesses_the_manifest() -> Bool {
   match publish(
     computation: ComputationSucceeded,
-    artifacts: ArtifactObligationsUnreadable { cause: "declaration unreadable" },
-    receipts: one_required_receipt(),
-    arts: [],
-    recs: [
-      CommittedReceipt {
-        id: "execution-receipt" as RequiredReceiptId,
-        attempt: the_attempt(),
-        recorded_digest: digest_a(),
-      },
-    ],
-    obs: reads_with_receipt(r: ReadbackUnknown { cause: "receipt upload acknowledgement lost" }),
+    resolution: unreadable_resolution(),
+    committed: committed_both(),
+    obs: reads_with_manifest(r: ReadbackUnknown { cause: "manifest upload acknowledgement lost" }),
     manifest: good_manifest(),
   ) {
     PublishObligationsUnreadable { attempt: _, subject: _, cause: _, unresolved: u } => u.count() == 2
@@ -598,11 +619,9 @@ test fn an_unreadable_artifact_roster_still_assesses_the_receipts() -> Bool {
 test fn a_required_object_never_read_back_cannot_publish_success() -> Bool {
   is_pending(p: publish(
     computation: ComputationSucceeded,
-    artifacts: one_required_artifact(),
-    receipts: one_required_receipt(),
-    arts: committed_output(),
-    recs: committed_execution_receipt(),
-    obs: [confirmed(subject: "execution-receipt"), confirmed(subject: "commit-manifest")],
+    resolution: the_resolution(),
+    committed: committed_both(),
+    obs: [confirmed(subject: ObligationSubject { obligation: execution_receipt() }), confirmed(subject: CommitManifestSubject {})],
     manifest: good_manifest(),
   ))
 }
@@ -613,11 +632,9 @@ test fn a_required_object_never_read_back_cannot_publish_success() -> Bool {
 test fn an_unread_manifest_cannot_publish_success() -> Bool {
   is_pending(p: publish(
     computation: ComputationSucceeded,
-    artifacts: one_required_artifact(),
-    receipts: one_required_receipt(),
-    arts: committed_output(),
-    recs: committed_execution_receipt(),
-    obs: [confirmed(subject: "build-output"), confirmed(subject: "execution-receipt")],
+    resolution: the_resolution(),
+    committed: committed_both(),
+    obs: [confirmed(subject: ObligationSubject { obligation: build_output() }), confirmed(subject: ObligationSubject { obligation: execution_receipt() })],
     manifest: good_manifest(),
   ))
 }
@@ -627,16 +644,57 @@ test fn an_unread_manifest_cannot_publish_success() -> Bool {
 test fn two_reads_claiming_one_subject_refuse() -> Bool {
   is_finalization_failure(p: publish(
     computation: ComputationSucceeded,
-    artifacts: one_required_artifact(),
-    receipts: one_required_receipt(),
-    arts: committed_output(),
-    recs: committed_execution_receipt(),
+    resolution: the_resolution(),
+    committed: committed_both(),
     obs: [
-      confirmed(subject: "build-output"),
-      obs_of(subject: "build-output", r: ReadbackAbsent),
-      confirmed(subject: "execution-receipt"),
-      confirmed(subject: "commit-manifest"),
+      confirmed(subject: ObligationSubject { obligation: build_output() }),
+      obs_of(subject: ObligationSubject { obligation: build_output() }, r: ReadbackAbsent),
+      confirmed(subject: ObligationSubject { obligation: execution_receipt() }),
+      confirmed(subject: CommitManifestSubject {}),
     ],
+    manifest: good_manifest(),
+  ))
+}
+
+// THE SUBSTITUTION THE SEAL CANNOT CATCH. sole_constructor makes a forged resolution unwritable,
+// and resolve_output_obligations refuses a work_key that does not derive from its own contract. Both
+// hold here: this resolution is genuine, internally consistent, and sealed. It is simply about a
+// DIFFERENT work than the one the gate was asked to judge. Nothing upstream can detect that, because
+// only the gate knows which work it was asked about -- so if this publishes anything but a refusal,
+// a caller can discharge job A's obligations with job B's roster.
+test fn a_resolution_for_another_work_cannot_publish_success() -> Bool {
+  is_obligations_unreadable(p: publish(
+    computation: ComputationSucceeded,
+    resolution: foreign_work_resolution(),
+    committed: committed_both(),
+    obs: all_confirmed(),
+    manifest: good_manifest(),
+  ))
+}
+
+// AND THE POSITIVE CONTROL FOR IT: the same shape with the CORRECT work still succeeds, so the
+// refusal above is not satisfied by a gate that rejects every resolution.
+test fn a_resolution_for_the_judged_work_publishes_success() -> Bool {
+  is_success(p: publish(
+    computation: ComputationSucceeded,
+    resolution: the_resolution(),
+    committed: committed_both(),
+    obs: all_confirmed(),
+    manifest: good_manifest(),
+  ))
+}
+
+// KIND IS PART OF THE KEY. The committed row carries the right id under the WRONG kind, so a join
+// on id alone would discharge the artifact obligation with a terminal-result row.
+test fn the_same_id_under_another_kind_does_not_discharge_it() -> Bool {
+  is_finalization_failure(p: publish(
+    computation: ComputationSucceeded,
+    resolution: the_resolution(),
+    committed: [
+      CommittedOutput { obligation: build_output_as_terminal(), attempt: the_attempt(), recorded_digest: digest_a() },
+      CommittedOutput { obligation: execution_receipt(), attempt: the_attempt(), recorded_digest: digest_a() },
+    ],
+    obs: all_confirmed(),
     manifest: good_manifest(),
   ))
 }

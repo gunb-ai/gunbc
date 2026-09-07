@@ -3,15 +3,25 @@ module test.claim.fabric_m0_commit_witness
 import std.types { Bool, List, NonEmptyStr }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import std.scoped_authorization { AttemptIdentity }
+import std.measure { hardware_thread_count }
+import product.fabric.identity { WorkKey }
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { shared_kernel_sandbox_profile }
+import product.fabric.work {
+  WorkContract, WorkStep, ReceiptSatisfiable, ExecutionRequirements,
+  Shape, HardRequirements, ControlPlaneCapacity, derive_work_key,
+  OutputObligation, OutputArtifactObligation, TerminalResultObligation,
+  DeclaredOutputObligations,
+  resolve_output_obligations, ObligationsJudgedAtJobStart,
+  OutputObligationsResolution,
+}
 import std.durable_compare_and_set { CasStoreRefused, CasUnreadableReadRefused, CasPreconditionFailed, ExpectSlotAbsent, CasReadableAbsent }
 import gunbc.fabric_m0_completion {
-  RequiredArtifactId,
-  RequiredReceiptId,
-  ArtifactObligationsDeclared,
-  ReceiptObligationsDeclared,
+  ObservationSubject,
+  ObligationSubject,
+  CommitManifestSubject,
   ComputationSucceeded,
-  CommittedArtifact,
-  CommittedReceipt,
+  CommittedOutput,
   ManifestMember,
   ReadbackConfirmed,
   OriginObservation,
@@ -47,28 +57,15 @@ fn the_attempt() -> AttemptIdentity {
 
 fn members() -> List<ManifestMember> {
   [
-    ManifestMember { subject: "build-output", content: digest_a() },
-    ManifestMember { subject: "execution-receipt", content: digest_a() },
+    ManifestMember { obligation: build_output(), content: digest_a() },
+    ManifestMember { obligation: execution_receipt(), content: digest_a() },
   ]
 }
 
-fn arts() -> List<CommittedArtifact> {
+fn committed_both() -> List<CommittedOutput> {
   [
-    CommittedArtifact {
-      id: "build-output" as RequiredArtifactId,
-      attempt: the_attempt(),
-      recorded_digest: digest_a(),
-    },
-  ]
-}
-
-fn recs() -> List<CommittedReceipt> {
-  [
-    CommittedReceipt {
-      id: "execution-receipt" as RequiredReceiptId,
-      attempt: the_attempt(),
-      recorded_digest: digest_a(),
-    },
+    CommittedOutput { obligation: build_output(), attempt: the_attempt(), recorded_digest: digest_a() },
+    CommittedOutput { obligation: execution_receipt(), attempt: the_attempt(), recorded_digest: digest_a() },
   ]
 }
 
@@ -77,8 +74,8 @@ fn recs() -> List<CommittedReceipt> {
 // slot the manifest actually lives at.
 fn object_reads() -> List<OriginObservation> {
   [
-    OriginObservation { subject: "build-output", readback: ReadbackConfirmed { observed_digest: digest_a() } },
-    OriginObservation { subject: "execution-receipt", readback: ReadbackConfirmed { observed_digest: digest_a() } },
+    OriginObservation { subject: ObligationSubject { obligation: build_output() }, readback: ReadbackConfirmed { observed_digest: digest_a() } },
+    OriginObservation { subject: ObligationSubject { obligation: execution_receipt() }, readback: ReadbackConfirmed { observed_digest: digest_a() } },
   ]
 }
 
@@ -87,15 +84,61 @@ fn commit(transport: CommitTransportOutcome, observed: ManifestReadbackObservati
     namespace: the_namespace(),
     attempt: the_attempt(),
     computation: ComputationSucceeded,
-    artifacts: ArtifactObligationsDeclared { required: ["build-output" as RequiredArtifactId] },
-    receipts: ReceiptObligationsDeclared { required: ["execution-receipt" as RequiredReceiptId] },
-    committed_artifacts: arts(),
-    committed_receipts: recs(),
+    resolution: the_resolution(),
+    judged_work: the_work(),
+    committed: committed_both(),
     observations: object_reads(),
     manifest_digest: digest_a(),
     members: members(),
     transport: transport,
     observed: observed,
+  )
+}
+
+fn build_output() -> OutputObligation {
+  OutputObligation { id: "build-output", kind: OutputArtifactObligation {} }
+}
+
+fn execution_receipt() -> OutputObligation {
+  OutputObligation { id: "execution-receipt", kind: TerminalResultObligation {} }
+}
+
+fn fixture_requirements() -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: ControlPlaneCapacity,
+    shape: Shape {
+      hard: HardRequirements { threads: hardware_thread_count(8) },
+      envelope: unstated_envelope(),
+    },
+    capabilities: "linux-arm64",
+    trust_domain: "fleet-owned",
+    isolation: shared_kernel_sandbox_profile(),
+  }
+}
+
+fn the_contract() -> WorkContract {
+  WorkContract {
+    program: "gunbc.fabric-m0.program:1",
+    steps: [WorkStep { step_id: "fabric-m0", resumability: ReceiptSatisfiable }],
+    source: "source:1",
+    inputs: "inputs:1",
+    runtime_closure: "runtime:1",
+    effect_contract: "effects:1",
+    output_contract: "outputs:1",
+    output_obligations: DeclaredOutputObligations { required: [build_output(), execution_receipt()] },
+  }
+}
+
+fn the_work() -> WorkKey {
+  derive_work_key(contract: the_contract(), requirements: fixture_requirements())
+}
+
+fn the_resolution() -> OutputObligationsResolution {
+  resolve_output_obligations(
+    contract: the_contract(),
+    requirements: fixture_requirements(),
+    work_key: the_work(),
+    judgment: ObligationsJudgedAtJobStart,
   )
 }
 
