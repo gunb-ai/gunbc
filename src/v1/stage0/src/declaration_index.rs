@@ -269,6 +269,9 @@ pub enum DeclarationIntegrityKind {
     /// A `PLANTED_CONTROL_CITATIONS` row whose citation stopped refusing — the control is no
     /// longer discriminating. The inverse reading of the same trigger as the row above.
     PlantedControlNoLongerRefuses,
+    /// A `NEXT_RUNG_TRIGGER_CITATIONS` row whose citation now resolves — the named
+    /// `required_capability` was authored, which is the `OutsideModeledGuarantee` stamp firing.
+    NextRungTriggerCitationResolved,
 }
 
 pub fn integrity_kind_label(kind: &DeclarationIntegrityKind) -> &'static str {
@@ -281,6 +284,7 @@ pub fn integrity_kind_label(kind: &DeclarationIntegrityKind) -> &'static str {
         DeclarationIntegrityKind::DuplicateModuleDeclaration => "DUPLICATE-MODULE",
         DeclarationIntegrityKind::CitationDebtRowStale => "CITATION-DEBT-ROW-STALE",
         DeclarationIntegrityKind::PlantedControlNoLongerRefuses => "PLANTED-CONTROL-RESOLVES",
+        DeclarationIntegrityKind::NextRungTriggerCitationResolved => "TRIGGER-CITATION-RESOLVES",
     }
 }
 
@@ -1353,10 +1357,11 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// cited name is never a next-rung capability and is never supposed to be authored; the probe
 /// is that the join still treats absence as outside. Same shape as `test.claim.altra_placement_witness`
 /// citing `some_other_board` and `test.claim.annotation_carrier` citing a one-letter miss.
-/// It does not belong on `PLANTED_CONTROL_CITATIONS`: that roster's arm reds when a citation
-/// stops refusing, which for a production trigger is the stamp firing as designed, and for
-/// this probe would mean the control had lost its discriminating power. The two directions
-/// do not coincide here, so the citation stays false on purpose with the other fixture carriers.
+/// It does not belong on `NEXT_RUNG_TRIGGER_CITATIONS`: that roster's arm reds when a citation
+/// stops refusing because the named capability was authored — the stamp firing as designed.
+/// For this probe a resolving citation would mean the control had lost its discriminating
+/// power. The two directions do not coincide, so the citation stays false on purpose with
+/// the other fixture carriers.
 const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &[
     (
         "test.claim.altra_placement_witness",
@@ -2021,7 +2026,7 @@ pub fn citation_debt_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// corpus run reported all four controls as ordinary refusals, which caught the claim. A false
 /// statement inside the carrier built to stop false statements is the specimen this change
 /// exists to make impossible; recorded here rather than quietly corrected.
-/// EMPTY AS OF 2026-08-26, AND EMPTY WAS NOT DEAD. All four rows named citations inside
+/// EMPTY AS OF 2026-08-26, AND EMPTY IS NOT DEAD. All four rows named citations inside
 /// `v2.lens.cited_symbol_resolution`, and the comment above them said they "delete with the
 /// lens, not before it". This change is that deletion, so emptying the roster is the scheduled
 /// event: with the lens gone every row would report `PlantedControlNoLongerRefuses` — the
@@ -2030,62 +2035,19 @@ pub fn citation_debt_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// THOSE EMPTIED ROWS WERE TESTS OF THE CITATION WALL. A controlled fixture authoring both
 /// input and expected population is the stronger oracle (§5); a planted row over the live
 /// corpus only asserted that one hand-authored citation still refuses. That climb still holds:
-/// the wall's refusal arms live in `tests/declaration_index_integrity.rs`
-/// (`import_member_absent_is_refused_and_located`, `stale_citation_is_refused`,
-/// `citation_to_a_deleted_module_is_refused_and_a_foreign_namespace_is_not`,
-/// `citation_to_an_absent_field_is_refused_and_a_present_field_is_not`). Re-occupying this
+/// the wall's refusal arms live in `tests/declaration_index_integrity.rs`. Re-occupying this
 /// roster with the same kind of row would undo that climb.
 ///
-/// THE ROSTER NOW HOLDS A SECOND KIND: production next-rung trigger citations, 2026-09-07.
-/// Three `OutsideModeledGuarantee` stamps name a `required_capability` that must not exist
-/// yet; authoring it is the climb that spends the stamp (`grounding_name_only_residual_boundary`
-/// says in its own words "then this stamp reds"). The roster's arm reds on the same event
-/// (`PlantedControlNoLongerRefuses`). Direction coincidence, not conflict: a planted control
-/// that stops refusing has lost its discriminating power, and a next-rung trigger that stops
-/// refusing is the stamp firing as designed. Those are the same event for these three sites,
-/// which is why they belong here and why this is not a regression of the emptying.
+/// PRODUCTION NEXT-RUNG TRIGGER CITATIONS ARE NOT THIS KIND AND ARE NOT IN THIS ROSTER.
+/// They live in `NEXT_RUNG_TRIGGER_CITATIONS`. The two rosters read the same trigger (a
+/// citation that used to refuse now resolves) and they do not share a name, a kind, or a
+/// diagnostic: when a planted control resolves, the control has lost its discriminating
+/// power; when a trigger citation resolves, the `OutsideModeledGuarantee` stamp has fired as
+/// designed. One message cannot say both.
 ///
-/// Each row is one SITE; two `DeclarationRef`s inside one stamp that name the same absent
-/// symbol share that identity. A witness probe that cites a name never meant to be authored
-/// (`nonexistent_capability_ref` → `capability_absent_from_decl_facts`) is NOT this kind and
-/// is not in this roster — it lives in `FIXTURE_CARRIER_CITATION_EXEMPTIONS` with the other
-/// witness citations that stay false on purpose.
-///
-/// THE ROSTER STAYS AND THE ARM STAYS. DESIGN's reachability-read-as-occupancy row asks three
-/// questions, and only the first two decide whether a guard should exist: the mechanism can
-/// still produce this state and can still classify an element of the denominator (every
-/// authored citation). Occupancy was zero from the 2026-08-26 emptying until these trigger
-/// citations; filling it with the second kind does not change that the arm stays.
-///
-/// THE ARM'S OWN EVIDENCE DOES NOT LIVE IN THIS ROSTER. `planted_control_findings_against`
-/// takes the roster as a parameter, and
-/// `a_planted_control_that_still_refuses_is_healthy` /
-/// `a_planted_control_that_resolves_has_lost_its_power_and_refuses` drive both directions from
-/// controlled fixtures. The RED proving this arm stays enrolled lives there (§4b(4): a climb
-/// dissolves production machinery, never the evidence).
-const PLANTED_CONTROL_CITATIONS: &[(&str, &str, &str, &str, &str)] = &[
-    (
-        "v2.lens.enforcement.complexity_contract_subject",
-        "complexity_optimality_boundary",
-        "v2.lens.enforcement.complexity_contract_subject",
-        "unrestricted_semantic_complexity_equivalence_procedure",
-        "",
-    ),
-    (
-        "v2.lens.grounding",
-        "grounding_name_only_residual_boundary",
-        "v2.lens.grounding",
-        "confirm_judge_should_ground",
-        "",
-    ),
-    (
-        "v2.lens.synthesis",
-        "synthesis_rice_residual_boundary",
-        "v2.lens.synthesis",
-        "unrestricted_cheaper_equivalent",
-        "",
-    ),
-];
+/// THE ROSTER STAYS AND THE ARM STAYS. Occupancy is zero. The arm's own evidence lives in
+/// `planted_control_findings_against` fixtures, not in this constant.
+const PLANTED_CONTROL_CITATIONS: &[(&str, &str, &str, &str, &str)] = &[];
 
 /// A control that has STOPPED refusing has lost its discriminating power, and that is a red in
 /// its own right — the inverse of a spent debt row, and the reason these are a separate roster.
@@ -2109,6 +2071,74 @@ pub fn planted_control_findings_against(
                 "PLANTED_CONTROL_CITATIONS lists `{citer}` `{in_decl}` citing `{module}` `{decl}`{} as a \
                  control that must NOT resolve, and it no longer refuses — the control has \
                  lost its discriminating power and the mechanism it proves is now unevidenced",
+                if field.is_empty() {
+                    String::new()
+                } else {
+                    format!(" field `{field}`")
+                }
+            ),
+        })
+        .collect()
+}
+
+/// PRODUCTION NEXT-RUNG TRIGGER CITATIONS, 2026-09-07. Three `OutsideModeledGuarantee` stamps
+/// name a `required_capability` that must not exist yet; authoring it is the climb that spends
+/// the stamp (`grounding_name_only_residual_boundary` says "then this stamp reds"). Each row
+/// is one SITE; two `DeclarationRef`s inside one stamp that name the same absent symbol share
+/// that identity.
+///
+/// NOT `PLANTED_CONTROL_CITATIONS`. That roster's diagnostic says a resolving control has lost
+/// its discriminating power. These rows resolve WHEN THE STAMP FIRES AS DESIGNED. Same
+/// underlying trigger (citation used to refuse, now does not), materially different contract,
+/// so a different name, kind, and message. A comment asserting direction coincidence is not
+/// a second contract.
+const NEXT_RUNG_TRIGGER_CITATIONS: &[(&str, &str, &str, &str, &str)] = &[
+    (
+        "v2.lens.enforcement.complexity_contract_subject",
+        "complexity_optimality_boundary",
+        "v2.lens.enforcement.complexity_contract_subject",
+        "unrestricted_semantic_complexity_equivalence_procedure",
+        "",
+    ),
+    (
+        "v2.lens.grounding",
+        "grounding_name_only_residual_boundary",
+        "v2.lens.grounding",
+        "confirm_judge_should_ground",
+        "",
+    ),
+    (
+        "v2.lens.synthesis",
+        "synthesis_rice_residual_boundary",
+        "v2.lens.synthesis",
+        "unrestricted_cheaper_equivalent",
+        "",
+    ),
+];
+
+pub fn next_rung_trigger_citation_findings(
+    index: &DeclarationIndex,
+) -> Vec<DeclarationIntegrityFinding> {
+    next_rung_trigger_citation_findings_against(index, NEXT_RUNG_TRIGGER_CITATIONS)
+}
+
+pub fn next_rung_trigger_citation_findings_against(
+    index: &DeclarationIndex,
+    roster: &[(&str, &str, &str, &str, &str)],
+) -> Vec<DeclarationIntegrityFinding> {
+    let still_refusing = refusing_sites(index);
+    roster
+        .iter()
+        .filter(|row| !still_refusing.contains(&site_owned(row)))
+        .map(|(citer, in_decl, module, decl, field)| DeclarationIntegrityFinding {
+            kind: DeclarationIntegrityKind::NextRungTriggerCitationResolved,
+            rel_path: "src/v1/stage0/src/declaration_index.rs".to_string(),
+            offset: None,
+            message: format!(
+                "NEXT_RUNG_TRIGGER_CITATIONS lists `{citer}` `{in_decl}` citing `{module}` `{decl}`{} as \
+                 an OutsideModeledGuarantee required_capability that must not exist yet, and it \
+                 now resolves — the stamp's climb has fired; delete this row and take the stamp \
+                 off OutsideModeledGuarantee",
                 if field.is_empty() {
                     String::new()
                 } else {
@@ -2366,6 +2396,7 @@ pub fn corpus_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegrityFind
         &[
             PRE_EXISTING_CITATION_DEBT,
             PLANTED_CONTROL_CITATIONS,
+            NEXT_RUNG_TRIGGER_CITATIONS,
             FIXTURE_CARRIER_CITATION_EXEMPTIONS,
         ]
         .concat()[..],
@@ -2378,6 +2409,7 @@ pub fn corpus_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegrityFind
         "FIXTURE_CARRIER_CITATION_EXEMPTIONS",
     ));
     out.extend(planted_control_findings(index));
+    out.extend(next_rung_trigger_citation_findings(index));
     out.sort();
     out
 }

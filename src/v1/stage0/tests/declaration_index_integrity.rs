@@ -25,7 +25,8 @@ use std::rc::Rc;
 
 use v1_compiler::cli_run::declaration_index::{
     citation_debt_findings_against, citation_debt_findings_named, cited_symbol_findings_against,
-    corpus_findings, index_findings, index_get, index_population, planted_control_findings_against,
+    corpus_findings, index_findings, index_get, index_population,
+    next_rung_trigger_citation_findings_against, planted_control_findings_against,
     DeclarationIndex, DeclarationIntegrityKind, ModuleDeclarationRecord,
 };
 use v1_compiler::cli_run::{
@@ -962,6 +963,60 @@ fn a_planted_control_that_resolves_has_lost_its_power_and_refuses() {
     assert_eq!(
         lost[0].kind,
         DeclarationIntegrityKind::PlantedControlNoLongerRefuses
+    );
+}
+
+#[test]
+fn a_next_rung_trigger_that_resolves_is_the_stamp_firing_not_a_lost_control() {
+    let dir = scratch_root("trigger_resolved");
+    author(
+        &dir,
+        "authority.dag",
+        "module probe.authority\n\ndata deliberately_absent_RED: Bool = true\n",
+    );
+    author(
+        &dir,
+        "citer.dag",
+        "module probe.citer\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+         data probe_citation: DeclarationRef = DeclarationRef {\n\
+         \u{20}\u{20}module_path: \"probe.authority\",\n\
+         \u{20}\u{20}decl_name: \"deliberately_absent_RED\",\n\
+         \u{20}\u{20}field: WholeDeclaration,\n}\n",
+    );
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    plant_declares(&sweep.index, "probe.authority", "deliberately_absent_RED");
+    plant_cites(
+        &sweep.index,
+        "probe.citer",
+        "probe.authority",
+        "deliberately_absent_RED",
+    );
+    let roster = [(
+        "probe.citer",
+        "probe_citation",
+        "probe.authority",
+        "deliberately_absent_RED",
+        "",
+    )];
+    let fired = next_rung_trigger_citation_findings_against(&sweep.index, &roster);
+    assert_eq!(
+        fired.len(),
+        1,
+        "the spent trigger must refuse, got {fired:?}"
+    );
+    assert_eq!(
+        fired[0].kind,
+        DeclarationIntegrityKind::NextRungTriggerCitationResolved
+    );
+    assert!(
+        fired[0].message.contains("stamp's climb has fired"),
+        "must not reuse the planted-control lost-power sentence, got {}",
+        fired[0].message
+    );
+    assert!(
+        !fired[0].message.contains("lost its discriminating power"),
+        "meaning fork: a successful climb reported as a lost control, got {}",
+        fired[0].message
     );
 }
 
