@@ -1,0 +1,220 @@
+module gunbc.serving.turn_dispatch
+
+import std.types { Bool, String, NonEmptyStr, List, Timestamp }
+import std.nat { Nat }
+import std.measure { Second, second, MoneyAmountMicro, money_amount_micro, MoneyOnce, MoneyRate }
+import extdeps.currency.currency { Usd }
+import v2.std.optional { Present, Absent }
+import product.fabric.identity { FabricIdentity, OfferKey }
+import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.selection {
+  AvailabilityObservation, AvailableForInterval, AvailableIndefinitely, AvailabilityUnobserved,
+  CommitmentState,
+  StartCostObservation, StartCostMeasured, StartCostUnread,
+  TransitionCostObservation, NoTransitionRequired, TransitionCostMeasured, TransitionCostUnread,
+  OperatingCostObservation, OperatingCostMeasured, OperatingCostBorneBySupplier, OperatingCostUnread,
+  OpportunityCostObservation, NoFeasibleAlternativeUse, AlternativeUseDisplaced, AlternativeUseUnread,
+  DispatchInputs,
+}
+import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
+
+// ── SERVING'S OBSERVATIONS, ON THE COST AXES THAT ALREADY EXIST ───────────────────────────────
+//
+// This module is deliberately small, and its size is the finding. An earlier attempt at serving
+// placement minted a conversation-incumbent type, a queue observation, an admissibility verdict and
+// a placement outcome. Every one of them is an axis product.fabric.selection already carries, and
+// the fabric's spellings are better:
+//
+//     conversation affinity   -> TransitionCostObservation: staying is NoTransitionRequired,
+//                                moving is a measured cold prefill
+//     queue depth             -> AvailabilityObservation: a queue IS the delay before start
+//     co-tenant degradation   -> OpportunityCostObservation: landing beside an interactive stream
+//                                displaces an alternative use of that group
+//     serves this model       -> capability fungibility, via CapabilitiesNotOffered
+//     admissible or not       -> OfferCandidacy
+//     the answer              -> SupplySelection
+//
+// So there is nothing here but a translation from what a serving group was observed doing into the
+// vocabulary that already prices it. Nothing in this file decides anything.
+
+// ── WHAT A COLD PREFILL COSTS, WHICH IS THE ONLY SERVING-SPECIFIC QUANTITY ────────────────────
+//
+// gunbc.spark.serving_critical_path measures prefill wall time as affine in computed tokens on an
+// idle engine: about 77.5ms fixed plus 1.055ms per token, over a 39x token range with a worst
+// residual of 94ms. That is the cost of REMATERIALIZING a conversation's prefix somewhere it is not
+// already held -- which is exactly what a transition costs when a bound conversation is moved.
+//
+// It is expressed in SECONDS here and converted to money by the caller's delay valuation, rather
+// than being denominated in money in this module. A latency-to-money rate is a business fact nobody
+// has stated, and inventing one to satisfy a field type would be the fabricated valuation the fabric
+// is careful to avoid. Seconds are what was measured.
+data prefill_fixed_millis: Nat = 78
+data prefill_millis_per_thousand_tokens: Nat = 1055
+
+fn cold_prefill_millis(prompt_tokens: Nat) -> Nat {
+  prefill_fixed_millis + ((prefill_millis_per_thousand_tokens * prompt_tokens) / 1000)
+}
+
+// ── AFFINITY IS A TRANSITION COST ─────────────────────────────────────────────────────────────
+//
+// A conversation already placed on a group pays nothing to stay: its prefix is where it is. Moving
+// it pays a full cold prefill, which is why a sticky binding is worth keeping even when another
+// group looks idle. Both facts are one axis, and the axis already existed.
+//
+// THE INCUMBENT ARM DOES NOT CLAIM THE PREFIX SURVIVED. NoTransitionRequired says no transition is
+// REQUIRED to place the turn here, which is true whether or not the cache still holds it. Eviction
+// is silent and unobserved; if a later observation establishes a miss, the honest arm becomes a
+// measured transition on the incumbent too, not a quiet reinterpretation of this one.
+type ConversationPlacementHistory
+  = NeverPlaced
+  | LastPlacedOn { group: FabricGroup }
+
+fn serving_transition_cost(
+  history: ConversationPlacementHistory,
+  candidate: FabricGroup,
+  prompt_tokens: Nat,
+  latency_micros_per_second: Nat,
+  receipt: ObservationReceiptRef,
+) -> TransitionCostObservation {
+  match history {
+    NeverPlaced =>
+      TransitionCostMeasured {
+        amount: MoneyOnce { amount: money_amount_micro(count: (cold_prefill_millis(prompt_tokens: prompt_tokens) * latency_micros_per_second) / 1000), currency: Usd },
+        receipt: receipt,
+      }
+    LastPlacedOn { group: g } =>
+      if (fabric_group_wire(g: g) as String) == (fabric_group_wire(g: candidate) as String) {
+        NoTransitionRequired
+      } else {
+        TransitionCostMeasured {
+          amount: MoneyOnce { amount: money_amount_micro(count: (cold_prefill_millis(prompt_tokens: prompt_tokens) * latency_micros_per_second) / 1000), currency: Usd },
+          receipt: receipt,
+        }
+      }
+  }
+}
+
+// ── A QUEUE IS A DELAY, AND AN UNREAD QUEUE IS NOT AN EMPTY ONE ───────────────────────────────
+//
+// AvailabilityUnobserved carries an OBLIGATION rather than a reason, which is the fabric saying the
+// same thing this programme learned the hard way: a probe that did not answer is not evidence of an
+// idle engine, and the remedy is to go and measure rather than to wait.
+type ServingQueueReading
+  = QueueDepthRead { waiting: Nat, running: Nat }
+  | QueueDepthUnread { obligation: NonEmptyStr }
+
+fn serving_availability(
+  reading: ServingQueueReading,
+  step_millis: Nat,
+  receipt: ObservationReceiptRef,
+) -> AvailabilityObservation {
+  match reading {
+    QueueDepthUnread { obligation: o } => AvailabilityUnobserved { obligation: o }
+    QueueDepthRead { waiting: w, running: _ } =>
+      AvailableIndefinitely { delay: second(count: (w * step_millis) / 1000), receipt: receipt }
+  }
+}
+
+// ── LANDING BESIDE AN INTERACTIVE STREAM DISPLACES IT, BY AN AMOUNT WITH A SHAPE ──────────────
+//
+// THE MECHANISM, WHICH IS WHAT MAKES THIS AN ESTIMATE RATHER THAN A TRANSCRIPTION. An arriving
+// prefill occupies the engine for one scheduler step, and gunbc.spark.serving_critical_path measured
+// that nothing chunks below 20,082 computed tokens -- so for ordinary prompts that step is the WHOLE
+// prefill, seconds long. A decode already in flight cannot emit its next token until that step
+// finishes. So the victim pays one arriving-prefill step per token it was about to produce:
+//
+//     displacement  =  arriving prefill step duration  x  victim steps that overlap it
+//
+// Both factors are named because only the first is computable. The arriving turn's step duration
+// follows from its own prompt at the measured 1.055ms per token. How many decode steps the victim
+// still had to run is a fact about a request this module is not observing, and no served metric
+// reports it.
+//
+// WHY THE CONTROLLED MEASUREMENT IS NOT USED AS A CONSTANT. A decode alone at 3.8s against the same
+// decode beside a prefill at 63.5s is one observation of a PRODUCT. It is equally consistent with a
+// long prefill overlapping few decode steps and a shorter one overlapping many, so carrying 59.7s as
+// a fixed displacement would assert both factors from an experiment that pinned neither -- and would
+// then be wrong in the same direction for every prompt size, since the first factor demonstrably
+// scales with tokens.
+//
+// SO THE UNOBSERVED FACTOR IS CARRIED, NOT ASSUMED AWAY. With the overlap count unobserved the
+// honest arms are a declared LOWER BOUND -- at minimum the victim loses one step -- or a refusal.
+// selection.dag sets the precedent for the first: it ranks on a floor cost under
+// CommitmentFloorCost and says "THE RESULTING BIAS IS DECLARED HERE RATHER THAN HIDDEN". The bias
+// here is that co-tenancy is UNDER-penalised, which is the direction that matters to state, because
+// it means this axis never invents a reason to avoid a group.
+type CoTenantDisplacement
+  = DisplacementObserved { per_victim_step_millis: Nat, victim_steps: Nat }
+  | DisplacementLowerBound { per_victim_step_millis: Nat }
+  | DisplacementUnobserved { obligation: NonEmptyStr }
+
+fn arriving_step_millis(prompt_tokens: Nat) -> Nat {
+  cold_prefill_millis(prompt_tokens: prompt_tokens)
+}
+
+fn displacement_millis(d: CoTenantDisplacement) -> Nat? {
+  match d {
+    DisplacementUnobserved { obligation: _ } => none
+    DisplacementLowerBound { per_victim_step_millis: m } => Present { value: m }
+    DisplacementObserved { per_victim_step_millis: m, victim_steps: k } => Present { value: m * k }
+  }
+}
+
+type ServingCoTenancy
+  = GroupIdle
+  | GroupServingInteractiveTurn { displacement: CoTenantDisplacement }
+  | CoTenancyUnread { obligation: NonEmptyStr }
+
+fn serving_opportunity_cost(
+  tenancy: ServingCoTenancy,
+  latency_micros_per_second: Nat,
+  receipt: ObservationReceiptRef,
+) -> OpportunityCostObservation {
+  match tenancy {
+    CoTenancyUnread { obligation: o } => AlternativeUseUnread { obligation: o }
+    GroupIdle => NoFeasibleAlternativeUse { receipt: receipt }
+    GroupServingInteractiveTurn { displacement: d } =>
+      match displacement_millis(d: d) {
+        Absent =>
+          AlternativeUseUnread { obligation: "a turn is running on this group, but how many decode steps it still has to produce is unobserved, so what an arriving prefill would displace cannot be priced" as NonEmptyStr }
+        Present { value: ms } =>
+          AlternativeUseDisplaced {
+            forgone: MoneyOnce { amount: money_amount_micro(count: (ms * latency_micros_per_second) / 1000), currency: Usd },
+            receipt: receipt,
+          }
+      }
+  }
+}
+
+// ── AN OWNED, ALREADY-RUNNING ENGINE HAS NO START AND NO BILLED OPERATION ─────────────────────
+//
+// The engine is up before the turn arrives, so there is no start to pay for; and the group is ours,
+// so no supplier bills us for the seconds it runs. OperatingCostBorneBySupplier is literally true
+// when the supplier is us -- it says nothing about electricity, which is real and is not a cost this
+// selection reserves against.
+fn serving_start_cost(receipt: ObservationReceiptRef) -> StartCostObservation {
+  StartCostMeasured { amount: MoneyOnce { amount: money_amount_micro(count: 0), currency: Usd }, receipt: receipt }
+}
+
+fn serving_operating_cost() -> OperatingCostObservation {
+  OperatingCostBorneBySupplier
+}
+
+fn serving_dispatch_inputs<P>(
+  offer: FabricIdentity<P, OfferKey>,
+  commitment: CommitmentState,
+  availability: AvailabilityObservation,
+  transition: TransitionCostObservation,
+  opportunity: OpportunityCostObservation,
+  receipt: ObservationReceiptRef,
+) -> DispatchInputs<P> {
+  DispatchInputs {
+    offer: offer,
+    availability: availability,
+    commitment: commitment,
+    start: serving_start_cost(receipt: receipt),
+    transition: transition,
+    operating: serving_operating_cost(),
+    opportunity: opportunity,
+  }
+}
