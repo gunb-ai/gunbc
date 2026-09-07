@@ -2004,38 +2004,53 @@ pub fn citation_debt_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// corpus run reported all four controls as ordinary refusals, which caught the claim. A false
 /// statement inside the carrier built to stop false statements is the specimen this change
 /// exists to make impossible; recorded here rather than quietly corrected.
-/// EMPTY AS OF 2026-08-26, AND EMPTY IS NOT DEAD. All four rows named citations inside
-/// `v2.lens.cited_symbol_resolution`, and the comment above them said they "delete with the
-/// lens, not before it". This change is that deletion, so emptying the roster is the scheduled
-/// event: with the lens gone every row would report `PlantedControlNoLongerRefuses` — the
-/// inverse arm working, not a regression.
+/// RE-OCCUPIED BY #10706's OutsideModeledGuarantee stamps (repair on the same subject as the
+/// parse/call-shape floor red). Those stamps cite a `required_capability` that MUST stay
+/// absent: `guarantee_boundary_still_outside` is true only on `DeclarationRefDeclarationAbsent`,
+/// and `construction_justification_rule` says authoring the capability makes the stamp wrong.
+/// The citations are therefore deliberately false — planted controls, not debt and not
+/// missing declarations. Enrolling them here is the other half #10706 omitted: without these
+/// rows the declarations phase refuses the same absences the join requires.
 ///
-/// THE ROSTER STAYS AND THE ARM STAYS. DESIGN's reachability-read-as-occupancy row asks three
-/// questions, and only the first two decide whether a guard should exist: the mechanism can
-/// still produce this state (any future control row) and can still classify an element of the
-/// denominator (every authored citation). Occupancy is zero. Yes / yes / zero is a healthy
-/// guard being quiet; deleting the arm because nothing lands in it today would remove a live
-/// wall while looking principled.
-///
-/// THE ARM'S OWN EVIDENCE DOES NOT LIVE IN THIS ROSTER, which makes emptying it cheap.
+/// THE ARM'S OWN FIXTURE EVIDENCE DOES NOT LIVE IN THIS ROSTER.
 /// `planted_control_findings_against` takes the roster as a parameter, and
 /// `a_planted_control_that_still_refuses_is_healthy` /
 /// `a_planted_control_that_resolves_has_lost_its_power_and_refuses` drive both directions from
-/// controlled fixtures authoring their own rows. The RED proving this arm stays enrolled and
-/// executing with an empty constant (§4b(4): a climb dissolves production machinery, never the
-/// evidence).
+/// controlled fixtures authoring their own rows. §4b(4): a climb dissolves production
+/// machinery, never that evidence.
 ///
-/// WHAT REPLACED THE REFUSAL COVERAGE the four rows carried. Each named one refusal arm of the
-/// cited-symbol wall. Three already had controlled fixtures in
-/// `tests/declaration_index_integrity.rs` (`import_member_absent_is_refused_and_located`,
-/// `stale_citation_is_refused`,
-/// `citation_to_a_deleted_module_is_refused_and_a_foreign_namespace_is_not`). The FOURTH,
-/// `CitedFieldAbsent`, had none — measured, the string did not occur in that file — so
-/// `citation_to_an_absent_field_is_refused_and_a_present_field_is_not` was authored in the
-/// same change that empties this roster. A controlled fixture authoring both input and
-/// expected population is the stronger oracle (§5); a planted row over the live corpus only
-/// asserted that one hand-authored citation still refuses.
-const PLANTED_CONTROL_CITATIONS: &[(&str, &str, &str, &str, &str)] = &[];
+/// Site grain: `(citing_module, in_declaration, cited_module, cited_decl, field)`. Two
+/// DeclarationRef literals inside one stamp that name the same absent symbol share one row.
+const PLANTED_CONTROL_CITATIONS: &[(&str, &str, &str, &str, &str)] = &[
+    (
+        "v2.lens.enforcement.complexity_contract_subject",
+        "complexity_optimality_boundary",
+        "v2.lens.enforcement.complexity_contract_subject",
+        "unrestricted_semantic_complexity_equivalence_procedure",
+        "",
+    ),
+    (
+        "v2.lens.grounding",
+        "grounding_name_only_residual_boundary",
+        "v2.lens.grounding",
+        "confirm_judge_should_ground",
+        "",
+    ),
+    (
+        "v2.lens.synthesis",
+        "synthesis_rice_residual_boundary",
+        "v2.lens.synthesis",
+        "unrestricted_cheaper_equivalent",
+        "",
+    ),
+    (
+        "v2.test.claim.construction_justification.outside_modeled_guarantee_witness_test",
+        "nonexistent_capability_ref",
+        "v2.lens.cost",
+        "capability_absent_from_decl_facts",
+        "",
+    ),
+];
 
 /// A control that has STOPPED refusing has lost its discriminating power, and that is a red in
 /// its own right — the inverse of a spent debt row, and the reason these are a separate roster.
