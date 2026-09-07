@@ -1,0 +1,269 @@
+=== slice6-net: blank guest_mac, definitions used before assignment ===
+16.878700] pciback 000a:00:01.0: Adding to iommu group 38
+[   16.884693] pcieport 000a:00:01.0: AER: enabled with IRQ 201
+[   16.890510] pciback 000a:00:03.0: Adding to iommu group 39
+[   16.896391] pcieport 000a:00:03.0: AER: enabled with IRQ 201
+[   16.902169] pciback 000a:00:05.0: Adding to iommu group 40
+[   16.908042] pcieport 000a:00:05.0: AER: enabled with IRQ 201
+[   16.913806] cma: number of available pages: => 0 free of 8192 total pages
+[   16.914547] input: American Megatreds Inc. Virtual Keyboard and Mouse Gadget as /devices/pci0004:00/0004:00:03.0/0004:03:00.0/usb1/1-2/1-2.4/1-2.4:1.0/0003:046B:FF10.0001/input/input1
+[   16.920653] pciback 000b:00:00.0: Adding to iommu group 41
+[   16.937005] hid-generic 0003:046B:FF10.0001: input: USB HID v1.01 Mouse [American Megatreds Inc. Virtual Keyboard and Mouse Gadget] on usb-0004:03:00.0-2.4/input0
+[   16.942726] pciback 000b:00:01.0: Adding to iommu group 42
+[   16.960039] input: American Megatreds Inc. Virtual Keyboard and Mouse Gadget as /devices/pci0004:00/0004:00:03.0/0004:03:00.0/usb1/1-2/1-2.4/1-2.4:1.1/0003:046B:FF10.0002/input/input2
+[   16.963097] pcieport 000b:00:01.0: AER: enabled with IRQ 202
+[   16.984684] pciback 000b:00:05.0: Adding to iommu group 43
+[   16.990466] hid-generic 0003:046B:FF10.0002: input: USB HID v1.01 Keyboard [American Megatreds Inc. Virtual Keyboard and Mouse Gadget] on usb-0004:03:00.0-2.4/input1
+[   16.990720] pcieport 000b:00:05.0: AER: enabled with IRQ 202
+[   17.011045] pciback 000b:00:07.0: Adding to iommu group 44
+[   17.016979] pcieport 000b:00:07.0: AER: enabled with IRQ 202
+[   17.023047] CPPC Cpufreq:FIE not enabled on systems with registers in PCC
+[   17.398955] cfg80211: Loading compiled-in X.509 certificates for regulatory database
+[   17.407246] Loaded X.509 cert 'sforshee: 00b28ddf47aef9cea7'
+[   17.413152] Loaded X.509 cert 'wens: 61c038651aabdcf94bd0ac7ff06c7248db18c600'
+[   17.420430] clk: Disabling unused clocks
+[   17.424559] platform regulatory.0: Direct firmware load for regulatory.db failed with error -2
+[   17.433223] PM: genpd: Disabling unused power domains
+[   17.438292] cfg80211: failed to load regulatory.db
+[   17.443088] ALSA device list:
+[   17.446046]   #0: Loopback 1
+[   17.456854] Freeing unused kernel memory: 18624K
+[   17.461653] Run /init as init process
+
+================ GUNBC-RUNNER-HOST ================
+marker=gunbc-runn[   17.508389] /dev/sr0: Can't lookup blockdev
+er-host-boot
+image-build=slice6-net
+attempt=slice6-net-8219703e
+kernel=6.12.108  machine=aarch64
+kvm=present
+cgroup2-mount=ok
+root-fstype=tmpfs
+[   17.539537] scsi 0:0:0:0: CD-ROM            AMI      Virtual CDROM0   1.00 PQ: 0 ANSI: 2
+[   17.548224] sr 0:0:0:0: Power-on or device reset occurred
+[   17.554461] sr 0:0:0:0: [sr0] scsi-1 drive
+[   17.559730] cdrom: Uniform CD-ROM driver Revision: 3.20
+media-mount=yes after 1s
+media-guest-kernel-verify=ok
+media-guest-rootfs-verify=ok
+jail-chroot=/run/jail/firecracker/slice6-net-8219703e/root
+jailed-guest-kernel-verify=ok
+jailed-guest-rootfs-verify=ok
+kvm-owner=1000:1000 600
+media-unmounted=yes
+tap-device=tap-slice6-net-
+tap-state=6: tap-slice6-net-: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc pfifo_fast qlen 1000
+tap-addr=inet 172.16.0.1/30
+/init: line 166: can't create /sys/fs/cgroup/gunbc/attempt-slice6-net-8219703e/cpu.max: Permission denied
+cgroup-leaf=/sys/fs/cgroup/gunbc/attempt-slice6-net-8219703e
+cgroup-root-controllers=cpuset cpu io memory hugetlb pids
+cgroup-root-subtree=cpu memory pids
+cgroup-gunbc-subtree=cpu memory pids
+cgroup-leaf-controllers=cpu memory pids
+cgroup-memory-max=1073741824
+cgroup-cpu-max=
+cgroup-pids-max=64
+guest-boot-begin attempt=slice6-net-8219703e via=jailer
+launcher-pid=1704
+firecracker-pid=NOTFOUND after 20s
+=== LIVE CENSUS BEGIN ===
+LIVE CENSUS UNAVAILABLE: no firecracker process was found while the launcher ran
+--- guest reachability, while alive ---
+
+--- 172.16.0.2 ping statistics ---
+3 packets transmitted, 0 packets received, 100% packet loss
+host-arp=172.16.0.2 dev tap-slice6-net-  used 0/0/0 probes 6 FAILED
+--- host listening sockets during the attempt ---
+tcp-entries=1
+tcp6-entries=1
+udp-entries=1
+unix-sockets=1
+--- host process population during the attempt ---
+PID   PPID  USER     COMMAND
+    1     0 0        init
+34639     1 0        busybox
+34640     1 0        busybox
+=== LIVE CENSUS END ===
+guest-boot-end rc=1
+--- guest evidence: head ---
+2026-09-07T00:23:05.357920360 [slice6-net-8219703e:main] Running Firecracker v1.16.1
+--- guest evidence: userspace markers ---
+--- guest evidence: last 20 lines ---
+2026-09-07T00:23:05.357920360 [slice6-net-8219703e:main] Running Firecracker v1.16.1
+2026-09-07T00:23:05.359631680 [slice6-net-8219703e:main] RunWithoutApiError error: Failed to build MicroVM from Json: Configuration for VMM from one single json failed: Invalid JSON: The provided MAC address is invalid. at line 6 column 86
+Error: RunWithoutApiError(BuildMicroVMFromJson(ParseFromJson(InvalidJson(Error("The provided MAC address is invalid.", line: 6, column: 86)))))
+2026-09-07T00:23:05.359655720 [slice6-net-8219703e:main] Firecracker exiting with error. exit_code=1
+--- containment observations, AFTER the attempt ---
+post-cgroup-procs=
+post-cgroup-empty=yes
+post-tap-present=no
+post-cgroup-removed=yes
+post-jail-chroot=dev firecracker firecracker.pid rootfs.squashfs run sys vm.json vmlinux 
+--- process census after attempt ---
+PID   PPID  USER     COMMAND
+    1     0 0        init
+34665     1 0        busybox
+34666     1 0        busybox
+surviving-firecracker=0
+surviving-jailer=0
+jail-removed=yes
+marker-end=gunbc-runner-host-boot
+===================================================
+
+
+
+BusyBox v1.36.1 (Ubuntu 1:1.36.1-6ubuntu3.1) built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+sh: can't access tty; job control turned off
+~ # 
+Session terminated, killing shell... ...killed.
+
+
+=== slice6b-net: TAP up, guest userspace, host ping ===
+e=/firecracker
+live-root=/
+live-ppid=PPid:	1
+launcher-still-present=yes
+--- privilege: the axes the last receipt could not read ---
+Uid:	1000	1000	1000	1000
+Gid:	1000	1000	1000	1000
+Groups:	 
+CapInh:	0000000000000000
+CapPrm:	0000000000000000
+CapEff:	0000000000000000
+CapBnd:	000001ffffffffff
+CapAmb:	0000000000000000
+NoNewPrivs:	1
+Seccomp:	2
+--- cgroup membership, while alive, BOTH directions ---
+live-cgroup=0::/gunbc/attempt-slice6b-net-05165ea5
+live-cgroup-procs=1704 1736 
+placement-forward=yes process-names-attempt-cgroup
+placement-reverse=yes attempt-cgroup-lists-process
+placement-verdict=BIDIRECTIONAL
+live-memory-current=84094976
+live-memory-max=1073741824
+--- namespace inodes, host vs jailed ---
+ns-mnt host=mnt:[4026531841] jailed=mnt:[4026533571] verdict=DIFFERENT
+ns-pid host=pid:[4026531836] jailed=pid:[4026531836] verdict=SHARED
+ns-net host=net:[4026531840] jailed=net:[4026531840] verdict=SHARED
+ns-user host=user:[4026531837] jailed=user:[4026531837] verdict=SHARED
+ns-ipc host=ipc:[4026531839] jailed=ipc:[4026531839] verdict=SHARED
+ns-uts host=uts:[4026531838] jailed=uts:[4026531838] verdict=SHARED
+ns-cgroup host=cgroup:[4026531835] jailed=cgroup:[4026531835] verdict=SHARED
+--- open files ---
+fd 0 -> /dev/null
+fd 1 -> /run/guest.log
+fd 10 -> anon_inode:[timerfd]
+fd 11 -> anon_inode:[timerfd]
+fd 12 -> /dev/net/tun
+fd 13 -> anon_inode:[eventfd]
+fd 14 -> anon_inode:[eventfd]
+fd 15 -> anon_inode:[eventfd]
+fd 16 -> /dev/kvm
+fd 17 -> anon_inode:kvm-vm
+fd 18 -> anon_inode:[eventfd]
+fd 19 -> anon_inode:[eventfd]
+fd 2 -> /run/guest.log
+fd 20 -> anon_inode:kvm-vcpu:0
+fd 21 -> anon_inode:kvm-arm-vgic-v3
+fd 22 -> anon_inode:kvm-arm-vgic-its
+fd 23 -> anon_inode:[eventfd]
+fd 24 -> anon_inode:[eventfd]
+fd 25 -> anon_inode:[eventfd]
+fd 26 -> anon_inode:[eventfd]
+fd 27 -> anon_inode:[eventfd]
+fd 28 -> anon_inode:[eventfd]
+fd 29 -> anon_inode:kvm-vcpu:0
+fd 3 -> anon_inode:[eventpoll]
+fd 4 -> anon_inode:[timerfd]
+fd 6 -> /rootfs.squashfs
+fd 7 -> anon_inode:[timerfd]
+fd 8 -> anon_inode:[eventfd]
+fd 9 -> anon_inode:[eventfd]
+--- mounts visible to the jailed process ---
+tmpfs / tmpfs rw,nosuid,relatime,size=4194304k 0 0
+--- guest reachability, while alive ---
+--- 172.16.0.2 ping statistics ---
+3 packets transmitted, 3 packets received, 0% packet loss
+round-trip min/avg/max = 0.242/0.335/0.415 ms
+host-arp=172.16.0.2 dev tap-42f0dfd1 lladdr 06:00:ac:10:00:02 ref 1 used 0/0/0 probes 4 REACHABLE
+--- host listening sockets during the attempt ---
+tcp-entries=1
+tcp6-entries=1
+udp-entries=1
+unix-sockets=1
+--- host process population during the attempt ---
+PID   PPID  USER     COMMAND
+    1     0 0        init
+ 1704     1 1000     firecracker
+ 1736     1 0        busybox
+ 2525     1 0        busybox
+ 2526     1 0        busybox
+=== LIVE CENSUS END ===
+Killed
+guest-boot-end rc=137
+--- guest evidence: head ---
+2026-09-07T00:32:32.975738120 [slice6b-net-05165ea5:main] Running Firecracker v1.16.1
+2026-09-07T00:32:32.991044480 [slice6b-net-05165ea5:main] Successfully started microvm that was configured from one single json
+[    0.000000] Booting Linux on physical CPU 0x0000000000 [0x413fd0c1]
+[    0.000000] smccc: KVM: hypervisor services detected (0x00000000 0x00000000 0x00000000 0x00000003)
+--- guest evidence: userspace markers ---
+[    0.027067] VFS: Disk quotas dquot_6.6.0
+[    0.027291] VFS: Dquot-cache hash table entries: 512 (order 0, 4096 bytes)
+[    0.036496] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.099780] VFS: Mounted root (squashfs filesystem) readonly on device 254:0.
+[    0.100610] Freeing unused kernel memory: 2176K
+[    0.100885] Run /sbin/init as init process
+[    0.179910] systemd[1]: systemd 255.4-1ubuntu8.5 running in system mode (+PAM +AUDIT +SELINUX +APPARMOR +IMA +SMACK +SECCOMP +GCRYPT -GNUTLS +OPENSSL +ACL +BLKID +CURL +ELFUTILS +FIDO2 +IDN2 -IDN +IPTC +KMOD +LIBCRYPTSETUP +LIBFDISK +PCRE2 -PWQUALITY +P11KIT +QRENCODE +TPM2 +BZIP2 +LZ4 +XZ +ZLIB +ZSTD -BPF_FRAMEWORK -XKBCOMMON +UTMP +SYSVINIT default-hierarchy=unified)
+[    0.180937] systemd[1]: Detected architecture arm64.
+[    0.182497] systemd[1]: Hostname set to <ubuntu-fc-uvm>.
+[    0.313047] systemd[1]: Queued start job for default target graphical.target.
+[    0.327374] systemd[1]: Created slice system-getty.slice - Slice /system/getty.
+[    0.328265] systemd[1]: Created slice system-modprobe.slice - Slice /system/modprobe.
+--- guest evidence: last 20 lines ---
+not required on a system that users do not log into.
+
+To restore this content, you can run the 'unminimize' command.
+
+The programs included with the Ubuntu system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Ubuntu comes with ABSOLUTELY NO WARRANTY, to the extent permitted by
+applicable law.
+
+
+The programs included with the Ubuntu system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Ubuntu comes with ABSOLUTELY NO WARRANTY, to the extent permitted by
+applicable law.
+
+root@ubuntu-fc-uvm:~# --- containment observations, AFTER the attempt ---
+post-cgroup-procs=
+post-cgroup-empty=yes
+post-tap-present=no
+post-cgroup-removed=yes
+post-jail-chroot=dev firecracker firecracker.pid rootfs.squashfs run sys vm.json vmlinux 
+--- process census after attempt ---
+PID   PPID  USER     COMMAND
+    1     0 0        init
+ 2574     1 0        busybox
+ 2575     1 0        busybox
+surviving-firecracker=0
+surviving-jailer=0
+jail-removed=yes
+marker-end=gunbc-runner-host-boot
+===================================================
+
+
+
+BusyBox v1.36.1 (Ubuntu 1:1.36.1-6ubuntu3.1) built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+sh: can't access tty; job control turned off
+~ # 
+Session terminated, killing shell... ...killed.

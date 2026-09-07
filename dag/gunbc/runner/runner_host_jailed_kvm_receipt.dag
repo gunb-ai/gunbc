@@ -192,7 +192,7 @@ data jailed_probe_open: List<NonEmptyStr> = [
   "live cgroup membership during the run",
   "namespace inode identities for any namespace",
   "capability sets, no_new_privs and seccomp readback",
-  "guest root mounting and guest userspace -- the deadline still kills it early in boot",
+  "guest root mounting and guest userspace -- unobserved here, since this attempt read only the head of the guest log. The phrase EARLY IN BOOT was inferred from rc=137 rather than measured; a later run reading the full log found the guest reaching systemd.",
   "repeated attempts on one boot, which is what a runner actually does",
   "networking, on host or guest",
   "arbitrary-work admission",
