@@ -323,8 +323,9 @@ fn sensitivity_obligation(row: ObjectiveTermSensitivity) -> NonEmptyStr? {
 }
 
 // Required (term, variable) cells are the cartesian product of the objective's term population and
-// the subject's decision variables. Derived from the subject authorities — never from the
-// sensitivity disposition list.
+// the choice-domain variables. Derived from the subject authorities — never from the sensitivity
+// disposition list. A method that varies only one domain variable while the domain still includes
+// another cannot close this join (SensitivityClosureMissing) and therefore cannot mint Settled.
 fn required_sensitivity_cells(subject: DecisionSubject) -> List<SensitivityCell> {
   flat_map(subject.objective.terms, term =>
     map(subject.choice_domain.variables, variable =>
@@ -358,38 +359,6 @@ fn sensitivity_closure(
     ObservationMissingExpected { keys: cells } => SensitivityClosureMissing { cells: cells }
     ObservationForeignObserved { keys: cells } => SensitivityClosureForeign { cells: cells }
     ObservationRepeatedObserved { keys: cells } => SensitivityClosureRepeatedObserved { cells: cells }
-  }
-}
-
-fn subject_variable_identities(subject: DecisionSubject) -> List<DeclarationRef> {
-  map(subject.choice_domain.variables, v => v.identity)
-}
-
-fn choice_domain_variable_identities(domain: ChoiceDomain) -> List<DeclarationRef> {
-  map(domain.variables, v => v.identity)
-}
-
-type VariablePopulationClosure
-  = VariablePopulationComplete
-  | VariablePopulationRepeatedExpected { identities: List<DeclarationRef> }
-  | VariablePopulationMissing { identities: List<DeclarationRef> }
-  | VariablePopulationForeign { identities: List<DeclarationRef> }
-  | VariablePopulationRepeatedObserved { identities: List<DeclarationRef> }
-
-// The subject's variable roster must agree with the choice-domain authority's variables. A method
-// that varies only socket_power_cap while the choice domain still includes powered_chassis_count
-// cannot close this join — and therefore cannot mint Settled.
-fn variable_population_closure(subject: DecisionSubject) -> VariablePopulationClosure {
-  match observation_completeness(
-    expected: choice_domain_variable_identities(domain: subject.choice_domain),
-    observed: subject_variable_identities(subject: subject),
-    key_eq: declaration_ref_eq,
-  ) {
-    ObservationComplete => VariablePopulationComplete
-    ObservationRepeatedExpected { keys: ids } => VariablePopulationRepeatedExpected { identities: ids }
-    ObservationMissingExpected { keys: ids } => VariablePopulationMissing { identities: ids }
-    ObservationForeignObserved { keys: ids } => VariablePopulationForeign { identities: ids }
-    ObservationRepeatedObserved { keys: ids } => VariablePopulationRepeatedObserved { identities: ids }
   }
 }
 
@@ -509,7 +478,6 @@ type DecisionAssessment {
 
 type StructuralClosureCause
   = SensitivityCellsIncomplete { detail: SensitivityClosure }
-  | VariablePopulationIncomplete { detail: VariablePopulationClosure }
   | ConstraintsIncomplete { detail: ConstraintClosure }
   | ParametersIncomplete { detail: ParameterClosure }
   | TermDropWithoutOrderPreservation { cause: NonEmptyStr }
@@ -598,44 +566,32 @@ fn first_term_drop_refusal(drops: List<OrderPreservationAuthority>) -> NonEmptyS
 
 fn structural_join_refuses(
   sensitivity: SensitivityClosure,
-  variables: VariablePopulationClosure,
   constraints: ConstraintClosure,
   parameters: ParameterClosure,
 ) -> StructuralClosureCause? {
   match sensitivity {
     SensitivityClosureComplete =>
-      match variables {
-        VariablePopulationComplete =>
-          match constraints {
-            ConstraintClosureComplete =>
-              match parameters {
-                ParameterClosureComplete => Absent
-                ParameterClosureRepeatedExpected { identities: ids } =>
-                  Present { value: ParametersIncomplete { detail: ParameterClosureRepeatedExpected { identities: ids } } }
-                ParameterClosureMissing { identities: ids } =>
-                  Present { value: ParametersIncomplete { detail: ParameterClosureMissing { identities: ids } } }
-                ParameterClosureForeign { identities: ids } =>
-                  Present { value: ParametersIncomplete { detail: ParameterClosureForeign { identities: ids } } }
-                ParameterClosureRepeatedObserved { identities: ids } =>
-                  Present { value: ParametersIncomplete { detail: ParameterClosureRepeatedObserved { identities: ids } } }
-              }
-            ConstraintClosureRepeatedExpected { identities: ids } =>
-              Present { value: ConstraintsIncomplete { detail: ConstraintClosureRepeatedExpected { identities: ids } } }
-            ConstraintClosureMissing { identities: ids } =>
-              Present { value: ConstraintsIncomplete { detail: ConstraintClosureMissing { identities: ids } } }
-            ConstraintClosureForeign { identities: ids } =>
-              Present { value: ConstraintsIncomplete { detail: ConstraintClosureForeign { identities: ids } } }
-            ConstraintClosureRepeatedObserved { identities: ids } =>
-              Present { value: ConstraintsIncomplete { detail: ConstraintClosureRepeatedObserved { identities: ids } } }
+      match constraints {
+        ConstraintClosureComplete =>
+          match parameters {
+            ParameterClosureComplete => Absent
+            ParameterClosureRepeatedExpected { identities: ids } =>
+              Present { value: ParametersIncomplete { detail: ParameterClosureRepeatedExpected { identities: ids } } }
+            ParameterClosureMissing { identities: ids } =>
+              Present { value: ParametersIncomplete { detail: ParameterClosureMissing { identities: ids } } }
+            ParameterClosureForeign { identities: ids } =>
+              Present { value: ParametersIncomplete { detail: ParameterClosureForeign { identities: ids } } }
+            ParameterClosureRepeatedObserved { identities: ids } =>
+              Present { value: ParametersIncomplete { detail: ParameterClosureRepeatedObserved { identities: ids } } }
           }
-        VariablePopulationRepeatedExpected { identities: ids } =>
-          Present { value: VariablePopulationIncomplete { detail: VariablePopulationRepeatedExpected { identities: ids } } }
-        VariablePopulationMissing { identities: ids } =>
-          Present { value: VariablePopulationIncomplete { detail: VariablePopulationMissing { identities: ids } } }
-        VariablePopulationForeign { identities: ids } =>
-          Present { value: VariablePopulationIncomplete { detail: VariablePopulationForeign { identities: ids } } }
-        VariablePopulationRepeatedObserved { identities: ids } =>
-          Present { value: VariablePopulationIncomplete { detail: VariablePopulationRepeatedObserved { identities: ids } } }
+        ConstraintClosureRepeatedExpected { identities: ids } =>
+          Present { value: ConstraintsIncomplete { detail: ConstraintClosureRepeatedExpected { identities: ids } } }
+        ConstraintClosureMissing { identities: ids } =>
+          Present { value: ConstraintsIncomplete { detail: ConstraintClosureMissing { identities: ids } } }
+        ConstraintClosureForeign { identities: ids } =>
+          Present { value: ConstraintsIncomplete { detail: ConstraintClosureForeign { identities: ids } } }
+        ConstraintClosureRepeatedObserved { identities: ids } =>
+          Present { value: ConstraintsIncomplete { detail: ConstraintClosureRepeatedObserved { identities: ids } } }
       }
     SensitivityClosureRepeatedExpected { cells: cells } =>
       Present { value: SensitivityCellsIncomplete { detail: SensitivityClosureRepeatedExpected { cells: cells } } }
@@ -695,10 +651,9 @@ fn decision_closure(assessment: DecisionAssessment) -> DecisionClosure {
               match coup {
                 SensitivityClosureComplete => {
                   let sens = sensitivity_closure(subject: assessment.subject, rows: assessment.sensitivities)
-                  let vars = variable_population_closure(subject: assessment.subject)
                   let cons = constraint_closure(subject: assessment.subject, rows: assessment.constraints)
                   let params = parameter_closure(subject: assessment.subject, rows: assessment.parameters)
-                  match structural_join_refuses(sensitivity: sens, variables: vars, constraints: cons, parameters: params) {
+                  match structural_join_refuses(sensitivity: sens, constraints: cons, parameters: params) {
                     Present { value: cause } => DecisionClosureRefused { cause: cause }
                     Absent =>
                       match first_term_drop_refusal(drops: assessment.term_drops) {
