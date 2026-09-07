@@ -14,7 +14,7 @@ import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_groups, spark_pair_serving_head }
 import gunbc.spark.managed_access_apply { spark_managed_login }
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
-import extdeps.vllm.server { vllm_source_revision_read }
+import extdeps.vllm.server { VllmSourceRevision }
 import extdeps.vllm.log_lines { vllm_startup_reading, GpuKvCacheSize }
 import extdeps.vllm.kv_cache { VllmObservedKvPool, VllmKvPoolAdmission, KvPoolAdmitted, KvPoolRefused, vllm_observed_kv_pool_from_reading }
 import extdeps.vllm.kv_layout { ResolvedKvLayout, resolved_kv_layout, VllmReportedCapacity, vllm_reported_capacity }
@@ -144,6 +144,12 @@ fn decode_probe(stdout: String) -> CapacityProbeRead {
                         match int_at(lines: lines, n: 8) {
                           Absent => ProbeUnreadable { detail: "max_model_len was not readable from /v1/models" }
                           Present { value: ctx } =>
+                            match int_at(lines: lines, n: 9) {
+                              Absent => ProbeUnreadable { detail: "vllm:num_requests_running was not present in the engine's metrics" }
+                              Present { value: run } =>
+                            match int_at(lines: lines, n: 10) {
+                              Absent => ProbeUnreadable { detail: "vllm:num_requests_waiting was not present in the engine's metrics" }
+                              Present { value: wait } =>
                             ProbeFields { fields: CapacityProbeFields {
                               invocation: field_at(lines: lines, n: 0),
                               unit_sha: field_at(lines: lines, n: 1),
@@ -154,9 +160,11 @@ fn decode_probe(stdout: String) -> CapacityProbeRead {
                               allocator_blocks: blocks,
                               block_size: bs,
                               max_model_len: ctx,
-                              running: match int_at(lines: lines, n: 9) { Present { value: r } => r  Absent => 0 },
-                              waiting: match int_at(lines: lines, n: 10) { Present { value: w } => w  Absent => 0 },
+                              running: run,
+                              waiting: wait,
                             } }
+                            }
+                            }
                         }
                     }
                 }
@@ -197,17 +205,40 @@ fn launch_from_fields(group: FabricGroup, head: HostIdentity, f: CapacityProbeFi
   }
 }
 
-fn pool_from_fields(f: CapacityProbeFields) -> VllmObservedKvPool? {
-  match vllm_observed_kv_pool_from_reading(
-    tokens: token_count(count: f.pool_tokens),
-    reading: vllm_startup_reading(
-      line: GpuKvCacheSize,
-      captured_text: join(["GPU KV cache size: ", to_string(f.pool_tokens), " tokens"], "") as NonEmptyStr,
-      observed_at_revision: vllm_source_revision_read,
-    ),
-  ) {
-    KvPoolAdmitted { pool: p } => Present { value: p }
-    KvPoolRefused { cause: _ } => none
+// THE REVISION IS THE PROBE'S, NOT THE MODEL'S, AND THIS PROBE DOES NOT CAPTURE ONE.
+//
+// vllm_startup_reading stopped stamping vllm_source_revision_read for a reason stated at its own
+// definition: a reading that asserts it was taken at the modelled revision makes every downstream
+// revision comparison permanently green. This instrument was that constructor's first caller, and
+// passing the same constant back in reinstated the decoration one module over -- with more
+// consequence, not less, because this pool reaches admit_kv_layout, whose refusal on
+// reported.observed_at_revision is the wall, and the wall then reaches `admitting`.
+//
+// So the revision arrives as a parameter and its absence is a REFUSAL rather than a substitution.
+// The eleven-field probe reads systemd and two localhost endpoints; none of them answer which vLLM
+// SOURCE the engine was built from, and the engine's own metadata does not carry it. That is a
+// missing observation, not a value to invent -- exactly the case the module header already rules on
+// for every other field. Capturing it is a twelfth field, and until the probe has one this arm is
+// the honest answer.
+type PoolRead
+  = PoolObserved { pool: VllmObservedKvPool }
+  | PoolUnobserved { detail: String }
+
+fn pool_from_fields(f: CapacityProbeFields, observed_revision: VllmSourceRevision?) -> PoolRead {
+  match observed_revision {
+    Absent => PoolUnobserved { detail: "the probe does not capture the vLLM source revision the engine was built from, so a KV-cache reading taken from it cannot be admitted against the modelled revision" }
+    Present { value: revision } =>
+      match vllm_observed_kv_pool_from_reading(
+        tokens: token_count(count: f.pool_tokens),
+        reading: vllm_startup_reading(
+          line: GpuKvCacheSize,
+          captured_text: join(["GPU KV cache size: ", to_string(f.pool_tokens), " tokens"], "") as NonEmptyStr,
+          observed_at_revision: revision,
+        ),
+      ) {
+        KvPoolAdmitted { pool: p } => PoolObserved { pool: p }
+        KvPoolRefused { cause: _ } => PoolUnobserved { detail: "the captured KV-cache-size reading was refused by its own carrier" }
+      }
   }
 }
 
@@ -283,9 +314,9 @@ fn group_report(group: FabricGroup) -> GroupStanding {
             match launch_from_fields(group: group, head: head, f: f) {
               LaunchUnidentified { detail: d } => refused_standing(text: join([name, ": the launch could not be identified, so nothing is joined to it -- ", d], ""))
               LaunchIdentified { launch: launch } =>
-                match pool_from_fields(f: f) {
-                  Absent => refused_standing(text: join([name, ": the captured KV-cache-size reading was refused by its own carrier"], ""))
-                  Present { value: pool } => {
+                match pool_from_fields(f: f, observed_revision: none) {
+                  PoolUnobserved { detail: d } => refused_standing(text: join([name, ": ", d], ""))
+                  PoolObserved { pool: pool } => {
                     let receipt = admit_kv_layout(
                       incarnation: launch,
                       layout: layout_from_fields(f: f),
