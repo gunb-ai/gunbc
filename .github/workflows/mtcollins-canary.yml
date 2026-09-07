@@ -1,0 +1,51 @@
+# THE FIRST REAL JOB ON THE MT. COLLINS HOST, AND A SCAFFOLD BY ITS OWN ADMISSION.
+#
+# This file is hand-authored YAML sitting beside gunbc.witness_floor_workflow, which is the modeled
+# carrier every other workflow in this repository is emitted from. That is the parallel-authority
+# tell, and naming it here is not a defence -- it is the disposition. The terminal form is a carrier
+# in .dag whose emission produces this file, exactly as witnesses.yml is produced.
+#
+# IT MAKES NO STANDING CLAIM ON A PAID RUNNER. The trigger is a push to this one branch, so it never
+# fires on main, on a pull request, or on any other branch. The runner-job roster the design closes
+# to growth is the roster of jobs that run on every push and every pull request; this is not one.
+#
+# DISSOLUTION: delete this file when the host-image build is driven from the model, at which point
+# the canary job is a row in that carrier rather than a file. It must not outlive the first green
+# run plus whatever follow-up that run makes necessary.
+name: mtcollins-canary
+
+on:
+  push:
+    branches: [runner-mtcollins-job]
+
+jobs:
+  canary:
+    # THE LABELS ARE THE ONES THE JIT CONFIG MINTS, and they must match exactly or the job queues
+    # forever against a runner that is online and ineligible -- which reads as a dead host.
+    runs-on: [self-hosted, mtcollins]
+    steps:
+      # NO actions/checkout. A JS action would pull node from the runner's externals and drag the
+      # whole action-download path into a proof about whether this host can execute a step at all.
+      # What is being established here is narrow on purpose: a job was dispatched to this machine,
+      # ran, and reported back.
+      - name: Say where this ran
+        run: |
+          echo "=== MT COLLINS CANARY ==="
+          echo "uname:      $(uname -a)"
+          echo "cpus:       $(nproc)"
+          echo "memory:     $(free -m | awk '/Mem:/{print $2}') MB"
+          echo "runner:     $RUNNER_NAME"
+          echo "os-release: $(. /etc/os-release; echo $PRETTY_NAME)"
+          echo "=== END ==="
+
+      - name: Prove the sandbox is what the model says it is
+        run: |
+          # THE GUEST SHOULD REACH TLS AND NOTHING ON THE MANAGEMENT LAN. A job that can reach the
+          # BMC that controls its own host is the failure this whole lane exists to prevent, so the
+          # canary asserts it rather than trusting the host receipt.
+          echo "root:  $(findmnt -no SOURCE / 2>/dev/null || echo unknown)"
+          if timeout 6 bash -c 'exec 3<>/dev/tcp/192.168.1.228/443' 2>/dev/null; then
+            echo "FAIL: the job reached the BMC that controls its own host"
+            exit 1
+          fi
+          echo "ok: the BMC is unreachable from inside the job"
