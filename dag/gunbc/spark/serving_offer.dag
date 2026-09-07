@@ -12,7 +12,7 @@ import product.fabric.supply { SupplierOffer, OfferQuote, QuotedPerSecond, Offer
 import std.measure { ByteSize, Second, second, MoneyRate, MoneyPerSecond, MoneyAmountMicro, money_amount_micro, HardwareThreadCount, hardware_thread_count }
 import extdeps.currency.currency { Usd }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire }
-import gunbc.spark.vllm_serving_launch { VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key }
+import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key }
 
 // ── THE SPARKS BECOME SUPPLY, WHICH IS WHAT PUTS SERVING ON THE FABRIC ────────────────────────
 //

@@ -1,4 +1,4 @@
-module gunbc.spark.vllm_serving_launch
+module gunbc.spark.vllm_endpoint_process_launch
 
 import std.types { Bool, String, NonEmptyStr }
 import product.fabric.demand { ObservationReceiptRef }

@@ -10,8 +10,8 @@ import product.fabric.selection {
   OpportunityCostObservation, NoFeasibleAlternativeUse, AlternativeUseDisplaced, AlternativeUseUnread,
 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire }
-import gunbc.spark.vllm_serving_launch {
-  VllmEndpointProcessLaunch, vllm_serving_launch, vllm_endpoint_process_launch_key, vllm_endpoint_process_launch_is,
+import gunbc.spark.vllm_endpoint_process_launch {
+  VllmEndpointProcessLaunch, vllm_endpoint_process_launch, vllm_endpoint_process_launch_key, vllm_endpoint_process_launch_is,
   VllmEndpointProcessLaunchObservation, LaunchObserved, LaunchUnobserved,
 }
 import gunbc.serving.turn_admission {

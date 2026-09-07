@@ -49,7 +49,7 @@ import product.fabric.selection {
 import product.fabric.demand { ObservationReceiptRef }
 import std.measure { MoneyAmountMicro, money_amount_micro }
 import extdeps.currency.currency { Usd }
-import gunbc.spark.vllm_serving_launch {
+import gunbc.spark.vllm_endpoint_process_launch {
   VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key,
   VllmEndpointProcessLaunchObservation, LaunchObserved, LaunchUnobserved,
 }

@@ -9,8 +9,8 @@ import product.fabric.demand { ObservationReceiptRef }
 import extdeps.vllm.metrics { VllmServingMetric, NumRequestsWaiting, NumRequestsRunning, vllm_metric_name }
 import extdeps.prometheus.client { PrometheusProcessSeries, ProcessStartTimeSeconds, prometheus_process_series_name }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
-import gunbc.spark.vllm_serving_launch {
-  VllmEndpointProcessLaunch, vllm_serving_launch,
+import gunbc.spark.vllm_endpoint_process_launch {
+  VllmEndpointProcessLaunch, vllm_endpoint_process_launch,
   VllmEndpointProcessLaunchObservation, LaunchObserved, LaunchUnobserved,
 }
 import gunbc.serving.turn_admission { ServingQueueReading, QueueDepthRead, QueueDepthUnread }
