@@ -1,6 +1,7 @@
 module std.realization_reconcile
 
-import std.types { String, Bool }
+import std.types { String, Bool, NonEmptyStr }
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import std.disposition { Disposition, Terminal }
 import std.state_durability {
   StateDurabilityQualification,
@@ -84,5 +85,106 @@ fn grounding_qualified_by_durability<E, Target, ReadbackSubject>(
             cause: DeclaredLifetimeDoesNotGround { cause: cause },
           }
       }
+  }
+}
+
+// The canonical desired-state lifecycle carrier, and the reason this module rather than a new one:
+// independent readback already lives here, and a second module owning the sequence would be the very
+// layer inversion this carrier exists to close — the correct helper standing BESIDE the raw path
+// instead of owning it (DESIGN 3). It is sole_constructor so that no caller outside this module can
+// mint a receipt asserting convergence: the only route to one is reconcile_effect, which derives
+// convergence from the POST-APPLY observation rather than from anything the caller claims. A caller
+// may still lie about what it observed; it cannot lie about whether the sequence ran.
+//
+// The seal is a source-level wall (DESIGN 4b rung 3), not a runtime one: an emitted or deserialized
+// representation of this record is not covered, so a decoder that reconstructs the field set
+// reconstitutes an unearned receipt. That gap is the class's next-rung trigger and is named rather
+// than papered over.
+
+type ReconciledEffect<P, E> sole_constructor {
+  decision: UpsertDecision<P>
+  applied: Bool
+  outcome: Reconciliation<Bool, E>
+}
+
+// Refuse and an unapplied Apply are NOT delegated to the grounding predicate. Passing them through
+// reconcile_grounded would let a caller that refused, then observed some unrelated satisfying state,
+// mint Converged — the readback would ground and nothing would record that the effect never ran. So
+// each is answered from the decision alone, and only a decided-and-applied Apply, or a Noop, is
+// allowed to reach the observation.
+
+fn reconcile_effect<P, R, E>(
+  decision: UpsertDecision<P>,
+  applied: Bool,
+  show_read: ShowEffectiveRead<R>,
+  grounding: Grounding<E>,
+) -> ReconciledEffect<P, E> {
+  match decision {
+    Refuse { reason: why } =>
+      ReconciledEffect {
+        decision: decision,
+        applied: applied,
+        outcome: NotConverged { reason: why as String, applied: applied },
+      }
+    Noop =>
+      ReconciledEffect {
+        decision: decision,
+        applied: applied,
+        outcome: reconcile_grounded(apply_effect: applied, show_read: show_read, grounding: grounding),
+      }
+    Apply { plan: _ } =>
+      if applied {
+        ReconciledEffect {
+          decision: decision,
+          applied: applied,
+          outcome: reconcile_grounded(apply_effect: applied, show_read: show_read, grounding: grounding),
+        }
+      } else {
+        ReconciledEffect {
+          decision: decision,
+          applied: applied,
+          outcome: NotConverged {
+            reason: "reconcile_effect: Apply decided but the effect was not applied",
+            applied: applied,
+          },
+        }
+      }
+  }
+}
+
+fn reconciled_effect_converged<P, E>(r: ReconciledEffect<P, E>) -> Bool {
+  reconciliation_converged(r: r.outcome)
+}
+
+// ReconciledEffect is an OUTCOME, not a success witness: it faithfully carries a refusal or an
+// unapplied Apply, which is what makes it honest and what makes it insufficient as a sink's
+// parameter. A sink that accepts one still has to ask whether it converged and remember to branch —
+// validation standing exactly where construction was available (DESIGN 5). ConvergedEffect closes
+// that: it is sole_constructor and the ONLY mint is the Converged arm of classify_reconciled, so a
+// sink whose parameter is a ConvergedEffect cannot be handed a refusal at all. The invalid state has
+// no constructor rather than being checked for, which is the difference between rung 3 and rung 4
+// for the class "a refusal was accepted as success".
+//
+// The evidence is carried rather than dropped because a converged receipt whose observation is
+// discarded cannot answer WHAT it converged to — which is the join a domain consumer needs to
+// establish that this evidence is about its subject and not a neighbouring one.
+
+type ConvergedEffect<P, E> sole_constructor {
+  decision: UpsertDecision<P>
+  evidence: E
+}
+
+type ReconciledOutcome<P, E>
+  = EffectConverged { converged: ConvergedEffect<P, E> }
+  | EffectNotConverged { reason: String, attempt: ReconciledEffect<P, E> }
+
+fn classify_reconciled<P, E>(r: ReconciledEffect<P, E>) -> ReconciledOutcome<P, E> {
+  match r.outcome {
+    Converged { evidence: e, applied: _ } =>
+      EffectConverged {
+        converged: ConvergedEffect { decision: r.decision, evidence: e },
+      }
+    NotConverged { reason: why, applied: _ } =>
+      EffectNotConverged { reason: why, attempt: r }
   }
 }
