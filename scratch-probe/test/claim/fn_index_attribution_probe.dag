@@ -1,0 +1,369 @@
+module test.claim.fn_index_attribution_probe
+
+// THE INSTRUMENT FOR gunbc.rung_drop.determinism_transitive_reachability, NAMED BY THAT ROW SO ITS
+// FIGURES ARE RE-DERIVED RATHER THAN TRANSCRIBED (DESIGN §6). Run it as
+//   claim_batch --source-root dag --source-root src/v2 --source-root scratch-probe
+//     --entry scratch-probe/test/claim/fn_index_attribution_probe.dag --functions <the arms below>
+// which charges each arm separately, and read the differences between arms rather than any arm's
+// absolute value. RUN ONE ARM PER INVOCATION WHEN YOU WANT MEMORY: claim_batch reports VmHWM for
+// the PROCESS at exit and not per witness, so peak RSS is attributable to an arm only when that
+// arm is the only one in the process. Frame structure is itself a variable here -- c and f are
+// separate witness frames, g and h are one frame each -- so name it whenever you quote a ratio.
+//
+// IT LIVES IN scratch-probe BECAUSE IT IS AN INSTRUMENT AND NOT A FLOOR WITNESS. These rows assert
+// only non-emptiness; they establish nothing about the corpus and must never be read as coverage.
+//
+// AND THAT HOME CARRIES AN EXPOSURE. scratch-probe is reached by no source root, no scan dir and no
+// row other than the one above, so this module sits OUTSIDE EVERY COMPILED CLOSURE: a renamed
+// builtin or a changed signature rots it with no red anywhere. WHY THAT IS NOT DISCHARGED HERE, AND
+// WHEN THIS MODULE DIES, are both stated in that row and are deliberately not restated here -- one
+// fact, one home. THE ONE THING A READER OF THIS FILE MUST ACT ON: if the row sent you, RUN THIS
+// FIRST and repair it if it has rotted, before quoting any finding that depends on it, because
+// those findings are only as live as the thing that re-derives them.
+// What they are for is the SHAPE of the cost, which is why each arm is chosen to differ from its
+// neighbour in exactly one term.
+//
+// THE ARMS, AND WHAT EACH DIFFERENCE ISOLATES. a is the acquisition alone. b is the closure list
+// alone. c adds the reachability walk over the same pool and closure, so c minus a is the walk. d
+// adds the determinism fold over the reached set, so d minus c is the fold -- and that difference
+// is the one that refuted the fold as a candidate cause.
+//
+// f IS THE ARM THAT SEPARATES THE FIT FROM THE MECHANISM, and it is the one neither gunbc#10744
+// nor gunbc#10753 ran. It holds the entry and the CLOSURE fixed at the lens modules while
+// enlarging ONLY the candidate pool. That the reached set is therefore identical to c's is the
+// premise the whole discrimination rests on, and it is MEASURED by arm g -- never argued from
+// the fact that the walk is bounded by the closure,
+// which is a true statement about a different subject than what a given run enumerated. If cost tracks the pool the walk was handed, f
+// rises against c with the reached set unchanged; if cost tracks what the walk REACHES, the two
+// agree. e is f's own acquisition, so f can be netted against its own pool rather than against a's.
+//
+// WHAT A RE-DERIVER MUST PIN AND THIS PROBE DOES NOT: whether each arm re-pays its acquisition or
+// is served from a cross-witness share. Until that is pinned the arm differences are directional
+// and the ratios are not quotable as exact.
+
+import v2.lens.determinism { determinism_transitive_holds }
+import v2.lens.module_graph { module_declaration_facts_live }
+import v2.std.algebra { fold_list, length, list_append, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.integer { integer_int_to_decimal_string }
+import v2.std.fn_index { FnArrowDecl, call_reachable_decls, callees_from_node, decls_in_module, fn_arrow_decl_facts_live }
+import v2.std.logic { Bool }
+import v2.std.node { node_subtree_nodes }
+import v2.std.text { String }
+
+data lens_roots: List<String> = ["src/v2/lens"]
+data lens_plus_std_roots: List<String> = ["src/v2/lens", "src/v2/std"]
+data no_files: List<String> = []
+data entry: String = "v2.lens.affected_set"
+data no_modules: List<String> = []
+data no_terminals: List<String> = []
+
+fn closure_of(roots: List<String>) -> List<String> {
+  fold_list(
+    xs: module_declaration_facts_live(pool_roots: roots),
+    empty: no_modules,
+    cons: fn(acc, fact) { list_snoc_item(xs: acc, item: fact.module) }
+  )
+}
+
+fn decls_of(roots: List<String>) -> List<FnArrowDecl> {
+  fn_arrow_decl_facts_live(pool_roots: roots, pool_files: no_files)
+}
+
+test fn a_acquisition_only() -> Bool {
+  length(xs: decls_of(roots: lens_roots)) > 0
+}
+
+test fn b_closure_only() -> Bool {
+  length(xs: closure_of(roots: lens_roots)) > 0
+}
+
+test fn c_walk_only() -> Bool {
+  length(xs: call_reachable_decls(
+    entry_module: entry,
+    terminal_callee_symbols: no_terminals,
+    closure_modules: closure_of(roots: lens_roots),
+    decls: decls_of(roots: lens_roots)
+  )) > 0
+}
+
+test fn d_walk_plus_findings() -> Bool {
+  determinism_transitive_holds(
+    entry_module: entry,
+    closure_modules: closure_of(roots: lens_roots),
+    decls: decls_of(roots: lens_roots)
+  )
+}
+
+test fn e_acquisition_only_bigger_pool() -> Bool {
+  length(xs: decls_of(roots: lens_plus_std_roots)) > 0
+}
+
+test fn f_walk_only_bigger_pool_same_closure() -> Bool {
+  length(xs: call_reachable_decls(
+    entry_module: entry,
+    terminal_callee_symbols: no_terminals,
+    closure_modules: closure_of(roots: lens_roots),
+    decls: decls_of(roots: lens_plus_std_roots)
+  )) > 0
+}
+
+// g MEASURES THE PREMISE THAT c-vs-f RESTS ON, RATHER THAN ARGUING IT. The discrimination is only
+// about the pool if the two walks REACH the same set; that the closure bounds the walk is a true
+// fact about a different subject than what a given run actually enumerated. So this arm runs both
+// walks and compares the two reached-set SIZES directly: it is GREEN only when enlarging the pool
+// changed nothing about what was reached, and RED -- loudly, and before any repair is built on it
+// -- if any part of the c-to-f difference is reach rather than pool.
+test fn g_reached_sets_agree_across_pools() -> Bool {
+  length(xs: call_reachable_decls(
+    entry_module: entry,
+    terminal_callee_symbols: no_terminals,
+    closure_modules: closure_of(roots: lens_roots),
+    decls: decls_of(roots: lens_roots)
+  )) == length(xs: call_reachable_decls(
+    entry_module: entry,
+    terminal_callee_symbols: no_terminals,
+    closure_modules: closure_of(roots: lens_roots),
+    decls: decls_of(roots: lens_plus_std_roots)
+  ))
+}
+
+
+data second_entry: String = "v2.lens.complexity"
+
+// h IS THE ARM THAT SEPARATES KEYING FROM MEMORY PRESSURE, and it exists because the obvious
+// falsifier does not discriminate. Turning the eval-frame memo off removes the key comparisons AND
+// the retained entries in one move, so a collapse under GUNBC_EVAL_MEMO=0 confirms the keying
+// hypothesis and the allocation-pressure hypothesis EQUALLY -- an arm that cannot come out against
+// the thing it is testing establishes nothing.
+//
+// h does the same amount of WALKING as g -- two full reachability walks in ONE eval frame -- while
+// holding the pool at ONE pool rather than two. So frame retention and key diversity are halved
+// while the walking is not. Read it against c, whose frame does one walk over that same pool:
+//
+//   h ~ 2x c   the blowup needs pool DIVERSITY in the frame; keying survives, pressure dies.
+//   h ~ 13x c  two walks in a frame suffice regardless of pool; points at retention, or at
+//              something per-frame that is not keying at all.
+//
+// The two walks use DIFFERENT entry modules on purpose. Repeating one entry would hand the second
+// walk an argument-identical call the memo serves outright, which measures the memo working rather
+// than the frame cost under test.
+test fn h_two_walks_one_frame_same_pool() -> Bool {
+  length(xs: call_reachable_decls(
+    entry_module: entry,
+    terminal_callee_symbols: no_terminals,
+    closure_modules: closure_of(roots: lens_roots),
+    decls: decls_of(roots: lens_roots)
+  )) + length(xs: call_reachable_decls(
+    entry_module: second_entry,
+    terminal_callee_symbols: no_terminals,
+    closure_modules: closure_of(roots: lens_roots),
+    decls: decls_of(roots: lens_roots)
+  )) > 0
+}
+
+// ── THE FLOOR SUBJECT, WHICH IS NOT THE DIRECTORY SUBJECT ─────────────────────────────────────
+//
+// EVERY ARM ABOVE MEASURES A DIFFERENT EXECUTION FROM THE ONE THAT BLOCKS LANES, and conflating
+// them would aim a repair at the wrong subject. The floor claim
+// v2.test.claim.enforcement.determinism_transitive_witness.determinism_live_intra_holds runs at
+// FILE grain over one file, with pool_roots EMPTY and pool_files naming affected_set.dag, and it
+// builds its closure from those same empty roots. So it is not arm c at smaller n: its pool is one
+// file rather than a directory, and its closure list comes from an EMPTY root list, which is a term
+// no arm above exercises at all.
+//
+// These arms reproduce the floor's own subject term by term, so the question "does the directory
+// grain magnify the floor claim, or measure something else" is settled by execution rather than by
+// reading the two call sites side by side and judging them similar.
+// ── PRE-REGISTERED: WHAT THE AFTER-PARTITION MUST LOOK LIKE ───────────────────────────────────
+//
+// WRITTEN AND COMMITTED BEFORE THE REPAIR WAS MEASURED, so that what comes back is read against a
+// stated expectation rather than fitted to one. The repair changes three sites in one family --
+// building or rescanning an intermediate proportional to the whole input on every step -- and it
+// changes them as ONE change because three distributions over a 1.379x spread cannot separate
+// three effects.
+//
+// WHAT THE REPAIR TOUCHES, AND WHICH ARM PRICES EACH:
+//   callees_from_node   materialize-then-filter  ->  extract during one fold        p, and o-minus-p
+//   callees_from_node   per-hit accumulator scan ->  Map-keyed dedup                o-minus-p
+//   call_reachable_go   decl_in_list linear scan ->  Map lookup on qualified_name   n-minus-i
+//   call_reachable_go   list_snoc_item per hit   ->  Cons plus one final reverse    n-minus-i
+//   call_reachable_go   unconditional list_append of an empty callee list -> guarded   n-minus-i
+//
+// THE EXPECTATION, ARM BY ARM. Acquisition (i) and the determinism fold (l minus n) are UNTOUCHED
+// code and must come back unchanged; if either moves, the arms are not measuring what they claim
+// and nothing else here is readable. p should fall to near nothing, because the intermediate it
+// prices is no longer built. o minus i should fall with it. n minus i is the arm that decides the
+// repair: it must land at or below a THIRD of its before value.
+//
+// AND THE FALSIFIER IS THE POINT OF WRITING THIS DOWN. If n minus i comes back only somewhat
+// cheaper -- still a large fraction of the walk -- that is NOT a partial win to be reported as
+// progress. It is a payer this partition never named, revealed by removing the four it did, and it
+// must be reported as a new finding rather than absorbed into the credit for this change. The same
+// reading applies to a walk that stays expensive in a NEW place: a flat profile becoming lumpy
+// somewhere else is a discovery, not a residue.
+//
+// THE DIRECTORY-GRAIN ACCEPTANCE IS SEPARATE AND IS NOT THESE ARMS. These run on a machine
+// population roughly 1.8x away from the one that enforces, so no arm here can accept the change.
+// Acceptance is the retained CI cost artifact over COMPLETED rows only, read by header name, and
+// the question asked of it is whether the TOP of the after-distribution clears the line with
+// margin -- never whether a run went green.
+data floor_roots: List<String> = []
+data floor_files: List<String> = ["src/v2/lens/affected_set.dag"]
+
+test fn i_floor_acquisition_only() -> Bool {
+  length(xs: fn_arrow_decl_facts_live(pool_roots: floor_roots, pool_files: floor_files)) > 0
+}
+
+// k IS NOT A TIMING ARM. The rung-drop row records that the floor's closure fold runs over a list
+// that is empty today, and that claim is load-bearing -- an empty closure means the walk follows no
+// callee edges, which is WHY the witness was renamed from transitive to intra. If this arm goes
+// RED the closure is not empty, that recorded fact is stale, and every reading built on it needs
+// revisiting. It is cheap and it is the one arm here that can falsify a written row.
+test fn k_floor_closure_is_empty() -> Bool {
+  length(xs: closure_of(roots: floor_roots)) == 0
+}
+
+// l IS THE FLOOR CLAIM'S OWN BODY, reproduced exactly. l minus i is what the walk and the
+// determinism fold cost at the grain that actually blocks, and that difference -- not any ratio
+// among the directory arms -- is what a repair aimed at the floor has to move.
+test fn l_floor_claim_shape() -> Bool {
+  determinism_transitive_holds(
+    entry_module: entry,
+    closure_modules: closure_of(roots: floor_roots),
+    decls: fn_arrow_decl_facts_live(pool_roots: floor_roots, pool_files: floor_files)
+  )
+}
+
+// m FINISHES WHAT h STARTS, and it exists because h narrows the cause without isolating it.
+//
+// h holds the pool at one pool and does two walks in one frame. It came in near c rather than near
+// 2c, which eliminates 'two walks in a frame is enough' -- frame sharing per se is not the payer,
+// and neither is anything per-frame that does not depend on the pool. What h leaves standing is
+// POOL DIVERSITY, and two rival explanations of it are still both alive: keying, where a memo probe
+// that cannot match by identity must compare a pool-sized value structurally on every call; and
+// RETENTION, where holding two pools live doubles the frame's footprint and pays in allocation and
+// paging. h cannot separate those, because one pool means both one key universe AND one retained
+// pool.
+//
+// m separates them by taking the two apart. It ACQUIRES both pools in one frame -- so retention is
+// two pools, exactly as in g -- while WALKING only over the small one, so the repeated pool-sized
+// probes are over a single pool, as in c.
+//
+//   m ~ c + e   two-pool retention is free; the blowup needs two pools flowing into REPEATED
+//               probes, which is the keying signature and not the pressure one.
+//   m ~ g       retention is the payer; the memo hypothesis is dead and the repair is about
+//               footprint, not about how a key is derived.
+//
+// Run it with GUNBC_INTERP_STATS=1, which prints retained-value accounting and VmHWM, so the memory
+// half of the question is answered by measurement rather than by inferring footprint from time.
+test fn m_two_pools_retained_one_pool_walked() -> Bool {
+  length(xs: decls_of(roots: lens_roots))
+    + length(xs: decls_of(roots: lens_plus_std_roots))
+    + length(xs: call_reachable_decls(
+        entry_module: entry,
+        terminal_callee_symbols: no_terminals,
+        closure_modules: closure_of(roots: lens_roots),
+        decls: decls_of(roots: lens_roots)
+      )) > 0
+}
+
+// n IS THE FLOOR-GRAIN ARM THAT WAS MISSING, and its absence is why no repair could be aimed. l
+// runs the floor claim's whole body -- the reachability walk AND the determinism fold over every
+// reached declaration's subtree -- so l alone cannot say which of the two to make cheaper. n runs
+// the walk at the floor's own terms and nothing else, so l minus n is the fold at the grain that
+// actually blocks.
+//
+// AND IT MATTERS THAT THE DIRECTORY-GRAIN ANSWER DOES NOT TRANSFER. At directory grain the fold
+// measured below the walk and was refuted as the cost. But the floor's closure is EMPTY, so
+// decls_in_modules returns nothing for every callee and the walk follows NO edges at all: it drains
+// its seeds and stops. A walk that follows no edges cannot be pool-proportional, which means the
+// term this drop's trigger names is not even exercised at the floor's grain -- and whatever costs
+// 200ms there is a DIFFERENT construct from the one the directory arms measure. Aiming the repair
+// from the directory arms would fix a real defect that this claim does not pay.
+test fn n_floor_walk_only() -> Bool {
+  length(xs: call_reachable_decls(
+    entry_module: entry,
+    terminal_callee_symbols: no_terminals,
+    closure_modules: closure_of(roots: floor_roots),
+    decls: fn_arrow_decl_facts_live(pool_roots: floor_roots, pool_files: floor_files)
+  )) > 0
+}
+
+// o ISOLATES THE FOURTH CANDIDATE, AND IT EXISTS BECAUSE THE ARITHMETIC DID NOT ADD UP. The walk at
+// floor grain costs about 134ms over 78 seeds while following NO edges. Costing the three list
+// shapes at their worst -- decl_in_list scanning `reached`, list_snoc_item copying it, and
+// list_append copying the remaining seeds -- gives roughly nine thousand element operations, so
+// 134ms implies about fifteen microseconds per element touch. That is at the top of defensible for
+// an interpreted list operation rather than comfortably inside it, which is the signal that a term
+// has not been named.
+//
+// THE UNNAMED TERM IS NOT A LIST SHAPE. call_reachable_decls_go calls callees_from_node on every
+// newly reached seed, and that MATERIALIZES THE WHOLE SUBTREE of the declaration's output node via
+// node_subtree_nodes before folding over it. That cost is proportional to AST SIZE, not to the seed
+// count, so it is invisible to every list-shape argument and is not removed by fixing any of them.
+//
+// o folds callees_from_node over exactly the seeds the floor claim walks and does nothing else, so
+// o minus i is the AST traversal alone. Read it against the walk:
+//
+//   o-i ~ the whole walk   the payer is subtree materialization; the list shapes are a rounding
+//                          error here and a repair aimed at them moves nothing.
+//   o-i small              the list shapes carry it and the per-element constant is simply high.
+//
+// MEASURING THIS BEFORE WRITING THE REPAIR IS THE POINT. Landing three list fixes and finding the
+// walk still expensive would read as a partial win, and the remaining payer would never rank.
+test fn o_floor_callee_extraction_only() -> Bool {
+  length(xs: fold_list(
+    xs: decls_in_module(
+      decls: fn_arrow_decl_facts_live(pool_roots: floor_roots, pool_files: floor_files),
+      mod_path: entry
+    ),
+    empty: no_terminals,
+    cons: fn(acc, decl) {
+      list_append(left: acc, right: callees_from_node(
+        node: decl.output,
+        terminal_callee_symbols: no_terminals
+      ))
+    }
+  )) > 0
+}
+
+// p SPLITS THE TWO DEFECTS ARM o CONFLATES, and it is written before o returns so the split is not
+// designed around whatever number arrives. callees_from_node does two separable things on every
+// seed:
+//
+//   (a) node_subtree_nodes MATERIALIZES the declaration's whole subtree   cost linear in AST SIZE
+//   (b) the fold SCANS THE ACCUMULATOR on every callee hit               cost quadratic in CALLEES
+//
+// They want opposite repairs. (b) is the cheap one and belongs to the copied-accumulator family
+// already named here; it is fixed without touching traversal at all. (a) is the expensive one and
+// is partly irreducible, because something must visit the nodes. Going straight from "o is large"
+// to "stop materializing" attacks the hard half first and possibly the wrong one.
+//
+// p materializes exactly what o materializes and then only COUNTS, so it pays (a) and none of (b).
+// Read p against o, both netted against the same acquisition i:
+//
+//   p ~ o        (a) is the payer: the subtree materialization itself. The repair is a fold that
+//                extracts callees DURING traversal instead of building a larger intermediate and
+//                filtering it -- DESIGN 2, minimize the demand graph before materializing answers.
+//   p << o       (b) is the payer: the per-hit accumulator scan, fixed on its own and cheaply,
+//                with traversal left alone.
+//
+// AND p IS ONLY WORTH RUNNING IF o COMES BACK LARGE. If o is small the traversal is not the payer
+// at all, the list shapes in the walk are, and this arm and the structural story behind it are both
+// dead -- a tidy account must not outlive the measurement that contradicts it.
+test fn p_floor_subtree_materialization_only() -> Bool {
+  length(xs: fold_list(
+    xs: decls_in_module(
+      decls: fn_arrow_decl_facts_live(pool_roots: floor_roots, pool_files: floor_files),
+      mod_path: entry
+    ),
+    empty: no_terminals,
+    cons: fn(acc, decl) {
+      list_snoc_item(
+        xs: acc,
+        item: integer_int_to_decimal_string(value: length(xs: node_subtree_nodes(root: decl.output)))
+      )
+    }
+  )) > 0
+}
