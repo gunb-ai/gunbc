@@ -1,0 +1,129 @@
+module product.capacity.event_chain
+
+import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
+import std.nat { Nat, nat_range_inclusive }
+
+// A PARTITIONED, IMMUTABLE, CONTENT-ADDRESSED EVENT CHAIN, AND THE ONE DECISION THAT LINEARIZES IT.
+// Every event names its parent; a partition has exactly one mutable thing, its head; an append is
+// admitted against the head the writer observed and is stale otherwise. There is no chain-wide
+// head: two partitions never contend, so a serving group's seats, a provider's quota window and a
+// deployment's transition are separate contention domains by construction (operator ruling
+// 2026-09-06). The store assigns the event id -- it is the object's content address in the SCM
+// substrate that carries the chain -- so this layer treats ids as opaque and hashes nothing; a
+// second identity minted here would be a nickname for the address the store already gives.
+//
+// WHAT THIS DECIDES AND DOES NOT. The append decision says "this event was admitted against this
+// state". It does not say the resource the event speaks about will honour it: that is the lease
+// fence (product.capacity.lease), which is carried inside the payload and checked by the resource.
+// Log linearization, resource fencing and lease lifetime are three facts, and only the first is
+// this module's.
+
+type PartitionId = NonEmptyStr where brand("PartitionId")
+type EventId = NonEmptyStr where brand("EventId")
+
+type ChainEvent<P> {
+  partition: PartitionId
+  parent: EventId?
+  recorded_at: EpochSecs
+  actor: NonEmptyStr
+  payload: P
+}
+
+type ChainEnvelope<P> {
+  id: EventId
+  event: ChainEvent<P>
+}
+
+// The head a writer believes the partition is at. Absent is a real value: the first event of a
+// partition is admitted against an absent head, and a writer that observed absence while another
+// wrote first is stale exactly like any other.
+type HeadExpectation
+  = HeadAbsent
+  | HeadAt { id: EventId }
+
+fn head_expectation_eq(a: HeadExpectation, b: HeadExpectation) -> Bool {
+  match a {
+    HeadAbsent => match b { HeadAbsent => true  HeadAt { id: _ } => false }
+    HeadAt { id: x } => match b { HeadAbsent => false  HeadAt { id: y } => (x as String) == (y as String) }
+  }
+}
+
+fn event_parent_expectation<P>(e: ChainEvent<P>) -> HeadExpectation {
+  match e.parent {
+    Absent => HeadAbsent
+    Present { value: p } => HeadAt { id: p }
+  }
+}
+
+// THE LINEARIZATION DECISION, pure: the writer's expectation against the head the store observed
+// at the moment of the swap. Admitted means the new event is the head; stale means someone moved
+// first and the writer re-folds from the observed head and decides again. There is no arm for
+// proceeding anyway.
+type AppendDecision
+  = AppendAdmitted { new_head: EventId, generation: Nat }
+  | AppendStale { expected: HeadExpectation, observed: HeadExpectation }
+
+fn decide_append(expected: HeadExpectation, observed: HeadExpectation, new_head: EventId, generation_before: Nat) -> AppendDecision {
+  if head_expectation_eq(a: expected, b: observed) {
+    AppendAdmitted { new_head: new_head, generation: generation_before + 1 }
+  } else {
+    AppendStale { expected: expected, observed: observed }
+  }
+}
+
+fn envelope_with_id<P>(envs: List<ChainEnvelope<P>>, id: EventId) -> ChainEnvelope<P>? {
+  first(filter(envs, e => (e.id as String) == (id as String)))
+}
+
+// THE WALK FROM A HEAD TO THE ROOT, oldest first, bounded. A missing parent is reported by id
+// rather than folded around: a chain with a hole has no state, and a fold over the part that
+// happens to be present would be a fabricated one. The bound is a fuel, not a capacity.
+type ChainWalk<P>
+  = ChainWalked { oldest_first: List<ChainEnvelope<P>> }
+  | ChainIncomplete { missing: EventId, newest_first_so_far: List<ChainEnvelope<P>> }
+  | ChainBudgetExhausted { at: EventId }
+
+type WalkState<P> {
+  current: HeadExpectation
+  newest_first: List<ChainEnvelope<P>>
+  missing: EventId?
+}
+
+fn walk_step<P>(envs: List<ChainEnvelope<P>>, st: WalkState<P>) -> WalkState<P> {
+  match st.missing {
+    Present { value: _ } => st
+    Absent =>
+      match st.current {
+        HeadAbsent => st
+        HeadAt { id: h } =>
+          match envelope_with_id(envs: envs, id: h) {
+            Absent => WalkState { current: st.current, newest_first: st.newest_first, missing: Present { value: h } }
+            Present { value: env } => WalkState {
+              current: event_parent_expectation(e: env.event),
+              newest_first: concat(st.newest_first, [env]),
+              missing: none,
+            }
+          }
+      }
+  }
+}
+
+fn chain_from_head<P>(envs: List<ChainEnvelope<P>>, head: HeadExpectation, budget: Nat) -> ChainWalk<P> {
+  let final = fold(nat_range_inclusive(lo: 1, hi: budget), init: WalkState { current: head, newest_first: [], missing: none }, f: (st, _i) => walk_step(envs: envs, st: st))
+  match final.missing {
+    Present { value: m } => ChainIncomplete { missing: m, newest_first_so_far: final.newest_first }
+    Absent =>
+      match final.current {
+        HeadAt { id: h } => ChainBudgetExhausted { at: h }
+        HeadAbsent => ChainWalked { oldest_first: reverse(final.newest_first) }
+      }
+  }
+}
+
+fn chain_generation<P>(walk: ChainWalk<P>) -> Nat? {
+  match walk {
+    ChainWalked { oldest_first: xs } => Present { value: length(xs) }
+    ChainIncomplete { missing: _, newest_first_so_far: _ } => none
+    ChainBudgetExhausted { at: _ } => none
+  }
+}

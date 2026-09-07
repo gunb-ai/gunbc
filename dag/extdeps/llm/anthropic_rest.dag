@@ -10,6 +10,8 @@ import extdeps.llm.anthropic_errors { AnthropicErrorShape }
 import std.credentials { EnvVar }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.types { NonEmptyStr }
+import extdeps.api_rate_limit { UpstreamRateLimit, RateLimitPeriod, PerMinute }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -25,7 +27,6 @@ service llm.Anthropic {
     auth_input: api_key
     auth_source: EnvVar { name: "ANTHROPIC_API_KEY" }
 
-    rate_limit: { requests: 1000, per: minute, scope: messages }
   }
 
   operation Messages {
@@ -91,3 +92,6 @@ service llm.Anthropic {
     }
   }
 }
+
+// The Messages API request limit for this account tier as published: 1,000 requests per minute.
+data anthropic_messages_rate_limit: UpstreamRateLimit = UpstreamRateLimit { upstream: "anthropic" as NonEmptyStr, scope: "messages" as NonEmptyStr, requests: 1000, period: PerMinute }

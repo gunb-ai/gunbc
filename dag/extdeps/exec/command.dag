@@ -108,6 +108,7 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
     decl_ref(module_path: "extdeps.tools.hostname", decl_name: "hostname_short_read_command"),
     decl_ref(module_path: "extdeps.tools.busybox", decl_name: "busybox_httpd_command"),
     decl_ref(module_path: "extdeps.tools.busybox", decl_name: "busybox_tftpd_over_udpsvd_command"),
+    decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_ftps_upload_command"),
     decl_ref(module_path: "extdeps.storage.nbd", decl_name: "nbd_server_command"),
     decl_ref(module_path: "extdeps.storage.nbd", decl_name: "nbd_client_attach_command"),
     decl_ref(module_path: "extdeps.storage.nbd", decl_name: "nbd_client_disconnect_command"),

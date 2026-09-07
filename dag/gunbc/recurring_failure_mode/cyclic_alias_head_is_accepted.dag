@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.cyclic_alias_head_is_accepted
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data cyclic_alias_head_is_accepted: RecurringFailureMode = RecurringFailureMode {
+  identity: "cyclic_alias_head_is_accepted" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE AND HARM: a transparent alias-head chain returns to a declaration already on its path, yet source using that chain is accepted. The compiler has not established a finite declared head for the position it admits. This is the names-resolve and values-inhabit-declared-types floor, not a claim about productive recursive product types. ",
+    "REF-BOUND MEASUREMENT: release seed from 03a3b91fb4c1ea7e408df2cb484f475d75080a7f, executable SHA256 8692902cd6540b0cd1bd5f73701c6a3910bb3c87a73110f8125b0c00cdbfa02b, invocation https://app.buildbuddy.io/invocation/5b341ce2-2377-471f-a1ac-47128df431e8. Isolated repository-local source declares type Left = Right; type Right = Left; fn take(q: Left) -> Int { 1 }; fn probe(q: Right) -> Int { take(q: q) }. It terminates, resolves one source, emits six files and reports zero diagnostics. ",
+    "PAIRED ROUTING PROBE: with type Marker and type Record<P> { n: Int }, take(q: Record<Marker>) and probe(q: Left), the Left/Right head cycle also accepts with one source, six files, zero diagnostics. Changing only Right to Record<Marker> makes an acyclic chain and remains accepted. On the same binary, the parser constructor-equality field-access negative refuses while its parenthesized positive accepts; the instrument can report a refusal. ",
+    "ARGUMENT BOUNDARY: type Loop = Record<Loop> at the same probe terminates with zero diagnostics on this seed. That is termination evidence only. A productive recursive application is not equated with an alias-head cycle, and this row makes no argument-cycle inhabitance or rejection claim. ",
+    "RUNG FOUND AT AND CURRENT RUNG: OutsideTheLadder for the measured transparent head-cycle acceptance. No general cycle refusal is implemented or claimed. CEILING: a structurally derived, typed and located refusal when alias-head traversal revisits an existing std.decl_ref.DeclarationRef. ",
+    "NEXT-RUNG TRIGGER: the alias-resolution authority retains the visited declaration path and transports its cyclic outcome to every relevant consumer without converting it to an unexposed head or a partial successful answer. Execute the cyclic negative, acyclic positive, and a mutation that removes the refusal; enumerate the consumer population before claiming general coverage. ",
+    "DISPOSITION: separate from the generic-inhabitance carrier repair. That repair may distinguish cyclic and unexposed results for its first routed product-application consumer. Such a scoped refusal does not discharge this general alias-head class.",
+  ],
+  evidence: [],
+}
