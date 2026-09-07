@@ -1,0 +1,389 @@
+module test.claim.realization_selection_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.interval { degenerate_interval }
+import std.pareto {
+  AxisGap,
+  AxisReading,
+  HigherIsBetter,
+  LowerIsBetter,
+  ParetoEntry,
+  SelectionAxis,
+}
+import std.realization_selection {
+  HardConstraint,
+  PreferSurvivor,
+  UniqueSurvivorRequired,
+  SelectionPolicy,
+  SelectionReceipt,
+  SelectedWithin,
+  SelectionNeedsEvidence,
+  SelectionNeedsPolicy,
+  RealizationSelectionRefused,
+  NoFeasibleRealization,
+  CandidateFieldUnestablished,
+  select_realization,
+  admit_world_converge,
+  ConvergenceAdmitted,
+  ConvergenceRefusedUnresolvedSelection,
+  receipts_eq,
+}
+import gunbc.world_converge {
+  WorldConvergenceHandler,
+  WorldObservation,
+  WorldObserved,
+  WorldDifference,
+  WorldInAgreement,
+  WorldActuation,
+  WorldApplied,
+  WorldConverged,
+  world_converge,
+}
+import product.fleet_operating_point {
+  fleet_operating_point_selection,
+  fleet_operating_point_needs_evidence,
+  gap_aggregate_throughput,
+  gap_ac_power_energy,
+}
+import gunbc.design_document { expected_design_md }
+import gunbc.roadmap.roadmap_review_criteria { review_criterion_by_key }
+import gunbc.design_argument { design_propositions }
+
+data id_a: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "cand_a")
+data id_b: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "cand_b")
+data id_subject: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "subject")
+data id_field: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "field")
+data id_field2: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "field_alt")
+data id_constraints: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "constraints")
+data id_evidence: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "evidence")
+data id_evidence2: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "evidence_alt")
+data id_policy_unique: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "policy_unique")
+data id_policy_a: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "policy_a")
+data id_policy_b: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "policy_b")
+data ax_tput: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "ax_tput")
+data ax_power: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "ax_power")
+
+fn axes_forward() -> List<SelectionAxis> {
+  [
+    SelectionAxis { identity: ax_tput, goal: HigherIsBetter },
+    SelectionAxis { identity: ax_power, goal: LowerIsBetter },
+  ]
+}
+
+fn axes_reversed() -> List<SelectionAxis> {
+  [
+    SelectionAxis { identity: ax_power, goal: LowerIsBetter },
+    SelectionAxis { identity: ax_tput, goal: HigherIsBetter },
+  ]
+}
+
+fn reading(axis: DeclarationRef, v: Int) -> AxisReading {
+  AxisReading { axis: axis, interval_micro: degenerate_interval(point: v) }
+}
+
+fn entry(id: DeclarationRef, label: NonEmptyStr, tput: Int, power: Int) -> ParetoEntry {
+  ParetoEntry {
+    identity: id,
+    display_label: label,
+    readings: [reading(axis: ax_tput, v: tput), reading(axis: ax_power, v: power)],
+    missing_inputs: [],
+  }
+}
+
+fn entry_missing_power(id: DeclarationRef, label: NonEmptyStr, tput: Int) -> ParetoEntry {
+  ParetoEntry {
+    identity: id,
+    display_label: label,
+    readings: [reading(axis: ax_tput, v: tput)],
+    missing_inputs: [AxisGap { axis: ax_power, cause: "required power reading absent" as NonEmptyStr }],
+  }
+}
+
+data power_cap: HardConstraint = HardConstraint {
+  identity: id_constraints,
+  axis: ax_power,
+  bound_micro: 100,
+}
+
+fn selected_id(field: List<ParetoEntry>, axes: List<SelectionAxis>, constraints: List<HardConstraint>, pol: SelectionPolicy, evidence: DeclarationRef, field_id: DeclarationRef) -> DeclarationRef? {
+  match select_realization(
+    decision_subject: id_subject,
+    candidate_field_identity: field_id,
+    field: field,
+    axes: axes,
+    constraints: constraints,
+    constraint_authority: id_constraints,
+    policy: pol,
+    evidence_snapshot: evidence,
+  ) {
+    SelectedWithin { candidate: c, receipt: _ } => Present { value: c.identity }
+    SelectionNeedsEvidence { gaps: _ } => Absent
+    SelectionNeedsPolicy { survivors: _ } => Absent
+    RealizationSelectionRefused { defects: _ } => Absent
+    NoFeasibleRealization { causes: _ } => Absent
+    CandidateFieldUnestablished { causes: _ } => Absent
+  }
+}
+
+test fn hard_power_constraint_excludes_before_pareto() -> Bool {
+  let attractive = entry(id: id_a, label: "high tput over cap" as NonEmptyStr, tput: 90, power: 200)
+  let feasible = entry(id: id_b, label: "lower tput under cap" as NonEmptyStr, tput: 10, power: 50)
+  match select_realization(
+    decision_subject: id_subject,
+    candidate_field_identity: id_field,
+    field: [attractive, feasible],
+    axes: axes_forward(),
+    constraints: [power_cap],
+    constraint_authority: id_constraints,
+    policy: UniqueSurvivorRequired { identity: id_policy_unique },
+    evidence_snapshot: id_evidence,
+  ) {
+    SelectedWithin { candidate: c, receipt: _ } => declaration_ref_eq(a: c.identity, b: id_b)
+    _ => false
+  }
+}
+
+test fn missing_power_reading_needs_evidence_never_zero_watts() -> Bool {
+  let incomplete = entry_missing_power(id: id_a, label: "no power" as NonEmptyStr, tput: 90)
+  match select_realization(
+    decision_subject: id_subject,
+    candidate_field_identity: id_field,
+    field: [incomplete],
+    axes: axes_forward(),
+    constraints: [power_cap],
+    constraint_authority: id_constraints,
+    policy: UniqueSurvivorRequired { identity: id_policy_unique },
+    evidence_snapshot: id_evidence,
+  ) {
+    SelectionNeedsEvidence { gaps: gs } =>
+      any(gs, g => declaration_ref_eq(a: g.axis, b: ax_power))
+        && !any(gs, g => string_contains(s: g.cause as String, pattern: "0 W"))
+    _ => false
+  }
+}
+
+test fn two_survivors_without_policy_need_policy_not_first_element() -> Bool {
+  let left = entry(id: id_a, label: "tput winner" as NonEmptyStr, tput: 80, power: 80)
+  let right = entry(id: id_b, label: "power winner" as NonEmptyStr, tput: 20, power: 20)
+  match select_realization(
+    decision_subject: id_subject,
+    candidate_field_identity: id_field,
+    field: [left, right],
+    axes: axes_forward(),
+    constraints: [],
+    constraint_authority: id_constraints,
+    policy: UniqueSurvivorRequired { identity: id_policy_unique },
+    evidence_snapshot: id_evidence,
+  ) {
+    SelectionNeedsPolicy { survivors: sv } =>
+      (sv |> count) == 2
+        && any(sv, s => declaration_ref_eq(a: s, b: id_a))
+        && any(sv, s => declaration_ref_eq(a: s, b: id_b))
+    SelectedWithin { candidate: _, receipt: _ } => false
+    _ => false
+  }
+}
+
+test fn reversing_candidate_and_axis_order_preserves_answer() -> Bool {
+  let a = entry(id: id_a, label: "a" as NonEmptyStr, tput: 10, power: 90)
+  let b = entry(id: id_b, label: "b" as NonEmptyStr, tput: 50, power: 50)
+  let fwd = select_realization(
+    decision_subject: id_subject,
+    candidate_field_identity: id_field,
+    field: [a, b],
+    axes: axes_forward(),
+    constraints: [power_cap],
+    constraint_authority: id_constraints,
+    policy: UniqueSurvivorRequired { identity: id_policy_unique },
+    evidence_snapshot: id_evidence,
+  )
+  let rev = select_realization(
+    decision_subject: id_subject,
+    candidate_field_identity: id_field,
+    field: [b, a],
+    axes: axes_reversed(),
+    constraints: [power_cap],
+    constraint_authority: id_constraints,
+    policy: UniqueSurvivorRequired { identity: id_policy_unique },
+    evidence_snapshot: id_evidence,
+  )
+  match fwd {
+    SelectedWithin { candidate: c1, receipt: _ } =>
+      match rev {
+        SelectedWithin { candidate: c2, receipt: _ } => declaration_ref_eq(a: c1.identity, b: c2.identity)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn policy_cannot_choose_dominated_infeasible_or_absent() -> Bool {
+  let attractive = entry(id: id_a, label: "over cap" as NonEmptyStr, tput: 90, power: 200)
+  let feasible = entry(id: id_b, label: "under cap" as NonEmptyStr, tput: 10, power: 50)
+  match select_realization(
+    decision_subject: id_subject,
+    candidate_field_identity: id_field,
+    field: [attractive, feasible],
+    axes: axes_forward(),
+    constraints: [power_cap],
+    constraint_authority: id_constraints,
+    policy: PreferSurvivor { identity: id_policy_a, preferred: id_a },
+    evidence_snapshot: id_evidence,
+  ) {
+    RealizationSelectionRefused { defects: _ } => true
+    _ => false
+  }
+}
+
+test fn changing_only_policy_may_choose_a_different_survivor() -> Bool {
+  let left = entry(id: id_a, label: "tput" as NonEmptyStr, tput: 80, power: 80)
+  let right = entry(id: id_b, label: "power" as NonEmptyStr, tput: 20, power: 20)
+  let field = [left, right]
+  match selected_id(field: field, axes: axes_forward(), constraints: [], pol: PreferSurvivor { identity: id_policy_a, preferred: id_a }, evidence: id_evidence, field_id: id_field) {
+    Absent => false
+    Present { value: a } =>
+      match selected_id(field: field, axes: axes_forward(), constraints: [], pol: PreferSurvivor { identity: id_policy_b, preferred: id_b }, evidence: id_evidence, field_id: id_field) {
+        Absent => false
+        Present { value: b } =>
+          declaration_ref_eq(a: a, b: id_a) && declaration_ref_eq(a: b, b: id_b)
+      }
+  }
+}
+
+test fn changing_evidence_or_field_identity_invalidates_receipt() -> Bool {
+  let feasible = entry(id: id_b, label: "ok" as NonEmptyStr, tput: 10, power: 50)
+  match select_realization(
+    decision_subject: id_subject,
+    candidate_field_identity: id_field,
+    field: [feasible],
+    axes: axes_forward(),
+    constraints: [power_cap],
+    constraint_authority: id_constraints,
+    policy: UniqueSurvivorRequired { identity: id_policy_unique },
+    evidence_snapshot: id_evidence,
+  ) {
+    SelectedWithin { candidate: _, receipt: r1 } =>
+      match select_realization(
+        decision_subject: id_subject,
+        candidate_field_identity: id_field2,
+        field: [feasible],
+        axes: axes_forward(),
+        constraints: [power_cap],
+        constraint_authority: id_constraints,
+        policy: UniqueSurvivorRequired { identity: id_policy_unique },
+        evidence_snapshot: id_evidence2,
+      ) {
+        SelectedWithin { candidate: _, receipt: r2 } => !receipts_eq(a: r1, b: r2)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn world_converge_refuses_unresolved_selection() -> Bool {
+  match admit_world_converge(result: fleet_operating_point_selection()) {
+    ConvergenceRefusedUnresolvedSelection { result_kind: k } =>
+      (k as String) == "SelectionNeedsEvidence" && fleet_operating_point_needs_evidence()
+    ConvergenceAdmitted { candidate: _, receipt: _ } => false
+  }
+}
+
+fn selection_observe(subject: ParetoEntry, _: SelectionReceipt) -> WorldObservation<DeclarationRef, NonEmptyStr> {
+  WorldObserved { value: subject.identity }
+}
+
+fn selection_differences(_: ParetoEntry, _: SelectionReceipt, _: DeclarationRef) -> WorldDifference<DeclarationRef> {
+  WorldInAgreement
+}
+
+fn selection_apply(_: ParetoEntry, ctx: SelectionReceipt, _: DeclarationRef, _: List<DeclarationRef>) -> WorldActuation<SelectionReceipt, NonEmptyStr> {
+  WorldApplied { value: ctx }
+}
+
+fn selection_unchanged(_: ParetoEntry, ctx: SelectionReceipt, _: DeclarationRef) -> SelectionReceipt {
+  ctx
+}
+
+fn selection_world_handler() -> WorldConvergenceHandler<ParetoEntry, SelectionReceipt, DeclarationRef, DeclarationRef, SelectionReceipt, NonEmptyStr> {
+  WorldConvergenceHandler {
+    observe: selection_observe,
+    differences: selection_differences,
+    apply: selection_apply,
+    unchanged_receipt: selection_unchanged,
+  }
+}
+
+test fn selected_within_feeds_world_converge_readback() -> Bool {
+  let feasible = entry(id: id_b, label: "ok" as NonEmptyStr, tput: 10, power: 50)
+  match select_realization(
+    decision_subject: id_subject,
+    candidate_field_identity: id_field,
+    field: [feasible],
+    axes: axes_forward(),
+    constraints: [power_cap],
+    constraint_authority: id_constraints,
+    policy: UniqueSurvivorRequired { identity: id_policy_unique },
+    evidence_snapshot: id_evidence,
+  ) {
+    SelectedWithin { candidate: c, receipt: r } =>
+      match admit_world_converge(result: SelectedWithin { candidate: c, receipt: r }) {
+        ConvergenceRefusedUnresolvedSelection { result_kind: _ } => false
+        ConvergenceAdmitted { candidate: cand, receipt: rec } =>
+          match world_converge(subject: cand, context: rec, handler: selection_world_handler()) {
+            WorldConverged { subject: _, observed: _, receipt: _ } => true
+            _ => false
+          }
+      }
+    _ => false
+  }
+}
+
+test fn generated_section_3d_and_reviewer_execute() -> Bool {
+  let md = expected_design_md()
+  string_contains(s: md, pattern: "Selection precedes convergence")
+    && string_contains(s: md, pattern: "std.realization_selection")
+    && any(design_propositions, p => p.id == "s3d.selection-precedes-convergence")
+    && match review_criterion_by_key(key: "selection-precedes-convergence") {
+      Absent => false
+      Present { value: c } => string_contains(s: c.question, pattern: "world_converge")
+    }
+}
+
+test fn fleet_operating_point_names_throughput_and_ac_power_gaps() -> Bool {
+  match fleet_operating_point_selection() {
+    SelectionNeedsEvidence { gaps: gs } =>
+      any(gs, g => declaration_ref_eq(a: g.axis, b: gap_aggregate_throughput.axis))
+        && any(gs, g => declaration_ref_eq(a: g.axis, b: gap_ac_power_energy.axis))
+    _ => false
+  }
+}
+
+fn realization_selection_witness_main() -> ProcessExit {
+  if !hard_power_constraint_excludes_before_pareto() {
+    ExitFailure { code: 1, reason: "1 hard-power-constraint" as NonEmptyStr }
+  } else if !missing_power_reading_needs_evidence_never_zero_watts() {
+    ExitFailure { code: 1, reason: "2 missing-power-reading" as NonEmptyStr }
+  } else if !two_survivors_without_policy_need_policy_not_first_element() {
+    ExitFailure { code: 1, reason: "3 two-survivors-need-policy" as NonEmptyStr }
+  } else if !reversing_candidate_and_axis_order_preserves_answer() {
+    ExitFailure { code: 1, reason: "4 reverse-order" as NonEmptyStr }
+  } else if !policy_cannot_choose_dominated_infeasible_or_absent() {
+    ExitFailure { code: 1, reason: "5 policy-cannot-choose-infeasible" as NonEmptyStr }
+  } else if !changing_only_policy_may_choose_a_different_survivor() {
+    ExitFailure { code: 1, reason: "6 policy-changes-survivor" as NonEmptyStr }
+  } else if !changing_evidence_or_field_identity_invalidates_receipt() {
+    ExitFailure { code: 1, reason: "7 receipt-identity" as NonEmptyStr }
+  } else if !world_converge_refuses_unresolved_selection() {
+    ExitFailure { code: 1, reason: "8 converge-unresolved" as NonEmptyStr }
+  } else if !selected_within_feeds_world_converge_readback() {
+    ExitFailure { code: 1, reason: "9 selected-feeds-converge" as NonEmptyStr }
+  } else if !generated_section_3d_and_reviewer_execute() {
+    ExitFailure { code: 1, reason: "10 design-section-reviewer" as NonEmptyStr }
+  } else if !fleet_operating_point_names_throughput_and_ac_power_gaps() {
+    ExitFailure { code: 1, reason: "11 fleet-gaps" as NonEmptyStr }
+  } else {
+    ExitSuccess
+  }
+}

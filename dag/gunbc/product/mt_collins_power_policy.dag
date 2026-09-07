@@ -3,7 +3,7 @@ module product.mt_collins_power_policy
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.decl_ref { decl_ref }
 import std.pareto { HigherIsBetter }
-import std.decision {
+import std.realization_selection {
   DecisionVariable,
   ContextParameter,
   DecisionConstraint,
@@ -30,7 +30,7 @@ import std.decision {
   required_sensitivity_cells,
 }
 
-// FIRST DEFERRED CONSUMER OF std.decision.
+// FIRST CONSUMER OF std.realization_selection: fleet operating-point selection, Deferred/NeedsEvidence.
 //
 // Question: which admitted socket-power-cap and active-chassis policy should the Mt. Collins
 // deployment use within its declared workload and site constraints.

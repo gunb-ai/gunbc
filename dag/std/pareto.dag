@@ -232,11 +232,12 @@ fn front_standing(verdicts: List<DominanceVerdict>) -> FrontStanding {
   }
 }
 
-// PARETO SELECTION OVER PARTIALLY OBSERVED EVIDENCE - the entry/field layer over the
+// PARETO ASSESSMENT OVER PARTIALLY OBSERVED EVIDENCE - the entry/field layer over the
 // dominance kernel above (hoisted from the private strategy tree 2026-08-18, operator
-// directive: the spine is a universal framework and its authority belongs here). A domain
-// projects its candidates into ParetoEntry rows, one reading per funded axis, and gets
-// standings back; the fold knows nothing about the domain.
+// directive: the assessment spine is a universal framework and its authority belongs here).
+// A domain projects its candidates into ParetoEntry rows, one reading per funded axis, and
+// gets standings back; the fold knows nothing about the domain. A Pareto front of two is
+// not a winner: choosing one desired realization is std.realization_selection.
 //
 // IDENTITY IS STRUCTURAL, NEVER A RENDERED LABEL (review ruling 2026-08-18): a candidate
 // and an axis are each named by a DeclarationRef - the domain declaration the row projects -
@@ -252,7 +253,7 @@ fn front_standing(verdicts: List<DominanceVerdict>) -> FrontStanding {
 // A refusal outranks a domination WHEREVER either sits in the field: the field fold
 // accumulates every challenge instead of latching the first, so the standing is invariant
 // under candidate and axis reordering. Per-axis orientation is the AxisGoal vocabulary
-// above; per-axis comparison is axis_comparison_int, so the selection layer adds partial
+// above; per-axis comparison is axis_comparison_int, so the assessment layer adds partial
 // observation and standings, never a second ordering.
 
 type SelectionAxis {

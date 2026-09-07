@@ -248,19 +248,19 @@ data design_section_2_to_7_rows: List<DesignRow> = [
 
   DesignRow {
     proposition: Proposition {
-      id: "s3d.decision-completeness",
-      statement: "a decision is a closed subject, not an optimizer's output: completeness is a receipt over required (term, variable) cells and named populations, and no absence may be read as irrelevance; Settled may mint only over a complete closure",
+      id: "s3d.selection-precedes-convergence",
+      statement: "selection precedes convergence: Pareto assessment (std.pareto) computes the frontier and realization selection (std.realization_selection) is the policy-bound choose-one, consuming Pareto without redeclarating its algebra; world_converge and ensure do not enumerate candidates or choose policy",
       premises: ["s3.single-authority", "s5.fail-closed", "s1.minimal-safe-efficient"]
     },
     review: ReviewableOnChange { parts: [yes_no_review(
-      part: "decision-completeness",
-      question: "Does the change recommend or settle a policy while a term, alternative, constraint or context dependency lacks a disposition, treat an authored invariant as whole-axis irrelevance, or introduce weights, defaults or a candidate universe the subject does not own?",
+      part: "selection-precedes-convergence",
+      question: "Does the change choose or converge a realization while the candidate field, constraints, funded-axis evidence or policy are unresolved; redeclare Pareto dominance/orientation/interval/gap vocabulary; treat a Pareto front as a winner; mint SelectedWithin over an incomplete closure; or widen world_converge/ensure into candidate generation or policy choice?",
       tells: [
-        "a recommendation that varies one quantity while another required variable, objective term, constraint or context parameter has no disposition",
-        "an Invariant or Ignored claim authored for a variable without closed relations for every applicable objective term",
-        "a method that drops an objective term without an order-preservation authority against the actual objective composition",
-        "a required population taken from the same list that carries dispositions for it",
-        "a Settled standing minted while sensitivity, variable-population, constraint or parameter closure is incomplete"
+        "a convergence or ensure path that enumerates candidates or selects a realization",
+        "a second dominance, orientation, interval or evidence-gap algebra beside std.pareto",
+        "Optimal or first-list-element standing in for SelectedWithin / SelectionNeedsPolicy",
+        "a missing funded-axis reading filled with 0 W or a worst-score default",
+        "SelectedWithin (or Settled) minted while required (term, variable) cells, constraints or candidate-field identity are incomplete"
       ]
     )] },
   },
@@ -303,8 +303,8 @@ data design_section_2_to_7_rows: List<DesignRow> = [
   DesignRow {
     proposition: Proposition {
       id: "s6.how-to-work",
-      statement: "how to work given §1–§5: model by DFS-ing the concept DAG, prioritize holistically and denominate the benefit as displaced cost, and enforce by construction-first then lenses for the unstructurable residue",
-      premises: ["s2.minimize-redundancy", "s3.single-authority", "s4.closed-grounded-substrate", "s5.fail-closed"]
+      statement: "how to work given §1–§5: model by DFS-ing the concept DAG, consume §3d (selection precedes convergence) rather than independently carrying holistic priority, denominate the benefit as displaced cost, and enforce by construction-first then lenses for the unstructurable residue",
+      premises: ["s2.minimize-redundancy", "s3.single-authority", "s3d.selection-precedes-convergence", "s4.closed-grounded-substrate", "s5.fail-closed"]
     },
     review: ReviewableOnChange { parts: [yes_no_review(
       part: "how-to-work",

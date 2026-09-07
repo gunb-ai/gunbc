@@ -40,7 +40,7 @@ import std.credentials { CredentialFlow, Stored }
 import std.measure { hertz, ByteSize, byte_size, byte_size_count, Bandwidth, HardwareThreadCount, hardware_thread_count_value, Nano, measure_count, Nanosecond, nanosecond }
 import std.os.types { OperatingSystemSurface, Linux, Posix, PosixProcess }
 import std.types { List, NonEmptyStr, Bool, Int, String }
-import std.realization_schedule { CostAccount }
+import std.realization_schedule { CostAccount, CostAxisObserved, CostAxisUnobserved }
 import std.realization_measurement { cost_account_measured_from_time_and_space, space_measure_list_seq }
 import std.nat { Nat }
 import std.float { Float }
@@ -201,7 +201,10 @@ fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> Nanose
 fn cost_account_from_performance_receipts(receipts: List<PerformanceReceipt>) -> CostAccount<Nano> {
   cost_account_measured_from_time_and_space(
     time: performance_receipts_total_time(receipts: receipts),
-    space: space_measure_list_seq(spaces: map(receipts, receipt => receipt.cost.space))
+    space: space_measure_list_seq(spaces: flat_map(receipts, receipt => match receipt.cost.space {
+      CostAxisObserved { value: v } => [v]
+      CostAxisUnobserved { obligation: _ } => []
+    }))
   )
 }
 

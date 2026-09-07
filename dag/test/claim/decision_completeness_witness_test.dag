@@ -7,7 +7,7 @@ import std.pareto {
   HigherIsBetter,
   DominanceVerdict, Incomparable, DominanceUndecided, Dominates, Dominated, Equivalent,
 }
-import std.decision {
+import std.realization_selection {
   DecisionVariable,
   ContextParameter,
   DecisionConstraint,

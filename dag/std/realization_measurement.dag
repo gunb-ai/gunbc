@@ -1,6 +1,6 @@
 module std.realization_measurement
 
-import std.types { Bool, String, List, Int }
+import std.types { Bool, String, List, Int, NonEmptyStr }
 import std.content_hash { ContentHash }
 import std.nat { Nat, nat_max }
 import std.measure {
@@ -11,12 +11,12 @@ import std.measure {
   measure_scale_fraction_ceil,
   ByteSize,
   byte_size,
-  Watt,
-  watt,
 }
 import std.realization_schedule {
   CostAccount,
   CostBasis,
+  CostAxisObserved,
+  CostAxisUnobserved,
   Measured,
   cost_account_measured,
   cost_account_time_count,
@@ -75,8 +75,10 @@ fn cost_account_measured_from_time<S>(time: Measure<Time, S, Nat>) -> CostAccoun
 fn cost_account_measured_from_time_and_space<S>(time: Measure<Time, S, Nat>, space: ByteSize) -> CostAccount<S> {
   CostAccount {
     time: time
-    space: space
-    power: watt(count: 0)
+    space: CostAxisObserved { value: space }
+    power: CostAxisUnobserved {
+      obligation: "power not observed by time-and-space measurement" as NonEmptyStr
+    }
     basis: Measured
   }
 }

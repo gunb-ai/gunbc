@@ -4,6 +4,8 @@ import std.content_hash { ContentHash, content_hash_of_value }
 import std.realization_schedule {
   CostAccount,
   CostBasis,
+  CostAxisObserved,
+  CostAxisUnobserved,
   cost_account_predicted_zero,
   cost_account_time_count,
 }
@@ -71,8 +73,12 @@ fn witness_space_rolls_up_across_receipts() -> Bool {
     space: sample_space_b,
   )
   let total = cost_account_from_performance_receipts(receipts: [r1, r2])
-  byte_size_count(total.space) == byte_size_count(sample_space_b)
-    && byte_size_count(total.space) != byte_size_count(sample_space_a) + byte_size_count(sample_space_b)
+  match total.space {
+    CostAxisUnobserved { obligation: _ } => false
+    CostAxisObserved { value: s } =>
+      byte_size_count(s) == byte_size_count(sample_space_b)
+        && byte_size_count(s) != byte_size_count(sample_space_a) + byte_size_count(sample_space_b)
+  }
 }
 
 fn witness_measured_rollup_red_on_predicted_zero() -> Bool {
