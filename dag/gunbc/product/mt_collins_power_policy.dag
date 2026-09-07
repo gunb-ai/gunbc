@@ -151,19 +151,7 @@ data mt_collins_power_policy_subject: DecisionSubject = DecisionSubject {
   choice_domain: mt_collins_power_choice_domain,
 }
 
-data available_chassis_count: Int = 20
-
-fn available_chassis_census() -> Int {
-  available_chassis_count
-}
-
-fn available_chassis_confirm_obligation() -> NonEmptyStr {
-  if available_chassis_census() == 20 {
-    "available chassis count is declared as twenty for this subject; confirm against the held-unit census before settlement" as NonEmptyStr
-  } else {
-    "available chassis count drifted from the declared census and must be re-bound" as NonEmptyStr
-  }
-}
+data available_chassis_confirm_obligation: NonEmptyStr = "available chassis count must be bound from the held-unit census before settlement; a figure authored in this module is not that census" as NonEmptyStr
 
 data obligation_memory_population_unread: NonEmptyStr = "JOIN strategy.mt_collins_power power_standing PowerAssumedOnly: product.node_power_envelope node_draw refuses while MemoryPopulationEvidence is PopulationModuleUnread — host-side per-slot memory census required before any derived wall figure may close platform-power cells" as NonEmptyStr
 
@@ -204,7 +192,7 @@ fn mt_collins_power_constraints() -> List<ConstraintDisposition> {
     },
     ConstraintUnestablished {
       constraint: constraint_available_chassis.identity,
-      obligation: available_chassis_confirm_obligation(),
+      obligation: available_chassis_confirm_obligation,
     },
     ConstraintUnestablished {
       constraint: constraint_min_service_capacity.identity,
@@ -308,14 +296,6 @@ fn mt_collins_power_policy_cannot_settle() -> Bool {
 
 fn mt_collins_power_policy_acceptance() -> SettledPolicyAcceptance {
   accept_settled_policy(standing: mt_collins_power_policy_standing())
-}
-
-fn mt_collins_power_policy_acceptance_rejects_deferred() -> Bool {
-  match mt_collins_power_policy_acceptance() {
-    SettledPolicyRejectedDeferred { obligations: _, reopen_trigger: _ } => true
-    SettledPolicyAccepted { policy: _ } => false
-    SettledPolicyRejectedRefused { cause: _ } => false
-  }
 }
 
 fn mt_collins_required_cell_count() -> Int {
