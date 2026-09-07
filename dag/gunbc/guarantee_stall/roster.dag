@@ -212,6 +212,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   testgen_anchor_generator_totality_stall,
   synthesis_established_bound_patch_stall,
   fn_index_depth_agreement_floor_enrollment_stall,
+  argument_shape_undecided_at_a_declared_position_stall,
 ]
 
 // THE FOUR SUBJECTS RESTORED TO THE ROSTER, PINNED BY IDENTITY SO THEIR LOSS REFUSES.
@@ -251,7 +252,6 @@ data restored_stalls: List<GuaranteeStall> = [
   external_model_scope_live_cover_stall,
   observation_heartbeat_lockstep_stall,
   operation_argv_binding_wall_stall,
-  argument_shape_undecided_at_a_declared_position_stall,
 ]
 
 fn every_restored_stall_is_rostered_once(ss: List<GuaranteeStall>) -> Bool {
