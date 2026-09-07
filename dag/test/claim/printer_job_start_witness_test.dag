@@ -1,0 +1,359 @@
+module test.claim.printer_job_start_witness_test
+
+import std.types { Bool, String, NonEmptyStr, Secret, FilePath, List }
+import extdeps.exec.command { argv_words }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.oasis.mqtt {
+  MqttQos, AtMostOnce, AtLeastOnce, ExactlyOnce, mqtt_qos_wire_level,
+  MqttEndpoint, MqttOverTls,
+}
+import extdeps.printing.bambu_lab_lan_protocol {
+  bambu_request_topic, bambu_report_topic, bambu_lan_mqtt_endpoint,
+  bambu_start_command, bambu_start_payload_json, bambu_start_command_qos,
+  bambu_lan_mqtt_user,
+}
+import extdeps.tools.mosquitto_pub { mosquitto_publish_command }
+import gunbc.auth.mosquitto_options_binding { mosquitto_options_content }
+import gunbc.fleet.printer_job_start {
+  PrinterSerialLookup, PrinterSerialFound, PrinterSerialUnknown,
+  PrinterSerialUnrecorded, PrinterSerialAmbiguous, printer_serial,
+  PrintStart, PrintStartPublished, PrintStartRefused,
+  PrintStartOutcomeUnknown, PrintStartOutcomeUnknownResidueRemains,
+  PrintStartRefusedResidueRemains, PrintStartPublishedCleanupRefused,
+  start_refusal, start_receipt, start_may_be_replayed, classify_publish_outcome,
+}
+import gunbc.fleet_asset_identity { printer_01, printer_02, ams_01 }
+
+// THE ARGV IS THE SUBJECT OF MOST OF THESE WITNESSES, because the guarantee this leg adds is a
+// NEGATIVE one -- that a credential does not appear on a command line -- and a negative property is
+// exactly the kind that a type name asserts and nothing checks. gunbc.credential_argv_exposure is a
+// measured incident, not hygiene, so its regression control has to read the words that would be
+// handed to execve rather than the shape of the function that built them.
+
+data a_serial: NonEmptyStr = "0300CA660400324"
+data another_serial: NonEmptyStr = "0300CA652201400"
+data a_host: NonEmptyStr = "192.168.1.235"
+data a_remote_name: NonEmptyStr = "gauge_container.3mf"
+data a_ca_path: FilePath = "/tmp/fixture/printer_ca.pem" as FilePath
+
+fn start_argv() -> List<String> {
+  argv_words(command: mosquitto_publish_command(
+    endpoint: bambu_lan_mqtt_endpoint(host: a_host),
+    topic: bambu_request_topic(serial: a_serial) as NonEmptyStr,
+    payload: bambu_start_payload_json(
+      command: bambu_start_command(remote_name: a_remote_name), sequence_id: "1"),
+    qos: bambu_start_command_qos,
+    ca_bundle: a_ca_path))
+}
+
+// THE DISCRIMINATING RED: if anyone adds a credential parameter to the publish builder and renders
+// it, one of these two words appears and this goes red. It is authorable today -- the flags exist on
+// the real tool and a caller reaching for them is the likely edit -- which is what separates this
+// from a check that is permanently green by construction.
+test fn the_publish_argv_carries_no_credential_flag() -> Bool {
+  let argv = start_argv()
+  ((argv |> filter(w => w == "-P") |> length) == 0)
+    && ((argv |> filter(w => w == "-u") |> length) == 0)
+    && ((argv |> filter(w => w == "--pw-file") |> length) == 0)
+}
+
+// THE POSITIVE CONTROL FOR THE SAME PROBE. A witness that only asserts absence passes just as well
+// when the argv is empty, when the builder returns a different command, or when the filter is
+// looking at the wrong list -- so the same list must be shown to contain what it should.
+test fn the_publish_argv_is_the_command_it_claims_to_be() -> Bool {
+  let argv = start_argv()
+  ((argv |> filter(w => w == "mosquitto_pub") |> length) == 1)
+    && ((argv |> filter(w => w == "-t") |> length) == 1)
+    && ((argv |> filter(w => w == a_host as String) |> length) == 1)
+}
+
+// VERIFICATION IS NOT OPTIONAL IN THE EMITTED ARGV. --cafile is what makes the chain check happen at
+// all, and --insecure without it is the arm measured to fail with certificate verify failed. Both
+// words being present is the shape that was proven to connect to a real printer.
+test fn the_publish_argv_pins_a_ca() -> Bool {
+  let argv = start_argv()
+  ((argv |> filter(w => w == "--cafile") |> length) == 1)
+    && ((argv |> filter(w => w == a_ca_path as String) |> length) == 1)
+}
+
+// THE CREDENTIAL LIVES IN THE OPTIONS FILE, AND BOTH HALVES OF IT DO. Splitting the login into argv
+// and leaving only the password in the file would compile, would work, and would leave a reader of
+// the command line believing the visible -u was how the tool authenticated.
+test fn the_options_file_carries_both_halves_of_the_login() -> Bool {
+  let content = mosquitto_options_content(
+    login: bambu_lan_mqtt_user, password: "fixture-access-code" as Secret)
+  string_contains(s: content, pattern: "-u bblp")
+    && string_contains(s: content, pattern: "-P fixture-access-code")
+}
+
+// THE TOPIC IS KEYED ON THE SERIAL, so two machines never share one. This is the control for the
+// hole the delivery module already found on its endpoint: two facts that must agree being free to
+// disagree, which there would have fetched one printer's code and addressed the other.
+test fn two_printers_do_not_share_a_request_topic() -> Bool {
+  (bambu_request_topic(serial: a_serial) as String)
+    != (bambu_request_topic(serial: another_serial) as String)
+}
+
+test fn the_request_topic_is_not_the_report_topic() -> Bool {
+  (bambu_request_topic(serial: a_serial) as String)
+    != (bambu_report_topic(serial: a_serial) as String)
+}
+
+// THE SERIAL IS RESOLVED FROM THE PRINTER ROSTER AND NOT FROM "ANY ASSET WITH A SERIAL", which is
+// why the negative is the AMS rather than a host. ams_01 is a real asset, physically present, and it
+// HAS a recorded physical_serial -- it is deliberately absent from owned_printer_inventory because
+// its catalog is the AMS module rather than the A1 mini. So a lookup that joined on the wrong roster,
+// or that fell back to the physical inventory when the printer roster missed, would find a serial
+// here and pass. Picking an asset with no serial at all would have let both implementations through.
+test fn a_non_printer_asset_resolves_no_serial() -> Bool {
+  match printer_serial(printer: ams_01) {
+    PrinterSerialUnknown { printer: _ } => true
+    PrinterSerialFound { serial: _ } => false
+    PrinterSerialUnrecorded { printer: _ } => false
+    PrinterSerialAmbiguous { printer: _ } => false
+  }
+}
+
+test fn printer_02_resolves_its_recorded_serial() -> Bool {
+  match printer_serial(printer: printer_02) {
+    PrinterSerialFound { serial: s } => (s as String) == (a_serial as String)
+    PrinterSerialUnknown { printer: _ } => false
+    PrinterSerialUnrecorded { printer: _ } => false
+    PrinterSerialAmbiguous { printer: _ } => false
+  }
+}
+
+test fn the_two_printers_resolve_different_serials() -> Bool {
+  match printer_serial(printer: printer_01) {
+    PrinterSerialFound { serial: one } =>
+      match printer_serial(printer: printer_02) {
+        PrinterSerialFound { serial: two } => (one as String) != (two as String)
+        PrinterSerialUnknown { printer: _ } => false
+        PrinterSerialUnrecorded { printer: _ } => false
+        PrinterSerialAmbiguous { printer: _ } => false
+      }
+    PrinterSerialUnknown { printer: _ } => false
+    PrinterSerialUnrecorded { printer: _ } => false
+    PrinterSerialAmbiguous { printer: _ } => false
+  }
+}
+
+// THE QoS CHOICE IS ARGUED IN THE PROTOCOL MODULE AND PINNED HERE. AtMostOnce may be dropped
+// silently, which for a start command means a job that never begins and nothing that says why; the
+// wire level is asserted alongside the variant so a renumbering cannot pass unnoticed.
+test fn the_start_command_is_not_published_at_most_once() -> Bool {
+  match bambu_start_command_qos {
+    AtMostOnce => false
+    AtLeastOnce => mqtt_qos_wire_level(qos: bambu_start_command_qos) == 1
+    ExactlyOnce => mqtt_qos_wire_level(qos: bambu_start_command_qos) == 2
+  }
+}
+
+// THE START PAYLOAD NAMES A FILE ALREADY ON THE MACHINE, and names THIS one. A payload that carried
+// a stale or defaulted name would start whichever project happened to be on the card.
+test fn the_start_payload_names_the_delivered_file() -> Bool {
+  let json = bambu_start_payload_json(
+    command: bambu_start_command(remote_name: a_remote_name), sequence_id: "7")
+  string_contains(s: json, pattern: "file:///sdcard/gauge_container.3mf")
+    && string_contains(s: json, pattern: "\"sequence_id\": \"7\"")
+    && string_contains(s: json, pattern: "\"command\": \"project_file\"")
+}
+
+// use_ams IS FALSE, and it is checked rather than trusted to the constructor. The operator's
+// constraint is one filament per printer -- printer-01 white, printer-02 black -- and a true here
+// would make the machine wait on an AMS that is not bound to this print.
+test fn the_start_payload_does_not_ask_for_an_ams() -> Bool {
+  let json = bambu_start_payload_json(
+    command: bambu_start_command(remote_name: a_remote_name), sequence_id: "1")
+  string_contains(s: json, pattern: "\"use_ams\": false")
+}
+
+// THE BROKER IS TLS, MEASURED ON THE MACHINE RATHER THAN ASSUMED FROM THE PORT NUMBER.
+test fn the_lan_broker_endpoint_is_tls() -> Bool {
+  let endpoint = bambu_lan_mqtt_endpoint(host: a_host)
+  match endpoint.security {
+    MqttOverTls => (endpoint.host as String) == (a_host as String)
+    MqttPlaintext => false
+  }
+}
+
+// THE INCIDENT ITSELF, ENROLLED. The first wet publish returned exit 7, "The connection was lost",
+// and this leg reported "the start command was not published". The printer was printing. Until these
+// rows existed the repair was protected by prose and source inspection only -- which is exactly the
+// state that let the original classification ship.
+//
+// start_refusal IS PURE AND TAKES THE THREE DISCRIMINATING FACTS, which is what makes the red
+// authorable at all. Reaching this through the effect would need a real broker that accepts a TCP
+// connection and then drops it mid-publish; the classification is the part that was wrong, and it is
+// reachable from a fixture.
+test fn a_lost_connection_is_not_reported_as_a_refusal() -> Bool {
+  match classify_publish_outcome(
+    printer: printer_02,
+    outcome: ProcessRefused { exit_code: 7, stderr: "Error: The connection was lost." },
+    topic: bambu_request_topic(serial: a_serial),
+    remote_name: a_remote_name,
+    sequence_id: "1" as NonEmptyStr,
+    cleaned: true) {
+    PrintStartOutcomeUnknown { printer: _, cause: _ } => true
+    PrintStartRefused { printer: _, cause: _ } => false
+    PrintStartOutcomeUnknownResidueRemains { printer: _, cause: _ } => false
+    PrintStartRefusedResidueRemains { printer: _, cause: _ } => false
+    PrintStartPublished { receipt: _ } => false
+    PrintStartPublishedCleanupRefused { receipt: _, cause: _ } => false
+  }
+}
+
+// THE RESIDUE ARM CARRIES THE SAME CLASSIFICATION. A publish whose outcome is unknown AND whose
+// credential shred failed is two facts; collapsing the first into "refused" because the second went
+// wrong would lose exactly the fact that matters for whether a retry is safe.
+test fn an_unknown_outcome_with_residue_is_still_unknown() -> Bool {
+  match start_refusal(printer: printer_02, stderr: "Error: The connection was lost.", cleaned: false) {
+    PrintStartOutcomeUnknownResidueRemains { printer: _, cause: _ } => true
+    PrintStartOutcomeUnknown { printer: _, cause: _ } => false
+    PrintStartRefused { printer: _, cause: _ } => false
+    PrintStartRefusedResidueRemains { printer: _, cause: _ } => false
+    PrintStartPublished { receipt: _ } => false
+    PrintStartPublishedCleanupRefused { receipt: _, cause: _ } => false
+  }
+}
+
+// NO EXIT-CODE TABLE IS CONSULTED, so an auth failure classifies exactly like a lost connection.
+// That is deliberate rather than lazy: mosquitto_pub does distinguish the two, but this repository
+// has not measured that mapping, and this file's neighbouring modules record what happens when a
+// mapping is inferred from the shape of a situation instead. If the table is ever measured, THIS row
+// is the one that must be changed to admit the narrower arm -- which is the point of enrolling it.
+test fn every_nonzero_publish_result_is_unknown_until_the_table_is_measured() -> Bool {
+  match classify_publish_outcome(
+    printer: printer_02,
+    outcome: ProcessRefused { exit_code: 5, stderr: "Connection Refused: not authorised." },
+    topic: bambu_request_topic(serial: a_serial),
+    remote_name: a_remote_name,
+    sequence_id: "1" as NonEmptyStr,
+    cleaned: true) {
+    PrintStartOutcomeUnknown { printer: _, cause: _ } => true
+    PrintStartRefused { printer: _, cause: _ } => false
+    PrintStartOutcomeUnknownResidueRemains { printer: _, cause: _ } => false
+    PrintStartRefusedResidueRemains { printer: _, cause: _ } => false
+    PrintStartPublished { receipt: _ } => false
+    PrintStartPublishedCleanupRefused { receipt: _, cause: _ } => false
+  }
+}
+
+// THE CAUSE MUST TELL A READER THE PRINTER MAY BE PRINTING, because the human consequence of the
+// original defect was a message that invited a retry. A carrier renamed without its diagnostic
+// following is the wrapper-is-not-safety failure.
+test fn the_unknown_cause_warns_that_the_printer_may_be_printing() -> Bool {
+  match start_refusal(printer: printer_02, stderr: "Error: The connection was lost.", cleaned: true) {
+    PrintStartOutcomeUnknown { printer: _, cause: c } =>
+      string_contains(s: c as String, pattern: "UNKNOWN")
+        && string_contains(s: c as String, pattern: "may be printing")
+        && string_contains(s: c as String, pattern: "Do NOT publish again")
+    PrintStartRefused { printer: _, cause: _ } => false
+    PrintStartOutcomeUnknownResidueRemains { printer: _, cause: _ } => false
+    PrintStartRefusedResidueRemains { printer: _, cause: _ } => false
+    PrintStartPublished { receipt: _ } => false
+    PrintStartPublishedCleanupRefused { receipt: _, cause: _ } => false
+  }
+}
+
+// THE NO-REPLAY LAW OVER THE WHOLE COPRODUCT -- AND IT USED TO SAY THAT WHILE COVERING FOUR ARMS OF
+// SIX. The population came from the two pure producers, which between them reach Unknown,
+// Unknown+residue, Published and Published+cleanup-refused; the two Refused arms have no pure
+// producer, because the only paths that reach them are the serial, endpoint, credential and
+// workspace refusals inside the effect. The comment asserted a universal and the list was
+// existential, which is the same overclaim this branch has been finding in prose all day, written
+// into the row that is supposed to be the check.
+//
+// PrintStart IS AN ORDINARY COPRODUCT, so those two arms are constructible directly. A variant
+// literal is the honest fixture here: nothing about the replay law depends on how an arm was
+// produced, only on which arm it is.
+fn every_start_outcome_arm() -> List<PrintStart> {
+  [
+    start_refusal(printer: printer_02, stderr: "Error: The connection was lost.", cleaned: true),
+    start_refusal(printer: printer_02, stderr: "Error: The connection was lost.", cleaned: false),
+    start_receipt(printer: printer_02, topic: bambu_request_topic(serial: a_serial),
+      remote_name: a_remote_name, sequence_id: "1" as NonEmptyStr, cleaned: true),
+    start_receipt(printer: printer_02, topic: bambu_request_topic(serial: a_serial),
+      remote_name: a_remote_name, sequence_id: "1" as NonEmptyStr, cleaned: false),
+    PrintStartRefused { printer: printer_02, cause: "a fixture refusal" as NonEmptyStr },
+    PrintStartRefusedResidueRemains { printer: printer_02, cause: "a fixture refusal with residue" as NonEmptyStr },
+  ]
+}
+
+test fn no_start_outcome_authorizes_a_second_publish() -> Bool {
+  (every_start_outcome_arm() |> filter(o => start_may_be_replayed(o: o)) |> length) == 0
+}
+
+// THE POSITIVE CONTROL FOR THE ROW ABOVE, AND ITS COUNT IS THE COPRODUCT'S WIDTH. A filter over an
+// empty list is also zero, so the law needs a witness that it examined anything -- and asserting SIX
+// rather than "more than zero" is what makes an arm added later without a fixture fail here as well
+// as at the total match in production.
+test fn the_no_replay_law_examined_every_arm() -> Bool {
+  (every_start_outcome_arm() |> length) == 6
+}
+
+// THE TWO REFUSED ARMS ARE REALLY IN THE POPULATION, not four Unknowns wearing different names. A
+// count of six passes just as well if a producer silently returns the wrong variant, which is
+// exactly what this file exists to catch one function over.
+test fn the_population_contains_both_refused_arms() -> Bool {
+  let refused_arms = every_start_outcome_arm() |> filter(o =>
+    match o {
+      PrintStartRefused { printer: _, cause: _ } => true
+      PrintStartRefusedResidueRemains { printer: _, cause: _ } => true
+      PrintStartPublished { receipt: _ } => false
+      PrintStartPublishedCleanupRefused { receipt: _, cause: _ } => false
+      PrintStartOutcomeUnknown { printer: _, cause: _ } => false
+      PrintStartOutcomeUnknownResidueRemains { printer: _, cause: _ } => false
+    })
+  (refused_arms |> length) == 2
+}
+
+// A CLEAN PUBLISH STILL REACHES THE PUBLISHED ARM, so the reclassification above did not simply
+// route everything to unknown. Without this the four rows would pass on a leg that never succeeds.
+test fn a_clean_publish_is_still_published() -> Bool {
+  match classify_publish_outcome(
+    printer: printer_02, outcome: ProcessOutputAbsent,
+    topic: bambu_request_topic(serial: a_serial),
+    remote_name: a_remote_name, sequence_id: "1" as NonEmptyStr, cleaned: true) {
+    PrintStartPublished { receipt: _ } => true
+    PrintStartPublishedCleanupRefused { receipt: _, cause: _ } => false
+    PrintStartOutcomeUnknown { printer: _, cause: _ } => false
+    PrintStartOutcomeUnknownResidueRemains { printer: _, cause: _ } => false
+    PrintStartRefused { printer: _, cause: _ } => false
+    PrintStartRefusedResidueRemains { printer: _, cause: _ } => false
+  }
+}
+
+// THE PAYLOAD IS ESCAPED BY CONSTRUCTION, WHICH IS THE HALF OF THE JSON REPAIR THAT CAN BITE. The
+// previous version spliced values between literal quotes, so a quote or backslash in a field
+// produced a malformed or attacker-shaped document with no arm that could refuse it -- the
+// string-concat route never examines a value, so it has nowhere to put a refusal. Going through
+// json_string applies the escape by construction instead.
+//
+// NEITHER FIELD IS CALLER-AUTHORED TODAY, and that is exactly why this row is worth enrolling: the
+// remote name is digest-derived and the sequence id is a mktemp path, so nothing has broken and
+// nothing would. That is a property of the current callers, not of the function, and a check whose
+// red depends on a caller nobody has written yet is the one that quietly stops being true.
+test fn a_quote_in_the_subtask_name_is_escaped_rather_than_closing_the_string() -> Bool {
+  let json = bambu_start_payload_json(
+    command: bambu_start_command(remote_name: "evil\".3mf" as NonEmptyStr),
+    sequence_id: "1" as NonEmptyStr)
+  string_contains(s: json, pattern: "evil\\\".3mf")
+    && !string_contains(s: json, pattern: "\"subtask_name\": \"evil\".3mf\"")
+}
+
+test fn a_backslash_in_the_sequence_id_is_escaped() -> Bool {
+  let json = bambu_start_payload_json(
+    command: bambu_start_command(remote_name: a_remote_name),
+    sequence_id: "a\\b" as NonEmptyStr)
+  string_contains(s: json, pattern: "\"sequence_id\": \"a\\\\b\"")
+}
+
+// THE POSITIVE CONTROL: an ordinary value passes through unmangled, so the two rows above are not
+// green merely because the escaper mangles everything.
+test fn an_ordinary_sequence_id_is_not_altered() -> Bool {
+  let json = bambu_start_payload_json(
+    command: bambu_start_command(remote_name: a_remote_name),
+    sequence_id: "plain-1" as NonEmptyStr)
+  string_contains(s: json, pattern: "\"sequence_id\": \"plain-1\"")
+}
