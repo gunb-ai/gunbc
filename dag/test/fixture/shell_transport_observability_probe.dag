@@ -1,0 +1,33 @@
+module test.fixture.shell_transport_observability_probe
+
+import std.types { String, Bool, Int }
+
+// Discriminating RED and positive control for the E0S0 emptiness contract
+// (test.claim.shell_transport_observability_witness). WhollyUnobservable declares
+// only exit_code: writable, and the live enumerator currently contains zero such
+// rows. ReportsTermination is the non-vacuity control on the same fixture: Bool
+// from exit_success, so the classifier answers Observable. Neither is dispatched.
+
+data shell_transport_observability_probe_note: String = "Planted RED and positive control for wholly-unobservable shell-transport operations. WhollyUnobservable outputs only exit_code; ReportsTermination outputs Bool from exit_success. The corpus witness enrolls both by existing under dag/test/fixture and excludes this path from the live emptiness contract. Never invoked."
+
+service ShellTransportObservabilityProbe {
+  operation WhollyUnobservable {
+    output { code: Int from "exit_code" }
+    readonly
+    transport shell { argv: ["true"] }
+    exit {
+      0 => Unit
+      nonzero => String "unreachable: declaration-only probe is never dispatched"
+    }
+  }
+
+  operation ReportsTermination {
+    output { ok: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["true"] }
+    exit {
+      0 => Unit
+      nonzero => String "unreachable: declaration-only probe is never dispatched"
+    }
+  }
+}

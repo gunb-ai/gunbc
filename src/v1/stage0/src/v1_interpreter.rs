@@ -18009,6 +18009,15 @@ macro_rules! v1_builtin_arms {
                                         .collect::<Vec<_>>(),
                                 ),
                             ),
+                            (
+                                $ctx.sym("output_from_keys"),
+                                list_value(
+                                    row.output_from_keys
+                                        .into_iter()
+                                        .map(str_value)
+                                        .collect::<Vec<_>>(),
+                                ),
+                            ),
                         ])),
                     });
                 }

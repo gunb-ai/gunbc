@@ -1,0 +1,85 @@
+module test.claim.shell_transport_observability_witness
+
+import std.types { String, Bool }
+import v2.std.algebra { any }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.operation_argv { ShellTransportOperationRow }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// E is a stdout or stdout_lines from-key; S is exit_success, success, or exists.
+// Those bits are read from shell_transport_operation_rows.output_from_keys with no
+// argv materialization.
+//
+// The census A0B0C0 slice had E0S0 empty. The SAME definition over the live
+// enumerator is NOT empty: browser.Page.Close (and siblings) declare output {};
+// git.Plumbing and some git.Core ops declare only exit_code and stderr. Emptiness
+// of E0S0 is therefore not a present corpus contract, and this file does not
+// assert it. Shipping an empty-cell witness would either fail the floor on those
+// rows or exclude them and become the absorbing fallback.
+//
+// What these tests establish: the classifier answers WhollyUnobservable on an
+// authorable planted RED (exit_code only) and Observable on a planted
+// termination Bool. They establish NOTHING about useful failure (E1S0 /
+// Clock.UnixMillis still cannot represent failure as a Bool). Unrepresentability
+// is mechanical; a "declared shape vs contract" inference is not.
+//
+// Would an emptiness wall have caught anything real? It catches members today.
+// That is why emptiness is not claimed here.
+
+data shell_transport_observability_probe_path: String = "dag/test/fixture/shell_transport_observability_probe.dag"
+
+type ShellTransportDeclaredObservability
+  = Observable
+  | WhollyUnobservable
+
+fn from_key_is_stdout_product(key: String) -> Bool {
+  key == "stdout" || key == "stdout_lines"
+}
+
+fn from_key_is_termination_report(key: String) -> Bool {
+  key == "exit_success" || key == "success" || key == "exists"
+}
+
+fn shell_transport_row_observability(row: ShellTransportOperationRow) -> ShellTransportDeclaredObservability {
+  let e = any(xs: row.output_from_keys, predicate: fn(k) { from_key_is_stdout_product(key: k) })
+  let s = any(xs: row.output_from_keys, predicate: fn(k) { from_key_is_termination_report(key: k) })
+  if e || s {
+    Observable
+  } else {
+    WhollyUnobservable
+  }
+}
+
+fn shell_transport_row_is_wholly_unobservable(row: ShellTransportOperationRow) -> Bool {
+  match shell_transport_row_observability(row: row) {
+    Observable => false
+    WhollyUnobservable => true
+  }
+}
+
+fn shell_transport_row_is_planted_unobservable_red(row: ShellTransportOperationRow) -> Bool {
+  row.at.path == shell_transport_observability_probe_path
+    && row.at.operation == "WhollyUnobservable"
+    && shell_transport_row_is_wholly_unobservable(row: row)
+}
+
+fn shell_transport_row_is_planted_termination_control(row: ShellTransportOperationRow) -> Bool {
+  row.at.path == shell_transport_observability_probe_path
+    && row.at.operation == "ReportsTermination"
+    && !shell_transport_row_is_wholly_unobservable(row: row)
+}
+
+test fn witness_planted_wholly_unobservable_red_enrolls() -> Bool {
+  any(
+    xs: shell_transport_operation_rows(),
+    predicate: fn(row) { shell_transport_row_is_planted_unobservable_red(row: row) }
+  )
+}
+
+test fn witness_planted_termination_report_is_observable() -> Bool {
+  any(
+    xs: shell_transport_operation_rows(),
+    predicate: fn(row) { shell_transport_row_is_planted_termination_control(row: row) }
+  )
+}

@@ -92,10 +92,14 @@ type ArgvMaterialization
   = ArgvMaterialized { argv: List<String> }
   | ArgvMaterializationRefused { at: OperationRef, cause: ArgvRefusalCause }
 
+// output_from_keys are the declaration's output `from` keys, read by
+// shell_transport_operation_rows with no argv evaluation. E/S observability is a
+// witness contract over those keys, not a fact this row invents.
 type ShellTransportOperationRow {
   at: OperationRef
   declared_inputs: List<String>
   argv_input_refs: List<String>
+  output_from_keys: List<String>
 }
 
 fn operation_argv_bind_text(name: String, text: String) -> OperationInputBinding {

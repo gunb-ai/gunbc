@@ -36026,6 +36026,31 @@ pub struct ShellTransportOperationCensusRow {
     pub operation: String,
     pub declared_inputs: Vec<String>,
     pub argv_input_refs: Vec<String>,
+    pub output_from_keys: Vec<String>,
+}
+
+fn operation_output_from_keys(
+    op: &Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> Vec<String> {
+    let Some(inferred) = op.inferred.clone() else {
+        return Vec::new();
+    };
+    let Some(return_type) = crate::v1_std_core::inferred_to_node(inferred) else {
+        return Vec::new();
+    };
+    let mut keys: Vec<String> = Vec::new();
+    for field in return_type.children.iter() {
+        let Some(key) =
+            crate::v1_std_core::field_node_from_key(field.clone(), source_indices.clone())
+        else {
+            continue;
+        };
+        if !keys.contains(&key) {
+            keys.push(key);
+        }
+    }
+    keys
 }
 
 fn collect_argv_input_refs(
@@ -36135,6 +36160,7 @@ pub fn shell_transport_operation_rows() -> Vec<ShellTransportOperationCensusRow>
                         .map(|(name, _)| name)
                         .collect(),
                     argv_input_refs,
+                    output_from_keys: operation_output_from_keys(op, &source_indices),
                 });
             }
         }
