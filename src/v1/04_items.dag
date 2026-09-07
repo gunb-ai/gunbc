@@ -263,10 +263,9 @@ fn item_kind(item: Node) -> ItemKind {
 // emitted Rust needs is never synthesized -- the seed then fails to build on a function it cannot
 // name. The merged registry is the same object every consumer of this index is already reading, and
 // it holds one row per declaration identity, so deriving from it makes the index complete exactly
-// when the registry is. A leaf two modules declare gets the empty owner, which is not a legal module
-// path, so consumers refuse rather than taking whichever row was folded last. The ambiguous case is
-// now the LeafAmbiguous ARM of v1.std.core LeafOwner rather than an in-band empty string, so no
-// reader can forget to test for it and no producer can forget to mark it.
+// when the registry is. A leaf two modules declare answers the LeafAmbiguous arm of v1.std.core
+// LeafOwner rather than a row, so a consumer reaches an owner only by writing the arm that says
+// there is none, and never by taking whichever row was folded last.
 fn leaf_owner_modules_from_registry(registry: Map<String, ItemInfo>) -> Map<String, LeafOwner> {
   registry |> map_keys |> fold(init: empty_map(), f: (acc, key) =>
     match map_get(registry, key) {
