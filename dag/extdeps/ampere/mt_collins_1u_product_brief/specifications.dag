@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure {
   Bandwidth, BitWidth, ByteSize, Hertz, MegatransfersPerSecond, Millimeter, RackUnit, Watt,
-  bandwidth, bit_width, byte_size, hertz, megatransfers_per_second, millimeter, rack_unit, watt,
+  bandwidth, bandwidth_count, bit_width, byte_size, hertz, megatransfers_per_second, millimeter, rack_unit, watt,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.ampere.mt_collins_1u_product_brief.subject {
@@ -13,8 +13,6 @@ import extdeps.ampere.mt_collins_1u_product_brief.subject {
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = mt_collins_1u_brief_authority
-
-data specifications_subject_edge_note: String = "SPECIFICATION FACTS JOIN THE DOCUMENT THAT STATES THEM, on the platform-module pattern used by the 2U brief: the subject module owns mt_collins_1u_public_product_brief and this row is the typed edge binding the rows below to it."
 
 data mt_collins_1u_specifications_subject: MtCollins1UPublicProductBrief = mt_collins_1u_public_product_brief
 
@@ -71,13 +69,14 @@ data mt_collins_1u_ocp_slot: OcpSlotStanding = OcpMezzanineSlotPresent {
 }
 
 fn mt_collins_1u_has_onboard_ten_gigabit() -> Bool {
-  false
+  bandwidth_count(b: mt_collins_1u_onboard_data_network.per_port_bandwidth) >= 10000000000
 }
 
 fn mt_collins_1u_ten_gigabit_requires_ocp_card() -> Bool {
   match mt_collins_1u_ocp_slot {
     NoOcpSlot => false,
-    OcpMezzanineSlotPresent { generation, multi_host, occupancy_note } => true,
+    OcpMezzanineSlotPresent { generation: _, multi_host: _, occupancy_note: _ } =>
+      !mt_collins_1u_has_onboard_ten_gigabit(),
   }
 }
 
@@ -182,8 +181,6 @@ data mt_collins_1u_management: MtCollins1UManagement = MtCollins1UManagement {
 // stand: the platform is specified for Redfish, the shipped firmware on the held unit does not
 // implement it. Anything planning to drive these machines over Redfish must treat the collateral
 // as a specification and the unit as the authority, and re-observe per firmware revision.
-data mt_collins_1u_redfish_divergence_note: String = "Brief lists Redfish; held unit firmware exposes no /redfish/v1 (private held-unit BMC access receipt, 2026-08-29). Specification-versus-shipped-firmware divergence, not a contradiction in either source."
-
 type MtCollins1UChassisDimensions {
   length: Millimeter
   width: Millimeter
@@ -210,8 +207,6 @@ data mt_collins_1u_dimensions: MtCollins1UChassisDimensions = MtCollins1UChassis
 // carries a height its own form-factor label contradicts, which means the discrepancy was never
 // listing-versus-specification: it is internal to the vendor's collateral. Depth is unaffected
 // and remains the load-bearing rack-planning figure at ~847 mm for both.
-data mt_collins_form_factor_resolution_note: String = "The 1U variant is vendor-documented (AMP 2020-0073). Both briefs state 1.7 in height, which is 1U, so the 2U-titled brief's own dimensions contradict its form-factor label. Treat the form-factor LABEL in the 2U brief as unreliable and the height figure as the fact; the held unit's 1U chassis part 1A624RA00-600-G agrees with the height, not the label."
-
 data mt_collins_1u_specifications_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
