@@ -1,6 +1,6 @@
 module tools.ci_gates
 
-import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import gunbc.ci_gate { EmitHostGate, Gate, CheapClaimPoolGate }
 import gunbc.ci_spec {
   gunbc_ci_gates, CiSpec,
@@ -17,10 +17,6 @@ import tools.extdeps_scope_placement_gate { run_extdeps_scope_placement_gate }
 import tools.prose_row_introduction_gate { run_prose_row_introduction_gate }
 import gunbc.rung_drop { rung_drop_declaration_message }
 import gunbc.rung_drop.source_root_ingest_gate_rung_drop { source_root_ingest_gate_rung_drop }
-
-fn exit_ok(e: ProcessExit) -> Bool {
-  match e { ExitSuccess => true  _ => false }
-}
 
 fn run_spec_gate(g: Gate) -> ProcessExit {
   match g {
@@ -39,7 +35,10 @@ fn run_spec_gate(g: Gate) -> ProcessExit {
 
 fn run_gate_list(gates: List<Gate>) -> ProcessExit {
   fold(gates, init: ExitSuccess, f: fn(acc, g) {
-    if exit_ok(e: acc) { run_spec_gate(g: g) } else { acc }
+    match acc {
+      ExitSuccess => run_spec_gate(g: g)
+      ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
+    }
   })
 }
 
