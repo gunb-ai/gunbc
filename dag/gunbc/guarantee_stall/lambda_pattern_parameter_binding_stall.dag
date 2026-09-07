@@ -11,7 +11,8 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // kind of claim no Accepted program can check, so a false one never reds and drifts in the
 // direction that flatters its row; this correction is recorded rather than silently substituted
 // so the next reader knows the population was measured against the tree, not against this prose.
-// The collection members are not re-asserted here: they were not measured for this correction.
+// The collection members are not re-asserted here: this row names them and leaves their status to
+// the instrument that reports it, rather than carrying a second copy of an answer it cannot check.
 data lambda_pattern_parameter_binding_stall: GuaranteeStall = GuaranteeStall {
   subject: "match-pattern-bound CALLABLE binding surviving into application at the lambda consumer boundary",
   current: OutsideTheLadder,
@@ -21,9 +22,9 @@ data lambda_pattern_parameter_binding_stall: GuaranteeStall = GuaranteeStall {
   },
   population: BoundedPopulation {
     members: Cons {
-      head: "algebra_receiver_callable_witness_test.dag -- THE LIVE RED AND THE DECLARED SUBJECT, not a passing control. It refuses on the required floor at dag/test/claim/algebra_receiver_callable_witness_test.dag:17:35, error: function 'invoke' not found in scope, on the arm CallbackPresent { invoke } => invoke(41) == 42: a callable bound by a match pattern and applied in the body, which is this row's grounding verbatim. Byte-identical across 8931ebde40f, 5e1dbb80178 and 82d986981b1, so the refusal is neither introduced nor repaired by the mirror work on this branch.",
+      head: "test.claim.algebra_receiver_callable_witness_test matched_generic_callable_alias_remains_callable -- the declared subject and the member that still fails, not a passing control. Its failing arm is CallbackPresent { invoke } => invoke(41) == 42 -- a callable bound by a match pattern and applied in the body, which is this row's grounding verbatim and is what makes the row checkable against the source rather than against this prose; the required floor's witnesses lane is the instrument that reports the refusal, and gunbc.ci.ci_layer_roots carries its bounded floor exclusion.",
       tail: Cons {
-        head: "algebra_receiver_application_witness_test.dag and algebra_receiver_forwarding_witness_test.dag (collection-side receiver controls; NOT re-measured for this correction and asserted neither green nor red here -- the earlier claim that they pass is withdrawn rather than restated, because it is the claim that misled two readers)",
+        head: "test.claim.algebra_receiver_application_witness_test and test.claim.algebra_receiver_forwarding_witness_test -- the collection-side receiver controls. This row asserts nothing about their status: the earlier claim that they pass is withdrawn rather than restated, because an unexecutable claim about them is what misled two reviewers into reading this stall as self-discharging. Their status is whatever the required floor reports.",
         tail: Cons {
           head: "emission_provenance_test (external specimen, shape-similar; causal relationship UNMEASURED)",
           tail: Empty {}

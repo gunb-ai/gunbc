@@ -544,6 +544,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: unbound_dissolution(description: "the owner-resolution capability carries declared container-alias identity to variant_reference_inferred_node; re-enroll these controls through the floor owner")
   },
   WitnessExclusionRow {
+    pattern: "algebra_receiver_callable_witness_test.dag",
+    classification: OfflineLocalRecipe,
+    reason: "local callable-boundary control: retained as the discriminating RED for gunbc.guarantee_stall.lambda_pattern_parameter_binding_stall, whose declared subject is a match-pattern-bound callable surviving into application. It refuses under the candidate compiler because that binding does not survive to the consumer boundary, which is the stall's grounding rather than a defect in the control. Excluded here rather than left red so the required floor states the loss instead of carrying an unowned refusal -- the sibling alias control above is excluded on the same basis and this row is deliberately its parallel",
+    dissolution: unbound_dissolution(description: "the capability named by lambda_pattern_parameter_binding_stall's next_rung_trigger holds -- a match-pattern-bound collection or callable survives into lambda-parameter member access or application with the binding preserved at the consumer boundary; re-enroll this control through the floor and the stall row and this exclusion dissolve together")
+  },
+  WitnessExclusionRow {
     pattern: "claim/complexity/accumulator_copy_roster_gate",
     classification: OfflineLocalRecipe,
     reason: "operator-ruled OFFLINE roster gate (~15m serial interpreted resolve; runtime filesystem_read data deps invisible to closure attribution — see accumulator_copy_roster_gate_exclusion_note)",
