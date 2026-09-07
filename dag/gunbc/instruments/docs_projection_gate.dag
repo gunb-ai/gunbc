@@ -10,6 +10,15 @@ import gunbc.generated_artifact {
 }
 import tools.docs_projection_agreement { docs_projection_bytes_agree }
 
+fn write_docs_projection(path: String, content: String) -> ProcessExit {
+  let w = Filesystem.Write(path: path, content: content)
+  if w.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat(concat("write failed for ", path), concat(": ", w.error)))
+  }
+}
+
 // THE CLEANLY-EXITING ACTUATOR FOR docs/*.md LEDGER PROJECTIONS.
 //
 // gunbc.generated_artifact_gate main_wet folds the WHOLE committed registry, and resolving
@@ -20,16 +29,6 @@ import tools.docs_projection_agreement { docs_projection_bytes_agree }
 // not return a ProcessExit on the runners that SIGKILL it), so three rostered rows sat in the
 // authority while docs/design-failure-modes.md stayed stale and nothing that completes could
 // say so.
-
-fn write_docs_projection(path: String, content: String) -> ProcessExit {
-  let w = Filesystem.Write(path: path, content: content)
-  if w.success {
-    ExitSuccess
-  } else {
-    exit_failure(reason: concat(concat("write failed for ", path), concat(": ", w.error)))
-  }
-}
-
 func regen() -> ProcessExit {
   let first = write_docs_projection(
     path: artifact_path(a: DesignFailureModesArtifact),

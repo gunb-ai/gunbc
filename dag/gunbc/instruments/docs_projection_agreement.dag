@@ -2,15 +2,13 @@ module tools.docs_projection_agreement
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 
+data docs_projection_regen_command: String = "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/docs_projection_gate.dag --function regen"
+
 // ONE PURE VERDICT OVER ONE PATH'S EXPECTED AND COMMITTED BYTES. Production regen and the
 // required generated-artifact phase both reach a ProcessExit through this function, so a fixture
 // can present drifted ledger bytes without resolving gunbc.generated_artifact_emit or writing
 // the live tree. The path is an argument because the diagnostic must name the file; production
 // callers pass artifact_path from gunbc.generated_artifact, the single location authority.
-
-data docs_projection_regen_command: String =
-  "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/docs_projection_gate.dag --function regen"
-
 fn docs_projection_bytes_agree(path: String, expected: String, committed: String) -> ProcessExit {
   if expected == committed {
     ExitSuccess
