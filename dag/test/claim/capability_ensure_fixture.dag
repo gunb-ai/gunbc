@@ -1,0 +1,68 @@
+module test.claim.capability_ensure_fixture
+
+import std.types { String, NonEmptyStr, FilePath }
+import gunbc.ensure { EnsureObserveOnly, EnsureObserved, EnsureAbsent }
+import gunbc.roadmap_execution_contract {
+  ExecutionCapability,
+  CapabilityRealization,
+}
+import gunbc.roadmap_dispatch_environment {
+  CapabilityEnsureReceipt,
+  capability_ensure_receipt,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FIXTURE AUTHORITY FOR A GROUNDED CAPABILITY RECEIPT, and it is a fixture authority rather than
+// a second observer. It asserts the identity match instead of running one: no IsExecutable and no
+// identity command execute here, so what it produces is a receipt whose positive standing rests on
+// this module's word. That is exactly why it is named, admitted one place, and confined to witnesses.
+//
+// WHY IT EXISTS AT ALL. capability_ensure_receipt is the mint for the sealed GroundedCapabilityEnsure
+// and is admitted to capability_ensure_observe -- the route that actually runs the executable probe
+// and the declared identity command. A witness cannot drive that route: capability_ensure_observe
+// takes no execution context and reaches ambient shell effects directly, so unlike
+// gunbc.typed_remote_file_write converge_typed_remote_file -- which receives a FleetSshExecutionContext
+// and is therefore drivable over a hermetic fixture -- there is nothing to substitute.
+//
+// NEXT-RUNG TRIGGER, naming the CAPABILITY and not this file: an injected execution context for the
+// capability observation route, so a witness can drive capability_ensure_observe itself over a
+// hermetic context and receive a receipt from the production observer. When that exists this fixture
+// authority is deleted and its admission with it, because the positive control would then come from
+// the route that observes rather than from a module that asserts.
+fn grounded_capability_ensure_witness_fixture(
+  cap: ExecutionCapability,
+  executable: FilePath,
+  identity: NonEmptyStr,
+  evidence: String,
+) -> CapabilityEnsureReceipt {
+  capability_ensure_receipt(
+    realization: CapabilityRealization {
+      capability: cap,
+      executable: executable,
+      identity_args: [],
+      identity_contains: identity,
+      ensure_policy: EnsureObserveOnly,
+    },
+    observation: EnsureObserved { evidence: evidence },
+    identity_matches: true,
+  )
+}
+
+// THE REFUSING COUNTERPART, and it carries NO AUTHORITY, which is why it is a different function
+// rather than a Bool parameter on the one above. It passes EnsureAbsent with identity_matches false,
+// so the classifier can only reach CapabilityNotGrounded: there is no argument a caller can vary to
+// make this mint the sealed positive. Its witnesses exercise the refusal REASONS the classifier
+// derives -- an observe-only absence refusing rather than fabricating an Apply, and a may-apply
+// policy with no typed plan still refusing -- which is production behaviour worth holding.
+fn refused_capability_ensure_witness_fixture(
+  realization: CapabilityRealization,
+  reason: String,
+) -> CapabilityEnsureReceipt {
+  capability_ensure_receipt(
+    realization: realization,
+    observation: EnsureAbsent { reason: reason },
+    identity_matches: false,
+  )
+}

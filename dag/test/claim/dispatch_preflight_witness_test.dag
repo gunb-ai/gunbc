@@ -7,12 +7,11 @@ import gunbc.roadmap_execution_contract {
   TmuxSessionCapability,
   CapabilityRealization,
 }
-import gunbc.ensure { EnsureObserveOnly, EnsureObserved }
 import gunbc.roadmap_dispatch_environment {
   CapabilityEnsureReceipt,
   CapabilityNotGrounded,
-  capability_ensure_receipt,
 }
+import test.claim.capability_ensure_fixture { grounded_capability_ensure_witness_fixture }
 import gunbc.fleet_desired_observe {
   LocalTreeRevision,
   LocalTreeRevisionObserved,
@@ -60,18 +59,11 @@ data local_hex: String = "517fdac4ddf92d0dd636c1f66fdb95b508525067"
 // one directly would be manufacturing exactly the standing that fold consumes. The NEGATIVE arm stays
 // hand-authored and is meant to be -- nothing is admitted on the strength of a refusal.
 fn grounded_receipt() -> CapabilityEnsureReceipt {
-  capability_ensure_receipt(
-    realization: CapabilityRealization {
-      capability: GitWorkspaceCapability,
-      executable: "/usr/bin/git" as FilePath,
-      identity_args: ["--version"],
-      identity_contains: "git version" as NonEmptyStr,
-      ensure_policy: EnsureObserveOnly,
-    },
-    observation: EnsureObserved {
-      evidence: "exit=0 stdout=git version 2.43.0 stderr=",
-    },
-    identity_matches: true,
+  grounded_capability_ensure_witness_fixture(
+    cap: GitWorkspaceCapability,
+    executable: "/usr/bin/git" as FilePath,
+    identity: "git version" as NonEmptyStr,
+    evidence: "exit=0 stdout=git version 2.43.0 stderr=",
   )
 }
 

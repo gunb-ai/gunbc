@@ -240,11 +240,42 @@ fn capability_mismatch_reason(realization: CapabilityRealization) -> String {
   ], "")
 }
 
+// CALLER-SEALED, BECAUSE sole_constructor ALONE LEFT THIS OPEN. GroundedCapabilityEnsure cannot be
+// written as a record literal outside this module, but an unrestricted pure function that MINTS it
+// from ordinary caller-authored inputs is a public semantic constructor with a longer spelling. Given
+// EnsureObserved plus identity_matches: true, this derives Noop, supplies NotApplied, reports one
+// observation as both before and after, classifies it as grounding, and returns the sealed positive --
+// with no IsExecutable and no identity command having run. So
+//   capability_ensure_receipt(realization: <anything>, observation: EnsureObserved { ... }, identity_matches: true)
+// was exactly the bypass that CapabilityEnsureReceipt { grounded: true } used to be, and a complete
+// set of them still reached EnvironmentAdmitted. Sealing the RECORD moved the forgery; it did not
+// remove it.
+//
+// This is the same cut gunbc.typed_remote_file_write already makes, and the reason that half got it
+// right: the public classifier there returns an ordinary RemoteFileComparisonReport, while
+// remote_file_converged_from_report is admitted to the func that ran the effect.
+//
+// admit_callers here names capability_ensure_observe -- the route that runs the executable probe and
+// the declared identity command -- and one NAMED FIXTURE AUTHORITY, which asserts a match rather than
+// observing one and says so at its declaration. The fixture exception is not a second observer, and
+// it dissolves on the trigger recorded there: an injected execution context for this route, after
+// which a witness drives the real observer and the fixture is deleted.
+//
+// NOT SPLIT into a public classifier plus a restricted mint, which was the other sound shape offered.
+// Nothing in the corpus needs judgment without authority -- dispatch_preflight consumes receipts and
+// never classifies -- so a public classify_capability_ensure would be a declaration with no consumer,
+// which is the dangling-declaration class this change removes elsewhere (DESIGN 3c).
 fn capability_ensure_receipt(
   realization: CapabilityRealization,
   observation: EnsureObservation<String>,
   identity_matches: Bool,
-) -> CapabilityEnsureReceipt {
+) -> CapabilityEnsureReceipt
+  admit_callers: [
+    decl_ref(module_path: "gunbc.roadmap_dispatch_environment", decl_name: "capability_ensure_observe"),
+    decl_ref(module_path: "test.claim.capability_ensure_fixture", decl_name: "grounded_capability_ensure_witness_fixture"),
+    decl_ref(module_path: "test.claim.capability_ensure_fixture", decl_name: "refused_capability_ensure_witness_fixture"),
+  ]
+{
   let reconciled = ensure_reconcile(
     policy: realization.ensure_policy,
     before: observation,

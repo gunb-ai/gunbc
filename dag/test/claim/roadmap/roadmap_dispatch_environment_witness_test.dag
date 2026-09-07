@@ -31,13 +31,16 @@ import gunbc.roadmap_dispatch_environment {
   DispatchEnvironmentAdmission,
   EnvironmentAdmitted,
   EnvironmentRefused,
-  capability_ensure_receipt,
   missing_capability_receipt,
   receipt_grounded,
   receipt_decision,
   receipt_reason,
   dispatch_environment_admission_decision,
   dispatch_environment_admission_json,
+}
+import test.claim.capability_ensure_fixture {
+  grounded_capability_ensure_witness_fixture,
+  refused_capability_ensure_witness_fixture,
 }
 
 fn git_realization() -> CapabilityRealization {
@@ -76,10 +79,11 @@ fn grounded_receipt(
   realization: CapabilityRealization,
   evidence: String,
 ) -> CapabilityEnsureReceipt {
-  capability_ensure_receipt(
-    realization: realization,
-    observation: EnsureObserved { evidence: evidence },
-    identity_matches: true,
+  grounded_capability_ensure_witness_fixture(
+    cap: realization.capability,
+    executable: realization.executable,
+    identity: realization.identity_contains,
+    evidence: evidence,
   )
 }
 
@@ -89,16 +93,11 @@ fn grounded_receipt(
 // the admission fold trusts. The positive arm is sealed now, so this shape is no longer authorable here
 // at all -- the fixture goes through capability_ensure_receipt, which runs the consistency table.
 fn grounded_capability(cap: ExecutionCapability) -> CapabilityEnsureReceipt {
-  capability_ensure_receipt(
-    realization: CapabilityRealization {
-      capability: cap,
-      executable: "/fixture/executable" as FilePath,
-      identity_args: [],
-      identity_contains: "fixture identity evidence" as NonEmptyStr,
-      ensure_policy: EnsureObserveOnly,
-    },
-    observation: EnsureObserved { evidence: "fixture identity evidence" },
-    identity_matches: true,
+  grounded_capability_ensure_witness_fixture(
+    cap: cap,
+    executable: "/fixture/executable" as FilePath,
+    identity: "fixture identity evidence" as NonEmptyStr,
+    evidence: "fixture identity evidence",
   )
 }
 
@@ -154,10 +153,9 @@ test fn missing_capability_realization_refuses() -> Bool {
 }
 
 test fn observe_only_absence_never_fabricates_apply() -> Bool {
-  let receipt = capability_ensure_receipt(
+  let receipt = refused_capability_ensure_witness_fixture(
     realization: claim_realization(),
-    observation: EnsureAbsent { reason: "gunbc missing" },
-    identity_matches: false,
+    reason: "gunbc missing",
   )
   !receipt_grounded(receipt: receipt)
     && upsert_decision_label(decision: receipt_decision(receipt: receipt)) == "refuse"
@@ -172,10 +170,9 @@ test fn may_apply_without_a_typed_plan_still_refuses() -> Bool {
     identity_contains: "cargo" as NonEmptyStr,
     ensure_policy: EnsureMayApply,
   }
-  let receipt = capability_ensure_receipt(
+  let receipt = refused_capability_ensure_witness_fixture(
     realization: realization,
-    observation: EnsureAbsent { reason: "cargo missing" },
-    identity_matches: false,
+    reason: "cargo missing",
   )
   !receipt_grounded(receipt: receipt)
     && upsert_decision_label(decision: receipt_decision(receipt: receipt)) == "refuse"
