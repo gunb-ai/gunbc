@@ -8,6 +8,7 @@ import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
 import product.fabric.provider_route {
   ProviderRouteRef, CompliancePostureRevision, ProviderRouteFacts,
   data_path_closure_is_complete, downstream_is_assessed,
+  first_unresolved_obligation, downstream_obligation,
 }
 
 // THE EXECUTABLE JOIN. strategy.compliance_posture already claims that regional admission
@@ -15,12 +16,8 @@ import product.fabric.provider_route {
 // runner VM - and the code that actually places work admits on architecture, dedication,
 // interruption and price. Two authorities answer "may this job run here" and the deciding one
 // carries no compliance term, so the claim is prose over an unenforced path. This module is the
-// missing relation:
-//
-//   active posture revision x exact demand/work/customer/data scope x provider route
-//     -> provider-use admission
-//
-// and only the admitted arm may enter fabric selection.
+// missing relation: active posture revision x exact demand/work/customer/data scope x provider
+// route -> provider-use admission, and only the admitted arm may enter fabric selection.
 //
 // WHERE IT SITS IN THE ORDER, which is load-bearing and not a performance detail. Route
 // resolution and posture admission run FIRST, then executor capacity sanction, then fungibility,
@@ -29,6 +26,43 @@ import product.fabric.provider_route {
 // step earlier and more strongly: a sufficiently cheap offer must never buy its way through a
 // missing legal or data-handling authority. Compliance is not depleted by use, so it is not a
 // budget, and it does not belong anywhere in a selection cost.
+
+// A DISPOSITION IS A STANDING, NOT A POINTER. These were once bare DeclarationRef fields on the
+// use scope, which meant the sanctions, export and prohibited-use programs could hand this
+// decision anything at all and it would neither read it nor record it - dangling inputs on the
+// subject of the decision (DESIGN section 3c), and worse, an unresolved sanctions case would
+// have been indistinguishable from a cleared one. A standing has to say which it is.
+type DispositionStanding
+  = DispositionCleared { evidence: DeclarationRef }
+  | DispositionRefused { cause: DeclarationRef }
+  | DispositionUnresolved { obligation: DeclarationRef }
+
+fn disposition_is_cleared(d: DispositionStanding) -> Bool {
+  match d {
+    DispositionCleared { evidence } => true,
+    DispositionRefused { cause } => false,
+    DispositionUnresolved { obligation } => false,
+  }
+}
+
+// The located obligation a refusal must name: the refusal cause for a refused disposition, the
+// outstanding obligation for an unresolved one. A cleared disposition has neither, so this is
+// zero-or-one and the caller reaches it only on the non-cleared arms.
+fn disposition_obligation(d: DispositionStanding) -> List<DeclarationRef> {
+  match d {
+    DispositionCleared { evidence } => [],
+    DispositionRefused { cause } => [cause],
+    DispositionUnresolved { obligation } => [obligation],
+  }
+}
+
+fn disposition_evidence_or(d: DispositionStanding, fallback: DeclarationRef) -> DeclarationRef {
+  match d {
+    DispositionCleared { evidence } => evidence,
+    DispositionRefused { cause } => fallback,
+    DispositionUnresolved { obligation } => fallback,
+  }
+}
 
 // OUR ROSTER, NOT THE SUPPLIER'S. gunbc.fabric_executor_class already establishes the shape: we
 // keep the sanction, an unclassified executor refuses, and the sanction is evaluated before
@@ -49,16 +83,16 @@ type RouteScopeSanction {
 // for ordinary build source and refused for regulated data - so the subject of a decision is
 // always a route AND a use. The work stays provider-neutral; the demand side supplies the
 // organisation and agreement facts; the dispositions are the already-resolved outputs of the
-// sanctions, export and prohibited-use programs rather than judgements made here.
+// sanctions, export and prohibited-use programs, and each must be CLEARED for a permit to mint.
 type ProviderUseScope<P> {
   demand: FabricIdentity<P, DemandKey>
   work: FabricIdentity<P, WorkKey>
   customer_profile: DeclarationRef
   data_handling_profile: DeclarationRef
   agreement: DeclarationRef
-  prohibited_use_disposition: DeclarationRef
-  sanctions_disposition: DeclarationRef
-  export_disposition: DeclarationRef
+  prohibited_use_disposition: DispositionStanding
+  sanctions_disposition: DispositionStanding
+  export_disposition: DispositionStanding
 }
 
 // CapacityClass is deliberately NOT a field here, which is a stated divergence from the
@@ -68,14 +102,18 @@ type ProviderUseScope<P> {
 // posture. Folding them into one scope would give the partition a single refused population and
 // lose which of the two a caller must go fix.
 
-// Every revision the decision actually read, recorded on the permit. This is what makes a
-// permit re-derivable rather than merely historical: a later reader can ask whether the same
-// inputs still hold instead of trusting that they did.
+// Every revision and clearance the decision actually read, recorded on the permit. This is what
+// makes a permit re-derivable rather than merely historical. The three disposition evidences are
+// here because a permit that gated on them and did not record them would be unauditable - the
+// gate would have run and left no trace of what it saw.
 type ProviderUseEvidence {
   posture_revision: ContentHash
   route_facts_revision: ContentHash
   customer_profile: DeclarationRef
   agreement: DeclarationRef
+  prohibited_use_evidence: DeclarationRef
+  sanctions_evidence: DeclarationRef
+  export_evidence: DeclarationRef
   decision_receipt: DeclarationRef
 }
 
@@ -92,21 +130,30 @@ type ProviderUsePermit<P> sole_constructor {
   evidence: ProviderUseEvidence
 }
 
-// EVERY REFUSAL IS CONSTRUCTIBLE AND NAMES ITS OWN REMEDY. The spill policy this replaces could
-// express exactly four rejections - architecture, dedication, interruption, cost - so a
-// jurisdiction refusal had no spelling at all and was not merely unimplemented but unwritable.
-// Each arm below is a different thing to go and do, which is the whole reason they are not one
-// arm carrying a string.
+// EVERY REFUSAL IS CONSTRUCTIBLE, NAMES ITS OWN REMEDY, AND HAS A PRODUCER. The spill policy
+// this replaces could express exactly four rejections - architecture, dedication, interruption,
+// cost - so a jurisdiction refusal had no spelling at all and was not merely unimplemented but
+// unwritable. Each arm below is a different thing to go and do.
+//
+// TWO ARMS WERE DELETED RATHER THAN LEFT UNINHABITABLE. TransferOrLocationUnresolved and
+// ProviderAccessPathUnsupported both require comparing a LOCATED path's jurisdiction against the
+// jurisdictions a posture permits, and the posture revision carried here is an authority plus a
+// hash with no jurisdiction population to compare against. An arm no producer can inhabit is
+// decoration that will later be cited as coverage (DESIGN section 4b), which is exactly why
+// extdeps.regulation's FindingStanding carries no cleared arm. RESTORATION TRIGGER: a posture
+// revision that carries its permitted-jurisdiction population, at which point a located path in
+// a non-permitted jurisdiction becomes authorable and both arms land with their reds.
 type ProviderUseRefusal
   = ProviderRouteUnclassified { route: ProviderRouteRef }
   | ProviderRouteFactsIncomplete { route: ProviderRouteRef, obligation: DeclarationRef }
+  | DownstreamProviderUnassessed { obligation: DeclarationRef }
   | PostureRevisionStale { evaluated: ContentHash, active: ContentHash }
   | CustomerScopeUnsupported { cause: DeclarationRef }
   | DataHandlingUnsupported { cause: DeclarationRef }
   | RequiredAgreementAuthorityAbsent { obligation: DeclarationRef }
-  | TransferOrLocationUnresolved { obligation: DeclarationRef }
-  | DownstreamProviderUnassessed { obligation: DeclarationRef }
-  | ProviderAccessPathUnsupported { cause: DeclarationRef }
+  | ProhibitedUseNotCleared { obligation: DeclarationRef }
+  | SanctionsNotCleared { obligation: DeclarationRef }
+  | ExportNotCleared { obligation: DeclarationRef }
 
 // std.access.AccessDecision stays the allow/deny authority. This coproduct transports the
 // sealed positive permit and the typed domain cause; it deliberately does NOT make a second,
@@ -131,14 +178,22 @@ fn provider_use_denial(reason: String) -> AccessDecision {
   )
 }
 
-fn sanction_matches_scope<P>(
-  s: RouteScopeSanction,
+fn deny<P>(reason: String, cause: ProviderUseRefusal) -> ProviderUseAdmission<P> {
+  ProviderUseDenied { decision: provider_use_denial(reason: reason), cause: cause }
+}
+
+// THE ROUTE-AND-CUSTOMER MATCH IS SEPARATE FROM THE FULL MATCH, and that separation is the whole
+// point. An empty full-match set has two materially different causes - this customer profile is
+// not sanctioned on this route at all, or it is but THIS DATA CLASS is not - and they are
+// different things to go and do. Reporting both as CustomerScopeUnsupported names the wrong
+// remedy, which under DESIGN section 5 is a fabricated diagnosis rather than a located one.
+fn sanctions_for_route_and_customer<P>(
+  roster: List<RouteScopeSanction>,
   route: ProviderRouteRef,
   scope: ProviderUseScope<P>,
-) -> Bool {
-  s.route == route
-    && declaration_ref_eq(a: s.customer_profile, b: scope.customer_profile)
-    && declaration_ref_eq(a: s.data_handling_profile, b: scope.data_handling_profile)
+) -> List<RouteScopeSanction> {
+  filter(roster, s =>
+    s.route == route && declaration_ref_eq(a: s.customer_profile, b: scope.customer_profile))
 }
 
 fn sanctions_for_route<P>(
@@ -146,7 +201,10 @@ fn sanctions_for_route<P>(
   route: ProviderRouteRef,
   scope: ProviderUseScope<P>,
 ) -> List<RouteScopeSanction> {
-  filter(roster, s => sanction_matches_scope(s: s, route: route, scope: scope))
+  filter(
+    sanctions_for_route_and_customer(roster: roster, route: route, scope: scope),
+    s => declaration_ref_eq(a: s.data_handling_profile, b: scope.data_handling_profile),
+  )
 }
 
 fn route_is_classified(roster: List<RouteScopeSanction>, route: ProviderRouteRef) -> Bool {
@@ -161,10 +219,52 @@ fn posture_is_current(evaluated: CompliancePostureRevision, active: CompliancePo
   evaluated.revision == active.revision
 }
 
+fn dispositions_refusal_for(which: String, obligation: DeclarationRef) -> ProviderUseRefusal {
+  if which == "prohibited-use" {
+    ProhibitedUseNotCleared { obligation: obligation }
+  } else if which == "sanctions" {
+    SanctionsNotCleared { obligation: obligation }
+  } else {
+    ExportNotCleared { obligation: obligation }
+  }
+}
+
+// The zero-or-one obligation lists are folded into a refusal here. Each fold runs over a list
+// the guard has already proven non-empty, so the init is unreachable; it names the same route or
+// provider rather than a placeholder so that even the unreachable value would not lie.
+fn path_incomplete_refusal(facts: ProviderRouteFacts) -> ProviderUseRefusal {
+  fold(
+    first_unresolved_obligation(c: facts.data_paths),
+    init: ProviderRouteFactsIncomplete { route: facts.route, obligation: facts.provider },
+    f: fn(acc, o) { ProviderRouteFactsIncomplete { route: facts.route, obligation: o } },
+  )
+}
+
+fn downstream_unassessed_refusal(facts: ProviderRouteFacts) -> ProviderUseRefusal {
+  fold(
+    downstream_obligation(d: facts.downstream),
+    init: DownstreamProviderUnassessed { obligation: facts.provider },
+    f: fn(acc, o) { DownstreamProviderUnassessed { obligation: o } },
+  )
+}
+
+fn disposition_refusal(
+  d: DispositionStanding,
+  fallback: DeclarationRef,
+  which: String,
+) -> ProviderUseRefusal {
+  fold(
+    disposition_obligation(d: d),
+    init: dispositions_refusal_for(which: which, obligation: fallback),
+    f: fn(acc, o) { dispositions_refusal_for(which: which, obligation: o) },
+  )
+}
+
 // THE DECISION. The order of the conjuncts is the order of the remedies: classify the route,
-// then gather its facts, then reconcile posture, then match the use scope, then bind the
-// agreement. Reporting the first failure rather than all of them is deliberate - a caller acts
-// on one obligation at a time, and a refusal listing five causes invites picking the cheapest.
+// assess its downstream, gather its facts, match the customer scope, match the data class, clear
+// the three use dispositions, reconcile posture, bind the agreement. Reporting the first failure
+// rather than all of them is deliberate - a caller acts on one obligation at a time, and a
+// refusal listing five causes invites picking the cheapest.
 fn admit_provider_use<P>(
   roster: List<RouteScopeSanction>,
   facts: ProviderRouteFacts,
@@ -173,68 +273,73 @@ fn admit_provider_use<P>(
   offer: FabricIdentity<P, OfferKey>,
   decision_receipt: DeclarationRef,
 ) -> ProviderUseAdmission<P> {
+  let by_customer = sanctions_for_route_and_customer(roster: roster, route: facts.route, scope: scope)
   let matched = sanctions_for_route(roster: roster, route: facts.route, scope: scope)
   if !route_is_classified(roster: roster, route: facts.route) {
-    ProviderUseDenied {
-      decision: provider_use_denial(reason: "route unclassified"),
-      cause: ProviderRouteUnclassified { route: facts.route },
-    }
+    deny(reason: "route unclassified", cause: ProviderRouteUnclassified { route: facts.route })
   } else if !downstream_is_assessed(d: facts.downstream) {
-    ProviderUseDenied {
-      decision: provider_use_denial(reason: "downstream unassessed"),
-      cause: DownstreamProviderUnassessed { obligation: facts.provider },
-    }
+    deny(reason: "downstream unassessed", cause: downstream_unassessed_refusal(facts: facts))
   } else if !data_path_closure_is_complete(c: facts.data_paths) {
-    ProviderUseDenied {
-      decision: provider_use_denial(reason: "data path unread"),
-      cause: TransferOrLocationUnresolved { obligation: facts.provider },
-    }
+    deny(reason: "route facts incomplete", cause: path_incomplete_refusal(facts: facts))
+  } else if count(by_customer) == 0 {
+    deny(reason: "customer scope unsupported",
+         cause: CustomerScopeUnsupported { cause: scope.customer_profile })
   } else if count(matched) == 0 {
-    ProviderUseDenied {
-      decision: provider_use_denial(reason: "scope unsupported"),
-      cause: CustomerScopeUnsupported { cause: scope.customer_profile },
-    }
+    deny(reason: "data handling unsupported",
+         cause: DataHandlingUnsupported { cause: scope.data_handling_profile })
+  } else if !disposition_is_cleared(d: scope.prohibited_use_disposition) {
+    deny(reason: "prohibited use not cleared",
+         cause: disposition_refusal(d: scope.prohibited_use_disposition,
+                                    fallback: scope.customer_profile, which: "prohibited-use"))
+  } else if !disposition_is_cleared(d: scope.sanctions_disposition) {
+    deny(reason: "sanctions not cleared",
+         cause: disposition_refusal(d: scope.sanctions_disposition,
+                                    fallback: scope.customer_profile, which: "sanctions"))
+  } else if !disposition_is_cleared(d: scope.export_disposition) {
+    deny(reason: "export not cleared",
+         cause: disposition_refusal(d: scope.export_disposition,
+                                    fallback: scope.customer_profile, which: "export"))
   } else {
-    fold(matched, init: ProviderUseDenied {
-      decision: provider_use_denial(reason: "posture stale"),
-      cause: PostureRevisionStale { evaluated: active.revision, active: active.revision },
-    }, f: fn(acc, s) {
-      match acc {
-        ProviderUseAdmitted { permit } => acc,
-        ProviderUseDenied { decision, cause } =>
-          if !posture_is_current(evaluated: s.posture, active: active) {
-            ProviderUseDenied {
-              decision: provider_use_denial(reason: "posture stale"),
-              cause: PostureRevisionStale { evaluated: s.posture.revision, active: active.revision },
-            }
-          } else if !declaration_ref_eq(a: s.requires_agreement, b: scope.agreement) {
-            ProviderUseDenied {
-              decision: provider_use_denial(reason: "agreement absent"),
-              cause: RequiredAgreementAuthorityAbsent { obligation: s.requires_agreement },
-            }
-          } else {
-            ProviderUseAdmitted {
-              permit: ProviderUsePermit {
-                demand: scope.demand,
-                work: scope.work,
-                offer: offer,
-                route: facts.route,
-                posture: active,
-                evidence: ProviderUseEvidence {
-                  posture_revision: active.revision,
-                  route_facts_revision: facts.facts_revision,
-                  customer_profile: scope.customer_profile,
-                  agreement: scope.agreement,
-                  decision_receipt: decision_receipt,
+    fold(matched, init: deny(reason: "posture stale",
+           cause: PostureRevisionStale { evaluated: active.revision, active: active.revision }),
+      f: fn(acc, s) {
+        match acc {
+          ProviderUseAdmitted { permit } => acc,
+          ProviderUseDenied { decision, cause } =>
+            if !posture_is_current(evaluated: s.posture, active: active) {
+              deny(reason: "posture stale",
+                   cause: PostureRevisionStale { evaluated: s.posture.revision, active: active.revision })
+            } else if !declaration_ref_eq(a: s.requires_agreement, b: scope.agreement) {
+              deny(reason: "agreement absent",
+                   cause: RequiredAgreementAuthorityAbsent { obligation: s.requires_agreement })
+            } else {
+              ProviderUseAdmitted {
+                permit: ProviderUsePermit {
+                  demand: scope.demand,
+                  work: scope.work,
+                  offer: offer,
+                  route: facts.route,
+                  posture: active,
+                  evidence: ProviderUseEvidence {
+                    posture_revision: active.revision,
+                    route_facts_revision: facts.facts_revision,
+                    customer_profile: scope.customer_profile,
+                    agreement: scope.agreement,
+                    prohibited_use_evidence: disposition_evidence_or(
+                      d: scope.prohibited_use_disposition, fallback: scope.customer_profile),
+                    sanctions_evidence: disposition_evidence_or(
+                      d: scope.sanctions_disposition, fallback: scope.customer_profile),
+                    export_evidence: disposition_evidence_or(
+                      d: scope.export_disposition, fallback: scope.customer_profile),
+                    decision_receipt: decision_receipt,
+                  },
                 },
-              },
-            }
-          },
-      }
-    })
+              }
+            },
+        }
+      })
   }
 }
-
 
 fn admission_is_admitted<P>(a: ProviderUseAdmission<P>) -> Bool {
   match a {

@@ -2,7 +2,7 @@ module test.claim.fabric.provider_admission_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.content_hash { ContentHash, as_content_hash_structural, content_hash_atom }
 import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
 import product.fabric.provider_route {
@@ -14,26 +14,32 @@ import product.fabric.provider_route {
 }
 import product.fabric.provider_admission {
   RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
-  ProviderUseAdmitted, ProviderUseDenied,
-  ProviderRouteUnclassified, TransferOrLocationUnresolved, PostureRevisionStale,
-  CustomerScopeUnsupported, RequiredAgreementAuthorityAbsent,
+  ProviderUseAdmitted, ProviderUseDenied, ProviderUseRefusal,
+  ProviderRouteUnclassified, ProviderRouteFactsIncomplete, DownstreamProviderUnassessed,
+  PostureRevisionStale, CustomerScopeUnsupported, DataHandlingUnsupported,
+  RequiredAgreementAuthorityAbsent, ProhibitedUseNotCleared, SanctionsNotCleared, ExportNotCleared,
+  DispositionStanding, DispositionCleared, DispositionRefused, DispositionUnresolved,
   admit_provider_use, admission_is_admitted,
 }
 
 // THE DISCRIMINATING CLAIMS FOR THE PROVIDER-USE JOIN. Each red below is a state the previous
 // routing decision could not even express: ci_spill_policy's route_admits is a four-term
 // conjunction over architecture, dedication, interruption and price, and its RouteRejection has
-// four arms, none of which names a jurisdiction, a subprocessor, an access path or a data class.
-// So these are not stricter versions of an existing check - they are the first checks of their
-// kind on the path that actually places work.
+// four arms, none naming a jurisdiction, a subprocessor, an access path or a data class.
 //
-// SCOPE OF THIS WITNESS, stated so a green is not read as more than it is. Four of the eight
-// required reds live here, because they are properties of the admission decision itself. The
-// other four - a cheapest unadmitted route never winning, a zero-dollar demand refusing without
-// a permit, money not overriding a denial, and a permit not overriding an exhausted budget - are
-// properties of what SELECTION does with a permit, and cannot be asserted until the permit is
-// threaded through CandidateOffer, SupplySelection and issue_grant. They are deliberately absent
-// rather than weakly approximated here.
+// EVERY RED ASSERTS THE TYPED CAUSE AND THE LOCATED OBLIGATION, NOT MERELY THAT SOMETHING WAS
+// REFUSED. An earlier revision of this witness asserted only !admission_is_admitted for the
+// regulated-data red, which greened while the decision returned CustomerScopeUnsupported for
+// what was actually a data-class mismatch - the category wrong and the remedy wrong, and the
+// witness blind to both. A refusal that refuses for the wrong reason is a fabricated diagnosis
+// under DESIGN section 5, so a witness that cannot see the reason is not testing the wall.
+//
+// SCOPE OF THIS WITNESS, stated so a green is not read as more than it is. These are properties
+// of the admission DECISION. Four further required reds - a cheapest unadmitted route never
+// winning, a zero-dollar demand refusing without a permit, money not overriding a denial, and a
+// permit not overriding an exhausted budget - are properties of what SELECTION does with a
+// permit, and cannot be asserted until it is threaded through CandidateOffer, SupplySelection
+// and issue_grant. They are deliberately absent rather than weakly approximated here.
 
 fn ref_of(name: String) -> DeclarationRef {
   decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: name)
@@ -58,7 +64,14 @@ fn located(where_it_is: String) -> ProviderPathStanding {
   }
 }
 
-// Every governed path resolved and located in one jurisdiction.
+fn telemetry_obligation() -> DeclarationRef {
+  ref_of(name: "telemetry-destination-unread")
+}
+
+fn subprocessor_obligation() -> DeclarationRef {
+  ref_of(name: "subprocessors-unread")
+}
+
 fn closure_all_located(where_it_is: String) -> ProviderDataPathClosure {
   ProviderDataPathClosure {
     execution: located(where_it_is: where_it_is),
@@ -73,16 +86,16 @@ fn closure_all_located(where_it_is: String) -> ProviderDataPathClosure {
   }
 }
 
-// The SAME closure with telemetry unread. This is the discriminator that separates "we looked
-// and telemetry stays in region" from "nobody has examined where telemetry goes" - two states an
-// ordinary optional destination would render identically.
+// The SAME closure with telemetry unread. This separates "we looked and telemetry stays in
+// region" from "nobody has examined where telemetry goes" - two states an ordinary optional
+// destination would render identically.
 fn closure_telemetry_unread(where_it_is: String) -> ProviderDataPathClosure {
   ProviderDataPathClosure {
     execution: located(where_it_is: where_it_is),
     durable_storage: located(where_it_is: where_it_is),
     backups: located(where_it_is: where_it_is),
     logs: located(where_it_is: where_it_is),
-    telemetry: ProviderPathUnread { obligation: ref_of(name: "telemetry-destination-unread") },
+    telemetry: ProviderPathUnread { obligation: telemetry_obligation() },
     control_plane: located(where_it_is: where_it_is),
     support_access: located(where_it_is: where_it_is),
     administrative_access: located(where_it_is: where_it_is),
@@ -111,31 +124,35 @@ fn no_downstream() -> DownstreamProviderPopulation {
   NoDownstreamProviders { evidence: ref_of(name: "provider-declares-none") }
 }
 
-fn scope_ordinary() -> ProviderUseScope<NonEmptyStr> {
+fn cleared(what: String) -> DispositionStanding {
+  DispositionCleared { evidence: ref_of(name: what) }
+}
+
+fn scope_with(
+  data_handling: String,
+  prohibited: DispositionStanding,
+  sanctions: DispositionStanding,
+  export: DispositionStanding,
+) -> ProviderUseScope<NonEmptyStr> {
   ProviderUseScope {
     demand: FabricIdentity { principal: "tenant-a", key: "demand-1" as DemandKey },
     work: FabricIdentity { principal: "tenant-a", key: "work-1" as WorkKey },
     customer_profile: ref_of(name: "us-business-pilot"),
-    data_handling_profile: ref_of(name: "ordinary-build-source"),
+    data_handling_profile: ref_of(name: data_handling),
     agreement: ref_of(name: "pilot-agreement-v1"),
-    prohibited_use_disposition: ref_of(name: "permitted"),
-    sanctions_disposition: ref_of(name: "cleared"),
-    export_disposition: ref_of(name: "not-controlled"),
+    prohibited_use_disposition: prohibited,
+    sanctions_disposition: sanctions,
+    export_disposition: export,
   }
 }
 
-// The same tenant asking to run a REGULATED data class the roster does not sanction.
-fn scope_regulated() -> ProviderUseScope<NonEmptyStr> {
-  ProviderUseScope {
-    demand: FabricIdentity { principal: "tenant-a", key: "demand-1" as DemandKey },
-    work: FabricIdentity { principal: "tenant-a", key: "work-2" as WorkKey },
-    customer_profile: ref_of(name: "us-business-pilot"),
-    data_handling_profile: ref_of(name: "ephi"),
-    agreement: ref_of(name: "pilot-agreement-v1"),
-    prohibited_use_disposition: ref_of(name: "permitted"),
-    sanctions_disposition: ref_of(name: "cleared"),
-    export_disposition: ref_of(name: "not-controlled"),
-  }
+fn scope_ordinary() -> ProviderUseScope<NonEmptyStr> {
+  scope_with(
+    data_handling: "ordinary-build-source",
+    prohibited: cleared(what: "prohibited-use-cleared"),
+    sanctions: cleared(what: "sanctions-cleared"),
+    export: cleared(what: "export-cleared"),
+  )
 }
 
 fn offer_id() -> FabricIdentity<NonEmptyStr, OfferKey> {
@@ -143,8 +160,8 @@ fn offer_id() -> FabricIdentity<NonEmptyStr, OfferKey> {
 }
 
 // THE ROSTER SANCTIONS ONE ROUTE IN ONE REGION FOR ONE DATA CLASS. Its sibling region is
-// deliberately absent, which is the point of red 3: the roster's subject is a route, so a second
-// region of the same provider is a different subject and inherits nothing.
+// deliberately absent: the roster's subject is a route, so a second region of the same provider
+// is a different subject and inherits nothing.
 fn roster() -> List<RouteScopeSanction> {
   [
     RouteScopeSanction {
@@ -174,8 +191,59 @@ fn decide(
   )
 }
 
-// POSITIVE CONTROL. Without this every red below is satisfied by a decision that refuses
-// everything, which would be a wall that carries no information.
+// The refusal surface read once, exhaustively, so every red below can name a cause without
+// restating ten arms. A new refusal arm forces this match to be extended rather than silently
+// falling into a catch-all that would let an unasserted cause pass as any other.
+fn refusal_tag(c: ProviderUseRefusal) -> String {
+  match c {
+    ProviderRouteUnclassified { route } => "route-unclassified",
+    ProviderRouteFactsIncomplete { route, obligation } => "facts-incomplete",
+    DownstreamProviderUnassessed { obligation } => "downstream-unassessed",
+    PostureRevisionStale { evaluated, active } => "posture-stale",
+    CustomerScopeUnsupported { cause } => "customer-unsupported",
+    DataHandlingUnsupported { cause } => "data-handling-unsupported",
+    RequiredAgreementAuthorityAbsent { obligation } => "agreement-absent",
+    ProhibitedUseNotCleared { obligation } => "prohibited-use-not-cleared",
+    SanctionsNotCleared { obligation } => "sanctions-not-cleared",
+    ExportNotCleared { obligation } => "export-not-cleared",
+  }
+}
+
+// The located reference each refusal hands back. This is what makes "names its own remedy"
+// testable rather than aspirational: the arms that carry an obligation must carry the RIGHT one.
+fn refusal_located(c: ProviderUseRefusal) -> List<DeclarationRef> {
+  match c {
+    ProviderRouteUnclassified { route } => [],
+    ProviderRouteFactsIncomplete { route, obligation } => [obligation],
+    DownstreamProviderUnassessed { obligation } => [obligation],
+    PostureRevisionStale { evaluated, active } => [],
+    CustomerScopeUnsupported { cause } => [cause],
+    DataHandlingUnsupported { cause } => [cause],
+    RequiredAgreementAuthorityAbsent { obligation } => [obligation],
+    ProhibitedUseNotCleared { obligation } => [obligation],
+    SanctionsNotCleared { obligation } => [obligation],
+    ExportNotCleared { obligation } => [obligation],
+  }
+}
+
+fn denied_with(a: ProviderUseAdmission<NonEmptyStr>, tag: String, located: DeclarationRef) -> Bool {
+  match a {
+    ProviderUseAdmitted { permit } => false,
+    ProviderUseDenied { decision, cause } =>
+      refusal_tag(c: cause) == tag
+        && count(filter(refusal_located(c: cause), r => declaration_ref_eq(a: r, b: located))) == 1,
+  }
+}
+
+fn denied_tagged(a: ProviderUseAdmission<NonEmptyStr>, tag: String) -> Bool {
+  match a {
+    ProviderUseAdmitted { permit } => false,
+    ProviderUseDenied { decision, cause } => refusal_tag(c: cause) == tag,
+  }
+}
+
+// POSITIVE CONTROL. Without this every red is satisfied by a decision that refuses everything,
+// which would be a wall carrying no information.
 fn admits_the_sanctioned_route() -> Bool {
   admission_is_admitted(a: decide(
     route: "acme/cx/region-one" as ProviderRouteRef,
@@ -186,137 +254,202 @@ fn admits_the_sanctioned_route() -> Bool {
   ))
 }
 
-// RED 2 - an unclassified route REFUSES rather than defaulting. The route is otherwise perfect:
-// every path located, downstream assessed, posture current, agreement bound.
+// RED - an unclassified route REFUSES rather than defaulting, on a route that is otherwise
+// perfect: every path located, downstream assessed, posture current, agreement bound.
 fn unclassified_route_refuses() -> Bool {
-  match decide(
+  denied_tagged(a: decide(
     route: "acme/cx/region-two" as ProviderRouteRef,
     paths: closure_all_located(where_it_is: "jurisdiction-two"),
     downstream: no_downstream(),
     active: posture(seed: "posture-r1"),
     scope: scope_ordinary(),
-  ) {
-    ProviderUseAdmitted { permit } => false,
-    ProviderUseDenied { decision, cause } =>
-      match cause {
-        ProviderRouteUnclassified { route } => true,
-        ProviderRouteFactsIncomplete { route, obligation } => false,
-        PostureRevisionStale { evaluated, active } => false,
-        CustomerScopeUnsupported { cause } => false,
-        DataHandlingUnsupported { cause } => false,
-        RequiredAgreementAuthorityAbsent { obligation } => false,
-        TransferOrLocationUnresolved { obligation } => false,
-        DownstreamProviderUnassessed { obligation } => false,
-        ProviderAccessPathUnsupported { cause } => false,
-      },
-  }
+  ), tag: "route-unclassified")
 }
 
-// RED 3 - the same provider in two regions produces different standings. region-one admits and
-// region-two refuses under identical facts, so a permit is a fact about a ROUTE and never about
-// a company.
+// RED - the same provider in two regions produces different standings, so a permit is a fact
+// about a ROUTE and never about a company.
 fn same_provider_two_regions_differ() -> Bool {
   admits_the_sanctioned_route() && unclassified_route_refuses()
 }
 
-// RED 4 - a missing telemetry path refuses customer-executable work, on a route that IS
-// classified and whose posture IS current. Only the unread arm separates this from the positive
-// control, so a green here cannot come from any other cause.
-fn unread_telemetry_refuses() -> Bool {
-  match decide(
-    route: "acme/cx/region-one" as ProviderRouteRef,
-    paths: closure_telemetry_unread(where_it_is: "jurisdiction-one"),
-    downstream: no_downstream(),
-    active: posture(seed: "posture-r1"),
-    scope: scope_ordinary(),
-  ) {
-    ProviderUseAdmitted { permit } => false,
-    ProviderUseDenied { decision, cause } =>
-      match cause {
-        TransferOrLocationUnresolved { obligation } => true,
-        ProviderRouteUnclassified { route } => false,
-        ProviderRouteFactsIncomplete { route, obligation } => false,
-        PostureRevisionStale { evaluated, active } => false,
-        CustomerScopeUnsupported { cause } => false,
-        DataHandlingUnsupported { cause } => false,
-        RequiredAgreementAuthorityAbsent { obligation } => false,
-        DownstreamProviderUnassessed { obligation } => false,
-        ProviderAccessPathUnsupported { cause } => false,
-      },
-  }
+// RED - unread telemetry refuses AND the refusal names the TELEMETRY obligation, not the
+// provider row. Naming the provider would keep the category right and the remedy wrong.
+fn unread_telemetry_names_its_obligation() -> Bool {
+  denied_with(
+    a: decide(
+      route: "acme/cx/region-one" as ProviderRouteRef,
+      paths: closure_telemetry_unread(where_it_is: "jurisdiction-one"),
+      downstream: no_downstream(),
+      active: posture(seed: "posture-r1"),
+      scope: scope_ordinary(),
+    ),
+    tag: "facts-incomplete",
+    located: telemetry_obligation(),
+  )
 }
 
-// RED 5 - a sanction written against posture R is STALE under active posture R+1. The route,
-// paths, scope and agreement are all identical to the positive control; only the active posture
-// revision moves.
+// RED - an unread downstream population refuses and names ITS OWN obligation. A provider's
+// subprocessors are part of our data path whether or not its price list says so.
+fn unread_downstream_names_its_obligation() -> Bool {
+  denied_with(
+    a: decide(
+      route: "acme/cx/region-one" as ProviderRouteRef,
+      paths: closure_all_located(where_it_is: "jurisdiction-one"),
+      downstream: DownstreamProvidersUnread { obligation: subprocessor_obligation() },
+      active: posture(seed: "posture-r1"),
+      scope: scope_ordinary(),
+    ),
+    tag: "downstream-unassessed",
+    located: subprocessor_obligation(),
+  )
+}
+
+// RED - a sanction written against posture R is STALE under active posture R+1. Route, paths,
+// scope and agreement are identical to the positive control; only the active revision moves.
 fn stale_posture_refuses() -> Bool {
-  match decide(
+  denied_tagged(a: decide(
     route: "acme/cx/region-one" as ProviderRouteRef,
     paths: closure_all_located(where_it_is: "jurisdiction-one"),
     downstream: no_downstream(),
     active: posture(seed: "posture-r2"),
     scope: scope_ordinary(),
-  ) {
-    ProviderUseAdmitted { permit } => false,
-    ProviderUseDenied { decision, cause } =>
-      match cause {
-        PostureRevisionStale { evaluated, active } => true,
-        ProviderRouteUnclassified { route } => false,
-        ProviderRouteFactsIncomplete { route, obligation } => false,
-        CustomerScopeUnsupported { cause } => false,
-        DataHandlingUnsupported { cause } => false,
-        RequiredAgreementAuthorityAbsent { obligation } => false,
-        TransferOrLocationUnresolved { obligation } => false,
-        DownstreamProviderUnassessed { obligation } => false,
-        ProviderAccessPathUnsupported { cause } => false,
+  ), tag: "posture-stale")
+}
+
+// RED - THE ONE THE EARLIER WITNESS MISSED. A regulated data class on a route admitted for
+// ordinary source must refuse as DATA HANDLING unsupported, naming the data-handling profile.
+// The customer profile is identical to the positive control's, so a decision that blamed the
+// customer scope here would be diagnosing the wrong thing, and the previous !admitted assertion
+// could not tell the difference.
+fn regulated_data_class_refuses_with_data_handling_cause() -> Bool {
+  denied_with(
+    a: decide(
+      route: "acme/cx/region-one" as ProviderRouteRef,
+      paths: closure_all_located(where_it_is: "jurisdiction-one"),
+      downstream: no_downstream(),
+      active: posture(seed: "posture-r1"),
+      scope: scope_with(
+        data_handling: "ephi",
+        prohibited: cleared(what: "prohibited-use-cleared"),
+        sanctions: cleared(what: "sanctions-cleared"),
+        export: cleared(what: "export-cleared"),
+      ),
+    ),
+    tag: "data-handling-unsupported",
+    located: ref_of(name: "ephi"),
+  )
+}
+
+// RED - an UNSANCTIONED CUSTOMER PROFILE refuses as customer scope, which is the sibling of the
+// red above. Both are empty full-match sets; only these two together prove the decision tells
+// them apart rather than collapsing both into one cause.
+fn unsanctioned_customer_refuses_with_customer_cause() -> Bool {
+  denied_with(
+    a: decide(
+      route: "acme/cx/region-one" as ProviderRouteRef,
+      paths: closure_all_located(where_it_is: "jurisdiction-one"),
+      downstream: no_downstream(),
+      active: posture(seed: "posture-r1"),
+      scope: ProviderUseScope {
+        demand: FabricIdentity { principal: "tenant-b", key: "demand-2" as DemandKey },
+        work: FabricIdentity { principal: "tenant-b", key: "work-9" as WorkKey },
+        customer_profile: ref_of(name: "eu-enterprise"),
+        data_handling_profile: ref_of(name: "ordinary-build-source"),
+        agreement: ref_of(name: "pilot-agreement-v1"),
+        prohibited_use_disposition: cleared(what: "prohibited-use-cleared"),
+        sanctions_disposition: cleared(what: "sanctions-cleared"),
+        export_disposition: cleared(what: "export-cleared"),
       },
-  }
+    ),
+    tag: "customer-unsupported",
+    located: ref_of(name: "eu-enterprise"),
+  )
 }
 
-// The same route, admitted for ordinary build source, REFUSES a regulated data class. This is
-// what makes the permit a fact about a use rather than about a route, and it is the shape that
-// keeps an ePHI workload from riding an otherwise-admitted route.
-fn regulated_scope_refuses_on_admitted_route() -> Bool {
-  !admission_is_admitted(a: decide(
-    route: "acme/cx/region-one" as ProviderRouteRef,
-    paths: closure_all_located(where_it_is: "jurisdiction-one"),
-    downstream: no_downstream(),
-    active: posture(seed: "posture-r1"),
-    scope: scope_regulated(),
-  ))
+// REDS - each of the three use dispositions gates, and each names its own program. These fields
+// were previously bare references that the decision never read: an unresolved sanctions case was
+// indistinguishable from a cleared one, which is the fail-open these arms exist to close.
+fn unresolved_sanctions_refuses() -> Bool {
+  denied_with(
+    a: decide(
+      route: "acme/cx/region-one" as ProviderRouteRef,
+      paths: closure_all_located(where_it_is: "jurisdiction-one"),
+      downstream: no_downstream(),
+      active: posture(seed: "posture-r1"),
+      scope: scope_with(
+        data_handling: "ordinary-build-source",
+        prohibited: cleared(what: "prohibited-use-cleared"),
+        sanctions: DispositionUnresolved { obligation: ref_of(name: "potential-match-open") },
+        export: cleared(what: "export-cleared"),
+      ),
+    ),
+    tag: "sanctions-not-cleared",
+    located: ref_of(name: "potential-match-open"),
+  )
 }
 
-// An unread downstream population refuses even when every first-party path is located: a
-// provider's own subprocessors are part of our data path whether or not its price list says so.
-fn unread_downstream_refuses() -> Bool {
-  !admission_is_admitted(a: decide(
-    route: "acme/cx/region-one" as ProviderRouteRef,
-    paths: closure_all_located(where_it_is: "jurisdiction-one"),
-    downstream: DownstreamProvidersUnread { obligation: ref_of(name: "subprocessors-unread") },
-    active: posture(seed: "posture-r1"),
-    scope: scope_ordinary(),
-  ))
+fn refused_export_refuses() -> Bool {
+  denied_with(
+    a: decide(
+      route: "acme/cx/region-one" as ProviderRouteRef,
+      paths: closure_all_located(where_it_is: "jurisdiction-one"),
+      downstream: no_downstream(),
+      active: posture(seed: "posture-r1"),
+      scope: scope_with(
+        data_handling: "ordinary-build-source",
+        prohibited: cleared(what: "prohibited-use-cleared"),
+        sanctions: cleared(what: "sanctions-cleared"),
+        export: DispositionRefused { cause: ref_of(name: "controlled-technical-data") },
+      ),
+    ),
+    tag: "export-not-cleared",
+    located: ref_of(name: "controlled-technical-data"),
+  )
 }
 
-// Non-vacuity for the closure predicates themselves, so a green above cannot come from both
-// arms of the path helpers being accidentally equal.
+fn unresolved_prohibited_use_refuses() -> Bool {
+  denied_with(
+    a: decide(
+      route: "acme/cx/region-one" as ProviderRouteRef,
+      paths: closure_all_located(where_it_is: "jurisdiction-one"),
+      downstream: no_downstream(),
+      active: posture(seed: "posture-r1"),
+      scope: scope_with(
+        data_handling: "ordinary-build-source",
+        prohibited: DispositionUnresolved { obligation: ref_of(name: "use-review-open") },
+        sanctions: cleared(what: "sanctions-cleared"),
+        export: cleared(what: "export-cleared"),
+      ),
+    ),
+    tag: "prohibited-use-not-cleared",
+    located: ref_of(name: "use-review-open"),
+  )
+}
+
+// Non-vacuity for the closure predicates, so a green above cannot come from both arms of the
+// path helpers being accidentally equal.
 fn closure_predicates_discriminate() -> Bool {
   data_path_closure_is_complete(c: closure_all_located(where_it_is: "jurisdiction-one"))
     && !data_path_closure_is_complete(c: closure_telemetry_unread(where_it_is: "jurisdiction-one"))
     && downstream_is_assessed(d: no_downstream())
-    && !downstream_is_assessed(d: DownstreamProvidersUnread { obligation: ref_of(name: "x") })
+    && !downstream_is_assessed(d: DownstreamProvidersUnread { obligation: subprocessor_obligation() })
 }
 
 fn provider_admission_witness_main() -> ProcessExit {
   let positive = admits_the_sanctioned_route()
   let unclassified = unclassified_route_refuses()
   let two_regions = same_provider_two_regions_differ()
-  let telemetry = unread_telemetry_refuses()
+  let telemetry = unread_telemetry_names_its_obligation()
+  let downstream = unread_downstream_names_its_obligation()
   let stale = stale_posture_refuses()
-  let regulated = regulated_scope_refuses_on_admitted_route()
-  let downstream = unread_downstream_refuses()
+  let data_class = regulated_data_class_refuses_with_data_handling_cause()
+  let customer = unsanctioned_customer_refuses_with_customer_cause()
+  let sanctions = unresolved_sanctions_refuses()
+  let export = refused_export_refuses()
+  let prohibited = unresolved_prohibited_use_refuses()
   let discriminating = closure_predicates_discriminate()
-  if positive && unclassified && two_regions && telemetry && stale && regulated && downstream && discriminating {
+  if positive && unclassified && two_regions && telemetry && downstream && stale
+     && data_class && customer && sanctions && export && prohibited && discriminating {
     ExitSuccess
   } else {
     ExitFailure

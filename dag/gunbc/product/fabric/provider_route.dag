@@ -107,17 +107,45 @@ fn path_is_resolved(p: ProviderPathStanding) -> Bool {
   }
 }
 
-// The unread path, if any, that a refusal should name. Returned as the closure's own first
-// unresolved member in a fixed order so the refusal is deterministic rather than reporting
-// whichever arm a fold happened to visit last.
+// The nine governed paths in a FIXED declared order, so a refusal naming "the first unresolved
+// path" is deterministic rather than reporting whichever arm a fold happened to visit last.
+fn closure_paths(c: ProviderDataPathClosure) -> List<ProviderPathStanding> {
+  [
+    c.execution, c.durable_storage, c.backups, c.logs, c.telemetry,
+    c.control_plane, c.support_access, c.administrative_access, c.spill,
+  ]
+}
+
+// The obligation of the first unread path, as a zero-or-one list. A refusal must name the
+// LOCATED obligation the unread arm is already carrying - naming the provider instead would
+// keep the category right and the remedy wrong, which is a fabricated diagnosis under DESIGN
+// section 5 rather than a located one.
+fn first_unresolved_obligation(c: ProviderDataPathClosure) -> List<DeclarationRef> {
+  fold(closure_paths(c: c), init: [], f: fn(acc, p) {
+    if count(acc) > 0 {
+      acc
+    } else {
+      match p {
+        ProviderPathLocated { operator, jurisdiction, evidence } => acc,
+        ProviderPathAbsent { evidence } => acc,
+        ProviderPathUnread { obligation } => [obligation],
+      }
+    }
+  })
+}
+
 fn first_unresolved_path(c: ProviderDataPathClosure) -> List<ProviderPathStanding> {
-  filter(
-    [
-      c.execution, c.durable_storage, c.backups, c.logs, c.telemetry,
-      c.control_plane, c.support_access, c.administrative_access, c.spill,
-    ],
-    p => !path_is_resolved(p: p),
-  )
+  filter(closure_paths(c: c), p => !path_is_resolved(p: p))
+}
+
+// Same discipline for the downstream population: the unread arm carries its own obligation and
+// the refusal must hand that back, not the provider row.
+fn downstream_obligation(d: DownstreamProviderPopulation) -> List<DeclarationRef> {
+  match d {
+    NoDownstreamProviders { evidence } => [],
+    DownstreamProvidersEnumerated { first, further, coverage } => [],
+    DownstreamProvidersUnread { obligation } => [obligation],
+  }
 }
 
 fn data_path_closure_is_complete(c: ProviderDataPathClosure) -> Bool {
