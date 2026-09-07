@@ -4,8 +4,8 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.ci_gate { gate_receipt_exit, gate_receipt_failure_detail }
 import tools.dag_compile_clean_transport { run_clean_tree_compile }
 
-// The loudness half: the floor witness used to collapse this gate's ProcessExit to Bool via
-// tools.ci_gates.exit_ok (deleted; call sites now match ProcessExit), so compile-clean reds reported only returned Bool(false). The gate
+// The loudness half: the floor witness collapses this gate's ProcessExit to Bool via
+// std.process.exit_ok, so compile-clean reds reported only returned Bool(false). The gate
 // consumes the executor's one in-run compile receipt; the failure-receipt companion projects the
 // same receipt's located diagnostic without a second compile. BOTH HALVES NOW READ ONE RECEIPT.
 // Before this retype the body branched on a Bool and, on the false side, INVENTED its reason --

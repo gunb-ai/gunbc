@@ -14,3 +14,11 @@ type ProcessExit
 fn exit_failure(reason: String) -> ProcessExit {
   ExitFailure { code: exit_code_general_error, reason: reason }
 }
+
+// Claim-surface inhabitance of ExitSuccess. Sequencers match ProcessExit; they do not ask this for a Bool.
+fn exit_ok(e: ProcessExit) -> Bool {
+  match e {
+    ExitSuccess => true
+    ExitFailure { code, reason } => false
+  }
+}
