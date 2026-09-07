@@ -95,11 +95,20 @@ fn output_obligation_ids(declared: DeclaredOutputObligations) -> List<OutputObli
   map(declared.required, ob => ob.id)
 }
 
-fn declared_output_obligations(ids: List<NonEmptyStr>) -> DeclaredOutputObligations {
+fn declared_artifact_obligations(ids: List<NonEmptyStr>) -> DeclaredOutputObligations {
   DeclaredOutputObligations {
     required: map(ids, id => OutputObligation {
       id: output_obligation_id(raw: id),
       kind: OutputArtifactObligation {},
+    }),
+  }
+}
+
+fn declared_terminal_obligations(ids: List<NonEmptyStr>) -> DeclaredOutputObligations {
+  DeclaredOutputObligations {
+    required: map(ids, id => OutputObligation {
+      id: output_obligation_id(raw: id),
+      kind: TerminalResultObligation {},
     }),
   }
 }

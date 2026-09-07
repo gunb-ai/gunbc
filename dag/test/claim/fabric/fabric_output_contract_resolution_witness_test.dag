@@ -10,7 +10,7 @@ import gunbc.compile_diagnostic_census {
 import product.fabric.work {
   WorkContract, WorkStep, ReceiptSatisfiable, ExecutionRequirements,
   Shape, HardRequirements, ControlPlaneCapacity, derive_work_key,
-  declared_output_obligations, empty_output_obligations,
+  declared_artifact_obligations, empty_output_obligations,
   declared_output_obligations_from_manifests, output_obligation_ids,
   resolve_output_obligations, OutputObligationsResolved, OutputObligationsUnreadable,
   OutputObligationsResolution, ObligationsJudgedAtJobStart, ObligationsJudgedAtAdmissionGate,
@@ -58,7 +58,7 @@ fn contract_with(obligations_ids: List<NonEmptyStr>) -> WorkContract {
     runtime_closure: "runtime-1",
     effect_contract: "effects-1",
     output_contract: "gunbc.probe.outputs",
-    output_obligations: declared_output_obligations(ids: obligations_ids),
+    output_obligations: declared_artifact_obligations(ids: obligations_ids),
   }
 }
 
@@ -97,13 +97,26 @@ test fn empty_declared_roster_resolves_as_resolved_empty_not_unreadable() -> Boo
 }
 
 test fn resolved_roster_carries_declared_obligation_ids() -> Bool {
-  let contract = contract_with(obligations_ids: ["artifact-a", "terminal-b"])
+  let declared = declared_output_obligations_from_manifests(
+    artifacts: ["artifact-a"],
+    terminals: ["terminal-b"],
+  )
+  let contract = WorkContract {
+    program: "gunbc.probe.output-contract",
+    steps: [WorkStep { step_id: "probe", resumability: ReceiptSatisfiable }],
+    source: "source-1",
+    inputs: "inputs-1",
+    runtime_closure: "runtime-1",
+    effect_contract: "effects-1",
+    output_contract: "gunbc.probe.outputs",
+    output_obligations: declared,
+  }
   let key = derive_work_key(contract: contract, requirements: fixture_requirements())
   match resolve_at_start(contract: contract, work_key: key) {
     OutputObligationsUnreadable { contract: _, cause: _ } => false
     OutputObligationsResolved { value: r } =>
       (r.required.count() == 2)
-        && (r.required == output_obligation_ids(declared: declared_output_obligations(ids: ["artifact-a", "terminal-b"])))
+        && (r.required == output_obligation_ids(declared: declared))
   }
 }
 

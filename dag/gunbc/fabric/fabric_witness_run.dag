@@ -15,8 +15,8 @@ import product.fabric.work {
   ExecutionRequirements, Shape, HardRequirements, CapacityClass, ControlPlaneCapacity,
   CapabilityManifestRef, TrustDomainRef,
   ProgramRef, SourceManifestRef, ArtifactManifestRef, EffectContractRef, OutputContractRef,
-  declared_output_obligations,
   declared_output_obligations_from_manifests,
+  declared_terminal_obligations,
   work_for,
 }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
@@ -411,7 +411,7 @@ fn floor_work_contract(source: SourceManifestRef) -> WorkContract {
     runtime_closure: "gunbc.toolchain.rust-1.93.0+clippy+rustfmt",
     effect_contract: "gunbc.floor.effects.read-only-corpus",
     output_contract: "gunbc.floor.outputs.required-floor-summary",
-    output_obligations: declared_output_obligations(ids: ["required-floor-summary"]),
+    output_obligations: declared_terminal_obligations(ids: ["required-floor-summary"]),
   }
 }
 
