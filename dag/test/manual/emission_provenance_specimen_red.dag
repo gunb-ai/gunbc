@@ -1,15 +1,16 @@
 module test.manual.emission_provenance_specimen_red
 
-// DISCRIMINATING RED: this file sits outside witness_discovery_scan_dirs
-// (it is under dag/test/manual, not dag/test/claim) because line 179
-// refuses to compile — the compiler defect at
+// DISCRIMINATING RED: this module is not a `test`-marked sidecar because the
+// required floor folds every prepared `.dag` source, including `dag/test/manual`,
+// through floor_discovery_fold_source. A `test fn` here is FloorDiscoveryRefused
+// (TestMarkedDecl). The compiler defect at
 // gunbc.recurring_failure_mode.match_bound_element_type_mask makes the
 // element type arrive as Empty when a FreeMonoid<DeclarationRef> bound
-// by a match-arm pattern is consumed inside a lambda.
+// by a match-arm pattern is consumed inside a lambda, so the body does not
+// compile and cannot be an enrolled floor row until gunbc#10625 lands.
 //
-// When the compiler repair (gunbc#10625) lands, this line compiles and
-// this file can be moved back into dag/test/claim as an executing
-// required-floor witness.
+// When that repair lands, mark this function `test` and move the file into
+// dag/test/claim as an executing required-floor witness.
 
 import std.content_hash { as_content_hash_structural, content_hash_atom }
 import std.decl_ref { decl_ref, declaration_ref_eq, declaration_ref_display_key }
@@ -21,7 +22,7 @@ import std.emission_provenance {
   emission_contribution_read, emission_contribution_source, emission_contribution_origins
 }
 
-test fn emission_combined_read_preserves_content_order_and_origin_multiplicity() -> Bool {
+fn emission_combined_read_preserves_content_order_and_origin_multiplicity() -> Bool {
   let root = decl_ref(module_path: "fixture.runtime", decl_name: "root")
   let empty = decl_ref(module_path: "fixture.runtime", decl_name: "empty")
   let leaf = decl_ref(module_path: "fixture.runtime", decl_name: "leaf")

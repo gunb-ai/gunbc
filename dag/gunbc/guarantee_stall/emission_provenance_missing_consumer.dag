@@ -4,7 +4,7 @@ import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
 import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
 
 data emission_provenance_missing_consumer: GuaranteeStall = GuaranteeStall {
-  subject: "std.emission_provenance defines EmissionContribution and its fold, but no emitter path constructs these values from real output text. The three contribution arms have an executing consumer on the required floor (test.claim.emission_provenance_test at dag/test/claim) that constructs and reads all three arms and the correspondence/resolution types — these tests compile and pass. The discriminating RED specimen for the match-bound element type mask is separated at dag/test/manual/emission_provenance_specimen_red.dag, outside discovery, until #10625 makes it compile. No production consumer constructs these values from real emitted output.",
+  subject: "std.emission_provenance defines EmissionContribution and its fold, but no emitter path constructs these values from real output text. The three contribution arms have an executing consumer on the required floor (`test.claim.emission_provenance_test`) that constructs and reads all three arms and the correspondence/resolution types — these tests compile and pass. The discriminating RED specimen for the match-bound element type mask is `test.manual.emission_provenance_specimen_red` `emission_combined_read_preserves_content_order_and_origin_multiplicity`, an unmarked `fn` so floor discovery neither enrolls it nor refuses TestMarkedDecl, until #10625 makes it compile. No production consumer constructs these values from real emitted output.",
   current: Mitigatable,
   ceiling: StructurallyImpossible,
   blocker: AwaitsOneGrounding {
