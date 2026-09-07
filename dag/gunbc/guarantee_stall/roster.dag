@@ -58,6 +58,7 @@ import gunbc.guarantee_stall.unit_modeling_carrier_totality_stall { unit_modelin
 import gunbc.guarantee_stall.testgen_anchor_generator_totality_stall { testgen_anchor_generator_totality_stall }
 import gunbc.guarantee_stall.synthesis_established_bound_patch_stall { synthesis_established_bound_patch_stall }
 import gunbc.guarantee_stall.fn_index_depth_agreement_floor_enrollment_stall { fn_index_depth_agreement_floor_enrollment_stall }
+import gunbc.guarantee_stall.argument_shape_undecided_at_a_declared_position_stall { argument_shape_undecided_at_a_declared_position_stall }
 
 // THE COHORT PROVENANCE NOTES BELOW WERE AUTHORED WHEN EVERY ROW SAT IN ONE FILE, and they are
 // carried here verbatim rather than split across the row modules they describe. Their membership
@@ -250,6 +251,7 @@ data restored_stalls: List<GuaranteeStall> = [
   external_model_scope_live_cover_stall,
   observation_heartbeat_lockstep_stall,
   operation_argv_binding_wall_stall,
+  argument_shape_undecided_at_a_declared_position_stall,
 ]
 
 fn every_restored_stall_is_rostered_once(ss: List<GuaranteeStall>) -> Bool {

@@ -1,0 +1,13 @@
+module gunbc.guarantee_stall.argument_shape_undecided_at_a_declared_position_stall
+
+import gunbc.guarantee_rung { OutsideTheLadder, StructurallyImpossible }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+
+data argument_shape_undecided_at_a_declared_position_stall: GuaranteeStall = GuaranteeStall {
+  subject: "a decidable argument-shape mismatch is accepted with no diagnostic at a declared position: an unapplied nullary function stands where a value of its return type is declared, and a String stands at a generic formal — both measured accepted in the same compile in which a String at a CONCRETE position is refused, so refusal is reachable at that position and the deferral is a gap rather than a limit",
+  current: OutsideTheLadder,
+  ceiling: StructurallyImpossible,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: ["v1.compiler.infer", "test.claim.argument_shape_at_a_declared_position_probe_test"] },
+  next_rung_trigger: climbs_when(capability: "the declared-type judgment decides argument shape from the ARGUMENT'S OWN CONSTRUCTOR before consulting the declared position — function-type against non-function-type, and primitive against constructed — sufficient that an_unapplied_function_at_a_concrete_position_is_refused and a_string_at_a_generic_position_is_refused both reach a located, typed refusal in the same run in which a_string_at_a_concrete_position_is_refused already does; on that day BOTH rows leave v2.workflow.floor_expected_red and stay enrolled as permanent regression controls per DESIGN 4b(4), which is this stall's stated end rather than an implied one")
+}
