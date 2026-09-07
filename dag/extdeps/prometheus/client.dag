@@ -38,7 +38,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // resident memory, cpu seconds, open file descriptors -- have no consumer, so they are not written
 // down. Adding one is a row here.
 type PrometheusProcessSeries
-  = ProcessStartTimeSeconds
+  = | ProcessStartTimeSeconds
 
 fn prometheus_process_series_name(s: PrometheusProcessSeries) -> NonEmptyStr {
   match s {

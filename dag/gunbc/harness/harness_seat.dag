@@ -379,6 +379,51 @@ type HarnessAcquisition
   | AcquisitionLost { key: NonEmptyStr, detail: String }
   | AcquisitionRefused { detail: String }
 
+// ── THE GRANT IS FENCED AGAINST THE LAUNCH IT WAS TAKEN FOR ───────────────────────────────────
+//
+// Naming the launch on the offer keeps a dead engine's evidence from pricing its successor between
+// ROUNDS. It does not, by itself, cover the window inside one round: the engine can be replaced
+// after selection reads it and before the seat is taken, and the seat would then authorize a request
+// against an engine that never answered a probe -- a fresh KV cache, a different effective policy,
+// possibly a different runtime. Restart is exactly the event that invalidates an outstanding grant,
+// so the grant is checked against the launch it was taken for, once, at the point it is issued.
+//
+// A CHANGED LAUNCH RELEASES THE SEAT AND IS ORDINARY CONTENTION. The successor is a different offer
+// subject and may be perfectly good; excluding this launch and reselecting is what the bounded loop
+// already does for a lost compare-and-set, and the group returns under its new key on the next
+// round. Holding the seat while refusing would leak it.
+//
+// AN UNREADABLE ENGINE HERE REFUSES RATHER THAN RETRYING, because a group that stopped answering
+// between selection and acquisition frees nobody by being waited for.
+fn harness_fence_grant(candidate: HarnessCandidate, layout: EventLogLayout, partition: PartitionId, shape: HarnessWireShape, grant: LeaseGrant, now: EpochSecs) -> HarnessAcquisition {
+  match harness_observe_engine(group: candidate.group, address: candidate.address).launch {
+    LaunchUnobserved { group: _, obligation: o } => {
+      let released = release_retry(layout: layout, partition: partition, reference: grant.reference, reason: "the engine could not be identified after the seat was granted" as NonEmptyStr, now: now)
+      AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: join([o as String, " (seat ", harness_seat_release_wire(r: released), ")"], "")) }
+    }
+    LaunchObserved { launch: current, receipt: _ } =>
+      if vllm_serving_launch_is(launch: current, other: candidate.launch) {
+        AcquisitionGranted {
+          binding: HarnessSeatBound {
+            url: harness_backend_url_for_address(shape: shape, address: candidate.address),
+            grant: grant,
+            partition: partition,
+            group_wire: fabric_group_wire(g: candidate.group) as String,
+            launch: candidate.launch,
+            work: harness_turn_work(),
+            layout: layout,
+          },
+        }
+      } else {
+        let released = release_retry(layout: layout, partition: partition, reference: grant.reference, reason: "the engine was replaced between selection and acquisition" as NonEmptyStr, now: now)
+        AcquisitionLost {
+          key: candidate.key,
+          detail: seat_bind_detail(group: candidate.group, text: join(["the engine was replaced between selection and acquisition (seat ", harness_seat_release_wire(r: released), ")"], "")),
+        }
+      }
+  }
+}
+
 fn harness_acquire_on(candidate: HarnessCandidate, layout: EventLogLayout, shape: HarnessWireShape, actor: NonEmptyStr, policy: LeasePolicy, now: EpochSecs) -> HarnessAcquisition {
   match harness_seat_capacity(group: candidate.group) {
     AdmissionCapacityUnestablished { group: _, cause: why } =>
@@ -393,17 +438,7 @@ fn harness_acquire_on(candidate: HarnessCandidate, layout: EventLogLayout, shape
       }
       match fabric_seat_acquire(layout: layout, partition: partition, root: root, actor: actor, request: request, policy: policy, attempts: 3, budget: 4096) {
         SeatGranted { grant: g, generation: _, attempts_used: _ } =>
-          AcquisitionGranted {
-            binding: HarnessSeatBound {
-              url: harness_backend_url_for_address(shape: shape, address: candidate.address),
-              grant: g,
-              partition: partition,
-              group_wire: fabric_group_wire(g: candidate.group) as String,
-              launch: candidate.launch,
-              work: harness_turn_work(),
-              layout: layout,
-            },
-          }
+          harness_fence_grant(candidate: candidate, layout: layout, partition: partition, shape: shape, grant: g, now: now)
         SeatFull { wire: w, attempts_used: _ } =>
           AcquisitionLost { key: candidate.key, detail: seat_bind_detail(group: candidate.group, text: w) }
         SeatContended { attempts: a } =>

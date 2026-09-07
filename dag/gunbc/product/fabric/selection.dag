@@ -11,7 +11,7 @@ import std.nat { Nat, nat_min }
 import product.fabric.identity { FabricIdentity, OfferKey, fabric_identity_eq }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.work { ExecutionRequirements }
-import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural }
+import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex, content_hash_atom, content_hash_combine_structural }
 import product.fabric.supply {
   SupplierOffer, OfferQuote, QuotedFlatPerGrant, QuotedPerSecond, QuotedPerMinute, QuotedPerHour,
   OfferFungibility, Fungible, TrustDomainMismatch, CapabilitiesNotOffered,
@@ -24,6 +24,7 @@ import product.fabric.supply {
   QuotedTotal, QuotedTotalDerived, QuotedTotalNeedsDuration,
   GrantDuration, ExactGrantDuration, EstimatedGrantDuration, UnobservedGrantDuration,
   grant_duration_bound_seconds,
+  EqualCostOfferTieBreak, StableRosterOrder, DemandKeyedRendezvous,
 }
 
 // SELECTION IS THE FOLD product.fabric.supply DECLINED TO WRITE, AND THIS MODULE IS WHY IT

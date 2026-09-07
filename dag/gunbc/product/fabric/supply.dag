@@ -217,8 +217,14 @@ type EqualCostOfferTieBreak
   = StableRosterOrder
   | DemandKeyedRendezvous
 
+// THE POLICY NAME DOES NOT CARRY THE TIE ARM, AND THAT IS A CORRECTION OF THIS COMMIT'S FIRST
+// SHAPE. It read `CheapestFungibleWithDelayValuation { equal_cost: EqualCostOfferTieBreak }`, while
+// the arm that actually decides is the one select_supply is given and echoes back on the outcome. Two
+// places to write one fact, free to disagree, and nothing constructs this type -- so the field would
+// have been an unconsumed second authority from the day it landed. The tie arm stays where it is
+// consumed.
 type SupplySelectionPolicy =
-  | CheapestFungibleWithDelayValuation { equal_cost: EqualCostOfferTieBreak }
+  | CheapestFungibleWithDelayValuation
 
 // FUNGIBILITY IS THE FABRIC'S QUESTION, NOT A CONSUMER'S.
 //

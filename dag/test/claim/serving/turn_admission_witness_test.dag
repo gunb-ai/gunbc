@@ -35,9 +35,9 @@ fn metrics_body(waiting: String, running: String, start: String) -> String {
   join([
     "# HELP vllm:num_requests_waiting Number of requests waiting.\n",
     "# TYPE vllm:num_requests_waiting gauge\n",
-    "vllm:num_requests_waiting{model_name=\"deepseek\"} ", waiting, "\n",
+    "vllm:num_requests_waiting\{model_name=\"deepseek\"} ", waiting, "\n",
     "# TYPE vllm:num_requests_running gauge\n",
-    "vllm:num_requests_running{model_name=\"deepseek\"} ", running, "\n",
+    "vllm:num_requests_running\{model_name=\"deepseek\"} ", running, "\n",
     "# HELP process_start_time_seconds Start time of the process since unix epoch in seconds.\n",
     "# TYPE process_start_time_seconds gauge\n",
     "process_start_time_seconds ", start, "\n",
@@ -81,7 +81,7 @@ test fn a_non_integral_gauge_is_unread_rather_than_rounded() -> Bool {
 // half an observation, and the half that would be defaulted is the one that decides.
 test fn a_body_missing_one_gauge_reads_neither() -> Bool {
   let half = join([
-    "vllm:num_requests_waiting{model_name=\"deepseek\"} 0.0\n",
+    "vllm:num_requests_waiting\{model_name=\"deepseek\"} 0.0\n",
     "process_start_time_seconds 1757200000.5\n",
   ], "")
   match harness_queue_from_body(body: half) {
@@ -180,8 +180,8 @@ test fn a_restarted_engine_is_a_different_offer_subject() -> Bool {
 // group -- the identity the launch key exists to replace.
 test fn an_unnameable_launch_is_not_offered() -> Bool {
   let no_process_line = join([
-    "vllm:num_requests_waiting{model_name=\"deepseek\"} 0.0\n",
-    "vllm:num_requests_running{model_name=\"deepseek\"} 0.0\n",
+    "vllm:num_requests_waiting\{model_name=\"deepseek\"} 0.0\n",
+    "vllm:num_requests_running\{model_name=\"deepseek\"} 0.0\n",
   ], "")
   (match harness_launch_from_body(group: FabricGroupA, address: "192.168.1.232", body: no_process_line) {
      LaunchUnobserved { group: _, obligation: o } => string_contains(s: o as String, pattern: "cannot be named")
