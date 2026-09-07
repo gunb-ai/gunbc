@@ -15,7 +15,7 @@ import std.primitive_projection {
 
 import extdeps.languages.rust.capabilities { phantom_opaque_carrier_derive_traits }
 
-import std.algebra { trim }
+import std.algebra { trim, AlgebraFieldTemplate }
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
 import v1.std.core {
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
@@ -5245,11 +5245,22 @@ fn collect_filter_in_guard_refusals(n: Node, module_name: String, source_indices
   )
 }
 
+fn is_algebra_filter_name(decl_name: String) -> Bool {
+  decl_name == "filter"
+}
+
+fn is_std_algebra_filter_declaration(owner_module_path: String, decl_name: String) -> Bool {
+  is_algebra_filter_name(decl_name: decl_name) && (owner_module_path == "v2.std.algebra" || owner_module_path == "std.algebra")
+}
+
 fn is_algebra_filter_method(method_semantics: MethodSemantics?, source_indices: Map<String, NewlineIndex>) -> Bool {
   if method_semantics != none {
     match method_semantics.value {
-      AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: _ } =>
-        authored_name_at(source_indices: source_indices, node: method_def) == "filter"
+      AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: t } =>
+        match t {
+          Present { value: tmpl } => is_algebra_filter_name(decl_name: tmpl.name)
+          Absent => false
+        }
       _ => false
     }
   } else { false }
@@ -5258,7 +5269,7 @@ fn is_algebra_filter_method(method_semantics: MethodSemantics?, source_indices: 
 fn is_algebra_filter_declaration_call(cs: CallSemantics?) -> Bool {
   match call_semantics_target(cs: cs) {
     SourceDeclarationCall { owner_module_path: owner, decl_name: decl } =>
-      decl == "filter" && (owner == "v2.std.algebra" || owner == "std.algebra")
+      is_std_algebra_filter_declaration(owner_module_path: owner, decl_name: decl)
     _ => false
   }
 }

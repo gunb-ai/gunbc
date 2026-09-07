@@ -10522,16 +10522,30 @@ pub fn collect_filter_in_guard_refusals(
     })
 }
 
+pub fn is_algebra_filter_name(decl_name: String) -> bool {
+    (decl_name.clone() == "filter".to_string())
+}
+
+pub fn is_std_algebra_filter_declaration(owner_module_path: String, decl_name: String) -> bool {
+    (is_algebra_filter_name(decl_name.clone())
+        && ((owner_module_path.clone() == "v2.std.algebra".to_string())
+            || (owner_module_path.clone() == "std.algebra".to_string())))
+}
+
 pub fn is_algebra_filter_method(
     method_semantics: Option<Rc<MethodSemantics>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
+    let _ = source_indices;
     if (method_semantics.clone() != std::option::Option::None) {
         match (*method_semantics.clone().unwrap()).clone() {
-            MethodSemantics::AlgebraMethodSemantics { method_def, .. } => {
-                (crate::v1_std_core::authored_name_at(source_indices.clone(), method_def.clone())
-                    == "filter".to_string())
-            }
+            MethodSemantics::AlgebraMethodSemantics {
+                algebra_template: t,
+                ..
+            } => match t.clone() {
+                Some(tmpl) => is_algebra_filter_name(tmpl.name.clone()),
+                std::option::Option::None => false,
+            },
             _ => false,
         }
     } else {
@@ -10545,11 +10559,7 @@ pub fn is_algebra_filter_declaration_call(cs: Option<Rc<CallSemantics>>) -> bool
             owner_module_path: owner,
             decl_name: decl,
             ..
-        } => {
-            ((decl.clone() == "filter".to_string())
-                && ((owner.clone() == "v2.std.algebra".to_string())
-                    || (owner.clone() == "std.algebra".to_string())))
-        }
+        } => is_std_algebra_filter_declaration(owner.clone(), decl.clone()),
         _ => false,
     }
 }
