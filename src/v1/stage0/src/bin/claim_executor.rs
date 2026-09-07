@@ -2125,8 +2125,15 @@ fn required_floor_measurement_blockers(
     for identity in &outcome.stale_cost_debt {
         add(identity, "stale_cost_debt");
     }
-    for identity in &outcome.changed_witness_blocking {
-        add(identity, "changed_witness_blocking");
+    // THE CAUSE COMES FROM THE ROW, NOT FROM THIS LOOP. What stood here stamped the constant
+    // "changed_witness_blocking" on every member, which is the name of the POPULATION and not of
+    // anything that happened: a declined witness that never executed, a planned witness that ran
+    // and reached no verdict, and an identity with no disposition row at all reached the merge
+    // gate as one bit offering one affordance — rerun — for two states a rerun cannot discharge.
+    // The distinction was computed in `changed_witness_projection_rows` and dropped on the way
+    // out (`gunbc.recurring_failure_mode` `non_verdict_disposition_surfaces_as_refusal`).
+    for blocker in &outcome.changed_witness_blocking {
+        add(&blocker.identity, &blocker.cause);
     }
     blockers
 }
