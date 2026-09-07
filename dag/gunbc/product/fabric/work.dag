@@ -91,10 +91,6 @@ fn output_obligation_kind_material(kind: OutputObligationKind) -> NonEmptyStr {
   }
 }
 
-fn output_obligation_ids(declared: DeclaredOutputObligations) -> List<OutputObligationId> {
-  map(declared.required, ob => ob.id)
-}
-
 fn declared_artifact_obligations(ids: List<NonEmptyStr>) -> DeclaredOutputObligations {
   DeclaredOutputObligations {
     required: map(ids, id => OutputObligation {
@@ -172,7 +168,7 @@ type ResolvedOutputObligations sole_constructor {
   revision: OutputObligationsRevision
   judgment: OutputObligationsJudgment
   work_key: WorkKey
-  required: List<OutputObligationId>
+  required: List<OutputObligation>
 }
 
 // Causes resolve_output_obligations can produce today. WorkKeyDoesNotMatchContract
@@ -417,7 +413,7 @@ fn resolve_output_obligations(
         revision: output_obligations_revision(declared: contract.output_obligations),
         judgment: judgment,
         work_key: work_key,
-        required: output_obligation_ids(declared: contract.output_obligations),
+        required: contract.output_obligations.required,
       }
     }
   }

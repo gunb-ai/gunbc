@@ -11,7 +11,7 @@ import product.fabric.work {
   WorkContract, WorkStep, ReceiptSatisfiable, ExecutionRequirements,
   Shape, HardRequirements, ControlPlaneCapacity, derive_work_key,
   declared_artifact_obligations, empty_output_obligations,
-  declared_output_obligations_from_manifests, output_obligation_ids,
+  declared_output_obligations_from_manifests,
   resolve_output_obligations, OutputObligationsResolved, OutputObligationsUnreadable,
   OutputObligationsResolution, ObligationsJudgedAtJobStart, ObligationsJudgedAtAdmissionGate,
   WorkKeyDoesNotMatchContract,
@@ -96,7 +96,7 @@ test fn empty_declared_roster_resolves_as_resolved_empty_not_unreadable() -> Boo
   }
 }
 
-test fn resolved_roster_carries_declared_obligation_ids() -> Bool {
+test fn resolved_roster_carries_declared_obligations() -> Bool {
   let declared = declared_output_obligations_from_manifests(
     artifacts: ["artifact-a"],
     terminals: ["terminal-b"],
@@ -116,7 +116,7 @@ test fn resolved_roster_carries_declared_obligation_ids() -> Bool {
     OutputObligationsUnreadable { contract: _, cause: _ } => false
     OutputObligationsResolved { value: r } =>
       (r.required.count() == 2)
-        && (r.required == output_obligation_ids(declared: declared))
+        && (r.required == declared.required)
   }
 }
 
@@ -160,6 +160,51 @@ test fn artifact_versus_terminal_kind_is_work_key_identity() -> Bool {
   (shared.output_contract == collapsed.output_contract)
     && (derive_work_key(contract: shared, requirements: fixture_requirements())
       != derive_work_key(contract: collapsed, requirements: fixture_requirements()))
+}
+
+// Same spelling as an artifact and as a terminal is two owed subjects. Sealing
+// only ids would collapse them to ["a","a"] and the #10641 gate could not tell.
+test fn same_id_artifact_and_terminal_remain_distinct_after_resolve() -> Bool {
+  let mixed = declared_output_obligations_from_manifests(
+    artifacts: ["a"],
+    terminals: ["a"],
+  )
+  let doubled_artifact = declared_output_obligations_from_manifests(
+    artifacts: ["a", "a"],
+    terminals: [],
+  )
+  let mixed_contract = WorkContract {
+    program: "gunbc.probe.output-contract",
+    steps: [WorkStep { step_id: "probe", resumability: ReceiptSatisfiable }],
+    source: "source-1",
+    inputs: "inputs-1",
+    runtime_closure: "runtime-1",
+    effect_contract: "effects-1",
+    output_contract: "gunbc.probe.outputs",
+    output_obligations: mixed,
+  }
+  let doubled_contract = WorkContract {
+    program: "gunbc.probe.output-contract",
+    steps: [WorkStep { step_id: "probe", resumability: ReceiptSatisfiable }],
+    source: "source-1",
+    inputs: "inputs-1",
+    runtime_closure: "runtime-1",
+    effect_contract: "effects-1",
+    output_contract: "gunbc.probe.outputs",
+    output_obligations: doubled_artifact,
+  }
+  let km = derive_work_key(contract: mixed_contract, requirements: fixture_requirements())
+  let kd = derive_work_key(contract: doubled_contract, requirements: fixture_requirements())
+  match resolve_at_start(contract: mixed_contract, work_key: km) {
+    OutputObligationsUnreadable { contract: _, cause: _ } => false
+    OutputObligationsResolved { value: rm } => match resolve_at_start(contract: doubled_contract, work_key: kd) {
+      OutputObligationsUnreadable { contract: _, cause: _ } => false
+      OutputObligationsResolved { value: rd } =>
+        (rm.required == mixed.required)
+          && (rd.required == doubled_artifact.required)
+          && (rm.required != rd.required)
+    }
+  }
 }
 
 test fn resolution_revision_tracks_the_declared_roster() -> Bool {
@@ -239,7 +284,7 @@ fn violation_count(source: String, wanted: String) -> Int {
   }
 }
 
-data forged_resolved_roster_source: String = "module probe_forged_resolved_output_obligations\nimport product.fabric.work { ResolvedOutputObligations, OutputContractRef, OutputObligationId, OutputObligationsRevision, ObligationsJudgedAtJobStart }\nimport product.fabric.identity { WorkKey }\nfn forged() -> ResolvedOutputObligations {\n  ResolvedOutputObligations {\n    contract: \"forged\" as OutputContractRef,\n    revision: \"x\" as OutputObligationsRevision,\n    judgment: ObligationsJudgedAtJobStart,\n    work_key: \"k\" as WorkKey,\n    required: [],\n  }\n}\n"
+data forged_resolved_roster_source: String = "module probe_forged_resolved_output_obligations\nimport product.fabric.work { ResolvedOutputObligations, OutputContractRef, OutputObligationsRevision, ObligationsJudgedAtJobStart }\nimport product.fabric.identity { WorkKey }\nfn forged() -> ResolvedOutputObligations {\n  ResolvedOutputObligations {\n    contract: \"forged\" as OutputContractRef,\n    revision: \"x\" as OutputObligationsRevision,\n    judgment: ObligationsJudgedAtJobStart,\n    work_key: \"k\" as WorkKey,\n    required: [],\n  }\n}\n"
 
 test fn forged_resolved_roster_is_sole_constructor_refused() -> Bool {
   violation_count(source: forged_resolved_roster_source, wanted: "SoleConstructorViolation") >= 1
