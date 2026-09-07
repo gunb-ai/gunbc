@@ -6,8 +6,8 @@ import v2.lens.common.construction_justification {
 }
 import std.decl_ref { declaration_ref_eq }
 import gunbc.ci_layer_roots { witness_layer_roots }
-import v2.std.decl_index { decl_facts }
-import v2.lens.module_graph { module_declaration_facts_live }
+import v2.std.decl_index { DeclFact, decl_facts }
+import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
 import v2.std.decl_ref_resolution {
   resolve_declaration_ref,
   DeclarationRefResolved,
@@ -16,21 +16,45 @@ import v2.std.decl_ref_resolution {
   DeclarationRefFieldAbsent,
   DeclarationRefAmbiguous
 }
+import v2.std.collection { List }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
+// THE CORPUS INDEX THE JOIN READS, AS ONE ZERO-ARG PRODUCER. #10706's still_outside called
+// decl_facts and module_declaration_facts_live over witness_layer_roots on every invocation —
+// six calls across three floor claims, twelve whole-corpus materializations, each ~30s against
+// a 500ms marginal cpu budget (control: #10699 run 34080451370, identical three identities,
+// no PLANTED_CONTROL rows). Section 2: several demands with a shared-state least common
+// ancestor are authored duplication; carry/rewire/share the first value, do not memoize the
+// later request. Spelling is a zero-arg fn (not a module-scope data row) so the producer stays
+// eligible for v2.workflow.floor_pure_producer_share enrollment by resolved declaration
+// identity — that measurement is a later step and is not this change.
+type WitnessLayerDeclIndex {
+  facts: List<DeclFact>
+  modules: List<ModuleDeclarationFact>
+}
+
+fn witness_layer_decl_index() -> WitnessLayerDeclIndex {
+  WitnessLayerDeclIndex {
+    facts: decl_facts(pool_roots: witness_layer_roots),
+    modules: module_declaration_facts_live(pool_roots: witness_layer_roots)
+  }
+}
+
 // THE JOIN TAKES ITS POPULATION FROM THE NAMED PRODUCER. Authority is
-// v2.std.decl_index.decl_facts over gunbc.ci_layer_roots.witness_layer_roots — the same roots
-// required lanes pass. A caller cannot pass a narrower list beside a corpus authority.
+// witness_layer_decl_index — decl_facts and module_declaration_facts_live over
+// gunbc.ci_layer_roots.witness_layer_roots, the same roots required lanes pass. A caller
+// cannot pass a narrower list beside a corpus authority.
 fn guarantee_boundary_still_outside(boundary: GuaranteeBoundary) -> Bool {
   if !declaration_ref_eq(a: boundary.capability_inventory_authority, b: decl_facts_inventory_authority) {
     false
   } else {
+    let index = witness_layer_decl_index()
     match resolve_declaration_ref(
       ref: boundary.required_capability,
-      facts: decl_facts(pool_roots: witness_layer_roots),
-      modules: module_declaration_facts_live(pool_roots: witness_layer_roots)
+      facts: index.facts,
+      modules: index.modules
     ) {
       DeclarationRefDeclarationAbsent { reference: _ } => true
       DeclarationRefResolved { declaration_identity: _ } => false
