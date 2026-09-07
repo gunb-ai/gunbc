@@ -300,6 +300,21 @@ fn callee_text_from_call(node: Node) -> String? {
 // exact reverse preorder and one list_reverse at the top restores preorder. The named split is what
 // keeps the reversal from being invisible to a reader of either half.
 //
+// DEDUPLICATION IS A LIST SCAN AND NOT A KEYED MAP, DELIBERATELY, AND THIS IS THE ONE PLACE IN THIS
+// FILE WHERE MEASUREMENT OVERRODE SHAPE. A keyed map was written here first and measured WORSE on
+// the only subject anyone has measured -- see the arms named in
+// gunbc.rung_drop.determinism_transitive_reachability, which cites the instrument that re-derives
+// it. The reason is that a map is the one repair in this family that does not REMOVE work: it buys
+// asymptotic behaviour by paying an allocation, a hash per element and a second traversal, and at
+// the callee counts a single declaration actually carries, that constant loses to scanning a short
+// list. DESIGN 2's bare-minimum-cost rule says fix the SHAPE regardless of the realised n, and both
+// shapes in this function ARE fixed -- the materialize-then-filter and the quadratic concat are
+// gone, and both of those strictly remove work. A replacement that is asymptotically better and
+// measurably slower has TRADED a cost rather than removed one, which relocates section 2's
+// obligation into a constant instead of discharging it. If the scan ever becomes the payer, the
+// subject where that would show is the DIRECTORY grain over a far larger seed set, and that is a
+// measurement with a real subject rather than a rider on this one.
+//
 // FIRST-OCCURRENCE ORDER IS PRESERVED EXACTLY, which is not incidental: the walk seeds its worklist
 // from this list, so a different order would reorder `reached` and change what every caller
 // observes. A reordering here would be a semantics change wearing a performance change's clothes.
@@ -307,11 +322,6 @@ fn callee_text_from_call(node: Node) -> String? {
 // The cost figures that motivated this shape are not transcribed here. They are re-derived by the
 // arms named in gunbc.rung_drop.determinism_transitive_reachability, which cites the instrument that
 // produces them.
-type CalleeDedupState {
-  seen: Map<String, Bool>
-  out: List<String>
-}
-
 fn callee_texts_in_subtree_reversed(node: Node) -> List<String> {
   fold_node(
     n: node,
@@ -331,29 +341,23 @@ fn callee_texts_in_subtree(node: Node) -> List<String> {
   list_reverse(xs: callee_texts_in_subtree_reversed(node: node))
 }
 
-fn callee_dedup_step(state: CalleeDedupState, text: String) -> CalleeDedupState {
-  match map_lookup(m: state.seen, key: text) {
-    Present { value: _ } => state
-    Absent => CalleeDedupState {
-      seen: map_insert(m: state.seen, key: text, value: true),
-      out: Cons { head: text, tail: state.out }
-    }
-  }
-}
-
 fn callees_from_node(node: Node, terminal_callee_symbols: List<String>) -> List<String> {
-  let state = fold_list(
+  let out_reversed = fold_list(
     xs: callee_texts_in_subtree(node: node),
-    empty: CalleeDedupState { seen: empty_map(), out: empty_fn_arrow_string_list },
+    empty: empty_fn_arrow_string_list,
     cons: fn(acc, text) {
       if contains(xs: terminal_callee_symbols, item: text, eq: fn_index_string_eq) {
         acc
       } else {
-        callee_dedup_step(state: acc, text: text)
+        if contains(xs: acc, item: text, eq: fn_index_string_eq) {
+          acc
+        } else {
+          Cons { head: text, tail: acc }
+        }
       }
     }
   )
-  list_reverse(xs: state.out)
+  list_reverse(xs: out_reversed)
 }
 
 // THE WALK'S PER-STEP BOOKKEEPING, MADE LINEAR. THREE SITES, ONE DEFECT.
