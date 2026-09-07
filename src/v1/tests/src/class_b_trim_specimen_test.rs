@@ -296,28 +296,15 @@ fn wire_projection_pool_roots() -> Vec<String> {
 
 /// REGRESSION CONTROL for the service-op wire-projection class.
 ///
-/// THE CLASS AS REGISTERED (`extdeps.shell.exec` `service_op_string_wire_projection_method_fork_note`,
-/// `gunbc.plans.model_realization_fork`): a service-op output field declared `T from "wire_key"`
-/// infers as a FaithfulFreeMonoid/Coproduct carrier when the closure lacks v1-seed sources, so the
-/// METHOD form on it refuses (`method trim not found on Coproduct(FreeMonoid)`) although the extdeps
-/// contract names String. Both carriers name `monoid_specimen.dag` +
-/// `trim_method_form_fails_on_freemonoid_receiver` as the pinning witness.
+/// THE CLASS AS REGISTERED (`extdeps.shell.exec` `service_op_string_wire_projection_method_fork_note`):
+/// a service-op output field declared `T from "wire_key"` inferred as a FaithfulFreeMonoid/Coproduct
+/// carrier when the closure lacked v1-seed sources (`rust_corpus_repr`), so the METHOD form refused
+/// although the extdeps contract names String.
 ///
-/// THAT WITNESS CANNOT SEE THE CLASS. Its subject is a HAND-DECLARED `FreeMonoid<String>` parameter;
-/// the class's subject is a String field MINTED BY A WIRE PROJECTION. Measured: zero `T from "key"`
-/// declarations existed anywhere in this fixture directory, so the class had no discriminating
-/// evidence and read identically whether it was live or dead.
-///
-/// MEASURED HERE, 2026-08-17, on a tree that STILL CONTAINS `v1.compiler.infer` `rust_corpus_repr`
-/// (i.e. before the Root B cut that deletes it): the method form on a real wire field COMPILES —
-/// `hard_diagnostics = 0`, `trim_not_found = 0`, `refused = false`. So removing `rust_corpus_repr` is
-/// NOT the condition under which this class disappears; it does not reproduce with that mechanism
-/// present. The class is therefore narrower than "every String method on any service-op result
-/// field", or already dissolved and its note stale.
-///
-/// SCOPE OF THE CLAIM, deliberately narrow: one service op (`Filesystem.Read` `content`), one method
-/// (`trim`), one pool. It says nothing about `shell.Exec.Run` `stdout`, whose input is a
-/// `sole_constructor`-sealed `TransportScript` and so cannot be minted in a fixture.
+/// THAT TRIGGER IS DELETED. Re-measured 2026-09-07 on the post-RustCorpusRepr tree: compiling this
+/// specimen (Filesystem.Read `content: String from "content"`) yields `trim_not_found = 0` and
+/// compile not refused. The registered infer-layer fork does not reproduce. `shell.Exec.Run`
+/// `stdout` remains unmintable in a fixture (`TransportScript` is `sole_constructor`-sealed).
 ///
 /// This control locks the compiling behaviour in. If the wire projection later starts minting a
 /// distinct carrier again, this goes red.
