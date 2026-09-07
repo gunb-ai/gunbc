@@ -1,6 +1,6 @@
 module tools.ci_gates
 
-import std.process { ProcessExit, ExitSuccess, exit_failure, exit_ok }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import gunbc.ci_gate { EmitHostGate, Gate, CheapClaimPoolGate }
 import gunbc.ci_spec {
   gunbc_ci_gates, CiSpec,
@@ -35,7 +35,10 @@ fn run_spec_gate(g: Gate) -> ProcessExit {
 
 fn run_gate_list(gates: List<Gate>) -> ProcessExit {
   fold(gates, init: ExitSuccess, f: fn(acc, g) {
-    if exit_ok(e: acc) { run_spec_gate(g: g) } else { acc }
+    match acc {
+      ExitSuccess => run_spec_gate(g: g)
+      ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
+    }
   })
 }
 

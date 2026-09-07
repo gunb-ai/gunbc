@@ -1,7 +1,7 @@
 
 module tools.generated_artifact_gate
 
-import std.process { ProcessExit, ExitSuccess, exit_failure, exit_ok }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.ci_gate { gate_receipt_failure_detail }
 import gunbc.generated_artifact {
@@ -240,16 +240,16 @@ func main_wet_one(path: String) -> ProcessExit {
 
 func main_wet() -> ProcessExit {
   fold(committed_generated_artifacts(), init: ExitSuccess, f: fn(acc, a) {
-    if exit_ok(e: acc) {
-      match artifact_generate(a: a) {
-        ArtifactGenerationRefused { reason } => exit_failure(reason: concat(concat("generation refused for ", artifact_path(a: a)), concat(": ", reason)))
-        ArtifactGenerated { content } => {
-          let w = Filesystem.Write(path: artifact_path(a: a), content: content)
-          if w.success { ExitSuccess } else { exit_failure(reason: concat(concat("write failed for ", artifact_path(a: a)), concat(": ", w.error))) }
+    match acc {
+      ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
+      ExitSuccess =>
+        match artifact_generate(a: a) {
+          ArtifactGenerationRefused { reason } => exit_failure(reason: concat(concat("generation refused for ", artifact_path(a: a)), concat(": ", reason)))
+          ArtifactGenerated { content } => {
+            let w = Filesystem.Write(path: artifact_path(a: a), content: content)
+            if w.success { ExitSuccess } else { exit_failure(reason: concat(concat("write failed for ", artifact_path(a: a)), concat(": ", w.error))) }
+          }
         }
-      }
-    } else {
-      acc
     }
   })
 }
@@ -355,9 +355,8 @@ func heal_repair_declaration() -> ProcessExit {
 
 func main_wet_verified() -> ProcessExit {
   let first = main_wet()
-  if exit_ok(e: first) {
-    run_generated_artifact_drift_gate_body()
-  } else {
-    first
+  match first {
+    ExitSuccess => run_generated_artifact_drift_gate_body()
+    ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
   }
 }

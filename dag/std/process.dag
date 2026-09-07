@@ -14,10 +14,3 @@ type ProcessExit
 fn exit_failure(reason: String) -> ProcessExit {
   ExitFailure { code: exit_code_general_error, reason: reason }
 }
-
-fn exit_ok(e: ProcessExit) -> Bool {
-  match e {
-    ExitSuccess => true
-    ExitFailure { code: _, reason: _ } => false
-  }
-}

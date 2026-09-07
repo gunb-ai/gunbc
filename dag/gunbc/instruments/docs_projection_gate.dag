@@ -1,6 +1,6 @@
 module tools.docs_projection_gate
 
-import std.process { ProcessExit, ExitSuccess, exit_failure, exit_ok }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
 import gunbc.design_ledgers { expected_design_failure_modes_md, expected_design_rung_drops_md }
 import gunbc.generated_artifact {
@@ -34,13 +34,12 @@ func regen() -> ProcessExit {
     path: artifact_path(a: DesignFailureModesArtifact),
     content: expected_design_failure_modes_md()
   )
-  if exit_ok(e: first) {
-    write_docs_projection(
+  match first {
+    ExitSuccess => write_docs_projection(
       path: artifact_path(a: DesignRungDropsArtifact),
       content: expected_design_rung_drops_md()
     )
-  } else {
-    first
+    ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
   }
 }
 
@@ -60,12 +59,11 @@ func main() -> ProcessExit {
     path: artifact_path(a: DesignFailureModesArtifact),
     expected: expected_design_failure_modes_md()
   )
-  if exit_ok(e: first) {
-    agree_one(
+  match first {
+    ExitSuccess => agree_one(
       path: artifact_path(a: DesignRungDropsArtifact),
       expected: expected_design_rung_drops_md()
     )
-  } else {
-    first
+    ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
   }
 }
