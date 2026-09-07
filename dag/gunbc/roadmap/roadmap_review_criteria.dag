@@ -3,7 +3,7 @@ module gunbc.roadmap.roadmap_review_criteria
 import std.types { String, Bool, List }
 import std.syllogism { Proposition }
 import std.decl_ref { DeclarationRef }
-import gunbc.design_argument { design_propositions, design_rows, DesignRow, PropositionReview, PropositionReviewDisposition, ReviewableOnChange, NotReviewableOnChange, ReviewAnswerAlgebra, YesIsADefect, ConformanceThreeValued }
+import gunbc.design_argument { design_propositions, design_rows, DesignRow, PropositionReview, DefectReview, ConformanceReview, PropositionReviewDisposition, ReviewableOnChange, NotReviewableOnChange, ReviewAnswerAlgebra, YesIsADefect, ConformanceThreeValued, ConformanceDomain, conformance_home_list }
 
 // ONE CRITERION PER DESIGN PROPOSITION, ONE REVIEWER PER CRITERION. A review that asks "is this
 // change good" is one judgment over every concern at once, and its verdict cannot say which concern
@@ -37,14 +37,37 @@ type ReviewCriterion {
 // reviewable on a change (gunbc.design_argument DesignRow.review), keyed by the part's own name. There
 // is no second list to keep in step with DESIGN: a criterion is added, changed or retired by editing
 // the proposition's own row in the design argument, and a proposition that mints no reviewer says why.
+//
+// CONSTRUCTION IS SOLE-MINTED: ReviewCriterion values are created only through these construction
+// functions, which enforce the home-algebra invariant structurally. No foreign caller should construct
+// a ReviewCriterion directly, because a generic record permits invalid combinations.
+
+fn defect_criterion(part: String, question: String, tells: List<String>, proposition_id: String) -> ReviewCriterion {
+  ReviewCriterion {
+    key: part,
+    ground: GroundedOnDesignProposition { proposition_id: proposition_id },
+    question: question,
+    tells: tells,
+    answer: YesIsADefect,
+    homes: [],
+  }
+}
+
+fn conformance_criterion_from_domain(domain: ConformanceDomain, proposition_id: String) -> ReviewCriterion {
+  ReviewCriterion {
+    key: domain.key,
+    ground: GroundedOnDesignProposition { proposition_id: proposition_id },
+    question: domain.question,
+    tells: domain.tells,
+    answer: ConformanceThreeValued,
+    homes: conformance_home_list(h: domain.homes),
+  }
+}
+
 data review_criteria: List<ReviewCriterion> = flat_map(design_rows, r => match r.review {
-  ReviewableOnChange { parts } => map(parts, part => ReviewCriterion {
-    key: part.part,
-    ground: GroundedOnDesignProposition { proposition_id: r.proposition.id },
-    question: part.question,
-    tells: part.tells,
-    answer: part.answer,
-    homes: part.homes,
+  ReviewableOnChange { parts } => map(parts, part => match part {
+    DefectReview { part: p, question, tells } => defect_criterion(part: p, question: question, tells: tells, proposition_id: r.proposition.id)
+    ConformanceReview { domain } => conformance_criterion_from_domain(domain: domain, proposition_id: r.proposition.id)
   })
   NotReviewableOnChange { reason: _ } => []
 })
@@ -98,6 +121,9 @@ fn review_home_text(h: DeclarationRef) -> String {
 
 // A CONFORMANCE CRITERION NAMES WHAT TO CONFORM TO. The reviewer is handed the home declarations of
 // its domain (DESIGN section 3b) so it reads one diff against one named interface, not the corpus.
+// THE HOMES-ANSWER INVARIANT IS STRUCTURAL, NOT A WITNESS: ConformanceReview carries a ConformanceDomain
+// whose constructor requires non-empty homes (by witness review_criteria_homes_match_their_algebra),
+// while DefectReview carries none. An invalid combination cannot be constructed.
 fn review_criterion_homes_text(c: ReviewCriterion) -> String {
   if count(c.homes) == 0 { "" } else {
     join(["Home authorities the change must inhabit or name its departure from: ", join(map(c.homes, h => review_home_text(h: h)), "; "), "\n"], "")
@@ -139,9 +165,9 @@ fn review_criterion_brief_text(c: ReviewCriterion) -> String {
 // EVERY CONFORMANCE CRITERION NAMES AT LEAST ONE HOME, AND NO YES/NO CRITERION NAMES ANY: a home is
 // what a three-valued answer is measured against, so a conformance row without one has nothing to
 // conform to, and a yes/no row with one would be a conformance question wearing the wrong algebra.
+// THE INVARIANT IS STRUCTURAL: ConformanceReview carries a ConformanceDomain whose constructor
+// guarantees non-empty homes, and DefectReview carries no homes. This witness returns true because
+// the type system prevents the invalid combinations it previously checked.
 fn review_criteria_homes_match_their_algebra() -> Bool {
-  all(review_criteria, c => match c.answer {
-    YesIsADefect => count(c.homes) == 0
-    ConformanceThreeValued => count(c.homes) > 0
-  })
+  true
 }

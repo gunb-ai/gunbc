@@ -10,8 +10,13 @@ import gunbc.roadmap.roadmap_review_role {
   review_verdict_decode, review_verdict_key, review_verdict_detail, review_brief,
   ConformanceAnswer, Conforms, DivergesStated, DivergesUnstated, conformance_answer_verdict, review_answer_instruction, ReviewReason,
 }
-import gunbc.roadmap.roadmap_review_criteria { review_criteria, review_criteria_grounded_in_the_argument, review_criterion_by_key, review_criteria_homes_match_their_algebra }
-import gunbc.design_argument { YesIsADefect, ConformanceThreeValued, conformance_domains }
+import gunbc.roadmap.roadmap_review_criteria { review_criteria, review_criteria_grounded_in_the_argument, review_criterion_by_key, review_criteria_homes_match_their_algebra, review_criterion_identity_text, review_home_text }
+import gunbc.design_argument { YesIsADefect, ConformanceThreeValued, conformance_domains, ConformanceDomain, ConformanceHomes, conformance_home_list }
+import gunbc.design_document { expected_design_md, conformance_domain_block }
+import gunbc.plans.md_helpers { ul }
+import extdeps.languages.markdown { serialize_markdown_source }
+import std.decl_ref { decl_ref }
+import std.markdown { MarkdownDocument }
 import gunbc.roadmap_workflow_stage { WorkflowSegmentComplete, WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentActive, WorkflowSegmentPending }
 import gunbc.worker_lifecycle { WorkerProcessAbsent, WorkerProcessRunning, WorkerProcessExited }
 
@@ -113,6 +118,70 @@ test fn a_stated_divergence_is_admitted_and_an_unstated_one_requests_changes() -
 
 // EVERY CONFORMANCE DOMAIN IS A REVIEWER WITH ITS HOMES IN THE BRIEF; no yes/no criterion carries a
 // home, and the discriminating half is the negation: the fail-closed brief names no home at all.
+// EVERY CONFORMANCE DOMAIN CARRIES A NON-EMPTY LABEL AND NARRATIVE FOR THE DESIGN.MD PROJECTION. The
+// DESIGN.md §3b bullet list is projected from these rows rather than hand-authored, so an empty label
+// would produce a blank bullet, and an absent narrative would leave the reader without the explanatory
+// context the prose currently carries. The count check keeps the projection denominator visible.
+test fn every_conformance_domain_carries_a_nonempty_label_and_narrative() -> Bool {
+  count(conformance_domains) == 4
+    && all(conformance_domains, d => d.label != "" && d.narrative != "")
+}
+
+// THE DESIGN.MD §3B BULLET LIST IS PROJECTED FROM CONFORMANCE_DOMAINS, NOT HAND-AUTHORED. The
+// synthetic-domain proof constructs a domain that does not exist in the production roster and proves
+// the renderer produces exactly the expected output for it. This establishes the derivation law:
+//   one ConformanceDomain row → exactly one DESIGN domain block
+// rather than the weaker "today's document mentions today's domains."
+test fn a_synthetic_conformance_domain_produces_exactly_one_design_block() -> Bool {
+  let synthetic = ConformanceDomain {
+    key: "test-synthetic-domain",
+    label: "synthetic test domain",
+    question: "Is this a test?",
+    homes: ConformanceHomes {
+      first: decl_ref(module_path: "test.synthetic", decl_name: "SyntheticHome"),
+      rest: [decl_ref(module_path: "test.synthetic", decl_name: "SecondHome")],
+    },
+    tells: ["a synthetic tell that exists only in this test"],
+    narrative: "this domain exists only to prove the renderer is a pure function of its input",
+  }
+  let doc = MarkdownDocument { blocks: [ul(items: [conformance_domain_block(d: synthetic)])] }
+  let md = serialize_markdown_source(doc: doc)
+  string_contains(s: md, pattern: "**synthetic test domain**")
+    && string_contains(s: md, pattern: "this domain exists only to prove")
+    && string_contains(s: md, pattern: "`test.synthetic SyntheticHome`")
+    && string_contains(s: md, pattern: "`test.synthetic SecondHome`")
+}
+
+// THE PRODUCTION DOMAINS ARE ALSO PROJECTED, SO ADDING A DOMAIN CREATES BOTH A DESIGN BLOCK AND A
+// REVIEW CRITERION, AND CHANGING A HOME CHANGES BOTH. This is the concrete consequence of the
+// derivation law: the production roster satisfies the same property the synthetic proof establishes.
+test fn production_conformance_domains_appear_in_generated_design() -> Bool {
+  let md = expected_design_md()
+  string_contains(s: md, pattern: "3b. Conformance")
+    && all(conformance_domains, d =>
+      string_contains(s: md, pattern: join(["**", d.label, "**"], ""))
+        && all(conformance_home_list(h: d.homes), h => string_contains(s: md, pattern: review_home_text(h: h)))
+    )
+}
+
+// THE PLAN REVISION (PLAN REVISION HASH) IS UNAFFECTED BY LABEL AND NARRATIVE, WHICH ARE
+// PROJECTION-ONLY FIELDS. review_criterion_identity_text hashes key, question, tells, answer algebra,
+// and homes — but never receives label or narrative because ReviewCriterion carries none of them.
+// Changing only a domain's label or narrative cannot invalidate a prior observation.
+test fn conformance_label_and_narrative_do_not_affect_plan_revision() -> Bool {
+  match review_criterion_by_key(key: "conformance-extdeps") {
+    Present { value: c } => {
+      let id = review_criterion_identity_text(c: c)
+      string_contains(s: id, pattern: "conformance-extdeps")
+        && string_contains(s: id, pattern: "conformance-three-valued")
+        && string_contains(s: id, pattern: "extdeps.external_authority ExternalModelScope")
+        // Label and narrative are NOT in the identity — they're not ReviewCriterion fields.
+        // This is structural: the function signature proves they cannot affect the revision.
+    }
+    Absent => false
+  }
+}
+
 test fn every_conformance_domain_is_a_criterion_whose_brief_names_its_homes() -> Bool {
   review_criteria_homes_match_their_algebra()
     && count(conformance_domains) == 4
