@@ -4,7 +4,7 @@ import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
 import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
 
 data emission_provenance_missing_consumer: GuaranteeStall = GuaranteeStall {
-  subject: "std.emission_provenance defines EmissionContribution and its fold, but no emitter path constructs these values from real output text. The three contribution arms are exercised only through hand-built test fixtures in emission_provenance_test.dag.",
+  subject: "std.emission_provenance defines EmissionContribution and its fold, but no emitter path constructs these values from real output text. The three contribution arms have an enrolled executing consumer on the required floor (test.claim.emission_provenance_test, which constructs and reads all three arms) but no production consumer constructing them from real emitted output. The executing consumer is currently blocked by a compiler defect (line 179 refuses to compile — see gunbc.recurring_failure_mode.match_bound_element_type_mask and gunbc#10625).",
   current: Mitigatable,
   ceiling: StructurallyImpossible,
   blocker: AwaitsOneGrounding {
