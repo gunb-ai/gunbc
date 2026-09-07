@@ -272,11 +272,7 @@ fn declared_type_bare_name(item: &Rc<Node>, si: &SourceIndices) -> Option<String
 }
 
 fn typed_module_for_path(ctx: &InterpContext, module_path: &str) -> Option<Rc<TypedModule>> {
-    let si = ctx.source_indices.clone();
-    ctx.modules
-        .iter()
-        .find(|tm| authored_name_at(si.clone(), tm.module.clone()) == module_path)
-        .cloned()
+    ctx.typed_module_for_authored_path(module_path)
 }
 
 fn lookup_type_binding_in_importing_module(

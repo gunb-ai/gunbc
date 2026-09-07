@@ -4190,6 +4190,15 @@ pub struct InterpContext {
     pub execution_mode: ExecutionMode,
     pub fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
     data_cache: std::cell::RefCell<HashMap<usize, Value>>,
+    // Module lookup BY AUTHORED PATH, built once per ctx. `ctx.modules` is a vector, so the only
+    // way to answer "which TypedModule is `v2.lens.cost`?" was a linear scan that re-sliced every
+    // module's name out of its source span (authored_name_at). One `decl_facts` marshal asks that
+    // question once per DataItem row, so the whole-corpus inventory was a PRODUCT of the two
+    // populations -- a cost-shape defect (DESIGN section 6, bare minimum cost), not a large
+    // constant. Same discipline as param_name_cache above: derived from ctx-owned Rc handles,
+    // filled lazily on first ask, dies with the ctx.
+    typed_module_by_path:
+        std::cell::RefCell<Option<Rc<std::collections::HashMap<String, Rc<TypedModule>>>>>,
     // Parameter-name derivation is invariant per fn_node but was re-sliced from source spans
     // per call (authored_name_at). Memoized per fn_node pointer. The pointer alone is unsound:
     // the ctx does not own fn_nodes (borrowed `Rc<Node>`s droppable while the ctx lives), so a
@@ -4305,6 +4314,31 @@ pub fn selected_module_path(
 }
 
 impl InterpContext {
+    /// The authored-path -> `TypedModule` index behind [`InterpContext::typed_module_by_path`].
+    /// First declarer wins, which is the answer the linear `find` this replaced returned.
+    pub fn typed_module_for_authored_path(&self, module_path: &str) -> Option<Rc<TypedModule>> {
+        let index = {
+            let cached = self.typed_module_by_path.borrow().clone();
+            match cached {
+                Some(index) => index,
+                None => {
+                    let si = self.source_indices.clone();
+                    let mut built: std::collections::HashMap<String, Rc<TypedModule>> =
+                        std::collections::HashMap::with_capacity(self.modules.len());
+                    for tm in self.modules.iter() {
+                        let name =
+                            crate::v1_std_core::authored_name_at(si.clone(), tm.module.clone());
+                        built.entry(name).or_insert_with(|| tm.clone());
+                    }
+                    let built = Rc::new(built);
+                    *self.typed_module_by_path.borrow_mut() = Some(Rc::clone(&built));
+                    built
+                }
+            }
+        };
+        index.get(module_path).cloned()
+    }
+
     pub fn sym(&self, s: &str) -> Symbol {
         self.symbols.borrow_mut().intern(s)
     }
@@ -4537,6 +4571,7 @@ impl InterpContext {
             execution_mode,
             fixture_store,
             data_cache: std::cell::RefCell::new(HashMap::new()),
+            typed_module_by_path: std::cell::RefCell::new(None),
             param_name_cache: std::cell::RefCell::new(HashMap::new()),
             param_name_cache_keepalive: std::cell::RefCell::new(Vec::new()),
             var_sym_cache: std::cell::RefCell::new(HashMap::new()),
