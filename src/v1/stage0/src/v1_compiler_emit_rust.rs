@@ -53,8 +53,8 @@ pub use crate::gunbc_stage0_partition_package_graph::stage0_partition_row_is_mod
 pub use crate::gunbc_structural_realization_bindings::{
     structural_connective_rows, structural_ordering_rows,
 };
-pub use crate::std_algebra::trim;
 pub use crate::std_algebra::AlgebraFieldTemplate;
+pub use crate::std_algebra::{is_collection_filter_template, trim};
 pub use crate::std_coercion::TypeCheckpoint;
 use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
@@ -10446,22 +10446,22 @@ pub fn collect_unprojectable_construct_refusals(
         };
         let from_children = match (*n.expr_data.clone()).clone() {
             ExprData::ExprIf => v1_rt::concat(
-                collect_unprojectable_construct_refusals(
-                    crate::v1_std_core::if_condition(n.clone()),
-                    module_name.clone(),
-                ),
                 v1_rt::concat(
+                    collect_unprojectable_construct_refusals(
+                        crate::v1_std_core::if_condition(n.clone()),
+                        module_name.clone(),
+                    ),
                     collect_unprojectable_construct_refusals(
                         crate::v1_std_core::if_then_branch(n.clone()),
                         module_name.clone(),
                     ),
-                    match crate::v1_std_core::if_else_branch(n.clone()) {
-                        Some(e) => {
-                            collect_unprojectable_construct_refusals(e.clone(), module_name.clone())
-                        }
-                        std::option::Option::None => Rc::new(vec![]),
-                    },
                 ),
+                match crate::v1_std_core::if_else_branch(n.clone()) {
+                    Some(e) => {
+                        collect_unprojectable_construct_refusals(e.clone(), module_name.clone())
+                    }
+                    std::option::Option::None => Rc::new(vec![]),
+                },
             ),
             _ => Rc::new({
                 let mut __result = Vec::new();
@@ -10529,42 +10529,40 @@ pub fn collect_filter_method_calls(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
             ExprData::ExprMethodCall {
                 method_semantics: method_semantics,
                 ..
-            } => {
-                let self_hit = if is_algebra_filter_method(method_semantics.clone()) {
-                    Rc::new(vec![n.clone()])
-                } else {
-                    Rc::new(vec![])
-                };
-                let from_children = Rc::new({
-                    let mut __result = Vec::new();
-                    for c in n.children.clone().iter().cloned() {
-                        __result.extend((*collect_filter_method_calls(c.clone())).iter().cloned());
-                    }
-                    __result
-                });
-                let from_body = match n.body.clone() {
-                    Some(b) => collect_filter_method_calls(b.clone()),
-                    std::option::Option::None => Rc::new(vec![]),
-                };
+            } => v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(self_hit.clone(), from_children.clone()),
-                    from_body.clone(),
-                )
-            }
-            _ => {
-                let from_children = Rc::new({
+                    if is_algebra_filter_method(method_semantics.clone()) {
+                        Rc::new(vec![n.clone()])
+                    } else {
+                        Rc::new(vec![])
+                    },
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for c in n.children.clone().iter().cloned() {
+                            __result
+                                .extend((*collect_filter_method_calls(c.clone())).iter().cloned());
+                        }
+                        __result
+                    }),
+                ),
+                match n.body.clone() {
+                    Some(b) => collect_filter_method_calls(b.clone()),
+                    std::option::Option::None => Rc::new(vec![]),
+                },
+            ),
+            _ => v1_rt::concat(
+                Rc::new({
                     let mut __result = Vec::new();
                     for c in n.children.clone().iter().cloned() {
                         __result.extend((*collect_filter_method_calls(c.clone())).iter().cloned());
                     }
                     __result
-                });
-                let from_body = match n.body.clone() {
+                }),
+                match n.body.clone() {
                     Some(b) => collect_filter_method_calls(b.clone()),
                     std::option::Option::None => Rc::new(vec![]),
-                };
-                v1_rt::concat(from_children.clone(), from_body.clone())
-            }
+                },
+            ),
         }
     })
 }
