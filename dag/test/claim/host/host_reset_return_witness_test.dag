@@ -31,6 +31,7 @@ import gunbc.host_reset_return {
   IssuedByHandOutOfBand,
   IssuedThroughConverge,
   NoPeerAvailable,
+  NoResetSubjectRostered,
   ObserverDistinctFromSubject,
   ObserverIdentityUnreadable,
   ObserverIsSubject,
@@ -832,6 +833,48 @@ test fn w_an_unrostered_observer_refuses() -> Bool {
     ObserverSelectionRefused { cause: c } =>
       match c { ObserverNotRostered { observer: _ } => true  _ => false }
     ObserverSelected { pairing: _ } => false
+  }
+}
+
+// THE ARM THAT WAS DECLARED AND NEVER CONSTRUCTED, WHICH IS WORSE THAN NOT HAVING DECLARED IT. Review
+// 61729 found NoPeerAvailable reachable and unemitted: the selections fold mapped over the peer
+// roster, so a subject with an EMPTY peer roster contributed ZERO selections -- and zero selections is
+// not a refused selection, it is nothing at all. The subject stopped being offered with no diagnostic
+// anywhere, under a paragraph forbidding exactly that. The type read as coverage while nothing could
+// produce it.
+test fn w_a_subject_with_no_peer_at_all_refuses_rather_than_vanishing() -> Bool {
+  match reset_dispatch_pairings(subject_roster: fx_subject_roster, peer_roster: []) {
+    DispatchAssignmentRefused { cause: c } =>
+      match c {
+        AssignmentPairingRefused { cause: inner } =>
+          match inner { NoPeerAvailable { subject: _ } => true  _ => false }
+        _ => false
+      }
+    DispatchAssignment { pairings: _ } => false
+  }
+}
+
+// THE SECOND ROUTE TO AN EMPTY DISPATCH FORM, and it is not the same defect. Nothing to iterate is
+// not the same as nothing refused: an empty SUBJECT roster produces no selections either, and the
+// per-subject refusal above cannot fire because there is no subject to fire for. A choice input with
+// zero options is a mode nobody can select, which is a capability removed silently rather than a
+// diagnostic about one.
+test fn w_an_empty_subject_roster_refuses_rather_than_offering_an_empty_form() -> Bool {
+  match reset_dispatch_pairings(subject_roster: [], peer_roster: fx_peer_roster) {
+    DispatchAssignmentRefused { cause: c } =>
+      match c { NoResetSubjectRostered => true  _ => false }
+    DispatchAssignment { pairings: _ } => false
+  }
+}
+
+// AND NEITHER ROUTE CAN PRODUCE AN ADMITTED-BUT-EMPTY ASSIGNMENT, which is the property the emission
+// gate depends on. This is the discriminating red for the claim a comment used to make and the code
+// did not: an empty pairings list under DispatchAssignment would pass a gate that matches only
+// DispatchAssignmentRefused.
+test fn w_no_route_yields_an_admitted_but_empty_assignment() -> Bool {
+  match reset_dispatch_pairings(subject_roster: [], peer_roster: []) {
+    DispatchAssignmentRefused { cause: _ } => true
+    DispatchAssignment { pairings: _ } => false
   }
 }
 

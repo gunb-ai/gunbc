@@ -94,6 +94,7 @@ import gunbc.host_reset_return {
   SubjectNotRostered,
   ResetDispatchAssignment,
   ResetDispatchAssignmentRefusalCause,
+  NoResetSubjectRostered,
   reset_dispatch_observer_labels,
   reset_dispatch_pairings,
 }
@@ -103,7 +104,7 @@ import gunbc.roadmap_launch_deployment_cli { rlm_dashboard_run_id_env_name }
 import gunbc.fleet_converge_plan { fleet_converge_plan_artifact_dir }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
-import std.types { NonEmptyStr, List, String, Int }
+import std.types { NonEmptyStr, List, String, Int, list_length }
 
 // Emitted on-demand fleet converge workflow (operator directive 2026-08-13, sleek-heron-218).
 // workflow_dispatch with host=srv1|srv2|srv3|srv4 (executor runner pin) and
@@ -152,10 +153,13 @@ data fleet_converge_reset_assignment: ResetDispatchAssignment = reset_dispatch_p
   peer_roster: reset_observer_peer_roster(),
 )
 
-// THE OPTION LIST IS DERIVED FROM THE ASSIGNMENT, and an unmintable one yields an EMPTY list that the
-// emission gate below refuses on. The empty list is never serialized: expected_fleet_converge_yml is
-// the only producer of this workflow's yaml and it checks the assignment before it serializes
-// anything, the same way it already checks the capability closure and the timeout ceiling.
+// THE OPTION LIST IS DERIVED FROM THE ASSIGNMENT. The empty list is never serialized, and the reason
+// is the assignment rather than this row: reset_dispatch_pairings refuses an empty subject roster and
+// constructs NoPeerAvailable for a subject with no admissible peer, so an empty pairings list is not
+// a reachable DispatchAssignment. An earlier version of this note claimed the GATE caught the empty
+// case, which was false -- an empty pairings list is DispatchAssignment, not DispatchAssignmentRefused,
+// so the gate passed and a choice input with zero options would have been serialized. The gate now
+// also refuses an empty list, which is the belt to the assignment's braces rather than the mechanism.
 data fleet_converge_reset_observer_options: List<String> = match fleet_converge_reset_assignment {
   DispatchAssignment { pairings: ps } => reset_dispatch_observer_labels(pairings: ps)
   DispatchAssignmentRefused { cause: _ } => []
@@ -1190,8 +1194,10 @@ fn fleet_converge_reset_assignment_refusal_reason(cause: ResetDispatchAssignment
         ObserverNotRostered { observer: o } =>
           join(["REFUSED gunbc.fleet_converge_workflow: ", o as String, " is not an executor fleet host, so no runner carries its label and no job could be scheduled on it."], "")
         NoPeerAvailable { subject: sname } =>
-          join(["REFUSED gunbc.fleet_converge_workflow: ", sname as String, " has no peer that could observe its reset; a subject cannot observe its own return."], "")
+          join(["REFUSED gunbc.fleet_converge_workflow: ", sname as String, " has no peer that could observe its reset. gunbc.host_reset_subject_roster reset_observer_peer_roster is derived from fleet_hosts(); a subject cannot observe its own return, so the mode cannot be offered until an executor host exists to watch from."], "")
       }
+    NoResetSubjectRostered =>
+      "REFUSED gunbc.fleet_converge_workflow: no host is an admitted reset subject, so the reset_observer choice input would carry zero options. gunbc.host_reset_subject_roster admits a host only when a landed BMC access observation and its capability row admit power control; if that roster is empty the mode has no subject and must not be offered as if it did."
   }
 }
 
@@ -1199,7 +1205,14 @@ fn fleet_converge_yml_after_toolchain_admission() -> FleetConvergeYamlGeneration
   match fleet_converge_reset_assignment {
     DispatchAssignmentRefused { cause: c } =>
       FleetConvergeYamlGenerationRefused { reason: fleet_converge_reset_assignment_refusal_reason(cause: c) }
-    DispatchAssignment { pairings: _ } => fleet_converge_yml_after_reset_assignment()
+    DispatchAssignment { pairings: ps } =>
+      if list_length(ps) == 0 {
+        FleetConvergeYamlGenerationRefused {
+          reason: "REFUSED gunbc.fleet_converge_workflow: the reset observer assignment admitted no pairing at all, so the reset_observer choice input would carry zero options -- a mode nobody can select. gunbc.host_reset_return reset_dispatch_pairings is supposed to refuse both routes to this state (an empty subject roster, and a subject with no admissible peer); reaching here means a third route exists and it is silent.",
+        }
+      } else {
+        fleet_converge_yml_after_reset_assignment()
+      }
   }
 }
 

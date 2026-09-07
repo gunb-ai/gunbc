@@ -1,6 +1,6 @@
 module gunbc.host_reset_return
 
-import std.types { Bool, EpochMs, Int, List, Milliseconds, NonEmptyStr, String }
+import std.types { Bool, EpochMs, Int, List, Milliseconds, NonEmptyStr, String, list_length }
 import std.observation { Measured, MeasuredValue, MeasuredUnavailable }
 import std.content_hash {
   ContentHash,
@@ -108,6 +108,7 @@ type ResetDispatchAssignment
 type ResetDispatchAssignmentRefusalCause
   = ObserverAssignedToTwoSubjects { observer: NonEmptyStr, first_subject: NonEmptyStr, second_subject: NonEmptyStr }
   | AssignmentPairingRefused { cause: ResetObserverRefusalCause }
+  | NoResetSubjectRostered
 
 fn assignment_conflict(pairings: List<ResetObserverPairing>, candidate: ResetObserverPairing) -> ResetDispatchAssignmentRefusalCause? {
   fold(
@@ -163,30 +164,65 @@ fn reset_dispatch_assignment(selections: List<ResetObserverSelection>) -> ResetD
 // A HOST ON BOTH ROSTERS REFUSES THE WHOLE ASSIGNMENT, and that is the intended reading rather than
 // an edge case. If a rostered subject is also a rostered observer, the two rosters disagree about
 // what that machine is, and the emission should stop until someone says which.
+// A SUBJECT WITH NO ADMISSIBLE PEER MUST PRODUCE A REFUSAL, NOT AN ABSENCE, and the first version of
+// this fold got that exactly backwards while carrying a paragraph forbidding it. It mapped over the
+// peer roster, so a subject with an EMPTY peer roster contributed ZERO selections -- and zero
+// selections is not a refused selection, it is nothing at all. The subject then quietly stopped being
+// offered with no diagnostic anywhere, which is the absorbing fallback the note above describes and
+// the reason NoPeerAvailable was declared. The cause existed and nothing emitted it, which is worse
+// than not having declared it: the type read as coverage.
+//
+// So the empty peer roster CONSTRUCTS the refusal rather than falling through a map that has nothing
+// to iterate.
+fn reset_observer_selections_for(
+  subject: NonEmptyStr,
+  subject_roster: List<NonEmptyStr>,
+  peer_roster: List<NonEmptyStr>,
+) -> List<ResetObserverSelection> {
+  if list_length(peer_roster) == 0 {
+    [ObserverSelectionRefused { cause: NoPeerAvailable { subject: subject } }]
+  } else {
+    map(
+      peer_roster,
+      observer => select_reset_observer(
+        subject_roster: subject_roster,
+        peer_roster: peer_roster,
+        subject: subject,
+        observer: observer,
+      )
+    )
+  }
+}
+
+// EVERY (SUBJECT, PEER) PAIR THE TWO ROSTERS ADMIT. The cross product is taken here rather than by a
+// caller so that the option list and the job's subject lookup fold ONE expression: a caller
+// assembling its own product could pair a subject with a peer this mint rejected.
+//
+// A HOST ON BOTH ROSTERS REFUSES THE WHOLE ASSIGNMENT, and that is the intended reading rather than
+// an edge case. If a rostered subject is also a rostered observer, the two rosters disagree about
+// what that machine is, and the emission should stop until someone says which.
 fn reset_observer_selections(subject_roster: List<NonEmptyStr>, peer_roster: List<NonEmptyStr>) -> List<ResetObserverSelection> {
   fold(
     subject_roster,
     init: [],
     f: (acc, subject) =>
-      concat(
-        acc,
-        map(
-          peer_roster,
-          observer => select_reset_observer(
-            subject_roster: subject_roster,
-            peer_roster: peer_roster,
-            subject: subject,
-            observer: observer,
-          )
-        ),
-      ),
+      concat(acc, reset_observer_selections_for(subject: subject, subject_roster: subject_roster, peer_roster: peer_roster)),
   )
 }
 
+// AN EMPTY SUBJECT ROSTER IS ITS OWN REFUSAL, and it is the second way an empty option list could be
+// produced without any selection having been refused. Nothing to iterate is not the same as nothing
+// refused, and both routes to an empty dispatch form have to be loud: a choice input with zero
+// options is a mode nobody can select, which is a silent removal of a capability rather than a
+// diagnostic about one.
 fn reset_dispatch_pairings(subject_roster: List<NonEmptyStr>, peer_roster: List<NonEmptyStr>) -> ResetDispatchAssignment {
-  reset_dispatch_assignment(
-    selections: reset_observer_selections(subject_roster: subject_roster, peer_roster: peer_roster)
-  )
+  if list_length(subject_roster) == 0 {
+    DispatchAssignmentRefused { cause: NoResetSubjectRostered }
+  } else {
+    reset_dispatch_assignment(
+      selections: reset_observer_selections(subject_roster: subject_roster, peer_roster: peer_roster)
+    )
+  }
 }
 
 fn reset_dispatch_observer_labels(pairings: List<ResetObserverPairing>) -> List<String> {
