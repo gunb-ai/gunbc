@@ -38,6 +38,7 @@ import gunbc.recurring_failure_mode.remediation_mutated_view { remediation_mutat
 import gunbc.recurring_failure_mode.diagnostic_name_mechanism_silent { diagnostic_name_mechanism_silent }
 import gunbc.recurring_failure_mode.resolution_scope_conflated_with_ownership_scope { resolution_scope_conflated_with_ownership_scope }
 import gunbc.recurring_failure_mode.empty_grouping_key_silently_deletes_its_population { empty_grouping_key_silently_deletes_its_population }
+import gunbc.recurring_failure_mode.regen_candidate_reverts_hand_authored_mirror { regen_candidate_reverts_hand_authored_mirror }
 import gunbc.recurring_failure_mode.identity_absent_graph_traversal { identity_absent_graph_traversal }
 import gunbc.recurring_failure_mode.generated_binding_shadows_bare_render { generated_binding_shadows_bare_render }
 import gunbc.recurring_failure_mode.resolved_reference_outside_execution_closure { resolved_reference_outside_execution_closure }
@@ -209,6 +210,7 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   diagnostic_name_mechanism_silent,
   resolution_scope_conflated_with_ownership_scope,
   empty_grouping_key_silently_deletes_its_population,
+  regen_candidate_reverts_hand_authored_mirror,
   identity_absent_graph_traversal,
   generated_binding_shadows_bare_render,
   resolved_reference_outside_execution_closure,
