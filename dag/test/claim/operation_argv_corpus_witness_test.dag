@@ -22,6 +22,7 @@ import v2.std.operation_argv {
   operation_argv_live_duplicate_authority_pairs,
   operation_argv_planted_duplicate_authority_pair_is_found,
   operation_argv_refusal_label,
+  operation_argv_shell_cgroup_directory_pair_is_found,
   operation_argv_row_bindings,
 }
 
@@ -178,6 +179,13 @@ test fn operation_argv_corpus_RED_smuggled_executable_is_refused_and_located() -
 // cardinality.
 test fn witness_planted_duplicate_authority_pair_is_found() -> Bool {
   operation_argv_planted_duplicate_authority_pair_is_found()
+}
+
+// Population control for the live join: shell.Test.IsDirectory and linux.CgroupV2.PathIsDirectory
+// share the same materialized argv list. Fixture-only RED is not enough to prove the enumerator
+// reaches those two declaration sites.
+test fn witness_shell_cgroup_directory_pair_is_found() -> Bool {
+  operation_argv_shell_cgroup_directory_pair_is_found()
 }
 
 test fn witness_duplicate_authority_pairs_are_well_formed() -> Bool {

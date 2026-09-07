@@ -7,9 +7,11 @@ import v2.std.algebra {
   filter,
   fold_list,
   for_all,
+  length,
   list_append,
   list_map,
-  list_snoc_item
+  list_snoc_item,
+  list_starts_with
 }
 
 // An operation's transport argv is materialized by binding THAT OPERATION'S OWN DECLARED INPUTS, by
@@ -198,10 +200,11 @@ fn operation_argv_row_bindings(row: ShellTransportOperationRow) -> List<Operatio
   )
 }
 
-// Census identity is the MATERIALIZED argv (generic bindings of the operation's own declared
-// inputs), not a grep of `transport shell`. Two operations that materialize to the same argv are
-// one concept under two names (DESIGN 3). Unmaterializable rows stay unpairable: their argv is not
-// a comparable fact until evaluation lands.
+// Census identity is the MATERIALIZED argv LIST (generic bindings of the operation's own declared
+// inputs), not a grep of `transport shell` and not a joined String. Two operations that materialize
+// to the same argv list are one concept under two names (DESIGN 3). Unmaterializable rows are a
+// distinct coproduct arm: their argv is not a comparable fact until evaluation lands. Token join is
+// a LABEL for humans, never the join key (review 61887).
 
 data operation_argv_token_join_separator: String = " :: "
 
@@ -223,17 +226,19 @@ fn operation_ref_eq(a: OperationRef, b: OperationRef) -> Bool {
   a.path == b.path && a.service == b.service && a.operation == b.operation
 }
 
-type OperationArgvCensusItem {
-  row: ShellTransportOperationRow
-  classification: ArgvRowClassification
-  argv_key: String
-  pairable: Bool
+fn operation_argv_lists_eq(a: List<String>, b: List<String>) -> Bool {
+  length(xs: a) == length(xs: b)
+    && list_starts_with(xs: a, prefix: b, eq: fn(x, y) { x == y })
 }
 
+type OperationArgvCensusItem
+  = Pairable { row: ShellTransportOperationRow, argv: List<String> }
+  | Unpairable { row: ShellTransportOperationRow, classification: ArgvRowClassification }
+
 type DuplicateAuthorityOperationPair {
-  a: OperationArgvCensusItem
-  b: OperationArgvCensusItem
-  argv_key: String
+  a: ShellTransportOperationRow
+  b: ShellTransportOperationRow
+  argv: List<String>
 }
 
 fn operation_argv_census_item(row: ShellTransportOperationRow) -> OperationArgvCensusItem {
@@ -244,17 +249,10 @@ fn operation_argv_census_item(row: ShellTransportOperationRow) -> OperationArgvC
     operation_argv_row_bindings(row: row)
   )
   match m {
-    ArgvMaterialized { argv: argv } => OperationArgvCensusItem {
+    ArgvMaterialized { argv: argv } => Pairable { row: row, argv: argv }
+    ArgvMaterializationRefused { at: _, cause: c } => Unpairable {
       row: row,
-      classification: ArgvRowMaterialized,
-      argv_key: operation_argv_token_join(tokens: argv),
-      pairable: true
-    }
-    ArgvMaterializationRefused { at: _, cause: c } => OperationArgvCensusItem {
-      row: row,
-      classification: operation_argv_classify_cause(cause: c),
-      argv_key: operation_argv_refusal_label(m: m),
-      pairable: false
+      classification: operation_argv_classify_cause(cause: c)
     }
   }
 }
@@ -267,27 +265,31 @@ fn operation_argv_census_items() -> List<OperationArgvCensusItem> {
 }
 
 type OperationArgvCensusBucket {
-  key: String
-  items: List<OperationArgvCensusItem>
+  argv: List<String>
+  rows: List<ShellTransportOperationRow>
 }
 
 data operation_argv_empty_census_buckets: List<OperationArgvCensusBucket> = Empty {}
-data operation_argv_empty_census_items: List<OperationArgvCensusItem> = Empty {}
+data operation_argv_empty_rows: List<ShellTransportOperationRow> = Empty {}
 data operation_argv_empty_duplicate_pairs: List<DuplicateAuthorityOperationPair> = Empty {}
 
-fn operation_argv_bucket_snoc_item(
+fn operation_argv_bucket_snoc_row(
   buckets: List<OperationArgvCensusBucket>,
-  item: OperationArgvCensusItem
+  row: ShellTransportOperationRow,
+  argv: List<String>
 ) -> List<OperationArgvCensusBucket> {
-  let matched = any(xs: buckets, predicate: fn(b) { b.key == item.argv_key })
+  let matched = any(
+    xs: buckets,
+    predicate: fn(b) { operation_argv_lists_eq(a: b.argv, b: argv) }
+  )
   if matched {
     list_map(
       xs: buckets,
       f: fn(b) {
-        if b.key == item.argv_key {
+        if operation_argv_lists_eq(a: b.argv, b: argv) {
           OperationArgvCensusBucket {
-            key: b.key,
-            items: list_snoc_item(xs: b.items, item: item)
+            argv: b.argv,
+            rows: list_snoc_item(xs: b.rows, item: row)
           }
         } else {
           b
@@ -298,16 +300,17 @@ fn operation_argv_bucket_snoc_item(
     list_snoc_item(
       xs: buckets,
       item: OperationArgvCensusBucket {
-        key: item.argv_key,
-        items: [item]
+        argv: argv,
+        rows: [row]
       }
     )
   }
 }
 
 fn operation_argv_pairs_from_seen(
-  seen: List<OperationArgvCensusItem>,
-  incoming: OperationArgvCensusItem
+  seen: List<ShellTransportOperationRow>,
+  incoming: ShellTransportOperationRow,
+  argv: List<String>
 ) -> List<DuplicateAuthorityOperationPair> {
   list_map(
     xs: seen,
@@ -315,14 +318,14 @@ fn operation_argv_pairs_from_seen(
       DuplicateAuthorityOperationPair {
         a: prior,
         b: incoming,
-        argv_key: incoming.argv_key
+        argv: argv
       }
     }
   )
 }
 
 type OperationArgvPairFold {
-  seen: List<OperationArgvCensusItem>
+  seen: List<ShellTransportOperationRow>
   pairs: List<DuplicateAuthorityOperationPair>
 }
 
@@ -330,17 +333,21 @@ fn operation_argv_pairs_from_bucket(
   bucket: OperationArgvCensusBucket
 ) -> List<DuplicateAuthorityOperationPair> {
   let folded = fold_list(
-    xs: bucket.items,
+    xs: bucket.rows,
     empty: OperationArgvPairFold {
-      seen: operation_argv_empty_census_items,
+      seen: operation_argv_empty_rows,
       pairs: operation_argv_empty_duplicate_pairs
     },
-    cons: fn(acc, item) {
+    cons: fn(acc, row) {
       OperationArgvPairFold {
-        seen: list_snoc_item(xs: acc.seen, item: item),
+        seen: list_snoc_item(xs: acc.seen, item: row),
         pairs: list_append(
           left: acc.pairs,
-          right: operation_argv_pairs_from_seen(seen: acc.seen, incoming: item)
+          right: operation_argv_pairs_from_seen(
+            seen: acc.seen,
+            incoming: row,
+            argv: bucket.argv
+          )
         )
       }
     }
@@ -351,11 +358,16 @@ fn operation_argv_pairs_from_bucket(
 fn operation_argv_duplicate_authority_pairs_from_items(
   items: List<OperationArgvCensusItem>
 ) -> List<DuplicateAuthorityOperationPair> {
-  let pairable = filter(xs: items, predicate: fn(item) { item.pairable })
   let buckets = fold_list(
-    xs: pairable,
+    xs: items,
     empty: operation_argv_empty_census_buckets,
-    cons: fn(acc, item) { operation_argv_bucket_snoc_item(buckets: acc, item: item) }
+    cons: fn(acc, item) {
+      match item {
+        Pairable { row: row, argv: argv } =>
+          operation_argv_bucket_snoc_row(buckets: acc, row: row, argv: argv)
+        Unpairable { row: _, classification: _ } => acc
+      }
+    }
   )
   fold_list(
     xs: buckets,
@@ -371,8 +383,8 @@ fn operation_argv_duplicate_authority_pairs() -> List<DuplicateAuthorityOperatio
 }
 
 fn operation_argv_pair_is_fixture(pair: DuplicateAuthorityOperationPair) -> Bool {
-  pair.a.row.at.path == "dag/test/fixture/argv_executable_position_probe.dag"
-    || pair.b.row.at.path == "dag/test/fixture/argv_executable_position_probe.dag"
+  pair.a.at.path == "dag/test/fixture/argv_executable_position_probe.dag"
+    || pair.b.at.path == "dag/test/fixture/argv_executable_position_probe.dag"
 }
 
 fn operation_argv_live_duplicate_authority_pairs() -> List<DuplicateAuthorityOperationPair> {
@@ -383,18 +395,14 @@ fn operation_argv_live_duplicate_authority_pairs() -> List<DuplicateAuthorityOpe
 }
 
 fn operation_argv_pair_refs_are_distinct(pair: DuplicateAuthorityOperationPair) -> Bool {
-  !operation_ref_eq(a: pair.a.row.at, b: pair.b.row.at)
-}
-
-fn operation_argv_pair_materializations_agree(pair: DuplicateAuthorityOperationPair) -> Bool {
-  pair.a.argv_key == pair.b.argv_key && pair.a.argv_key != ""
+  !operation_ref_eq(a: pair.a.at, b: pair.b.at)
 }
 
 fn operation_argv_pair_is_planted_duplicate(pair: DuplicateAuthorityOperationPair) -> Bool {
-  let a = pair.a.row.at.operation
-  let b = pair.b.row.at.operation
-  pair.a.row.at.path == "dag/test/fixture/argv_executable_position_probe.dag"
-    && pair.b.row.at.path == "dag/test/fixture/argv_executable_position_probe.dag"
+  let a = pair.a.at.operation
+  let b = pair.b.at.operation
+  pair.a.at.path == "dag/test/fixture/argv_executable_position_probe.dag"
+    && pair.b.at.path == "dag/test/fixture/argv_executable_position_probe.dag"
     && ((a == "DuplicateAuthorityAlpha" && b == "DuplicateAuthorityBeta")
       || (a == "DuplicateAuthorityBeta" && b == "DuplicateAuthorityAlpha"))
 }
@@ -406,22 +414,40 @@ fn operation_argv_planted_duplicate_authority_pair_is_found() -> Bool {
   )
 }
 
+fn operation_argv_pair_is_shell_cgroup_directory_duplicate(
+  pair: DuplicateAuthorityOperationPair
+) -> Bool {
+  let a_shell = pair.a.at.path == "dag/extdeps/shell.dag" && pair.a.at.operation == "IsDirectory"
+  let b_shell = pair.b.at.path == "dag/extdeps/shell.dag" && pair.b.at.operation == "IsDirectory"
+  let a_cgroup = pair.a.at.path == "dag/extdeps/linux/cgroup_v2.dag"
+    && pair.a.at.operation == "PathIsDirectory"
+  let b_cgroup = pair.b.at.path == "dag/extdeps/linux/cgroup_v2.dag"
+    && pair.b.at.operation == "PathIsDirectory"
+  (a_shell && b_cgroup) || (a_cgroup && b_shell)
+}
+
+fn operation_argv_shell_cgroup_directory_pair_is_found() -> Bool {
+  any(
+    xs: operation_argv_live_duplicate_authority_pairs(),
+    predicate: fn(pair) { operation_argv_pair_is_shell_cgroup_directory_duplicate(pair: pair) }
+  )
+}
+
 fn operation_argv_duplicate_authority_pairs_are_well_formed(
   pairs: List<DuplicateAuthorityOperationPair>
 ) -> Bool {
   for_all(
     xs: pairs,
     predicate: fn(pair) {
-      operation_argv_pair_refs_are_distinct(pair: pair)
-        && operation_argv_pair_materializations_agree(pair: pair)
+      operation_argv_pair_refs_are_distinct(pair: pair) && length(xs: pair.argv) > 0
     }
   )
 }
 
 fn operation_argv_pair_label(pair: DuplicateAuthorityOperationPair) -> String {
   concat(
-    operation_argv_ref_label(at: pair.a.row.at),
-    concat(" == ", operation_argv_ref_label(at: pair.b.row.at))
+    operation_argv_ref_label(at: pair.a.at),
+    concat(" == ", operation_argv_ref_label(at: pair.b.at))
   )
 }
 
