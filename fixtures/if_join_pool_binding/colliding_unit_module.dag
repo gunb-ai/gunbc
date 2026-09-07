@@ -1,9 +1,0 @@
-module fixtures.if_join_pool_binding.colliding_unit_module
-
-// SECOND PERTURBATION KIND: a UNIT coproduct arm spelled the same as declaring_module's
-// RECORD arm. Presence in the closure is enough; the entry need not import this coproduct.
-type PoolSpecimenOther
-  = PoolSpecimenSquare
-  | PoolSpecimenOtherCircle { r: Int }
-
-type PoolSpecimenDummy { x: Int }
