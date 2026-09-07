@@ -26,7 +26,9 @@ import gunbc.host_effect {
 }
 import gunbc.host_effect_realize { host_effect_apply_gated }
 import gunbc.fleet_converge_apply { fleet_compute_host_for_identity }
-import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
+import gunbc.os_install_actuator_selection {
+  srv3_os_install_actuator_selection, ActuatorSelected, ActuatorUnsatisfiable,
+}
 import gunbc.build_cache_instance { ci_cache_instance }
 import std.realization_reconcile { Converged, NotConverged }
 
@@ -125,7 +127,10 @@ fn host_toolchain_ensure_target_host(kind: HostToolchainKind, host: HostIdentity
     CompilePool => fleet_compute_host_for_identity(identity: host)
     OsInstallActuator =>
       if host == operator_host_srv3 {
-        Present { value: srv3_os_install_actuator_host }
+        match srv3_os_install_actuator_selection {
+          ActuatorSelected { host: h } => Present { value: h }
+          ActuatorUnsatisfiable { reason: _ } => none
+        }
       } else {
         fleet_compute_host_for_identity(identity: host)
       }

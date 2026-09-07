@@ -3,7 +3,7 @@ module test.claim.srv3_host_effect_apply_witness
 import std.dissolution { dissolution_description }
 import gunbc.srv3_actuate_shell_paths { srv3_bmcweb_login_response_path }
 import gunbc.srv3_host_effect_apply {
-  srv3_shell_stdout_from_apply,
+  srv3_shell_stdout_from_reconciliation,
   srv3_typed_receipt_from_lines,
 }
 import gunbc.host_effect_realize {
@@ -28,12 +28,14 @@ import gunbc.session_lease { PortObserved, PortObservedStaleExpected }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+// These witnesses discriminate transport and target-kind refusals, which are host-agnostic:
+// srv1_host is named directly so the fixture does not depend on the live actuator selection.
 fn srv3_actuator_target() -> NodeControlPlane {
-  HostOs { node: srv3_os_install_actuator_host }
+  HostOs { node: srv1_host }
 }
 
 fn srv3_bmc_target() -> NodeControlPlane {
-  BmcController { node: srv3_os_install_actuator_host }
+  BmcController { node: srv1_host }
 }
 
 test fn witness_srv3_receipt_emit_apply_converges_in_process() -> Bool {
@@ -135,7 +137,7 @@ test fn witness_srv3_apply_failure_no_fabricated_stdout() -> Bool {
     evidence: host_effect_identity_evidence,
     transport: SshShell { ssh_host: "203.0.113.1" as NonEmptyStr }
   )
-  !reconciliation_converged(r: r) && srv3_shell_stdout_from_apply(r: r) == none
+  !reconciliation_converged(r: r) && srv3_shell_stdout_from_reconciliation(r: r) == none
 }
 
 test fn witness_srv3_typed_effect_on_bmc_refuses_typed() -> Bool {

@@ -71,7 +71,11 @@ test fn nbd_proxy_serve_step_maps_to_actuator_host_shell_intent() -> Bool {
   match actuator_step_realization(step: steps.first()) {
     ActuatorStepReady { intent: intent } =>
       match intent.target {
-        HostOs { node: h } => h == srv3_os_install_actuator_host
+        HostOs { node: h } =>
+          match srv3_os_install_actuator_selection {
+            ActuatorSelected { host: selected } => h == selected
+            ActuatorUnsatisfiable { reason: _ } => false
+          }
         _ => false
       }
         && match intent.effect {
@@ -101,14 +105,19 @@ test fn nbd_proxy_placeholder_scaffolds_carry_dissolve_on_markers() -> Bool {
 test fn unrealized_actuator_steps_refuse_rather_than_reporting_absent() -> Bool {
   match actuator_step_realization(step: ActuatorRedfishInsertMedia) {
     ActuatorStepRefused { cause: ActuatorStepRealizationAbsent { step: _ } } => true
+    ActuatorStepRefused { cause: ActuatorStepActuatorHostUnsatisfiable { step: _, reason: _ } } => false
     ActuatorStepReady { intent: _ } => false
   }
     && match actuator_step_realization(step: ActuatorPxeNetworkBootStaging) {
          ActuatorStepRefused { cause: ActuatorStepRealizationAbsent { step: _ } } => true
+         ActuatorStepRefused { cause: ActuatorStepActuatorHostUnsatisfiable { step: _, reason: _ } } => false
+    ActuatorStepRefused { cause: ActuatorStepActuatorHostUnsatisfiable { step: _, reason: _ } } => false
          ActuatorStepReady { intent: _ } => false
        }
     && match actuator_step_realization(step: ActuatorFirmwareUpdate) {
          ActuatorStepRefused { cause: ActuatorStepRealizationAbsent { step: _ } } => true
+         ActuatorStepRefused { cause: ActuatorStepActuatorHostUnsatisfiable { step: _, reason: _ } } => false
+    ActuatorStepRefused { cause: ActuatorStepActuatorHostUnsatisfiable { step: _, reason: _ } } => false
          ActuatorStepReady { intent: _ } => false
        }
 }
