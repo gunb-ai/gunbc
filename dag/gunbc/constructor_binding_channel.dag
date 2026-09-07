@@ -45,11 +45,36 @@ import std.decl_ref { DeclarationRef, decl_ref }
 // DIRECTLY, by its own references, the compile refuses. Reach either owner only indirectly -- a
 // carrier module in the closure imports it, and nothing else does -- and the wall does not apply,
 // because the fold it lives in (insert_variant_owner_checked, over the module's own declarations
-// and its DIRECT imports) never sees the pair. The whole-closure base merged underneath it has no
-// collision arm at all: build_global_bare_variant_locals matches only GlobalBareUniqueBinding and
-// sends everything else to `_ => acc`. So the honest statement of the channel is that it refuses
-// on the per-FILE pair and is silent on the per-CLOSURE one, and the defects named as next rungs
-// below stand alongside a silent-wrong-bind finding rather than instead of one.
+// and its DIRECT imports) never sees the pair. So the honest statement of the channel is that it
+// refuses on the per-FILE pair and is silent on the per-CLOSURE one, and the defects named as
+// next rungs below stand alongside a silent-wrong-bind finding rather than instead of one.
+//
+// AND THE SITE OF THAT SILENT BIND IS NOT WHERE THIS CARRIER FIRST SAID IT WAS. The first draft
+// of these rows attributed case6 and case7 to `build_global_bare_variant_locals` -- Unique enters
+// the whole-closure variant base, Ambiguous falls to its `_ => acc`. That is FALSE for a
+// standalone competitor and is corrected here rather than quietly amended, because it is the same
+// failure this change exists to fix, one layer down: a plausible mechanism story that a repair
+// would be aimed at, landing nowhere near the live site (review 61874). That builder inserts ONLY
+// when the Unique binding's owner is a Disj carrying a child of the name, so a foreign
+// `type Sq { .. }` -- a Conj -- never enters that base under Unique either, and the fold cannot
+// distinguish case6 from case7 at all.
+//
+// THE LIVE SITE IS RECORD-LITERAL INFERENCE, and the deciding value is `type_name_declares_own_type`.
+// For `Sq { s: 2 }` inside the subject: `lookup_variant_parent_enum` finds the LOCAL owner `Shape`
+// correctly, so the widening the join needs is available. It is then DISCARDED, because
+// `lookup_binding_by_name` resolves the bare `Sq` through `global_bare` to the foreign standalone
+// declaration, and `binding_declares_name` is simply "the resolved node's authored name equals the
+// looked-up name" -- which a `type Sq` satisfies. The `if` takes the declares-own-type arm and
+// keeps the foreign Product instead of widening to the parent. case7 is clean for the same reason
+// read backwards: a second competitor makes the bare lookup Ambiguous, `type_name_declares_own_type`
+// goes false, the else arm looks the parent up by name, and the local `Shape` wins.
+//
+// THAT ALSO EXPLAINS case9 WITHOUT A SECOND MECHANISM, which is the check that the story is right
+// rather than merely different: a foreign COPRODUCT owning an arm spelled `Sq` resolves the bare
+// name to the OWNER node, whose authored name is its own (`Boxone`), not `Sq`. So
+// `binding_declares_name` is false, the arm cannot trigger the preference, and it equally cannot
+// contribute the ambiguity that would repair case6 -- which is precisely what case9 and case10
+// measure. One predicate accounts for all five rows.
 
 // WHAT THE REFERRING MODULE USES THE UNIMPORTED NAME AS. The two arms are the discriminator: they
 // are the only difference between case1 and case4.
@@ -136,7 +161,7 @@ data constructor_binding_channel_probes: List<ChannelProbe> = [
     owner_modules_in_source_root: 3,
     owner_modules_in_compiled_closure: 3,
     outcome: BoundSilently { emitted: "11 files emitted, 0 diagnostics, exit 0 -- and the bind is CORRECT" },
-    what_it_establishes: "THE NON-MONOTONICITY, IN ISOLATION. Adding a competitor REPAIRS the compile. build_global_bare_variant_locals inserts only under GlobalBareUniqueBinding; a second competitor makes the census entry Ambiguous, which falls to its bare `_ => acc`, so nothing enters the base and the arm widens to its own owner correctly. The consequence: a repair validated on a corpus where most spellings have several answers will look correct and still be wrong, and any severity census that ranks by competitor count has the sign backwards",
+    what_it_establishes: "THE NON-MONOTONICITY, IN ISOLATION. Adding a competitor REPAIRS the compile. The mechanism is `type_name_declares_own_type` in record-literal inference, NOT the variant-locals builder this row first named: with one competitor the bare `Sq` resolves through global_bare to the foreign standalone declaration, whose authored name IS `Sq`, so the predicate holds and the foreign Product is kept instead of widening to the local parent the lookup already found; with two, the bare lookup goes Ambiguous, the predicate goes false, and the else arm resolves the parent by name and widens correctly. The consequence is unchanged by the correction: a repair validated on a corpus where most spellings have several answers will look correct and still be wrong, and any severity census that ranks by competitor count has the sign backwards",
   },
   {
     case_name: "case8 -- case6 plus one NON-competing foreign module (the closure-size control)",
@@ -161,6 +186,14 @@ data constructor_binding_channel_probes: List<ChannelProbe> = [
     owner_modules_in_compiled_closure: 3,
     outcome: RefusedWithDiagnostic { diagnostic: "if branches resolve to incompatible types: Coproduct(Shape) vs Product(Sq)", situation: "same as case6" },
     what_it_establishes: "THE SCOPE OF CASE9 AND CASE10, STATED BEFORE THE FACT SO THE FACT IS NOT OVER-READ. In every one of these five geometries the LOCAL declarer is in the closure throughout, so the closure census for the spelling is never Unique-on-a-FOREIGN-arm. What is measured is that adding an arm owner BESIDE an already-present local declarer changes nothing; what is NOT measured is a closure whose count of arm owners crosses one with no local declarer present, which case3 says is the domain that decides. A reader taking case9 as `arm owners never matter` has taken it past its own geometry, which is the same over-reading this change corrects in case5. Now the fact itself: the two previous rows are one fact, not two. An arm-shaped answer does not perturb AND does not count toward the ambiguity that would have repaired case6 -- had it counted, this closure would have gone clean like case7. So the competitor population is non-monotone in one direction and blind in the other, which is the whole reason these five rows are recorded rather than summarised",
+  },
+  {
+    case_name: "case11 -- the competitor is a foreign COPRODUCT whose OWN NAME is the contested spelling",
+    reference_kind: ConstructorReference { position: "identical to case6" },
+    owner_modules_in_source_root: 2,
+    owner_modules_in_compiled_closure: 2,
+    outcome: RefusedWithDiagnostic { diagnostic: "if branches resolve to incompatible types: Coproduct(Shape) vs Coproduct(Sq)", situation: "the same silent wrong bind as case6, and the RENDERED SHAPE IS THE RECEIPT: it says Coproduct(Sq), so the arm bound to the foreign coproduct itself" },
+    what_it_establishes: "THE DISCRIMINATING PREDICTION THAT SEPARATES THE TWO MECHANISM STORIES, run because a corrected causal claim asserted from reading is worth less than one that predicted an unmeasured outcome. The refuted story -- the whole-closure variant base -- requires an owner that is a Disj CARRYING A CHILD of the name; this foreign coproduct is a Disj and has NO child spelled Sq, so that story predicts CLEAN. The corrected story turns on binding_declares_name, the resolved node's authored name equalling the looked-up name, which this declaration satisfies, so it predicts PERTURBATION. IT PERTURBS. The arms already recorded separated the two stories only by a structural argument; this row separates them by an outcome neither had been measured against, and the rendered Coproduct(Sq) names the winner directly. It also bounds what case9 says: an arm is not invisible because its OWNER is a coproduct -- a coproduct competes perfectly well when it is the coproduct's own NAME that collides. What is invisible is a name that a declaration does not itself declare",
   },
 ]
 
@@ -196,6 +229,16 @@ data constructor_binding_channel_stages: List<ChannelStage> = [
   {
     site: decl_ref(module_path: "v1.compiler.infer", decl_name: "build_module_context"),
     what_it_contributes: "folds the result into the module's ordinary locals, so a corpus-derived arm is an ordinary top-priority local binding rather than a fallback consulted last",
+    is_governed_by_the_flat_ruling: false,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.infer_env", decl_name: "binding_declares_name"),
+    what_it_contributes: "THE DECIDING PREDICATE FOR case6 THROUGH case10, and it is one line: the resolved node's authored name equals the looked-up name. A foreign standalone `type Sq` satisfies it; a foreign coproduct owning an ARM spelled Sq does not, because the bare name resolves to the OWNER, whose authored name is its own. That single asymmetry is why a standalone competitor perturbs and an arm does not",
+    is_governed_by_the_flat_ruling: false,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.infer", decl_name: "infer_record_lit_structural"),
+    what_it_contributes: "where that predicate is CONSUMED and the damage is done: `lookup_variant_parent_enum` has already found the correct LOCAL owner, and the `type_name_declares_own_type` arm then discards it and keeps the foreign declaration instead of widening to the parent. The else arm -- taken when the bare lookup is Ambiguous -- resolves the parent by name and is correct, which is why adding a second competitor REPAIRS the compile",
     is_governed_by_the_flat_ruling: false,
   },
 ]
@@ -348,6 +391,21 @@ data constructor_binding_channel_indirect_fixture_files: List<FixtureModuleFile>
     case_name: "case9",
     path: "fixtures/constructor_binding_channel_indirect/uab/entry_f.dag",
     role: "subject plus TWO foreign arm owners: CLEAN. An arm is not a competitor",
+  },
+  {
+    case_name: "case11",
+    path: "fixtures/constructor_binding_channel_indirect/uab/named_sq.dag",
+    role: "a foreign COPRODUCT whose OWN NAME is the contested spelling and whose arms are unrelated -- a Disj with no child of that name, which is what makes it discriminating",
+  },
+  {
+    case_name: "case11",
+    path: "fixtures/constructor_binding_channel_indirect/uab/ncar_one.dag",
+    role: "its carrier, so the reach stays indirect",
+  },
+  {
+    case_name: "case11",
+    path: "fixtures/constructor_binding_channel_indirect/uab/entry_h.dag",
+    role: "REFUSES with Coproduct(Shape) vs Coproduct(Sq) -- the refuted mechanism story predicted CLEAN here and the corrected one predicted this",
   },
   {
     case_name: "case10",
