@@ -157,13 +157,6 @@ fn reset_dispatch_assignment(selections: List<ResetObserverSelection>) -> ResetD
   )
 }
 
-// EVERY (SUBJECT, PEER) PAIR THE TWO ROSTERS ADMIT. The cross product is taken here rather than by a
-// caller so that the option list and the job's subject lookup fold ONE expression: a caller
-// assembling its own product could pair a subject with a peer this mint rejected.
-//
-// A HOST ON BOTH ROSTERS REFUSES THE WHOLE ASSIGNMENT, and that is the intended reading rather than
-// an edge case. If a rostered subject is also a rostered observer, the two rosters disagree about
-// what that machine is, and the emission should stop until someone says which.
 // A SUBJECT WITH NO ADMISSIBLE PEER MUST PRODUCE A REFUSAL, NOT AN ABSENCE, and the first version of
 // this fold got that exactly backwards while carrying a paragraph forbidding it. It mapped over the
 // peer roster, so a subject with an EMPTY peer roster contributed ZERO selections -- and zero

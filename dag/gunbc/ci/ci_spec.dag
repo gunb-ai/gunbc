@@ -770,11 +770,20 @@ data gunbc_ci_runner_microvm_host_converge_target: GunbcRunStepTarget = GunbcRun
   function: "runner_microvm_host_converge_wet",
 }
 
-// THE OBSERVER SIDE OF ONE RESET ATTEMPT. It takes no arguments: the dispatch names the OBSERVER and
-// the step hands that label over by environment, the credential arrives as a path by the same route,
-// and the subject is derived from the label through the modeled assignment. There is no input of any
-// kind through which a caller could name a subject, which is what keeps a reset job from being
-// pointed at its own host.
+// THE OBSERVER SIDE OF ONE RESET ATTEMPT. It takes no arguments: the dispatch names the OBSERVER, the
+// step hands that label over by environment, and the subject is derived from the label through the
+// modeled assignment. There is no input of any kind through which a caller could name a subject,
+// which is what keeps a reset job from being pointed at its own host.
+//
+// THE CREDENTIAL ROUTE IS NOT LANDED, and this annotation previously said it was. The entry reads
+// gunbc.host.host_reset_return_run host_reset_bmc_credential_path_env and refuses when it is unset,
+// but no step in fleet_converge_host_reset_return_job materializes it, so the emitted mode can today
+// only reach that first refusal. The materialization has the shape the Spark prelude already
+// establishes at gunbc_ci_spark_grant_install_credential_prelude; what is missing is the secret resource
+// itself, which is an operator fact and not something this module may invent -- a plausible resource
+// name here would render a step that fetches nothing and writes an empty file. The frontier is
+// declared in the annotation above gunbc.host.host_reset_return reset_return_verdict_of_mint, and is
+// retired by that secret existing, not by any edit here.
 data gunbc_ci_host_reset_return_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/host/host_reset_return_run.dag",
   function: "host_reset_return_wet",
