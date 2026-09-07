@@ -16,6 +16,7 @@ import std.realization_reconcile {
   reconcile_grounded,
   ReconciledEffect,
   reconcile_effect,
+  Application,
 }
 
 type EnsurePolicy
@@ -119,14 +120,24 @@ fn ensure_readback<E>(
 // readback all ran. The post-observation is a SECOND observation supplied by the caller — the same
 // observation value passed twice is a caller defect this function cannot see, and is what the
 // independent-readback witnesses in gunbc.readback_independence exist to catch.
+//
+// WHAT THIS DOES NOT ESTABLISH, corrected after review of the first revision: this assembles a
+// report in one call, it does not EXECUTE the lifecycle. `before`, `after` and both satisfaction
+// predicates remain caller-supplied, so a caller that observes nothing and asserts everything still
+// gets a report — what changed is that it can no longer get a CONVERGED one merely by writing a
+// Bool. What it produces is a REPORT: the decision was classified, an application was reported with
+// evidence, and an independent observation grounded or failed to ground the desired relation. It is
+// NOT proof the decided plan is the one that ran — std cannot witness that without a law from the
+// same caller it would be checking, so the plan-to-evidence binding belongs to the domain and is
+// discharged by a domain carrier the effect authority alone can mint.
 
-fn ensure_reconcile<P, E>(
+fn ensure_reconcile<P, A, E>(
   policy: EnsurePolicy,
   before: EnsureObservation<E>,
   before_satisfies: Bool,
   mismatch_reason: String,
   plan: EnsurePlan<P>,
-  applied: Bool,
+  application: Application<A>,
   after: EnsureObservation<E>,
   after_satisfies: Bool,
   after_mismatch_reason: String,
@@ -141,7 +152,7 @@ fn ensure_reconcile<P, E>(
           mismatch_reason: mismatch_reason,
           plan: plan,
         ),
-        applied: applied,
+        application: application,
         show_read: ReadObserved { value: evidence },
         grounding: if after_satisfies {
           Grounds { evidence: evidence }
@@ -158,7 +169,7 @@ fn ensure_reconcile<P, E>(
           mismatch_reason: mismatch_reason,
           plan: plan,
         ),
-        applied: applied,
+        application: application,
         show_read: ReadAbsent { reason: reason },
         grounding: DoesNotGround { reason: reason },
       )
@@ -171,7 +182,7 @@ fn ensure_reconcile<P, E>(
           mismatch_reason: mismatch_reason,
           plan: plan,
         ),
-        applied: applied,
+        application: application,
         show_read: ReadAbsent { reason: reason },
         grounding: DoesNotGround { reason: reason },
       )

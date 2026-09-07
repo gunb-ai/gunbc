@@ -8,7 +8,7 @@ import std.upsert_decision {
   Refuse,
   upsert_decision_label,
 }
-import std.realization_reconcile { ReconciledEffect, reconciled_effect_converged }
+import std.realization_reconcile { ReconciledEffect, reconciled_effect_converged, NotApplied }
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.ensure {
   EnsureObservation,
@@ -165,7 +165,7 @@ fn capability_ensure_receipt(
         "; generic Ensure cannot choose an installer",
       ], ""),
     ),
-    applied: false,
+    application: NotApplied,
     after: observation,
     after_satisfies: identity_matches,
     after_mismatch_reason: capability_readback_reason(realization: realization),
