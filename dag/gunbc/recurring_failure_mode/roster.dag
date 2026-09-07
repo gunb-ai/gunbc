@@ -178,6 +178,8 @@ import gunbc.recurring_failure_mode.permissiveness_promoted_into_a_higher_safety
 import gunbc.recurring_failure_mode.evaluation_model_cleanup_undeclared { evaluation_model_cleanup_undeclared }
 import gunbc.recurring_failure_mode.docs_markdown_projections_have_no_completing_actuator { docs_markdown_projections_have_no_completing_actuator }
 import gunbc.recurring_failure_mode.type_name_field_carries_rendered_value { type_name_field_carries_rendered_value }
+import gunbc.recurring_failure_mode.declared_refusal_unreachable_from_its_own_constructor { declared_refusal_unreachable_from_its_own_constructor }
+import gunbc.recurring_failure_mode.enforcement_gate_positioned_after_the_effect_it_guards { enforcement_gate_positioned_after_the_effect_it_guards }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry,
@@ -346,4 +348,6 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   evaluation_model_cleanup_undeclared,
   docs_markdown_projections_have_no_completing_actuator,
   type_name_field_carries_rendered_value,
+  declared_refusal_unreachable_from_its_own_constructor,
+  enforcement_gate_positioned_after_the_effect_it_guards,
 ]
