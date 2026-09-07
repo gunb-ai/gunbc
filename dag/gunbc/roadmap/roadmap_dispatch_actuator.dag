@@ -1111,7 +1111,8 @@ fn gunbc_harness_review_argv(
   timeout_program: String,
   request_scratch_path: String,
   events_path: String,
-  verdict_path: String,
+  verdict_dir: String,
+  verdict_name: String,
 ) -> List<String> {
   [
     gunbc_program,
@@ -1125,7 +1126,8 @@ fn gunbc_harness_review_argv(
     "--arg", join(["timeout_program=", timeout_program], ""),
     "--arg", join(["request_scratch_path=", request_scratch_path], ""),
     "--arg", join(["events_path=", events_path], ""),
-    "--arg", join(["verdict_path=", verdict_path], ""),
+    "--arg", join(["verdict_dir=", verdict_dir], ""),
+    "--arg", join(["verdict_name=", verdict_name], ""),
   ]
 }
 
@@ -1158,7 +1160,8 @@ fn dispatch_review_unit_argv(
         timeout_program: instance.toolchain.timeout as String,
         request_scratch_path: dispatch_attempt_review_request_scratch_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
         events_path: dispatch_attempt_review_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
-        verdict_path: dispatch_attempt_review_verdict_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha, criterion_key: criterion_key),
+        verdict_dir: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+        verdict_name: dispatch_attempt_review_verdict_basename(head_sha: head_sha, criterion_key: criterion_key),
       ),
     ),
   )
@@ -1219,7 +1222,8 @@ fn dispatch_audit_unit_argv(
         "--arg", join(["timeout_program=", instance.toolchain.timeout as String], ""),
         "--arg", join(["request_scratch_path=", dir, "/harness-request.json"], ""),
         "--arg", join(["events_path=", dir, "/provider-events.jsonl"], ""),
-        "--arg", join(["verdict_path=", dispatch_attempt_audit_verdict_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha)], ""),
+        "--arg", join(["verdict_dir=", dir], ""),
+        "--arg", join(["verdict_name=", dispatch_attempt_audit_verdict_basename(head_sha: head_sha)], ""),
       ],
     ),
   )

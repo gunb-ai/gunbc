@@ -11,10 +11,10 @@ import gunbc.live_deploy.member_identity {
   MemberIdentity, TreeIdentity, ExecutableIdentity, UnitFileAt, UnitManagerAt, ProcessAt,
   ObservedMember, MemberObserved, MemberAbsentOnHost, MemberUnobservable,
   MemberDecision, AlreadyConverged, Create, Replace, MemberRefused,
-  MemberRefusalCause, RepositoryBootstrapUnavailable, ObservationIsOfAnotherMember, DecisionFiledUnderAnotherMember,
+  MemberRefusalCause, ObservationIsOfAnotherMember, DecisionFiledUnderAnotherMember,
   decide_member, decide_release_members, release_member_roster, derive_member_plan, ReleaseTarget,
   converged_member_eq, DirectoryRoot,
-  EffectDerivation, EffectsDerived, EffectsRefused, effect_labels,
+  EffectDerivation, EffectsDerived, EffectsRefused, effect_labels, plan_publishes_tree,
 }
 
 fn rev_a() -> CommitSha { "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as CommitSha }
@@ -146,18 +146,22 @@ test fn absence_creates_and_unobservability_refuses() -> Bool {
     })
 }
 
-// AN ABSENT REPOSITORY REFUSES BY NAME RATHER THAN PLANNING A CREATE IT CANNOT PERFORM. The tree's
-// Create would publish into a directory that is not a repository (the sync excludes .git and the
-// convergence oneshot refuses a non-repository pre-state), leaving a state every later observation
-// refuses -- a recoverable absence turned into a permanent one. Until a bootstrap transition exists
-// the deploy says so and installs nothing.
-test fn an_absent_repository_refuses_with_the_bootstrap_cause() -> Bool {
+// AN ABSENT REPOSITORY NOW PLANS THE BOOTSTRAP, WHICH IS WHAT #10722 AND #10724 BOUGHT.
+//
+// This witness used to assert the opposite, and the reason it flipped is the whole point: the tree
+// refused absence by name because a Create would have published into a directory that is not a
+// repository, turning a recoverable absence into a permanent one. That is no longer true. The
+// publication oneshot bootstraps an empty root to the candidate and reads HEAD, index and tracked
+// worktree back as that revision, and the publication member invokes that oneshot and nothing else.
+//
+// THE DISCRIMINATOR IS THAT IT IS A CREATE AND NOT A REFUSAL. A plan that still refused would fail
+// the first arm; a plan that silently derived nothing for the tree would fail the second, because a
+// bootstrap that plans no publication is exactly the fresh host that installs nothing and reports
+// success.
+test fn an_absent_repository_plans_the_tree_publication() -> Bool {
   match one_drift(member: TreePublication, observed: MemberAbsentOnHost { member: TreePublication }) {
-    EffectsDerived { plan: _ } => false
-    EffectsRefused { refusals } => count(refusals) == 1 && any(refusals, d => match d {
-      MemberRefused { member: TreePublication, cause: RepositoryBootstrapUnavailable } => true
-      _ => false
-    })
+    EffectsRefused { refusals: _ } => false
+    EffectsDerived { plan } => plan_publishes_tree(plan: plan)
   }
 }
 
