@@ -12,11 +12,7 @@ import v2.lens.common.construction_justification {
   guarantee_boundary_required_is_not_subject,
   wall_now_total_projection_forbids_outside_modeled_guarantee
 }
-import v2.lens.common.outside_modeled_guarantee_join {
-  WitnessLayerDeclIndex,
-  guarantee_boundary_still_outside,
-  witness_layer_decl_index
-}
+import v2.lens.common.outside_modeled_guarantee_join { guarantee_boundary_still_outside }
 import v2.lens.enforcement.complexity_contract_subject {
   complexity_derived_kernel_boundary,
   complexity_optimality_boundary
@@ -91,13 +87,10 @@ fn class_is_wall_after_grounding(class: ConstructionClass) -> Bool {
   }
 }
 
-fn live_outside_class_still_outside(
-  class: ConstructionClass,
-  index: WitnessLayerDeclIndex
-) -> Bool {
+fn live_outside_class_still_outside(class: ConstructionClass) -> Bool {
   match class {
     OutsideModeledGuarantee { boundary: b } =>
-      guarantee_boundary_still_outside(boundary: b, index: index)
+      guarantee_boundary_still_outside(boundary: b)
         && guarantee_boundary_required_is_not_subject(boundary: b)
     _ => false
   }
@@ -126,15 +119,8 @@ test fn complexity_module_aligns_derived_kernel_contract_holds() -> Bool {
 }
 
 test fn planted_outside_for_existing_decl_reds() -> Bool {
-  let index = witness_layer_decl_index()
-  !guarantee_boundary_still_outside(
-    boundary: planted_outside_requiring(required: cost_lens_ref()),
-    index: index
-  )
-    && !guarantee_boundary_still_outside(
-      boundary: planted_outside_requiring(required: synthesis_lens_ref()),
-      index: index
-    )
+  !guarantee_boundary_still_outside(boundary: planted_outside_requiring(required: cost_lens_ref()))
+    && !guarantee_boundary_still_outside(boundary: planted_outside_requiring(required: synthesis_lens_ref()))
 }
 
 test fn planted_subject_as_required_capability_reds() -> Bool {
@@ -142,10 +128,7 @@ test fn planted_subject_as_required_capability_reds() -> Bool {
 }
 
 test fn planted_absent_decl_still_outside_holds() -> Bool {
-  guarantee_boundary_still_outside(
-    boundary: planted_outside_requiring(required: nonexistent_capability_ref()),
-    index: witness_layer_decl_index()
-  )
+  guarantee_boundary_still_outside(boundary: planted_outside_requiring(required: nonexistent_capability_ref()))
 }
 
 test fn live_extract_stamps_are_on_ladder() -> Bool {
@@ -160,19 +143,9 @@ test fn live_extract_stamps_are_on_ladder() -> Bool {
 }
 
 test fn live_undecidable_residues_are_outside_modeled_guarantee() -> Bool {
-  let index = witness_layer_decl_index()
-  live_outside_class_still_outside(
-    class: v2.lens.grounding.grounding_name_only_residual_boundary.class,
-    index: index
-  )
-    && live_outside_class_still_outside(
-      class: v2.lens.synthesis.synthesis_rice_residual_boundary.class,
-      index: index
-    )
-    && live_outside_class_still_outside(
-      class: complexity_optimality_boundary.class,
-      index: index
-    )
+  live_outside_class_still_outside(class: v2.lens.grounding.grounding_name_only_residual_boundary.class)
+    && live_outside_class_still_outside(class: v2.lens.synthesis.synthesis_rice_residual_boundary.class)
+    && live_outside_class_still_outside(class: complexity_optimality_boundary.class)
 }
 
 test fn planted_wall_now_to_outside_modeled_guarantee_projection_red() -> Bool {

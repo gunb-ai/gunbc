@@ -32,7 +32,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // removes the source-level duplication and keeps a zero-arg fn spelling (not a module-scope
 // data row) so the producer stays eligible for v2.workflow.floor_pure_producer_share as a warm
 // row whose fill can land outside the fold. That enrollment measurement is a later step and is
-// not this change. Callers hoist once and pass the value in; still_outside never rebuilds.
+// not this change. The join mints via this producer only; a caller cannot pass a narrower list.
 type WitnessLayerDeclIndex {
   facts: List<DeclFact>
   modules: List<ModuleDeclarationFact>
@@ -45,18 +45,15 @@ fn witness_layer_decl_index() -> WitnessLayerDeclIndex {
   }
 }
 
-// THE JOIN TAKES ITS POPULATION FROM THE CALLER-CARRIED PRODUCER RESULT. Authority is
+// THE JOIN TAKES ITS POPULATION FROM THE NAMED PRODUCER. Authority is
 // witness_layer_decl_index — decl_facts and module_declaration_facts_live over
 // gunbc.ci_layer_roots.witness_layer_roots, the same roots required lanes pass. A caller
-// cannot pass a narrower list beside a corpus authority; the zero-arg producer is the only
-// mint.
-fn guarantee_boundary_still_outside(
-  boundary: GuaranteeBoundary,
-  index: WitnessLayerDeclIndex
-) -> Bool {
+// cannot pass a narrower list beside a corpus authority; the zero-arg producer is the only mint.
+fn guarantee_boundary_still_outside(boundary: GuaranteeBoundary) -> Bool {
   if !declaration_ref_eq(a: boundary.capability_inventory_authority, b: decl_facts_inventory_authority) {
     false
   } else {
+    let index = witness_layer_decl_index()
     match resolve_declaration_ref(
       ref: boundary.required_capability,
       facts: index.facts,
