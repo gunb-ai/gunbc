@@ -1,0 +1,456 @@
+module gunbc.live_deploy.member_identity
+
+import std.types { String, Bool, List, Int, NonEmptyStr, CommitSha }
+import extdeps.crypto.hash { Digest, HashAlgorithm, Sha256, Sha512 }
+import std.content_hash { Fnv1a64Structural, content_hash_eq_structural }
+import extdeps.systemd { SystemdUnitActiveState, Active, Inactive, Activating, Deactivating, Reloading, Failed, systemd_unit_active_state_wire_label }
+
+// A DEPLOYMENT CONVERGES ON IDENTITIES, NOT ON PATHS. gunbc.live_deploy.emit deployment_apply_plan
+// reconciles the desired roster against `observed: []`, so every member is an add on every apply
+// and an already-converged host replays its whole installation -- measured 2026-09-06 at nineteen
+// minutes, of which the deploy's real mutations were seconds and the rest was five source-compiling
+// evaluators started in series by unconditional restarts. docs/plans/deploy-convergence-observed-side.md
+// refutes the obvious repair (feed the same path-keyed roster an observed side): a member whose value
+// is a function of its own key cannot be seen to be stale, so a non-degenerate diff over paths would
+// report CONVERGED over a stale host. The member therefore needs a real identity -- the smallest fact
+// whose equality means the host already holds what is desired -- and this module carries that for
+// the members that consume the release. Every other owned artifact stays on the apply-all path until
+// it earns an identity here; the roster below is the declared frontier, not an oversight.
+//
+// FIVE MEMBERS, NOT THREE, because the serve unit is three facts with three remedies (review on PR
+// #10696): the unit FILE on disk, whose drift is repaired by writing it; the MANAGER's loaded copy,
+// whose staleness is repaired by daemon-reload; and the PROCESS, whose absence or stale release is
+// repaired by a restart. Fusing them into one identity did both sides wrong at once -- an Active
+// process running the PREVIOUS release under a current unit file compared equal and was never
+// restarted (an absorbing state: readiness refused, the next plan was empty again), while a Failed
+// process under a current file derived a file rewrite and a reload it did not need.
+//
+// The executable form of the class, from the same record: every reconcile binding must have a
+// control that holds the KEY fixed, varies meaningful STATE, and expects a replacement. The
+// executable fixture in member_identity_witness_test is exactly that control.
+type ConvergedMember
+  = TreePublication
+  | Executable
+  | UnitFile
+  | UnitManager
+  | ServiceProcess
+
+fn converged_member_label(m: ConvergedMember) -> String {
+  match m {
+    TreePublication => "tree-publication"
+    Executable => "executable"
+    UnitFile => "unit-file"
+    UnitManager => "unit-manager"
+    ServiceProcess => "service-process"
+  }
+}
+
+// THE PUBLISHED TREE'S IDENTITY IS THE REVISION AND WHETHER THE TRACKED PROJECTION MATCHES IT. The
+// observed-side record found that revision alone is insufficient: a checkout can sit at the right
+// HEAD with a stale or dirty tracked projection, and that is the state the rsync-era sync produced.
+// So a tree is converged only when both hold; a clean projection at another revision is a Replace.
+type TreePublicationIdentity {
+  revision: CommitSha
+  tracked_projection_clean: Bool
+}
+
+// THE UNIT FILE'S IDENTITY IS ITS DOCUMENT: the content hash of the installed bytes against the
+// content hash of the rendered document. Both sides are text this evaluator holds, so the
+// substrate's own structural hash (std.content_hash) is the identity; the executable, whose bytes we
+// never hold, is identified by the host's sha256 instead.
+type UnitFileIdentity {
+  unit: NonEmptyStr
+  document: Fnv1a64Structural
+}
+
+// THE MANAGER'S STANDING IS WHETHER ITS LOADED COPY IS THE FILE ON DISK, which systemd reports as the
+// unit property NeedDaemonReload (extdeps.systemd). A current file over a stale manager is exactly
+// the state an interrupted deploy leaves -- written, never reloaded -- and it is decidable only from
+// this property, never from the file.
+type UnitManagerStanding
+  = ManagerLoadedCurrent
+  | ManagerNeedsReload
+
+// THE PROCESS'S IDENTITY IS THE RELEASE IT IS RUNNING, read from the process itself over /healthz
+// (gunbc.running_release_identity), or the fact that no process is running. ActiveState alone is
+// not an identity: an Active process may be the previous release, and that is the case a restart
+// exists to repair.
+type ServiceProcessIdentity
+  = ProcessRunningRelease { revision: CommitSha }
+  | ProcessNotRunning { active: SystemdUnitActiveState }
+
+type MemberIdentity
+  = TreeIdentity { tree: TreePublicationIdentity }
+  | ExecutableIdentity { digest: Digest }
+  | UnitFileAt { file: UnitFileIdentity }
+  | UnitManagerAt { standing: UnitManagerStanding }
+  | ProcessAt { process: ServiceProcessIdentity }
+
+fn member_identity_member(i: MemberIdentity) -> ConvergedMember {
+  match i {
+    TreeIdentity { tree: _ } => TreePublication
+    ExecutableIdentity { digest: _ } => Executable
+    UnitFileAt { file: _ } => UnitFile
+    UnitManagerAt { standing: _ } => UnitManager
+    ProcessAt { process: _ } => ServiceProcess
+  }
+}
+
+// WHAT THE HOST SAID ABOUT A MEMBER. Absent is an established absence (the observer listed the
+// parent, or an ancestor, and the entry was not there, extdeps.filesystem.filesystem_io's rule);
+// unobservable is a refused or indeterminate read and is NEVER folded into either of the other two --
+// a member we could not observe is refused below, not created and not skipped.
+type ObservedMember
+  = MemberObserved { identity: MemberIdentity }
+  | MemberAbsentOnHost { member: ConvergedMember }
+  | MemberUnobservable { member: ConvergedMember, cause: String }
+
+fn observed_member_member(o: ObservedMember) -> ConvergedMember {
+  match o {
+    MemberObserved { identity } => member_identity_member(i: identity)
+    MemberAbsentOnHost { member } => member
+    MemberUnobservable { member, cause: _ } => member
+  }
+}
+
+// WHY A MEMBER'S DECISION COULD NOT BE MADE, as a closed vocabulary rather than prose, so a
+// consumer can branch on the cause and the text is rendered once.
+//
+// RepositoryBootstrapUnavailable is the honest arm for an ABSENT tree (review on PR #10696): a
+// Create for the tree would have to turn an empty directory into a repository at the candidate, and
+// no route in this repository does that -- the publication oneshot is git-native repository
+// convergence (gunbc.live_deploy.repository_convergence) whose pre-state observation refuses a
+// non-repository, and the rsync-era tree sync copies files while excluding .git, so an attempted
+// Create left a directory that is not a repository and every later observation refused it. Until a
+// bootstrap transition exists (initialize, import the candidate, reset, read back) the deploy
+// refuses tree absence by name, installing nothing.
+type MemberRefusalCause
+  = DesiredIdentityIsForAnotherMember { desired: ConvergedMember }
+  | ObservationIsOfAnotherMember { observed: ConvergedMember }
+  | HostUnobservable { cause: String }
+  | RepositoryBootstrapUnavailable
+  | DecisionFiledUnderAnotherMember { found: ConvergedMember }
+  | DesiredExecutableUnreadable { cause: String }
+  | DesiredExecutableAbsent
+
+fn member_refusal_text(c: MemberRefusalCause) -> String {
+  match c {
+    DesiredIdentityIsForAnotherMember { desired } => join(["desired identity is for ", converged_member_label(m: desired)], "")
+    ObservationIsOfAnotherMember { observed } => join(["observation is of ", converged_member_label(m: observed)], "")
+    HostUnobservable { cause } => join(["could not observe the host: ", cause], "")
+    RepositoryBootstrapUnavailable => "the repository root is absent and no bootstrap transition exists: a Create would leave a non-repository directory (rsync excludes .git) that repository convergence then refuses; initialize the repository at the candidate before deploying"
+    DecisionFiledUnderAnotherMember { found } => join(["decision slot holds a decision about ", converged_member_label(m: found)], "")
+    DesiredExecutableUnreadable { cause } => join(["the release executable could not be read in the deploying checkout: ", cause], "")
+    DesiredExecutableAbsent => "the release executable target/release/gunbc is absent from the deploying checkout; build before deploying"
+  }
+}
+
+type MemberDecision
+  = AlreadyConverged { member: ConvergedMember }
+  | Create { member: ConvergedMember, to: MemberIdentity }
+  | Replace { member: ConvergedMember, from: MemberIdentity, to: MemberIdentity }
+  | MemberRefused { member: ConvergedMember, cause: MemberRefusalCause }
+
+fn hash_algorithm_eq(a: HashAlgorithm, b: HashAlgorithm) -> Bool {
+  match a {
+    Sha256 => match b { Sha256 => true  Sha512 => false }
+    Sha512 => match b { Sha512 => true  Sha256 => false }
+  }
+}
+
+fn digest_eq(a: Digest, b: Digest) -> Bool {
+  hash_algorithm_eq(a: a.algorithm, b: b.algorithm) && (a.hex as String) == (b.hex as String)
+}
+
+fn manager_standing_eq(a: UnitManagerStanding, b: UnitManagerStanding) -> Bool {
+  match a {
+    ManagerLoadedCurrent => match b { ManagerLoadedCurrent => true  ManagerNeedsReload => false }
+    ManagerNeedsReload => match b { ManagerNeedsReload => true  ManagerLoadedCurrent => false }
+  }
+}
+
+// A PROCESS IS EQUAL TO ANOTHER ONLY WHEN BOTH RUN THE SAME RELEASE. Two not-running observations
+// are never "equal" in the sense convergence needs -- the desired side is always a running release,
+// so the comparison that matters is running-to-running.
+fn process_identity_eq(a: ServiceProcessIdentity, b: ServiceProcessIdentity) -> Bool {
+  match a {
+    ProcessRunningRelease { revision: ra } => match b {
+      ProcessRunningRelease { revision: rb } => (ra as String) == (rb as String)
+      ProcessNotRunning { active: _ } => false
+    }
+    ProcessNotRunning { active: _ } => false
+  }
+}
+
+fn converged_member_eq(a: ConvergedMember, b: ConvergedMember) -> Bool {
+  converged_member_label(m: a) == converged_member_label(m: b)
+}
+
+// IDENTITY EQUALITY IS PER MEMBER KIND AND TOTAL; a pair of different kinds is not "unequal", it is
+// a wiring defect and the caller refuses it before reaching here (decide_member).
+fn member_identity_eq(a: MemberIdentity, b: MemberIdentity) -> Bool {
+  match a {
+    TreeIdentity { tree: ta } => match b {
+      TreeIdentity { tree: tb } => (ta.revision as String) == (tb.revision as String) && ta.tracked_projection_clean && tb.tracked_projection_clean
+      _ => false
+    }
+    ExecutableIdentity { digest: da } => match b {
+      ExecutableIdentity { digest: db } => digest_eq(a: da, b: db)
+      _ => false
+    }
+    UnitFileAt { file: fa } => match b {
+      UnitFileAt { file: fb } => (fa.unit as String) == (fb.unit as String) && content_hash_eq_structural(left: fa.document, right: fb.document)
+      _ => false
+    }
+    UnitManagerAt { standing: sa } => match b {
+      UnitManagerAt { standing: sb } => manager_standing_eq(a: sa, b: sb)
+      _ => false
+    }
+    ProcessAt { process: pa } => match b {
+      ProcessAt { process: pb } => process_identity_eq(a: pa, b: pb)
+      _ => false
+    }
+  }
+}
+
+// ONE MEMBER, ONE DECISION. Desired is what this release wants; observed is what the host holds.
+// The tree's desired identity is always clean by construction (a release is a revision, and the
+// projection we publish is its tracked set), so an observed dirty projection at the right revision
+// compares unequal and is a Replace -- the stale-projection case the rsync era hid. An absent tree
+// is a REFUSAL, not a Create, for the reason RepositoryBootstrapUnavailable states.
+fn decide_member(member: ConvergedMember, desired: MemberIdentity, observed: ObservedMember) -> MemberDecision {
+  if !converged_member_eq(a: member, b: member_identity_member(i: desired)) {
+    MemberRefused { member: member, cause: DesiredIdentityIsForAnotherMember { desired: member_identity_member(i: desired) } }
+  } else if !converged_member_eq(a: member, b: observed_member_member(o: observed)) {
+    MemberRefused { member: member, cause: ObservationIsOfAnotherMember { observed: observed_member_member(o: observed) } }
+  } else {
+    match observed {
+      MemberUnobservable { member: _, cause } => MemberRefused { member: member, cause: HostUnobservable { cause: cause } }
+      MemberAbsentOnHost { member: _ } => match member {
+        TreePublication => MemberRefused { member: member, cause: RepositoryBootstrapUnavailable }
+        _ => Create { member: member, to: desired }
+      }
+      MemberObserved { identity } =>
+        if member_identity_eq(a: identity, b: desired) { AlreadyConverged { member: member } }
+        else { Replace { member: member, from: identity, to: desired } }
+    }
+  }
+}
+
+fn decision_is_converged(d: MemberDecision) -> Bool {
+  match d { AlreadyConverged { member: _ } => true  _ => false }
+}
+
+fn decision_changes(d: MemberDecision) -> Bool {
+  match d {
+    Create { member: _, to: _ } => true
+    Replace { member: _, from: _, to: _ } => true
+    _ => false
+  }
+}
+
+fn decision_is_refused(d: MemberDecision) -> Bool {
+  match d { MemberRefused { member: _, cause: _ } => true  _ => false }
+}
+
+fn decision_member(d: MemberDecision) -> ConvergedMember {
+  match d {
+    AlreadyConverged { member } => member
+    Create { member, to: _ } => member
+    Replace { member, from: _, to: _ } => member
+    MemberRefused { member, cause: _ } => member
+  }
+}
+
+fn decision_label(d: MemberDecision) -> String {
+  match d {
+    AlreadyConverged { member } => join([converged_member_label(m: member), ": already converged"], "")
+    Create { member, to: _ } => join([converged_member_label(m: member), ": create"], "")
+    Replace { member, from: _, to: _ } => join([converged_member_label(m: member), ": replace"], "")
+    MemberRefused { member, cause } => join([converged_member_label(m: member), ": refused -- ", member_refusal_text(c: cause)], "")
+  }
+}
+
+// ONE DECISION PER MEMBER BY CONSTRUCTION. A list of decisions made completeness and ordering the
+// caller's obligation: an empty or partial list derived an accepted empty plan. The record has one
+// slot per member, so a plan cannot be derived over a member nobody decided, and the emitter reads
+// slots rather than searching a list. Each slot is still checked to hold a decision ABOUT its
+// member (derive_effects), because the slot's type admits any MemberDecision.
+type ReleaseMemberDecisions {
+  executable: MemberDecision
+  tree: MemberDecision
+  unit_file: MemberDecision
+  unit_manager: MemberDecision
+  process: MemberDecision
+}
+
+// In deployment order (gunbc.live_deploy.spec deployment_owned_steps): the executable before the
+// tree it publishes, then the unit file, the manager that loads it, the process that runs it.
+fn release_member_decisions_list(d: ReleaseMemberDecisions) -> List<MemberDecision> {
+  [d.executable, d.tree, d.unit_file, d.unit_manager, d.process]
+}
+
+// THE RELEASE A PLAN INSTALLS, CARRIED ONCE. The plan's effects used to each carry their own operand
+// (a revision on PublishTree, a digest on InstallExecutable, a unit name on WriteUnit) beside a
+// second revision the emitter received as a separate argument; the emitter then discarded every one
+// of them and copied the ambient source path. Two operands for one fact is the §3 nickname, and an
+// operand nothing reads is a label. The target lives here, once, and the emitter binds actuation to
+// it: the executable it copies is verified against `executable` before and after the copy, and the
+// unit it renders names `revision`.
+type ReleaseTarget {
+  revision: CommitSha
+  executable: Digest
+  unit: NonEmptyStr
+}
+
+// THE EFFECTS A DEPLOYMENT MAY PERFORM, ONE SWITCH PER MEMBER, so the plan is canonical rather than
+// an arbitrary ordered list: there is no spelling of a plan that installs the executable twice or
+// restarts before it writes. Mutations are derived along the dependency edges the members have:
+//   executable changed  -> InstallExecutable, and the process runs it so it restarts
+//   tree changed        -> PublishTree, and the process serves it so it restarts
+//   unit file changed   -> WriteUnit, the manager must reload it, and the process restarts
+//   manager stale       -> DaemonReload, and the process restarts into the reloaded definition
+//   process stale/down  -> RestartService
+//   nothing changed     -> no mutation at all
+// Readiness is NOT on the plan. It is the parent transaction's policy
+// (gunbc.live_deploy.apply live_deploy_apply_via_transport), it runs for every plan including the
+// empty one, and a field here that the emitter never read was a second apparent authority for why
+// readiness occurs (review on PR #10696).
+type ExecutableEffect
+  = ExecutableKept
+  | InstallExecutable
+
+type TreeEffect
+  = TreeKept
+  | PublishTree
+
+type UnitFileEffect
+  = UnitFileKept
+  | WriteUnit
+
+type ManagerEffect
+  = ManagerKept
+  | DaemonReload
+
+type ProcessEffect
+  = ProcessKept
+  | RestartService
+
+type ReleaseEffectPlan {
+  target: ReleaseTarget
+  executable: ExecutableEffect
+  tree: TreeEffect
+  unit_file: UnitFileEffect
+  manager: ManagerEffect
+  process: ProcessEffect
+}
+
+type EffectDerivation
+  = EffectsDerived { plan: ReleaseEffectPlan }
+  | EffectsRefused { refusals: List<MemberDecision> }
+
+fn slot_refusal(slot: ConvergedMember, d: MemberDecision) -> List<MemberDecision> {
+  if converged_member_eq(a: decision_member(d: d), b: slot) { [] }
+  else { [MemberRefused { member: slot, cause: DecisionFiledUnderAnotherMember { found: decision_member(d: d) } }] }
+}
+
+fn slot_refusals(d: ReleaseMemberDecisions) -> List<MemberDecision> {
+  concat(
+    concat(slot_refusal(slot: Executable, d: d.executable), slot_refusal(slot: TreePublication, d: d.tree)),
+    concat(
+      slot_refusal(slot: UnitFile, d: d.unit_file),
+      concat(slot_refusal(slot: UnitManager, d: d.unit_manager), slot_refusal(slot: ServiceProcess, d: d.process)),
+    ),
+  )
+}
+
+// THE SERVE PROCESS IS THE CONSUMER OF EVERY OTHER MEMBER, so it restarts iff any of them changed,
+// and it also restarts when it alone is stale or down. The manager reloads iff the file changed or
+// it was already stale. Any refused decision refuses the whole derivation: a plan over a member
+// nobody could observe would either reinstall blindly or skip blindly.
+fn derive_effects(decisions: ReleaseMemberDecisions, target: ReleaseTarget) -> EffectDerivation {
+  let refused = concat(slot_refusals(d: decisions), filter(release_member_decisions_list(d: decisions), d => decision_is_refused(d: d)))
+  if count(refused) > 0 {
+    EffectsRefused { refusals: refused }
+  } else {
+    let file_changed = decision_changes(d: decisions.unit_file)
+    let any_changed = any(release_member_decisions_list(d: decisions), d => decision_changes(d: d))
+    EffectsDerived { plan: ReleaseEffectPlan {
+      target: target,
+      executable: if decision_changes(d: decisions.executable) { InstallExecutable } else { ExecutableKept },
+      tree: if decision_changes(d: decisions.tree) { PublishTree } else { TreeKept },
+      unit_file: if file_changed { WriteUnit } else { UnitFileKept },
+      manager: if file_changed || decision_changes(d: decisions.unit_manager) { DaemonReload } else { ManagerKept },
+      process: if any_changed { RestartService } else { ProcessKept },
+    } }
+  }
+}
+
+fn plan_installs_executable(plan: ReleaseEffectPlan) -> Bool {
+  match plan.executable { InstallExecutable => true  ExecutableKept => false }
+}
+
+fn plan_publishes_tree(plan: ReleaseEffectPlan) -> Bool {
+  match plan.tree { PublishTree => true  TreeKept => false }
+}
+
+fn plan_writes_unit(plan: ReleaseEffectPlan) -> Bool {
+  match plan.unit_file { WriteUnit => true  UnitFileKept => false }
+}
+
+fn plan_reloads_manager(plan: ReleaseEffectPlan) -> Bool {
+  match plan.manager { DaemonReload => true  ManagerKept => false }
+}
+
+fn plan_restarts_process(plan: ReleaseEffectPlan) -> Bool {
+  match plan.process { RestartService => true  ProcessKept => false }
+}
+
+// The plan rendered as one label per mutation, in deployment order; the witnesses pin these.
+fn effect_labels(plan: ReleaseEffectPlan) -> List<String> {
+  concat(
+    concat(
+      if plan_installs_executable(plan: plan) { [join(["install-executable sha256:", plan.target.executable.hex as String], "")] } else { [] },
+      if plan_publishes_tree(plan: plan) { [join(["publish-tree ", plan.target.revision as String], "")] } else { [] },
+    ),
+    concat(
+      concat(
+        if plan_writes_unit(plan: plan) { [join(["write-unit ", plan.target.unit as String], "")] } else { [] },
+        if plan_reloads_manager(plan: plan) { ["daemon-reload"] } else { [] },
+      ),
+      if plan_restarts_process(plan: plan) { [join(["restart ", plan.target.unit as String], "")] } else { [] },
+    ),
+  )
+}
+
+fn plan_mutation_count(plan: ReleaseEffectPlan) -> Int {
+  count(effect_labels(plan: plan))
+}
+
+// THE EMPTY PLAN: every member kept. It is what an apply against an already-converged host derives.
+fn converged_effect_plan(target: ReleaseTarget) -> ReleaseEffectPlan {
+  ReleaseEffectPlan {
+    target: target,
+    executable: ExecutableKept,
+    tree: TreeKept,
+    unit_file: UnitFileKept,
+    manager: ManagerKept,
+    process: ProcessKept,
+  }
+}
+
+// THE FULL-INSTALL PLAN: every member changed. It is what an apply against a host holding a
+// repository at another revision, no executable and no unit derives, and it is the plan the emit
+// witnesses hand the emitter so the rendered script they pin is the complete installation. It is
+// NOT a fallback for a plan that could not be derived -- a refused observation refuses the deploy
+// (gunbc.live_deploy.member_observe deployment_effect_plan), it does not install everything.
+fn full_install_plan(target: ReleaseTarget) -> ReleaseEffectPlan {
+  ReleaseEffectPlan {
+    target: target,
+    executable: InstallExecutable,
+    tree: PublishTree,
+    unit_file: WriteUnit,
+    manager: DaemonReload,
+    process: RestartService,
+  }
+}

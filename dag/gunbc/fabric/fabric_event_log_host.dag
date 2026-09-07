@@ -1,0 +1,40 @@
+module gunbc.fabric_event_log_host
+
+import std.types { String, NonEmptyStr, FilePath, EpochSecs }
+import std.algebra { trim }
+import extdeps.clock
+import product.placement_supply { HostIdentity }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, DashboardInstanceByHost, DashboardInstanceForHost, DashboardInstanceHostUnknown, dashboard_instance_for_host }
+import gunbc.fabric_event_log { fabric_event_log_placement, event_log_remote_for, EventLogLayout, event_log_layout }
+
+// WHERE THE EVENT LOG IS FROM THE EXECUTING HOST'S POINT OF VIEW: the dashboard instance declared
+// for the host supplies the executor's root (the mirror lives under it) and the identity the
+// remote is derived against. Shared by every consumer that transacts on the log from a host --
+// the harness's seats, the belt's quotas -- so the layout is derived once.
+
+fn event_log_root_for_instance(instance: HostDashboardInstance) -> FilePath {
+  join([instance.instance_root as String, "/fabric-event-log"], "") as FilePath
+}
+
+type HostEventLogLayout
+  = HostLayoutResolved { layout: EventLogLayout, executor: HostIdentity }
+  | HostLayoutRefused { detail: String }
+
+fn event_log_layout_for_host(short_hostname: String) -> HostEventLogLayout {
+  match dashboard_instance_for_host(host: trim(s: short_hostname)) {
+    DashboardInstanceHostUnknown { host: h } => HostLayoutRefused { detail: join(["no dashboard instance is declared for host ", h], "") }
+    DashboardInstanceForHost { instance: i } =>
+      HostLayoutResolved {
+        layout: event_log_layout(root: event_log_root_for_instance(instance: i), remote: event_log_remote_for(placement: fabric_event_log_placement, executor: (i.host_identity as String) as HostIdentity)),
+        executor: (i.host_identity as String) as HostIdentity,
+      }
+  }
+}
+
+// The instant a transaction speaks at, read from the executing host's clock as epoch seconds.
+fn now_epoch_seconds() -> EpochSecs? {
+  match parse_int(s: trim(s: Clock.UnixSecs().unix_secs)) {
+    Present { value: n } => if n < 0 { none } else { Present { value: n } }
+    Absent => none
+  }
+}

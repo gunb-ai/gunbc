@@ -1,0 +1,211 @@
+module extdeps.crypto.mac
+
+import std.types { NonEmptyStr, String, Secret, Int }
+import std.logic { Bool }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// HMAC per RFC 2104, keyed-hashing for message authentication. The anchor is the specification and
+// not the crate, because the crate is one realization of it and this module owns the SHAPE.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc2104"
+  }
+}
+
+// THIS MODULE DOES NOT COMPUTE ANYTHING, AND THAT IS THE POINT.
+//
+// A MAC is the one primitive where authoring the algorithm is the failure. DESIGN §5 already says
+// the substrate should carry structure rather than re-coin it, and the standing instruction on this
+// work was explicit: bind an ESTABLISHED implementation, never invent a construction. So what lives
+// here is the interface, the algorithm identity, the key identity, and the refusal vocabulary --
+// the facts a caller must state. The bytes are produced by extdeps.rust.crate_hmac's realization.
+//
+// The neighbouring module extdeps.crypto.hash models SHA-256 as a DIGEST VALUE and verifies through
+// a shelled sha256sum; it deliberately does not produce one either. This is the same boundary drawn
+// one step further out: a Digest is a fact you can carry, a MAC is a fact you can only check.
+data mac_is_interface_only_note: NonEmptyStr = "extdeps.crypto.mac declares the MAC contract and never implements it. Verification is performed by the bound realization's constant-time comparison, which is the operation RFC 2104 §6 and every established implementation expose for this purpose; a caller that extracts tag bytes and compares them with ordinary equality has reintroduced the timing oracle the library exists to close, so no accessor here yields the computed tag."
+
+// ONE FIXED SUITE, NAMED. An algorithm field that a message can choose is the algorithm-confusion
+// hole: the verifier must decide the suite from its own configuration, never from the input it is
+// checking. This is a closed coproduct with one arm today for exactly that reason -- adding an arm
+// is an authored decision with a review, not a value a caller supplies.
+type MacSuite =
+  | HmacSha256
+
+data hmac_sha256_authority_note: NonEmptyStr = "HMAC-SHA-256: HMAC (RFC 2104) instantiated with SHA-256 (FIPS 180-4, cited by extdeps.crypto.hash). The tag is 32 octets. RustCrypto's `hmac` crate provides this as Hmac<Sha256> together with verify_slice, which performs the comparison in constant time."
+
+fn mac_suite_name(s: MacSuite) -> NonEmptyStr {
+  match s {
+    HmacSha256 => "HMAC-SHA-256" as NonEmptyStr
+  }
+}
+
+fn mac_suite_tag_octets(s: MacSuite) -> Int {
+  match s {
+    HmacSha256 => 32
+  }
+}
+
+// THE KEY IS NAMED, NOT CARRIED. A MacKeyId selects a key from the verifier's configured keyring;
+// it never locates one. RFC 8725 §3.9 and the JOSE experience are the grounding: a key identifier
+// arriving with a message is UNTRUSTED INPUT, and treating it as a path, a URL, or a permission to
+// fetch material is how a verifier is convinced to check a signature against a key the attacker
+// chose. So this is an opaque name, and resolution is the keyring's decision.
+type MacKeyId = NonEmptyStr where brand("MacKeyId")
+
+// The material itself is Secret so it cannot be rendered into a log line, an argv, or a diagnostic
+// by accident -- std.types Secret is nominal_opaque precisely so that a String-shaped sink refuses
+// it. Holding one of these is the authority to ISSUE, not merely to verify: with a symmetric MAC
+// those are the same capability, which is why the keyring lives inside the broker and is never
+// handed to the workers whose requests it authenticates.
+type MacKey {
+  id: MacKeyId
+  suite: MacSuite
+  material: Secret
+}
+
+data symmetric_verification_is_issuance_note: NonEmptyStr = "With HMAC the verifier's secret is the issuer's secret: anything that can check a tag can mint one. 'Verification-only' is therefore a POLICY state enforced by custody, never a cryptographic restriction, and a design that needs a genuinely non-issuing verifier needs an asymmetric construction instead. This note exists so that a later reader does not distribute a verification key on the assumption that it is the weaker half."
+
+// ── Verification ─────────────────────────────────────────────────────────────────────────────
+// WHAT A SUCCESS MUST CARRY, AND WHY IT IS NOT A FLAG.
+//
+// An earlier shape of this module returned MacVerified { key_id } and let the caller pair it with
+// whatever payload it liked. That is unsound for a reason no ordering of checks repairs: the
+// evidence said "a MAC verified" without saying WHICH MESSAGE it verified, so a success obtained
+// over envelope A could be presented alongside envelope B and the consumer would accept B. Checking
+// a success result before reading claims is not the same as checking THIS message's MAC.
+//
+// So the success arm carries the exact message the implementation verified, and it is
+// sole_constructor: only this module's bound realization can mint one. A consumer establishes the
+// join by comparing that message to the bytes it is about to act on -- an exact equality on the
+// signed input, not a hash and not a promise. Anything the consumer did not itself serialize
+// cannot match.
+type VerifiedMessage sole_constructor {
+  key_id: MacKeyId
+  suite: MacSuite
+  message: NonEmptyStr
+}
+
+data verified_message_is_the_join_note: NonEmptyStr = "VerifiedMessage.message is the authentication-to-payload join. A consumer must compare it to the exact bytes it serialized and is about to act on, and refuse otherwise; without that comparison a MacVerified obtained over any message authenticates every message. sole_constructor is what stops a consumer minting the evidence it is supposed to be checking -- on the source-to-.dag acceptance path; DESIGN records that the emitted-Rust mirror of a sole_constructor type is forgeable, and that gap is the wall's, not this carrier's."
+
+// The outcome is a coproduct rather than a Bool because the reasons a tag fails are not one fact,
+// and a caller that receives `false` cannot tell "someone tampered with this" from "we retired that
+// key last week" from "this message was built for a different service". Those are three different
+// incidents (§5: every failure located and typed), and only the first is an attack.
+type MacVerification
+  = MacVerified { verified: VerifiedMessage }
+  | MacTagMismatch { key_id: MacKeyId }
+  | MacKeyUnknown { key_id: MacKeyId }
+  | MacKeyRetired { key_id: MacKeyId, retired_at: NonEmptyStr }
+  | MacSuiteMismatch { expected: MacSuite, key_suite: MacSuite }
+  | MacTagMalformed { octets_declared: Int, octets_expected: Int }
+
+// ── The realization seam ─────────────────────────────────────────────────────────────────────
+// VerifiedMessage is sole_constructor, so nothing outside this module can mint one -- which is the
+// point, and which also means this module must expose the ONE way evidence comes into existence.
+// This is it: the bound implementation performs the constant-time comparison over (key, message,
+// tag) and reports its verdict here, and the evidence is assembled around THE MESSAGE IT WAS GIVEN.
+//
+// What that makes structural, and what it does not:
+//
+//   structural -- evidence cannot exist without naming a message. There is no way to obtain a
+//     MacVerified and then decide what it authenticated, because the message is a parameter of the
+//     only constructor. That is the substitution this seam closes.
+//
+//   NOT structural -- that the implementation actually ran HMAC over those bytes. A caller passing
+//     `true` here is asserting the comparison succeeded, and this module cannot check that. The
+//     realization is the trusted party for that half, exactly as it is for any host effect, and it
+//     is why this function is named for the boundary it sits on rather than being spelled as an
+//     ordinary constructor a caller might reach for casually.
+//
+// A verdict of false becomes MacTagMismatch rather than a bare absence, because "the tag did not
+// verify" is the incident worth naming.
+fn mac_verification_from_implementation(
+  key_id: MacKeyId,
+  suite: MacSuite,
+  message: NonEmptyStr,
+  implementation_verified: Bool,
+) -> MacVerification {
+  if implementation_verified {
+    MacVerified {
+      verified: VerifiedMessage { key_id: key_id, suite: suite, message: message }
+    }
+  } else {
+    MacTagMismatch { key_id: key_id }
+  }
+}
+
+// ── The bound implementation ─────────────────────────────────────────────────────────────────
+// THE ONE FUNCTION THAT ACTUALLY VERIFIES, and it is where this module stops being an interface.
+// `hmac_sha256_verify_hex` is a host primitive backed by RustCrypto's Hmac<Sha256> and its
+// `verify_slice`, which compares in CONSTANT TIME. That is not an optimization detail: an ordinary
+// equality over MAC bytes leaks, through timing, how many leading bytes of a forged tag were
+// correct, which reduces forging a 32-byte tag from infeasible to a few thousand requests. It is
+// the reason nothing in this module hands a caller a computed tag to compare for itself.
+//
+// It is a host primitive rather than a shell transport because every shell spelling of HMAC puts
+// the KEY IN THE ARGV, which gunbc.credential_argv_exposure forbids -- and with a symmetric MAC
+// the verification key is the signing key, so a leaked key forges approvals rather than merely
+// reading them.
+//
+// Hex rather than base64 for key and tag: the corpus already models digests as lowercase hex
+// (extdeps.crypto.hash Digest.hex), and hex has exactly one spelling per value where base64 has
+// several -- a decoder accepting more spellings than it should is how one envelope acquires two
+// representations, which is the ambiguity the signing input was shaped to avoid.
+//
+// Every malformed input answers false rather than raising, and the refusal a caller sees is
+// MacTagMismatch in all of those cases. A caller cannot distinguish a bad key encoding from a
+// wrong tag, which is correct: both mean the same thing to the only consumer -- this message is
+// not authenticated -- and reporting which would tell a prober whether their key guess was
+// well-formed.
+fn mac_verify(
+  key: MacKey,
+  message: NonEmptyStr,
+  tag_hex: NonEmptyStr,
+) -> MacVerification {
+  mac_verification_from_implementation(
+    key_id: key.id,
+    suite: key.suite,
+    message: message,
+    implementation_verified: hmac_sha256_verify_hex(
+      key.material as String,
+      message as String,
+      tag_hex as String,
+    ),
+  )
+}
+
+fn mac_verification_ok(v: MacVerification) -> Bool {
+  match v {
+    MacVerified { verified: _ } => true
+    MacTagMismatch { key_id: _ } => false
+    MacKeyUnknown { key_id: _ } => false
+    MacKeyRetired { key_id: _, retired_at: _ } => false
+    MacSuiteMismatch { expected: _, key_suite: _ } => false
+    MacTagMalformed { octets_declared: _, octets_expected: _ } => false
+  }
+}
+
+// WHY THIS FUNCTION EXISTS AT ALL. mac_verification_ok is the only place a MacVerification collapses
+// to a Bool, and it is written as a total match rather than `match v { MacVerified => true, _ => false }`
+// so that a new refusal arm cannot default to... true is impossible here, but it also cannot default
+// to SILENTLY false: adding an arm breaks this function, and the author has to decide. A wildcard
+// would make every future arm a rejection nobody reviewed.
+data mac_verification_ok_exhaustive_note: NonEmptyStr = "mac_verification_ok enumerates every arm instead of using a wildcard so that adding a MacVerification arm is a compile-time decision. A wildcard here would silently classify a new outcome, and the outcome most likely to be added later is one whose correct classification is arguable."
+
+fn mac_verification_reason(v: MacVerification) -> String {
+  match v {
+    MacVerified { verified: v } => concat("mac verified under key ", v.key_id as String)
+    MacTagMismatch { key_id: k } => concat("mac tag does not verify under key ", k as String)
+    MacKeyUnknown { key_id: k } => concat("mac key id is not in the configured keyring: ", k as String)
+    MacKeyRetired { key_id: k, retired_at: t } =>
+      concat("mac key ", concat(k as String, concat(" was retired at ", t as String)))
+    MacSuiteMismatch { expected: e, key_suite: g } =>
+      concat("mac suite mismatch: verifier expects ", concat(mac_suite_name(s: e) as String, concat(", key declares ", mac_suite_name(s: g) as String)))
+    MacTagMalformed { octets_declared: d, octets_expected: x } =>
+      concat("mac tag length is wrong: declared ", concat(to_string(n: d), concat(" octets, expected ", to_string(n: x))))
+  }
+}

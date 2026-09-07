@@ -57,6 +57,11 @@ import extdeps.systemd.unit_file {
   SystemdInstallDirective, WantedBy,
   serialize_systemd_unit_file,
 }
+import gunbc.live_deploy.member_identity {
+  ReleaseEffectPlan, ConvergedMember, TreePublication, Executable, UnitFile, UnitManager, ServiceProcess,
+  plan_installs_executable, plan_publishes_tree, plan_writes_unit, plan_reloads_manager, plan_restarts_process,
+}
+import extdeps.crypto.hash { digest_shell_verify_line }
 import gunbc.live_deploy.spec {
   deployment_slice_unit_name, deployment_slice_unit_path,
   DeploymentSpec,
@@ -90,6 +95,7 @@ import gunbc.host_layout {
   publication_spool_root,
   publication_request_dir,
   publication_answer_dir,
+  publication_refused_dir,
 }
 import gunbc.host_axis_caps {
   deploy_memory_cap_apply_script_for_host,
@@ -650,6 +656,12 @@ fn apply_publication_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
       group: spec.names.publication_principal,
       path: publication_answer_dir(instance_root: spec.service.instance_root as String),
     )),
+    deploy_raw(command: install_directory_owned_command(
+      mode: publication_spool_answer_mode,
+      owner: spec.names.publication_principal,
+      group: spec.names.publication_principal,
+      path: publication_refused_dir(instance_root: spec.service.instance_root as String),
+    )),
   ]
 }
 
@@ -831,10 +843,34 @@ fn deployment_step_ownership_opt(step: DeploymentStep) -> Ownership? {
   Present { value: deployment_step_ownership(step: step) }
 }
 
+// THE RELEASE-CONSUMING MEMBERS LEAVE THE APPLY-ALL ROSTER. Their desired/observed identities are
+// decided in gunbc.live_deploy.member_identity and their mutations arrive as a ReleaseEffectPlan the
+// caller derived by observing the host (gunbc.live_deploy.member_observe), so an already-converged
+// host installs none of them. Every other owned artifact still reconciles against `observed: []`
+// below -- the declared frontier, one member kind at a time, never a silent skip. Three deployment
+// steps carry the five members: the unit step is where the unit file is written AND where the
+// manager reloads and the process restarts, because those two members have no artifact of their own
+// on the host and the deployment order already places the unit after the roots its process writes.
+fn identity_member_of_step(step: DeploymentStep) -> ConvergedMember? {
+  match step {
+    ArtifactStep { step: art } => match art.kind {
+      GunbcSourceTree => Present { value: TreePublication }
+      ServeBinary => Present { value: Executable }
+      SystemdUnit => Present { value: UnitFile }
+      _ => none
+    }
+    Dependency { step: _ } => none
+  }
+}
+
+fn identity_member_step(step: DeploymentStep) -> Bool {
+  match identity_member_of_step(step: step) { Present { value: _ } => true  Absent => false }
+}
+
 fn deployment_apply_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentStep, DeploymentStepMemberAt> {
   membership_plan_admitting_outcome(
     outcome: membership_reconcile(
-      desired: spec.steps,
+      desired: filter(spec.steps, s => !identity_member_step(step: s)),
       observed: [],
       key_of: deployment_step_key,
       key_eq: deployment_step_key_eq,
@@ -870,9 +906,9 @@ fn apply_systemd_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevision
   ))
 }
 
-fn emit_tree_sync_unit_doc(spec: DeploymentSpec, tree_path: String) -> Doc {
+fn live_deploy_tree_sync_unit_file(spec: DeploymentSpec, tree_path: String) -> ServiceUnitFile {
   let user = spec.service.service_user
-  doc_text(text: serialize_systemd_unit_file(file: ServiceUnitFile {
+  ServiceUnitFile {
     unit: [Description {
       text: "gunbc source tree sync (service-user-principal rsync from CI runner checkout)" as NonEmptyStr,
     }],
@@ -888,7 +924,11 @@ fn emit_tree_sync_unit_doc(spec: DeploymentSpec, tree_path: String) -> Doc {
       ], "") as NonEmptyStr },
     ],
     install: NotInstallable,
-  }))
+  }
+}
+
+fn emit_tree_sync_unit_doc(spec: DeploymentSpec, tree_path: String) -> Doc {
+  doc_text(text: serialize_systemd_unit_file(file: live_deploy_tree_sync_unit_file(spec: spec, tree_path: tree_path)))
 }
 
 // THE SAME PER-INSTANCE ONESHOT CHANGES REALIZATION AFTER ITS TWO INPUTS EXIST. GunbcSourceTree
@@ -1230,6 +1270,120 @@ fn deploy_memory_cap_apply_steps(spec: DeploymentSpec) -> List<PipelineStep> {
 //
 // The in-place-write residue this member leaves is carried by
 // belt_receipt_in_place_write_residue_dissolution rather than by this paragraph.
+// ONE MEMBER, ITS FRAGMENTS, IN THE DEPLOYMENT'S ORDER. These are the SAME fragments the apply-all
+// arms below emit for the identity members, regrouped by the member that needs them and emitted at
+// that member's position in spec.steps (apply_intent_from_effects), never prepended to the whole
+// script: the first cut emitted every release mutation before every remaining membership effect, so
+// on a fresh or partially repaired host the new process was started before the roots it writes
+// existed and before the ensured packages were present (review on PR #10696).
+//
+// Publishing the tree is the repository-convergence unit and its oneshot (the rsync-era tree-sync
+// unit that GunbcSourceTree also wrote is not re-emitted here -- the convergence unit overwrote it in
+// the same script, so it was never the document the host ran); installing the executable is the
+// install and the receipts directory; writing the unit is the render and install. The manager and
+// process members have no artifact of their own and ride the unit step: daemon-reload once, iff the
+// plan says the manager is stale or the file changed, then the restart that closes the transaction.
+//
+// THE PLANNED IDENTITY BINDS THE ACTUATION. The executable copied is the file at the source path, a
+// path that is mutable between planning and copying; so the source is verified against the plan's
+// digest immediately before the copy and the destination immediately after, each under set -e. A
+// build that changed in between, or a copy that did not land, stops the line -- an installed
+// executable can never differ from the identity the plan declared converged. The unit renders from
+// the plan's own revision, the one carrier of that fact.
+fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan, spec: DeploymentSpec) -> List<PipelineStep> {
+  let revision = RevisionBoundAtEmission { revision: plan.target.revision }
+  match member {
+    TreePublication => if !plan_publishes_tree(plan: plan) { [] } else { [
+      deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: "/opt/gunbc", privileged: true)),
+      deploy_raw(command: install_d_owned_command(spec: spec, path: spec.service.repo_root as String)),
+      apply_tree_sync_unit_write_step(spec: spec, tree_path: spec.service.repo_root as String),
+      deploy_raw(command: deploy_stage_install_command(
+        stage_name: "gunbc-tree-sync.service",
+        mode: install_file_shared_mode,
+        dest: tree_sync_unit_path(names: spec.names) as String,
+      )),
+      deploy_raw(command: deploy_stage_write_expansion_command(
+        stage_name: "gunbc-tree-sync.env",
+        format: "GUNBC_TREE_SRC=%s\n",
+        expansion_var: "PWD",
+      )),
+      deploy_raw(command: deploy_stage_install_command(
+        stage_name: "gunbc-tree-sync.env",
+        mode: install_file_shared_mode,
+        dest: spec.names.tree_sync_env_path as String,
+      )),
+      deploy_raw(command: deploy_stage_write_command(
+        stage_name: deployment_slice_unit_name(names: spec.names) as String,
+        content: render(doc: emit_slice_unit_doc(spec: spec), proto: live_deploy_protocol),
+      )),
+      deploy_raw(command: deploy_stage_install_command(
+        stage_name: deployment_slice_unit_name(names: spec.names) as String,
+        mode: install_file_shared_mode,
+        dest: deployment_slice_unit_path(names: spec.names) as String,
+      )),
+      deploy_effect(inv: systemctl_daemon_reload_effect()),
+      tree_sync_restart_step_with_diagnosis(spec: spec),
+      deploy_raw(command: install_d_owned_command(
+        spec: spec,
+        path: instance_receipts_dir(instance_root: spec.service.instance_root as String),
+      )),
+      apply_repository_convergence_unit_write_step(spec: spec, revision: revision),
+      deploy_raw(command: deploy_stage_install_command(
+        stage_name: spec.names.tree_sync_unit_name as String,
+        mode: install_file_shared_mode,
+        dest: tree_sync_unit_path(names: spec.names) as String,
+      )),
+      deploy_effect(inv: systemctl_daemon_reload_effect()),
+      tree_sync_restart_step_with_diagnosis(spec: spec),
+      deploy_raw(command: repository_convergence_readback_command(spec: spec)),
+    ] }
+    Executable => if !plan_installs_executable(plan: plan) { [] } else { [
+      deploy_raw(command: digest_shell_verify_line(digest: plan.target.executable, file_path: release_executable_install_source as NonEmptyStr)),
+      deploy_raw(command: install_directory_command(
+        mode: install_d_shared_mode,
+        path: path_parent_dir(path: spec.service.serve_binary as String),
+        privileged: true,
+      )),
+      deploy_raw(command: install_file_owned_command(
+        mode: install_executable_shared_mode,
+        owner: spec.service.service_user,
+        group: spec.service.service_user,
+        source: release_executable_install_source,
+        dest: spec.service.serve_binary as String,
+      )),
+      deploy_raw(command: digest_shell_verify_line(digest: plan.target.executable, file_path: spec.service.serve_binary)),
+      deploy_raw(command: install_d_owned_command(
+        spec: spec,
+        path: instance_receipts_dir(instance_root: spec.service.instance_root as String),
+      )),
+    ] }
+    UnitFile => concat(
+      if !plan_writes_unit(plan: plan) { [] } else { [
+        apply_systemd_unit_write_step(spec: spec, revision: revision),
+        deploy_raw(command: deploy_stage_install_command(
+          stage_name: spec.service.unit_name as String,
+          mode: install_file_shared_mode,
+          dest: deployment_systemd_unit_path(names: spec.names) as String,
+        )),
+      ] },
+      concat(
+        if !plan_reloads_manager(plan: plan) { [] } else { [deploy_effect(inv: systemctl_daemon_reload_effect())] },
+        if !plan_restarts_process(plan: plan) { [] } else { [
+          deploy_effect(inv: systemctl_enable_effect(unit: plan.target.unit)),
+          deploy_effect(inv: systemctl_restart_effect(unit: plan.target.unit)),
+        ] },
+      ),
+    )
+    UnitManager => []
+    ServiceProcess => []
+  }
+}
+
+// The deploying checkout's build, the one source the install copies from; the same path the planner
+// digests (gunbc.live_deploy.member_observe release_executable_source_path) so the verification
+// line above and the planned identity name one file.
+data release_executable_install_source: String = "target/release/gunbc"
+
 fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   match art.kind {
     GunbcSourceTree => [
@@ -1521,11 +1675,39 @@ fn emit_deploy_member_effect(effect: MemberEffect<DeploymentStep>, spec: Deploym
 // hand or changes what the trap does. Adding the grammar row is the fix and it is out of this
 // PR's scope; naming the gap here is what keeps the next reader from reaching for the
 // approximation. See also the brace-group gap at tree_sync_restart_step_with_diagnosis.
+fn member_effect_step(e: MemberEffect<DeploymentStep>) -> DeploymentStep {
+  match e {
+    EffectAdd { to } => to
+    EffectReplace { from: _, to } => to
+    EffectRemove { from } => from
+  }
+}
+
+// EVERY STEP OF THE DEPLOYMENT, IN THE DEPLOYMENT'S ORDER, PROJECTED TO ITS EFFECTS. An identity
+// member's step projects to the release plan's fragments for that member (possibly none); every other
+// step projects to the membership effects the apply-all reconcile derived for its key. The order is
+// therefore spec.steps' order -- gunbc.live_deploy.spec deployment_steps_apply_order, the one
+// authority -- and this function adds no ordering of its own.
+fn apply_step_effects(
+  step: DeploymentStep,
+  effects: List<MemberEffect<DeploymentStep>>,
+  spec: DeploymentSpec,
+  plan: ReleaseEffectPlan,
+) -> List<PipelineStep> {
+  match identity_member_of_step(step: step) {
+    Present { value: member } => emit_release_member_effects(member: member, plan: plan, spec: spec)
+    Absent => flat_map(
+      filter(effects, e => deployment_step_key_eq(a: deployment_step_key(step: member_effect_step(e: e)), b: deployment_step_key(step: step))),
+      e => emit_deploy_member_effect(effect: e, spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision }),
+    )
+  }
+}
+
 fn apply_intent_from_effects(
   spec: DeploymentSpec,
   effects: List<MemberEffect<DeploymentStep>>,
   access: DeployAccess,
-  revision: ReleaseRevisionBinding
+  plan: ReleaseEffectPlan,
 ) -> Pipeline {
   Pipeline {
     steps: concat(
@@ -1543,7 +1725,7 @@ fn apply_intent_from_effects(
         concat(
           deploy_memory_cap_apply_steps(spec: spec),
           concat(
-            flat_map(effects, e => emit_deploy_member_effect(effect: e, spec: spec, revision: revision)),
+            flat_map(spec.steps, step => apply_step_effects(step: step, effects: effects, spec: spec, plan: plan)),
             [
               deploy_raw(command: deploy_receipt_command(host: spec.target.host.identity, fold: "apply")),
             ]
@@ -1633,7 +1815,7 @@ fn live_deploy_wholesale_refused_poison(refusals: List<MemberRefusal<DeploymentS
   )
 }
 
-fn live_deploy_apply_script_for(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> String {
+fn live_deploy_apply_script_for(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> String {
   match ci_deploy_srv1_access_or_refusal() {
     DeployAccessJobPrincipalRefused { refusal: r } =>
       deploy_access_job_principal_refused_emit_poison(refusal: r)
@@ -1641,7 +1823,7 @@ fn live_deploy_apply_script_for(spec: DeploymentSpec, revision: ReleaseRevisionB
       match membership_effects(plan: deployment_apply_plan(spec: spec)) {
         EffectsReady { effects: es } =>
           emit_pipeline_or_poison(
-            p: apply_intent_from_effects(spec: spec, effects: es, access: access, revision: revision),
+            p: apply_intent_from_effects(spec: spec, effects: es, access: access, plan: plan),
             refused: live_deploy_apply_emit_refused_poison
           )
         ApplyRefused { refusals: rs } =>

@@ -831,8 +831,68 @@ fn floor_route_gap_expectation_chunk_06() -> List<FloorRouteGapExpectation> {
   }
 }
 
+// THE EVALUATION-MODEL PROBES EXECUTE ON THE LOCAL-REPO WET LANE, not through the hermetic floor.
+// Each writes a marker file into a throwaway temp directory, runs the operation under test, and
+// asks whether the marker survived, so the verdict rests on an observed effect rather than on a
+// reading of the source. shell.Mktemp.Dir declares no mock_response, which is why the operation
+// pinned below is Dir and the ground is NoMockResponse: the hermetic route refuses before any of
+// them reaches its subject.
+//
+// ENROLMENT HERE IS NOT THE ROUTE. The route is the WetScheduledClaim rows in
+// v2.workflow.local_repo_wet_terminal local_repo_wet_schedule. So this chunk records one measured
+// boundary -- the HERMETIC path cannot reach these identities -- and makes no claim that they are
+// unverified. Enrolment WITHOUT that schedule would be the other thing entirely: a subject that
+// executes nowhere, with the roster standing in for its evidence.
+//
+// The chunk carries NINE identities, and their evidence is NOT uniform, so the distinctions are
+// drawn here rather than left to a reader counting rows. The five test.claim.eval_model_probe
+// identities were observed executing and holding on the wet lane by the same required-floor run
+// that produced their route gaps. The sixth (self_host_logic_seed_unavailable_receipt_holds)
+// and seventh through ninth (the three self_host_logic_seed_unavailable_check_fixture identities)
+// are enrolled beside their own WetScheduledClaim rows, all observed passing wet.
+// Anyone adding a tenth owns this sentence:
+// an annotation that describes a population is invalidated by the edit that changes the population,
+// and nothing in the substrate will ever red to tell you so.
+//
+// Authored as an expectation rather than a bare identity because floor_route_gap_roster calls the
+// bare chunks `legacy`: the expectation form pins the operation and the ground, so a gap that
+// moves to a different operation stops matching instead of staying quietly enrolled.
+// My entry: enrolled beside a real executing route (WetScheduledClaim in
+// local_repo_wet_terminal.dag). Not a burial — the identity executes on the
+// wet lane and held wet. This records only the hermetic unreachability.
+fn floor_route_gap_expectation_chunk_07() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.eval_model_probe.and_demands_right_even_when_left_false", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.eval_model_probe.and_short_circuit_direct_probe", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.eval_model_probe.and_with_true_left_removes_file", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.eval_model_probe.let_is_eager_when_consumed", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.eval_model_probe.let_is_eager_when_unused", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.self_host_logic_seed_unavailable_witness.self_host_logic_seed_unavailable_receipt_holds", operation: "Parents", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.self_host_logic_seed_unavailable_check_fixture.clean_directory_passes_v1_rt_check", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.self_host_logic_seed_unavailable_check_fixture.directory_with_v1_compiler_ref_fails_check", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.self_host_logic_seed_unavailable_check_fixture.directory_with_v1_rt_containing_calls_passes", operation: "Dir", ground: NoMockResponse {} },
+    tail: Empty {}
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+}
+
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
-  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Empty {} } } } } } } }
+  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Empty {} } } } } } } } }
 }
 
 fn floor_route_gap_expectations() -> List<FloorRouteGapExpectation> {

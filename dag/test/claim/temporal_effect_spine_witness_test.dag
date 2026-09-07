@@ -538,5 +538,102 @@ fn consumed_witness_authorization() -> ScopedAuthorization<WitnessSubject> {
         ),
       }
     AuthorizationPending { request: _ } => witness_pending
+    AuthorizationDenied { escalation_id: _, denied_by: _, denied_at: _, reason: _ } => witness_pending
+  }
+}
+
+// ── Denial is a decision, and it is terminal ─────────────────────────────────────────────────
+// A denied escalation must not present to the workflow as "not granted yet". Those two produce
+// opposite next actions: the workflow answers absence by asking again, and answering a DENY that
+// way turns the operator's no into a re-notification loop that only terminates when they say yes.
+// So the refusal names the decision, and these witnesses pin that it is distinguishable.
+
+data witness_denied: ScopedAuthorization<WitnessSubject> = AuthorizationDenied {
+  escalation_id: witness_escalation_id,
+  denied_by: "operator" as NonEmptyStr,
+  denied_at: witness_observed_at,
+  reason: "the convergence does not need standing access to this secret" as NonEmptyStr,
+}
+
+// THE DISCRIMINATING RED. Before the Denied arm existed, the only way to represent this state was
+// AuthorizationPending, which authorize() answers with AuthorizationNotGranted -- the same cause a
+// never-answered request produces. This asserts the two are now different causes, which is the
+// whole content of the change.
+test fn a_denied_authorization_refuses_with_the_denial_not_with_absence() -> Bool {
+  match authorize(
+    authorization: witness_denied,
+    request: witness_request,
+    observed_at: witness_observed_at,
+  ) {
+    AuthorizationRefused { cause: c } =>
+      match c {
+        AuthorizationDeniedByOperator { escalation_id: id, denied_by: who, denied_at: _, reason: _ } =>
+          id == witness_escalation_id && who == "operator"
+        _ => false
+      }
+    AuthorizationPermitted { grant: _ } => false
+  }
+}
+
+// THE OTHER HALF, asserted separately rather than inferred from the test above: a request nobody
+// has answered must still report ABSENCE. If both states reported denial the distinction would be
+// just as lost, in the opposite direction, and a single-sided test cannot see that.
+test fn a_pending_authorization_still_refuses_with_absence() -> Bool {
+  match authorize(
+    authorization: witness_pending,
+    request: witness_request,
+    observed_at: witness_observed_at,
+  ) {
+    AuthorizationRefused { cause: c } =>
+      match c {
+        AuthorizationNotGranted { escalation_id: id } => id == witness_escalation_id
+        _ => false
+      }
+    AuthorizationPermitted { grant: _ } => false
+  }
+}
+
+// A DENIAL IS NEVER PERMITTED, whatever the clock says. Expiry reasoning is reachable only from a
+// grant, so a denial observed before, at, or after any timestamp must still refuse -- this pins
+// that no time-dependent path can turn it into permission.
+test fn a_denial_is_refused_at_a_time_a_fresh_grant_would_be_permitted() -> Bool {
+  match authorize(
+    authorization: witness_denied,
+    request: witness_request,
+    observed_at: "2026-07-02T23:00:00Z",
+  ) {
+    AuthorizationRefused { cause: _ } => true
+    AuthorizationPermitted { grant: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL ON THAT PAIR. The same request against a live grant at the same instant IS
+// permitted, so the three tests above cannot be passing because authorize() refuses everything.
+test fn the_same_request_against_a_live_grant_is_still_permitted() -> Bool {
+  match authorize(
+    authorization: witness_grant(granted_at: "2026-07-02T23:00:00Z", expires_at: "2026-07-03T23:00:00Z"),
+    request: witness_request,
+    observed_at: witness_observed_at,
+  ) {
+    AuthorizationPermitted { grant: g } => g.escalation_id == witness_escalation_id
+    AuthorizationRefused { cause: _ } => false
+  }
+}
+
+// THE RENDERER MUST SAY WHAT HAPPENED. The operator reading an incident needs "denied, by whom,
+// why" rather than a generic authorization failure, and the reason text is the field that carries
+// it. Asserted on the rendered string because that is what a human actually reads.
+test fn the_denial_reason_reaches_the_rendered_refusal() -> Bool {
+  match authorize(
+    authorization: witness_denied,
+    request: witness_request,
+    observed_at: witness_observed_at,
+  ) {
+    AuthorizationRefused { cause: c } =>
+      string_contains(
+        s: authorization_refusal_reason(cause: c),
+        pattern: "does not need standing access",
+      )
+    AuthorizationPermitted { grant: _ } => false
   }
 }

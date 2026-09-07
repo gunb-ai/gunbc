@@ -725,11 +725,6 @@ data gunbc_ci_fleet_converge_launch_environment_plan_target: GunbcRunStepTarget 
   function: "fleet_converge_launch_environment_plan_wet",
 }
 
-data gunbc_ci_fleet_converge_spark_serving_plan_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
-  function: "fleet_converge_spark_serving_plan_wet",
-}
-
 data gunbc_ci_fleet_converge_allocation_store_plan_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
   function: "fleet_converge_allocation_store_plan_wet",
@@ -784,16 +779,6 @@ data gunbc_ci_runner_guest_image_converge_target: GunbcRunStepTarget = GunbcRunS
   function: "runner_guest_image_converge_wet",
 }
 
-data gunbc_ci_spark_serving_reboot_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/spark/serving_reboot_probe.dag",
-  function: "spark_serving_reboot_ci_wet",
-}
-
-data gunbc_ci_spark_serving_durability_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/spark/serving_durability_transaction.dag",
-  function: "spark_serving_durability_ci_wet",
-}
-
 data gunbc_ci_spark_grant_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/spark/managed_grant_install.dag",
   function: "spark_grant_install_ci_wet",
@@ -804,14 +789,9 @@ data gunbc_ci_spark_bootstrap_target: GunbcRunStepTarget = GunbcRunStepTarget {
   function: "spark_managed_access_bootstrap_ci_wet",
 }
 
-data gunbc_ci_spark_serving_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/spark/serving_observe.dag",
-  function: "spark_serving_observe_ci_wet",
-}
-
-data gunbc_ci_spark_serving_converge_slice_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/spark/serving_converge_slice_wet.dag",
-  function: "spark_serving_converge_slice_ci_wet",
+data gunbc_ci_spark_serving_apply_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/pair_serving_apply.dag",
+  function: "spark_pair_serving_apply_wet",
 }
 
 data gunbc_ci_collect_fleet_convergence_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -927,7 +907,6 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_multi_principal_probe_target,
     gunbc_ci_fleet_converge_plan_target,
     gunbc_ci_fleet_converge_launch_environment_plan_target,
-    gunbc_ci_fleet_converge_spark_serving_plan_target,
     gunbc_ci_fleet_converge_allocation_store_plan_target,
     gunbc_ci_fleet_converge_apply_target,
     gunbc_ci_org_actions_converge_target,
@@ -935,12 +914,9 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_guest_image_converge_target,
     gunbc_ci_runner_microvm_host_converge_target,
     gunbc_ci_runner_microvm_boot_probe_target,
-    gunbc_ci_spark_serving_reboot_target,
-    gunbc_ci_spark_serving_durability_target,
     gunbc_ci_spark_grant_install_target,
     gunbc_ci_spark_bootstrap_target,
-    gunbc_ci_spark_serving_observe_target,
-    gunbc_ci_spark_serving_converge_slice_target,
+    gunbc_ci_spark_serving_apply_target,
     gunbc_ci_collect_fleet_convergence_target,
     gunbc_ci_fleet_host_key_scan_target,
     gunbc_ci_fleet_host_key_enroll_target,
@@ -1371,16 +1347,6 @@ fn gunbc_ci_fleet_converge_plan_invoke() -> String {
   )
 }
 
-fn gunbc_ci_fleet_converge_spark_serving_plan_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_fleet_converge_spark_serving_plan_target.entry,
-    function: gunbc_ci_fleet_converge_spark_serving_plan_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
 fn gunbc_ci_fleet_converge_launch_environment_plan_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -1736,26 +1702,6 @@ fn gunbc_ci_runner_guest_image_converge_invoke() -> String {
   )
 }
 
-fn gunbc_ci_spark_serving_reboot_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_spark_serving_reboot_target.entry,
-    function: gunbc_ci_spark_serving_reboot_target.function,
-    claim_run: false,
-    receipt_rel: "target/spark-serving-reboot-receipt.txt"
-  )
-}
-
-fn gunbc_ci_spark_serving_durability_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_spark_serving_durability_target.entry,
-    function: gunbc_ci_spark_serving_durability_target.function,
-    claim_run: false,
-    receipt_rel: "target/spark-serving-durability-receipt.txt"
-  )
-}
-
 // The bootstrap shares the grant-install prelude: same fleet-key agent from the job, same per-target
 // administrator credential materialized to the same file, so the two cannot drift on how a Spark
 // is reached or authenticated.
@@ -1781,23 +1727,17 @@ fn gunbc_ci_spark_grant_install_invoke() -> String {
   )
 }
 
-fn gunbc_ci_spark_serving_observe_invoke() -> String {
-  gunbc_run_step_script(
+// The pair-serving apply shares the bootstrap and grant-install prelude: the same fleet-key agent
+// from the job and the same per-target administrator credential materialized to the same file, so
+// the three cannot drift on how a Spark is reached or authenticated.
+fn gunbc_ci_spark_serving_apply_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_spark_serving_observe_target.entry,
-    function: gunbc_ci_spark_serving_observe_target.function,
+    entry: gunbc_ci_spark_serving_apply_target.entry,
+    function: gunbc_ci_spark_serving_apply_target.function,
     claim_run: false,
-    receipt_rel: "target/spark-serving-observe-ci-receipt.txt"
-  )
-}
-
-fn gunbc_ci_spark_serving_converge_slice_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_spark_serving_converge_slice_target.entry,
-    function: gunbc_ci_spark_serving_converge_slice_target.function,
-    claim_run: false,
-    receipt_rel: "target/spark-serving-converge-slice-wet-receipt.txt"
+    receipt_rel: "target/spark-pair-serving-apply-receipt.txt"
   )
 }
 

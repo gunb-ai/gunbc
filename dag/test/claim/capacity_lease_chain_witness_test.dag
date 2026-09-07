@@ -1,0 +1,181 @@
+module test.claim.capacity_lease_chain_witness
+
+import std.types { Bool, Int, NonEmptyStr, List, String, EpochSecs }
+import std.nat { Nat }
+import std.measure { Measure, Count, One }
+import product.capacity.pool { Pool, NoReplenishment, pool_of, pool_reading_at, PoolReading, PoolRead, PoolReadingRefused }
+import product.capacity.event_chain {
+  PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, HeadAbsent, HeadAt,
+  AppendDecision, AppendAdmitted, AppendStale, decide_append, chain_from_head, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted,
+}
+import product.capacity.lease {
+  LeaseFence, lease_fence_of, fence_verdict, FenceVerdict, FenceCurrent, FenceObsolete, FenceForeignGrant,
+  LeasePolicy, LeaseGrant, lease_grant, ReleaseLaw, FencedResource, QuiescenceRequired,
+  QuiescenceFact, Quiescent, QuiescenceUnobserved, CapacityAfterExpiry, LeaseNotExpired, CapacityFreed, CapacityHeldPendingQuiescence, capacity_after_expiry,
+}
+import product.capacity.pool_events {
+  PoolEvent, PoolAcquired, PoolSettled, PoolReleased, PoolLapsed, PoolUpstreamObserved, PoolResetObserved,
+  PoolFold, PoolFolded, PoolFoldRefused, pool_fold,
+  SeatRequest, SeatProposal, SeatProposed, SeatRefused, propose_acquire, pool_event_wire_text, pool_event_decode, PoolEventDecode, PoolEventDecoded, PoolEventUndecodable,
+  grant_from_admission,
+}
+
+fn w_partition() -> PartitionId { "group-a-seats" as PartitionId }
+fn w_id(s: String) -> EventId { s as EventId }
+fn w_seats(n: Nat) -> Measure<Count, One, Nat> { Measure { count: n } }
+
+fn w_env(id: String, parent: String, payload: PoolEvent, at: EpochSecs) -> ChainEnvelope<PoolEvent> {
+  ChainEnvelope {
+    id: w_id(s: id),
+    event: ChainEvent {
+      partition: w_partition(),
+      parent: if parent == "" { none } else { Present { value: w_id(s: parent) } },
+      recorded_at: at,
+      actor: "srv1-harness" as NonEmptyStr,
+      payload: payload,
+    },
+  }
+}
+
+fn w_root() -> Pool<Count, One> {
+  pool_of(identity: "group-a-seats" as NonEmptyStr, ceiling: w_seats(n: 2), replenishment: NoReplenishment)
+}
+
+fn w_headroom(p: Pool<Count, One>, at: EpochSecs) -> Int {
+  match pool_reading_at(pool: p, at: at) {
+    PoolRead { committed: _, ceiling: _, headroom: h, over_committed: _ } => h.count
+    PoolReadingRefused { at: _, anchor: _ } => -1
+  }
+}
+
+fn w_policy() -> LeasePolicy { LeasePolicy { maximum_duration_seconds: 300, release_law: FencedResource } }
+
+// THE CHAIN WALKS FROM ITS HEAD TO ITS ROOT, OLDEST FIRST, AND A HOLE IS REPORTED BY ID rather than
+// folded around; the fold over the walked chain reproduces the pool the events describe.
+test fn the_chain_walks_oldest_first_and_the_fold_reproduces_the_pool() -> Bool {
+  let e1 = w_env(id: "e1", parent: "", payload: PoolAcquired { reference: "turn-1" as NonEmptyStr, amount: 1, term_seconds: 300 }, at: 1000)
+  let e2 = w_env(id: "e2", parent: "e1", payload: PoolAcquired { reference: "turn-2" as NonEmptyStr, amount: 1, term_seconds: 300 }, at: 1005)
+  let e3 = w_env(id: "e3", parent: "e2", payload: PoolReleased { reference: "turn-1" as NonEmptyStr, reason: "done" as NonEmptyStr }, at: 1050)
+  let envs = [e3, e1, e2]
+  (match chain_from_head(envs: envs, head: HeadAt { id: w_id(s: "e3") }, budget: 10) {
+     ChainWalked { oldest_first: xs } =>
+       length(xs) == 3 && (match first(xs) { Present { value: x } => (x.id as String) == "e1"  Absent => false })
+         && (match pool_fold(root: w_root(), oldest_first: xs) {
+              PoolFolded { pool: p, generation: g } => g == 3 && w_headroom(p: p, at: 1050) == 1 && w_headroom(p: p, at: 1004) == 1
+              PoolFoldRefused { at_event: _, wire: _ } => false
+            })
+     ChainIncomplete { missing: _, newest_first_so_far: _ } => false
+     ChainBudgetExhausted { at: _ } => false
+   })
+    && (match chain_from_head(envs: [e3, e2], head: HeadAt { id: w_id(s: "e3") }, budget: 10) {
+         ChainIncomplete { missing: m, newest_first_so_far: _ } => (m as String) == "e1"
+         ChainWalked { oldest_first: _ } => false
+         ChainBudgetExhausted { at: _ } => false
+       })
+    && (match chain_from_head(envs: envs, head: HeadAt { id: w_id(s: "e3") }, budget: 2) {
+         ChainBudgetExhausted { at: a } => (a as String) == "e1"
+         ChainWalked { oldest_first: _ } => false
+         ChainIncomplete { missing: _, newest_first_so_far: _ } => false
+       })
+}
+
+// THE COLLISION THE OPERATOR ASKED FOR: two writers propose from the same observed head with one
+// seat left; the first compare-and-set is admitted, the second is stale by construction, and after
+// re-folding from the admitted head the loser gets the typed full refusal rather than a seat.
+test fn two_writers_from_one_head_produce_one_admission_one_stale_and_then_a_full_refusal() -> Bool {
+  let e1 = w_env(id: "e1", parent: "", payload: PoolAcquired { reference: "turn-1" as NonEmptyStr, amount: 1, term_seconds: 300 }, at: 1000)
+  let head = HeadAt { id: w_id(s: "e1") }
+  match chain_from_head(envs: [e1], head: head, budget: 10) {
+    ChainIncomplete { missing: _, newest_first_so_far: _ } => false
+    ChainBudgetExhausted { at: _ } => false
+    ChainWalked { oldest_first: xs } =>
+      match pool_fold(root: w_root(), oldest_first: xs) {
+        PoolFoldRefused { at_event: _, wire: _ } => false
+        PoolFolded { pool: p, generation: g } => {
+          let a = propose_acquire(pool: p, generation: g, head: head, partition: w_partition(), actor: "srv1-harness" as NonEmptyStr,
+            request: SeatRequest { reference: "srv1-turn-7" as NonEmptyStr, amount: 1, at: 1100, term_seconds: 300 })
+          let b = propose_acquire(pool: p, generation: g, head: head, partition: w_partition(), actor: "srv2-harness" as NonEmptyStr,
+            request: SeatRequest { reference: "srv2-turn-3" as NonEmptyStr, amount: 1, at: 1100, term_seconds: 300 })
+          match a {
+            SeatRefused { wire: _ } => false
+            SeatProposed { event: ea, expected_head: xa } =>
+              match b {
+                SeatRefused { wire: _ } => false
+                SeatProposed { event: eb, expected_head: xb } => {
+                  let a_admitted = decide_append(expected: xa, observed: head, new_head: w_id(s: "e2"), generation_before: g)
+                  let b_after_a = decide_append(expected: xb, observed: HeadAt { id: w_id(s: "e2") }, new_head: w_id(s: "e3"), generation_before: g + 1)
+                  (match a_admitted { AppendAdmitted { new_head: h, generation: gen } => (h as String) == "e2" && gen == 2  AppendStale { expected: _, observed: _ } => false })
+                    && (match b_after_a { AppendStale { expected: _, observed: o } => (match o { HeadAt { id: i } => (i as String) == "e2"  HeadAbsent => false })  AppendAdmitted { new_head: _, generation: _ } => false })
+                    && (match chain_from_head(envs: [e1, ChainEnvelope { id: w_id(s: "e2"), event: ea }], head: HeadAt { id: w_id(s: "e2") }, budget: 10) {
+                         ChainWalked { oldest_first: ys } =>
+                           match pool_fold(root: w_root(), oldest_first: ys) {
+                             PoolFolded { pool: p2, generation: g2 } =>
+                               g2 == 2 && w_headroom(p: p2, at: 1100) == 0
+                                 && (match propose_acquire(pool: p2, generation: g2, head: HeadAt { id: w_id(s: "e2") }, partition: w_partition(), actor: "srv2-harness" as NonEmptyStr,
+                                                            request: SeatRequest { reference: "srv2-turn-3" as NonEmptyStr, amount: 1, at: 1101, term_seconds: 300 }) {
+                                      SeatRefused { wire: w } => w == "pool-full"
+                                      SeatProposed { event: _, expected_head: _ } => false
+                                    })
+                             PoolFoldRefused { at_event: _, wire: _ } => false
+                           }
+                         ChainIncomplete { missing: _, newest_first_so_far: _ } => false
+                         ChainBudgetExhausted { at: _ } => false
+                       })
+                }
+              }
+          }
+        }
+      }
+  }
+}
+
+// THE FENCE IS NOT THE COMPARE-AND-SET: a grant from an earlier generation is obsolete even though
+// its event is in the chain, a grant from a different admission at the same generation is foreign,
+// and expiry frees capacity under a fenced resource but holds it pending quiescence otherwise.
+test fn the_fence_rejects_obsolete_and_foreign_grants_and_expiry_frees_only_under_a_fence() -> Bool {
+  let current = lease_fence_of(admitting_event: w_id(s: "e5"), generation: 5)
+  let older = lease_fence_of(admitting_event: w_id(s: "e3"), generation: 3)
+  let foreign = lease_fence_of(admitting_event: w_id(s: "e5x"), generation: 5)
+  let grant = lease_grant(reference: "turn-1" as NonEmptyStr, fence: current, granted_at: 1000, policy: w_policy())
+  (match fence_verdict(current: current, presented: current) { FenceCurrent => true  FenceObsolete { presented: _, current: _ } => false  FenceForeignGrant { presented: _, current: _ } => false })
+    && (match fence_verdict(current: current, presented: older) { FenceObsolete { presented: p, current: c } => p == 3 && c == 5  FenceCurrent => false  FenceForeignGrant { presented: _, current: _ } => false })
+    && (match fence_verdict(current: current, presented: foreign) { FenceForeignGrant { presented: _, current: _ } => true  FenceCurrent => false  FenceObsolete { presented: _, current: _ } => false })
+    && grant.expires_at == 1300
+    && (match capacity_after_expiry(law: FencedResource, grant: grant, at: 1299, quiescence: QuiescenceUnobserved) { LeaseNotExpired { until: u } => u == 1300  CapacityFreed => false  CapacityHeldPendingQuiescence => false })
+    && (match capacity_after_expiry(law: FencedResource, grant: grant, at: 1300, quiescence: QuiescenceUnobserved) { CapacityFreed => true  LeaseNotExpired { until: _ } => false  CapacityHeldPendingQuiescence => false })
+    && (match capacity_after_expiry(law: QuiescenceRequired, grant: grant, at: 1300, quiescence: QuiescenceUnobserved) { CapacityHeldPendingQuiescence => true  CapacityFreed => false  LeaseNotExpired { until: _ } => false })
+    && (match capacity_after_expiry(law: QuiescenceRequired, grant: grant, at: 1300, quiescence: Quiescent { observed_at: 1290 }) { CapacityFreed => true  CapacityHeldPendingQuiescence => false  LeaseNotExpired { until: _ } => false })
+}
+
+// THE GRANT IS MINTED FROM THE ADMISSION, never from the proposal: its fence is the admitted event
+// and generation, and its deadline is the declared policy applied at the grant instant.
+test fn a_grant_carries_the_admitted_event_as_its_fence_and_the_declared_deadline() -> Bool {
+  let req = SeatRequest { reference: "srv1-turn-7" as NonEmptyStr, amount: 1, at: 1100, term_seconds: 300 }
+  match grant_from_admission(request: req, admission: AppendAdmitted { new_head: w_id(s: "e2"), generation: 2 }, policy: w_policy()) {
+    Absent => false
+    Present { value: g } =>
+      (g.fence.grant as String) == "e2" && g.fence.generation == 2 && g.granted_at == 1100 && g.expires_at == 1400
+        && (match grant_from_admission(request: req, admission: AppendStale { expected: HeadAbsent, observed: HeadAbsent }, policy: w_policy()) { Absent => true  Present { value: _ } => false })
+  }
+}
+
+// THE WIRE ROUND-TRIPS: every event kind encodes to canonical text and decodes back to itself, and
+// text that is not an event is refused rather than read as one.
+test fn every_pool_event_kind_round_trips_through_its_wire_and_junk_is_refused() -> Bool {
+  let kinds = [
+    PoolAcquired { reference: "r" as NonEmptyStr, amount: 3, term_seconds: 60 },
+    PoolSettled { reference: "r" as NonEmptyStr, actual: 2 },
+    PoolReleased { reference: "r" as NonEmptyStr, reason: "done" as NonEmptyStr },
+    PoolLapsed,
+    PoolUpstreamObserved { remaining: 500, term_seconds: 3300 },
+    PoolResetObserved { reset_at: 7200 },
+  ]
+  all(kinds, k => {
+    let env = w_env(id: "x", parent: "p", payload: k, at: 42)
+    match pool_event_decode(text: pool_event_wire_text(event: env.event)) {
+      PoolEventDecoded { event: e } => pool_event_wire_text(event: e) == pool_event_wire_text(event: env.event) && e.recorded_at == 42
+      PoolEventUndecodable { reason: _ } => false
+    }
+  })
+    && (match pool_event_decode(text: "{\"schema\":\"nope\"}") { PoolEventUndecodable { reason: _ } => true  PoolEventDecoded { event: _ } => false })
+}

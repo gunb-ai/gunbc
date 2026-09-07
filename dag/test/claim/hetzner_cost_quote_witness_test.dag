@@ -1,6 +1,8 @@
 module test.claim.hetzner_cost_quote_witness
 
-import extdeps.cloud.hetzner { cax41_catalog }
+import std.measure { money_amount_micro_count }
+import gunbc.ci_fleet { per_second_billed_cost_quote, cost_estimate_unit_price_micros }
+import extdeps.cloud.hetzner { cax41_catalog, cax41_catalog_superseded, tariff_is_current }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -33,7 +35,16 @@ test fn hetzner_cax41_currency_is_eur() -> Bool {
   }
 }
 
+// 50500 UNTIL 2026-09-06, when the catalog row was found to be carrying the tariff SUPERSEDED on
+// 2026-06-15 and was moved to the vendor's new-price column. This literal is grounded in the
+// vendor's published document rather than measured from this tree, so a vendor price change is
+// exactly what it is supposed to notice - the same case pricing_surface_witness records for
+// Ubicloud. The superseded figure stays reachable as cax41_catalog_superseded and is asserted
+// beside the current one, so a silent swap of one row for the other still reds.
 test fn hetzner_cax41_unit_price_matches_catalog() -> Bool {
-  hetzner_cax41_hourly_micros() == 50500
+  hetzner_cax41_hourly_micros() == 65700
+    && money_amount_micro_count(m: cax41_catalog_superseded.hourly) == 50500
+    && tariff_is_current(t: cax41_catalog.tariff)
+    && tariff_is_current(t: cax41_catalog_superseded.tariff) == false
 }
 

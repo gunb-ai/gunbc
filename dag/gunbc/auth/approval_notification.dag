@@ -1,0 +1,96 @@
+module gunbc.auth.approval_notification
+
+import std.types { NonEmptyStr, String, Timestamp }
+import std.logic { Bool }
+import extdeps.ntfy.ntfy {
+  NtfyTopic, NtfyMessage, NtfyPriority, PriorityHigh, PriorityDefault,
+  NtfyCachePolicy, CacheServerSide,
+}
+import gunbc.auth.access_request { AccessLifetime, LifetimeSeconds, LifetimeStanding }
+
+// ── Where the notification goes, and who else learns anything ────────────────────────────────
+// SELF-HOSTED, ON THE TAILNET. The approval URL is a credential, so the message carrying it must
+// not transit a third party. ntfy runs on srv1 behind the same tailscale serve boundary as the
+// dashboard, which means the topic is reachable only from tailnet devices -- the same condition
+// that already gates the approval route itself, so this adds no new dependency.
+data approval_ntfy_topic: NtfyTopic = "gunbc-approvals" as NtfyTopic
+
+// ── The iOS relay, and exactly what it can observe ───────────────────────────────────────────
+// APPLE'S PUSH IS THE ONE PART WE CANNOT SELF-HOST. An iPhone cannot hold an open socket to a
+// self-hosted server the way the Android client does; a background app is woken by APNs, and only
+// Apple can send an APNs push. ntfy's documented arrangement for self-hosted servers is an
+// upstream relay: our server forwards a POLL REQUEST to ntfy.sh, ntfy.sh sends the APNs wakeup,
+// and the app then fetches the actual message FROM OUR SERVER.
+//
+// What that means for the credential, stated precisely because "it goes through a third party" and
+// "a third party sees it" are different claims:
+//
+//   ntfy.sh receives   -- a wakeup for a hashed topic and a message id
+//   ntfy.sh never receives -- the topic name, the title, the body, or the approval URL
+//   the phone fetches the message body from srv1, over the tailnet
+//
+// So the approval link never leaves the tailnet. The relay learns that a notification happened and
+// when, which is a metadata leak worth naming rather than one worth pretending away: an observer
+// of ntfy.sh learns the TIMING of approval requests, not their content or subject.
+data ios_upstream_relay_note: NonEmptyStr = "iOS requires APNs, which only Apple can send, so a self-hosted ntfy server forwards a poll request to ntfy.sh as upstream and the app fetches the message body from the self-hosted server. The upstream receives a hashed topic and a message id -- never the topic name, the title, the body, or the approval URL. The residual disclosure is TIMING: an observer of the upstream learns that an approval was requested and when, but not what it was for or who it named."
+
+// THE DEPENDENCY THIS CREATES, and it is the one that will actually be felt. The phone must be on
+// the tailnet to fetch the message body and again to open the approval link. Those are the same
+// condition, not two, so the failure is coherent rather than confusing: with Tailscale down the
+// operator receives a wakeup they cannot read, and cannot have acted on it either. Nothing is
+// half-decided.
+//
+// The pending request is durable in the broker regardless, so an unfetchable notification costs a
+// re-notification and never a lost decision -- which is why the cache policy below stays
+// server-side rather than being disabled to keep the credential out of history: the message never
+// reaches a third party's history in the first place, and disabling the cache would drop delivery
+// to exactly the temporarily-disconnected phone this arrangement produces.
+data tailnet_is_required_to_read_and_to_act_note: NonEmptyStr = "The phone needs Tailscale up to fetch the message body from srv1 and to open the approval link. One condition, not two: with the tailnet down the operator gets a wakeup they cannot read and could not have acted on, so no state is half-decided. The durable pending request means an unfetchable notification costs a re-notification, never a decision."
+
+data approval_cache_policy: NtfyCachePolicy = CacheServerSide
+
+// ── What the operator reads ──────────────────────────────────────────────────────────────────
+// THE SENTENCE THAT MUST NOT BE WRONG. gunbc.auth.access_request separates link expiry, execution
+// expiry and access lifetime; this is where that separation either survives into the operator's
+// notification or is quietly lost. The message states the ACCESS lifetime -- the one the operator
+// is actually deciding about, and the only one the provider enforces.
+//
+// "Approve within 15 minutes" is about the LINK. Rendering it as though it described the access
+// would tell the operator they are granting a quarter of an hour of access while they are in fact
+// granting a day, or a month, or forever.
+fn access_lifetime_sentence(l: AccessLifetime) -> String {
+  match l {
+    LifetimeStanding =>
+      "ONGOING service access -- this does not expire on its own"
+    LifetimeSeconds { seconds: s } =>
+      concat("access for ", concat(to_string(s), " seconds, enforced by an expiring condition on the binding"))
+  }
+}
+
+data operator_sentence_states_access_not_link_note: NonEmptyStr = "The notification states the ACCESS lifetime, never the link's. A link that dies in fifteen minutes routinely authorizes a binding that outlives it by a month; rendering the link's deadline as the access deadline tells the operator they are granting minutes when they are granting a month. A standing grant says ONGOING in the sentence the operator reads, because 'no expiry' is the fact most likely to be skimmed past."
+
+// The notification is HIGH priority because it blocks a workflow that is otherwise stopped: a
+// convergence is waiting on this answer, and a notification that waits for the next unlock is a
+// notification that costs an hour of someone's pipeline. It is not MAX, which on iOS bypasses the
+// ringer -- a blocked convergence is urgent, not an emergency, and a priority that wakes the
+// operator at night for a routine grant is one they will eventually mute.
+fn approval_notification_priority() -> NtfyPriority {
+  PriorityHigh
+}
+
+data priority_is_high_not_max_note: NonEmptyStr = "High, not max. A blocked convergence is urgent -- someone's pipeline is stopped waiting for this -- but it is not an emergency, and max priority bypasses the ringer. A channel that wakes the operator at night for a routine grant is a channel they will mute, and a muted approval channel fails closed in the worst way: the request simply waits forever while everyone believes notifications work."
+
+fn approval_notification(
+  title: NonEmptyStr,
+  body: NonEmptyStr,
+  approval_url: NonEmptyStr,
+) -> NtfyMessage {
+  NtfyMessage {
+    topic: approval_ntfy_topic,
+    title: title,
+    body: body,
+    priority: approval_notification_priority(),
+    click: approval_url,
+    cache: approval_cache_policy,
+  }
+}

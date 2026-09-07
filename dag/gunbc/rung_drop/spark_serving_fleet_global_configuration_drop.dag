@@ -31,7 +31,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 data spark_serving_fleet_global_configuration_drop: RungDrop = RungDrop {
   identity: "spark_serving_fleet_global_configuration" as NonEmptyStr,
 
-  subject: "the serving cell's default context window and concurrent slot count, applied fleet-wide from single-realization evidence",
+  subject: "the serving groups' admission count (max-num-seqs), applied to every group from single-realization evidence",
 
   declared: "2026-09-01",
 
@@ -42,8 +42,7 @@ data spark_serving_fleet_global_configuration_drop: RungDrop = RungDrop {
     temporary: Mitigatable,
     reason: DeletedWithoutReplacement,
     population: [
-    "gunbc.spark.serving_desired spark_serving_desired_context_length",
-    "gunbc.spark.serving_desired spark_serving_desired_serving_slots_value",
+    "gunbc.spark.pair_serving_desired spark_pair_serving_seq_capacity_for (the count 32 measured on the first pair and carried to every group; RE-ANCHORED 2026-09-06 when the Ollama-era serving_desired rows this drop was declared over were deleted with their tree -- the defect survived the migration unchanged: one measurement, every realization)",
     ],
     restoration_trigger: "no realization can be served at a configuration it has not been observed at: a per-realization runner-memory observation exists for every model the cell loads, at the configuration selected for it, AND the fleet-global default no longer confers an unmeasured realization automatic admission -- an unobserved realization must refuse rather than inherit. An observation table alone does not discharge this row, because inheritance is the half that makes an unmeasured model's admission silent",
   }

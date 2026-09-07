@@ -1,5 +1,6 @@
 module test.claim.roadmap_validation_oracle_witness_test
 
+import gunbc.roadmap.roadmap_review_function { review_report_absent }
 import gunbc.worker_lifecycle { WorkerProcessAbsent }
 import std.types { Bool, String, NonEmptyStr, List, FilePath }
 import std.content_hash {
@@ -843,7 +844,7 @@ fn verify_lamp_evidence(receipt: String) -> WorkflowAttemptEvidence {
       },
     },
     publication_source: ReceiptSourceAbsent,
-    review: [],
+    review: review_report_absent(reason: "fixture"),
     goal_audit: [],
   }
 }

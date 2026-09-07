@@ -1,0 +1,102 @@
+module gunbc.scm.integration
+
+// WHICH SOURCE STATE A COMMIT CONSUMED, WHICH IS NOT WHICH COMMIT IT CAME FROM.
+//
+// This module exists because those are two different relations and putting both in `CommitAncestry`
+// would answer them with one edge. A squash-integrated commit DESCENDS FROM its target parent and
+// CONSUMED a source commit; the first is its position in this history, the second is a record of an
+// event that produced it. gunbc.scm.ancestry's own ruling is the reason they stay apart: OPERATION
+// INPUTS ARE NOT ANCESTRY EDGES. A merge takes two commit references and still produces a commit
+// whose descent is fully explained by one immediate parent, so admitting the source as a parent
+// would manufacture an arm no producer needs.
+//
+// THE MODULE IS SEPARATE FROM ancestry RATHER THAN A TYPE INSIDE IT, and that is the point: a reader
+// asking "what are this commit's antecedents" imports ancestry and cannot reach this type, so the
+// distinction is enforced by the import graph instead of by a sentence asking authors to remember it.
+//
+// WHY THE MODEL NEEDS THIS AT ALL, stated as the defect rather than as a feature. Without it, a
+// second squash of the same source lineage derives its content base from the graph fork point, and
+// after the first squash that fork point can no longer distinguish "the target never touched this
+// path" from "the target deliberately returned this path to the old value". Both read T == B. So:
+//
+//   base B   a = X
+//   source   a = Y            first squash correctly yields a = Y
+//   target   a = X            a deliberate revert of that integration
+//   repeat the squash against base B: T == B selects the source, and a = Y COMES BACK.
+//
+// That is not a conflict and not a refusal. It is a silently wrong corpus that resurrects exactly the
+// change the target removed on purpose, and DESIGN section 5 places silent wrongness outside the
+// ladder entirely. The deletion and re-addition forms are the same defect: a path the target restored
+// is deleted again, a path the target deleted comes back.
+
+import std.types { Bool, List }
+import gunbc.scm.ancestry { RepositoryCommitRef, repository_commit_ref_eq }
+
+// THE ABSENT ARM IS A STRUCTURAL STATE, NOT A MISSING REFERENCE, for the reason gunbc.scm.ancestry
+// gives one rung down about `RootCommit`: an optional source would make "this commit integrated
+// nothing" and "this commit's source record is missing" the same value, and those have opposite
+// meanings. The first is the ordinary state of every commit an ordinary `commit` verb produces; the
+// second is damage. Every commit carries this member, and the overwhelmingly common value is the
+// first arm -- which is why it is spelled as a state and not as an absence.
+type CommitIntegration
+  = NoSquashIntegration
+  | SquashIntegrated { source: RepositoryCommitRef }
+
+// THE ANCHOR IS THE SOURCE COMMIT OCCURRENCE, NOT ITS ROOT, AND THIS WAS DERIVED THE WRONG WAY FIRST.
+//
+// The first derivation reasoned: the harm manifests in CONTENT -- a path holds the wrong bytes --
+// therefore the relation to record is a content relation, so record the source's root. That promotes
+// the EFFECT into the CAUSE. The stale base exists because the target already consumed a source
+// HISTORY STATE IN A SOURCE LINEAGE; content is where the damage is observed, not what the relation
+// is about. gunbc.scm.ancestry states the rule that decides it -- a content-addressed identity names
+// a PROGRAM and a minted reference names an OCCURRENCE, and the question at a new lookup is which of
+// the two you are keying -- and the first derivation ran that rule backwards.
+//
+// ROOT FAILS IN BOTH DIRECTIONS, WHICH IS WHY THIS IS A CORRECTNESS CHOICE AND NOT A PREFERENCE.
+//
+//   TOO COARSE. Two commits may share a root without being the same commit; the repository already
+//   relies on this, which is why the checked-out selection carries a minted reference. So an
+//   independently authored history that happens to freeze identical bytes would be refused as
+//   already-integrated -- repeating the exact identity conflation RepositoryCommitRef removed.
+//
+//   TOO WEAK, AND THIS IS THE ONE THAT MATTERS, because it leaves the defect open in the case the
+//   record was introduced to close:
+//
+//     B  a = X          S1 a = Y, squashed        T  a = X, a deliberate revert
+//     S2 a = Y, b = Z   and S2 DESCENDS FROM S1
+//
+//   root(S2) != root(S1), so a root-keyed consumed check ADMITS S2. The base is still B, T == B for
+//   path a, and Y is resurrected a second time. Root-only closes the exact-replay form and leaves the
+//   continued-branch form wide open.
+//
+// So the predicate is DESCENT, NOT EQUALITY: a source is consumed when it EQUALS OR DESCENDS FROM a
+// previously consumed source commit. That is one join rather than two rules, and it is what makes
+// replay and continued branches the same question.
+//
+// THE ROOT IS NOT STORED BESIDE THE REFERENCE. While the consumed commit remains resolvable its root
+// is derivable from it, so storing both would be two representations of one derivable association --
+// free to disagree, and DESIGN section 3 refuses that regardless of how unlikely the disagreement is.
+//
+// THE FUTURE BOUNDARY THIS EXPOSES, recorded as a boundary and deliberately NOT as a next-rung
+// trigger: if "kill dev history" ever means PHYSICALLY DELETING source commit records rather than
+// merely keeping them out of target ancestry, a commit reference stops being a durable anchor. The
+// repair then is a provenance identity designed to survive source-history retirement -- NOT a silent
+// fall back to the manifest root, which cannot express lineage at all and would reintroduce both
+// failures above. No trigger is written because nothing establishes that this cut sits below a
+// ceiling: retirement is a capability nobody has asked for, and a trigger promising to climb toward
+// an unwanted capability is an obligation to break the design.
+fn integration_consumed_source(integration: CommitIntegration) -> List<RepositoryCommitRef> {
+  match integration {
+    NoSquashIntegration => []
+    SquashIntegrated { source: s } => [s]
+  }
+}
+
+// Membership of a reference in a chain, which is the whole of the join. It is a fold rather than a
+// short-circuiting search because the substrate's execution is bounded and forward; the chain is a
+// repository history's length, and no accumulator is copied per step.
+fn chain_contains(chain: List<RepositoryCommitRef>, target: RepositoryCommitRef) -> Bool {
+  fold(chain, init: false, f: fn(found, c) {
+    if found { true } else { repository_commit_ref_eq(left: c, right: target) }
+  })
+}

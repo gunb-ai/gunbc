@@ -8,6 +8,10 @@ import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_nam
 import gunbc.fabric_cell_converge {
   fabric_cell_attempt_root_path, fabric_cell_slice_name,
 }
+import gunbc.fabric_required_build_cell {
+  RequiredBuildCellSnapshot, FabricCellShape, FabricCellShapeBuild,
+  FabricCellShaped, FabricCellShapeIncomplete, fabric_cell_shape, members_owned,
+}
 
 data runner_microvm_attempt_disposition: Disposition = SingleAuthority
 
@@ -163,8 +167,57 @@ type MicroVmCellBinding
     }
   | VmUnboundCellNotOwned { cause: String }
 
-fn bind_microvm_to_cell(attempt: MicroVmAttempt, cell_owned: Bool) -> MicroVmCellBinding {
-  if cell_owned {
+// THE BINDER CONSUMES THE RESERVATION SNAPSHOT, NOT A Bool AND NOT members_owned.
+//
+// `cell_owned: Bool` was the wrong grain and this module's own header asked for better: the caller
+// could manufacture the conclusion while the callee independently derived every path and the slice
+// from a separately supplied slot. That is the substitution shape a review of #10581 found in the
+// secret-access lane -- admission names one subject, execution obtains another, readback confirms
+// the one execution chose -- and it is worth naming here because it recurs whenever a decision and
+// its consequence are carried by two different values.
+//
+// members_owned would ALSO have been too weak, and this is the correction that came from review
+// rather than from me. It proves the observed cell members are OURS; it does not prove this cell is
+// presently reserved for the exact Work the VM is about to run. RequiredBuildCellSnapshot is sealed
+// and already joins the stronger facts -- canonical slot, held reservation, exact demand/offer
+// relation, admitted observation, shape and ownership -- so consuming it closes two substitutions at
+// once: a caller cannot assert ownership, and cannot present a reservation for slot A while
+// building the VM against slot B.
+//
+// THE SLOT IS READ OUT OF THE SNAPSHOT'S OWN SHAPE, which is what makes the second guarantee real.
+// Taking a RunnerSlotIdentity parameter beside the snapshot would reopen exactly the gap the
+// snapshot was consumed to close.
+fn bind_microvm_to_cell(snapshot: RequiredBuildCellSnapshot) -> MicroVmCellBinding {
+  match fabric_cell_shape(members: snapshot.cell_members) {
+    FabricCellShapeIncomplete =>
+      VmUnboundCellNotOwned {
+        cause: "the reserved cell's members do not form a complete shape, so no attempt root is addressable",
+      }
+    FabricCellShaped { shape: shape } =>
+      match microvm_attempt_of_snapshot(snapshot: snapshot, shape: shape) {
+        MicroVmAttemptRefused { refusal: r } =>
+          VmUnboundCellNotOwned { cause: attempt_segment_refusal_text(r: r) }
+        MicroVmAttemptAccepted { attempt: attempt } =>
+          bind_owned_attempt(attempt: attempt, owned: members_owned(members: snapshot.cell_members))
+      }
+  }
+}
+
+// THE ATTEMPT IDENTITY IS THE FABRIC'S, NOT A NAME A CALLER CHOSE. #10628 closed path traversal by
+// requiring a safe segment, and "safe pathname" is a different fact from "this is the attempt the
+// fabric reserved" -- the goal is one fresh VM PER JOB owned by the execution attempt, not merely
+// uniquely named storage. The segment is derived from the reservation's own work key and generation,
+// so two attempts of the same work at different generations are different directories and an
+// attempt cannot be named into a reservation it does not hold.
+fn microvm_attempt_of_snapshot(snapshot: RequiredBuildCellSnapshot, shape: FabricCellShape) -> MicroVmAttemptResult {
+  microvm_attempt(
+    slot: shape.attempt_root.slot,
+    attempt_id: join([snapshot.work.key as String, "-", to_string(snapshot.generation)], ""),
+  )
+}
+
+fn bind_owned_attempt(attempt: MicroVmAttempt, owned: Bool) -> MicroVmCellBinding {
+  if owned {
     VmBoundToOwnedCell {
       attempt: attempt,
       rootfs_path: runner_microvm_attempt_rootfs_path(attempt: attempt),
