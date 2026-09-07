@@ -1184,6 +1184,16 @@ fn dashboard_instance_compute_root(instance: HostDashboardInstance) -> FilePath 
   dashboard_instance_child(root: instance.instance_root, child: "compute")
 }
 
+// THE FABRIC EVENT-LOG ROOT: where a harness seat binding keeps its event-log mirror and scratch
+// (gunbc.harness.harness_seat, gunbc.fabric_event_log). Named here for the same reason the compute
+// root is: the deployment (gunbc.live_deploy.spec FabricEventLogRoot) and the seat binding must read
+// one authority. The first converge after seats moved onto the event log had no such member, and
+// under a root-owned /opt/gunbc every reviewer of the first ten-criterion review refused at seat
+// binding with `could not create /opt/gunbc/fabric-event-log` before posting a single request.
+fn dashboard_instance_event_log_root(instance: HostDashboardInstance) -> FilePath {
+  dashboard_instance_child(root: instance.instance_root, child: "fabric-event-log")
+}
+
 fn dashboard_instance_dispatch_attempt_state_root(instance: HostDashboardInstance) -> FilePath {
   match instance.dispatch_state_scope {
     DispatchStateInstanceOwned { worktree_child: _, attempt_state_child } =>
