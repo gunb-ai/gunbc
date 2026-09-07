@@ -147,6 +147,8 @@
 // src/v1_rt.rs
 // src/v1_std_core.rs
 // src/v1_test_non_ascii_perf_fixture.rs
+// src/v1_tests_claim_algebra_application_evidence_test.rs
+// src/v1_tests_claim_algebra_application_refusal_test.rs
 // src/v1_tests_claim_bare_variant_reference_occurrence_control_test.rs
 // src/v1_tests_claim_carrier_realization_census.rs
 // src/v1_tests_claim_checkpoint_identity_keying_witness_test.rs

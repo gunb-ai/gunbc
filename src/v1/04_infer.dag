@@ -657,9 +657,14 @@ fn variant_reference_inferred_node(expected: Node?, name: String, owner_name: St
   match expected {
     Present { value: exp } =>
       if exp.return_cardinality == Required
-        && authored_name_at(source_indices: scope.type_env.source_indices, node: exp) == owner_name {
+        && owner_name != "" {
         match expected_variant_owner_instantiation(expected: expected, name: name, scope: scope) {
-          Present { value: _ } => exp
+          Present { value: exp_enum } =>
+            if authored_name_at(source_indices: scope.type_env.source_indices, node: exp_enum) == owner_name {
+              exp
+            } else {
+              fallback
+            }
           Absent => fallback
         }
       } else { fallback }
@@ -4657,7 +4662,7 @@ fn function_value_call_named_arg_diags(
   type_env: TypeEnv,
   module_name: String,
   body_locals: Map<String, Bool>,
-  locals: Map<String, TypeBinding>
+  callable_type: Node?
 ) -> List<ErrorNode> {
   match map_get(body_locals, func_name) {
     Absent => []
@@ -4670,9 +4675,9 @@ fn function_value_call_named_arg_diags(
               module_name: module_name)]
           Absent => []
         })
-      let arity_diags = match map_get(locals, func_name) {
-        Present { value: binding } =>
-          let param_count = binding.resolved.params |> count
+      let arity_diags = match callable_type {
+        Present { value: callable } =>
+          let param_count = callable.params |> count
           if param_count > 0 {
             let supplied = typed_args |> count
             if supplied > param_count {
@@ -6364,23 +6369,48 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
 
       let call_subst = arg_call.subst
       let typed_args = arg_infer_results |> map(air => air.typed_arg)
+      let local_call_view = if sig != none { none } else { match map_get(scope.locals, func_name) {
+        Present { value: binding } => Present { value: if binding.resolved.params |> count > 0 || !map_has(scope.body_locals, func_name) {
+            NodeResolveResult { resolved: binding.resolved, diagnostics: [] }
+          } else {
+            expand_type_for_field_access(n: binding.resolved, env: scope.type_env, module_name: scope.module_name)
+          }
+        }
+        Absent => none
+      } }
+      let local_call_diags = match local_call_view {
+        Present { value: view } => view.diagnostics
+        Absent => []
+      }
+      let local_call_refused = local_call_diags |> any(d => is_error_diagnostic(d: d.diagnostic))
+      let callable_local = if local_call_refused { none } else {
+        match local_call_view {
+          Present { value: view } => if view.resolved.params |> count > 0 { Present { value: view.resolved } } else { none }
+          Absent => none
+        }
+      }
       let arg_diags = concat(
-        flat_map(arg_infer_results, air => air.diagnostics),
+        concat(flat_map(arg_infer_results, air => air.diagnostics), local_call_diags),
         function_value_call_named_arg_diags(
           func_name: func_name,
           typed_args: typed_args,
           type_env: scope.type_env,
           module_name: scope.module_name,
           body_locals: scope.body_locals,
-          locals: scope.locals
+          callable_type: callable_local
         )
       )
       let formal_authority_diags = if declared_formal_authority_failed {
         [make_error_node(diagnostic: InternalError { message: concat("resolved direct-call formal authority unavailable for ", func_name, ": ", formal_authority_refusal_reason), span: span }, module_name: scope.module_name)]
       } else { [] }
       let typed_arg_nodes = typed_args
-      if sig != none {
-        if declared_formal_authority_failed {
+      if local_call_refused {
+        InferResult {
+          typed: internal_expr_error_node(message: "local callable type expansion refused", span: span),
+          diagnostics: arg_diags
+        }
+      } else if sig != none {
+        if !formal_authority_available || declared_formal_authority_failed {
           InferResult {
             typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
               name: func_name, expr_data: ExprCall { call_semantics: none, descent_evidence: none },

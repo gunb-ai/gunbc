@@ -1,0 +1,55 @@
+module test.claim.algebra_receiver_alias_witness_test
+
+import std.types { Bool, Int, String, List }
+import v2.std.optional { Present, Absent }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved, CensusNotRunnable, census_blocking_rows, census_total_count }
+import gunbc.guarantee_probe_corpus { census_blocking_count_for_class, census_blocking_count_for_subject }
+
+fn blocking_count_for(source: String, wanted: String) -> Int {
+  match census_blocking_count_for_class(
+    census: compile_dag_diagnostic_census(source),
+    wanted: wanted
+  ) {
+    Present { value: n } => n
+    Absent => 0 - 1
+  }
+}
+
+fn blocking_subject_count_for(source: String, wanted_class: String, wanted_subject: String) -> Int {
+  match census_blocking_count_for_subject(census: compile_dag_diagnostic_census(source), wanted_class: wanted_class, wanted_subject: wanted_subject) {
+    Present { value: n } => n
+    Absent => 0 - 1
+  }
+}
+
+fn total_blocking_count_for(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// These are deliberately source fixtures: the alias spelling is expected to
+// refuse until owner identity is carried to variant_reference_inferred_node.
+// Keeping the invalid programs inside strings lets the control observe the
+// typed refusal without making the required corpus reject this module.
+data nominal_return_source: String = "module alias_nominal_return\nimport std.types { Int, List }\nimport std.algebra { Empty, FreeMonoid }\nfn asks() -> FreeMonoid<Int> { [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) }) }\n"
+data alias_return_source: String = "module alias_return\nimport std.types { Int, List }\nimport std.algebra { Empty, FreeMonoid }\nfn asks() -> List<Int> { [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) }) }\n"
+data alias_field_source: String = "module alias_field\nimport std.types { Int, List }\nimport std.algebra { Empty, FreeMonoid }\ntype Box { values: List<Int> }\nfn asks() -> List<Int> { let b = Box { values: [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) }) }; b.values }\n"
+data alias_initializer_source: String = "module alias_initializer\nimport std.types { Int, List }\nimport std.algebra { Empty, FreeMonoid }\nfn asks() -> List<Int> { let initial: FreeMonoid<Int> = Empty; [1, 2] |> fold(init: initial, f: fn(acc, value) { acc |> list_push(value) }) }\n"
+
+test fn nominal_return_is_an_acceptance_fixture() -> Bool {
+  total_blocking_count_for(source: nominal_return_source) == 0
+}
+
+test fn alias_return_is_a_refusal_fixture() -> Bool {
+  blocking_subject_count_for(source: alias_return_source, wanted_class: "MethodNotFound", wanted_subject: "Coproduct(FreeMonoid)") >= 1
+}
+
+test fn alias_field_is_a_refusal_fixture() -> Bool {
+  blocking_subject_count_for(source: alias_field_source, wanted_class: "MethodNotFound", wanted_subject: "Coproduct(FreeMonoid)") >= 1
+}
+
+test fn explicit_initializer_is_an_acceptance_fixture() -> Bool {
+  total_blocking_count_for(source: alias_initializer_source) == 0
+}

@@ -1,0 +1,30 @@
+module gunbc.guarantee_stall.lambda_pattern_parameter_binding_stall
+
+import v2.std.algebra { Cons, Empty }
+import gunbc.guarantee_rung { OutsideTheLadder, StructurallyImpossible }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+
+// The three in-tree receiver controls now pass under the candidate compiler and remain
+// enrolled as positive regression controls.  The external specimen is retained as a
+// shape-similar pointer only; its causal relationship remains unmeasured.
+data lambda_pattern_parameter_binding_stall: GuaranteeStall = GuaranteeStall {
+  subject: "match-pattern-bound collection or callable binding at the lambda consumer boundary",
+  current: OutsideTheLadder,
+  ceiling: StructurallyImpossible,
+  blocker: AwaitsOneGrounding {
+    grounding: "a collection or callable bound by a match pattern remains available through member access or application in the lambda body"
+  },
+  population: BoundedPopulation {
+    members: Cons {
+      head: "algebra_receiver_application_witness_test.dag and algebra_receiver_forwarding_witness_test.dag (repaired, enrolled positive controls)",
+      tail: Cons {
+        head: "algebra_receiver_callable_witness_test.dag (repaired, enrolled positive control; scope relationship remains unproven)",
+        tail: Cons {
+          head: "emission_provenance_test (external specimen, shape-similar; causal relationship UNMEASURED)",
+          tail: Empty {}
+        }
+      }
+    }
+  },
+  next_rung_trigger: climbs_when(capability: "a match-pattern-bound collection or callable survives into lambda-parameter member access or application, with the binding preserved at the consumer boundary")
+}
