@@ -93,15 +93,13 @@ data non_verdict_disposition_surfaces_as_refusal: RecurringFailureMode = Recurri
 
     "The second is DECLINED-OUTSIDE-DISCOVERY against CHANGED-WITNESS-BLOCKING: a gate that never started against a gate that judged, and it arrives from the opposite end of the same fold. ",
 
-    "The receipt is gunbc#10757 at its own required floor lane, whose two artifacts disagree about the same fifteen identities while both being correct. ",
+    "THE INSTRUMENT, NAMED AT THE GRAIN THIS ROW'S FIRST SPECIMEN ALREADY USES, because a transcribed number is unreachable from the producer that owns it. The specimen is workflow run 34132197639 on gunb-ai/gunbc, attempt 1, job `required-witnesses-floor` id 101779846687, whose failing step is `D0-ADJUDICATE: consume the published measurement receipt`. Re-derive it with `gh run download 34132197639 -n required-floor-disposition` and `gh run download 34132197639 -n required-ci-measurement-receipt`; read the disposition TSV's `# summary` line and its per-identity `disposition` column BY HEADER NAME, and read the receipt JSON's `receipt.blockers[].cause`. ",
 
-    "The disposition artifact counts them `declined_changed_witness_outside_discovery=15` -- they were enrolled because the DIFF touched them and then declined because DISCOVERY, which follows the source roots rather than the diff, reaches no module for them. ",
+    "TWO CHANNELS ARE WRONG FOR THIS SUBJECT AND BOTH ARE CHEAP TO REACH BY ACCIDENT. `gh run view --job <id> --log` answers an attempt-1 job id with attempt-2 content, which is the wrong-content channel this row's first specimen already warns about; and the `/actions/runs/<id>/logs` zip truncates. The download-by-artifact-name route above is the one that answers the subject asked. ",
 
-    "The measurement receipt counts the same fifteen as blockers with `cause=changed_witness_blocking`. ",
+    "WHAT THOSE TWO ARTIFACTS SAY, so a re-deriver knows what agreement looks like. The disposition artifact's summary counts the fifteen as `declined_changed_witness_outside_discovery` -- enrolled because the DIFF touched them, declined because DISCOVERY, which follows the source roots rather than the diff, reaches no module for them. The receipt counts the SAME fifteen identities as blockers with `cause=changed_witness_blocking`, and every blocker in that list is one of them. Both files are internally correct and they disagree about what those identities are. ",
 
-    "Nothing else in that run is red: 3,464 claims passed, 19 are known-red-held, 49 are route-gap-before-verdict, and ZERO failed. ",
-
-    "So a run in which no claim failed and fifteen claims never executed refuses, and the one bit it hands its merge gate is indistinguishable from the bit a genuine failure would produce. ",
+    "AND THE ARITHMETIC OF THE REFUSAL IS THE POINT: in that same run the disposition artifact's outcome column carries zero rows at any failing outcome, while thousands passed and a few tens are held or route-gapped. So a run in which NO claim failed and fifteen never executed refuses, and the one bit it hands its merge gate is indistinguishable from the bit a genuine failure would produce. The counts are deliberately not transcribed here; they are columns in the artifact the command above retrieves. ",
 
     "THAT ENROLMENT AND DISCOVERY DISAGREE IS THE STRUCTURAL FACT UNDER THIS SPECIMEN, and it is the part a reader should carry away: enrolment follows the DIFF, discovery follows the SOURCE ROOTS, and neither is wrong on its own terms. ",
 
