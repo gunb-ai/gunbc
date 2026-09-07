@@ -13,7 +13,10 @@ import product.fabric.work {
   Shape, HardRequirements, ControlPlaneCapacity, derive_work_key,
   declared_output_obligations, empty_output_obligations,
   resolve_output_obligations, OutputObligationsResolved, OutputObligationsUnreadable,
+  OutputObligationsResolution, ObligationsJudgedAtJobStart, ObligationsJudgedAtAdmissionGate,
 }
+import product.fabric.identity { WorkKey }
+
 import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { shared_kernel_sandbox_profile }
 
@@ -57,6 +60,14 @@ fn contract_with(obligations_ids: List<NonEmptyStr>) -> WorkContract {
   }
 }
 
+fn resolve_at_start(contract: WorkContract, work_key: WorkKey) -> OutputObligationsResolution {
+  resolve_output_obligations(
+    contract: contract,
+    work_key: work_key,
+    judgment: ObligationsJudgedAtJobStart,
+  )
+}
+
 test fn empty_declared_roster_resolves_as_resolved_empty_not_unreadable() -> Bool {
   let contract = WorkContract {
     program: "gunbc.probe.output-contract",
@@ -69,19 +80,23 @@ test fn empty_declared_roster_resolves_as_resolved_empty_not_unreadable() -> Boo
     output_obligations: empty_output_obligations(),
   }
   let key = derive_work_key(contract: contract, requirements: fixture_requirements())
-  match resolve_output_obligations(contract: contract, work_key: key) {
+  match resolve_at_start(contract: contract, work_key: key) {
     OutputObligationsUnreadable { contract: _, cause: _ } => false
     OutputObligationsResolved { value: r } =>
       (r.required.count() == 0)
         && (r.contract == contract.output_contract)
         && (r.work_key == key)
+        && match r.judgment {
+          ObligationsJudgedAtJobStart => true
+          ObligationsJudgedAtAdmissionGate => false
+        }
   }
 }
 
 test fn resolved_roster_carries_declared_obligation_ids() -> Bool {
   let contract = contract_with(obligations_ids: ["artifact-a", "terminal-b"])
   let key = derive_work_key(contract: contract, requirements: fixture_requirements())
-  match resolve_output_obligations(contract: contract, work_key: key) {
+  match resolve_at_start(contract: contract, work_key: key) {
     OutputObligationsUnreadable { contract: _, cause: _ } => false
     OutputObligationsResolved { value: r } =>
       (r.required.count() == 2)
@@ -102,9 +117,9 @@ test fn resolution_revision_tracks_the_declared_roster() -> Bool {
   let b = contract_with(obligations_ids: ["artifact-b"])
   let ka = derive_work_key(contract: a, requirements: fixture_requirements())
   let kb = derive_work_key(contract: b, requirements: fixture_requirements())
-  match resolve_output_obligations(contract: a, work_key: ka) {
+  match resolve_at_start(contract: a, work_key: ka) {
     OutputObligationsUnreadable { contract: _, cause: _ } => false
-    OutputObligationsResolved { value: ra } => match resolve_output_obligations(contract: b, work_key: kb) {
+    OutputObligationsResolved { value: ra } => match resolve_at_start(contract: b, work_key: kb) {
       OutputObligationsUnreadable { contract: _, cause: _ } => false
       OutputObligationsResolved { value: rb } =>
         serialize_content_hash(hash: ra.revision) != serialize_content_hash(hash: rb.revision)
@@ -117,16 +132,33 @@ test fn resolution_binds_the_work_key_it_was_resolved_against() -> Bool {
   let b = contract_with(obligations_ids: ["artifact-a", "extra"])
   let ka = derive_work_key(contract: a, requirements: fixture_requirements())
   let kb = derive_work_key(contract: b, requirements: fixture_requirements())
-  match resolve_output_obligations(contract: a, work_key: ka) {
+  match resolve_at_start(contract: a, work_key: ka) {
     OutputObligationsUnreadable { contract: _, cause: _ } => false
     OutputObligationsResolved { value: ra } =>
       (ra.work_key == ka) && (ka != kb)
   }
 }
 
-// Discriminating RED: a terminal-success-eligible roster is unwritable without
-// resolve_output_obligations. Per DESIGN 4b the RED is authorable as a fixture
-// handed to the compiler — SoleConstructorViolation on ResolvedOutputObligations.
+test fn judgment_policy_is_stamped_on_the_sealed_result() -> Bool {
+  let contract = contract_with(obligations_ids: ["artifact-a"])
+  let key = derive_work_key(contract: contract, requirements: fixture_requirements())
+  match resolve_output_obligations(
+    contract: contract,
+    work_key: key,
+    judgment: ObligationsJudgedAtAdmissionGate,
+  ) {
+    OutputObligationsUnreadable { contract: _, cause: _ } => false
+    OutputObligationsResolved { value: r } => match r.judgment {
+      ObligationsJudgedAtAdmissionGate => true
+      ObligationsJudgedAtJobStart => false
+    }
+  }
+}
+
+// Discriminating RED on source→.dag: a terminal-success-eligible roster is
+// SoleConstructorViolation without resolve_output_obligations. Path-scoped —
+// see ResolvedOutputObligations annotation. Fixture form is enrollable; an
+// in-corpus witness asserting the refusal would be permanently green.
 
 fn census_of(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
@@ -139,7 +171,7 @@ fn violation_count(source: String, wanted: String) -> Int {
   }
 }
 
-data forged_resolved_roster_source: String = "module probe_forged_resolved_output_obligations\nimport product.fabric.work { ResolvedOutputObligations, OutputContractRef, OutputObligationId }\nimport product.fabric.identity { WorkKey }\nimport std.content_hash { content_hash_of_value }\nfn forged() -> ResolvedOutputObligations {\n  ResolvedOutputObligations {\n    contract: \"forged\" as OutputContractRef,\n    revision: content_hash_of_value(value: \"x\"),\n    work_key: \"k\" as WorkKey,\n    required: [],\n  }\n}\n"
+data forged_resolved_roster_source: String = "module probe_forged_resolved_output_obligations\nimport product.fabric.work { ResolvedOutputObligations, OutputContractRef, OutputObligationId, ObligationsJudgedAtJobStart }\nimport product.fabric.identity { WorkKey }\nimport std.content_hash { content_hash_of_value }\nfn forged() -> ResolvedOutputObligations {\n  ResolvedOutputObligations {\n    contract: \"forged\" as OutputContractRef,\n    revision: content_hash_of_value(value: \"x\"),\n    judgment: ObligationsJudgedAtJobStart,\n    work_key: \"k\" as WorkKey,\n    required: [],\n  }\n}\n"
 
 test fn forged_resolved_roster_is_sole_constructor_refused() -> Bool {
   violation_count(source: forged_resolved_roster_source, wanted: "SoleConstructorViolation") >= 1
@@ -148,7 +180,7 @@ test fn forged_resolved_roster_is_sole_constructor_refused() -> Bool {
 test fn resolve_is_the_sanctioned_mint() -> Bool {
   let contract = contract_with(obligations_ids: [])
   let key = derive_work_key(contract: contract, requirements: fixture_requirements())
-  match resolve_output_obligations(contract: contract, work_key: key) {
+  match resolve_at_start(contract: contract, work_key: key) {
     OutputObligationsResolved { value: _ } => true
     OutputObligationsUnreadable { contract: _, cause: _ } => false
   }
