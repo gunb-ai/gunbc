@@ -124,26 +124,28 @@ fn remote_file_mode_octal(mode: RemoteFileMode) -> String {
 //
 // RemoteFileConverged carries the EXACT WRITE, not path and mode alone and not a digest of the
 // content. Evidence naming only the path left "these exact bytes landed" resting on a caller-
-// assembled pairing between the plan and its evidence. An earlier revision bound a content_digest
-// instead, and that was not sufficient: the available producer is content_hash_atom, whose family is
-// std.content_hash Fnv1a64Structural -- a 64-bit STRUCTURAL FINGERPRINT, necessarily non-injective
-// over arbitrary strings -- and the field erased even that family to String. Two writes to one path
-// with different content whose fingerprints collide produced observationally identical success
-// carriers, so a sink could not recover which content was compared. No finite digest is needed here
+// assembled pairing between the plan and its evidence. A content_digest is NOT sufficient either,
+// and it is the obvious cheaper proposal: the available producer is content_hash_atom, whose family
+// is std.content_hash Fnv1a64Structural -- a 64-bit STRUCTURAL FINGERPRINT, necessarily non-injective
+// over arbitrary strings -- and a String field erases even that family. Two writes to one path with
+// different content whose fingerprints collide give observationally identical success carriers, so a
+// sink cannot recover which content was compared. No finite digest is needed here
 // because the exact subject already exists as a value: TypedRemoteFileWrite is sole_constructor and
 // means write these exact bytes to this exact path, so embedding it names the subject completely
 // without duplicating its definition. A typed fingerprint may return later as a lookup projection;
 // it cannot stand in for the exact write in a carrier claiming evidence about these exact bytes.
 //
-// THE POSITIVE CONTROL IS ENROLLED, and TWO earlier revisions of this annotation were wrong about it.
-// The first argued no witness was needed because the seal made one impossible and the pass-through
-// made one unnecessary. 4b(4) forecloses that: a climb dissolves redundant lower-rung PRODUCTION
-// machinery and never the evidence, so the RED and the positive control both stay enrolled.
+// THE POSITIVE CONTROL IS ENROLLED, and it drives the production route rather than this mint. Two
+// shortcuts are foreclosed and are worth naming, because both look reasonable.
 //
-// The second revision restored a control but admitted the WITNESS to this mint by name, and justified
-// it with the claim that a receipt naming a different subject "has no constructor". That claim is also
-// FALSE and is retracted. sole_constructor stops an OUTSIDE module from writing the record literal; it
-// does nothing about this module, where
+// Skipping the control because the seal makes a wrong carrier impossible: 4b(4) forecloses it -- a
+// climb dissolves redundant lower-rung PRODUCTION machinery and never the evidence, so the RED and
+// the positive control both stay enrolled.
+//
+// Admitting the WITNESS to this mint so it can assert the passthrough: that tests the passthrough
+// while skipping the four legs that earn the right to call it, and the claim that would justify it --
+// that a receipt naming a different subject "has no constructor" -- is FALSE. sole_constructor stops
+// an OUTSIDE module from writing the record literal; it does nothing about this module, where
 //   RemoteFileConverged { write: TypedRemoteFileWrite { path: write.path, content: "other" } }
 // is perfectly authorable. `write: write` is correct source WIRING, not a type-level proof. What is
 // actually established is narrower and is all that should ever be claimed here: outside callers cannot

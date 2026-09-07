@@ -46,11 +46,9 @@ data reconcile_grounded_instance_contract: Disposition = Terminal {
 // whatever the grounding report says beside it; an observed read defers to that report. Neither
 // branch establishes that anyone looked.
 //
-// THIS IS THE SINGLE AUTHORITY FOR THAT TABLE. reconcile_grounded below is expressed over it rather
-// than restating it: an earlier revision of this change authored the same law twice, once returning
-// Grounding<E> and once returning Reconciliation<A, E>, differing only in carrier -- two sources for
-// one fact, free to drift (DESIGN 2, 3). The annotation two screens down was making the
-// single-authority argument while the function beside it broke it.
+// THIS IS THE SINGLE AUTHORITY FOR THAT TABLE, and reconcile_grounded below is expressed over it
+// rather than restating it. The same law returned in two carriers would be two sources for one fact,
+// free to drift (DESIGN 2, 3).
 fn classify_reported_grounding<R, E>(
   show_read: ShowEffectiveRead<R>,
   grounding: Grounding<E>,
@@ -118,75 +116,56 @@ fn grounding_qualified_by_durability<E, Target, ReadbackSubject>(
 // arm has no application for a read to be "post". What is derived here is that the grounding was not
 // asserted ALONGSIDE a contradictory lifecycle -- nothing about when, or whether, anyone looked.
 //
-// AN EARLIER REVISION OF THIS NOTE CLAIMED a caller "cannot lie about whether the sequence ran".
-// That was false, and it was rung inflation in the authority module itself (DESIGN 4b(1)) — worse
-// than sitting low, because an inflated class never ranks for climbing. The mint took `applied` as
-// an ordinary Bool, so `applied: true` beside a self-constructed observation minted a converged
-// receipt with nothing executed. What held was the classifier's truth table, not the lifecycle. The
-// caller-supplied Bool is gone, and so is the derived one: a later review found that ReconciledEffect's
-// own `applied: Bool` was never read either, so it went with it. What stands now is stated exactly at
-// Application and at ReconciledEffect below.
+// WHAT THE SEAL DOES NOT BUY: it does not stop a caller lying about whether the sequence ran. No
+// argument here is observed, so a self-constructed read beside a chosen application arm produces a
+// report. What holds is the classifier's truth table, not the lifecycle -- stated exactly at
+// Application and at ReconciledEffect below. Claiming otherwise would be rung inflation in the
+// authority module itself (DESIGN 4b(1)), which is worse than sitting low: an inflated class never
+// ranks for climbing.
 //
 // The seal is a source-level wall (DESIGN 4b rung 3), not a runtime one: an emitted or deserialized
 // representation of this record is not covered, so a decoder that reconstructs the field set
 // reconstitutes an unearned receipt. That gap is the class's next-rung trigger and is named rather
 // than papered over.
 
-// NO `applied: Bool` FIELD, and its removal is the same finding as the evidence payload above, found
-// one field over. #10720 added `applied: Bool` here and nothing ever read it: inside this module it
-// was only ever WRITTEN and then matched as `_`, and no consumer in the corpus projects it. A field
-// every producer sets and no fold reads is DESIGN 3c's dangling declaration exactly, and keeping it
-// after removing the evidence payload for that reason would have been indefensible. The Application
-// argument is the caller's REPORT of which lifecycle arm it took; a Boolean field restating that
-// argument was a second spelling of it, and the classified grounding below is the verdict. This
-// sentence is HISTORY: the present carrier holds no application report at all, because a later
-// review found the Boolean still reachable through the Reconciliation the outcome field was
-// instantiated with, and that field is gone too.
+// NO APPLICATION REPORT ON THIS CARRIER, in any spelling. The Application argument is the caller's
+// report of which lifecycle arm it took; a field restating that argument would be a second spelling
+// of it that no fold reads, which is DESIGN 3c's dangling declaration. The classified grounding is
+// the verdict, and it is the whole outcome.
 type ReconciledEffect<P, E> sole_constructor {
   decision: UpsertDecision<P>
   classified_grounding: Grounding<E>
 }
 
-// WHY Grounding<E> AND NOT Reconciliation<Bool, E>. Removing the top-level applied: Bool closed only
-// half the finding: the Boolean stayed reachable as reconciled.outcome.applied, because this
-// report-only carrier was instantiating an older EFFECT-PAYLOAD carrier with Bool. Every arm mapped
-// the caller's Application report into that field and classify_reconciled then matched it as `_`.
+// WHY Grounding<E> AND NOT Reconciliation<A, E>. Reconciliation<A, E> is the EFFECT-PAYLOAD carrier
+// and is deliberately not used here. Its A is broadly consumed as an effect intent -- host_effect_plan
+// binds it, host_identity_converge reads intent.privilege_denial off it to separate an access denial
+// from another refusal, and live_deploy propagates it so a later refusal still names the mutation
+// attempted -- and every one of those consumers binds it in a MATCH PATTERN rather than by field
+// access, which is worth knowing before searching for its readers.
 //
-// Reconciliation<A, E> itself is NOT the problem and is deliberately untouched. Its A is broadly
-// consumed as an effect INTENT -- host_effect_plan binds it, host_identity_converge reads
-// intent.privilege_denial off it to separate an access denial from another refusal, and live_deploy
-// propagates it so a later refusal still names the mutation attempted. A review corrected me here: I
-// had claimed the payload was read as `_` everywhere, which was false at corpus grain because my
-// search looked for field ACCESS and every real consumer binds it in a MATCH PATTERN.
-//
-// So the fix is not to change the shared carrier but to stop this one instantiating it. Grounding<E>
-// is already the grounding vocabulary of this module, so reusing it avoids a second converged/
-// not-converged pair in the same authority. Reconciliation<Application, E> was considered and
-// rejected: no sink reads it, so it would keep a field only to satisfy the older shape -- the exact
-// dangling-data move this carrier just removed twice.
+// This carrier reports and holds no payload, so instantiating that one would keep a field only to
+// satisfy its shape. Grounding<E> is already this module's grounding vocabulary, so reusing it also
+// avoids a second converged/not-converged pair in the same authority.
 
 // WHAT THIS IS, STATED AT THE WEAKEST TRUE STRENGTH.
 //
-// This produces a RECONCILIATION REPORT. It is not proof that the decided plan was performed, and an
-// earlier revision of this module advertised exactly that. Two attempts to make it proof both failed
-// in the same way and the second failure is the instructive one.
+// This produces a RECONCILIATION REPORT. It is not proof that the decided plan was performed.
 //
-// First `applied: Bool` -- any caller could write true. Replacing it with an Application carrying a
-// plan plus a `plan_eq` callback moved the untrusted Boolean rather than removing it: the same
-// caller supplied the decided plan, the performed plan AND the law deciding whether they matched, so
-// `plan_eq: (a, b) => true` minted convergence for Apply(A) beside Applied(B). A caller-supplied law
+// WHY THERE IS NO COMPARATOR, stated because adding one is the obvious next proposal and it does not
+// work. A plan_eq callback beside a decided and a performed plan moves the untrusted Boolean rather
+// than removing it: the same caller supplies both plans AND the law deciding whether they match, so
+// `plan_eq: (a, b) => true` mints convergence for Apply(A) beside Applied(B). A caller-supplied law
 // that LOOKS like a check is worse than no check, because a reader believes the join happened.
 //
-// And even an honest comparator would not have finished it: Applied { plan: a, evidence: for_b } is
-// openly constructible, a lawful comparator compares a with a, and nothing structurally witnesses
-// that the evidence AROSE from the plan beside it. Sealing the evidence type proves an authority
-// minted that VALUE; it does not prove an outside caller paired it with the right plan. The missing
-// thing is a sealed RELATION (decided plan <-> performed plan <-> evidence), and std cannot express
-// it without a law it would have to accept from the caller -- which is where this started.
+// An honest comparator would not finish it either: Applied { plan: a, evidence: for_b } is openly
+// constructible, a lawful comparator compares a with a, and nothing structurally witnesses that the
+// evidence AROSE from the plan beside it. Sealing the evidence type proves an authority minted that
+// VALUE; it does not prove an outside caller paired it with the right plan. What is missing is a
+// sealed RELATION (decided plan <-> performed plan <-> evidence), which std cannot express without
+// accepting a law from the caller it would be checking.
 //
-// So std stops claiming it. Application carries NEITHER a plan NOR evidence -- it is the bare
-// lifecycle arm, the payload having been removed once review established no fold read it (see the
-// Application declaration below). There is no comparator; the
+// So Application carries NEITHER a plan NOR evidence -- it is the bare lifecycle arm. The
 // plan-to-evidence binding is the DOMAIN's obligation, discharged by a domain carrier that is minted
 // only by the authority that performed the effect. gunbc.typed_remote_file_write is the worked
 // example: RemoteFileConverged is sole_constructor, carries the EXACT WRITE so it names the bytes it
@@ -194,28 +173,21 @@ type ReconciledEffect<P, E> sole_constructor {
 // steps. What std still does is refuse the contradictory lifecycles below, and derive grounding from
 // the reported effective read rather than from the decision or the application arm. Both the read and
 // the grounding are themselves caller-constructed arguments routed through a truth table; this module
-// derives neither from the other, and an earlier revision of this line said "rather than from
-// anything asserted", which claimed an independence std does not have.
+// derives neither from the other, and neither is independent of the caller in any sense std can
+// check.
 
-// A LIFECYCLE DISCRIMINATOR AND NOTHING MORE, and the honest description matters because an earlier
-// revision carried a payload here. Applied used to be Applied { evidence: A }, justified as making it
-// impossible to "get a CONVERGED receipt merely by writing a Bool". That justification did not
-// survive review: NO FOLD READ THE PAYLOAD. All three matches below discarded it, ReconciledEffect
-// stored only an applied: Bool that nothing read either, and ConvergedEffect's evidence field is the GROUNDING evidence from
-// Grounding<E>, not this one -- so the value never reached any sink, and Applied { evidence: "" } was
-// exactly as writable as applied: true. The type parameter bought a rename of the Boolean, which is
-// DESIGN 3c's dangling declaration: a data row no fold reads.
+// A LIFECYCLE DISCRIMINATOR AND NOTHING MORE. This arm names which lifecycle branch the caller
+// reports; it does not make the report harder to fabricate than a Bool, and does not claim to.
 //
-// So it is dropped rather than carried further. Carrying it into ReconciledEffect would have invented
-// a consumer no production caller feeds -- ensure_reconcile only forwards it and
-// roadmap_dispatch_environment passes NotApplied -- which moves the dangling declaration up a level
-// instead of removing it. What genuinely earns its keep is the REFUSAL TABLE below: Noop-with-an-
-// application and Refuse-with-an-application are real lifecycle contradictions that a Bool in a
-// separate field could not NAME. A decision plus a Boolean expresses the same six combinations, so
-// what the coproduct buys is a closed named vocabulary and an exhaustive match over it, not more
-// expressive power -- and an earlier revision of this line claimed the latter. This arm names which
-// lifecycle branch the caller reports; it does not make the report harder to fabricate than a Bool,
-// and does not claim to.
+// IT CARRIES NO PAYLOAD, and an evidence payload here is the obvious next proposal. It would not buy
+// what it appears to: no fold reads it -- all three matches below would discard it, and
+// ConvergedEffect's evidence comes from Grounding<E>, not from here -- so Applied { evidence: "" }
+// is exactly as writable as a bare arm. A payload no sink reads is DESIGN 3c's dangling declaration.
+//
+// What earns the coproduct is the REFUSAL TABLE below: Noop-with-an-application and
+// Refuse-with-an-application are lifecycle contradictions that get a NAME here. A decision plus a
+// Boolean expresses the same six combinations, so what this buys is a closed vocabulary and an
+// exhaustive match over it, not expressive power.
 type Application
   = NotApplied
   | Applied
@@ -228,9 +200,8 @@ type Application
 //
 // THE REFUSAL REASONS BELOW SAY "an application was REPORTED", not "an effect was applied anyway".
 // They are runtime strings, so they are receipts, and std knows only which arm the caller passed --
-// it never observes an effect. An earlier revision of all three asserted effect history, which is the
-// same defect as the roadmap receipt this PR corrected: a stale comment misleads a maintainer, a
-// stale receipt misleads whoever acts on the refusal.
+// it never observes an effect. A receipt asserting effect history would mislead whoever acts on the
+// refusal, which is a live hazard rather than a wording preference.
 
 fn reconcile_effect<P, R, E>(
   decision: UpsertDecision<P>,
@@ -287,12 +258,10 @@ fn reconcile_effect<P, R, E>(
   }
 }
 
-// reconciled_effect_converged IS GONE. It was a hand-rolled two-arm Bool fold over the Grounding
-// coproduct, which left std carrying two sibling *_converged predicates over isomorphic coproducts;
-// worse, its only production consumer took the Bool and then RE-BRANCHED on it to build a reason
-// string, so the coproduct was collapsed and immediately re-expanded. Consumers match
-// classify_reconciled / ReconciledOutcome directly, which is the canonical surface and carries the
-// refusal reason the Bool had discarded.
+// NO Bool PREDICATE OVER THE OUTCOME. classify_reconciled / ReconciledOutcome is the canonical
+// surface and carries the refusal reason a Bool would discard. A two-arm fold to Bool leaves a
+// consumer re-branching on it to recover that reason, which collapses the coproduct and immediately
+// re-expands it.
 
 // ReconciledEffect is an OUTCOME, not a success witness: it faithfully carries a refusal or an
 // unapplied Apply, which is what makes it honest and what makes it insufficient as a sink's
@@ -302,9 +271,9 @@ fn reconcile_effect<P, R, E>(
 // sink whose parameter is a ConvergedEffect cannot be handed a refusal at all. For the ACCEPTED
 // OUTSIDE-CONSUMER path that is the difference between rung 3 and rung 4 on the class "a refusal was
 // accepted as success" -- and the scoping matters, because inside THIS module the mint is ordinary
-// source and a wrong ConvergedEffect is authorable here exactly as gunbc.typed_remote_file_write now
-// records for its own carrier. "The invalid state has no constructor", unscoped, was the same
-// overclaim this PR retracted there, left standing here.
+// source and a wrong ConvergedEffect is authorable here, exactly as gunbc.typed_remote_file_write
+// records for its own carrier. "The invalid state has no constructor" is true only of OUTSIDE
+// callers, and unscoped it would be an overclaim.
 //
 // The evidence is carried rather than dropped because a converged receipt whose observation is
 // discarded cannot answer WHAT it converged to — which is the join a domain consumer needs to

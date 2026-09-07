@@ -81,12 +81,8 @@ fn ensure_decide<P, E>(
 
 // The whole lifecycle as ONE call, so that assembling it is no longer the caller's job to remember.
 // ensure_decide remains exported because domains that already own the sequence call it directly.
-// ensure_readback USED to stand beside it and is deleted here: it accepted the exact caller-authored
-// applied: Bool this migration removes from the Ensure path, returned an openly matchable Converged,
-// and a corpus census found NO production caller -- only its own witness. An unused predecessor
-// standing beside its replacement is an attractor (DESIGN 3), so it goes rather than waiting to be
-// picked up by the next site that needs a convergence verdict. what this adds is the single route whose OUTPUT is a sealed receipt, so a sink
-// can demand ReconciledEffect and thereby demand that the decision inputs, the application arm, the
+// What this adds is the single route whose OUTPUT is a sealed receipt, so a sink can demand
+// ReconciledEffect and thereby demand that the decision inputs, the application arm, the
 // effective-read report and the grounding report were all SUPPLIED AND CLASSIFIED.
 //
 // WHAT THIS DOES NOT ESTABLISH. It assembles a report in one call; it does not EXECUTE the lifecycle.
@@ -97,15 +93,15 @@ fn ensure_decide<P, E>(
 // inputs is INDEPENDENT in any sense this module can check: independence is not a property a report
 // carries, so it cannot itself be reported.
 //
-// TWO EARLIER JUSTIFICATIONS FOR THIS FUNCTION ARE RETRACTED, and both were the same mistake --
-// describing a rename as a guarantee. The first said a sink demanding ReconciledEffect thereby
-// demands the lifecycle "all ran"; it does not, and the paragraph above is the authority. The second
-// said a caller "can no longer get a CONVERGED receipt merely by writing a Bool". That was NEVER
-// true, not even while Application carried an evidence payload: no fold read the payload, so
-// Applied with an empty evidence string was exactly as writable as true. The payload is gone and the
-// sentence with it. Picking the Applied arm is exactly as cheap as writing true. What the carrier actually buys is the REFUSAL TABLE in std.realization_reconcile:
-// Noop-with-an-application and Refuse-with-an-application are lifecycle contradictions that now
-// refuse. That is a real property and it is the only one claimed here.
+// TWO THINGS IT IS TEMPTING TO CLAIM HERE, and neither holds. That a sink demanding ReconciledEffect
+// thereby demands the lifecycle "all ran": it does not, and the paragraph above is the authority.
+// And that a caller can no longer get a CONVERGED receipt "merely by writing a Bool": picking the
+// Applied arm is exactly as cheap as writing true, and an evidence payload on that arm would not
+// change it, because no fold reads one. Both describe a rename as a guarantee.
+//
+// What the carrier actually buys is the REFUSAL TABLE in std.realization_reconcile:
+// Noop-with-an-application and Refuse-with-an-application are lifecycle contradictions that refuse.
+// That is a real property and it is the only one claimed here.
 //
 // It is NOT proof the decided plan is the one that ran — std cannot witness that without a law from
 // the same caller it would be checking, so the plan-to-evidence binding belongs to the domain and is
