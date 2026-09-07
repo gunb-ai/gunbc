@@ -33,8 +33,6 @@ pub use crate::std_measure::{
 };
 pub use crate::std_measure::{ByteSize, ClockBasis, Measure, Millisecond, Second, Watt};
 pub use crate::std_nat::Nat;
-pub use crate::std_pareto::AxisGoal;
-use crate::std_pareto::AxisGoal::*;
 pub use crate::std_process_termination::ProcessTermination;
 use crate::std_process_termination::ProcessTermination::{
     ProcessExited, ProcessSignaled, ProcessTerminationUnobserved,
@@ -90,11 +88,6 @@ pub fn cost_account_measured<S>(time: Rc<Measure<Time, S, i64>>) -> Rc<CostAccou
 
 pub fn cost_account_time_count<S>(account: Rc<CostAccount<S>>) -> Nat {
     crate::std_measure::measure_count(account.time.clone())
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct RealizationObjective {
-    pub goals: Rc<Vec<AxisGoal>>,
 }
 
 #[derive(
@@ -700,7 +693,6 @@ pub type Schedule = Rc<Vec<Rc<Vec<Rc<Runnable>>>>>;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RealizationPlan<S> {
     pub target: Rc<ContentHash>,
-    pub objective: Rc<RealizationObjective>,
     pub schedule: Schedule,
     pub total: Rc<CostAccount<S>>,
     pub _phantom: std::marker::PhantomData<S>,

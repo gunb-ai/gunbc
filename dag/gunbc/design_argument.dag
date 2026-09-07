@@ -248,6 +248,25 @@ data design_section_2_to_7_rows: List<DesignRow> = [
 
   DesignRow {
     proposition: Proposition {
+      id: "s3d.decision-completeness",
+      statement: "a decision is a closed subject, not an optimizer's output: completeness is a receipt over required (term, variable) cells and named populations, and no absence may be read as irrelevance; Settled may mint only over a complete closure",
+      premises: ["s3.single-authority", "s5.fail-closed", "s1.minimal-safe-efficient"]
+    },
+    review: ReviewableOnChange { parts: [yes_no_review(
+      part: "decision-completeness",
+      question: "Does the change recommend or settle a policy while a term, alternative, constraint or context dependency lacks a disposition, treat an authored invariant as whole-axis irrelevance, or introduce weights, defaults or a candidate universe the subject does not own?",
+      tells: [
+        "a recommendation that varies one quantity while another required variable, objective term, constraint or context parameter has no disposition",
+        "an Invariant or Ignored claim authored for a variable without closed relations for every applicable objective term",
+        "a method that drops an objective term without an order-preservation authority against the actual objective composition",
+        "a required population taken from the same list that carries dispositions for it",
+        "a Settled standing minted while sensitivity, variable-population, constraint or parameter closure is incomplete"
+      ]
+    )] },
+  },
+
+  DesignRow {
+    proposition: Proposition {
       id: "s4.closed-grounded-substrate",
       statement: "the closed, grounded substrate makes §2–§3 decidable: you can unify and decompose mechanically only in a closed, grounded system, and grounding is intersubjective",
       premises: ["s2.minimize-redundancy", "s3.single-authority", "s1.grounding-intersubjective"]
