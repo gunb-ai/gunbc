@@ -26373,12 +26373,16 @@ new file mode 100644
     }
 
     #[test]
-    fn named_census_specimens_still_carry_the_direct_sio_live_disagreement() {
+    fn named_census_specimens_declare_reads_live_tree_and_call_a_sink() {
         let ws = workspace_root();
         let specimens = [
             "dag/test/claim/fabric/fabric_output_contract_resolution_witness_test.dag",
             "dag/test/claim/match_exhaustiveness_coproduct_witness_test.dag",
             "dag/test/claim/direct_call_argument_type_witness_test.dag",
+            "dag/test/claim/declared_type_inhabitance_direct_call_witness_test.dag",
+            "dag/test/claim/declared_type_inhabitance_list_element_witness_test.dag",
+            "dag/test/claim/declared_type_expected_type_path_witness_test.dag",
+            "dag/test/claim/infer_record_lit_variant_field_witness_test.dag",
         ];
         let mut files = Vec::new();
         for rel in specimens {
@@ -26386,13 +26390,30 @@ new file mode 100644
                 std::fs::read_to_string(ws.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
             files.push((rel.to_string(), content));
         }
-        let rows = super::substrate_stamp_direct_live_disagreements(&files).unwrap();
-        for rel in specimens {
+        let disagreements = super::substrate_stamp_direct_live_disagreements(&files).unwrap();
+        assert!(
+            disagreements.is_empty(),
+            "corrected specimens must leave the SIO disagreement set: {disagreements:?}"
+        );
+        for (rel, content) in &files {
             assert!(
-                rows.iter().any(|(p, sinks)| p == rel && !sinks.is_empty()),
-                "{rel} missing from disagreement set {rows:?}"
+                super::parse_entry_live_tree_disposition(rel, content).unwrap(),
+                "{rel} stamp was not corrected to ReadsLiveTree"
+            );
+            assert!(
+                !super::entry_direct_live_tree_sinks(content).is_empty(),
+                "{rel} lost its live sink"
             );
         }
+    }
+
+    #[test]
+    fn compile_dag_diagnostic_census_is_invisible_to_effect_reach_host_sinks() {
+        let source = "fn f(source: String) -> Int { compile_dag_diagnostic_census(source) }\n";
+        assert!(
+            !super::source_has_host_effect_sink(source),
+            "a census call must not be reclassified by effect_reach; otherwise a lying SIO stamp would not buy a predict-skip"
+        );
     }
 
     #[test]
@@ -26481,11 +26502,7 @@ new file mode 100644
         for (rel, sinks) in &rows {
             eprintln!("  {rel}  ->  {sinks:?}");
         }
-        for rel in [
-            "dag/test/claim/fabric/fabric_output_contract_resolution_witness_test.dag",
-            "dag/test/claim/match_exhaustiveness_coproduct_witness_test.dag",
-            "dag/test/claim/direct_call_argument_type_witness_test.dag",
-        ] {
+        for rel in ["dag/test/claim/citation_cause_subject_disjointness_witness_test.dag"] {
             assert!(
                 rows.iter().any(|(p, _)| p == rel),
                 "{rel} dropped out of the derived disagreement set"
