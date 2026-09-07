@@ -65,7 +65,9 @@ test fn w_nested_if_filter_in_guard_refuses_once() -> Bool {
   unprojectable_blocking_count(source: nested_if_filter_in_guard_source) == 1
 }
 
+// The include list must name a token that lives only in the then-arm filter.
+// `fn f` survives a truncated emit of this module; `filter` does not.
 test fn w_filter_in_then_of_if_used_as_guard_still_emits() -> Bool {
   unprojectable_blocking_count(source: filter_in_then_of_if_used_as_guard_source) == 0
-    && compile_dag_rust_emit_check(filter_in_then_of_if_used_as_guard_source, "src/fx_filter_then_of_guard.rs", ["fn f"], [])
+    && compile_dag_rust_emit_check(filter_in_then_of_if_used_as_guard_source, "src/fx_filter_then_of_guard.rs", ["fn f", "filter"], [])
 }
