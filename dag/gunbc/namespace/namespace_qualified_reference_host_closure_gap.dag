@@ -64,6 +64,19 @@ data host_closure_pairs_refused_for_missing_joined_qualified_path_induction:
   },
 ]
 
+// ONE CAUSE, NOT FOUR FAILURES. On this prepared branch the required-lane reds
+// (required-witnesses-build, required-witnesses-floor, heal-generated-artifacts,
+// witnesses aggregate) collapse to a single HostScannerClosureRefused with
+// count=2 on DottedModulePathScanner for exactly the two pairs above. Stage0-
+// mirrors drift and heal's inability to answer are consequences of the generated-
+// artifact carrier declining after that refusal — not independent defects. Naming
+// that collapse here stops the next reader from "fixing" the deadlock four wrong
+// ways. Automated "CI failing, push a fix" nudges that treat the red as ordinary
+// breakage are noise for the life of this draft; greening would require the missing
+// capability or a forbidden widen.
+data host_closure_ci_red_is_one_cause: String =
+  "HostScannerClosureRefused count=2 on DottedModulePathScanner for the two pairs in host_closure_pairs_refused_for_missing_joined_qualified_path_induction; mirror drift and heal refusal are downstream of the carrier declining to answer."
+
 // Evidence for whether the capability is still missing is RE-DERIVED by this
 // instrument (occurrence-category census at file grain). Cite the entry point
 // by its Cargo bin name; do not copy its numbers into this row. Dated BuildBuddy
