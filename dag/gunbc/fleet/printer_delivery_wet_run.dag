@@ -1,0 +1,120 @@
+module gunbc.fleet.printer_delivery_wet_run
+
+import std.types { NonEmptyStr, String }
+import std.resources { Network }
+import extdeps.shell
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import gunbc.fleet_asset_identity { printer_01 }
+import gunbc.auth.access_token_source { AccessTokenSource, OperatorSuppliedToken }
+import gunbc.auth.gcp_secret_access {
+  SuppliedTokenResolution, SuppliedTokenReady, SuppliedTokenUnavailable, read_supplied_access_token,
+}
+import gunbc.fleet.printer_project_delivery {
+  PrinterProjectPayload, PayloadIdentification, PayloadIdentified, PayloadIdentificationRefused,
+  PayloadIdentificationRefusedResidueRemains,
+  ProjectDelivery, ProjectDelivered, ProjectDeliveryRefused, ProjectDeliveryUnattempted,
+  ProjectTransferredCleanupRefused, ProjectDeliveryProvisionRequired, ProjectDeliveryRefusedResidueRemains,
+  ProjectDeliveryUnattemptedResidueRemains, ProjectDeliveryProvisionRequiredResidueRemains,
+  abandon_payload,
+  identify_project_payload, deliver_project_to_printer, receipt_remote_name,
+}
+import extdeps.cloud.gcp.secret_ref { secret_ref_secret_resource }
+
+// THE FIRST WET RUN OF THE DELIVERY PATH, as an ACTUATOR rather than a witness.
+//
+// This is deliberately not a test: it performs real effects against a real machine, so it belongs
+// behind an explicit entry point a person invokes, not on the floor where it would run unattended on
+// every push. It exercises the whole modelled chain -- identity to endpoint, payload copy and digest,
+// access-code locus, credential resolution, curl -- and reports whichever arm it reaches.
+//
+// EVERY ARM IS SPELLED OUT so the run says WHICH leg answered. A single "it failed" would leave the
+// reader unable to tell a missing endpoint from a refused credential from a rejected transfer, and
+// those have entirely different remedies.
+//
+// SUCCESS EXITS ZERO, AND AN EARLIER REVISION DID NOT. The delivered arm returned exit_failure with a
+// "DELIVERED remote=..." reason, because exit_failure is the arm that carries a printable string and
+// this actuator exists to report which leg answered. That made a SUCCESSFUL delivery exit non-zero:
+// fabricated failure, which §5 forbids in the same breath as fabricated success, and worse here
+// because a caller wiring this into anything would read the exit code and conclude the transfer
+// failed while the file sat on the printer.
+//
+// INFORMATION IS LOST BY DROPPING THE RECEIPT, AND AN EARLIER REVISION DENIED IT. That revision said
+// the remote filename is "derivable from the payload at any time" because it is
+// remote_name_for_digest of the content -- which contradicts the very protection this delivery path
+// is built around. identify_project_payload copies the caller's file into a PRIVATE OWNED
+// REALIZATION and hashes THAT COPY, precisely because the caller path is mutable; once the
+// realization is removed, rehashing the original path need not reproduce the same digest, because
+// its bytes may have changed. So the exact run identity is not reconstructible from a mutable
+// source, and justifying the discard that way used a claim this module's own design refutes.
+//
+// THE HONEST STATEMENT: this actuator's public result is ProcessExit ONLY. A successful run
+// deliberately exposes no receipt metadata -- a person watching a wet run wants to know THAT it
+// landed, and the exit code carries that. A caller that needs the exact remote name must consume
+// ProjectDelivery and its ProjectUploadReceipt directly rather than scraping this surface.
+//
+// The refusal arms keep their reasons for a different and still-valid reason: WHICH leg refused is
+// information no caller can re-derive from anything, mutable or not.
+// THE PAYLOAD IS NAMED BY THE INVOKER, NOT BY THIS FILE. An earlier revision carried one author's
+// scratchpad path as a literal, which is a machine fact wearing a module's name: it is false for
+// every other operator and it rots the moment a scratchpad is cleared. The variable is read rather
+// than defaulted, because a default here could only be a guess at a file, and delivering the wrong
+// geometry to a printer is a physical, hour-long, filament-spending error.
+data wet_run_payload_env: NonEmptyStr = "PRINT_N_WET_PAYLOAD"
+
+func run() -> ProcessExit uses net: Network {
+  let supplied = shell.Env.Get(name: wet_run_payload_env)
+  match supplied.value {
+    Absent =>
+      exit_failure(reason: concat(concat(
+        "NO PAYLOAD: set ", wet_run_payload_env as String),
+        " to the absolute path of the .3mf to deliver; this actuator will not guess a file"))
+    Present { value: payload_path } =>
+  match identify_project_payload(payload: PrinterProjectPayload { local_path: payload_path as NonEmptyStr }) {
+    PayloadIdentificationRefused { local_path: p, cause: cause } =>
+      exit_failure(reason: concat(concat("IDENTIFY REFUSED for ", p as String), concat(": ", cause as String)))
+    PayloadIdentificationRefusedResidueRemains { local_path: p, residue_path: rp, cause: cause } =>
+      exit_failure(reason: concat(
+        concat(concat("IDENTIFY REFUSED, RESIDUE MAY REMAIN AT ", rp as String), concat(" for ", p as String)),
+        concat(": ", cause as String)))
+    PayloadIdentified { payload: identified } =>
+      match read_supplied_access_token() {
+        SuppliedTokenUnavailable { cause: cause } =>
+          if abandon_payload(payload: identified) {
+            exit_failure(reason: concat("NO TOKEN: ", cause as String))
+          } else {
+            exit_failure(reason: concat(concat("NO TOKEN: ", cause as String),
+              " -- AND the private payload copy could not be removed, so material may remain on disk"))
+          }
+        SuppliedTokenReady { token: operator_token } =>
+      match deliver_project_to_printer(
+        printer: printer_01,
+        payload: identified,
+        token_source: OperatorSuppliedToken { token: operator_token }
+      ) {
+        ProjectDeliveryUnattempted { printer: _, cause: cause } =>
+          exit_failure(reason: concat("UNATTEMPTED: ", cause as String))
+        ProjectDeliveryRefused { printer: _, cause: cause } =>
+          exit_failure(reason: concat("REFUSED: ", cause as String))
+        ProjectDeliveryRefusedResidueRemains { printer: _, cause: cause } =>
+          exit_failure(reason: concat("REFUSED, RESIDUE MAY REMAIN ON DISK: ", cause as String))
+        ProjectDeliveryUnattemptedResidueRemains { printer: _, cause: cause } =>
+          exit_failure(reason: concat("UNATTEMPTED, RESIDUE MAY REMAIN ON DISK: ", cause as String))
+        ProjectDeliveryProvisionRequiredResidueRemains { printer: _, desired: d, cause: cause } =>
+          exit_failure(reason: concat(concat(
+            concat("PROVISION REQUIRED at ", secret_ref_secret_resource(ref: d)),
+            ", RESIDUE MAY REMAIN ON DISK: "), cause as String))
+        ProjectDeliveryProvisionRequired { printer: _, desired: d } =>
+          exit_failure(reason: concat(
+            "PROVISION REQUIRED: no access code has been materialized at ",
+            secret_ref_secret_resource(ref: d)))
+        ProjectTransferredCleanupRefused { receipt: r, cause: cause } =>
+          exit_failure(reason: concat(
+            concat("TRANSFERRED BUT CLEANUP REFUSED, remote=", receipt_remote_name(r: r) as String),
+            concat(": ", cause as String)))
+        ProjectDelivered { receipt: _ } =>
+          ExitSuccess
+      }
+      }
+  }
+  }
+}

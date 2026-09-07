@@ -45,6 +45,13 @@ data organization_runner_citation: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data organization_jit_runner_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/actions/self-hosted-runners#create-configuration-for-a-just-in-time-runner-for-an-organization"
+  }
+}
+
 type RepositoryPath { value: NonEmptyStr }
 
 type GitHubOrganizationRef { login: NonEmptyStr }
@@ -53,6 +60,15 @@ type GitBranchRef { name: NonEmptyStr }
 
 type GitHubWorkflowRef { file_name: NonEmptyStr }
 
+// JIT CONFIGURATION IS A SEPARATE OPERATION UNDER THE SAME PERMISSION, enrolled at upstream's own
+// operation grain rather than as a runner-lane permission string invented beside it. A registration
+// token is a SHARED SECRET that lets a machine register itself and keep durable credentials on disk;
+// a JIT config is minted by the caller for ONE runner identity and makes the runner ephemeral by
+// construction. That difference is why GenerateOrganizationJitConfig is its own effect.
+//
+// It is NOT a different authority. GitHub gates both on organization self-hosted-runners write, so
+// both arms answer with the same permission below; giving the JIT arm a permission of its own would
+// make this repository a second opinion about something GitHub owns.
 type GitHubEffect
   = AdvanceRepositoryBranch {
       repository: Repository
@@ -65,6 +81,9 @@ type GitHubEffect
       subject: CommitSha
     }
   | RegisterOrganizationRunner {
+      organization: GitHubOrganizationRef
+    }
+  | GenerateOrganizationJitConfig {
       organization: GitHubOrganizationRef
     }
 
@@ -135,6 +154,8 @@ fn github_effect_required_permissions(effect: GitHubEffect) -> List<GitHubAppPer
     DispatchWorkflow { repository: _, workflow: _, subject: _ } =>
       [actions_write]
     RegisterOrganizationRunner { organization: _ } =>
+      [organization_self_hosted_runners_write]
+    GenerateOrganizationJitConfig { organization: _ } =>
       [organization_self_hosted_runners_write]
   }
 }

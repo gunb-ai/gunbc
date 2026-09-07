@@ -1,0 +1,215 @@
+module product.cable_leg_observation
+
+import std.nat { Nat }
+import std.types { Bool, List }
+import extdeps.ethernet.link_mode { LinkMode, link_mode_eq }
+import extdeps.transceiver.sff_8636 {
+  TransceiverIdentifier, Sff8636Encoding, Sff8636NominalRate,
+  EncodingUnspecified, Encoding64b66b, EncodingPam4, EncodingUnmodelled,
+  AttestedMode, FecCondition, FecUnconditional, RequiresClause91Fec,
+  ComplianceInterpretation, ComplianceUnderstood, ComplianceUnspecified,
+  ComplianceCodeUnmodelled,
+  sff8636_interpret_extended_compliance,
+}
+
+// WHAT THIS FLEET READ OFF A CABLE LEG, AND WHAT FOLLOWS FROM IT.
+//
+// THE LAYER IS THE POINT. `extdeps.transceiver.sff_8636` owns byte MEANINGS -- given a value, what
+// the specification says it denotes. It does not and may not own whether anyone here pointed
+// `ethtool -m` at a module. An earlier head authored `SecondaryNotObserved` and a completeness
+// predicate inside that specification module, which is the inversion DESIGN section 3 names in
+// terms: observations are receipts in the OBSERVING layer, and "missing observations are coverage
+// obligations downstream, never `Unobserved` properties authored inside an upstream module."
+//
+// The tell was available and was missed twice, because this lane raised the identical objection
+// against another module's `..._observed` row in extdeps hours before committing its own. A rule
+// stated generally and applied locally is the recurring shape of this whole subject.
+//
+// So: an observation is a fleet receipt. It records the bytes read from one leg, WHICH bytes were
+// read, and nothing about what the standard means -- every meaning is asked of the extdeps decoder.
+
+// A SECONDARY FIELD EITHER WAS READ OR WAS NOT, and if it was, the RAW BYTE is what is carried.
+// There is deliberately no `ObservedUnspecified` variant: 00h already means "Unspecified" in the
+// SFF-8024 table that governs this byte, so offering an authored variant beside the raw value would
+// let the caller choose the interpretation -- the decorative-byte defect, one field over.
+type SecondaryComplianceObservation
+  = SecondaryNotObserved
+  | SecondaryObserved { code: Nat }
+
+type CableLegObservation sole_constructor {
+  identifier: TransceiverIdentifier
+  primary_compliance_code: Nat
+  secondary_compliance: SecondaryComplianceObservation
+  encoding: Sff8636Encoding
+  nominal_rate: Sff8636NominalRate
+}
+
+fn cable_leg_observation(
+  identifier: TransceiverIdentifier,
+  primary_compliance_code: Nat,
+  secondary_compliance: SecondaryComplianceObservation,
+  encoding: Sff8636Encoding,
+  nominal_rate: Sff8636NominalRate,
+) -> CableLegObservation {
+  CableLegObservation {
+    identifier: identifier,
+    primary_compliance_code: primary_compliance_code,
+    secondary_compliance: secondary_compliance,
+    encoding: encoding,
+    nominal_rate: nominal_rate,
+  }
+}
+
+// ================= COVERAGE: WHICH FIELDS THIS FLEET ACTUALLY READ =================
+//
+// ONE FOLD OVER THE FIELDS, NOT A PREDICATE PER VARIANT. The previous shape was a
+// variant-to-Boolean function per question, which is the non-fold residue DESIGN section 6 asks to
+// be routed through a canonical accessor. The coverage census is a fold producing the list of
+// UNREAD fields, and every coverage question is asked of that one list -- so a new field is one row
+// here rather than a new predicate at every call site.
+// THE FIELDS THIS OBSERVATION CAN CARRY, named so the coverage census reports WHICH one is missing
+// rather than a bare count. Only the secondary compliance byte is optional in the carrier today --
+// the others are required to construct an observation at all -- so the census reports only that one
+// now, and a field that becomes optional later is a row here rather than a new predicate.
+type CableLegField
+  = SecondaryComplianceField
+  | PrimaryComplianceField
+  | EncodingField
+  | NominalRateField
+
+fn cable_leg_unread_fields(obs: CableLegObservation) -> List<CableLegField> {
+  match obs.secondary_compliance {
+    SecondaryNotObserved => [SecondaryComplianceField]
+    SecondaryObserved { code: sc } => []
+  }
+}
+
+// ================= INTERPRETABILITY: WHICH READ VALUES THE DECODER UNDERSTOOD =================
+//
+// Coverage and interpretability are different axes and must not collapse into one boolean. For a
+// secondary byte of 00h the field WAS read and its value is still a gap: SFF-8024 assigns 00h the
+// meaning "Unspecified", which is specified ignorance rather than established absence. Collapsing
+// the two is what made this defect recur once already.
+//
+// A GAP NAMES ITS FIELD. An earlier head asked only about compliance codes, so an observation whose
+// ENCODING byte was unspecified still reported the interface-scope frontier -- blaming a field whose
+// reading would not have made the observation decidable.
+type InterpretationGap
+  = GapComplianceUnspecified { code: Nat }
+  | GapComplianceNotUnderstood { code: Nat }
+  | GapEncodingUnspecified
+  | GapEncodingNotUnderstood { code: Nat }
+
+fn cable_leg_interpretations(obs: CableLegObservation) -> List<ComplianceInterpretation> {
+  match obs.secondary_compliance {
+    SecondaryObserved { code: sc } => [
+      sff8636_interpret_extended_compliance(code: obs.primary_compliance_code),
+      sff8636_interpret_extended_compliance(code: sc),
+    ]
+    SecondaryNotObserved =>
+      [sff8636_interpret_extended_compliance(code: obs.primary_compliance_code)]
+  }
+}
+
+fn cable_leg_attested(obs: CableLegObservation) -> List<AttestedMode> {
+  flat_map(cable_leg_interpretations(obs: obs), i =>
+    match i {
+      ComplianceUnderstood { code: c, modes: ms } => ms
+      ComplianceUnspecified { code: c } => []
+      ComplianceCodeUnmodelled { code: c } => []
+    })
+}
+
+fn cable_leg_encoding_gaps(obs: CableLegObservation) -> List<InterpretationGap> {
+  match obs.encoding {
+    EncodingUnspecified => [GapEncodingUnspecified]
+    EncodingUnmodelled { code: c } => [GapEncodingNotUnderstood { code: c }]
+    Encoding64b66b => []
+    EncodingPam4 => []
+  }
+}
+
+fn cable_leg_compliance_gaps(obs: CableLegObservation) -> List<InterpretationGap> {
+  flat_map(cable_leg_interpretations(obs: obs), i =>
+    match i {
+      ComplianceUnspecified { code: c } => [GapComplianceUnspecified { code: c }]
+      ComplianceCodeUnmodelled { code: c } => [GapComplianceNotUnderstood { code: c }]
+      ComplianceUnderstood { code: c, modes: ms } => []
+    })
+}
+
+// The single census every interpretability question is asked of.
+fn cable_leg_interpretation_gaps(obs: CableLegObservation) -> List<InterpretationGap> {
+  concat(cable_leg_compliance_gaps(obs: obs), cable_leg_encoding_gaps(obs: obs))
+}
+
+// ================= SELF-CONSISTENCY =================
+//
+// TAKES NO REQUESTED MODE, so "does this observation contradict itself" cannot vary with what a
+// reader happened to ask for. The law holds by construction rather than by discipline.
+//
+// THERE IS NO OPERATIONAL CONTRADICTION ARM. Deciding one requires the encoding byte and the
+// compliance codes to describe the SAME INTERFACE -- true for an unretimed passive assembly, false
+// by design for a module converting NRZ host lanes to a PAM4 media channel. Nothing observed here
+// settles that: the identifier does not distinguish copper from optical, and the field that would --
+// SFF-8636's transmitter-technology nibble -- has not been read. A result variant belongs in the
+// operational codomain only if some valid input can produce it, so the arm is retired and the
+// distinction survives as a typed undecidable naming its cause.
+//
+// NEXT-RUNG TRIGGER: model the transmitter-technology field in extdeps and read it here, then
+// reintroduce the arm WITH a standards-supported positive fixture and an inverse control holding the
+// same observation at a secondary byte of 00h.
+type ConsistencyUndecidableCause
+  = ConsistencyFieldUnread { field: CableLegField }
+  | ConsistencyInterpretationGap { gap: InterpretationGap }
+  | ConsistencyInterfaceScopeUnestablished
+
+type ProfileConsistency
+  = ConsistencyUndecidable { cause: ConsistencyUndecidableCause }
+
+fn cable_leg_consistency(obs: CableLegObservation) -> ProfileConsistency {
+  match cable_leg_unread_fields(obs: obs).first() {
+    Present { value: f } => ConsistencyUndecidable { cause: ConsistencyFieldUnread { field: f } }
+    Absent =>
+      match cable_leg_interpretation_gaps(obs: obs).first() {
+        Present { value: gap } =>
+          ConsistencyUndecidable { cause: ConsistencyInterpretationGap { gap: gap } }
+        Absent => ConsistencyUndecidable { cause: ConsistencyInterfaceScopeUnestablished }
+      }
+  }
+}
+
+// ================= THE REQUESTED-MODE JOIN =================
+//
+// A join of an OBSERVATION against a DEMAND, which is why it lives here and not in extdeps: the
+// specification has no opinion about what this fleet needs.
+type CableLegFinding
+  = LegAttestsRequestedMode { obs: CableLegObservation }
+  | LegAttestsRequestedModeSubjectToFec { obs: CableLegObservation, fec: FecCondition }
+  | LegInsufficientForRequestedMode { requested: LinkMode, obs: CableLegObservation }
+  | LegComplianceCodeNotUnderstood { code: Nat }
+
+fn assess_cable_leg(obs: CableLegObservation, requested: LinkMode) -> CableLegFinding {
+  let matching = filter(cable_leg_attested(obs: obs), a => link_mode_eq(a: a.mode, b: requested))
+  match matching.first() {
+    Present { value: hit } =>
+      match hit.fec {
+        FecUnconditional => LegAttestsRequestedMode { obs: obs }
+        RequiresClause91Fec =>
+          LegAttestsRequestedModeSubjectToFec { obs: obs, fec: hit.fec }
+      }
+    Absent => {
+      let unknown = flat_map(cable_leg_interpretation_gaps(obs: obs), g =>
+        match g {
+          GapComplianceNotUnderstood { code: c } => [c]
+          GapComplianceUnspecified { code: c } => []
+          GapEncodingUnspecified => []
+          GapEncodingNotUnderstood { code: c } => []
+        })
+      match unknown.first() {
+        Present { value: k } => LegComplianceCodeNotUnderstood { code: k }
+        Absent => LegInsufficientForRequestedMode { requested: requested, obs: obs }
+      }
+    }
+  }
+}

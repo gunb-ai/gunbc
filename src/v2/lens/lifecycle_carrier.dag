@@ -43,7 +43,7 @@ import std.disposition { SubstrateMandatoryTag }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Membership is DECIDABLE -- a field's name and declared type are both readable
-// off the Node tree -- so this is not RatchetForever. It is not a wall today
+// off the Node tree -- so this is not OutsideModeledGuarantee. It is not a wall today
 // because the substrate has no way to mandate that a field with a given name
 // carry a given carrier type; the field stays writable and this gate is what
 // refuses it. It dissolves into SubstrateMandatoryTag when that capability

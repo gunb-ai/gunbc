@@ -1,0 +1,99 @@
+module extdeps.github.actions_jit_runner
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "docs.github.com/en/rest/actions/self-hosted-runners#create-configuration-for-a-just-in-time-runner-for-an-organization",
+  }
+}
+
+// JIT CONFIGURATION IS A DIFFERENT ENDPOINT FROM A REGISTRATION TOKEN, AND THE DIFFERENCE IS THE
+// WHOLE REASON THIS FLEET WANTS IT.
+//
+// extdeps.github.effect already models RegisterOrganizationRunner, which is the registration-token
+// flow: a SHORT-LIVED SHARED SECRET is handed to a machine, which then registers itself and receives
+// durable runner credentials it stores on disk. Anything that can read that machine's disk can
+// impersonate the runner afterwards, which is exactly the class a fresh VM per job exists to close.
+//
+// generate-jitconfig inverts it. The credential is minted BY THE CALLER for ONE runner identity,
+// arrives as an opaque blob, and the runner consumes it with `--jitconfig` instead of registering.
+// The runner is ephemeral by construction rather than by a flag someone remembers to pass, and no
+// registration secret is ever present on the guest.
+//
+// THE RESPONSE FIELD IS BASE64 AND IS MODELED AS OPAQUE, deliberately. Upstream documents
+// encoded_jit_config as an encoded blob the runner consumes; decoding it here to inspect its parts
+// would make this repository a second authority for a structure GitHub owns and may change, and
+// would put the credential's contents in this process's memory for no purpose it can name.
+type JitRunnerName { value: NonEmptyStr }
+
+type JitRunnerGroupId { value: Int }
+
+type JitWorkFolder { value: NonEmptyStr }
+
+type JitRunnerLabel { value: NonEmptyStr }
+
+// THE REQUEST CARRIES THE LABELS THE RUNNER WILL ANSWER TO, and they are a List rather than a
+// comma-joined String because the wire form is a JSON array. A joined string would be one field
+// standing for N facts, and a label containing a comma would silently become two labels.
+type JitRunnerConfigRequest {
+  name: JitRunnerName
+  runner_group_id: JitRunnerGroupId
+  labels: List<JitRunnerLabel>
+  work_folder: JitWorkFolder
+}
+
+// THE CREDENTIAL IS OPAQUE AND CARRIES ITS OWN HANDLING RULE IN ITS TYPE. It is never rendered into
+// an argv, a log line, or a receipt; the only sanctioned destination is bytes on a read-only drive
+// the guest mounts. That rule is not a preference: gunbc.credential_argv_exposure already measures
+// the concrete argv-exposure incident this fleet paid for, and an argv is readable by every other
+// process on the host for the whole life of the call. NOTHING ENFORCES THIS YET -- the type is
+// opaque to its consumers but a caller can still render `encoded` into a String, so the class sits
+// at mitigatable. Its next-rung trigger is the one gunbc.credential_argv_exposure already declares
+// for itself and does not need restating here: the declared input TYPE carried on
+// v2.std.operation_argv ShellTransportOperationRow, which is what makes a secret-into-argv refusal
+// expressible at all. Until that lands, no wall here would be anything but a second opinion.
+type EncodedJitConfig sole_constructor {
+  encoded: NonEmptyStr
+}
+
+type JitConfigMintOutcome
+  = JitConfigMinted { config: EncodedJitConfig, runner_id: Int }
+  | JitConfigMintRefused { status: Int, reason: String }
+
+// THE ENDPOINT PATH IS DERIVED FROM THE ORG, never concatenated at a call site, so a caller cannot
+// address a different organization's runners by assembling the path itself.
+fn org_generate_jitconfig_path(org_login: NonEmptyStr) -> String {
+  join(["/orgs/", org_login as String, "/actions/runners/generate-jitconfig"], "")
+}
+
+fn jit_runner_label_wire(l: JitRunnerLabel) -> String {
+  l.value as String
+}
+
+// A MINT THAT DID NOT RETURN 201 IS A REFUSAL AND NOT AN EMPTY CONFIG. GitHub answers 201 with the
+// blob; every other status means no runner identity was created, and treating a non-201 as "no
+// config yet" would let a guest boot with an empty drive and sit waiting for work it can never be
+// assigned -- a VM burning its whole deadline looking healthy.
+data jit_config_created_status: Int = 201
+
+fn jit_config_mint_outcome(status: Int, encoded: String, runner_id: Int, error_body: String) -> JitConfigMintOutcome {
+  if status == jit_config_created_status {
+    if encoded == "" {
+      JitConfigMintRefused {
+        status: status,
+        reason: "GitHub answered 201 with an empty encoded_jit_config; no credential was minted despite the success status",
+      }
+    } else {
+      JitConfigMinted {
+        config: EncodedJitConfig { encoded: encoded as NonEmptyStr },
+        runner_id: runner_id,
+      }
+    }
+  } else {
+    JitConfigMintRefused { status: status, reason: error_body }
+  }
+}

@@ -1,6 +1,6 @@
 module test.claim.ssh_transport_witness
 
-import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision, deploy_witness_full_install_plan }
 import std.types { Bool, NonEmptyStr }
 import std.measure { byte_size_count }
 import gunbc.live_deploy.emit { live_deploy_apply_script_for, RevisionBoundAtEmission }
@@ -20,7 +20,7 @@ data ssh_exec_script_remote_receiver: NonEmptyStr = "bash -s"
 // the sibling witnesses regardless of script size.
 
 test fn witness_apply_script_stays_under_argv_embed_budget() -> Bool {
-  let script_len = length(live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }))
+  let script_len = length(live_deploy_apply_script_for(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1())))
   let budget = byte_size_count(b: host_exec_arg_max_strlen)
   script_len > 0 && script_len < budget
 }

@@ -30,6 +30,18 @@ data string_length_contract: PrimitiveContract = {
   carrier_cost: CarrierInsensitive
 }
 
+// Work is linear in the message, as any MAC over it must be. The output is one bit -- deliberately,
+// since extdeps.crypto.mac exposes no computed tag: the comparison happens inside the bound
+// implementation, in constant time, and a caller that could see the tag could compare it in
+// variable time instead.
+data hmac_sha256_verify_hex_contract: PrimitiveContract = {
+  name: "hmac_sha256_verify_hex",
+  work: "n",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
 data substring_contract: PrimitiveContract = {
   name: "substring",
   work: "end",
@@ -534,6 +546,7 @@ data contiguous_loop_elementwise_float_kernel_contract: PrimitiveContract = {
 
 fn builtin_registry_surface_names() -> List<String> {
   [
+    "hmac_sha256_verify_hex",
     "count",
     "string_length",
     "code_point",

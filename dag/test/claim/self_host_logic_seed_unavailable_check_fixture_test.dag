@@ -1,0 +1,69 @@
+module test.claim.self_host_logic_seed_unavailable_check_fixture
+
+// Fixture test for the transport's slbu_check_no_seed_crate_refs function --
+// proves the v1_compiler:: seed-linkage check CAN red (DESIGN section 5: a discriminating
+// input that goes red when the check is wrong). Operates on synthetic file contents
+// via the REAL transport function over a temp directory, not a re-implementation.
+// Hermetic -- no gunbc emit or cargo build required.
+//
+// passes writes_ok: true as a literal because the writes are a deployment guarantee
+// tested by the wet lane, not by the fixture. The fixture CANNOT detect an ordering
+// regression — that is deliberate and the wet lane covers it.
+
+import std.logic { Bool }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import tools.self_host_logic_seed_unavailable_transport {
+  slbu_check_no_seed_crate_refs
+}
+
+// GREEN: a directory with no v1_compiler:: references should pass
+test fn clean_directory_passes_v1_rt_check() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let clean_file = Filesystem.Write(
+    path: concat(dir.path, "/std_logic.rs"),
+    content: "pub enum Foo { A, B }\npub fn do_thing(x: Foo) -> Foo { match x { Foo::A => Foo::B, Foo::B => Foo::A } }\n"
+  )
+  let rt_file = Filesystem.Write(
+    path: concat(dir.path, "/v1_rt.rs"),
+    content: "// Runtime shim\npub fn lookup(key: String) -> String { unimplemented!() }\n"
+  )
+  let result = clean_file.success && rt_file.success
+    && slbu_check_no_seed_crate_refs(src_dir: dir.path, writes_ok: true)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && result && cleaned.success
+}
+
+// RED: a directory with a v1_compiler:: reference MUST FAIL
+// This is the DISCRIMINATING CONTROL: the transport's check catches
+// a reference to the seed crate namespace.
+test fn directory_with_v1_compiler_ref_fails_check() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let bad_file = Filesystem.Write(
+    path: concat(dir.path, "/std_logic.rs"),
+    content: "pub fn do_lookup(key: String) -> String { v1_compiler::lookup(key) }\n"
+  )
+  let result = bad_file.success
+    && !slbu_check_no_seed_crate_refs(src_dir: dir.path, writes_ok: true)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && result && cleaned.success
+}
+
+// GREEN: v1_rt.rs with v1_compiler:: in comments is permitted (it references
+// seed source files in prose; the check looks for v1_compiler:: as seed-linkage
+// tokens, and v1_rt.rs is excluded by containment test).
+test fn directory_with_v1_rt_containing_calls_passes() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let rt_file = Filesystem.Write(
+    path: concat(dir.path, "/v1_rt.rs"),
+    content: "// Mirrors the seed crate's v1_compiler::lookup interface.\npub fn lookup(key: String) -> String { unimplemented!() }\n"
+  )
+  let clean_subject = Filesystem.Write(
+    path: concat(dir.path, "/std_logic.rs"),
+    content: "pub enum Foo { A, B }\n"
+  )
+  let result = rt_file.success && clean_subject.success
+    && slbu_check_no_seed_crate_refs(src_dir: dir.path, writes_ok: true)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && result && cleaned.success
+}
