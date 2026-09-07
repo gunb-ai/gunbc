@@ -1490,6 +1490,27 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
         "",
     ),
     (
+        "test.claim.decl_ref_keyed_read_agreement_witness_test",
+        "keyed_and_population_routes_agree_on_declaration_absent",
+        "test.fixture.decl_facts_reflection.specimens",
+        "no_such_declaration_KEYED_RED",
+        "",
+    ),
+    (
+        "test.claim.decl_ref_keyed_read_agreement_witness_test",
+        "keyed_and_population_routes_agree_on_field_absent",
+        "test.fixture.decl_facts_reflection.specimens",
+        "disposition_scaffold",
+        "no_such_field_KEYED_RED",
+    ),
+    (
+        "test.claim.decl_ref_keyed_read_agreement_witness_test",
+        "keyed_and_population_routes_agree_on_module_absent",
+        "synthetic.keyed_read_module_absent_RED",
+        "anything",
+        "",
+    ),
+    (
         "test.claim.long.decl_ref_resolution_witness_test",
         "decl_ref_refuses_ambiguous_binding",
         "v2.std.node",
@@ -2026,11 +2047,6 @@ pub fn citation_debt_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// corpus run reported all four controls as ordinary refusals, which caught the claim. A false
 /// statement inside the carrier built to stop false statements is the specimen this change
 /// exists to make impossible; recorded here rather than quietly corrected.
-/// EMPTY AS OF 2026-08-26, AND EMPTY IS NOT DEAD. All four rows named citations inside
-/// `v2.lens.cited_symbol_resolution`, and the comment above them said they "delete with the
-/// lens, not before it". This change is that deletion, so emptying the roster is the scheduled
-/// event: with the lens gone every row would report `PlantedControlNoLongerRefuses` — the
-/// inverse arm working, not a regression.
 ///
 /// THOSE EMPTIED ROWS WERE TESTS OF THE CITATION WALL. A controlled fixture authoring both
 /// input and expected population is the stronger oracle (§5); a planted row over the live
@@ -2043,7 +2059,9 @@ pub fn citation_debt_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// citation that used to refuse now resolves) and they do not share a name, a kind, or a
 /// diagnostic: when a planted control resolves, the control has lost its discriminating
 /// power; when a trigger citation resolves, the `OutsideModeledGuarantee` stamp has fired as
-/// designed. One message cannot say both.
+/// designed. One message cannot say both. Main's #10718-shaped four-row occupancy of this
+/// roster is declined for that reason: the three stamps belong on the trigger roster, and
+/// `nonexistent_capability_ref` belongs on `FIXTURE_CARRIER_CITATION_EXEMPTIONS`.
 ///
 /// THE ROSTER STAYS AND THE ARM STAYS. Occupancy is zero. The arm's own evidence lives in
 /// `planted_control_findings_against` fixtures, not in this constant.

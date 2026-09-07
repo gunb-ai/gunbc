@@ -91,7 +91,6 @@ import gunbc.live_deploy.emit {
   path_parent_dir,
   RevisionBoundAtEmission,
   live_deploy_systemd_unit_for,
-  live_deploy_tree_sync_unit_for,
   deployment_ensure_dependency_script,
   emit_deploy_teardown_dependency_refusal,
   live_deploy_wholesale_refused_poison,
@@ -343,24 +342,16 @@ test fn retract_script_stays_within_ci_runner_grants() -> Bool {
     && !string_contains(s: retract, pattern: "rsync")
 }
 
-test fn apply_script_and_tree_sync_unit_stay_within_ci_runner_grants() -> Bool {
+// REPOINTED WHEN THE RSYNC ROUTE WAS DELETED. This asserted the CI-runner grant boundary over the
+// apply script AND pinned the rsync unit's own bytes. The rsync unit is no longer written, so the
+// unit half lost its subject; the grant half did not, and it is what the claim was for. It also
+// gets STRICTLY STRONGER: `rsync` is now forbidden anywhere in the emission rather than only in the
+// forms the old unit did not use, because no route emits it at all.
+test fn apply_script_stays_within_ci_runner_grants() -> Bool {
   let apply = witness_apply_script()
-  let unit = live_deploy_tree_sync_unit_for(spec: deployment_spec_srv1())
   !string_contains(s: apply, pattern: "chown")
     && !string_contains(s: apply, pattern: "rmdir")
-    && !string_contains(s: apply, pattern: "rsync -a ")
-    && !string_contains(s: apply, pattern: "\nrsync")
-    && string_contains(s: unit, pattern: "Type=oneshot")
-    && string_contains(s: unit, pattern: "User=briansrls")
-    && string_contains(s: unit, pattern: "EnvironmentFile=/etc/gunbc-tree-sync.env")
-    && string_contains(s: unit, pattern: join([
-      "ExecStart=/usr/bin/rsync -rlpt --delete ", deployed_tree_rsync_exclude_flags(),
-      " \"$\{GUNBC_TREE_SRC\}/\" /opt/gunbc/gunbc/",
-    ], ""))
-    && !string_contains(s: unit, pattern: "$\{GUNBC_TREE_SRC\}/.git/")
-    && !string_contains(s: unit, pattern: "--include=/config")
-    && !string_contains(s: unit, pattern: "rsync -a")
-    && string_contains(s: apply, pattern: unit)
+    && !string_contains(s: apply, pattern: "rsync")
     && string_contains(s: apply, pattern: "gunbc deployed-repository git-native convergence")
     && string_contains(s: apply, pattern: concat("--arg candidate=", deploy_witness_release_revision as String))
     && string_contains(s: apply, pattern: "--function repository_converge_srv1_owner_wet")
@@ -383,7 +374,7 @@ fn transports_git_metadata_as_files(unit: String) -> Bool {
 test fn git_metadata_file_transport_is_present_in_the_legacy_specimen_and_absent_from_emission() -> Bool {
   let legacy = "ExecStart=/usr/bin/rsync --include=/HEAD --include=/objects/*** --include=/refs/*** \"$\{GUNBC_TREE_SRC\}/.git/\" /opt/gunbc/gunbc/.git/"
   transports_git_metadata_as_files(unit: legacy)
-    && !transports_git_metadata_as_files(unit: live_deploy_tree_sync_unit_for(spec: deployment_spec_srv1()))
+    && !transports_git_metadata_as_files(unit: witness_apply_script())
 }
 
 fn later_segments_contain_third_after_second(segments: List<String>, second: String, third: String) -> Bool {
