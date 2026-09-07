@@ -1,7 +1,7 @@
 module test.claim.emission_provenance_test
 
 import std.content_hash { as_content_hash_structural, content_hash_atom }
-import std.decl_ref { decl_ref, declaration_ref_eq }
+import std.decl_ref { decl_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted }
 import std.types { NonEmptyStr }
 import std.emission_provenance {
@@ -176,7 +176,7 @@ test fn emission_combined_read_preserves_content_order_and_origin_multiplicity()
     && result.origins == emission_contribution_origins(contribution: contribution)
     && result.source == "ABCD" && match result.origins {
     EmissionOriginsIncomplete { observed, missing } =>
-      (observed |> map(origin => origin.decl_name) |> join(separator: "|")) == "root|empty|leaf|nested|leaf"
+      (observed |> map(origin => declaration_ref_display_key(ref: origin)) |> join(separator: "|")) == "fixture.runtime::root|fixture.runtime::empty|fixture.runtime::leaf|fixture.runtime::nested|fixture.runtime::leaf"
         && declaration_ref_eq(a: missing.head.producer, b: unknown)
         && missing.head.cause == ("first" as NonEmptyStr)
         && (missing.tail |> count == 1)
