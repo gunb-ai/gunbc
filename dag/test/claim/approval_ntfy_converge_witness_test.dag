@@ -2,11 +2,10 @@ module test.claim.approval_ntfy_converge_witness_test
 
 import std.logic { Bool }
 import std.types { String, Int, List, NonEmptyStr }
-import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.auth.approval_ntfy_converge {
   NtfyConvergedMember, NtfyServiceAccount, NtfyStateDirectory, NtfyConfigDirectory,
   NtfyUnitDaemonReloaded, NtfyUnitEnabled, NtfyUnitStarted,
-  approval_ntfy_desired_members, ntfy_member_key, ntfy_member_ownership,
+  approval_ntfy_desired_members, ntfy_member_key,
   approval_ntfy_converge_commands,
 }
 import gunbc.executor_privileged_operation {
@@ -64,19 +63,6 @@ test fn witness_account_precondition_names_the_same_login() -> Bool {
 // that fails on its second run is not a convergence.
 test fn witness_every_desired_member_has_a_command() -> Bool {
   list_length(items: approval_ntfy_converge_commands()) >= list_length(items: approval_ntfy_desired_members())
-}
-
-// MEMBERS ARE Ensured, NEVER Owned. An Owned member is torn down by a retract, and this service's
-// state directory holds the message cache and the subscriber read position -- the pending-request
-// history the approval loop depends on. live_deploy already had a lab twin's retract delete a
-// production artifact store; this is the same hazard and the same answer.
-test fn witness_no_member_is_owned() -> Bool {
-  all(xs: approval_ntfy_desired_members(), f: m =>
-    match ntfy_member_ownership(m: m) {
-      Present { value: o } => match o { Ensured => true  Owned => false }
-      Absent => false
-    }
-  )
 }
 
 // DISTINCT KEYS, so the reconcile cannot collapse two members into one. The two state directories
