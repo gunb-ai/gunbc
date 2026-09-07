@@ -85,8 +85,8 @@ type MqttTransportSecurity
   = MqttPlaintext
   | MqttOverTls
 
-data mqtt_plaintext_default_port: Port = 1883 as Port
-data mqtt_tls_default_port: Port = 8883 as Port
+data mqtt_plaintext_default_port: Port = 1883
+data mqtt_tls_default_port: Port = 8883
 
 fn mqtt_default_port(security: MqttTransportSecurity) -> Port {
   match security {

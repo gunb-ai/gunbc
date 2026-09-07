@@ -2,7 +2,8 @@ module gunbc.fleet_printer_access
 
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import product.placement_supply { PhysicalAssetIdentity }
-import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending, secret_ref_secret_resource }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending, secret_ref_secret_resource, gcp_resource_names_this_secret }
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_number }
 import extdeps.uri { Uri, uri_https }
 import gunbc.fleet_asset_identity { printer_01, printer_02 }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
@@ -410,11 +411,32 @@ func observe_printer_secret_container(
 // VERSION IS STILL EXCLUDED FROM THE COMPARISON, for the reason the old receipt join recorded: the
 // desired identity says pending precisely because it does not know the version, and the verification
 // is the authority that supplies it. Comparing versions would make the join unsatisfiable.
+// THE FOURTH SITE OF THE PROJECT-NUMBER SPELLING BUG, AND THE ONE THAT SURVIVED THREE REPAIRS.
+//
+// The left side is projected from a verification's exact_ref, which this process obtained from
+// AddVersion's RESPONSE -- so it is the project NUMBER spelling GCP canonicalizes to. The right side
+// was secret_ref_secret_resource, the ID spelling a caller ADDRESSES with. A live run reached here
+// after a successful delete, create, addVersion and access: the credential was provisioned and
+// healthy, and delivery then reported "no provisioning receipt records which version holds it" about
+// a version this same process had just written and read back.
+//
+// THAT IS THE WORST PLACE THIS CLASS CAN LAND, because the arm it lands on is the one that must
+// never provision -- it exists to refuse rather than recreate a secret something may have deleted --
+// so the failure presents as a principled refusal rather than as an error, and the run reports a
+// missing record instead of a mismatched spelling.
+//
+// The join now asks the question it always meant: does this resource NAME this secret, in either
+// fully-qualified spelling of this project. Deliberately not a suffix comparison, which would accept
+// projects/<any-other-project>/secrets/<same-name>.
 fn verification_names_secret(verified: VerifiedVersionForAttempt, desired: SecretRef) -> Bool {
   match sm_resolved_version_secret_resource(identity: verified_exact_ref(v: verified)) {
     SmVersionSecretNotAVersionResource { supplied: _ } => false
     SmVersionSecretProjected { secret_resource: r } =>
-      (r as String) == secret_ref_secret_resource(ref: desired)
+      gcp_resource_names_this_secret(
+        returned: r as String,
+        project: desired.project,
+        project_number: fleet_secrets_project_number,
+        secret: desired.secret)
   }
 }
 

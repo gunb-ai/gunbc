@@ -1,0 +1,443 @@
+module gunbc.fleet.printer_job_start
+
+import std.types { NonEmptyStr, String, Bool, Secret, FilePath, List }
+import std.resources { Network }
+import extdeps.shell
+import extdeps.exec.command { ArgvCommand, CommandTransport, LocalExec, env_prefixed_command }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.command_runner { run_shell_command_capture }
+import extdeps.tools.curl { curl_download_command }
+import extdeps.tools.sha256sum {
+  Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell,
+}
+import extdeps.oasis.mqtt { MqttEndpoint, MqttTopic, MqttQos }
+import extdeps.printing.bambu_lab_lan_protocol {
+  bambu_request_topic, bambu_lan_mqtt_endpoint, bambu_lan_mqtt_user,
+  bambu_start_command, bambu_start_payload_json, bambu_start_command_qos,
+  bambu_printer_ca_bundle_source, bambu_printer_ca_bundle_sha256,
+}
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { uri_wire }
+import extdeps.tools.mosquitto_pub { mosquitto_publish_command }
+import gunbc.auth.mosquitto_options_binding {
+  MosquittoOptionsBinding, MosquittoOptionsPlacement, MosquittoOptionsPlaced,
+  MosquittoOptionsRefused, MosquittoOptionsRefusedResidueRemains,
+  place_mosquitto_options_privately, shred_mosquitto_options_binding, mosquitto_options_env,
+}
+import product.placement_supply { PhysicalAssetIdentity }
+import gunbc.fleet_physical_inventory { PhysicalAsset }
+import product.printed_chassis.manufacturing_manifest { owned_printer_inventory }
+import gunbc.auth.access_token_source { AccessTokenSource }
+import gunbc.secret_provision_actuator { VerifiedVersionForAttempt }
+import gunbc.auth.secret_ref_credential {
+  SecretCredentialFetch, SecretCredentialReady, SecretCredentialAccessUpsertRequired,
+  SecretCredentialWireDecodeRefused, SecretCredentialFetchRefused,
+  SecretCredentialResolvedVersionMismatch,
+  fetch_secret_ref_credential,
+}
+import gunbc.fleet.printer_project_delivery {
+  PrinterAddressLookup, PrinterAddressFound, PrinterAddressUnknown,
+  PrinterAddressAmbiguous, PrinterAddressWrongClass, printer_endpoint_address,
+}
+import gunbc.fleet_printer_access {
+  PrinterCredentialResolution, PrinterCredentialProvisioned,
+  PrinterCredentialObservationRefused, PrinterCredentialLocusUndeclared,
+  PrinterCredentialLocusConflicted, PrinterCredentialMaterializationVanished,
+  PrinterCredentialVersionUnrecorded, PrinterCredentialProvisionRequired,
+  PrinterCredentialProvisionAmbiguous, observe_printer_secret_container,
+}
+
+// THE LEG THAT STARTS A JOB, WHICH IS THE HALF OF PRINTING THAT WAS NEVER IN THE SUBSTRATE.
+//
+// gunbc.fleet.printer_project_delivery puts a sliced project on the machine over FTPS and stops
+// there, because a Bambu printer in LAN-only mode does not begin a job when a file lands on its
+// card. Something has to publish a start command over MQTT, and until now that something was a
+// hand-written client run beside the modeled path -- the out-of-band actuation DESIGN section 6
+// names, and the reason the operator's standing request was that the whole chain run through .dag.
+//
+// THE ORDER IS A REAL DEPENDENCY AND NOT A CONVENTION. The start command names a file by SD-card
+// path; it does not carry the payload. Publishing it before delivery completes asks the printer to
+// print a file that is not there, and the printer's refusal arrives on the report topic rather than
+// as a failed publish -- so the publish would succeed and the job would not exist. That is why this
+// function takes the remote name from a delivery RECEIPT rather than as a caller-supplied string:
+// the only way to name a file here is to have moved it.
+//
+// THE CREDENTIAL PATH IS THE SAME ONE DELIVERY WALKS, AND DELIBERATELY THE SAME CODE.
+// printer -> locus -> Secret Manager -> owner-only binding -> publish -> shred. It is not a second
+// resolution written to look like the first: printer_endpoint_address and
+// observe_printer_secret_container are imported from the delivery module rather than re-derived,
+// because two functions answering "where is this printer and which secret holds its code" is the
+// meaning fork that lets one be hardened while the other stays wrong. What differs is only what the
+// credential is spent on, and that difference is one argv builder.
+//
+// gunbc.fleet_printer_access FORBIDS FALLING BACK TO THE OPERATOR'S FILES ON srv2 WHEN RESOLUTION
+// REFUSES, and this module has no arm that does. Every refusal below ends the attempt.
+
+type PrinterSerialLookup
+  = PrinterSerialFound { serial: NonEmptyStr }
+  | PrinterSerialUnknown { printer: PhysicalAssetIdentity }
+  | PrinterSerialUnrecorded { printer: PhysicalAssetIdentity }
+  | PrinterSerialAmbiguous { printer: PhysicalAssetIdentity }
+
+// THE TOPIC IS KEYED ON THE SERIAL, SO THE SERIAL IS RESOLVED FROM THE INVENTORY RATHER THAN PASSED
+// IN. A caller-supplied serial beside a caller-supplied printer identity is the same two-facts-free-
+// to-disagree hole the delivery module already found and closed on its endpoint: it would let
+// `printer_02 + printer_01's serial` fetch one machine's access code and address the other. The
+// roster is joined on the identity, and a printer with no recorded serial refuses rather than
+// falling back to a spelling derived by convention.
+//
+// owned_printer_inventory LIVES IN A PRODUCT MODULE AND IS CONSUMED FROM HERE RATHER THAN COPIED.
+// Its home is arguable -- it reads as a fleet fact -- but the only structural law on the import
+// graph is acyclicity, and a second roster of owned printers would be the duplication that actually
+// costs something. Relocating it is a separate change with its own census.
+fn printer_serial(printer: PhysicalAssetIdentity) -> PrinterSerialLookup {
+  let matches = owned_printer_inventory |> filter(a => a.identity == printer)
+  match matches |> first {
+    Absent => PrinterSerialUnknown { printer: printer }
+    Present { value: asset } =>
+      if (matches |> length) != 1 {
+        PrinterSerialAmbiguous { printer: printer }
+      } else {
+        match asset.physical_serial {
+          Absent => PrinterSerialUnrecorded { printer: printer }
+          Present { value: s } => PrinterSerialFound { serial: s }
+        }
+      }
+  }
+}
+
+// THE PINNED CA, FETCHED AND VERIFIED BY DIGEST BEFORE IT IS TRUSTED.
+//
+// The transport must verify the printer's certificate, and the CA the PRINTER SERVES cannot be the
+// thing that verifies it -- that accepts any peer presenting a consistent chain of its own making.
+// So the bundle comes from an independent distributor and its bytes are checked against a digest
+// this repository recorded, which is what makes the pin evidence rather than a download.
+//
+// THE SEAL IS WHAT THE ARGV BUILDER REQUIRES. If mosquitto_publish_command took a bare FilePath, a
+// caller could hand it any file -- including one written from the connection it is about to verify
+// -- and the emitted argv would be identical to the safe one. That is exactly the gap
+// gunbc.auth.netrc_binding records for credentials, in its other direction: there the sealed thing
+// is a secret, here it is a trust anchor, and in both cases an unsealed path makes the guarantee
+// unobservable at the call site.
+type PinnedCaBundle sole_constructor {
+  path: FilePath
+}
+
+fn pinned_ca_bundle_path(bundle: PinnedCaBundle) -> FilePath { bundle.path }
+
+type CaBundleAcquisition
+  = CaBundlePinned { bundle: PinnedCaBundle, workspace: FilePath }
+  | CaBundleRefused { cause: NonEmptyStr }
+  | CaBundleRefusedResidueRemains { cause: NonEmptyStr }
+
+// A DIGEST MISMATCH REFUSES AND DOES NOT RETRY ANOTHER SOURCE. There is no second source to fall
+// back to: the alternatives are the printer's own chain, which is circular, and skipping
+// verification, which is the absorbing fallback DESIGN section 5 forbids -- a failure arm that
+// widens instead of stopping. The bytes either match what was recorded or the leg ends.
+func acquire_pinned_ca_bundle() -> CaBundleAcquisition
+  uses net: Network
+{
+  let created = shell.Mktemp.Dir()
+  if created.success == false {
+    CaBundleRefused { cause: "no workspace could be created for the pinned CA bundle" }
+  } else {
+    let destination = concat(created.path as String, "/printer_ca.pem")
+    match run_shell_command_capture(
+      command: curl_download_command(
+        url: uri_wire(uri: bambu_printer_ca_bundle_source.uri) as String,
+        destination: destination),
+      transport: LocalExec
+    ) {
+      ProcessRefused { exit_code: _, stderr: stderr } =>
+        ca_bundle_fetch_refusal(
+          workspace: created.path as FilePath,
+          what_failed: concat("the pinned CA bundle could not be downloaded: ", stderr))
+      ProcessOutputAbsent =>
+        verify_pinned_ca_bundle(workspace: created.path as FilePath, destination: destination)
+      ProcessOutputPresent { text: _ } =>
+        verify_pinned_ca_bundle(workspace: created.path as FilePath, destination: destination)
+    }
+  }
+}
+
+func verify_pinned_ca_bundle(workspace: FilePath, destination: String) -> CaBundleAcquisition
+{
+  match sha256sum_file_digest_via_shell(path: destination as NonEmptyStr) {
+    Sha256FileDigestUnavailable { path: _, reason: reason } =>
+      ca_bundle_fetch_refusal(
+        workspace: workspace,
+        what_failed: concat("the downloaded CA bundle could not be digested: ", reason))
+    Sha256FileDigest { digest: digest } =>
+      if (digest.hex as String) == (bambu_printer_ca_bundle_sha256 as String) {
+        CaBundlePinned {
+          bundle: PinnedCaBundle { path: destination as FilePath },
+          workspace: workspace,
+        }
+      } else {
+        ca_bundle_fetch_refusal(
+          workspace: workspace,
+          what_failed: "the downloaded CA bundle does not match the recorded digest, so it is not the anchor this repository verified against the certificate the printer serves")
+      }
+  }
+}
+
+func ca_bundle_fetch_refusal(workspace: FilePath, what_failed: String) -> CaBundleAcquisition {
+  if shell.Remove.RecursiveForce(path: workspace).success {
+    CaBundleRefused { cause: what_failed as NonEmptyStr }
+  } else {
+    CaBundleRefusedResidueRemains {
+      cause: concat(what_failed, "; the workspace could not be removed either") as NonEmptyStr,
+    }
+  }
+}
+
+// THE START RECEIPT NAMES WHAT WAS PUBLISHED AND WHERE, and is minted only inside the arm of a real
+// publish that exited zero. A publish is not a print: mosquitto_pub returning zero establishes that
+// the broker accepted the packet, and the printer reports whether it accepted the JOB on a separate
+// topic this leg does not read. The receipt is named for what it can support.
+type PrintStartReceipt sole_constructor {
+  printer: PhysicalAssetIdentity
+  topic: MqttTopic
+  remote_name: NonEmptyStr
+  sequence_id: NonEmptyStr
+}
+
+// A LOST CONNECTION IS NOT A REFUSAL, AND THIS ARM EXISTS BECAUSE THE FIRST WET RUN GOT IT WRONG IN
+// THE DIRECTION THAT MATTERS.
+//
+// The publish came back exit 7, "The connection was lost", after two minutes, and this module
+// reported PrintStartRefused -- "the start command was not published". The printer was in fact
+// printing: gcode_state RUNNING on the exact digest-named .3mf the run had just uploaded. At QoS 1 a
+// client waits for a PUBACK it may never see, and the broker may have taken ownership of the message
+// long before the socket died, so a transport loss says nothing whatever about whether the action
+// occurred. Reporting it as a refusal is the same commit-ambiguity collapse the mutation path
+// already refuses to make for a 5xx, in the more dangerous direction: it asserts that nothing
+// happened, which is precisely the premise a retry is built on.
+//
+// AND THE RETRY IS THE HARM. This module has no automatic one, and start_may_be_replayed exists to
+// keep it that way: a second project_file on a machine already printing is the duplicate actuation
+// that AtLeastOnce admits and that nothing in the modeled Bambu protocol is known to suppress. So
+// the unknown arm is terminal, exactly as the deletion's is, and it is reconciled by READING the
+// report topic rather than by publishing again.
+//
+// THE EXIT CODE IS NOT CONSULTED, DELIBERATELY. mosquitto_pub does distinguish an auth failure from
+// a lost connection, and a table mapping its codes to "definitely did not publish" would let this
+// arm shrink -- but that table is one I have not measured, and inferring it from the shape of the
+// situation is what produced the wrong certificate claim two files over. Every non-zero exit is
+// unknown until something establishes otherwise.
+type PrintStart
+  = PrintStartPublished { receipt: PrintStartReceipt }
+  | PrintStartOutcomeUnknown { printer: PhysicalAssetIdentity, cause: NonEmptyStr }
+  | PrintStartOutcomeUnknownResidueRemains { printer: PhysicalAssetIdentity, cause: NonEmptyStr }
+  | PrintStartRefused { printer: PhysicalAssetIdentity, cause: NonEmptyStr }
+  | PrintStartPublishedCleanupRefused { receipt: PrintStartReceipt, cause: NonEmptyStr }
+  | PrintStartRefusedResidueRemains { printer: PhysicalAssetIdentity, cause: NonEmptyStr }
+
+// NO ARM AUTHORIZES A SECOND PUBLISH, and this is written as a total function over the coproduct so
+// that adding an arm without deciding its replay semantics does not compile.
+fn start_may_be_replayed(o: PrintStart) -> Bool {
+  match o {
+    PrintStartPublished { receipt: _ } => false
+    PrintStartOutcomeUnknown { printer: _, cause: _ } => false
+    PrintStartOutcomeUnknownResidueRemains { printer: _, cause: _ } => false
+    PrintStartRefused { printer: _, cause: _ } => false
+    PrintStartPublishedCleanupRefused { receipt: _, cause: _ } => false
+    PrintStartRefusedResidueRemains { printer: _, cause: _ } => false
+  }
+}
+
+// THE SEQUENCE ID IS THE CALLER'S, NOT INVENTED HERE. Bambu echoes it on the report topic, so it is
+// the only handle an observer has for joining a report back to the command that caused it. A value
+// minted inside this function would be unknown to the caller the moment the function returned.
+func start_print_on_printer(
+  printer: PhysicalAssetIdentity,
+  remote_name: NonEmptyStr,
+  sequence_id: NonEmptyStr,
+  token_source: AccessTokenSource,
+  materializations: List<VerifiedVersionForAttempt>,
+) -> PrintStart
+  uses net: Network
+{
+  match printer_serial(printer: printer) {
+    PrinterSerialUnknown { printer: p } =>
+      PrintStartRefused { printer: p,
+        cause: "this printer is not in the owned inventory, so the request topic its serial keys cannot be derived" }
+    PrinterSerialUnrecorded { printer: p } =>
+      PrintStartRefused { printer: p,
+        cause: "this printer has no recorded serial, and the MQTT request topic is keyed on the serial: the start refuses rather than addressing a topic spelled by convention" }
+    PrinterSerialAmbiguous { printer: p } =>
+      PrintStartRefused { printer: p,
+        cause: "more than one inventory row names this printer, so its serial is ambiguous and the start refuses rather than taking one by list order" }
+    PrinterSerialFound { serial: serial } =>
+  match printer_endpoint_address(printer: printer) {
+    PrinterAddressUnknown { printer: p } =>
+      PrintStartRefused { printer: p,
+        cause: "no LAN endpoint is recorded for this printer in gunbc.fleet_intent_network" }
+    PrinterAddressAmbiguous { printer: p } =>
+      PrintStartRefused { printer: p,
+        cause: "more than one LAN fabrication endpoint matches this printer; the roster is ambiguous and the start refuses rather than picking one by list order" }
+    PrinterAddressWrongClass { printer: p } =>
+      PrintStartRefused { printer: p,
+        cause: "an endpoint names this printer but is not a LAN fabrication appliance, so it is not the control channel and the start refuses rather than authenticating to it" }
+    PrinterAddressFound { address: lan_address } =>
+  match observe_printer_secret_container(
+    printer: printer, token_source: token_source, materializations: materializations
+  ) {
+    PrinterCredentialObservationRefused { printer: p, cause: cause } =>
+      PrintStartRefused { printer: p, cause: cause }
+    PrinterCredentialLocusUndeclared { printer: p } =>
+      PrintStartRefused { printer: p,
+        cause: "this printer has no access-code locus declared in gunbc.fleet_printer_access, so there is no secret to observe and the start refuses rather than reading the operator's file on srv2" }
+    PrinterCredentialLocusConflicted { printer: p, matches: _ } =>
+      PrintStartRefused { printer: p,
+        cause: "more than one access-code locus is declared for this printer, so which secret holds its code is ambiguous and the start refuses" }
+    PrinterCredentialMaterializationVanished { printer: p, exact: _ } =>
+      PrintStartRefused { printer: p,
+        cause: "a provisioning receipt records this printer's access code, but Secret Manager answers 404 for the container: the start refuses rather than treating a deletion as a printer that was never onboarded" }
+    PrinterCredentialVersionUnrecorded { printer: p, container: _ } =>
+      PrintStartRefused { printer: p,
+        cause: "this printer's access code secret exists but no provisioning receipt records which version holds it, so the start refuses rather than guessing a version" }
+    PrinterCredentialProvisionRequired { printer: p, desired: _ } =>
+      PrintStartRefused { printer: p,
+        cause: "this printer's access code has not been provisioned, so the start refuses: provisioning is its own operation and is not performed as a side effect of starting a job" }
+    PrinterCredentialProvisionAmbiguous { printer: p, matches: _ } =>
+      PrintStartRefused { printer: p,
+        cause: "more than one provisioning receipt names this printer's secret, so the exact version is ambiguous and the start refuses" }
+    PrinterCredentialProvisioned { exact: exact_ref } =>
+      match fetch_secret_ref_credential(secret_ref: exact_ref, token_source: token_source) {
+        SecretCredentialAccessUpsertRequired { plan: _ } =>
+          PrintStartRefused { printer: printer,
+            cause: "the access code could not be read: Secret Manager access has not been granted to this identity" }
+        SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
+          PrintStartRefused { printer: printer,
+            cause: "the Secret Manager response for the access code did not decode" }
+        SecretCredentialResolvedVersionMismatch { requested: requested, resolved: resolved } =>
+          PrintStartRefused { printer: printer,
+            cause: concat(concat("the access code fetch asked for ", requested),
+              concat(" and the service answered about ", concat(resolved,
+                "; the credential this start would authenticate with is not the one the receipt verified"))) as NonEmptyStr }
+        SecretCredentialFetchRefused { reason: reason } =>
+          PrintStartRefused { printer: printer, cause: reason }
+        SecretCredentialReady { credential: credential, resolved_version: _ } =>
+          publish_start_with_credential(
+            printer: printer, serial: serial, lan_address: lan_address,
+            remote_name: remote_name, sequence_id: sequence_id, credential: credential)
+      }
+  }
+  }
+  }
+}
+
+// THE CA IS ACQUIRED AFTER THE CREDENTIAL AND BEFORE THE BINDING, which is the ordering that leaves
+// the least on disk. Fetching it first means every credential refusal above also has to clean up a
+// downloaded bundle; placing the binding first means every CA refusal has to shred an access code.
+// The two brackets are therefore nested rather than parallel, innermost being the secret.
+func publish_start_with_credential(
+  printer: PhysicalAssetIdentity,
+  serial: NonEmptyStr,
+  lan_address: NonEmptyStr,
+  remote_name: NonEmptyStr,
+  sequence_id: NonEmptyStr,
+  credential: Secret,
+) -> PrintStart
+  uses net: Network
+{
+  match acquire_pinned_ca_bundle() {
+    CaBundleRefused { cause: cause } => PrintStartRefused { printer: printer, cause: cause }
+    CaBundleRefusedResidueRemains { cause: cause } =>
+      PrintStartRefusedResidueRemains { printer: printer, cause: cause }
+    CaBundlePinned { bundle: bundle, workspace: workspace } =>
+      match place_mosquitto_options_privately(
+        login: bambu_lan_mqtt_user, password: credential
+      ) {
+        MosquittoOptionsRefused { cause: cause } => {
+          let dropped = shell.Remove.RecursiveForce(path: workspace).success
+          if dropped {
+            PrintStartRefused { printer: printer, cause: cause }
+          } else {
+            PrintStartRefusedResidueRemains { printer: printer,
+              cause: concat(cause as String, "; the CA workspace could not be removed either") as NonEmptyStr }
+          }
+        }
+        MosquittoOptionsRefusedResidueRemains { cause: cause } => {
+          let dropped = shell.Remove.RecursiveForce(path: workspace).success
+          PrintStartRefusedResidueRemains { printer: printer, cause: cause }
+        }
+        MosquittoOptionsPlaced { binding: binding } => {
+          endpoint = bambu_lan_mqtt_endpoint(host: lan_address)
+          topic = bambu_request_topic(serial: serial)
+          command = bambu_start_command(remote_name: remote_name)
+          outcome = run_shell_command_capture(
+            command: env_prefixed_command(
+              bindings: mosquitto_options_env(binding: binding),
+              command: mosquitto_publish_command(
+                endpoint: endpoint,
+                topic: topic as NonEmptyStr,
+                payload: bambu_start_payload_json(command: command, sequence_id: sequence_id),
+                qos: bambu_start_command_qos,
+                ca_bundle: pinned_ca_bundle_path(bundle: bundle))),
+            transport: LocalExec
+          )
+          let credential_shredded = shred_mosquitto_options_binding(binding: binding)
+          let workspace_dropped = shell.Remove.RecursiveForce(path: workspace).success
+          let cleaned = credential_shredded && workspace_dropped
+          match outcome {
+            ProcessRefused { exit_code: _, stderr: stderr } =>
+              start_refusal(printer: printer, stderr: stderr, cleaned: cleaned)
+            ProcessOutputAbsent =>
+              start_receipt(printer: printer, topic: topic, remote_name: remote_name,
+                sequence_id: sequence_id, cleaned: cleaned)
+            ProcessOutputPresent { text: _ } =>
+              start_receipt(printer: printer, topic: topic, remote_name: remote_name,
+                sequence_id: sequence_id, cleaned: cleaned)
+          }
+        }
+      }
+  }
+}
+
+// THE CLEANUP RESULT IS NOT COLLAPSED INTO SUCCESS OR FAILURE, for the reason the delivery module
+// already records: assigning the shred to `_` meant a completed publish whose access code stayed on
+// disk returned the clean arm. A published start with residue is neither, and is spelled as neither.
+fn start_receipt(
+  printer: PhysicalAssetIdentity,
+  topic: MqttTopic,
+  remote_name: NonEmptyStr,
+  sequence_id: NonEmptyStr,
+  cleaned: Bool,
+) -> PrintStart {
+  let receipt = PrintStartReceipt {
+    printer: printer, topic: topic, remote_name: remote_name, sequence_id: sequence_id,
+  }
+  if cleaned {
+    PrintStartPublished { receipt: receipt }
+  } else {
+    PrintStartPublishedCleanupRefused {
+      receipt: receipt,
+      cause: "the start command was published but the credential shred or the CA workspace removal did not complete",
+    }
+  }
+}
+
+// THE CAUSE NO LONGER CLAIMS THE COMMAND WAS NOT PUBLISHED, because that sentence was false on the
+// one run that produced it. It says what is actually known -- the client did not confirm -- and it
+// names the reconciliation, which is reading the report topic rather than publishing again.
+fn start_refusal(printer: PhysicalAssetIdentity, stderr: String, cleaned: Bool) -> PrintStart {
+  if cleaned {
+    PrintStartOutcomeUnknown {
+      printer: printer,
+      cause: concat(concat(
+        "the publish did not complete, so whether the printer received the start command is UNKNOWN and it may be printing: ",
+        stderr),
+        ". Reconcile by reading device/<serial>/report. Do NOT publish again: a second project_file on a machine already printing is a duplicate job.") as NonEmptyStr,
+    }
+  } else {
+    PrintStartOutcomeUnknownResidueRemains {
+      printer: printer,
+      cause: concat(concat(
+        "the publish did not complete AND the credential shred or CA workspace removal did not: ",
+        stderr),
+        ". Whether the printer received the start command is UNKNOWN and it may be printing; reconcile by reading the report topic, never by publishing again.") as NonEmptyStr,
+    }
+  }
+}

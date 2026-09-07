@@ -58,7 +58,7 @@ fn bambu_report_topic(serial: NonEmptyStr) -> MqttTopic {
 // rather than silently worked around. The printer presents a self-signed certificate for an IP
 // address, so a verifying client refuses; this is the same peer-verification situation the FTPS leg
 // already models and records, and it is a property of the DEVICE, not a preference of the caller.
-data bambu_lan_mqtt_port: Port = 8883 as Port
+data bambu_lan_mqtt_port: Port = 8883
 data bambu_lan_mqtt_user: NonEmptyStr = "bblp"
 
 fn bambu_lan_mqtt_endpoint(host: NonEmptyStr) -> MqttEndpoint {
@@ -103,11 +103,28 @@ fn bambu_start_command(remote_name: NonEmptyStr) -> BambuPrintStartCommand {
 // A START COMMAND IS PUBLISHED AT LEAST ONCE, AND THE CHOICE IS ARGUED RATHER THAN INHERITED.
 // AtMostOnce may be dropped silently by the broker, so a start command would never arrive and
 // nothing would report why. ExactlyOnce is what a caller reaches for to avoid a duplicate job, but
-// the printer's broker does not honour QoS 2 as an idempotence guarantee over PRINT COMMANDS -- it
-// governs delivery of the packet, not the semantics of the action -- so choosing it would buy a
-// guarantee that does not exist at the layer that matters. AtLeastOnce is therefore the honest
-// selection, and duplicate-start protection is the PRINTER's state machine refusing a second job
-// while one is running, which is an external fact this module observes rather than assumes.
+// QoS 2 governs delivery of the PACKET and not the semantics of the ACTION, so choosing it would
+// buy a guarantee that does not exist at the layer that matters -- and would read, at every call
+// site, as an exactly-once print guarantee. AtLeastOnce is therefore the honest selection.
+//
+// THE DUPLICATE RISK IS REAL AND UNRESOLVED, AND SAYING OTHERWISE IS WHAT THIS PARAGRAPH USED TO DO.
+// It claimed duplicate-start protection came from "the PRINTER's state machine refusing a second job
+// while one is running, which is an external fact this module observes rather than assumes." Nothing
+// here observed it. The cited wire reference establishes only that sequence_id is incremented and
+// echoed back; it does not establish sequence-id deduplication or a refused second start. That was a
+// justification supplied beside the thing it was meant to justify -- the same failure the netrc
+// module records one directory over -- and it would have hardened into an accidental exactly-once
+// guarantee that no layer provides.
+//
+// Nor is it cheaply measurable: the only test is to publish a second project_file while a job runs
+// and watch, which IS the duplicated actuation the claim was supposed to rule out. So the two facts
+// stay separate and the second stays open:
+//   SUPPORTED -- one publish was accepted by the MQTT receiver.
+//   NOT SUPPORTED -- that this publication can cause at most one project_file action.
+// gunbc.fleet.printer_job_start therefore has no automatic retry on any arm, and its
+// start_may_be_replayed is false everywhere. Reading device/<serial>/report can establish what the
+// printer says happened; it cannot retroactively un-duplicate an actuation, which is why the wall is
+// "never republish" rather than "republish if the report looks wrong".
 data bambu_start_command_qos: MqttQos = AtLeastOnce
 
 fn bambu_start_payload_json(command: BambuPrintStartCommand, sequence_id: NonEmptyStr) -> String {
@@ -125,3 +142,37 @@ fn bambu_start_payload_json(command: BambuPrintStartCommand, sequence_id: NonEmp
 fn bool_json(b: Bool) -> String {
   if b { "true" } else { "false" }
 }
+
+// THE PRINTER'S CERTIFICATE IS ISSUED BY A REAL CA, AND THE FIRST DRAFT OF THIS LEG ASSUMED
+// OTHERWISE. The note above the endpoint said the machine presents a self-signed certificate that
+// cannot be chain-verified, so the transport should skip verification the way the FTPS leg does.
+// That was inference from the shape of the situation -- a consumer device on a LAN, addressed by IP
+// -- and it is wrong. Measured: the leaf is CN=<serial>, its issuer is
+// C=CN, O=BBL Technologies Co., Ltd, CN=BBL CA, and the printer serves the CA alongside it. What
+// openssl reports as "self-signed certificate in certificate chain" is the ROOT being self-signed,
+// which is true of every root CA and is not a statement about the leaf.
+//
+// So the honest transport VERIFIES, and the CA is pinned rather than trusted from the connection it
+// is meant to verify. Trusting the CA the printer itself served would be circular: it would accept
+// any peer that presented a consistent chain of its own making. The bundle is fetched from an
+// independent distributor -- OrcaSlicer ships Bambu's printer CAs so its own LAN transport can
+// verify them -- and the two were compared: the CA the printer served has SHA-256 fingerprint
+// 03:0B:CA:81:CE:CE:18:B7:EF:F3:CF:D2:B7:5D:09:D3:EF:CA:89:3B:C0:69:60:9E:37:FA:04:25:7F:E4:D8:40,
+// and a certificate with that exact fingerprint is present in the upstream bundle. The corroboration
+// is what makes the pin real; without it the digest below would only record what this repository
+// downloaded.
+//
+// THE REF IS A COMMIT, NOT A BRANCH. A raw URL naming `main` resolves to different bytes over time,
+// so a digest pinned against it is a check that goes red on any upstream edit and tells the reader
+// nothing about whether the change mattered. The commit is the last one to touch this path, and
+// re-pinning is then a deliberate act with a diff to look at.
+data bambu_printer_ca_bundle_source: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "raw.githubusercontent.com/OrcaSlicer/OrcaSlicer/4e99a042bb53694353bca343783f1c35c3c94656/resources/cert/printer.cer"
+  }
+}
+
+data bambu_printer_ca_bundle_sha256: NonEmptyStr = "36f2bcee347ec7adce719b5fd350099591a4d3d0ec4e039c7019890d78e152a0"
+
+data bambu_ca_measured_fingerprint_sha256: NonEmptyStr = "030BCA81CECE18B7EFF3CFD2B75D09D3EFCA893BC069609E37FA04257FE4D840"
