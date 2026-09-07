@@ -14,7 +14,7 @@ import product.capacity.lease {
   QuiescenceFact, Quiescent, QuiescenceUnobserved, CapacityAfterExpiry, LeaseNotExpired, CapacityFreed, CapacityHeldPendingQuiescence, capacity_after_expiry,
 }
 import product.capacity.pool_events {
-  PoolEvent, PoolAcquired, PoolSettled, PoolReleased, PoolLapsed, PoolUpstreamObserved,
+  PoolEvent, PoolAcquired, PoolSettled, PoolReleased, PoolLapsed, PoolUpstreamObserved, PoolResetObserved,
   PoolFold, PoolFolded, PoolFoldRefused, pool_fold,
   SeatRequest, SeatProposal, SeatProposed, SeatRefused, propose_acquire, pool_event_wire_text, pool_event_decode, PoolEventDecode, PoolEventDecoded, PoolEventUndecodable,
   grant_from_admission,
@@ -168,6 +168,7 @@ test fn every_pool_event_kind_round_trips_through_its_wire_and_junk_is_refused()
     PoolReleased { reference: "r" as NonEmptyStr, reason: "done" as NonEmptyStr },
     PoolLapsed,
     PoolUpstreamObserved { remaining: 500, term_seconds: 3300 },
+    PoolResetObserved { reset_at: 7200 },
   ]
   all(kinds, k => {
     let env = w_env(id: "x", parent: "p", payload: k, at: 42)

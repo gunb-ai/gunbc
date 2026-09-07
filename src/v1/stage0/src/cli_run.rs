@@ -19393,11 +19393,18 @@ pub fn handle_serve(
                 // Idle or cleanly-closed connection: no request was made, so the
                 // connection is dropped without a response.
                 Ok(None) => {}
-                Ok(Some((method, path, body))) => {
+                Ok(Some((method, path, body, tailscale_identity))) => {
                     let args: Vec<(Option<String>, v1_interpreter::Value)> = vec![
                         (Some("method".to_string()), str_value(method)),
                         (Some("path".to_string()), str_value(path)),
                         (Some("body".to_string()), str_value(body)),
+                        // Empty when the header was absent. The `.dag` side refuses on empty
+                        // rather than treating it as an anonymous caller, so a deployment that
+                        // stopped routing through the tailscale proxy fails closed.
+                        (
+                            Some("tailscale_identity".to_string()),
+                            str_value(tailscale_identity),
+                        ),
                         // Captured once above and cloned per request: the value
                         // is fixed for the process lifetime, so no request can
                         // observe a different release than any other request.
@@ -19528,9 +19535,30 @@ pub fn handle_serve(
 /// request: Resource temporarily unavailable (os error 11)" to the operator.
 /// "The client sent something malformed" and "the client has not spoken yet" are
 /// different facts with different remedies; only the first is a 400.
+/// The one header this seam extracts beyond Content-Length, and the reason it is extracted HERE
+/// rather than handed to `.dag` as a general header bag.
+///
+/// `tailscale serve` injects the authenticated tailnet identity into proxied requests. That value
+/// is the recipient authentication for the approval loop: a signed capability establishes WHAT is
+/// being decided, and this establishes WHO is deciding, so a link that leaks to someone unrelated
+/// is useless to them. Passing one named value rather than every header is deliberate — a general
+/// bag would let any handler read any client-supplied header, and the fact this server needs is
+/// exactly one.
+///
+/// A DUPLICATE IS REFUSED, exactly as duplicate Content-Length is, and for the same class of
+/// reason: with two values present, the seam and any downstream reader can disagree about which
+/// one is authoritative, and header smuggling is precisely the technique of making them disagree.
+///
+/// THE VALUE IS ONLY MEANINGFUL IF THE PROXY IS THE ONLY PATH TO THIS SOCKET. Anything that can
+/// connect directly can send this header itself. That is a deployment property — bind to loopback,
+/// let `tailscale serve` be the only route — and it is not established by this parse. The `.dag`
+/// side treats an absent value as a refusal rather than as "unknown", so the failure mode of a
+/// misconfigured deployment is a closed door rather than an open one.
+const SERVE_TAILSCALE_IDENTITY_HEADER: &str = "tailscale-user-login";
+
 fn serve_read_request(
     stream: &mut std::net::TcpStream,
-) -> Result<Option<(String, String, String)>, String> {
+) -> Result<Option<(String, String, String, String)>, String> {
     use std::io::{BufRead, Read};
     const MAX_HEAD: usize = 16 << 10;
     const MAX_BODY: usize = 1 << 20;
@@ -19577,6 +19605,7 @@ fn serve_read_request(
         ));
     }
     let mut content_length: Option<usize> = None;
+    let mut tailscale_identity: Option<String> = None;
     loop {
         let mut line = String::new();
         let n = reader
@@ -19608,6 +19637,15 @@ fn serve_read_request(
                         .map_err(|e| format!("bad Content-Length: {}", e))?,
                 );
             }
+            if name.eq_ignore_ascii_case(SERVE_TAILSCALE_IDENTITY_HEADER) {
+                if tailscale_identity.is_some() {
+                    return Err(format!(
+                        "duplicate {} header",
+                        SERVE_TAILSCALE_IDENTITY_HEADER
+                    ));
+                }
+                tailscale_identity = Some(value.trim().to_string());
+            }
         }
     }
     let content_length = content_length.unwrap_or(0);
@@ -19622,7 +19660,12 @@ fn serve_read_request(
         .read_exact(&mut body_bytes)
         .map_err(|e| format!("read body: {}", e))?;
     let body = String::from_utf8(body_bytes).map_err(|e| format!("body not utf-8: {}", e))?;
-    Ok(Some((method, target, body)))
+    Ok(Some((
+        method,
+        target,
+        body,
+        tailscale_identity.unwrap_or_default(),
+    )))
 }
 
 fn serve_write_response(
@@ -38881,7 +38924,7 @@ impl Drop for FloorPreparedAuthorityGuard {
 /// Install prepared source bytes. Only `register_floor_prepared_authority_guard` calls this so
 /// Drop always clears the thread-locals and compile memo.
 fn register_floor_prepared_authority(inventory: Vec<PreparedSourceView>) {
-    crate::coproduct_reflection::register_floor_decl_parse_memo();
+    crate::coproduct_reflection::register_decl_census_memo();
     let inventory_digest = floor_inventory_content_digest(&inventory);
     FLOOR_PREPARED_AUTHORITY.with(|cell| {
         *cell.borrow_mut() = Some(FloorPreparedAuthority {
@@ -38896,7 +38939,7 @@ fn register_floor_prepared_authority(inventory: Vec<PreparedSourceView>) {
 pub fn clear_floor_prepared_authority() {
     FLOOR_PREPARED_AUTHORITY.with(|cell| *cell.borrow_mut() = None);
     FLOOR_LANGUAGES_RECORDS.with(|cell| *cell.borrow_mut() = None);
-    crate::coproduct_reflection::clear_floor_decl_parse_memo();
+    crate::coproduct_reflection::clear_decl_census_memo();
     crate::v1_interpreter::clear_cross_claim_pure_memos();
 }
 
@@ -40476,6 +40519,20 @@ fn long_home_storage_agreement(
     }
 }
 
+/// ONE BLOCKING CHANGED-WITNESS ROW AS ITS CONSUMER RECEIVES IT: the identity, and the CAUSE that
+/// made it block. Host mirror of `v2.workflow.floor_changed_witness` `ChangedWitnessBlocker`.
+///
+/// The pair travels together because the identity alone is what this population used to carry,
+/// and the cause is exactly what its consumer could not recover: `claim_executor` had one
+/// constant to stamp, so a declined witness that never executed and a claim that ran and failed
+/// arrived at the merge gate as the same bit. `cause` is never empty on a blocking row —
+/// `changed_witness_projection_rows` refuses rather than emitting one that is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChangedWitnessBlocker {
+    pub identity: String,
+    pub cause: String,
+}
+
 /// What one required-floor attempt did. The three identity counts are separate fields rather
 /// than one `total` because the operator's acceptance census asks them to be EQUAL, and a
 /// single number cannot be compared with itself: a run that planned 9,267 claims, executed
@@ -40669,9 +40726,19 @@ pub struct RequiredFloorOutcome {
     pub changed_witness_rows: usize,
     /// The changed identities whose `ChangedWitnessExecutionStanding`
     /// (`v2.workflow.floor_changed_witness`) BLOCKS — declined, missing from the disposition
-    /// receipt, or planned without a terminal Passed verdict. Non-empty reds the required
-    /// context; see `required_floor_outcome_is_clean` in `claim_executor`.
-    pub changed_witness_blocking: Vec<String>,
+    /// receipt, or planned without a terminal Passed verdict — EACH WITH THE CAUSE THAT MADE IT
+    /// BLOCK. Non-empty reds the required context; see `required_floor_outcome_is_clean` in
+    /// `claim_executor`.
+    ///
+    /// THIS WAS A `Vec<String>` AND THE CAUSE WAS THE DEFECT. The standings above are computed
+    /// per row and were dropped on the way into this field, so `claim_executor` had one constant
+    /// to stamp on all of them and the merge gate received one bit for four materially different
+    /// states. Measured on gunbc#10757: fifteen identities that never executed (the disposition
+    /// artifact counts them `declined_changed_witness_outside_discovery=15`) reached the
+    /// measurement receipt as `cause=changed_witness_blocking`, indistinguishable from a claim
+    /// that ran and failed, in a run where zero claims failed. Authority for the cause spelling:
+    /// `v2.workflow.floor_changed_witness` `changed_witness_blocking_cause`.
+    pub changed_witness_blocking: Vec<ChangedWitnessBlocker>,
 }
 
 fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
@@ -42038,9 +42105,10 @@ pub use partition_crate_boundary_host::{
 /// through one surface, the way the regen and partition-crate paths do.
 pub use generated_artifact_boundary_host::{
     artifact_disposition, artifact_disposition_name, boundary_divergent, boundary_is_clean,
-    generated_artifact_body_for_path, generated_artifact_ctx, run_generated_artifact_boundary,
-    AdjudicatedArtifact, ArtifactDisposition, GeneratedArtifactBoundaryOutcome,
-    GeneratedArtifactPathBody, UnadjudicatedArtifact, GENERATED_ARTIFACT_PRODUCING_COMMAND,
+    generated_artifact_body_for_path, generated_artifact_ctx, run_docs_projection_agreement,
+    run_generated_artifact_boundary, AdjudicatedArtifact, ArtifactDisposition,
+    DocsProjectionAgreement, GeneratedArtifactBoundaryOutcome, GeneratedArtifactPathBody,
+    UnadjudicatedArtifact, GENERATED_ARTIFACT_PRODUCING_COMMAND,
 };
 
 /// The emitted-closure compile phase: one entry's closure emitted, written as a crate, and

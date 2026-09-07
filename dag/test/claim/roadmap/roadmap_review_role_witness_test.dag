@@ -8,8 +8,10 @@ import gunbc.roadmap.roadmap_review_role {
   ReviewReceiptSource, ReviewReceiptAbsent, ReviewReceiptPresent, ReviewReceiptUnreadable,
   CriterionReviewEvidence, review_reconcile, review_all_approved,
   review_verdict_decode, review_verdict_key, review_verdict_detail, review_brief,
+  ConformanceAnswer, Conforms, DivergesStated, DivergesUnstated, conformance_answer_verdict, review_answer_instruction, ReviewReason,
 }
-import gunbc.roadmap.roadmap_review_criteria { review_criteria, review_criteria_grounded_in_the_argument, review_criterion_by_key }
+import gunbc.roadmap.roadmap_review_criteria { review_criteria, review_criteria_grounded_in_the_argument, review_criterion_by_key, review_criteria_homes_match_their_algebra }
+import gunbc.design_argument { YesIsADefect, ConformanceThreeValued, conformance_domains }
 import gunbc.roadmap_workflow_stage { WorkflowSegmentComplete, WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentActive, WorkflowSegmentPending }
 import gunbc.worker_lifecycle { WorkerProcessAbsent, WorkerProcessRunning, WorkerProcessExited }
 
@@ -93,4 +95,38 @@ test fn the_brief_carries_the_criterion_the_diff_range_and_the_check_and_the_ver
         && string_contains(s: review_verdict_instruction(verdict_path: "/v.json"), pattern: "Write your verdict to /v.json")
     }
   }
+}
+
+// THE CONFORMANCE ANSWER IS THREE-VALUED AND ONLY THE UNSTATED DIVERGENCE REQUESTS CHANGES (DESIGN
+// section 3b). The stated divergence is admitted and keeps its reason; the instruction rendered for a
+// conformance criterion says all three, while the yes/no instruction says neither.
+test fn a_stated_divergence_is_admitted_and_an_unstated_one_requests_changes() -> Bool {
+  let stated = conformance_answer_verdict(a: DivergesStated { reason: "the lease home cannot express a sub-second deadline" })
+  let unstated = conformance_answer_verdict(a: DivergesUnstated { reasons: [ReviewReason { path: "dag/x.dag", reason: "a sleep where a HeldLease was available" }] })
+  let conforms = conformance_answer_verdict(a: Conforms { summary: "inhabits std.temporal_effect HeldLease" })
+  review_verdict_key(v: stated) == "approved" && string_contains(s: review_verdict_detail(v: stated), pattern: "reason stated: the lease home")
+    && review_verdict_key(v: unstated) == "changes_requested"
+    && review_verdict_key(v: conforms) == "approved"
+    && string_contains(s: review_answer_instruction(a: ConformanceThreeValued), pattern: "one of three ways")
+    && !string_contains(s: review_answer_instruction(a: YesIsADefect), pattern: "one of three ways")
+}
+
+// EVERY CONFORMANCE DOMAIN IS A REVIEWER WITH ITS HOMES IN THE BRIEF; no yes/no criterion carries a
+// home, and the discriminating half is the negation: the fail-closed brief names no home at all.
+test fn every_conformance_domain_is_a_criterion_whose_brief_names_its_homes() -> Bool {
+  review_criteria_homes_match_their_algebra()
+    && count(conformance_domains) == 4
+    && all(conformance_domains, d => match review_criterion_by_key(key: d.key) {
+      Absent => false
+      Present { value: c } => {
+        let b = review_brief(criterion: c, node_id: "n1", headline: "H", boundary: "B", out_of_scope: "O", red_control: "R", acceptance_command: "gunbc run x", base_sha: "aaa", head_sha: "bbb", verification_detail: "passed")
+        string_contains(s: b, pattern: "Home authorities the change must inhabit")
+          && string_contains(s: b, pattern: "one of three ways")
+          && all(d.homes, h => string_contains(s: b, pattern: join([h.module_path as String, " ", h.decl_name as String], "")))
+      }
+    })
+    && (match review_criterion_by_key(key: "fail-closed") {
+      Absent => false
+      Present { value: c } => !string_contains(s: review_brief(criterion: c, node_id: "n1", headline: "H", boundary: "B", out_of_scope: "O", red_control: "R", acceptance_command: "x", base_sha: "a", head_sha: "b", verification_detail: "p"), pattern: "Home authorities")
+    })
 }

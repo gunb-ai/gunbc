@@ -148,6 +148,7 @@ import gunbc.ci_deploy_access {
   deploy_access_sudo_probe_effect,
 }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep }
+import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
 import gunbc.live_deploy.emit {
   live_deploy_apply_script_for,
   live_deploy_retract_script_for,
@@ -403,7 +404,7 @@ type ResolvedHostEffectCell =
   | EffectivePrincipalReadOnHost { node: ComputeHost, read: EffectivePosixPrincipalRead }
   | SudoNopasswdExecuteProbeOnHost { node: ComputeHost, probe: SudoNopasswdExecuteProbeShape }
   | SudoNopasswdGrantListProbeOnHost { node: ComputeHost, probe: SudoNopasswdGrantListProbeShape }
-  | LiveDeployApplyOnHost { node: ComputeHost, spec: DeploymentSpec, candidate: CandidateRelease }
+  | LiveDeployApplyOnHost { node: ComputeHost, spec: DeploymentSpec, candidate: CandidateRelease, plan: ReleaseEffectPlan }
   | LiveDeployRetractOnHost { node: ComputeHost, spec: DeploymentSpec }
   | LiveDeployEnsureDependencyOnHost { node: ComputeHost, dep: DeploymentDependencyStep }
   | LiveDeployDigestReadbackOnHost { node: ComputeHost, port: Int }
@@ -468,8 +469,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           BmcwebSessionLoginOnHost { node: n }
         Srv3BmcwebTokenExtract =>
           BmcwebTokenExtractOnHost { node: n }
-        LiveDeployApply { spec: s, candidate: c } =>
-          LiveDeployApplyOnHost { node: n, spec: s, candidate: c }
+        LiveDeployApply { spec: s, candidate: c, plan: p } =>
+          LiveDeployApplyOnHost { node: n, spec: s, candidate: c, plan: p }
         LiveDeployRetract { spec: s } =>
           LiveDeployRetractOnHost { node: n, spec: s }
         LiveDeployEnsureDependency { dep: d } =>
@@ -522,8 +523,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
               CodexSupervisedWorkerTurnOnHost { node: n, intent: i, lease_key: k }
             HostIdentityShortHostnameRead =>
               HostnameReadOnHost { node: n }
-            LiveDeployApply { spec: s, candidate: c } =>
-              LiveDeployApplyOnHost { node: n, spec: s, candidate: c }
+            LiveDeployApply { spec: s, candidate: c, plan: p } =>
+              LiveDeployApplyOnHost { node: n, spec: s, candidate: c, plan: p }
             LiveDeployRetract { spec: s } =>
               LiveDeployRetractOnHost { node: n, spec: s }
             LiveDeployEnsureDependency { dep: d } =>
@@ -611,7 +612,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
               IncompatibleCell { reason: "host_effect: SudoNopasswdGrantListProbe is in-band (typed sudo grant-list probe) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             HostIdentityShortHostnameRead =>
               IncompatibleCell { reason: "host_effect: HostIdentityShortHostnameRead is in-band (shell hostname -s) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            LiveDeployApply { spec: _, candidate: _ } =>
+            LiveDeployApply { spec: _, candidate: _, plan: _ } =>
               IncompatibleCell { reason: "host_effect: LiveDeployApply is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             LiveDeployRetract { spec: _ } =>
               IncompatibleCell { reason: "host_effect: LiveDeployRetract is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
@@ -3785,6 +3786,7 @@ fn live_deploy_apply_candidate_locus_refusal(transport: HostEffectTransport) -> 
 fn realize_live_deploy_apply_on_host(
   spec: DeploymentSpec,
   candidate: CandidateRelease,
+  plan: ReleaseEffectPlan,
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
@@ -3794,10 +3796,7 @@ fn realize_live_deploy_apply_on_host(
   } else {
     realize_shell_on_host(
       script: retained_srvn(
-        body: live_deploy_apply_script_for(
-          spec: spec,
-          revision: RevisionBoundAtEmission { revision: candidate.revision },
-        ),
+        body: live_deploy_apply_script_for(spec: spec, plan: plan),
         reason: "live_deploy apply (unit install + start)",
       ),
       transport: transport,
@@ -3895,8 +3894,8 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       realize_sudo_nopasswd_execute_probe_on_host(probe: p, transport: transport, intent: intent)
     SudoNopasswdGrantListProbeOnHost { node: _, probe: p } =>
       realize_sudo_nopasswd_grant_list_probe_on_host(probe: p, transport: transport, intent: intent)
-    LiveDeployApplyOnHost { node: _, spec: s, candidate: c } =>
-      realize_live_deploy_apply_on_host(spec: s, candidate: c, transport: transport, intent: intent)
+    LiveDeployApplyOnHost { node: _, spec: s, candidate: c, plan: p } =>
+      realize_live_deploy_apply_on_host(spec: s, candidate: c, plan: p, transport: transport, intent: intent)
     LiveDeployRetractOnHost { node: _, spec: s } =>
       realize_live_deploy_retract_on_host(spec: s, transport: transport, intent: intent)
     LiveDeployEnsureDependencyOnHost { node: _, dep: d } =>
@@ -4094,8 +4093,8 @@ fn host_effect_apply_gated(
           realize_sudo_nopasswd_execute_probe_on_host(probe: p, transport: transport, intent: intent)
         SudoNopasswdGrantListProbeOnHost { node: _, probe: p } =>
           realize_sudo_nopasswd_grant_list_probe_on_host(probe: p, transport: transport, intent: intent)
-        LiveDeployApplyOnHost { node: _, spec: s, candidate: c } =>
-          realize_live_deploy_apply_on_host(spec: s, candidate: c, transport: transport, intent: intent)
+        LiveDeployApplyOnHost { node: _, spec: s, candidate: c, plan: p } =>
+          realize_live_deploy_apply_on_host(spec: s, candidate: c, plan: p, transport: transport, intent: intent)
         LiveDeployRetractOnHost { node: _, spec: s } =>
           realize_live_deploy_retract_on_host(spec: s, transport: transport, intent: intent)
         LiveDeployEnsureDependencyOnHost { node: _, dep: d } =>
@@ -4177,7 +4176,7 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             EffectivePrincipalReadOnHost { node: _, read: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             SudoNopasswdExecuteProbeOnHost { node: _, probe: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             SudoNopasswdGrantListProbeOnHost { node: _, probe: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            LiveDeployApplyOnHost { node: _, spec: _, candidate: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            LiveDeployApplyOnHost { node: _, spec: _, candidate: _, plan: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             LiveDeployRetractOnHost { node: _, spec: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             LiveDeployEnsureDependencyOnHost { node: _, dep: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             LiveDeployDigestReadbackOnHost { node: _, port: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))

@@ -160,8 +160,6 @@ service github.Issues {
   config {
     endpoint: default_api_base
     auth: Bearer
-
-    rate_limit: { requests: 5000, per: hour, scope: core }
   }
 
   operation ListForRepoRaw {

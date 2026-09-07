@@ -1,0 +1,295 @@
+module gunbc.scm.manifest_merge
+
+// THE THREE-WAY DECISION OVER ONE CORPUS MANIFEST, AND THE OPERAND IS WHAT MAKES IT ONE LAW.
+//
+// THE LAW ITSELF IS FOUR LINES AND DOES NOT GROW:
+//
+//   S == B  -> take T        the source did not touch this path
+//   T == B  -> take S        the target did not touch this path
+//   S == T  -> take either   both arrived at the same state
+//   else    -> CONFLICT
+//
+// WHAT MAKES IT TOTAL IS THAT THE OPERAND CARRIES PRESENCE. A first derivation of this module read
+// the three sides as authored-source LOCATORS and then discovered that the law silently assumes all
+// three sides HAVE the path -- B, S and T each independently may not, which is eight states, not
+// four. The conclusion drawn from that was wrong: it proposed enumerating the eight. What the
+// discovery actually falsifies is BARE-LOCATOR OPERANDS, not the law. Widening the operand to a
+// PathState whose equality INCLUDES ABSENCE keeps the four lines total and yields every presence
+// case as a consequence rather than as a separate rule:
+//
+//   B=Present(X) S=Absent     T=Present(X)  -> S==T? no. T==B yes -> take S -> DELETED
+//   B=Present(X) S=Absent     T=Absent      -> S==T yes           -> DELETED
+//   B=Absent     S=Present(Y) T=Absent      -> T==B yes -> take S -> ADDED
+//   B=Absent     S=Present(Y) T=Present(Y)  -> S==T yes           -> ADDED
+//   B=Present(X) S=Absent     T=Present(Y)  -> no arm             -> CONFLICT  delete vs modify
+//   B=Present(X) S=Present(Y) T=Absent      -> no arm             -> CONFLICT  modify vs delete
+//
+// THE LAST TWO ARE THE ONES THIS MODULE EXISTS TO GET RIGHT, and they are the resurrection class of
+// gunbc.scm.merge_base one layer down -- at PATH grain rather than LINEAGE grain. Taking the deletion
+// silently discards an edit; taking the edit silently resurrects a file the other side deleted on
+// purpose. Neither is a conflict a user could see, and both produce a valid manifest. So the law must
+// refuse rather than pick a side, and it does so with no clause of its own: there is simply no
+// equality to appeal to.
+//
+// AN EIGHT-CASE IMPLEMENTATION WOULD HAVE BEEN THE REDUNDANCY DESIGN section 2 NAMES. It duplicates
+// one algebra across presence combinations, and the copies are then free to drift -- decompress and
+// map without the reduce.
+
+import std.types { Bool, List, String, NonEmptyStr }
+import gunbc.scm.object_store {
+  AuthoredSourceTarget,
+  CorpusManifestEntry,
+  CorpusManifestRecord,
+  object_id_eq,
+}
+
+// PRESENCE IS A STATE OF THE PATH, NOT AN OPTIONAL AROUND A LOCATOR, and the difference is that this
+// type's equality is total over both arms. An `AuthoredSourceTarget?` would make absence a property
+// of the CARRIER rather than a state of the subject, and every comparison would then have to unwrap
+// before it could decide -- which is precisely where the four-line law was losing the deletion cases.
+type PathState
+  = PathAbsent
+  | PathPresent { source: AuthoredSourceTarget }
+
+fn path_state_eq(left: PathState, right: PathState) -> Bool {
+  match left {
+    PathAbsent =>
+      match right {
+        PathAbsent => true
+        PathPresent { source: _ } => false
+      }
+    PathPresent { source: l } =>
+      match right {
+        PathAbsent => false
+        PathPresent { source: r } => object_id_eq(left: l.locator, right: r.locator)
+      }
+  }
+}
+
+// THE CONFLICT CARRIES ALL THREE STATES, INCLUDING EXPLICIT ABSENCE, AND THAT IS NOT DIAGNOSTIC
+// GARNISH. A deletion reported as some sentinel or fabricated locator would collapse absence back
+// into a malformed-content representation -- the exact presence/content conflation the operand was
+// widened to remove, reintroduced in the value that REPORTS it. The diagnostic has to preserve the
+// distinction the law decided on, or a reader of the conflict cannot reconstruct why it conflicted.
+type ManifestPathConflict {
+  path: NonEmptyStr
+  base: PathState
+  source: PathState
+  target: PathState
+}
+
+// NO MERGED ENTRIES ON THE CONFLICTED ARM. A partial manifest beside a conflict list invites a caller
+// to actuate the non-conflicting prefix, which is a corpus neither author wrote; and a caller that
+// did so would have a well-formed manifest with no record that anything was withheld.
+//
+// THE CONFLICT POPULATION IS COMPLETE, NOT FIRST-WINS. Reporting one conflict at a time hides the
+// size of the job: a user fixes, re-runs, discovers another, and cannot tell after any single round
+// whether they are near the end. That is the absorbing shape in slow motion -- each round is
+// individually honest and the sequence is not.
+type ManifestMergeOutcome
+  = ManifestMerged { entries: List<CorpusManifestEntry> }
+  | ManifestConflicted { conflicts: List<ManifestPathConflict> }
+
+type MergeAcc {
+  entries: List<CorpusManifestEntry>
+  conflicts: List<ManifestPathConflict>
+}
+
+// THE DECISION LAW. Every arm below is one of the four lines; there is no presence clause, because
+// `path_state_eq` already answers for absence.
+fn merge_path(
+  acc: MergeAcc,
+  path: NonEmptyStr,
+  base: PathState,
+  source: PathState,
+  target: PathState,
+) -> MergeAcc {
+  if path_state_eq(left: source, right: base) {
+    admit_state(acc: acc, path: path, state: target)
+  } else if path_state_eq(left: target, right: base) {
+    admit_state(acc: acc, path: path, state: source)
+  } else if path_state_eq(left: source, right: target) {
+    admit_state(acc: acc, path: path, state: source)
+  } else {
+    MergeAcc {
+      entries: acc.entries,
+      conflicts: concat(
+        [ManifestPathConflict { path: path, base: base, source: source, target: target }],
+        acc.conflicts
+      ),
+    }
+  }
+}
+
+// AN ADMITTED ABSENCE WRITES NO ENTRY, which is how a deletion is represented in a manifest: the path
+// is simply not in it. Writing an entry that means "deleted" would be a second representation of
+// absence beside the one the manifest already has.
+fn admit_state(acc: MergeAcc, path: NonEmptyStr, state: PathState) -> MergeAcc {
+  match state {
+    PathAbsent => acc
+    PathPresent { source: s } =>
+      MergeAcc {
+        entries: concat([CorpusManifestEntry { path: path, source: s }], acc.entries),
+        conflicts: acc.conflicts,
+      }
+  }
+}
+
+// THE SUBJECT IS THE UNION OF THE THREE SIDES' PATHS, because a path present on any side is a path
+// the merge must decide. Taking the base's paths alone would silently drop every addition; taking the
+// target's would silently drop every source addition.
+//
+// THE UNION IS TAKEN BY A SORTED GROUPING JOIN, IN ONE PASS. A first derivation of this module built
+// the union and then asked each of the three manifests for its state at every path in it, which is a
+// fold over all three inputs per union path -- quadratic in the manifest size, and quadratic even
+// when the three sides are identical and nothing conflicts. DESIGN section 6 makes that
+// unconditional: a proven cost-shape defect is always fixed regardless of the realized n, because n
+// is not a time-stable fact about a compiler's corpus manifest.
+//
+// The replacement tags each entry with the side it came from, sorts the three streams together by
+// path, and folds ONCE: entries sharing a path are adjacent by construction, so a group is closed
+// when the path changes. The union, the three lookups, and the decision are then the same traversal
+// rather than three -- which is also why `path_state_in` no longer exists. It was not made faster;
+// there is nothing left for it to answer.
+//
+// ASSIGNING A GROUP MEMBER TO ITS SIDE IS TOTAL ONLY BECAUSE OF THE OPERAND ABOVE. Two entries from
+// one side sharing a path would make "the source's state at this path" ambiguous, and a raw list can
+// hold exactly that; `CorpusManifestRecord` cannot. The two corrections are one correction.
+type ManifestSide
+  = ManifestBaseSide
+  | ManifestSourceSide
+  | ManifestTargetSide
+
+type SidedEntry {
+  side: ManifestSide
+  path: NonEmptyStr
+  source: AuthoredSourceTarget
+}
+
+fn sided_entries(side: ManifestSide, entries: List<CorpusManifestEntry>) -> List<SidedEntry> {
+  map(entries, e => SidedEntry { side: side, path: e.path, source: e.source })
+}
+
+// A SLOT OPENS AT FULL ABSENCE. A side that never appears in the group is absent at this path, which
+// is the state the law reads -- not a missing observation to be filled in later.
+type PathSlot {
+  path: NonEmptyStr
+  base: PathState
+  source: PathState
+  target: PathState
+}
+
+fn empty_slot(path: NonEmptyStr) -> PathSlot {
+  PathSlot { path: path, base: PathAbsent, source: PathAbsent, target: PathAbsent }
+}
+
+fn slot_admit(slot: PathSlot, entry: SidedEntry) -> PathSlot {
+  match entry.side {
+    ManifestBaseSide =>
+      PathSlot {
+        path: slot.path,
+        base: PathPresent { source: entry.source },
+        source: slot.source,
+        target: slot.target,
+      }
+    ManifestSourceSide =>
+      PathSlot {
+        path: slot.path,
+        base: slot.base,
+        source: PathPresent { source: entry.source },
+        target: slot.target,
+      }
+    ManifestTargetSide =>
+      PathSlot {
+        path: slot.path,
+        base: slot.base,
+        source: slot.source,
+        target: PathPresent { source: entry.source },
+      }
+  }
+}
+
+fn decide_slot(acc: MergeAcc, slot: PathSlot) -> MergeAcc {
+  merge_path(
+    acc: acc,
+    path: slot.path,
+    base: slot.base,
+    source: slot.source,
+    target: slot.target,
+  )
+}
+
+type GroupAcc {
+  open: PathSlot?
+  decided: MergeAcc
+}
+
+fn group_step(acc: GroupAcc, entry: SidedEntry) -> GroupAcc {
+  match acc.open {
+    Present { value: slot } =>
+      if (slot.path as String) == (entry.path as String) {
+        GroupAcc { open: Present { value: slot_admit(slot: slot, entry: entry) }, decided: acc.decided }
+      } else {
+        GroupAcc {
+          open: Present { value: slot_admit(slot: empty_slot(path: entry.path), entry: entry) },
+          decided: decide_slot(acc: acc.decided, slot: slot),
+        }
+      }
+    Absent =>
+      GroupAcc {
+        open: Present { value: slot_admit(slot: empty_slot(path: entry.path), entry: entry) },
+        decided: acc.decided,
+      }
+  }
+}
+
+// THE LAST GROUP IS CLOSED BY THE CALLER, NOT BY THE FOLD. A fold closes a group when it sees the
+// next path, and the final group has no next path -- so an implementation that forgot this line would
+// silently drop the alphabetically last path from every merge, and would still return a well-formed
+// manifest. The claim that reds on it is the union claim.
+fn close_groups(acc: GroupAcc) -> MergeAcc {
+  match acc.open {
+    Present { value: slot } => decide_slot(acc: acc.decided, slot: slot)
+    Absent => acc.decided
+  }
+}
+
+// THE CONFLICT CHECK IS ON THE POPULATION, NOT ON A FLAG. A Bool set beside the accumulator would be
+// a second authority for "did anything conflict", free to disagree with the list it describes.
+//
+// THE OPERANDS ARE STORE-CONSTRUCTED RECORDS, NOT RAW LISTS. `CorpusManifestRecord` is
+// sole_constructor and `store_corpus_manifest` refuses a duplicate path before an identity is
+// derived, so no caller can hand this function a manifest holding two entries for one path. A first
+// derivation took `List<CorpusManifestEntry>` and carried an annotation asserting that uniqueness
+// held -- an assertion about a guarantee the SIGNATURE did not carry, which is validation-by-comment
+// standing where construction was available. Under raw lists, a source of [a -> X, a -> Y] merged
+// successfully by silently selecting the first, and reversing that list changed the answer: the
+// fabricated plausible output DESIGN section 5 forbids outright.
+fn merge_manifests(
+  base: CorpusManifestRecord,
+  source: CorpusManifestRecord,
+  target: CorpusManifestRecord,
+) -> ManifestMergeOutcome {
+  let joined = sort_by(
+    concat(
+      sided_entries(side: ManifestBaseSide, entries: base.entries),
+      concat(
+        sided_entries(side: ManifestSourceSide, entries: source.entries),
+        sided_entries(side: ManifestTargetSide, entries: target.entries),
+      ),
+    ),
+    fn(e) { e.path as String },
+  )
+  let decided = close_groups(
+    acc: fold(
+      joined,
+      init: GroupAcc { open: none, decided: MergeAcc { entries: [], conflicts: [] } },
+      f: fn(acc, e) { group_step(acc: acc, entry: e) },
+    )
+  )
+  if count(decided.conflicts) > 0 {
+    ManifestConflicted { conflicts: reverse(decided.conflicts) }
+  } else {
+    ManifestMerged { entries: reverse(decided.entries) }
+  }
+}

@@ -1,0 +1,102 @@
+module extdeps.ampere.mt_collins_1u_product_brief.subject
+
+import std.types { String, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.publication { DocumentPublicationStatus, PubliclyPublishedWithRestrictiveMarking }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.vendor.ampere { ampere_vendor }
+
+// A SECOND AMPERE PRODUCT BRIEF FOR THE SAME MACHINE, AND ITS OWN DOCUMENT AUTHORITY. The 2U
+// 2022 V2 brief is modelled at extdeps.ampere.mt_collins_product_brief.subject. This is a
+// DIFFERENT document - Ampere's Mt. Collins 1U product brief, document number AMP 2020-0073,
+// file identity Ampere_Mt._Collins_1U_PB_v0.50_20210223 - published earlier and describing the
+// 1U rack server. Two independently versioned vendor documents describing one product take two
+// module authorities rather than one merged row: they disagree, and a merged row would have to
+// pick a winner silently.
+//
+// HOW THIS REPOSITORY READ IT, recorded because the reading is ours and not the vendor's: the
+// operator relayed a marketplace listing image of the brief's specifications page on 2026-09-06,
+// then placed the same file in operator-controlled storage. The anchor below is therefore the
+// IMAGE THIS REPOSITORY ACTUALLY READ, not a vendor URL nobody here has fetched - citing a
+// plausible ampere.com path would be a fabricated citation. The operator copy is the anchor and
+// the marketplace copy is the further citation, because a listing image is removed when the
+// listing ends while the operator copy is not; both were fetched and are byte-identical at
+// sha256 3c58b4dc27195d74cbae80657de80faf0570ec049a0f5cbeb1ae91c0fda4d193, which is what makes
+// them one artifact rather than two readings that happen to agree. If the vendor-hosted PDF
+// surfaces it joins further_citations and this anchor stays as the provenance of the first
+// reading.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "drive.google.com/file/d/1v3PoX9FvMn09qh115xjVmIZ7FB2Y1jLA/view",
+  }
+}
+
+data mt_collins_1u_brief_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data mt_collins_1u_brief_marketplace_copy: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "i.ebayimg.com/images/g/3cEAAOSwsXJnfF8n/s-l1600.webp",
+  }
+}
+
+data mt_collins_1u_brief_artifact_sha256: NonEmptyStr = "3c58b4dc27195d74cbae80657de80faf0570ec049a0f5cbeb1ae91c0fda4d193"
+
+type MtCollinsBrief1UV050 {}
+
+type MtCollins1UProductBriefRevision = MtCollinsBrief1UV050
+
+data mt_collins_1u_product_brief_title: NonEmptyStr = "Ampere Mt. Collins 1U Product Brief"
+
+data mt_collins_1u_product_brief_version_label: NonEmptyStr = "v0.50"
+
+data mt_collins_1u_product_brief_document_number: NonEmptyStr = "AMP 2020-0073"
+
+data mt_collins_1u_product_brief_file_identity: NonEmptyStr = "Ampere_Mt._Collins_1U_PB_v0.50_20210223"
+
+// THIS DOCUMENT TAKES A DIFFERENT PUBLICATION ARM FROM THE 2U BRIEF, AND THE DIFFERENCE IS
+// LOAD-BEARING RATHER THAN CLERICAL. The 2U brief takes PubliclyPublishedWithoutStatedTerms and
+// its absence_basis states the justification explicitly: the extracted text contains no
+// occurrence of proprietary, confidential, copyright, trademark, reserved or licence. THIS page
+// contains all of those. Its footer reads "(C)2021 Ampere Computing. All rights reserved.",
+// asserts Ampere and the 'A' logo, Altra and eMAG as registered trademarks, and reserves the
+// right to change the document without notice. Reusing the 2U row's arm here would carry a
+// justification that this document falsifies on its own face.
+data mt_collins_1u_product_brief_publication_status: DocumentPublicationStatus = PubliclyPublishedWithRestrictiveMarking {
+  marking: "Footer of the specifications page as read: '(C)2021 Ampere Computing. All rights reserved. Ampere, Ampere Computing, the Ampere Computing and A logo, Altra, and eMAG are registered trademarks of Ampere Computing.' plus a reservation of the right to change products and documentation without notice, and a statement that Arm is a registered trademark of Arm Limited. Marketing collateral distributed publicly and marked; no licence is granted by it.",
+}
+
+type MtCollins1UPublicProductBrief {
+  marketing_name: NonEmptyStr
+  revision: MtCollins1UProductBriefRevision
+  version_label: NonEmptyStr
+  document_number: NonEmptyStr
+  publisher: Vendor<Hardware>
+}
+
+data mt_collins_1u_public_product_brief: MtCollins1UPublicProductBrief = MtCollins1UPublicProductBrief {
+  marketing_name: "Mt. Collins",
+  revision: MtCollinsBrief1UV050 {},
+  version_label: mt_collins_1u_product_brief_version_label,
+  document_number: mt_collins_1u_product_brief_document_number,
+  publisher: ampere_vendor,
+}
+
+data mt_collins_1u_product_brief_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ampere.mt_collins_1u_product_brief.subject",
+      decl_name: "mt_collins_1u_public_product_brief",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [mt_collins_1u_brief_marketplace_copy],
+}
+
+data extdeps_model_scope: ExternalModelScope = mt_collins_1u_product_brief_model_scope
