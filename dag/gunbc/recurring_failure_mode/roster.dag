@@ -45,6 +45,7 @@ import gunbc.recurring_failure_mode.externalized_degradation { externalized_degr
 import gunbc.recurring_failure_mode.mistyped_body_radiates_nonlocal_diagnostics { mistyped_body_radiates_nonlocal_diagnostics }
 import gunbc.recurring_failure_mode.instrument_output_read_as_subject_content { instrument_output_read_as_subject_content }
 import gunbc.recurring_failure_mode.executed_conjunct_discriminates_nothing { executed_conjunct_discriminates_nothing }
+import gunbc.recurring_failure_mode.constant_verdict_gate_stops_discriminating { constant_verdict_gate_stops_discriminating }
 import gunbc.recurring_failure_mode.unbacked_execution_claim { unbacked_execution_claim }
 import gunbc.recurring_failure_mode.admitted_module_without_judged_standing { admitted_module_without_judged_standing }
 import gunbc.recurring_failure_mode.refusal_deferred_to_emitted_runtime { refusal_deferred_to_emitted_runtime }
@@ -338,4 +339,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   permissiveness_promoted_into_a_higher_safety_rung,
   native_stack_recursion_unbounded_over_corpus_shaped_structure,
   evaluation_model_cleanup_undeclared,
+  constant_verdict_gate_stops_discriminating,
 ]

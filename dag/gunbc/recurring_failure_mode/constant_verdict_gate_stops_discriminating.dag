@@ -1,0 +1,36 @@
+module gunbc.recurring_failure_mode.constant_verdict_gate_stops_discriminating
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data constant_verdict_gate_stops_discriminating: RecurringFailureMode = RecurringFailureMode {
+  identity: "constant_verdict_gate_stops_discriminating" as NonEmptyStr,
+
+  receipts: [
+    "**a gate whose verdict has stopped being a function of the change carries no information, and the RED direction is the one nobody files** (THE SYMMETRY IS THE POINT: DESIGN section 4b already names the permanently-GREEN check a decoration, worse than absent because it will be cited as coverage. A gate that refuses on EVERY run, for a cause outside the change under test, has lost exactly the same property from the other side, and there is no roster row for it because a red check does not LOOK like a missing wall -- it looks like a working one. ",
+
+    "INVALID STATE: a required gate whose verdict is constant across the population it gates, so that reading it tells a reader nothing about the change in front of them. ",
+
+    "WHY THIS IS NOT ITS TWO NEAREST NEIGHBOURS, and the boundary is what makes it its own row. `executed_conjunct_discriminates_nothing` and `predicate_vacuously_true_on_an_empty_domain` are properties of a PREDICATE: no input constructs the population that would flip it, so the check cannot discriminate on any run. This class is a property of the RUN POPULATION: the predicate is perfectly capable of both verdicts, and would flip tomorrow, but every run in the current window answers the same way for a reason that has nothing to do with any of the subjects being judged. Neither neighbour's tell fires here -- the check is reached, its domain is non-empty, and its refusal is typed and located. ",
+
+    "THE MECHANISM OF LOSS IS INFORMATIONAL AND THEN SOCIAL, in that order, and the second step is the expensive one. First the verdict stops being a function of the diff, so it can no longer discriminate. Then readers correctly learn that fact and route around it -- `the floor is red` becomes a fact about the repository rather than about the change -- and from that moment the gate provides cover: the next REAL regression lands inside a refusal everybody has already agreed to look past. A permanently-green gate is cited as coverage that does not exist; a permanently-red one is discounted as noise that is not noise. Both end with a wall that stops walling, and only the first has ever been written down. ",
+
+    "THE HARM IS ALSO PAID PER CHANGE, which is what makes it compound rather than merely annoying: every downstream author must independently prove their own innocence before their work can be judged at all. That proof is not free -- it is an identity-level diff of the refusing set against the base, which costs a log fetch, a run enumeration and a careful read, per pull request, forever, and is exactly the work the gate exists to do FOR them. ",
+
+    "SPECIMEN, MEASURED (2026-09-07). `main` refused its required floor for five-plus consecutive runs with `claims_failed=0` and `unexpected_failures=0` -- no witness FAILED; four identities never reached a verdict. Attribution was decidable by FIRST-PARENT CONTROL and not by topic or recency: the merge commit that introduced the witnesses refused, its own first parent passed, and every red `main` commit since has that merge as an ancestor, checked individually rather than assumed from the ordering. Three of the four identities exceeded a 500ms CPU budget by 50 to 75 times -- a claim doing something it did not intend, not a budget wanting headroom -- and the fourth sat AT the boundary at 502 to 507ms, crossing under load, attributable to nothing in that merge. ",
+
+    "THE TWO HALVES MUST NOT BE READ AS ONE, and the row records it because the repair will tempt exactly that: fixing the three does not clear the fourth, and declaring the lane green when the boundary claim still trips would be a rung inflation dressed as a fix. ",
+
+    "WHY IT STOOD FIVE RUNS UNOWNED, and this is the load-bearing half of the specimen rather than an aside: routing the failure to its owning lane FAILED because the owning session was ARCHIVED. So the red had no addressee. Nothing in the required run binds a refusing identity to a live owner, and nothing bounds how long an unowned refusal may stand, so the default disposition of an anonymous red is that it stands indefinitely while every passing author pays the attribution cost above. ",
+
+    "RUNG FOUND AT: mitigatable. The refusal itself is loud, typed and located -- the floor names each identity, its cause and its measured cost, which is why attribution was possible at all. What is absent is not detection. ",
+
+    "CEILING, WITH ITS REASON: mechanically preventable, not structural. A tree cannot be made un-red-able, so the invalid state stays writable; but BOTH facts the class needs are decidable from data the run already holds -- which commit an identity first refused at is a first-parent bisection over the branch, and whether that commit's lane still exists is a lookup. A check can therefore refuse an anonymous standing red without any new modelling of the failing claims themselves. ",
+
+    "NEXT-RUNG TRIGGER, named as the capability: a required run that ATTRIBUTES its own refusal -- reporting, per refusing identity, the commit at which it first refused and the owner that commit's lane names -- so that a standing red cannot be anonymous, joined with a declared bound on how long an unowned refusal may stand before the lane is stopped rather than the authors routed around it. Attribution alone is insufficient: a named owner who is archived reproduces this specimen exactly. ",
+
+    "CROSS-LINK: this is the mirror of the class DESIGN section 4b already carries about permanently-green checks, and the row that instance was found on is `binding_chosen_by_pool_membership_rather_than_by_the_declared_rule`, whose silent-pick gate was deleted the same day for being green by construction. The two were found within hours of each other from opposite directions, which is the reason to state the symmetry once rather than to keep discovering each half alone.",
+  ],
+
+  evidence: [],
+}
