@@ -15,6 +15,12 @@ import v2.std.operation_argv {
   ShellTransportOperationRow,
   operation_argv_bind_text,
   operation_argv_classify,
+  operation_argv_duplicate_authority_pairs,
+  operation_argv_duplicate_authority_pairs_are_well_formed,
+  operation_argv_live_duplicate_authority_pair_labels,
+  operation_argv_live_duplicate_authority_pair_labels_joined,
+  operation_argv_live_duplicate_authority_pairs,
+  operation_argv_planted_duplicate_authority_pair_is_found,
   operation_argv_refusal_label,
   operation_argv_row_bindings,
 }
@@ -163,6 +169,30 @@ test fn operation_argv_corpus_RED_smuggled_executable_is_refused_and_located() -
     )
   )
   string_contains(label, "ExecutablePositionNotLiteral") && string_contains(label, "ArgvExecutablePositionProbe.SmuggleExecutable")
+}
+
+// Duplicate-authority pairs are an IDENTITY JOIN on materialized argv, not a grep and not a
+// count equality against the live tree. The planted Alpha/Beta operations in the executable-position
+// fixture are the discriminating RED: they share one argv and enroll by existing. Live (non-fixture)
+// pairs are the census finding; they are derived, not rostered, and this witness does not pin their
+// cardinality.
+test fn witness_planted_duplicate_authority_pair_is_found() -> Bool {
+  operation_argv_planted_duplicate_authority_pair_is_found()
+}
+
+test fn witness_duplicate_authority_pairs_are_well_formed() -> Bool {
+  operation_argv_duplicate_authority_pairs_are_well_formed(
+    pairs: operation_argv_duplicate_authority_pairs()
+  )
+}
+
+test fn witness_live_duplicate_authority_pairs_are_well_formed() -> Bool {
+  let pairs = operation_argv_live_duplicate_authority_pairs()
+  let labels = operation_argv_live_duplicate_authority_pair_labels()
+  let joined = operation_argv_live_duplicate_authority_pair_labels_joined()
+  operation_argv_duplicate_authority_pairs_are_well_formed(pairs: pairs)
+    && length(xs: labels) == length(xs: pairs)
+    && ((length(xs: pairs) == 0 && joined == "") || (length(xs: pairs) > 0 && joined != ""))
 }
 
 test fn operation_argv_corpus_RED_literal_executable_control_materializes() -> Bool {
