@@ -4270,6 +4270,10 @@ pub struct InterpContext {
     // reintroducing the scan fails an assertion instead of surfacing as a slow witness nobody
     // attributes to it.
     typed_module_by_path_fills: std::cell::Cell<u64>,
+    // The same repair one layer down, for the two type-declaration lookups `decl_facts` reaches
+    // per DataItem row. See `data_initializer_identity::TypeDeclIndex` for what they cost before.
+    type_decl_index:
+        std::cell::RefCell<Option<Rc<crate::data_initializer_identity::TypeDeclIndex>>>,
     // Parameter-name derivation is invariant per fn_node but was re-sliced from source spans
     // per call (authored_name_at). Memoized per fn_node pointer. The pointer alone is unsound:
     // the ctx does not own fn_nodes (borrowed `Rc<Node>`s droppable while the ctx lives), so a
@@ -4416,6 +4420,22 @@ impl InterpContext {
     /// Reading it is how a test tells an index apart from a scan.
     pub fn typed_module_by_path_fill_count(&self) -> u64 {
         self.typed_module_by_path_fills.get()
+    }
+
+    /// The type-declaration lookup index, built once per ctx on first ask.
+    pub fn type_decl_index(&self) -> Rc<crate::data_initializer_identity::TypeDeclIndex> {
+        let cached = self.type_decl_index.borrow().clone();
+        match cached {
+            Some(index) => index,
+            None => {
+                let built = Rc::new(crate::data_initializer_identity::build_type_decl_index(
+                    &self.modules,
+                    &self.source_indices,
+                ));
+                *self.type_decl_index.borrow_mut() = Some(Rc::clone(&built));
+                built
+            }
+        }
     }
 
     pub fn sym(&self, s: &str) -> Symbol {
@@ -4652,6 +4672,7 @@ impl InterpContext {
             data_cache: std::cell::RefCell::new(HashMap::new()),
             typed_module_by_path: std::cell::RefCell::new(None),
             typed_module_by_path_fills: std::cell::Cell::new(0),
+            type_decl_index: std::cell::RefCell::new(None),
             param_name_cache: std::cell::RefCell::new(HashMap::new()),
             param_name_cache_keepalive: std::cell::RefCell::new(Vec::new()),
             var_sym_cache: std::cell::RefCell::new(HashMap::new()),

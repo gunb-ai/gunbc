@@ -199,20 +199,11 @@ fn coproduct_type_item_parse_tree(
     bare_name: &str,
     si: &SourceIndices,
 ) -> Option<(Rc<Node>, String)> {
-    for tm in ctx.modules.iter() {
-        let mod_name = authored_name_at(si.clone(), tm.module.clone());
-        for item in tm.items.iter() {
-            if item_kind(item.clone()) != ItemKind::TypeItem || item.connective != Connective::Disj
-            {
-                continue;
-            }
-            if local_symbol_name(si, item) != bare_name {
-                continue;
-            }
-            return Some((item.clone(), mod_name));
-        }
-    }
-    None
+    let _ = si;
+    ctx.type_decl_index()
+        .coproduct_by_bare_name
+        .get(bare_name)
+        .cloned()
 }
 
 fn declared_field_type_on_coproduct_variant_parse_tree(
@@ -318,23 +309,60 @@ fn module_path_for_type_decl_node(
     type_item: &Rc<Node>,
     si: &SourceIndices,
 ) -> Option<String> {
-    let file = type_item.span.file.as_str();
-    let type_name = authored_name_at(si.clone(), type_item.clone());
-    for tm in ctx.modules.iter() {
+    let key = (
+        type_item.span.file.to_string(),
+        authored_name_at(si.clone(), type_item.clone()),
+    );
+    ctx.type_decl_index()
+        .module_by_file_and_type_name
+        .get(&key)
+        .cloned()
+}
+
+// THE TWO TYPE-DECLARATION LOOKUPS ABOVE, ANSWERED FROM ONE PASS.
+//
+// Both used to walk every module's every item, re-slicing each authored name out of its source
+// span, and `decl_facts` reaches them once per DataItem row -- so one whole-corpus declaration
+// inventory cost declarations x (modules x items) source-text slices. That is the same cost-shape
+// defect as the module-path scan (DESIGN section 6, bare minimum cost): a product of corpus
+// populations, all of which grow together.
+//
+// One pass fills both maps, and both keep FIRST-DECLARER-WINS, which is the answer the `for`
+// loops returned -- the modules are walked in the same order, so an ambiguous name resolves
+// exactly as before. The index is derived from `ctx.modules`, which the ctx owns and never
+// mutates, and dies with the ctx.
+pub struct TypeDeclIndex {
+    coproduct_by_bare_name: std::collections::HashMap<String, (Rc<Node>, String)>,
+    module_by_file_and_type_name: std::collections::HashMap<(String, String), String>,
+}
+
+pub fn build_type_decl_index(
+    modules: &im::Vector<Rc<TypedModule>>,
+    si: &SourceIndices,
+) -> TypeDeclIndex {
+    let mut coproduct_by_bare_name = std::collections::HashMap::new();
+    let mut module_by_file_and_type_name = std::collections::HashMap::new();
+    for tm in modules.iter() {
         let mod_name = authored_name_at(si.clone(), tm.module.clone());
         for item in tm.items.iter() {
             if item_kind(Rc::clone(item)) != ItemKind::TypeItem {
                 continue;
             }
-            if item.span.file.as_str() != file {
-                continue;
-            }
-            if authored_name_at(si.clone(), Rc::clone(item)) == type_name {
-                return Some(mod_name);
+            let authored = authored_name_at(si.clone(), Rc::clone(item));
+            module_by_file_and_type_name
+                .entry((item.span.file.to_string(), authored.clone()))
+                .or_insert_with(|| mod_name.clone());
+            if item.connective == Connective::Disj {
+                coproduct_by_bare_name
+                    .entry(bare_symbol_tail(&authored).to_string())
+                    .or_insert_with(|| (Rc::clone(item), mod_name.clone()));
             }
         }
     }
-    None
+    TypeDeclIndex {
+        coproduct_by_bare_name,
+        module_by_file_and_type_name,
+    }
 }
 
 fn declaration_identity_for_type_item(
