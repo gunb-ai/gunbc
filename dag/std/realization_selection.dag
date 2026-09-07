@@ -1,7 +1,8 @@
-module std.decision
+module std.realization_selection
 
 import std.types { Bool, List, NonEmptyStr }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import std.interval { OrderedClosedInterval, degenerate_interval }
 import std.observation_completeness {
   ObservationCompleteness,
   ObservationComplete,
@@ -24,15 +25,35 @@ import std.pareto {
   Equivalent,
   Incomparable,
   DominanceUndecided,
+  SelectionAxis,
+  AxisReading,
+  AxisGap,
+  ParetoEntry,
+  ParetoStanding,
+  ProvisionallyNonDominated,
+  DominatedBy,
+  NotComputable,
+  PendingEvidence,
+  SelectionRefused,
+  ReadingLookup,
+  ReadingFound,
+  ReadingAbsent,
+  ReadingDuplicated,
+  axis_comparison_interval,
+  entry_standing,
+  reading_for,
 }
 
-// DECISION COMPLETENESS — a closed subject, not an optimizer's output.
+// REALIZATION SELECTION is the policy-bound operation that can produce one desired realization.
+// PARETO ASSESSMENT (std.pareto) is dominance and frontier calculation only: a front of two is not
+// a winner. This module consumes std.pareto and must not redeclare dominance, axis orientation,
+// intervals, or evidence-gap vocabulary.
 //
-// Scalarization, Pareto comparison, feasibility solving and enumeration are REALIZATIONS of a
-// decision subject. They do not mint the subject, and they may not silently drop a term, variable,
-// constraint or candidate the subject still owns. Completeness is a bidirectional identity join
-// over required (objective-term × decision-variable) cells, derived from named authorities —
-// never from the disposition list that carries answers for those cells.
+// Completeness remains a closed subject (DESIGN §3d): scalarization, Pareto assessment, feasibility
+// and enumeration do not mint the subject and may not silently drop a term, variable, constraint or
+// candidate the subject still owns. Completeness is a bidirectional identity join over required
+// (objective-term × decision-variable) cells, derived from named authorities — never from the
+// disposition list that carries answers for those cells.
 //
 // std.pareto.SelectionAxis stays a criterion for ordering candidate readings. It is not widened
 // here: DecisionVariable / ContextParameter / DecisionConstraint / ObjectiveTerm are the split
@@ -592,5 +613,412 @@ fn variable_irrelevance_is_derived(
     ObservationMissingExpected { keys: _ } => false
     ObservationForeignObserved { keys: _ } => false
     ObservationRepeatedObserved { keys: _ } => false
+  }
+}
+
+// ONE explicitly chosen measure identity, referenced rather than restated: a dual-role quantity
+// (power cap vs wall power) is one functional named twice, not two invented measures.
+type MeasuredFunctional {
+  identity: DeclarationRef
+}
+
+type CandidateFieldStanding
+  = CandidateFieldEstablished { identities: List<DeclarationRef> }
+  | CandidateFieldUnestablishedStanding { causes: List<NonEmptyStr> }
+
+type SelectionPolicy
+  = UniqueSurvivorRequired { identity: DeclarationRef }
+  | PreferSurvivor { identity: DeclarationRef, preferred: DeclarationRef }
+
+type HardConstraint {
+  identity: DeclarationRef
+  axis: DeclarationRef
+  bound_micro: Int
+}
+
+type SelectionReceipt {
+  decision_subject: DeclarationRef
+  candidate_field_identity: DeclarationRef
+  candidate_field_standing: CandidateFieldStanding
+  constraint_authority: DeclarationRef
+  funded_axes: List<DeclarationRef>
+  evidence_snapshot: DeclarationRef
+  pareto_survivors: List<DeclarationRef>
+  policy_authority: DeclarationRef
+  selected_identity: DeclarationRef
+}
+
+type RealizationSelectionResult<C>
+  = SelectedWithin { candidate: C, receipt: SelectionReceipt }
+  | CandidateFieldUnestablished { causes: List<NonEmptyStr> }
+  | NoFeasibleRealization { causes: List<NonEmptyStr> }
+  | SelectionNeedsEvidence { gaps: List<AxisGap> }
+  | SelectionNeedsPolicy { survivors: List<DeclarationRef> }
+  | RealizationSelectionRefused { defects: List<NonEmptyStr> }
+
+fn candidate_identities(field: List<ParetoEntry>) -> List<DeclarationRef> {
+  map(field, e => e.identity)
+}
+
+fn identity_duplicated(ids: List<DeclarationRef>) -> Bool {
+  fold(ids, init: false, f: (acc, id) =>
+    if acc { true } else { (filter(ids, x => declaration_ref_eq(a: x, b: id)) |> count) > 1 }
+  )
+}
+
+fn establish_candidate_field(field: List<ParetoEntry>) -> CandidateFieldStanding {
+  let ids = candidate_identities(field: field)
+  if (ids |> count) == 0 {
+    CandidateFieldUnestablishedStanding { causes: ["candidate field is empty" as NonEmptyStr] }
+  } else {
+    if identity_duplicated(ids: ids) {
+      CandidateFieldUnestablishedStanding { causes: ["duplicate candidate identity in field" as NonEmptyStr] }
+    } else {
+      CandidateFieldEstablished { identities: ids }
+    }
+  }
+}
+
+type FeasibilityScan
+  = FeasibilityReady { remaining: List<ParetoEntry> }
+  | FeasibilityNeedsEvidence { gaps: List<AxisGap> }
+  | FeasibilityRefused { defects: List<NonEmptyStr> }
+
+fn axis_goal_for(axes: List<SelectionAxis>, wanted: DeclarationRef) -> AxisGoal? {
+  match (filter(axes, a => declaration_ref_eq(a: a.identity, b: wanted))).first() {
+    Absent => Absent
+    Present { value: ax } => Present { value: ax.goal }
+  }
+}
+
+fn constraint_cmp(entry: ParetoEntry, constraint: HardConstraint, axes: List<SelectionAxis>) -> AxisComparison? {
+  match axis_goal_for(axes: axes, wanted: constraint.axis) {
+    Absent => Absent
+    Present { value: g } =>
+      match reading_for(e: entry, wanted: constraint.axis) {
+        ReadingFound { interval_micro: iv } =>
+          Present {
+            value: axis_comparison_interval(
+              goal: g,
+              a: iv,
+              b: degenerate_interval(point: constraint.bound_micro),
+            )
+          }
+        ReadingAbsent { absent_axis: _ } => Absent
+        ReadingDuplicated { duplicated_axis: _ } => Absent
+      }
+  }
+}
+
+fn entry_declares_gap(entry: ParetoEntry, axis: DeclarationRef) -> Bool {
+  any(entry.missing_inputs, g => declaration_ref_eq(a: g.axis, b: axis))
+}
+
+fn scan_feasibility(
+  field: List<ParetoEntry>,
+  axes: List<SelectionAxis>,
+  constraints: List<HardConstraint>,
+) -> FeasibilityScan {
+  fold(field, init: FeasibilityReady { remaining: [] }, f: (acc, entry) =>
+    match acc {
+      FeasibilityNeedsEvidence { gaps: gs } => FeasibilityNeedsEvidence { gaps: gs }
+      FeasibilityRefused { defects: ds } => FeasibilityRefused { defects: ds }
+      FeasibilityReady { remaining: rem } => {
+        let axis_missing = any(constraints, c =>
+          match reading_for(e: entry, wanted: c.axis) {
+            ReadingAbsent { absent_axis: _ } => true
+            ReadingDuplicated { duplicated_axis: _ } => true
+            ReadingFound { interval_micro: _ } => false
+          }
+        )
+        if axis_missing {
+          let gaps = flat_map(constraints, c =>
+            match reading_for(e: entry, wanted: c.axis) {
+              ReadingFound { interval_micro: _ } => []
+              ReadingDuplicated { duplicated_axis: ax } =>
+                [AxisGap { axis: ax, cause: "duplicated funded-axis reading" as NonEmptyStr }]
+              ReadingAbsent { absent_axis: ax } =>
+                if entry_declares_gap(entry: entry, axis: ax) {
+                  filter(entry.missing_inputs, g => declaration_ref_eq(a: g.axis, b: ax))
+                } else {
+                  [AxisGap { axis: ax, cause: "required funded-axis reading absent" as NonEmptyStr }]
+                }
+            }
+          )
+          FeasibilityNeedsEvidence { gaps: gaps }
+        } else {
+          let undecided = any(constraints, c =>
+            match constraint_cmp(entry: entry, constraint: c, axes: axes) {
+              Present { value: cmp } =>
+                match cmp {
+                  UndecidedOnEvidence => true
+                  Better => false
+                  Same => false
+                  Worse => false
+                }
+              Absent => true
+            }
+          )
+          if undecided {
+            FeasibilityNeedsEvidence {
+              gaps: map(constraints, c => AxisGap {
+                axis: c.axis,
+                cause: "constraint bound not separable from candidate reading" as NonEmptyStr,
+              })
+            }
+          } else {
+            let infeasible = any(constraints, c =>
+              match constraint_cmp(entry: entry, constraint: c, axes: axes) {
+                Present { value: cmp } =>
+                  match cmp {
+                    Worse => true
+                    Better => false
+                    Same => false
+                    UndecidedOnEvidence => false
+                  }
+                Absent => false
+              }
+            )
+            if infeasible {
+              FeasibilityReady { remaining: rem }
+            } else {
+              FeasibilityReady { remaining: concat(rem, [entry]) }
+            }
+          }
+        }
+      }
+    }
+  )
+}
+
+fn funded_axis_refs(axes: List<SelectionAxis>) -> List<DeclarationRef> {
+  map(axes, a => a.identity)
+}
+
+fn pareto_survivor_identities(field: List<ParetoEntry>, axes: List<SelectionAxis>) -> RealizationSelectionResult<ParetoEntry> {
+  fold(field, init: SelectionNeedsPolicy { survivors: [] }, f: (acc, entry) =>
+    match acc {
+      RealizationSelectionRefused { defects: ds } => RealizationSelectionRefused { defects: ds }
+      SelectionNeedsEvidence { gaps: gs } => SelectionNeedsEvidence { gaps: gs }
+      CandidateFieldUnestablished { causes: cs } => CandidateFieldUnestablished { causes: cs }
+      NoFeasibleRealization { causes: cs } => NoFeasibleRealization { causes: cs }
+      SelectedWithin { candidate: c, receipt: r } => SelectedWithin { candidate: c, receipt: r }
+      SelectionNeedsPolicy { survivors: sv } =>
+        match entry_standing(subject: entry, field: field, axes: axes, sensitivities: []) {
+          ProvisionallyNonDominated { sensitivities: _ } =>
+            SelectionNeedsPolicy { survivors: concat(sv, [entry.identity]) }
+          DominatedBy { dominators: _ } => SelectionNeedsPolicy { survivors: sv }
+          NotComputable { missing: m } =>
+            SelectionNeedsEvidence { gaps: [AxisGap { axis: entry.identity, cause: m }] }
+          PendingEvidence { undecided: u } =>
+            SelectionNeedsEvidence { gaps: [AxisGap { axis: entry.identity, cause: u }] }
+          SelectionRefused { cause: c } =>
+            RealizationSelectionRefused { defects: [c] }
+        }
+    }
+  )
+}
+
+fn entry_by_identity(field: List<ParetoEntry>, wanted: DeclarationRef) -> ParetoEntry? {
+  (filter(field, e => declaration_ref_eq(a: e.identity, b: wanted))).first()
+}
+
+fn receipts_eq(a: SelectionReceipt, b: SelectionReceipt) -> Bool {
+  declaration_ref_eq(a: a.decision_subject, b: b.decision_subject)
+    && declaration_ref_eq(a: a.candidate_field_identity, b: b.candidate_field_identity)
+    && declaration_ref_eq(a: a.constraint_authority, b: b.constraint_authority)
+    && declaration_ref_eq(a: a.evidence_snapshot, b: b.evidence_snapshot)
+    && declaration_ref_eq(a: a.policy_authority, b: b.policy_authority)
+    && declaration_ref_eq(a: a.selected_identity, b: b.selected_identity)
+}
+
+fn mint_receipt(
+  decision_subject: DeclarationRef,
+  candidate_field_identity: DeclarationRef,
+  candidate_field_standing: CandidateFieldStanding,
+  constraint_authority: DeclarationRef,
+  funded_axes: List<DeclarationRef>,
+  evidence_snapshot: DeclarationRef,
+  pareto_survivors: List<DeclarationRef>,
+  policy_authority: DeclarationRef,
+  selected_identity: DeclarationRef,
+) -> SelectionReceipt {
+  SelectionReceipt {
+    decision_subject: decision_subject,
+    candidate_field_identity: candidate_field_identity,
+    candidate_field_standing: candidate_field_standing,
+    constraint_authority: constraint_authority,
+    funded_axes: funded_axes,
+    evidence_snapshot: evidence_snapshot,
+    pareto_survivors: pareto_survivors,
+    policy_authority: policy_authority,
+    selected_identity: selected_identity,
+  }
+}
+
+fn apply_policy(
+  remaining: List<ParetoEntry>,
+  survivors: List<DeclarationRef>,
+  policy: SelectionPolicy,
+  decision_subject: DeclarationRef,
+  candidate_field_identity: DeclarationRef,
+  field_standing: CandidateFieldStanding,
+  constraint_authority: DeclarationRef,
+  axes: List<SelectionAxis>,
+  evidence_snapshot: DeclarationRef,
+) -> RealizationSelectionResult<ParetoEntry> {
+  match policy {
+    UniqueSurvivorRequired { identity: pol } =>
+      if (survivors |> count) == 1 {
+        match survivors.first() {
+          Absent => NoFeasibleRealization { causes: ["unique-survivor policy over empty survivor set" as NonEmptyStr] }
+          Present { value: sid } =>
+            match entry_by_identity(field: remaining, wanted: sid) {
+              Absent => RealizationSelectionRefused { defects: ["unique survivor missing from remaining field" as NonEmptyStr] }
+              Present { value: cand } =>
+                SelectedWithin {
+                  candidate: cand,
+                  receipt: mint_receipt(
+                    decision_subject: decision_subject,
+                    candidate_field_identity: candidate_field_identity,
+                    candidate_field_standing: field_standing,
+                    constraint_authority: constraint_authority,
+                    funded_axes: funded_axis_refs(axes: axes),
+                    evidence_snapshot: evidence_snapshot,
+                    pareto_survivors: survivors,
+                    policy_authority: pol,
+                    selected_identity: sid,
+                  ),
+                }
+            }
+        }
+      } else {
+        if (survivors |> count) == 0 {
+          NoFeasibleRealization { causes: ["no non-dominated feasible realization" as NonEmptyStr] }
+        } else {
+          SelectionNeedsPolicy { survivors: survivors }
+        }
+      }
+    PreferSurvivor { identity: pol, preferred: pref } =>
+      if any(survivors, s => declaration_ref_eq(a: s, b: pref)) {
+        match entry_by_identity(field: remaining, wanted: pref) {
+          Absent => RealizationSelectionRefused { defects: ["preferred identity is not a remaining candidate" as NonEmptyStr] }
+          Present { value: cand } =>
+            SelectedWithin {
+              candidate: cand,
+              receipt: mint_receipt(
+                decision_subject: decision_subject,
+                candidate_field_identity: candidate_field_identity,
+                candidate_field_standing: field_standing,
+                constraint_authority: constraint_authority,
+                funded_axes: funded_axis_refs(axes: axes),
+                evidence_snapshot: evidence_snapshot,
+                pareto_survivors: survivors,
+                policy_authority: pol,
+                selected_identity: pref,
+              ),
+            }
+        }
+      } else {
+        RealizationSelectionRefused { defects: ["policy preferred a dominated, infeasible, unresolved or absent candidate" as NonEmptyStr] }
+      }
+  }
+}
+
+fn select_realization(
+  decision_subject: DeclarationRef,
+  candidate_field_identity: DeclarationRef,
+  field: List<ParetoEntry>,
+  axes: List<SelectionAxis>,
+  constraints: List<HardConstraint>,
+  constraint_authority: DeclarationRef,
+  policy: SelectionPolicy,
+  evidence_snapshot: DeclarationRef,
+) -> RealizationSelectionResult<ParetoEntry> {
+  let standing = establish_candidate_field(field: field)
+  match standing {
+    CandidateFieldUnestablishedStanding { causes: cs } => CandidateFieldUnestablished { causes: cs }
+    CandidateFieldEstablished { identities: _ } =>
+      match scan_feasibility(field: field, axes: axes, constraints: constraints) {
+        FeasibilityNeedsEvidence { gaps: gs } => SelectionNeedsEvidence { gaps: gs }
+        FeasibilityRefused { defects: ds } => RealizationSelectionRefused { defects: ds }
+        FeasibilityReady { remaining: rem } =>
+          if (rem |> count) == 0 {
+            NoFeasibleRealization { causes: ["every candidate violates a hard constraint" as NonEmptyStr] }
+          } else {
+            match pareto_survivor_identities(field: rem, axes: axes) {
+              SelectionNeedsEvidence { gaps: gs } => SelectionNeedsEvidence { gaps: gs }
+              RealizationSelectionRefused { defects: ds } => RealizationSelectionRefused { defects: ds }
+              CandidateFieldUnestablished { causes: cs } => CandidateFieldUnestablished { causes: cs }
+              NoFeasibleRealization { causes: cs } => NoFeasibleRealization { causes: cs }
+              SelectedWithin { candidate: c, receipt: r } => SelectedWithin { candidate: c, receipt: r }
+              SelectionNeedsPolicy { survivors: sv } =>
+                apply_policy(
+                  remaining: rem,
+                  survivors: sv,
+                  policy: policy,
+                  decision_subject: decision_subject,
+                  candidate_field_identity: candidate_field_identity,
+                  field_standing: standing,
+                  constraint_authority: constraint_authority,
+                  axes: axes,
+                  evidence_snapshot: evidence_snapshot,
+                )
+            }
+          }
+      }
+  }
+}
+
+type ConvergenceAdmission
+  = ConvergenceAdmitted { candidate: ParetoEntry, receipt: SelectionReceipt }
+  | ConvergenceRefusedUnresolvedSelection { result_kind: NonEmptyStr }
+
+fn admit_world_converge(result: RealizationSelectionResult<ParetoEntry>) -> ConvergenceAdmission {
+  match result {
+    SelectedWithin { candidate: c, receipt: r } => ConvergenceAdmitted { candidate: c, receipt: r }
+    CandidateFieldUnestablished { causes: _ } =>
+      ConvergenceRefusedUnresolvedSelection { result_kind: "CandidateFieldUnestablished" as NonEmptyStr }
+    NoFeasibleRealization { causes: _ } =>
+      ConvergenceRefusedUnresolvedSelection { result_kind: "NoFeasibleRealization" as NonEmptyStr }
+    SelectionNeedsEvidence { gaps: _ } =>
+      ConvergenceRefusedUnresolvedSelection { result_kind: "SelectionNeedsEvidence" as NonEmptyStr }
+    SelectionNeedsPolicy { survivors: _ } =>
+      ConvergenceRefusedUnresolvedSelection { result_kind: "SelectionNeedsPolicy" as NonEmptyStr }
+    RealizationSelectionRefused { defects: _ } =>
+      ConvergenceRefusedUnresolvedSelection { result_kind: "SelectionRefused" as NonEmptyStr }
+  }
+}
+
+fn result_is_selected_within(result: RealizationSelectionResult<ParetoEntry>) -> Bool {
+  match result {
+    SelectedWithin { candidate: _, receipt: _ } => true
+    CandidateFieldUnestablished { causes: _ } => false
+    NoFeasibleRealization { causes: _ } => false
+    SelectionNeedsEvidence { gaps: _ } => false
+    SelectionNeedsPolicy { survivors: _ } => false
+    RealizationSelectionRefused { defects: _ } => false
+  }
+}
+
+fn result_needs_evidence(result: RealizationSelectionResult<ParetoEntry>) -> Bool {
+  match result {
+    SelectionNeedsEvidence { gaps: _ } => true
+    SelectedWithin { candidate: _, receipt: _ } => false
+    CandidateFieldUnestablished { causes: _ } => false
+    NoFeasibleRealization { causes: _ } => false
+    SelectionNeedsPolicy { survivors: _ } => false
+    RealizationSelectionRefused { defects: _ } => false
+  }
+}
+
+fn result_needs_policy(result: RealizationSelectionResult<ParetoEntry>) -> Bool {
+  match result {
+    SelectionNeedsPolicy { survivors: _ } => true
+    SelectedWithin { candidate: _, receipt: _ } => false
+    CandidateFieldUnestablished { causes: _ } => false
+    NoFeasibleRealization { causes: _ } => false
+    SelectionNeedsEvidence { gaps: _ } => false
+    RealizationSelectionRefused { defects: _ } => false
   }
 }

@@ -26,6 +26,11 @@ import std.pareto {
   SelectionAxis,
   entry_standing,
 }
+import std.realization_selection {
+  RealizationSelectionResult,
+  UniqueSurvivorRequired,
+  select_realization,
+}
 import product.build_fulfillment {
   CashDerived,
   CashNoPurchaseLines,
@@ -45,9 +50,10 @@ import product.build_fulfillment {
   OwnedInventory,
 }
 
-// THE DOMAIN PROJECTOR. std.pareto is the universal selection spine and knows
+// THE DOMAIN PROJECTOR. std.pareto is the Pareto-assessment spine and knows
 // nothing about hardware; this module is the one place that turns a resolved
-// build into the spine's vocabulary. It is the last stage of the pipeline —
+// build into that vocabulary. It projects five axes and never chooses a build
+// — choosing one realization is std.realization_selection. Pipeline:
 // memory_provisioning derives populations, the qualification seam grades them,
 // product.build_fulfillment resolves and prices the lines, and this projects
 // what survives into a comparable field.
@@ -294,5 +300,42 @@ fn build_standing(
     field: project_field(candidates: field, declared: declared),
     axes: build_selection_axes(),
     sensitivities: no_missing,
+  )
+}
+
+data build_selection_subject: DeclarationRef = decl_ref(
+  module_path: "product.build_selection",
+  decl_name: "build_selection_subject",
+)
+data build_selection_field: DeclarationRef = decl_ref(
+  module_path: "product.build_selection",
+  decl_name: "build_selection_field",
+)
+data build_selection_constraint_authority: DeclarationRef = decl_ref(
+  module_path: "product.build_selection",
+  decl_name: "build_selection_constraint_authority",
+)
+data build_selection_evidence: DeclarationRef = decl_ref(
+  module_path: "product.build_selection",
+  decl_name: "build_selection_evidence",
+)
+data build_selection_unique_policy: DeclarationRef = decl_ref(
+  module_path: "product.build_selection",
+  decl_name: "build_selection_unique_policy",
+)
+
+fn select_build(
+  candidates: List<BuildCandidate>,
+  declared: CurrencyCode,
+) -> RealizationSelectionResult<ParetoEntry> {
+  select_realization(
+    decision_subject: build_selection_subject,
+    candidate_field_identity: build_selection_field,
+    field: project_field(candidates: candidates, declared: declared),
+    axes: build_selection_axes(),
+    constraints: [],
+    constraint_authority: build_selection_constraint_authority,
+    policy: UniqueSurvivorRequired { identity: build_selection_unique_policy },
+    evidence_snapshot: build_selection_evidence,
   )
 }

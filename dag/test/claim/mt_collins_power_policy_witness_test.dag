@@ -19,7 +19,7 @@ import product.mt_collins_power_policy {
   var_socket_power_cap,
   var_powered_chassis_count,
 }
-import std.decision {
+import std.realization_selection {
   Deferred,
   Settled,
   DecisionRefused,

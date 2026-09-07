@@ -1,0 +1,141 @@
+module product.fleet_operating_point
+
+import std.types { List, NonEmptyStr, Bool }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.measure { Watt, watt }
+import std.pareto {
+  AxisGap,
+  LowerIsBetter,
+  HigherIsBetter,
+  ParetoEntry,
+  SelectionAxis,
+}
+import std.realization_selection {
+  HardConstraint,
+  RealizationSelectionResult,
+  UniqueSurvivorRequired,
+  select_realization,
+  result_needs_evidence,
+}
+
+// FIRST SUBJECT OF REALIZATION SELECTION: an operating point, not a clock.
+// The actuator is what the platform exposes — a socket/chassis power limit is the
+// variable; achieved frequency is an observation. Do not encode a withdrawn 250 W
+// platform constant or a 2.6–2.8 GHz optimum.
+type FleetOperatingPoint {
+  active_server_count: Nat
+  per_server_power_control: Watt
+  workload_placement: DeclarationRef
+}
+
+data throughput_by_operating_point_axis: DeclarationRef = decl_ref(
+  module_path: "product.fleet_operating_point",
+  decl_name: "throughput_by_operating_point_axis",
+)
+data ac_power_by_operating_point_axis: DeclarationRef = decl_ref(
+  module_path: "product.fleet_operating_point",
+  decl_name: "ac_power_by_operating_point_axis",
+)
+data fleet_operating_point_subject: DeclarationRef = decl_ref(
+  module_path: "product.fleet_operating_point",
+  decl_name: "fleet_operating_point_subject",
+)
+data fleet_operating_point_field: DeclarationRef = decl_ref(
+  module_path: "product.fleet_operating_point",
+  decl_name: "fleet_operating_point_field",
+)
+data fleet_operating_point_constraints: DeclarationRef = decl_ref(
+  module_path: "product.fleet_operating_point",
+  decl_name: "fleet_operating_point_constraints",
+)
+data fleet_operating_point_evidence: DeclarationRef = decl_ref(
+  module_path: "product.fleet_operating_point",
+  decl_name: "fleet_operating_point_evidence",
+)
+data fleet_operating_point_policy: DeclarationRef = decl_ref(
+  module_path: "product.fleet_operating_point",
+  decl_name: "fleet_operating_point_policy",
+)
+data placement_default: DeclarationRef = decl_ref(
+  module_path: "product.fleet_operating_point",
+  decl_name: "placement_default",
+)
+data candidate_cap_low: DeclarationRef = decl_ref(
+  module_path: "product.fleet_operating_point",
+  decl_name: "candidate_cap_low",
+)
+data candidate_cap_high: DeclarationRef = decl_ref(
+  module_path: "product.fleet_operating_point",
+  decl_name: "candidate_cap_high",
+)
+
+data gap_aggregate_throughput: AxisGap = AxisGap {
+  axis: throughput_by_operating_point_axis,
+  cause: "aggregate throughput by operating point is unmeasured" as NonEmptyStr,
+}
+data gap_ac_power_energy: AxisGap = AxisGap {
+  axis: ac_power_by_operating_point_axis,
+  cause: "JOIN strategy.mt_collins_power PowerAssumedOnly / MemoryPopulationEvidence unread: AC power/energy by operating point is unmeasured; power not observed is not an observed 0 W" as NonEmptyStr,
+}
+
+fn fleet_operating_point_axes() -> List<SelectionAxis> {
+  [
+    SelectionAxis { identity: throughput_by_operating_point_axis, goal: HigherIsBetter },
+    SelectionAxis { identity: ac_power_by_operating_point_axis, goal: LowerIsBetter },
+  ]
+}
+
+fn fleet_operating_point_hard_constraints() -> List<HardConstraint> {
+  [
+    HardConstraint {
+      identity: fleet_operating_point_constraints,
+      axis: ac_power_by_operating_point_axis,
+      bound_micro: 1,
+    },
+    HardConstraint {
+      identity: fleet_operating_point_constraints,
+      axis: throughput_by_operating_point_axis,
+      bound_micro: 1,
+    },
+  ]
+}
+
+fn unevidenced_point(identity: DeclarationRef, label: NonEmptyStr) -> ParetoEntry {
+  ParetoEntry {
+    identity: identity,
+    display_label: label,
+    readings: [],
+    missing_inputs: [gap_aggregate_throughput, gap_ac_power_energy],
+  }
+}
+
+fn fleet_operating_point_field_rows() -> List<ParetoEntry> {
+  [
+    unevidenced_point(identity: candidate_cap_low, label: "power-limit low, chassis count open" as NonEmptyStr),
+    unevidenced_point(identity: candidate_cap_high, label: "power-limit high, chassis count open" as NonEmptyStr),
+  ]
+}
+
+data example_operating_point: FleetOperatingPoint = FleetOperatingPoint {
+  active_server_count: 16,
+  per_server_power_control: watt(count: 1),
+  workload_placement: placement_default,
+}
+
+fn fleet_operating_point_selection() -> RealizationSelectionResult<ParetoEntry> {
+  select_realization(
+    decision_subject: fleet_operating_point_subject,
+    candidate_field_identity: fleet_operating_point_field,
+    field: fleet_operating_point_field_rows(),
+    axes: fleet_operating_point_axes(),
+    constraints: fleet_operating_point_hard_constraints(),
+    constraint_authority: fleet_operating_point_constraints,
+    policy: UniqueSurvivorRequired { identity: fleet_operating_point_policy },
+    evidence_snapshot: fleet_operating_point_evidence,
+  )
+}
+
+fn fleet_operating_point_needs_evidence() -> Bool {
+  result_needs_evidence(result: fleet_operating_point_selection())
+}
