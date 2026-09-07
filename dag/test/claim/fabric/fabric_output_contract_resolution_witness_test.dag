@@ -14,6 +14,7 @@ import product.fabric.work {
   declared_output_obligations, empty_output_obligations,
   resolve_output_obligations, OutputObligationsResolved, OutputObligationsUnreadable,
   OutputObligationsResolution, ObligationsJudgedAtJobStart, ObligationsJudgedAtAdmissionGate,
+  WorkKeyDoesNotMatchContract,
 }
 import product.fabric.identity { WorkKey }
 
@@ -29,10 +30,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // output_contract field inhabits OutputContractRef — verified nonempty for each
 // class before classifying):
 //   content-serialised — required_build_contract_from_materials (DELETED by this cut)
-//   opaque name        — floor_work_contract; fixture contracts in fabric_*_witness
-//   content-addressed opaque — training_work_contract (hash wire as name, not framed roster)
+//   opaque name        — floor_work_contract; fixture contracts in fabric_*_witness;
+//                        training_work_contract (content-addressed digest is opaque:
+//                        derived from content, no decodable payload — same surviving shape)
 // Consumers: work_identity_material (opaque string bytes + obligations material);
-// no consumer ever parsed the framed form — anemic modeling confirmed.
+// parse consumers of the framed form: 0 — anemic modeling confirmed (write-only fork).
 
 fn fixture_requirements() -> ExecutionRequirements {
   ExecutionRequirements {
@@ -63,6 +65,7 @@ fn contract_with(obligations_ids: List<NonEmptyStr>) -> WorkContract {
 fn resolve_at_start(contract: WorkContract, work_key: WorkKey) -> OutputObligationsResolution {
   resolve_output_obligations(
     contract: contract,
+    requirements: fixture_requirements(),
     work_key: work_key,
     judgment: ObligationsJudgedAtJobStart,
   )
@@ -144,6 +147,7 @@ test fn judgment_policy_is_stamped_on_the_sealed_result() -> Bool {
   let key = derive_work_key(contract: contract, requirements: fixture_requirements())
   match resolve_output_obligations(
     contract: contract,
+    requirements: fixture_requirements(),
     work_key: key,
     judgment: ObligationsJudgedAtAdmissionGate,
   ) {
@@ -152,6 +156,23 @@ test fn judgment_policy_is_stamped_on_the_sealed_result() -> Bool {
       ObligationsJudgedAtAdmissionGate => true
       ObligationsJudgedAtJobStart => false
     }
+  }
+}
+
+// Discriminating producer for OutputObligationsUnreadable: a foreign work_key
+// cannot seal this contract's roster. Without this path the Unreadable arm is
+// permanently green by construction (DESIGN §4b).
+test fn foreign_work_key_is_unreadable_not_resolved() -> Bool {
+  let a = contract_with(obligations_ids: ["artifact-a"])
+  let b = contract_with(obligations_ids: ["artifact-b"])
+  let foreign = derive_work_key(contract: b, requirements: fixture_requirements())
+  match resolve_at_start(contract: a, work_key: foreign) {
+    OutputObligationsResolved { value: _ } => false
+    OutputObligationsUnreadable { contract: c, cause: cause } =>
+      (c == a.output_contract)
+        && match cause {
+          WorkKeyDoesNotMatchContract => true
+        }
   }
 }
 

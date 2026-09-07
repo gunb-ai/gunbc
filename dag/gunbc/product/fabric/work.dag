@@ -48,6 +48,10 @@ type EffectContractRef = NonEmptyStr where brand("EffectContractRef")
 // the same NonEmptyStr). Both inhabited one type, so no consumer could tell which it
 // held — DESIGN section 3. The opaque name survives; obligations live on
 // DeclaredOutputObligations and reach a gate only through resolve_output_obligations.
+//
+// A content-addressed digest (e.g. training_work_contract's serialize_content_hash
+// wire) is THIS same opaque shape: derived from content, but opaque to every reader
+// and carrying no decodable payload — not a third contract and not content-serialised.
 type OutputContractRef = NonEmptyStr where brand("OutputContractRef")
 
 type SourceManifestRef = NonEmptyStr where brand("SourceManifestRef")
@@ -101,6 +105,14 @@ type OutputObligationsJudgment
 // holds NOW with a named degradation condition: the first Rust consumer of the
 // seed against this carrier. Claiming "unwritable" unqualified would be the
 // inflation 4b(1) forbids.
+//
+// CONSUMPTION FRONTIER (DESIGN §3c): this sealed family is not yet read by a
+// production gate in this closure. Named consumer: gunbc durable-commit
+// admit_job_publication (warm-moth-142 / gunbc#10641). Trigger: that gate takes
+// OutputObligationsResolution (or ResolvedOutputObligations) instead of a
+// caller-supplied coproduct. Until the trigger fires, DeclaredOutputObligations
+// in work_identity_material is the live production consumer of the roster half;
+// the seal exists so the gate cannot mint terminal-success without resolving.
 type ResolvedOutputObligations sole_constructor {
   contract: OutputContractRef
   revision: OutputObligationsRevision
@@ -109,9 +121,19 @@ type ResolvedOutputObligations sole_constructor {
   required: List<OutputObligationId>
 }
 
+// Causes resolve_output_obligations can produce today. WorkKeyDoesNotMatchContract
+// is the binding warm-moth asked for: a foreign work_key cannot seal this contract's
+// roster. Extend the coproduct when a new readable refusal exists — never invent an
+// Unreadable by hand outside this module's resolve.
+type OutputObligationsUnreadableCause
+  = WorkKeyDoesNotMatchContract
+
 type OutputObligationsResolution
   = OutputObligationsResolved { value: ResolvedOutputObligations }
-  | OutputObligationsUnreadable { contract: OutputContractRef, cause: NonEmptyStr }
+  | OutputObligationsUnreadable {
+      contract: OutputContractRef
+      cause: OutputObligationsUnreadableCause
+    }
 
 // Resumability is a property of what a step DECLARES, never of the fabric. A step
 // whose effects are undeclared cannot be resumed by any mechanism, so the tier is
@@ -301,21 +323,34 @@ fn output_obligations_revision(declared: DeclaredOutputObligations) -> OutputObl
 
 // The only route to a terminal-success-eligible roster on the .dag path. Empty
 // required is a Resolved value produced here, never an arm a gate caller can
-// invent without having resolved. work_key binds the roster to one work identity
-// so a foreign job's commitments cannot discharge it. judgment is required and
-// stamped so start-vs-gate policy is readable from the value.
+// invent without having resolved. work_key must equal derive_work_key for this
+// contract+requirements — a foreign key refuses as Unreadable so one job cannot
+// seal another's roster. judgment is required and stamped so start-vs-gate
+// policy is readable from the value.
+//
+// Production consumer: declared frontier on ResolvedOutputObligations (warm-moth-142
+// admit_job_publication / gunbc#10641). Witnesses below exercise both arms.
 fn resolve_output_obligations(
   contract: WorkContract,
+  requirements: ExecutionRequirements,
   work_key: WorkKey,
   judgment: OutputObligationsJudgment,
 ) -> OutputObligationsResolution {
-  OutputObligationsResolved {
-    value: ResolvedOutputObligations {
+  let expected = derive_work_key(contract: contract, requirements: requirements)
+  if work_key != expected {
+    OutputObligationsUnreadable {
       contract: contract.output_contract,
-      revision: output_obligations_revision(declared: contract.output_obligations),
-      judgment: judgment,
-      work_key: work_key,
-      required: contract.output_obligations.required,
+      cause: WorkKeyDoesNotMatchContract,
+    }
+  } else {
+    OutputObligationsResolved {
+      value: ResolvedOutputObligations {
+        contract: contract.output_contract,
+        revision: output_obligations_revision(declared: contract.output_obligations),
+        judgment: judgment,
+        work_key: work_key,
+        required: contract.output_obligations.required,
+      }
     }
   }
 }
