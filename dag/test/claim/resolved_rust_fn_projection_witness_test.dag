@@ -1,4 +1,4 @@
-module test.claim.emitted_rust_fn_projection_witness
+module test.claim.resolved_rust_fn_projection_witness
 
 import std.types { String, Bool, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -28,7 +28,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the RED must be authorable or the check is a decoration).
 //
 // WHAT THIS DOES NOT ESTABLISH. It does not prove service-effect propagation to the top of a
-// call chain. That real consumer is test.claim.emitted_rust_fn_service_chain_consumer_witness
+// call chain. That real consumer is test.claim.resolved_rust_fn_service_chain_consumer_witness
 // (shallow depth-3 chain); #10688 takes the deep-chain discriminator after this instrument merges.
 // Ordinary authored parameters are enough to prove the projection discriminates, which is this
 // file's whole job.
@@ -103,7 +103,7 @@ fn observed_compiles_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
 }
 
 // GREEN: both compile and the projection reports `marker` on observed.
-test fn emitted_rust_fn_projection_reports_present_parameter() -> Bool {
+test fn resolved_rust_fn_projection_reports_present_parameter() -> Bool {
   let o = run_with_marker()
   observed_compiles_clean(o) && observed_has_marker(o)
 }
@@ -111,7 +111,7 @@ test fn emitted_rust_fn_projection_reports_present_parameter() -> Bool {
 // RED CONTROL: the sibling fixture also compiles clean, and the projection reports the parameter
 // ABSENT. If this ever goes green while the with-marker arm is green, the projection has stopped
 // discriminating and every consumer citing it is citing a decoration.
-test fn emitted_rust_fn_projection_reports_absent_parameter_on_clean_sibling() -> Bool {
+test fn resolved_rust_fn_projection_reports_absent_parameter_on_clean_sibling() -> Bool {
   let o = run_without_marker()
   observed_compiles_clean(o) && !observed_has_marker(o)
 }

@@ -1,4 +1,4 @@
-module test.claim.emitted_rust_fn_service_chain_consumer_witness
+module test.claim.resolved_rust_fn_service_chain_consumer_witness
 
 import std.types { String, Bool, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

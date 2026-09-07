@@ -73,7 +73,7 @@ import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
 // — per FnItem/FuncItem in item_registry: source owner_module + declaration_name and the
 // ordered parameter name list derived from that registry row (emit_ident / service_var_name
 // transforms applied). Witnesses assert over that list; raw text is not offered as an assertion
-// surface. Discriminating RED: test.claim.emitted_rust_fn_projection_witness.
+// surface. Discriminating RED: test.claim.resolved_rust_fn_projection_witness.
 //
 // THIS IS NOT AN EMITTED-ARTIFACT OBSERVATION. The projection runs on the resolved graph before
 // emit_resolved_for_target; a defect solely inside emit_func_params / emit_func_def can leave
