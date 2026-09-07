@@ -8038,25 +8038,48 @@ diff --git a/src/v1/stage0/src/v1_rt.rs b/src/v1/stage0/src/v1_rt.rs
 mod seed_executable_digest_spelling_tests {
     use super::*;
 
-    /// The two sides of `run_built_seed_regen`'s `!=` must be produced by ONE renderer.
+    /// Every producer of a seed-executable digest must render ONE spelling, over one file.
     ///
-    /// The admitted side of that comparison is a stage's `output_seed_digest`, and the observed
-    /// side is read back from the same file on disk. Before this control, the first was rendered
-    /// bare by `v1_rt::bytes_identity_hash` and the second carried `bytes_digest`'s `fnv1a64:`
-    /// prefix, so the comparison could never hold and generation 2 refused with two spellings of
-    /// one value printed side by side. The convergence tests above never caught it because they
-    /// INJECT the seed-digest producer as a literal (`|| Ok("seed-2".to_string())`), so no real
-    /// renderer runs in them.
+    /// The two sides of `run_built_seed_regen`'s `!=` are a stage's `output_seed_digest`, which
+    /// comes from `next_pass_executable_digest`, and the observed side, which comes from
+    /// `current_exe_digest`. Before this control the first rendered bare via
+    /// `v1_rt::bytes_identity_hash` and the second carried `bytes_digest`'s `fnv1a64:` prefix, so
+    /// the comparison could never hold and generation 2 refused with two spellings of one value
+    /// printed side by side. The convergence tests above cannot see this: they INJECT the
+    /// seed-digest producer as a literal (`|| Ok("seed-2".to_string())`), so no real renderer runs
+    /// in them.
+    ///
+    /// This drives all three producers over ONE set of bytes, which is what makes the comparison
+    /// in `run_built_seed_regen` hold by construction rather than by luck: whatever the file is,
+    /// the admitted side and the observed side render it the same way.
     #[test]
     fn every_seed_executable_digest_producer_renders_one_spelling() {
+        // The producer that renders the ADMITTED side, exercised over a workspace whose
+        // `target/release/claim_executor` this test controls the bytes of.
+        let staged =
+            std::env::temp_dir().join(format!("regen-digest-spelling-{}", std::process::id()));
+        let release = staged.join("target/release");
+        fs::create_dir_all(&release).expect("staged workspace");
+        let executable = release.join("claim_executor");
+        let payload = b"not an executable; the digest does not care, and neither does the defect";
+        fs::write(&executable, payload).expect("staged executable");
+
+        let admitted = next_pass_executable_digest(&staged).expect("admitted side renders");
+        let observed = path_digest(&executable).expect("observed side renders");
+
+        // THE COMPARISON THE DEFECT LIVED IN, over one file, with both real renderers.
+        assert_eq!(admitted, observed);
+        assert_eq!(admitted, bytes_digest(payload));
+
+        fs::remove_dir_all(&staged).ok();
+
+        // And the third producer, over the running binary, renders the same way.
         let on_disk = current_exe_on_disk().expect("current exe resolves");
         let bytes = fs::read(&on_disk).expect("current exe readable");
-
-        // Both producers, over the same bytes, must agree with the shared renderer.
         assert_eq!(current_exe_digest().unwrap(), bytes_digest(&bytes));
         assert_eq!(path_digest(&on_disk).unwrap(), bytes_digest(&bytes));
 
-        // And the rendering is the prefixed one, so a digest read from a receipt is
+        // The rendering is the prefixed one, so a digest read back from a receipt is
         // self-describing rather than a bare integer whose family must be guessed.
         assert!(current_exe_digest().unwrap().starts_with("fnv1a64:"));
     }
