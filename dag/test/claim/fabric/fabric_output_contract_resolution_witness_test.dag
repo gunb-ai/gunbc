@@ -171,7 +171,7 @@ test fn foreign_work_key_is_unreadable_not_resolved() -> Bool {
     OutputObligationsUnreadable { contract: c, cause: cause } =>
       (c == a.output_contract)
         && match cause {
-          WorkKeyDoesNotMatchContract => true
+          WorkKeyDoesNotMatchContract {} => true
         }
   }
 }
