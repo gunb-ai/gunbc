@@ -919,10 +919,15 @@ fn a_duplicated_manifest_path(entries: List<CorpusManifestEntry>) -> NonEmptyStr
 // admitting as much. That is the same shape as the integration arm one module over -- honest about the
 // callee's domain, dishonest about the operation's -- and external review caught both.
 //
-// THE UNIQUENESS CHAIN IS REAL AND IT ENDS AT A sole_constructor. `CorpusManifestRecord` can only be
-// minted by `store_corpus_manifest`, and only after `a_duplicated_manifest_path` answered `Absent`. So
-// a record's entries ARE path-unique, as a fact about how the value was obtained rather than a
-// property someone asserts. Removing one path from that set and appending exactly one entry preserves
+// THE UNIQUENESS CHAIN IS REAL AND IT ENDS AT A sole_constructor. `CorpusManifestRecord` is minted at
+// exactly one place -- `insert_canonical_manifest` below -- which cannot be reached without an
+// `AdmittedManifestEntries`, and that carrier has only two constructors: one that ran
+// `a_duplicated_manifest_path` and got `Absent`, and one whose argument is a `PathUniqueManifestEntries`.
+// So a record's entries ARE path-unique, as a fact about how the value was obtained rather than a
+// property someone asserts. An earlier revision of this paragraph named `store_corpus_manifest` as the
+// sole minter, which was true when written and stopped being true when the insertion body was factored
+// out -- and the factored body then took a bare list, so for one revision the premise was not merely
+// stale but FALSE. Both halves were found by external review. Removing one path from that set and appending exactly one entry preserves
 // it. Both constructors below are exactly that move, and there is no other way to build this carrier.
 type PathUniqueManifestEntries sole_constructor {
   entries: List<CorpusManifestEntry>
@@ -974,10 +979,53 @@ type UniqueManifestStoreOutcome
 // future manifest change. That is the redundancy DESIGN section 2 names, introduced by a fix for a
 // different defect. Found by external review. The two routes now differ in exactly the one thing that
 // should differ: whether they ask about duplicate paths before inserting.
+//
+// THE SHARED BODY TAKES A CARRIER, NOT A LIST, AND THAT IS THE SECOND REPAIR ON THE SAME FUNCTION.
+// Its first version took `canonical: List<CorpusManifestEntry>`, and a PARAMETER NAME ESTABLISHES
+// NOTHING: `.dag` has no module privacy, so any caller could hand it duplicate paths, or the right
+// entries in a noncanonical order, and it would mint a `CorpusManifestRecord` and answer
+// `UniqueManifestStored` without canonicalizing or checking. That falsified this module's own
+// load-bearing premise -- that a record is minted only after the duplicate admission succeeded -- and
+// with it every downstream construction that reads path-uniqueness off a record's provenance,
+// including `PathUniqueManifestEntries` directly above. A sealed helper factored out of two correct
+// callers is still an exported forge for the invariant it was factored to share. Found by external
+// review.
+//
+// `AdmittedManifestEntries` is sole-constructed by the two admissions below and by nothing else, so
+// the insertion body cannot be reached with entries that have not been canonicalized AND cleared of
+// duplicate paths.
+type AdmittedManifestEntries sole_constructor {
+  entries: List<CorpusManifestEntry>
+}
+
+// THE ALREADY-UNIQUE ROUTE OWES ONLY THE CANONICAL ORDER. Its argument's own sole constructor is what
+// discharged the duplicate question -- see `PathUniqueManifestEntries` above -- so re-asking it here
+// would be the validation-where-construction-was-available move DESIGN section 5 names, and its
+// answer would be an arm no caller could reach.
+fn admit_path_unique_entries(unique: PathUniqueManifestEntries) -> AdmittedManifestEntries {
+  AdmittedManifestEntries { entries: canonical_manifest_entries(entries: unique.entries) }
+}
+
+type ManifestEntriesAdmission
+  = ManifestEntriesAdmitted(AdmittedManifestEntries)
+  | ManifestEntriesDuplicatePath { path: NonEmptyStr }
+
+// THE GENERAL ROUTE ASKS, BECAUSE ITS ARGUMENT REALLY CAN CARRY THE SAME PATH TWICE. The duplicate is
+// looked for in the CANONICAL entries rather than the authored ones, so the answer does not depend on
+// the order a caller happened to write.
+fn admit_manifest_entries(entries: List<CorpusManifestEntry>) -> ManifestEntriesAdmission {
+  let canonical = canonical_manifest_entries(entries: entries)
+  match a_duplicated_manifest_path(entries: canonical) {
+    Present { value: path } => ManifestEntriesDuplicatePath { path: path }
+    Absent => ManifestEntriesAdmitted(AdmittedManifestEntries { entries: canonical })
+  }
+}
+
 fn insert_canonical_manifest(
   store: ObjectStore,
-  canonical: List<CorpusManifestEntry>,
+  admitted: AdmittedManifestEntries,
 ) -> UniqueManifestStoreOutcome {
+  let canonical = admitted.entries
   let reference = CorpusManifestObjectRef {
     locator: corpus_manifest_identity(entries: canonical),
   }
@@ -999,21 +1047,17 @@ fn store_path_unique_manifest(
   store: ObjectStore,
   unique: PathUniqueManifestEntries,
 ) -> UniqueManifestStoreOutcome {
-  insert_canonical_manifest(
-    store: store,
-    canonical: canonical_manifest_entries(entries: unique.entries),
-  )
+  insert_canonical_manifest(store: store, admitted: admit_path_unique_entries(unique: unique))
 }
 
 fn store_corpus_manifest(
   store: ObjectStore,
   entries: List<CorpusManifestEntry>
 ) -> CorpusManifestStoreOutcome {
-  let canonical = canonical_manifest_entries(entries: entries)
-  match a_duplicated_manifest_path(entries: canonical) {
-    Present { value: path } => CorpusManifestDuplicatePath { path: path }
-    Absent =>
-      match insert_canonical_manifest(store: store, canonical: canonical) {
+  match admit_manifest_entries(entries: entries) {
+    ManifestEntriesDuplicatePath { path: path } => CorpusManifestDuplicatePath { path: path }
+    ManifestEntriesAdmitted(admitted) =>
+      match insert_canonical_manifest(store: store, admitted: admitted) {
         UniqueManifestStored { store: next, manifest: reference } =>
           CorpusManifestStored { store: next, manifest: reference }
         UniqueManifestLocatorCollision { identity: i, existing: e, incoming: n } =>

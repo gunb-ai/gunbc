@@ -2,7 +2,7 @@ module gunbc.durable_cas_file_store
 
 import std.types { NonEmptyStr, String, Int, Bool }
 import std.content_hash { ContentHash, content_hash_of_value, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
-import std.durable_compare_and_set { CasAttempt, cas_attempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_generation_first, cas_generation_next, cas_generation_count }
+import std.durable_compare_and_set { CasAttempt, cas_attempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, CasUnreadableBeyondProbeBound, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_generation_first, cas_generation_next, cas_generation_count }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
 // The first production realization of std.durable_compare_and_set: one keyed
@@ -264,15 +264,33 @@ fn cas_observe_slot(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotProbe {
   cas_probe_from(root: root, key: key, generation: cas_generation_first(), previous: "unread" as NonEmptyStr)
 }
 
-fn cas_probe_as_readable(probe: CasSlotProbe) -> CasReadableSlot<NonEmptyStr> {
-  match probe {
-    ProbedAbsent => CasReadableAbsent
-    ProbedHead { generation: h, value: v } =>
-      CasReadablePresent {
-        version: CasSlotVersion { generation: h, content: content_hash_of_value(value: v), value: v }
-      }
-    ProbedBeyondBound { bound: _ } => CasReadableAbsent
+// THE PROJECTION TAKES A HEAD, NOT A PROBE, AND THE DELETED ARM IS THE REPAIR.
+//
+// An earlier revision was `cas_probe_as_readable(probe: CasSlotProbe)`, total over the probe, mapping
+// `ProbedBeyondBound` to `CasReadableAbsent`. Every call site happened to be inside a `ProbedHead`
+// arm, so the bound arm was dead at all of them -- and `.dag` has no module privacy, so what the
+// corpus actually carried was an importable function that turns EXPLICIT INABILITY TO OBSERVE into
+// ESTABLISHED ABSENCE. That is the absorbing fallback DESIGN section 5 names, and the defence written
+// beside it -- that answering absent is correct "for reporting what beat a lost race" -- was
+// falsified by this module's own bound counterexample two screens down, where a writer really did
+// publish and the probe still could not see it.
+//
+// Narrowing the parameter to the head deletes the arm rather than fixing its answer, so there is no
+// projection left for a future caller to reach with a bound-exhausted probe.
+fn cas_head_as_readable(generation: CasGeneration, value: NonEmptyStr) -> CasReadableSlot<NonEmptyStr> {
+  CasReadablePresent {
+    version: CasSlotVersion {
+      generation: generation,
+      content: content_hash_of_value(value: value),
+      value: value,
+    }
   }
+}
+
+// ONE AUTHORITY FOR WHAT BOUND EXHAUSTION IS. Three sites spelled it independently, twice as a
+// malformed head, and a fourth spelling would have arrived with the next caller.
+fn cas_slot_beyond_probe_bound(bound: Int) -> CasUnreadableSlot {
+  CasUnreadableBeyondProbeBound { bound: bound }
 }
 
 // THE STORE'S OBSERVATION, FOR CALLERS THAT MUST DECIDE BEFORE THEY WRITE.
@@ -284,26 +302,19 @@ fn cas_probe_as_readable(probe: CasSlotProbe) -> CasReadableSlot<NonEmptyStr> {
 // building an observation to feed such a decision would make the caller the
 // author of the fact it is supposed to be reading.
 //
-// THE BOUND ARM IS WHY THIS IS NOT cas_probe_as_readable. That projection
-// answers CasReadableAbsent for a slot that exceeded the probe bound, which is
-// correct for its own use -- reporting what beat a lost race -- and wrong here:
-// a decision caller would read "the slot holds nothing" from a store that could
-// not tell it anything, and choose the remedy for an empty cell when the actual
-// remedy is to repair the slot. That is the state-space conflation this corpus
-// keeps finding, so the bound arm becomes unreadable-with-a-cause and only the
-// two genuinely readable arms delegate.
+// THE BOUND ARM IS UNREADABLE-WITH-A-CAUSE, and it is now the ONLY reading of
+// it anywhere: the projection that used to answer CasReadableAbsent for it has
+// been narrowed out of existence. A caller must not read "the slot holds
+// nothing" from a store that could not tell it anything and then choose the
+// remedy for an empty cell.
 fn observe_cas_slot_state(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotObservation<NonEmptyStr> {
   let probe = cas_observe_slot(root: root, key: key)
   match probe {
     ProbedBeyondBound { bound: b } =>
-      CasObservedUnreadable {
-        cause: CasUnreadableMalformed {
-          detail: concat("slot exceeds the generation probe bound of ", b as String) as NonEmptyStr
-        }
-      }
-    ProbedAbsent => CasObservedReadable { readable: cas_probe_as_readable(probe: probe) }
-    ProbedHead { generation: _, value: _ } =>
-      CasObservedReadable { readable: cas_probe_as_readable(probe: probe) }
+      CasObservedUnreadable { cause: cas_slot_beyond_probe_bound(bound: b) }
+    ProbedAbsent => CasObservedReadable { readable: CasReadableAbsent }
+    ProbedHead { generation: h, value: v } =>
+      CasObservedReadable { readable: cas_head_as_readable(generation: h, value: v) }
   }
 }
 
@@ -459,11 +470,11 @@ fn cas_failed_publication(
 ) -> CasOutcome<NonEmptyStr> {
   let probe = cas_observe_slot(root: root, key: attempt.key)
   match probe {
-    ProbedHead { generation: h, value: _ } =>
+    ProbedHead { generation: h, value: v } =>
       if cas_generation_count(g: h) >= cas_generation_count(g: target) {
         CasPreconditionFailed {
           expected: attempt.expected,
-          observed: cas_probe_as_readable(probe: probe),
+          observed: cas_head_as_readable(generation: h, value: v),
         }
       } else {
         cas_publication_refused(detail: detail)
@@ -491,16 +502,15 @@ fn cas_failed_publication(
 // refusal, not a publication refusal and not a precondition failure, because the probe no longer holds
 // a readable head to report as the winner. The ordinary two-writer control runs far below the bound
 // and cannot discriminate this arm, so it has its own control.
+//
+// AND THE CAUSE IS BOUND EXHAUSTION, NOT A MALFORMED HEAD, which the first version of this repair got
+// wrong in the other direction: it stopped claiming the publication failed and then said the slot's
+// contents were garbage. A slot holding 4096 contiguous, perfectly well formed generations is not
+// malformed, and telling an operator it is sends them to repair bytes that are fine. Found by external
+// review, on this function's own repair.
 fn cas_publication_beyond_bound(bound: Int) -> CasOutcome<NonEmptyStr> {
   CasStoreRefused {
-    cause: CasSlotObservationRefused {
-      cause: CasUnreadableMalformed {
-        detail: concat(
-          "a publication failed and the slot could not then be observed: it exceeds the generation probe bound of ",
-          bound as String
-        ) as NonEmptyStr
-      }
-    }
+    cause: CasSlotObservationRefused { cause: cas_slot_beyond_probe_bound(bound: bound) }
   }
 }
 
@@ -529,11 +539,7 @@ fn file_compare_and_set(
   match probe {
     ProbedBeyondBound { bound: b } =>
       CasStoreRefused {
-        cause: CasSlotObservationRefused {
-          cause: CasUnreadableMalformed {
-            detail: concat("slot exceeds the generation probe bound of ", b as String) as NonEmptyStr
-          }
-        }
+        cause: CasSlotObservationRefused { cause: cas_slot_beyond_probe_bound(bound: b) }
       }
     ProbedAbsent =>
       match attempt.expected {
@@ -544,12 +550,12 @@ fn file_compare_and_set(
     ProbedHead { generation: h, value: v } =>
       match attempt.expected {
         ExpectSlotAbsent =>
-          CasPreconditionFailed { expected: attempt.expected, observed: cas_probe_as_readable(probe: probe) }
+          CasPreconditionFailed { expected: attempt.expected, observed: cas_head_as_readable(generation: h, value: v) }
         ExpectSlotGeneration { generation: g } =>
           if cas_generation_count(g: g) == cas_generation_count(g: h) {
             cas_commit_at(root: root, publication: publication, attempt: attempt, target: cas_generation_next(g: h))
           } else {
-            CasPreconditionFailed { expected: attempt.expected, observed: cas_probe_as_readable(probe: probe) }
+            CasPreconditionFailed { expected: attempt.expected, observed: cas_head_as_readable(generation: h, value: v) }
           }
       }
   }

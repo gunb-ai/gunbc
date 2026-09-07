@@ -30,7 +30,7 @@ import gunbc.scm.object_store {
 }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope, RepositoryCommitRef,
-  RepositoryManifestRoot, MintedCommit,
+  RepositoryManifestRoot,
   RepositoryManifestRootResolved, RepositoryManifestRootMissing,
   RepositoryManifestRootIsAuthoredSource, RepositoryManifestRootIsSemanticNode,
   repository_root_by_resolving,
@@ -214,25 +214,28 @@ type StagedCommit
   | StagedCommitAllocatorInvalid { next_ordinal: Int }
   | StagedCommitParentMissing { parent: RepositoryCommitRef }
 
-// THE COMMIT ADVANCES THE CHECKOUT AND CONSUMES THE STAGE IN ONE MOTION, and neither half is
-// optional. Leaving the checkout behind would make the next `add` inherit from the OLD snapshot, so
-// the commit just made would be invisible to the corpus that follows it. Leaving the stage in place
-// would make the next commit freeze the same manifest again under a new identity.
+// THE COMMITTABLE STAGE -- THE CARRIER THAT SAYS THIS ROOT IS *THIS WORKSPACE'S PENDING CHANGE*.
 //
-// IT TAKES THE MINTED PAIR, NOT A REPOSITORY AND A REFERENCE. Those two arguments are the same
-// relation-breaking shape as the staging base above: a reference from another repository installs a
-// DANGLING SELECTION through a function that succeeds, and the next candidate then inherits from a
-// commit that does not exist. `MintedCommit` is sole-constructed by the mint, which produces the
-// repository and the reference in one motion, so the selection can only ever name a commit this
-// repository just gained. Found by external review.
-fn advance_to_commit(minted: MintedCommit) -> RepositoryEnvelope {
-  RepositoryEnvelope {
-    store: minted.repository.store,
-    commits: minted.repository.commits,
-    commit_allocator: minted.repository.commit_allocator,
-    checked_out: Present { value: minted.reference },
-    staged: none,
-  }
+// `MintedCommit` proves the returned reference belongs to the returned repository. It does NOT prove
+// that the commit froze this workspace's staged candidate, and it does not authorize clearing
+// `staged`. An earlier revision exported `freeze_root(repository, root, message)` and
+// `advance_to_commit(minted)` as separate public entry points, and `.dag` has no module privacy, so
+// the pair was an authorable bypass of `stage_standing`:
+//
+//   R is checked out at C, has staged candidate S, and its store also holds manifest M
+//   resolve M against R -> mint an ordinary child of C rooted at M -> advance_to_commit(that mint)
+//   => the selection moves to the M commit and S is SILENTLY DISCARDED
+//
+// and the same route, handed C's own root on a clean repository, mints the no-change commit that
+// `commit_staged` exists to refuse. Found by external review; the seal it replaces was correct about
+// the relation it named and simply did not name this one.
+//
+// `CommittableStage` is sole-constructed by `commit_staged` at exactly the two `stage_standing` arms
+// that mean there is a change to freeze. Everything downstream consumes it, and the selection-plus-
+// stage-consumption step is not reachable except through it.
+type CommittableStage sole_constructor {
+  repository: RepositoryEnvelope
+  root: CorpusManifestObjectRef
 }
 
 fn commit_staged(repository: RepositoryEnvelope, message: String) -> StagedCommit {
@@ -241,9 +244,15 @@ fn commit_staged(repository: RepositoryEnvelope, message: String) -> StagedCommi
     NoCandidateAndNoBase => StagedCommitNothingToFreeze
     StageMatchesBase { candidate: _ } => StagedCommitNothingToFreeze
     StageWithNoBase { candidate: root } =>
-      freeze_root(repository: repository, root: root, message: message)
+      freeze_committable(
+        committable: CommittableStage { repository: repository, root: root },
+        message: message,
+      )
     StageDiffersFromBase { candidate: root, committed: _ } =>
-      freeze_root(repository: repository, root: root, message: message)
+      freeze_committable(
+        committable: CommittableStage { repository: repository, root: root },
+        message: message,
+      )
   }
 }
 
@@ -258,14 +267,19 @@ fn commit_staged(repository: RepositoryEnvelope, message: String) -> StagedCommi
 // resolved out of this same store -- so they are NOT re-reported as fabricated causes. They collapse to
 // the candidate-refusal arm, which is what they are from this verb's point of view: the candidate this
 // repository names could not be read as a manifest.
-fn freeze_root(
-  repository: RepositoryEnvelope,
-  root: CorpusManifestObjectRef,
-  message: String,
-) -> StagedCommit {
+//
+// THE MINT, THE SELECTION AND THE STAGE CONSUMPTION ARE ONE FUNCTION, and that is the repair rather
+// than an inlining preference. Splitting the advance out gave the corpus a public function that clears
+// `staged` for ANY minted commit; there is no carrier weaker than "this mint came from this
+// workspace's committable stage" that makes that clearing honest, and once the carrier is threaded
+// this far there is nothing left for a separate entry point to be. Neither half is optional: leaving
+// the checkout behind would make the next `add` inherit from the OLD snapshot, and leaving the stage
+// in place would make the next commit freeze the same manifest again under a new identity.
+fn freeze_committable(committable: CommittableStage, message: String) -> StagedCommit {
+  let repository = committable.repository
   match repository_root_by_resolving(
     repository: repository,
-    root: CorpusManifestTarget { locator: root.locator },
+    root: CorpusManifestTarget { locator: committable.root.locator },
   ) {
     RepositoryManifestRootMissing { root: r } =>
       StagedCommitCandidateRefused { cause: StageManifestMissingFromStore { staged: r } }
@@ -274,27 +288,25 @@ fn freeze_root(
     RepositoryManifestRootIsSemanticNode { root: r } =>
       StagedCommitCandidateRefused { cause: StageManifestIsSemanticNode { staged: r } }
     RepositoryManifestRootResolved(subject) =>
-      freeze_sealed_root(subject: subject, parent: repository.checked_out, message: message)
-  }
-}
-
-fn freeze_sealed_root(
-  subject: RepositoryManifestRoot,
-  parent: RepositoryCommitRef?,
-  message: String,
-) -> StagedCommit {
-  match mint_ordinary_commit(
-    subject: subject,
-    message: message,
-    parent: parent,
-  ) {
-    OrdinaryCommitAllocatorInvalid { next_ordinal: n } =>
-      StagedCommitAllocatorInvalid { next_ordinal: n }
-    OrdinaryCommitParentMissing { parent: p } => StagedCommitParentMissing { parent: p }
-    OrdinaryCommitMinted(minted) =>
-      StagedCommitMinted {
-        repository: advance_to_commit(minted: minted),
-        reference: minted.reference,
+      match mint_ordinary_commit(
+        subject: subject,
+        message: message,
+        parent: repository.checked_out,
+      ) {
+        OrdinaryCommitAllocatorInvalid { next_ordinal: n } =>
+          StagedCommitAllocatorInvalid { next_ordinal: n }
+        OrdinaryCommitParentMissing { parent: p } => StagedCommitParentMissing { parent: p }
+        OrdinaryCommitMinted(minted) =>
+          StagedCommitMinted {
+            repository: RepositoryEnvelope {
+              store: minted.repository.store,
+              commits: minted.repository.commits,
+              commit_allocator: minted.repository.commit_allocator,
+              checked_out: Present { value: minted.reference },
+              staged: none,
+            },
+            reference: minted.reference,
+          }
       }
   }
 }

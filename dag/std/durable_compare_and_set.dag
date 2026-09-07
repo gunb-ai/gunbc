@@ -119,10 +119,17 @@ type CasSlotObservation<T>
 // anemic leaf DESIGN 2 names. This carrier exists because cas_decide used to
 // do precisely that: it mapped all three onto CasStoreRefused { detail }, so
 // the module erased one layer out the distinction it made one layer in.
+// THE BOUND ARM IS THE FOURTH, AND IT IS NOT A MALFORMED HEAD. A realization that walks a slot's
+// generations carries a declared probe bound, and exhausting it means the observer ran out of budget
+// -- the slot's contents may be perfectly well formed, and typically are. Reporting it as malformed
+// sent a reader to repair bytes that are not broken, and is the state-space conflation this carrier
+// was split to remove, re-entering through the arm the split did not have yet. Found by external
+// review. The remedy is different from all three siblings: raise the bound, or compact the slot.
 type CasUnreadableSlot
   = CasUnreadableMalformed { detail: NonEmptyStr }
   | CasUnreadableContentMissing { referenced: ContentHash }
   | CasUnreadableReadRefused { detail: NonEmptyStr }
+  | CasUnreadableBeyondProbeBound { bound: Int }
 
 // WHY THE STORE FAILED, AND READING AND WRITING ARE TWO WAYS FOR IT TO FAIL.
 //

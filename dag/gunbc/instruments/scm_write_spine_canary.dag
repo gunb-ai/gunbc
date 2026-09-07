@@ -24,7 +24,8 @@ module gunbc.instruments.scm_write_spine_canary
 
 import std.types { String, NonEmptyStr, Int, Bool }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.durable_compare_and_set { CasGeneration, cas_generation_count }
+import std.durable_compare_and_set { CasGeneration, cas_generation_count, CasUnreadableBeyondProbeBound }
+import gunbc.durable_cas_file_store { cas_max_generation_probe }
 import gunbc.scm.repository_slot {
   RepositorySlot, LoadedRepositoryGeneration,
   RepositoryPublication, RepositoryPublished,
@@ -463,8 +464,25 @@ fn head_verdict(read: RepositorySlotRead, expect: String, at_generation: String)
           other => exit_failure(reason: join(["head expected to be unparseable, but ", slot_read_failure(read: other)], ""))
         }
     }
+  } else if expect == "beyond-bound" {
+    match read {
+      RepositorySlotStoreUnreadable { cause: CasUnreadableBeyondProbeBound { bound: b } } =>
+        if b == cas_max_generation_probe { ExitSuccess } else {
+          exit_failure(
+            reason: join([
+              "the reader named probe bound ", b as String,
+              " but the store's declared bound is ", cas_max_generation_probe as String,
+            ], "")
+          )
+        }
+      RepositorySlotStoreUnreadable { cause: _ } =>
+        exit_failure(
+          reason: "the slot was unreadable for some OTHER reason -- bound exhaustion must not be reported as malformed content, a missing object, or a refused read"
+        )
+      other => exit_failure(reason: join(["head expected to exceed the probe bound, but ", slot_read_failure(read: other)], ""))
+    }
   } else {
-    exit_failure(reason: join(["--arg expect must be decoded or unparseable, not ", expect], ""))
+    exit_failure(reason: join(["--arg expect must be decoded, unparseable or beyond-bound, not ", expect], ""))
   }
 }
 

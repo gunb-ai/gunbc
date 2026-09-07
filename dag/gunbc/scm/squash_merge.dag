@@ -196,14 +196,35 @@ fn carry_mint(mint: BrandedRootMint) -> SquashMergeOutcome {
 // repository value. Minting against the pre-store envelope would produce a commit whose root names a
 // manifest that repository does not contain -- a dangling root written by the one operation that
 // knows better.
+//
+// AND IT TAKES THE ADMITTED SUBJECT, NOT FIVE RAW ARGUMENTS. An earlier revision took the repository,
+// both references, the message and the entries as peers, stored and minted directly, and called
+// neither `merge_base` nor `merge_manifests`. `.dag` has no module privacy, so that was a public
+// bypass of BOTH merge safety authorities: a caller could invoke it for a source already consumed, or
+// for a target/source pair whose paths should conflict, with any entries at all, and the parent and
+// source-membership admissions would succeed -- minting a new target child and writing a
+// `SquashIntegrated` receipt that `merge_base` will afterwards read as authority to refuse the honest
+// merge. The receipt is the load-bearing part: the forged one is not merely a wrong commit, it
+// POISONS the very record the refusal depends on. Found by external review.
+//
+// `AdmittedMergeSubject` is sole-constructed inside `squash_merge`, at the one point where a
+// `MergeBaseDerived` and a `ManifestMerged` are both in scope, so the entries this function stores are
+// always the entries the merge produced for the pair the base derivation admitted.
+type AdmittedMergeSubject sole_constructor {
+  repository: RepositoryEnvelope
+  target: RepositoryCommitRef
+  source: RepositoryCommitRef
+  entries: List<CorpusManifestEntry>
+}
+
 fn commit_merged_manifest(
-  repository: RepositoryEnvelope,
-  target: RepositoryCommitRef,
-  source: RepositoryCommitRef,
+  admitted: AdmittedMergeSubject,
   message: String,
-  entries: List<CorpusManifestEntry>,
 ) -> SquashMergeOutcome {
-  match repository_root_by_storing(repository: repository, entries: entries) {
+  let repository = admitted.repository
+  let target = admitted.target
+  let source = admitted.source
+  match repository_root_by_storing(repository: repository, entries: admitted.entries) {
     RepositoryManifestRootDuplicatePath { path: p } =>
       SquashMergeResultDuplicatePath { path: p as String }
     RepositoryManifestRootLocatorCollision { identity: i } =>
@@ -263,11 +284,13 @@ fn squash_merge(
                     ManifestConflicted { conflicts: c } => SquashMergeConflicted { conflicts: c }
                     ManifestMerged { entries: e } =>
                       commit_merged_manifest(
-                        repository: repository,
-                        target: target,
-                        source: source,
+                        admitted: AdmittedMergeSubject {
+                          repository: repository,
+                          target: target,
+                          source: source,
+                          entries: e,
+                        },
                         message: message,
-                        entries: e,
                       )
                   }
               }
