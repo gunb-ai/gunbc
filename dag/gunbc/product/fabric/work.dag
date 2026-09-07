@@ -77,19 +77,34 @@ fn empty_output_obligations() -> DeclaredOutputObligations {
   DeclaredOutputObligations { required: [] }
 }
 
-// Revision of a declared roster. Carried on the resolution result so two readers
-// cannot silently disagree about whether they judged the start-of-job roster or a
-// later one: the sealed result names which revision it holds. Policy of WHEN to
-// resolve (job start vs gate time) is the caller's; the answer is in the result.
+// Revision of a declared roster — identity of WHICH roster was resolved.
 type OutputObligationsRevision = ContentHash
 
-// Sealed: the only mint is resolve_output_obligations in this module. A caller that
-// needs a terminal-success-eligible roster must resolve; constructing the resolved
-// arm by hand is unwritable (sole_constructor), which is the discriminating wall
-// for the empty-roster-without-authority defect.
+// WHICH policy a sealed result answers under. Warm-moth-142: revision identity
+// alone does not say whether a job is judged against the roster it started on or
+// the current one; that answer must be IN the value or two readers will differ
+// and both look right. The caller names the policy at resolve time; the sealed
+// result carries it. This module does not pick a global default.
+type OutputObligationsJudgment
+  = ObligationsJudgedAtJobStart
+  | ObligationsJudgedAtAdmissionGate
+
+// Sealed on the source→.dag acceptance path: the only mint is
+// resolve_output_obligations in this module. A caller that needs a
+// terminal-success-eligible roster must resolve; constructing the resolved arm
+// by hand is SoleConstructorViolation (fixture RED).
+//
+// RUNG HONESTY, PATH-SCOPED (DESIGN 4b(1); gunbc.model.population): structurally
+// impossible on source→.dag. The emitted Rust mirror of a sole_constructor type is
+// a public struct with public fields, so a consumer writing Rust against the seed
+// is OUTSIDE this guarantee. Fabric-M0 has no such Rust consumer today, so rung 4
+// holds NOW with a named degradation condition: the first Rust consumer of the
+// seed against this carrier. Claiming "unwritable" unqualified would be the
+// inflation 4b(1) forbids.
 type ResolvedOutputObligations sole_constructor {
   contract: OutputContractRef
   revision: OutputObligationsRevision
+  judgment: OutputObligationsJudgment
   work_key: WorkKey
   required: List<OutputObligationId>
 }
@@ -284,18 +299,21 @@ fn output_obligations_revision(declared: DeclaredOutputObligations) -> OutputObl
   content_hash_of_value(value: output_obligations_material(declared: declared))
 }
 
-// The only route to a terminal-success-eligible roster. Empty required is a
-// Resolved value produced here, never an arm a gate caller can invent without
-// having resolved. work_key binds the roster to one work identity so a foreign
-// job's commitments cannot discharge it.
+// The only route to a terminal-success-eligible roster on the .dag path. Empty
+// required is a Resolved value produced here, never an arm a gate caller can
+// invent without having resolved. work_key binds the roster to one work identity
+// so a foreign job's commitments cannot discharge it. judgment is required and
+// stamped so start-vs-gate policy is readable from the value.
 fn resolve_output_obligations(
   contract: WorkContract,
   work_key: WorkKey,
+  judgment: OutputObligationsJudgment,
 ) -> OutputObligationsResolution {
   OutputObligationsResolved {
     value: ResolvedOutputObligations {
       contract: contract.output_contract,
       revision: output_obligations_revision(declared: contract.output_obligations),
+      judgment: judgment,
       work_key: work_key,
       required: contract.output_obligations.required,
     }
