@@ -5,6 +5,7 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.decl_ref { declaration_ref_eq }
 import product.mt_collins_power_policy {
   mt_collins_power_policy_standing,
+  mt_collins_power_policy_acceptance,
   obligation_memory_population_unread,
   obligation_bmc_power_cap_sweep,
   mt_collins_power_policy_subject,
@@ -20,11 +21,24 @@ import std.decision {
   Deferred,
   Settled,
   DecisionRefused,
+  SettledPolicyAccepted,
+  SettledPolicyRejectedDeferred,
+  SettledPolicyRejectedRefused,
   required_sensitivity_cells,
   term_set_join,
   TermSetsJoinComplete,
   ObjectiveUnderModeled,
   ObjectiveDeclaresUnwarrantedTerms,
+}
+
+test fn mt_collins_power_policy_acceptance_rejects_deferred() -> Bool {
+  match mt_collins_power_policy_acceptance() {
+    SettledPolicyRejectedDeferred { obligations: o, reopen_trigger: _ } =>
+      any(o, x => x == obligation_memory_population_unread)
+        && any(o, x => x == obligation_bmc_power_cap_sweep)
+    SettledPolicyAccepted { policy: _ } => false
+    SettledPolicyRejectedRefused { cause: _ } => false
+  }
 }
 
 test fn mt_collins_power_policy_standing_is_deferred() -> Bool {
@@ -94,6 +108,7 @@ test fn mt_collins_fan_power_is_objective_under_modeling() -> Bool {
 fn mt_collins_power_policy_witness_main() -> ProcessExit {
   let all_pass =
     mt_collins_power_policy_standing_is_deferred()
+      && mt_collins_power_policy_acceptance_rejects_deferred()
       && mt_collins_joins_memory_unread_and_bmc_sweep_obligations()
       && mt_collins_objective_is_one_structural_measure()
       && mt_collins_required_cells_cover_both_variables_and_both_terms()
