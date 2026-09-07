@@ -26408,6 +26408,23 @@ new file mode 100644
     }
 
     #[test]
+    fn named_remaining_sio_direct_live_specimen_is_joined() {
+        let ws = workspace_root();
+        let rel = "dag/test/claim/citation_cause_subject_disjointness_witness_test.dag";
+        let content =
+            std::fs::read_to_string(ws.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
+        let files = vec![(rel.to_string(), content)];
+        let rows = super::substrate_stamp_direct_live_disagreements(&files).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, rel);
+        assert!(
+            rows[0].1.contains(&"compile_dag_diagnostic_census"),
+            "reaching call missing: {:?}",
+            rows[0].1
+        );
+    }
+
+    #[test]
     fn compile_dag_diagnostic_census_is_invisible_to_effect_reach_host_sinks() {
         let source = "fn f(source: String) -> Int { compile_dag_diagnostic_census(source) }\n";
         assert!(
