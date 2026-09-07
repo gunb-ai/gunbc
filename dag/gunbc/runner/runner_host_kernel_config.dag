@@ -19,6 +19,15 @@ import gunbc.command_runner { ProcessObservation, run_shell_command_observe, Loc
 // it, and the disagreement was found by a human reading a built .config back. Nothing mechanical was
 // looking.
 
+// THIS ROSTER LISTS WHAT THE BUILD SETS, NOT EVERYTHING THE KERNEL HAS, and finding CONFIG_TCG_TPM
+// already enabled by arm64 defconfig is what made that concrete. An option that arrives by default
+// is unmodeled here: the verifier will not notice if a future defconfig turns it off, because
+// nothing asked for it.
+//
+// THE GAP IS ONE-DIRECTIONAL AND WORTH KNOWING. Everything this roster names is checked; everything
+// the kernel has beyond it is invisible to the check. Closing that would mean declaring the whole
+// built configuration, which is a different and much larger claim than "these options are required".
+//
 // ── the options ────────────────────────────────────────────────────────────────────────────────
 
 // A DISABLED OPTION IS A REQUIREMENT TOO, and folding it into "not enabled" would lose the
@@ -114,6 +123,26 @@ fn isolation_options() -> List<HostKernelOption> {
   ]
 }
 
+// THE TPM OBSERVATION NEEDS A DRIVER FOR THE TRANSPORT THE FIRMWARE ACTUALLY USES, and the built
+// kernel had the wrong half. arm64 defconfig turns on CONFIG_TCG_TPM and the TIS family -- LPC/MMIO
+// and the embedded SPI/I2C variants -- and leaves CONFIG_TCG_CRB off. CRB is the ACPI Command
+// Response Buffer interface, which is how a server-class ARM board's firmware normally presents a
+// TPM 2.0.
+//
+// SO A BOOT WITHOUT CRB WOULD HAVE PRODUCED A FALSE NEGATIVE: no /sys/class/tpm entry, and the
+// reason would have been the missing driver rather than a missing chip. That is the same shape as
+// every instrument defect in this lane -- an absent observation read as an absent subject.
+//
+// THESE ARE PROBE REQUIREMENTS AND THEIR DISSOLUTION IS STATED. If the unit turns out to have no TPM
+// fitted, they are dead weight in an image whose whole claim is a closed surface and they come back
+// out. If it does, they stay and become a production requirement of whatever uses it.
+fn tpm_probe_options() -> List<HostKernelOption> {
+  [
+    enabled_for(symbol: "CONFIG_TCG_TPM", why: "the TPM core; already on via arm64 defconfig and undeclared until now"),
+    enabled_for(symbol: "CONFIG_TCG_CRB", why: "the ACPI Command Response Buffer transport, which is how a server-class ARM board presents TPM 2.0 -- absent from defconfig, so without it an installed TPM is invisible"),
+  ]
+}
+
 fn boot_options() -> List<HostKernelOption> {
   [
     enabled_for(symbol: "CONFIG_CMDLINE_FORCE", why: "the firmware cannot inject kernel parameters at all: on a host whose whole claim is a declared surface, a BMC that could append init=/bin/sh or disable a protection through the command line would be a hole no runtime check could close"),
@@ -132,6 +161,7 @@ fn runner_host_kernel_options() -> List<HostKernelOption> {
     filesystem_options(),
     isolation_options(),
     boot_options(),
+    tpm_probe_options(),
     filtered_egress_options(),
   ])
 }
