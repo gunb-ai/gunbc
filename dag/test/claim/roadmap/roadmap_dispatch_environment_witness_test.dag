@@ -32,9 +32,8 @@ import gunbc.roadmap_dispatch_environment {
   EnvironmentAdmitted,
   EnvironmentRefused,
   missing_capability_receipt,
-  receipt_grounded,
-  receipt_decision,
-  receipt_reason,
+  CapabilityGrounded,
+  CapabilityNotGrounded,
   dispatch_environment_admission_decision,
   dispatch_environment_admission_json,
 }
@@ -157,9 +156,12 @@ test fn observe_only_absence_never_fabricates_apply() -> Bool {
     realization: claim_realization(),
     reason: "gunbc missing",
   )
-  !receipt_grounded(receipt: receipt)
-    && upsert_decision_label(decision: receipt_decision(receipt: receipt)) == "refuse"
-    && string_contains(s: receipt_reason(receipt: receipt), pattern: "gunbc missing")
+  match receipt {
+    CapabilityGrounded { grounded: _ } => false
+    CapabilityNotGrounded { capability: _, capability_label: _, executable: _, decision: d, evidence: _, reason: why } =>
+      upsert_decision_label(decision: d) == "refuse"
+        && string_contains(s: why, pattern: "gunbc missing")
+  }
 }
 
 test fn may_apply_without_a_typed_plan_still_refuses() -> Bool {
@@ -174,9 +176,12 @@ test fn may_apply_without_a_typed_plan_still_refuses() -> Bool {
     realization: realization,
     reason: "cargo missing",
   )
-  !receipt_grounded(receipt: receipt)
-    && upsert_decision_label(decision: receipt_decision(receipt: receipt)) == "refuse"
-    && string_contains(s: receipt_reason(receipt: receipt), pattern: "generic Ensure cannot choose an installer")
+  match receipt {
+    CapabilityGrounded { grounded: _ } => false
+    CapabilityNotGrounded { capability: _, capability_label: _, executable: _, decision: d, evidence: _, reason: why } =>
+      upsert_decision_label(decision: d) == "refuse"
+        && string_contains(s: why, pattern: "generic Ensure cannot choose an installer")
+  }
 }
 
 test fn unspecified_contract_refuses_before_capability_checks() -> Bool {

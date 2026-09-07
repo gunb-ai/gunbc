@@ -116,47 +116,11 @@ fn receipt_capability(receipt: CapabilityEnsureReceipt) -> ExecutionCapability {
   }
 }
 
-fn receipt_capability_label(receipt: CapabilityEnsureReceipt) -> String {
-  match receipt {
-    CapabilityGrounded { grounded: g } => g.capability_label
-    CapabilityNotGrounded { capability: _, capability_label: l, executable: _, decision: _, evidence: _, reason: _ } => l
-  }
-}
 
-fn receipt_executable(receipt: CapabilityEnsureReceipt) -> String {
-  match receipt {
-    CapabilityGrounded { grounded: g } => g.executable
-    CapabilityNotGrounded { capability: _, capability_label: _, executable: e, decision: _, evidence: _, reason: _ } => e
-  }
-}
 
-fn receipt_decision(receipt: CapabilityEnsureReceipt) -> UpsertDecision<String> {
-  match receipt {
-    CapabilityGrounded { grounded: g } => g.decision
-    CapabilityNotGrounded { capability: _, capability_label: _, executable: _, decision: d, evidence: _, reason: _ } => d
-  }
-}
 
-fn receipt_evidence(receipt: CapabilityEnsureReceipt) -> String {
-  match receipt {
-    CapabilityGrounded { grounded: g } => g.evidence
-    CapabilityNotGrounded { capability: _, capability_label: _, executable: _, decision: _, evidence: e, reason: _ } => e
-  }
-}
 
-fn receipt_reason(receipt: CapabilityEnsureReceipt) -> String {
-  match receipt {
-    CapabilityGrounded { grounded: _ } => ""
-    CapabilityNotGrounded { capability: _, capability_label: _, executable: _, decision: _, evidence: _, reason: r } => r
-  }
-}
 
-fn receipt_grounded(receipt: CapabilityEnsureReceipt) -> Bool {
-  match receipt {
-    CapabilityGrounded { grounded: _ } => true
-    CapabilityNotGrounded { capability: _, capability_label: _, executable: _, decision: _, evidence: _, reason: _ } => false
-  }
-}
 
 type DispatchEnvironmentAdmission
   = EnvironmentAdmitted {
@@ -399,14 +363,39 @@ fn receipt_matches_requirement(
   execution_capability_equal(a: receipt_capability(receipt: receipt), b: cap)
 }
 
-fn first_ungrounded_reason(receipts: List<CapabilityEnsureReceipt>) -> String {
-  fold(receipts, init: "", f: fn(reason, receipt) {
-    if reason != "" {
-      reason
-    } else if !receipt_grounded(receipt: receipt) {
-      join([receipt_capability_label(receipt: receipt), ": ", receipt_reason(receipt: receipt)], "")
-    } else {
-      ""
+// ONE PASS, AND NO BOOL BETWEEN THE COPRODUCT AND THE ANSWER. An earlier revision of this change
+// replaced the grounded: Bool FIELD with the coproduct above and then re-minted the Bool underneath
+// it: a two-arm receipt_grounded fold, a scan that branched on it, and a receipt_reason that had to
+// return "" on the grounded arm as a sentinel. That is the shape std.realization_reconcile forbids in
+// this same change -- collapse the coproduct, then re-expand it to recover the reason it already
+// carried -- and the "" sentinel was a second, weaker encoding of the discriminator the arms already
+// are (DESIGN 2: net concepts must not grow by re-invention).
+//
+// The reason lives on CapabilityNotGrounded, so one match yields it BY CONSTRUCTION. The admission
+// decision consumes this verdict directly instead of scanning for a Bool and then re-scanning the
+// same list to find which receipt caused the refusal.
+type CapabilityAdmissionScan
+  = AllCapabilitiesGrounded
+  | CapabilityRefusalFound { reason: String }
+
+fn capability_admission_scan(
+  receipts: List<CapabilityEnsureReceipt>,
+) -> CapabilityAdmissionScan {
+  fold(receipts, init: AllCapabilitiesGrounded, f: fn(acc, receipt) {
+    match acc {
+      CapabilityRefusalFound { reason: found } => CapabilityRefusalFound { reason: found }
+      AllCapabilitiesGrounded =>
+        match receipt {
+          CapabilityGrounded { grounded: _ } => AllCapabilitiesGrounded
+          CapabilityNotGrounded {
+            capability: _,
+            capability_label: label,
+            executable: _,
+            decision: _,
+            evidence: _,
+            reason: why,
+          } => CapabilityRefusalFound { reason: join([label, ": ", why], "") }
+        }
     }
   })
 }
@@ -447,16 +436,19 @@ fn dispatch_environment_admission_decision(
       validation_summary: validation_summary,
       reason: "Ensure receipt set does not exactly cover the execution contract",
     }
-  } else if !all(receipts, receipt => receipt_grounded(receipt: receipt)) {
-    EnvironmentRefused {
-      receipts: receipts,
-      validation_summary: validation_summary,
-      reason: first_ungrounded_reason(receipts: receipts),
-    }
   } else {
-    EnvironmentAdmitted {
-      receipts: receipts,
-      validation_summary: validation_summary,
+    match capability_admission_scan(receipts: receipts) {
+      CapabilityRefusalFound { reason: why } =>
+        EnvironmentRefused {
+          receipts: receipts,
+          validation_summary: validation_summary,
+          reason: why,
+        }
+      AllCapabilitiesGrounded =>
+        EnvironmentAdmitted {
+          receipts: receipts,
+          validation_summary: validation_summary,
+        }
     }
   }
   }
@@ -546,18 +538,45 @@ fn dispatch_environment_receipt_decode(
   }
 }
 
+// THE WIRE PROJECTION, and the one place a Bool is correct: this is an output FORMAT with a stable
+// shape, not an authority anything reads back. It is built per ARM rather than through a reusable
+// coproduct-to-Bool fold, because such a fold is what a consumer picks up to re-branch on -- which is
+// how the discriminator got re-minted here once already. Nothing but this emitter can reach these
+// literals, so the keys stay identical across arms while the discriminator stays structural.
 fn capability_ensure_receipt_json(receipt: CapabilityEnsureReceipt) -> JsonValue {
-  json_object(members: [
-    json_kv(key: "capability", value: json_string(s: receipt_capability_label(receipt: receipt))),
-    json_kv(key: "executable", value: json_string(s: receipt_executable(receipt: receipt))),
-    json_kv(
-      key: "decision",
-      value: json_string(s: upsert_decision_label(decision: receipt_decision(receipt: receipt))),
-    ),
-    json_kv(key: "grounded", value: json_bool(b: receipt_grounded(receipt: receipt))),
-    json_kv(key: "evidence", value: json_string(s: receipt_evidence(receipt: receipt))),
-    json_kv(key: "reason", value: json_string(s: receipt_reason(receipt: receipt))),
-  ])
+  match receipt {
+    CapabilityGrounded { grounded: g } =>
+      json_object(members: [
+        json_kv(key: "capability", value: json_string(s: g.capability_label)),
+        json_kv(key: "executable", value: json_string(s: g.executable)),
+        json_kv(
+          key: "decision",
+          value: json_string(s: upsert_decision_label(decision: g.decision)),
+        ),
+        json_kv(key: "grounded", value: json_bool(b: true)),
+        json_kv(key: "evidence", value: json_string(s: g.evidence)),
+        json_kv(key: "reason", value: json_string(s: "")),
+      ])
+    CapabilityNotGrounded {
+      capability: _,
+      capability_label: label,
+      executable: exe,
+      decision: decision,
+      evidence: evidence,
+      reason: why,
+    } =>
+      json_object(members: [
+        json_kv(key: "capability", value: json_string(s: label)),
+        json_kv(key: "executable", value: json_string(s: exe)),
+        json_kv(
+          key: "decision",
+          value: json_string(s: upsert_decision_label(decision: decision)),
+        ),
+        json_kv(key: "grounded", value: json_bool(b: false)),
+        json_kv(key: "evidence", value: json_string(s: evidence)),
+        json_kv(key: "reason", value: json_string(s: why)),
+      ])
+  }
 }
 
 fn dispatch_environment_admission_json(
