@@ -32,8 +32,8 @@ use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
     arm_pattern, authored_name_at, error_type, field_binding_name_at, field_binding_pattern,
     find_child_named, generic_param_name_at, is_compiler_error, kernel_span, make_error_node,
-    match_pattern_is_irrefutable, no_span, none_type, preserve_outer_optional_cardinality,
-    qualified_last_segment, with_optional_cardinality,
+    match_pattern_is_irrefutable, no_span, none_type, qualified_last_segment,
+    with_optional_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, InferredNode, MatchPattern,
@@ -476,23 +476,6 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
-    }
-}
-
-pub fn pattern_subject_preserving_outer_optional(
-    outer: Rc<Node>,
-    inner: Rc<PatternSubject>,
-) -> Rc<PatternSubject> {
-    match (*inner.clone()).clone() {
-        PatternSubject::PatternResolved { node: resolved, .. } => {
-            Rc::new(PatternSubject::PatternResolved {
-                node: crate::v1_std_core::preserve_outer_optional_cardinality(
-                    outer.clone(),
-                    resolved.clone(),
-                ),
-            })
-        }
-        _ => inner.clone(),
     }
 }
 
