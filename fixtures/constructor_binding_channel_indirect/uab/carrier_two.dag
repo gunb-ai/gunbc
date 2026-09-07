@@ -1,0 +1,5 @@
+module uab.carrier_two
+
+import uab.foreign_two { two_marker }
+
+fn carry_two() -> Int { two_marker() }
