@@ -1,0 +1,20 @@
+module gunbc.guarantee_stall.emission_append_operation_contract_stall
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+
+data emission_append_operation_contract_stall: GuaranteeStall = GuaranteeStall {
+  subject: "contribution algebras cannot materialize descendant results at each composition because the fold supplies only local append operations, rather than materialized child results; arbitrary callback cost is outside this bounded subject",
+  current: Mitigatable,
+  ceiling: StructurallyImpossible,
+  blocker: AwaitsOneGrounding {
+    grounding: "generic operation result identity survives construction, application and structural-container member lookup sufficiently for the preserved operation-only contribution fold to typecheck and execute. The real claim_batch attempt built from af28f495ca12744759d3fa7b84e0affae61d9cf0 is retained at https://app.buildbuddy.io/invocation/c761cac9-2792-4ebb-87f7-7c5713eefcf5: append refuses on Coproduct(FreeMonoid), join sees Primitive() or Primitive(R), and the empty argument is not recognized as a collection. Resolution refused before witnesses executed. The construction was attempted as the stronger implementation, not authored as a negative fixture. A narrower origin-builder implementation executes the unchanged controls on the identical executor in https://app.buildbuddy.io/invocation/36cd4305-0f7f-45af-844a-46305407d6be. Those different source shapes are a red/positive evidence pair, not a causal join to any particular compiler repair; the loss site remains unlocated."
+  },
+  population: BoundedPopulation { members: [
+    "std.emission_provenance.emission_contribution_fold",
+    "std.emission_provenance.emission_source_fragment",
+    "std.emission_provenance.emission_contribution_source",
+    "std.emission_provenance.emission_contribution_read"
+  ] },
+  next_rung_trigger: climbs_when(capability: "generic operation result types are preserved through the construction/application/member-lookup boundaries sufficiently for the unchanged operation-contract probe to resolve without the located refusals and execute its source-order, incomplete-origin and multiplicity controls. Commit c86bba3fe3a2161d35f2cbd2fefe4802150df6ed on refs/heads/session/warm-ant-80-operation-preservation holds the attempted model; its canonical emission_contribution_fold composes local EmissionAppendOperation values and supplies no materialized children to algebras. The public boundary invokes the operation once. This trigger is satisfied by that capability and observed control execution, not by a repair PR merging. The published narrower builders remove the current source/origin copy loops but do not establish this operation-only API contract.")
+}

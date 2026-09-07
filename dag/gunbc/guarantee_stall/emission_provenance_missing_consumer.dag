@@ -1,0 +1,21 @@
+module gunbc.guarantee_stall.emission_provenance_missing_consumer
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+
+data emission_provenance_missing_consumer: GuaranteeStall = GuaranteeStall {
+  subject: "std.emission_provenance defines EmissionContribution and its fold, but no emitter path constructs these values from real output text. The four contribution arms are exercised only through hand-built test fixtures in emission_provenance_test.dag. EmissionDerivedFragment is declared UNEXERCISED (type doc-comment lines 52-53). The module header says 'The observing instrument supplies its existing subject' and that instrument does not exist.",
+  current: Mitigatable,
+  ceiling: StructurallyImpossible,
+  blocker: AwaitsOneGrounding {
+    grounding: "an emitter path (src/v1 compiler emit, or the operation-callback layer the typing stall names) constructs EmissionAuthoredFragment, EmissionSourceComposition, EmissionUnobservedFragment and optionally EmissionDerivedFragment from real contributed text and metadata, and a required executing control observes those values through emission_contribution_read and asserts the source/origin decomposition matches the contributed text."
+  },
+  population: BoundedPopulation { members: [
+    "std.emission_provenance.EmissionAuthoredFragment",
+    "std.emission_provenance.EmissionSourceComposition",
+    "std.emission_provenance.EmissionUnobservedFragment",
+    "std.emission_provenance.EmissionDerivedFragment",
+    "std.emission_provenance.emission_contribution_read"
+  ] },
+  next_rung_trigger: climbs_when(capability: "a required executing control constructs an EmissionContribution from a real emitter path (not a hand-built fixture), reads it through emission_contribution_read, and asserts the materialized source and origins match the contributed text and metadata. The constructed values must exercise at least EmissionAuthoredFragment and EmissionSourceComposition; EmissionDerivedFragment and EmissionUnobservedFragment may remain UNEXERCISED if declared as such with a next-rung trigger naming the producer.")
+}

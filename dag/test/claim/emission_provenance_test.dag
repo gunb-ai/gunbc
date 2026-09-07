@@ -1,0 +1,187 @@
+module test.claim.emission_provenance_test
+
+import std.content_hash { as_content_hash_structural, content_hash_atom }
+import std.decl_ref { decl_ref, declaration_ref_eq }
+import std.occurrence_identity { OccurrenceId, OccurrenceMinted }
+import std.types { NonEmptyStr }
+import std.emission_provenance {
+  EmissionDeclarationMember,
+  EmissionDeclarationPreserved, EmissionDeclarationRemoved, EmissionDeclarationAdded,
+  EmissionDeclarationChanged, EmissionDeclarationAddressAmbiguous,
+  EmissionModuleMember, EmissionModuleRemoved,
+  EmissionResolutionComplete, EmissionResolutionUnreached,
+  EmissionResolutionCompared, EmissionResolutionComparisonUnavailable,
+  EmissionAuthoredFragment, EmissionSourceComposition, EmissionUnobservedFragment,
+  EmissionOriginsObserved, EmissionOriginsIncomplete,
+  emission_declaration_correspondence,
+  emission_resolution_correspondence,
+  emission_contribution_read, emission_contribution_source, emission_contribution_origins, emission_contribution_unobserved
+}
+
+test fn emission_module_loss_is_separate_from_declaration_loss() -> Bool {
+  let a = EmissionModuleMember {
+    module_name: "fixture.a" as NonEmptyStr,
+    source_path: "fixture/a.dag",
+    source_content: as_content_hash_structural(structural: content_hash_atom(value: "module fixture.a")),
+    declarations: []
+  }
+  let b = EmissionModuleMember {
+    module_name: "fixture.b" as NonEmptyStr,
+    source_path: "fixture/b.dag",
+    source_content: as_content_hash_structural(structural: content_hash_atom(value: "module fixture.b")),
+    declarations: []
+  }
+  match emission_resolution_correspondence(
+    before: EmissionResolutionComplete { modules: [a, b] },
+    after: EmissionResolutionComplete { modules: [a] }
+  ) {
+    EmissionResolutionCompared { modules } =>
+      (modules |> count == 2) && (modules |> any(row => match row {
+        EmissionModuleRemoved { before } => before.module_name == "fixture.b"
+        _ => false
+      }))
+    _ => false
+  }
+}
+
+test fn emission_unreached_roster_does_not_compare_as_empty() -> Bool {
+  match emission_resolution_correspondence(
+    before: EmissionResolutionComplete { modules: [] },
+    after: EmissionResolutionUnreached {
+      stopped_at: decl_ref(module_path: "fixture.compiler", decl_name: "resolve"),
+      cause: "fixture parse refused" as NonEmptyStr
+    }
+  ) {
+    EmissionResolutionComparisonUnavailable { before: _, after: _ } => true
+    _ => false
+  }
+}
+
+fn provenance_fixture_member(name: String, body: String, local_id: Int) -> EmissionDeclarationMember {
+  EmissionDeclarationMember {
+    address: decl_ref(module_path: "fixture.provenance", decl_name: name),
+    occurrence: OccurrenceMinted { id: OccurrenceId { value: local_id } },
+    content: as_content_hash_structural(structural: content_hash_atom(value: body as NonEmptyStr))
+  }
+}
+
+// The two graphs deliberately assign DIFFERENT occurrence ids to the preserved declaration.
+// A cross-run comparison using those ids would miss this pairing. The deleted declaration is
+// retained in the result, rather than counted away or paired with an unrelated added declaration.
+test fn emission_declaration_deletion_is_reported_by_address() -> Bool {
+  let kept_before = provenance_fixture_member(name: "kept", body: "fn kept() { 1 }", local_id: 1)
+  let removed = provenance_fixture_member(name: "removed", body: "fn removed() { 2 }", local_id: 2)
+  let kept_after = provenance_fixture_member(name: "kept", body: "fn kept() { 1 }", local_id: 99)
+  let rows = emission_declaration_correspondence(before: [kept_before, removed], after: [kept_after])
+  (rows |> count == 2)
+    && (rows |> filter(row => match row {
+      EmissionDeclarationRemoved { before } => declaration_ref_eq(a: before.address, b: removed.address)
+      _ => false
+    }) |> count == 1)
+    && (rows |> filter(row => match row {
+      EmissionDeclarationPreserved { before, after } =>
+        declaration_ref_eq(a: before.address, b: kept_before.address)
+          && declaration_ref_eq(a: after.address, b: kept_after.address)
+      _ => false
+    }) |> count == 1)
+}
+
+test fn emission_same_count_substitution_preserves_both_directions() -> Bool {
+  let a = provenance_fixture_member(name: "a", body: "body", local_id: 1)
+  let b = provenance_fixture_member(name: "b", body: "body", local_id: 1)
+  let rows = emission_declaration_correspondence(before: [a], after: [b])
+  (rows |> count == 2)
+    && (rows |> filter(row => match row { EmissionDeclarationRemoved { before: _ } => true  _ => false }) |> count == 1)
+    && (rows |> filter(row => match row { EmissionDeclarationAdded { after: _ } => true  _ => false }) |> count == 1)
+}
+
+test fn emission_duplicate_address_is_not_deduplicated() -> Bool {
+  let a = provenance_fixture_member(name: "same", body: "one", local_id: 1)
+  let duplicate = provenance_fixture_member(name: "same", body: "two", local_id: 2)
+  let rows = emission_declaration_correspondence(before: [a, duplicate], after: [a])
+  rows |> any(row => match row {
+    EmissionDeclarationAddressAmbiguous { address: _, before, after } =>
+      (before |> count == 2) && (after |> count == 1)
+    _ => false
+  })
+}
+
+test fn emission_body_change_is_not_hidden_by_membership() -> Bool {
+  let before = provenance_fixture_member(name: "kept", body: "fn kept() { 1 }", local_id: 1)
+  let after = provenance_fixture_member(name: "kept", body: "fn kept() {}", local_id: 2)
+  let rows = emission_declaration_correspondence(before: [before], after: [after])
+  rows |> any(row => match row { EmissionDeclarationChanged { before: _, after: _ } => true  _ => false })
+}
+
+test fn emission_nested_contributor_survives_flattening() -> Bool {
+  let wrapper = decl_ref(module_path: "fixture.runtime", decl_name: "wrapper")
+  let leaf = decl_ref(module_path: "fixture.upstream", decl_name: "canonical_block")
+  let contribution = EmissionSourceComposition {
+    origin: wrapper,
+    parts: [EmissionAuthoredFragment { origin: leaf, source: "implementation" }]
+  }
+  match emission_contribution_origins(contribution: contribution) {
+    EmissionOriginsObserved { origins } =>
+      emission_contribution_source(contribution: contribution) == "implementation"
+        && (origins |> count == 2)
+        && (origins |> any(origin => declaration_ref_eq(a: origin, b: leaf)))
+    _ => false
+  }
+}
+
+test fn emission_nested_unobserved_producer_remains_named() -> Bool {
+  let wrapper = decl_ref(module_path: "fixture.runtime", decl_name: "wrapper")
+  let unknown = decl_ref(module_path: "fixture.runtime", decl_name: "untraced")
+  let contribution = EmissionSourceComposition {
+    origin: wrapper,
+    parts: [EmissionUnobservedFragment {
+      producer: unknown,
+      cause: "producer returned flattened text" as NonEmptyStr,
+      source: "implementation"
+    }]
+  }
+  let missing = emission_contribution_unobserved(contribution: contribution)
+  (missing |> count == 1) && (missing |> any(origin => declaration_ref_eq(a: origin, b: unknown)))
+    && match emission_contribution_origins(contribution: contribution) {
+      EmissionOriginsIncomplete { observed, missing: gaps } =>
+        (observed |> count == 1) && declaration_ref_eq(a: gaps.head.producer, b: unknown)
+      _ => false
+    }
+}
+
+
+test fn emission_combined_read_preserves_content_order_and_origin_multiplicity() -> Bool {
+  let root = decl_ref(module_path: "fixture.runtime", decl_name: "root")
+  let empty = decl_ref(module_path: "fixture.runtime", decl_name: "empty")
+  let leaf = decl_ref(module_path: "fixture.runtime", decl_name: "leaf")
+  let nested = decl_ref(module_path: "fixture.runtime", decl_name: "nested")
+  let unknown = decl_ref(module_path: "fixture.runtime", decl_name: "unknown")
+  let contribution = EmissionSourceComposition {
+    origin: root,
+    parts: [
+      EmissionSourceComposition { origin: empty, parts: [] },
+      EmissionAuthoredFragment { origin: leaf, source: "A" },
+      EmissionSourceComposition {
+        origin: nested,
+        parts: [
+          EmissionUnobservedFragment { producer: unknown, cause: "first" as NonEmptyStr, source: "B" },
+          EmissionAuthoredFragment { origin: leaf, source: "C" }
+        ]
+      },
+      EmissionUnobservedFragment { producer: unknown, cause: "second" as NonEmptyStr, source: "D" }
+    ]
+  }
+  let result = emission_contribution_read(contribution: contribution)
+  result.source == emission_contribution_source(contribution: contribution)
+    && result.origins == emission_contribution_origins(contribution: contribution)
+    && result.source == "ABCD" && match result.origins {
+    EmissionOriginsIncomplete { observed, missing } =>
+      (observed |> map(origin => origin.decl_name) |> join(separator: "|")) == "root|empty|leaf|nested|leaf"
+        && declaration_ref_eq(a: missing.head.producer, b: unknown)
+        && missing.head.cause == ("first" as NonEmptyStr)
+        && (missing.tail |> count == 1)
+        && (missing.tail |> all(gap => declaration_ref_eq(a: gap.producer, b: unknown)
+          && gap.cause == ("second" as NonEmptyStr)))
+    _ => false
+  }
+}

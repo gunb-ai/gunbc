@@ -1,0 +1,15 @@
+module gunbc.recurring_failure_mode.string_comparison_type_identity
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data string_comparison_type_identity: RecurringFailureMode = RecurringFailureMode {
+  identity: "string_comparison_type_identity" as NonEmptyStr,
+  receipts: [
+    "**A carrier's type identity is asserted by comparing a string projection of its fields rather than the fields themselves**, so the assertion is not discriminative against a differing carrier that projects to the same string. When a type's identity is carried by a set of typed fields (DeclarationRef has module_path, decl_name, and field), a test that concatenates a subset of those fields and compares the result to a string literal cannot distinguish two values that differ on an unprojected field or produce the same concatenation from different fields.",
+    "SPECIMEN (gunbc#10600) — dag/test/claim/emission_provenance_test.dag:179, test fn `emission_combined_read_preserves_content_order_and_origin_multiplicity`: `observed |> map(origin => origin.decl_name) |> join(separator: \"|\") == \"root|empty|leaf|nested|leaf\"`. The assertion joins only `decl_name` and compares to a string literal; it does not assert `module_path` or `field` values. Two different DeclarationRef lists could produce the same joined string if they share the same decl_names in the same order with different module_paths.",
+    "CLASS: a structured type's identity reduced to a string projection in an assertion. The string comparison is easier to write but weaker than checking each field individually (e.g., `observed |> nth(0) |> map(o => o.module_path) == Some(\"fixture.runtime\")`) or using a structured equality check.",
+    "RUNG FOUND: floor (the file reds for a separate reason, so this anemia is not exercised). CEILING: the assertion is replaced with field-grain structural comparison or the string comparison is paired with an explicit admission that it projects only a subset of the identity. NEXT-RUNG TRIGGER: an executing control that asserts each field of each DeclarationRef in the observed origins individually, including module_path and field, and rejects a silently-modified fixture whose decl_names match but module_paths differ.",
+  ],
+  evidence: [],
+}
