@@ -97,9 +97,12 @@ type MultiModuleCompileFixture {
 // and resource arms; service_var_name for services), concatenated authored → resource → service.
 // The merged graph registry is bare-name keyed across the closure; publishing from it alone would
 // drop colliding names and make lookup report Absent for a function that resolved — fail-open on
-// every negative control. A bare-name collision across modules therefore refuses as
-// FixtureInstrumentRefused. When the expanded graph row still names this module, its ItemInfo is
-// preferred so transitive service expansion is visible.
+// every negative control. So the walk is per TypedModule and rows are keyed
+// (owner_module, declaration_name): the same bare name in two modules yields two rows (legal DAG),
+// never FixtureInstrumentRefused. The expanded graph row overlays only when it still names this
+// module under that bare name; otherwise the per-module ItemInfo stands — so a merge survivor
+// cannot steal another module's service expansion.
+
 // The type name says Rust because compile_fixture is Rust-target only; a target-agnostic name
 // over that reader would be the DESIGN section 3 meaning fork. The field name
 // resolved_rust_functions / ResolvedRustFnSignature names the registry grain (and the Rust

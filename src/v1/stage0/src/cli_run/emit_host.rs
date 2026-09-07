@@ -318,7 +318,7 @@ pub fn compile_dag_multi_module_fixture(
         // parameter binding (with emit_ident / service_var_name transforms), keyed by source
         // identity — not emitted file bytes. Emit-path fidelity is the declared next-rung climb.
         // Walk per TypedModule registry (not the bare-name-merged graph.item_registry) so two
-        // modules that both declare `f0` each keep a row; collision refuses loudly.
+        // modules that both declare `f0` each keep a (owner_module, declaration_name) row.
         let resolved_rust_functions = project_resolved_rust_fn_signatures(resolved.as_ref());
         let result = v1_compiler_compile::emit_resolved_for_target(
             resolved,
@@ -334,12 +334,6 @@ pub fn compile_dag_multi_module_fixture(
                         diagnostics"
                     .to_string(),
             };
-        }
-    };
-    let resolved_rust_functions = match resolved_rust_functions {
-        Ok(rows) => rows,
-        Err(cause) => {
-            return MultiModuleCompileFixtureOutcome::InstrumentRefused { cause };
         }
     };
     let rows = compile_diagnostic_census_rows(&result.diagnostics);
@@ -367,14 +361,11 @@ pub fn compile_dag_multi_module_fixture(
 /// names, then `service_var_name` per service, concatenated in that order — the same per-arm
 /// transforms `emit_func_params` uses today. Not a text parse of emitted bytes.
 ///
-/// When the same bare declaration name appears in two modules, this refuses rather than silently
-/// keeping one row — the merged graph registry is bare-name keyed (`rc_map_merge` over modules),
-/// so publishing from it alone would make `resolved_rust_fn_lookup` report Absent for a function
-/// that resolved and was emitted (fail-open on every negative control).
-///
-/// Service-name overlay: if the expanded graph registry still holds this module's row under the
-/// bare name, use that `ItemInfo` (transitive service expansion lives there); otherwise use the
-/// per-module row.
+/// Rows are keyed `(owner_module, declaration_name)`, so the same bare name in two modules yields
+/// two rows — legal DAG, not an instrument refusal. Publishing from the bare-name-merged graph
+/// registry alone would drop one of those modules. Service-name overlay: use the expanded graph
+/// registry row only when it still names *this* module under that bare name (otherwise keep the
+/// per-module `ItemInfo`; on collision the merge's survivor must not overlay the other module).
 ///
 /// Below ceiling on ORDER and MEMBERSHIP (§3b middle value — deliberate divergence with stated
 /// reason on `ResolvedRustFnSignature`): second walk over ItemInfo, not a consumption of
@@ -386,40 +377,20 @@ pub fn compile_dag_multi_module_fixture(
 /// camelCase name the registry arms will hand to emit.
 fn project_resolved_rust_fn_signatures(
     resolved: &v1_compiler_compile::ResolvedPipelineResult,
-) -> Result<Vec<crate::cli_run::ResolvedRustFnSignature>, String> {
+) -> Vec<crate::cli_run::ResolvedRustFnSignature> {
     use crate::v1_compiler_artifact::RenderTarget;
     use crate::v1_compiler_emit::emit_ident;
     use crate::v1_compiler_infer_items::ItemKind;
     use crate::v1_std_core::param_node_name_at;
-    use std::collections::HashMap;
     let Some(graph) = resolved.graph.as_ref() else {
-        return Ok(Vec::new());
+        return Vec::new();
     };
     let source_indices = resolved.source_indices.clone();
-    // Bare declaration name → first owning module that published a Fn/Func row. A second module
-    // claiming the same bare name is the merge-collapse the projection must refuse.
-    let mut bare_name_owner: HashMap<String, String> = HashMap::new();
     let mut rows: Vec<crate::cli_run::ResolvedRustFnSignature> = Vec::new();
     for typed in graph.modules.iter() {
         for local in typed.item_registry.values() {
             match local.kind {
                 ItemKind::FnItem | ItemKind::FuncItem => {
-                    if let Some(prior) = bare_name_owner.get(&local.name) {
-                        if prior != &local.module_name {
-                            return Err(format!(
-                                "compile_dag_multi_module_fixture: resolved_rust_functions refuses \
-                                 bare-name collision on `{name}` across modules `{prior}` and \
-                                 `{again}` — the merged item_registry is bare-name keyed and would \
-                                 silently drop one row; lookup by (owner_module, declaration_name) \
-                                 would then report Absent for a function that resolved",
-                                name = local.name,
-                                prior = prior,
-                                again = local.module_name,
-                            ));
-                        }
-                    } else {
-                        bare_name_owner.insert(local.name.clone(), local.module_name.clone());
-                    }
                     // Prefer the expanded graph registry row when it still names this module —
                     // transitive service expansion is applied there, not on TypedModule.item_registry.
                     let info = match graph.item_registry.get(&local.name) {
@@ -457,7 +428,7 @@ fn project_resolved_rust_fn_signatures(
     rows.sort_by(|a, b| {
         (&a.owner_module, &a.declaration_name).cmp(&(&b.owner_module, &b.declaration_name))
     });
-    Ok(rows)
+    rows
 }
 
 /// Reference-occurrence-grain binding observation over exactly one supplied source vector.
