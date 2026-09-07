@@ -64,7 +64,6 @@ module v1.compiler.trait_bound_witness
 
 type TraitBoundWitnessScope
   = | BoundedToDirectTopLevelMatchBody
-  | BoundedToDirectSingleCallLambdaBody
 
 // gunbc dashboard node://adhoc-574e999b-39c, Row 1b. A second, structurally distinct trigger from
 // the RC-match one above: a wrapper fn whose body forwards its own arguments directly into ONE
@@ -95,16 +94,21 @@ type TraitBoundWitnessScope
 // (v1_call_forwarding_clone_bound_param_names) folds this decision over every (callee declared
 // param, call argument) pair -- correlated by callee parameter NAME via call_args_by_name, since no
 // zip/pairwise-fold primitive exists in this corpus (checked: no fn zip/fold2/map2 anywhere under
-// dag/std or src/v1) -- and is wired into emit_fn_def below (05_emit_rust.dag), scoped narrowly per
-// BoundedToDirectSingleCallLambdaBody to a body that IS, directly, either a top-level call
-// expression or a lambda whose own body is directly one top-level call expression -- a body
-// reaching its call through Let/If/Branch/Block first is NOT walked, and a call reached only after
-// a chain of two or more forwarding wrappers is discovered one level at a time as each wrapper is
-// itself re-emitted (recursion is via re-derivation on the callee's own declaration, not a
-// multi-hop walk). That is a declared boundary, not a silent gap: the next-rung trigger is a
-// recursive body walker mirroring emit_rust_expr_if/emit_rust_expr_let's accessor shapes, exactly
-// the same next-rung trigger already named for BoundedToDirectTopLevelMatchBody above, once a real
-// specimen needs either boundary widened.
+// dag/std or src/v1) -- and is wired into emit_fn_def below (05_emit_rust.dag).
+//
+// THAT BOUNDARY IS RETIRED, AND THIS PARAGRAPH RECORDS THE TRIGGER FIRING RATHER THAN RESTATING
+// THE WALL. The clone half was once scoped to a body that IS, directly, a top-level call or a
+// lambda whose body is one top-level call, declared as BoundedToDirectSingleCallLambdaBody with
+// its next-rung trigger named as "a recursive body walker ... once a real specimen needs either
+// boundary widened". std.realization_schedule cost_account_time_count<S> is that specimen: its
+// body is `match cost_time_axis_established(axis: account.time) { .. }`, so the requirement-earning
+// call sits in MATCH SCRUTINEE position, outside the declared scope, and regen emitted a wrapper
+// with a bare <S> that rustc refused (E0277) while the callee correctly carried S: Clone.
+// v1_call_forwarding_clone_bound_param_names now walks children recursively, mirroring the equality
+// half rather than special-casing scrutinee position -- the variant is deleted below because the
+// scope it named no longer exists, and a boundary declaration that outlives its boundary is the
+// stale citation DESIGN section 3 forbids. BoundedToDirectTopLevelMatchBody is UNCHANGED and still
+// stands: the RC-match trigger was not widened here, and its own next-rung trigger is still open.
 
 fn v1_rc_match_scrutinee_clone_bound_param_names(
   generic_param_names: List<String>,
@@ -148,7 +152,9 @@ fn v1_union_bound_param_names(base: List<String>, extra: List<String>) -> List<S
 // (docs/probes/materialization_carriers_rebaseline_2026-08-19.md S3: v2_std_staging.rs:16,31,44 --
 // v2.std.staging's cached_stage/then_outcome) rather than assumed in scope. cached_stage<A, B>'s
 // body is fn(x) { resolve_probe(probe: lookup(x), stage: stage, x: x) } -- a body shape ALREADY
-// covered by BoundedToDirectSingleCallLambdaBody (a lambda whose body is one top-level call), so
+// covered by BoundedToDirectSingleCallLambdaBody (a lambda whose body is one top-level call; that
+// scope variant is since RETIRED -- the clone walk is recursive now -- and is named here only to
+// keep this historical trace readable), so
 // this is not a body-shape gap. The gap is in the bare-name comparison above: resolve_probe's own
 // `probe: CacheProbe<B>` parameter needs Clone on B (resolve_probe is itself in
 // callee_bound_param_names via the census's bind_outcome/resolve_probe E0277 rows), but
