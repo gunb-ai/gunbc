@@ -1,0 +1,27 @@
+module extdeps.github.rate_limits
+
+import std.types { NonEmptyStr, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.api_rate_limit { UpstreamRateLimit, RateLimitPeriod, PerHour }
+
+// GitHub's primary rate limit for the REST API, per authenticated user or installation: 5,000
+// requests per hour on the `core` resource, which every endpoint the corpus models (checks,
+// commits, gists, issues, pulls, rulesets, workflows, workflow runs) draws from. One row, because
+// it is one pool: the eight services that used to annotate it separately were eight names for it.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api"
+  }
+}
+
+data github_core_rate_limit: UpstreamRateLimit = UpstreamRateLimit {
+  upstream: "github" as NonEmptyStr,
+  scope: "core" as NonEmptyStr,
+  requests: 5000,
+  period: PerHour,
+}
+
+data github_rate_limits: List<UpstreamRateLimit> = [github_core_rate_limit]

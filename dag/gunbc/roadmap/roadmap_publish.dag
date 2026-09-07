@@ -92,6 +92,7 @@ type PullRequestReadFailure
   | PullRequestStatusRefused { repository: String, status: HttpStatus, body: String }
   | PullRequestTransportRefused { repository: String, cause: NonEmptyStr }
   | PullRequestBodyUndecodable { repository: String, status: HttpStatus, cause: NonEmptyStr }
+  | PullRequestQuotaWithheld { repository: String, detail: String }
 
 data pulls_list_operation: OperationRef = OperationRef {
   path: "dag/extdeps/github/pulls.dag",
@@ -122,6 +123,11 @@ fn render_pull_request_read_failure(cause: PullRequestReadFailure) -> String {
         at, " against ", repository,
         " was answered with status ", to_string(status),
         " and a body that could not be decoded: ", detail as String,
+      ], "")
+    PullRequestQuotaWithheld { repository, detail } =>
+      join([
+        at, " against ", repository,
+        " was withheld by the github core quota lease on the fabric event log: ", detail,
       ], "")
   }
 }
