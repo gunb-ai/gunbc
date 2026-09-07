@@ -3,7 +3,6 @@ module gunbc.typed_remote_file_write
 import extdeps.tools.chmod { chmod_path_resolved_program }
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
 import std.algebra { trim }
-import std.content_hash { content_hash_atom }
 import extdeps.ssh.session {
   ssh_session_exec_portable_words_with_stdin,
   SshSessionExecResult,
@@ -19,7 +18,9 @@ import gunbc.file_access { FileTreeScope, path_within_file_tree_scope }
 
 // Typed remote file-bytes write at the FleetSsh seam. TypedRemoteFileWrite is sole_constructor: the
 // ONLY representable meaning is write these exact bytes to this exact path. Remote realization is
-// portable argv [tee, path] with content on stdin — bytes are DATA, never interpreted as shell. No
+// portable argv with content on stdin — bytes are DATA, never interpreted as shell. The DIRECT
+// write route below is [tee, path]; the CONVERGING route (converge_typed_remote_file) does not use
+// it and is described in its own section. No
 // script body arm, no sh -c, no command string constructor. Path containment uses gunbc.file_access
 // path_within_file_tree_scope (exact root, root/…, .. rejected); portable-word allowlist uses
 // gunbc.fleet_known_hosts_anchor portable_remote_word at seal and portable_remote_words at execute
@@ -27,9 +28,11 @@ import gunbc.file_access { FileTreeScope, path_within_file_tree_scope }
 // TypedRemoteFileWriteAdmitted. TypedRemoteFileWriteOutcome success arm is
 // TypedRemoteFileWriteRemoteExecAccepted (tee exit 0 only) — NOT convergence. A zero tee exit
 // proves only that the remote process accepted stdin — not that bytes landed at the declared path
-// with declared mode/ownership. A future TypedRemoteFileWriteConverged variant requires independent
-// read-back digest match (operator ruling msg_71f67aa9); stage-and-rename + mode/ownership +
-// read-back land before that arm is writable.
+// with declared mode/ownership. The converging arm that operator ruling msg_71f67aa9 reserved HAS
+// LANDED and is not future work: converge_typed_remote_file stages, chmods, renames and compares the
+// destination far-side, and RemoteFileConverged is minted only by remote_file_converged_from_report
+// under admit_callers. The ruling asked for a read-back DIGEST match; the landed arm compares the
+// declared content itself far-side, which is the stronger check -- see the read-back note below.
 
 // Operator ruling msg_71f67aa9 authorizes substrate-before-consumer landing on this PR: generic
 // FleetSsh tee+stdin here; wet roundtrip, stage-and-rename, mode/ownership, read-back digest, and
@@ -63,7 +66,7 @@ type TypedRemoteFileWriteOutcome
 //   2. mode     -- set the mode on the staged file, before anything can observe it at its real name
 //   3. rename   -- `mv -f` within one directory, which POSIX makes atomic, so no reader ever sees a
 //                  partially written or wrong-moded file at the destination
-//   4. read back-- `cat` the DESTINATION and compare to the declared content in the model
+//   4. read back-- `cmp -s -` the DESTINATION against the declared content on stdin, FAR-SIDE
 //
 // Writing straight to the destination and then chmod-ing is the shape this replaces: it publishes
 // incomplete bytes under the real name, and on a unit file that is a window where systemd can read
@@ -114,15 +117,30 @@ fn remote_file_mode_octal(mode: RemoteFileMode) -> String {
 // func that actually staged, chmod'd, renamed and ran the far-side cmp. The exit code reaching it
 // came from a process rather than from a literal.
 //
-// RemoteFileConverged also carries the CONTENT DIGEST rather than only path and mode.
-// TypedRemoteFileWrite carries path AND exact content, so evidence naming only the path left "these
-// exact bytes landed" resting on a caller-assembled pairing between the plan and its evidence.
-// Binding the digest into the sealed value makes the evidence name the bytes it is evidence FOR.
+// RemoteFileConverged carries the EXACT WRITE, not path and mode alone and not a digest of the
+// content. Evidence naming only the path left "these exact bytes landed" resting on a caller-
+// assembled pairing between the plan and its evidence. An earlier revision bound a content_digest
+// instead, and that was not sufficient: the available producer is content_hash_atom, whose family is
+// std.content_hash Fnv1a64Structural -- a 64-bit STRUCTURAL FINGERPRINT, necessarily non-injective
+// over arbitrary strings -- and the field erased even that family to String. Two writes to one path
+// with different content whose fingerprints collide produced observationally identical success
+// carriers, so a sink could not recover which content was compared. No finite digest is needed here
+// because the exact subject already exists as a value: TypedRemoteFileWrite is sole_constructor and
+// means write these exact bytes to this exact path, so embedding it names the subject completely
+// without duplicating its definition. A typed fingerprint may return later as a lookup projection;
+// it cannot stand in for the exact write in a carrier claiming evidence about these exact bytes.
+//
+// NO WITNESS EXERCISES THIS FIELD, and that is a consequence of the seal rather than a gap. The mint
+// is admit_callers-sealed to converge_typed_remote_file, so no test module can hold a
+// RemoteFileConverged to read its subject back. The property does not need an executing witness: the
+// carrier's only subject field IS the write handed to the mint, passed through unchanged, so a
+// receipt naming a subject other than the one compared has no constructor. That is construction, not
+// validation -- unlike the digest form it replaces, which was a lossy FUNCTION of the subject and so
+// could disagree with it while remaining perfectly constructible.
 
 type RemoteFileConverged sole_constructor {
-  path: FilePath
+  write: TypedRemoteFileWrite
   mode: RemoteFileMode
-  content_digest: String
 }
 
 // Ordinary data on purpose. A report is a judgment ABOUT AN EXIT CODE and nothing more; it asserts
@@ -239,11 +257,7 @@ fn remote_file_converged_from_report(
   = match report {
       ComparisonIdentical =>
         TypedRemoteFileConverged {
-          converged: RemoteFileConverged {
-            path: write.path,
-            mode: mode,
-            content_digest: typed_remote_file_write_content_digest_hex(write: write),
-          },
+          converged: RemoteFileConverged { write: write, mode: mode },
         }
       ComparisonDiffers { reason: why } =>
         TypedRemoteFileConvergenceRefused { step: "compare", reason: why }
@@ -298,10 +312,6 @@ fn typed_remote_file_write_stdin_payload(write: TypedRemoteFileWrite) -> String 
 // Remote argv is ONLY [tee, path] — no sh/bash/-c arm exists; bytes ride stdin, not argv.
 fn typed_remote_file_write_remote_argv(write: TypedRemoteFileWrite) -> List<String> {
   [typed_remote_file_write_tee_command, write.path as String]
-}
-
-fn typed_remote_file_write_content_digest_hex(write: TypedRemoteFileWrite) -> String {
-  content_hash_atom(value: write.content as NonEmptyStr).digest as String
 }
 
 fn typed_remote_file_write_execute_preflight_outcome(
