@@ -5,6 +5,8 @@ import std.algebra { trim }
 import std.resources { Network }
 import std.disposition { Disposition, SingleAuthority }
 import extdeps.shell
+import extdeps.posix.test_utility { test_nonempty_file_command }
+import gunbc.command_runner { run_shell_command_capture, LocalExec, process_outcome_admitted }
 import extdeps.github.actions_jit_runner {
   JitRunnerConfigRequest,
   jit_config_request_body,
@@ -68,6 +70,32 @@ fn jit_status_is_created(status_text: String) -> Bool {
   trim(s: status_text) == to_string(jit_config_created_status)
 }
 
+// THE CREDENTIAL FILE IS CHECKED BEFORE THE CALL, BECAUSE curl WILL NOT CHECK IT AND WILL NOT SAY
+// SO. Measured against curl directly: `-H @/nonexistent/file` and `-H @empty-file` BOTH exit 0 and
+// send the request with NO Authorization header at all -- the missing file is silently ignored
+// rather than refused. So an absent or empty credential does not fail at the transport; it becomes
+// an UNAUTHENTICATED POST to an endpoint whose whole job is creating a runner identity against the
+// organization.
+//
+// THE PATH WAS ALREADY FAIL-CLOSED BY CONSEQUENCE AND THAT IS NOT GOOD ENOUGH. The status check
+// downstream does refuse the 401 that follows, so nothing was ever minted -- but it would have
+// reported "GitHub answered 401" for what is actually a missing file on this host, sending a reader
+// to chase an organization permission that is fine. Refusing here names the real cause, and means
+// no unauthenticated request reaches that endpoint at all.
+//
+// -s AND NOT -f, DELIBERATELY. A credential step that fetched nothing still leaves a zero-length
+// file behind, which -f admits and -e admits. That is the shape crisp-raven-394 measured on the
+// spark-grant credential: the fabrication lands DOWNSTREAM of the check that would have caught its
+// absence, so an honest refusal is replaced by a silent bad read.
+func jit_credential_file_carries_something(token_header_file: String) -> Bool {
+  process_outcome_admitted(
+    outcome: run_shell_command_capture(
+      command: test_nonempty_file_command(path: token_header_file),
+      transport: LocalExec,
+    ),
+  )
+}
+
 // THE MINT IS PERFORMED HERE AND THE CREDENTIAL IS NEVER READ BACK INTO THIS PROCESS.
 //
 // curl writes the response body to response_file and prints only the HTTP status; the extractor
@@ -106,6 +134,15 @@ func perform_jit_mint_wet(
       request: request,
       drive_destination: drive,
     } => {
+      if !jit_credential_file_carries_something(token_header_file: token_header_file) {
+        JitCredentialRefused {
+          cause: join([
+            "the credential header file is absent or empty at ",
+            token_header_file,
+            ", and curl would have sent an UNAUTHENTICATED runner-creation request rather than refusing, so nothing was sent",
+          ], ""),
+        }
+      } else {
       let body = Filesystem.Write(path: request_body_file, content: jit_config_request_body(request: request))
       if !body.success {
         JitCredentialRefused {
@@ -146,6 +183,7 @@ func perform_jit_mint_wet(
             JitCredentialPlaced { drive_file: drive, runner_name: request.name.value }
           }
         }
+      }
       }
     }
   }

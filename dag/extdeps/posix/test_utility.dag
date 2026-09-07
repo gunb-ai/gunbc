@@ -55,3 +55,12 @@ fn test_writable_command(path: String) -> ArgvCommand {
 fn test_executable_command(path: String) -> ArgvCommand {
   argv_command(program: test_program, arguments: ["-x", path])
 }
+
+// -s IS "EXISTS AND HAS SIZE GREATER THAN ZERO", AND IT IS NOT A STRONGER SPELLING OF -f. A path
+// that -f admits can still hold nothing, and for a file whose whole purpose is to CARRY something
+// -- a credential, a header, a request body -- an empty one is indistinguishable from a fetch that
+// failed and wrote nothing. That is the case -f cannot express and -e cannot come near, which is
+// why this is its own builder rather than a caller adding a size check beside an existence check.
+fn test_nonempty_file_command(path: String) -> ArgvCommand {
+  argv_command(program: test_program, arguments: ["-s", path])
+}
