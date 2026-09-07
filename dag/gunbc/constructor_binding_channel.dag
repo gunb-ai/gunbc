@@ -241,6 +241,91 @@ data constructor_binding_channel_fixtures: List<FixtureModule> = [
     file_name: "user.dag",
     module_source: "module zqxbeta.user\n\ntype ZqxAnswer = ZqxYes | ZqxNo\n\nfn zqx_probe_pick() -> ZqxAnswer {\n    let probe = ZqxProbeRed\n    match probe {\n        ZqxProbeRed => ZqxYes\n        ZqxProbeBlue => ZqxNo\n    }\n}\n\nfn zqx_rival_pick() -> ZqxAnswer {\n    let rival = ZqxRivalGreen\n    match rival {\n        ZqxRivalGreen => ZqxYes\n        ZqxProbeRed => ZqxNo\n    }\n}\n",
   },
+  {
+    case_name: "case6, case7, case8, case9, case10",
+    file_name: "declaring.dag",
+    module_source: "module uab.declaring\n\ntype Shape\n  = Circ { r: Int }\n  | Sq { s: Int }\n\nfn pick(c: Bool) -> Shape {\n  if c { Circ { r: 1 } } else { Sq { s: 2 } }\n}\n",
+  },
+  {
+    case_name: "case6, case7, case8, case10",
+    file_name: "foreign_one.dag",
+    module_source: "module uab.foreign_one\n\ntype Sq { totally_different_field: Int }\n\nfn one_marker() -> Int { 1 }\n",
+  },
+  {
+    case_name: "case7",
+    file_name: "foreign_two.dag",
+    module_source: "module uab.foreign_two\n\ntype Sq { yet_another_field: Int }\n\nfn two_marker() -> Int { 2 }\n",
+  },
+  {
+    case_name: "case8",
+    file_name: "foreign_three.dag",
+    module_source: "module uab.foreign_three\n\ntype NotSq { unrelated: Int }\n\nfn three_marker() -> Int { 3 }\n",
+  },
+  {
+    case_name: "case9, case10",
+    file_name: "cop_one.dag",
+    module_source: "module uab.cop_one\n\ntype Boxone\n  = Sq { f_one: Int }\n  | Otherone { z: Int }\n\nfn one_cop_marker() -> Int { 7 }\n",
+  },
+  {
+    case_name: "case9 (the two-owner arm of it)",
+    file_name: "cop_two.dag",
+    module_source: "module uab.cop_two\n\ntype Boxtwo\n  = Sq { f_two: Int }\n  | Othertwo { z: Int }\n\nfn two_cop_marker() -> Int { 7 }\n",
+  },
+  {
+    case_name: "every case -- THE CARRIER IS WHAT MAKES THE REACH INDIRECT",
+    file_name: "carrier_one.dag",
+    module_source: "module uab.carrier_one\n\nimport uab.foreign_one { one_marker }\n\nfn carry_one() -> Int { one_marker() }\n",
+  },
+  {
+    case_name: "case7",
+    file_name: "carrier_two.dag",
+    module_source: "module uab.carrier_two\n\nimport uab.foreign_two { two_marker }\n\nfn carry_two() -> Int { two_marker() }\n",
+  },
+  {
+    case_name: "case8",
+    file_name: "carrier_three.dag",
+    module_source: "module uab.carrier_three\n\nimport uab.foreign_three { three_marker }\n\nfn carry_three() -> Int { three_marker() }\n",
+  },
+  {
+    case_name: "case9, case10",
+    file_name: "ccar_one.dag",
+    module_source: "module uab.ccar_one\n\nimport uab.cop_one { one_cop_marker }\n\nfn ccarry_one() -> Int { one_cop_marker() }\n",
+  },
+  {
+    case_name: "case9 (the two-owner arm of it)",
+    file_name: "ccar_two.dag",
+    module_source: "module uab.ccar_two\n\nimport uab.cop_two { two_cop_marker }\n\nfn ccarry_two() -> Int { two_cop_marker() }\n",
+  },
+  {
+    case_name: "case6 -- THE ENTRY, and the entry is the whole variable",
+    file_name: "entry_a.dag",
+    module_source: "module uab.entry_a\n\nimport uab.declaring { Shape, pick }\nimport uab.carrier_one { carry_one }\n\nfn use_a(c: Bool) -> Shape { pick(c: c) }\nfn touch_a() -> Int { carry_one() }\n",
+  },
+  {
+    case_name: "case7",
+    file_name: "entry_b.dag",
+    module_source: "module uab.entry_b\n\nimport uab.declaring { Shape, pick }\nimport uab.carrier_one { carry_one }\nimport uab.carrier_two { carry_two }\n\nfn use_b(c: Bool) -> Shape { pick(c: c) }\nfn touch_b() -> Int { carry_one() + carry_two() }\n",
+  },
+  {
+    case_name: "case8",
+    file_name: "entry_d.dag",
+    module_source: "module uab.entry_d\n\nimport uab.declaring { Shape, pick }\nimport uab.carrier_one { carry_one }\nimport uab.carrier_three { carry_three }\n\nfn use_d(c: Bool) -> Shape { pick(c: c) }\nfn touch_d() -> Int { carry_one() + carry_three() }\n",
+  },
+  {
+    case_name: "case9 (one foreign arm owner)",
+    file_name: "entry_e.dag",
+    module_source: "module uab.entry_e\n\nimport uab.declaring { Shape, pick }\nimport uab.ccar_one { ccarry_one }\n\nfn use_e(c: Bool) -> Shape { pick(c: c) }\nfn touch_e() -> Int { ccarry_one() }\n",
+  },
+  {
+    case_name: "case9 (two foreign arm owners)",
+    file_name: "entry_f.dag",
+    module_source: "module uab.entry_f\n\nimport uab.declaring { Shape, pick }\nimport uab.ccar_one { ccarry_one }\nimport uab.ccar_two { ccarry_two }\n\nfn use_f(c: Bool) -> Shape { pick(c: c) }\nfn touch_f() -> Int { ccarry_one() + ccarry_two() }\n",
+  },
+  {
+    case_name: "case10",
+    file_name: "entry_g.dag",
+    module_source: "module uab.entry_g\n\nimport uab.declaring { Shape, pick }\nimport uab.carrier_one { carry_one }\nimport uab.ccar_one { ccarry_one }\n\nfn use_g(c: Bool) -> Shape { pick(c: c) }\nfn touch_g() -> Int { carry_one() + ccarry_one() }\n",
+  },
 ]
 
 // WHAT THIS CARRIER DOES NOT DO, stated so a reader does not take it for coverage. Nothing here
@@ -271,7 +356,7 @@ data regen_cannot_see_v2_corpus_emission_change: DeclarationRef = decl_ref(
   decl_name: "reference_derived_use_lines_note",
 )
 
-data constructor_binding_channel_evidence_standing: String = "Measured once at 9917d4a9b3 on a BuildBuddy runner; not enrolled, not re-measured. Rung: mitigatable. Next-rung trigger: a multi-source compile fixture surface."
+data constructor_binding_channel_evidence_standing: String = "TWO measurements, separately located because they were taken on different trees by different lanes and a single sentence covering both would misdate one of them. case1 through case5: once at 9917d4a9b3 on a BuildBuddy runner. case6 through case10: once at 413be13f38a in a session worktree, on a locally built gunbc, through `gunbc compile --source-root <dir> --entry <dir>/uab/<entry>.dag` over the seventeen fixture modules recorded below -- and case7 is the one that materially changed what this carrier claims, so it is the row a re-derivation should start from. NEITHER measurement is enrolled and NEITHER is re-measured. Rung: mitigatable. Next-rung trigger: a multi-source compile fixture surface, unchanged -- the new geometries do not climb the rung, they widen what the single measurement covers."
 
 // THE TWO REPAIRS THIS ESTABLISHES AND DELIBERATELY DOES NOT MAKE. Both sit in v1's infer stage,
 // which DESIGN names as load-bearing, and both are the namespace lane's to sequence: they change
