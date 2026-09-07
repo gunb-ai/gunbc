@@ -335,6 +335,14 @@ test fn w_a_phantom_type_argument_with_identical_representation_is_still_separat
 // literal would be a measurement of the current tree copied into the assertion, which DESIGN 5
 // refuses by name. Each control below is therefore a PAIR differing on exactly one axis, so the
 // shared corpus contribution cancels and only the axis is measured.
+//
+// AND THAT INCLUDES THE ZEROES AND THE ONES. An arm reading `== 0` or `== 1` looks fixture-local
+// and is not: the census carries the fixture's whole import closure, so any unrelated change in
+// std.types that adds or removes a row of the class flips it, and the literal records TODAY'S TREE
+// rather than the mutation the arm claims to discriminate. Refusal counts happen to be zero across
+// that closure at this writing, which is exactly the coincidence that makes the absolute form look
+// safe -- and is not a time-stable fact. So EVERY arm below is a difference between two fixtures,
+// with no exception for the ones whose number is small. Review 62112, claude/opus.
 data refinement_baseline_source: String = "module probe_refinement_baseline\nimport std.types { NonEmptyStr, Int }\nfn takes_non_empty(s: NonEmptyStr) -> Int { 1 }\nfn probe() -> Int { 0 }\n"
 
 data probe_exact_refinement_source: String = "module probe_exact_refinement\nimport std.types { NonEmptyStr, Int }\nimport product.placement_supply { HostIdentity }\ndata probe_host_x: HostIdentity = \"srv1\" as HostIdentity\nfn takes_host(s: HostIdentity) -> Int { 1 }\nfn probe() -> Int { takes_host(s: probe_host_x) }\n"
@@ -344,7 +352,8 @@ data probe_exact_brand_source: String = "module probe_exact_brand\nimport std.ty
 data refinement_widening_source: String = "module probe_refinement_widening\nimport std.types { NonEmptyStr, Int }\nimport product.placement_supply { HostIdentity }\ndata probe_host: HostIdentity = \"srv1\" as HostIdentity\nfn takes_base(s: NonEmptyStr) -> Int { 1 }\nfn probe() -> Int { takes_base(s: probe_host) }\n"
 
 test fn w_a_branded_refinement_at_its_own_declared_base_inhabits() -> Bool {
-  violation_count(source: refinement_widening_source, wanted: "DeclaredTypeNotInhabited") == 0
+  violation_count(source: refinement_widening_source, wanted: "DeclaredTypeNotInhabited")
+    == violation_count(source: probe_exact_refinement_source, wanted: "DeclaredTypeNotInhabited")
     && violation_count(source: refinement_widening_source, wanted: "DeclaredTypeInhabitanceUndecided")
       == violation_count(source: probe_exact_refinement_source, wanted: "DeclaredTypeInhabitanceUndecided")
 }
@@ -375,7 +384,8 @@ test fn w_a_branded_refinement_at_its_own_declared_base_inhabits() -> Bool {
 data brand_horizontal_at_argument_source: String = "module probe_brand_horizontal_at_argument\nimport std.types { Int }\nimport product.placement_supply { HostIdentity, PhysicalAssetIdentity }\ndata probe_host2: HostIdentity = \"srv1\" as HostIdentity\nfn takes_asset(x: PhysicalAssetIdentity) -> Int { 1 }\nfn probe() -> Int { takes_asset(x: probe_host2) }\n"
 
 test fn w_two_distinct_brands_over_one_base_are_not_refused_twice() -> Bool {
-  violation_count(source: brand_horizontal_at_argument_source, wanted: "DeclaredTypeNotInhabited") == 0
+  violation_count(source: brand_horizontal_at_argument_source, wanted: "DeclaredTypeNotInhabited")
+    == violation_count(source: probe_exact_brand_source, wanted: "DeclaredTypeNotInhabited")
     && violation_count(source: brand_horizontal_at_argument_source, wanted: "DeclaredTypeInhabitanceUndecided")
       > violation_count(source: probe_exact_brand_source, wanted: "DeclaredTypeInhabitanceUndecided")
     && violation_count(source: brand_horizontal_at_argument_source, wanted: "TypeMismatch")
@@ -393,10 +403,16 @@ test fn w_two_distinct_brands_over_one_base_are_not_refused_twice() -> Bool {
 // nominal_opaque alias, Secret's chain would become [Secret, String] and would meet NonEmptyStr's
 // [NonEmptyStr, String] at String -- a sibling pair, which this relation declines. So the
 // discriminating mutation produces exactly one UNDECIDED here, and asserting zero reds on it.
+// THE Secret-FREE PARTNER, differing on exactly the nominal_opaque axis: same module shape, same
+// imports, same formal, same call -- the produced value is a NonEmptyStr rather than a Secret. Its
+// refusal count is the closure's contribution, so the difference is this fixture's own refusal.
+data nominal_opaque_partner_source: String = "module probe_nominal_opaque_partner\nimport std.types { NonEmptyStr, Int }\ndata probe_plain: NonEmptyStr = \"shh\" as NonEmptyStr\nfn takes_non_empty(s: NonEmptyStr) -> Int { 1 }\nfn probe() -> Int { takes_non_empty(s: probe_plain) }\n"
+
 data nominal_opaque_not_grounded_source: String = "module probe_nominal_opaque_not_grounded\nimport std.types { NonEmptyStr, Secret, Int }\ndata probe_secret: Secret = \"shh\" as Secret\nfn takes_non_empty(s: NonEmptyStr) -> Int { 1 }\nfn probe() -> Int { takes_non_empty(s: probe_secret) }\n"
 
 test fn w_a_nominal_opaque_alias_does_not_ground_through_the_refinement_chain() -> Bool {
-  violation_count(source: nominal_opaque_not_grounded_source, wanted: "DeclaredTypeNotInhabited") == 1
+  violation_count(source: nominal_opaque_not_grounded_source, wanted: "DeclaredTypeNotInhabited")
+    > violation_count(source: nominal_opaque_partner_source, wanted: "DeclaredTypeNotInhabited")
 }
 
 // THE POSITIVE CENSUS ARM IS NOT AUTHORABLE HERE, AND THAT IS THE FINDING RATHER THAN AN OMISSION.

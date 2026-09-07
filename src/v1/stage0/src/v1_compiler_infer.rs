@@ -4645,50 +4645,57 @@ pub fn refinement_chain_link_identities(
     links: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for id in Rc::new({
+    {
+        let identified = Rc::new({
             let mut __result = Vec::new();
-            for site in Rc::new({
+            for id in Rc::new({
                 let mut __result = Vec::new();
                 for site in Rc::new({
                     let mut __result = Vec::new();
-                    for link in links.iter().cloned() {
-                        __result.push(where_refinement_brand_declaration_site(
-                            link.clone(),
-                            source_indices.clone(),
-                        ));
+                    for site in Rc::new({
+                        let mut __result = Vec::new();
+                        for link in links.iter().cloned() {
+                            __result.push(where_refinement_brand_declaration_site(
+                                link.clone(),
+                                source_indices.clone(),
+                            ));
+                        }
+                        __result
+                    })
+                    .iter()
+                    .cloned()
+                    {
+                        if (site.clone() != std::option::Option::None) {
+                            __result.push(site);
+                        }
                     }
                     __result
                 })
                 .iter()
                 .cloned()
                 {
-                    if (site.clone() != std::option::Option::None) {
-                        __result.push(site);
-                    }
+                    __result.push(match site.clone() {
+                        Some(id) => id.clone(),
+                        std::option::Option::None => "".to_string(),
+                    });
                 }
                 __result
             })
             .iter()
             .cloned()
             {
-                __result.push(match site.clone() {
-                    Some(id) => id.clone(),
-                    std::option::Option::None => "".to_string(),
-                });
+                if (id.clone() != "".to_string()) {
+                    __result.push(id);
+                }
             }
             __result
-        })
-        .iter()
-        .cloned()
-        {
-            if (id.clone() != "".to_string()) {
-                __result.push(id);
-            }
+        });
+        if ((identified.clone().len() as i64) == (links.clone().len() as i64)) {
+            identified.clone()
+        } else {
+            Rc::new(vec![])
         }
-        __result
-    })
+    }
 }
 
 pub fn refinement_chain_names(n: Rc<Node>, scope: Rc<InferScope>) -> Rc<Vec<String>> {
