@@ -785,8 +785,8 @@ fn deployment_owned_steps(
   names: DeploymentNames,
 ) -> List<DeploymentArtifactStep> {
   [
-    DeploymentArtifactStep { kind: GunbcSourceTree, path: instance.repo_root as String as NonEmptyStr },
     DeploymentArtifactStep { kind: ServeBinary, path: instance.serve_binary as String as NonEmptyStr },
+    DeploymentArtifactStep { kind: GunbcSourceTree, path: instance.repo_root as String as NonEmptyStr },
     DeploymentArtifactStep {
       kind: DeployedTreeRemoteUnit,
       path: deployment_tree_remote_unit_path(names: names),
@@ -853,8 +853,12 @@ fn deployment_ensured_steps() -> List<DeploymentDependencyStep> {
   ]
 }
 
-// Apply order is dependency-honest: the tree lands before the binary (the binary serves that tree),
-// both before the two belt-spawn roots (the worktree root and the attempt-state root, which a
+// Apply order is dependency-honest: the binary lands before the tree, because the tree is published
+// by a service-user oneshot that RUNS the admitted binary (gunbc.live_deploy.repository_convergence_placement
+// convergence_unit_doc) -- the order used to read tree-then-binary on the grounds that the binary serves
+// the tree, which is true of the running process but not of the installation, and the identity emitter
+// had to override it downstream until this authority said it (review on PR #10696); both before the
+// two belt-spawn roots (the worktree root and the attempt-state root, which a
 // dispatch writes in that order — worktree first, then the published attempt evidence), all before
 // the unit (ExecStart references binary + tree), then the belt timer (its ExecStart references that
 // same binary and tree, and every tick it fires writes the two roots above — so it is ordered after

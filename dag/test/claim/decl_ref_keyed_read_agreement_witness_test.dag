@@ -1,0 +1,167 @@
+module test.claim.decl_ref_keyed_read_agreement_witness_test
+
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
+import test.fixture.decl_facts_reflection.witness_support { decl_facts_reflection_fixture_pool_roots }
+import v2.lens.module_graph { module_declaration_facts_live }
+import v2.std.decl_index { decl_facts }
+import v2.std.decl_ref_resolution {
+  DeclarationRefAmbiguous,
+  DeclarationRefDeclarationAbsent,
+  DeclarationRefFieldAbsent,
+  DeclarationRefModuleAbsent,
+  DeclarationRefResolution,
+  DeclarationRefResolved,
+  resolve_declaration_ref,
+  resolve_declaration_ref_live,
+}
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE CONTROL THAT MAKES THE KEYED REWRITE OF A REFUSAL PATH SAFE TO LAND.
+//
+// v2.std.decl_ref_resolution now reaches its five arms two ways: from a population handed in as a
+// value, and from two keyed host reads (decl_facts_at, module_declaration_facts_at). The arms
+// themselves are decided once, by resolve_declaration_ref_over, so the risk is not that the arms
+// disagree — it is that the two FEEDS deliver different rows and the same law then answers
+// differently. That is invisible to a typecheck and invisible to any single-route witness.
+//
+// So each row below asks ONE reference both ways over ONE pool and asserts (a) the two routes land
+// on the same arm and (b) which arm that is. Both halves are required. Agreement alone is satisfied
+// by a resolver that answers ModuleAbsent to everything; the named arm alone does not compare the
+// routes at all.
+//
+// EVERY ARM IS REACHED, AND AMBIGUOUS IS REACHED WITH MULTIPLICITY ABOVE ONE. That last one is the
+// arm a keyed read is most likely to eat: a lookup that answered "declared?" with a Bool, or
+// returned the first hit, would resolve an ambiguous citation and no other row here would notice.
+// The pool is the existing decl_facts_reflection fixture pool, which declares one qualified name
+// (test.fixture.decl_facts_reflection_duplicate_qn.shadowed_module.shadowed_specimen) in two files
+// under two roots on purpose — a real duplicate in a real walk, not a synthesized fact list, so
+// the keyed read is exercised on the population shape it must not collapse.
+
+// The arm as a comparable tag, with the candidate COUNT carried on the ambiguous arm. Ambiguity is
+// a multiplicity, so a comparison that dropped the count would call a two-candidate answer and a
+// nine-candidate answer the same thing — the exact distinction this file exists to protect.
+fn resolution_arm_tag(resolution: DeclarationRefResolution) -> String {
+  match resolution {
+    DeclarationRefResolved { declaration_identity: id } => concat("Resolved:", id.qualified_name)
+    DeclarationRefModuleAbsent { reference: _ } => "ModuleAbsent"
+    DeclarationRefDeclarationAbsent { reference: _ } => "DeclarationAbsent"
+    DeclarationRefFieldAbsent { reference: _ } => "FieldAbsent"
+    DeclarationRefAmbiguous { reference: _, candidates: c } =>
+      concat("Ambiguous:", to_string(length(xs: c)))
+  }
+}
+
+fn keyed_tag(ref: DeclarationRef) -> String {
+  resolution_arm_tag(
+    resolution: resolve_declaration_ref_live(
+      ref: ref,
+      pool_roots: decl_facts_reflection_fixture_pool_roots
+    )
+  )
+}
+
+fn population_tag(ref: DeclarationRef) -> String {
+  resolution_arm_tag(
+    resolution: resolve_declaration_ref(
+      ref: ref,
+      facts: decl_facts(pool_roots: decl_facts_reflection_fixture_pool_roots),
+      modules: module_declaration_facts_live(pool_roots: decl_facts_reflection_fixture_pool_roots)
+    )
+  )
+}
+
+fn routes_agree_on(ref: DeclarationRef, expected: String) -> Bool {
+  let keyed = keyed_tag(ref: ref)
+  keyed == population_tag(ref: ref) && keyed == expected
+}
+
+test fn keyed_and_population_routes_agree_on_resolved() -> Bool {
+  routes_agree_on(
+    ref: DeclarationRef {
+      module_path: "test.fixture.decl_facts_reflection.specimens",
+      decl_name: "disposition_scaffold",
+      field: WholeDeclaration,
+    },
+    expected: "Resolved:test.fixture.decl_facts_reflection.specimens.disposition_scaffold"
+  )
+}
+
+// ALL THREE PLANTED-ABSENT ROWS BELOW ARE ENROLLED IN FIXTURE_CARRIER_CITATION_EXEMPTIONS
+// (v1_compiler.declaration_index), the roster that exists for exactly this and which refuses a row
+// whose citation stops refusing. The module-absent one was authored expecting a different route --
+// that a namespace root the corpus sweep never observes is classified outside the index by
+// construction -- and required run 34097895230 refused it as CITED-MODULE-ABSENT, so the
+// expectation was wrong and the roster is the route for all three. A planted absence a witness
+// needs and the corpus must not silently carry is exactly what the roster is identity-grained for.
+test fn keyed_and_population_routes_agree_on_module_absent() -> Bool {
+  routes_agree_on(
+    ref: DeclarationRef {
+      module_path: "synthetic.keyed_read_module_absent_RED",
+      decl_name: "anything",
+      field: WholeDeclaration,
+    },
+    expected: "ModuleAbsent"
+  )
+}
+
+test fn keyed_and_population_routes_agree_on_declaration_absent() -> Bool {
+  routes_agree_on(
+    ref: DeclarationRef {
+      module_path: "test.fixture.decl_facts_reflection.specimens",
+      decl_name: "no_such_declaration_KEYED_RED",
+      field: WholeDeclaration,
+    },
+    expected: "DeclarationAbsent"
+  )
+}
+
+test fn keyed_and_population_routes_agree_on_field_absent() -> Bool {
+  routes_agree_on(
+    ref: DeclarationRef {
+      module_path: "test.fixture.decl_facts_reflection.specimens",
+      decl_name: "disposition_scaffold",
+      field: NamedField { field_name: "no_such_field_KEYED_RED" },
+    },
+    expected: "FieldAbsent"
+  )
+}
+
+// THE ROW THE BOOL SHORTCUT WOULD HAVE EATEN. Two files declare this qualified name; the keyed read
+// must return BOTH, and the count is asserted rather than the arm alone.
+test fn keyed_and_population_routes_agree_on_ambiguous_with_two_candidates() -> Bool {
+  routes_agree_on(
+    ref: DeclarationRef {
+      module_path: "test.fixture.decl_facts_reflection_duplicate_qn.shadowed_module",
+      decl_name: "shadowed_specimen",
+      field: WholeDeclaration,
+    },
+    expected: "Ambiguous:2"
+  )
+}
+
+// A FIELD THAT IS AUTHORED IN THE SOURCE AND STILL RESOLVES FieldAbsent, which is a boundary of
+// the resolver rather than a defect of the keyed read, and is recorded here because it was found by
+// EXECUTION. `disposition_scaffold` really is written `Scaffold { dissolves_to: ..., bind: ... }`,
+// so a reader would expect this citation to resolve; it does not, because for a DataItem the
+// DeclFact node is the initializer PROJECTION and `decl_ref_named_field_present` reads
+// node_labeled_child_edges of that node, which are the projection's own edges and not the record's
+// field labels. Both routes say so, which is the point: the keyed feed does not invent an answer
+// where the population feed refuses, and it does not refuse where the population feed answers.
+//
+// WHAT KEEPS THE FIELD ROWS DISCRIMINATING is therefore not a present-field positive — the
+// resolver has none to offer on a `data` declaration — but the pair with
+// keyed_and_population_routes_agree_on_resolved, which cites the SAME declaration with
+// WholeDeclaration and requires Resolved. A resolver answering FieldAbsent to everything fails that
+// row; one answering Resolved to everything fails these two.
+test fn keyed_and_population_routes_agree_that_an_authored_field_is_still_field_absent() -> Bool {
+  routes_agree_on(
+    ref: DeclarationRef {
+      module_path: "test.fixture.decl_facts_reflection.specimens",
+      decl_name: "disposition_scaffold",
+      field: NamedField { field_name: "dissolves_to" },
+    },
+    expected: "FieldAbsent"
+  )
+}

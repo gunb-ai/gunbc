@@ -121,6 +121,16 @@ fn module_declaration_facts_live(pool_roots: List<String>) -> List<ModuleDeclara
   module_declaration_facts(pool_roots: pool_roots)
 }
 
+// The keyed read beside the population one: the row for one module, or none. Same shape as
+// `module_declaration_facts_live` narrows to, so a consumer that asked "is this module declared,
+// and where" stops paying for every other module's row to find out.
+fn module_declaration_facts_at_live(
+  pool_roots: List<String>,
+  module_path: String
+) -> List<ModuleDeclarationFact> {
+  module_declaration_facts_at(pool_roots: pool_roots, module_path: module_path)
+}
+
 fn import_fact_to_dependency_edge(edge: ImportResolutionFact) -> ModuleDependencyEdge {
   ModuleDependencyEdge {
     path: edge.path,
