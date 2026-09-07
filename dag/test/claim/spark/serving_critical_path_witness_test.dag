@@ -1,0 +1,76 @@
+module test.claim.spark.serving_critical_path_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import gunbc.spark.serving_critical_path {
+  CriticalPathCandidate, CompleteRankStraggler, HostDispatchGaps, InterconnectBandwidth,
+  ComputeSaturation, CollectiveLatency,
+  CandidateStanding, CandidateExcluded, CandidateRemains, CandidateUnexamined,
+  cold_prefill_candidate_standing,
+  CriticalPathPartition, PartitionIncomplete, PartitionEstablished,
+  PartitionRequirement, KernelNameAttribution, PerStepSchedulerAllocation, ProbePerturbationBound,
+  spark_group_a_cold_prefill_partition, partition_may_calibrate, faster_link_addresses_partition,
+}
+
+fn w_excluded(c: CriticalPathCandidate) -> Bool {
+  match cold_prefill_candidate_standing(c: c) {
+    CandidateExcluded { by: _ } => true
+    _ => false
+  }
+}
+
+// THE THREE NEGATIVES THE TRACE EARNED, each from a different measurement so no single instrument
+// carries the partition alone: rank symmetry excludes a straggler, kernel residency excludes host
+// gaps, link utilisation excludes bandwidth, and power invariance under load excludes compute.
+test fn the_trace_excludes_four_candidates_on_independent_measurements() -> Bool {
+  w_excluded(c: CompleteRankStraggler)
+    && w_excluded(c: HostDispatchGaps)
+    && w_excluded(c: InterconnectBandwidth)
+    && w_excluded(c: ComputeSaturation)
+}
+
+// POWER INVARIANCE IS THE LOAD-BEARING ONE and its reason must survive rewording: 36.4W under a full
+// cold prefill against 37.1W under a fifth of the traffic. A compute-bound critical path cannot draw
+// the same power idle and saturated.
+test fn compute_saturation_is_excluded_by_power_invariance_not_by_utilisation() -> Bool {
+  match cold_prefill_candidate_standing(c: ComputeSaturation) {
+    CandidateExcluded { by: b } =>
+      string_contains(s: b as String, pattern: "invariant to load")
+        && string_contains(s: b as String, pattern: "36.4W")
+    _ => false
+  }
+}
+
+// SURVIVING EXCLUSION IS NOT CONFIRMATION. Collective latency is the only candidate the evidence
+// does not exclude, and it is recorded as REMAINING rather than established — nvidia-smi cannot tell
+// an NCCL kernel from a compute kernel, and that distinction is exactly what is missing.
+test fn the_surviving_candidate_is_not_promoted_to_a_conclusion() -> Bool {
+  (match cold_prefill_candidate_standing(c: CollectiveLatency) {
+     CandidateRemains { by: b } => string_contains(s: b as String, pattern: "do not exclude")
+     _ => false
+   })
+    && (match spark_group_a_cold_prefill_partition {
+          PartitionIncomplete { excluded: e, remaining: r, missing: m } =>
+            length(e) == 4 && length(r) == 1 && length(m) == 3
+          PartitionEstablished { critical: _, evidence: _ } => false
+        })
+}
+
+// AN INCOMPLETE PARTITION MAY NOT CALIBRATE. This is what stops the surviving candidate becoming a
+// simulation input before kernel attribution runs.
+test fn an_incomplete_partition_cannot_populate_calibration() -> Bool {
+  !partition_may_calibrate(p: spark_group_a_cold_prefill_partition)
+    && partition_may_calibrate(p: PartitionEstablished {
+         critical: CollectiveLatency,
+         evidence: "hypothetical established partition" as NonEmptyStr,
+       })
+}
+
+// THE ANSWER TO THE QUESTION THAT STARTED IT. Bandwidth is excluded at 16% utilisation, so a faster
+// rail cannot return the missing time — whatever the surviving candidate turns out to be.
+test fn a_faster_link_does_not_address_this_partition() -> Bool {
+  !faster_link_addresses_partition(p: spark_group_a_cold_prefill_partition)
+    && (match cold_prefill_candidate_standing(c: InterconnectBandwidth) {
+          CandidateExcluded { by: b } => string_contains(s: b as String, pattern: "16%")
+          _ => false
+        })
+}

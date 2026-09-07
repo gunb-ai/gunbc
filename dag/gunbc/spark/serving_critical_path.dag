@@ -1,0 +1,97 @@
+module gunbc.spark.serving_critical_path
+
+import std.types { Bool, String, Int, NonEmptyStr, List }
+import std.nat { Nat }
+import std.measure { TokenCount, token_count }
+
+// ── WHERE THE PREFILL WALL TIME IS NOT ────────────────────────────────────────────────────────
+//
+// A read-only trace of all four group A ranks across one controlled cold prefill: nvidia-smi
+// utilisation, power and SM clock plus the RoCE transmit counter, sampled every 250ms, 839-843
+// samples per rank, launch invocation re-read before and after and unchanged.
+//
+//     rank        util-med   util<50%   power-med   power-max   sm-clock   roce
+//     .225           96%         2%       36.6W       42.9W      2398MHz   232.7 GB  7.80 Gb/s
+//     .226           96%         1%       36.1W       41.8W      2411MHz   235.8 GB  7.87 Gb/s
+//     .232           96%         1%       36.1W       41.9W      2411MHz   235.4 GB  7.87 Gb/s
+//     .233           96%         1%       37.8W       43.9W      2405MHz   233.6 GB  7.80 Gb/s
+//
+// THE LOAD-INVARIANCE OF POWER IS THE FINDING. An earlier passive window over light traffic --
+// a fifth of the RoCE volume -- measured 37.1W median. Under a full cold prefill the median is
+// 36.4W. Power does not move between nearly-idle and saturated-by-wall-clock, while GPU kernels are
+// resident for 98-99% of samples and the clock sits at 2.4 of 3.0 GHz.
+//
+// Kernels are therefore present and not computing. On a tensor-parallel deployment the canonical
+// thing a kernel waits inside is a collective: an NCCL all-reduce spins on the GPU, counts fully
+// toward utilisation, and draws little power. Combined with 7.8 Gb/s on a 50 Gb/s link, that shape
+// is waiting rather than transferring.
+//
+// WHAT THIS ESTABLISHES IS THREE NEGATIVES, AND THEY ARE WORTH MORE THAN A GUESSED POSITIVE.
+
+type CriticalPathCandidate
+  = CompleteRankStraggler
+  | HostDispatchGaps
+  | InterconnectBandwidth
+  | ComputeSaturation
+  | CollectiveLatency
+
+type CandidateStanding
+  = CandidateExcluded { by: NonEmptyStr }
+  | CandidateRemains { by: NonEmptyStr }
+  | CandidateUnexamined { needs: NonEmptyStr }
+
+fn cold_prefill_candidate_standing(c: CriticalPathCandidate) -> CandidateStanding {
+  match c {
+    CompleteRankStraggler =>
+      CandidateExcluded { by: "the four ranks are symmetric to within 1.7W of median power and 0% of median utilisation; tensor-parallel progress is bounded by the slowest rank and no rank is slower" as NonEmptyStr }
+    HostDispatchGaps =>
+      CandidateExcluded { by: "GPU kernels are resident for 98-99% of 250ms samples, so the wall time is not spent between kernels waiting on Ray, the scheduler or host dispatch" as NonEmptyStr }
+    InterconnectBandwidth =>
+      CandidateExcluded { by: "7.8 Gb/s sustained on a 50 Gb/s RoCE link, about 16%; the link is not saturated and a faster one cannot return the other 84%" as NonEmptyStr }
+    ComputeSaturation =>
+      CandidateExcluded { by: "median power is 36.4W under a full cold prefill and 37.1W under a fifth of the traffic -- power is invariant to load, which a compute-bound critical path cannot be" as NonEmptyStr }
+    CollectiveLatency =>
+      CandidateRemains { by: "kernels resident, power flat, link far from saturated and all ranks symmetric is the shape of GPU time spent WAITING inside collectives rather than transferring or computing; it is the only listed candidate the measurements do not exclude" as NonEmptyStr }
+  }
+}
+
+// ── AND WHAT IT DOES NOT ESTABLISH ────────────────────────────────────────────────────────────
+//
+// Surviving exclusion is not confirmation. nvidia-smi cannot separate an NCCL kernel from a compute
+// kernel: both are "utilisation". The remaining candidate is the one consistent with the evidence,
+// which is a different claim from the one the evidence demonstrates, and the module says so rather
+// than promoting it.
+//
+// nsys is installed on these hosts and attributes kernel time by name, which is exactly the
+// distinction missing here. Until it runs, this partition is INCOMPLETE and may not populate a
+// step-cost cell.
+type PartitionRequirement
+  = KernelNameAttribution
+  | PerStepSchedulerAllocation
+  | ProbePerturbationBound
+
+type CriticalPathPartition
+  = PartitionIncomplete { excluded: List<CriticalPathCandidate>, remaining: List<CriticalPathCandidate>, missing: List<PartitionRequirement> }
+  | PartitionEstablished { critical: CriticalPathCandidate, evidence: NonEmptyStr }
+
+data spark_group_a_cold_prefill_partition: CriticalPathPartition = PartitionIncomplete {
+  excluded: [CompleteRankStraggler, HostDispatchGaps, InterconnectBandwidth, ComputeSaturation],
+  remaining: [CollectiveLatency],
+  missing: [KernelNameAttribution, PerStepSchedulerAllocation, ProbePerturbationBound],
+}
+
+fn partition_may_calibrate(p: CriticalPathPartition) -> Bool {
+  match p {
+    PartitionEstablished { critical: _, evidence: _ } => true
+    PartitionIncomplete { excluded: _, remaining: _, missing: _ } => false
+  }
+}
+
+// THE CONSEQUENCE FOR THE QUESTION THAT STARTED THIS. A faster rail was proposed twice. Bandwidth is
+// excluded at 16% utilisation, so a 100G or 200G breakout cannot return the missing time -- but if
+// the surviving candidate is confirmed, the lever is collective LATENCY, which is topology, transport
+// selection and collective algorithm rather than link speed. Those are different purchases, and the
+// distinction is only decidable after kernel attribution.
+fn faster_link_addresses_partition(p: CriticalPathPartition) -> Bool {
+  false
+}
