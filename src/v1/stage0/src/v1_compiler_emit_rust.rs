@@ -1110,24 +1110,35 @@ pub fn type_reference_provenance_in_env(
             crate::v1_std_core::type_reference_provenance(n.clone())
         }
         _ => {
-            let leaf = rust_fn_sig_leaf_name(source_indices.clone(), n.clone());
-            if (leaf.clone() == "".to_string()) {
+            let node_is_own_declaration = ((n.connective.clone() == Connective::Conj)
+                || (n.connective.clone() == Connective::Disj));
+            if node_is_own_declaration.clone() {
                 crate::v1_std_core::type_reference_provenance(n.clone())
             } else {
-                match crate::v1_compiler_infer_env::lookup_type_by_name(env.clone(), leaf.clone()) {
-                    Some(decl) => {
-                        if (crate::v1_std_core::authored_name_at(
-                            source_indices.clone(),
-                            decl.clone(),
-                        ) == leaf.clone())
-                        {
-                            crate::v1_std_core::declaration_provenance_of(decl.clone())
-                        } else {
-                            crate::v1_std_core::type_reference_provenance(n.clone())
-                        }
-                    }
-                    std::option::Option::None => {
+                {
+                    let leaf = rust_fn_sig_leaf_name(source_indices.clone(), n.clone());
+                    if (leaf.clone() == "".to_string()) {
                         crate::v1_std_core::type_reference_provenance(n.clone())
+                    } else {
+                        match crate::v1_compiler_infer_env::lookup_type_by_name(
+                            env.clone(),
+                            leaf.clone(),
+                        ) {
+                            Some(decl) => {
+                                if (crate::v1_std_core::authored_name_at(
+                                    source_indices.clone(),
+                                    decl.clone(),
+                                ) == leaf.clone())
+                                {
+                                    crate::v1_std_core::declaration_provenance_of(decl.clone())
+                                } else {
+                                    crate::v1_std_core::type_reference_provenance(n.clone())
+                                }
+                            }
+                            std::option::Option::None => {
+                                crate::v1_std_core::type_reference_provenance(n.clone())
+                            }
+                        }
                     }
                 }
             }

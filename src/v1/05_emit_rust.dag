@@ -733,10 +733,28 @@ data rust_checkpoint_scalar_phantom_params_note: String = "Construction wall for
 // binding is still decidable from the env: the reference's leaf name resolves to one declaration
 // in the referencing module's scope. Accepted only when that declaration IS named by the leaf,
 // so an alias's right-hand side node can never stand in for the alias.
+// A node that IS its own declaration carries its provenance on its own span, and the env
+// bare-leaf lookup must not pre-empt it. Inference substitutes the RESOLVED declaration into a
+// data annotation's type-argument position, so `BooleanAlgebra<v2.std.logic.Bool>` reaches the
+// emitter with the arg BEING the `type Bool = True | False` declaration itself -- Disj
+// connective, True/False children, ident_span in src/v2/std/logic.dag, no Resolved wrapper
+// (measured on the XL-N probe closure; the python.rs:328 / typescript.rs:177 E0308 pair on the
+// self-host compile-phase frontier). The bare-leaf arm re-resolves that leaf in the REFERENCING
+// module's scope, where post-#9813 a kernel-shadowed spelling answers the KERNEL declaration
+// (lookup_type_by_name "Bool" binds the kernel Bool), so the structural enum rendered as host
+// `bool` against a value of BooleanAlgebra<Bool>. The connective is the discriminator: a
+// reference node is a bare name (NoConnective), while a node carrying Conj/Disj structure IS
+// the declaration, and type_reference_provenance's own-span fallback (v1.compiler.core
+// declaration_provenance_of) already answers that shape correctly -- CorpusDeclared on the
+// span's own file, which structural_declaration_modules_for then matches.
 fn type_reference_provenance_in_env(n: Node, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> TypeDeclarationProvenance {
   match n.inferred {
     Present { value: Resolved { node: _ } } => type_reference_provenance(n: n)
     _ =>
+      let node_is_own_declaration = n.connective == Conj || n.connective == Disj
+      if node_is_own_declaration {
+        type_reference_provenance(n: n)
+      } else {
       let leaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
       if leaf == "" { type_reference_provenance(n: n) }
       else {
@@ -747,6 +765,7 @@ fn type_reference_provenance_in_env(n: Node, env: TypeEnv, source_indices: Map<S
             } else { type_reference_provenance(n: n) }
           Absent => type_reference_provenance(n: n)
         }
+      }
       }
   }
 }
