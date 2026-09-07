@@ -357,6 +357,45 @@ fn render_rust_arrow_type_in_scope(n: Node, generic_param_names: List<String>, s
 // otherwise renders `predecessor: Nat` as `Rc<Nat>` at a variant record field while the
 // constructor passes i64 -- a layer below the field-carrier decision
 // rust_field_carrier_final_type projects (E0308 x2, E0369 x1).
+// PEEL, DO NOT NAME, at an overlay-less QUALIFIED String-spelled alias leaf. A field authored
+// `v2.std.text.String` reaches this renderer as the RESOLVED reference leaf -- no children, no
+// __applied_type_args overlay (nothing in the current tree writes that channel; the readers are
+// legacy), and a provenance that answers the reference's own file (type_reference_provenance's
+// documented unresolved-reference shape), so every identity-keyed arm ahead of this one answers
+// about the wrong declaration. Rendering the bare name can only bind where the emitted module
+// declares or imports that name, and for the String spelling neither holds: kernel names are never
+// overridden by imports (#9813, v1.compiler.infer overlay_skips_kernel_name), so the use-line that
+// would bind the alias is dropped by import_name_resolves_to_host_realized_kernel_scalar and the
+// bare token binds the prelude String -- while every value position renders the same carrier
+// Rc<Vec<i64>>. That is the v2_compiler_tokenize.rs E0308 family on the XL-N board (41 of 72),
+// and post-#9907 the whole cross-module population is authored QUALIFIED, which is what the
+// contains(".") conjunct keys on. The fn-signature positions peel this population by consulting
+// the env-resolved alias binding; this arm asks the same question of the same authority
+// (closed_alias_peel_verdict) and renders the alias declaration's resolved right-hand side, so
+// both positions project one realization.
+// THE QUALIFIED GATE IS LOAD-BEARING, NOT A NARROWING TASTE. Inside the declaring module itself
+// (src/v2/std/text.dag authors `text: String` bare) the bare terminal name is the CORRECT render:
+// the emitted module carries `pub type String = Rc<Vec<i64>>;` and the bare token binds it.
+// Peeling there is not merely redundant -- the local declaration's env binding resolves to a node
+// whose resolved_type drops the RHS type argument, so an ungated peel rendered `Rc<FreeMonoid>`
+// there (E0107 x13, E0282 x2 in emitted v2_std_text.rs, measured on the probe7 emission). A
+// module-local `type String = ...` referenced bare likewise keeps its bare name and binds its own
+// declaration, and the kernel scalar never reaches the peel either: a bare `String` outside the
+// declaring module denotes the kernel post-#9813, which the host-carrier arm ahead of this one
+// answers. SCOPE: keyed to
+// the String spelling because String is the kernel-named STRUCTURAL text carrier with a measured
+// error population; std.integer Int and std.float Float realize NATIVELY via
+// numeric_realization_declaring_modules, so peeling them would render the algebra structure
+// against i64 values -- their field-position rendering is a separate class with its own evidence.
+fn rust_overlayless_alias_leaf_requires_peel(env: TypeEnv, n: Node) -> Bool {
+  let name = authored_name_at(source_indices: env.source_indices, node: n)
+  n.connective == NoConnective
+    && (n.children |> count) == 0
+    && contains(name, ".")
+    && qualified_last_segment(name: name) == "String"
+    && closed_alias_peels_zero_param(env: env, n: n)
+}
+
 fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
@@ -424,6 +463,11 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
       "_"
     } else if is_host_text_carrier_type(n: n, source_indices: source_indices) {
       rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
+    } else if rust_overlayless_alias_leaf_requires_peel(env: emit_info.fn_type_env, n: n) {
+      match lookup_type_for(env: emit_info.fn_type_env, node: n) {
+        Present { value: binding } => render_rust_type(n: resolved_type(n: binding), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+        Absent => render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
+      }
     } else {
       match realization_host_numeric_spelling(decision: type_reference_realization_in_env(n: n, dag_name: qualified_last_segment(name: tn), env: emit_info.fn_type_env, source_indices: source_indices)) {
         Present { value: host } => rust_carrier_optional_wrap(n: n, rendered: host)
@@ -833,13 +877,35 @@ fn rust_host_text_carrier_elem_name(n: Node, source_indices: Map<String, Newline
 // is v1.compiler.coercion structural_declaration_modules_for, the same authority
 // type_realization_decision consults, so this arm and the strict decision cannot diverge on one
 // node. Kernel mints and unresolved references keep the host answer exactly as before.
+//
+// The FreeMonoid/List arm carries the same gate one peel later: the record-field path renders the
+// RESOLVED type node (src/v1/04_types.dag resolved_type), so a field authored
+// `v2.std.text.String` arrives here as the alias's right-hand side -- a `FreeMonoid<Char>`
+// application whose spelling no longer mentions String at all. Keying that arm on spelling +
+// Char element alone re-attributes the corpus-declared std.algebra FreeMonoid to the host text
+// carrier, which is the same alias_resolution_collides_with_kernel_spelling class wearing the
+// peeled spelling: the type position rendered host `String` while the value position rendered
+// `Rc<Vector<i64>>` (the 41 v2_compiler_tokenize.rs E0308s on the successor board). The arm
+// therefore fires only where the resolved declaration is NOT corpus-declared -- a kernel mint or
+// an unresolved reference, the population the arm was authored for -- and a corpus-declared
+// FreeMonoid/List over Char renders the structure, agreeing with type_realization_decision on the
+// same node (measured by gunbc.instruments.carrier_realization_census as DivergesWithExactIdentity
+// before this gate, Agrees after).
 fn is_host_text_carrier_type(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   if n.connective == Arrow { return false }
   let nm = authored_name_at(source_indices: source_indices, node: n)
   if nm == "String" {
     !provenance_declares_structurally(dag_name: "String", p: type_reference_provenance(n: n))
   } else if nm == "FreeMonoid" || nm == "List" {
-    rust_host_text_carrier_elem_name(n: n, source_indices: source_indices) == "Char"
+    if rust_host_text_carrier_elem_name(n: n, source_indices: source_indices) != "Char" {
+      false
+    } else {
+      match type_reference_provenance(n: n) {
+        CorpusDeclared { decl_file: _ } => false
+        KernelMinted { minted_name: _ } => true
+        DeclarationIdentityAbsent => true
+      }
+    }
   } else {
     false
   }
@@ -1098,9 +1164,18 @@ fn closed_alias_verdict_do_not_peel() -> ClosedAliasPeelVerdict {
   ClosedAliasHasParams
 }
 
+// The String spelling guard is provenance-gated for the same reason is_host_text_carrier_type's
+// String arm is: a STRUCTURAL String alias (v2.std.text, std.string_type) is a zero-parameter
+// closed alias and must be eligible for ClosedAliasPeelZeroParam, or a reference carrying the
+// resolved definition's type arguments renders `String<i64>` -- name plus resolved children --
+// against a Rust alias declared with no parameters (the E0107 family the host-carrier provenance
+// gate surfaces in v2_std_text.rs once the String arm stops short-circuiting those references to
+// the host spelling). The kernel scalar keeps the historical do-not-peel answer exactly: its
+// provenance is never structurally declared, so the guard still fires for it on every path that
+// reaches this verdict without an upstream host-carrier short-circuit.
 fn closed_alias_peel_verdict(env: TypeEnv, n: Node) -> ClosedAliasPeelVerdict {
   let name = authored_name_at(source_indices: env.source_indices, node: n)
-  if name == "String" {
+  if name == "String" && !provenance_declares_structurally(dag_name: "String", p: type_reference_provenance(n: n)) {
     return closed_alias_verdict_do_not_peel()
   }
   let binding = match lookup_type_for(env: env, node: n) {

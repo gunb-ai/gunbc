@@ -506,6 +506,17 @@ pub fn render_rust_arrow_type_in_scope(
     }
 }
 
+pub fn rust_overlayless_alias_leaf_requires_peel(env: Rc<TypeEnv>, n: Rc<Node>) -> bool {
+    {
+        let name = crate::v1_std_core::authored_name_at(env.source_indices.clone(), n.clone());
+        (((((n.connective.clone() == Connective::NoConnective)
+            && ((n.children.clone().len() as i64) == 0))
+            && v1_rt::contains(name.clone(), ".".to_string()))
+            && (crate::v1_std_core::qualified_last_segment(name.clone()) == "String".to_string()))
+            && closed_alias_peels_zero_param(env.clone(), n.clone()))
+    }
+}
+
 pub fn render_rust_type_without_applied_binding(
     n: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
@@ -742,10 +753,37 @@ pub fn render_rust_type_without_applied_binding(
                                             render_rust_text_carrier(shared_types.clone()),
                                         )
                                     } else {
-                                        match crate::v1_compiler_coercion::realization_host_numeric_spelling(type_reference_realization_in_env(n.clone(), crate::v1_std_core::qualified_last_segment(tn.clone()), emit_info.fn_type_env.clone(), source_indices.clone())) {
+                                        if rust_overlayless_alias_leaf_requires_peel(
+                                            emit_info.fn_type_env.clone(),
+                                            n.clone(),
+                                        ) {
+                                            match crate::v1_compiler_infer_env::lookup_type_for(
+                                                emit_info.fn_type_env.clone(),
+                                                n.clone(),
+                                            ) {
+                                                Some(binding) => render_rust_type(
+                                                    crate::v1_compiler_infer_types::resolved_type(
+                                                        binding.clone(),
+                                                    ),
+                                                    shared_types.clone(),
+                                                    source_indices.clone(),
+                                                    emit_info.clone(),
+                                                ),
+                                                std::option::Option::None => {
+                                                    crate::v1_compiler_emit::render_node_type(
+                                                        n.clone(),
+                                                        RenderTarget::Rust,
+                                                        shared_types.clone(),
+                                                        source_indices.clone(),
+                                                    )
+                                                }
+                                            }
+                                        } else {
+                                            match crate::v1_compiler_coercion::realization_host_numeric_spelling(type_reference_realization_in_env(n.clone(), crate::v1_std_core::qualified_last_segment(tn.clone()), emit_info.fn_type_env.clone(), source_indices.clone())) {
     Some(host) => rust_carrier_optional_wrap(n.clone(), host.clone()),
     std::option::Option::None => crate::v1_compiler_emit::render_node_type(n.clone(), RenderTarget::Rust, shared_types.clone(), source_indices.clone()),
 }
+                                        }
                                     }
                                 }
                             }
@@ -1296,8 +1334,17 @@ pub fn is_host_text_carrier_type(
             )
         } else {
             if ((nm.clone() == "FreeMonoid".to_string()) || (nm.clone() == "List".to_string())) {
-                (rust_host_text_carrier_elem_name(n.clone(), source_indices.clone())
-                    == "Char".to_string())
+                if (rust_host_text_carrier_elem_name(n.clone(), source_indices.clone())
+                    != "Char".to_string())
+                {
+                    false
+                } else {
+                    match (*crate::v1_std_core::type_reference_provenance(n.clone())).clone() {
+                        TypeDeclarationProvenance::CorpusDeclared { decl_file: _, .. } => false,
+                        TypeDeclarationProvenance::KernelMinted { minted_name: _, .. } => true,
+                        TypeDeclarationProvenance::DeclarationIdentityAbsent => true,
+                    }
+                }
             } else {
                 false
             }
@@ -1730,7 +1777,12 @@ pub fn closed_alias_verdict_do_not_peel() -> ClosedAliasPeelVerdict {
 pub fn closed_alias_peel_verdict(env: Rc<TypeEnv>, n: Rc<Node>) -> ClosedAliasPeelVerdict {
     {
         let name = crate::v1_std_core::authored_name_at(env.source_indices.clone(), n.clone());
-        if (name.clone() == "String".to_string()) {
+        if ((name.clone() == "String".to_string())
+            && !crate::v1_compiler_coercion::provenance_declares_structurally(
+                "String".to_string(),
+                crate::v1_std_core::type_reference_provenance(n.clone()),
+            ))
+        {
             return closed_alias_verdict_do_not_peel();
         }
         let binding = match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
