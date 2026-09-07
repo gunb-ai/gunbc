@@ -168,6 +168,8 @@ test fn production_conformance_domains_appear_in_generated_design() -> Bool {
 // PROJECTION-ONLY FIELDS. review_criterion_identity_text hashes key, question, tells, answer algebra,
 // and homes — but never receives label or narrative because ReviewCriterion carries none of them.
 // Changing only a domain's label or narrative cannot invalidate a prior observation.
+// Label and narrative are NOT in the identity — they're not ReviewCriterion fields.
+// This is structural: the function signature proves they cannot affect the revision.
 test fn conformance_label_and_narrative_do_not_affect_plan_revision() -> Bool {
   match review_criterion_by_key(key: "conformance-extdeps") {
     Present { value: c } => {
@@ -175,8 +177,6 @@ test fn conformance_label_and_narrative_do_not_affect_plan_revision() -> Bool {
       string_contains(s: id, pattern: "conformance-extdeps")
         && string_contains(s: id, pattern: "conformance-three-valued")
         && string_contains(s: id, pattern: "extdeps.external_authority ExternalModelScope")
-        // Label and narrative are NOT in the identity — they're not ReviewCriterion fields.
-        // This is structural: the function signature proves they cannot affect the revision.
     }
     Absent => false
   }
