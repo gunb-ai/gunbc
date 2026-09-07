@@ -51,10 +51,19 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // THE TWO ASSERTIONS BELOW ARE THE CORRECT BEHAVIOUR, NOT THE OBSERVED ONE, and that is the whole
 // discipline of this file. Written the other way -- asserting that the function arm is accepted --
 // the rows would go green today and become DEFENDERS OF THE DEFECT, cited afterwards as coverage of
-// a wall that does not exist. So the function arm asserts REFUSAL, is enrolled as an expected red
-// with the observed acceptance recorded above, and flips green of its own accord when the wall
-// lands. Per DESIGN section 4b meta-obligation (4) it does not retire at that point: it converts to
-// a permanent regression control.
+// a wall that does not exist. So an_unapplied_function_at_a_concrete_position_is_refused and
+// a_string_at_a_generic_position_is_refused assert REFUSAL, with the observed acceptance recorded
+// above, and flip green of their own accord when the wall lands. Per DESIGN section 4b
+// meta-obligation (4) they do not retire at that point: they convert to permanent regression
+// controls.
+//
+// THEY ARE NOT ENROLLED IN v2.workflow.floor_expected_red AND MUST NOT BE DESCRIBED AS IF THEY WERE.
+// This module matches no prefix in v2.workflow.required_floor required_gate_prefixes, so the floor
+// suppresses these identities as dormant -- discovered, not run -- and that roster's rule is that
+// enrolling an identity asserts it REACHES ITS SUBJECT AND ANSWERS. Their reds are therefore real
+// and unrouted rather than held: nothing is suppressing them because nothing is running them. The
+// exit is stated in gunbc.guarantee_stall.argument_shape_undecided_at_a_declared_position_stall,
+// which names gate admission as its own trigger.
 //
 // AND THE STRING-AT-A-CONCRETE-POSITION ARM IS NOT DECORATION. It is what makes the function arm
 // mean anything: without it, a red on the function arm would be indistinguishable from a probe whose
