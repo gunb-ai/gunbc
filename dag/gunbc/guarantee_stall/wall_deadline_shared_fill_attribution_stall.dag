@@ -4,24 +4,49 @@ import v2.std.algebra { Cons, Empty }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
 
-// THE WALL DEADLINE STILL CHARGES A SHARED-ARTIFACT FILL TO WHICHEVER CLAIM PAID IT, and this row
-// exists because a comment beside the code would go stale on the day the population changes while
-// this row cannot. The 2026-08-27 attribution ruling has now been applied to three homes one at a
-// time -- the completion-side CPU split, the completion-side WALL split, and the CPU evaluation
-// deadline -- and each application was made only after that home's omission had cost something.
-// The wall deadline is the fourth home and it is unrepaired.
+// THE MISATTRIBUTION NO LONGER OCCURS AND THE CLASS HAS NOT CLIMBED, which is the whole content of
+// this row's current state. gunbc#10748 gave the wall deadline its own netted baseline:
+// `arm_wall_deadline` captures `shared_artifact_fill_wall_nanos()` at arm time and
+// `wall_deadline_marginal_nanos` subtracts the fill accrued since, so the enforced wall figure
+// excludes the fill exactly as the enforced CPU figure does through `budgeted_cpu_nanos`. That is
+// real progress against this subject and it is recorded here rather than in a retirement.
 //
-// WHY IT IS SCOPED OUT RATHER THAN FIXED HERE: measured on run 33185280160, all 44 interruptions
-// are on the `Cpu` clock, 44 of 44, so the wall arm is currently unexercised. That is a fact about
-// today's population and NOT about the mechanism, which is exactly why the obligation is declared
-// as a countable row rather than left as a note. The trigger is deliberately an OBSERVATION rather
-// than a promise: the first wall-clock interruption to appear in the floor's ledger is the event
-// that makes this reachable, and it fires without anyone remembering this row exists.
+// THE RUNG DOES NOT MOVE, AND THAT IS THE HONEST READING. Rung 2 requires a mechanism that
+// executes and stays enrolled. #10748's discriminating RED --
+// `wall_deadline_charges_marginal_wall_and_still_refuses_without_a_fill`, revert-verified, with
+// the no-fill overrun as its positive control -- is a `v1-compiler` lib test, and
+// `gunbc.rung_drop` `rust_unit_tests_off_the_merge_path` records that no CI step runs that command.
+// So the arm is correct today and nothing on the acceptance path keeps it correct tomorrow: a
+// third deadline site, or an edit to either of the two, restores the invalid state silently. The
+// harm is contained, which is rung 1.
+//
+// THE PREVIOUS TRIGGER WAS SATISFIED WITHOUT THE CLASS CLIMBING, and that is why this row is
+// edited rather than left. It read: the ledger reports an INTERRUPTED-BEFORE-VERDICT row whose
+// clock is Wall, at which point the wall deadline must read a fill-netted clock. Both halves
+// happened -- `carrier_ref_hand_authored_census_is_zero_refusals` was refused on the Wall clock at
+// main 9b341e1b03 against a 29.7s `resolve_declaration_ref_over` fill it did not cause, and
+// #10748 netted the clock one commit later -- while the invalid state stayed exactly as writable
+// as before. That is DESIGN section 4b(2)'s named defect: a trigger naming an OBSERVATION and ONE
+// MECHANISM CHANGE names less than the capability it meant to restore, so it fires while the
+// capability stays dead. The trigger below is re-derived at capability grain.
+//
+// AND THE ROW'S OWN JUSTIFICATION DID NOT HOLD. The version replaced here argued that it existed
+// "because a comment beside the code would go stale on the day the population changes while this
+// row cannot". The comment it was written to outlive is the `budgeted_cpu_nanos` paragraph in
+// `v1_interpreter`, and both went stale on the same commit, by the same mechanism: nothing
+// executing reads either one. A stall row is discharged by a person remembering it, exactly as a
+// section 4c annotation is. Declaring the fact as data bought COUNTABILITY -- this row can be
+// folded, joined and ranked, which prose cannot -- and it bought no enforcement, so citing the
+// row's existence as evidence that the class is tracked overstates what it does. Both halves have
+// a home already and neither mints one here: the fired-but-dead trigger is the class filed as
+// `declared_trigger_names_a_term_that_is_not_the_cause` in gunbc#10755, and countability bought
+// without enforcement is `gunbc.recurring_failure_mode.a_written_row_is_not_a_firing_mechanism`,
+// which takes this row as a receipt rather than a new identity.
 data wall_deadline_shared_fill_attribution_stall: GuaranteeStall = GuaranteeStall {
   subject: "the wall evaluation deadline charges shared-artifact fill to the claim that paid it, so a wall interruption is a function of discovery order rather than of the row",
   current: Mitigatable,
   ceiling: StructurallyGuaranteed,
   blocker: ClimbableButUnbuilt,
   population: BoundedPopulation { members: Cons { head: "v1_interpreter.arm_wall_deadline", tail: Cons { head: "v1_interpreter.wall_deadline_remaining_ms", tail: Cons { head: "v1_interpreter.wall_deadline_exceeded_error", tail: Empty {} } } } },
-  next_rung_trigger: climbs_when(capability: "the required floor's ledger reports any INTERRUPTED-BEFORE-VERDICT row whose clock is Wall, at which point the wall deadline must read a fill-netted clock exactly as v1_interpreter.budgeted_cpu_nanos does for the CPU deadline")
+  next_rung_trigger: climbs_when(capability: "CAPABILITY: A DEADLINE CANNOT BE ARMED ON A CLOCK THAT HAS NOT NETTED SHARED-ARTIFACT FILL, because the only constructor for an enforced budget derives its baseline from the same carrier that measures the fill -- so a raw `Instant` or a raw thread-CPU read is not a value an arm site can supply, rather than one every arm site must remember not to supply. SUFFICIENT FOR: a NEW deadline site, added by someone who has never read this row, charges a claim no fill it did not cause, and an edit that reintroduces a raw baseline at any of the three population members fails to compile. NOT SUFFICIENT: both current arms netting correctly, which is already true and is what #10748 delivered; a further unit test of either arm, which does not execute on the acceptance path while `gunbc.rung_drop` `rust_unit_tests_off_the_merge_path` stands; or a floor witness asserting that today's two sites net, which measures the sites rather than removing the choice.")
 }
