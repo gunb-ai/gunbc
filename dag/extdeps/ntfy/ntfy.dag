@@ -4,6 +4,7 @@ import std.types { NonEmptyStr, String, Int, Secret, List, Bool }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import v2.std.network { POST }
+import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -90,6 +91,27 @@ type NtfyPublishOutcome
   = NtfyPublished { message_id: NonEmptyStr }
   | NtfyPublishRefused { status: Int, detail: String }
 
+// THE OPERATION DECLARES `outcome: RestOutcome`, AND WITHOUT IT THIS TYPE IS UNREACHABLE. The rest
+// transport raises an untyped TypeError on any status >= 400 UNLESS the operation opts in to an
+// outcome field (extdeps.transports.rest, which documents the opt-in and its dissolution). An
+// earlier revision of this module declared the `response { 401 => ... 5xx => ... }` block WITHOUT
+// the field, which made that block decoration: NtfyPublishRefused had no constructor on any real
+// path, and a 401 from a bad credential arrived as `TypeError { msg: "HTTP 401: ..." }` -- an
+// untyped throw where the model promised a typed refusal. MEASURED, not reasoned: a wet probe
+// against ntfy.sh with a junk bearer produced exactly that TypeError before this field landed.
+//
+// That is the §4b rung-honesty failure in miniature -- the model described a refusal arm the
+// realization could not produce -- and it is why the outcome fold below is the only route from a
+// transport observation to this type.
+fn ntfy_publish_outcome_of(rest: RestOutcome, message_id: String) -> NtfyPublishOutcome {
+  match rest {
+    RestOk => NtfyPublished { message_id: message_id as NonEmptyStr }
+    RestStatusRefused { status, body } => NtfyPublishRefused { status: status as Int, detail: body }
+    RestTransportRefused { cause } => NtfyPublishRefused { status: 0, detail: cause as String }
+    RestBodyUndecodable { status, cause } => NtfyPublishRefused { status: status as Int, detail: cause as String }
+  }
+}
+
 fn ntfy_publish_succeeded(o: NtfyPublishOutcome) -> Bool {
   match o {
     NtfyPublished { message_id: _ } => true
@@ -122,6 +144,7 @@ service ntfy.Publish {
     }
     output {
       message_id: String from "id"
+      outcome: RestOutcome
     }
     transport rest {
       method: POST,

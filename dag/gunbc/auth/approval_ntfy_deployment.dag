@@ -36,6 +36,18 @@ data approval_ntfy_listen_port: Port = 2586
 // timing. gunbc.auth.approval_notification carries that argument in full.
 data approval_ntfy_upstream_base_url: NonEmptyStr = "https://ntfy.sh"
 
+// ── The acquisition facts this install owes ─────────────────────────────────────────────────
+// merry-ibex-741 (2026-09-07) asked that the acquisition facts be recorded at install time rather
+// than re-derived later from a host already changed, because they are the fields a modeled
+// EnsureDependency row will carry. They are NOT declared here yet, and their absence is the honest
+// state: no release tag has been chosen and no artifact has been fetched or hashed, so a version
+// row would be a guess and a digest row would read as verification that never happened.
+//
+// What the hand install owes, before it counts as complete: the exact release tag, the artifact
+// URL for srv1's architecture, and the sha256 of the bytes actually installed -- added here as
+// data rows, at which point they become the transcription an EnsureDependency row copies. Source:
+// github.com/binwiederhier/ntfy/releases.
+
 // ── What a person has to do, typed rather than written in a commit message ───────────────────
 // Every step below is one a machine in this repository cannot take, and each says so for a
 // different reason. They are HumanIntervention rows so they are countable, priced by frequency,
@@ -68,15 +80,19 @@ fn approval_ntfy_intervention(
 // is rendered today only by the live_deploy member that creates gunbc-publication, and no member
 // renders one for this principal yet. So the account is a human step for now, and it says so.
 //
-// dissolve-on: a converged member renders EnsureSystemAccount for
-// FleetAccountNotificationService, at which point this row retires and the burden below drops to
-// the three steps a machine genuinely cannot take.
+// dissolve-on, stated as a CAPABILITY rather than an artifact (§4b(3): a trigger naming less than
+// the capability it restores is satisfied while the capability stays dead). This row retires when
+// convergence CREATES AND VERIFIES this principal on srv1 with no human in the path -- a member
+// that renders EnsureSystemAccount for FleetAccountNotificationService AND whose post-apply
+// readback establishes the account exists. A member that emits the argv is not sufficient: an
+// installer that exits zero over an account that is still absent is precisely the state the
+// reconcile carrier exists to refuse.
 fn approval_ntfy_account_intervention() -> HumanIntervention {
   approval_ntfy_intervention(
     identity: "approval-ntfy-account",
     frequency: FleetOnce,
     subject: "gunbc-ntfy system account",
-    instruction: "On srv1: `sudo /usr/sbin/useradd --system --no-create-home --shell /usr/sbin/nologin gunbc-ntfy`. This is the exact argv gunbc.executor_privileged_operation EnsureSystemAccount renders, run by hand only because no converged member renders it for this principal yet -- the shape is modeled, the actuation is not. TEMPORARY: retires when a member does.",
+    instruction: "On srv1: `sudo /usr/sbin/useradd --system --no-create-home --shell /usr/sbin/nologin gunbc-ntfy`. This is the exact argv gunbc.executor_privileged_operation EnsureSystemAccount renders, run by hand only because no converged member renders it for this principal yet -- the shape is modeled, the actuation is not. TEMPORARY: retires only when convergence both creates this account and verifies it by readback, never merely because a member emits the argv.",
   )
 }
 
@@ -115,7 +131,10 @@ fn approval_ntfy_server_install_intervention() -> HumanIntervention {
       " makes tailscale serve the sole route in, and the sole route is what makes the identity",
       " header on the approval route trustworthy -- a 0.0.0.0 bind would let anything on the host",
       " reach the backend directly and assert whatever identity it liked.",
-      " TEMPORARY: retires when the unit is a converged member.",
+      " TEMPORARY, AND IT IS TWO CAPABILITIES RATHER THAN ONE: this row retires only when",
+      " convergence acquires the verified ntfy binary (a modeled EnsureDependency carrying this",
+      " version and digest) AND converges the unit that runs it, each confirmed by post-apply",
+      " readback -- the binary alone leaves a host that looks provisioned and serves nothing.",
     ], "") as NonEmptyStr,
   )
 }
@@ -134,7 +153,15 @@ fn approval_ntfy_subscriber_grant_intervention() -> HumanIntervention {
     identity: "approval-ntfy-subscriber-grant",
     frequency: FleetOnce,
     subject: "gunbc-ntfy topic access policy",
-    instruction: "Set the server's default access to deny and grant read on the approvals topic ONLY to the operator's own ntfy user. ntfy's documented default is read-write, so a topic left at the default is publishable and readable by anyone who learns its name -- and the approval URL is a credential, so a readable topic is a spendable approval. Publisher authentication alone does not close this: it protects who may SEND, and the leak is on the READ side.",
+    instruction: join([
+      "Set the server's default access to deny and grant read on topic '",
+      approval_ntfy_topic as String,
+      "' ONLY to the operator's own ntfy user. ntfy's documented default is read-write, so a topic",
+      " left at the default is publishable and readable by anyone who learns its name -- and the",
+      " approval URL is a credential, so a readable topic is a spendable approval. Publisher",
+      " authentication alone does not close this: it protects who may SEND, and the leak is on the",
+      " READ side.",
+    ], "") as NonEmptyStr,
   )
 }
 

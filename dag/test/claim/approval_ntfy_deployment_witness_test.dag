@@ -9,7 +9,10 @@ import std.human_intervention {
 import gunbc.auth.approval_ntfy_deployment {
   approval_ntfy_human_burden, approval_ntfy_listen_address, approval_ntfy_upstream_base_url,
   approval_ntfy_endpoint, approval_ntfy_server_install_intervention, approval_ntfy_state_root,
+  approval_ntfy_subscriber_grant_intervention,
 }
+import extdeps.ntfy.ntfy { NtfyTopic }
+import gunbc.auth.approval_notification { approval_ntfy_topic }
 import std.types { String }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_posix_accounts {
@@ -24,19 +27,19 @@ data srv1: HostIdentity = "srv1" as HostIdentity
 // being economized -- and this is the assertion that goes red if a future row is added at the
 // wrong frequency. The other counts are pinned beside it so that adding a step is a visible
 // change to a number rather than a silent drift in what enrollment costs.
-fn witness_no_per_run_human_cost() -> Bool {
+test fn witness_no_per_run_human_cost() -> Bool {
   human_intervention_count_at(burden: approval_ntfy_human_burden(), frequency: EveryProvision) == 0
 }
 
-fn witness_fleet_once_rows_are_the_four_server_side_steps() -> Bool {
+test fn witness_fleet_once_rows_are_the_four_server_side_steps() -> Bool {
   human_intervention_count_at(burden: approval_ntfy_human_burden(), frequency: FleetOnce) == 4
 }
 
-fn witness_device_once_row_is_the_phone() -> Bool {
+test fn witness_device_once_row_is_the_phone() -> Bool {
   human_intervention_count_at(burden: approval_ntfy_human_burden(), frequency: DeviceOnce) == 1
 }
 
-fn witness_break_glass_row_is_the_relay_withdrawal() -> Bool {
+test fn witness_break_glass_row_is_the_relay_withdrawal() -> Bool {
   human_burden_break_glass_count(burden: approval_ntfy_human_burden()) == 1
 }
 
@@ -50,7 +53,7 @@ fn witness_break_glass_row_is_the_relay_withdrawal() -> Bool {
 // The neighbouring property -- that a BreakGlassOnly row does not enter routine burden at all --
 // belongs to std.human_intervention's own comparison function and is tested there, not restated
 // here over our roster (DESIGN §2: the same check in two places is one authority forked).
-fn witness_roster_total_is_the_partitioned_sum() -> Bool {
+test fn witness_roster_total_is_the_partitioned_sum() -> Bool {
   let b = approval_ntfy_human_burden()
   human_intervention_count_at(burden: b, frequency: FleetOnce)
     + human_intervention_count_at(burden: b, frequency: DeviceOnce)
@@ -62,11 +65,11 @@ fn witness_roster_total_is_the_partitioned_sum() -> Bool {
 // THE LOOPBACK BIND IS THE SECURITY BOUNDARY, so it is asserted rather than left to a comment.
 // If this address ever widens, the tailnet identity header on the neighbouring approval route
 // stops being trustworthy -- anything on the host could reach the backend and forge it.
-fn witness_server_binds_loopback_only() -> Bool {
+test fn witness_server_binds_loopback_only() -> Bool {
   approval_ntfy_listen_address == "127.0.0.1"
 }
 
-fn witness_upstream_relay_is_declared() -> Bool {
+test fn witness_upstream_relay_is_declared() -> Bool {
   approval_ntfy_upstream_base_url == "https://ntfy.sh"
 }
 
@@ -75,30 +78,30 @@ fn witness_upstream_relay_is_declared() -> Bool {
 // declarations from being dangling data beside an English restatement of themselves: if the port
 // or the state root changes and the instruction stops agreeing, these go red. A person following
 // the instruction and a machine reading the declarations get the same answer by construction.
-fn witness_install_instruction_carries_the_declared_endpoint() -> Bool {
+test fn witness_install_instruction_carries_the_declared_endpoint() -> Bool {
   string_contains(s: approval_ntfy_server_install_intervention().instruction as String, pattern: approval_ntfy_endpoint())
 }
 
-fn witness_install_instruction_carries_the_declared_state_root() -> Bool {
+test fn witness_install_instruction_carries_the_declared_state_root() -> Bool {
   string_contains(s: approval_ntfy_server_install_intervention().instruction as String, pattern: approval_ntfy_state_root as String)
 }
 
 // POSITIVE CONTROL on those two: string_contains must be capable of answering false here, or the
 // pair above would pass over any instruction at all.
-fn witness_install_instruction_does_not_carry_an_unrelated_endpoint() -> Bool {
+test fn witness_install_instruction_does_not_carry_an_unrelated_endpoint() -> Bool {
   !string_contains(s: approval_ntfy_server_install_intervention().instruction as String, pattern: "0.0.0.0:2586")
 }
 
 // THE ENDPOINT IS BUILT FROM THE LOOPBACK ADDRESS, so the security property asserted by
 // witness_server_binds_loopback_only reaches the string the operator actually follows.
-fn witness_endpoint_is_the_loopback_one() -> Bool {
+test fn witness_endpoint_is_the_loopback_one() -> Bool {
   approval_ntfy_endpoint() == "127.0.0.1:2586"
 }
 
 // The notification principal's realization standing is persistent and unallocated until a host uid
 // is observed -- the same shape its sibling carries, asserted rather than assumed, and naming its
 // own principal so a copy-paste of the publication helper's row would go red.
-fn witness_notification_service_realization_is_a_persistent_account() -> Bool {
+test fn witness_notification_service_realization_is_a_persistent_account() -> Bool {
   match notification_service_realization_standing(host: srv1) {
     PersistentServiceAccount { allocation: AccountUnallocated { occurrence: o } } =>
       match o.principal {
@@ -109,4 +112,24 @@ fn witness_notification_service_realization_is_a_persistent_account() -> Bool {
     ServicePrincipalRealizationUnselected => false
     DynamicServicePrincipal { supervisor: _ } => false
   }
+}
+
+
+// THE GRANT INSTRUCTION NAMES THE DECLARED TOPIC, for the same reason the install instruction names
+// the declared endpoint: the topic is the entire access-control surface on a default ntfy
+// deployment, so an operator granting read on a DIFFERENT topic than the broker publishes to would
+// leave the real one at read-write -- silently, and in exactly the direction that makes approval
+// links public. Joining the declaration is what makes that disagreement impossible.
+test fn witness_grant_instruction_names_the_declared_topic() -> Bool {
+  string_contains(
+    s: approval_ntfy_subscriber_grant_intervention().instruction as String,
+    pattern: approval_ntfy_topic as String,
+  )
+}
+
+test fn witness_grant_instruction_does_not_name_an_unrelated_topic() -> Bool {
+  !string_contains(
+    s: approval_ntfy_subscriber_grant_intervention().instruction as String,
+    pattern: "gunbc-approvals-staging",
+  )
 }

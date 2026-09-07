@@ -856,6 +856,14 @@ fn spark_inference_realization_standing(host: HostIdentity) -> ServicePrincipalR
 // AccountUnallocated until the six-state grounding observes what the host chose -- the account is
 // persistent by policy and its number is a fact the host owns, exactly as for every other observed
 // principal here.
+fn publication_helper_realization_standing(host: HostIdentity) -> ServicePrincipalRealizationStanding {
+  PersistentServiceAccount {
+    allocation: AccountUnallocated {
+      occurrence: PosixAccountOccurrence { host: host, principal: FleetAccountPublicationHelper },
+    },
+  }
+}
+
 // THE NOTIFICATION SERVER'S REALIZATION IS PERSISTENT FOR THE SAME REASON AS ITS SIBLING'S, not by
 // copying it: the server owns a state directory across restarts (its message database and the
 // subscriber's read position), and a supervisor-managed dynamic identity gets a fresh uid each
@@ -866,14 +874,6 @@ fn notification_service_realization_standing(host: HostIdentity) -> ServicePrinc
   PersistentServiceAccount {
     allocation: AccountUnallocated {
       occurrence: PosixAccountOccurrence { host: host, principal: FleetAccountNotificationService },
-    },
-  }
-}
-
-fn publication_helper_realization_standing(host: HostIdentity) -> ServicePrincipalRealizationStanding {
-  PersistentServiceAccount {
-    allocation: AccountUnallocated {
-      occurrence: PosixAccountOccurrence { host: host, principal: FleetAccountPublicationHelper },
     },
   }
 }
