@@ -3062,14 +3062,17 @@ pub struct MultiModuleFixtureSource {
 /// `EmittedRustFnSignature`. The type name admits the Rust target; this fixture instrument has no
 /// other emission target.
 ///
-/// **Names only (ceiling):** no parameter or return types — type spellings would make witnesses
-/// change-detectors on `Rc<Vec<T>>` renderings. Same-name/different-type pairs and type-only
-/// changes are invisible here; do not assert type-sensitivity over this carrier.
+/// **Names only (permanent ceiling, no next-rung trigger):** no parameter or return types —
+/// type spellings would make witnesses change-detectors on `Rc<Vec<T>>` renderings.
+/// Same-name/different-type pairs and type-only changes are invisible here by contract, not
+/// because a lift is unbuilt. Do not assert type-sensitivity over this carrier.
 ///
-/// **Order is convention, not a join (ceiling):** `ordered_parameter_names` mirrors today's
+/// **Order is convention, not a join (below ceiling):** `ordered_parameter_names` mirrors today's
 /// `emit_func_params` walk (authored → resource uses → `service_var_name`). Nothing refuses if
-/// that emitter reorder and this projection disagree — there is no shared derivation. Prefer
-/// membership asserts; treat position as coupled to an unjoined layout.
+/// that emitter reorder and this projection disagree. Prefer membership asserts.
+/// **Next-rung trigger:** the projection is derived from the same source `emit_func_params`
+/// reads, so a reorder cannot desynchronise them. **Why unbuilt (reason, not trigger):** that
+/// derivation sits in the emit_rust seed surface and would regenerate modules #10688 is editing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EmittedRustFnSignature {
     pub owner_module: String,

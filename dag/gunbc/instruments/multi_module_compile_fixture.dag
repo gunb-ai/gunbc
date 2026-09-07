@@ -89,13 +89,15 @@ type MultiModuleCompileFixture {
 // emit_func_params. The type name says Rust because compile_fixture is Rust-target only; a
 // target-agnostic name over that reader would be the DESIGN section 3 meaning fork.
 //
-// NAMES ONLY — DELIBERATE CEILING. Parameter TYPES and return types are absent on purpose:
-// asserting over emitted type spellings turns a control into a change detector for Rc<Vec<T>>
-// renderings. Consequence: this projection cannot distinguish two parameters that differ only
-// in type, and cannot see a type-only change that matters. Do not assert type-sensitivity over
-// it; that claim has no carrier here.
+// NAMES ONLY — PERMANENT CEILING, NO NEXT-RUNG TRIGGER. Parameter TYPES and return types are
+// absent on purpose: asserting over emitted type spellings turns a control into a change detector
+// for Rc<Vec<T>> renderings. Consequence: this projection cannot distinguish two parameters that
+// differ only in type, and cannot see a type-only change that matters. That is a deliberate
+// boundary of this carrier's contract, not a stall below a higher rung — there is no capability
+// this instrument is waiting on that would lift it; a type-sensitive claim needs a different
+// projection. Do not assert type-sensitivity over it.
 //
-// ORDER IS A CONVENTION, NOT A JOINED FACT — INSTRUMENT CEILING. The field is named
+// ORDER IS A CONVENTION, NOT A JOINED FACT — BELOW CEILING. The field is named
 // ordered_parameter_names because the host projection walks ItemInfo in the same authored →
 // resource → service_var_name order emit_func_params concatenates today. WHAT REFUSES IF
 // emit_func_params AND THIS PROJECTION DISAGREE? Nothing. There is no shared derivation and no
@@ -103,7 +105,14 @@ type MultiModuleCompileFixture {
 // leave every positional witness green while describing an order the artifact no longer has
 // (gunbc.recurring_failure_mode subject_and_its_digest_as_independent_parameters). Membership
 // (emitted_rust_fn_has_parameter) is the durable assertion surface; use position only when the
-// subject IS that layout, knowing the layout is convention until a shared helper joins them.
+// subject IS that layout.
+//
+// NEXT-RUNG TRIGGER (DESIGN 4b(2) — the CAPABILITY, not an artifact): the projection is DERIVED
+// from the same source emit_func_params reads, rather than mirroring its order by a second walk,
+// so a reorder cannot desynchronise them. WHY UNBUILT (reason, not trigger): that derivation
+// lives in the emit_rust / emit_core_support seed surface; landing it here means regenerating
+// those modules and crossing #10688's open edit surface on the same files. Until the trigger
+// capability holds, order remains convention.
 //
 // THIS IS NOT A CONTENTS GREP SURFACE. Emitted file paths still travel on FixtureCompileCompleted
 // for provenance; the projection is the only population a witness may ask about signature shape.

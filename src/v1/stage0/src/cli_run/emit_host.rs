@@ -359,9 +359,11 @@ pub fn compile_dag_multi_module_fixture(
 /// `service_var_name` per service — the same concatenation order `emit_func_params` uses today.
 /// Not a text parse of emitted bytes.
 ///
-/// CEILING: nothing joins this walk to `emit_func_params`. If the emitter reorders while ItemInfo
-/// stays shaped the same way, this projection keeps reporting the old convention and no arm
-/// refuses. Membership is the durable consumer surface until a shared derivation exists.
+/// Below ceiling: nothing joins this walk to `emit_func_params`. If the emitter reorders while
+/// ItemInfo stays shaped the same way, this projection keeps reporting the old convention and no
+/// arm refuses. Next-rung trigger: derive the name list from the same source `emit_func_params`
+/// reads. Why unbuilt: that shared source lives in the emit_rust seed (regeneration + #10688
+/// surface). Membership is the durable consumer surface until the trigger holds.
 fn project_emitted_rust_fn_signatures(
     resolved: &v1_compiler_compile::ResolvedPipelineResult,
 ) -> Vec<crate::cli_run::EmittedRustFnSignature> {
