@@ -237,7 +237,7 @@ fn front_standing(verdicts: List<DominanceVerdict>) -> FrontStanding {
 // directive: the assessment spine is a universal framework and its authority belongs here).
 // A domain projects its candidates into ParetoEntry rows, one reading per funded axis, and
 // gets standings back; the fold knows nothing about the domain. A Pareto front of two is
-// not a winner: choosing one desired realization is std.realization_selection.
+// not a winner: choosing one desired realization is std.decision.
 //
 // IDENTITY IS STRUCTURAL, NEVER A RENDERED LABEL (review ruling 2026-08-18): a candidate
 // and an axis are each named by a DeclarationRef - the domain declaration the row projects -

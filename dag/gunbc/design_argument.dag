@@ -249,7 +249,7 @@ data design_section_2_to_7_rows: List<DesignRow> = [
   DesignRow {
     proposition: Proposition {
       id: "s3d.selection-precedes-convergence",
-      statement: "selection precedes convergence: Pareto assessment (std.pareto) computes the frontier and realization selection (std.realization_selection) is the policy-bound choose-one, consuming Pareto without redeclarating its algebra; world_converge and ensure do not enumerate candidates or choose policy",
+      statement: "selection precedes convergence: Pareto assessment (std.pareto) computes the frontier and realization selection (std.decision) is the policy-bound choose-one, consuming Pareto without redeclarating its algebra; world_converge and ensure do not enumerate candidates or choose policy",
       premises: ["s3.single-authority", "s5.fail-closed", "s1.minimal-safe-efficient"]
     },
     review: ReviewableOnChange { parts: [yes_no_review(

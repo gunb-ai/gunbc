@@ -1,4 +1,4 @@
-module std.realization_selection
+module std.decision
 
 import std.types { Bool, List, NonEmptyStr }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
@@ -12,6 +12,15 @@ import std.observation_completeness {
   ObservationRepeatedObserved,
   observation_completeness,
 }
+import extdeps.external_authority {
+  ExternalAuthority,
+  CitedFigureStanding,
+  CeilingCitedToAuthority,
+  CeilingTranscribedUncited,
+  cited_figure_read_obligation,
+}
+import std.effect_grant { LifecycleGrade, LifecycleByConstruction, LifecycleByConvention }
+import std.frame_boundary { boundary_grade_meet }
 import std.pareto {
   AxisGoal,
   AxisComparison,
@@ -44,10 +53,15 @@ import std.pareto {
   reading_for,
 }
 
-// REALIZATION SELECTION is the policy-bound operation that can produce one desired realization.
-// PARETO ASSESSMENT (std.pareto) is dominance and frontier calculation only: a front of two is not
-// a winner. This module consumes std.pareto and must not redeclare dominance, axis orientation,
-// intervals, or evidence-gap vocabulary.
+// Named for the FRAMEWORK (choose-under-objectives), not for std.realization. Nothing in this
+// module's types or functions references Materialization, Recompute/Memoize/Share, or
+// world_converge: convergence's selection is a consumer, not the namesake. A fleet operating point
+// is not a realization in the Materialization sense. Fence: std.disposition is Terminal | Scaffold
+// — a triage outcome, not choice-under-objectives. The thing that would reverse this name: if
+// decision VARIABLES were typed to materialization choices, the general name would overclaim.
+//
+// REALIZATION SELECTION (policy-bound choose-one) lives in this same module as the consumer path
+// over Pareto assessment. std.pareto computes the frontier; a front of two is not a winner.
 //
 // Completeness remains a closed subject (DESIGN §3d): scalarization, Pareto assessment, feasibility
 // and enumeration do not mint the subject and may not silently drop a term, variable, constraint or
@@ -73,6 +87,7 @@ type DecisionConstraint {
 
 type ObjectiveTerm {
   identity: DeclarationRef
+  ground: CitedFigureStanding
 }
 
 // ONE explicitly chosen measure. Throughput-per-watt, cores-per-watt, max throughput under a hard
@@ -94,11 +109,147 @@ type ChoiceDomain {
 type DecisionSubject {
   identity: DeclarationRef
   question: NonEmptyStr
-  variables: List<DecisionVariable>
   parameters: List<ContextParameter>
   constraints: List<DecisionConstraint>
   objective: ObjectiveMeasure
   choice_domain: ChoiceDomain
+}
+
+// THREE WARRANTS, NOT TWO LISTS THE SAME AUTHOR WROTE. Terms close against the cited physical
+// model (external/versioned authority — CitedFigureStanding, the same coproduct 2DPC ceilings use).
+// Variables close against the declared decision (stated intent; the compiler does not invent it).
+// Coupling closes against the declared causal model: vendor-documented coupling is an extdeps fact;
+// coupling this fleet observed is a gunbc-layer receipt and is never authored back into upstream.
+type PhysicalModelPopulation
+  = PhysicalModelEstablished { terms: List<DeclarationRef> }
+  | PhysicalModelUnestablished { subject: DeclarationRef, read_obligation: NonEmptyStr }
+
+type CausalCoupling
+  = VendorDocumentedCoupling {
+      authority: ExternalAuthority
+      term: DeclarationRef
+      variable: DeclarationRef
+      subject: DeclarationRef
+    }
+  | FleetObservedCoupling {
+      receipt: DeclarationRef
+      term: DeclarationRef
+      variable: DeclarationRef
+      subject: DeclarationRef
+    }
+
+type CausalModelPopulation
+  = CausalModelEstablished { couplings: List<CausalCoupling> }
+  | CausalModelUnestablished { subject: DeclarationRef, read_obligation: NonEmptyStr }
+
+type TermSetJoin
+  = TermSetsJoinComplete
+  | ObjectiveUnderModeled { subject: DeclarationRef, missing_from_objective: List<DeclarationRef> }
+  | ObjectiveDeclaresUnwarrantedTerms { subject: DeclarationRef, extras: List<DeclarationRef> }
+
+fn coupling_cell(c: CausalCoupling) -> SensitivityCell {
+  match c {
+    VendorDocumentedCoupling { authority: _, term: t, variable: v, subject: _ } =>
+      SensitivityCell { term: t, variable: v }
+    FleetObservedCoupling { receipt: _, term: t, variable: v, subject: _ } =>
+      SensitivityCell { term: t, variable: v }
+  }
+}
+
+fn declared_objective_term_identities(objective: ObjectiveMeasure) -> List<DeclarationRef> {
+  map(objective.terms, t => t.identity)
+}
+
+fn term_in_list(ids: List<DeclarationRef>, wanted: DeclarationRef) -> Bool {
+  any(ids, id => declaration_ref_eq(a: id, b: wanted))
+}
+
+fn term_set_join(
+  terms: List<DeclarationRef>,
+  objective: ObjectiveMeasure,
+  subject: DeclarationRef,
+) -> TermSetJoin {
+  let required = terms
+  let declared = declared_objective_term_identities(objective: objective)
+  let missing = filter(required, id => !term_in_list(ids: declared, wanted: id))
+  let extra = filter(declared, id => !term_in_list(ids: required, wanted: id))
+  if (missing |> count) > 0 {
+    ObjectiveUnderModeled { subject: subject, missing_from_objective: missing }
+  } else {
+    if (extra |> count) > 0 {
+      ObjectiveDeclaresUnwarrantedTerms { subject: subject, extras: extra }
+    } else {
+      TermSetsJoinComplete
+    }
+  }
+}
+
+fn physical_model_read_obligations(physical: PhysicalModelPopulation) -> List<NonEmptyStr> {
+  match physical {
+    PhysicalModelUnestablished { subject: _, read_obligation: o } => [o]
+    PhysicalModelEstablished { terms: _ } => []
+  }
+}
+
+fn cited_figure_lifecycle(standing: CitedFigureStanding) -> LifecycleGrade {
+  match standing {
+    CeilingCitedToAuthority { authority: _ } => LifecycleByConstruction
+    CeilingTranscribedUncited { read_obligation: _ } => LifecycleByConvention
+  }
+}
+
+fn objective_term_ground_obligations(objective: ObjectiveMeasure) -> List<NonEmptyStr> {
+  flat_map(objective.terms, t =>
+    match cited_figure_read_obligation(standing: t.ground) {
+      Present { value: o } => [o]
+      Absent => []
+    }
+  )
+}
+
+fn term_ground_for(objective: ObjectiveMeasure, identity: DeclarationRef) -> CitedFigureStanding? {
+  match (filter(objective.terms, t => declaration_ref_eq(a: t.identity, b: identity))).first() {
+    Absent => Absent
+    Present { value: t } => Present { value: t.ground }
+  }
+}
+
+fn required_cells_from_physical_and_variables(
+  physical: PhysicalModelPopulation,
+  subject: DecisionSubject,
+) -> List<SensitivityCell> {
+  match physical {
+    PhysicalModelUnestablished { subject: _, read_obligation: _ } => []
+    PhysicalModelEstablished { terms: ts } =>
+      flat_map(ts, t =>
+        map(subject.choice_domain.variables, variable =>
+          SensitivityCell { term: t, variable: variable.identity }
+        )
+      )
+  }
+}
+
+fn coupling_closure(
+  physical: PhysicalModelPopulation,
+  subject: DecisionSubject,
+  causal: CausalModelPopulation,
+) -> SensitivityClosure {
+  match causal {
+    CausalModelUnestablished { subject: _, read_obligation: _ } =>
+      SensitivityClosureMissing { cells: required_cells_from_physical_and_variables(physical: physical, subject: subject) }
+    CausalModelEstablished { couplings: cs } =>
+      match observation_completeness(
+        expected: required_cells_from_physical_and_variables(physical: physical, subject: subject),
+        observed: map(cs, c => coupling_cell(c: c)),
+        key_eq: sensitivity_cell_eq,
+      ) {
+        ObservationComplete => SensitivityClosureComplete
+        ObservationRepeatedExpected { keys: cells } => SensitivityClosureRepeatedExpected { cells: cells }
+        ObservationMissingExpected { keys: cells } => SensitivityClosureMissing { cells: cells }
+        ObservationForeignObserved { keys: cells } => SensitivityClosureForeign { cells: cells }
+        ObservationRepeatedObserved { keys: cells } => SensitivityClosureRepeatedObserved { cells: cells }
+      }
+  }
 }
 
 type DecisionRegion {
@@ -119,13 +270,13 @@ type ObjectiveTermSensitivity
       variable: DeclarationRef
       region: DecisionRegion
       relation: TermVariableRelation
-      evidence: NonEmptyStr
+      coupling: CitedFigureStanding
     }
   | InvariantAlong {
       term: DeclarationRef
       variable: DeclarationRef
       region: DecisionRegion
-      evidence: NonEmptyStr
+      coupling: CitedFigureStanding
     }
   | SensitivityUnestablished {
       term: DeclarationRef
@@ -144,28 +295,30 @@ fn sensitivity_cell_eq(a: SensitivityCell, b: SensitivityCell) -> Bool {
 
 fn sensitivity_cell_of(row: ObjectiveTermSensitivity) -> SensitivityCell {
   match row {
-    VariesAlong { term: t, variable: v, region: _, relation: _, evidence: _ } =>
+    VariesAlong { term: t, variable: v, region: _, relation: _, coupling: _ } =>
       SensitivityCell { term: t, variable: v }
-    InvariantAlong { term: t, variable: v, region: _, evidence: _ } =>
+    InvariantAlong { term: t, variable: v, region: _, coupling: _ } =>
       SensitivityCell { term: t, variable: v }
     SensitivityUnestablished { term: t, variable: v, obligation: _ } =>
       SensitivityCell { term: t, variable: v }
   }
 }
 
-fn sensitivity_is_unestablished(row: ObjectiveTermSensitivity) -> Bool {
+fn sensitivity_coupling(row: ObjectiveTermSensitivity) -> CitedFigureStanding? {
   match row {
-    SensitivityUnestablished { term: _, variable: _, obligation: _ } => true
-    VariesAlong { term: _, variable: _, region: _, relation: _, evidence: _ } => false
-    InvariantAlong { term: _, variable: _, region: _, evidence: _ } => false
+    VariesAlong { term: _, variable: _, region: _, relation: _, coupling: c } => Present { value: c }
+    InvariantAlong { term: _, variable: _, region: _, coupling: c } => Present { value: c }
+    SensitivityUnestablished { term: _, variable: _, obligation: _ } => Absent
   }
 }
 
 fn sensitivity_obligation(row: ObjectiveTermSensitivity) -> NonEmptyStr? {
   match row {
     SensitivityUnestablished { term: _, variable: _, obligation: o } => Present { value: o }
-    VariesAlong { term: _, variable: _, region: _, relation: _, evidence: _ } => Absent
-    InvariantAlong { term: _, variable: _, region: _, evidence: _ } => Absent
+    VariesAlong { term: _, variable: _, region: _, relation: _, coupling: c } =>
+      cited_figure_read_obligation(standing: c)
+    InvariantAlong { term: _, variable: _, region: _, coupling: c } =>
+      cited_figure_read_obligation(standing: c)
   }
 }
 
@@ -174,7 +327,7 @@ fn sensitivity_obligation(row: ObjectiveTermSensitivity) -> NonEmptyStr? {
 // sensitivity disposition list.
 fn required_sensitivity_cells(subject: DecisionSubject) -> List<SensitivityCell> {
   flat_map(subject.objective.terms, term =>
-    map(subject.variables, variable =>
+    map(subject.choice_domain.variables, variable =>
       SensitivityCell { term: term.identity, variable: variable.identity }
     )
   )
@@ -209,7 +362,7 @@ fn sensitivity_closure(
 }
 
 fn subject_variable_identities(subject: DecisionSubject) -> List<DeclarationRef> {
-  map(subject.variables, v => v.identity)
+  map(subject.choice_domain.variables, v => v.identity)
 }
 
 fn choice_domain_variable_identities(domain: ChoiceDomain) -> List<DeclarationRef> {
@@ -350,6 +503,8 @@ type DecisionAssessment {
   parameters: List<ParameterDisposition>
   selected_candidate: DeclarationRef?
   term_drops: List<OrderPreservationAuthority>
+  physical_model: PhysicalModelPopulation
+  causal_model: CausalModelPopulation
 }
 
 type StructuralClosureCause
@@ -359,6 +514,9 @@ type StructuralClosureCause
   | ParametersIncomplete { detail: ParameterClosure }
   | TermDropWithoutOrderPreservation { cause: NonEmptyStr }
   | SelectedCandidateAbsent
+  | ObjectiveUnderModeledCause { missing_from_objective: List<DeclarationRef> }
+  | ObjectiveDeclaresUnwarrantedTermsCause { extras: List<DeclarationRef> }
+  | CausalCouplingIncomplete { detail: SensitivityClosure }
 
 type DecisionClosure
   = DecisionClosureSettledReady
@@ -370,6 +528,42 @@ fn collect_sensitivity_obligations(rows: List<ObjectiveTermSensitivity>) -> List
     match sensitivity_obligation(row: row) {
       Present { value: o } => [o]
       Absent => []
+    }
+  )
+}
+
+fn cell_effective_grade(
+  objective: ObjectiveMeasure,
+  row: ObjectiveTermSensitivity,
+) -> LifecycleGrade? {
+  match sensitivity_coupling(row: row) {
+    Absent => Absent
+    Present { value: coupling } =>
+      match term_ground_for(objective: objective, identity: sensitivity_cell_of(row: row).term) {
+        Absent => Absent
+        Present { value: ground } => Present {
+          value: boundary_grade_meet(
+            a: cited_figure_lifecycle(standing: ground),
+            b: cited_figure_lifecycle(standing: coupling),
+          )
+        }
+      }
+  }
+}
+
+fn collect_convention_grade_obligations(
+  objective: ObjectiveMeasure,
+  rows: List<ObjectiveTermSensitivity>,
+) -> List<NonEmptyStr> {
+  flat_map(rows, row =>
+    match cell_effective_grade(objective: objective, row: row) {
+      Absent => []
+      Present { value: g } =>
+        match g {
+          LifecycleByConstruction => []
+          LifecycleByConvention =>
+            ["cell effective standing is LifecycleByConvention: cited term ground and cited coupling are both required before Settled" as NonEmptyStr]
+        }
     }
   )
 }
@@ -458,32 +652,96 @@ fn structural_join_refuses(
 // Settled — that invalid state is unwritable because SettledPolicy is sole_constructor and this
 // mint is the only admitted constructor, and it refuses incomplete structure.
 fn decision_closure(assessment: DecisionAssessment) -> DecisionClosure {
-  let sens = sensitivity_closure(subject: assessment.subject, rows: assessment.sensitivities)
-  let vars = variable_population_closure(subject: assessment.subject)
-  let cons = constraint_closure(subject: assessment.subject, rows: assessment.constraints)
-  let params = parameter_closure(subject: assessment.subject, rows: assessment.parameters)
-  match structural_join_refuses(sensitivity: sens, variables: vars, constraints: cons, parameters: params) {
-    Present { value: cause } => DecisionClosureRefused { cause: cause }
-    Absent =>
-      match first_term_drop_refusal(drops: assessment.term_drops) {
-        Present { value: cause } => DecisionClosureRefused { cause: TermDropWithoutOrderPreservation { cause: cause } }
-        Absent => {
-          let sens_obs = collect_sensitivity_obligations(rows: assessment.sensitivities)
-          let cons_obs = collect_constraint_obligations(rows: assessment.constraints)
-          let param_obs = collect_parameter_obligations(rows: assessment.parameters)
-          let obligations = concat(sens_obs, concat(cons_obs, param_obs))
-          if (obligations |> count) > 0 {
-            DecisionClosureDeferred {
-              obligations: obligations,
-              reopen_trigger: "every listed obligation discharged with evidence that closes its cell or constraint without dropping an objective term absent an order-preservation authority" as NonEmptyStr,
-            }
-          } else {
-            match assessment.selected_candidate {
-              Absent => DecisionClosureRefused { cause: SelectedCandidateAbsent }
-              Present { value: _ } => DecisionClosureSettledReady
+  match assessment.physical_model {
+    PhysicalModelUnestablished { subject: _, read_obligation: o } =>
+      DecisionClosureDeferred {
+        obligations: [o],
+        reopen_trigger: "cite or type-uncite every physical-model term for this subject" as NonEmptyStr,
+      }
+    PhysicalModelEstablished { terms: ts } =>
+      match term_set_join(terms: ts, objective: assessment.subject.objective, subject: assessment.subject.identity) {
+        ObjectiveUnderModeled { subject: _, missing_from_objective: missing } =>
+          DecisionClosureRefused { cause: ObjectiveUnderModeledCause { missing_from_objective: missing } }
+        ObjectiveDeclaresUnwarrantedTerms { subject: _, extras: extra } =>
+          DecisionClosureRefused { cause: ObjectiveDeclaresUnwarrantedTermsCause { extras: extra } }
+        TermSetsJoinComplete =>
+          match assessment.causal_model {
+            CausalModelUnestablished { subject: _, read_obligation: o } =>
+              DecisionClosureDeferred {
+                obligations: concat(
+                  concat(
+                    physical_model_read_obligations(physical: assessment.physical_model),
+                    objective_term_ground_obligations(objective: assessment.subject.objective),
+                  ),
+                  concat(
+                    [o],
+                    concat(
+                      collect_sensitivity_obligations(rows: assessment.sensitivities),
+                      concat(
+                        collect_constraint_obligations(rows: assessment.constraints),
+                        collect_parameter_obligations(rows: assessment.parameters),
+                      ),
+                    ),
+                  ),
+                ),
+                reopen_trigger: "establish vendor-documented or fleet-observed coupling for every required (term, variable) cell" as NonEmptyStr,
+              }
+            CausalModelEstablished { couplings: _ } => {
+              let coup = coupling_closure(
+                physical: assessment.physical_model,
+                subject: assessment.subject,
+                causal: assessment.causal_model,
+              )
+              match coup {
+                SensitivityClosureComplete => {
+                  let sens = sensitivity_closure(subject: assessment.subject, rows: assessment.sensitivities)
+                  let vars = variable_population_closure(subject: assessment.subject)
+                  let cons = constraint_closure(subject: assessment.subject, rows: assessment.constraints)
+                  let params = parameter_closure(subject: assessment.subject, rows: assessment.parameters)
+                  match structural_join_refuses(sensitivity: sens, variables: vars, constraints: cons, parameters: params) {
+                    Present { value: cause } => DecisionClosureRefused { cause: cause }
+                    Absent =>
+                      match first_term_drop_refusal(drops: assessment.term_drops) {
+                        Present { value: cause } => DecisionClosureRefused { cause: TermDropWithoutOrderPreservation { cause: cause } }
+                        Absent => {
+                          let uncited = concat(
+                            physical_model_read_obligations(physical: assessment.physical_model),
+                            objective_term_ground_obligations(objective: assessment.subject.objective),
+                          )
+                          let sens_obs = collect_sensitivity_obligations(rows: assessment.sensitivities)
+                          let grade_obs = collect_convention_grade_obligations(
+                            objective: assessment.subject.objective,
+                            rows: assessment.sensitivities,
+                          )
+                          let cons_obs = collect_constraint_obligations(rows: assessment.constraints)
+                          let param_obs = collect_parameter_obligations(rows: assessment.parameters)
+                          let obligations = concat(uncited, concat(sens_obs, concat(grade_obs, concat(cons_obs, param_obs))))
+                          if (obligations |> count) > 0 {
+                            DecisionClosureDeferred {
+                              obligations: obligations,
+                              reopen_trigger: "every listed obligation discharged with evidence that closes its cell or constraint without dropping an objective term absent an order-preservation authority" as NonEmptyStr,
+                            }
+                          } else {
+                            match assessment.selected_candidate {
+                              Absent => DecisionClosureRefused { cause: SelectedCandidateAbsent }
+                              Present { value: _ } => DecisionClosureSettledReady
+                            }
+                          }
+                        }
+                      }
+                  }
+                }
+                SensitivityClosureRepeatedExpected { cells: cells } =>
+                  DecisionClosureRefused { cause: CausalCouplingIncomplete { detail: SensitivityClosureRepeatedExpected { cells: cells } } }
+                SensitivityClosureMissing { cells: cells } =>
+                  DecisionClosureRefused { cause: CausalCouplingIncomplete { detail: SensitivityClosureMissing { cells: cells } } }
+                SensitivityClosureForeign { cells: cells } =>
+                  DecisionClosureRefused { cause: CausalCouplingIncomplete { detail: SensitivityClosureForeign { cells: cells } } }
+                SensitivityClosureRepeatedObserved { cells: cells } =>
+                  DecisionClosureRefused { cause: CausalCouplingIncomplete { detail: SensitivityClosureRepeatedObserved { cells: cells } } }
+              }
             }
           }
-        }
       }
   }
 }
@@ -534,30 +792,6 @@ fn accept_settled_policy(standing: DecisionStanding) -> SettledPolicyAcceptance 
   }
 }
 
-fn standing_is_settled(standing: DecisionStanding) -> Bool {
-  match standing {
-    Settled { policy: _ } => true
-    Deferred { obligations: _, reopen_trigger: _ } => false
-    DecisionRefused { cause: _ } => false
-  }
-}
-
-fn standing_is_deferred(standing: DecisionStanding) -> Bool {
-  match standing {
-    Deferred { obligations: _, reopen_trigger: _ } => true
-    Settled { policy: _ } => false
-    DecisionRefused { cause: _ } => false
-  }
-}
-
-fn standing_is_refused(standing: DecisionStanding) -> Bool {
-  match standing {
-    DecisionRefused { cause: _ } => true
-    Settled { policy: _ } => false
-    Deferred { obligations: _, reopen_trigger: _ } => false
-  }
-}
-
 // Candidate comparison reuses std.pareto's vocabulary: Incomparable is a proved trade-off;
 // UndecidedOnEvidence / DominanceUndecided means the evidence is too coarse. Opposite remedies.
 type CandidateComparisonStanding
@@ -573,15 +807,6 @@ fn candidate_comparison_standing(verdict: DominanceVerdict) -> CandidateComparis
     Dominates => CandidatesComparable { verdict: Dominates }
     Dominated => CandidatesComparable { verdict: Dominated }
     Equivalent => CandidatesComparable { verdict: Equivalent }
-  }
-}
-
-fn axis_comparison_is_undecided(cmp: AxisComparison) -> Bool {
-  match cmp {
-    UndecidedOnEvidence => true
-    Better => false
-    Same => false
-    Worse => false
   }
 }
 
@@ -604,8 +829,8 @@ fn variable_irrelevance_is_derived(
     ObservationComplete =>
       all(for_var, r =>
         match r {
-          InvariantAlong { term: _, variable: _, region: _, evidence: _ } => true
-          VariesAlong { term: _, variable: _, region: _, relation: _, evidence: _ } => false
+          InvariantAlong { term: _, variable: _, region: _, coupling: _ } => true
+          VariesAlong { term: _, variable: _, region: _, relation: _, coupling: _ } => false
           SensitivityUnestablished { term: _, variable: _, obligation: _ } => false
         }
       )

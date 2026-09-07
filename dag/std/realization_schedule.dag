@@ -71,7 +71,7 @@ fn cost_account_time_count<S>(account: CostAccount<S>) -> Nat {
 // RealizationObjective { goals: List<AxisGoal> } DELETED 2026-09-06.
 // It was constructed empty at every corpus site; width_fold_objective_goals ignored the field and
 // hard-coded [LowerIsBetter, LowerIsBetter]. Width-fold axis goals remain local std.pareto
-// AxisGoal values owned by the width fold; realization selection (std.realization_selection)
+// AxisGoal values owned by the width fold; realization selection (std.decision)
 // consumes identified SelectionAxis rows and must not be a second objectives roster here.
 
 type WitnessKind

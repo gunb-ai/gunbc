@@ -26,7 +26,7 @@ import std.pareto {
   SelectionAxis,
   entry_standing,
 }
-import std.realization_selection {
+import std.decision {
   RealizationSelectionResult,
   UniqueSurvivorRequired,
   select_realization,
@@ -53,7 +53,7 @@ import product.build_fulfillment {
 // THE DOMAIN PROJECTOR. std.pareto is the Pareto-assessment spine and knows
 // nothing about hardware; this module is the one place that turns a resolved
 // build into that vocabulary. It projects five axes and never chooses a build
-// — choosing one realization is std.realization_selection. Pipeline:
+// — choosing one realization is std.decision. Pipeline:
 // memory_provisioning derives populations, the qualification seam grades them,
 // product.build_fulfillment resolves and prices the lines, and this projects
 // what survives into a comparable field.

@@ -12,7 +12,7 @@ import std.pareto {
   ParetoEntry,
   SelectionAxis,
 }
-import std.realization_selection {
+import std.decision {
   HardConstraint,
   PreferSurvivor,
   UniqueSurvivorRequired,
@@ -343,7 +343,7 @@ test fn selected_within_feeds_world_converge_readback() -> Bool {
 test fn generated_section_3d_and_reviewer_execute() -> Bool {
   let md = expected_design_md()
   string_contains(s: md, pattern: "Selection precedes convergence")
-    && string_contains(s: md, pattern: "std.realization_selection")
+    && string_contains(s: md, pattern: "std.decision")
     && any(design_propositions, p => p.id == "s3d.selection-precedes-convergence")
     && match review_criterion_by_key(key: "selection-precedes-convergence") {
       Absent => false

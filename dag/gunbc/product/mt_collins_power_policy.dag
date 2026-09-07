@@ -1,9 +1,11 @@
 module product.mt_collins_power_policy
 
 import std.types { Bool, Int, List, NonEmptyStr }
-import std.decl_ref { decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.pareto { HigherIsBetter }
-import std.realization_selection {
+import extdeps.external_authority { CeilingCitedToAuthority, CeilingTranscribedUncited }
+import extdeps.cpu.ampere { ampere_altra_classic_rev_a1_datasheet_authority }
+import std.decision {
   DecisionVariable,
   ContextParameter,
   DecisionConstraint,
@@ -25,12 +27,17 @@ import std.realization_selection {
   SettledPolicyAccepted,
   SettledPolicyRejectedDeferred,
   SettledPolicyRejectedRefused,
-  standing_is_deferred,
-  standing_is_settled,
   required_sensitivity_cells,
+  PhysicalModelPopulation,
+  PhysicalModelEstablished,
+  PhysicalModelUnestablished,
+  CausalModelPopulation,
+  CausalModelUnestablished,
+  term_set_join,
+  ObjectiveUnderModeled,
 }
 
-// FIRST CONSUMER OF std.realization_selection: fleet operating-point selection, Deferred/NeedsEvidence.
+// FIRST CONSUMER OF std.decision: fleet operating-point selection, Deferred/NeedsEvidence.
 //
 // Question: which admitted socket-power-cap and active-chassis policy should the Mt. Collins
 // deployment use within its declared workload and site constraints.
@@ -86,10 +93,21 @@ data constraint_hardware_cap_range: DecisionConstraint = DecisionConstraint {
 
 data term_platform_power: ObjectiveTerm = ObjectiveTerm {
   identity: decl_ref(module_path: "product.mt_collins_power_policy", decl_name: "term_platform_power"),
+  ground: CeilingTranscribedUncited {
+    read_obligation: "cite platform/fan/PSU wall-draw decomposition; PowerAssumedOnly / unread memory is not an observed 0 W" as NonEmptyStr,
+  },
 }
 
 data term_service_capacity: ObjectiveTerm = ObjectiveTerm {
   identity: decl_ref(module_path: "product.mt_collins_power_policy", decl_name: "term_service_capacity"),
+  ground: CeilingCitedToAuthority { authority: ampere_altra_classic_rev_a1_datasheet_authority },
+}
+
+data term_fan_power: ObjectiveTerm = ObjectiveTerm {
+  identity: decl_ref(module_path: "product.mt_collins_power_policy", decl_name: "term_fan_power"),
+  ground: CeilingTranscribedUncited {
+    read_obligation: "cite BMC fan curve against temperature or type the fleet-observed coupling receipt; fan power is in the physical model and absent from the declared objective" as NonEmptyStr,
+  },
 }
 
 data objective_max_capacity_under_site_power: ObjectiveMeasure = ObjectiveMeasure {
@@ -117,7 +135,6 @@ data mt_collins_power_policy_subject: DecisionSubject = DecisionSubject {
     decl_name: "mt_collins_power_policy_subject",
   ),
   question: "which admitted socket-power-cap and active-chassis policy should the Mt. Collins deployment use within its declared workload and site constraints" as NonEmptyStr,
-  variables: [var_socket_power_cap, var_powered_chassis_count],
   parameters: [
     param_workload_class,
     param_installed_hardware,
@@ -135,6 +152,18 @@ data mt_collins_power_policy_subject: DecisionSubject = DecisionSubject {
 }
 
 data available_chassis_count: Int = 20
+
+fn available_chassis_census() -> Int {
+  available_chassis_count
+}
+
+fn available_chassis_confirm_obligation() -> NonEmptyStr {
+  if available_chassis_census() == 20 {
+    "available chassis count is declared as twenty for this subject; confirm against the held-unit census before settlement" as NonEmptyStr
+  } else {
+    "available chassis count drifted from the declared census and must be re-bound" as NonEmptyStr
+  }
+}
 
 data obligation_memory_population_unread: NonEmptyStr = "JOIN strategy.mt_collins_power power_standing PowerAssumedOnly: product.node_power_envelope node_draw refuses while MemoryPopulationEvidence is PopulationModuleUnread — host-side per-slot memory census required before any derived wall figure may close platform-power cells" as NonEmptyStr
 
@@ -175,7 +204,7 @@ fn mt_collins_power_constraints() -> List<ConstraintDisposition> {
     },
     ConstraintUnestablished {
       constraint: constraint_available_chassis.identity,
-      obligation: "available chassis count is declared as twenty for this subject; confirm against the held-unit census before settlement" as NonEmptyStr,
+      obligation: available_chassis_confirm_obligation(),
     },
     ConstraintUnestablished {
       constraint: constraint_min_service_capacity.identity,
@@ -209,6 +238,41 @@ fn mt_collins_power_parameters() -> List<ParameterDisposition> {
   ]
 }
 
+fn mt_collins_physical_model() -> PhysicalModelPopulation {
+  PhysicalModelEstablished {
+    terms: [term_service_capacity.identity, term_platform_power.identity],
+  }
+}
+
+fn mt_collins_physical_model_with_fan() -> List<DeclarationRef> {
+  concat(
+    match mt_collins_physical_model() {
+      PhysicalModelEstablished { terms: ts } => ts
+      PhysicalModelUnestablished { subject: _, read_obligation: _ } => [],
+    },
+    [term_fan_power.identity],
+  )
+}
+
+fn mt_collins_fan_power_under_modeling() -> Bool {
+  match term_set_join(
+    terms: mt_collins_physical_model_with_fan(),
+    objective: objective_max_capacity_under_site_power,
+    subject: mt_collins_power_policy_subject.identity,
+  ) {
+    ObjectiveUnderModeled { subject: _, missing_from_objective: missing } =>
+      (missing |> count) == 1
+    _ => false
+  }
+}
+
+fn mt_collins_causal_model() -> CausalModelPopulation {
+  CausalModelUnestablished {
+    subject: mt_collins_power_policy_subject.identity,
+    read_obligation: "establish vendor-documented BMC fan-curve coupling in extdeps or a gunbc-layer fleet observation receipt; the .dag import graph is not the causal authority" as NonEmptyStr,
+  }
+}
+
 fn mt_collins_power_assessment() -> DecisionAssessment {
   DecisionAssessment {
     subject: mt_collins_power_policy_subject,
@@ -217,6 +281,8 @@ fn mt_collins_power_assessment() -> DecisionAssessment {
     parameters: mt_collins_power_parameters(),
     selected_candidate: Absent,
     term_drops: [],
+    physical_model: mt_collins_physical_model(),
+    causal_model: mt_collins_causal_model(),
   }
 }
 
@@ -225,11 +291,19 @@ fn mt_collins_power_policy_standing() -> DecisionStanding {
 }
 
 fn mt_collins_power_policy_is_deferred() -> Bool {
-  standing_is_deferred(standing: mt_collins_power_policy_standing())
+  match mt_collins_power_policy_acceptance() {
+    SettledPolicyRejectedDeferred { obligations: _, reopen_trigger: _ } => true
+    SettledPolicyAccepted { policy: _ } => false
+    SettledPolicyRejectedRefused { cause: _ } => false
+  }
 }
 
 fn mt_collins_power_policy_cannot_settle() -> Bool {
-  !standing_is_settled(standing: mt_collins_power_policy_standing())
+  match mt_collins_power_policy_acceptance() {
+    SettledPolicyAccepted { policy: _ } => false
+    SettledPolicyRejectedDeferred { obligations: _, reopen_trigger: _ } => true
+    SettledPolicyRejectedRefused { cause: _ } => true
+  }
 }
 
 fn mt_collins_power_policy_acceptance() -> SettledPolicyAcceptance {
