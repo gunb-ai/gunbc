@@ -13791,7 +13791,7 @@ Rc::new(FieldInferResult {
                     std::option::Option::None => error_type(),
                 };
                 let type_name_declares_own_type = match v1_rt::map_get(
-                    &scope.type_env.clone().str_bindings,
+                    &scope.type_env.clone().str_bindings.clone(),
                     type_name.clone().unwrap(),
                 ) {
                     Some(name_binding) => crate::v1_compiler_infer_env::binding_declares_name(
