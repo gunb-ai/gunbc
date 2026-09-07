@@ -177,13 +177,21 @@ fn expected_fleet_converge_yml_content() -> String {
 // duplication rather than a cache question: the two demands share this frame as their least common
 // ancestor, so the first value is carried.
 //
-// THE ORG-ADMIN SECRET CLAIM MOVED HERE, and its route is worth recording. It began as a last
-// conjunct of the org-actions witness, where it was the second subject in a witness about the invoke
-// string; splitting it out was right on subject and wrong on cost, because the new identity rendered
-// the workflow a second time and was interrupted at cpu_at_least=509ms with no verdict (review 61958
-// round). Its subject is the rendered workflow, which is exactly this witness's subject, so this is
-// where it belongs on both counts.
-test fn the_rendered_workflow_carries_neither_a_pasted_heal_sha_nor_an_org_admin_secret() -> Bool {
+// THE ORG-ADMIN SECRET CLAIM MOVED HERE, and its route is worth recording because two attempts were
+// wrong before this one. It began as a last conjunct of the org-actions witness, where it was the
+// second subject in a witness about the invoke string. Splitting it into its own witness was right on
+// subject and wrong on cost: the new identity rendered the workflow a second time and was interrupted
+// at 509ms with no verdict. Merging it here was right on cost and, at first, wrong on IDENTITY --
+// renaming this witness orphaned its row in v2.workflow.floor_cost_debt, which both left that row
+// naming an identity the tree no longer declares AND made this an unenrolled identity whose 523ms was
+// then gated rather than observed.
+//
+// SO THE NAME IS LOAD-BEARING AND IS NOT TO BE TIDIED. Every witness in this file that renders or
+// constructs the workflow costs over a second (the floor reports 1264-1399ms for its siblings); the
+// 500ms line is not a target they can meet, it is the threshold above which a claim must be ENROLLED
+// as declared debt, after which the cost is observed and published rather than gating. The enrollment
+// is keyed by the witness's fully qualified name, so a rename is a silent de-enrollment.
+test fn fleet_converge_workflow_has_no_heal_revalidation_paste_through() -> Bool {
   let yml = expected_fleet_converge_yml_content()
   !string_contains(s: yml, pattern: "expected_healed_sha")
     && !string_contains(s: yml, pattern: "secrets.GUNBC_ORG_ADMIN_TOKEN")
