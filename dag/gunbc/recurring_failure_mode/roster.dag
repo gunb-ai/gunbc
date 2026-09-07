@@ -180,6 +180,7 @@ import gunbc.recurring_failure_mode.evaluation_model_cleanup_undeclared { evalua
 import gunbc.recurring_failure_mode.docs_markdown_projections_have_no_completing_actuator { docs_markdown_projections_have_no_completing_actuator }
 import gunbc.recurring_failure_mode.type_name_field_carries_rendered_value { type_name_field_carries_rendered_value }
 import gunbc.recurring_failure_mode.capability_arrives_outside_the_converged_path { capability_arrives_outside_the_converged_path }
+import gunbc.recurring_failure_mode.one_value_two_renderings_compared_for_equality { one_value_two_renderings_compared_for_equality }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry,
@@ -350,4 +351,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   docs_markdown_projections_have_no_completing_actuator,
   type_name_field_carries_rendered_value,
   capability_arrives_outside_the_converged_path,
+  one_value_two_renderings_compared_for_equality,
 ]
