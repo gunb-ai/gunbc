@@ -1,0 +1,393 @@
+module gunbc.machine_intake_megarac_media_attach
+
+import std.types { Bool, Int, NonEmptyStr, String }
+import extdeps.bmc.megarac
+import extdeps.languages.json.parse {
+  JsonArray,
+  JsonDocumentParse,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  JsonMemberFound,
+  JsonNumber,
+  JsonString,
+  JsonValue,
+  json_object_unique_member,
+  parse_json_document,
+}
+
+// ATTACHING A REMOTE IMAGE, AS A MODELED OPERATION RATHER THAN A SHELL SCRIPT. extdeps.bmc.megarac
+// described this API in prose for months and carried no transport, so the first attach against a
+// Mt. Collins unit was driven by hand-written curl — the unmodeled realization DESIGN §6 names, and
+// the reason the netboot lane could not claim its image was procured through .dag. The service rows
+// made the surface reachable; this module is the caller that makes it reached.
+//
+// EVERY STEP READS BACK, AND THAT IS FORCED BY THE CONTROLLER'S OWN BEHAVIOUR rather than chosen for
+// rigour. gunbc.machine_intake_mtcollins1_diskless_boot_receipt records two measured cases of this
+// firmware answering HTTP 500 WHILE THE WRITE TOOK EFFECT: PUT media/general (code 16425) with the
+// share re-mounting anyway, and stop-media (code 1411) with the following attach succeeding. An
+// operation that treated a non-zero exit as refusal would refuse a write that worked, and the caller
+// would then retry or abort against a controller whose state had already moved. So success here is
+// never an exit status; it is the configurations listing naming the image.
+//
+// THE IMAGE INDEX IS RESOLVED, NEVER ASSUMED. start-media takes an image_index, and the controller
+// assigns indices by its own enumeration of the share — the same file was index 0 on one scan and
+// index 1 after another image appeared. A baked index attaches whatever now occupies that slot,
+// which on a share holding a memtest ISO and an installer ISO is a silent wrong-boot rather than a
+// failure. The index is read from the images listing by matching the image NAME.
+//
+// THE IMAGES LISTING ENUMERATES WHAT IS AVAILABLE TO ATTACH, NOT WHAT THE SHARE HOLDS, and an
+// earlier revision of this module got that exactly backwards in a way worth recording because the
+// wrong diagnosis had a dangerous remedy attached to it. Measured on this unit 2026-09-06: with two
+// ISOs in the export, /remote/images listed both; after start-media attached one, the listing
+// returned ONLY THE OTHER, and the survivor's image_index moved from 1 to 0. The attached image had
+// not vanished — it had moved to /remote/configurations, which is where a presented image lives.
+//
+// THE EARLIER READING WAS THAT THE LISTING IS A CACHE THAT GOES STALE, with the remedy "re-assert
+// mount_cd". That remedy appeared to work, and the reason it appeared to work is the problem:
+// toggling mount_cd DETACHES EVERYTHING, which is what returns the image to the available pool. A
+// remedy that works by undoing the desired state is worse than no remedy, and it was written into
+// an operator-facing message on a lane whose entire purpose is hosts booted from that medium.
+//
+// WHAT THE HAZARD IS, AT THE STRENGTH IT WAS ACTUALLY MEASURED, because an earlier revision of this
+// paragraph overstated it in the same breath as retracting an overstatement. It claimed the toggle
+// pulls the running root out from under a booted host. That is the MECHANISM — the presented medium
+// is withdrawn, and casper reads the read-only lower layer from it on demand rather than from RAM,
+// per this lane's own boot receipt — but it is not what was observed. The toggle WAS performed on
+// this unit while it was booted from the medium, and the running installer survived it: measured
+// afterwards over serial console, still interactive at its own menu. The controller is configured
+// rmedia_retry_count 3 / rmedia_retry_interval 15, and the system was idle at a prompt rather than
+// reading, either of which may explain the survival.
+//
+// SO THE HONEST STATEMENT IS THAT THE BLAST RADIUS IS UNQUANTIFIED, not that it is catastrophic and
+// not that it is safe. One observation of one idle host is not evidence that a toggle during heavy
+// reads is survivable, and the remedy is still wrong for the reason that does not depend on any of
+// this: it "fixes" the listing by undoing the attachment the caller asked for.
+//
+// SO THE ORDER OF READS IS LOAD-BEARING AND CONFIGURATIONS COMES FIRST. Asking the available list
+// whether an already-attached image is present is asking the wrong authority a question it answers
+// "no" for the one reason that means SUCCESS. That is what made the operation non-idempotent: a
+// second converge against a correctly-attached host refused, which for a converge step is the
+// failure mode that matters most, since converge is run repeatedly by construction.
+// THE CLEANUP OUTCOME IS CARRIED BESIDE THE ATTACH OUTCOME, never folded into it. Whether the
+// image attached and whether the session was released are different facts with different owners: a
+// successful attach that leaked a session is still a successful attach, and reporting it as a
+// failure would hide the thing that worked while a caller retried it and leaked another. The
+// controller's session table is finite — this lane exhausted one service's sessions by opening one
+// per probe and closing none — so the release has to be observable rather than assumed.
+//
+// SessionReleaseUncertain EXISTS BECAUSE A LOST RESPONSE IS NOT A KNOWN STATE. A DELETE whose reply
+// never arrived may have released the session or may not; treating that as released would
+// under-count leaks exactly when the transport is already misbehaving, which is when leaks matter.
+type SessionRelease
+  = SessionReleased
+  | SessionReleaseRefused { detail: String }
+  | SessionReleaseNotAttempted
+
+type MegaRacAttachResult {
+  outcome: MegaRacAttachOutcome
+  session_release: SessionRelease
+}
+
+type MegaRacAttachOutcome
+  = MegaRacAttached { image_name: NonEmptyStr, image_index: String }
+  | MegaRacAlreadyAttached { image_name: NonEmptyStr }
+  | MegaRacConfigurationsUnreadable { detail: String }
+  | MegaRacSessionRefused { detail: String }
+  | MegaRacSessionTokenUnreadable { detail: String }
+  | MegaRacImagesUnreadable { detail: String }
+  | MegaRacImageListingEmpty
+  | MegaRacImageListingUnparseable { detail: String }
+  | MegaRacImageNotEnumerated { image_name: NonEmptyStr }
+  | MegaRacStartRefused { detail: String }
+  | MegaRacAttachUnconfirmed { image_name: NonEmptyStr, configurations: String }
+
+// THE CSRF TOKEN IS READ FROM THE PARSED DOCUMENT, not scraped. The shell version matched a regex
+// over the response body, which is a second reading of JSON beside the one this repository already
+// owns; extdeps.languages.json.parse is the single recognition authority and a document it cannot
+// parse is unreadable rather than partially believed.
+fn json_string_member(doc: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonString { value: s } => Present { value: s }
+        _ => none
+      }
+    _ => none
+  }
+}
+
+fn json_number_member(doc: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonNumber { lexeme: n } => Present { value: n }
+        _ => none
+      }
+    _ => none
+  }
+}
+
+// THE INDEX OF A NAMED IMAGE, folded over the parsed array. Returns the FIRST match and the fold
+// keeps it, because a controller enumerating one name twice is a state this module has never
+// observed and would rather report as the index it acted on than silently prefer the last.
+fn image_index_named(elements: List<JsonValue>, image_name: String) -> String? {
+  fold(elements, init: none, f: (acc, element) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match json_string_member(doc: element, key: "image_name") {
+          Absent => none
+          Present { value: found } =>
+            if found == image_name {
+              json_number_member(doc: element, key: "image_index")
+            } else {
+              none
+            }
+        }
+    }
+  )
+}
+
+fn images_array_elements(doc: JsonValue) -> List<JsonValue> {
+  match doc {
+    JsonArray { elements: es } => es
+    _ => []
+  }
+}
+
+// THE START-MEDIA BODY, rendered here rather than by the caller so image_redirection cannot be
+// omitted by a caller who does not know it is required. extdeps.bmc.megarac records that omitting
+// it makes the firmware refuse with opaque codes 13410/13460, recovered from the firmware's own UI
+// bundle rather than from documentation — exactly the kind of fact that is lost when a body is
+// assembled at a call site.
+fn start_media_body(image_name: NonEmptyStr, image_index: String) -> NonEmptyStr {
+  join([
+    "{\"image_name\":\"", image_name as String,
+    "\",\"image_type\":1,\"image_index\":", image_index,
+    ",\"image_redirection\":1}"
+  ], "") as NonEmptyStr
+}
+
+// THE EFFECT SEQUENCE. Session, list, resolve, start, confirm — and the confirmation is a separate
+// read rather than the start call's own answer, for the reason given at the top of this module.
+//
+// THE CREDENTIAL IS A VALUE HERE AND A FILE PATH EVERYWHERE ELSE IN THIS LANE, and that asymmetry is
+// forced rather than chosen: OpenSession is form-encoded, and curl offers no netrc equivalent for a
+// form body, so the password reaches argv for exactly one call. Every subsequent operation carries
+// no credential at all because the cookie is the bearer. The ipmi operations beside this take a
+// password FILE for the same threat and can, because -f exists there. Naming the asymmetry is the
+// point; hiding it behind a wrapper would make one call's exposure look like none.
+func megarac_attach_remote_image(
+  bmc_host: NonEmptyStr,
+  username: NonEmptyStr,
+  password: NonEmptyStr,
+  cookie_jar: NonEmptyStr,
+  image_name: NonEmptyStr,
+) -> MegaRacAttachResult
+  uses net: std.resources.Network
+{
+  session = megarac.Media.OpenSession(
+    bmc_host: bmc_host,
+    username: username,
+    password: password,
+    cookie_jar: cookie_jar,
+  )
+  if session.success == false {
+    return MegaRacAttachResult {
+      outcome: MegaRacSessionRefused { detail: session.body },
+      session_release: SessionReleaseNotAttempted,
+    }
+  }
+
+  let session_doc = match parse_json_document(s: session.body) {
+    JsonDocumentParsed { value: v } => some_json_value(v)
+    JsonDocumentUnreadable { gap: _ } => none
+  }
+  let csrf = match session_doc {
+    Absent => none
+    Present { value: doc } => json_string_member(doc: doc, key: "CSRFToken")
+  }
+
+  return match csrf {
+    Absent =>
+      MegaRacAttachResult {
+        outcome: MegaRacSessionTokenUnreadable { detail: session.body },
+        session_release: SessionReleaseNotAttempted,
+      }
+    Present { value: token } =>
+      megarac_attach_then_release(
+        bmc_host: bmc_host,
+        cookie_jar: cookie_jar,
+        csrf_token: token as NonEmptyStr,
+        image_name: image_name,
+      )
+  }
+}
+
+// THE RELEASE RUNS ON EVERY PATH THROUGH THE ATTACH, which is why the attach outcome is computed
+// first and the close follows it unconditionally rather than sitting inside a success arm. A
+// refusal allocated the same session a success does.
+func megarac_attach_then_release(
+  bmc_host: NonEmptyStr,
+  cookie_jar: NonEmptyStr,
+  csrf_token: NonEmptyStr,
+  image_name: NonEmptyStr,
+) -> MegaRacAttachResult
+  uses net: std.resources.Network
+{
+  let outcome = megarac_attach_with_token(
+    bmc_host: bmc_host,
+    cookie_jar: cookie_jar,
+    csrf_token: csrf_token,
+    image_name: image_name,
+  )
+
+  closed = megarac.Media.CloseSession(
+    bmc_host: bmc_host,
+    cookie_jar: cookie_jar,
+    csrf_token: csrf_token,
+  )
+
+  return MegaRacAttachResult {
+    outcome: outcome,
+    session_release: if closed.success { SessionReleased } else { SessionReleaseRefused { detail: closed.body } },
+  }
+}
+
+// CONFIGURATIONS IS CONSULTED BEFORE ANYTHING IS WRITTEN, so the converged case performs no write
+// at all. This is not an optimisation: start-media against an already-presented image is a write
+// whose effect on a booted host is unmodelled, and the point of reading first is to not make it.
+func megarac_attach_with_token(
+  bmc_host: NonEmptyStr,
+  cookie_jar: NonEmptyStr,
+  csrf_token: NonEmptyStr,
+  image_name: NonEmptyStr,
+) -> MegaRacAttachOutcome
+  uses net: std.resources.Network
+{
+  presented = megarac.Media.GetRemoteConfigurations(
+    bmc_host: bmc_host,
+    cookie_jar: cookie_jar,
+    csrf_token: csrf_token,
+  )
+  if presented.success == false {
+    return MegaRacConfigurationsUnreadable { detail: presented.body }
+  }
+  if configurations_confirm_attachment(body: presented.body, image_name: image_name) {
+    return MegaRacAlreadyAttached { image_name: image_name }
+  }
+
+  images = megarac.Media.GetRemoteImages(
+    bmc_host: bmc_host,
+    cookie_jar: cookie_jar,
+    csrf_token: csrf_token,
+  )
+  if images.success == false {
+    return MegaRacImagesUnreadable { detail: images.body }
+  }
+
+  match parse_json_document(s: images.body) {
+    JsonDocumentUnreadable { gap: _ } =>
+      return MegaRacImageListingUnparseable { detail: images.body }
+    JsonDocumentParsed { value: _ } => none
+  }
+  let elements = match parse_json_document(s: images.body) {
+    JsonDocumentParsed { value: v } => images_array_elements(doc: v)
+    JsonDocumentUnreadable { gap: _ } => []
+  }
+  if (elements |> count) == 0 {
+    return MegaRacImageListingEmpty
+  }
+
+  return match image_index_named(elements: elements, image_name: image_name as String) {
+    Absent => MegaRacImageNotEnumerated { image_name: image_name }
+    Present { value: idx } =>
+      megarac_start_and_confirm(
+        bmc_host: bmc_host,
+        cookie_jar: cookie_jar,
+        csrf_token: csrf_token,
+        image_name: image_name,
+        image_index: idx,
+      )
+  }
+}
+
+// THE CONFIRMATION READS ONE EXACT ACTIVE ROW, not a substring of a body. An earlier form asked
+// whether the configurations text CONTAINED the image name, which admits a stopped configuration
+// that still names it, and admits an error body that happens to mention it.
+//
+// THE INDEX IS DELIBERATELY NOT COMPARED, and an earlier revision of this check did compare it —
+// first reading image_index, which is absent here so every genuine attachment was reported
+// unconfirmed, then reading media_index, which is present and agrees. The second spelling passed,
+// and it was still wrong: media_index is the VIRTUAL CD DEVICE SLOT, alongside session_index, not a
+// position in the image enumeration. It agreed with the resolved image_index only because this unit
+// presents a single CD device, so both are 0. Comparing them is the §3 nicknaming failure — two
+// unrelated concepts joined because they share a coincidence and half a name — and it would have
+// started refusing the moment a controller offered a second slot, with a message blaming the image.
+//
+// WHAT IS COMPARED IS WHAT THE ROW ACTUALLY ASSERTS: this device is presenting THIS NAME, as CD
+// media, with redirection active. That is the whole of the desired state.
+fn configuration_row_confirms(row: JsonValue, image_name: NonEmptyStr) -> Bool {
+  let name_ok = match json_string_member(doc: row, key: "image_name") {
+    Absent => false
+    Present { value: n } => n == (image_name as String)
+  }
+  let active = match json_number_member(doc: row, key: "redirection_status") {
+    Absent => false
+    Present { value: st } => st != "0"
+  }
+  let cd_media = match json_number_member(doc: row, key: "media_type") {
+    Absent => false
+    Present { value: mt } => mt == "1"
+  }
+  name_ok && active && cd_media
+}
+
+fn configurations_confirm_attachment(body: String, image_name: NonEmptyStr) -> Bool {
+  let rows = match parse_json_document(s: body) {
+    JsonDocumentParsed { value: v } => images_array_elements(doc: v)
+    JsonDocumentUnreadable { gap: _ } => []
+  }
+  rows |> any(r => configuration_row_confirms(row: r, image_name: image_name))
+}
+
+// A NON-ZERO START FOLLOWED BY NO CONFIRMATION IS PENDING, NOT REFUSED, and this firmware is why:
+// the same controller answers HTTP 500 on writes that take effect, and its mount daemon is
+// asynchronous. Reporting MegaRacStartRefused on a status code would refuse an attach that is
+// merely still mounting. The bounded read-back decides; the status code only distinguishes which
+// unconfirmed state is reported.
+func megarac_start_and_confirm(
+  bmc_host: NonEmptyStr,
+  cookie_jar: NonEmptyStr,
+  csrf_token: NonEmptyStr,
+  image_name: NonEmptyStr,
+  image_index: String,
+) -> MegaRacAttachOutcome
+  uses net: std.resources.Network
+{
+  start = megarac.Media.StartMedia(
+    bmc_host: bmc_host,
+    cookie_jar: cookie_jar,
+    csrf_token: csrf_token,
+    json_body: start_media_body(image_name: image_name, image_index: image_index),
+  )
+
+  configurations = megarac.Media.GetRemoteConfigurations(
+    bmc_host: bmc_host,
+    cookie_jar: cookie_jar,
+    csrf_token: csrf_token,
+  )
+  if configurations.success == false {
+    return MegaRacAttachUnconfirmed { image_name: image_name, configurations: configurations.body }
+  }
+
+  return if configurations_confirm_attachment(body: configurations.body, image_name: image_name) {
+    MegaRacAttached { image_name: image_name, image_index: image_index }
+  } else {
+    if start.success == false {
+      MegaRacStartRefused { detail: start.body }
+    } else {
+      MegaRacAttachUnconfirmed { image_name: image_name, configurations: configurations.body }
+    }
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "attach": {
+    "configurations_after": {
+      "redirection_status": 100,
+      "session_index": 0
+    },
+    "endpoint": "POST /api/settings/media/remote/start-media",
+    "image_index_resolved_by": "reading /api/settings/media/remote/images, not assumed"
+  },
+  "boot_drive": {
+    "performed_by": "gunbc.machine_intake_mtcollins1_actuate mtcollins1_cdrom_handoff",
+    "precondition": "boot parameter 5 reset to 'No override' before the run"
+  },
+  "capture_subject": "mtcollins1-diskless-boot",
+  "claim": "the host booted an aarch64 Linux kernel and reached systemd with a squashfs+overlayfs root, from an image delivered entirely out of band, on a machine with no boot drive",
+  "delivery_chain": [
+    "srv2 NFS export /srv/bmc (ro, scoped to 192.168.1.228)",
+    "MegaRAC remote-media client on the controller fetches the image itself",
+    "virtual CD presented to the host",
+    "host UEFI -> GRUB 2.12 -> EFI stub"
+  ],
+  "diskless_evidence": {
+    "kernel_cmdline": "BOOT_IMAGE=/casper/vmlinuz",
+    "memory_available_kib": 261972592,
+    "note": "casper runs the squashfs from RAM with a tmpfs overlay; nothing is written to local storage, and this unit has no boot drive to write to",
+    "root": "squashfs 4.0 mounted read-only with an overlayfs upper"
+  },
+  "firmware_behaviours_that_a_modeled_caller_must_expect": {
+    "put_media_general": {
+      "body_code": 16425,
+      "consequence": "an operation treating nonzero as refusal will refuse a write that worked",
+      "http": 500,
+      "observed": "the write reported failure AND the share re-mounted; images re-enumerated 23s later"
+    },
+    "share_rescan": "the controller stopped enumerating the share after a new file appeared, returning an empty image list; re-asserting mount_cd re-scanned it",
+    "stop_media": {
+      "body_code": 1411,
+      "http": 500,
+      "observed": "reported failure; the subsequent start-media succeeded"
+    }
+  },
+  "host_side_acceptance_marker": {
+    "source": "serial-over-LAN console, not redirection_status",
+    "trace": [
+      "[2;30HGNU GRUB  version 2.12",
+      "[5;3H*Try or Install Ubuntu Server                                               ",
+      "[0;37;40mEFI stub: Booting Linux Kernel...",
+      "EFI stub: WARNING: Working around broken SetVirtualAddressMap()",
+      "EFI stub: Loaded initrd from LINUX_EFI_INITRD_MEDIA_GUID device path",
+      "EFI stub: Generating empty DTB",
+      "EFI stub: Exiting boot services...",
+      "[    0.000000] Booting Linux on physical CPU 0x0000120000 [0x413fd0c1]",
+      "[    0.000000] Linux version 6.8.0-71-generic (buildd@bos03-arm64-036) (aarch64-linux-gnu-gcc-13 (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0, GNU ld (GNU Binutils for Ubuntu) 2.42) #71-Ubuntu SMP PREEMPT_DYNAMIC Tue Jul 22 16:44:45 UTC 2025 (Ubuntu 6.8.0-71.71-generic 6.8.12)",
+      "[    0.000000] Kernel command line: BOOT_IMAGE=/casper/vmlinuz --- console=tty0",
+      "[   14.925304] squashfs: version 4.0 (2009/01/31) Phillip Lougher",
+      "[   25.748415] overlayfs: \"xino\" feature enabled using 3 upper inode bits.",
+      "[   26.406227] systemd[1]: systemd 255.4-1ubuntu8.10 running in system mode (+PAM +AUDIT +SELINUX +APPARMOR +IMA +SMACK +SECCOMP +GCRYPT -GNUTLS +OPENSSL +ACL +BLKID +CURL +ELFUTILS +FIDO2 +IDN2 -IDN +IPTC +KMOD +LIBCRYPTSETUP +LIBFDISK +PCRE2 -PWQUALITY +P11KIT +QRENCODE +TPM2 +BZIP2 +LZ4 +XZ +ZLIB +ZSTD -BPF_FRAMEWORK -XKBCOMMON +UTMP +SYSVINIT default-hierarchy=unified)",
+      "[   26.442927] systemd[1]: Detected architecture arm64."
+    ],
+    "why_this_is_the_marker": "a nonzero redirection_status proves a media session; only the booted program's own output proves the artifact executed on the host"
+  },
+  "image": {
+    "file": "ubuntu-24.04.3-live-server-arm64.iso",
+    "measured_sha256": "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555",
+    "pin_agrees_with": "extdeps.provisioning.ubuntu_install_media noble_numbat_2404_3_live_server_arm64.content_sha256, and upstream cdimage SHA256SUMS"
+  },
+  "not_established": [
+    "this is a stock live-server image; nothing per-host is injected and no identity is bound",
+    "the backing share is srv2, a fleet peer, so this is not yet independent of the fleet",
+    "UEFI HTTP Boot remains unmeasured; every boot so far was forced to a device over IPMI"
+  ],
+  "observed_at_utc": "2026-09-05T22:55Z",
+  "media_detach_during_boot_observation": {
+    "observed_at": "2026-09-06",
+    "what_was_done": "mount_cd toggled 0 then 1 on the controller while the unit was booted from the presented ISO, to force the images listing to re-enumerate",
+    "why_it_was_done": "a wrong diagnosis: the image had left the available listing because it was ATTACHED, not because the listing was stale",
+    "observed_outcome": "the running Ubuntu installer survived; measured afterwards over IPMI SOL, still interactive at its own menu, and chassis power reported on",
+    "controller_retry_config": {
+      "rmedia_retry_count": 3,
+      "rmedia_retry_interval": 15
+    },
+    "what_this_does_not_establish": "that a detach during heavy reads is survivable. The system was idle at a prompt rather than reading, and casper reads the read-only lower layer from the presented medium on demand (toram is absent from the observed command line). One observation of one idle host bounds nothing."
+  }
+}

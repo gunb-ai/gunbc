@@ -1,0 +1,268 @@
+module gunbc.machine_intake_boot_image_fetch
+
+import std.types { Bool, FilePath, NonEmptyStr, String }
+import gunbc.machine_intake_boot_image_export_ownership {
+  export_ownership_admits_publication,
+  export_ownership_refusal_reason,
+  observed_export_ownership_standing,
+}
+import extdeps.shell
+import extdeps.tools.curl { curl_download_command }
+import gunbc.command_runner { run_shell_command }
+import extdeps.exec.command { CommandTransport, LocalExec }
+import std.process { ExitSuccess, ProcessExit }
+import extdeps.tools.sha256sum {
+  Sha256FileDigest,
+  Sha256FileDigestUnavailable,
+  sha256sum_file_digest_via_shell,
+}
+
+// PLACING A VERIFIED BOOT IMAGE WHERE A CONTROLLER CAN FETCH IT, as a modeled operation. The
+// diskless boot this lane already achieved used an ISO downloaded to the share by hand-run curl and
+// checked by a hand-run sha256sum, so procurement was the one step of the chain still outside the
+// model while attach and boot were inside it.
+//
+// THE DIGEST DECIDES ADMISSION, AND IT IS MEASURED BEFORE THE FILE IS PUBLISHED. The order matters
+// and is the whole point: an artifact whose bytes disagree with the pin must never occupy the path
+// the controller reads. Fetching straight into the export and checking afterwards leaves a window
+// where a truncated or substituted image is mountable, and on a share the controller re-scans on its
+// own schedule that window is not bounded by this program's lifetime. So the fetch lands in a
+// staging path, the digest is taken there, and only an agreeing artifact is moved into place.
+//
+// THE PIN IS NOT MINTED HERE. extdeps.provisioning.ubuntu_install_media already carries
+// content_sha256 for each artifact row, cited to upstream's own SHA256SUMS, and this module consumes
+// that value rather than restating it. A second copy of a digest is a second authority for one fact,
+// and the one that rots is always the copy.
+type BootImageFetchOutcome
+  = BootImageAdmitted { path: NonEmptyStr, digest: NonEmptyStr }
+  | BootImageFetchFailed { url: NonEmptyStr }
+  | BootImageDigestUnreadable { path: NonEmptyStr, reason: String }
+  | BootImageDigestMismatchRefused { expected: NonEmptyStr, observed: NonEmptyStr }
+  | BootImagePublishFailed { staged: NonEmptyStr, destination: NonEmptyStr }
+  | BootImagePublishedDigestMismatch { path: NonEmptyStr, expected: NonEmptyStr, observed: NonEmptyStr }
+  | BootImagePublicationNotAdmitted { export_dir: NonEmptyStr, reason: String }
+
+// WHETHER A MEASURED DIGEST AGREES WITH THE PIN. Separated from the effect sequence so the judgment
+// is nameable, and returning the OBSERVED value on disagreement rather than a Bool: a refusal that
+// does not say what it saw sends the reader back to the machine to find out.
+fn boot_image_digest_agrees(observed: Sha256FileDigest, expected: NonEmptyStr) -> Bool {
+  match observed {
+    Sha256FileDigestUnavailable { path: _, reason: _ } => false
+    Sha256FileDigest { digest: d } => (d.hex as String) == (expected as String)
+  }
+}
+
+// THE OBSERVED HEX, OR A SELF-NAMING PLACEHOLDER WHEN THERE ISN'T ONE. A refusal carries what was
+// seen so the reader does not have to go back to the machine, and an unreadable digest is reported
+// as unreadable rather than as a mismatch against an empty string -- those are different failures
+// with different owners: one is the artifact, the other is the tool or the path.
+fn boot_image_observed_hex(observed: Sha256FileDigest) -> NonEmptyStr {
+  match observed {
+    Sha256FileDigestUnavailable { path: _, reason: _ } => "digest-unreadable"
+    Sha256FileDigest { digest: d } => d.hex
+  }
+}
+
+// THE SEQUENCE, AND ITS ORDER IS THE GUARANTEE. Fetch to a staging path, measure there, and move
+// into the published path ONLY on agreement. Fetching straight into the export and checking
+// afterwards would leave an interval in which a truncated or substituted image is mountable, and the
+// controller re-scans that share on its own schedule rather than this program's, so the interval is
+// not bounded by anything here.
+//
+// A MISMATCH LEAVES THE STAGED FILE WHERE IT IS. It is deliberately not deleted: the bytes that
+// disagreed are the evidence for why the fetch was refused, and removing them turns a diagnosable
+// refusal into a bare assertion. What matters for safety is that they never reach the published
+// path, not that they cease to exist.
+// THE STAGING PATH IS DERIVED FROM THE DESTINATION, NOT SUPPLIED BESIDE IT, and that is the whole
+// of this module's atomicity guarantee rather than a tidiness preference.
+//
+// THE GUARANTEE WAS PREVIOUSLY TRUE BY COINCIDENCE. Staging and destination were two independent
+// hand-authored literals — /var/tmp/... and /srv/bmc/... — and rename(2) is atomic only WITHIN one
+// filesystem. On this host both happen to sit on the same logical volume, so the move was atomic and
+// the module's central claim held; measured, not assumed. But nothing established it. Point either
+// literal at a separate mount, a tmpfs /var/tmp among them, and mv silently degrades to copy-then-
+// unlink, which publishes a growing partial file into a share the controller re-scans on its own
+// schedule. That is precisely the window the staging split exists to close, reopened by an edit to a
+// path constant with no diagnostic anywhere.
+//
+// DERIVING THE STAGING PATH FROM THE DESTINATION MAKES THE TWO PATHS UNABLE TO DIVERGE. They share a
+// directory by construction, so they share a filesystem, so the rename is atomic — and there is no
+// longer an input whose editing could break it. This is the §5 move: prefer the single authority the
+// realization is derived from over a check that the two agree.
+//
+// THE SUFFIX IS NOT .iso, AND THAT IS LOAD-BEARING because staging now lives INSIDE the export the
+// controller reads. The controller enumerates by extension: this same export holds
+// memtest86-iso.zip, whose name contains "iso", and the controller has never listed it. So a
+// partially-written file under this suffix is not offerable as media even while it is being written.
+fn boot_image_staging_path(published_path: NonEmptyStr) -> NonEmptyStr {
+  join([published_path as String, ".gunbc-staging"], "") as NonEmptyStr
+}
+
+// THE EXPORT DIRECTORY AND THE IMAGE NAME ARE TAKEN SEPARATELY, and the published path is composed
+// here, because the ADMISSION is about the directory while the WRITE is about the path. Taking a
+// composed path and a directory as two parameters would let a caller pass a path that does not live
+// in the directory that was admitted -- admitting one place and writing to another, which is the
+// same seam defect as verifying one artifact and attaching a different one.
+func fetch_verified_boot_image(
+  url: NonEmptyStr,
+  export_dir: NonEmptyStr,
+  image_name: NonEmptyStr,
+  expected_sha256: NonEmptyStr,
+) -> BootImageFetchOutcome
+  uses net: std.resources.Network
+{
+  let published_path = join([export_dir as String, "/", image_name as String], "") as NonEmptyStr
+  let staging_path = boot_image_staging_path(published_path: published_path)
+  let fetched = run_shell_command(
+    command: curl_download_command(url: url as String, destination: staging_path as String),
+    transport: LocalExec,
+  )
+  return match fetched {
+    ExitSuccess =>
+      verify_and_publish_boot_image(
+        staging_path: staging_path,
+        published_path: published_path,
+        export_dir: export_dir,
+        expected_sha256: expected_sha256,
+      )
+    _ => BootImageFetchFailed { url: url }
+  }
+}
+
+// MEASUREMENT AND PUBLICATION ARE REACHABLE ONLY THROUGH A SUCCESSFUL FETCH, which is why this is a
+// separate func rather than statements following an `if`. The same shape keeps the boot handoff's
+// power cycle behind a confirmed read-back: a refusal cannot be reordered past it and nothing can
+// fall through to it.
+func verify_and_publish_boot_image(
+  staging_path: NonEmptyStr,
+  published_path: NonEmptyStr,
+  export_dir: NonEmptyStr,
+  expected_sha256: NonEmptyStr,
+) -> BootImageFetchOutcome
+  uses net: std.resources.Network
+{
+  let measured = sha256sum_file_digest_via_shell(path: staging_path)
+  return match measured {
+    Sha256FileDigestUnavailable { path: p, reason: r } =>
+      BootImageDigestUnreadable { path: p, reason: r }
+    Sha256FileDigest { digest: _ } =>
+      if boot_image_digest_agrees(observed: measured, expected: expected_sha256) {
+        admit_then_publish_boot_image(
+          staging_path: staging_path,
+          published_path: published_path,
+          export_dir: export_dir,
+          digest: boot_image_observed_hex(observed: measured),
+        )
+      } else {
+        BootImageDigestMismatchRefused {
+          expected: expected_sha256,
+          observed: boot_image_observed_hex(observed: measured),
+        }
+      }
+  }
+}
+
+// THE PUBLISH IS ITS OWN FUNC so the move is reachable only through the arm where the digest already
+// agreed, in the same shape the boot handoff uses to keep its power cycle behind a confirmed
+// read-back. A future edit cannot fall through to it.
+// THE OWNERSHIP ADMISSION SITS AT THE WRITE BOUNDARY, which is the only place it means anything.
+// gunbc.machine_intake_boot_image_export_ownership previously described who may own the export and
+// was consulted by NOTHING: this module called mv directly, so the program published whenever the
+// operating system's permissions happened to allow it -- as root, or into a world-writable export --
+// while a probe asserted the policy against fixtures. A requirement with no causal position is a
+// description, and describing a wall is not building one.
+//
+// IT IS CHECKED AFTER THE DIGEST AGREES AND BEFORE THE MOVE, deliberately, so the two refusals stay
+// distinguishable. Checking it first would make every wrong-pin fetch on an unwritable export report
+// an ownership problem, hiding the artifact defect behind an environment one.
+func admit_then_publish_boot_image(
+  staging_path: NonEmptyStr,
+  published_path: NonEmptyStr,
+  export_dir: NonEmptyStr,
+  digest: NonEmptyStr,
+) -> BootImageFetchOutcome
+  uses net: std.resources.Network
+{
+  let standing = observed_export_ownership_standing(path: export_dir)
+  return if export_ownership_admits_publication(standing: standing) {
+    publish_verified_boot_image(
+      staging_path: staging_path,
+      published_path: published_path,
+      digest: digest,
+    )
+  } else {
+    BootImagePublicationNotAdmitted {
+      export_dir: export_dir,
+      reason: export_ownership_refusal_reason(path: export_dir, standing: standing),
+    }
+  }
+}
+
+// THE PUBLISHED BYTES ARE MEASURED AGAIN AT THE FINAL PATH, and the staged measurement is not
+// carried forward as though it answered for them. Those are different questions: the staged digest
+// establishes that what was FETCHED matches the pin, and says nothing about what now occupies the
+// path the controller reads. Reporting the staged digest as the published one is the
+// execution-provenance loss this repository keeps finding — a value consumed as though an
+// observation produced it, when the observation was of something else.
+//
+// WHAT CAN ACTUALLY DIVERGE, so this is not a decorative re-read: the rename can land beside a file
+// another writer replaces, the destination can be a symlink into somewhere else, and the export is
+// group-writable by the automation account rather than exclusively held. A disagreement here means
+// the export does not contain what this program published, which is the one state that must never be
+// reported as an admission.
+func publish_verified_boot_image(
+  staging_path: NonEmptyStr,
+  published_path: NonEmptyStr,
+  digest: NonEmptyStr,
+) -> BootImageFetchOutcome
+  uses net: std.resources.Network
+{
+  moved = shell.Move.File(
+    source: staging_path as FilePath,
+    destination: published_path as FilePath,
+  )
+  return if moved.success {
+    confirm_published_boot_image(published_path: published_path, digest: digest)
+  } else {
+    BootImagePublishFailed { staged: staging_path, destination: published_path }
+  }
+}
+
+// A SEPARATE FUNC so the admission is reachable only through a successful move, in the same shape
+// the rest of this lane uses to keep a consequential step behind its precondition.
+//
+// THE EVIDENCE BEHIND THIS ARM IS ASYMMETRIC AND SAYING SO IS PART OF THE ROW. The positive path is
+// green by execution: a controlled fixture whose content, and therefore whose digest, was authored
+// rather than measured from the tree, fetched through file://, staged, moved, and re-measured at the
+// final path — two DigestFile calls in the trace, the second one this arm.
+//
+// BootImagePublishedDigestMismatch ITSELF HAS NO EXECUTED RED. Producing one needs the destination
+// to hold different bytes AFTER a successful rename, which no static fixture can arrange: it takes a
+// concurrent writer or a mocked move. That makes it a guard which is REACHABLE but unoccupied — the
+// mechanism exists (any second writer to a group-writable export produces it) and nothing lands in
+// it today — rather than a decoration whose red cannot be authored at all. The distinction is the
+// one this repository keeps having to redraw, and it decides whether the arm should exist: it
+// should. NEXT-RUNG TRIGGER: a fixture harness able to interpose on shell.Move.File, at which point
+// the red is authorable and this arm is owed one.
+func confirm_published_boot_image(
+  published_path: NonEmptyStr,
+  digest: NonEmptyStr,
+) -> BootImageFetchOutcome
+  uses net: std.resources.Network
+{
+  let republished = sha256sum_file_digest_via_shell(path: published_path)
+  return match republished {
+    Sha256FileDigestUnavailable { path: p, reason: r } =>
+      BootImageDigestUnreadable { path: p, reason: r }
+    Sha256FileDigest { digest: _ } =>
+      if boot_image_digest_agrees(observed: republished, expected: digest) {
+        BootImageAdmitted { path: published_path, digest: digest }
+      } else {
+        BootImagePublishedDigestMismatch {
+          path: published_path,
+          expected: digest,
+          observed: boot_image_observed_hex(observed: republished),
+        }
+      }
+  }
+}

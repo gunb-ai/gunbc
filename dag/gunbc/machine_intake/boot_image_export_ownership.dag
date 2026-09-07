@@ -1,0 +1,333 @@
+module gunbc.machine_intake_boot_image_export_ownership
+
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import extdeps.tools.coreutils_stat {
+  PathOwnershipObservation,
+  PathOwnershipObserved,
+  PathOwnershipUnobservable,
+  coreutils_stat_path_ownership,
+}
+import extdeps.access.posix {
+  FileOwnership,
+  LoginShellObserved,
+  LoginShellUnobserved,
+  PosixUser,
+  posix_root_uid,
+}
+import gunbc.fleet_posix_accounts {
+  FleetAccountAutomation,
+  FleetAccountCiRunner,
+  FleetAccountHostAdministrator,
+  FleetAccountInferenceService,
+  FleetAccountOperator,
+  FleetAccountPublicationHelper,
+  FleetAccountRoot,
+  FleetPosixAccountKey,
+}
+
+// WHO MAY CHANGE WHAT A MACHINE BOOTS. The directory a controller reads its virtual media from is
+// the payload half of the boot path: write access to it is equivalent to choosing what the host
+// runs, which is the same authority the out-of-band boot handoff exercises from the control half.
+// This lane spent its effort making the control half admit, verify and refuse; leaving the payload
+// half as "whatever can write the directory" would secure one end of a chain.
+//
+// THE STATE THIS ROW WAS WRITTEN AGAINST HAS SINCE CHANGED, and saying so is the point rather than
+// an afterthought. When it was authored /srv/bmc on srv2 was drwxr-xr-x root root, so the modeled
+// fetch verified an artifact correctly and then could not publish it. The directory was
+// subsequently chowned to gunbc-fleet:gunbc-fleet mode 0755, which satisfies the ownership half of
+// the requirement below.
+//
+// THE PUBLICATION STILL REFUSES FROM AN OPERATOR SESSION, and for a different reason than before:
+// gunbc runs as uid 1000 while the export now belongs to 1001. That is the requirement working — it
+// says the AUTOMATION principal owns the export, so converge should run as that principal — rather
+// than the earlier state, which was simply that nobody but root could write there.
+//
+// WHAT THIS ROW DOES NOT YET DO, stated because the gap is easy to miss under a page of prose about
+// authority: NOTHING CONSUMES IT AT THE WRITE BOUNDARY. publish_verified_boot_image calls mv
+// directly and never asks export_ownership_standing anything, so the policy below has no causal
+// position — the program publishes whenever the operating system's permissions happen to allow it,
+// including under root or a world-writable export. The requirement is currently a description of
+// what ought to hold, checked by a probe against fixtures, not a wall. Closing that needs a real
+// stat plus effective-principal observation bound to the path, admitted before the move.
+//
+// ROOT IS THE WRONG ANSWER EVEN THOUGH IT WOULD WORK. Escalating the publish step means converge
+// acquires privilege for a file write, and a grant that broad is not proportionate to "put a
+// verified ISO in a directory". Widening the directory to the interactive login account is the
+// mirror failure: it makes every process running as that user able to replace the boot payload,
+// and on a workstation-shaped account that population is unbounded and unnamed.
+//
+// SO THE OWNER IS A NAMED FLEET PRINCIPAL, which is the only option where the question "who can
+// change what this machine boots" has an answer that is a NAME rather than a category.
+//
+// AND IT IS AN EXISTING PRINCIPAL RATHER THAN A NEW ONE. A first draft of this row carried a free
+// PosixLoginName "gunbc-media", which is a second account vocabulary beside the one the fleet
+// already has: gunbc.fleet_posix_accounts owns FleetPosixAccountKey, and FleetAccountAutomation is
+// already declared there with login_policy KeyOnlyAutomation — a non-interactive identity that
+// exists precisely for work like this. Minting a media-specific account would have been the
+// nicknaming DESIGN §3 forbids, and the requirement now names the key.
+//
+// WHY NOT A DEDICATED BOOT-PAYLOAD ACCOUNT, since a narrower principal is available in principle:
+// splitting "the identity that may publish a boot image" from "the automation identity" would be
+// speculative separation. Nothing has established that converge automation should be unable to
+// change what a host boots — converge is the thing that decides what a host boots. If that
+// separation is ever wanted it will be because some fact demanded it, and the key vocabulary is
+// where the new variant would go.
+type BootImageExportOwnershipRequirement {
+  export_path: NonEmptyStr
+  required_owner: FleetPosixAccountKey
+  writable_by_owner: Bool
+  writable_by_group: Bool
+  writable_by_other: Bool
+}
+
+// THE REQUIREMENT, not an observation. Nothing here reports what /srv/bmc currently is; it states
+// what an export feeding a controller must satisfy before the publish step can be admitted. The
+// observation that today's directory does NOT satisfy it is the fetch operation's refusal, which
+// already names both paths.
+//
+// GROUP AND OTHER ARE BOTH DENIED WRITE, and that is the load-bearing half. An export whose owner
+// is a service identity but whose group is writable has moved the authority rather than narrowed
+// it: the population that can replace the boot payload becomes the group's membership, which is
+// exactly the unnamed category this row exists to avoid.
+data boot_image_export_ownership_requirement: BootImageExportOwnershipRequirement = BootImageExportOwnershipRequirement {
+  export_path: "/srv/bmc",
+  required_owner: FleetAccountAutomation,
+  writable_by_owner: true,
+  writable_by_group: false,
+  writable_by_other: false,
+}
+
+// WHETHER AN OBSERVED OWNERSHIP SATISFIES THE REQUIREMENT. Takes the observed owner rather than
+// reading the filesystem, so the judgment is testable without a host and so the observation stays
+// the caller's obligation.
+type ExportOwnershipStanding
+  = ExportOwnershipSatisfied
+  | ExportOwnershipIsRoot
+  | ExportOwnershipWrongPrincipal { observed: FleetPosixAccountKey, required: FleetPosixAccountKey }
+  | ExportOwnershipUnrecognizedAccount { observed: NonEmptyStr }
+  | ExportOwnershipUnobservable { path: NonEmptyStr, reason: String }
+
+// ROOT IS ITS OWN ARM rather than one case of a wrong owner, because the remedy differs. A
+// wrong-but-unprivileged owner is a chgrp away; root means the publish step would have to escalate,
+// which is the design decision this row exists to refuse rather than a misconfiguration to correct.
+// COMPARING TWO CLOSED KEYS THROUGH A LABEL, because the enum carries no equality of its own and a
+// nested match over the pair would be forty-nine arms to answer one question. This is the same
+// shape v1.compiler.compile var_binding_kind_name uses for VarBindingKind: a total serialization of
+// a closed vocabulary, exhaustive so that a new account variant is a compile error here rather than
+// a silent non-match.
+//
+// IT LIVES HERE RATHER THAN UPSTREAM ON PURPOSE, and should move if a second consumer appears:
+// gunbc.fleet_posix_accounts is the vocabulary's home, and a label fn belongs beside the type once
+// more than one caller wants it. One caller does not justify editing the authority.
+fn fleet_account_key_label(key: FleetPosixAccountKey) -> String {
+  match key {
+    FleetAccountRoot => "root"
+    FleetAccountOperator => "operator"
+    FleetAccountCiRunner => "ci-runner"
+    FleetAccountHostAdministrator => "host-administrator"
+    FleetAccountAutomation => "automation"
+    FleetAccountInferenceService => "inference-service"
+    FleetAccountPublicationHelper => "publication-helper"
+  }
+}
+
+fn fleet_account_key_matches(a: FleetPosixAccountKey, b: FleetPosixAccountKey) -> Bool {
+  fleet_account_key_label(key: a) == fleet_account_key_label(key: b)
+}
+
+// AN OWNER THIS FLEET DOES NOT RECOGNISE IS ITS OWN ARM, not a wrong principal. A directory owned
+// by an account outside the fleet's declared roster is a different situation from one owned by the
+// wrong declared principal: the second is a chgrp, the first means someone provisioned an account
+// this model has never heard of, and reporting it as "wrong principal" would name a required
+// principal while saying nothing about what is actually there.
+// THE JUDGMENT TAKES A UID AND A NAME RATHER THAN A PosixUser, and that is a correction rather than
+// a convenience. A PosixUser carries a login shell, which is a passwd-entry fact; the owner of a
+// DIRECTORY is a uid and a gid, which is a stat fact. Asking for a PosixUser meant the only way to
+// feed this judgment from a real observation was to invent a shell the observation never saw --
+// fabricating a field to satisfy a type, in the one function whose entire purpose is to decide
+// whether something may write to the boot export. The fixtures still build PosixUsers, because for
+// a FIXTURE the whole account is genuinely known; they now pass the two fields this asks for.
+fn export_ownership_standing(
+  observed_uid: Int,
+  observed_name: NonEmptyStr,
+  observed_key: FleetPosixAccountKey?,
+  requirement: BootImageExportOwnershipRequirement,
+) -> ExportOwnershipStanding {
+  if observed_uid == posix_root_uid {
+    ExportOwnershipIsRoot
+  } else {
+    match observed_key {
+      Absent => ExportOwnershipUnrecognizedAccount { observed: observed_name }
+      Present { value: k } =>
+        if fleet_account_key_matches(a: k, b: requirement.required_owner) {
+          ExportOwnershipSatisfied
+        } else {
+          ExportOwnershipWrongPrincipal { observed: k, required: requirement.required_owner }
+        }
+    }
+  }
+}
+
+// THE ARMS, EXERCISED. Each fixture is the shape it stands for: the export's measured state today,
+// the intended automation principal, an ordinary interactive account, and an account outside the
+// fleet roster entirely.
+//
+// THE INTERACTIVE CASE IS THE ONE WORTH ASSERTING. It is the outcome someone reaches by chgrp-ing
+// the directory to their own login to make the publish step work — which succeeds, and silently
+// widens "who can change what this machine boots" to every process running as that user.
+data posix_root_fixture: PosixUser = PosixUser {
+  name: "root",
+  uid: 0,
+  gid: 0,
+  shell: LoginShellObserved { path: "/bin/bash" },
+}
+
+// THE AUTOMATION FIXTURE IS THE REAL ACCOUNT, read from srv2 rather than invented. A first draft
+// carried name "gunbc" at uid 997, which exists nowhere: the fleet's automation principal on this
+// host is gunbc-fleet at uid 1001, and it is already the principal the host reach and identity
+// probes compare against as observed_principal. A fixture whose account does not exist tests the
+// fold against a fiction, and would have passed just as happily.
+data posix_automation_fixture: PosixUser = PosixUser {
+  name: "gunbc-fleet",
+  uid: 1001,
+  gid: 1001,
+  shell: LoginShellObserved { path: "/bin/bash" },
+}
+
+data posix_interactive_fixture: PosixUser = PosixUser {
+  name: "briansrls",
+  uid: 1000,
+  gid: 1000,
+  shell: LoginShellObserved { path: "/bin/bash" },
+}
+
+fn export_ownership_label(standing: ExportOwnershipStanding) -> String {
+  match standing {
+    ExportOwnershipSatisfied => "satisfied"
+    ExportOwnershipIsRoot => "root"
+    ExportOwnershipWrongPrincipal { observed: _, required: _ } => "wrong-principal"
+    ExportOwnershipUnrecognizedAccount { observed: _ } => "unrecognized"
+    ExportOwnershipUnobservable { path: _, reason: _ } => "unobservable"
+  }
+}
+
+func boot_image_export_ownership_probe() -> ProcessExit {
+  let on_root = export_ownership_label(standing: export_ownership_standing(
+    observed_uid: posix_root_fixture.uid,
+    observed_name: posix_root_fixture.name,
+    observed_key: Present { value: FleetAccountRoot },
+    requirement: boot_image_export_ownership_requirement))
+  let on_automation = export_ownership_label(standing: export_ownership_standing(
+    observed_uid: posix_automation_fixture.uid,
+    observed_name: posix_automation_fixture.name,
+    observed_key: Present { value: FleetAccountAutomation },
+    requirement: boot_image_export_ownership_requirement))
+  let on_interactive = export_ownership_label(standing: export_ownership_standing(
+    observed_uid: posix_interactive_fixture.uid,
+    observed_name: posix_interactive_fixture.name,
+    observed_key: Present { value: FleetAccountOperator },
+    requirement: boot_image_export_ownership_requirement))
+  let on_unknown = export_ownership_label(standing: export_ownership_standing(
+    observed_uid: posix_interactive_fixture.uid,
+    observed_name: posix_interactive_fixture.name,
+    observed_key: none,
+    requirement: boot_image_export_ownership_requirement))
+
+  if on_root != "root" {
+    return exit_failure(reason: concat("export ownership: a root-owned export answered ", on_root))
+  }
+  if on_automation != "satisfied" {
+    return exit_failure(reason: concat("export ownership: the automation principal did not satisfy the requirement, it answered ", on_automation))
+  }
+  if on_interactive != "wrong-principal" {
+    return exit_failure(reason: concat("export ownership: an ordinary interactive account was ADMITTED as the export owner, answering ", on_interactive, "; that is the widening this requirement exists to refuse"))
+  }
+  if on_unknown != "unrecognized" {
+    return exit_failure(reason: concat("export ownership: an account outside the fleet roster answered ", on_unknown, " rather than being reported as unrecognized"))
+  }
+  return ExitSuccess
+}
+
+// THE NAME ROSTER FOR THIS EXPORT'S HOST, and it lives here for the reason fleet_account_key_label
+// above lives here: one consumer does not justify editing the fleet authority, and it should move
+// to gunbc.fleet_posix_accounts the moment a second one appears. What it maps is genuinely a fleet
+// fact -- which local login realizes which declared principal on this host -- and gunbc-fleet is
+// read from srv2 rather than invented, as is the operator login beside it.
+//
+// AN UNLISTED NAME RESOLVES TO ABSENT, WHICH IS A REFUSAL AND NOT A MISS. Absent flows to
+// ExportOwnershipUnrecognizedAccount, so an account this roster has never heard of stops the
+// publish rather than being quietly treated as some default principal.
+fn srv2_account_key_for_name(name: NonEmptyStr) -> FleetPosixAccountKey? {
+  if (name as String) == "root" {
+    Present { value: FleetAccountRoot }
+  } else {
+    if (name as String) == "gunbc-fleet" {
+      Present { value: FleetAccountAutomation }
+    } else {
+      if (name as String) == "briansrls" {
+        Present { value: FleetAccountOperator }
+      } else {
+        none
+      }
+    }
+  }
+}
+
+// THE CAUSAL ENTRY POINT, and its absence was the whole of the review finding this closes. Until
+// now this module described who ought to own the export and was consulted by nothing: the publish
+// called mv directly, so the program published whenever the operating system's permissions happened
+// to allow it -- under root, or into a world-writable export -- and the requirement was a
+// description checked by a probe against fixtures rather than a wall.
+//
+// AN UNREADABLE PATH REFUSES rather than being read as an absent problem. That is the empty-
+// observation narrow this repository keeps finding: "I could not see who owns this" and "nobody
+// problematic owns this" are different states, and collapsing them would make an unreachable or
+// deleted export the most permissive input this function accepts.
+func observed_export_ownership_standing(path: NonEmptyStr) -> ExportOwnershipStanding {
+  match coreutils_stat_path_ownership(path: path) {
+    PathOwnershipUnobservable { path: p, reason: r } =>
+      ExportOwnershipUnobservable { path: p, reason: r }
+    PathOwnershipObserved { path: _, ownership: own, owner_name: owner, group_name: _ } =>
+      export_ownership_standing(
+        observed_uid: own.uid,
+        observed_name: owner,
+        observed_key: srv2_account_key_for_name(name: owner),
+        requirement: boot_image_export_ownership_requirement,
+      )
+  }
+}
+
+fn export_ownership_admits_publication(standing: ExportOwnershipStanding) -> Bool {
+  match standing {
+    ExportOwnershipSatisfied => true
+    _ => false
+  }
+}
+
+// THE REFUSAL TEXT NAMES WHAT WAS SEEN AND WHAT IS REQUIRED, because an admission refusal that says
+// only "denied" sends the reader to the machine to find out what this function already knew.
+fn export_ownership_refusal_reason(path: NonEmptyStr, standing: ExportOwnershipStanding) -> String {
+  match standing {
+    ExportOwnershipSatisfied => ""
+    ExportOwnershipIsRoot =>
+      concat("the export ", path as String, " is owned by root, so publishing into it would require the publish step to escalate; that is refused by design rather than a misconfiguration to correct")
+    ExportOwnershipWrongPrincipal { observed: o, required: r } =>
+      concat("the export ", path as String, " is owned by the ", fleet_account_key_label(key: o), " principal but this requirement names ", fleet_account_key_label(key: r))
+    ExportOwnershipUnrecognizedAccount { observed: o } =>
+      concat("the export ", path as String, " is owned by ", o as String, ", an account outside this fleet's declared roster")
+    ExportOwnershipUnobservable { path: p, reason: r } =>
+      concat("the ownership of ", p as String, " could not be observed, so whether it may be published into is UNKNOWN: ", r)
+  }
+}
+
+// THE OBSERVED STANDING, RENDERED, so the causal path can be executed on a real host rather than
+// only reasoned about. This reports; it does not gate. The gate is at the write boundary.
+func boot_image_export_ownership_observed_probe(path: String) -> ProcessExit {
+  let standing = observed_export_ownership_standing(path: path as NonEmptyStr)
+  return if export_ownership_admits_publication(standing: standing) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("export ownership REFUSES publication: ", export_ownership_refusal_reason(path: path as NonEmptyStr, standing: standing)))
+  }
+}
