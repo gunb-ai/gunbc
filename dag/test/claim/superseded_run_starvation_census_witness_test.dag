@@ -7,6 +7,7 @@ import gunbc.superseded_run_starvation_census {
   DeadHeadReachedInProgressFirst,
   LiveHeadRegisteredJobFirst,
   NeitherRunRegisteredAJob,
+  PrGroup,
   pr_number_for_run,
   first_run_with_different_head,
   find_group,
@@ -29,7 +30,7 @@ import extdeps.github.workflow_runs {
   Failure,
 }
 
-// ── Existing dead_head_start_standing tests ───────────────────────────────
+// ── dead_head_start_standing tests ──────────────────────────────────────���─
 
 test fn dead_start_before_registered_live_job_is_starvation() -> Bool {
   match dead_head_start_standing(
@@ -190,8 +191,6 @@ test fn first_run_with_different_head_returns_none_when_empty() -> Bool {
 }
 
 // ── find_group tests ──────────────────────────────────────────────────────
-
-import gunbc.superseded_run_starvation_census { PrGroup }
 
 data group_pr_42: PrGroup = PrGroup { pr: 42, runs: [run_sha_abc] }
 data group_pr_99: PrGroup = PrGroup { pr: 99, runs: [run_sha_def] }
