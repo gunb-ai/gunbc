@@ -1,7 +1,7 @@
 
 module tools.generated_artifact_gate
 
-import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.process { ProcessExit, ExitSuccess, exit_failure, exit_ok }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.ci_gate { gate_receipt_failure_detail }
 import gunbc.generated_artifact {
@@ -44,10 +44,6 @@ fn generated_artifact_agreement_verdict(findings: GeneratedArtifactPopulationFin
       generated_artifact_population_findings_rendered(f: findings)
     ))
   }
-}
-
-fn exit_ok(e: ProcessExit) -> Bool {
-  match e { ExitSuccess => true  _ => false }
 }
 
 // THE REMEDY IS PER FINDING, NOT PER RUN, AND REMOVING THE GLOBAL SENTENCE IS THE POINT. This body

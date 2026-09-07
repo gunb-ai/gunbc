@@ -1,6 +1,6 @@
 module tools.docs_projection_gate
 
-import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.process { ProcessExit, ExitSuccess, exit_failure, exit_ok }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
 import gunbc.design_ledgers { expected_design_failure_modes_md, expected_design_rung_drops_md }
 import gunbc.generated_artifact {
@@ -20,10 +20,6 @@ import tools.docs_projection_agreement { docs_projection_bytes_agree }
 // not return a ProcessExit on the runners that SIGKILL it), so three rostered rows sat in the
 // authority while docs/design-failure-modes.md stayed stale and nothing that completes could
 // say so.
-
-fn exit_ok(e: ProcessExit) -> Bool {
-  match e { ExitSuccess => true  _ => false }
-}
 
 fn write_docs_projection(path: String, content: String) -> ProcessExit {
   let w = Filesystem.Write(path: path, content: content)
