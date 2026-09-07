@@ -16,7 +16,17 @@ import v2.std.algebra {
   list_snoc_item,
   list_tail
 }
-import v2.std.collection { Absent, List, Present, optional_absent, optional_present }
+import v2.std.collection {
+  Absent,
+  List,
+  Map,
+  Present,
+  empty_map,
+  map_insert,
+  map_lookup,
+  optional_absent,
+  optional_present
+}
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
@@ -178,15 +188,62 @@ fn decl_in_list(decl: FnArrowDecl, xs: List<FnArrowDecl>) -> Bool {
   any(xs: xs, predicate: fn(d) { fn_arrow_decl_eq(a: d, b: decl) })
 }
 
-fn decls_matching_callee(
-  decls: List<FnArrowDecl>,
-  modules: List<String>,
-  callee: String
-) -> List<FnArrowDecl> {
-  filter(
-    xs: decls_in_modules(decls: decls, modules: modules),
-    predicate: fn(decl) { fn_index_string_eq(a: decl.name, b: callee) }
-  )
+// THE CALLEE LOOKUP ANSWERS BY INDEX, NOT BY RESCANNING THE POOL, AND THE MEASUREMENT IS WHY
+// (gunbc#10744). The lookup this replaced was
+// `filter(decls_in_modules(decls, modules), name == callee)` evaluated once per callee per
+// reached declaration: a full pass over the candidate pool, plus one module-membership pass per
+// closure module, per lookup. Its cost is therefore a function of THE POOL IT WAS HANDED and not
+// of what the walk reaches, and #10744 bracketed both populations to separate the two models --
+// `O(reached x pool)` agreed within 1.9x across file and directory grain, `O(reached^2)` was off
+// by 44x. At file grain the pool EQUALS the reached set, so the shape reads as quadratic-in-reached
+// and the wrong term gets optimised; only directory grain, where the walk reaches under a hundred
+// declarations against a pool of 1500-2000, separates them.
+//
+// THE INDEX IS BUILT ONCE PER WALK AND PROBED PER CALLEE. `decls_in_modules` is loop-invariant
+// across every lookup in a walk -- the pool and the closure do not change while the frontier does
+// -- so it is evaluated once, and the closure-scoped population is keyed by declaration NAME,
+// which is the only field the old filter discriminated on. The subject is untouched: the same
+// `decls` and the same `closure_modules` go in, so this is not the scope-the-pool repair #10744
+// names as the trap -- that one lowers the number by shrinking the population, leaves the shape
+// intact, and re-breaks the moment the subject widens.
+//
+// EXACTLY THE SAME ANSWER, ORDER AND MULTIPLICITY. `decls_in_modules` concatenates per module in
+// module order and preserves pool order within a module; the fold below appends each declaration
+// to its own bucket in that same traversal order. So a bucket is the old filter's output verbatim,
+// including the DUPLICATE a declaration earns by belonging to two closure modules -- the module
+// predicate is a dotted-prefix test, so a closure naming both a module and its parent legitimately
+// matches twice, and silently deduplicating here would have been a semantic change wearing a
+// performance change's clothes.
+type FnArrowCalleeIndex {
+  by_name: Map<String, List<FnArrowDecl>>
+}
+
+fn callee_index_insert(
+  by_name: Map<String, List<FnArrowDecl>>,
+  decl: FnArrowDecl
+) -> Map<String, List<FnArrowDecl>> {
+  let bucket = match map_lookup(m: by_name, key: decl.name) {
+    Present { value: existing } => existing
+    Absent => empty_fn_arrow_decl_list
+  }
+  map_insert(m: by_name, key: decl.name, value: list_snoc_item(xs: bucket, item: decl))
+}
+
+fn callee_index_of(decls: List<FnArrowDecl>, modules: List<String>) -> FnArrowCalleeIndex {
+  FnArrowCalleeIndex {
+    by_name: fold_list(
+      xs: decls_in_modules(decls: decls, modules: modules),
+      empty: empty_map(),
+      cons: fn(acc, decl) { callee_index_insert(by_name: acc, decl: decl) }
+    )
+  }
+}
+
+fn decls_matching_callee(index: FnArrowCalleeIndex, callee: String) -> List<FnArrowDecl> {
+  match map_lookup(m: index.by_name, key: callee) {
+    Present { value: bucket } => bucket
+    Absent => empty_fn_arrow_decl_list
+  }
 }
 
 // Shared only by literal/reference readers. Call reachability does not consult lexeme shape.
@@ -308,8 +365,7 @@ fn callees_from_node(node: Node, terminal_callee_symbols: List<String>) -> List<
 fn call_reachable_decls_go(
   seeds: List<FnArrowDecl>,
   terminal_callee_symbols: List<String>,
-  closure_modules: List<String>,
-  decls: List<FnArrowDecl>,
+  index: FnArrowCalleeIndex,
   reached: List<FnArrowDecl>
 ) -> List<FnArrowDecl> {
   match list_head(xs: seeds) {
@@ -320,8 +376,7 @@ fn call_reachable_decls_go(
         call_reachable_decls_go(
           seeds: rest,
           terminal_callee_symbols: terminal_callee_symbols,
-          closure_modules: closure_modules,
-          decls: decls,
+          index: index,
           reached: reached
         )
       } else {
@@ -336,19 +391,14 @@ fn call_reachable_decls_go(
           cons: fn(acc, callee) {
             list_append(
               left: acc,
-              right: decls_matching_callee(
-                decls: decls,
-                modules: closure_modules,
-                callee: callee
-              )
+              right: decls_matching_callee(index: index, callee: callee)
             )
           }
         )
         call_reachable_decls_go(
           seeds: list_append(left: rest, right: callee_decls),
           terminal_callee_symbols: terminal_callee_symbols,
-          closure_modules: closure_modules,
-          decls: decls,
+          index: index,
           reached: next_reached
         )
       }
@@ -367,8 +417,7 @@ fn call_reachable_decls(
   call_reachable_decls_go(
     seeds: decls_in_module(decls: decls, mod_path: entry_module),
     terminal_callee_symbols: terminal_callee_symbols,
-    closure_modules: closure_modules,
-    decls: decls,
+    index: callee_index_of(decls: decls, modules: closure_modules),
     reached: empty_fn_arrow_decl_list
   )
 }
@@ -403,8 +452,7 @@ fn call_reachable_decls_from_root(
   call_reachable_decls_go(
     seeds: decl_named_in_module(decls: decls, mod_path: entry_module, fn_name: fn_name),
     terminal_callee_symbols: terminal_callee_symbols,
-    closure_modules: closure_modules,
-    decls: decls,
+    index: callee_index_of(decls: decls, modules: closure_modules),
     reached: empty_fn_arrow_decl_list
   )
 }

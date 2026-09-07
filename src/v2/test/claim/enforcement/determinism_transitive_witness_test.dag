@@ -31,9 +31,11 @@ import v2.std.text { String }
 // THE LIVE CONSUMER STANDS. Clause 2 of gunbc#10156 required a live required-floor consumer of the
 // grounded call-reachability authority -- one whose declared substrate and cadence match the inputs
 // it reads, whose failure reaches the required PR floor, and which cannot predict-skip.
-// `determinism_live_intra_holds` below is it (renamed from
-// determinism_transitive_live_closure_holds when the fn-arrow corpus_dependency_view
-// was deleted — see gunbc.rung_drop.determinism_transitive_reachability).
+// `determinism_transitive_live_closure_holds` below is it. The name has been to
+// `determinism_live_intra_holds` and back: it went intra when the walk was narrowed to one file
+// and could no longer follow callee edges, and it returns here because the walk follows them
+// again. A witness whose name outlives what it checks is the meaning fork DESIGN §3 names, so the
+// name moves with the subject in both directions.
 //
 // IT WAS WITHDRAWN ONCE, AND THE REASON IS RECORDED RATHER THAN DELETED, because a reader who finds
 // this row green needs to know what changed to make it possible. `fn_arrow_decl_facts_live` was
@@ -76,13 +78,25 @@ import v2.std.text { String }
 // that a stamp is checked by nothing, so a silent row and a lying row are indistinguishable.
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data determinism_live_subject_roots: List<String> = []
+// DIRECTORY GRAIN, AND THE NARROWING IT REVERSES IS THE WHOLE POINT OF THE CHANGE THAT RESTORED
+// IT. This row read `[]` and its file companion read one module, because a directory-grain walk
+// over src/v2/lens was `interrupted_before_verdict` against the 500ms per-claim safety deadline --
+// the subject was small BECAUSE someone made it small to survive, which is the state
+// gunbc.rung_drop.determinism_transitive_reachability existed to record. Its corrected trigger
+// (gunbc#10744) named the capability rather than the number: the callee lookup answers BY INDEX
+// instead of scanning the candidate pool, SUFFICIENT FOR a directory-grain verdict within the line
+// WITHOUT NARROWING THE SUBJECT. `v2.std.fn_index` `callee_index_of` is that index, and this row is
+// the widening the trigger was for. Scoping these roots to the modules the walk happens to reach
+// would also have produced a passing number, and #10744 names it as the trap rather than the
+// repair: it lowers the cost by shrinking the population, leaves the cost SHAPE intact, and
+// re-breaks the moment the subject widens again.
+data determinism_live_subject_roots: List<String> = ["src/v2/lens"]
 
-// File grain: target only affected_set.dag (78 fn-arrow declarations) to
-// keep the determinism transitive walk within the per-claim CPU budget.
-// A directory-grain walk from src/v2/lens traversed callee edges across
-// 25+ modules and was interrupted_before_verdict.
-data determinism_live_subject_files: List<String> = ["src/v2/lens/affected_set.dag"]
+// EMPTY BECAUSE THE SUBJECT IS THE DIRECTORY, not because file grain is unavailable. The two
+// parameters are a union and the grain is declared by which one the author wrote
+// (`v2.std.fn_index` `fn_arrow_decl_facts_live`); naming a file here in addition would widen the
+// pool without widening the closure the walk is bounded by.
+data determinism_live_subject_files: List<String> = []
 
 data determinism_live_entry_module: String = "v2.lens.affected_set"
 
@@ -96,23 +110,30 @@ fn determinism_live_closure_modules() -> List<String> {
   )
 }
 
-// INTRAnode determinism check over the fn-arrow declarations in affected_set.dag.
-// Uses determinism_transitive_holds with empty closure_modules (pool_roots=[]), so no
-// callee edges are followed (decls_matching_callee filters to closure_modules, empty = none).
-// The walk returns only the entry module's own declarations, checking each intra-node for
-// non-deterministic primitives. This is a real check of all 78 declarations but does NOT
-// verify determinism over the call graph — callee-transitive reachability is unverified
-// (see gunbc.rung_drop.determinism_transitive_reachability).
+// TRANSITIVE determinism over the fn-arrow call graph reachable from v2.lens.affected_set, across
+// the whole src/v2/lens closure. The walk seeds from the entry module's declarations and follows
+// callee edges through `v2.std.fn_index` `call_reachable_decls`, so a non-deterministic primitive
+// reached only through a callee in a sibling lens module reds this row -- which is the coverage
+// `gunbc.rung_drop.determinism_transitive_reachability` declared lost and which its retirement in
+// this change restores.
 //
-// THIS WITNESS IS NAMED determinism_live_intra_holds (NOT transitive) because it does not
-// follow callee edges. The previous name (determinism_transitive_live_closure_holds) was
-// retired when corpus_dependency_view deletion removed the declarations that made the
-// transitive walk meaningful within budget — see the rung drop declaration at
-// dag/gunbc/rung_drop/determinism_transitive_reachability.dag.
+// WHAT MADE IT AFFORDABLE, stated as the shape rather than as a number, because a transcribed
+// number rots away from the instrument that owns it (DESIGN §6). The callee lookup used to
+// evaluate `filter(decls_in_modules(decls, closure_modules), name == callee)` per callee: a scan
+// of the candidate pool, plus one module-membership pass per closure module, per lookup, of a
+// value that is invariant for the entire walk. `v2.std.fn_index` `callee_index_of` now computes
+// that closure-scoped population once and keys it by declaration name, and the walk probes it. The
+// subject going in is unchanged -- same `decls`, same `closure_modules`.
 //
-// NOTABENE — determinism over the fn-arrow call graph is currently unverified in the
-// required floor. The rung drop declares the bounded population and restoration trigger.
-test fn determinism_live_intra_holds() -> Bool {
+// RE-DERIVE THE COST BY NAMING THE INSTRUMENT, NOT BY READING A FIGURE HERE: this entry under
+// `claim_batch --source-root dag --source-root src/v2`, which charges each witness separately. Two
+// facts a re-deriver needs and cannot see in the timing: the interpreter's eval-frame call memo is
+// ON by default (GUNBC_EVAL_MEMO), keyed by fn identity x argument identity, so a repeated lookup
+// of the SAME callee was already served before this repair and the pool scan was paid once per
+// DISTINCT callee rather than once per callee occurrence; and the acquisition is netted by the
+// floor's (roots, kinds) parse memo, so a walk measured cold includes a directory-grain
+// acquisition this row does not pay again on the floor.
+test fn determinism_transitive_live_closure_holds() -> Bool {
   determinism_transitive_holds(
     entry_module: determinism_live_entry_module,
     closure_modules: determinism_live_closure_modules(),
