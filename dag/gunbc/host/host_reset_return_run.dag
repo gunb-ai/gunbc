@@ -310,13 +310,23 @@ fn acknowledgement_of_handoff(outcome: OobBootHandoffOutcome, issued_at: EpochMs
 }
 
 // HOW LONG THE OBSERVER WATCHES, in samples rather than in seconds, because a sample is what the
-// fold actually counts and a seconds figure would be a second unit for the same bound. Each sample
-// is one reachability probe plus, when the probe answers the wrong way, one second of sleep -- so
-// these are lower bounds on wall time and not promises about it, which is why the receipt carries
-// the OBSERVED instants and never a budget.
+// fold actually counts and a seconds figure would be a second unit for the same bound. The receipt
+// carries the OBSERVED instants and never a budget, so these numbers bound the watch and describe
+// nothing about the outage.
+//
+// THE TWO BOUNDS ARE NOT THE SAME NUMBER BECAUSE A SAMPLE COSTS DIFFERENT AMOUNTS ON EACH SIDE, and
+// the first draft picked round figures without noticing. While waiting for the host to go DOWN the
+// probe SUCCEEDS, returning immediately, so a sample is about the one-second sleep. While waiting for
+// it to come BACK the probe FAILS, and ssh.Session.Reachability carries ConnectTimeout=5, so a sample
+// is about six seconds. Six hundred back-samples is therefore an hour of wall time inside a step
+// whose budget is gunbc_ci_runner_guest_image_step_timeout_minutes -- a watch that the platform would
+// kill before the fold could return, and a killed job writes nothing, which is once again the empty
+// value that reads as a positive answer. The bound is derived from the step budget rather than
+// chosen: two hundred samples is about twenty minutes, inside a thirty-minute step with margin for
+// the prelude and the issuance.
 data host_reset_down_watch_samples: Nat = 120
 
-data host_reset_back_watch_samples: Nat = 600
+data host_reset_back_watch_samples: Nat = 200
 
 func host_reset_return_attempt(
   candidate: ResetSubjectCandidate,

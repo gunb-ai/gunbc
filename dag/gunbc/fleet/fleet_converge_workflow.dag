@@ -205,7 +205,7 @@ fn fleet_converge_host_reset_return_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_host_reset_return_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_fleet_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes }
   }
 }
 
