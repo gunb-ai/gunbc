@@ -3,7 +3,8 @@ module tools.cas_store_live_probe
 import std.types { NonEmptyStr, String, Bool, Int }
 import std.content_hash { content_hash_of_value }
 import std.durable_compare_and_set { CasAttempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, cas_attempt, cas_generation_count }
-import gunbc.durable_cas_file_store { CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable, admit_cas_attempt, file_compare_and_set }
+import gunbc.durable_cas_file_store {
+  OwnerOnlyCreateOnly, CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable, admit_cas_attempt, file_compare_and_set }
 
 // The live receipt for the EFFECTFUL half of the file-backed CAS store, which the hermetic witness
 // cannot reach.
@@ -43,7 +44,7 @@ fn cas_probe_code(outcome: CasOutcome<NonEmptyStr>) -> Int {
 
 fn cas_probe_run(root: NonEmptyStr, key: NonEmptyStr, payload: NonEmptyStr, expected: CasExpectation) -> Int {
   match admit_cas_attempt(attempt: cas_probe_attempt(key: key, payload: payload, expected: expected)) {
-    CasAttemptAdmitted { verified: v } => cas_probe_code(outcome: file_compare_and_set(root: root, verified: v))
+    CasAttemptAdmitted { verified: v } => cas_probe_code(outcome: file_compare_and_set(root: root, publication: OwnerOnlyCreateOnly, verified: v))
     CasAttemptDigestMismatch { claimed: _, actual: _ } => 4
     CasAttemptDigestIncomparable { claimed: _, actual: _ } => 4
     CasAttemptKeyNotSlotAddressable { key: _ } => 4

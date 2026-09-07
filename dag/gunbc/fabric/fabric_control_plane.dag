@@ -17,6 +17,7 @@ import product.fabric.work { ExecutionRequirements }
 import product.fabric.selection { CandidateOffer, SupplySelection, OfferSelected, NoAdmissibleOffer, SelectionCost, OfferCandidacy, selection_liability }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.durable_cas_file_store {
+  OwnerOnlyCreateOnly,
   CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch,
   CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable,
   admit_cas_attempt, file_compare_and_set, observe_cas_slot_state,
@@ -177,7 +178,7 @@ fn reserve_selected_cell(
     )
   ) {
     CasAttemptAdmitted { verified: v } =>
-      match file_compare_and_set(root: root, verified: v) {
+      match file_compare_and_set(root: root, publication: OwnerOnlyCreateOnly, verified: v) {
         CasCommitted { committed: c } =>
           CellReserved {
             offer: offer_id,
@@ -699,7 +700,7 @@ fn free_cell_slot(
     )
   ) {
     CasAttemptAdmitted { verified: v } =>
-      match file_compare_and_set(root: root, verified: v) {
+      match file_compare_and_set(root: root, publication: OwnerOnlyCreateOnly, verified: v) {
         CasCommitted { committed: c } =>
           CellHoldEnded {
             slot_key: slot_key,

@@ -1,0 +1,279 @@
+module test.claim.scm_write_spine_witness
+
+// CONTROLS FOR THE TWO AUTHORING VERBS, WRITTEN TO WHAT THEIR FAILURES LOOK LIKE.
+//
+// EVERY DEFECT THIS FILE REFUTES PRODUCES A WELL-FORMED REPOSITORY. An `add` that dropped the paths
+// nobody touched mints a valid manifest, freezes cleanly, encodes, and checks out exactly what it
+// says -- the author is told the commit succeeded and the deletion is invisible. A `commit` that left
+// the stage in place mints a second valid commit. So no claim below asserts "it worked"; each states
+// the mutation it refutes, because "it worked" is what all of these do.
+//
+// WHAT IS DELIBERATELY NOT HERE. Nothing in this file touches a filesystem or a slot. Publication,
+// readback, and the two-writers-against-one-generation property are host effects: under the required
+// floor's hermetic envelope they are refused before they run, so a row authored here would be
+// discovered, counted executed, and assert nothing -- the exact family
+// `gunbc.durable_cas_file_store`'s own witness refuses to author. Their evidence is the live run
+// recorded on this cut, through `gunbc.instruments.scm_write_spine_canary`.
+
+import std.types { Bool, String, List, Int, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.scm.ancestry { RepositoryCommitRef, repository_commit_ref_eq }
+import gunbc.scm.object_store {
+  CorpusManifestEntry, CorpusManifestObjectRef, ObjectId, object_id_eq,
+}
+import gunbc.scm.integration { NoSquashIntegration }
+import gunbc.scm.repository_envelope { RepositoryEnvelope, commit_at_reference, empty_repository }
+import gunbc.scm.staging { StagedEntries, StagedEntriesRefused, staged_entries }
+import gunbc.scm.write_spine {
+  StageIngress, Staged, StageCandidateRefused, StageSourceLocatorCollision,
+  StageDuplicatePath, StageManifestLocatorCollision,
+  StagedCommit, StagedCommitMinted, StagedCommitCandidateRefused, StagedCommitNothingToFreeze,
+  StagedCommitAllocatorInvalid, StagedCommitParentMissing, StagedCommitIntegrationSourceMissing,
+  stage_source_at_path, commit_staged,
+}
+import test.fixture.scm_repository_builder {
+  MbBuild, MbBuilt, MbSetupFailed,
+  mb_start, mb_stage, mb_commit, mb_head,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ------------------------------------------------------------------------------------------------
+// The scene, and why it has two committed paths before anything is added
+// ------------------------------------------------------------------------------------------------
+//
+// A repository holding ONE path cannot distinguish "the candidate inherited the base" from "the
+// candidate is exactly what was just added" -- with one committed path and one added path, both
+// implementations produce a two-entry manifest for some orderings and a one-entry manifest for
+// others, and neither answer is characteristic. Two committed paths plus a third added one separates
+// them: inheriting yields three entries, replacing yields one, and the difference is visible without
+// having to reason about order.
+//
+//   C0   keep.txt = K0, other.txt = O0     committed, checked out
+//
+// The claims then add or re-add against C0.
+fn scene() -> RepositoryEnvelope {
+  match mb_commit(
+    build: mb_stage(
+      build: mb_stage(build: mb_start(), path: "keep.txt", text: "K0"),
+      path: "other.txt",
+      text: "O0",
+    ),
+    message: "C0",
+    integration: NoSquashIntegration,
+  ) {
+    MbBuilt { repository: repository, at: _ } => repository
+    MbSetupFailed => empty_repository()
+  }
+}
+
+// THE SETUP FAILURE MUST NOT BECOME A SPECIMEN, and `MbSetupFailed -> empty_repository()` above would
+// do exactly that if left unguarded: an empty repository is a legitimate value, so every claim below
+// would run against it and several would pass for the wrong reason. This row is the guard, and it is a
+// claim rather than a comment so it executes.
+test fn scm_ws_the_scene_actually_built() -> Bool {
+  match staged_entries(repository: scene()) {
+    StagedEntriesRefused { cause: _ } => false
+    StagedEntries { entries: entries } => length(xs: entries) == 2
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+
+fn staged_paths(ingress: StageIngress) -> List<String>? {
+  match ingress {
+    Staged { repository: repository, manifest: _, source: _ } =>
+      match staged_entries(repository: repository) {
+        StagedEntriesRefused { cause: _ } => none
+        StagedEntries { entries: entries } =>
+          Present { value: map(entries, fn(e) { e.path as String }) }
+      }
+    StageCandidateRefused { cause: _ } => none
+    StageSourceLocatorCollision { identity: _ } => none
+    StageDuplicatePath { path: _ } => none
+    StageManifestLocatorCollision { identity: _ } => none
+  }
+}
+
+fn holds(paths: List<String>, path: String) -> Bool {
+  fold(paths, init: false, f: fn(found, p) { found || p == path })
+}
+
+// THE DATA-LOSS RED. This is the defect `gunbc.scm.staging` was corrected for one level down, and it
+// is re-asserted here because the correction lives in `effective_candidate` while the verb that would
+// SUFFER from it is this one: a `stage_source_at_path` that built its manifest from the added entry
+// alone -- rather than from the inherited candidate -- deletes every untracked-this-invocation path,
+// mints cleanly, and reports success.
+//
+// THE CLAIM COUNTS AND NAMES. Asserting only the count would be satisfied by a verb that kept two
+// entries and dropped the added one; asserting only the added path would be satisfied by the
+// deletion this row exists to refute.
+test fn scm_ws_adding_one_path_preserves_the_paths_nobody_touched() -> Bool {
+  match staged_paths(
+    ingress: stage_source_at_path(repository: scene(), path: "new.txt" as NonEmptyStr, text: "N0")
+  ) {
+    Absent => false
+    Present { value: paths } =>
+      length(xs: paths) == 3
+        && holds(paths: paths, path: "keep.txt")
+        && holds(paths: paths, path: "other.txt")
+        && holds(paths: paths, path: "new.txt")
+  }
+}
+
+// RE-ADDING REPLACES, AND THE COUNT IS THE WHOLE CLAIM. An append-without-filter produces a manifest
+// naming keep.txt twice; `store_corpus_manifest` refuses a duplicated path, so that defect would
+// surface as a REFUSAL rather than as a wrong success -- which is the good failure. This row holds
+// the count so the refusal cannot be repaired by an author who removes the duplicate check instead of
+// the duplicate.
+test fn scm_ws_re_adding_a_path_replaces_it_rather_than_appending_a_second_entry() -> Bool {
+  match staged_paths(
+    ingress: stage_source_at_path(repository: scene(), path: "keep.txt" as NonEmptyStr, text: "K1")
+  ) {
+    Absent => false
+    Present { value: paths } =>
+      length(xs: paths) == 2
+        && holds(paths: paths, path: "keep.txt")
+        && holds(paths: paths, path: "other.txt")
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+
+fn staged_manifest(ingress: StageIngress) -> CorpusManifestObjectRef? {
+  match ingress {
+    Staged { repository: _, manifest: manifest, source: _ } => Present { value: manifest }
+    StageCandidateRefused { cause: _ } => none
+    StageSourceLocatorCollision { identity: _ } => none
+    StageDuplicatePath { path: _ } => none
+    StageManifestLocatorCollision { identity: _ } => none
+  }
+}
+
+fn staged_repository(ingress: StageIngress) -> RepositoryEnvelope? {
+  match ingress {
+    Staged { repository: repository, manifest: _, source: _ } => Present { value: repository }
+    StageCandidateRefused { cause: _ } => none
+    StageSourceLocatorCollision { identity: _ } => none
+    StageDuplicatePath { path: _ } => none
+    StageManifestLocatorCollision { identity: _ } => none
+  }
+}
+
+// THE COMMIT FREEZES THE MANIFEST THAT WAS STAGED, AND NOT A MANIFEST IT DERIVED FOR ITSELF. This is
+// the claim that makes "commit does not reread the worktree" checkable without a filesystem: the
+// commit's root must be byte-identical to the reference the staging step handed back, so a commit
+// that recomputed its own snapshot from anything at all would produce a different locator and go red.
+test fn scm_ws_the_commit_freezes_exactly_the_manifest_that_was_staged() -> Bool {
+  let ingress = stage_source_at_path(repository: scene(), path: "new.txt" as NonEmptyStr, text: "N0")
+  match staged_manifest(ingress: ingress) {
+    Absent => false
+    Present { value: staged } =>
+      match staged_repository(ingress: ingress) {
+        Absent => false
+        Present { value: repository } =>
+          match commit_staged(repository: repository, message: "freeze") {
+            StagedCommitMinted { repository: committed, reference: reference } =>
+              match commit_at_reference(commits: committed.commits, reference: reference) {
+                Absent => false
+                Present { value: commit } =>
+                  object_id_eq(left: commit.root.locator, right: staged.locator)
+              }
+            StagedCommitCandidateRefused { cause: _ } => false
+            StagedCommitNothingToFreeze => false
+            StagedCommitAllocatorInvalid { next_ordinal: _ } => false
+            StagedCommitParentMissing { parent: _ } => false
+            StagedCommitIntegrationSourceMissing { source: _ } => false
+          }
+      }
+  }
+}
+
+// THE COMMIT CONSUMES THE STAGE AND ADVANCES THE CHECKOUT, and both halves are asserted because each
+// alone is satisfied by a different wrong implementation. Leaving the checkout behind makes the next
+// candidate inherit the OLD snapshot, so the commit just made is invisible to the work that follows
+// it; leaving the stage in place makes the next commit -- with nothing further added -- freeze the
+// same manifest under a new identity and report an empty change as a change.
+test fn scm_ws_the_commit_advances_the_checkout_and_consumes_the_stage() -> Bool {
+  match staged_repository(
+    ingress: stage_source_at_path(repository: scene(), path: "new.txt" as NonEmptyStr, text: "N0")
+  ) {
+    Absent => false
+    Present { value: repository } =>
+      match commit_staged(repository: repository, message: "freeze") {
+        StagedCommitMinted { repository: committed, reference: reference } =>
+          match committed.staged {
+            Present { value: _ } => false
+            Absent =>
+              match committed.checked_out {
+                Absent => false
+                Present { value: head } => repository_commit_ref_eq(left: head, right: reference)
+              }
+          }
+        StagedCommitCandidateRefused { cause: _ } => false
+        StagedCommitNothingToFreeze => false
+        StagedCommitAllocatorInvalid { next_ordinal: _ } => false
+        StagedCommitParentMissing { parent: _ } => false
+        StagedCommitIntegrationSourceMissing { source: _ } => false
+      }
+  }
+}
+
+// AND THE CONSUMED STAGE DOES NOT LOSE THE CORPUS. The row above establishes that `staged` is cleared;
+// on its own that is exactly what a data-losing implementation looks like from the outside. This row
+// is its positive control: after the stage is consumed, the effective candidate still names all three
+// paths, because absence now inherits from the commit that was just made.
+test fn scm_ws_consuming_the_stage_leaves_the_corpus_inherited_rather_than_empty() -> Bool {
+  match staged_repository(
+    ingress: stage_source_at_path(repository: scene(), path: "new.txt" as NonEmptyStr, text: "N0")
+  ) {
+    Absent => false
+    Present { value: repository } =>
+      match commit_staged(repository: repository, message: "freeze") {
+        StagedCommitMinted { repository: committed, reference: _ } =>
+          match staged_entries(repository: committed) {
+            StagedEntriesRefused { cause: _ } => false
+            StagedEntries { entries: entries } => length(xs: entries) == 3
+          }
+        StagedCommitCandidateRefused { cause: _ } => false
+        StagedCommitNothingToFreeze => false
+        StagedCommitAllocatorInvalid { next_ordinal: _ } => false
+        StagedCommitParentMissing { parent: _ } => false
+        StagedCommitIntegrationSourceMissing { source: _ } => false
+      }
+  }
+}
+
+// COMMITTING AN UNTOUCHED REPOSITORY REFUSES RATHER THAN FREEZING THE EMPTY CORPUS. With no checkout
+// and no stage there is no snapshot to freeze, and the tempting arm -- treat it as the empty corpus --
+// mints a perfectly valid commit that DELETES everything, which is the widening `effective_candidate`
+// refuses one level down and which this verb must not reintroduce.
+test fn scm_ws_committing_with_no_stage_and_no_checkout_refuses() -> Bool {
+  match commit_staged(repository: empty_repository(), message: "nothing") {
+    StagedCommitNothingToFreeze => true
+    StagedCommitMinted { repository: _, reference: _ } => false
+    StagedCommitCandidateRefused { cause: _ } => false
+    StagedCommitAllocatorInvalid { next_ordinal: _ } => false
+    StagedCommitParentMissing { parent: _ } => false
+    StagedCommitIntegrationSourceMissing { source: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE ROW ABOVE. Without it, a `commit_staged` that refused EVERYTHING would
+// satisfy the refusal claim, and a verb that never commits is not a safer verb.
+test fn scm_ws_committing_a_real_stage_is_admitted() -> Bool {
+  match staged_repository(
+    ingress: stage_source_at_path(repository: scene(), path: "new.txt" as NonEmptyStr, text: "N0")
+  ) {
+    Absent => false
+    Present { value: repository } =>
+      match commit_staged(repository: repository, message: "freeze") {
+        StagedCommitMinted { repository: _, reference: _ } => true
+        StagedCommitCandidateRefused { cause: _ } => false
+        StagedCommitNothingToFreeze => false
+        StagedCommitAllocatorInvalid { next_ordinal: _ } => false
+        StagedCommitParentMissing { parent: _ } => false
+        StagedCommitIntegrationSourceMissing { source: _ } => false
+      }
+  }
+}
