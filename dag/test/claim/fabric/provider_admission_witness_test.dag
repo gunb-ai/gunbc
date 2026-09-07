@@ -18,7 +18,7 @@ import product.fabric.provider_admission {
   PostureRevisionStale, CustomerScopeUnsupported, DataHandlingUnsupported,
   RequiredAgreementAuthorityAbsent, ProhibitedUseNotCleared, SanctionsNotCleared, ExportNotCleared,
   DispositionStanding, DispositionCleared, DispositionRefused, DispositionUnresolved,
-  admit_provider_use, admission_is_admitted,
+  admit_provider_use,
 }
 
 // THE DISCRIMINATING CLAIMS FOR THE PROVIDER-USE JOIN. Each red below is a state the routing
@@ -28,7 +28,7 @@ import product.fabric.provider_admission {
 // fire.
 //
 // EVERY RED ASSERTS THE TYPED CAUSE AND THE LOCATED OBLIGATION, NOT MERELY THAT SOMETHING WAS
-// REFUSED. An earlier revision of this witness asserted only !admission_is_admitted for the
+// REFUSED. An earlier revision of this witness asserted only that the decision was not admitted for the
 // regulated-data red, which greened while the decision returned CustomerScopeUnsupported for
 // what was actually a data-class mismatch - the category wrong and the remedy wrong, and the
 // witness blind to both. A refusal that refuses for the wrong reason is a fabricated diagnosis
@@ -235,6 +235,21 @@ fn denied_with(a: ProviderUseAdmission<NonEmptyStr>, tag: String, located: Decla
   }
 }
 
+// THE ARM SELECTOR IS LOCAL TO THIS WITNESS, and it is deliberately not exported beside the
+// decision. A Bool over an admission coproduct is the same predicate dissolution the product
+// module deleted from path_is_resolved, downstream_is_assessed and disposition_is_cleared: it
+// discards the permit, so a caller that wanted the permit has to walk the value a second time,
+// and the second walk is where an invented value gets to live. Exported, it reopens that
+// attractor for every future caller of admit_provider_use; kept here it is only ever a witness
+// asserting which arm came back. fabric_capacity_class_witness_test made the same cut in the same
+// direction after dropping capacity_admission_is_admitted from its product module.
+fn admitted(a: ProviderUseAdmission<NonEmptyStr>) -> Bool {
+  match a {
+    ProviderUseAdmitted { permit } => true,
+    ProviderUseDenied { decision, cause } => false,
+  }
+}
+
 fn denied_tagged(a: ProviderUseAdmission<NonEmptyStr>, tag: String) -> Bool {
   match a {
     ProviderUseAdmitted { permit } => false,
@@ -245,7 +260,7 @@ fn denied_tagged(a: ProviderUseAdmission<NonEmptyStr>, tag: String) -> Bool {
 // POSITIVE CONTROL. Without this every red is satisfied by a decision that refuses everything,
 // which would be a wall carrying no information.
 test fn w_admits_the_sanctioned_route() -> Bool {
-  admission_is_admitted(a: decide(
+  admitted(a: decide(
     route: "acme/cx/region-one" as ProviderRouteRef,
     paths: closure_all_located(where_it_is: "jurisdiction-one"),
     downstream: no_downstream(),
@@ -269,7 +284,7 @@ test fn w_unclassified_route_refuses() -> Bool {
 // RED - the same provider in two regions produces different standings, so a permit is a fact
 // about a ROUTE and never about a company.
 test fn w_same_provider_two_regions_differ() -> Bool {
-  admission_is_admitted(a: decide(
+  admitted(a: decide(
     route: "acme/cx/region-one" as ProviderRouteRef,
     paths: closure_all_located(where_it_is: "jurisdiction-one"),
     downstream: no_downstream(),

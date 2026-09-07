@@ -441,10 +441,3 @@ fn admit_provider_use<P>(
     },
   )
 }
-
-fn admission_is_admitted<P>(a: ProviderUseAdmission<P>) -> Bool {
-  match a {
-    ProviderUseAdmitted { permit } => true,
-    ProviderUseDenied { decision, cause } => false,
-  }
-}
