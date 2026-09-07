@@ -10409,7 +10409,6 @@ pub fn emit_module_full(
                 module_projection_refusals(
                     typed_module.items.clone(),
                     crate::v1_compiler_infer_env::authored_name(scope.type_env.clone(), m.clone()),
-                    scope.type_env.clone().source_indices.clone(),
                 ),
             ),
         })
@@ -10419,19 +10418,14 @@ pub fn emit_module_full(
 pub fn module_projection_refusals(
     items: Rc<Vec<Rc<Node>>>,
     module_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     Rc::new({
         let mut __result = Vec::new();
         for item in items.iter().cloned() {
             __result.extend(
-                (*collect_unprojectable_construct_refusals(
-                    item.clone(),
-                    module_name.clone(),
-                    source_indices.clone(),
-                ))
-                .iter()
-                .cloned(),
+                (*collect_unprojectable_construct_refusals(item.clone(), module_name.clone()))
+                    .iter()
+                    .cloned(),
             );
         }
         __result
@@ -10441,14 +10435,12 @@ pub fn module_projection_refusals(
 pub fn collect_unprojectable_construct_refusals(
     n: Rc<Node>,
     module_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let here = match (*n.expr_data.clone()).clone() {
             ExprData::ExprIf => collect_filter_in_guard_refusals(
                 crate::v1_std_core::if_condition(n.clone()),
                 module_name.clone(),
-                source_indices.clone(),
             ),
             _ => Rc::new(vec![]),
         };
@@ -10457,14 +10449,11 @@ pub fn collect_unprojectable_construct_refusals(
                 collect_unprojectable_construct_refusals(
                     crate::v1_std_core::if_then_branch(n.clone()),
                     module_name.clone(),
-                    source_indices.clone(),
                 ),
                 match crate::v1_std_core::if_else_branch(n.clone()) {
-                    Some(e) => collect_unprojectable_construct_refusals(
-                        e.clone(),
-                        module_name.clone(),
-                        source_indices.clone(),
-                    ),
+                    Some(e) => {
+                        collect_unprojectable_construct_refusals(e.clone(), module_name.clone())
+                    }
                     std::option::Option::None => Rc::new(vec![]),
                 },
             ),
@@ -10472,24 +10461,16 @@ pub fn collect_unprojectable_construct_refusals(
                 let mut __result = Vec::new();
                 for c in n.children.clone().iter().cloned() {
                     __result.extend(
-                        (*collect_unprojectable_construct_refusals(
-                            c.clone(),
-                            module_name.clone(),
-                            source_indices.clone(),
-                        ))
-                        .iter()
-                        .cloned(),
+                        (*collect_unprojectable_construct_refusals(c.clone(), module_name.clone()))
+                            .iter()
+                            .cloned(),
                     );
                 }
                 __result
             }),
         };
         let from_body = match n.body.clone() {
-            Some(b) => collect_unprojectable_construct_refusals(
-                b.clone(),
-                module_name.clone(),
-                source_indices.clone(),
-            ),
+            Some(b) => collect_unprojectable_construct_refusals(b.clone(), module_name.clone()),
             std::option::Option::None => Rc::new(vec![]),
         };
         v1_rt::concat(
@@ -10502,14 +10483,10 @@ pub fn collect_unprojectable_construct_refusals(
 pub fn collect_filter_in_guard_refusals(
     n: Rc<Node>,
     module_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     Rc::new({
         let mut __result = Vec::new();
-        for call in collect_filter_method_calls(n.clone(), source_indices.clone())
-            .iter()
-            .cloned()
-        {
+        for call in collect_filter_method_calls(n.clone()).iter().cloned() {
             __result.push(crate::v1_std_core::make_error_node(
                 Rc::new(CompilerDiagnostic::EmissionConstructUnprojectable {
                     construct: UnprojectableConstruct::FilterInBranchCondition {},
@@ -10526,10 +10503,7 @@ pub fn is_algebra_filter_name(decl_name: String) -> bool {
     (decl_name.clone() == "filter".to_string())
 }
 
-pub fn is_algebra_filter_method(
-    method_semantics: Option<Rc<MethodSemantics>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
+pub fn is_algebra_filter_method(method_semantics: Option<Rc<MethodSemantics>>) -> bool {
     if (method_semantics.clone() != std::option::Option::None) {
         match (*method_semantics.clone().unwrap()).clone() {
             MethodSemantics::AlgebraMethodSemantics {
@@ -10546,17 +10520,14 @@ pub fn is_algebra_filter_method(
     }
 }
 
-pub fn collect_filter_method_calls(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<Node>>> {
+pub fn collect_filter_method_calls(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let self_hit = match (*n.expr_data.clone()).clone() {
             ExprData::ExprMethodCall {
                 method_semantics: method_semantics,
                 ..
             } => {
-                if is_algebra_filter_method(method_semantics.clone(), source_indices.clone()) {
+                if is_algebra_filter_method(method_semantics.clone()) {
                     Rc::new(vec![n.clone()])
                 } else {
                     Rc::new(vec![])
@@ -10567,16 +10538,12 @@ pub fn collect_filter_method_calls(
         let from_children = Rc::new({
             let mut __result = Vec::new();
             for c in n.children.clone().iter().cloned() {
-                __result.extend(
-                    (*collect_filter_method_calls(c.clone(), source_indices.clone()))
-                        .iter()
-                        .cloned(),
-                );
+                __result.extend((*collect_filter_method_calls(c.clone())).iter().cloned());
             }
             __result
         });
         let from_body = match n.body.clone() {
-            Some(b) => collect_filter_method_calls(b.clone(), source_indices.clone()),
+            Some(b) => collect_filter_method_calls(b.clone()),
             std::option::Option::None => Rc::new(vec![]),
         };
         v1_rt::concat(
