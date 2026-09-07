@@ -349,6 +349,15 @@ test fn w_a_branded_refinement_at_its_own_declared_base_inhabits() -> Bool {
       == violation_count(source: probe_exact_refinement_source, wanted: "DeclaredTypeInhabitanceUndecided")
 }
 
+//
+// BOTH HALVES OF THE DELEGATION ARE ASSERTED HERE, AND THE SECOND IS WHY THIS WITNESS IS NOT
+// GREEN-FOR-THE-WRONG-REASON. The abstain half -- this relation adds an undecided and no refusal --
+// says only that WE did not decide. If the brand wall regressed, stopped reaching the argument
+// path, or lost its consumer, that half would stay green while the horizontal pair was admitted in
+// silence by both relations, and the abstention would be a hole rather than a delegation with the
+// only record of the difference sitting in a PR body. So the refuse half is asserted in the same
+// witness, against the same exact-match partner so the corpus term cancels: the wall's TypeMismatch
+// FIRES on the horizontal pair and does not on the matching one. Review finding, tidy-lynx-804.
 // THE HORIZONTAL CASE IS REFUSED BY THE BRAND AUTHORITY, NOT BY THIS RELATION, AND THAT
 // DIVISION IS THE POINT. HostIdentity and PhysicalAssetIdentity are both
 // `NonEmptyStr where brand(...)`, so their chains meet at NonEmptyStr with neither an ancestor of
@@ -369,6 +378,8 @@ test fn w_two_distinct_brands_over_one_base_are_not_refused_twice() -> Bool {
   violation_count(source: brand_horizontal_at_argument_source, wanted: "DeclaredTypeNotInhabited") == 0
     && violation_count(source: brand_horizontal_at_argument_source, wanted: "DeclaredTypeInhabitanceUndecided")
       > violation_count(source: probe_exact_brand_source, wanted: "DeclaredTypeInhabitanceUndecided")
+    && violation_count(source: brand_horizontal_at_argument_source, wanted: "TypeMismatch")
+      > violation_count(source: probe_exact_brand_source, wanted: "TypeMismatch")
 }
 
 // nominal_opaque DOES NOT GROUND TO ITS BASE, and the control exists because the chain walk is

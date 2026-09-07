@@ -4586,6 +4586,7 @@ pub enum InhabitanceUndecidableReason {
     UndecidableFormalUnresolved,
     UndecidableProducedIdentityErased,
     UndecidableRefinementIntroduction,
+    UndecidableRefinementPeerChains,
 }
 
 #[derive(
@@ -4640,6 +4641,56 @@ pub fn declared_type_position_label(position: DeclaredTypePosition, subject: Str
     }
 }
 
+pub fn refinement_chain_link_identities(
+    links: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for id in Rc::new({
+            let mut __result = Vec::new();
+            for site in Rc::new({
+                let mut __result = Vec::new();
+                for site in Rc::new({
+                    let mut __result = Vec::new();
+                    for link in links.iter().cloned() {
+                        __result.push(where_refinement_brand_declaration_site(
+                            link.clone(),
+                            source_indices.clone(),
+                        ));
+                    }
+                    __result
+                })
+                .iter()
+                .cloned()
+                {
+                    if (site.clone() != std::option::Option::None) {
+                        __result.push(site);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.push(match site.clone() {
+                    Some(id) => id.clone(),
+                    std::option::Option::None => "".to_string(),
+                });
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            if (id.clone() != "".to_string()) {
+                __result.push(id);
+            }
+        }
+        __result
+    })
+}
+
 pub fn refinement_chain_names(n: Rc<Node>, scope: Rc<InferScope>) -> Rc<Vec<String>> {
     {
         let source_indices = scope.type_env.clone().source_indices.clone();
@@ -4651,37 +4702,11 @@ pub fn refinement_chain_names(n: Rc<Node>, scope: Rc<InferScope>) -> Rc<Vec<Stri
                 scope.type_env.clone(),
                 name.clone(),
             ) {
-                Some(decl) => Rc::new({
-                    let mut __result = Vec::new();
-                    for link_name in Rc::new({
-                        let mut __result = Vec::new();
-                        for link in where_refinement_chain(decl.clone(), scope.type_env.clone())
-                            .iter()
-                            .cloned()
-                        {
-                            __result.push(crate::v1_std_core::qualified_last_segment(
-                                crate::v1_std_core::authored_name_at(
-                                    source_indices.clone(),
-                                    link.clone(),
-                                ),
-                            ));
-                        }
-                        __result
-                    })
-                    .iter()
-                    .cloned()
-                    {
-                        if (link_name.clone() != "".to_string()) {
-                            __result.push(link_name);
-                        }
-                    }
-                    __result
-                }),
-                std::option::Option::None => {
-                    Rc::new(vec![crate::v1_std_core::qualified_last_segment(
-                        name.clone(),
-                    )])
-                }
+                Some(decl) => refinement_chain_link_identities(
+                    where_refinement_chain(decl.clone(), scope.type_env.clone()),
+                    source_indices.clone(),
+                ),
+                std::option::Option::None => Rc::new(vec![]),
             }
         }
     }
@@ -4694,7 +4719,7 @@ pub fn refinement_chain_names(n: Rc<Node>, scope: Rc<InferScope>) -> Rc<Vec<Stri
 pub enum RefinementInhabitance {
     RefinementWidensToDeclaredBase,
     RefinementNarrowsToDeclaredBrand,
-    RefinementSiblingBrands,
+    RefinementPeerChains,
 }
 
 pub fn refinement_inhabitance(
@@ -4761,7 +4786,7 @@ pub fn refinement_inhabitance(
                                         }
                                         __found
                                     } {
-                                        Some(RefinementInhabitance::RefinementSiblingBrands)
+                                        Some(RefinementInhabitance::RefinementPeerChains)
                                     } else {
                                         std::option::Option::None
                                     }
@@ -4854,8 +4879,8 @@ pub fn declared_type_inhabitance(
     Some(RefinementInhabitance::RefinementNarrowsToDeclaredBrand) => Rc::new(InhabitanceVerdict::InhabitanceUndecidable {
     reason: InhabitanceUndecidableReason::UndecidableRefinementIntroduction,
 }),
-    Some(RefinementInhabitance::RefinementSiblingBrands) => Rc::new(InhabitanceVerdict::InhabitanceUndecidable {
-    reason: InhabitanceUndecidableReason::UndecidableRefinementIntroduction,
+    Some(RefinementInhabitance::RefinementPeerChains) => Rc::new(InhabitanceVerdict::InhabitanceUndecidable {
+    reason: InhabitanceUndecidableReason::UndecidableRefinementPeerChains,
 }),
     std::option::Option::None => if kernel_value_declared_type_mismatch(declared.clone(), produced.clone(), scope.type_env.clone(), source_indices.clone()) {
                                             Rc::new(InhabitanceVerdict::InhabitanceRefused {
@@ -5286,6 +5311,7 @@ pub fn inhabitance_undecidable_reason_label(reason: InhabitanceUndecidableReason
     InhabitanceUndecidableReason::UndecidableOptionalCarrier => "optional carrier: the language's own cardinality carrier, where a T standing in an Optional<T> position is the declared spelling rather than a payload escape".to_string(),
     InhabitanceUndecidableReason::UndecidableFormalUnresolved => "formal unresolved: the declared type did not resolve to a declaration, so there is nothing to judge inhabitance against".to_string(),
     InhabitanceUndecidableReason::UndecidableProducedIdentityErased => "produced identity erased: the produced value's type identity is not recoverable at this seam".to_string(),
+    InhabitanceUndecidableReason::UndecidableRefinementPeerChains => "refinement peer chains: the declared and produced refinements MEET on a shared link with neither nesting inside the other -- PEER PREDICATES over one base, measured as FilePath, GcpProjectId and Sha512DigestHex at NonEmptyStr, which are not brands at all -- so this is neither an introduction nor a brand conflict, and neither this seam nor the brand wall decides the pair".to_string(),
     InhabitanceUndecidableReason::UndecidableRefinementIntroduction => "refinement introduction: the produced value sits at or above the declared refinement on its own chain and carries no cast to it, so whether it was INTRODUCED at that refinement is the literal-elaboration verdict for its destination, which this seam does not consult".to_string(),
 }
 }
@@ -26697,6 +26723,8 @@ pub struct UndecidableProducedIdentityErased;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct UndecidableRefinementIntroduction;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UndecidableRefinementPeerChains;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RefusedPayloadAtParent;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RefusedKernelAtStructured;
@@ -26709,4 +26737,4 @@ pub struct RefinementWidensToDeclaredBase;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RefinementNarrowsToDeclaredBrand;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct RefinementSiblingBrands;
+pub struct RefinementPeerChains;

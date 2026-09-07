@@ -3270,6 +3270,7 @@ type InhabitanceUndecidableReason
   | UndecidableFormalUnresolved
   | UndecidableProducedIdentityErased
   | UndecidableRefinementIntroduction
+  | UndecidableRefinementPeerChains
 
 type InhabitanceRefusalReason
   = RefusedPayloadAtParent
@@ -3341,6 +3342,20 @@ fn declared_type_position_label(position: DeclaredTypePosition, subject: String)
 // not perform; so the pair is reported UndecidableRefinementIntroduction -- located, per-reason,
 // countable -- and the deficit ranks instead of vanishing.
 //
+// THE PEER ARM CARRIES ITS OWN NAME AND ITS OWN REASON, BECAUSE IT IS A DIFFERENT FACT AND ONE
+// NAME MAY NOT HOLD TWO -- and the CONSTRUCTOR was renamed with the reason, since calling them
+// sibling BRANDS encoded the same conflation one level up: the measured population is not brands.
+// Narrowing is introduction: the produced type sits at or above the declared refinement on
+// its own chain. Peers MEET on a shared link with neither nesting inside the other, and the
+// measured population makes the difference concrete -- declared NonEmptyStr <- produced FilePath,
+// GcpProjectId, Sha512DigestHex are peer predicates over one base, not introductions and not
+// conflicting brands. Filing them under a reason whose text says they are introductions is the
+// meaning fork DESIGN section 3 names, and it would defeat the very property this note claims:
+// a mixed bucket is not located, per-reason or countable. It would also mis-aim the trigger
+// below -- consulting the introduction verdict would discharge the trigger while leaving a sibling
+// residue behind under a name asserting it had been handled. Review finding, cursor/auto on
+// review 62043, upheld by tidy-lynx-804, 2026-09-07.
+//
 // NEXT-RUNG TRIGGER, and it is CHEAPER than the one first written here: this relation consulting
 // the where-refinement predicate verdict that already decides the pair, rather than a new
 // elaboration fact reaching the seam. An earlier draft of this annotation claimed the predicate
@@ -3364,6 +3379,39 @@ fn declared_type_position_label(position: DeclaredTypePosition, subject: String)
 // the corpus at the moment that stamp was removed: HostIdentity flowing into a NonEmptyStr formal
 // -- widening to its own declared base, correct code -- refused as a distinct product
 // constructor. This is the arm that state was hiding, not a widening of scope.
+// THE CHAIN IS COMPARED AT DECLARATION SITE, NOT AT SPELLING, AND THAT IS DELIBERATE.
+// An earlier form of this function compared qualified_last_segment -- a module-STRIPPED last
+// segment -- so two branded refinements declared in different modules sharing a last segment would
+// have compared EQUAL, and RefinementWidensToDeclaredBase would have returned Inhabits for a pair
+// that does not inhabit: a fail-open in the relation whose whole purpose is that some pairs must
+// not be admitted. It was latent rather than live (measured: zero duplicated where-refinement type
+// names across dag and src/v2), and it is fixed rather than recorded because n here is the number
+// of homonymous refinement types, which is exactly the kind of number that goes from zero to one
+// when someone adds a module -- DESIGN 6's bare-minimum-cost rule, where "n is small here" is not
+// a time-stable fact. Review finding, tidy-lynx-804, 2026-09-07.
+//
+// It CONSUMES where_refinement_brand_declaration_site rather than minting a second identity: that
+// is the same file-qualified identity the brand wall already uses to refuse distinct DECLARATIONS
+// rather than distinct spellings, so this file now answers "are these the same type?" exactly once.
+// A link whose site is Absent is DROPPED, which shortens the chain and can only turn an admission
+// into a decline -- the conservative direction, never a new admission.
+//
+// AND THE LOOKUP-FAILURE ARM RETURNS THE EMPTY CHAIN, WHICH MAKES THE PAIR NOT THIS RELATION'S
+// SUBJECT. It previously manufactured a singleton chain from the name's last segment, so a
+// declaration that was never established still produced something the arms below would compare --
+// DESIGN section 5's absorbing fallback exactly: unable to compute the precise answer, substitute
+// the weaker one that always produces something. Under declaration-site keying it would be worse
+// than weak, because the surrogate would be an identity the subject does not have, at the one
+// grain where unrelated things compare equal. ABSENCE OF IDENTITY CANNOT BE REPAIRED BY LOWERING
+// THE IDENTITY GRAIN UNTIL SOMETHING COMPARES EQUAL: the arm refuses, it does not widen.
+fn refinement_chain_link_identities(links: List<Node>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  links
+    |> map(link => where_refinement_brand_declaration_site(ty: link, source_indices: source_indices))
+    |> filter(site => site != none)
+    |> map(site => match site { Present { value: id } => id  Absent => "" })
+    |> filter(id => id != "")
+}
+
 fn refinement_chain_names(n: Node, scope: InferScope) -> List<String> {
   let source_indices = scope.type_env.source_indices
   let name = authored_name_at(source_indices: source_indices, node: n)
@@ -3372,10 +3420,10 @@ fn refinement_chain_names(n: Node, scope: InferScope) -> List<String> {
   } else {
     match lookup_type_by_name(env: scope.type_env, name: name) {
       Present { value: decl } =>
-        where_refinement_chain(ty: decl, type_env: scope.type_env)
-          |> map(link => qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: link)))
-          |> filter(link_name => link_name != "")
-      Absent => [qualified_last_segment(name: name)]
+        refinement_chain_link_identities(
+          links: where_refinement_chain(ty: decl, type_env: scope.type_env),
+          source_indices: source_indices)
+      Absent => []
     }
   }
 }
@@ -3383,7 +3431,7 @@ fn refinement_chain_names(n: Node, scope: InferScope) -> List<String> {
 type RefinementInhabitance
   = RefinementWidensToDeclaredBase
   | RefinementNarrowsToDeclaredBrand
-  | RefinementSiblingBrands
+  | RefinementPeerChains
 
 // ABSENT MEANS "NOT THIS RELATION'S SUBJECT", NEVER "COMPATIBLE". Every guard hands the pair back
 // to the arms below rather than admitting it, so this can only convert a silence into a decision
@@ -3406,7 +3454,7 @@ fn refinement_inhabitance(declared: Node, produced: Node, scope: InferScope) -> 
           } else if declared_chain |> any(link => link == produced_head) {
             Present { value: RefinementNarrowsToDeclaredBrand }
           } else if declared_chain |> any(d => produced_chain |> any(p => p == d)) {
-            Present { value: RefinementSiblingBrands }
+            Present { value: RefinementPeerChains }
           } else {
             none
           }
@@ -3451,8 +3499,8 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
       Present { value: RefinementWidensToDeclaredBase } => Inhabits
       Present { value: RefinementNarrowsToDeclaredBrand } =>
         InhabitanceUndecidable { reason: UndecidableRefinementIntroduction }
-      Present { value: RefinementSiblingBrands } =>
-        InhabitanceUndecidable { reason: UndecidableRefinementIntroduction }
+      Present { value: RefinementPeerChains } =>
+        InhabitanceUndecidable { reason: UndecidableRefinementPeerChains }
       Absent =>
         if kernel_value_declared_type_mismatch(
             formal: declared, actual: produced,
@@ -3881,6 +3929,7 @@ fn inhabitance_undecidable_reason_label(reason: InhabitanceUndecidableReason) ->
     UndecidableOptionalCarrier => "optional carrier: the language's own cardinality carrier, where a T standing in an Optional<T> position is the declared spelling rather than a payload escape"
     UndecidableFormalUnresolved => "formal unresolved: the declared type did not resolve to a declaration, so there is nothing to judge inhabitance against"
     UndecidableProducedIdentityErased => "produced identity erased: the produced value's type identity is not recoverable at this seam"
+    UndecidableRefinementPeerChains => "refinement peer chains: the declared and produced refinements MEET on a shared link with neither nesting inside the other -- PEER PREDICATES over one base, measured as FilePath, GcpProjectId and Sha512DigestHex at NonEmptyStr, which are not brands at all -- so this is neither an introduction nor a brand conflict, and neither this seam nor the brand wall decides the pair"
     UndecidableRefinementIntroduction => "refinement introduction: the produced value sits at or above the declared refinement on its own chain and carries no cast to it, so whether it was INTRODUCED at that refinement is the literal-elaboration verdict for its destination, which this seam does not consult"
   }
 }
