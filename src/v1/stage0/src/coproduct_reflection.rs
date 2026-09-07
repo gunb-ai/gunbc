@@ -2013,6 +2013,50 @@ pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResu
     eval_decl_facts_rows(ctx, &facts)
 }
 
+/// The KEYED read of the same declaration census `decl_facts` publishes: the rows whose
+/// `qualified_name` is exactly `qualified_name`, and nothing else.
+///
+/// One law, two directions — this is `decl_facts` composed with the exact-equality filter the
+/// substrate already authored (`v2.std.decl_facts_skeleton` `decl_facts_matching_qualified_name`),
+/// moved to the side of the seam where the population still exists as raw rows. It is not a second
+/// census: both reads answer from `decl_facts_for_roots_shared`, so a row this returns is the row
+/// `decl_facts` would have returned, byte for byte.
+///
+/// WHY IT EXISTS. A keyed question — does this citation name a declaration — had to mint the whole
+/// population to ask it: every row's `node` marshalled into interpreter `Value`s, then folded away
+/// in the interpreter. The marshal is the cost, and it is paid per ASK, so N citations cost N
+/// corpus marshals. Filtering before the marshal makes the keyed question cost one.
+///
+/// Multiplicity is PRESERVED, not collapsed to a first hit: two rows under one logical qualified
+/// name is what `DeclarationRefAmbiguous` is derived from, and a keyed read that returned the first
+/// would silently resolve an ambiguous citation.
+pub fn eval_decl_facts_at(
+    ctx: &InterpContext,
+    pool_roots: &[String],
+    qualified_name: &str,
+) -> InterpResult<Value> {
+    // Same line-stop as `eval_decl_facts`, and for the same reason: a root that contributes
+    // nothing is invisible in a keyed answer too — an empty result is exactly what a genuine miss
+    // looks like — so the refusal must fire against the DECLARED roots, before the read.
+    let pool_root_defects_found = pool_root_defects(pool_roots);
+    if !pool_root_defects_found.is_empty() {
+        return Err(
+            crate::v1_interpreter::InterpError::PoolRootContributesNothing {
+                caller: "decl_facts_at",
+                declared: pool_roots.len(),
+                defects: pool_root_defects_found,
+            },
+        );
+    }
+    let facts = decl_facts_for_roots_shared(pool_roots);
+    let matching: Vec<DeclFactRaw> = facts
+        .iter()
+        .filter(|f| f.qualified_name == qualified_name)
+        .cloned()
+        .collect();
+    eval_decl_facts_rows(ctx, &matching)
+}
+
 fn eval_decl_facts_rows(ctx: &InterpContext, facts: &[DeclFactRaw]) -> InterpResult<Value> {
     let mut rows = Vec::with_capacity(facts.len());
     for fact in facts {

@@ -1,8 +1,8 @@
 module v2.std.decl_ref_resolution
 
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
-import v2.lens.module_graph { ModuleDeclarationFact }
-import v2.std.decl_index { DeclFact, ItemKind, logical_qualified_name_from_module }
+import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_at_live }
+import v2.std.decl_index { DeclFact, ItemKind, decl_facts_at, logical_qualified_name_from_module }
 import v2.std.decl_facts_skeleton { decl_facts_matching_qualified_name }
 
 // G1 cited-symbol resolution (feature:cited-symbol-resolution): every typed DeclarationRef resolves
@@ -67,18 +67,19 @@ fn decl_ref_named_field_present(ref: DeclarationRef, fact: DeclFact) -> Bool {
   }
 }
 
-fn resolve_declaration_ref(
+// THE ARM DECISION, ONE AUTHORITY, TWO FEEDS. Every arm below is decided from two already-narrowed
+// inputs: the rows declaring the cited MODULE (none, or the one), and the rows declaring the cited
+// QUALIFIED NAME. Both entry points beneath supply exactly those, so the resolution law is written
+// once — a second copy for the keyed feed would be a fork of the five-arm refusal, which is the one
+// thing in this module that must not have two opinions.
+fn resolve_declaration_ref_over(
   ref: DeclarationRef,
-  facts: List<DeclFact>,
-  modules: List<ModuleDeclarationFact>
+  module_rows: List<ModuleDeclarationFact>,
+  matches: List<DeclFact>
 ) -> DeclarationRefResolution {
-  if !module_path_declared(module_path: ref.module_path as String, modules: modules) {
+  if !module_path_declared(module_path: ref.module_path as String, modules: module_rows) {
     DeclarationRefModuleAbsent { reference: ref }
   } else {
-    let matches = decl_facts_matching_qualified_name(
-      qn: declaration_ref_target_qualified_name(ref: ref),
-      facts: facts
-    )
     let n = length(xs: matches)
     if n == 0 {
       DeclarationRefDeclarationAbsent { reference: ref }
@@ -103,18 +104,73 @@ fn resolve_declaration_ref(
   }
 }
 
-fn declaration_ref_resolves(
+fn resolve_declaration_ref(
   ref: DeclarationRef,
   facts: List<DeclFact>,
   modules: List<ModuleDeclarationFact>
-) -> Bool {
-  match resolve_declaration_ref(ref: ref, facts: facts, modules: modules) {
+) -> DeclarationRefResolution {
+  resolve_declaration_ref_over(
+    ref: ref,
+    module_rows: modules,
+    matches: decl_facts_matching_qualified_name(
+      qn: declaration_ref_target_qualified_name(ref: ref),
+      facts: facts
+    )
+  )
+}
+
+// THE KEYED ROUTE, for a caller whose subject is the live tree rather than a fixture population.
+// It differs from the fold above in WHERE the two narrowings happen and nowhere else: the host
+// index answers both by key, so asking about one citation costs one lookup instead of one whole
+// corpus minted into interpreter values and then folded down to the same rows.
+//
+// A caller holding a FIXTURE population still uses the three-argument form — this one names the
+// live tree by its roots, which a fixture cannot be handed as.
+fn resolve_declaration_ref_live(
+  ref: DeclarationRef,
+  pool_roots: List<String>
+) -> DeclarationRefResolution {
+  resolve_declaration_ref_over(
+    ref: ref,
+    module_rows: module_declaration_facts_at_live(
+      pool_roots: pool_roots,
+      module_path: ref.module_path as String
+    ),
+    matches: decl_facts_at(
+      pool_roots: pool_roots,
+      qualified_name: declaration_ref_target_qualified_name(ref: ref)
+    )
+  )
+}
+
+// The five arms reduced to the one bit a caller asks for. Extracted so the population route and
+// the keyed route below cannot drift on WHICH arms count as resolved: they share this, and the
+// resolution they hand it is produced by one law (resolve_declaration_ref_over).
+fn declaration_ref_resolution_is_resolved(resolution: DeclarationRefResolution) -> Bool {
+  match resolution {
     DeclarationRefResolved { declaration_identity: _ } => true
     DeclarationRefModuleAbsent { reference: _ } => false
     DeclarationRefDeclarationAbsent { reference: _ } => false
     DeclarationRefFieldAbsent { reference: _ } => false
     DeclarationRefAmbiguous { reference: _, candidates: _ } => false
   }
+}
+
+fn declaration_ref_resolves(
+  ref: DeclarationRef,
+  facts: List<DeclFact>,
+  modules: List<ModuleDeclarationFact>
+) -> Bool {
+  declaration_ref_resolution_is_resolved(
+    resolution: resolve_declaration_ref(ref: ref, facts: facts, modules: modules)
+  )
+}
+
+// The keyed twin: same question, asked of the live tree by key rather than of a minted population.
+fn declaration_ref_resolves_live(ref: DeclarationRef, pool_roots: List<String>) -> Bool {
+  declaration_ref_resolution_is_resolved(
+    resolution: resolve_declaration_ref_live(ref: ref, pool_roots: pool_roots)
+  )
 }
 
 fn cited_declaration_ref_refusal_count(
@@ -128,12 +184,80 @@ fn cited_declaration_ref_refusal_count(
   )
 }
 
+fn cited_declaration_ref_refusal_count_live(
+  refs: List<DeclarationRef>,
+  pool_roots: List<String>
+) -> Int {
+  count_where(
+    xs: refs,
+    predicate: fn(r) { !declaration_ref_resolves_live(ref: r, pool_roots: pool_roots) }
+  )
+}
+
 type DeclarationRefResolutionCensus {
   resolved_count: Int
   module_absent_count: Int
   declaration_absent_count: Int
   field_absent_count: Int
   ambiguous_count: Int
+}
+
+data empty_declaration_ref_resolution_census: DeclarationRefResolutionCensus = DeclarationRefResolutionCensus {
+  resolved_count: 0,
+  module_absent_count: 0,
+  declaration_absent_count: 0,
+  field_absent_count: 0,
+  ambiguous_count: 0
+}
+
+// One tally, five arms, shared by both routes — the counts are a projection of the resolution and
+// have nothing to do with how the resolution was obtained.
+fn declaration_ref_census_absorb(
+  acc: DeclarationRefResolutionCensus,
+  resolution: DeclarationRefResolution
+) -> DeclarationRefResolutionCensus {
+  match resolution {
+    DeclarationRefResolved { declaration_identity: _ } =>
+      DeclarationRefResolutionCensus {
+        resolved_count: acc.resolved_count + 1,
+        module_absent_count: acc.module_absent_count,
+        declaration_absent_count: acc.declaration_absent_count,
+        field_absent_count: acc.field_absent_count,
+        ambiguous_count: acc.ambiguous_count
+      }
+    DeclarationRefModuleAbsent { reference: _ } =>
+      DeclarationRefResolutionCensus {
+        resolved_count: acc.resolved_count,
+        module_absent_count: acc.module_absent_count + 1,
+        declaration_absent_count: acc.declaration_absent_count,
+        field_absent_count: acc.field_absent_count,
+        ambiguous_count: acc.ambiguous_count
+      }
+    DeclarationRefDeclarationAbsent { reference: _ } =>
+      DeclarationRefResolutionCensus {
+        resolved_count: acc.resolved_count,
+        module_absent_count: acc.module_absent_count,
+        declaration_absent_count: acc.declaration_absent_count + 1,
+        field_absent_count: acc.field_absent_count,
+        ambiguous_count: acc.ambiguous_count
+      }
+    DeclarationRefFieldAbsent { reference: _ } =>
+      DeclarationRefResolutionCensus {
+        resolved_count: acc.resolved_count,
+        module_absent_count: acc.module_absent_count,
+        declaration_absent_count: acc.declaration_absent_count,
+        field_absent_count: acc.field_absent_count + 1,
+        ambiguous_count: acc.ambiguous_count
+      }
+    DeclarationRefAmbiguous { reference: _, candidates: _ } =>
+      DeclarationRefResolutionCensus {
+        resolved_count: acc.resolved_count,
+        module_absent_count: acc.module_absent_count,
+        declaration_absent_count: acc.declaration_absent_count,
+        field_absent_count: acc.field_absent_count,
+        ambiguous_count: acc.ambiguous_count + 1
+      }
+  }
 }
 
 fn declaration_ref_resolution_census(
@@ -143,56 +267,28 @@ fn declaration_ref_resolution_census(
 ) -> DeclarationRefResolutionCensus {
   fold(
     refs,
-    init: DeclarationRefResolutionCensus {
-      resolved_count: 0,
-      module_absent_count: 0,
-      declaration_absent_count: 0,
-      field_absent_count: 0,
-      ambiguous_count: 0
-    },
+    init: empty_declaration_ref_resolution_census,
     f: fn(acc, ref) {
-      match resolve_declaration_ref(ref: ref, facts: facts, modules: modules) {
-        DeclarationRefResolved { declaration_identity: _ } =>
-          DeclarationRefResolutionCensus {
-            resolved_count: acc.resolved_count + 1,
-            module_absent_count: acc.module_absent_count,
-            declaration_absent_count: acc.declaration_absent_count,
-            field_absent_count: acc.field_absent_count,
-            ambiguous_count: acc.ambiguous_count
-          }
-        DeclarationRefModuleAbsent { reference: _ } =>
-          DeclarationRefResolutionCensus {
-            resolved_count: acc.resolved_count,
-            module_absent_count: acc.module_absent_count + 1,
-            declaration_absent_count: acc.declaration_absent_count,
-            field_absent_count: acc.field_absent_count,
-            ambiguous_count: acc.ambiguous_count
-          }
-        DeclarationRefDeclarationAbsent { reference: _ } =>
-          DeclarationRefResolutionCensus {
-            resolved_count: acc.resolved_count,
-            module_absent_count: acc.module_absent_count,
-            declaration_absent_count: acc.declaration_absent_count + 1,
-            field_absent_count: acc.field_absent_count,
-            ambiguous_count: acc.ambiguous_count
-          }
-        DeclarationRefFieldAbsent { reference: _ } =>
-          DeclarationRefResolutionCensus {
-            resolved_count: acc.resolved_count,
-            module_absent_count: acc.module_absent_count,
-            declaration_absent_count: acc.declaration_absent_count,
-            field_absent_count: acc.field_absent_count + 1,
-            ambiguous_count: acc.ambiguous_count
-          }
-        DeclarationRefAmbiguous { reference: _, candidates: _ } =>
-          DeclarationRefResolutionCensus {
-            resolved_count: acc.resolved_count,
-            module_absent_count: acc.module_absent_count,
-            declaration_absent_count: acc.declaration_absent_count,
-            field_absent_count: acc.field_absent_count,
-            ambiguous_count: acc.ambiguous_count + 1
-          }
-      }
+      declaration_ref_census_absorb(
+        acc: acc,
+        resolution: resolve_declaration_ref(ref: ref, facts: facts, modules: modules)
+      )
+    }
+  )
+}
+
+fn declaration_ref_resolution_census_live(
+  refs: List<DeclarationRef>,
+  pool_roots: List<String>
+) -> DeclarationRefResolutionCensus {
+  fold(
+    refs,
+    init: empty_declaration_ref_resolution_census,
+    f: fn(acc, ref) {
+      declaration_ref_census_absorb(
+        acc: acc,
+        resolution: resolve_declaration_ref_live(ref: ref, pool_roots: pool_roots)
+      )
     }
   )
 }
