@@ -316,3 +316,61 @@ data phantom_distinct_type_argument_source: String = "module probe_inhabit_phant
 test fn w_a_phantom_type_argument_with_identical_representation_is_still_separated() -> Bool {
   violation_count(source: phantom_distinct_type_argument_source, wanted: "DeclaredTypeNotInhabited") > 0
 }
+
+// REFINEMENT WIDENING ADMITS -- the positive control for refinement_inhabitance, and the
+// regression control for the arm that used to refuse it. product.placement_supply declares
+// `HostIdentity = NonEmptyStr where brand("HostIdentity")`, so a HostIdentity reaching a
+// NonEmptyStr formal is widening to its own declared base. Before the refinement arm landed this
+// REFUSED at two live corpus sites in dag/test/claim/ci/ci_deploy_target_host_witness_test.dag,
+// as RefusedDistinctProductConstructor, because
+// nominal_product_head_name_if_declared_product read a where-refinement's Conj-with-one-child as
+// a nominal product.
+//
+// BOTH COUNTS ARE ASSERTED AND THE SECOND IS THE DISCRIMINATING HALF. Zero refusals alone would
+// also hold if the arm merely stopped deciding, which is the failure mode this lane exists to
+// refuse; requiring zero UNDECIDED as well pins the site to INHABITS. Measured live before
+// enrolment: undecided=0, refused=0.
+data refinement_widening_source: String = "module probe_refinement_widening\nimport std.types { NonEmptyStr, Int }\nimport product.placement_supply { HostIdentity }\ndata probe_host: HostIdentity = \"srv1\" as HostIdentity\nfn takes_base(s: NonEmptyStr) -> Int { 1 }\nfn probe() -> Int { takes_base(s: probe_host) }\n"
+
+test fn w_a_branded_refinement_at_its_own_declared_base_inhabits() -> Bool {
+  violation_count(source: refinement_widening_source, wanted: "DeclaredTypeNotInhabited") == 0
+    && violation_count(source: refinement_widening_source, wanted: "DeclaredTypeInhabitanceUndecided") == 0
+}
+
+// THE HORIZONTAL CASE IS REFUSED BY THE BRAND AUTHORITY, NOT BY THIS RELATION, AND THAT
+// DIVISION IS THE POINT. HostIdentity and PhysicalAssetIdentity are both
+// `NonEmptyStr where brand(...)`, so their chains meet at NonEmptyStr with neither an ancestor of
+// the other. refinement_inhabitance cannot see brands and therefore DECLINES -- refusing there
+// would be a second authority for a judgment where_refinement_brand_nominal_verdict already makes
+// on brand DECLARATION SITES, and it would drag in the peer-predicate false refusals measured
+// when that was tried: declared NonEmptyStr <- produced FilePath, GcpProjectId, Sha512DigestHex,
+// none of which carries a conflicting brand at all.
+//
+// THE PATH IS THE WHOLE QUESTION AND IT WAS EXECUTED, NOT ASSUMED. That wall is reached through
+// with_expected_where_refinement_diags, and rung honesty is per-path: refused on the cast path
+// would not establish refused at a formal parameter. This fixture puts it at the DIRECT CALL
+// ARGUMENT seam and it refuses there -- `type mismatch: expected 'Product(PhysicalAssetIdentity)',
+// got 'Product(HostIdentity)'`. So this relation's abstention is a delegation and not a hole.
+data brand_horizontal_at_argument_source: String = "module probe_brand_horizontal_at_argument\nimport std.types { Int }\nimport product.placement_supply { HostIdentity, PhysicalAssetIdentity }\ndata probe_host2: HostIdentity = \"srv1\" as HostIdentity\nfn takes_asset(x: PhysicalAssetIdentity) -> Int { 1 }\nfn probe() -> Int { takes_asset(x: probe_host2) }\n"
+
+test fn w_two_distinct_brands_over_one_base_are_not_refused_twice() -> Bool {
+  violation_count(source: brand_horizontal_at_argument_source, wanted: "DeclaredTypeNotInhabited") == 0
+    && violation_count(source: brand_horizontal_at_argument_source, wanted: "DeclaredTypeInhabitanceUndecided") == 1
+}
+
+// nominal_opaque DOES NOT GROUND TO ITS BASE, and the control exists because the chain walk is
+// exactly the thing that could delete that wall. std.types declares `Secret nominal_opaque =
+// String` in a form DELIBERATELY DISTINCT from `where brand(...)`: brand is a refinement whose
+// value inhabits its base, nominal_opaque is bidirectional separation. where_refinement_chain
+// follows only where-refinements, so Secret's chain is one link and this relation returns absent
+// for it -- structurally, not by a test.
+//
+// IT IS ENROLLED ANYWAY BECAUSE THE RED IS AUTHORABLE (DESIGN 4b). If the chain ever followed a
+// nominal_opaque alias, Secret's chain would become [Secret, String] and would meet NonEmptyStr's
+// [NonEmptyStr, String] at String -- a sibling pair, which this relation declines. So the
+// discriminating mutation produces exactly one UNDECIDED here, and asserting zero reds on it.
+data nominal_opaque_not_grounded_source: String = "module probe_nominal_opaque_not_grounded\nimport std.types { NonEmptyStr, Secret, Int }\ndata probe_secret: Secret = \"shh\" as Secret\nfn takes_non_empty(s: NonEmptyStr) -> Int { 1 }\nfn probe() -> Int { takes_non_empty(s: probe_secret) }\n"
+
+test fn w_a_nominal_opaque_alias_does_not_ground_through_the_refinement_chain() -> Bool {
+  violation_count(source: nominal_opaque_not_grounded_source, wanted: "DeclaredTypeInhabitanceUndecided") == 0
+}
