@@ -1,6 +1,6 @@
 module product.fabric.provider_route
 
-import std.types { Bool, List, NonEmptyStr, Timestamp }
+import std.types { List, NonEmptyStr, Timestamp }
 import std.decl_ref { DeclarationRef }
 import std.content_hash { ContentHash }
 
@@ -16,8 +16,8 @@ import std.content_hash { ContentHash }
 // published subprocessors, its data-handling representations. Whether we are presently willing
 // and authorised to use those facts is a fact about US. An extdeps provider module that
 // imported our posture would let the supplier declare what it is sanctioned to serve, which is
-// exactly the inversion gunbc.fabric_executor_class already refuses by keeping the executor
-// sanction roster on our side and refusing an unclassified executor. This module holds only the
+// exactly the inversion gunbc.fabric_executor_class refuses by keeping the executor sanction
+// roster on our side and refusing an unclassified executor. This module holds only the
 // provider-side route facts; the join against posture and use scope lives one layer up.
 type ProviderRouteRef = NonEmptyStr where brand("ProviderRouteRef")
 
@@ -25,6 +25,10 @@ type ProviderRouteRef = NonEmptyStr where brand("ProviderRouteRef")
 // was evaluated against, so a posture change makes standing permits STALE rather than silently
 // tolerated - the difference between a decision that can be re-derived and one that merely
 // happened to be true when nobody was looking.
+//
+// The authority is an open DeclarationRef because THE POSTURE PRODUCER IS NOT IN THIS TREE (see
+// the frontier annotation on product.fabric.provider_admission). The generic fabric must not
+// enumerate whose posture governs it any more than it enumerates jurisdictions.
 type CompliancePostureRevision {
   authority: DeclarationRef
   revision: ContentHash
@@ -38,9 +42,8 @@ type CompliancePostureRevision {
 // backup destination must never ambiguously mean either "backups are disabled" or "nobody
 // examined backups" - the first is a fact that can support an admission and the second is an
 // obligation that must refuse. Collapsing them is how an unexamined path reads as a clean one,
-// which is the same move product.supplier.ubicloud already refuses by carrying
-// IsolationNotObserved beside its catalog rows rather than inventing a guarantee from a price
-// list.
+// which is the same move product.supplier.ubicloud refuses by carrying IsolationNotObserved
+// beside its catalog rows rather than inventing a guarantee from a price list.
 type ProviderPathStanding
   = ProviderPathLocated {
       operator: DeclarationRef,
@@ -52,10 +55,9 @@ type ProviderPathStanding
 
 // CLOSED OVER THE PATHS WE PRESENTLY KNOW WE MUST GOVERN, and closed deliberately: adding a
 // material path forces EVERY route to answer for it rather than letting existing rows stay
-// silently incomplete. The membership is the one strategy.compliance_posture already names as
-// the scope of region-as-admission - object storage, logs, telemetry, backups, support access
-// and spill, and not merely the runner VM - plus the control plane and administrative access
-// that reach customer material without appearing in any customer-visible topology.
+// silently incomplete. Object storage, logs, telemetry, backups, support access and spill - not
+// merely the runner VM - plus the control plane and administrative access that reach customer
+// material without appearing in any customer-visible topology.
 type ProviderDataPathClosure {
   execution: ProviderPathStanding
   durable_storage: ProviderPathStanding
@@ -97,65 +99,42 @@ type ProviderRouteFacts {
   facts_revision: ContentHash
 }
 
-// A path supports an admission only when it is LOCATED or evidenced ABSENT. Unread is neither a
-// yes nor a no: it is the obligation to go and look, and it must refuse rather than default.
-fn path_is_resolved(p: ProviderPathStanding) -> Bool {
-  match p {
-    ProviderPathLocated { operator, jurisdiction, evidence } => true,
-    ProviderPathAbsent { evidence } => true,
-    ProviderPathUnread { obligation } => false,
-  }
-}
-
-// The nine governed paths in a FIXED declared order, so a refusal naming "the first unresolved
-// path" is deterministic rather than reporting whichever arm a fold happened to visit last.
-fn closure_paths(c: ProviderDataPathClosure) -> List<ProviderPathStanding> {
-  [
-    c.execution, c.durable_storage, c.backups, c.logs, c.telemetry,
-    c.control_plane, c.support_access, c.administrative_access, c.spill,
-  ]
-}
-
-// The obligation of the first unread path, as a zero-or-one list. A refusal must name the
-// LOCATED obligation the unread arm is already carrying - naming the provider instead would
-// keep the category right and the remedy wrong, which is a fabricated diagnosis under DESIGN
-// section 5 rather than a located one.
+// THE COPRODUCT IS MATCHED ONCE AND YIELDS THE OBLIGATION DIRECTLY. There is deliberately no
+// Bool predicate here. A path_is_resolved returning Bool DISCARDS exactly the payload a refusal
+// then needs, so the refusal builder has to walk the same value a second time - and that second
+// walk is what forces a seed to exist, which is what made the seed a place to fabricate an
+// obligation. Matching once removes the seed rather than improving it: an empty list is "no
+// obligation", a one-element list IS the located obligation, and neither can lie.
+//
+// The nine paths are visited in a FIXED order, so the reported obligation is deterministic
+// rather than whichever arm a fold happened to reach last.
 fn first_unresolved_obligation(c: ProviderDataPathClosure) -> List<DeclarationRef> {
-  fold(closure_paths(c: c), init: [], f: fn(acc, p) {
-    if count(acc) > 0 {
-      acc
-    } else {
-      match p {
-        ProviderPathLocated { operator, jurisdiction, evidence } => acc,
-        ProviderPathAbsent { evidence } => acc,
-        ProviderPathUnread { obligation } => [obligation],
+  fold(
+    [
+      c.execution, c.durable_storage, c.backups, c.logs, c.telemetry,
+      c.control_plane, c.support_access, c.administrative_access, c.spill,
+    ],
+    init: [],
+    f: fn(acc, p) {
+      if count(acc) > 0 {
+        acc
+      } else {
+        match p {
+          ProviderPathLocated { operator, jurisdiction, evidence } => acc,
+          ProviderPathAbsent { evidence } => acc,
+          ProviderPathUnread { obligation } => [obligation],
+        }
       }
-    }
-  })
+    },
+  )
 }
 
-fn first_unresolved_path(c: ProviderDataPathClosure) -> List<ProviderPathStanding> {
-  filter(closure_paths(c: c), p => !path_is_resolved(p: p))
-}
-
-// Same discipline for the downstream population: the unread arm carries its own obligation and
-// the refusal must hand that back, not the provider row.
+// Same discipline for the downstream population: one match, and the unread arm's own obligation
+// comes back rather than a provider row standing in for it.
 fn downstream_obligation(d: DownstreamProviderPopulation) -> List<DeclarationRef> {
   match d {
     NoDownstreamProviders { evidence } => [],
     DownstreamProvidersEnumerated { first, further, coverage } => [],
     DownstreamProvidersUnread { obligation } => [obligation],
-  }
-}
-
-fn data_path_closure_is_complete(c: ProviderDataPathClosure) -> Bool {
-  count(first_unresolved_path(c: c)) == 0
-}
-
-fn downstream_is_assessed(d: DownstreamProviderPopulation) -> Bool {
-  match d {
-    NoDownstreamProviders { evidence } => true,
-    DownstreamProvidersEnumerated { first, further, coverage } => true,
-    DownstreamProvidersUnread { obligation } => false,
   }
 }
