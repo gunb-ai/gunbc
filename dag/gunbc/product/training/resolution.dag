@@ -2,6 +2,7 @@ module product.training.resolution
 
 import product.fabric.work {
   Work, WorkContract, ExecutionRequirements, WorkStep, ReceiptSatisfiable, work_for,
+  declared_output_obligations,
 }
 import product.fabric.demand { Demand, ObservationReceiptRef }
 import product.fabric.identity {
@@ -469,8 +470,11 @@ fn training_manifest_reference(m: TrainingResolvedManifest) -> NonEmptyStr {
 // manifest reference, so a change to ANY coordinate changes the contract and therefore the key;
 // runtime_closure and output_contract additionally travel in their own fields because the fabric
 // reads them for its own purposes and flattening them into the reference would hide them.
+// Content-hash wire as opaque OutputContractRef identity (not content-serialised
+// obligations). The owed subject is that same identity as a single obligation id.
 fn training_work_contract(evidence: TrainingResolutionEvidence) -> WorkContract {
   let m = training_resolved_manifest(evidence: evidence)
+  let contract_id = serialize_content_hash(hash: m.output_contract)
   WorkContract {
     program: "gunbc-training-run-low-rank-adaptation",
     steps: [WorkStep { step_id: "train", resumability: ReceiptSatisfiable }],
@@ -478,7 +482,8 @@ fn training_work_contract(evidence: TrainingResolutionEvidence) -> WorkContract 
     inputs: training_manifest_reference(m: m),
     runtime_closure: serialize_content_hash(hash: m.trainer_closure),
     effect_contract: "training-write-checkpoints-and-adapter",
-    output_contract: serialize_content_hash(hash: m.output_contract),
+    output_contract: contract_id,
+    output_obligations: declared_output_obligations(ids: [contract_id]),
   }
 }
 

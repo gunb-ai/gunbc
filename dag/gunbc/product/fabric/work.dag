@@ -43,9 +43,100 @@ type ArtifactManifestRef = NonEmptyStr where brand("ArtifactManifestRef")
 
 type EffectContractRef = NonEmptyStr where brand("EffectContractRef")
 
+// OPAQUE CONTRACT IDENTITY ONLY. A prior meaning fork let this brand carry either a
+// plain name or a content-serialised obligation roster (framed outputs stuffed into
+// the same NonEmptyStr). Both inhabited one type, so no consumer could tell which it
+// held — DESIGN section 3. The opaque name survives; obligations live on
+// DeclaredOutputObligations and reach a gate only through resolve_output_obligations.
+//
+// A content-addressed digest (e.g. training_work_contract's serialize_content_hash
+// wire) is THIS same opaque shape: derived from content, but opaque to every reader
+// and carrying no decodable payload — not a third contract and not content-serialised.
 type OutputContractRef = NonEmptyStr where brand("OutputContractRef")
 
 type SourceManifestRef = NonEmptyStr where brand("SourceManifestRef")
+
+// Stable subject identity for one owed output. Commit manifests and committed rows
+// key by this id; inventing a fresh spelling at the gate is how one job discharged
+// another's obligations.
+type OutputObligationId = NonEmptyStr where brand("OutputObligationId")
+
+// Declared roster on the Work. Empty is a legitimate declaration (a job that owes
+// nothing), never an unsupplied one — that distinction belongs to resolution below.
+type DeclaredOutputObligations {
+  required: List<OutputObligationId>
+}
+
+fn output_obligation_id(raw: NonEmptyStr) -> OutputObligationId {
+  raw as OutputObligationId
+}
+
+fn declared_output_obligations(ids: List<NonEmptyStr>) -> DeclaredOutputObligations {
+  DeclaredOutputObligations {
+    required: map(ids, id => output_obligation_id(raw: id)),
+  }
+}
+
+fn empty_output_obligations() -> DeclaredOutputObligations {
+  DeclaredOutputObligations { required: [] }
+}
+
+// Revision of a declared roster — identity of WHICH roster was resolved.
+// Branded NonEmptyStr (same shape as WorkKey): ContentHash is a sum, so
+// `ContentHash where brand(...)` cannot be minted by casting a variant (§3 / §6
+// still hold — a foreign digest string is ill-typed as this brand).
+type OutputObligationsRevision = NonEmptyStr where brand("OutputObligationsRevision")
+
+// WHICH policy a sealed result answers under. Warm-moth-142: revision identity
+// alone does not say whether a job is judged against the roster it started on or
+// the current one; that answer must be IN the value or two readers will differ
+// and both look right. The caller names the policy at resolve time; the sealed
+// result carries it. This module does not pick a global default.
+type OutputObligationsJudgment
+  = ObligationsJudgedAtJobStart
+  | ObligationsJudgedAtAdmissionGate
+
+// Sealed on the source→.dag acceptance path: the only mint is
+// resolve_output_obligations in this module. A caller that needs a
+// terminal-success-eligible roster must resolve; constructing the resolved arm
+// by hand is SoleConstructorViolation (fixture RED).
+//
+// RUNG HONESTY, PATH-SCOPED (DESIGN 4b(1); gunbc.model.population): structurally
+// impossible on source→.dag. The emitted Rust mirror of a sole_constructor type is
+// a public struct with public fields, so a consumer writing Rust against the seed
+// is OUTSIDE this guarantee. Fabric-M0 has no such Rust consumer today, so rung 4
+// holds NOW with a named degradation condition: the first Rust consumer of the
+// seed against this carrier. Claiming "unwritable" unqualified would be the
+// inflation 4b(1) forbids.
+//
+// CONSUMPTION FRONTIER (DESIGN §3c): this sealed family is not yet read by a
+// production gate in this closure. Named consumer: gunbc durable-commit
+// admit_job_publication (warm-moth-142 / gunbc#10641). Trigger: that gate takes
+// OutputObligationsResolution (or ResolvedOutputObligations) instead of a
+// caller-supplied coproduct. Until the trigger fires, DeclaredOutputObligations
+// in work_identity_material is the live production consumer of the roster half;
+// the seal exists so the gate cannot mint terminal-success without resolving.
+type ResolvedOutputObligations sole_constructor {
+  contract: OutputContractRef
+  revision: OutputObligationsRevision
+  judgment: OutputObligationsJudgment
+  work_key: WorkKey
+  required: List<OutputObligationId>
+}
+
+// Causes resolve_output_obligations can produce today. WorkKeyDoesNotMatchContract
+// is the binding warm-moth asked for: a foreign work_key cannot seal this contract's
+// roster. Extend the coproduct when a new readable refusal exists — never invent an
+// Unreadable by hand outside this module's resolve.
+type OutputObligationsUnreadableCause
+  = WorkKeyDoesNotMatchContract {}
+
+type OutputObligationsResolution
+  = OutputObligationsResolved { value: ResolvedOutputObligations }
+  | OutputObligationsUnreadable {
+      contract: OutputContractRef
+      cause: OutputObligationsUnreadableCause
+    }
 
 // Resumability is a property of what a step DECLARES, never of the fabric. A step
 // whose effects are undeclared cannot be resumed by any mechanism, so the tier is
@@ -78,6 +169,10 @@ type WorkStep {
   resumability: ResumabilityTier
 }
 
+// WorkContract.output_contract is opaque identity of the output contract — never
+// the obligation roster. output_obligations is the structured roster the work
+// owes; identity material includes it, so changing what is owed changes the
+// work key without stuffing the roster into the contract name.
 type WorkContract {
   program: ProgramRef
   steps: List<WorkStep>
@@ -86,6 +181,7 @@ type WorkContract {
   runtime_closure: ArtifactManifestRef
   effect_contract: EffectContractRef
   output_contract: OutputContractRef
+  output_obligations: DeclaredOutputObligations
 }
 
 // Scheduling facts that do not change the promised answer live BESIDE the
@@ -216,6 +312,54 @@ type Work<P> {
 // discipline. Requirements are included because a Work that needs a different
 // architecture or trust domain does not promise the same answer.
 
+fn output_obligations_material(declared: DeclaredOutputObligations) -> NonEmptyStr {
+  fold(
+    declared.required,
+    init: concat("output-obligations:", concat(to_string(declared.required.count()), ":")),
+    f: (acc, id) => concat(acc, "\u{1e}", id),
+  )
+}
+
+fn output_obligations_revision(declared: DeclaredOutputObligations) -> OutputObligationsRevision {
+  serialize_content_hash(
+    hash: content_hash_of_value(value: output_obligations_material(declared: declared))
+  ) as OutputObligationsRevision
+}
+
+// The only route to a terminal-success-eligible roster on the .dag path. Empty
+// required is a Resolved value produced here, never an arm a gate caller can
+// invent without having resolved. work_key must equal derive_work_key for this
+// contract+requirements — a foreign key refuses as Unreadable so one job cannot
+// seal another's roster. judgment is required and stamped so start-vs-gate
+// policy is readable from the value.
+//
+// Production consumer: declared frontier on ResolvedOutputObligations (warm-moth-142
+// admit_job_publication / gunbc#10641). Witnesses below exercise both arms.
+fn resolve_output_obligations(
+  contract: WorkContract,
+  requirements: ExecutionRequirements,
+  work_key: WorkKey,
+  judgment: OutputObligationsJudgment,
+) -> OutputObligationsResolution {
+  let expected = derive_work_key(contract: contract, requirements: requirements)
+  if work_key != expected {
+    OutputObligationsUnreadable {
+      contract: contract.output_contract,
+      cause: WorkKeyDoesNotMatchContract {},
+    }
+  } else {
+    OutputObligationsResolved {
+      value: ResolvedOutputObligations {
+        contract: contract.output_contract,
+        revision: output_obligations_revision(declared: contract.output_obligations),
+        judgment: judgment,
+        work_key: work_key,
+        required: contract.output_obligations.required,
+      }
+    }
+  }
+}
+
 fn work_identity_material(contract: WorkContract, requirements: ExecutionRequirements) -> NonEmptyStr {
   concat(
     contract.program, "\u{1f}",
@@ -225,6 +369,7 @@ fn work_identity_material(contract: WorkContract, requirements: ExecutionRequire
     contract.runtime_closure, "\u{1f}",
     contract.effect_contract, "\u{1f}",
     contract.output_contract, "\u{1f}",
+    output_obligations_material(declared: contract.output_obligations), "\u{1f}",
     capacity_class_wire(c: requirements.capacity_class), "\u{1f}",
     requirements.capabilities, "\u{1f}",
     requirements.trust_domain, "\u{1f}",

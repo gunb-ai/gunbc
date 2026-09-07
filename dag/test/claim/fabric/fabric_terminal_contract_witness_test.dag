@@ -5,7 +5,7 @@ import std.measure { money_amount_micro, money_amount_micro_count, hardware_thre
 import std.content_hash { content_hash_of_value }
 import extdeps.currency.currency { Usd }
 import product.fabric.identity { FabricIdentity, fabric_identity_key, DemandKey, WorkKey }
-import product.fabric.work { CapacityClass, ControlPlaneCapacity, Shape, HardRequirements, Work, WorkContract, ExecutionRequirements, WorkStep, derive_work_key, work_for, ReceiptSatisfiable, IdempotentUnderKey, OpaqueEffects }
+import product.fabric.work { CapacityClass, ControlPlaneCapacity, Shape, HardRequirements, Work, WorkContract, ExecutionRequirements, WorkStep, derive_work_key, work_for, ReceiptSatisfiable, IdempotentUnderKey, OpaqueEffects, declared_output_obligations }
 import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, demand_work, demand_reservation_price, demand_maximum_buy_order }
 import product.fabric.supply { SupplierOffer, QuotedPerSecond, offer_quote_amount, offer_quote_currency, ObservedSupply, QuotedSupply }
 import product.fabric.execution { Attempt, InitialAttempt, InfrastructureRetry, CapabilityEscalation, LeaseIdentity, Receipt, ExecutionReceipt, ExecutionGrant, FabricGrantObject, FabricGrantContext, FabricGrantEvidence, ReceiptAdmissible, ReceiptFromDifferentLease, ReceiptFromDifferentAttempt, ReceiptFingerprintIncomparable, ReceiptGenerationStale, admit_receipt_for_grant }
@@ -45,6 +45,7 @@ data fixture_contract: WorkContract = WorkContract {
   runtime_closure: "toolchain-rust-1.89",
   effect_contract: "effects-read-only",
   output_contract: "outputs-verdict",
+  output_obligations: declared_output_obligations(ids: ["outputs-verdict"]),
 }
 
 // The key is DERIVED, never authored. An earlier version of this file declared
@@ -73,6 +74,7 @@ data other_source_contract: WorkContract = WorkContract {
   runtime_closure: "toolchain-rust-1.89",
   effect_contract: "effects-read-only",
   output_contract: "outputs-verdict",
+  output_obligations: declared_output_obligations(ids: ["outputs-verdict"]),
 }
 
 // Same contract, same capabilities and trust domain, DIFFERENT shape. Before
@@ -188,6 +190,7 @@ test fn identical_contracts_derive_one_key_regardless_of_who_asked() -> Bool {
         runtime_closure: "toolchain-rust-1.89",
         effect_contract: "effects-read-only",
         output_contract: "outputs-verdict",
+        output_obligations: declared_output_obligations(ids: ["outputs-verdict"]),
       },
       requirements: fixture_requirements,
     )

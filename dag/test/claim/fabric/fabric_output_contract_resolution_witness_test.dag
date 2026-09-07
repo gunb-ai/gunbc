@@ -1,0 +1,208 @@
+module test.claim.fabric_output_contract_resolution_witness
+
+import std.types { NonEmptyStr, Bool, String, Int, List }
+import std.measure { hardware_thread_count }
+import std.content_hash { serialize_content_hash }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CensusObserved, CensusNotRunnable,
+  census_rows_of_class, census_total_count,
+}
+import product.fabric.work {
+  WorkContract, WorkStep, ReceiptSatisfiable, ExecutionRequirements,
+  Shape, HardRequirements, ControlPlaneCapacity, derive_work_key,
+  declared_output_obligations, empty_output_obligations,
+  resolve_output_obligations, OutputObligationsResolved, OutputObligationsUnreadable,
+  OutputObligationsResolution, ObligationsJudgedAtJobStart, ObligationsJudgedAtAdmissionGate,
+  WorkKeyDoesNotMatchContract,
+}
+import product.fabric.identity { WorkKey }
+
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { shared_kernel_sandbox_profile }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// OutputContractRef meaning-fork cut: opaque identity survives; obligations are a
+// separate carrier; a terminal-success-eligible roster is sealed behind resolution.
+//
+// Producer census by shape (instrument: WorkContract constructions whose
+// output_contract field inhabits OutputContractRef — verified nonempty for each
+// class before classifying):
+//   content-serialised — required_build_contract_from_materials (DELETED by this cut)
+//   opaque name        — floor_work_contract; fixture contracts in fabric_*_witness;
+//                        training_work_contract (content-addressed digest is opaque:
+//                        derived from content, no decodable payload — same surviving shape)
+// Consumers: work_identity_material (opaque string bytes + obligations material);
+// parse consumers of the framed form: 0 — anemic modeling confirmed (write-only fork).
+
+fn fixture_requirements() -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: ControlPlaneCapacity,
+    shape: Shape {
+      hard: HardRequirements { threads: hardware_thread_count(8) },
+      envelope: unstated_envelope(),
+    },
+    capabilities: "linux-arm64",
+    trust_domain: "fleet-owned",
+    isolation: shared_kernel_sandbox_profile(),
+  }
+}
+
+fn contract_with(obligations_ids: List<NonEmptyStr>) -> WorkContract {
+  WorkContract {
+    program: "gunbc.probe.output-contract",
+    steps: [WorkStep { step_id: "probe", resumability: ReceiptSatisfiable }],
+    source: "source-1",
+    inputs: "inputs-1",
+    runtime_closure: "runtime-1",
+    effect_contract: "effects-1",
+    output_contract: "gunbc.probe.outputs",
+    output_obligations: declared_output_obligations(ids: obligations_ids),
+  }
+}
+
+fn resolve_at_start(contract: WorkContract, work_key: WorkKey) -> OutputObligationsResolution {
+  resolve_output_obligations(
+    contract: contract,
+    requirements: fixture_requirements(),
+    work_key: work_key,
+    judgment: ObligationsJudgedAtJobStart,
+  )
+}
+
+test fn empty_declared_roster_resolves_as_resolved_empty_not_unreadable() -> Bool {
+  let contract = WorkContract {
+    program: "gunbc.probe.output-contract",
+    steps: [WorkStep { step_id: "probe", resumability: ReceiptSatisfiable }],
+    source: "source-1",
+    inputs: "inputs-1",
+    runtime_closure: "runtime-1",
+    effect_contract: "effects-1",
+    output_contract: "gunbc.probe.outputs",
+    output_obligations: empty_output_obligations(),
+  }
+  let key = derive_work_key(contract: contract, requirements: fixture_requirements())
+  match resolve_at_start(contract: contract, work_key: key) {
+    OutputObligationsUnreadable { contract: _, cause: _ } => false
+    OutputObligationsResolved { value: r } =>
+      (r.required.count() == 0)
+        && (r.contract == contract.output_contract)
+        && (r.work_key == key)
+        && match r.judgment {
+          ObligationsJudgedAtJobStart => true
+          ObligationsJudgedAtAdmissionGate => false
+        }
+  }
+}
+
+test fn resolved_roster_carries_declared_obligation_ids() -> Bool {
+  let contract = contract_with(obligations_ids: ["artifact-a", "terminal-b"])
+  let key = derive_work_key(contract: contract, requirements: fixture_requirements())
+  match resolve_at_start(contract: contract, work_key: key) {
+    OutputObligationsUnreadable { contract: _, cause: _ } => false
+    OutputObligationsResolved { value: r } =>
+      (r.required.count() == 2)
+        && (r.required == declared_output_obligations(ids: ["artifact-a", "terminal-b"]).required)
+  }
+}
+
+test fn changing_obligations_changes_work_key_without_renaming_the_contract() -> Bool {
+  let a = contract_with(obligations_ids: ["artifact-a"])
+  let b = contract_with(obligations_ids: ["artifact-b"])
+  (a.output_contract == b.output_contract)
+    && (derive_work_key(contract: a, requirements: fixture_requirements())
+      != derive_work_key(contract: b, requirements: fixture_requirements()))
+}
+
+test fn resolution_revision_tracks_the_declared_roster() -> Bool {
+  let a = contract_with(obligations_ids: ["artifact-a"])
+  let b = contract_with(obligations_ids: ["artifact-b"])
+  let ka = derive_work_key(contract: a, requirements: fixture_requirements())
+  let kb = derive_work_key(contract: b, requirements: fixture_requirements())
+  match resolve_at_start(contract: a, work_key: ka) {
+    OutputObligationsUnreadable { contract: _, cause: _ } => false
+    OutputObligationsResolved { value: ra } => match resolve_at_start(contract: b, work_key: kb) {
+      OutputObligationsUnreadable { contract: _, cause: _ } => false
+      OutputObligationsResolved { value: rb } =>
+        ra.revision != rb.revision
+    }
+  }
+}
+
+test fn resolution_binds_the_work_key_it_was_resolved_against() -> Bool {
+  let a = contract_with(obligations_ids: ["artifact-a"])
+  let b = contract_with(obligations_ids: ["artifact-a", "extra"])
+  let ka = derive_work_key(contract: a, requirements: fixture_requirements())
+  let kb = derive_work_key(contract: b, requirements: fixture_requirements())
+  match resolve_at_start(contract: a, work_key: ka) {
+    OutputObligationsUnreadable { contract: _, cause: _ } => false
+    OutputObligationsResolved { value: ra } =>
+      (ra.work_key == ka) && (ka != kb)
+  }
+}
+
+test fn judgment_policy_is_stamped_on_the_sealed_result() -> Bool {
+  let contract = contract_with(obligations_ids: ["artifact-a"])
+  let key = derive_work_key(contract: contract, requirements: fixture_requirements())
+  match resolve_output_obligations(
+    contract: contract,
+    requirements: fixture_requirements(),
+    work_key: key,
+    judgment: ObligationsJudgedAtAdmissionGate,
+  ) {
+    OutputObligationsUnreadable { contract: _, cause: _ } => false
+    OutputObligationsResolved { value: r } => match r.judgment {
+      ObligationsJudgedAtAdmissionGate => true
+      ObligationsJudgedAtJobStart => false
+    }
+  }
+}
+
+// Discriminating producer for OutputObligationsUnreadable: a foreign work_key
+// cannot seal this contract's roster. Without this path the Unreadable arm is
+// permanently green by construction (DESIGN §4b).
+test fn foreign_work_key_is_unreadable_not_resolved() -> Bool {
+  let a = contract_with(obligations_ids: ["artifact-a"])
+  let b = contract_with(obligations_ids: ["artifact-b"])
+  let foreign = derive_work_key(contract: b, requirements: fixture_requirements())
+  match resolve_at_start(contract: a, work_key: foreign) {
+    OutputObligationsResolved { value: _ } => false
+    OutputObligationsUnreadable { contract: c, cause: cause } =>
+      (c == a.output_contract)
+        && match cause {
+          WorkKeyDoesNotMatchContract {} => true
+        }
+  }
+}
+
+// Discriminating RED on source→.dag: a terminal-success-eligible roster is
+// SoleConstructorViolation without resolve_output_obligations. Path-scoped —
+// see ResolvedOutputObligations annotation. Fixture form is enrollable; an
+// in-corpus witness asserting the refusal would be permanently green.
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn violation_count(source: String, wanted: String) -> Int {
+  match census_of(source: source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data forged_resolved_roster_source: String = "module probe_forged_resolved_output_obligations\nimport product.fabric.work { ResolvedOutputObligations, OutputContractRef, OutputObligationId, OutputObligationsRevision, ObligationsJudgedAtJobStart }\nimport product.fabric.identity { WorkKey }\nfn forged() -> ResolvedOutputObligations {\n  ResolvedOutputObligations {\n    contract: \"forged\" as OutputContractRef,\n    revision: \"x\" as OutputObligationsRevision,\n    judgment: ObligationsJudgedAtJobStart,\n    work_key: \"k\" as WorkKey,\n    required: [],\n  }\n}\n"
+
+test fn forged_resolved_roster_is_sole_constructor_refused() -> Bool {
+  violation_count(source: forged_resolved_roster_source, wanted: "SoleConstructorViolation") >= 1
+}
+
+test fn resolve_is_the_sanctioned_mint() -> Bool {
+  let contract = contract_with(obligations_ids: [])
+  let key = derive_work_key(contract: contract, requirements: fixture_requirements())
+  match resolve_at_start(contract: contract, work_key: key) {
+    OutputObligationsResolved { value: _ } => true
+    OutputObligationsUnreadable { contract: _, cause: _ } => false
+  }
+}

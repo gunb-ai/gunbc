@@ -15,6 +15,7 @@ import product.fabric.work {
   ExecutionRequirements, Shape, HardRequirements, CapacityClass, ControlPlaneCapacity,
   CapabilityManifestRef, TrustDomainRef,
   ProgramRef, SourceManifestRef, ArtifactManifestRef, EffectContractRef, OutputContractRef,
+  declared_output_obligations,
   work_for,
 }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
@@ -159,6 +160,10 @@ fn action_ref_material(action: ActionRef) -> NonEmptyStr {
   concat("action:", concat(framed_string(value: action.owner), concat(framed_string(value: action.repo), framed_string(value: action.ref))))
 }
 
+// Opaque contract name. Obligations are the structured field —
+// they used to be framed into the OutputContractRef string (content-serialised
+// meaning fork). Deleting that encoding is the cut; the roster no longer hides
+// in a name.
 fn required_build_contract_from_materials(
   source: NonEmptyStr,
   checkout: NonEmptyStr,
@@ -168,8 +173,8 @@ fn required_build_contract_from_materials(
   environment: NonEmptyStr,
   cache: NonEmptyStr,
   credentials: NonEmptyStr,
-  outputs: NonEmptyStr,
-  terminal: NonEmptyStr,
+  output_manifest: List<NonEmptyStr>,
+  terminal_result_manifest: List<NonEmptyStr>,
 ) -> WorkContract {
   WorkContract {
     program: concat("gunbc.required-witnesses-build.program:", framed_string(value: command)),
@@ -182,7 +187,10 @@ fn required_build_contract_from_materials(
     inputs: concat("gunbc.required-witnesses-build.inputs:", concat(framed_string(value: environment), concat(framed_string(value: cache), framed_string(value: credentials)))),
     runtime_closure: concat("gunbc.required-witnesses-build.runtime:", concat(framed_string(value: toolchain), framed_string(value: executable))),
     effect_contract: "gunbc.required-witnesses-build.effects.checkout-read-cache-and-permitted-credentials-only",
-    output_contract: concat("gunbc.required-witnesses-build.outputs:", concat(framed_string(value: outputs), framed_string(value: terminal))),
+    output_contract: "gunbc.required-witnesses-build.outputs",
+    output_obligations: declared_output_obligations(
+      ids: output_manifest + terminal_result_manifest,
+    ),
   }
 }
 
@@ -208,12 +216,23 @@ fn bind_required_witnesses_build_work(
                   Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "permitted-credential-refs" } }
                   Present { value: credentials } => match non_empty_strings_material(label: "outputs", values: spec.output_manifest) {
                     Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "output-manifest" } }
-                    Present { value: outputs } => match non_empty_strings_material(label: "terminal", values: spec.terminal_result_manifest) {
+                    Present { value: _ } => match non_empty_strings_material(label: "terminal", values: spec.terminal_result_manifest) {
                       Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "terminal-result-manifest" } }
-                      Present { value: terminal } => {
+                      Present { value: _ } => {
                         let source = concat("git-source:", concat(framed_string(value: git_object_id_wire_hex(oid: subject.commit)), framed_string(value: git_object_id_wire_hex(oid: subject.tree))))
                         let command = command_material(command: spec.command)
-                        let contract = required_build_contract_from_materials(source: source, checkout: checkout, toolchain: toolchain, executable: executable, command: command, environment: environment, cache: cache, credentials: credentials, outputs: outputs, terminal: terminal)
+                        let contract = required_build_contract_from_materials(
+                          source: source,
+                          checkout: checkout,
+                          toolchain: toolchain,
+                          executable: executable,
+                          command: command,
+                          environment: environment,
+                          cache: cache,
+                          credentials: credentials,
+                          output_manifest: spec.output_manifest,
+                          terminal_result_manifest: spec.terminal_result_manifest,
+                        )
                         let requirements = floor_execution_requirements()
                         let work = work_for(principal: principal, contract: contract, requirements: requirements)
                         RequiredBuildWorkBound {
@@ -390,6 +409,7 @@ fn floor_work_contract(source: SourceManifestRef) -> WorkContract {
     runtime_closure: "gunbc.toolchain.rust-1.93.0+clippy+rustfmt",
     effect_contract: "gunbc.floor.effects.read-only-corpus",
     output_contract: "gunbc.floor.outputs.required-floor-summary",
+    output_obligations: declared_output_obligations(ids: ["required-floor-summary"]),
   }
 }
 
