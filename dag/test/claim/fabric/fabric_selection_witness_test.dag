@@ -990,3 +990,27 @@ test fn a_cheaper_candidate_after_a_collision_still_wins_in_either_order() -> Bo
     && ((selected_key(s: t_select_five_micros(candidates: concat(dear, cheap))) as String) == "offer-cheap")
     && ((selected_key(s: t_select_five_micros(candidates: concat(cheap, dear))) as String) == "offer-cheap")
 }
+
+// ── AND THE COLLISION IS SEEN WHEREVER IN THE ROSTER IT SITS ──────────────────────────────────
+//
+// THE SECOND ORDER DEPENDENCE, which the pairwise-comparator shape still had after the first was
+// fixed (review 62174). A fold that only ever compares a candidate against the RUNNING BEST cannot
+// see a collision between two candidates neither of which was ever the best: interleave the twinned
+// pair around a third equal-cost offer whose digest wins, and the pair is never compared to itself.
+// The cohort shape has no running best to hide behind -- the tie is resolved over the whole set at
+// the minimum total -- so every permutation of the same population answers the same way.
+fn t_tie_refuses(candidates: List<CandidateOffer<NonEmptyStr>>) -> Bool {
+  match t_select_tie(candidates: candidates, tie: DemandKeyedRendezvous, demand_key: "d") {
+    EqualCostTieUnresolved { digest: _, considered: cs } => length(cs) == 3
+    OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => false
+    NoAdmissibleOffer { considered: _ } => false
+  }
+}
+
+test fn a_collision_refuses_in_every_roster_order() -> Bool {
+  let a = t_twin_candidate(key: "offer-group-a")
+  let b = t_twin_candidate(key: "offer-group-b")
+  t_tie_refuses(candidates: concat(concat(a, a), b))
+    && t_tie_refuses(candidates: concat(concat(a, b), a))
+    && t_tie_refuses(candidates: concat(concat(b, a), a))
+}

@@ -60,6 +60,4 @@ fn vllm_metric_name(m: VllmServingMetric) -> NonEmptyStr {
 // positive count to one -- 4 waiting and 3 running both read as 1 -- and the collapse is silent,
 // because the shape of the answer is still a count. The reading law lives with the consumer that
 // parses the field; what belongs here is that the rendering is a float.
-data vllm_metric_values_are_rendered_as_floats: NonEmptyStr = "the Prometheus text exposition renders every gauge value as a float, so a gauge holding 4 is written 4.0 and an integer parse of the value field fails on an ordinary reading" as NonEmptyStr
-
 data vllm_metric_semantics_established_against: VllmSourceRevision = vllm_source_revision_read

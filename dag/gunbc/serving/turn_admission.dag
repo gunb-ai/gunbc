@@ -272,14 +272,15 @@ fn serving_dispatch_inputs<P>(
 // micro-dollar per second -- positive, so orderings resolve, and small enough that nobody reading a
 // total mistakes it for a priced claim. It becomes load-bearing the moment an offer with a non-zero
 // quote joins the set, and at that point it must be restated by someone who can defend the number.
+// THE DISSOLUTION CONDITION: an offer with a non-zero quote enters the serving offer set. At that
+// point cash no longer ties, this rate decides how many seconds of waiting a dollar is worth, and
+// that is a judgement this placeholder does not make and must not be read as having made.
 data serving_delay_valuation_micros_per_second: Nat = 1
 
 data serving_delay_valuation: MoneyPerSecond = MoneyRate {
   amount: money_amount_micro(count: serving_delay_valuation_micros_per_second),
   currency: Usd,
 }
-
-data serving_delay_valuation_dissolution: NonEmptyStr = "an offer with a non-zero quote enters the serving offer set, at which point cash no longer ties and this rate decides how many seconds of waiting a dollar is worth -- a judgement this placeholder does not make and must not be read as having made" as NonEmptyStr
 
 // ── A SERVING TURN IS NOT ISOLATED FROM THE TURNS BESIDE IT ───────────────────────────────────
 //
