@@ -36,10 +36,19 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // Materialization also refuses composed argv (calls and coproduct helpers) on operations that
 // this pin does not name; git.Plumbing.ReadTreeIntoIndex is the exemplar. Do not read the residue
 // pin as the set of operations whose argv is too composed to compare.
-// A second full-corpus rematerialization dedicated to argv-list identity does not fit the
-// required-floor claim CPU deadline (changed-witness interrupted_before_verdict). The tally
-// on this module is the rematerialization the floor already pays. That class cannot be walled
-// as its own merge-blocking witness identity.
+// A FULL-CORPUS ARGV REMATERIALIZATION CANNOT BE A MERGE-BLOCKING WITNESS IDENTITY.
+// DESIGN 4b next-rung, measured: witness_duplicate_authority_pairs_are_well_formed hit
+// changed-witness interrupted_before_verdict against the claim CPU deadline
+// (required_floor_claim_cpu_safety_limit_ms). The obstacle is that deadline, not the
+// absence of a check. Mechanism: this module's tally already rematerializes once; a
+// second claim identity that rematerializes again does not fit. Sampling is not a wall.
+// A count or closed roster over pairs is the absorbing fallback. The trigger is a
+// cheaper argv identity -- materialization results shared across claim identities, or
+// an identity derivable without rematerializing -- not "someone should write the check".
+// Cite claim_batch's [witness] cpu= line against that deadline function; do not copy
+// milliseconds into this note. A declaration-only fold over the same enumerator (output
+// from-keys, no argv expansion) has been observed under the deadline as its own claim
+// identity; that is a different class and does not retire this rung.
 // A Hamming-1 relation (same program and flags; one position a declaration literal vs a
 // generic bound-slot) would catch shell.Codegen.Check versus shell.Test.IsFile. It is a
 // second named relation, not list identity, not "same policy" (undecidable), and was not
