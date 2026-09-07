@@ -155,8 +155,8 @@ test fn the_start_payload_names_the_delivered_file() -> Bool {
   let json = bambu_start_payload_json(
     command: bambu_start_command(remote_name: a_remote_name), sequence_id: "7")
   string_contains(s: json, pattern: "file:///sdcard/gauge_container.3mf")
-    && string_contains(s: json, pattern: "\"sequence_id\":\"7\"")
-    && string_contains(s: json, pattern: "\"command\":\"project_file\"")
+    && string_contains(s: json, pattern: "\"sequence_id\": \"7\"")
+    && string_contains(s: json, pattern: "\"command\": \"project_file\"")
 }
 
 // use_ams IS FALSE, and it is checked rather than trusted to the constructor. The operator's
@@ -165,7 +165,7 @@ test fn the_start_payload_names_the_delivered_file() -> Bool {
 test fn the_start_payload_does_not_ask_for_an_ams() -> Bool {
   let json = bambu_start_payload_json(
     command: bambu_start_command(remote_name: a_remote_name), sequence_id: "1")
-  string_contains(s: json, pattern: "\"use_ams\":false")
+  string_contains(s: json, pattern: "\"use_ams\": false")
 }
 
 // THE BROKER IS TLS, MEASURED ON THE MACHINE RATHER THAN ASSUMED FROM THE PORT NUMBER.
@@ -322,4 +322,38 @@ test fn a_clean_publish_is_still_published() -> Bool {
     PrintStartRefused { printer: _, cause: _ } => false
     PrintStartRefusedResidueRemains { printer: _, cause: _ } => false
   }
+}
+
+// THE PAYLOAD IS ESCAPED BY CONSTRUCTION, WHICH IS THE HALF OF THE JSON REPAIR THAT CAN BITE. The
+// previous version spliced values between literal quotes, so a quote or backslash in a field
+// produced a malformed or attacker-shaped document with no arm that could refuse it -- the
+// string-concat route never examines a value, so it has nowhere to put a refusal. Going through
+// json_string applies the escape by construction instead.
+//
+// NEITHER FIELD IS CALLER-AUTHORED TODAY, and that is exactly why this row is worth enrolling: the
+// remote name is digest-derived and the sequence id is a mktemp path, so nothing has broken and
+// nothing would. That is a property of the current callers, not of the function, and a check whose
+// red depends on a caller nobody has written yet is the one that quietly stops being true.
+test fn a_quote_in_the_subtask_name_is_escaped_rather_than_closing_the_string() -> Bool {
+  let json = bambu_start_payload_json(
+    command: bambu_start_command(remote_name: "evil\".3mf" as NonEmptyStr),
+    sequence_id: "1" as NonEmptyStr)
+  string_contains(s: json, pattern: "evil\\\".3mf")
+    && !string_contains(s: json, pattern: "\"subtask_name\": \"evil\".3mf\"")
+}
+
+test fn a_backslash_in_the_sequence_id_is_escaped() -> Bool {
+  let json = bambu_start_payload_json(
+    command: bambu_start_command(remote_name: a_remote_name),
+    sequence_id: "a\\b" as NonEmptyStr)
+  string_contains(s: json, pattern: "\"sequence_id\": \"a\\\\b\"")
+}
+
+// THE POSITIVE CONTROL: an ordinary value passes through unmangled, so the two rows above are not
+// green merely because the escaper mangles everything.
+test fn an_ordinary_sequence_id_is_not_altered() -> Bool {
+  let json = bambu_start_payload_json(
+    command: bambu_start_command(remote_name: a_remote_name),
+    sequence_id: "plain-1" as NonEmptyStr)
+  string_contains(s: json, pattern: "\"sequence_id\": \"plain-1\"")
 }

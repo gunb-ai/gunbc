@@ -5,6 +5,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.oasis.mqtt { MqttEndpoint, MqttTopic, MqttOverTls, MqttQos, ExactlyOnce, AtLeastOnce }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_object, json_string, json_bool, serialize_json }
 
 // THE LAN CONTROL PROTOCOL OF BAMBU LAB PRINTERS IN LAN-ONLY MODE, modeled because the delivery leg
 // already speaks FTPS and the leg that STARTS a job speaks MQTT -- and that second leg was
@@ -88,6 +89,8 @@ fn bambu_sd_file_url(remote_name: NonEmptyStr) -> NonEmptyStr {
 // order first rather than the one the caller meant.
 data bambu_first_plate_gcode: NonEmptyStr = "Metadata/plate_1.gcode"
 
+data bambu_project_file_command: NonEmptyStr = "project_file"
+
 fn bambu_start_command(remote_name: NonEmptyStr) -> BambuPrintStartCommand {
   BambuPrintStartCommand {
     file_url: bambu_sd_file_url(remote_name: remote_name),
@@ -125,20 +128,44 @@ fn bambu_start_command(remote_name: NonEmptyStr) -> BambuPrintStartCommand {
 // "never republish" rather than "republish if the report looks wrong".
 data bambu_start_command_qos: MqttQos = AtLeastOnce
 
+// THE PAYLOAD IS BUILT AS STRUCTURE AND SERIALIZED, NOT SPLICED TOGETHER AS TEXT.
+//
+// The first version of this function hand-built the object out of literal fragments -- "{\"print\":{\"sequence_id\":\"" and friends -- and dropped caller-supplied values between the quotes,
+// with a local bool_json re-implementing boolean rendering beside it. That was a SECOND AUTHORITY for
+// how JSON is produced, in a repository that already owns the medium: extdeps.languages.json.emit
+// declares JsonValue, json_object, json_string and json_bool, and serialize_json carries a real
+// escape_json_string. DESIGN section 3 names this exactly -- a second name for one concept -- and
+// section 2's test is that net concepts must not grow by re-invention. bool_json was the tell: a
+// four-line function whose whole content already existed one import away.
+//
+// IT IS ALSO A REFUSAL PROBLEM AND THAT IS THE HALF THAT COULD BITE. A quote or a backslash in
+// subtask_name or sequence_id produced a malformed or attacker-shaped payload with nothing to say
+// so -- the string-concat route has no arm in which a value can be rejected, because it never
+// examines one. Neither field is caller-authored today (the remote name is digest-derived and the
+// sequence id is a mktemp path), which is why nothing has broken; that is an accident of the current
+// callers rather than a property of this function, and it is exactly the shape section 5 asks to
+// make unwritable rather than validated. Going through json_string means the escape is applied by
+// construction and there is no spelling of this function that emits an unescaped value.
 fn bambu_start_payload_json(command: BambuPrintStartCommand, sequence_id: NonEmptyStr) -> String {
-  join([
-    "{\"print\":{\"sequence_id\":\"", sequence_id as String,
-    "\",\"command\":\"project_file\",\"param\":\"", command.plate_gcode as String,
-    "\",\"url\":\"", command.file_url as String,
-    "\",\"subtask_name\":\"", command.subtask_name as String,
-    "\",\"use_ams\":", bool_json(b: command.use_ams),
-    ",\"bed_leveling\":", bool_json(b: command.bed_leveling),
-    ",\"flow_cali\":false,\"vibration_cali\":true,\"layer_inspect\":false,\"timelapse\":false,\"profile_id\":\"0\",\"project_id\":\"0\",\"subtask_id\":\"0\",\"task_id\":\"0\"}}"
-  ], "")
-}
-
-fn bool_json(b: Bool) -> String {
-  if b { "true" } else { "false" }
+  serialize_json(v: json_object(members: [
+    json_kv(key: "print", value: json_object(members: [
+      json_kv(key: "sequence_id", value: json_string(s: sequence_id as String)),
+      json_kv(key: "command", value: json_string(s: bambu_project_file_command as String)),
+      json_kv(key: "param", value: json_string(s: command.plate_gcode as String)),
+      json_kv(key: "url", value: json_string(s: command.file_url as String)),
+      json_kv(key: "subtask_name", value: json_string(s: command.subtask_name as String)),
+      json_kv(key: "use_ams", value: json_bool(b: command.use_ams)),
+      json_kv(key: "bed_leveling", value: json_bool(b: command.bed_leveling)),
+      json_kv(key: "flow_cali", value: json_bool(b: false)),
+      json_kv(key: "vibration_cali", value: json_bool(b: true)),
+      json_kv(key: "layer_inspect", value: json_bool(b: false)),
+      json_kv(key: "timelapse", value: json_bool(b: false)),
+      json_kv(key: "profile_id", value: json_string(s: "0")),
+      json_kv(key: "project_id", value: json_string(s: "0")),
+      json_kv(key: "subtask_id", value: json_string(s: "0")),
+      json_kv(key: "task_id", value: json_string(s: "0")),
+    ])),
+  ]))
 }
 
 // THE PRINTER'S CERTIFICATE IS ISSUED BY A REAL CA. An earlier revision of this file asserted the
