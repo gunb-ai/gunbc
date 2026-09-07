@@ -1593,24 +1593,12 @@ pub struct TransitionAdmission {
 /// declaration to `std.process`. This roster touch deletes them rather than carrying them as
 /// permissions standing over nothing.
 ///
-/// `CeilingTranscribedUncited` MOVES TO `extdeps.external_authority`. One `TargetChanged` binding
-/// in `product.node_power_envelope::altra_two_dpc_ceilings`: the spelling is unchanged; the
-/// declarer is the shared `CitedFigureStanding` home rather than a per-product copy. Membership
-/// additions around that rehome classified `ExplicitlyEvaluatedZeroDelta` and auto-admit.
-const CITED_FIGURE_REHOME_LABEL: &str =
-    "CeilingTranscribedUncited relocates from product.node_power_envelope to \
-     extdeps.external_authority: spelling unchanged; both consumers share one CitedFigureStanding";
+/// `CitedFigureStanding` constructors were renamed with the rehome (`CitedToAuthority` /
+/// `TranscribedUncited`): a renamed declaration is a new declaration, so the wall does not
+/// produce `TargetChanged` for `CeilingTranscribedUncited`. That row is deleted rather than
+/// rewritten to the new spelling (see encode_repository_v3: a rewritten spelling matches nothing).
 
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission {
-    label: CITED_FIGURE_REHOME_LABEL,
-    subject: AdmissionSubject::Binding {
-        module: "product.node_power_envelope",
-        in_declaration: "altra_two_dpc_ceilings",
-        spelling: "CeilingTranscribedUncited",
-        target: "extdeps.external_authority",
-    },
-    disposition: NamespaceDeltaDisposition::TargetChanged,
-}];
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.

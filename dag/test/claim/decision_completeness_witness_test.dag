@@ -10,7 +10,7 @@ import std.observation_completeness {
   ObservationRepeatedExpected,
   ObservationRepeatedObserved,
 }
-import extdeps.external_authority { ExternalAuthority, CeilingCitedToAuthority, CeilingTranscribedUncited }
+import extdeps.external_authority { ExternalAuthority, CitedToAuthority, TranscribedUncited }
 import extdeps.uri { Uri, Https }
 import std.pareto {
   HigherIsBetter,
@@ -122,11 +122,11 @@ data fixture_physical_authority: ExternalAuthority = ExternalAuthority {
 
 data term_power: ObjectiveTerm = ObjectiveTerm {
   identity: id_term_power,
-  ground: CeilingCitedToAuthority { authority: fixture_physical_authority },
+  ground: CitedToAuthority { authority: fixture_physical_authority },
 }
 data term_throughput: ObjectiveTerm = ObjectiveTerm {
   identity: id_term_throughput,
-  ground: CeilingCitedToAuthority { authority: fixture_physical_authority },
+  ground: CitedToAuthority { authority: fixture_physical_authority },
 }
 data constraint_budget: DecisionConstraint = DecisionConstraint { identity: id_constraint }
 data param_workload: ContextParameter = ContextParameter { identity: id_param }
@@ -188,28 +188,28 @@ fn closed_sensitivities() -> List<ObjectiveTermSensitivity> {
       term: id_term_power,
       variable: id_var_a,
       region: region_r,
-      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
+      coupling: CitedToAuthority { authority: fixture_physical_authority },
     },
     VariesAlong {
       term: id_term_power,
       variable: id_var_b,
       region: region_r,
       relation: MonotoneDecreasing,
-      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
+      coupling: CitedToAuthority { authority: fixture_physical_authority },
     },
     VariesAlong {
       term: id_term_throughput,
       variable: id_var_a,
       region: region_r,
       relation: MonotoneDecreasing,
-      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
+      coupling: CitedToAuthority { authority: fixture_physical_authority },
     },
     VariesAlong {
       term: id_term_throughput,
       variable: id_var_b,
       region: region_r,
       relation: MonotoneDecreasing,
-      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
+      coupling: CitedToAuthority { authority: fixture_physical_authority },
     },
   ]
 }
@@ -400,14 +400,14 @@ test fn omitting_objective_term_cell_makes_sensitivity_closure_missing() -> Bool
       variable: id_var_a,
       region: region_r,
       relation: MonotoneDecreasing,
-      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
+      coupling: CitedToAuthority { authority: fixture_physical_authority },
     },
     VariesAlong {
       term: id_term_throughput,
       variable: id_var_b,
       region: region_r,
       relation: MonotoneDecreasing,
-      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
+      coupling: CitedToAuthority { authority: fixture_physical_authority },
     },
   ]
   match sensitivity_closure(subject: subject, rows: without_power_cells) {
@@ -437,21 +437,21 @@ test fn omitting_one_required_sensitivity_cell_blocks_settlement() -> Bool {
       term: id_term_power,
       variable: id_var_a,
       region: region_r,
-      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
+      coupling: CitedToAuthority { authority: fixture_physical_authority },
     },
     VariesAlong {
       term: id_term_throughput,
       variable: id_var_a,
       region: region_r,
       relation: MonotoneDecreasing,
-      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
+      coupling: CitedToAuthority { authority: fixture_physical_authority },
     },
     VariesAlong {
       term: id_term_throughput,
       variable: id_var_b,
       region: region_r,
       relation: MonotoneDecreasing,
-      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
+      coupling: CitedToAuthority { authority: fixture_physical_authority },
     },
   ]
   match sensitivity_closure(subject: subject, rows: missing_one) {
@@ -482,7 +482,7 @@ test fn two_answers_for_one_cell_refuse_as_repeated_observed() -> Bool {
       term: id_term_power,
       variable: id_var_a,
       region: region_r,
-      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
+      coupling: CitedToAuthority { authority: fixture_physical_authority },
     },
   ])
   match sensitivity_closure(subject: subject, rows: dup) {
@@ -698,7 +698,7 @@ test fn invariant_along_with_uncited_coupling_must_not_mint_settled() -> Bool {
       term: id_term_power,
       variable: id_var_a,
       region: region_r,
-      coupling: CeilingTranscribedUncited {
+      coupling: TranscribedUncited {
         read_obligation: "uncited invariance is not a warrant; absence of a coupling edge is not proven invariance" as NonEmptyStr,
       },
     },
@@ -707,21 +707,21 @@ test fn invariant_along_with_uncited_coupling_must_not_mint_settled() -> Bool {
       variable: id_var_b,
       region: region_r,
       relation: MonotoneDecreasing,
-      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
+      coupling: CitedToAuthority { authority: fixture_physical_authority },
     },
     VariesAlong {
       term: id_term_throughput,
       variable: id_var_a,
       region: region_r,
       relation: MonotoneDecreasing,
-      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
+      coupling: CitedToAuthority { authority: fixture_physical_authority },
     },
     VariesAlong {
       term: id_term_throughput,
       variable: id_var_b,
       region: region_r,
       relation: MonotoneDecreasing,
-      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
+      coupling: CitedToAuthority { authority: fixture_physical_authority },
     },
   ]
   standing_deferred(s: mint_settled_policy(assessment: DecisionAssessment {

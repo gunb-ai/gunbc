@@ -15,8 +15,8 @@ import std.observation_completeness {
 import extdeps.external_authority {
   ExternalAuthority,
   CitedFigureStanding,
-  CeilingCitedToAuthority,
-  CeilingTranscribedUncited,
+  CitedToAuthority,
+  TranscribedUncited,
   cited_figure_read_obligation,
 }
 import std.effect_grant { LifecycleGrade, LifecycleByConstruction, LifecycleByConvention }
@@ -193,8 +193,8 @@ fn physical_model_read_obligations(physical: PhysicalModelPopulation) -> List<No
 
 fn cited_figure_lifecycle(standing: CitedFigureStanding) -> LifecycleGrade {
   match standing {
-    CeilingCitedToAuthority { authority: _ } => LifecycleByConstruction
-    CeilingTranscribedUncited { read_obligation: _ } => LifecycleByConvention
+    CitedToAuthority { authority: _ } => LifecycleByConstruction
+    TranscribedUncited { read_obligation: _ } => LifecycleByConvention
   }
 }
 

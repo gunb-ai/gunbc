@@ -3,7 +3,7 @@ module product.mt_collins_power_policy
 import std.types { List, NonEmptyStr }
 import std.decl_ref { decl_ref }
 import std.pareto { HigherIsBetter }
-import extdeps.external_authority { CeilingCitedToAuthority, CeilingTranscribedUncited }
+import extdeps.external_authority { CitedToAuthority, TranscribedUncited }
 import extdeps.cpu.ampere { ampere_altra_classic_rev_a1_datasheet_authority }
 import std.decision {
   DecisionVariable,
@@ -88,19 +88,19 @@ data constraint_hardware_cap_range: DecisionConstraint = DecisionConstraint {
 
 data term_platform_power: ObjectiveTerm = ObjectiveTerm {
   identity: decl_ref(module_path: "product.mt_collins_power_policy", decl_name: "term_platform_power"),
-  ground: CeilingTranscribedUncited {
+  ground: TranscribedUncited {
     read_obligation: "cite platform/fan/PSU wall-draw decomposition; PowerAssumedOnly / unread memory is not an observed 0 W" as NonEmptyStr,
   },
 }
 
 data term_service_capacity: ObjectiveTerm = ObjectiveTerm {
   identity: decl_ref(module_path: "product.mt_collins_power_policy", decl_name: "term_service_capacity"),
-  ground: CeilingCitedToAuthority { authority: ampere_altra_classic_rev_a1_datasheet_authority },
+  ground: CitedToAuthority { authority: ampere_altra_classic_rev_a1_datasheet_authority },
 }
 
 data term_fan_power: ObjectiveTerm = ObjectiveTerm {
   identity: decl_ref(module_path: "product.mt_collins_power_policy", decl_name: "term_fan_power"),
-  ground: CeilingTranscribedUncited {
+  ground: TranscribedUncited {
     read_obligation: "cite BMC fan curve against temperature or type the fleet-observed coupling receipt; fan power is in the physical model and absent from the declared objective" as NonEmptyStr,
   },
 }

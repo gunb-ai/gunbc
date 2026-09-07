@@ -12,15 +12,15 @@ type ExternalAuthority {
 // CITED VERSUS TYPED-UNCITED IS ONE STANDING, not a per-domain coproduct. product.node_power_envelope
 // TwoDpcRateCeiling.evidence and std.decision ObjectiveTerm.ground are the same warrant kind:
 // either the figure points at ExternalAuthority, or it carries uncitedness as a read_obligation
-// naming what would ground it. Relocated here so a second CeilingCitedToAuthority cannot be minted.
+// naming what would ground it. Relocated here so a second CitedToAuthority cannot be minted.
 type CitedFigureStanding
-  = CeilingCitedToAuthority { authority: ExternalAuthority }
-  | CeilingTranscribedUncited { read_obligation: NonEmptyStr }
+  = CitedToAuthority { authority: ExternalAuthority }
+  | TranscribedUncited { read_obligation: NonEmptyStr }
 
 fn cited_figure_read_obligation(standing: CitedFigureStanding) -> NonEmptyStr? {
   match standing {
-    CeilingCitedToAuthority { authority: _ } => Absent
-    CeilingTranscribedUncited { read_obligation: o } => Present { value: o }
+    CitedToAuthority { authority: _ } => Absent
+    TranscribedUncited { read_obligation: o } => Present { value: o }
   }
 }
 

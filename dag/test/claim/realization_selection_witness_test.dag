@@ -71,7 +71,7 @@ import product.fleet_operating_point {
 import gunbc.design_document { expected_design_md }
 import gunbc.roadmap.roadmap_review_criteria { review_criterion_by_key }
 import gunbc.design_argument { design_propositions }
-import extdeps.external_authority { ExternalAuthority, CeilingCitedToAuthority }
+import extdeps.external_authority { ExternalAuthority, CitedToAuthority }
 import extdeps.uri { Uri, Https }
 
 data id_a: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_a")
@@ -105,7 +105,7 @@ data fixture_physical_authority: ExternalAuthority = ExternalAuthority {
 data var_sel: DecisionVariable = DecisionVariable { identity: id_var }
 data term_sel: ObjectiveTerm = ObjectiveTerm {
   identity: id_term,
-  ground: CeilingCitedToAuthority { authority: fixture_physical_authority },
+  ground: CitedToAuthority { authority: fixture_physical_authority },
 }
 data constraint_sel: DecisionConstraint = DecisionConstraint { identity: id_constraint_cell }
 data param_sel: ContextParameter = ContextParameter { identity: id_param_cell }
@@ -140,7 +140,7 @@ fn closed_selection_assessment() -> DecisionAssessment {
         variable: id_var,
         region: region_sel,
         relation: MonotoneDecreasing,
-        coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
+        coupling: CitedToAuthority { authority: fixture_physical_authority },
       },
     ],
     constraints: [
