@@ -1588,19 +1588,22 @@ pub struct TransitionAdmission {
 ///   one of those spellings from the new declarer. So base and head bind identically; CONSUMED is
 ///   the correct reading for all nine.
 ///
-/// EXIT_OK RELOCATES TO std.process. Seven `TargetChanged` bindings in
-/// `tools.floor_effect_gate_witness` (`<gate>_passes` for emit_host_gate, cheap_claim_pool_gate,
-/// extdeps_external_authority_gate, dag_compile_clean_gate, generated_artifact_drift_gate,
-/// extdeps_scope_placement_gate, prose_row_introduction_gate) resolve `exit_ok` at base to
-/// `tools.ci_gates` and at head to `std.process`. Spelling unchanged; predicate exhaustive with no
-/// wildcard arm; behaviour unchanged; the witnesses that consume it are unchanged. TRIGGER: they
-/// go when this relocation is on main, then report CONSUMED and come due on the roster's next touch.
-/// Adjudicate that deletion by joining each row against main on its own tuple, not this sentence.
-const EXIT_OK_REHOME_LABEL: &str =
-    "exit_ok relocates from tools.ci_gates to std.process: spelling unchanged, behaviour \
-     unchanged, the predicate is exhaustive with no wildcard arm, and the floor witnesses \
-     that consume it are unchanged";
-
+/// THE EXIT_OK ROWS DISSOLVED HERE (2026-09-07), BY THEIR OWN TRIGGER AND ON THE VERY NEXT ROSTER
+/// TOUCH. Seven `TargetChanged` bindings in `tools.floor_effect_gate_witness` resolved `exit_ok` at
+/// base to `tools.ci_gates` and at head to `std.process`; their trigger said they go once the
+/// relocation is on main, at which point they report CONSUMED and come due on the roster's next
+/// touch. The relocation is on main, the run reports all seven CONSUMED, and this change is that
+/// touch -- it was authored to admit the `call_semantics_target` re-home and inherited the deletion,
+/// which is the roster working as designed rather than scope creep.
+///
+/// ADJUDICATED BY THE JOIN THOSE ROWS DEMANDED RATHER THAN BY THEIR OWN SENTENCE, in all three
+/// directions. `std.process` DECLARES `fn exit_ok`. `tools.ci_gates` does not declare it and
+/// carries no occurrence of the spelling at all. The single consumer,
+/// `gunbc.instruments.floor_effect_gate_witness`, IMPORTS it as `import std.process { exit_ok }` and
+/// uses it at seven call sites -- the seven `<gate>_passes` declarations those rows named. So base
+/// and head bind the spelling to the same declarer, no run can produce those seven deltas, and
+/// CONSUMED is the correct reading.
+///
 /// SIXTH TRANSITION (2026-09-07, gunbc#10688). `call_semantics_target` moved from
 /// `v1.compiler.emit_rust` to `v1.std.core`, so the two emit-side bindings of that spelling report
 /// `TargetChanged`. It is a re-home and not a re-spelling: the function reads a `CallSemantics` and
@@ -1628,76 +1631,6 @@ const CALL_SEMANTICS_TARGET_REHOME_LABEL: &str =
      instead of importing the emitter";
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: EXIT_OK_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "tools.floor_effect_gate_witness",
-            in_declaration: "emit_host_gate_passes",
-            spelling: "exit_ok",
-            target: "std.process",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: EXIT_OK_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "tools.floor_effect_gate_witness",
-            in_declaration: "cheap_claim_pool_gate_passes",
-            spelling: "exit_ok",
-            target: "std.process",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: EXIT_OK_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "tools.floor_effect_gate_witness",
-            in_declaration: "extdeps_external_authority_gate_passes",
-            spelling: "exit_ok",
-            target: "std.process",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: EXIT_OK_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "tools.floor_effect_gate_witness",
-            in_declaration: "dag_compile_clean_gate_passes",
-            spelling: "exit_ok",
-            target: "std.process",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: EXIT_OK_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "tools.floor_effect_gate_witness",
-            in_declaration: "generated_artifact_drift_gate_passes",
-            spelling: "exit_ok",
-            target: "std.process",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: EXIT_OK_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "tools.floor_effect_gate_witness",
-            in_declaration: "extdeps_scope_placement_gate_passes",
-            spelling: "exit_ok",
-            target: "std.process",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: EXIT_OK_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "tools.floor_effect_gate_witness",
-            in_declaration: "prose_row_introduction_gate_passes",
-            spelling: "exit_ok",
-            target: "std.process",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
     TransitionAdmission {
         label: CALL_SEMANTICS_TARGET_REHOME_LABEL,
         subject: AdmissionSubject::Binding {

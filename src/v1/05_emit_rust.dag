@@ -2562,35 +2562,16 @@ fn build_data_item_index(modules: List<TypedModule>) -> Map<String, Node> {
 // module declares a bare leaf — and where two modules answer it, lookup_item_by_leaf yields
 // ItemLeafAmbiguous, which a consumer cannot read past without writing an arm for it, so the
 // consumers below refuse instead of taking whichever module was folded last.
-
-fn value_ref_registry_lookup_key(resolved_name: String) -> String {
-  let qualifier = value_ref_qualifier_prefix(name: resolved_name)
-  if qualifier == "" { value_ref_qualified_leaf(name: resolved_name) }
-  else { resolved_name }
-}
-
-// A value reference carries its own qualifier when it crosses a module, and carries nothing when it
-// does not — so the qualifier decides which identity is being asked for, and an unqualified
-// reference is asked of the enclosing module rather than of whichever module last wrote the leaf.
-// The bare arm below is not this module's declaration, so it is imported: the leaf index names its
-// owner, or names the empty string when two modules claim the leaf, and no declaration has an empty
-// module path, so the ambiguous case resolves to Absent and the caller refuses.
-// A value reference carries its own qualifier when it names another module, and carries nothing
-// when the author wrote it bare. A qualifier names the owner, so the identity is exact. A BARE
-// spelling does not: it is the enclosing module's own declaration OR an imported one, and which is
-// a fact this function does not hold. So it asks for the enclosing module's declaration first --
-// the answer that is certainly right when it exists -- and falls back to the leaf projection, whose
-// ambiguous entries are the refusal sentinel. Keying a bare reference on self_module alone was
-// wrong and was caught by the seed failing to build: an imported `data` value stopped resolving,
-// so the emitted Rust named the initializer function instead of calling it.
-// THE ONE WAY TO ASK THE REGISTRY FOR A LEAF.
-// The registry is keyed on identity, so a bare leaf is not a key. Emission still has to ask -- an
-// import line, a use-line plan, a service roster, the is_data call-suffix decision all hold a
-// spelling and nothing else. This completes the leaf to an identity through the shared owner index
-// and then reads the one registry, so the answer is a real row for a real declaration or it is
-// Absent. A leaf two modules declare maps to the empty owner, which is not a legal module path, so
-// it lands in Absent and the caller takes its own refusal path -- never a row from the wrong module,
-// which is exactly what the old leaf-keyed map returned.
+//
+// THIS FUNCTION IS THE PROJECTION AND NOT THE POLICY, which is why it is three lines and its
+// neighbours carry the argument. It lifts the registry's own Absent into ItemNotFound and nothing
+// else. It does NOT decide ambiguity: an ambiguous leaf never reaches here, because
+// lookup_item_by_leaf answers ItemLeafAmbiguous before an identity is ever built. Three annotation
+// paragraphs had accumulated above it describing a leaf-completing step this function does not
+// perform and an empty-string owner nothing produces any more -- prose asserting the opposite of
+// the implemented refusal, which DESIGN section 4c makes the strongest form of an annotation
+// restating what the declaration says. They are deleted rather than corrected, because the fact
+// they were reaching for is carried by lookup_item_by_leaf, one declaration below.
 fn item_lookup_of_optional(found: ItemInfo?) -> ItemLookup {
   match found {
     Present { value: info } => ItemFound { info: info }
@@ -2611,12 +2592,14 @@ fn lookup_item_by_leaf(leaf: String, registry: Map<String, ItemInfo>, emit_info:
 }
 
 // THE FALLBACK GOES THROUGH lookup_item_by_leaf, WHICH IS THE WHOLE REPAIR HERE.
-// It used to read the owner index itself and hand the raw owner to lookup_item_by_identity. On an
-// ambiguous leaf that owner is the empty string, which is not a legal module path, so the identity
-// missed and this returned "not found" -- and the ambiguity guards in its callers, which tested for
-// the in-band marker this function never produced, could not fire. Routing the fallback through the
-// one leaf-completing authority means the ambiguous case arrives as ItemLeafAmbiguous and the
-// callers' arms are reachable.
+// It used to read the owner index itself and hand the raw owner to lookup_item_by_identity. The
+// index then encoded an ambiguous leaf as the empty string -- not a legal module path -- so the
+// identity missed, this returned "not found", and the ambiguity guards in its callers could not
+// fire, because they tested for an in-band marker this function never produced. Routing the
+// fallback through the one leaf-completing authority means the ambiguous case arrives as
+// ItemLeafAmbiguous and the callers arms are reachable. The empty owner is gone entirely now: the
+// index answers the LeafAmbiguous arm of LeafOwner, so the shape that hid the case cannot be
+// written.
 fn lookup_item_for_value_ref(resolved_name: String, self_module: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> ItemLookup {
   let qualifier = value_ref_qualifier_prefix(name: resolved_name)
   let leaf = value_ref_qualified_leaf(name: resolved_name)

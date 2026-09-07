@@ -5038,17 +5038,6 @@ pub fn build_data_item_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<St
     )
 }
 
-pub fn value_ref_registry_lookup_key(resolved_name: String) -> String {
-    {
-        let qualifier = value_ref_qualifier_prefix(resolved_name.clone());
-        if (qualifier.clone() == "".to_string()) {
-            value_ref_qualified_leaf(resolved_name.clone())
-        } else {
-            resolved_name.clone()
-        }
-    }
-}
-
 pub fn item_lookup_of_optional(found: Option<Rc<ItemInfo>>) -> Rc<ItemLookup> {
     match found.clone() {
         Some(info) => Rc::new(ItemLookup::ItemFound { info: info.clone() }),
