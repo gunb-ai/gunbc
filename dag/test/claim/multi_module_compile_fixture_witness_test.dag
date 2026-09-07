@@ -112,7 +112,7 @@ fn duplicate_path_run() -> MultiModuleCompileFixtureOutcome {
 
 fn completed_with_no_diagnostics(o: MultiModuleCompileFixtureOutcome) -> Bool {
   match o {
-    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+    FixtureCompileCompleted { module_count: n, emitted_files: files, emitted_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
       count(rows) == 0 && count(files) > 0 && n > 0,
     FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
     FixtureInstrumentRefused { cause: c } => false
@@ -123,7 +123,7 @@ fn refused_with_class(o: MultiModuleCompileFixtureOutcome, wanted: String) -> Bo
   match o {
     FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
       fixture_has_class(rows, wanted) && count(fixture_blocking_rows(rows)) > 0,
-    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureCompileCompleted { module_count: n, emitted_files: files, emitted_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
     FixtureInstrumentRefused { cause: c } => false
   }
 }
@@ -132,13 +132,13 @@ fn is_instrument_refused(o: MultiModuleCompileFixtureOutcome) -> Bool {
   match o {
     FixtureInstrumentRefused { cause: c } => count(c as String) > 0,
     FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
-    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false
+    FixtureCompileCompleted { module_count: n, emitted_files: files, emitted_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false
   }
 }
 
 fn module_count_is(o: MultiModuleCompileFixtureOutcome, expected: Int) -> Bool {
   match o {
-    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } => n == expected,
+    FixtureCompileCompleted { module_count: n, emitted_files: files, emitted_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } => n == expected,
     FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => n == expected,
     FixtureInstrumentRefused { cause: c } => false
   }
@@ -146,7 +146,7 @@ fn module_count_is(o: MultiModuleCompileFixtureOutcome, expected: Int) -> Bool {
 
 fn source_digest_of(o: MultiModuleCompileFixtureOutcome) -> String {
   match o {
-    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } => sd as String,
+    FixtureCompileCompleted { module_count: n, emitted_files: files, emitted_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } => sd as String,
     FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => sd as String,
     FixtureInstrumentRefused { cause: c } => ""
   }
@@ -154,7 +154,7 @@ fn source_digest_of(o: MultiModuleCompileFixtureOutcome) -> String {
 
 fn compiler_digest_of(o: MultiModuleCompileFixtureOutcome) -> String {
   match o {
-    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } => cd as String,
+    FixtureCompileCompleted { module_count: n, emitted_files: files, emitted_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } => cd as String,
     FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => cd as String,
     FixtureInstrumentRefused { cause: c } => ""
   }

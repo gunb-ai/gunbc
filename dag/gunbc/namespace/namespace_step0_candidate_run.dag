@@ -245,7 +245,7 @@ fn step0_compile_standing(
           blocking: step0_blocking_measure(diagnostics: diagnostics)
         }
       }
-    FixtureCompileCompleted { module_count: modules, emitted_files: _, diagnostics: diagnostics, source_digest: sd, compiler_digest: cd } =>
+    FixtureCompileCompleted { module_count: modules, emitted_files: _, emitted_rust_functions: _, diagnostics: diagnostics, source_digest: sd, compiler_digest: cd } =>
       CompileAttemptedAndCompleted {
         observation: Step0CompileObservation {
           source_population: population,

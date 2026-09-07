@@ -314,13 +314,18 @@ pub fn compile_dag_multi_module_fixture(
             Some(g) => g.modules.len() as i64,
             None => 0,
         };
+        // Project BEFORE emit consumes the resolved graph: the ordered parameter list is exactly
+        // the emit-binding (authored + resource uses + service vars) that the Rust emitter writes
+        // into each function signature. Keyed by source identity so a witness never encodes
+        // module_to_filename mangling.
+        let emitted_rust_functions = project_emitted_rust_fn_signatures(resolved.as_ref());
         let result = v1_compiler_compile::emit_resolved_for_target(
             resolved,
             crate::v1_compiler_artifact::RenderTarget::Rust,
         );
-        (module_count, result)
+        (module_count, emitted_rust_functions, result)
     }));
-    let (module_count, result) = match compiled {
+    let (module_count, emitted_rust_functions, result) = match compiled {
         Ok(r) => r,
         Err(_) => {
             return MultiModuleCompileFixtureOutcome::InstrumentRefused {
@@ -342,10 +347,58 @@ pub fn compile_dag_multi_module_fixture(
     MultiModuleCompileFixtureOutcome::CompileCompleted {
         module_count,
         emitted_files: result.files.iter().map(|f| f.path.clone()).collect(),
+        emitted_rust_functions,
         diagnostics: rows,
         source_digest,
         compiler_digest,
     }
+}
+
+/// Emit-binding projection for the Rust target: one row per `FnItem` / `FuncItem` in the resolved
+/// registry, with `ordered_parameter_names` matching `emit_func_params` (authored params, then
+/// resource-use names, then `service_var_name` for each service). Not a text parse of emitted
+/// bytes — the parameter list is the one the emitter binds into the artifact.
+fn project_emitted_rust_fn_signatures(
+    resolved: &v1_compiler_compile::ResolvedPipelineResult,
+) -> Vec<crate::cli_run::EmittedRustFnSignature> {
+    use crate::v1_compiler_infer_items::ItemKind;
+    use crate::v1_std_core::param_node_name_at;
+    let Some(graph) = resolved.graph.as_ref() else {
+        return Vec::new();
+    };
+    let source_indices = resolved.source_indices.clone();
+    let mut rows: Vec<crate::cli_run::EmittedRustFnSignature> = Vec::new();
+    for info in graph.item_registry.values() {
+        match info.kind {
+            ItemKind::FnItem | ItemKind::FuncItem => {
+                let mut ordered: Vec<String> = Vec::new();
+                for p in info.params.iter() {
+                    ordered.push(param_node_name_at(p.clone(), source_indices.clone()));
+                }
+                for r in info.resource_names.iter() {
+                    ordered.push(r.clone());
+                }
+                for sn in info.service_names.iter() {
+                    ordered.push(crate::v1_compiler_emit_core_support::service_var_name(
+                        sn.clone(),
+                    ));
+                }
+                rows.push(crate::cli_run::EmittedRustFnSignature {
+                    owner_module: info.module_name.clone(),
+                    declaration_name: info.name.clone(),
+                    ordered_parameter_names: ordered,
+                });
+            }
+            ItemKind::TypeItem
+            | ItemKind::DataItem
+            | ItemKind::ServiceItem
+            | ItemKind::OtherItem => {}
+        }
+    }
+    rows.sort_by(|a, b| {
+        (&a.owner_module, &a.declaration_name).cmp(&(&b.owner_module, &b.declaration_name))
+    });
+    rows
 }
 
 /// Reference-occurrence-grain binding observation over exactly one supplied source vector.

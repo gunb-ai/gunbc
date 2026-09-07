@@ -66,6 +66,12 @@ import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
 // modules the RESOLVE stage produced, read from the resolved graph - not the length of the supplied
 // list. A control comparing it against the manifest is therefore a join between two different
 // producers rather than measure() == measure().
+//
+// EMITTED OUTPUT IS OBSERVABLE AS A STRUCTURED RUST PROJECTION, not as contents-by-path. On
+// FixtureCompileCompleted the field emitted_rust_functions carries List<EmittedRustFnSignature> —
+// per function, source owner_module + declaration_name and the ordered parameter name list the
+// Rust emitter binds. Witnesses assert over that list; raw text is not offered as an assertion
+// surface. Discriminating RED: test.claim.emitted_rust_fn_projection_witness.
 
 type FixtureSource {
   path: NonEmptyStr
@@ -76,6 +82,28 @@ type MultiModuleCompileFixture {
   sources: List<FixtureSource>
   entry: NonEmptyStr
 }
+
+// THE STRUCTURED PROJECTION WITNESSES ASSERT OVER. Per emitted Rust function: source identity
+// (owning module + declaration name) and the ORDERED PARAMETER NAME LIST the Rust emitter binds —
+// authored params, then resource-use names, then service-var names, matching emit_func_params.
+// Parameter TYPES and return types are deliberately absent: asserting over emitted type spellings
+// turns a control into a change detector for Rc<Vec<T>> renderings. The type name says Rust because
+// compile_fixture is Rust-target only; a target-agnostic name over that reader would be the
+// DESIGN section 3 meaning fork.
+//
+// THIS IS NOT A CONTENTS GREP SURFACE. Emitted file paths still travel on FixtureCompileCompleted
+// for provenance; the projection is the only population a witness may ask about signature shape.
+// A consumer that wants raw text is outside this instrument's contract — handing String would
+// re-author the permanently-green substring trap this projection exists to make unwritable.
+type EmittedRustFnSignature {
+  owner_module: String
+  declaration_name: String
+  ordered_parameter_names: List<String>
+}
+
+type EmittedRustFnLookup
+  = EmittedRustFnFound { signature: EmittedRustFnSignature }
+  | EmittedRustFnAbsent
 
 type MultiModuleCompileFixtureOutcome
   = FixtureInstrumentRefused { cause: NonEmptyStr }
@@ -88,6 +116,7 @@ type MultiModuleCompileFixtureOutcome
   | FixtureCompileCompleted {
       module_count: Int
       emitted_files: List<String>
+      emitted_rust_functions: List<EmittedRustFnSignature>
       diagnostics: List<CompileDiagnosticCensusRow>
       source_digest: NonEmptyStr
       compiler_digest: NonEmptyStr
@@ -119,4 +148,25 @@ fn fixture_rows_of_class(rows: List<CompileDiagnosticCensusRow>, wanted: String)
 
 fn fixture_has_class(rows: List<CompileDiagnosticCensusRow>, wanted: String) -> Bool {
   count(fixture_rows_of_class(rows, wanted)) > 0
+}
+
+// PURE READS OVER THE PROJECTION LIST, never over the outcome. Looking up a function by source
+// identity returns EmittedRustFnAbsent when no row matches — never an empty parameter list wearing
+// a found answer (DESIGN section 5: blank is not evidence of a nullary function).
+fn emitted_rust_fn_lookup(
+  functions: List<EmittedRustFnSignature>,
+  owner_module: String,
+  declaration_name: String
+) -> EmittedRustFnLookup {
+  let matches = functions |> filter(f =>
+    f.owner_module == owner_module && f.declaration_name == declaration_name
+  )
+  match matches |> first {
+    Present { value: sig } => EmittedRustFnFound { signature: sig }
+    Absent => EmittedRustFnAbsent
+  }
+}
+
+fn emitted_rust_fn_has_parameter(signature: EmittedRustFnSignature, parameter_name: String) -> Bool {
+  signature.ordered_parameter_names |> any(n => n == parameter_name)
 }

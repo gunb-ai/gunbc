@@ -11910,6 +11910,7 @@ fn multi_module_compile_fixture_value(
         crate::cli_run::MultiModuleCompileFixtureOutcome::CompileCompleted {
             module_count,
             emitted_files,
+            emitted_rust_functions,
             diagnostics,
             source_digest,
             compiler_digest,
@@ -11920,6 +11921,30 @@ fn multi_module_compile_fixture_value(
                 (
                     ctx.sym("emitted_files"),
                     list_value(emitted_files.into_iter().map(str_value).collect::<Vec<_>>()),
+                ),
+                (
+                    ctx.sym("emitted_rust_functions"),
+                    list_value(
+                        emitted_rust_functions
+                            .into_iter()
+                            .map(|sig| Value::Record {
+                                type_name: ctx.sym("EmittedRustFnSignature"),
+                                fields: Rc::new(sorted_fields(vec![
+                                    (ctx.sym("owner_module"), str_value(sig.owner_module)),
+                                    (ctx.sym("declaration_name"), str_value(sig.declaration_name)),
+                                    (
+                                        ctx.sym("ordered_parameter_names"),
+                                        list_value(
+                                            sig.ordered_parameter_names
+                                                .into_iter()
+                                                .map(str_value)
+                                                .collect::<Vec<_>>(),
+                                        ),
+                                    ),
+                                ])),
+                            })
+                            .collect::<Vec<_>>(),
+                    ),
                 ),
                 (ctx.sym("diagnostics"), rows(diagnostics)),
                 (ctx.sym("source_digest"), str_value(source_digest)),

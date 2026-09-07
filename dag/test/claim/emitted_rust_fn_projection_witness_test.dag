@@ -1,0 +1,115 @@
+module test.claim.emitted_rust_fn_projection_witness
+
+import std.types { String, Bool, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  EmittedRustFnSignature,
+  EmittedRustFnLookup,
+  EmittedRustFnFound,
+  EmittedRustFnAbsent,
+  fixture_source,
+  compile_fixture,
+  emitted_rust_fn_lookup,
+  emitted_rust_fn_has_parameter
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE INSTRUMENT'S OWN DISCRIMINATING PAIR. Both fixtures COMPILE CLEANLY. The only variable is
+// whether the top-level function carries the parameter `marker`. A witness asserts over the
+// structured EmittedRustFnSignature projection — never over emitted text — so the green arm is
+// not a substring that could match prose, and the red arm is authorable as a clean emit whose
+// ordered parameter list simply lacks the name (DESIGN 4b: the RED must be authorable or the
+// check is a decoration).
+//
+// WHAT THIS DOES NOT ESTABLISH. It does not prove service-effect propagation; that consumer lives
+// on gunbc#10688 and will assert the same projection once this instrument lands. Ordinary authored
+// parameters are enough to prove the projection discriminates, which is this file's whole job.
+
+data with_marker_source: String = "module proj.obs\nfn observed(a: String, marker: String) -> String { a }\n"
+data without_marker_source: String = "module proj.obs\nfn observed(a: String) -> String { a }\n"
+
+fn run_with_marker() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source("proj/obs.dag", with_marker_source)],
+    entry: "proj/obs.dag"
+  })
+}
+
+fn run_without_marker() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source("proj/obs.dag", without_marker_source)],
+    entry: "proj/obs.dag"
+  })
+}
+
+fn completed_functions(o: MultiModuleCompileFixtureOutcome) -> List<EmittedRustFnSignature> {
+  match o {
+    FixtureCompileCompleted {
+      module_count: _,
+      emitted_files: _,
+      emitted_rust_functions: fns,
+      diagnostics: _,
+      source_digest: _,
+      compiler_digest: _
+    } => fns,
+    FixtureCompileRefused {
+      module_count: _,
+      diagnostics: _,
+      source_digest: _,
+      compiler_digest: _
+    } => [],
+    FixtureInstrumentRefused { cause: _ } => []
+  }
+}
+
+fn observed_has_marker(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match emitted_rust_fn_lookup(
+    functions: completed_functions(o),
+    owner_module: "proj.obs",
+    declaration_name: "observed"
+  ) {
+    EmittedRustFnFound { signature: sig } =>
+      emitted_rust_fn_has_parameter(signature: sig, parameter_name: "marker"),
+    EmittedRustFnAbsent => false
+  }
+}
+
+fn observed_compiles_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted {
+      module_count: n,
+      emitted_files: files,
+      emitted_rust_functions: _,
+      diagnostics: rows,
+      source_digest: _,
+      compiler_digest: _
+    } => count(rows) == 0 && count(files) > 0 && n > 0,
+    FixtureCompileRefused {
+      module_count: _,
+      diagnostics: _,
+      source_digest: _,
+      compiler_digest: _
+    } => false,
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+// GREEN: both compile and the projection reports `marker` on observed.
+test fn emitted_rust_fn_projection_reports_present_parameter() -> Bool {
+  let o = run_with_marker()
+  observed_compiles_clean(o) && observed_has_marker(o)
+}
+
+// RED CONTROL: the sibling fixture also compiles clean, and the projection reports the parameter
+// ABSENT. If this ever goes green while the with-marker arm is green, the projection has stopped
+// discriminating and every consumer citing it is citing a decoration.
+test fn emitted_rust_fn_projection_reports_absent_parameter_on_clean_sibling() -> Bool {
+  let o = run_without_marker()
+  observed_compiles_clean(o) && !observed_has_marker(o)
+}

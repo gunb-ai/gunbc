@@ -154,7 +154,7 @@ fn identity_from_outcome(outcome: MultiModuleCompileFixtureOutcome) -> DecoderId
         },
         module_count: module_count,
       }
-    FixtureCompileCompleted { module_count, emitted_files, diagnostics, source_digest, compiler_digest } =>
+    FixtureCompileCompleted { module_count, emitted_files, emitted_rust_functions, diagnostics, source_digest, compiler_digest } =>
       DecoderIdentityMeasured {
         identity: FanProgramDecoderIdentity {
           entry_declaration: fan_program_decoder,

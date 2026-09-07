@@ -3056,6 +3056,18 @@ pub struct MultiModuleFixtureSource {
     pub content: String,
 }
 
+/// Per-function projection of a completed Rust emit: source identity plus the ordered parameter
+/// name list the Rust emitter binds (authored params, resource-use names, then service-var names).
+/// Types and return types are deliberately absent — see `tools.multi_module_compile_fixture`
+/// `EmittedRustFnSignature`. The type name admits the Rust target; this fixture instrument has no
+/// other emission target.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmittedRustFnSignature {
+    pub owner_module: String,
+    pub declaration_name: String,
+    pub ordered_parameter_names: Vec<String>,
+}
+
 /// Outcome of [`compile_dag_multi_module_fixture`]. THE THREE ARMS HAVE THREE DIFFERENT OWNERS:
 /// `InstrumentRefused` is the harness's own fault (malformed manifest, entry naming no supplied
 /// module, panic), `CompileRefused` is the SUBJECT's fault and carries the compiler's judgment,
@@ -3081,6 +3093,7 @@ pub enum MultiModuleCompileFixtureOutcome {
     CompileCompleted {
         module_count: i64,
         emitted_files: Vec<String>,
+        emitted_rust_functions: Vec<EmittedRustFnSignature>,
         diagnostics: Vec<CompileDiagnosticCensusRow>,
         source_digest: String,
         compiler_digest: String,

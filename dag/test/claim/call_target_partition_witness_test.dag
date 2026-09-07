@@ -94,7 +94,7 @@ fn entry_only(entry: String) -> MultiModuleCompileFixtureOutcome {
 // let a refused compile render as a clean one.
 fn completed_clean(outcome: MultiModuleCompileFixtureOutcome) -> Bool {
   match outcome {
-    FixtureCompileCompleted { module_count: _, emitted_files: _, diagnostics: ds, source_digest: _, compiler_digest: _ } =>
+    FixtureCompileCompleted { module_count: _, emitted_files: _, emitted_rust_functions: _, diagnostics: ds, source_digest: _, compiler_digest: _ } =>
       (fixture_blocking_rows(rows: ds) |> count) == 0
     FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
     FixtureInstrumentRefused { cause: _ } => false
@@ -103,7 +103,7 @@ fn completed_clean(outcome: MultiModuleCompileFixtureOutcome) -> Bool {
 
 fn instrument_formed_a_subject(outcome: MultiModuleCompileFixtureOutcome) -> Bool {
   match outcome {
-    FixtureCompileCompleted { module_count: _, emitted_files: _, diagnostics: _, source_digest: _, compiler_digest: _ } => true
+    FixtureCompileCompleted { module_count: _, emitted_files: _, emitted_rust_functions: _, diagnostics: _, source_digest: _, compiler_digest: _ } => true
     FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => true
     FixtureInstrumentRefused { cause: _ } => false
   }

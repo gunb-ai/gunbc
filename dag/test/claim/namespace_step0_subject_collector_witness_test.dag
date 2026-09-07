@@ -309,7 +309,7 @@ fn dc_compile(sources: List<FixtureSource>) -> MultiModuleCompileFixtureOutcome 
 
 fn dc_outcome_is_completed(outcome: MultiModuleCompileFixtureOutcome) -> Bool {
   match outcome {
-    FixtureCompileCompleted { module_count: _, emitted_files: _, diagnostics: _, source_digest: _, compiler_digest: _ } => true
+    FixtureCompileCompleted { module_count: _, emitted_files: _, emitted_rust_functions: _, diagnostics: _, source_digest: _, compiler_digest: _ } => true
     FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
     FixtureInstrumentRefused { cause: _ } => false
   }
@@ -318,7 +318,7 @@ fn dc_outcome_is_completed(outcome: MultiModuleCompileFixtureOutcome) -> Bool {
 fn dc_outcome_is_refused(outcome: MultiModuleCompileFixtureOutcome) -> Bool {
   match outcome {
     FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => true
-    FixtureCompileCompleted { module_count: _, emitted_files: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+    FixtureCompileCompleted { module_count: _, emitted_files: _, emitted_rust_functions: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
     FixtureInstrumentRefused { cause: _ } => false
   }
 }
