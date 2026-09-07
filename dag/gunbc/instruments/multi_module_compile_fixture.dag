@@ -84,12 +84,19 @@ type MultiModuleCompileFixture {
 }
 
 // THE STRUCTURED PROJECTION WITNESSES ASSERT OVER. Per emitted Rust function: source identity
-// (owning module + declaration name) and the ORDERED PARAMETER NAME LIST the Rust emitter binds —
+// (owning module + declaration name) and the PARAMETER NAME LIST the Rust emitter binds —
 // authored params, then resource-use names, then service-var names, matching emit_func_params.
 // Parameter TYPES and return types are deliberately absent: asserting over emitted type spellings
 // turns a control into a change detector for Rc<Vec<T>> renderings. The type name says Rust because
 // compile_fixture is Rust-target only; a target-agnostic name over that reader would be the
 // DESIGN section 3 meaning fork.
+//
+// ORDER IS PART OF THE CONTRACT AND IS ALSO A TRAP IF MISREAD. The field is named
+// ordered_parameter_names because the list is emit_func_params order — a fact about how the
+// emitter binds the signature, not an incidental bag. Membership in that list is the durable
+// assertion surface (emitted_rust_fn_has_parameter); asserting on POSITION couples the witness to
+// emit_func_params' layout and reds when that layout reorders without changing who is present.
+// Use position only when the subject IS that layout.
 //
 // THIS IS NOT A CONTENTS GREP SURFACE. Emitted file paths still travel on FixtureCompileCompleted
 // for provenance; the projection is the only population a witness may ask about signature shape.
