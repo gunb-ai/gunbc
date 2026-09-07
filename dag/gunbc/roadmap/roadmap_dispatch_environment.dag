@@ -124,6 +124,15 @@ fn ensure_observation_evidence(observation: EnsureObservation<String>) -> String
 // directly, and the converged arm is the empty string because classify_reconciled reaches it only
 // through Grounds.
 //
+// AND THERE IS NO DISTINCT READBACK REASON, because there is no distinct readback. This site holds
+// ONE observation per capability and passes it as both before and after, so no reachable route
+// carries an after reason the before reason would not carry: a satisfied identity gives Noop over a
+// grounding read, and a dissatisfied one gives Refuse before the grounding report is consulted. A
+// helper minting separate "identity readback did not ground" vocabulary was therefore a producer
+// whose only consumer fed a semantically dead argument -- DESIGN 3c's dangling declaration, the same
+// class this change removes at ReconciledEffect. It is deleted rather than kept warm; a distinct
+// after reason returns when this site obtains a distinct after OBSERVATION, and not before.
+//
 // The converged arm's evidence is c.evidence, from the sealed result, NOT re-derived from the raw
 // observation. The two are equal today only because the same observation is passed as before and
 // after; consuming the sealed value is what stops that parallel source from diverging when a real
@@ -141,13 +150,6 @@ fn capability_mismatch_reason(realization: CapabilityRealization) -> String {
     execution_capability_label(capability: realization.capability),
     " identity probe did not match ",
     realization.identity_contains as String,
-  ], "")
-}
-
-fn capability_readback_reason(realization: CapabilityRealization) -> String {
-  join([
-    execution_capability_label(capability: realization.capability),
-    " identity readback did not ground the requirement",
   ], "")
 }
 
@@ -171,7 +173,7 @@ fn capability_ensure_receipt(
     application: NotApplied,
     after: observation,
     after_satisfies: identity_matches,
-    after_mismatch_reason: capability_readback_reason(realization: realization),
+    after_mismatch_reason: capability_mismatch_reason(realization: realization),
   )
   match classify_reconciled(r: reconciled) {
     EffectConverged { converged: c } =>

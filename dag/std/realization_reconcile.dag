@@ -106,10 +106,17 @@ fn grounding_qualified_by_durability<E, Target, ReadbackSubject>(
 // The canonical desired-state lifecycle carrier, and the reason this module rather than a new one:
 // the reconciliation and grounding VOCABULARY already lives here, and a second module owning the
 // sequence would be the very layer inversion this carrier exists to close — the correct helper
-// standing BESIDE the raw path instead of owning it (DESIGN 3). It is sole_constructor so that no
-// caller outside this module can mint a receipt asserting convergence: the only route to one is
-// reconcile_effect, which classifies convergence from the REPORTED EFFECTIVE READ AND GROUNDING
-// REPORT rather than from the decision or the application arm.
+// standing BESIDE the raw path instead of owning it (DESIGN 3).
+//
+// WHAT sole_constructor BUYS HERE, AT THE EXACT STRENGTH IT HOLDS. Outside callers cannot construct
+// ReconciledEffect or ConvergedEffect as record literals, so they cannot BYPASS the decision/
+// application consistency table: every carrier that exists came through reconcile_effect. They CAN
+// obtain a reported-convergence carrier by supplying a noncontradictory application report beside a
+// grounding read, because reconcile_effect and classify_reconciled are exported pure functions over
+// caller-authored facts. That establishes no execution or observation provenance, and stating it as
+// "no outside caller can mint a receipt asserting convergence" would be the overclaim. A restricted
+// effectful mint and an exported pure classifier are different instruments; gunbc.typed_remote_file_write
+// remote_file_converged_from_report is the first, this is the second.
 //
 // Not a "post-apply observation": that phrase asserts a temporal order this module cannot establish.
 // A caller-constructed ReadObserved has not been shown to have occurred after anything, and the Noop
@@ -263,8 +270,8 @@ fn reconcile_effect<P, R, E>(
 // consumer re-branching on it to recover that reason, which collapses the coproduct and immediately
 // re-expands it.
 
-// ReconciledEffect is an OUTCOME, not a success witness: it faithfully carries a refusal or an
-// unapplied Apply, which is what makes it honest and what makes it insufficient as a sink's
+// ReconciledEffect is an OUTCOME, not a success witness: it faithfully carries a refusal or an Apply
+// paired with NotApplied, which is what makes it honest and what makes it insufficient as a sink's
 // parameter. A sink that accepts one still has to ask whether it converged and remember to branch —
 // validation standing exactly where construction was available (DESIGN 5). ConvergedEffect closes
 // that: it is sole_constructor and the ONLY mint is the Converged arm of classify_reconciled, so a
