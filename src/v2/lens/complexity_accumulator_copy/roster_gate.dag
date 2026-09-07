@@ -11,7 +11,8 @@ import v2.lens.common.source_analysis_standing {
   SourceAnalysisNotEstablishedCause,
   SourceNormalizationRejected,
   SourceParseRejected,
-  SourceTokenizationRejected
+  SourceTokenizationRejected,
+  SourceUnreadable
 }
 
 // Operator-ruled OFFLINE (NOT CI discovery-enrolled; witness_exclusion_substrings row
@@ -44,33 +45,42 @@ type SourceFindingsStanding
   = SourceFindingsEstablished { findings: List<Finding> }
   | SourceFindingsNotEstablished { cause: SourceAnalysisNotEstablishedCause }
 
-fn source_findings(source_text: String) -> SourceFindingsStanding {
+// THE INGESTED TREE IS ITS OWN ANSWER, NOT A PRIVATE STEP OF THE FINDINGS FOLD. Two consumers want
+// this chain -- the copied-accumulator findings below, and any lens that wants a real module's node
+// tree instead of a hand-built fixture -- and forking the tokenize/validate/parse/normalize chain
+// per consumer is the second representation section 3 forbids. source_findings is now one line over
+// this, so the refusal causes cannot drift apart between them.
+type SourceTreeStanding
+  = SourceTreeEstablished { root: Node }
+  | SourceTreeNotEstablished { cause: SourceAnalysisNotEstablishedCause }
+
+fn source_tree(source_text: String) -> SourceTreeStanding {
   let lm = dag_language_model()
   let at = invariant_port_locus(port: ^accumulator_copy_roster_gate_port, invariant: ^accumulator_copy_source_analysis_invariant)
   match lm.grammar {
-    VoidGrammar => SourceFindingsNotEstablished { cause: LanguageGrammarUnavailable }
+    VoidGrammar => SourceTreeNotEstablished { cause: LanguageGrammarUnavailable }
     ModeledGrammar { root: root } =>
       match grammar_validate_for_parse(root: root, at: at) {
-        Rejected { diagnostics: _ } => SourceFindingsNotEstablished { cause: LanguageGrammarRejected }
+        Rejected { diagnostics: _ } => SourceTreeNotEstablished { cause: LanguageGrammarRejected }
         Accepted { value: validated, diagnostics: _ } =>
           match tokenize(
             text: source_text,
             file: ^accumulator_copy_roster_subject,
             rules: lm.lex
           ) {
-            Rejected { diagnostics: _ } => SourceFindingsNotEstablished { cause: SourceTokenizationRejected }
+            Rejected { diagnostics: _ } => SourceTreeNotEstablished { cause: SourceTokenizationRejected }
             Accepted { value: stream, diagnostics: _ } =>
               match parse_production(
                 tokens: token_stream_remaining(stream: stream),
                 validated: validated,
                 production_name: validated.root.start
               ) {
-                Rejected { diagnostics: _ } => SourceFindingsNotEstablished { cause: SourceParseRejected }
+                Rejected { diagnostics: _ } => SourceTreeNotEstablished { cause: SourceParseRejected }
                 Accepted { value: artifact, diagnostics: _ } =>
                   match normalize(parse_tree: artifact.tree) {
-                    Rejected { diagnostics: _ } => SourceFindingsNotEstablished { cause: SourceNormalizationRejected }
+                    Rejected { diagnostics: _ } => SourceTreeNotEstablished { cause: SourceNormalizationRejected }
                     Accepted { value: tree, diagnostics: _ } =>
-                      SourceFindingsEstablished { findings: accumulator_copy_findings(root: tree.root) }
+                      SourceTreeEstablished { root: tree.root }
                   }
               }
           }
@@ -78,9 +88,36 @@ fn source_findings(source_text: String) -> SourceFindingsStanding {
   }
 }
 
+fn findings_of_tree(standing: SourceTreeStanding) -> SourceFindingsStanding {
+  match standing {
+    SourceTreeNotEstablished { cause: cause } => SourceFindingsNotEstablished { cause: cause }
+    SourceTreeEstablished { root: root } =>
+      SourceFindingsEstablished { findings: accumulator_copy_findings(root: root) }
+  }
+}
+
+fn source_findings(source_text: String) -> SourceFindingsStanding {
+  v2.lens.complexity_accumulator_copy.roster_gate.findings_of_tree(
+    standing: v2.lens.complexity_accumulator_copy.roster_gate.source_tree(source_text: source_text)
+  )
+}
+
+// THE TYPED READ IS WRITTEN ONCE, HERE, AND BOTH PATH-TAKING CONSUMERS GO THROUGH IT. Duplicating
+// it per consumer would let one of them keep the untyped spelling that made a missing file end the
+// process instead of refusing.
+fn ingest_tree(path: String) -> SourceTreeStanding {
+  let read = Filesystem.Read(path: path)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: _ } =>
+      SourceTreeNotEstablished { cause: SourceUnreadable }
+    FilesystemReadSucceeded { content: text } =>
+      v2.lens.complexity_accumulator_copy.roster_gate.source_tree(source_text: text)
+  }
+}
+
 fn ingest_findings(path: String) -> SourceFindingsStanding {
-  v2.lens.complexity_accumulator_copy.roster_gate.source_findings(
-    source_text: filesystem_read(path: path).content
+  v2.lens.complexity_accumulator_copy.roster_gate.findings_of_tree(
+    standing: v2.lens.complexity_accumulator_copy.roster_gate.ingest_tree(path: path)
   )
 }
 

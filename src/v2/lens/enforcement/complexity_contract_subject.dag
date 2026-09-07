@@ -3,8 +3,12 @@ module v2.lens.enforcement.complexity_contract_subject
 import v2.lens.common.construction_justification {
   ConstructionJustification,
   WallAfterGrounding,
-  RatchetForever
+  OutsideModeledGuarantee,
+  EquivalenceRelationNotRepresented,
+  modeled_outside_boundary,
+  decl_facts_inventory_authority
 }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { SingleAuthority }
 import v2.std.collection { List }
 import v2.std.algebra { contains, for_all, fold_list, length }
@@ -13,14 +17,17 @@ import v2.std.integer { Int }
 
 // C0(c) of the v2 complexity capability parity program (operator-ruled 2026-08-05). The former
 // single lens_contract_complexity row carried RatchetForever over a MIXED population — decidable
-// derived-kernel capability beside genuinely undecidable optimality residue. This module is the
+// derived-kernel capability beside an optimality residue that was stamped permanent without a
+// checkable missing-capability witness. This module is the
 // scope authority: two disjoint contract subjects with typed claim rosters forming
 // ComplexityMixedRowClaim. What partition totality does and does not prove is stated in
 // complexity_contract_subject_scope_note — read that note before quoting this carrier. The split is
 // NOT an in-place class flip; each subject has its own LensContract row and LensIdV0. Dissolution
 // for derived-kernel: ParityC2 ComplexitySummary restored on v2.lens.cost (SingleAuthority wall
-// once the summary carrier exists and a live consumer is enrolled). Optimality stays permanent
-// AuditOnly / RatchetForever.
+// once the summary carrier exists and a live consumer is enrolled). Optimality is
+// AuditOnly over OptimalityResidue: catalog-bounded lowering lives on v2.lens.complexity_lowering
+// (WallAfterGrounding / catalog_is_sound). This subject's Rice-complete global optimality is
+// OutsideModeledGuarantee until unrestricted_semantic_complexity_equivalence_procedure is authored.
 
 // Scope, stated so the partition witness cannot overclaim. PROVEN by this carrier and
 // complexity_contract_subjects_partition_legacy_mixed_row: DerivedKernel and OptimalityResidue are
@@ -28,8 +35,8 @@ import v2.std.integer { Int }
 // union is ComplexityMixedRowClaim; every variant in that union lands in exactly one subject roster
 // via complexity_mixed_row_claim_subject; roster distinctness is validated by
 // complexity_scope_roster_has_no_duplicates; and each replacement LensContract row carries the
-// matching boundary class (WallAfterGrounding/SingleAuthority for derived-kernel, RatchetForever
-// for optimality). ComplexityMixedRowClaim is an AUTHORED enumeration of what the deleted mixed row
+// matching boundary class (WallAfterGrounding/SingleAuthority for derived-kernel;
+// OutsideModeledGuarantee for optimality). ComplexityMixedRowClaim is an AUTHORED enumeration of what the deleted mixed row
 // covered — nine derived-kernel variants and three optimality variants written here, not derived
 // from lens_contract_complexity as it stood. NOT PROVEN: that this enumeration is complete over
 // what lens_contract_complexity actually claimed. A claim the mixed row covered but this vocabulary
@@ -186,8 +193,31 @@ data complexity_derived_kernel_boundary: ConstructionJustification = Constructio
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
+// PARTITION (DESIGN 4b / C0(c)): Rice-complete "ANY cheaper equivalent" is off the ladder.
+// required_capability is not a DeclFact; authoring it reds this stamp.
 data complexity_optimality_boundary: ConstructionJustification = ConstructionJustification {
-  class: RatchetForever
+  class: OutsideModeledGuarantee {
+    boundary: modeled_outside_boundary(
+      subject: DeclarationRef {
+        module_path: "v2.lens.enforcement.complexity_contract_subject",
+        decl_name: "ComplexityOptimalityClaim",
+        field: WholeDeclaration
+      },
+      required_capability: DeclarationRef {
+        module_path: "v2.lens.enforcement.complexity_contract_subject",
+        decl_name: "unrestricted_semantic_complexity_equivalence_procedure",
+        field: WholeDeclaration
+      },
+      capability_inventory_authority: decl_facts_inventory_authority,
+      boundary_kind: EquivalenceRelationNotRepresented {
+        relation: DeclarationRef {
+          module_path: "v2.lens.enforcement.complexity_contract_subject",
+          decl_name: "unrestricted_semantic_complexity_equivalence_procedure",
+          field: WholeDeclaration
+        }
+      }
+    )
+  }
 }
 
 fn complexity_mixed_row_claim_belongs_to_subject(
@@ -328,9 +358,9 @@ fn complexity_derived_kernel_boundary_is_wall_after_grounding() -> Bool {
   }
 }
 
-fn complexity_optimality_boundary_is_ratchet_forever() -> Bool {
+fn complexity_optimality_boundary_is_outside_modeled_guarantee() -> Bool {
   match complexity_optimality_boundary.class {
-    RatchetForever => true
+    OutsideModeledGuarantee { boundary: _ } => true
     _ => false
   }
 }

@@ -1,0 +1,29 @@
+module test.claim.spark.spark_cell_role_witness
+
+import std.types { Bool, List }
+import product.placement_supply { host_identity_eq }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv2 }
+import gunbc.spark.cell_role {
+  SparkCellRole, SparkServingCell, spark_cell_role_wire, spark_cell_role_eq,
+  SparkCellRoleLookup, SparkCellRoleAbsent, SparkCellRoleUnique, SparkCellRoleAmbiguous,
+  spark_cell_role_of, spark_serving_cell_hosts, spark_training_cell_hosts,
+}
+
+// BOTH FIRST-PAIR HOSTS ARE ASSIGNED THE SERVING ROLE BY THE OPERATOR DECISION, and a host outside
+// the roster resolves to no role rather than a default one.
+test fn srv5_and_srv6_are_serving_cells_and_an_unrostered_host_has_no_role() -> Bool {
+  let serving = spark_serving_cell_hosts()
+  any(serving, h => host_identity_eq(a: h, b: operator_host_srv5))
+    && any(serving, h => host_identity_eq(a: h, b: operator_host_srv6))
+    && length(spark_training_cell_hosts()) == 0
+    && (match spark_cell_role_of(host: operator_host_srv2) {
+         SparkCellRoleAbsent => true
+         SparkCellRoleUnique { role: _ } => false
+         SparkCellRoleAmbiguous { assignments: _ } => false
+       })
+}
+
+test fn the_serving_role_wires_as_serving_and_is_equal_to_itself() -> Bool {
+  spark_cell_role_wire(role: SparkServingCell) == "serving"
+    && spark_cell_role_eq(a: SparkServingCell, b: SparkServingCell)
+}

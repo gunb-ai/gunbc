@@ -13,6 +13,7 @@ import gunbc.scm.object_store {
   SourceStored, SourceLocatorCollision, store_authored_source,
   authored_source_target_of, authored_source_target_locator,
 }
+import gunbc.scm.integration { CommitIntegration, NoSquashIntegration, SquashIntegrated }
 import gunbc.scm.ancestry { RepositoryCommitRef }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
@@ -22,6 +23,7 @@ import gunbc.scm.repository_envelope {
   RepositoryCommitMintRootIsSemanticNode,
   RepositoryCommitMintRootMissing,
   RepositoryCommitMintParentMissing,
+  RepositoryCommitMintIntegrationSourceMissing,
   mint_repository_commit,
 }
 import gunbc.scm.proposal { Proposal, Requirement, RequireBinding, RequireBindingAbsent }
@@ -110,7 +112,7 @@ fn status_witness_repository_with_checkout() -> RepositoryEnvelope {
     checked_out: none,
     staged: none,
   }
-  match mint_repository_commit(repository: base, root: held.identity, message: "first", parent: none) {
+  match mint_repository_commit(repository: base, root: held.identity, message: "first", parent: none, integration: NoSquashIntegration) {
     RepositoryCommitMinted { repository: minted, reference: reference } => RepositoryEnvelope {
       store: minted.store,
       commits: minted.commits,
@@ -123,6 +125,7 @@ fn status_witness_repository_with_checkout() -> RepositoryEnvelope {
     RepositoryCommitMintRootIsAuthoredSource { root: _ } => base
     RepositoryCommitMintRootIsSemanticNode { root: _ } => base
     RepositoryCommitMintParentMissing { parent: _ } => base
+    RepositoryCommitMintIntegrationSourceMissing { source: _ } => base
   }
 }
 

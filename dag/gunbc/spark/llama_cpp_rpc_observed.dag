@@ -3,6 +3,7 @@ module gunbc.spark.llama_cpp_rpc_observed
 import std.types { String, Bool, List, Int, NonEmptyStr, Port }
 import std.measure {
   TokenCount, token_count, token_count_value,
+  ByteSize, byte_size,
   PositiveSlotCount, positive_slot_count, positive_slot_count_value,
   PositiveMeasureCount, positive_measure_count, positive_measure_count_value,
   TokensPerSecond, tokens_per_second, tokens_per_second_count,
@@ -12,7 +13,6 @@ import std.content_hash { Sha256Digest, sha256_hex_digest }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address, ipv4_address_eq }
 import gunbc.fleet_intent_network { operator_host_srv7, operator_host_srv8 }
-import gunbc.spark.fabric_link_desired { FabricLink, fabric_rail0, fabric_endpoint_on }
 
 // A SERVING DEPLOYMENT THAT SPANS TWO HOSTS, WHICH THIS CORPUS HAD NO WAY TO SAY.
 //
@@ -158,11 +158,39 @@ fn llama_cpp_rpc_slot_plan_per_slot(plan: LlamaCppRpcSlotPlan) -> TokenCount {
 //     front door carries an Ipv4Address rather than a string, and it has its own discriminating RED.
 //
 // A deployment that fails any of them has no constructor. It is not reported later.
+// THE RAIL THE 2026-09-02 DEPLOYMENT USED, FROZEN HERE AS ITS OWN DATED VALUE. This module used to
+// cite the desired direct-cable row and derive the peer address from it; that row was retired when
+// the fabric moved to the switch on 2026-09-05, which is exactly the case the module's own rule
+// named: the historical side stops deriving and carries its snapshot. Interface, prefix and MTU are
+// carried because the constructor conditions were checked against them.
+type LlamaCppRpcFabricEndpointObserved sole_constructor {
+  host: HostIdentity
+  address: Ipv4Address
+  interface: NonEmptyStr
+  prefix: Int
+  mtu: ByteSize
+}
+
+type LlamaCppRpcFabricObserved sole_constructor {
+  endpoints: List<LlamaCppRpcFabricEndpointObserved>
+}
+
+fn llama_cpp_rpc_fabric_endpoint_on(fabric: LlamaCppRpcFabricObserved, host: HostIdentity) -> LlamaCppRpcFabricEndpointObserved? {
+  first(filter(fabric.endpoints, e => host_identity_eq(a: e.host, b: host)))
+}
+
+data llama_cpp_rpc_observed_fabric: LlamaCppRpcFabricObserved = LlamaCppRpcFabricObserved {
+  endpoints: [
+    LlamaCppRpcFabricEndpointObserved { host: operator_host_srv7, address: ipv4_address(octet1: 192, octet2: 168, octet3: 100, octet4: 10), interface: "enp1s0f0np0" as NonEmptyStr, prefix: 24, mtu: byte_size(count: 9000) },
+    LlamaCppRpcFabricEndpointObserved { host: operator_host_srv8, address: ipv4_address(octet1: 192, octet2: 168, octet3: 100, octet4: 11), interface: "enp1s0f0np0" as NonEmptyStr, prefix: 24, mtu: byte_size(count: 9000) },
+  ],
+}
+
 type LlamaCppRpcDeployment sole_constructor {
   alias: NonEmptyStr
   front_door: LlamaCppRpcFrontDoor
   weights_peer: LlamaCppRpcWeightsPeer
-  fabric: FabricLink
+  fabric: LlamaCppRpcFabricObserved
   slot_plan: LlamaCppRpcSlotPlan
 }
 
@@ -170,7 +198,7 @@ fn llama_cpp_rpc_construct(
   alias: NonEmptyStr,
   front_door: LlamaCppRpcFrontDoor,
   weights_peer: LlamaCppRpcWeightsPeer,
-  fabric: FabricLink,
+  fabric: LlamaCppRpcFabricObserved,
   slot_plan: LlamaCppRpcSlotPlan,
 ) -> LlamaCppRpcDeployment? {
   if host_identity_eq(a: front_door.host, b: weights_peer.host) {
@@ -179,10 +207,10 @@ fn llama_cpp_rpc_construct(
     && front_door.port == weights_peer.port {
     none
   } else {
-    match fabric_endpoint_on(link: fabric, host: weights_peer.host) {
+    match llama_cpp_rpc_fabric_endpoint_on(fabric: fabric, host: weights_peer.host) {
       Absent => none
       Present { value: peer_end } =>
-        match fabric_endpoint_on(link: fabric, host: front_door.host) {
+        match llama_cpp_rpc_fabric_endpoint_on(fabric: fabric, host: front_door.host) {
           Absent => none
           Present { value: _ } =>
             if !ipv4_address_eq(a: peer_end.address, b: weights_peer.fabric_address) {
@@ -362,23 +390,10 @@ fn llama_cpp_rpc_host_holds_undischarged_reservation(host: HostIdentity) -> Bool
 // what was intended: slots, per-slot context, route status codes and both hosts' memory at 18:23
 // UTC, throughput between 18:11 and 18:19 UTC on an idle deployment.
 //
-// THE FABRIC ROW IS NOT RE-AUTHORED HERE. It is `fabric_rail0` from gunbc.spark.fabric_link_desired,
-// whose endpoints were read back from the durable /etc/netplan/90-NM-*.yaml on both hosts. The
-// specification's topology section names the same 192.168.100.0/24 link, so citing the existing row
-// rather than restating its addresses is what keeps one fabric fact in one place -- and it means the
-// constructor's fabric conditions above are checked against the measured fabric, not against a
-// second copy of it authored to agree.
-//
-// THAT CITATION CROSSES A TEMPORAL BOUNDARY, AND THE BOUNDARY IS PINNED RATHER THAN ASSUMED.
-// `fabric_rail0` is CURRENT DESIRED STATE and may legitimately be re-addressed; this module is a
-// DATED OBSERVATION of what the deployment used on 2026-09-02. Their equality today is an AGREEMENT
-// between two different subjects, not one fact with one authority, so an edit to the desired row
-// would otherwise rewrite this history silently and with no diagnostic. The whole-value agreement is
-// asserted by test.claim.spark_llama_cpp_rpc_witness
-// the_dated_observation_still_agrees_with_the_fabric_row_it_cites, which pins interface, prefix and
-// MTU as well as the octets because the constructor above refuses on each of them. If it goes red
-// the desired fabric has moved, and the repair is to snapshot the observed rail here as its own
-// dated value -- not to update the literals.
+// THE FABRIC IS THE DATED SNAPSHOT ABOVE (llama_cpp_rpc_observed_fabric): the 192.168.100.0/24
+// direct-cable rail between srv7 and srv8 as read back from both hosts' netplan on 2026-09-02, the
+// same link the specification's topology section names. The desired fabric has since moved to the
+// switch, so this history derives from nothing current and cannot be rewritten by an edit elsewhere.
 data llama_cpp_rpc_observed_alias: NonEmptyStr = "deepseek-v4-flash:iq3s-split" as NonEmptyStr
 
 // THE FRONT DOOR'S LAN ADDRESS IS CARRIED HERE AS AN OBSERVATION, AND DELIBERATELY NOT CITED FROM
@@ -419,18 +434,14 @@ data llama_cpp_rpc_observed_slot_plan: LlamaCppRpcSlotPlan = LlamaCppRpcSlotPlan
 }
 
 fn llama_cpp_rpc_observed_weights_peer() -> LlamaCppRpcWeightsPeer? {
-  match fabric_rail0 {
+  match llama_cpp_rpc_fabric_endpoint_on(fabric: llama_cpp_rpc_observed_fabric, host: operator_host_srv8) {
     Absent => none
-    Present { value: link } =>
-      match fabric_endpoint_on(link: link, host: operator_host_srv8) {
-        Absent => none
-        Present { value: e } =>
-          Present { value: LlamaCppRpcWeightsPeer {
-            host: operator_host_srv8,
-            fabric_address: e.address,
-            port: 50052,
-          } }
-      }
+    Present { value: e } =>
+      Present { value: LlamaCppRpcWeightsPeer {
+        host: operator_host_srv8,
+        fabric_address: e.address,
+        port: 50052,
+      } }
   }
 }
 
@@ -438,20 +449,16 @@ fn llama_cpp_rpc_observed_weights_peer() -> LlamaCppRpcWeightsPeer? {
 // hold. An Absent here is not a deployment with a problem to report later -- it never existed, so
 // nothing downstream can plan from it.
 fn llama_cpp_rpc_observed() -> LlamaCppRpcDeployment? {
-  match fabric_rail0 {
+  match llama_cpp_rpc_observed_weights_peer() {
     Absent => none
-    Present { value: link } =>
-      match llama_cpp_rpc_observed_weights_peer() {
-        Absent => none
-        Present { value: peer } =>
-          llama_cpp_rpc_construct(
-            alias: llama_cpp_rpc_observed_alias,
-            front_door: llama_cpp_rpc_observed_front_door,
-            weights_peer: peer,
-            fabric: link,
-            slot_plan: llama_cpp_rpc_observed_slot_plan,
-          )
-      }
+    Present { value: peer } =>
+      llama_cpp_rpc_construct(
+        alias: llama_cpp_rpc_observed_alias,
+        front_door: llama_cpp_rpc_observed_front_door,
+        weights_peer: peer,
+        fabric: llama_cpp_rpc_observed_fabric,
+        slot_plan: llama_cpp_rpc_observed_slot_plan,
+      )
   }
 }
 

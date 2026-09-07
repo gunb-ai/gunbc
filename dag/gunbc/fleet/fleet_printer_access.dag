@@ -1,11 +1,21 @@
 module gunbc.fleet_printer_access
 
-import std.types { Int, List }
+import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import product.placement_supply { PhysicalAssetIdentity }
-import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending, secret_ref_secret_resource }
 import extdeps.uri { Uri, uri_https }
 import gunbc.fleet_asset_identity { printer_01, printer_02 }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.secret_provision { fleet_secret_ref, SecretProvisionReceipt }
+import extdeps.cloud.gcp.secret_manager
+import extdeps.transports.rest {
+  RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
+}
+import std.resources { Network }
+import gunbc.auth.access_token_source {
+  AccessTokenSource, AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused,
+  access_token_upsert_required_reason, ensure_access_token,
+}
 
 // WHERE EACH PRINTER'S ACCESS CODE LIVES, NEVER WHAT IT IS.
 //
@@ -28,42 +38,61 @@ type PrinterAccessCodeLocus {
 }
 
 type PrinterAccessCodeLocusLookup
-  = PrinterAccessCodeLocusFound { locus: PrinterAccessCodeLocus }
+  = PrinterAccessCodeDesiredLocusFound { locus: PrinterAccessCodeLocus }
   | PrinterAccessCodeLocusUnknown { printer: PhysicalAssetIdentity }
   | PrinterAccessCodeLocusConflict { printer: PhysicalAssetIdentity, matches: Int }
 
 // DISCLOSURE STANDING. printer-01's former access code was relayed through an agent transcript on
-// 2026-09-04 and then rotated by toggling LAN Only Mode. That event reissues the code, which is why
-// both machine loci pin an exact Secret Manager version: rotation changes a visible version field
-// instead of silently moving `latest` and turning stale material into an unexplained FTPS 530.
+// 2026-09-04 and then rotated by toggling LAN Only Mode. That event reissues the code, so ROTATION
+// MUST STAY VISIBLE as a version change rather than being absorbed by a moving `latest`, which would
+// turn stale material into an unexplained FTPS 530.
+//
+// This sentence previously continued "which is why both machine loci pin an exact version" -- and
+// that had stopped being true of the code beneath it. The rows pinned version "1" for secrets that
+// do not exist, so the pin asserted a materialization no one had performed; the wet run of 2026-09-06
+// resolved that exact reference and Secret Manager answered 404. The requirement it names is real and
+// survives: it is now discharged by taking the exact version FROM a provisioning receipt rather than
+// by authoring a literal here, which is the only version that was ever evidence of anything.
+// THE NAME IS DERIVED IN ONE PLACE, so the convention is a single edit rather than a search.
+//
+// The operator chose the asset-first spelling on 2026-09-06, alongside the fleet's existing
+// asset-scoped names (bmc-srv3-admin, host-srv4-console), and asked that it stay easily changeable.
+// That is why the segments are assembled here instead of appearing as literals on each row: a
+// convention spelled once per printer is a convention that has to be found before it can be changed,
+// and the second copy is the one that gets missed. `lan` stays explicit because LAN mode is not the
+// only channel a Bambu machine can be driven through, and a name that omits the channel would have to
+// be re-decided the moment a cloud route is modelled.
+fn printer_access_code_secret_id(printer: PhysicalAssetIdentity) -> NonEmptyStr {
+  concat(printer as String, "-lan-access-code") as NonEmptyStr
+}
+
+// AND THE VERSION IS NOT AUTHORED HERE AT ALL. These rows previously pinned version "1" beside the
+// name, which was stronger-wrong than saying nothing: the wet run of 2026-09-06 resolved that exact
+// reference and Secret Manager answered 404 -- the secret does not exist, and neither did version 1
+// ever. A hand-authored version asserts a materialization this repository had never performed.
+//
+// fleet_secret_ref yields a DESIRED identity whose version is "pending". The exact version becomes
+// known only from a SecretProvisionReceipt, via secret_ref_pin_version, after a real materialization.
+// So a locus row now says WHICH SECRET THIS PRINTER'S CODE BELONGS IN, and deliberately does not
+// claim that it is there.
+fn printer_access_code_desired_ref(printer: PhysicalAssetIdentity) -> SecretRef {
+  fleet_secret_ref(secret_id: printer_access_code_secret_id(printer: printer))
+}
+
 data printer_01_access_code_locus: PrinterAccessCodeLocus = PrinterAccessCodeLocus {
   printer: printer_01,
-  secret: SecretRef {
-    project: fleet_secrets_gcp_project,
-    secret: "printer-01-lan-access-code",
-    version: "1",
-    hash_state: HashPending,
-  },
+  secret: printer_access_code_desired_ref(printer: printer_01),
   human_retrieval: uri_https(
     locator: "drive.google.com/file/d/174-47si4_SpEWYfDJnWUkRDS-k1QnPsb/view"),
 }
 
 data printer_02_access_code_locus: PrinterAccessCodeLocus = PrinterAccessCodeLocus {
   printer: printer_02,
-  secret: SecretRef {
-    project: fleet_secrets_gcp_project,
-    secret: "printer-02-lan-access-code",
-    version: "1",
-    hash_state: HashPending,
-  },
+  secret: printer_access_code_desired_ref(printer: printer_02),
   human_retrieval: uri_https(
     locator: "drive.google.com/file/d/12m1vfJmdzSQ_3BxfnwEWaF-MuI0ujwFj/view"),
 }
 
-// THE COMPLETE LOCUS ROSTER. A consumer ranges over this population instead of keeping its own
-// printer-to-secret switch. Adding a printer therefore changes one authority, and the membership
-// witness reads the same population in both directions so a missing or foreign row cannot hide
-// behind an unchanged count.
 data printer_access_code_loci: List<PrinterAccessCodeLocus> = [
   printer_01_access_code_locus,
   printer_02_access_code_locus,
@@ -87,7 +116,7 @@ fn printer_access_code_locus_in(
       fold(
         matching,
         init: PrinterAccessCodeLocusUnknown { printer: printer },
-        f: fn(_, row) { PrinterAccessCodeLocusFound { locus: row } },
+        f: fn(_, row) { PrinterAccessCodeDesiredLocusFound { locus: row } },
       )
     }
   }
@@ -95,4 +124,308 @@ fn printer_access_code_locus_in(
 
 fn printer_access_code_locus(printer: PhysicalAssetIdentity) -> PrinterAccessCodeLocusLookup {
   printer_access_code_locus_in(rows: printer_access_code_loci, printer: printer)
+}
+
+// A LOCUS ROW PROVES THE ROSTER HAS A DECLARATION. IT DOES NOT PROVE THE SECRET EXISTS.
+//
+// PrinterAccessCodeDesiredLocusFound was being consumed as though it established machine resolution, and the
+// wet run of 2026-09-06 measured the gap: the locus resolved, and Secret Manager answered 404 for the
+// secret AND for every version of it. Neither printer code has ever been materialized. So the found
+// arm answers "which secret is this printer's code supposed to live in", and a separate question --
+// has it been put there -- has to be asked before a credential fetch is attempted.
+//
+// THE RECEIPT IS THE ONLY THING THAT ANSWERS WHICH VERSION, and it answers exactly. A
+// SecretProvisionReceipt is INTENDED to carry the SecretRef that materialization produced, so that
+// pinning comes from a performed action rather than a literal an author typed. That is the rule this
+// lane has applied to every other positive standing: the thing downstream trusts must have been
+// earned, and must carry the identity it was earned for.
+//
+// AND THE RECEIPT DOES NOT YET MEET THAT RULE, WHICH IS STATED HERE BECAUSE AN EARLIER REVISION OF
+// THIS NOTE CLAIMED IT DID. SecretProvisionReceipt has no seal, and secret_provision_receipt is a
+// pure fn whose arguments are all supplied by its caller -- so a receipt can be minted out of
+// nothing, and sealing the type alone would not fix it, because the constructor takes no
+// effect-earned input either. The roster below is an ordinary authored list. What stops a forged
+// entry today is that nobody has written one, which is DISCIPLINE, NOT CONSTRUCTION -- and the tell
+// is exactly the one §5 names: the guarantee can be satisfied by editing a declaration.
+//
+// WHY THAT IS TOLERABLE TODAY AND NOT AFTER ONBOARDING LANDS. The roster is empty, so the positive
+// arm is uninhabited and every printer reaches ProvisionRequired through the remote observation. The
+// defect is latent; it goes live at the exact moment something is allowed to inhabit
+// PrinterCredentialProvisioned, because that arm is what unlocks a credential fetch against a
+// machine on the operator LAN.
+//
+// RUNG: mitigation. CEILING: structural impossibility -- membership is decidable, so the invalid
+// state can be made unwritable. NEXT-RUNG TRIGGER, named as the capability and not as an artifact:
+// a provisioning actuator that is the SOLE minter of SecretProvisionReceipt, constructing it only
+// from the response of a performed AddVersion, with the type sealed so no other module can spell
+// one. A trigger naming merely "the onboarding workflow exists" would be satisfied while a pure
+// public constructor still stood beside it.
+data printer_access_code_provision_receipts: List<SecretProvisionReceipt> = []
+
+// TWO QUESTIONS, ASKED IN ORDER, AND ONLY THE FIRST CAN BE ASKED OF THE REMOTE.
+//
+// "Does this printer's access code exist" is an external fact and is settled by observation --
+// observe_printer_secret_container below asks Secret Manager. "Which version is it" is settled by
+// the provisioning receipt, because the version is minted by the write and only the writer can say
+// what it produced.
+//
+// THE ROSTER BELOW ANSWERS ONLY THE SECOND QUESTION NOW. An earlier revision of this module used its
+// emptiness to answer the FIRST one too, which made "we have no record" masquerade as "the remote
+// says no" -- a declaration wearing an observation's name, and writable by any author who appended a
+// row. That is why the observation was built rather than the roster documented.
+//
+// THE MEASUREMENT THAT UNBLOCKED IT, since an earlier read of this same question got it wrong:
+// gcp.SecretManager.GetSecret was already declared in extdeps and had zero callers. Censusing call
+// sites and reporting existence is what produced the wrong answer; the operation was there, and all
+// it lacked was the RestOutcome declaration that stops dispatch_rest raising its 404 as a TypeError.
+//
+// RUNG: mitigation, and honestly so -- this is an external fact observed at a boundary, which is its
+// ceiling; it never becomes construction. What changed is that the boundary is now a real read whose
+// refusal arms refuse, instead of a local list whose silence was read as an answer.
+// WHAT THE LOCAL RECORD CAN SAY, WHICH IS MUCH LESS THAN WHAT THE RESOLUTION CAN SAY.
+//
+// The classifier used to take a whole PrinterCredentialResolution as its record input, which made
+// states like ObservationRefused, VersionUnrecorded and MaterializationVanished syntactically
+// admissible as "what our records show" -- transitions a record lookup can never legitimately
+// produce, sitting in the type as though it might. Every one of them had to be forwarded by hand in
+// two separate match arms, and a forwarding arm is exactly where a wrong mapping hides.
+//
+// The record answers one question with two answers, so that is the type. The impossible transitions
+// are now unspellable rather than forwarded.
+type PrinterMaterializationRecord
+  = NoRecordedMaterialization
+  | RecordedMaterialization { exact_ref: SecretRef }
+
+// A CONFLICT IN OUR OWN RECORDS IS NOT A RECORD, so it does not travel as one.
+//
+// The classifier reasons about a remote container against what we recorded. "Two receipts claim this
+// secret" is neither -- it is a fault in the local roster, answerable before anything is dialled.
+// Keeping it out of PrinterMaterializationRecord is what lets that type stay exactly two arms.
+type PrinterMaterializationLookup
+  = MaterializationRecordFound { record: PrinterMaterializationRecord }
+  | MaterializationRecordConflict { matches: Int }
+
+type PrinterCredentialResolution
+  = PrinterCredentialProvisioned { exact: SecretRef }
+  | PrinterCredentialProvisionRequired { printer: PhysicalAssetIdentity, desired: SecretRef }
+  | PrinterCredentialProvisionAmbiguous { printer: PhysicalAssetIdentity, matches: Int }
+  | PrinterCredentialObservationRefused { printer: PhysicalAssetIdentity, cause: NonEmptyStr }
+  | PrinterCredentialVersionUnrecorded { printer: PhysicalAssetIdentity, container: String }
+  | PrinterCredentialMaterializationVanished { printer: PhysicalAssetIdentity, exact: SecretRef }
+  | PrinterCredentialLocusUndeclared { printer: PhysicalAssetIdentity }
+  | PrinterCredentialLocusConflicted { printer: PhysicalAssetIdentity, matches: Int }
+
+// A 404 IS THE ANSWER; EVERY OTHER NON-SUCCESS IS AN UNANSWERED QUESTION, AND THE TWO MAY NOT MERGE.
+//
+// GetSecret answering 404 means the container is not there -- a successful observation of an
+// absence, and the case this call exists to reach. A 403 means the caller was not allowed to look, a
+// 401 means it was not authenticated, a transport refusal means nothing was reached at all. Those
+// are silence, not absence. Folding any of them into the absent arm would report "this printer has
+// no access code" on the strength of a permissions problem, and the remedy that follows -- provision
+// a new code -- would then mint a second version over a code that was there all along.
+//
+// THIS CLASSIFICATION IS A PURE FUNCTION OF THE OUTCOME AND THE RECORD, DELIBERATELY, so that its
+// RED is authorable.
+// Written inline in the network func below, the one decision that must not go wrong -- 404 becomes
+// absence, 403 must not -- would sit where no witness could reach it, and the only way to exercise it
+// would be to make Secret Manager return a 403 on demand. Separated, a witness constructs
+// RestStatusRefused { status: 403 } directly and asserts it does NOT reach ProvisionRequired. The
+// network func keeps the transport and this keeps the fact, which is also the layering the substrate
+// asks for: dispatch is realization, and the classification is the thing being realized.
+//
+// THE RestOk ARM: A CONTAINER THAT EXISTS IS NOT THE SAME AS KNOWING WHICH VERSION TO READ. Routing
+// that case back through the receipt roster unmodified would answer ProvisionRequired for a secret
+// that demonstrably exists -- absence and unknown-version collapsed into one arm wearing the wrong
+// remedy -- so it reaches PrinterCredentialVersionUnrecorded instead.
+//
+// AND THE MIRROR CASE, WHICH IS THE DANGEROUS ONE: A 404 DOES NOT MEAN "NEVER PROVISIONED" WHEN A
+// SUBJECT-MATCHED RECORD SAYS WE MADE IT. The structural fact is a CONTRADICTION between a RECORDED
+// MATERIALIZATION and a current observation, and that is all this arm asserts. It deliberately does
+// not enumerate a cause, because the join is at project+secret grain and any explanation other than
+// "the container was removed" would itself imply a defect in the receipt or write machinery.
+//
+// THE WORD "DURABLE" WAS HERE AND WAS AN OVERCLAIM, which matters because this note is the thing a
+// reader consults to learn what the arm means. A record is not yet evidence that a write happened:
+// the roster is authored, the receipt carrier is unsealed, and its mint is a pure function -- the
+// standing frontier stated above the roster. Calling it durable asserted the very property this
+// module elsewhere admits it lacks, in the one comment describing the arm that acts on it.
+//
+// The remedy is to investigate, never to provision. Returning ProvisionRequired here would erase the
+// record from the answer and hand back the remedy "provision it" -- quietly recreating a secret that
+// something deleted, destroying the only signal that a deletion occurred, and doing it on the
+// credential path of a machine on the operator LAN.
+//
+// So the two 404s are different facts and get different arms. Without a receipt, absence is the
+// expected pre-onboarding state and ProvisionRequired is the correct remedy. With one, absence is an
+// ANOMALY and the answer is a refusal that names the version we believe we wrote, so a person can
+// find out what happened to it. The classifier consults from_roster on BOTH branches now; consulting
+// it on only one was what made the collapse possible.
+fn classify_container_observation(
+  printer: PhysicalAssetIdentity,
+  desired: SecretRef,
+  outcome: RestOutcome,
+  container_name: String,
+  record: PrinterMaterializationRecord,
+) -> PrinterCredentialResolution {
+  match outcome {
+    RestOk =>
+      match record {
+        NoRecordedMaterialization =>
+          PrinterCredentialVersionUnrecorded { printer: printer, container: container_name }
+        RecordedMaterialization { exact_ref: e } => PrinterCredentialProvisioned { exact: e }
+      }
+    RestStatusRefused { status: s, body: b } =>
+      if s == 404 {
+        match record {
+          RecordedMaterialization { exact_ref: e } =>
+            PrinterCredentialMaterializationVanished { printer: printer, exact: e }
+          NoRecordedMaterialization =>
+            PrinterCredentialProvisionRequired { printer: printer, desired: desired }
+        }
+      } else {
+        PrinterCredentialObservationRefused {
+          printer: printer,
+          cause: concat(concat(
+            "Secret Manager did not answer whether this printer's access code exists; it refused the read with HTTP ",
+            s as String),
+            concat(": ", b)) as NonEmptyStr,
+        }
+      }
+    RestTransportRefused { cause: c } =>
+      PrinterCredentialObservationRefused {
+        printer: printer,
+        cause: concat(
+          "Secret Manager was never reached, so nothing is known about whether this printer's access code exists: ",
+          c as String) as NonEmptyStr,
+      }
+    RestBodyUndecodable { status: s, cause: c } =>
+      PrinterCredentialObservationRefused {
+        printer: printer,
+        cause: concat(concat(concat(
+          "Secret Manager answered HTTP ", s as String),
+          " and the body beneath it could not be read, so the answer is unknown rather than absent: "),
+          c as String) as NonEmptyStr,
+      }
+  }
+}
+
+// THE TRANSPORT HALF: admit the printer against the declared roster, look up what we recorded,
+// resolve a token, perform the read, and hand the outcome to the classification above.
+//
+// THE ORDER IS LOAD-BEARING AND WAS WRONG. The ambiguity check used to run AFTER the token was
+// resolved and AFTER GetSecret was dispatched, so duplicate local receipts plus an unavailable token
+// answered ObservationRefused -- a malformed LOCAL declaration hidden behind an unrelated EXTERNAL
+// failure, which is precisely the fault-class collapse the locus admission was repaired to prevent.
+// Everything answerable from our own records is now answered before anything is dialled. It decides nothing itself, which is why
+// every arm that could have widened lives next door under a witness.
+//
+// THE ROSTER IS AN UNAVOIDABLE INPUT, NOT A FUNCTION SOMETHING ELSE COULD HAVE CALLED. An earlier
+// revision derived the desired ref straight from printer_access_code_desired_ref, which spells a
+// secret id by convention and therefore succeeds for ANY identity -- so a printer present in the
+// fabrication topology but absent from printer_access_code_loci had a plausible Secret Manager name
+// synthesized for it and queried. printer_access_code_locus_in refused that case correctly and
+// production walked around it: the refusal had a witness and no consumer, which is the failure that
+// makes a green test mean nothing. The desired ref now comes OUT of the admitted locus row, so the
+// roster cannot be bypassed by construction rather than by discipline.
+//
+// AN UNDECLARED OR CONFLICTED LOCUS IS NOT A FAILED OBSERVATION, and it gets its own arms rather
+// than PrinterCredentialObservationRefused. One says our declaration is missing or malformed and the
+// remedy is to fix this repository; the other says the remote did not answer and the remedy is out
+// there. Merging them would send an operator to debug Secret Manager for a row nobody wrote.
+func observe_printer_secret_container(
+  printer: PhysicalAssetIdentity,
+  token_source: AccessTokenSource,
+) -> PrinterCredentialResolution uses net: Network {
+  match printer_access_code_locus(printer: printer) {
+    PrinterAccessCodeLocusUnknown { printer: p } =>
+      PrinterCredentialLocusUndeclared { printer: p }
+    PrinterAccessCodeLocusConflict { printer: p, matches: m } =>
+      PrinterCredentialLocusConflicted { printer: p, matches: m }
+    PrinterAccessCodeDesiredLocusFound { locus: locus } => {
+  let desired = locus.secret
+  match materialization_lookup_for(desired: desired) {
+    MaterializationRecordConflict { matches: m } =>
+      PrinterCredentialProvisionAmbiguous { printer: printer, matches: m }
+    MaterializationRecordFound { record: record } =>
+  match ensure_access_token(source: token_source) {
+    AccessTokenUpsertRequired { plan: upsert_plan } =>
+      PrinterCredentialObservationRefused {
+        printer: printer,
+        cause: access_token_upsert_required_reason(plan: upsert_plan) as NonEmptyStr,
+      }
+    AccessTokenEnsureRefused { reason: reason } =>
+      PrinterCredentialObservationRefused { printer: printer, cause: reason }
+    AccessTokenReady { token: token } => {
+      observed = gcp.SecretManager.GetSecret(
+        access_token: token,
+        project_id: desired.project,
+        secret: desired.secret,
+      )
+      classify_container_observation(
+        printer: printer,
+        desired: desired,
+        outcome: observed.outcome,
+        container_name: observed.name,
+        record: record,
+      )
+    }
+  }
+  }
+    }
+  }
+}
+
+// THE JOIN IS AT CONTAINER GRAIN AND CONSUMES THE EXISTING RESOURCE AUTHORITY. An earlier draft
+// compared project and secret field by field, which was a second spelling of what
+// secret_ref_secret_resource already constructs -- the kind of duplicate that drifts the moment one
+// side learns about a new segment.
+//
+// VERSION IS DELIBERATELY EXCLUDED FROM THE COMPARISON, and that asymmetry is the point: the desired
+// identity says pending precisely because it does not know the version, and the receipt is the
+// authority that supplies it. Comparing versions would make the join unsatisfiable by construction.
+//
+// WHY A JOIN AT ALL, rather than "is the roster non-empty": otherwise any successfully provisioned
+// secret in the fleet would satisfy printer-01. The receipt has to be about THIS printer's secret.
+fn receipt_names_secret(receipt: SecretProvisionReceipt, desired: SecretRef) -> Bool {
+  secret_ref_secret_resource(ref: receipt.identity) == secret_ref_secret_resource(ref: desired)
+}
+
+// THE PRODUCTION ADAPTER: the ONE place a stored receipt becomes a record the classifier will act on.
+//
+// It consumes the admitted desired identity rather than re-deriving it from the printer, so the
+// receipt join and the remote read cannot drift onto different subjects. Ambiguity refuses here
+// rather than being carried into the classifier, because "two receipts claim this secret" is a fact
+// about our records and not about the remote container the classifier is reasoning over.
+//
+// IT IS ALSO THE ONLY READER OF THE RECEIPT POPULATION, WHICH IS THE WHOLE CLAIM. An earlier
+// revision said "one adapter" and shipped three readers: this function, a separate
+// recorded_materialization_is_ambiguous that filtered and counted the same roster, and an inline
+// filter in the observer to build the match count. A claim of single authority is falsified by any
+// second reader, and it was falsified by two.
+//
+// SO THE CLAIM CARRIES ITS OWN CHECK: grep the tree for printer_access_code_provision_receipts. Two
+// hits are correct -- the declaration and this function. A third is a second reader and falsifies
+// this note. A sole-authority claim is a universal over the whole tree, and the previous one was
+// justified by a local reading instead; the grep is cited here so a reader can refuse the sentence
+// without taking the author's word for it.
+//
+// THIS IS THE SEAM WHERE B4 WILL LAND. What this function reads today is an ordinary authored list,
+// so RecordedMaterialization is currently only as trustworthy as the discipline described above the
+// roster. When the provisioning actuator becomes the sole minter of an effect-earned receipt, ONLY
+// THIS FUNCTION CHANGES: the classifier already speaks in records rather than in receipts, and the
+// witnesses already author records directly, so neither has to move. That is the whole reason the
+// narrow type exists before the actuator does.
+fn materialization_lookup_for(desired: SecretRef) -> PrinterMaterializationLookup {
+  let matches = printer_access_code_provision_receipts
+    |> filter(r => receipt_names_secret(receipt: r, desired: desired))
+  let count = matches |> length
+  if count > 1 {
+    MaterializationRecordConflict { matches: count }
+  } else {
+    match matches |> first {
+      Absent => MaterializationRecordFound { record: NoRecordedMaterialization }
+      Present { value: found } =>
+        MaterializationRecordFound { record: RecordedMaterialization { exact_ref: found.identity } }
+    }
+  }
 }

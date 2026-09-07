@@ -56,7 +56,6 @@ import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.ci_spec {
   gunbc_ci_fleet_converge_plan_invoke,
   gunbc_ci_fleet_converge_launch_environment_plan_invoke,
-  gunbc_ci_fleet_converge_spark_serving_plan_invoke,
   gunbc_ci_fleet_converge_allocation_store_plan_invoke,
   gunbc_ci_fleet_converge_apply_invoke,
   gunbc_ci_org_actions_converge_invoke,
@@ -66,12 +65,9 @@ import gunbc.ci_spec {
   gunbc_ci_runner_microvm_host_converge_invoke,
   gunbc_ci_runner_microvm_boot_probe_invoke,
   gunbc_ci_live_deploy_apply_srv1_invoke,
-  gunbc_ci_spark_serving_converge_slice_invoke,
-  gunbc_ci_spark_serving_observe_invoke,
-  gunbc_ci_spark_serving_reboot_invoke,
-  gunbc_ci_spark_serving_durability_invoke,
   gunbc_ci_spark_grant_install_invoke,
   gunbc_ci_spark_bootstrap_invoke,
+  gunbc_ci_spark_serving_apply_invoke,
   gunbc_fleet_converge_plan_artifact_name,
   gunbc_ci_fleet_converge_plan_artifact_hash_env_name,
   gunbc_ci_live_deploy_transaction_invoke,
@@ -88,7 +84,7 @@ import gunbc.actions_run_binding { rlm_expected_revision_env_name }
 import gunbc.spark.credential_workflow { spark_administrator_credential_roster_hosts }
 import gunbc.live_deploy.apply_receipt { rlm_plan_run_id_env_name, rlm_apply_run_id_env_name, rlm_plan_artifact_hash_env_name }
 import gunbc.roadmap_launch_deployment_cli { rlm_dashboard_run_id_env_name }
-import gunbc.fleet_converge_plan { fleet_converge_plan_artifact_dir }
+import gunbc.fleet_converge_plan { fleet_converge_plan_artifact_dir, FleetConvergeScope, FullHost, LaunchEnvironment, FabricAllocationStoreOnly }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import std.types { NonEmptyStr, List, String, Int }
@@ -97,8 +93,8 @@ import std.types { NonEmptyStr, List, String, Int }
 // workflow_dispatch with host=srv1|srv2|srv3|srv4 (executor runner pin) and
 // mode includes plan, apply, org_actions_observe, dashboard_deploy, rlm_launch_deployment_receipt, and the spark modes: plan observes the RUNNER
 // host; apply downloads a prior plan artifact; org_actions_observe validates the separately held
-// org-admin credential and performs only a read/diff; spark_linger runs executor-on-runner → target-on-spark (srv5|srv6) typed argv over
-// FleetSsh via run_typed_argv_transport. Replaces the retired 15-minute ctrl-fleet-converge.timer
+// org-admin credential and performs only a read/diff; spark_serving_apply applies the promoted
+// fabric groups' vLLM units over the password session, workers before heads. Replaces the retired 15-minute ctrl-fleet-converge.timer
 // cadence on every enrolled CI host (timer install route is TimerRetired fleet-wide). Standalone
 // dispatch carries its own build job (release-bins pack/upload) so the converge job never downloads
 // an artifact the current run did not produce.
@@ -111,7 +107,112 @@ data fleet_converge_enrolled_host_options: List<String> = ["srv1", "srv2", "srv3
 // with procurement, so enrolling a Spark makes it dispatchable and nothing else can.
 data fleet_converge_spark_target_options: List<String> = map(spark_administrator_credential_roster_hosts(), h => h as String)
 
-data fleet_converge_mode_options: List<String> = ["plan", "launch_environment_plan", "spark_serving_plan", "allocation_store_plan", "apply", "org_actions_observe", "app_control_plane_observe", "microvm_host_converge", "guest_image_observe", "guest_image_converge", "microvm_boot_probe", "spark_linger", "spark_observe", "spark_reboot", "spark_grants", "spark_bootstrap", "spark_durability", "dashboard_deploy", "rlm_launch_deployment_receipt"]
+// ONE NAME PER MODE, SPELLED ONCE. The dispatch options and every `if:` expression that selects on
+// them used to spell the same fifteen names independently: once as a bare String in the options
+// list, and again inside each hand-written "github.event.inputs.mode == '<name>'". Seventeen such
+// rows, so a mode's name was authored at least twice and a rename could land in one place and not
+// the other -- the second naming account section 3 refuses, in a shape no lens could see because
+// both halves are ordinary Strings.
+//
+// The wire form is now derived from the closed vocabulary, and the expressions are derived from the
+// wire form, so the name exists in exactly one place.
+type FleetConvergeWorkflowMode
+  = FullHostPlan
+  | LaunchEnvironmentPlan
+  | AllocationStorePlan
+  | FleetApply
+  | OrgActionsObserve
+  | AppControlPlaneObserve
+  | MicrovmHostConverge
+  | GuestImageObserve
+  | GuestImageConverge
+  | MicrovmBootProbe
+  | SparkGrants
+  | SparkBootstrap
+  | SparkServingApply
+  | DashboardDeploy
+  | RlmLaunchDeploymentReceipt
+
+fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String {
+  match mode {
+    FullHostPlan => "plan"
+    LaunchEnvironmentPlan => "launch_environment_plan"
+    AllocationStorePlan => "allocation_store_plan"
+    FleetApply => "apply"
+    OrgActionsObserve => "org_actions_observe"
+    AppControlPlaneObserve => "app_control_plane_observe"
+    MicrovmHostConverge => "microvm_host_converge"
+    GuestImageObserve => "guest_image_observe"
+    GuestImageConverge => "guest_image_converge"
+    MicrovmBootProbe => "microvm_boot_probe"
+    SparkGrants => "spark_grants"
+    SparkBootstrap => "spark_bootstrap"
+    SparkServingApply => "spark_serving_apply"
+    DashboardDeploy => "dashboard_deploy"
+    RlmLaunchDeploymentReceipt => "rlm_launch_deployment_receipt"
+  }
+}
+
+// THE ROSTER RE-ENUMERATES THE COPRODUCT, and that is a known stall rather than an oversight
+// (gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall): nothing reflects over a closed
+// vocabulary to produce its members, so the dispatch options need a hand-written order. What the
+// roster CANNOT get wrong any more is a member's NAME -- that comes from the wire function -- and a
+// member missing from this list is missing from the dispatch menu, which is visible, rather than
+// silently misspelled, which was not.
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, DashboardDeploy, RlmLaunchDeploymentReceipt]
+
+// WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
+//
+// EVERY MODE IS NAMED, AND THE WILDCARD IS DELIBERATELY ABSENT. A `_ => none` would read the same
+// today and undo the totality this vocabulary exists for: the sixteenth mode would silently inherit
+// "no scope" instead of forcing this projection to decide what it means. Each arm below is a
+// decision someone made.
+//
+// WHAT `none` DOES AND DOES NOT SAY, stated because the distinction is NOT in the return type.
+// Optional carries one absence, and two different facts land on it here: a mode that is inherently
+// outside fleet convergence (the spark, micro-VM and guest-image modes select other subjects
+// entirely), and a mode that belongs in this projection but whose observation contract is not built
+// yet. That second case is DashboardDeploy alone. The distinction is DECLARED in this annotation and
+// is not encoded in the result; a carrier that separated them would be a different return type, and
+// widening one here to record a gap would be minting vocabulary ahead of the consumer that needs it.
+//
+// WHY DashboardDeploy IS STILL none. Making it a FleetConvergeScope member obliges a
+// FleetConvergeRequest variant, and that obligation is real rather than ceremonial: nine match sites
+// derive a plan's baseline text, axis lines and refusal counters per request, and those modules are
+// explicit that an absent row is itself a claim about the host. A deployment request carrying only a
+// host would render a baseline of scope-and-host that apply re-observes and compares against
+// nothing -- a gate that cannot fail, which is worse than an absent one because it would be cited as
+// the admission the deployment gained. The baseline has to be the candidate-bound total member
+// decision population, and building that is its own change.
+fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeScope? {
+  match mode {
+    FullHostPlan => Present { value: FullHost }
+    LaunchEnvironmentPlan => Present { value: LaunchEnvironment }
+    AllocationStorePlan => Present { value: FabricAllocationStoreOnly }
+    FleetApply => none
+    OrgActionsObserve => none
+    AppControlPlaneObserve => none
+    MicrovmHostConverge => none
+    GuestImageObserve => none
+    GuestImageConverge => none
+    MicrovmBootProbe => none
+    SparkGrants => none
+    SparkBootstrap => none
+    SparkServingApply => none
+    DashboardDeploy => none
+    RlmLaunchDeploymentReceipt => none
+  }
+}
+
+fn fleet_converge_mode_step_if(mode: FleetConvergeWorkflowMode) -> String {
+  join(["github.event.inputs.mode == '", fleet_converge_workflow_mode_wire(mode: mode), "'"], "")
+}
+
+fn fleet_converge_any_mode_step_if(modes: List<FleetConvergeWorkflowMode>) -> String {
+  join(map(modes, m => fleet_converge_mode_step_if(mode: m)), " || ")
+}
+
+data fleet_converge_mode_options: List<String> = map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m))
 
 data fleet_converge_host_runner_expression: String = "${{ fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host)) }}"
 
@@ -166,15 +267,14 @@ fn fleet_converge_host_pinned_runner_spec() -> RunnerSpec {
   RunsOnExpression { expression: fleet_converge_host_runner_expression }
 }
 
-data fleet_converge_plan_step_if: String = "github.event.inputs.mode == 'plan'"
-data fleet_converge_launch_environment_plan_step_if: String = "github.event.inputs.mode == 'launch_environment_plan'"
-data fleet_converge_spark_serving_plan_step_if: String = "github.event.inputs.mode == 'spark_serving_plan'"
-data fleet_converge_allocation_store_plan_step_if: String = "github.event.inputs.mode == 'allocation_store_plan'"
-data fleet_converge_any_plan_step_if: String = "github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan' || github.event.inputs.mode == 'spark_serving_plan' || github.event.inputs.mode == 'allocation_store_plan'"
-data fleet_converge_apply_step_if: String = "github.event.inputs.mode == 'apply'"
-data fleet_converge_org_actions_step_if: String = "github.event.inputs.mode == 'org_actions_observe'"
+data fleet_converge_plan_step_if: String = fleet_converge_mode_step_if(mode: FullHostPlan)
+data fleet_converge_launch_environment_plan_step_if: String = fleet_converge_mode_step_if(mode: LaunchEnvironmentPlan)
+data fleet_converge_allocation_store_plan_step_if: String = fleet_converge_mode_step_if(mode: AllocationStorePlan)
+data fleet_converge_any_plan_step_if: String = fleet_converge_any_mode_step_if(modes: [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan])
+data fleet_converge_apply_step_if: String = fleet_converge_mode_step_if(mode: FleetApply)
+data fleet_converge_org_actions_step_if: String = fleet_converge_mode_step_if(mode: OrgActionsObserve)
 
-data fleet_converge_app_control_plane_step_if: String = "github.event.inputs.mode == 'app_control_plane_observe'"
+data fleet_converge_app_control_plane_step_if: String = fleet_converge_mode_step_if(mode: AppControlPlaneObserve)
 
 // THE RECEIPT UPLOAD MUST SURVIVE THE REFUSAL, which is the whole point of this phase. The
 // converge step writes the observation receipt BEFORE it diffs, then refuses on drift - and a
@@ -183,36 +283,34 @@ data fleet_converge_app_control_plane_step_if: String = "github.event.inputs.mod
 // webhook has ever been configured on this App, so HookSecretAbsent is the likely verdict and
 // its receipt is what the next slice starts from. Same reasoning as the launch-receipt upload
 // below - preserve the evidence of an unsuccessful verdict, do not condition it on success.
-data fleet_converge_app_control_plane_receipt_if: String = "always() && github.event.inputs.mode == 'app_control_plane_observe'"
+data fleet_converge_app_control_plane_receipt_if: String = join(["always() && ", fleet_converge_mode_step_if(mode: AppControlPlaneObserve)], "")
 
 // THE TWO MICRO-VM MODES ARE HOST-PINNED FOR THE SAME REASON EVERY MODE IN THIS WORKFLOW IS: the
 // image is built on the host that will boot it, out of an install root that host owns, so the
 // question "which host" is not a parameter of the operation but its subject.
-data fleet_converge_guest_image_observe_step_if: String = "github.event.inputs.mode == 'guest_image_observe'"
+data fleet_converge_guest_image_observe_step_if: String = fleet_converge_mode_step_if(mode: GuestImageObserve)
 
-data fleet_converge_guest_image_converge_step_if: String = "github.event.inputs.mode == 'guest_image_converge'"
+data fleet_converge_guest_image_converge_step_if: String = fleet_converge_mode_step_if(mode: GuestImageConverge)
 
-data fleet_converge_guest_image_any_step_if: String = "github.event.inputs.mode == 'guest_image_observe' || github.event.inputs.mode == 'guest_image_converge'"
+data fleet_converge_guest_image_any_step_if: String = fleet_converge_any_mode_step_if(modes: [GuestImageObserve, GuestImageConverge])
 
-data fleet_converge_microvm_boot_probe_step_if: String = "github.event.inputs.mode == 'microvm_boot_probe'"
+data fleet_converge_microvm_boot_probe_step_if: String = fleet_converge_mode_step_if(mode: MicrovmBootProbe)
 
-data fleet_converge_microvm_host_converge_step_if: String = "github.event.inputs.mode == 'microvm_host_converge'"
+data fleet_converge_microvm_host_converge_step_if: String = fleet_converge_mode_step_if(mode: MicrovmHostConverge)
 
-data fleet_converge_spark_linger_step_if: String = "github.event.inputs.mode == 'spark_linger'"
 
-data fleet_converge_spark_observe_step_if: String = "github.event.inputs.mode == 'spark_observe'"
 
-data fleet_converge_spark_reboot_step_if: String = "github.event.inputs.mode == 'spark_reboot'"
 
-data fleet_converge_spark_durability_step_if: String = "github.event.inputs.mode == 'spark_durability'"
 
-data fleet_converge_spark_grants_step_if: String = "github.event.inputs.mode == 'spark_grants'"
+data fleet_converge_spark_grants_step_if: String = fleet_converge_mode_step_if(mode: SparkGrants)
 
-data fleet_converge_spark_bootstrap_step_if: String = "github.event.inputs.mode == 'spark_bootstrap'"
+data fleet_converge_spark_bootstrap_step_if: String = fleet_converge_mode_step_if(mode: SparkBootstrap)
 
-data fleet_converge_dashboard_deploy_step_if: String = "github.event.inputs.mode == 'dashboard_deploy'"
+data fleet_converge_spark_serving_apply_step_if: String = fleet_converge_mode_step_if(mode: SparkServingApply)
 
-data fleet_converge_rlm_receipt_step_if: String = "github.event.inputs.mode == 'rlm_launch_deployment_receipt'"
+data fleet_converge_dashboard_deploy_step_if: String = fleet_converge_mode_step_if(mode: DashboardDeploy)
+
+data fleet_converge_rlm_receipt_step_if: String = fleet_converge_mode_step_if(mode: RlmLaunchDeploymentReceipt)
 
 fn fleet_converge_plan_upload_step() -> Step {
   UsesStep {
@@ -294,30 +392,6 @@ fn fleet_converge_launch_environment_plan_step() -> Step {
     if_condition: Present { value: fleet_converge_launch_environment_plan_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
-  }
-}
-
-// THE SPARK PLAN STEP CARRIES THE TWO RLM ENV ROWS AND THE TARGET. The first two bind the run to the
-// executor and the revision like every other plan; the third names the subject, because a Spark plan
-// is minted on srv1..srv4 about srv5 or srv6, and apply later reads that subject off the artifact
-// rather than off the environment.
-fn fleet_converge_spark_serving_plan_step() -> Step {
-  RunStep {
-    name: Present { value: "Fleet converge plan — scope:spark-serving (executor→target FleetSsh observation, typed rows frozen in the bundle)" },
-    id: Present { value: "spark_serving_plan" },
-    run: gunbc_ci_fleet_converge_spark_serving_plan_invoke(),
-    shell: none,
-    env: Present {
-      value: [
-        kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
-        kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
-        kv(key: "SPARK_CONVERGE_TARGET", value: yaml_string(s: "${{ github.event.inputs.target }}")),
-      ]
-    },
-    working_directory: none,
-    if_condition: Present { value: fleet_converge_spark_serving_plan_step_if },
-    continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
   }
 }
 
@@ -709,69 +783,6 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
   }
 }
 
-fn fleet_converge_spark_linger_step() -> Step {
-  RunStep {
-    name: Present { value: "Spark serving linger converge (executor→target FleetSsh typed argv)" },
-    id: Present { value: "spark_linger" },
-    run: gunbc_ci_spark_serving_converge_slice_invoke(),
-    shell: none,
-    env: Present {
-      value: [
-        kv(key: "SPARK_CONVERGE_TARGET", value: yaml_string(s: "${{ github.event.inputs.target }}")),
-        kv(key: "SPARK_CONVERGE_EXECUTE", value: yaml_string(s: "1")),
-      ]
-    },
-    working_directory: none,
-    if_condition: Present { value: fleet_converge_spark_linger_step_if },
-    continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
-  }
-}
-
-// THE DURABILITY PROBE, and it takes a target for the same reason the mutating converge does: a
-// reboot with no named host must never fan out across the fleet from an unset variable. The entry
-// refuses that arm itself; passing the input here is what gives it something to refuse.
-fn fleet_converge_spark_reboot_step() -> Step {
-  RunStep {
-    name: Present { value: "Spark serving reboot (durability probe: the receipt is the converge that follows)" },
-    id: Present { value: "spark_reboot" },
-    run: gunbc_ci_spark_serving_reboot_invoke(),
-    shell: none,
-    env: Present {
-      value: [
-        kv(key: "SPARK_CONVERGE_TARGET", value: yaml_string(s: "${{ github.event.inputs.target }}")),
-      ]
-    },
-    working_directory: none,
-    if_condition: Present { value: fleet_converge_spark_reboot_step_if },
-    continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
-  }
-}
-
-// THE DURABILITY TRANSACTION, which is a different event from the reboot probe beside it and not a
-// longer version of it. The probe issues a reboot and reports what the far side said; this runs the
-// whole comparison in ONE process -- boot identity before, reboot, poll until that identity changes,
-// then the same replan and generation probe the converge path uses -- because a before-reading kept
-// between two dispatches is a fact whose staleness nothing checks.
-fn fleet_converge_spark_durability_step() -> Step {
-  RunStep {
-    name: Present { value: "Spark serving durability transaction (boot identity before and after, in one run)" },
-    id: Present { value: "spark_durability" },
-    run: gunbc_ci_spark_serving_durability_invoke(),
-    shell: none,
-    env: Present {
-      value: [
-        kv(key: "SPARK_CONVERGE_TARGET", value: yaml_string(s: "${{ github.event.inputs.target }}")),
-      ]
-    },
-    working_directory: none,
-    if_condition: Present { value: fleet_converge_spark_durability_step_if },
-    continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
-  }
-}
-
 fn fleet_converge_spark_grants_step() -> Step {
   RunStep {
     name: Present { value: "Spark managed grant reconcile (materializes its own administrator credential in-run, installs only the grants measured missing at the named target, removes the credential within this same step)" },
@@ -810,15 +821,24 @@ fn fleet_converge_spark_bootstrap_step() -> Step {
   }
 }
 
-fn fleet_converge_spark_observe_step() -> Step {
+// THE PAIR-SERVING APPLY. Same prelude as the bootstrap and the grant install -- the job's fleet-key
+// agent plus the per-target administrator credential materialized to one file -- so the three cannot
+// drift on how a Spark is reached or authenticated. The entry converges the promoted fabric groups'
+// vLLM units, workers before heads.
+fn fleet_converge_spark_serving_apply_step() -> Step {
   RunStep {
-    name: Present { value: "Spark serving observation (read-only: unit state, runtime version, model tags, driver)" },
-    id: Present { value: "spark_observe" },
-    run: gunbc_ci_spark_serving_observe_invoke(),
+    name: Present { value: "Spark pair serving apply (promoted fabric groups' vLLM units over the password session, workers before heads)" },
+    id: Present { value: "spark_serving_apply" },
+    run: gunbc_ci_spark_serving_apply_invoke(),
     shell: none,
-    env: none,
+    env: Present {
+      value: [
+        kv(key: "SPARK_CONVERGE_TARGET", value: yaml_string(s: "${{ github.event.inputs.target }}")),
+        kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      ]
+    },
     working_directory: none,
-    if_condition: Present { value: fleet_converge_spark_observe_step_if },
+    if_condition: Present { value: fleet_converge_spark_serving_apply_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
   }
@@ -876,7 +896,6 @@ fn fleet_converge_job() -> Job {
       [
         fleet_converge_plan_step(),
         fleet_converge_launch_environment_plan_step(),
-        fleet_converge_spark_serving_plan_step(),
         fleet_converge_allocation_store_plan_step(),
         fleet_converge_plan_upload_step(),
         fleet_converge_plan_download_step(),
@@ -893,12 +912,9 @@ fn fleet_converge_job() -> Job {
         fleet_converge_microvm_host_standing_upload_step(),
         fleet_converge_microvm_boot_probe_step(),
         fleet_converge_microvm_boot_probe_receipt_upload_step(),
-        fleet_converge_spark_linger_step(),
         fleet_converge_spark_grants_step(),
         fleet_converge_spark_bootstrap_step(),
-        fleet_converge_spark_observe_step(),
-        fleet_converge_spark_reboot_step(),
-        fleet_converge_spark_durability_step(),
+        fleet_converge_spark_serving_apply_step(),
         ci_fleet_key_agent_cleanup_step(),
       ]
     ),
@@ -1042,21 +1058,21 @@ data fleet_converge_workflow: Workflow = Workflow {
         },
         DispatchInput {
           name: "mode",
-          description: Present { value: "plan shows membership hunks; spark_serving_plan freezes typed Spark rows for the selected target; apply executes a prior plan artifact (Spark rows over FleetSsh); org_actions_observe validates the org credential and refuses on runner-group drift; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; microvm_host_converge installs the cited Firecracker release on the selected host and refuses the kvm grant by name; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark modes observe or converge the selected Spark" },
+          description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; microvm_host_converge installs the cited Firecracker release on the selected host and refuses the kvm grant by name; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' vLLM units over the password session, workers before heads" },
           required: true,
           default: none,
           type: InputChoice { options: fleet_converge_mode_options },
         },
         DispatchInput {
           name: "target",
-          description: Present { value: "Spark target host for spark_serving_plan and the spark_* modes (any rostered Spark, srv5..srv11); apply reads the subject off the plan artifact" },
+          description: Present { value: "Spark target host for the spark_* modes, naming the administrator credential the run materializes (any rostered Spark, srv5..srv11); apply reads the subject off the plan artifact" },
           required: false,
           default: none,
           type: InputChoice { options: fleet_converge_spark_target_options },
         },
         DispatchInput {
           name: "plan_artifact_hash",
-          description: Present { value: "Fnv1a64Structural bundle digest of plan.txt + apply.sh + spark_serving_typed_actions.wire — required for apply (printed by plan step). A plan artifact minted before the typed-actions wire joined the bundle will not match." },
+          description: Present { value: "Fnv1a64Structural bundle digest of plan.txt + apply.sh — required for apply (printed by plan step)." },
           required: false,
           default: none,
           type: InputString,

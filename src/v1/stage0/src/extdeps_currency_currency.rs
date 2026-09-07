@@ -5,6 +5,8 @@ use self::CurrencyCode::*;
 pub use crate::extdeps_external_authority::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
+pub use crate::std_types::Bool;
+use crate::std_types::Bool::*;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -40,6 +42,17 @@ pub fn currency_minor_unit_exponent(c: CurrencyCode) -> i64 {
         CurrencyCode::Eur => 2,
         CurrencyCode::Usd => 2,
     }
+}
+
+pub fn currency_numeric_code(c: CurrencyCode) -> i64 {
+    match c.clone() {
+        CurrencyCode::Eur => 978,
+        CurrencyCode::Usd => 840,
+    }
+}
+
+pub fn currency_code_eq(a: CurrencyCode, b: CurrencyCode) -> bool {
+    (currency_numeric_code(a.clone()) == currency_numeric_code(b.clone()))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -305,6 +305,23 @@ fn observe_upstream_remaining<Q, S>(pool: Pool<Q, S>, remaining: Measure<Q, S, N
   }
 }
 
+// A RESET INSTANT THE UPSTREAM REPORTED RE-ANCHORS THE PERIOD so that a window ends exactly there:
+// the anchor becomes the reset instant reduced modulo the period, which is the earliest boundary in
+// the same phase. A pool with no replenishment has no window to anchor and is unchanged. This is a
+// change to the law the fold applies from here on, never a rewrite of an earlier event.
+fn pool_reanchor<Q, S>(pool: Pool<Q, S>, reset_at: EpochSecs) -> Pool<Q, S> {
+  match pool.replenishment {
+    NoReplenishment => pool
+    LapseAtPeriodEnd { period: p } =>
+      Pool {
+        identity: pool.identity,
+        ledger: pool.ledger,
+        replenishment: LapseAtPeriodEnd { period: AppropriationPeriod { period_seconds: p.period_seconds, anchor: reset_at % p.period_seconds } },
+        terms: pool.terms,
+      }
+  }
+}
+
 fn pool_refusal_wire<Q, S>(r: PoolRefusal<Q, S>) -> String {
   match r {
     LedgerRefusal { refusal: _ } => "ledger-refused"

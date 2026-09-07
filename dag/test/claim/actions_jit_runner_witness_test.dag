@@ -1,0 +1,57 @@
+module gunbc.test.claim.actions_jit_runner_witness_test
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.github.actions_jit_runner {
+  JitConfigMintOutcome, JitConfigMinted, JitConfigMintRefused,
+  jit_config_mint_outcome, org_generate_jitconfig_path,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn minted_is_refusal(o: JitConfigMintOutcome) -> Bool {
+  match o {
+    JitConfigMinted { config: _, runner_id: _ } => false
+    JitConfigMintRefused { status: _, reason: _ } => true
+  }
+}
+
+// A 201 WITH AN EMPTY BODY IS THE DISCRIMINATING CASE and the reason this function exists at all.
+// Status-only branching accepts it, and the guest then boots holding an empty credential drive and
+// waits out its whole deadline looking healthy -- a silent wrong answer, which is outside the
+// ladder entirely. Both a non-201 AND the empty 201 must refuse, so the positive control below is
+// what keeps this from being satisfied by a function that refuses everything.
+test fn a_201_with_an_empty_config_is_a_refusal_not_a_credential() -> Bool {
+  minted_is_refusal(o: jit_config_mint_outcome(
+    status: 201, encoded: "", runner_id: 7, error_body: ""
+  ))
+}
+
+test fn a_non_created_status_is_a_refusal() -> Bool {
+  minted_is_refusal(o: jit_config_mint_outcome(
+    status: 403, encoded: "", runner_id: 0, error_body: "Resource not accessible by integration"
+  ))
+    && minted_is_refusal(o: jit_config_mint_outcome(
+         status: 422, encoded: "ignored-because-the-status-refused", runner_id: 0, error_body: "already exists"
+       ))
+}
+
+// POSITIVE CONTROL. Without it every assertion above is satisfied by a function that refuses
+// unconditionally, and the suite would read as coverage while asserting nothing about minting.
+test fn a_created_status_with_a_body_mints() -> Bool {
+  match jit_config_mint_outcome(status: 201, encoded: "eyJib2R5Ijoib3BhcXVlIn0=", runner_id: 4242, error_body: "") {
+    JitConfigMinted { config: c, runner_id: id } =>
+      id == 4242 && (c.encoded as String) == "eyJib2R5Ijoib3BhcXVlIn0="
+    JitConfigMintRefused { status: _, reason: _ } => false
+  }
+}
+
+// THE PATH IS DERIVED FROM THE ORG rather than assembled per call site, so a caller cannot address
+// another organization's runners. Two distinct orgs must yield two distinct paths -- a constant
+// would pass a single-org assertion.
+test fn the_jitconfig_path_is_derived_per_organization() -> Bool {
+  org_generate_jitconfig_path(org_login: "gunb-ai" as NonEmptyStr)
+    == "/orgs/gunb-ai/actions/runners/generate-jitconfig"
+    && org_generate_jitconfig_path(org_login: "other-org" as NonEmptyStr)
+       == "/orgs/other-org/actions/runners/generate-jitconfig"
+}

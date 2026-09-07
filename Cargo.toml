@@ -40,6 +40,11 @@ thiserror = "1.0"
 toml = "0.8"
 proptest = "=1.4.0"
 sha2 = "0.10"
+# Pinned to the digest 0.10 family that sha2 0.10 already uses, so binding HMAC here is not a
+# repo-wide crypto upgrade. RustCrypto provides Hmac<Sha256> together with verify_slice, which
+# compares in constant time -- the operation gunbc.auth.approval_capability requires and the reason
+# no accessor in extdeps.crypto.mac yields a computed tag for a caller to compare itself.
+hmac = "0.12"
 hex = "0.4"
 glob = "0.3"
 ureq = "2"

@@ -6,7 +6,9 @@ module gunbc.tools.bmc_first_contact
 // second local netrc_content would be a fork of an authority whose whole point is that there is one
 // of it, and bare resolution over a whole-corpus pool is not a stable binding to reason about when
 // the question is "which write verb ran".
-import gunbc.tools.bmc_onboard { bmc_onboard_netrc_path, write_netrc }
+import gunbc.tools.bmc_onboard {
+  bmc_onboard_netrc_path, write_netrc_outcome, netrc_write_succeeded, netrc_failure_reason,
+}
 
 
 // `shell.Env.Get` answers `value: String?`, and this func reached it with `as NonEmptyStr`, which
@@ -33,8 +35,9 @@ func bmc_first_contact() -> ProcessExit
   host = shell.Env.Get(name: "BMC_HOST")
   let bmc = bmc_first_contact_host(value: host.value)
 
-  if write_netrc(host: bmc as String, account: openbmc_factory_login.username as String, password: openbmc_factory_login.published_password) == false {
-    return exit_failure(reason: "first-contact: netrc write failed")
+  let netrc = write_netrc_outcome(host: bmc as String, account: openbmc_factory_login.username as String, password: openbmc_factory_login.published_password)
+  if netrc_write_succeeded(outcome: netrc) == false {
+    return exit_failure(reason: netrc_failure_reason(outcome: netrc, stage: "first-contact"))
   }
   resp = redfish.Http.GetSystem(
     bmc_host: bmc,

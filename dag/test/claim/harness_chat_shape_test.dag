@@ -7,7 +7,7 @@ import gunbc.harness.harness_wire {
   HarnessWireBlock, WireTextBlock, WireThinkingBlock, WireToolUseBlock,
   HarnessResponseRead, HarnessResponseParsed, HarnessResponseUnreadable,
   HarnessWireShape, AnthropicMessagesShape, OpenAiChatCompletionsShape,
-  harness_decode_chat_completion, harness_backend_path, harness_replica_pick, harness_backend_url_for_address, harness_engine_replica_roster, HarnessReplicaRoster, HarnessReplicasResolved, HarnessReplicasUnresolved }
+  harness_decode_chat_completion, harness_backend_path, harness_backend_url_for_address, harness_engine_replica_roster, HarnessReplicaRoster, HarnessReplicasResolved, HarnessReplicasUnresolved }
 import gunbc.harness.harness_turn {
   HarnessToolResult, harness_assistant_message_json, harness_tool_result_messages_json,
   harness_user_text_message_json,
@@ -106,8 +106,8 @@ test fn each_shape_posts_to_its_own_path() -> Bool {
 }
 
 // The roster is DERIVED from the pair heads through the fleet topology: two serving pairs, two heads
-// (srv6 at .225, srv9 at .236), both resolved, the seed spreading picks across them. RED if a head
-// loses its LAN endpoint row (Unresolved) or the derivation collapses to one address.
+// (srv6 at .225, srv9 at .236), both resolved, and the backend URL renders on the engine port. RED
+// if a head loses its LAN endpoint row (Unresolved) or the derivation collapses to one address.
 test fn the_replica_roster_derives_from_the_pair_heads() -> Bool {
   match harness_engine_replica_roster() {
     HarnessReplicasUnresolved { hosts: _ } => false
@@ -115,18 +115,7 @@ test fn the_replica_roster_derives_from_the_pair_heads() -> Bool {
       count(addresses) == 2
         && any(addresses, a => a == "192.168.1.225")
         && any(addresses, a => a == "192.168.1.236")
-        && harness_replica_pick(seed: "a", replicas: addresses) != harness_replica_pick(seed: "b", replicas: addresses)
+        && string_contains(s: harness_backend_url_for_address(shape: OpenAiChatCompletionsShape, address: "192.168.1.236"), pattern: "http://192.168.1.236:30000/v1/chat/completions")
   }
 }
 
-// DISCRIMINATING against the all-or-nothing roster: a pick over the SERVING subset binds to what
-// serves regardless of the seed, so a seed that would have chosen the down replica from the declared
-// list chooses the live one from a one-element roster; two live replicas still spread by seed.
-test fn the_replica_pick_binds_within_the_roster_it_is_handed() -> Bool {
-  let only = ["10.0.0.2"]
-  let pair = ["10.0.0.1", "10.0.0.2"]
-  harness_replica_pick(seed: "a", replicas: only) == "10.0.0.2"
-    && harness_replica_pick(seed: "b", replicas: only) == "10.0.0.2"
-    && harness_replica_pick(seed: "a", replicas: pair) != harness_replica_pick(seed: "b", replicas: pair)
-    && string_contains(s: harness_backend_url_for_address(shape: OpenAiChatCompletionsShape, address: "10.0.0.2"), pattern: "http://10.0.0.2:30000/v1/chat/completions")
-}

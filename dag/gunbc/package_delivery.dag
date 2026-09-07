@@ -88,11 +88,6 @@ import extdeps.tools.sha256sum {
   Sha256Mismatch,
   Sha256VerifyInfraFailure,
 }
-import gunbc.spark.serving_runtime_receipt {
-  SparkServingRuntimeArchiveAdmissionReceipt,
-  write_spark_serving_runtime_archive_admission_receipt,
-  spark_serving_runtime_receipt_wire_path,
-}
 
 data package_delivery_placement_note: String = "FIRST CONSUMED package materializer for gunbc. Lives here — not in std — until a second real consumer proves a shared abstraction. Owns Codex (and later other) product policy over upstream package facts from extdeps.npm / extdeps.package. Every production effect boundary RE-ADJUDICATES raw graphs via package_lock_admit_graph — never trusts a freely constructed PackageLockGraphAdmitted. Decoding lock SRI text is NOT artifact verification."
 
@@ -1932,6 +1927,61 @@ type UniquePublishingRelocateOutcome
   | UniquePublishingPlaceholderNotEmpty
   | UniquePublishingRelocateRefused
 
+// THE DISCARDED SWEEP OUTCOMES IN THIS MODULE ARE EXPLICITLY BEST-EFFORT, and the discriminator
+// is stated once here rather than left to be re-adjudicated at each `let _ =`. THE MEMBERS ARE
+// NAMED, NOT COUNTED: the failed-move sweep in relocate_build_root_to_unique_publishing; the
+// reused-release build_root sweep and the three publishing-staging sweeps in
+// release_codex_runtime_bundle_immutable; and the staging_dir and cache_dir sweeps in
+// finish_codex_runtime_materialization_after_install.
+//
+// NO TOTAL IS TRANSCRIBED HERE, and the omission is deliberate (DESIGN §6 -- name the instrument,
+// never copy its output). A census total copied into prose rots independently of its subject, and
+// a revision beside it makes it attributable without making it re-derivable; four modules each
+// holding a copy is four ledgers to maintain by hand. What a reader needs instead is the SELECTOR,
+// which is the instrument: `let _ = shell.<Op>` OR `let _ = Filesystem.<Op>`, the wider of the two
+// readings, because the defect is an IGNORED EFFECT OUTCOME and not a property of which service
+// produced it -- the narrow shell-only reading silently drops tools.merge_admission_walk's
+// Filesystem.Write. Run it and the population re-derives itself at any ref.
+//
+// MEMBERSHIP IS BY IDENTITY -- module, enclosing declaration, and the arm each sweep follows --
+// never by line and never by count: every gunbc.provider_wire_evidence member shares ONE
+// declaration, so even declaration grain would collapse them into one, and a count cannot
+// distinguish a fixed member from a deleted one from a moved one. That is not hypothetical here:
+// while this classification was open, main deleted
+// materialize_spark_serving_ollama_runtime_bundle with its whole spark-serving archive-admission
+// block, and its staging sweeps left this population BY DELETION OF THE SUBJECT -- retired without
+// contradicting their classification, which is a different exit from being consumed, and only an
+// identity roster can tell those apart.
+//
+// WHAT MAKES DISCARDING LAWFUL, in one property that holds at every one of them: the swept path is
+// a `mktemp -d` directory minted for THIS run -- unique by construction, never re-derived by a
+// later run, never enumerated, and never named in any value these functions return. So the only
+// state a consumed outcome could distinguish is "the transient tree was reclaimed" from "it was
+// left behind", and no caller can branch on it: the outcome each function returns was already
+// decided by the operation the sweep follows. Nothing here is the printer path's class, where a
+// failed credential shred and a successful one were spelled the same while the answer said the
+// credential was gone.
+//
+// CHECKED BY CONSTRUCTION SITE, NOT BY NAME, because the name is what nearly defeated it. Every
+// binding every one of these sweeps reaches is a `shell.Mktemp.*` call in this module and there is
+// no other origin and no shadowing: `staged` (DirWithTemplate, in relocate_build_root_to_unique_
+// publishing, which is also where `publishing` comes from via UniquePublishingRelocateReady), and
+// `staging`, `cache`, `build` (Mktemp.Dir, at both codex-runtime construction sites), with
+// build_root reaching release_codex_runtime_bundle_immutable from that same `build`.
+//
+// `cache_dir` IS THE MEMBER THAT LOOKS LIKE AN EXCEPTION AND IS NOT. A cache is normally the one
+// object here whose purpose is to outlive the run, which would make "left behind" observable by
+// the NEXT run and would break the property above for that site specifically. It does not: both
+// its construction sites are `let cache = shell.Mktemp.Dir()`, so it is per-run despite the name.
+// The name is the only misleading part, and it is a §3 concern in its own right -- a name
+// asserting a lifetime its construction does not have, which a reader can only refute by finding
+// two mktemp call sites hundreds of lines away. Renaming it is not this classification's change.
+//
+// WHAT WOULD MOVE A SITE OUT OF THIS CLASS, so the classification is falsifiable rather than a
+// blanket permission: a swept path a later run re-derives (residue would be read as that run's own
+// work); a swept path under a directory something LISTS (residue would join a population); or
+// residue outliving the confidentiality of what the call retained. A sweep that acquires any of
+// those owes its outcome to its caller.
 fn relocate_build_root_to_unique_publishing(
   build_root: FilePath,
   parent: FilePath,
@@ -3337,118 +3387,5 @@ fn materialize_codex_runtime_bundle(
       CodexRuntimeExactClosureRefused { closure: closure }
     CodexRuntimeClosurePrepareHostDependencyRefused { tool, hint } =>
       CodexRuntimeHostDependencyRefused { tool: tool, hint: hint }
-  }
-}
-
-// Archive admission only — NOT runtime install. Downloads the cited extdeps.ollama.binary_release
-// archive, admits SHA-256, writes an executor-local gunbc.spark.serving_runtime_receipt
-// (release-asset digest only — no host claim), then deletes the staging copy (local_path is not
-// consumed downstream because nothing extracts). Does not extract, place bin/ollama, enable
-// gunbc-spark-serving.service, or pull gpt-oss:20b. This PR cannot make srv5/srv6 answer — wet
-// observation is a separate SSH read path. Full per-host install is #8225 follow-on; fleet
-// registration is #8230.
-
-type SparkServingOllamaArchiveAdmission
-  = SparkServingOllamaArchiveAdmitted {
-      local_path: FilePath
-      digest_hex: NonEmptyStr
-    }
-  | SparkServingOllamaArchiveDownloadRefused {
-      locator: NonEmptyStr
-    }
-  | SparkServingOllamaArchiveIntegrityRefused {
-      cause: NonEmptyStr
-    }
-
-type SparkServingOllamaRuntimeMaterialization
-  = SparkServingOllamaRuntimeMaterialized {
-      receipt: SparkServingRuntimeArchiveAdmissionReceipt
-    }
-  | SparkServingOllamaRuntimeDownloadRefused {
-      locator: NonEmptyStr
-    }
-  | SparkServingOllamaRuntimeIntegrityRefused {
-      cause: NonEmptyStr
-    }
-  | SparkServingOllamaRuntimeReceiptWriteRefused {
-      cause: NonEmptyStr
-    }
-  | SparkServingOllamaRuntimeWorkspaceRefused {
-      cause: NonEmptyStr
-    }
-
-fn spark_serving_ollama_runtime_materialization_receipt_write_path() -> FilePath {
-  spark_serving_runtime_receipt_wire_path()
-}
-
-fn acquire_and_admit_ollama_release_archive(
-  binary_release: OllamaBinaryRelease,
-  dest_dir: FilePath,
-) -> SparkServingOllamaArchiveAdmission {
-  let locator = ollama_binary_release_download_locator(binary_release: binary_release)
-  let dest = concat(
-    dest_dir as String,
-    concat("/", ollama_binary_release_asset_name(binary_release: binary_release) as String),
-  ) as FilePath
-  let downloaded = http.Client.DownloadToFile(
-    url: locator,
-    destination: dest as NonEmptyStr,
-  )
-  if downloaded.success == false {
-    SparkServingOllamaArchiveDownloadRefused { locator: locator }
-  } else {
-    match sha256sum_verify_via_shell(
-      path: dest as NonEmptyStr,
-      expected_digest: binary_release.digest.hex,
-    ) {
-      Sha256Matches =>
-        SparkServingOllamaArchiveAdmitted {
-          local_path: dest,
-          digest_hex: binary_release.digest.hex,
-        }
-      Sha256Mismatch =>
-        SparkServingOllamaArchiveIntegrityRefused {
-          cause: "ollama release archive sha256 mismatch" as NonEmptyStr,
-        }
-      Sha256VerifyInfraFailure { reason } =>
-        SparkServingOllamaArchiveIntegrityRefused { cause: reason }
-    }
-  }
-}
-
-fn materialize_spark_serving_ollama_runtime_bundle() -> SparkServingOllamaRuntimeMaterialization {
-  let staging = shell.Mktemp.Dir()
-  if staging.success == false {
-    SparkServingOllamaRuntimeWorkspaceRefused {
-      cause: "staging mktemp failed" as NonEmptyStr,
-    }
-  } else {
-    match acquire_and_admit_ollama_release_archive(
-      binary_release: ollama_required_release,
-      dest_dir: staging.path,
-    ) {
-      SparkServingOllamaArchiveDownloadRefused { locator } => {
-        let _ = shell.Remove.RecursiveForce(path: staging.path)
-        SparkServingOllamaRuntimeDownloadRefused { locator: locator }
-      }
-      SparkServingOllamaArchiveIntegrityRefused { cause } => {
-        let _ = shell.Remove.RecursiveForce(path: staging.path)
-        SparkServingOllamaRuntimeIntegrityRefused { cause: cause }
-      }
-      SparkServingOllamaArchiveAdmitted { local_path: _, digest_hex } => {
-        let receipt = SparkServingRuntimeArchiveAdmissionReceipt {
-          release_asset_digest_hex: digest_hex,
-        }
-        if write_spark_serving_runtime_archive_admission_receipt(receipt: receipt) {
-          let _ = shell.Remove.RecursiveForce(path: staging.path)
-          SparkServingOllamaRuntimeMaterialized { receipt: receipt }
-        } else {
-          let _ = shell.Remove.RecursiveForce(path: staging.path)
-          SparkServingOllamaRuntimeReceiptWriteRefused {
-            cause: "install receipt write refused" as NonEmptyStr,
-          }
-        }
-      }
-    }
   }
 }

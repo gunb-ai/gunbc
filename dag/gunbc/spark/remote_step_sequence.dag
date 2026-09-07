@@ -1,0 +1,172 @@
+module gunbc.spark.remote_step_sequence
+
+import std.types { String, List, Bool }
+import std.resources { Network }
+import gunbc.host_effect {
+  HostEffectTransport,
+  LocalShell,
+  SshShell,
+  FleetSsh,
+  EmitArtifactThenThinRun,
+}
+import gunbc.host_effect_realize { run_typed_argv_transport }
+import gunbc.remote_operation {
+  RemoteOperation,
+  RemoteArgv,
+  RemoteFileBytes,
+  RemoteOperationExecution,
+  RemoteArgvExecution,
+  RemoteFileExecution,
+  RemoteStepStanding,
+  RemoteStepCompleted,
+  RemoteStepFailed,
+  RemoteStepUnattempted,
+  PlannedRemoteStep,
+  remote_execution_permits_continuation,
+  remote_step_standing_wire,
+  remote_step_failure_cause,
+}
+import gunbc.typed_remote_file_write {
+  TypedRemoteFileWriteAdmitted,
+  TypedRemoteFileConvergenceRefused,
+  converge_typed_remote_file,
+}
+
+// ONE REMOTE OPERATION, RUN OVER THE TRANSPORT IT WAS PLANNED FOR. An argv runs through the typed
+// argv transport; a file write needs an anchored FleetSsh session and refuses, typed, on any other
+// transport rather than landing bytes through an unverified channel. Rehomed here from the retired
+// Ollama-era serving tree because the grant installer is its consumer and the sequence is generic.
+func run_remote_operation(
+  operation: RemoteOperation,
+  transport: HostEffectTransport,
+) -> RemoteOperationExecution
+  uses net: Network
+{
+  match operation {
+    RemoteArgv { argv: argv } =>
+      RemoteArgvExecution {
+        outcome: run_typed_argv_transport(argv: argv, transport: transport),
+      }
+    RemoteFileBytes { write: w, mode: m } =>
+      match transport {
+        FleetSsh { target: t, context: ctx } =>
+          RemoteFileExecution {
+            outcome: converge_typed_remote_file(
+              target: t,
+              context: ctx,
+              admission: TypedRemoteFileWriteAdmitted { write: w },
+              mode: m,
+            ),
+          }
+        LocalShell =>
+          RemoteFileExecution {
+            outcome: TypedRemoteFileConvergenceRefused {
+              step: "transport",
+              reason: "file write requires an anchored FleetSsh transport; LocalShell carries no remote target",
+            },
+          }
+        SshShell { ssh_host: h } =>
+          RemoteFileExecution {
+            outcome: TypedRemoteFileConvergenceRefused {
+              step: "transport",
+              reason: join([
+                "file write requires an anchored FleetSsh transport; SshShell(", h as String,
+                ") carries no verified credential or known-hosts anchor",
+              ], ""),
+            },
+          }
+        EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+          RemoteFileExecution {
+            outcome: TypedRemoteFileConvergenceRefused {
+              step: "transport",
+              reason: "file write requires an anchored FleetSsh transport; EmitArtifactThenThinRun is not a live session",
+            },
+          }
+      }
+  }
+}
+
+// ORDERED, HALT ON FIRST FAILURE, AND THE TAIL IS RECORDED RATHER THAN DROPPED. Each step lands as
+// its own standing and the tail after a failure is explicitly Unattempted, so a receipt can say
+// which ran, which failed, and which were never reached. `halted` is carried rather than re-derived
+// from the standings: "nothing ran yet" and "everything ran and none failed" are both an empty
+// failure scan.
+type RemoteStepSequenceAcc {
+  standings: List<RemoteStepStanding>
+  halted: Bool
+}
+
+func remote_step_sequence_step(
+  acc: RemoteStepSequenceAcc,
+  step: PlannedRemoteStep,
+  transport: HostEffectTransport,
+) -> RemoteStepSequenceAcc
+  uses net: Network
+{
+  if acc.halted {
+    RemoteStepSequenceAcc {
+      standings: concat(acc.standings, [RemoteStepUnattempted { identity: step.identity }]),
+      halted: true,
+    }
+  } else {
+    let execution = run_remote_operation(operation: step.operation, transport: transport)
+    if remote_execution_permits_continuation(execution: execution) {
+      RemoteStepSequenceAcc {
+        standings: concat(acc.standings, [
+          RemoteStepCompleted { identity: step.identity, execution: execution },
+        ]),
+        halted: false,
+      }
+    } else {
+      RemoteStepSequenceAcc {
+        standings: concat(acc.standings, [
+          RemoteStepFailed { identity: step.identity, execution: execution },
+        ]),
+        halted: true,
+      }
+    }
+  }
+}
+
+func run_remote_step_sequence(
+  steps: List<PlannedRemoteStep>,
+  transport: HostEffectTransport,
+) -> List<RemoteStepStanding>
+  uses net: Network
+{
+  fold(
+    steps,
+    init: RemoteStepSequenceAcc { standings: [], halted: false },
+    f: fn(acc, st) { remote_step_sequence_step(acc: acc, step: st, transport: transport) },
+  ).standings
+}
+
+fn remote_step_sequence_failed(standings: List<RemoteStepStanding>) -> Bool {
+  fold(standings, init: false, f: fn(acc, st) {
+    match st {
+      RemoteStepFailed { identity: _, execution: _ } => true
+      RemoteStepCompleted { identity: _, execution: _ } => acc
+      RemoteStepUnattempted { identity: _ } => acc
+    }
+  })
+}
+
+fn remote_step_sequence_wire(standings: List<RemoteStepStanding>) -> String {
+  join(map(standings, st => remote_step_standing_wire(standing: st)), " ")
+}
+
+// THE HALT NAMES ITS CAUSE, NOT ONLY ITS STEP: the failed standing carries the execution, and the
+// refusal is read out of it in the vocabulary the execution answered in, so the analysis the factory
+// model requires before a restart has what it needs on the receipt.
+fn remote_step_failure_causes_wire(standings: List<RemoteStepStanding>) -> String {
+  join(
+    flat_map(standings, st =>
+      match remote_step_failure_cause(standing: st) {
+        Absent => []
+        Present { value: why } =>
+          [join([remote_step_standing_wire(standing: st), " cause=", why], "")]
+      }
+    ),
+    " ",
+  )
+}

@@ -1,0 +1,115 @@
+module gunbc.runner_jit_mint
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.disposition { Disposition, SingleAuthority }
+import extdeps.github.effect { GitHubEffect, GenerateOrganizationJitConfig, GitHubOrganizationRef }
+import extdeps.github.actions_jit_runner {
+  JitRunnerConfigRequest, JitRunnerName, JitRunnerGroupId, JitRunnerLabel, JitWorkFolder,
+  org_generate_jitconfig_path,
+}
+import gunbc.auth.github_apps { GitHubAppControlPlaneState }
+import gunbc.auth.github_credential {
+  GitHubCredentialAuthority, CredentialCapability, credential_authorizes, unsatisfied_capabilities,
+}
+import gunbc.runner_microvm_attempt {
+  MicroVmAttempt, MicroVmCellBinding, VmBoundToOwnedCell, VmUnboundCellNotOwned,
+  runner_microvm_attempt_unit_name,
+}
+
+data runner_jit_mint_disposition: Disposition = SingleAuthority
+
+// THE MINT IS PLANNED, NOT PERFORMED, AND THE SPLIT IS THE POINT.
+//
+// Two facts have to be true before a credential exists at all: the cell must be OWNED (otherwise a
+// guest would run outside every limit the cell carries) and the App credential must actually hold
+// organization self-hosted-runners write. Those are different authorities -- gunbc.runner_microvm_attempt
+// owns the first and gunbc.auth.github_credential owns the second -- so this module joins them and
+// owns neither.
+//
+// Planning them together rather than at the call site is what makes the ordering unwritable: a
+// caller cannot mint first and check ownership after, because the only value that names a drive
+// destination is produced by the arm that already proved both.
+
+type JitMintPlan
+  = JitMintAuthorized {
+      attempt: MicroVmAttempt
+      endpoint_path: String
+      request: JitRunnerConfigRequest
+      drive_destination: String
+    }
+  | JitMintRefusedCellNotOwned { cause: String }
+  | JitMintRefusedCredential {
+      organization: NonEmptyStr
+      unsatisfied: List<CredentialCapability>
+    }
+
+// THE RUNNER NAME IS THE UNIT NAME, not a fresh identifier minted beside it. A second naming scheme
+// for one attempt is a nickname (DESIGN §3), and it is the expensive kind: an orphaned GitHub runner
+// registration can only be reconciled against a host by name, so a name that does not appear on the
+// host makes the orphan unattributable.
+fn jit_runner_name_for(attempt: MicroVmAttempt) -> JitRunnerName {
+  JitRunnerName { value: runner_microvm_attempt_unit_name(attempt: attempt) }
+}
+
+// THE WORK FOLDER IS GUEST-RELATIVE, not the host attempt directory. The host path is meaningless
+// inside the VM, and handing it over would be a path from one namespace asserted in another.
+data jit_guest_work_folder: JitWorkFolder = JitWorkFolder { value: "_work" as NonEmptyStr }
+
+fn jit_config_request_for(
+  attempt: MicroVmAttempt,
+  runner_group_id: JitRunnerGroupId,
+  labels: List<JitRunnerLabel>
+) -> JitRunnerConfigRequest {
+  JitRunnerConfigRequest {
+    name: jit_runner_name_for(attempt: attempt),
+    runner_group_id: runner_group_id,
+    labels: labels,
+    work_folder: jit_guest_work_folder,
+  }
+}
+
+fn plan_jit_mint(
+  binding: MicroVmCellBinding,
+  authority: GitHubCredentialAuthority,
+  control_plane: GitHubAppControlPlaneState,
+  organization: GitHubOrganizationRef,
+  runner_group_id: JitRunnerGroupId,
+  labels: List<JitRunnerLabel>
+) -> JitMintPlan {
+  match binding {
+    VmUnboundCellNotOwned { cause: c } => JitMintRefusedCellNotOwned { cause: c }
+    VmBoundToOwnedCell {
+      attempt: attempt,
+      rootfs_path: _,
+      jit_drive_path: drive,
+      vm_config_path: _,
+      unit_name: _,
+      slice_property: _,
+    } =>
+      if credential_authorizes(
+           authority: authority,
+           control_plane: control_plane,
+           effect: GenerateOrganizationJitConfig { organization: organization }
+         ) {
+        JitMintAuthorized {
+          attempt: attempt,
+          endpoint_path: org_generate_jitconfig_path(org_login: organization.login),
+          request: jit_config_request_for(
+            attempt: attempt,
+            runner_group_id: runner_group_id,
+            labels: labels,
+          ),
+          drive_destination: drive,
+        }
+      } else {
+        JitMintRefusedCredential {
+          organization: organization.login,
+          unsatisfied: unsatisfied_capabilities(
+            authority: authority,
+            control_plane: control_plane,
+            effect: GenerateOrganizationJitConfig { organization: organization },
+          ),
+        }
+      }
+  }
+}

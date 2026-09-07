@@ -1,0 +1,247 @@
+module v2.test.claim.complexity.accumulator_copy_corpus_path_test
+
+import std.algebra { Cons, Empty }
+import v2.lens.complexity_accumulator_copy.corpus_gate {
+  CorpusFileNotEstablished,
+  CorpusFileRow,
+  CorpusFileScanned,
+  CorpusGateDisposition,
+  CorpusNoSuspectsObserved,
+  CorpusNotEstablishedObserved,
+  CorpusCoverageIncomplete,
+  CorpusCoverageSurplus,
+  CorpusPopulationBelowFloor,
+  CorpusSuspectObserved,
+  corpus_gate,
+  corpus_gate_disposition_over,
+  corpus_rows_for_paths
+}
+import v2.std.collection { List }
+import v2.std.text { String }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// WHAT IS A WITNESS HERE AND WHAT IS NOT IS DECIDED BY THE FLOOR'S CPU LINE, MEASURED PER FUNCTION.
+// The line is v2.workflow.required_floor required_floor_claim_cpu_safety_limit_ms, named rather
+// than transcribed; interpreted ingest of the five-line fixture below measures several times it,
+// so every predicate that reaches the ingest reports
+// interrupted_before_verdict and BLOCKS rather than running (measured on this branch: seven of
+// them at once, run 34022136976). Those predicates are therefore plain fns -- they pass by
+// execution under claim_batch and are enrolled in nothing, which is the same standing as the
+// corpus-grain forms in v2.lens.complexity_accumulator_copy.corpus_census and dissolves on the
+// same trigger.
+//
+// The witnesses that remain touch no ingest and measure 0-1ms: the coverage join, whose subject is
+// the join and whose inputs are rows, and the population floor. They are not a cheaper proxy for
+// the ingest claim; they are a different claim, stated at the grain that can execute.
+
+fn fixture_rows() -> List<CorpusFileRow> {
+  corpus_rows_for_paths(paths: [
+    "test/fixture_roots/complexity_accumulator_copy/planted_copy.dag",
+    "test/fixture_roots/complexity_accumulator_copy/clean_linear.dag"
+  ])
+}
+
+// TWO PREDICATES OVER THE STANDING, NOT ONE PROJECTION TO A COUNT. An earlier cut answered the
+// suspect count and returned -1 for a subject the ingest could not read, so an unreadable fixture
+// would fail both witnesses rather than satisfying the clean one. The reasoning was right and the
+// carrier was wrong: a sentinel packed into an Int is the same collapse of a typed standing onto a
+// scalar this lane exists to undo, and it is safe only while every caller remembers what -1 means.
+// Each predicate answers its own question and answers FALSE for a not-established subject, which
+// gives the identical guarantee with nothing to remember -- verified by pointing fixture_rows at
+// two absent paths and watching BOTH witnesses go red.
+fn row_has_suspect(row: CorpusFileRow) -> Bool {
+  match row.standing {
+    CorpusFileScanned { suspects: s, refusals: _, causes: _ } => s > 0
+    CorpusFileNotEstablished { cause: _ } => false
+  }
+}
+
+fn row_scanned_without_suspect(row: CorpusFileRow) -> Bool {
+  match row.standing {
+    CorpusFileScanned { suspects: s, refusals: _, causes: _ } => s == 0
+    CorpusFileNotEstablished { cause: _ } => false
+  }
+}
+
+// THE PAIR IS A PAIR ON PURPOSE. The lens already has a planted-source control that hands a String
+// to source_finding_standing, and that one proves the DETECTOR fires. It does not prove the CORPUS
+// path fires, because that path is path -> typed read -> ingest -> row and every step of it is new.
+// These two subjects differ in exactly one authored construction -- the accumulating fold copies its
+// carrier through a registered combiner in one and adds to it in the other -- so a green on both
+// says the path discriminates rather than that it answers a constant.
+//
+// They live under test/fixture_roots/, outside every source root, because the planted subject is
+// deliberately a quadratic and must never be compiled as production source or reached by the corpus
+// population.
+fn a_planted_copied_accumulator_is_caught_through_the_corpus_path() -> Bool {
+  match fixture_rows() {
+    Cons { head: planted, tail: _ } => row_has_suspect(row: planted)
+    Empty => false
+  }
+}
+
+fn a_clean_accumulating_fold_stays_clean_through_the_corpus_path() -> Bool {
+  match fixture_rows() {
+    Cons { head: _, tail: Cons { head: clean, tail: _ } } => row_scanned_without_suspect(row: clean)
+    _ => false
+  }
+}
+
+// THE POPULATION FLOOR'S OWN RED CONTROL. Without it the no-suspect arm is reachable by a walk that
+// resolved nothing at all, and an empty question reads as an affirmative answer.
+//
+// THE SUBJECT IS A REAL DIRECTORY HOLDING NO MODULES, NOT AN ABSENT ONE, AND THE FIRST CUT HAD IT
+// WRONG. Pointing this at a path that does not exist does not produce an empty population: the host
+// refuses at root admission (anchor_source_root: "... is not a directory") and unwinds, so the
+// witness PANICKED rather than answering. That refusal is correct -- a mistyped root is a caller
+// defect and should stop the line -- but it means the below-floor arm's red is only authorable from
+// a directory that is present and contributes no modules. docs/ is that subject.
+test fn an_empty_population_is_below_floor_rather_than_clean() -> Bool {
+  match corpus_gate(pool_roots: ["docs"], population_floor: 1) {
+    CorpusPopulationBelowFloor { files: _, floor: _ } => true
+    CorpusNoSuspectsObserved { files: _, refusal_sites: _, refusal_causes: _ } => false
+    CorpusSuspectObserved { paths: _, sites: _ } => false
+    CorpusNotEstablishedObserved { rows: _ } => false
+    CorpusCoverageIncomplete { discovered: _, reported: _, missing: _ } => false
+    CorpusCoverageSurplus { discovered: _, reported: _, extra: _ } => false
+  }
+}
+
+data planted_path: String = "test/fixture_roots/complexity_accumulator_copy/planted_copy.dag"
+
+data clean_path: String = "test/fixture_roots/complexity_accumulator_copy/clean_linear.dag"
+
+// THE COVERAGE WITNESSES BUILD THEIR ROWS RATHER THAN INGESTING THEM, AND THAT IS THE RIGHT
+// SUBJECT RATHER THAN A CHEAPER ONE. What is under test here is the JOIN -- given a discovered
+// population and a set of reported rows, does a report that covers less than its population refuse
+// -- and a CorpusFileRow is that join's input, not its producer. Ingesting real subjects to reach
+// it would test the ingest twice and the join once, and it would cost about 3s per witness against
+// the floor's CPU line, which is how the ingest-priced witnesses in this lens ended up enrolled in
+// nothing. The producer-side claim is a different claim and is priced separately;
+// see corpus_census.
+//
+// The rows are deliberately NOT all identical: the planted row carries a suspect and the clean row
+// does not, so the positive control below reaches the SUSPECT verdict rather than merely "not
+// incomplete", and a guard that passed coverage but dropped the standing would fail it.
+fn scanned_row(path: String, suspects: Int) -> CorpusFileRow {
+  CorpusFileRow {
+    path: path,
+    standing: CorpusFileScanned { suspects: suspects, refusals: 0, causes: Empty }
+  }
+}
+
+fn disposition_over(discovered: List<String>, rows: List<CorpusFileRow>) -> CorpusGateDisposition {
+  corpus_gate_disposition_over(discovered: discovered, rows: rows, population_floor: 1)
+}
+
+fn is_coverage_incomplete(d: CorpusGateDisposition) -> Bool {
+  match d {
+    CorpusCoverageIncomplete { discovered: _, reported: _, missing: _ } => true
+    CorpusCoverageSurplus { discovered: _, reported: _, extra: _ } => false
+    CorpusPopulationBelowFloor { files: _, floor: _ } => false
+    CorpusNoSuspectsObserved { files: _, refusal_sites: _, refusal_causes: _ } => false
+    CorpusSuspectObserved { paths: _, sites: _ } => false
+    CorpusNotEstablishedObserved { rows: _ } => false
+  }
+}
+
+fn is_coverage_surplus(d: CorpusGateDisposition) -> Bool {
+  match d {
+    CorpusCoverageSurplus { discovered: _, reported: _, extra: _ } => true
+    CorpusCoverageIncomplete { discovered: _, reported: _, missing: _ } => false
+    CorpusPopulationBelowFloor { files: _, floor: _ } => false
+    CorpusNoSuspectsObserved { files: _, refusal_sites: _, refusal_causes: _ } => false
+    CorpusSuspectObserved { paths: _, sites: _ } => false
+    CorpusNotEstablishedObserved { rows: _ } => false
+  }
+}
+
+// THE OTHER END OF THE WALK, AND IT WAS OPEN. Review 61363: the first cut returned "nothing
+// missing" as soon as the DISCOVERED list ended, whatever rows remained, so a report carrying
+// subjects the population does not contain was accepted. A surplus identity is not a lesser
+// problem than a missing one -- it means the rows did not come from this population, so nothing
+// about them is a statement about it.
+test fn a_report_carrying_subjects_the_population_does_not_contain_refuses() -> Bool {
+  is_coverage_surplus(
+    d: disposition_over(
+      discovered: [planted_path],
+      rows: [
+        scanned_row(path: planted_path, suspects: 1),
+        scanned_row(path: clean_path, suspects: 0)
+      ]
+    )
+  )
+}
+
+// THE DEGENERATE CASE REVIEW 61363 NAMED, WITNESSED AT THE EXACT SHAPE IT NAMED. An empty
+// discovered population with one clean reported row and a floor of 1 reached the NO-SUSPECT arm,
+// because the floor counted REPORTED ROWS rather than the discovered population: the guard meant to
+// run before the floor let the floor's own red control be defeated. It refuses now, and it refuses
+// as SURPLUS rather than as below-floor, because the accurate statement is that these rows are not
+// from this population at all.
+test fn an_empty_population_with_a_reported_row_refuses_rather_than_reading_clean() -> Bool {
+  is_coverage_surplus(
+    d: disposition_over(
+      discovered: Empty,
+      rows: [scanned_row(path: clean_path, suspects: 0)]
+    )
+  )
+}
+
+// THE MITIGATION FOR A CLASS THAT SITS BELOW THE LADDER, AND ITS DISCRIMINATING RED.
+// gunbc.recurring_failure_mode.sweep_terminated_by_process_death_rather_than_a_typed_refusal:
+// a single-process fold over a discovered population can be killed partway through, and the
+// survivors present in the same shape as a complete run. Silent wrongness is outside the ladder and
+// forbidden outright, so the guard is owed now even though the real climb -- a depth-bounded
+// interpreter walk -- is not in this change. This witness is the truncated sweep: two subjects
+// discovered, one row reported, which is precisely what a death after the first subject leaves
+// behind.
+test fn a_truncated_sweep_refuses_rather_than_reporting_its_survivors() -> Bool {
+  is_coverage_incomplete(
+    d: disposition_over(
+      discovered: [planted_path, clean_path],
+      rows: [scanned_row(path: planted_path, suspects: 1)]
+    )
+  )
+}
+
+// THE JOIN IS ON IDENTITY, AND THIS IS THE WITNESS THAT SAYS SO RATHER THAN THE COMMENT. Same
+// discovered population, same NUMBER of rows, one subject analysed twice and the other never --
+// the shape a batched sweep produces when a batch is re-run after a death. A count comparison is
+// green here, which is why DESIGN section 5 says completeness is an identity join.
+test fn a_report_of_the_right_size_over_the_wrong_subjects_still_refuses() -> Bool {
+  is_coverage_incomplete(
+    d: disposition_over(
+      discovered: [planted_path, clean_path],
+      rows: [
+        scanned_row(path: planted_path, suspects: 1),
+        scanned_row(path: planted_path, suspects: 1)
+      ]
+    )
+  )
+}
+
+// THE POSITIVE CONTROL ON BOTH OF THE ABOVE. Without it the guard could refuse everything and the
+// two reds would still pass -- the absorbing arm wearing a typed name. A complete report over the
+// same population reaches the ordinary verdict, and the verdict it reaches is the suspect one,
+// because the planted subject is a suspect: so this control also proves coverage is decided BEFORE
+// the other arms rather than instead of them.
+test fn a_complete_report_over_the_same_population_reaches_its_ordinary_verdict() -> Bool {
+  match disposition_over(
+    discovered: [planted_path, clean_path],
+    rows: [
+      scanned_row(path: planted_path, suspects: 1),
+      scanned_row(path: clean_path, suspects: 0)
+    ]
+  ) {
+    CorpusSuspectObserved { paths: _, sites: _ } => true
+    CorpusCoverageIncomplete { discovered: _, reported: _, missing: _ } => false
+    CorpusCoverageSurplus { discovered: _, reported: _, extra: _ } => false
+    CorpusPopulationBelowFloor { files: _, floor: _ } => false
+    CorpusNoSuspectsObserved { files: _, refusal_sites: _, refusal_causes: _ } => false
+    CorpusNotEstablishedObserved { rows: _ } => false
+  }
+}

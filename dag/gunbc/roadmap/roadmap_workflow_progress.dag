@@ -33,7 +33,8 @@ import gunbc.roadmap_provider_events {
   parse_codex_jsonl,
 }
 import gunbc.harness.harness_throughput { HarnessRoundLedger }
-import gunbc.roadmap.roadmap_review_role { CriterionReviewEvidence, review_reconcile }
+import gunbc.roadmap.roadmap_review_role { CriterionReviewEvidence }
+import gunbc.roadmap.roadmap_review_function { ReviewReport }
 import gunbc.roadmap.roadmap_goal_audit_role { goal_audit_reconcile }
 import gunbc.roadmap_workflow_stage {
   WorkflowSegmentKind,
@@ -158,7 +159,7 @@ type WorkflowAttemptEvidence {
   verification_source: VerificationReceiptFileSource
   publication_subject: PublicationSubjectObservation
   publication_source: PublicationReceiptSource
-  review: List<CriterionReviewEvidence>
+  review: ReviewReport
   goal_audit: List<CriterionReviewEvidence>
 }
 
@@ -815,18 +816,17 @@ fn workflow_segment_from_evidence(
   }
 }
 
-// THE REVIEW SEGMENT IS THE RECONCILIATION OF ONE VERDICT PER CRITERION (gunbc.roadmap.roadmap_review_role
-// review_reconcile), and before the head is verified it says so: the review pass spawns no reviewer
-// for an unverified head.
+// THE REVIEW SEGMENT IS THE REVIEW FUNCTION'S REPORT (gunbc.roadmap.roadmap_review_function
+// review_aggregate over the plan and the belt's observations); this module does not fold criteria
+// itself. Before the head is verified it says so: the review pass spawns no reviewer for an
+// unverified head.
 fn review_segment(
   verification: WorkflowSegment,
-  review: List<CriterionReviewEvidence>,
+  review: ReviewReport,
 ) -> WorkflowSegment {
   match verification.state {
-    WorkflowSegmentComplete => {
-      let r = review_reconcile(evidence: review)
-      WorkflowSegment { kind: ReviewWorkflowSegment, state: r.state, detail: r.detail }
-    }
+    WorkflowSegmentComplete =>
+      WorkflowSegment { kind: ReviewWorkflowSegment, state: review.reconciliation.state, detail: review.reconciliation.detail }
     _ =>
       WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting a passed verification of this head" }
   }
