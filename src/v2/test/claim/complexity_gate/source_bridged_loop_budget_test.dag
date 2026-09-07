@@ -2,8 +2,9 @@ module v2.test.complexity_gate.source_bridged_loop_budget
 
 import v2.lens.complexity {
   ConstantComplexity,
-  complexity_bound_dominates,
-  complexity_lens
+  complexity_assessment_dominates,
+  complexity_lens,
+  established_complexity
 }
 import v2.lens.cost { cost_lens }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -34,13 +35,13 @@ fn table_fixture_loop_tightened_budget_fails_dominance(
   row: LensSubjectComplexityBudgetRow
 ) -> Bool {
   let computed = complexity_lens(n: body)
-  !complexity_bound_dominates(
-    a: ConstantComplexity,
-    b: computed
+  !complexity_assessment_dominates(
+    declared: established_complexity(bound: ConstantComplexity),
+    computed: computed
   )
-  && complexity_bound_dominates(
-    a: complexity_declared_budget_for_row(row: row, body: body),
-    b: computed
+  && complexity_assessment_dominates(
+    declared: complexity_declared_budget_for_row(row: row, body: body),
+    computed: computed
   )
 }
 
