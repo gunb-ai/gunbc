@@ -85,27 +85,32 @@ data non_verdict_disposition_surfaces_as_refusal: RecurringFailureMode = Recurri
 
     "RECOGNITION RULE: ask what the gate reports when it could not measure, and compare it with what it reports when it measured and found the subject wrong. ",
 
-    "If those two are the same value, the gate's refusals do not name a subject, and the tell is behavioural: people begin rerunning it rather than reading it. ",
+    "If those two are the same value, the gate's refusals do not name a subject, and the tell is behavioural: people begin rerunning it rather than reading it.)",
 
-    "A SECOND, INDEPENDENT DISPOSITION PAIR ON THE SAME BOUNDARY, and it is worth appending here rather than minting a class because it is the same mechanism at a different pair -- two pairs on one boundary is much better evidence than one. ",
+    "**REPAIR RECEIPT AT ONE BOUNDARY, gunbc#10757's pair, landed by the changed-witness projection.** This row's claim is that a computed distinction is erased ON THE WAY OUT; on the changed-witness boundary the erasure was ONE LINE in each realization, and it is now closed there. ",
 
-    "The first specimen is INTERRUPTED-BEFORE-VERDICT against COMPLETED-OVER-COST-REQUIREMENT: a gate that ran out of time against a gate that judged. ",
+    "`v2.workflow.floor_changed_witness` `changed_witness_blocking_identities` folded `List<ChangedWitnessRow>` -- every row carrying its full `ChangedWitnessExecutionStanding`, the `Declined` arm carrying the disposition itself -- down to `List<String>`, and the host mirror did the same into `RequiredFloorOutcome.changed_witness_blocking: Vec<String>`. ",
 
-    "The second is DECLINED-OUTSIDE-DISCOVERY against CHANGED-WITNESS-BLOCKING: a gate that never started against a gate that judged, and it arrives from the opposite end of the same fold. ",
+    "With nothing left to say, `claim_executor` stamped the constant `changed_witness_blocking` on every member: the name of the POPULATION rather than of anything that happened. ",
 
-    "THE INSTRUMENT, NAMED AT THE GRAIN THIS ROW'S FIRST SPECIMEN ALREADY USES, because a transcribed number is unreachable from the producer that owns it. The specimen is workflow run 34132197639 on gunb-ai/gunbc, attempt 1, job `required-witnesses-floor` id 101779846687, whose failing step is `D0-ADJUDICATE: consume the published measurement receipt`. Re-derive it with `gh run download 34132197639 -n required-floor-disposition` and `gh run download 34132197639 -n required-ci-measurement-receipt`; read the disposition TSV's `# summary` line and its per-identity `disposition` column BY HEADER NAME, and read the receipt JSON's `receipt.blockers[].cause`. ",
+    "The fold now returns `ChangedWitnessBlocker { identity, cause }` and the cause is chosen in the same expression that chooses the standing, so a decline that never executed, a planned witness that ran and reached no verdict, an override with no published cost, and an identity with no disposition row reach the merge gate as four different strings. ",
 
+    "A DECLINE'S CAUSE IS THE DISPOSITION'S OWN WIRE NAME, UNPREFIXED, so the measurement receipt and `required_floor_disposition.tsv` now spell one fact one way -- the join gunbc#10757 required a human to make by reading two artifacts side by side. ",
+
+    "WHAT DID NOT CHANGE, DELIBERATELY: the exits. Those fifteen identities still block, and the two ways to discharge them are still the two real ones -- make the witness reachable, or declare it unreachable. ",
+
+    "Widening `--source-root` to reach them was proposed and WITHDRAWN BY THE LANE THAT ASKED FOR IT, because it silences one lane's fifteen and leaves the boundary standing for the next; a decline made non-blocking is that same widening wearing a different hat. ",
+
+    "What changes is that the gate no longer offers `run it again` as the affordance for a state a rerun cannot discharge, which is this row's own sentence: a wall that is discharged by rerunning is not a wall. ",
+
+    "RUNG ON THIS BOUNDARY: mechanically preventable. ",
+
+    "The cause is now carried rather than reconstructed, and a blocking row with an empty cause REFUSES in `changed_witness_projection_rows` rather than travelling as a blank -- but the invalid state is still writable, since nothing structurally binds a blocker's cause to the standing that produced it. ",
+
+    "It is not the row's ceiling and it is not the row's whole subject: the interrupted-before-verdict / completed-over-cost-requirement pair above is a DIFFERENT boundary in the same fold and is untouched by this repair, so the class's rung remains the minimum across its boundaries.",
+
+    "THE INSTRUMENT FOR THE SPECIMEN THE REPAIR ABOVE RESTS ON, named at the grain this row's first specimen already uses, because a transcribed number is unreachable from the producer that owns it and the repair receipt does not carry one. The pre-repair specimen is workflow run 34132197639 on gunb-ai/gunbc, attempt 1, job `required-witnesses-floor` id 101779846687, whose failing step is `D0-ADJUDICATE: consume the published measurement receipt`. Re-derive it with `gh run download 34132197639 -n required-floor-disposition` and `gh run download 34132197639 -n required-ci-measurement-receipt`; read the disposition TSV's `# summary` line and its per-identity `disposition` column BY HEADER NAME, and read the receipt JSON's `receipt.blockers[].cause`. ",
     "TWO CHANNELS ARE WRONG FOR THIS SUBJECT AND BOTH ARE CHEAP TO REACH BY ACCIDENT. `gh run view --job <id> --log` answers an attempt-1 job id with attempt-2 content, which is the wrong-content channel this row's first specimen already warns about; and the `/actions/runs/<id>/logs` zip truncates. The download-by-artifact-name route above is the one that answers the subject asked. ",
-
-    "WHAT THOSE TWO ARTIFACTS SAY, so a re-deriver knows what agreement looks like. The disposition artifact's summary counts the fifteen as `declined_changed_witness_outside_discovery` -- enrolled because the DIFF touched them, declined because DISCOVERY, which follows the source roots rather than the diff, reaches no module for them. The receipt counts the SAME fifteen identities as blockers with `cause=changed_witness_blocking`, and every blocker in that list is one of them. Both files are internally correct and they disagree about what those identities are. ",
-
-    "AND THE ARITHMETIC OF THE REFUSAL IS THE POINT: in that same run the disposition artifact's outcome column carries zero rows at any failing outcome, while thousands passed and a few tens are held or route-gapped. So a run in which NO claim failed and fifteen never executed refuses, and the one bit it hands its merge gate is indistinguishable from the bit a genuine failure would produce. The counts are deliberately not transcribed here; they are columns in the artifact the command above retrieves. ",
-
-    "THAT ENROLMENT AND DISCOVERY DISAGREE IS THE STRUCTURAL FACT UNDER THIS SPECIMEN, and it is the part a reader should carry away: enrolment follows the DIFF, discovery follows the SOURCE ROOTS, and neither is wrong on its own terms. ",
-
-    "The consequence for a repair is that widening the source roots is NOT the fix -- it would silence one lane's fifteen and leave the boundary intact for the next, which is the section 5 shape of treating a symptom that names its own mechanism. ",
-
-    "The fix is the same one this row already names: the refusal must say WHICH of the two it is, and a declined witness must be discharged by being made reachable or by being declared unreachable, never by a rerun.)",
   ],
 
   evidence: [],
