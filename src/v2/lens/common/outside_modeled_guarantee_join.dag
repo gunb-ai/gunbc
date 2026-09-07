@@ -19,14 +19,26 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // THE JOIN TAKES ITS ANSWER FROM THE NAMED PRODUCER. Authority is v2.std.decl_index.decl_facts
-// over gunbc.ci_layer_roots.witness_layer_roots — the same roots required lanes pass. A caller
+// over gunbc.ci_layer_roots.witness_layer_roots -- the same roots required lanes pass. A caller
 // cannot pass a narrower list beside a corpus authority.
 //
 // It reads that authority BY KEY. The question here is about ONE capability declaration, and
 // asking it through the population read meant minting every declaration in the witness layer into
-// interpreter values to fold all but one of them away — per boundary, per claim. Same census, same
+// interpreter values to fold all but one of them away -- per boundary, per claim. Same census, same
 // five-arm law (resolve_declaration_ref_over decides both routes); what changed is that the
 // narrowing happens where the rows still exist as host rows.
+//
+// THE ZERO-ARG POPULATION PRODUCER THIS FILE CARRIED IS GONE, AND ITS OWN COMMENT SAID WHY IT WOULD
+// BE. #10718 hoisted the two population calls into WitnessLayerDeclIndex / witness_layer_decl_index
+// so one invocation minted the pair once instead of twice, and recorded honestly that the hoist
+// "buys no measured time today -- it removes source-level duplication only", that cross-claim
+// sharing of that value was refused as ByteBudgetExceeded, and that the residual was "a substrate
+// problem, not a repetition the hoist can move". The keyed read is that substrate move, so the
+// producer has no consumer left and is deleted rather than kept warm: a mint nothing reads is the
+// duplication the hoist was removing, one level up. The refusal receipt naming that producer is
+// preserved where it belongs, on the memo it was measured against
+// (v1_compiler.coproduct_reflection FLOOR_DECL_FACTS_MEMO), because the finding is about the value
+// and not about the declaration that happened to build it.
 fn guarantee_boundary_still_outside(boundary: GuaranteeBoundary) -> Bool {
   if !declaration_ref_eq(a: boundary.capability_inventory_authority, b: decl_facts_inventory_authority) {
     false

@@ -399,8 +399,12 @@ thread_local! {
     /// DO NOT PROPOSE WARMING THIS CENSUS AS A CROSS-CLAIM SHARED VALUE. It was tried and it is
     /// closed by execution, not by argument. Two required-floor runs differing by exactly one
     /// roster line — 34088506991 with the producer ABSENT, 34088508298 with it PRESENT — answered:
-    /// the PRESENT arm returned `PureProducerShareWarmNotStored` for
-    /// `v2.lens.common.outside_modeled_guarantee_join.witness_layer_decl_index`. The producer
+    /// the PRESENT arm returned `PureProducerShareWarmNotStored` for the zero-arg population
+    /// producer `v2.lens.common.outside_modeled_guarantee_join` then carried. That declaration no
+    /// longer exists -- the keyed read left it with no consumer and this change deleted it -- and
+    /// the receipt is deliberately kept, because the finding is about the VALUE (a whole
+    /// witness-layer declaration population, minted to answer one keyed question) and not about
+    /// the declaration that happened to build it. The producer
     /// resolved AND EVALUATED; the cross-claim store then refused the VALUE as
     /// `ByteBudgetExceeded`. The arms are verified to have varied (unrelated producers report
     /// `disposition=Stored` in both, and the refusal appears three times in PRESENT and zero times
