@@ -1084,10 +1084,20 @@ fn main() -> ExitCode {
     if v1_compiler::memory_governor::cgroup_bind_refusal_diagnostic(&bind).is_some() {
         return ExitCode::FAILURE;
     }
-    match run() {
+    // ONE DECLARATION CENSUS FOR THE RUN, for the same reason the required floor registers one:
+    // the witnesses this binary evaluates ask keyed questions of it (`decl_facts_at`), and a fold
+    // over N citations makes N demands of one census. With the memo closed each demand re-walks the
+    // corpus, so the keyed read would cost more than the population read it replaces. The subject
+    // this hangs on is the invocation itself: one process, one tree, roots supplied on the command
+    // line, and `clear_decl_census_memo` on the way out rather than a cell that outlives its
+    // subject.
+    v1_compiler::coproduct_reflection::register_decl_census_memo();
+    let code = match run() {
         Ok(code) => code,
         Err(code) => code,
-    }
+    };
+    v1_compiler::coproduct_reflection::clear_decl_census_memo();
+    code
 }
 
 #[cfg(test)]

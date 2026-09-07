@@ -12,11 +12,9 @@ import std.decl_ref {
 import gunbc.ci_layer_roots { compile_clean_source_roots }
 import gunbc.plan { Plan, plan_path, plan_doc_path, PlanRetirement, PlanRetiresWhen }
 import gunbc.plan_registry { all_plans }
-import v2.lens.module_graph { module_declaration_facts_live }
 import v2.lens.doc_reachability { doc_graph_clean_holds, doc_graph_orphan_clean_holds }
 import v2.std.algebra { filter, list_flat_map }
-import v2.std.decl_index { decl_facts }
-import v2.std.decl_ref_resolution { declaration_ref_resolves }
+import v2.std.decl_ref_resolution { declaration_ref_resolves_live }
 import std.keyed_row { KeyedRow }
 import std.keyed_roster {
   KeyedRosterBuild,
@@ -186,11 +184,9 @@ fn hand_authored_works_refs_all_resolve() -> Bool {
     HandAuthoredDocBindsDuplicateKey { key: _, first: _, duplicate: _ } => false
     HandAuthoredDocBindsBuilt { binds: _ } => {
       let pool = hand_authored_works_resolution_pool_roots()
-      let facts = decl_facts(pool_roots: pool)
-      let modules = module_declaration_facts_live(pool_roots: pool)
       all(
         hand_authored_production_doc_declaration_refs(),
-        r => declaration_ref_resolves(ref: r, facts: facts, modules: modules)
+        r => declaration_ref_resolves_live(ref: r, pool_roots: pool)
       )
     }
   }
