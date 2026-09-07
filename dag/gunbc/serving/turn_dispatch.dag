@@ -16,6 +16,8 @@ import product.fabric.selection {
   OpportunityCostObservation, NoFeasibleAlternativeUse, AlternativeUseDisplaced, AlternativeUseUnread,
   DispatchInputs,
 }
+import product.fabric.isolation { IsolationProfile, IsolationGuarantee }
+import product.fabric.work { TrustDomainRef }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
 
 // ── SERVING'S OBSERVATIONS, ON THE COST AXES THAT ALREADY EXIST ───────────────────────────────
@@ -248,3 +250,29 @@ data serving_delay_valuation: MoneyPerSecond = MoneyRate {
 }
 
 data serving_delay_valuation_dissolution: NonEmptyStr = "an offer with a non-zero quote enters the serving offer set, at which point cash no longer ties and this rate decides how many seconds of waiting a dollar is worth -- a judgement this placeholder does not make and must not be read as having made" as NonEmptyStr
+
+// ── A SERVING TURN IS NOT ISOLATED FROM THE TURNS BESIDE IT ───────────────────────────────────
+//
+// This is a property of the offer worth stating loudly rather than filling in, because it is the
+// one place a serving group is categorically weaker than the runners the fabric was first written
+// for. Turns on a group share ONE engine process, ONE KV cache and ONE container: there is no fresh
+// root per turn, no private namespace per turn, no attempt-scoped secret, and certainly no dedicated
+// kernel. Every guarantee in the vocabulary is about separating one unit of work from another, and a
+// serving group separates none of them.
+//
+// SO THE PROFILE IS EMPTY, AND EMPTY IS AN ASSERTION RATHER THAN A GAP. It is derived from how the
+// engine runs, not from a probe that failed -- which is why it is here and not among the unexpressed
+// facts. gunbc.spark.serving_offer separately carries IsolationNotObserved for a different subject:
+// how well the CONTAINER is isolated from its host, which nobody has measured and which says nothing
+// about turn-from-turn separation.
+//
+// The consequence is one the fabric already handles. Work requiring any guarantee cannot be made
+// fungible with a serving offer, and the refusal names the missing guarantee rather than saying the
+// offer is "not isolated enough" -- isolation.dag's own reason for returning the missing set instead
+// of a Bool. A serving demand that declares no guarantee clears; one that needs a private namespace
+// is told exactly what a Spark group cannot give it.
+fn serving_isolation_profile() -> IsolationProfile {
+  IsolationProfile { guarantees: [] }
+}
+
+data spark_serving_trust_domain: TrustDomainRef = "gunbc.trust.spark-fleet" as TrustDomainRef
