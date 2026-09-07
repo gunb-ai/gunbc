@@ -1,13 +1,20 @@
-//! Executing consumer of `fixtures/if_join_pool_binding`.
+//! Consumer of `fixtures/if_join_pool_binding`.
 //!
 //! `gunbc.recurring_failure_mode`
 //! `binding_chosen_by_pool_membership_rather_than_by_the_declared_rule`:
 //! a coproduct arm in `declaring_module` must typecheck the same whether or not
 //! an unrelated same-spelled product is in the compiled closure.
 //!
-//! The fixture stays outside `dag/` / `src/v2` so the collision is source handed
-//! to the compiler, not a corpus fork. This module is the route that compiles
-//! both entries.
+//! SCAFFOLD (DESIGN §7 HAND-RUST GATE — explicit deferral): the fixture is
+//! deliberately outside `dag/` / `src/v2` so the collision is source handed to
+//! the compiler, not a corpus fork, and the producer is
+//! `compile_declared_import_closure_only_with_pool` over two entry files. That
+//! shape is not a discovered `dag/test/claim/*_test.dag` row. This module is
+//! compiled by clippy and executed by nobody — the standing drop
+//! `gunbc.rung_drop` `rust_unit_tests_off_the_merge_path`. Lane: none enrolled;
+//! the 2026-09-04 runner-capacity ruling closed the job roster to growth.
+//! Sole dissolution: a required-lane producer that compiles both fixture
+//! entries on the real acceptance path, then delete this Rust module.
 
 use v1_compiler::cli_run::compile_declared_import_closure_only_with_pool;
 use v1_compiler::v1_std_core::{diagnostic_to_message, is_error_diagnostic};
