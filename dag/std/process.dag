@@ -16,6 +16,7 @@ fn exit_failure(reason: String) -> ProcessExit {
 }
 
 // Claim-surface inhabitance of ExitSuccess. Sequencers match ProcessExit; they do not ask this for a Bool.
+// Standing disposition: tools.emit_host_gate emit_host_verdict_narration_dissolution_trigger.
 fn exit_ok(e: ProcessExit) -> Bool {
   match e {
     ExitSuccess => true
