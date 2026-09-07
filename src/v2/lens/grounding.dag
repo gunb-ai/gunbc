@@ -1,9 +1,47 @@
 module v2.lens.grounding
 
-
+import v2.lens.common.construction_justification {
+  ConstructionJustification,
+  WallAfterGrounding,
+  OutsideModeledGuarantee,
+  PolicyJudgmentRequired,
+  modeled_outside_boundary,
+  decl_facts_inventory_authority
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { SingleAuthority }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: RatchetForever
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}
+
+// PARTITION (DESIGN 4b / C0(c)): EXTRACT is WallAfterGrounding
+// (`gunbc.guarantee_stall.grounding_extract_closed_set_stall`).
+// The name-only should-ground residual is off the ladder until a confirm-judge capability
+// is authored — then this stamp reds. confirm_judge_should_ground is deliberately not a decl.
+data grounding_name_only_residual_boundary: ConstructionJustification = ConstructionJustification {
+  class: OutsideModeledGuarantee {
+    boundary: modeled_outside_boundary(
+      subject: DeclarationRef {
+        module_path: "v2.lens.grounding",
+        decl_name: "name_coincides",
+        field: WholeDeclaration
+      },
+      required_capability: DeclarationRef {
+        module_path: "v2.lens.grounding",
+        decl_name: "confirm_judge_should_ground",
+        field: WholeDeclaration
+      },
+      capability_inventory_authority: decl_facts_inventory_authority,
+      boundary_kind: PolicyJudgmentRequired {
+        judgment: DeclarationRef {
+          module_path: "v2.lens.grounding",
+          decl_name: "confirm_judge_should_ground",
+          field: WholeDeclaration
+        }
+      }
+    )
+  }
 }
 
 
