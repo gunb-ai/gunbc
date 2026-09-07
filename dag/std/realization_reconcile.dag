@@ -42,18 +42,33 @@ data reconcile_grounded_instance_contract: Disposition = Terminal {
   reason: "carrier cannot re-run the grounding predicate over the observed read (v1-seed substrate limit): every instance must couple grounding to that read inline and land a discriminating perturb-RED witness"
 }
 
+// Normalizes the two reported inputs into ONE grounding verdict. An absent read cannot ground
+// whatever the grounding report says beside it; an observed read defers to that report. Neither
+// branch establishes that anyone looked.
+//
+// THIS IS THE SINGLE AUTHORITY FOR THAT TABLE, and reconcile_grounded below is expressed over it
+// rather than restating it. The same law returned in two carriers would be two sources for one fact,
+// free to drift (DESIGN 2, 3).
+fn classify_reported_grounding<R, E>(
+  show_read: ShowEffectiveRead<R>,
+  grounding: Grounding<E>,
+) -> Grounding<E> {
+  match show_read {
+    ReadAbsent { reason: why } => DoesNotGround { reason: why }
+    ReadObserved { value: _ } => grounding
+  }
+}
+
+// The same verdict, carried in Reconciliation<A, E> so the effect/intent payload rides along for the
+// host and deployment pipelines that consume it. It adds the payload; it does not re-decide.
 fn reconcile_grounded<A, R, E>(
   apply_effect: A,
   show_read: ShowEffectiveRead<R>,
   grounding: Grounding<E>
 ) -> Reconciliation<A, E> {
-  match show_read {
-    ReadAbsent { reason: why } => NotConverged { reason: why, applied: apply_effect }
-    ReadObserved { value: _ } =>
-      match grounding {
-        Grounds { evidence: e } => Converged { evidence: e, applied: apply_effect }
-        DoesNotGround { reason: why } => NotConverged { reason: why, applied: apply_effect }
-      }
+  match classify_reported_grounding(show_read: show_read, grounding: grounding) {
+    Grounds { evidence: e } => Converged { evidence: e, applied: apply_effect }
+    DoesNotGround { reason: why } => NotConverged { reason: why, applied: apply_effect }
   }
 }
 
@@ -89,85 +104,195 @@ fn grounding_qualified_by_durability<E, Target, ReadbackSubject>(
 }
 
 // The canonical desired-state lifecycle carrier, and the reason this module rather than a new one:
-// independent readback already lives here, and a second module owning the sequence would be the very
-// layer inversion this carrier exists to close — the correct helper standing BESIDE the raw path
-// instead of owning it (DESIGN 3). It is sole_constructor so that no caller outside this module can
-// mint a receipt asserting convergence: the only route to one is reconcile_effect, which derives
-// convergence from the POST-APPLY observation rather than from anything the caller claims. A caller
-// may still lie about what it observed; it cannot lie about whether the sequence ran.
+// the reconciliation and grounding VOCABULARY already lives here, and a second module owning the
+// sequence would be the very layer inversion this carrier exists to close — the correct helper
+// standing BESIDE the raw path instead of owning it (DESIGN 3).
+//
+// WHAT sole_constructor BUYS HERE, AT THE EXACT STRENGTH IT HOLDS. Outside callers cannot construct
+// ReconciledEffect or ConvergedEffect as record literals, so they cannot BYPASS the decision/
+// application consistency table: every carrier that exists came through reconcile_effect. They CAN
+// obtain a reported-convergence carrier by supplying a noncontradictory application report beside a
+// grounding read, because reconcile_effect and classify_reconciled are exported pure functions over
+// caller-authored facts. That establishes no execution or observation provenance, and stating it as
+// "no outside caller can mint a receipt asserting convergence" would be the overclaim. A restricted
+// effectful mint and an exported pure classifier are different instruments; gunbc.typed_remote_file_write
+// remote_file_converged_from_report is the first, this is the second.
+//
+// Not a "post-apply observation": that phrase asserts a temporal order this module cannot establish.
+// A caller-constructed ReadObserved has not been shown to have occurred after anything, and the Noop
+// arm has no application for a read to be "post". What is derived here is that the grounding was not
+// asserted ALONGSIDE a contradictory lifecycle -- nothing about when, or whether, anyone looked.
+//
+// WHAT THE SEAL DOES NOT BUY: it does not stop a caller lying about whether the sequence ran. No
+// argument here is observed, so a self-constructed read beside a chosen application arm produces a
+// report. What holds is the classifier's truth table, not the lifecycle -- stated exactly at
+// Application and at ReconciledEffect below. Claiming otherwise would be rung inflation in the
+// authority module itself (DESIGN 4b(1)), which is worse than sitting low: an inflated class never
+// ranks for climbing.
 //
 // The seal is a source-level wall (DESIGN 4b rung 3), not a runtime one: an emitted or deserialized
 // representation of this record is not covered, so a decoder that reconstructs the field set
 // reconstitutes an unearned receipt. That gap is the class's next-rung trigger and is named rather
 // than papered over.
 
+// NO APPLICATION REPORT ON THIS CARRIER, in any spelling. The Application argument is the caller's
+// report of which lifecycle arm it took; a field restating that argument would be a second spelling
+// of it that no fold reads, which is DESIGN 3c's dangling declaration. The classified grounding is
+// the verdict, and it is the whole outcome.
 type ReconciledEffect<P, E> sole_constructor {
   decision: UpsertDecision<P>
-  applied: Bool
-  outcome: Reconciliation<Bool, E>
+  classified_grounding: Grounding<E>
 }
 
-// Refuse and an unapplied Apply are NOT delegated to the grounding predicate. Passing them through
-// reconcile_grounded would let a caller that refused, then observed some unrelated satisfying state,
-// mint Converged — the readback would ground and nothing would record that the effect never ran. So
-// each is answered from the decision alone, and only a decided-and-applied Apply, or a Noop, is
-// allowed to reach the observation.
+// WHY Grounding<E> AND NOT Reconciliation<A, E>. Reconciliation<A, E> is the EFFECT-PAYLOAD carrier
+// and is deliberately not used here. Its A is broadly consumed as an effect intent -- host_effect_plan
+// binds it, host_identity_converge reads intent.privilege_denial off it to separate an access denial
+// from another refusal, and live_deploy propagates it so a later refusal still names the mutation
+// attempted -- and every one of those consumers binds it in a MATCH PATTERN rather than by field
+// access, which is worth knowing before searching for its readers.
+//
+// This carrier reports and holds no payload, so instantiating that one would keep a field only to
+// satisfy its shape. Grounding<E> is already this module's grounding vocabulary, so reusing it also
+// avoids a second converged/not-converged pair in the same authority.
+
+// WHAT THIS IS, STATED AT THE WEAKEST TRUE STRENGTH.
+//
+// This produces a RECONCILIATION REPORT. It is not proof that the decided plan was performed.
+//
+// WHY THERE IS NO COMPARATOR, stated because adding one is the obvious next proposal and it does not
+// work. A plan_eq callback beside a decided and a performed plan moves the untrusted Boolean rather
+// than removing it: the same caller supplies both plans AND the law deciding whether they match, so
+// `plan_eq: (a, b) => true` mints convergence for Apply(A) beside Applied(B). A caller-supplied law
+// that LOOKS like a check is worse than no check, because a reader believes the join happened.
+//
+// An honest comparator would not finish it either: Applied { plan: a, evidence: for_b } is openly
+// constructible, a lawful comparator compares a with a, and nothing structurally witnesses that the
+// evidence AROSE from the plan beside it. Sealing the evidence type proves an authority minted that
+// VALUE; it does not prove an outside caller paired it with the right plan. What is missing is a
+// sealed RELATION (decided plan <-> performed plan <-> evidence), which std cannot express without
+// accepting a law from the caller it would be checking.
+//
+// So Application carries NEITHER a plan NOR evidence -- it is the bare lifecycle arm. The
+// plan-to-evidence binding is the DOMAIN's obligation, discharged by a domain carrier that is minted
+// only by the authority that performed the effect. gunbc.typed_remote_file_write is the worked
+// example: RemoteFileConverged is sole_constructor, carries the EXACT WRITE so it names the bytes it
+// is evidence for, and is reachable only through a mint admitted to the func that ran the four
+// steps. What std still does is refuse the contradictory lifecycles below, and derive grounding from
+// the reported effective read rather than from the decision or the application arm. Both the read and
+// the grounding are themselves caller-constructed arguments routed through a truth table; this module
+// derives neither from the other, and neither is independent of the caller in any sense std can
+// check.
+
+// A LIFECYCLE DISCRIMINATOR AND NOTHING MORE. This arm names which lifecycle branch the caller
+// reports; it does not make the report harder to fabricate than a Bool, and does not claim to.
+//
+// IT CARRIES NO PAYLOAD, and an evidence payload here is the obvious next proposal. It would not buy
+// what it appears to: no fold reads it -- all three matches below would discard it, and
+// ConvergedEffect's evidence comes from Grounding<E>, not from here -- so Applied { evidence: "" }
+// is exactly as writable as a bare arm. A payload no sink reads is DESIGN 3c's dangling declaration.
+//
+// What earns the coproduct is the REFUSAL TABLE below: Noop-with-an-application and
+// Refuse-with-an-application are lifecycle contradictions that get a NAME here. A decision plus a
+// Boolean expresses the same six combinations, so what this buys is a closed vocabulary and an
+// exhaustive match over it, not expressive power.
+type Application
+  = NotApplied
+  | Applied
+
+// Refuse, and an Apply reported as not applied, are NOT delegated to the grounding predicate. Passing
+// them through reconcile_grounded would let a caller that refused and then reported a satisfying read
+// mint Converged — the read would ground and nothing would record the contradiction. So each is
+// answered from the decision alone, and only an Apply paired with Applied, or a Noop paired with
+// NotApplied, reaches the read report -- Noop paired with Applied refuses too.
+//
+// THE REFUSAL REASONS BELOW SAY "an application was REPORTED", not "an effect was applied anyway".
+// They are runtime strings, so they are receipts, and std knows only which arm the caller passed --
+// it never observes an effect. A receipt asserting effect history would mislead whoever acts on the
+// refusal, which is a live hazard rather than a wording preference.
 
 fn reconcile_effect<P, R, E>(
   decision: UpsertDecision<P>,
-  applied: Bool,
+  application: Application,
   show_read: ShowEffectiveRead<R>,
   grounding: Grounding<E>,
 ) -> ReconciledEffect<P, E> {
   match decision {
     Refuse { reason: why } =>
-      ReconciledEffect {
-        decision: decision,
-        applied: applied,
-        outcome: NotConverged { reason: why as String, applied: applied },
+      match application {
+        NotApplied =>
+          ReconciledEffect {
+            decision: decision,
+            classified_grounding: DoesNotGround { reason: why as String },
+          }
+        Applied =>
+          ReconciledEffect {
+            decision: decision,
+            classified_grounding: DoesNotGround {
+              reason: "reconcile_effect: Refuse was paired with an application report",
+            },
+          }
       }
     Noop =>
-      ReconciledEffect {
-        decision: decision,
-        applied: applied,
-        outcome: reconcile_grounded(apply_effect: applied, show_read: show_read, grounding: grounding),
+      match application {
+        NotApplied =>
+          ReconciledEffect {
+            decision: decision,
+            classified_grounding: classify_reported_grounding(show_read: show_read, grounding: grounding),
+          }
+        Applied =>
+          ReconciledEffect {
+            decision: decision,
+            classified_grounding: DoesNotGround {
+              reason: "reconcile_effect: Noop was paired with an application report",
+            },
+          }
       }
     Apply { plan: _ } =>
-      if applied {
-        ReconciledEffect {
-          decision: decision,
-          applied: applied,
-          outcome: reconcile_grounded(apply_effect: applied, show_read: show_read, grounding: grounding),
-        }
-      } else {
-        ReconciledEffect {
-          decision: decision,
-          applied: applied,
-          outcome: NotConverged {
-            reason: "reconcile_effect: Apply decided but the effect was not applied",
-            applied: applied,
-          },
-        }
+      match application {
+        NotApplied =>
+          ReconciledEffect {
+            decision: decision,
+            classified_grounding: DoesNotGround {
+              reason: "reconcile_effect: Apply was paired with NotApplied",
+            },
+          }
+        Applied =>
+          ReconciledEffect {
+            decision: decision,
+            classified_grounding: classify_reported_grounding(show_read: show_read, grounding: grounding),
+          }
       }
   }
 }
 
-fn reconciled_effect_converged<P, E>(r: ReconciledEffect<P, E>) -> Bool {
-  reconciliation_converged(r: r.outcome)
-}
+// NO Bool PREDICATE OVER THE OUTCOME. classify_reconciled / ReconciledOutcome is the canonical
+// surface and carries the refusal reason a Bool would discard. A two-arm fold to Bool leaves a
+// consumer re-branching on it to recover that reason, which collapses the coproduct and immediately
+// re-expands it.
 
-// ReconciledEffect is an OUTCOME, not a success witness: it faithfully carries a refusal or an
-// unapplied Apply, which is what makes it honest and what makes it insufficient as a sink's
+// ReconciledEffect is an OUTCOME, not a success witness: it faithfully carries a refusal or an Apply
+// paired with NotApplied, which is what makes it honest and what makes it insufficient as a sink's
 // parameter. A sink that accepts one still has to ask whether it converged and remember to branch —
 // validation standing exactly where construction was available (DESIGN 5). ConvergedEffect closes
 // that: it is sole_constructor and the ONLY mint is the Converged arm of classify_reconciled, so a
-// sink whose parameter is a ConvergedEffect cannot be handed a refusal at all. The invalid state has
-// no constructor rather than being checked for, which is the difference between rung 3 and rung 4
-// for the class "a refusal was accepted as success".
+// sink whose parameter is a ConvergedEffect cannot be handed a refusal at all. For the ACCEPTED
+// OUTSIDE-CONSUMER path that is the difference between rung 3 and rung 4 on the class "a refusal was
+// accepted as success" -- and the scoping matters, because inside THIS module the mint is ordinary
+// source and a wrong ConvergedEffect is authorable here, exactly as gunbc.typed_remote_file_write
+// records for its own carrier. "The invalid state has no constructor" is true only of OUTSIDE
+// callers, and unscoped it would be an overclaim.
 //
 // The evidence is carried rather than dropped because a converged receipt whose observation is
 // discarded cannot answer WHAT it converged to — which is the join a domain consumer needs to
 // establish that this evidence is about its subject and not a neighbouring one.
+//
+// AND IT IS A GROUNDED REPORT, NOT A PERFORMANCE PROOF. ConvergedEffect says: this decision was
+// classified, an application ARM was reported -- the arm only, carrying nothing -- and a REPORTED
+// effective read was classified
+// as grounding the desired relation. Not "an INDEPENDENT observation" -- std receives a ReadObserved
+// and a Grounds and has no independence evidence about either. It does NOT say the decided plan is the one that ran — std has no way to witness
+// that without a law supplied by the same caller it would be checking. A sink that needs performance
+// proof must demand its DOMAIN's sealed carrier, not this one.
 
 type ConvergedEffect<P, E> sole_constructor {
   decision: UpsertDecision<P>
@@ -179,12 +304,12 @@ type ReconciledOutcome<P, E>
   | EffectNotConverged { reason: String, attempt: ReconciledEffect<P, E> }
 
 fn classify_reconciled<P, E>(r: ReconciledEffect<P, E>) -> ReconciledOutcome<P, E> {
-  match r.outcome {
-    Converged { evidence: e, applied: _ } =>
+  match r.classified_grounding {
+    Grounds { evidence: e } =>
       EffectConverged {
         converged: ConvergedEffect { decision: r.decision, evidence: e },
       }
-    NotConverged { reason: why, applied: _ } =>
+    DoesNotGround { reason: why } =>
       EffectNotConverged { reason: why, attempt: r }
   }
 }

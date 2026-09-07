@@ -27,7 +27,7 @@ type AuditVerdictWord = ApproveWord | RequestChangesWord | CannotJudgeWord
 type AuditPremise
   = AuditorOfOneCandidate
   | ToolIs { tool: HarnessTool }
-  | ToolRunsInTheCandidateWorktree
+  | ToolRunsInTheCandidateWorktreeAt { path: String }
   | ToolReturnsCombinedOutput
   | EvidenceOffered { source: AuditEvidenceSource }
   | CapabilityHeld { capability: AuditCapability }
@@ -79,7 +79,7 @@ fn audit_premise_text(p: AuditPremise) -> String {
   match p {
     AuditorOfOneCandidate => "You are the goal auditor of one candidate change. You did not write it, you were not shown the worker's instructions, and you will not fix it."
     ToolIs { tool: t } => join(["Your one tool is ", harness_tool_wire_name(tool: t) as String, "."], "")
-    ToolRunsInTheCandidateWorktree => "It runs in the candidate's worktree, which already holds the change."
+    ToolRunsInTheCandidateWorktreeAt { path } => join(["It runs in the candidate's worktree at ", path, ", which already holds the change; the diff, the files it names and the acceptance command are all read there, and paths outside it are not part of this review."], "")
     ToolReturnsCombinedOutput => "It returns the command's combined stdout and stderr."
     EvidenceOffered { source: s } => join(["Evidence: ", audit_evidence_text(s: s), "."], "")
     CapabilityHeld { capability: c } => join(["You may ", audit_capability_text(c: c), "."], "")
@@ -131,11 +131,11 @@ fn audit_grounded(premise: AuditPremise, module_path: String, decl_name: String)
   AuditGroundedPremise { premise: premise, grounds: decl_ref(module_path: module_path, decl_name: decl_name) }
 }
 
-fn harness_auditor_guidance_at(verdict_path: String, verdict_shape: String) -> List<AuditGroundedPremise> {
+fn harness_auditor_guidance_at(worktree: String, verdict_path: String, verdict_shape: String) -> List<AuditGroundedPremise> {
   [
     audit_grounded(premise: AuditorOfOneCandidate, module_path: "gunbc.roadmap.roadmap_goal_audit_role", decl_name: "goal_audit_brief"),
     audit_grounded(premise: ToolIs { tool: RunCommandTool }, module_path: "gunbc.harness.harness_tool", decl_name: "harness_offered_tools"),
-    audit_grounded(premise: ToolRunsInTheCandidateWorktree, module_path: "gunbc.harness.harness_tool", decl_name: "HarnessToolEnvironment"),
+    audit_grounded(premise: ToolRunsInTheCandidateWorktreeAt { path: worktree }, module_path: "gunbc.harness.harness_tool", decl_name: "HarnessToolEnvironment"),
     audit_grounded(premise: ToolReturnsCombinedOutput, module_path: "gunbc.harness.harness_tool", decl_name: "harness_run_command"),
     audit_grounded(premise: EvidenceOffered { source: TheApprovedGoal }, module_path: "gunbc.roadmap.roadmap_goal_audit_role", decl_name: "goal_audit_brief"),
     audit_grounded(premise: EvidenceOffered { source: TheDisplacedCost }, module_path: "gunbc.roadmap.roadmap_goal_audit_role", decl_name: "goal_audit_brief"),

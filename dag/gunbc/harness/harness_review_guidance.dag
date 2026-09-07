@@ -27,7 +27,7 @@ type ReviewVerdictWord = ApproveWord | RequestChangesWord | CannotJudgeWord
 type ReviewPremise
   = ReviewerOfOneCandidate
   | ToolIs { tool: HarnessTool }
-  | ToolRunsInTheCandidateWorktree
+  | ToolRunsInTheCandidateWorktreeAt { path: String }
   | ToolReturnsCombinedOutput
   | EvidenceOffered { source: ReviewEvidenceSource }
   | CapabilityHeld { capability: ReviewCapability }
@@ -79,7 +79,7 @@ fn review_premise_text(p: ReviewPremise) -> String {
   match p {
     ReviewerOfOneCandidate => "You are the reviewer of one candidate change on one criterion. You did not write the change and you will not fix it."
     ToolIs { tool: t } => join(["Your one tool is ", harness_tool_wire_name(tool: t) as String, "."], "")
-    ToolRunsInTheCandidateWorktree => "It runs in the candidate's worktree, which already holds the change."
+    ToolRunsInTheCandidateWorktreeAt { path } => join(["It runs in the candidate's worktree at ", path, ", which already holds the change; the diff, the files it names and the acceptance command are all read there, and paths outside it are not part of this review."], "")
     ToolReturnsCombinedOutput => "It returns the command's combined stdout and stderr."
     EvidenceOffered { source: s } => join(["Evidence: ", review_evidence_text(s: s), "."], "")
     CapabilityHeld { capability: c } => join(["You may ", review_capability_text(c: c), "."], "")
@@ -149,11 +149,11 @@ fn review_grounded(premise: ReviewPremise, module_path: String, decl_name: Strin
 
 // The verdict shape is named by the module that decodes it, so the prompt and the decoder cannot
 // disagree about the file's grammar.
-fn harness_reviewer_guidance_at(verdict_path: String, verdict_shape: String) -> List<ReviewGroundedPremise> {
+fn harness_reviewer_guidance_at(worktree: String, verdict_path: String, verdict_shape: String) -> List<ReviewGroundedPremise> {
   [
     review_grounded(premise: ReviewerOfOneCandidate, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "review_brief"),
     review_grounded(premise: ToolIs { tool: RunCommandTool }, module_path: "gunbc.harness.harness_tool", decl_name: "harness_offered_tools"),
-    review_grounded(premise: ToolRunsInTheCandidateWorktree, module_path: "gunbc.harness.harness_tool", decl_name: "HarnessToolEnvironment"),
+    review_grounded(premise: ToolRunsInTheCandidateWorktreeAt { path: worktree }, module_path: "gunbc.harness.harness_tool", decl_name: "HarnessToolEnvironment"),
     review_grounded(premise: ToolReturnsCombinedOutput, module_path: "gunbc.harness.harness_tool", decl_name: "harness_run_command"),
     review_grounded(premise: EvidenceOffered { source: TheOneCriterion }, module_path: "gunbc.roadmap.roadmap_review_criteria", decl_name: "review_criteria"),
     review_grounded(premise: EvidenceOffered { source: TheGoalStatement }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "review_brief"),
