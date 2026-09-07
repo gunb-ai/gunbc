@@ -1,0 +1,306 @@
+module gunbc.runner.runner_host_kernel_config
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import gunbc.runner.runner_host_filtered_egress { KernelFeatureRequirement, runner_host_kernel_requirements }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import extdeps.tools.gnu_coreutils { cat_command }
+import gunbc.command_runner { ProcessObservation, run_shell_command_observe, LocalExec }
+
+// WHAT THE RUNNER HOST'S KERNEL MUST CONTAIN, AS ONE AUTHORITY RATHER THAN TWO.
+//
+// The build script hand-typed fifty-two `scripts/config` flags while
+// gunbc.runner.runner_host_filtered_egress separately listed the netfilter and CFS options it
+// required, each with a reason. Two places said what the kernel needs, and nothing compared them.
+//
+// THAT FORK ALREADY PRODUCED A DEFECT. The filtered-egress module required CONFIG_NFT_COUNTER, which
+// does not exist in this kernel at all -- net/netfilter/Makefile links nft_counter.o unconditionally
+// into nf_tables. The model asked for an option no kernel could provide, the script never asked for
+// it, and the disagreement was found by a human reading a built .config back. Nothing mechanical was
+// looking.
+
+// ── the options ────────────────────────────────────────────────────────────────────────────────
+
+// A DISABLED OPTION IS A REQUIREMENT TOO, and folding it into "not enabled" would lose the
+// difference between an option this host must not have and one nobody has considered. CONFIG_MODULES
+// is the load-bearing case: with it off, every requirement below becomes a BUILD-time obligation,
+// because anything the distro marks modular is simply absent from the image.
+type KernelOptionSetting = KernelOptionEnabled | KernelOptionDisabled
+
+type HostKernelOption {
+  symbol: NonEmptyStr
+  setting: KernelOptionSetting
+  required_for: NonEmptyStr
+}
+
+fn enabled_for(symbol: NonEmptyStr, why: NonEmptyStr) -> HostKernelOption {
+  HostKernelOption { symbol: symbol, setting: KernelOptionEnabled, required_for: why }
+}
+
+fn disabled_for(symbol: NonEmptyStr, why: NonEmptyStr) -> HostKernelOption {
+  HostKernelOption { symbol: symbol, setting: KernelOptionDisabled, required_for: why }
+}
+
+// THE NETWORK-FILTER AND CPU-BOUND OPTIONS ARE NOT RESTATED HERE. They are lifted from the module
+// that owns them, so the reasons travel with the requirements and a change there cannot silently
+// fail to reach the build.
+fn filtered_egress_options() -> List<HostKernelOption> {
+  runner_host_kernel_requirements
+    |> map(r => enabled_for(symbol: r.option, why: r.required_for))
+}
+
+// EVERYTHING THE HOST NEEDS THAT IS NOT ABOUT FILTERING. Grouped by what would break without it,
+// because "the kernel needs this" without a consequence is a list nobody can prune.
+fn platform_options() -> List<HostKernelOption> {
+  [
+    enabled_for(symbol: "CONFIG_EFI", why: "the firmware boots a UEFI application"),
+    enabled_for(symbol: "CONFIG_EFI_STUB", why: "the kernel IS the boot application; there is no separate loader"),
+    enabled_for(symbol: "CONFIG_ACPI", why: "the platform enumerates through ACPI on this board"),
+    enabled_for(symbol: "CONFIG_IGB", why: "the only NIC on the fleet-facing port, observed at 0002:02:00.0"),
+    disabled_for(symbol: "CONFIG_IGB_HWMON", why: "hardware monitoring this host does not read; a smaller image loads within an unmeasured firmware ceiling"),
+    enabled_for(symbol: "CONFIG_HW_RANDOM", why: "entropy for the boot id and per-request nonces"),
+    enabled_for(symbol: "CONFIG_HW_RANDOM_ARM_SMCCC_TRNG", why: "the entropy source this platform actually exposes"),
+    enabled_for(symbol: "CONFIG_SERIAL_AMBA_PL011", why: "the console the BMC presents over SOL"),
+    enabled_for(symbol: "CONFIG_SERIAL_AMBA_PL011_CONSOLE", why: "console output, which is the only observation channel this host has"),
+    enabled_for(symbol: "CONFIG_SERIAL_8250", why: "the second console the firmware may select"),
+    enabled_for(symbol: "CONFIG_SERIAL_8250_CONSOLE", why: "same, as a console rather than a device"),
+  ]
+}
+
+fn virtualization_options() -> List<HostKernelOption> {
+  [
+    enabled_for(symbol: "CONFIG_KVM", why: "the guest runs under hardware virtualization or not at all"),
+    enabled_for(symbol: "CONFIG_VIRTUALIZATION", why: "the parent option KVM hangs from"),
+    enabled_for(symbol: "CONFIG_TUN", why: "the attempt's tap device"),
+    enabled_for(symbol: "CONFIG_BRIDGE", why: "retained from the rejected bridged topology; carried until the image build is generated and can drop it"),
+    enabled_for(symbol: "CONFIG_VETH", why: "retained alongside BRIDGE and equally unused by the routed topology"),
+  ]
+}
+
+fn storage_and_media_options() -> List<HostKernelOption> {
+  [
+    enabled_for(symbol: "CONFIG_ISO9660_FS", why: "the BMC presents the image as optical media"),
+    enabled_for(symbol: "CONFIG_BLK_DEV_SR", why: "that medium appears as a SCSI CD device"),
+    enabled_for(symbol: "CONFIG_SCSI", why: "the transport BLK_DEV_SR sits on"),
+    enabled_for(symbol: "CONFIG_BLK_DEV_SD", why: "a disk the firmware may present alongside the medium"),
+    enabled_for(symbol: "CONFIG_USB_XHCI_HCD", why: "the BMC's virtual media arrives on a USB controller"),
+    enabled_for(symbol: "CONFIG_USB_STORAGE", why: "and presents as USB mass storage"),
+    enabled_for(symbol: "CONFIG_SQUASHFS", why: "the guest rootfs is a read-only squashfs"),
+    enabled_for(symbol: "CONFIG_BLK_DEV_INITRD", why: "the host root is an initramfs built into this image"),
+  ]
+}
+
+fn filesystem_options() -> List<HostKernelOption> {
+  [
+    enabled_for(symbol: "CONFIG_DEVTMPFS", why: "a /dev the initramfs does not have to carry as nodes"),
+    enabled_for(symbol: "CONFIG_DEVTMPFS_MOUNT", why: "mounted before init runs; without it PID 1 has no console and dies before printing why"),
+    enabled_for(symbol: "CONFIG_TMPFS", why: "the stage-2 root, the jail, the staging area and every attempt workspace"),
+    enabled_for(symbol: "CONFIG_PROC_FS", why: "every observation this host makes about its own processes"),
+    enabled_for(symbol: "CONFIG_SYSFS", why: "cgroup and network state read from the kernel's own representation rather than a tool's rendering"),
+  ]
+}
+
+fn isolation_options() -> List<HostKernelOption> {
+  [
+    enabled_for(symbol: "CONFIG_NAMESPACES", why: "the parent option the jailer's isolation hangs from"),
+    enabled_for(symbol: "CONFIG_NET_NS", why: "a private network namespace, currently WITHHELD from the offer because the VMM is not placed in one"),
+    enabled_for(symbol: "CONFIG_PID_NS", why: "PrivateProcessNamespace, which the offer does claim"),
+    enabled_for(symbol: "CONFIG_USER_NS", why: "PrivateUserNamespace"),
+    enabled_for(symbol: "CONFIG_CGROUPS", why: "the attempt cell"),
+    enabled_for(symbol: "CONFIG_MEMCG", why: "memory.max on the attempt leaf"),
+    enabled_for(symbol: "CONFIG_CGROUP_SCHED", why: "the cpu controller; note that weight control is NOT bandwidth control"),
+    enabled_for(symbol: "CONFIG_SECCOMP", why: "Firecracker installs a seccomp filter and the host observes Seccomp=2"),
+    enabled_for(symbol: "CONFIG_SECCOMP_FILTER", why: "the filter mode specifically, without which the observation would read 0"),
+  ]
+}
+
+fn boot_options() -> List<HostKernelOption> {
+  [
+    enabled_for(symbol: "CONFIG_CMDLINE_FORCE", why: "the firmware cannot inject kernel parameters at all: on a host whose whole claim is a declared surface, a BMC that could append init=/bin/sh or disable a protection through the command line would be a hole no runtime check could close"),
+    disabled_for(symbol: "CONFIG_CMDLINE_FROM_BOOTLOADER", why: "the sibling this choice must not resolve to; it lets a supplied command line REPLACE the built-in one"),
+    disabled_for(symbol: "CONFIG_CMDLINE_EXTEND", why: "the other sibling; safer than FROM_BOOTLOADER but still lets the firmware append, and pinning all three members is what makes the choice decided here rather than by defconfig resolution order"),
+    enabled_for(symbol: "CONFIG_IP_ADVANCED_ROUTER", why: "the routed point-to-point topology"),
+    disabled_for(symbol: "CONFIG_MODULES", why: "THE LOAD-BEARING ONE: with modules off every requirement here is a build-time obligation, and a runner host has no reason to load kernel code after boot"),
+  ]
+}
+
+fn runner_host_kernel_options() -> List<HostKernelOption> {
+  concat_all([
+    platform_options(),
+    virtualization_options(),
+    storage_and_media_options(),
+    filesystem_options(),
+    isolation_options(),
+    boot_options(),
+    filtered_egress_options(),
+  ])
+}
+
+fn concat_all(groups: List<List<HostKernelOption>>) -> List<HostKernelOption> {
+  groups |> flat_map(g => g)
+}
+
+// ── the verifier, which is the part that would have caught the defect ──────────────────────────
+
+// THE BUILT .config IS THE SUBJECT, NOT THE BUILD SCRIPT. Checking the script against this list
+// would compare two things an author wrote and prove they agree with each other; checking the
+// CONFIG the kernel's own build produced is what catches an option the kernel does not have, an
+// option a dependency silently dropped, and an option `olddefconfig` answered differently.
+//
+// CONFIG_NFT_COUNTER IS THE WORKED EXAMPLE. It was required by the model, absent from every kernel,
+// and would fail here on the first run -- naming the symbol, rather than surfacing months later as
+// a counter that reads zero.
+type KernelOptionVerdict
+  = KernelOptionSatisfied { symbol: NonEmptyStr }
+  | KernelOptionMissing { symbol: NonEmptyStr, required_for: NonEmptyStr }
+  | KernelOptionUnexpectedlyEnabled { symbol: NonEmptyStr, required_for: NonEmptyStr }
+
+fn option_verdict(config: String, o: HostKernelOption) -> KernelOptionVerdict {
+  let present = string_contains(s: config, pattern: concat(o.symbol as String, "=y"))
+  match o.setting {
+    KernelOptionEnabled =>
+      if present {
+        KernelOptionSatisfied { symbol: o.symbol }
+      } else {
+        KernelOptionMissing { symbol: o.symbol, required_for: o.required_for }
+      }
+    KernelOptionDisabled =>
+      if present {
+        KernelOptionUnexpectedlyEnabled { symbol: o.symbol, required_for: o.required_for }
+      } else {
+        KernelOptionSatisfied { symbol: o.symbol }
+      }
+  }
+}
+
+fn verdict_is_failure(v: KernelOptionVerdict) -> Bool {
+  match v {
+    KernelOptionSatisfied { symbol: _ } => false
+    KernelOptionMissing { symbol: _, required_for: _ } => true
+    KernelOptionUnexpectedlyEnabled { symbol: _, required_for: _ } => true
+  }
+}
+
+fn kernel_config_failures(config: String) -> List<KernelOptionVerdict> {
+  runner_host_kernel_options()
+    |> map(o => option_verdict(config: config, o: o))
+    |> filter(v => verdict_is_failure(v: v))
+}
+
+// AN EMPTY CONFIG MUST NOT PASS. Every "is this present" check answers no on an empty string, and a
+// disabled option is satisfied by absence -- so a verifier that only counted failures would call a
+// zero-byte file compliant for two of the fifty-two options and, worse, would call an UNREADABLE
+// config compliant for all of them. The emptiness arm is separate for that reason.
+type KernelConfigVerdict
+  = KernelConfigHolds { options_checked: Int }
+  | KernelConfigRefused { failures: List<KernelOptionVerdict> }
+  | KernelConfigUnreadable { detail: NonEmptyStr }
+
+fn verify_kernel_config(config: String) -> KernelConfigVerdict {
+  if !string_contains(s: config, pattern: "CONFIG_") {
+    KernelConfigUnreadable { detail: "the supplied text contains no CONFIG_ line at all, so it is not a kernel configuration" }
+  } else {
+    let failures = kernel_config_failures(config: config)
+    if (failures |> count) == 0 {
+      KernelConfigHolds { options_checked: runner_host_kernel_options() |> count }
+    } else {
+      KernelConfigRefused { failures: failures }
+    }
+  }
+}
+
+fn kernel_config_verdict_text(v: KernelConfigVerdict) -> String {
+  match v {
+    KernelConfigHolds { options_checked: n } =>
+      join(["kernel-config=holds options-checked=", to_string(n)], "")
+    KernelConfigUnreadable { detail: d } =>
+      join(["kernel-config=UNREADABLE ", d as String], "")
+    KernelConfigRefused { failures: fs } =>
+      join([
+        "kernel-config=REFUSED failures=",
+        to_string(fs |> count),
+        " ",
+        join(fs |> map(f => kernel_option_verdict_text(v: f)), "; "),
+      ], "")
+  }
+}
+
+fn kernel_option_verdict_text(v: KernelOptionVerdict) -> String {
+  match v {
+    KernelOptionSatisfied { symbol: s } => join([s as String, " ok"], "")
+    KernelOptionMissing { symbol: s, required_for: w } =>
+      join([s as String, " MISSING (needed for: ", w as String, ")"], "")
+    KernelOptionUnexpectedlyEnabled { symbol: s, required_for: w } =>
+      join([s as String, " UNEXPECTEDLY ENABLED (must be off because: ", w as String, ")"], "")
+  }
+}
+
+// ── the build script's argv, derived rather than typed ─────────────────────────────────────────
+
+// THE SCRIPT SHOULD ASK FOR EXACTLY WHAT THE VERIFIER WILL DEMAND. Emitting the flags from the same
+// list that checks the result is what makes the two agree by construction instead of by an author
+// keeping them in step -- which is the arrangement that produced CONFIG_NFT_COUNTER.
+fn kernel_config_flag(o: HostKernelOption) -> String {
+  match o.setting {
+    KernelOptionEnabled => join(["--enable ", o.symbol as String], "")
+    KernelOptionDisabled => join(["--disable ", o.symbol as String], "")
+  }
+}
+
+fn kernel_config_argv_text() -> String {
+  join(
+    concat(["./scripts/config"], runner_host_kernel_options() |> map(o => kernel_config_flag(o: o))),
+    " \\\n  ",
+  )
+}
+
+// ── the wet consumer, which is what makes any of this evidence ─────────────────────────────────
+
+// THE SUBJECT IS A BUILT .config ON DISK, READ THROUGH THE MODELED COMMAND PATH. A verifier that
+// only ever ran against fixtures the same module generated would be checking the roster against
+// itself; the whole point is to compare the model with an artifact the kernel's own build produced,
+// where `olddefconfig` may have answered differently, a dependency may have dropped something, and
+// a symbol may not exist at all.
+//
+// A NON-ZERO READ IS UNREADABLE, NOT EMPTY. If cat fails the stdout is "" and every presence test
+// answers no -- which the emptiness arm already refuses, but saying so from the exit code names the
+// cause instead of leaving a reader to infer it from a config that looks blank.
+func observe_built_kernel_config(path: String) -> KernelConfigVerdict
+  uses net: Network
+{
+  let obs = run_shell_command_observe(command: cat_command(path: path), transport: LocalExec)
+  if obs.exit_code != 0 {
+    KernelConfigUnreadable {
+      detail: join(["reading ", path, " exited ", to_string(obs.exit_code), ": ", obs.stderr], "") as NonEmptyStr
+    }
+  } else {
+    verify_kernel_config(config: obs.stdout)
+  }
+}
+
+// THE VERDICT BECOMES AN EXIT CODE, so a caller that ignores the text still cannot mistake a refusal
+// for a pass. A run that prints "REFUSED" and exits 0 is the fabricated-plausible-output arm.
+//
+// THE REFUSAL CARRIES ITS OWN REPORT. exit_failure takes the reason, so the failing symbols and what
+// each was required for travel with the non-zero status rather than needing a separate print a
+// caller could drop.
+func verify_built_kernel_config(path: String) -> ProcessExit
+  uses net: Network
+{
+  let verdict = observe_built_kernel_config(path: path)
+  match verdict {
+    KernelConfigHolds { options_checked: _ } => ExitSuccess
+    KernelConfigRefused { failures: _ } => exit_failure(reason: kernel_config_verdict_text(v: verdict))
+    KernelConfigUnreadable { detail: _ } => exit_failure(reason: kernel_config_verdict_text(v: verdict))
+  }
+}
+
+// THE PATH THIS FLEET ACTUALLY BUILDS, bound so the check has a default subject rather than
+// requiring every caller to remember where the kernel tree is.
+data runner_host_kernel_config_path: NonEmptyStr = "/var/tmp/gunbc-hostimage/linux-6.12.108/.config"
+
+func verify_runner_host_kernel_config() -> ProcessExit
+  uses net: Network
+{
+  verify_built_kernel_config(path: runner_host_kernel_config_path as String)
+}
