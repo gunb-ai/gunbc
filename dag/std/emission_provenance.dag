@@ -7,8 +7,7 @@ import std.content_hash {
 }
 import std.decl_ref { DeclarationRef }
 import std.occurrence_identity { NodeOccurrenceIdentity }
-import std.occurrence_binding { ContainmentPath }
-import std.types { FilePath, NonEmptyStr, String, Map, RunKey, Int }
+import std.types { FilePath, NonEmptyStr, String, Map }
 
 // Observations of one emission transaction. The observing instrument supplies its existing
 // subject; this substrate neither manufactures a second run identity nor classifies seed debt.
@@ -64,53 +63,6 @@ type EmissionContribution
       cause: NonEmptyStr
       source: String
     }
-
-// Coverage is derived from the tree: an unobserved descendant remains visible through every
-// enclosing composition. The observation retains exact output content identity separately from
-// source identity. A later formatter/build-input transformation owes its own derived observation;
-// this receipt cannot be rebound by replacing its digest while retaining the old contribution tree.
-type EmissionOutputMember {
-  path: FilePath
-  content: ContentHash
-  contribution: EmissionContribution
-}
-
-type EmissionOutputCoverage
-  = EmissionOutputsObserved { members: FreeMonoid<EmissionOutputMember> }
-  | EmissionOutputsPartial {
-      members: FreeMonoid<EmissionOutputMember>
-      stopped_at: DeclarationRef
-      cause: NonEmptyStr
-    }
-  | EmissionOutputsUnreached { stopped_at: DeclarationRef, cause: NonEmptyStr }
-
-// These axes are intentionally not summarized by a Bool or a single complete/refused verdict.
-// Observed output membership does not imply observed origins: consumers must inspect each tree.
-// The existing emission subject encloses this value when the instrument renders its receipt.
-type EmissionProvenance {
-  resolution: EmissionResolutionCoverage
-  outputs: EmissionOutputCoverage
-}
-
-// The observing product passes its existing subject unchanged. RunKey is the independent
-// execution axis: two executions can share a source/binary subject without being the same event.
-// Consumers compare against the run they requested; a foreign receipt cannot be rebound merely
-// because its source revision or output count happens to agree.
-type EmissionTransactionObservation<Subject> {
-  subject: Subject
-  run: RunKey
-  provenance: EmissionProvenance
-}
-
-// Positions identify CONTRIBUTION OCCURRENCES inside one observed output tree. They are not
-// source OccurrenceIds, do not replace those ids, and carry no cross-run identity claim. Repeated
-// uses of one DeclarationRef occupy distinct positions. The enclosing transaction scopes this
-// address, and the output's content identity binds it to the member actually observed.
-type EmissionContributionAddress {
-  output_path: FilePath
-  output_content: ContentHash
-  position: ContainmentPath<Int>
-}
 
 type EmissionDeclarationCorrespondence
   = EmissionDeclarationPreserved { before: EmissionDeclarationMember, after: EmissionDeclarationMember }
