@@ -274,6 +274,44 @@ data executor_privileged_operation_shell_scaffold: Disposition = Scaffold {
 // fact about an invocation — the binary, the non-interactive flag, the flag's position — and the
 // hand-spelling was a §3 fork: a second authorship of the same calling convention, duplicating the
 // binary path and omitting the flag that distinguishes refusal from a deadlocked tty wait.
+// IDEMPOTENCE IS A PROPERTY OF THE OPERATION, NOT A FAVOUR ITS CALLER DOES IT. `useradd` exits 9
+// when the account exists, so EnsureSystemAccount -- whose name promises the opposite -- fails on
+// every convergence after the first. That was invisible because its ONE caller
+// (live_deploy.emit deploy_publication_principal_ensure_command) wrapped it in `id -u ... ||`, so
+// the operation READ as idempotent while the guarantee lived in the neighbour. MEASURED on srv1:
+// re-running the projected argv returned rc=9 for the account and rc=0 for all six others.
+//
+// The guard therefore moves here, where it is one authority instead of a thing each caller must
+// remember. The match is EXHAUSTIVE ON PURPOSE with no wildcard arm: a new operation must decide
+// whether it needs a precondition, rather than defaulting to "none" and inheriting this same
+// silent non-idempotence.
+fn executor_privileged_operation_precondition(op: ExecutorPrivilegedOperation) -> String? {
+  match op {
+    EnsureSystemAccount { login: l, shell: _ } =>
+      Present { value: join(["id -u ", l as String, " >/dev/null 2>&1"], "") }
+    EnsureSupplementaryGroupMembership { login: l, group: g } =>
+      Present { value: join(["id -nG ", l as String, " 2>/dev/null | tr ' ' '\\n' | grep -qx ", g as String], "") }
+    EnsureOwnedDirectory { path: _, owner: _, group: _, mode: _ } => none
+    RemoveDirectoryTree { path: _ } => none
+    SystemdDaemonReload => none
+    SystemdEnableUnit { unit: _ } => none
+    SystemdStartUnit { unit: _ } => none
+    SystemdSetUnitProperty { unit: _, assignment: _ } => none
+    InstallFile { source: _, destination: _, owner: _, group: _, mode: _ } => none
+    SystemdReloadUnit { unit: _ } => none
+  }
+}
+
+// THE COMMAND A CONVERGENCE RUNS: the operation, preceded by its precondition when it has one, so
+// applying a desired member twice is a no-op rather than a failure.
+fn executor_privileged_operation_converge_command(op: ExecutorPrivilegedOperation) -> String {
+  match executor_privileged_operation_precondition(op: op) {
+    Present { value: guard } =>
+      join([guard, " || ", executor_privileged_operation_shell_command(op: op)], "")
+    Absent => executor_privileged_operation_shell_command(op: op)
+  }
+}
+
 fn executor_privileged_operation_shell_command(op: ExecutorPrivilegedOperation) -> String {
   join(
     map(

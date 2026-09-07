@@ -43,7 +43,7 @@ import std.layout {
   render
 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
-import gunbc.executor_privileged_operation { EnsureSystemAccount, executor_privileged_operation_shell_command }
+import gunbc.executor_privileged_operation { EnsureSystemAccount, executor_privileged_operation_shell_command, executor_privileged_operation_converge_command }
 import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, TimerUnitFile, SliceUnitFile,
@@ -1186,15 +1186,17 @@ fn install_d_managed_command(dir: ManagedDirectory) -> String {
 // preamble rather than the publication member because the member's first act is `install -o` for
 // that principal, and a member that creates its own principal on the way in would conflate two
 // ownership facts in one step.
+// THE GUARD IS NO LONGER SPELLED HERE. `id -u ... ||` used to be authored inline, which made this
+// caller the place EnsureSystemAccount's idempotence lived -- so the operation read as idempotent
+// while any second caller inherited `useradd` exiting 9. The precondition now belongs to the
+// operation (gunbc.executor_privileged_operation executor_privileged_operation_converge_command)
+// and this function consumes it. The emitted bytes are unchanged; what changed is that they have
+// one author.
 fn deploy_publication_principal_ensure_command(spec: DeploymentSpec) -> String {
-  let login = spec.names.publication_principal
-  join([
-    "id -u ", login as String, " >/dev/null 2>&1 || ",
-    executor_privileged_operation_shell_command(op: EnsureSystemAccount {
-      login: login,
-      shell: fleet_posix_nologin_shell_path,
-    }),
-  ], "")
+  executor_privileged_operation_converge_command(op: EnsureSystemAccount {
+    login: spec.names.publication_principal,
+    shell: fleet_posix_nologin_shell_path,
+  })
 }
 
 fn deploy_apply_preamble_steps(access: DeployAccess, spec: DeploymentSpec) -> List<PipelineStep> {
