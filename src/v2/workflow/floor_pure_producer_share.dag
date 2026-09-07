@@ -238,7 +238,11 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
 // either arm, which is strictly stronger than the one-base discipline the hazard asks for.
 // Receipt that dispatch executes: runs 34088506991 (absent, 9788d35369023cb6aaac300fb060b88e0202f301)
 // and 34088508298 (present, a94e14bab571ddcdccc4e4e5ef8bd8be3173890a), the pair measuring
-// `witness_layer_decl_index` for warm enrolment.
+// `witness_layer_decl_index` for warm enrolment -- a producer that no longer exists: it was the
+// zero-arg mint of the whole witness-layer declaration population, and the keyed read in
+// `v2.lens.common.outside_modeled_guarantee_join` left it with no consumer. The receipt is kept
+// because the refusal is about the VALUE that was measured, which is the reading that produced the
+// keyed read; the name is recorded here as the producer of that run rather than as a live symbol.
 //
 // TWO PRESENT-VS-ABSENT PAIRS, dispatched on branches rather than as pull requests because CI
 // builds refs/pull/N/MERGE and a PR pair measures two different trees the moment main moves:
