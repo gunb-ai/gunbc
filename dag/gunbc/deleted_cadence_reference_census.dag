@@ -389,7 +389,7 @@ fn deleted_cadence_references() -> List<DeletedCadenceReference> {
           witness_population: "namespace_import_closure_receipt_holds and interpreter_dispatch_bijection_real_roster_red_holds",
           entry_point_exists: true,
           cadence: LocalRepoWetLane,
-          terminal: TerminalVerdictObserved { run_identity: "34065943608" as NonEmptyStr },
+          terminal: NeverReachedTerminal,
         },
       },
     },
