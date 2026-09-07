@@ -25,37 +25,60 @@ import std.process_termination { ProcessTermination, ProcessExited, ProcessSigna
 import std.decl_ref { DeclarationRef }
 import std.witness_admission { WitnessConsumerCadence }
 
-type CostBasis
-  = Predicted
-  | Measured
+// EPISTEMIC BASIS IS PER AXIS, NOT PER ACCOUNT. One CostBasis over the whole account could not
+// say which of time, space and power the basis was about, so a constructor supplying only a time
+// filled space and power with zero and stamped the account Measured. That renders an absence as a
+// value: nothing downstream could distinguish "space measured at 0" from "space never measured",
+// and the deficit signal that would make the missing measurement rank for fixing was destroyed
+// (DESIGN section 5, fabricated plausible output). Pairing a value field with a separate basis
+// field is what made that writable, so the repair fuses them: the value lives INSIDE the
+// constructor that says how it was come by, and CostAxisUnestablished carries no value at all, so
+// the fabricated zero has no constructor rather than being caught by a check.
+//
+// PER-AXIS IS ALREADY RULED. gunbc.v1_complexity_capability_census and
+// gunbc.plans.v2_complexity_capability_parity both record the 2026-08-05 operator ruling on
+// CostBasis: approved three-valued, "applied PER RESOURCE AXIS rather than once per account -- one
+// account may legitimately carry time PredictedFromCalibration, space Derived and power Measured,
+// which a record-level basis cannot represent honestly." This lands that carrier. It deliberately
+// does NOT rename the two arms the tree has today into the ruled Derived /
+// PredictedFromCalibration split, because which of those two today's Predicted denotes is a
+// question about the cost model rather than about the carrier; the constructors are named so that
+// split is one added arm each rather than a rewrite.
+type CostAxis<M>
+  = CostAxisMeasured { value: M }
+  | CostAxisPredicted { value: M }
+  | CostAxisUnestablished
 
 type CostAccount<S> {
-  time: Measure<Time, S, Nat>
-  space: ByteSize
-  power: Watt
-  basis: CostBasis
+  time: CostAxis<Measure<Time, S, Nat>>
+  space: CostAxis<ByteSize>
+  power: CostAxis<Watt>
 }
 
+// A DECLARED PREDICTION OF ZERO, which is a different fact from an unmeasured axis: this is the
+// identity element folds start from, and it asserts zero rather than confessing ignorance.
 fn cost_account_predicted_zero<S>() -> CostAccount<S> {
   CostAccount {
-    time: time_measure(count: 0)
-    space: byte_size(count: 0)
-    power: watt(count: 0)
-    basis: Predicted
+    time: CostAxisPredicted { value: time_measure(count: 0) }
+    space: CostAxisPredicted { value: byte_size(count: 0) }
+    power: CostAxisPredicted { value: watt(count: 0) }
   }
 }
 
 fn cost_account_measured<S>(time: Measure<Time, S, Nat>) -> CostAccount<S> {
   CostAccount {
-    time: time
-    space: byte_size(count: 0)
-    power: watt(count: 0)
-    basis: Measured
+    time: CostAxisMeasured { value: time }
+    space: CostAxisUnestablished
+    power: CostAxisUnestablished
   }
 }
 
-fn cost_account_time_count<S>(account: CostAccount<S>) -> Nat {
-  measure_count(m: account.time)
+fn cost_account_time_count<S>(account: CostAccount<S>) -> Nat? {
+  match account.time {
+    CostAxisMeasured { value: t } => Present { value: measure_count(m: t) }
+    CostAxisPredicted { value: t } => Present { value: measure_count(m: t) }
+    CostAxisUnestablished => none
+  }
 }
 
 type RealizationObjective {

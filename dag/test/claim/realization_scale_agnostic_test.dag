@@ -21,7 +21,10 @@ test fn witness_milli_critical_path() -> Bool {
 test fn witness_milli_cost_account() -> Bool {
   let batches = [[milli(count: 7)], [milli(count: 8)]]
   let account = cost_account_measured_from_schedule_critical_path(batch_times: batches)
-  cost_account_time_count(account: account) == 15
+  match cost_account_time_count(account: account) {
+    Present { value: n } => n == 15
+    Absent => false
+  }
 }
 
 test fn witness_milli_rollup_discriminates() -> Bool {
