@@ -19,7 +19,9 @@ import v2.workflow.floor_changed_witness {
   ChangedWitnessRow,
   changed_witness_execution_standing,
   changed_witness_standing_blocks,
-  changed_witness_blocking_identities,
+  ChangedWitnessBlocker,
+  changed_witness_blocking_cause,
+  changed_witness_blockers,
 }
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
@@ -42,7 +44,7 @@ import v2.workflow.floor_terminal_ledger {
   ClaimDisposition, Passed, Failed, KnownRedHeld, RouteGapBeforeVerdict,
   PassedOverBudget, BudgetRefusedBeforeVerdict,
 }
-import v2.std.algebra { Cons, Empty }
+import v2.std.algebra { Cons, Empty, any }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -308,7 +310,8 @@ test fn passed_and_known_red_held_are_green() -> Bool {
     && changed_witness_standing_blocks(standing: MissingDisposition {})
 }
 
-// The fold keeps blocking identities in input order and drops the green rows.
+// The fold keeps blocking rows in input order, drops the green rows, and CARRIES each blocker's
+// cause.
 test fn blocking_fold_keeps_reds_and_drops_greens() -> Bool {
   let rows = [
     ChangedWitnessRow {
@@ -318,12 +321,106 @@ test fn blocking_fold_keeps_reds_and_drops_greens() -> Bool {
     ChangedWitnessRow { identity: "b.green", standing: PlannedAndPassed {} },
     ChangedWitnessRow { identity: "c.missing", standing: MissingDisposition {} }
   ]
-  match changed_witness_blocking_identities(rows: rows) {
+  match changed_witness_blockers(rows: rows) {
     Cons { head: first, tail: rest } =>
-      first == "a.declined"
+      first.identity == "a.declined"
+        && first.cause == "declined_outside_gate_closure"
         && match rest {
           Cons { head: second, tail: last } =>
-            second == "c.missing"
+            second.identity == "c.missing"
+              && second.cause == "changed_witness_missing_disposition"
+              && match last {
+                Empty {} => true
+                Cons { head: _, tail: _ } => false
+              }
+          Empty {} => false
+        }
+    Empty {} => false
+  }
+}
+
+// THE DISCRIMINATING RED for `gunbc.recurring_failure_mode`
+// `non_verdict_disposition_surfaces_as_refusal` at this boundary, and the reason it is authored
+// as a comparison rather than as two literals: the defect was not a wrong cause, it was ONE cause
+// for every blocking standing. Two rows that block for materially different reasons — a witness
+// that was declined and never ran, against a witness that was planned, ran, and reached no
+// verdict — must arrive at the consumer distinguishable. Against the `List<String>` this fold
+// returned through gunbc#10757 this assertion is UNSATISFIABLE: there was no cause to compare.
+test fn two_blocking_standings_do_not_share_one_cause() -> Bool {
+  let rows = [
+    ChangedWitnessRow {
+      identity: "a.never_ran",
+      standing: Declined { disposition: DeclinedOutsideGateClosure {} }
+    },
+    ChangedWitnessRow { identity: "b.ran_without_verdict", standing: PlannedWithoutTerminalVerdict {} }
+  ]
+  match changed_witness_blockers(rows: rows) {
+    Cons { head: first, tail: rest } =>
+      match rest {
+        Cons { head: second, tail: _ } =>
+          (first.cause != second.cause)
+            && (first.cause == "declined_outside_gate_closure")
+            && (second.cause == "changed_witness_planned_without_terminal_verdict")
+        Empty {} => false
+      }
+    Empty {} => false
+  }
+}
+
+// AND THE PAIR THE INCIDENT WAS MEASURED ON: two DECLINES are not one cause either. The fifteen
+// identities of gunbc#10757 were declined because no source root reaches their module, which is a
+// different fact — and a different discharge — from a module whose authored name misses the gate
+// prefixes. Enrolment follows the diff; discovery follows the source roots; the cause must say
+// which of the two refused.
+test fn two_declines_carry_their_own_dispositions() -> Bool {
+  let outside_closure = changed_witness_blocking_cause(
+    standing: Declined { disposition: DeclinedOutsideGateClosure {} }
+  )
+  let excluded = changed_witness_blocking_cause(
+    standing: Declined { disposition: DeclinedDiscoveryExcluded { matched_substring: "/scratch/" } }
+  )
+  (outside_closure != excluded)
+    && (excluded == "declined_discovery_excluded")
+}
+
+// NO BLOCKING STANDING REPORTS THE OLD CONSTANT. The cause the merge gate used to receive for
+// every one of them was the flat name of the population itself, which offered its reader exactly
+// one affordance — rerun — for standings that a rerun cannot discharge.
+test fn no_blocking_cause_is_the_flat_population_name() -> Bool {
+  let blocking = [
+    Declined { disposition: DeclinedOutsideRequiredGate {} },
+    MissingDisposition {},
+    PlannedWithoutTerminalVerdict {},
+    CostObservationMissingUnderVerdictOnly {}
+  ]
+  !any(
+    xs: blocking,
+    predicate: fn(s) { changed_witness_blocking_cause(standing: s) == "changed_witness_blocking" }
+  )
+}
+
+// THE DEGENERATE CONTROL that widening a codomain invites: two rows blocking for the SAME reason
+// must still produce TWO blockers. The identity is what the author has to act on, and a fold that
+// keyed or collapsed on the cause would lose one silently — a `List<String>` made that mistake
+// unobservable, and the repair must not introduce it.
+test fn two_declines_with_one_disposition_stay_two_blockers() -> Bool {
+  let rows = [
+    ChangedWitnessRow {
+      identity: "a.declined",
+      standing: Declined { disposition: DeclinedOutsideGateClosure {} }
+    },
+    ChangedWitnessRow {
+      identity: "b.declined",
+      standing: Declined { disposition: DeclinedOutsideGateClosure {} }
+    }
+  ]
+  match changed_witness_blockers(rows: rows) {
+    Cons { head: first, tail: rest } =>
+      first.identity == "a.declined"
+        && match rest {
+          Cons { head: second, tail: last } =>
+            second.identity == "b.declined"
+              && (first.cause == second.cause)
               && match last {
                 Empty {} => true
                 Cons { head: _, tail: _ } => false
@@ -337,7 +434,7 @@ test fn blocking_fold_keeps_reds_and_drops_greens() -> Bool {
 // POSITIVE CONTROL: a diff with no changed witness identities projects nothing and blocks
 // nothing.
 test fn empty_changed_set_blocks_nothing() -> Bool {
-  match changed_witness_blocking_identities(rows: []) {
+  match changed_witness_blockers(rows: []) {
     Empty {} => true
     Cons { head: _, tail: _ } => false
   }

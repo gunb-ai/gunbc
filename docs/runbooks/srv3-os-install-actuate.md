@@ -13,9 +13,12 @@ Model authority: `gunbc.srv3_install_media_fetch`, `gunbc.srv3_seeded_install_me
 
 **Precondition:** BMC Redfish reachable at **192.168.1.192** (HTTP 200). nbd-proxy ws-upgrade dry-run
 confirmed **Present** on `/vm/0/0` (see [srv3 nbd-proxy ws-upgrade dry-run](srv3-nbd-proxy-ws-upgrade-dry-run.md)).
-Actuator host is **derived** (`gunbc.os_install_actuator_selection.srv3_os_install_actuator_host` — today
-srv1 via `OperatorHostPreference`); run serve/login commands from the selected actuator host or any host
-with the toolchain grant (curl, websocat, nbdkit, socat).
+Actuator host is **derived** (`gunbc.os_install_actuator_selection.srv3_os_install_actuator_selection` — today
+the `ActuatorSelected` arm carries srv1 via `OperatorHostPreference`); run serve/login commands from the
+selected actuator host or any host with the toolchain grant (curl, websocat, nbdkit, socat).
+The selection is a coproduct, not a host: on `ActuatorUnsatisfiable` there is **no** actuator host and the
+consumers refuse and carry the reason. Do not substitute a host by hand — that fabricated default is exactly
+what was deleted.
 
 ## Hard constraints
 
@@ -90,7 +93,7 @@ Expected stdout includes `InstallMediaRemasterToolchainReceipt: outcome=Present`
 
 ## Runnable prep (no BMC side effects except login)
 
-**Run on srv1** (actuator host — `srv3_os_install_actuator_host`). BMC is always **192.168.1.192** (modeled `asrock_srv3_live_bmc_host`; not a host alias). srv2 is not used in this sequence.
+**Run on srv1** (actuator host — the `ActuatorSelected { host }` arm of `srv3_os_install_actuator_selection`). BMC is always **192.168.1.192** (modeled `asrock_srv3_live_bmc_host`; not a host alias). srv2 is not used in this sequence.
 
 From the gunbc repo root on srv1 (`cd` to your checkout — worktree or pinned tree):
 

@@ -85,8 +85,8 @@ func srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> 
     return exit_failure(reason: concat("bmcweb-login: body write failed: ", body_write.error))
   }
 
-  let login_exit = srv3_reconciliation_to_process_exit(
-    r: srv3_bmcweb_session_login_apply(),
+  let login_exit = srv3_apply_to_process_exit(
+    d: srv3_bmcweb_session_login_apply(),
     failure_prefix: "bmcweb-login: curl login failed: ",
   )
   match login_exit {
@@ -94,8 +94,8 @@ func srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> 
     _ => return login_exit
   }
 
-  let extract_exit = srv3_reconciliation_to_process_exit(
-    r: srv3_bmcweb_token_extract_apply(),
+  let extract_exit = srv3_apply_to_process_exit(
+    d: srv3_bmcweb_token_extract_apply(),
     failure_prefix: "bmcweb-login: token extract failed: ",
   )
   match extract_exit {
@@ -109,8 +109,8 @@ func srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> 
 func srv3_nbd_proxy_serve() -> ProcessExit
   uses net: std.resources.Network
 {
-  srv3_reconciliation_to_process_exit(
-    r: srv3_nbd_proxy_serve_apply(),
+  srv3_apply_to_process_exit(
+    d: srv3_nbd_proxy_serve_apply(),
     failure_prefix: "nbd-proxy-serve: host effect apply refused: ",
   )
 }

@@ -179,6 +179,7 @@ import gunbc.recurring_failure_mode.permissiveness_promoted_into_a_higher_safety
 import gunbc.recurring_failure_mode.evaluation_model_cleanup_undeclared { evaluation_model_cleanup_undeclared }
 import gunbc.recurring_failure_mode.docs_markdown_projections_have_no_completing_actuator { docs_markdown_projections_have_no_completing_actuator }
 import gunbc.recurring_failure_mode.type_name_field_carries_rendered_value { type_name_field_carries_rendered_value }
+import gunbc.recurring_failure_mode.capability_arrives_outside_the_converged_path { capability_arrives_outside_the_converged_path }
 import gunbc.recurring_failure_mode.inflation_fold_cannot_name_the_environment_it_measures { inflation_fold_cannot_name_the_environment_it_measures }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
@@ -349,5 +350,6 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   evaluation_model_cleanup_undeclared,
   docs_markdown_projections_have_no_completing_actuator,
   type_name_field_carries_rendered_value,
+  capability_arrives_outside_the_converged_path,
   inflation_fold_cannot_name_the_environment_it_measures,
 ]
