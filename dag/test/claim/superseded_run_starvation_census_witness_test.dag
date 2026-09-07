@@ -317,7 +317,7 @@ test fn earliest_created_at_returns_none_when_no_jobs() -> Bool {
 }
 
 test fn earliest_created_at_returns_none_when_no_created_at() -> Bool {
-  data job_no_created: WorkflowJobRun = WorkflowJobRun {
+  let job_no_created = WorkflowJobRun {
     id: 200,
     run_id: 1,
     name: "no-created",
