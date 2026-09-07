@@ -94,8 +94,8 @@ func run_generated_artifact_drift_gate() -> ProcessExit {
   run_generated_artifact_drift_gate_body()
 }
 
-// The loudness half: the floor witness used to collapse this gate's ProcessExit to Bool via
-// tools.ci_gates.exit_ok (deleted; call sites now match ProcessExit), so a generated-artifact drift red reported only returned Bool(false)
+// The loudness half: the floor witness collapses this gate's ProcessExit to Bool via
+// std.process.exit_ok, so a generated-artifact drift red reported only returned Bool(false)
 // without the located path. The gate body records the reason from its single
 // observe_generated_artifact_population pass; the failure-receipt companion consumes that retained
 // detail instead of re-observing. THE BODY NOW RECORDS THE CLEAN SIDE TOO, and that is the whole
