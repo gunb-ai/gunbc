@@ -16,6 +16,10 @@ import gunbc.auth.mosquitto_options_binding { mosquitto_options_content }
 import gunbc.fleet.printer_job_start {
   PrinterSerialLookup, PrinterSerialFound, PrinterSerialUnknown,
   PrinterSerialUnrecorded, PrinterSerialAmbiguous, printer_serial,
+  PrintStart, PrintStartPublished, PrintStartRefused,
+  PrintStartOutcomeUnknown, PrintStartOutcomeUnknownResidueRemains,
+  PrintStartRefusedResidueRemains, PrintStartPublishedCleanupRefused,
+  start_refusal, start_receipt, start_may_be_replayed,
 }
 import gunbc.fleet_asset_identity { printer_01, printer_02, ams_01 }
 
@@ -169,5 +173,116 @@ test fn the_lan_broker_endpoint_is_tls() -> Bool {
   match endpoint.security {
     MqttOverTls => (endpoint.host as String) == (a_host as String)
     MqttPlaintext => false
+  }
+}
+
+// THE INCIDENT ITSELF, ENROLLED. The first wet publish returned exit 7, "The connection was lost",
+// and this leg reported "the start command was not published". The printer was printing. Until these
+// rows existed the repair was protected by prose and source inspection only -- which is exactly the
+// state that let the original classification ship.
+//
+// start_refusal IS PURE AND TAKES THE THREE DISCRIMINATING FACTS, which is what makes the red
+// authorable at all. Reaching this through the effect would need a real broker that accepts a TCP
+// connection and then drops it mid-publish; the classification is the part that was wrong, and it is
+// reachable from a fixture.
+test fn a_lost_connection_is_not_reported_as_a_refusal() -> Bool {
+  match start_refusal(printer: printer_02, stderr: "Error: The connection was lost.", cleaned: true) {
+    PrintStartOutcomeUnknown { printer: _, cause: _ } => true
+    PrintStartRefused { printer: _, cause: _ } => false
+    PrintStartOutcomeUnknownResidueRemains { printer: _, cause: _ } => false
+    PrintStartRefusedResidueRemains { printer: _, cause: _ } => false
+    PrintStartPublished { receipt: _ } => false
+    PrintStartPublishedCleanupRefused { receipt: _, cause: _ } => false
+  }
+}
+
+// THE RESIDUE ARM CARRIES THE SAME CLASSIFICATION. A publish whose outcome is unknown AND whose
+// credential shred failed is two facts; collapsing the first into "refused" because the second went
+// wrong would lose exactly the fact that matters for whether a retry is safe.
+test fn an_unknown_outcome_with_residue_is_still_unknown() -> Bool {
+  match start_refusal(printer: printer_02, stderr: "Error: The connection was lost.", cleaned: false) {
+    PrintStartOutcomeUnknownResidueRemains { printer: _, cause: _ } => true
+    PrintStartOutcomeUnknown { printer: _, cause: _ } => false
+    PrintStartRefused { printer: _, cause: _ } => false
+    PrintStartRefusedResidueRemains { printer: _, cause: _ } => false
+    PrintStartPublished { receipt: _ } => false
+    PrintStartPublishedCleanupRefused { receipt: _, cause: _ } => false
+  }
+}
+
+// NO EXIT-CODE TABLE IS CONSULTED, so an auth failure classifies exactly like a lost connection.
+// That is deliberate rather than lazy: mosquitto_pub does distinguish the two, but this repository
+// has not measured that mapping, and this file's neighbouring modules record what happens when a
+// mapping is inferred from the shape of a situation instead. If the table is ever measured, THIS row
+// is the one that must be changed to admit the narrower arm -- which is the point of enrolling it.
+test fn every_nonzero_publish_result_is_unknown_until_the_table_is_measured() -> Bool {
+  match start_refusal(printer: printer_02, stderr: "Connection Refused: not authorised.", cleaned: true) {
+    PrintStartOutcomeUnknown { printer: _, cause: _ } => true
+    PrintStartRefused { printer: _, cause: _ } => false
+    PrintStartOutcomeUnknownResidueRemains { printer: _, cause: _ } => false
+    PrintStartRefusedResidueRemains { printer: _, cause: _ } => false
+    PrintStartPublished { receipt: _ } => false
+    PrintStartPublishedCleanupRefused { receipt: _, cause: _ } => false
+  }
+}
+
+// THE CAUSE MUST TELL A READER THE PRINTER MAY BE PRINTING, because the human consequence of the
+// original defect was a message that invited a retry. A carrier renamed without its diagnostic
+// following is the wrapper-is-not-safety failure.
+test fn the_unknown_cause_warns_that_the_printer_may_be_printing() -> Bool {
+  match start_refusal(printer: printer_02, stderr: "Error: The connection was lost.", cleaned: true) {
+    PrintStartOutcomeUnknown { printer: _, cause: c } =>
+      string_contains(s: c as String, pattern: "UNKNOWN")
+        && string_contains(s: c as String, pattern: "may be printing")
+        && string_contains(s: c as String, pattern: "Do NOT publish again")
+    PrintStartRefused { printer: _, cause: _ } => false
+    PrintStartOutcomeUnknownResidueRemains { printer: _, cause: _ } => false
+    PrintStartRefusedResidueRemains { printer: _, cause: _ } => false
+    PrintStartPublished { receipt: _ } => false
+    PrintStartPublishedCleanupRefused { receipt: _, cause: _ } => false
+  }
+}
+
+// THE NO-REPLAY LAW OVER THE WHOLE COPRODUCT. Every arm this leg can produce is spelled out, so an
+// arm added later without a replay decision does not compile -- and a future observer that wanted to
+// republish would have to change this row in the open rather than by adding a case.
+test fn no_start_outcome_authorizes_a_second_publish() -> Bool {
+  let arms = [
+    start_refusal(printer: printer_02, stderr: "Error: The connection was lost.", cleaned: true),
+    start_refusal(printer: printer_02, stderr: "Error: The connection was lost.", cleaned: false),
+    start_receipt(printer: printer_02, topic: bambu_request_topic(serial: a_serial),
+      remote_name: a_remote_name, sequence_id: "1" as NonEmptyStr, cleaned: true),
+    start_receipt(printer: printer_02, topic: bambu_request_topic(serial: a_serial),
+      remote_name: a_remote_name, sequence_id: "1" as NonEmptyStr, cleaned: false),
+  ]
+  (arms |> filter(o => start_may_be_replayed(o: o)) |> length) == 0
+}
+
+// THE POSITIVE CONTROL FOR THE ROW ABOVE. A filter over an empty list is also zero, and a
+// no-replay witness that passes because it examined nothing is the fixture-at-an-absorbing-extreme
+// failure this repository already records.
+test fn the_no_replay_law_examined_a_nonempty_population() -> Bool {
+  let arms = [
+    start_refusal(printer: printer_02, stderr: "Error: The connection was lost.", cleaned: true),
+    start_refusal(printer: printer_02, stderr: "Error: The connection was lost.", cleaned: false),
+    start_receipt(printer: printer_02, topic: bambu_request_topic(serial: a_serial),
+      remote_name: a_remote_name, sequence_id: "1" as NonEmptyStr, cleaned: true),
+    start_receipt(printer: printer_02, topic: bambu_request_topic(serial: a_serial),
+      remote_name: a_remote_name, sequence_id: "1" as NonEmptyStr, cleaned: false),
+  ]
+  (arms |> length) == 4
+}
+
+// A CLEAN PUBLISH STILL REACHES THE PUBLISHED ARM, so the reclassification above did not simply
+// route everything to unknown. Without this the four rows would pass on a leg that never succeeds.
+test fn a_clean_publish_is_still_published() -> Bool {
+  match start_receipt(printer: printer_02, topic: bambu_request_topic(serial: a_serial),
+    remote_name: a_remote_name, sequence_id: "1" as NonEmptyStr, cleaned: true) {
+    PrintStartPublished { receipt: _ } => true
+    PrintStartPublishedCleanupRefused { receipt: _, cause: _ } => false
+    PrintStartOutcomeUnknown { printer: _, cause: _ } => false
+    PrintStartOutcomeUnknownResidueRemains { printer: _, cause: _ } => false
+    PrintStartRefused { printer: _, cause: _ } => false
+    PrintStartRefusedResidueRemains { printer: _, cause: _ } => false
   }
 }

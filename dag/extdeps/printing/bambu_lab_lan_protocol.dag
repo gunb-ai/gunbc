@@ -54,10 +54,8 @@ fn bambu_report_topic(serial: NonEmptyStr) -> MqttTopic {
   concat(concat("device/", serial as String), "/report") as MqttTopic
 }
 
-// THE LAN BROKER IS TLS ON 8883 WITH A CERTIFICATE THAT CANNOT BE CHAIN-VERIFIED, and that is stated
-// rather than silently worked around. The printer presents a self-signed certificate for an IP
-// address, so a verifying client refuses; this is the same peer-verification situation the FTPS leg
-// already models and records, and it is a property of the DEVICE, not a preference of the caller.
+// THE LAN BROKER IS TLS ON 8883, AND THE CHAIN IS VERIFIED. What the peer presents, and what pins
+// it, is recorded once beside the CA at bambu_printer_ca_bundle_source below.
 data bambu_lan_mqtt_port: Port = 8883
 data bambu_lan_mqtt_user: NonEmptyStr = "bblp"
 
@@ -143,11 +141,14 @@ fn bool_json(b: Bool) -> String {
   if b { "true" } else { "false" }
 }
 
-// THE PRINTER'S CERTIFICATE IS ISSUED BY A REAL CA, AND THE FIRST DRAFT OF THIS LEG ASSUMED
-// OTHERWISE. The note above the endpoint said the machine presents a self-signed certificate that
-// cannot be chain-verified, so the transport should skip verification the way the FTPS leg does.
-// That was inference from the shape of the situation -- a consumer device on a LAN, addressed by IP
-// -- and it is wrong. Measured: the leaf is CN=<serial>, its issuer is
+// THE PRINTER'S CERTIFICATE IS ISSUED BY A REAL CA. An earlier revision of this file asserted the
+// opposite two declarations above -- that the machine presents a self-signed certificate which
+// cannot be chain-verified, so the transport should skip verification the way the FTPS leg does --
+// and that paragraph is DELETED rather than left standing beside its own correction, because a
+// reader who stops at the first statement gets the wrong answer and this branch has already been
+// bitten by stale prose outliving the fact it described. It was inference from the shape of the
+// situation: a consumer device on a LAN, addressed by IP. Measured: the leaf is CN=<serial>, its
+// issuer is
 // C=CN, O=BBL Technologies Co., Ltd, CN=BBL CA, and the printer serves the CA alongside it. What
 // openssl reports as "self-signed certificate in certificate chain" is the ROOT being self-signed,
 // which is true of every root CA and is not a statement about the leaf.

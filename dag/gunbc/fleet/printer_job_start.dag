@@ -19,6 +19,7 @@ import extdeps.printing.bambu_lab_lan_protocol {
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { uri_wire }
 import extdeps.tools.mosquitto_pub { mosquitto_publish_command }
+import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.mosquitto_options_binding {
   MosquittoOptionsBinding, MosquittoOptionsPlacement, MosquittoOptionsPlaced,
   MosquittoOptionsRefused, MosquittoOptionsRefusedResidueRemains,
@@ -246,18 +247,38 @@ fn start_may_be_replayed(o: PrintStart) -> Bool {
   }
 }
 
-// THE SEQUENCE ID IS THE CALLER'S, NOT INVENTED HERE. Bambu echoes it on the report topic, so it is
-// the only handle an observer has for joining a report back to the command that caused it. A value
-// minted inside this function would be unknown to the caller the moment the function returned.
+// THE SEQUENCE ID IDENTIFIES THE ATTEMPT, NOT THE PAYLOAD, AND IT IS NO LONGER A PARAMETER.
+//
+// The orchestrator passed the delivery receipt's remote_name for both, and remote_name is derived
+// from the payload's DIGEST -- so every legitimate reprint of the same .3mf carries the same
+// sequence_id. Bambu echoes that value on the report topic, and it is the only handle an observer
+// has for joining a report to the command that caused it, so a payload-keyed id lets a report from
+// an earlier print of the same gauge be attributed to a later invocation. Two things that must be
+// free to differ were spelled from one source.
+//
+// A caller-supplied id would only move the defect: the caller is where the conflation happened. It
+// is minted here, from the clock, because "which attempt" is a fact about THIS execution and there
+// is nothing at the call site that knows it better.
+//
+// AN UNREADABLE CLOCK REFUSES RATHER THAN PUBLISHING WITH A CONSTANT. clock_now_probed_at's absent
+// arm renders "clock-unreadable", which would collide across every attempt and hand the observer an
+// id that looks like data. Refusing costs a print; publishing costs the ability to attribute the
+// report -- and reconciliation by reading that report is the ONLY defence this leg has against the
+// duplicate-actuation risk the protocol module states is unresolved. A start nobody can attribute is
+// the one that must not be sent.
 func start_print_on_printer(
   printer: PhysicalAssetIdentity,
   remote_name: NonEmptyStr,
-  sequence_id: NonEmptyStr,
   token_source: AccessTokenSource,
   materializations: List<VerifiedVersionForAttempt>,
 ) -> PrintStart
   uses net: Network
 {
+  match clock_now_probed_at() {
+    Absent =>
+      PrintStartRefused { printer: printer,
+        cause: "the clock could not be read, so this start attempt has no identity the report topic could be joined on; the start refuses rather than publishing a command whose outcome could not afterwards be attributed to it" }
+    Present { value: sequence_id } =>
   match printer_serial(printer: printer) {
     PrinterSerialUnknown { printer: p } =>
       PrintStartRefused { printer: p,
@@ -323,6 +344,7 @@ func start_print_on_printer(
             printer: printer, serial: serial, lan_address: lan_address,
             remote_name: remote_name, sequence_id: sequence_id, credential: credential)
       }
+  }
   }
   }
   }
