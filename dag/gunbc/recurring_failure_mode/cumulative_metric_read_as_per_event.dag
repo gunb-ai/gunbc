@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.cumulative_metric_read_as_per_event
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data cumulative_metric_read_as_per_event: RecurringFailureMode = RecurringFailureMode {
+  identity: "cumulative_metric_read_as_per_event" as NonEmptyStr,
+
+  receipts: [
+    "a metric that ACCOUNTS is read as a metric that MEASURES (an upstream counter or histogram whose observation is booked once per request, per retention decision or per accounting event, consumed as though it described one event, one step or one instant; the arithmetic succeeds, the units look right, and the answer is about a different quantity). ",
+    "RECOGNITION: the reading is plausible, dimensionally consistent, and nobody can name the line of upstream source that defines the observation. Ask what the producer OBSERVES, not what the name suggests, and ask it of the installed binary rather than the upstream repository — a self-reported version string is a claim the process makes about itself, not executable provenance. ",
+    "WHY IT RECURS: these metrics are the only cheap window into a closed upstream, so a wrong reading is not caught by the substrate at all — it is caught by a prediction failing in production, weeks later, against a number that looked authoritative on a dashboard. Two independent investigators reached the SAME wrong root cause from the same histogram in one afternoon, which is the tell that the metric's name was doing the reasoning. ",
+    "RECEIPTS 2026-09-06/07, DeepSeek V4 Flash on the Spark pairs. (1) kv_cache_usage_perc read as occupancy: it counts every block that is not FREE and an evictable cached prefix is not free, so a warm idle engine reads ~99%; the dashboard rendered it red and captioned it 'referenced by running requests' beside REQ 0, and the router's load-aware landing classified every replica as saturated and silently degraded to the load-blind path it was written to replace — live and inert for a day while one head took all traffic and the other took none. ",
+    "(2) iteration_tokens_total read as tokens-computed-per-engine-step: the build observes `prompt_token_stats.total`, the FULL prompt length of each prefill booked in one iteration, plus generation tokens. Its large buckets therefore count large-PROMPT REQUESTS, not stop-the-world steps. A single observation of 247,582 tokens was read as one monolithic engine step, producing a confident root cause — a missing --max-num-batched-tokens — that a live poll of the same counter refuted: the count climbs steadily through a cold prefill, so chunking was working the whole time and the proposed flag was a no-op. ",
+    "(3) Ethernet netdev rx_bytes/tx_bytes read as interconnect traffic: the ranks speak RoCE, whose bytes never reach those counters, so a 176-second prefill measured as ~0 GB of inter-node traffic. The same prefill moved 175 GB per rank on the RoCE port counters. An earlier reading of that port taken across a CACHE HIT was then reported as prefill utilisation. ",
+    "SHAPE, AND WHY IT IS ONE MODE RATHER THAN THREE: each is a cumulative accounting quantity consumed as an instantaneous or per-event one. The remedy is the same in all three — bind the reading to what the producer observes, at the revision and binary that produced it, and make the wrong question refuse rather than return a number. ",
+  ],
+
+  evidence: [],
+}

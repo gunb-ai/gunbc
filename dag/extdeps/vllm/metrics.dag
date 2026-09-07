@@ -1,0 +1,254 @@
+module extdeps.vllm.metrics
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/vllm-project/vllm/blob/main/vllm/v1/metrics/stats.py"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vllm.metrics",
+      decl_name: "VllmServingMetric",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// ── WHAT EACH SERVED METRIC ACTUALLY OBSERVES, AND WHICH QUESTIONS IT REFUSES ─────────────────
+//
+// WHY THIS MODULE EXISTS. These gauges are the only cheap window into a closed upstream, and a
+// wrong reading of one is not catchable by the substrate: the arithmetic succeeds, the units look
+// right, and the answer is about a different quantity. It surfaces weeks later as a prediction
+// that failed in production against a number that looked authoritative on a dashboard.
+//
+// It has now cost this deployment three times in two days, and the third time TWO independent
+// investigators reached the SAME wrong root cause from the same histogram in one afternoon. That
+// is the tell that the metric's NAME was doing the reasoning. The failure mode is rostered at
+// gunbc.recurring_failure_mode cumulative_metric_read_as_per_event.
+//
+// SO THE QUESTION IS THE SUBJECT, NOT THE METRIC. A metric alone cannot be right or wrong; a
+// METRIC PAIRED WITH A QUESTION can. This module models that pairing and refuses the pairings the
+// upstream source does not support, with the reason attached rather than left to a reader.
+//
+// AND IT IS REVISION-BOUND, because these observations are implementation details that upstream
+// moves. The stronger caveat is that a self-reported version string is a CLAIM THE PROCESS MAKES
+// ABOUT ITSELF and not executable provenance: the Spark image is a third-party build, and the
+// readings below were confirmed by reading the source INSTALLED IN THAT IMAGE, not the upstream
+// repository at the revision the binary names.
+
+type VllmServingMetric
+  = KvCacheUsagePerc
+  | IterationTokensTotal
+  | NumRequestsRunning
+  | NumRequestsWaiting
+  | PrefixCacheQueries
+  | PrefixCacheHits
+  | PromptTokensTotal
+  | GenerationTokensTotal
+  | NumPreemptionsTotal
+
+fn vllm_metric_name(m: VllmServingMetric) -> NonEmptyStr {
+  match m {
+    KvCacheUsagePerc => "vllm:kv_cache_usage_perc" as NonEmptyStr
+    IterationTokensTotal => "vllm:iteration_tokens_total" as NonEmptyStr
+    NumRequestsRunning => "vllm:num_requests_running" as NonEmptyStr
+    NumRequestsWaiting => "vllm:num_requests_waiting" as NonEmptyStr
+    PrefixCacheQueries => "vllm:prefix_cache_queries_total" as NonEmptyStr
+    PrefixCacheHits => "vllm:prefix_cache_hits_total" as NonEmptyStr
+    PromptTokensTotal => "vllm:prompt_tokens_total" as NonEmptyStr
+    GenerationTokensTotal => "vllm:generation_tokens_total" as NonEmptyStr
+    NumPreemptionsTotal => "vllm:num_preemptions_total" as NonEmptyStr
+  }
+}
+
+// The questions a consumer in this repository has actually wanted to ask. Each is phrased as the
+// DECISION it feeds, because that is what makes a wrong pairing expensive.
+type ServingQuestion
+  = HowBusyIsThisReplica
+  | IsThisReplicaSaturated
+  | TokensComputedInOneEngineStep
+  | HowManyEngineStepsHaveRun
+  | HowLargeAreArrivingPrompts
+  | IsThePrefixCacheEffective
+  | IsTheEngineThrashing
+
+type MetricVerdict
+  = MetricAnswers { note: NonEmptyStr }
+  | MetricRefuses { because: NonEmptyStr }
+
+// ── THE PAIRINGS ──────────────────────────────────────────────────────────────────────────────
+//
+// A refusal here is not "we have not checked". It is a cited statement that the producer observes
+// something else, and every refusal below was paid for by an incident.
+
+fn kv_usage_verdict(q: ServingQuestion) -> MetricVerdict {
+  match q {
+    IsThePrefixCacheEffective =>
+      MetricAnswers { note: "a warm engine sitting near 1.0 is the cache holding every otherwise-free block, which is the intended steady state" as NonEmptyStr }
+    HowBusyIsThisReplica =>
+      MetricRefuses { because: "it counts every block that is NOT FREE, and a block holding an evictable cached prefix is not free; a completely idle replica reads ~0.99 once warm (measured 2026-09-07: 0.987 with zero running, zero waiting and byte-identical token counters across 30s)" as NonEmptyStr }
+    IsThisReplicaSaturated =>
+      MetricRefuses { because: "same reading, and the consequence was measured: a load-aware router thresholding on it classified every replica as saturated and silently degraded to the load-blind path it was written to replace, while one head took all traffic and the other took none" as NonEmptyStr }
+    IsTheEngineThrashing =>
+      MetricRefuses { because: "a full pool is the designed state, not eviction pressure; the interval prefix-cache hit rate answers this and the usage gauge does not" as NonEmptyStr }
+    TokensComputedInOneEngineStep =>
+      MetricRefuses { because: "it is a ratio of blocks, not a token count" as NonEmptyStr }
+    HowManyEngineStepsHaveRun =>
+      MetricRefuses { because: "it is an instantaneous ratio and carries no step history" as NonEmptyStr }
+    HowLargeAreArrivingPrompts =>
+      MetricRefuses { because: "it is a ratio of blocks held, with no per-request grain" as NonEmptyStr }
+  }
+}
+
+fn iteration_tokens_verdict(q: ServingQuestion) -> MetricVerdict {
+  match q {
+    HowManyEngineStepsHaveRun =>
+      MetricAnswers { note: "the histogram COUNT increments once per recorded engine iteration, and polling it live is how chunking was finally established" as NonEmptyStr }
+    HowLargeAreArrivingPrompts =>
+      MetricAnswers { note: "each observation books one prefill's FULL prompt length, so the large buckets count large-prompt REQUESTS" as NonEmptyStr }
+    TokensComputedInOneEngineStep =>
+      MetricRefuses { because: "the observation is prompt_token_stats.total plus generation tokens, and total accumulates each prefill's FULL prompt length booked in a single iteration -- not the chunk computed in that step. A 247,582-token observation was read as one monolithic engine step and produced a confident wrong root cause (a missing --max-num-batched-tokens); a live poll of the COUNT refuted it, climbing steadily through a cold prefill because chunking was working the whole time" as NonEmptyStr }
+    IsThisReplicaSaturated =>
+      MetricRefuses { because: "large observations mean large prompts arrived, not that the engine is full" as NonEmptyStr }
+    HowBusyIsThisReplica =>
+      MetricRefuses { because: "it is cumulative over the launch and says nothing about the present instant" as NonEmptyStr }
+    IsThePrefixCacheEffective =>
+      MetricRefuses { because: "cached prompt tokens are inside the booked total, so a fully cached prompt still books its whole length here; the prefix-cache counters answer this" as NonEmptyStr }
+    IsTheEngineThrashing =>
+      MetricRefuses { because: "it carries no eviction or retention information" as NonEmptyStr }
+  }
+}
+
+fn running_verdict(q: ServingQuestion) -> MetricVerdict {
+  match q {
+    HowBusyIsThisReplica =>
+      MetricAnswers { note: "admitted and being served right now; this is the gauge that distinguishes an idle replica from a working one, and the one the router should have been ranking on" as NonEmptyStr }
+    IsThisReplicaSaturated =>
+      MetricRefuses { because: "a busy replica is not a refusing one; num_requests_waiting is the fact that the engine is admitting nothing" as NonEmptyStr }
+    TokensComputedInOneEngineStep => MetricRefuses { because: "it counts requests, not tokens" as NonEmptyStr }
+    HowManyEngineStepsHaveRun => MetricRefuses { because: "it is an instantaneous count with no step history" as NonEmptyStr }
+    HowLargeAreArrivingPrompts => MetricRefuses { because: "it carries no prompt grain" as NonEmptyStr }
+    IsThePrefixCacheEffective => MetricRefuses { because: "it carries no cache information" as NonEmptyStr }
+    IsTheEngineThrashing => MetricRefuses { because: "it carries no eviction information" as NonEmptyStr }
+  }
+}
+
+fn waiting_verdict(q: ServingQuestion) -> MetricVerdict {
+  match q {
+    IsThisReplicaSaturated =>
+      MetricAnswers { note: "a queue is a fact, not an estimate: the engine is admitting nothing further at this instant" as NonEmptyStr }
+    HowBusyIsThisReplica =>
+      MetricRefuses { because: "zero waiting is consistent with both an idle replica and a fully loaded one that is keeping up; num_requests_running is the busyness gauge" as NonEmptyStr }
+    TokensComputedInOneEngineStep => MetricRefuses { because: "it counts requests, not tokens" as NonEmptyStr }
+    HowManyEngineStepsHaveRun => MetricRefuses { because: "it is instantaneous and carries no step history" as NonEmptyStr }
+    HowLargeAreArrivingPrompts => MetricRefuses { because: "it carries no prompt grain" as NonEmptyStr }
+    IsThePrefixCacheEffective => MetricRefuses { because: "it carries no cache information" as NonEmptyStr }
+    IsTheEngineThrashing => MetricRefuses { because: "a queue has many causes and eviction is not distinguishable here" as NonEmptyStr }
+  }
+}
+
+fn cumulative_token_verdict(q: ServingQuestion) -> MetricVerdict {
+  match q {
+    HowLargeAreArrivingPrompts =>
+      MetricAnswers { note: "cumulative over the launch, so only its DELTA over a bounded interval is a statement about recent work" as NonEmptyStr }
+    TokensComputedInOneEngineStep =>
+      MetricRefuses { because: "cumulative counters carry no per-step grain, and dividing a delta by a sampling window attributes a step's whole cost to the window in which it happened to complete -- which is how a ~30-second step was reported as 82,527 tokens per second" as NonEmptyStr }
+    HowBusyIsThisReplica =>
+      MetricRefuses { because: "cumulative over the launch; the instantaneous gauges answer this" as NonEmptyStr }
+    IsThisReplicaSaturated => MetricRefuses { because: "cumulative over the launch" as NonEmptyStr }
+    HowManyEngineStepsHaveRun => MetricRefuses { because: "it counts tokens, not steps" as NonEmptyStr }
+    IsThePrefixCacheEffective =>
+      MetricRefuses { because: "prompt_tokens_total includes cached tokens, so it overstates computed work; the prefix-cache counters answer this" as NonEmptyStr }
+    IsTheEngineThrashing => MetricRefuses { because: "it carries no eviction information" as NonEmptyStr }
+  }
+}
+
+fn prefix_cache_verdict(q: ServingQuestion) -> MetricVerdict {
+  match q {
+    IsThePrefixCacheEffective =>
+      MetricAnswers { note: "hits over queries, and only over a bounded INTERVAL: the lifetime ratio is dominated by history and moves in hours" as NonEmptyStr }
+    IsTheEngineThrashing =>
+      MetricAnswers { note: "a falling interval hit rate is the eviction-pressure signal the usage gauge cannot give" as NonEmptyStr }
+    TokensComputedInOneEngineStep => MetricRefuses { because: "these are token counters with no step grain" as NonEmptyStr }
+    HowManyEngineStepsHaveRun => MetricRefuses { because: "they count tokens, not steps" as NonEmptyStr }
+    HowBusyIsThisReplica => MetricRefuses { because: "cumulative over the launch" as NonEmptyStr }
+    IsThisReplicaSaturated => MetricRefuses { because: "cache effectiveness is orthogonal to admission" as NonEmptyStr }
+    HowLargeAreArrivingPrompts => MetricRefuses { because: "queries count tokens looked up, not prompts" as NonEmptyStr }
+  }
+}
+
+fn preemptions_verdict(q: ServingQuestion) -> MetricVerdict {
+  match q {
+    IsTheEngineThrashing =>
+      MetricAnswers { note: "a preemption is the engine evicting a RUNNING sequence, which is the unambiguous thrash signal; it has read zero for the lifetime of both Spark heads" as NonEmptyStr }
+    IsThisReplicaSaturated =>
+      MetricAnswers { note: "cumulative, so only a rising delta is a present-tense claim" as NonEmptyStr }
+    TokensComputedInOneEngineStep => MetricRefuses { because: "it counts preemptions, not tokens" as NonEmptyStr }
+    HowManyEngineStepsHaveRun => MetricRefuses { because: "it counts preemptions, not steps" as NonEmptyStr }
+    HowBusyIsThisReplica => MetricRefuses { because: "an engine can be fully busy and never preempt" as NonEmptyStr }
+    HowLargeAreArrivingPrompts => MetricRefuses { because: "it carries no prompt grain" as NonEmptyStr }
+    IsThePrefixCacheEffective => MetricRefuses { because: "preemption is about running sequences, not cached prefixes" as NonEmptyStr }
+  }
+}
+
+// THE ONE ENTRY POINT. A consumer names the metric AND the question, and gets an answer or a cited
+// refusal. There is deliberately no function that takes a metric alone and returns "what it means":
+// that shape is what let a name do the reasoning.
+fn vllm_metric_answers(metric: VllmServingMetric, question: ServingQuestion) -> MetricVerdict {
+  match metric {
+    KvCacheUsagePerc => kv_usage_verdict(q: question)
+    IterationTokensTotal => iteration_tokens_verdict(q: question)
+    NumRequestsRunning => running_verdict(q: question)
+    NumRequestsWaiting => waiting_verdict(q: question)
+    PromptTokensTotal => cumulative_token_verdict(q: question)
+    GenerationTokensTotal => cumulative_token_verdict(q: question)
+    PrefixCacheQueries => prefix_cache_verdict(q: question)
+    PrefixCacheHits => prefix_cache_verdict(q: question)
+    NumPreemptionsTotal => preemptions_verdict(q: question)
+  }
+}
+
+fn vllm_metric_is_admissible(metric: VllmServingMetric, question: ServingQuestion) -> Bool {
+  match vllm_metric_answers(metric: metric, question: question) {
+    MetricAnswers { note: _ } => true
+    MetricRefuses { because: _ } => false
+  }
+}
+
+// ── THE OFF-METRIC READING THAT ALSO COST A DAY ───────────────────────────────────────────────
+//
+// Not a vLLM metric, but the same mode and it belongs beside them: the ranks speak RoCE, and RoCE
+// bytes never reach the Ethernet netdev counters. A 176-second prefill measured as ~0 GB of
+// inter-node traffic on rx_bytes/tx_bytes; the same prefill moved ~175 GB per rank on the RoCE port
+// counters. Reading the netdev counters concluded "the interconnect carries nothing", which is the
+// opposite of true.
+type InterconnectCounter
+  = EthernetNetdevBytes
+  | RocePortDataCounters
+
+fn interconnect_counter_sees_rdma(c: InterconnectCounter) -> Bool {
+  match c {
+    EthernetNetdevBytes => false
+    RocePortDataCounters => true
+  }
+}
+
+fn interconnect_counter_note(c: InterconnectCounter) -> NonEmptyStr {
+  match c {
+    EthernetNetdevBytes =>
+      "RDMA bypasses the netdev path, so these read ~0 while the link is carrying gigabytes; they are not an interconnect-utilisation source on a RoCE fabric" as NonEmptyStr
+    RocePortDataCounters =>
+      "port_xmit_data and port_rcv_data, in 4-byte words, are the RoCE traffic; measured 2026-09-07 at ~7.9 Gb/s per rank on a 50 Gb/s link during a cold prefill -- about 16% utilised, so the rail was not the constraint" as NonEmptyStr
+  }
+}

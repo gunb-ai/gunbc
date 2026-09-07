@@ -1,0 +1,94 @@
+module test.claim.vllm_metric_semantics_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import extdeps.vllm.metrics {
+  VllmServingMetric, KvCacheUsagePerc, IterationTokensTotal, NumRequestsRunning, NumRequestsWaiting,
+  PrefixCacheQueries, PrefixCacheHits, PromptTokensTotal, GenerationTokensTotal, NumPreemptionsTotal,
+  ServingQuestion, HowBusyIsThisReplica, IsThisReplicaSaturated, TokensComputedInOneEngineStep,
+  HowManyEngineStepsHaveRun, HowLargeAreArrivingPrompts, IsThePrefixCacheEffective, IsTheEngineThrashing,
+  MetricVerdict, MetricAnswers, MetricRefuses, vllm_metric_answers, vllm_metric_is_admissible,
+  vllm_metric_name,
+  InterconnectCounter, EthernetNetdevBytes, RocePortDataCounters,
+  interconnect_counter_sees_rdma, interconnect_counter_note,
+}
+
+fn w_because(m: VllmServingMetric, q: ServingQuestion) -> String {
+  match vllm_metric_answers(metric: m, question: q) {
+    MetricRefuses { because: b } => b as String
+    MetricAnswers { note: _ } => ""
+  }
+}
+
+// THE ROUTER INCIDENT, AS A WALL. A load-aware landing thresholded on kv_cache_usage_perc,
+// classified every replica as saturated because a warm idle engine reads ~0.99, and silently
+// degraded to the load-blind path it was written to replace. The pairing that produced that is now
+// a refusal, and the gauge that should have been asked instead answers.
+test fn kv_usage_cannot_answer_busyness_and_running_can() -> Bool {
+  !vllm_metric_is_admissible(metric: KvCacheUsagePerc, question: HowBusyIsThisReplica)
+    && !vllm_metric_is_admissible(metric: KvCacheUsagePerc, question: IsThisReplicaSaturated)
+    && vllm_metric_is_admissible(metric: NumRequestsRunning, question: HowBusyIsThisReplica)
+    && vllm_metric_is_admissible(metric: NumRequestsWaiting, question: IsThisReplicaSaturated)
+    && string_contains(s: w_because(m: KvCacheUsagePerc, q: HowBusyIsThisReplica), pattern: "not free")
+}
+
+// THE ROOT-CAUSE INCIDENT, AS A WALL. iteration_tokens_total books each prefill's FULL prompt
+// length in one iteration, so a 247,582-token observation is a large REQUEST, not a monolithic
+// engine step. Reading it as per-step compute produced a confident wrong root cause that a live
+// poll of the same histogram's COUNT refuted.
+test fn iteration_tokens_cannot_answer_per_step_compute_but_counts_steps() -> Bool {
+  !vllm_metric_is_admissible(metric: IterationTokensTotal, question: TokensComputedInOneEngineStep)
+    && vllm_metric_is_admissible(metric: IterationTokensTotal, question: HowManyEngineStepsHaveRun)
+    && vllm_metric_is_admissible(metric: IterationTokensTotal, question: HowLargeAreArrivingPrompts)
+    && string_contains(s: w_because(m: IterationTokensTotal, q: TokensComputedInOneEngineStep), pattern: "FULL prompt length")
+}
+
+// NO METRIC ANSWERS PER-STEP COMPUTE. This is the row that matters most, because the question is
+// the one everybody wants and the honest answer is that the served surface does not carry it. A
+// consumer that needs it must instrument the engine, not divide a counter by a sampling window.
+test fn nothing_served_answers_tokens_computed_in_one_engine_step() -> Bool {
+  all([
+    KvCacheUsagePerc, IterationTokensTotal, NumRequestsRunning, NumRequestsWaiting,
+    PrefixCacheQueries, PrefixCacheHits, PromptTokensTotal, GenerationTokensTotal, NumPreemptionsTotal,
+  ], m => !vllm_metric_is_admissible(metric: m, question: TokensComputedInOneEngineStep))
+    && string_contains(s: w_because(m: PromptTokensTotal, q: TokensComputedInOneEngineStep), pattern: "sampling window")
+}
+
+// AND THE MODULE IS NOT A BLANKET REFUSER, which is the control on the three rows above: every
+// question has at least one metric that answers it, so a green refusal is a statement about the
+// pairing rather than about the module declining to be useful.
+test fn every_question_has_an_answering_metric_except_per_step_compute() -> Bool {
+  let metrics = [
+    KvCacheUsagePerc, IterationTokensTotal, NumRequestsRunning, NumRequestsWaiting,
+    PrefixCacheQueries, PrefixCacheHits, PromptTokensTotal, GenerationTokensTotal, NumPreemptionsTotal,
+  ]
+  all([
+    HowBusyIsThisReplica, IsThisReplicaSaturated, HowManyEngineStepsHaveRun,
+    HowLargeAreArrivingPrompts, IsThePrefixCacheEffective, IsTheEngineThrashing,
+  ], q => any(metrics, m => vllm_metric_is_admissible(metric: m, question: q)))
+}
+
+// THE CACHE QUESTION THE OPERATOR ASKED, ANSWERED BY THE RIGHT INSTRUMENT. A permanently full pool
+// is the designed state and says nothing about eviction pressure; the interval hit rate and the
+// preemption counter are what carry that.
+test fn thrash_is_answered_by_hit_rate_and_preemptions_not_by_a_full_pool() -> Bool {
+  !vllm_metric_is_admissible(metric: KvCacheUsagePerc, question: IsTheEngineThrashing)
+    && vllm_metric_is_admissible(metric: PrefixCacheHits, question: IsTheEngineThrashing)
+    && vllm_metric_is_admissible(metric: NumPreemptionsTotal, question: IsTheEngineThrashing)
+    && string_contains(s: w_because(m: KvCacheUsagePerc, q: IsTheEngineThrashing), pattern: "designed state")
+}
+
+// THE OFF-METRIC READING, same mode: RDMA bytes never reach the Ethernet netdev counters, so a
+// 176-second prefill measured as ~0 GB of inter-node traffic while the RoCE ports carried ~175 GB
+// per rank.
+test fn ethernet_netdev_counters_do_not_see_rdma() -> Bool {
+  !interconnect_counter_sees_rdma(c: EthernetNetdevBytes)
+    && interconnect_counter_sees_rdma(c: RocePortDataCounters)
+    && string_contains(s: interconnect_counter_note(c: EthernetNetdevBytes) as String, pattern: "bypasses the netdev path")
+    && string_contains(s: interconnect_counter_note(c: RocePortDataCounters) as String, pattern: "16%")
+}
+
+test fn the_metric_names_are_the_served_ones() -> Bool {
+  (vllm_metric_name(m: KvCacheUsagePerc) as String) == "vllm:kv_cache_usage_perc"
+    && (vllm_metric_name(m: IterationTokensTotal) as String) == "vllm:iteration_tokens_total"
+    && (vllm_metric_name(m: NumRequestsRunning) as String) == "vllm:num_requests_running"
+}
