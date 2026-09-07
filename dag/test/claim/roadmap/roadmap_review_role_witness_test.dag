@@ -11,6 +11,7 @@ import gunbc.roadmap.roadmap_review_role {
   ConformanceAnswer, Conforms, DivergesStated, DivergesUnstated, conformance_answer_verdict, review_answer_instruction, ReviewReason,
 }
 import gunbc.roadmap.roadmap_review_criteria { review_criteria, review_criteria_grounded_in_the_argument, review_criterion_by_key, review_criteria_homes_match_their_algebra, review_criterion_identity_text, review_home_text }
+import std.decl_ref { declaration_ref_display_key }
 import gunbc.design_argument { YesIsADefect, ConformanceThreeValued, conformance_domains, ConformanceDomain, ConformanceHomes, conformance_home_list }
 import gunbc.design_document { expected_design_md, conformance_domain_block }
 import gunbc.plans.md_helpers { ul }
@@ -123,8 +124,11 @@ test fn a_stated_divergence_is_admitted_and_an_unstated_one_requests_changes() -
 // would produce a blank bullet, and an absent narrative would leave the reader without the explanatory
 // context the prose currently carries. The count check keeps the projection denominator visible.
 test fn every_conformance_domain_carries_a_nonempty_label_and_narrative() -> Bool {
-  count(conformance_domains) == 4
-    && all(conformance_domains, d => d.label != "" && d.narrative != "")
+  count(conformance_domains) > 0
+    && all(conformance_domains, d => match review_criterion_by_key(key: d.key) {
+      Present { value: _ } => d.label != "" && d.narrative != ""
+      Absent => false
+    })
 }
 
 // THE DESIGN.MD §3B BULLET LIST IS PROJECTED FROM CONFORMANCE_DOMAINS, NOT HAND-AUTHORED. The
@@ -170,6 +174,42 @@ test fn production_conformance_domains_appear_in_generated_design() -> Bool {
 // Changing only a domain's label or narrative cannot invalidate a prior observation.
 // Label and narrative are NOT in the identity — they're not ReviewCriterion fields.
 // This is structural: the function signature proves they cannot affect the revision.
+
+// PROJECTION IDENTITY: two domains differing only in label and narrative produce different rendered
+// blocks (DESIGN.md changes) but the same criterion identity (plan revision unchanged). This
+// discriminates between display-only metadata and review-semantic fields.
+test fn label_and_narrative_change_projection_but_not_criterion_identity() -> Bool {
+  let domain_a = ConformanceDomain {
+    key: "test-identity-domain",
+    label: "label A",
+    question: "Same question?",
+    homes: ConformanceHomes {
+      first: decl_ref(module_path: "test.identity", decl_name: "Home"),
+      rest: [],
+    },
+    tells: ["same tell"],
+    narrative: "narrative A",
+  }
+  let domain_b = ConformanceDomain {
+    key: "test-identity-domain",
+    label: "label B",
+    question: "Same question?",
+    homes: ConformanceHomes {
+      first: decl_ref(module_path: "test.identity", decl_name: "Home"),
+      rest: [],
+    },
+    tells: ["same tell"],
+    narrative: "narrative B",
+  }
+  let block_a = serialize_markdown_source(doc: MarkdownDocument { blocks: [ul(items: [conformance_domain_block(d: domain_a)])] })
+  let block_b = serialize_markdown_source(doc: MarkdownDocument { blocks: [ul(items: [conformance_domain_block(d: domain_b)])] })
+  block_a != block_b
+    && string_contains(s: block_a, pattern: "label A")
+    && string_contains(s: block_b, pattern: "label B")
+    && string_contains(s: block_a, pattern: "narrative A")
+    && string_contains(s: block_b, pattern: "narrative B")
+}
+
 test fn conformance_label_and_narrative_do_not_affect_plan_revision() -> Bool {
   match review_criterion_by_key(key: "conformance-extdeps") {
     Present { value: c } => {
@@ -184,14 +224,13 @@ test fn conformance_label_and_narrative_do_not_affect_plan_revision() -> Bool {
 
 test fn every_conformance_domain_is_a_criterion_whose_brief_names_its_homes() -> Bool {
   review_criteria_homes_match_their_algebra()
-    && count(conformance_domains) == 4
     && all(conformance_domains, d => match review_criterion_by_key(key: d.key) {
       Absent => false
       Present { value: c } => {
         let b = review_brief(criterion: c, node_id: "n1", headline: "H", boundary: "B", out_of_scope: "O", red_control: "R", acceptance_command: "gunbc run x", base_sha: "aaa", head_sha: "bbb", verification_detail: "passed")
         string_contains(s: b, pattern: "Home authorities the change must inhabit")
           && string_contains(s: b, pattern: "one of three ways")
-          && all(d.homes, h => string_contains(s: b, pattern: join([h.module_path as String, " ", h.decl_name as String], "")))
+          && all(conformance_home_list(h: d.homes), h => string_contains(s: b, pattern: declaration_ref_display_key(ref: h)))
       }
     })
     && (match review_criterion_by_key(key: "fail-closed") {

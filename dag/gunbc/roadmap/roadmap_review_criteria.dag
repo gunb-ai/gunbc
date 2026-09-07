@@ -2,7 +2,7 @@ module gunbc.roadmap.roadmap_review_criteria
 
 import std.types { String, Bool, List }
 import std.syllogism { Proposition }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, declaration_ref_display_key }
 import gunbc.design_argument { design_propositions, design_rows, DesignRow, PropositionReview, DefectReview, ConformanceReview, PropositionReviewDisposition, ReviewableOnChange, NotReviewableOnChange, ReviewAnswerAlgebra, YesIsADefect, ConformanceThreeValued, ConformanceDomain, conformance_home_list }
 
 // ONE CRITERION PER DESIGN PROPOSITION, ONE REVIEWER PER CRITERION. A review that asks "is this
@@ -24,7 +24,7 @@ type ReviewCriterionGround
   = GroundedOnTheNodeContract
   | GroundedOnDesignProposition { proposition_id: String }
 
-type ReviewCriterion {
+type ReviewCriterion sole_constructor {
   key: String
   ground: ReviewCriterionGround
   question: String
@@ -116,7 +116,7 @@ fn review_criterion_ground_text(g: ReviewCriterionGround) -> String {
 }
 
 fn review_home_text(h: DeclarationRef) -> String {
-  join([h.module_path as String, " ", h.decl_name as String], "")
+  declaration_ref_display_key(ref: h)
 }
 
 // A CONFORMANCE CRITERION NAMES WHAT TO CONFORM TO. The reviewer is handed the home declarations of
@@ -167,7 +167,13 @@ fn review_criterion_brief_text(c: ReviewCriterion) -> String {
 // conform to, and a yes/no row with one would be a conformance question wearing the wrong algebra.
 // THE INVARIANT IS STRUCTURAL: ConformanceReview carries a ConformanceDomain whose constructor
 // guarantees non-empty homes, and DefectReview carries no homes. This witness returns true because
-// the type system prevents the invalid combinations it previously checked.
+// the type system prevents the invalid combinations it previously checked. Retained as a regression
+// check that the two sole mints produce correct homes:
+//   defect_criterion  → homes: [], answer: YesIsADefect
+//   conformance_criterion_from_domain → homes: nonempty list from domain, answer: ConformanceThreeValued
 fn review_criteria_homes_match_their_algebra() -> Bool {
-  true
+  all(review_criteria, c => match c.answer {
+    YesIsADefect => count(c.homes) == 0
+    ConformanceThreeValued => count(c.homes) > 0
+  })
 }
