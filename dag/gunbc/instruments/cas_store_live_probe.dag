@@ -44,7 +44,7 @@ fn cas_probe_code(outcome: CasOutcome<NonEmptyStr>) -> Int {
 
 fn cas_probe_run(root: NonEmptyStr, key: NonEmptyStr, payload: NonEmptyStr, expected: CasExpectation) -> Int {
   match admit_cas_attempt(attempt: cas_probe_attempt(key: key, payload: payload, expected: expected)) {
-    CasAttemptAdmitted { verified: v } => cas_probe_code(outcome: file_compare_and_set(root: root, publication: OwnerOnlyCreateOnly, verified: v))
+    CasAttemptAdmitted { verified: v } => cas_probe_code(outcome: file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v))
     CasAttemptDigestMismatch { claimed: _, actual: _ } => 4
     CasAttemptDigestIncomparable { claimed: _, actual: _ } => 4
     CasAttemptKeyNotSlotAddressable { key: _ } => 4

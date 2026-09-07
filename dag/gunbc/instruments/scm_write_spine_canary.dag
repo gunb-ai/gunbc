@@ -40,10 +40,10 @@ import gunbc.scm.ancestry { RepositoryCommitRef }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, empty_repository }
 import gunbc.scm.write_spine {
   StagedCommit, StagedCommitMinted, StagedCommitCandidateRefused, StagedCommitNothingToFreeze,
-  StagedCommitAllocatorInvalid, StagedCommitParentMissing, StagedCommitIntegrationSourceMissing,
+  StagedCommitAllocatorInvalid, StagedCommitParentMissing,
   StageIngress, Staged, StageCandidateRefused, StageSourceLocatorCollision,
   StageDuplicatePath, StageManifestLocatorCollision,
-  commit_staged,
+  stage_source_at_path, commit_staged,
 }
 import gunbc.scm.write_spine_ingress {
   WorkspaceAdd, WorkspaceAdded, WorkspaceSubjectNotAnEntry, WorkspacePathNotAddressable,
@@ -228,8 +228,6 @@ func spine_commit_loaded(loaded: LoadedRepositoryGeneration, message: String) ->
       exit_failure(reason: "commit refused: the commit allocator is invalid")
     StagedCommitParentMissing { parent: _ } =>
       exit_failure(reason: "commit refused: the parent commit is not in this repository")
-    StagedCommitIntegrationSourceMissing { source: _ } =>
-      exit_failure(reason: "commit refused: the integration source is not in this repository")
     StagedCommitMinted { repository: committed, reference: _ } =>
       publication_exit(publication: republish_repository(loaded: loaded, repo: committed))
   }
@@ -407,30 +405,56 @@ func checkout_from(loaded: LoadedRepositoryGeneration, reference: RepositoryComm
 //
 // THE TWO PROPOSALS MUST DIFFER, or the run would be satisfied by a store that admits an idempotent
 // re-publication, which is a different property. They differ by their commit messages.
-func spine_race(root: String, key: String) -> ProcessExit {
-  match admit_slot(root: root, key: key) {
-    SlotRootEmpty => exit_failure(reason: slot_refusal(admission: SlotRootEmpty))
-    SlotKeyEmpty => exit_failure(reason: slot_refusal(admission: SlotKeyEmpty))
-    SlotAdmitted(slot) =>
-      match read_repository_slot(slot: slot) {
-        RepositorySlotHead(loaded) => race_from(loaded: loaded)
-        other => exit_failure(reason: slot_read_failure(read: other))
-      }
+func spine_race(root: String, key: String, manifest_path: String) -> ProcessExit {
+  if manifest_path == "" {
+    exit_failure(reason: "race refused: --arg manifest_path is empty")
+  } else {
+    match admit_slot(root: root, key: key) {
+      SlotRootEmpty => exit_failure(reason: slot_refusal(admission: SlotRootEmpty))
+      SlotKeyEmpty => exit_failure(reason: slot_refusal(admission: SlotKeyEmpty))
+      SlotAdmitted(slot) =>
+        match read_repository_slot(slot: slot) {
+          RepositorySlotHead(loaded) =>
+            race_from(loaded: loaded, manifest_path: manifest_path as NonEmptyStr)
+          other => exit_failure(reason: slot_read_failure(read: other))
+        }
+    }
   }
 }
 
-func race_from(loaded: LoadedRepositoryGeneration) -> ProcessExit {
-  match commit_staged(repository: loaded.envelope, message: "writer A") {
-    StagedCommitMinted { repository: a, reference: _ } =>
-      match commit_staged(repository: loaded.envelope, message: "writer B") {
-        StagedCommitMinted { repository: b, reference: _ } =>
+// THE TWO WRITERS STAGE, THEY DO NOT COMMIT, AND THE FIRST VERSION OF THIS ENTRY GOT THAT WRONG IN A
+// WAY WORTH RECORDING.
+//
+// It derived both proposals by calling `commit_staged` twice on the loaded envelope. That worked only
+// because `commit_staged` would, at the time, mint a commit even when the candidate was identical to
+// the one already committed -- so the race proof was STANDING ON A DEFECT, and it went red the moment
+// the defect was repaired. The instrument was right to break: a control whose setup depends on a bug
+// is evidence about the bug.
+//
+// Staging is the correct derivation anyway, and closer to what the property is about. Two authors who
+// have each read the same head and each written different bytes at the same path is exactly the
+// situation the slot exists to arbitrate; that they differ is what makes the second publication a
+// genuine lost update rather than an idempotent re-write.
+func race_from(loaded: LoadedRepositoryGeneration, manifest_path: NonEmptyStr) -> ProcessExit {
+  match stage_source_at_path(
+    repository: loaded.envelope,
+    path: manifest_path,
+    text: "writer A wrote this",
+  ) {
+    Staged { repository: a, manifest: _, source: _ } =>
+      match stage_source_at_path(
+        repository: loaded.envelope,
+        path: manifest_path,
+        text: "writer B wrote something else",
+      ) {
+        Staged { repository: b, manifest: _, source: _ } =>
           race_publications(
             first: republish_repository(loaded: loaded, repo: a),
             second: republish_repository(loaded: loaded, repo: b),
           )
-        other => exit_failure(reason: "race refused: writer B could not derive a commit")
+        other => exit_failure(reason: "race refused: writer B could not stage")
       }
-    other => exit_failure(reason: "race refused: writer A could not derive a commit")
+    other => exit_failure(reason: "race refused: writer A could not stage")
   }
 }
 

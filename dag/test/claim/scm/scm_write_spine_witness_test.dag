@@ -28,7 +28,7 @@ import gunbc.scm.write_spine {
   StageIngress, Staged, StageCandidateRefused, StageSourceLocatorCollision,
   StageDuplicatePath, StageManifestLocatorCollision,
   StagedCommit, StagedCommitMinted, StagedCommitCandidateRefused, StagedCommitNothingToFreeze,
-  StagedCommitAllocatorInvalid, StagedCommitParentMissing, StagedCommitIntegrationSourceMissing,
+  StagedCommitAllocatorInvalid, StagedCommitParentMissing,
   stage_source_at_path, commit_staged,
 }
 import test.fixture.scm_repository_builder {
@@ -183,8 +183,7 @@ test fn scm_ws_the_commit_freezes_exactly_the_manifest_that_was_staged() -> Bool
             StagedCommitNothingToFreeze => false
             StagedCommitAllocatorInvalid { next_ordinal: _ } => false
             StagedCommitParentMissing { parent: _ } => false
-            StagedCommitIntegrationSourceMissing { source: _ } => false
-          }
+              }
       }
   }
 }
@@ -214,7 +213,6 @@ test fn scm_ws_the_commit_advances_the_checkout_and_consumes_the_stage() -> Bool
         StagedCommitNothingToFreeze => false
         StagedCommitAllocatorInvalid { next_ordinal: _ } => false
         StagedCommitParentMissing { parent: _ } => false
-        StagedCommitIntegrationSourceMissing { source: _ } => false
       }
   }
 }
@@ -239,7 +237,6 @@ test fn scm_ws_consuming_the_stage_leaves_the_corpus_inherited_rather_than_empty
         StagedCommitNothingToFreeze => false
         StagedCommitAllocatorInvalid { next_ordinal: _ } => false
         StagedCommitParentMissing { parent: _ } => false
-        StagedCommitIntegrationSourceMissing { source: _ } => false
       }
   }
 }
@@ -255,7 +252,58 @@ test fn scm_ws_committing_with_no_stage_and_no_checkout_refuses() -> Bool {
     StagedCommitCandidateRefused { cause: _ } => false
     StagedCommitAllocatorInvalid { next_ordinal: _ } => false
     StagedCommitParentMissing { parent: _ } => false
-    StagedCommitIntegrationSourceMissing { source: _ } => false
+  }
+}
+
+// COMMITTING TWICE WITH NOTHING FURTHER STAGED REFUSES THE SECOND TIME, and the old refusal control
+// could not see this. That row tested a repository with NO checkout and NO stage; this one tests the
+// state an author is actually in a second after a successful commit -- checkout set, stage consumed --
+// where `effective_candidate` correctly INHERITS the committed manifest. A verb that asked only what
+// the candidate IS therefore minted a second commit with the same root and a new identity: an empty
+// change reported as a change. The verb now asks `stage_standing`, which answers whether the candidate
+// DIFFERS from what is committed. Found by external review; the wet canary could not catch it either,
+// because every commit in that run followed a real add.
+test fn scm_ws_committing_again_with_nothing_further_staged_refuses() -> Bool {
+  match staged_repository(
+    ingress: stage_source_at_path(repository: scene(), path: "new.txt" as NonEmptyStr, text: "N0")
+  ) {
+    Absent => false
+    Present { value: repository } =>
+      match commit_staged(repository: repository, message: "first") {
+        StagedCommitMinted { repository: committed, reference: _ } =>
+          match commit_staged(repository: committed, message: "second") {
+            StagedCommitNothingToFreeze => true
+            StagedCommitMinted { repository: _, reference: _ } => false
+            StagedCommitCandidateRefused { cause: _ } => false
+            StagedCommitAllocatorInvalid { next_ordinal: _ } => false
+            StagedCommitParentMissing { parent: _ } => false
+          }
+        StagedCommitCandidateRefused { cause: _ } => false
+        StagedCommitNothingToFreeze => false
+        StagedCommitAllocatorInvalid { next_ordinal: _ } => false
+        StagedCommitParentMissing { parent: _ } => false
+      }
+  }
+}
+
+// AND THE DELIBERATE NO-OP IS THE SAME REFUSAL, reached by the other door. Here the author DOES stage,
+// but stages bytes that reproduce the manifest already committed -- so the stage is present and
+// explicit, and still freezes nothing. A verb that keyed on "is a stage present" rather than "does the
+// candidate differ" passes the row above and fails this one, which is why both are enrolled.
+test fn scm_ws_staging_content_identical_to_the_base_still_freezes_nothing() -> Bool {
+  match stage_source_at_path(repository: scene(), path: "keep.txt" as NonEmptyStr, text: "K0") {
+    Staged { repository: repository, manifest: _, source: _ } =>
+      match commit_staged(repository: repository, message: "no change") {
+        StagedCommitNothingToFreeze => true
+        StagedCommitMinted { repository: _, reference: _ } => false
+        StagedCommitCandidateRefused { cause: _ } => false
+        StagedCommitAllocatorInvalid { next_ordinal: _ } => false
+        StagedCommitParentMissing { parent: _ } => false
+      }
+    StageCandidateRefused { cause: _ } => false
+    StageSourceLocatorCollision { identity: _ } => false
+    StageDuplicatePath { path: _ } => false
+    StageManifestLocatorCollision { identity: _ } => false
   }
 }
 
@@ -273,7 +321,6 @@ test fn scm_ws_committing_a_real_stage_is_admitted() -> Bool {
         StagedCommitNothingToFreeze => false
         StagedCommitAllocatorInvalid { next_ordinal: _ } => false
         StagedCommitParentMissing { parent: _ } => false
-        StagedCommitIntegrationSourceMissing { source: _ } => false
       }
   }
 }

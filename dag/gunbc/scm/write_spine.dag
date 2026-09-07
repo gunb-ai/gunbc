@@ -29,15 +29,19 @@ import gunbc.scm.object_store {
 }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope, RepositoryCommitRef,
-  mint_commit_from_stored_manifest,
-  BrandedRootMinted, BrandedRootAllocatorInvalid, BrandedRootParentMissing,
-  BrandedRootIntegrationSourceMissing,
 }
-import gunbc.scm.integration { CommitIntegration, NoSquashIntegration }
+import gunbc.scm.ordinary_commit {
+  OrdinaryCommitMint, OrdinaryCommitMinted,
+  OrdinaryCommitAllocatorInvalid, OrdinaryCommitParentMissing,
+  mint_ordinary_commit,
+}
 import gunbc.scm.staging {
   StagingRefusal, EffectiveCandidate,
   CandidateFromStage, CandidateInheritedFromBase, CandidateEmptyCorpus, CandidateRefused,
   effective_candidate,
+  StageStanding, StageMatchesBase, StageDiffersFromBase, StageWithNoBase,
+  NoCandidateAndNoBase, StageStandingRefused,
+  stage_standing,
 }
 
 // THE STAGING OUTCOME. Each refusal names a different owner and a different repair, which is why the
@@ -136,28 +140,48 @@ fn stage_source_at_path(
 // `commit`.
 //
 // THE ROOT IS THE MANIFEST THE CANDIDATE ALREADY NAMES, TAKEN AS A BRAND RATHER THAN AS A LOCATOR.
-// `effective_candidate` hands back the reference the STORE produced for the record it actually found,
-// so this verb never re-resolves and never has an opportunity to name a manifest the store does not
+// `stage_standing` hands back the reference the STORE produced for the record it actually found, so
+// this verb never re-resolves and never has an opportunity to name a manifest the store does not
 // hold. That is why the refusal surface below has no root-missing or wrong-kind arm: those states are
 // not reachable from a branded root, and minting an arm for them would be a fabricated cause.
 //
-// COMMITTING WITH NOTHING STAGED IS A REFUSAL, NOT A NO-OP AND NOT AN EMPTY COMMIT. A repository with
-// no checkout and no stage has no snapshot to freeze; answering with the empty corpus would commit a
-// deletion of everything the author never asked for, which is the same widening the staging module
-// refuses one level down.
+// IT ASKS `stage_standing`, NOT `effective_candidate`, AND THE FIRST WRITING ASKED THE WRONG ONE.
+// `effective_candidate` answers WHAT the snapshot is; `stage_standing` answers whether that snapshot
+// DIFFERS FROM THE ONE ALREADY COMMITTED. Committing needs the second, and asking the first admitted a
+// commit that changes nothing:
+//
+//   commit C           -> checked_out = C, staged = Absent
+//   commit again       -> the candidate is INHERITED FROM C, so its root IS C's root
+//                      -> a second commit mints, with the same root and a new identity
+//
+// An empty change reported as a change, and the history grows a row that froze nothing. This
+// module's own annotation two paragraphs down named that exact defect as the reason the stage must be
+// consumed -- and then let it in through the inheritance door instead. The same arm also covers the
+// case an author reaches deliberately: staging bytes that reproduce the committed manifest is a
+// no-op, and it must be reported as one rather than minted.
+//
+// COMMITTING WITH NOTHING TO FREEZE IS A REFUSAL, NOT A NO-OP AND NOT AN EMPTY COMMIT. A repository
+// with no checkout and no stage has no snapshot to freeze; answering with the empty corpus would
+// commit a deletion of everything the author never asked for, which is the same widening the staging
+// module refuses one level down.
+//
+// AND THERE IS NO INTEGRATION-SOURCE ARM, BECAUSE THE CONSTRUCTION THIS VERB INVOKES HAS NO
+// INTEGRATION SOURCE. An earlier revision carried one and admitted in its own comment that it could
+// not arise -- the `carry_mint` error this stack has already paid for once: honest about the callee's
+// domain and dishonest about this operation's. The repair is not to re-report it or to translate it,
+// but to invoke a construction from which the question is ABSENT: `mint_ordinary_commit` takes no
+// integration argument, so there is no source that could be missing.
 type StagedCommit
   = StagedCommitMinted { repository: RepositoryEnvelope, reference: RepositoryCommitRef }
   | StagedCommitCandidateRefused { cause: StagingRefusal }
   | StagedCommitNothingToFreeze
   | StagedCommitAllocatorInvalid { next_ordinal: Int }
   | StagedCommitParentMissing { parent: RepositoryCommitRef }
-  | StagedCommitIntegrationSourceMissing { source: RepositoryCommitRef }
 
 // THE COMMIT ADVANCES THE CHECKOUT AND CONSUMES THE STAGE IN ONE MOTION, and neither half is
 // optional. Leaving the checkout behind would make the next `add` inherit from the OLD snapshot, so
 // the commit just made would be invisible to the corpus that follows it. Leaving the stage in place
-// would make the next commit -- with nothing further added -- freeze the same manifest again under a
-// new identity, an empty change reported as a change.
+// would make the next commit freeze the same manifest again under a new identity.
 fn advance_to_commit(repository: RepositoryEnvelope, reference: RepositoryCommitRef) -> RepositoryEnvelope {
   RepositoryEnvelope {
     store: repository.store,
@@ -169,44 +193,32 @@ fn advance_to_commit(repository: RepositoryEnvelope, reference: RepositoryCommit
 }
 
 fn commit_staged(repository: RepositoryEnvelope, message: String) -> StagedCommit {
-  match effective_candidate(repository: repository) {
-    CandidateRefused { cause: c } => StagedCommitCandidateRefused { cause: c }
-    CandidateEmptyCorpus => StagedCommitNothingToFreeze
-    CandidateFromStage { manifest: root, entries: _ } =>
+  match stage_standing(repository: repository) {
+    StageStandingRefused { cause: c } => StagedCommitCandidateRefused { cause: c }
+    NoCandidateAndNoBase => StagedCommitNothingToFreeze
+    StageMatchesBase { candidate: _ } => StagedCommitNothingToFreeze
+    StageWithNoBase { candidate: root } =>
       freeze_root(repository: repository, root: root, message: message)
-    CandidateInheritedFromBase { manifest: root, entries: _ } =>
+    StageDiffersFromBase { candidate: root, committed: _ } =>
       freeze_root(repository: repository, root: root, message: message)
   }
 }
 
-// THE INTEGRATION-SOURCE ARM IS UNREACHABLE FROM HERE AND IS STILL CARRIED HONESTLY. This verb passes
-// `NoSquashIntegration`, so the mint cannot answer with a missing integration source -- but the arm is
-// re-reported as itself rather than folded into the parent-missing arm, because a cause invented to
-// close a match is exactly the fabrication this stack keeps paying for. It is not deleted either: the
-// mint owns that decision, and a caller reading this outcome must be able to tell the two apart if the
-// mint's surface ever widens.
-//
-// THE INTEGRATION IS `NoSquashIntegration` BY CONSTRUCTION HERE, not by default. An ordinary commit
-// consumed no source commit, and `gunbc.scm.squash_merge` is the sole verb that may claim one -- so
-// this function takes no integration parameter through which a caller could assert a provenance it
-// did not perform.
 fn freeze_root(
   repository: RepositoryEnvelope,
   root: CorpusManifestObjectRef,
   message: String,
 ) -> StagedCommit {
-  match mint_commit_from_stored_manifest(
+  match mint_ordinary_commit(
     repository: repository,
     root: root,
     message: message,
     parent: repository.checked_out,
-    integration: NoSquashIntegration,
   ) {
-    BrandedRootAllocatorInvalid { next_ordinal: n } => StagedCommitAllocatorInvalid { next_ordinal: n }
-    BrandedRootParentMissing { parent: p } => StagedCommitParentMissing { parent: p }
-    BrandedRootIntegrationSourceMissing { source: s } =>
-      StagedCommitIntegrationSourceMissing { source: s }
-    BrandedRootMinted { repository: minted, reference: reference } =>
+    OrdinaryCommitAllocatorInvalid { next_ordinal: n } =>
+      StagedCommitAllocatorInvalid { next_ordinal: n }
+    OrdinaryCommitParentMissing { parent: p } => StagedCommitParentMissing { parent: p }
+    OrdinaryCommitMinted { repository: minted, reference: reference } =>
       StagedCommitMinted {
         repository: advance_to_commit(repository: minted, reference: reference),
         reference: reference,

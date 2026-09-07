@@ -299,20 +299,34 @@ fn observe_cas_slot_state(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotObserva
 //                             the truncation is internally consistent and nothing refuses. A reader
 //                             sees neither the complete old document nor the complete new one.
 //
-// DECLARED RUNG DROP (DESIGN section 4b(3)) FOR THE OWNER-ONLY BINDING.
-//   previous rung   n/a -- the class was undeclared, and applied to every consumer of this store
-//                   including ones that never asked for owner-only bytes.
-//   temporary rung  mitigatable: the hazard is named, the population is closed and enumerated, and a
-//                   caller that does not need confidentiality can now select the atomic binding.
-//   reason          there is no modeled filesystem operation that is create-only, failure-atomic AND
-//                   owner-only at creation. `WriteCreateNew` publishes by hard-link and cannot carry a
-//                   mode; `WriteOwnerOnly` carries the mode and cannot stage.
-//   population      the call sites that bind OwnerOnlyCreateOnly, and only those.
-//   restoration     A FILESYSTEM OPERATION THAT PUBLISHES A NEW PATH FAILURE-ATOMICALLY AT A CALLER-
-//   trigger         SPECIFIED MODE -- staged, synchronized, then linked into place under that mode.
-//                   That is the capability, not an artifact: when it exists, this coproduct collapses
-//                   because both bindings become the same publication with a mode argument, and the
-//                   drop is retired by that collapse and by nothing else.
+// A DECLARED CURRENT LIMITATION ON THE OWNER-ONLY BINDING -- NOT A RUNG DROP, AND THE FIRST WRITING
+// CALLED IT ONE.
+//
+// It was filed as a DESIGN section 4b(3) declared drop whose `previous rung` was `n/a`. Those cannot
+// both be true: a drop is a REGRESSION RECORD, so it presupposes a guarantee that was held and is
+// being given up, and a class with no previous rung has nothing to regress from. This hazard was
+// never absent -- every generation was published this way from the module's first commit, undeclared.
+// So what is owed is a limitation with a restoration trigger, which is what this is. Caught by
+// external review of the drop row itself.
+//
+// THE POPULATION IS ONE CALLER, AND IT IS NAMED. `gunbc.srv3.srv3_boot_once_cd` publishes authorization
+// claim state under `/var/lib/gunbc/authorization-claims`, and that root is a bare path constant: no
+// modeled directory ownership or mode authority stands beside it. Mode 0600 on the generation file is
+// therefore the ONLY confidentiality that state has, including for free-form abort-cause text, so
+// flipping it to the atomic binding would trade a durable-state hazard for a real privacy regression.
+// Both other consumers moved to `DefaultAccessCreateOnly`: the fabric reservations because
+// `gunbc.fabric.fabric_allocation_store_substrate` already models both the store and its namespace as
+// root-owned 0700 -- an unauthorized principal cannot traverse the directory, so file-level 0600 adds
+// no reader exclusion there while retaining the hazard -- and the live probe because an instrument is
+// not a final consumer that can justify keeping an unsafe arm alive in the production domain.
+//
+// RESTORATION TRIGGER, NAMING THE CAPABILITY AND NOT AN ARTIFACT: a modeled directory ownership and
+// mode authority for the authorization-claim root, of the kind `AllocationStoreSubstrateSpec` already
+// carries for fabric -- SUFFICIENT FOR that root to enforce confidentiality by traversal, at which
+// point srv3 binds `DefaultAccessCreateOnly`, `OwnerOnlyCreateOnly` has no consumer, and this
+// coproduct collapses to the single admitted publication operation. It is retired by that and by
+// nothing else; in particular it is NOT retired by a failure-atomic mode-carrying write, which would
+// be a different and larger capability than this population needs.
 type CasGenerationPublication
   = DefaultAccessCreateOnly
   | OwnerOnlyCreateOnly
@@ -322,18 +336,30 @@ type CasGenerationPublication
 // else. Losing here is a lost race, not a bad precondition -- another writer
 // took the same target between our observation and our write -- so the slot is
 // re-observed to report what actually beat us rather than guessing.
-// THE PUBLICATION ANSWERS A Bool AND NOT THE HOST RECORD, because that is all a commit decision needs
-// and the two verbs' records are not the same fact. What follows a failed publication here is a
-// re-observation of the slot, never the host's error text -- the store reports what actually beat this
-// writer rather than transcribing why one syscall said no.
+// THE PUBLICATION CARRIES ITS FAILURE DETAIL, AND THE FIRST WRITING THREW IT AWAY.
+//
+// It answered a bare `Bool`, so every unsuccessful write -- whoever caused it -- arrived at one arm.
+// The detail is not transcribed as a diagnosis; it is carried because the arm below needs SOMETHING
+// to say when the failure turns out not to be a lost race, and the host's own words are the only
+// honest thing available. Nothing parses it.
+type CasGenerationPublished
+  = CasGenerationWritten
+  | CasGenerationWriteRefused { detail: String }
+
 fn cas_generation_published(
   publication: CasGenerationPublication,
   path: String,
   content: String,
-) -> Bool {
+) -> CasGenerationPublished {
   match publication {
-    DefaultAccessCreateOnly => Filesystem.WriteCreateNew(path: path, content: content).success
-    OwnerOnlyCreateOnly => Filesystem.WriteOwnerOnly(path: path, content: content).success
+    DefaultAccessCreateOnly => {
+      let write = Filesystem.WriteCreateNew(path: path, content: content)
+      if write.success { CasGenerationWritten } else { CasGenerationWriteRefused { detail: write.error } }
+    }
+    OwnerOnlyCreateOnly => {
+      let write = Filesystem.WriteOwnerOnly(path: path, content: content)
+      if write.success { CasGenerationWritten } else { CasGenerationWriteRefused { detail: write.error } }
+    }
   }
 }
 
@@ -343,18 +369,76 @@ fn cas_commit_at(
   attempt: CasAttempt<NonEmptyStr>,
   target: CasGeneration,
 ) -> CasOutcome<NonEmptyStr> {
-  if cas_generation_published(
+  match cas_generation_published(
     publication: publication,
     path: cas_file_slot_path(root: root, key: attempt.key, generation: target),
     content: attempt.proposed as String,
   ) {
-    CasCommitted {
-      committed: CasSlotVersion { generation: target, content: attempt.proposed_content, value: attempt.proposed }
-    }
-  } else {
-    CasPreconditionFailed {
-      expected: attempt.expected,
-      observed: cas_probe_as_readable(probe: cas_observe_slot(root: root, key: attempt.key)),
+    CasGenerationWritten =>
+      CasCommitted {
+        committed: CasSlotVersion { generation: target, content: attempt.proposed_content, value: attempt.proposed }
+      }
+    CasGenerationWriteRefused { detail: detail } =>
+      cas_failed_publication(root: root, attempt: attempt, target: target, detail: detail)
+  }
+}
+
+// A FAILED WRITE IS NOT EVIDENCE THAT SOMEBODY ELSE WON, AND THIS FUNCTION IS THE REPAIR OF A LINE
+// THAT SAID IT WAS.
+//
+// The earlier body answered `CasPreconditionFailed` for EVERY unsuccessful write, with the observed
+// slot re-read afterwards. When the failure was a genuine lost race that is exactly right: the target
+// generation exists because another writer took it, and the re-observation names what beat us. When
+// the failure was the HOST -- no space, no permission, a staging budget exhausted -- the target does
+// not exist, the re-observation returns the same generation we expected, and the store reported:
+//
+//   CasPreconditionFailed { expected: generation 7, observed: generation 7 }
+//
+// A precondition failure whose precondition plainly held. That is a fabricated cause, and it is the
+// worse kind: it routes an operator to look for a competing writer that does not exist, while the
+// actual fault -- a store that cannot accept writes -- goes unreported and uncounted. The wet
+// two-writer control cannot catch it, because in that run both writes are valid and one genuinely
+// loses; nothing there presents a host refusal.
+//
+// SO THE RE-OBSERVATION DECIDES, AND IT ASKS THE ONE QUESTION THAT DISCRIMINATES: DID THE TARGET
+// GENERATION APPEAR? If the head has reached the target, some other writer published it and this is a
+// lost race. If it has not, nothing took our slot and the store simply refused us. The host's text is
+// carried into the refusal and never parsed -- classifying by matching on an error string is the
+// anemic leaf this module already refuses one screen up.
+//
+// THE COST OF THE REMAINING VOCABULARY MISMATCH IS NAMED RATHER THAN HIDDEN: the refusal travels in
+// `CasStoreRefused`, whose cause type `CasUnreadableSlot` is spelled for READ failures. The OUTCOME is
+// right -- the caller's remedy is to investigate the store, not to re-derive against a new head -- and
+// widening `std.durable_compare_and_set`'s coproduct is a separate cut across every consumer of it.
+// NEXT-RUNG TRIGGER, naming the capability: a store-refusal cause vocabulary that distinguishes a slot
+// that could not be READ from a generation that could not be PUBLISHED, at which point this detail
+// stops being a malformed-slot report and becomes a publication refusal in its own right.
+fn cas_failed_publication(
+  root: NonEmptyStr,
+  attempt: CasAttempt<NonEmptyStr>,
+  target: CasGeneration,
+  detail: String,
+) -> CasOutcome<NonEmptyStr> {
+  let probe = cas_observe_slot(root: root, key: attempt.key)
+  match probe {
+    ProbedHead { generation: h, value: _ } =>
+      if cas_generation_count(g: h) >= cas_generation_count(g: target) {
+        CasPreconditionFailed {
+          expected: attempt.expected,
+          observed: cas_probe_as_readable(probe: probe),
+        }
+      } else {
+        cas_publication_refused(detail: detail)
+      }
+    ProbedAbsent => cas_publication_refused(detail: detail)
+    ProbedBeyondBound { bound: _ } => cas_publication_refused(detail: detail)
+  }
+}
+
+fn cas_publication_refused(detail: String) -> CasOutcome<NonEmptyStr> {
+  CasStoreRefused {
+    cause: CasUnreadableMalformed {
+      detail: concat("generation publication refused by the store: ", detail) as NonEmptyStr
     }
   }
 }

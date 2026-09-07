@@ -618,26 +618,17 @@ fn mint_commit_from_stored_manifest(
     match integration_anchor_resolves(repository: repository, integration: integration) {
       Present { value: missing } => BrandedRootIntegrationSourceMissing { source: missing }
       Absent =>
-        match parent {
-          Present { value: parent_ref } =>
-            match commit_at_reference(commits: repository.commits, reference: parent_ref) {
-              Absent => BrandedRootParentMissing { parent: parent_ref }
-              Present { value: _ } =>
-                mint_repository_commit_admitted(
-                  repository: repository,
-                  root: root,
-                  message: message,
-                  ancestry: DescendsFrom { parent: parent_ref },
-                  integration: integration,
-                )
-            }
-          Absent =>
-            mint_repository_commit_admitted(
-              repository: repository,
-              root: root,
-              message: message,
-              ancestry: RootCommit,
-              integration: integration,
+        match admit_commit_parent(repository: repository, parent: parent) {
+          CommitParentAbsent { parent: p } => BrandedRootParentMissing { parent: p }
+          CommitParentAdmitted { ancestry: ancestry } =>
+            widen_minted_commit(
+              minted: mint_repository_commit_admitted(
+                repository: repository,
+                root: root,
+                message: message,
+                ancestry: ancestry,
+                integration: integration,
+              )
             )
         }
     }
@@ -693,16 +684,55 @@ fn widen_branded_root_mint(mint: BrandedRootMint) -> RepositoryCommitMint {
 }
 
 
+// THE ROW CONSTRUCTION HAS ONE OUTCOME, AND ITS TYPE NOW SAYS SO.
+//
+// This function performs no admission: every question -- is the allocator sound, does the parent
+// exist, does the integration anchor resolve -- has already been answered by the time it is reached,
+// which is what `_admitted` meant. It nevertheless returned `BrandedRootMint`, a four-arm coproduct
+// of which it could only ever produce one. That is harmless where the caller checked everything, and
+// actively harmful for a caller whose route makes one of the OTHER arms impossible: it had no way to
+// narrow, so it either matched a state it could not reach or invented a cause to close the match.
+// `gunbc.scm.ordinary_commit` hit exactly that and its first draft translated the unreachable
+// integration arm into a parent-missing -- a fabricated cause, the `carry_mint` error again.
+//
+// So the construction answers `MintedCommit`, and each admission route widens it to whatever
+// coproduct ITS questions make reachable. The admission rules are not duplicated: they stay in the
+// routes, and this is the single place a commit row is built.
+type MintedCommit sole_constructor {
+  repository: RepositoryEnvelope
+  reference: RepositoryCommitRef
+}
+
+// THE PARENT ADMISSION, HELD ONCE, so the ordinary and the squash routes ask it the same way rather
+// than each writing their own lookup.
+type CommitParentAdmission
+  = CommitParentAdmitted { ancestry: CommitAncestry }
+  | CommitParentAbsent { parent: RepositoryCommitRef }
+
+fn admit_commit_parent(
+  repository: RepositoryEnvelope,
+  parent: RepositoryCommitRef?,
+) -> CommitParentAdmission {
+  match parent {
+    Absent => CommitParentAdmitted { ancestry: RootCommit }
+    Present { value: parent_ref } =>
+      match commit_at_reference(commits: repository.commits, reference: parent_ref) {
+        Absent => CommitParentAbsent { parent: parent_ref }
+        Present { value: _ } => CommitParentAdmitted { ancestry: DescendsFrom { parent: parent_ref } }
+      }
+  }
+}
+
 fn mint_repository_commit_admitted(
   repository: RepositoryEnvelope,
   root: CorpusManifestObjectRef,
   message: String,
   ancestry: CommitAncestry,
   integration: CommitIntegration,
-) -> BrandedRootMint {
+) -> MintedCommit {
   let allocation = mint_id(alloc: repository.commit_allocator)
   let reference = RepositoryCommitRef { identity: allocation.id }
-  BrandedRootMinted {
+  MintedCommit {
     repository: RepositoryEnvelope {
       store: repository.store,
       commits: concat(repository.commits, [RepositoryCommit {
@@ -718,6 +748,10 @@ fn mint_repository_commit_admitted(
     },
     reference: reference,
   }
+}
+
+fn widen_minted_commit(minted: MintedCommit) -> BrandedRootMint {
+  BrandedRootMinted { repository: minted.repository, reference: minted.reference }
 }
 
 // ------------------------------------------------------------------------------------------------

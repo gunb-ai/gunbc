@@ -122,70 +122,147 @@ type RepositoryPublication
 // call would then overwrite it while believing it was conditional. The caller states what it BELIEVES
 // the world to be -- absent, or generation N it actually read and reasoned from -- and the store
 // decides whether that belief still holds.
-// CREATING A SLOT AND ADVANCING ONE ARE TWO ENTRY POINTS, because they are authorized by two different
+// THE SEAL IS ON THE PREPARATION, NOT ON THE ENTRY POINTS, AND THE FIRST WRITING GOT THAT WRONG.
+//
+// It sealed `LoadedRepositoryGeneration` and then exported `publish_repository(slot, expected, repo)`
+// and `publish_repository_document(slot, expected, document)` beside the safe route, with an
+// annotation arguing that the safe route was the intended one. `.dag` has no module privacy, so that
+// argument was not a wall: a caller could load slot A at generation 7 and publish to slot B with an
+// independently authored expectation of 7, and if B happened to sit at 7 the write would succeed --
+// the exact cross-slot pairing the sealed carrier was introduced to make unwritable. The document
+// helper was worse: it published arbitrary nonempty bytes without passing `encode_repository_checked`
+// at all, so every closure guarantee that codec enforces could be skipped by calling one function.
+// Found by external review, which observed that the module's own comment ADMITTED the helpers were
+// reachable and then reasoned past it.
+//
+// SO THE RELATION IS CARRIED ACROSS THE BOUNDARY INSTEAD OF ARGUED. `PreparedRepositoryPublication`
+// is sole-constructed, and the only two things that can build one are the two preparations below: a
+// creation, whose expectation is `ExpectSlotAbsent` by construction and whose document came from the
+// checked encoder; and an advance, whose slot AND generation are both read off one
+// `LoadedRepositoryGeneration`. The executing helper consumes nothing else. There is no signature
+// anywhere in the module that accepts a loose slot beside a loose expectation, or loose bytes, so
+// there is no route through which the two halves of the relation can be sourced separately.
+//
+// This is the same repair as `RepositoryManifestRoot` one module over, and for the same reason: a raw
+// helper justified by facts available only to its intended caller is not sealed, it is documented.
+type PreparedRepositoryPublication sole_constructor {
+  slot: RepositorySlot
+  expected: CasExpectation
+  document: NonEmptyStr
+}
+
+type RepositoryPublicationPreparation
+  = PublicationPrepared(PreparedRepositoryPublication)
+  | PublicationEncodeRefused { cause: RepositoryEncodeRefusal }
+
+// CREATING A SLOT AND ADVANCING ONE ARE TWO PREPARATIONS, because they are authorized by two different
 // facts. A create is authorized by nothing -- it claims an unheld name, and the store refuses if the
 // name is held. An advance is authorized by an observation, and the only way to hold one is to have
 // made it, which `LoadedRepositoryGeneration` is.
-fn publish_new_repository(slot: RepositorySlot, repo: RepositoryEnvelope) -> RepositoryPublication {
-  publish_repository(slot: slot, expected: ExpectSlotAbsent, repo: repo)
+// THE SUBJECT IS THE PARAMETER, NOT THE EXPECTATION, AND THAT IS WHERE THE SEAL ACTUALLY CLOSES.
+//
+// A first repair moved the raw entries behind a shared `prepare_publication(slot, expected, repo)` --
+// which is the same hole one storey up, because that signature still accepts a slot beside an
+// expectation nobody derived from it. The expectation is not an input to this module at all: it is a
+// FUNCTION OF WHICH PUBLICATION THIS IS. A creation expects absence because that is what creating
+// means; an advance expects the generation its observation carries. So the subject is what crosses
+// the boundary, both halves are read off it, and there is no signature left through which a caller
+// could supply an expectation it authored.
+type PublicationSubject
+  = CreateUnheldSlot { slot: RepositorySlot }
+  | AdvanceObservedGeneration { loaded: LoadedRepositoryGeneration }
+
+fn prepare_repository_creation(
+  slot: RepositorySlot,
+  repo: RepositoryEnvelope,
+) -> RepositoryPublicationPreparation {
+  prepare_publication(subject: CreateUnheldSlot { slot: slot }, repo: repo)
 }
 
-// TWO WRITERS AGAINST ONE GENERATION IS TWO CALLS WITH THE SAME `loaded`. The first consumes the
+// TWO WRITERS AGAINST ONE GENERATION IS TWO PREPARATIONS FROM THE SAME `loaded`. The first consumes the
 // generation and the second is refused by the store with the observed head -- which is the property
 // under test, and it is DETERMINISTIC rather than timing-dependent, because what makes the loser lose
 // is that its expectation names a generation that has since been consumed, not that it arrived second.
-fn republish_repository(
+fn prepare_repository_advance(
   loaded: LoadedRepositoryGeneration,
   repo: RepositoryEnvelope,
-) -> RepositoryPublication {
-  publish_repository(
-    slot: loaded.slot,
-    expected: ExpectSlotGeneration { generation: loaded.generation },
-    repo: repo,
-  )
+) -> RepositoryPublicationPreparation {
+  prepare_publication(subject: AdvanceObservedGeneration { loaded: loaded }, repo: repo)
 }
 
-// THE SHARED BODY, AND WHAT ITS VISIBILITY DOES AND DOES NOT SEAL. `.dag` has no module privacy, so
-// this entry is reachable and a caller could hand it an expectation it invented. What the two entries
-// above buy is therefore not unreachability -- it is that the ROUTE WHICH CARRIES AN OBSERVATION cannot
-// carry a mismatched one, because `LoadedRepositoryGeneration` is sole-constructed by the reader. A
-// hand-built expectation is still refused by the store when it is wrong; what construction removes is
-// the case where it is accidentally RIGHT about the wrong slot.
-fn publish_repository(
-  slot: RepositorySlot,
-  expected: CasExpectation,
+fn subject_slot(subject: PublicationSubject) -> RepositorySlot {
+  match subject {
+    CreateUnheldSlot { slot: slot } => slot
+    AdvanceObservedGeneration { loaded: loaded } => loaded.slot
+  }
+}
+
+fn subject_expectation(subject: PublicationSubject) -> CasExpectation {
+  match subject {
+    CreateUnheldSlot { slot: _ } => ExpectSlotAbsent
+    AdvanceObservedGeneration { loaded: loaded } =>
+      ExpectSlotGeneration { generation: loaded.generation }
+  }
+}
+
+// THE ONLY PLACE A DOCUMENT IS PRODUCED, AND IT IS ALWAYS THE CHECKED ENCODER'S. A preparation cannot
+// be built from bytes a caller supplies, so the closure guarantees `encode_repository_checked`
+// enforces are not optional for anything this module will publish.
+fn prepare_publication(
+  subject: PublicationSubject,
   repo: RepositoryEnvelope,
-) -> RepositoryPublication {
+) -> RepositoryPublicationPreparation {
   match encode_repository_checked(repo: repo) {
-    RepositoryEncodeRefused { cause: cause } =>
-      RepositoryPublicationEncodeRefused { cause: cause }
+    RepositoryEncodeRefused { cause: cause } => PublicationEncodeRefused { cause: cause }
     RepositoryEncoded { value: v } =>
-      publish_repository_document(
-        slot: slot,
-        expected: expected,
-        document: serialize_json(v: v) as NonEmptyStr,
+      PublicationPrepared(
+        PreparedRepositoryPublication {
+          slot: subject_slot(subject: subject),
+          expected: subject_expectation(subject: subject),
+          document: serialize_json(v: v) as NonEmptyStr,
+        }
       )
   }
 }
 
-fn publish_repository_document(
-  slot: RepositorySlot,
-  expected: CasExpectation,
-  document: NonEmptyStr,
+// The two verbs a caller actually invokes: prepare, then execute, with the encode refusal folded into
+// the publication outcome so a caller has one coproduct to match rather than two.
+fn publish_new_repository(slot: RepositorySlot, repo: RepositoryEnvelope) -> RepositoryPublication {
+  execute_preparation(prepared: prepare_repository_creation(slot: slot, repo: repo))
+}
+
+fn republish_repository(
+  loaded: LoadedRepositoryGeneration,
+  repo: RepositoryEnvelope,
 ) -> RepositoryPublication {
+  execute_preparation(prepared: prepare_repository_advance(loaded: loaded, repo: repo))
+}
+
+fn execute_preparation(prepared: RepositoryPublicationPreparation) -> RepositoryPublication {
+  match prepared {
+    PublicationEncodeRefused { cause: cause } => RepositoryPublicationEncodeRefused { cause: cause }
+    PublicationPrepared(preparation) => publish_prepared(preparation: preparation)
+  }
+}
+
+fn publish_prepared(preparation: PreparedRepositoryPublication) -> RepositoryPublication {
   match admit_cas_attempt(
     attempt: cas_attempt(
-      key: slot.key,
-      expected: expected,
-      proposed: document,
-      proposed_content: content_hash_of_value(value: document),
+      key: preparation.slot.key,
+      expected: preparation.expected,
+      proposed: preparation.document,
+      proposed_content: content_hash_of_value(value: preparation.document),
     )
   ) {
     CasAttemptKeyNotSlotAddressable { key: k } => RepositoryPublicationKeyNotAddressable { key: k }
     CasAttemptDigestMismatch { claimed: _, actual: _ } => RepositoryPublicationDigestDisagreed
     CasAttemptDigestIncomparable { claimed: _, actual: _ } => RepositoryPublicationDigestDisagreed
     CasAttemptAdmitted { verified: verified } =>
-      match file_compare_and_set(root: slot.root, publication: DefaultAccessCreateOnly, verified: verified) {
+      match file_compare_and_set(
+        root: preparation.slot.root,
+        publication: DefaultAccessCreateOnly,
+        verified: verified,
+      ) {
         CasCommitted { committed: committed } =>
           RepositoryPublished { generation: committed.generation }
         CasPreconditionFailed { expected: e, observed: o } =>

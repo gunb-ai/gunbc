@@ -1,0 +1,77 @@
+module gunbc.scm.ordinary_commit
+
+// MINTING A COMMIT THAT CONSUMED NOTHING, AS A CONSTRUCTION RATHER THAN AS AN ARGUMENT.
+//
+// WHY THIS EXISTS AT ALL, AND IT IS NOT A CONVENIENCE WRAPPER. `mint_commit_from_stored_manifest`
+// takes a `CommitIntegration`, so its outcome must carry `BrandedRootIntegrationSourceMissing` -- an
+// honest arm, because for a MERGE that source can genuinely be absent. An ordinary commit passes
+// `NoSquashIntegration`, which has no source at all, so that arm is unreachable from this route and
+// every consumer downstream was being made to match on a state this operation cannot produce.
+//
+// THE FIRST ATTEMPT KEPT THE ARM AND SAID SO IN A COMMENT. That is the `carry_mint` error this stack
+// has already paid for once: preserving the callee's causes is honest about the CALLEE's domain and
+// dishonest about the OPERATION's, and an annotation admitting a state is impossible while the type
+// still carries it is a signature that lies with a footnote. Re-reporting it as a parent-missing
+// would have been worse -- a fabricated cause, which is the sin one level down from this one.
+//
+// SO THE QUESTION IS REMOVED RATHER THAN ANSWERED. This function takes no integration parameter,
+// supplies `NoSquashIntegration` itself, and narrows the result to the three outcomes an ordinary
+// commit can actually reach. DESIGN section 4b: construction over proof, proof over validation --
+// the state is not refused here, it is unwritable through this route.
+//
+// IT IS NOT A SECOND MINT. The parent admission is `admit_commit_parent` and the row is built by
+// `mint_repository_commit_admitted` -- the same two functions the squash route uses -- so the
+// allocator discipline, the parent-preexistence rule and the row's shape have exactly one authority
+// each. What differs is only WHICH QUESTIONS THIS ROUTE ASKS, which is the thing that should differ.
+
+import std.types { String, Int }
+import gunbc.scm.ancestry { RepositoryCommitRef }
+import gunbc.scm.object_store { CorpusManifestObjectRef }
+import gunbc.scm.integration { NoSquashIntegration }
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope,
+  MintedCommit,
+  CommitParentAdmission, CommitParentAdmitted, CommitParentAbsent, admit_commit_parent,
+  mint_repository_commit_admitted,
+}
+
+type OrdinaryCommitMint
+  = OrdinaryCommitMinted { repository: RepositoryEnvelope, reference: RepositoryCommitRef }
+  | OrdinaryCommitAllocatorInvalid { next_ordinal: Int }
+  | OrdinaryCommitParentMissing { parent: RepositoryCommitRef }
+
+// THE INTEGRATION QUESTION IS NOT ASKED HERE, WHICH IS DIFFERENT FROM BEING ANSWERED HERE.
+//
+// This route runs the two admissions an ordinary commit actually has -- the allocator and the parent
+// -- and then reaches `mint_repository_commit_admitted`, whose outcome is the single-constructor
+// `MintedCommit`. There is no integration arm to match, so there is nothing to translate and no
+// opportunity to fabricate a cause. The first draft of this module DID translate it, into a
+// parent-missing, behind a comment explaining that it could not fire; that comment was the tell.
+//
+// THE ADMISSION RULES ARE NOT DUPLICATED. `admit_commit_parent` is the same function the squash route
+// calls, and the row is built by the same constructor. What differs between the routes is only which
+// questions they ask, which is exactly what should differ.
+fn mint_ordinary_commit(
+  repository: RepositoryEnvelope,
+  root: CorpusManifestObjectRef,
+  message: String,
+  parent: RepositoryCommitRef?,
+) -> OrdinaryCommitMint {
+  if repository.commit_allocator.next_ordinal < 0 {
+    OrdinaryCommitAllocatorInvalid { next_ordinal: repository.commit_allocator.next_ordinal }
+  } else {
+    match admit_commit_parent(repository: repository, parent: parent) {
+      CommitParentAbsent { parent: p } => OrdinaryCommitParentMissing { parent: p }
+      CommitParentAdmitted { ancestry: ancestry } => {
+        let minted = mint_repository_commit_admitted(
+          repository: repository,
+          root: root,
+          message: message,
+          ancestry: ancestry,
+          integration: NoSquashIntegration,
+        )
+        OrdinaryCommitMinted { repository: minted.repository, reference: minted.reference }
+      }
+    }
+  }
+}
