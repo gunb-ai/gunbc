@@ -13,6 +13,7 @@ import product.fabric.envelope { unstated_envelope }
 import product.fabric.work {
   Work, WorkContract, WorkStep, ReceiptSatisfiable, ExecutionRequirements,
   Shape, HardRequirements, CapacityClass, ControlPlaneCapacity, work_for,
+  declared_output_obligations,
 }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.supply { SupplierOffer, QuotedPerSecond, ObservedSupply }
@@ -62,6 +63,7 @@ data fixture_contract: WorkContract = WorkContract {
   runtime_closure: "runtime:1",
   effect_contract: "effects:1",
   output_contract: "outputs:1",
+  output_obligations: declared_output_obligations(ids: ["outputs:1"]),
 }
 
 data owning_principal: NonEmptyStr = "gunbc"
@@ -78,6 +80,7 @@ data other_contract: WorkContract = WorkContract {
   runtime_closure: "runtime:1",
   effect_contract: "effects:1",
   output_contract: "outputs:1",
+  output_obligations: declared_output_obligations(ids: ["outputs:1"]),
 }
 
 data other_work: Work<NonEmptyStr> = work_for(principal: owning_principal, contract: other_contract, requirements: fixture_requirements)
