@@ -3341,7 +3341,21 @@ fn declared_type_position_label(position: DeclaredTypePosition, subject: String)
 // countable, so the deficit ranks instead of vanishing.
 // NEXT-RUNG TRIGGER: the elaboration verdict for a literal at its destination refinement reaching
 // this seam on the produced node, at which point this arm refuses an unelaborated base value at a
-// refinement formal instead of declining it.
+// refinement formal instead of declining it. The trigger is not speculative: an empty string
+// literal handed to a NonEmptyStr formal compiles with no diagnostic from anything in the tree,
+// so the predicate is genuinely unchecked at introduction today.
+//
+// THE SIBLING ARM DECLINES TOO, AND THAT IS A SECTION 3 ANSWER RATHER THAN A GAP. Two refinements
+// that share a base without either being the other's ancestor look like the horizontal case brands
+// exist to refuse -- but DISTINCT BRAND DECLARATIONS ARE ALREADY WALLED, by
+// where_refinement_brand_nominal_verdict through where_refinement_mismatch_diags, which compares
+// brand DECLARATION SITES rather than spellings and refuses BrandNominalDistinctDeclarations.
+// Refusing here as well would be a second authority for one judgment. It would also be wrong at
+// this grain, and that was measured rather than reasoned: refusing every sibling pair turned up
+// FilePath at a NonEmptyStr formal, GcpProjectId at a NonEmptyStr formal, Sha512DigestHex at a
+// NonEmptyStr formal -- peer predicate refinements over the same base, carrying no conflicting
+// brand at all, whose chains fail to nest only because each is declared over String directly. A
+// sibling relation is not a brand conflict, and only the brand authority can tell them apart.
 //
 // WHY IT IS REACHABLE ONLY NOW. Every site this relation answers had its declared side rewritten
 // into a generic formal before any arm ran, so the refinement question was never put. Measured on
