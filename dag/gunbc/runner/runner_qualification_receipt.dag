@@ -1,0 +1,126 @@
+module gunbc.runner.runner_qualification_receipt
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+
+// THE RUN THAT CLOSES THE FOUR GAPS REVIEW FOUND IN THE FIRST-JOB RECEIPT, on build
+// runner-canary-6, actions run 34090864879, dispatched with attempt=runner-canary-6.
+//
+// IT IS A SEPARATE RECEIPT RATHER THAN AN EDIT TO THE FIRST ONE. gunbc.runner.runner_first_job_receipt
+// describes what run 34086151842 established and what it did not; rewriting it to look like this run
+// would erase the record of a claim that outran its evidence, which is the part worth keeping.
+
+data receipt_subject_build: NonEmptyStr = "runner-canary-6"
+data receipt_subject_run: NonEmptyStr = "actions run 34090864879, conclusion success, dispatched with attempt=runner-canary-6"
+data receipt_subject_kernel_digest: NonEmptyStr = "d229ac139e2d332b034879e8acbbefb28c21c231d081760093ba92623b21bc22"
+data receipt_subject_guest_digest: NonEmptyStr = "c8fed37af97cfb9cf2377ff2bb8132ded8b7c492ce1e5a1d2543948aeeaacea1"
+data receipt_subject_iso_digest: NonEmptyStr = "486c3591624783ec60057db2be9889b75fe720887cf036405768716bf1c847de"
+
+data host_capture_artifact: NonEmptyStr = "docs/probes/mtcollins_qualification_host_capture_2026-09-07.txt"
+data host_capture_full_digest: NonEmptyStr = "a0065cd2f4da141297735f4710a432534a1ef6165cdc6ddae51352ed0cc027e6"
+data host_capture_extract_digest: NonEmptyStr = "01e198e64209f3ff908cb477f295af523fcb8c85f8ccd1e9725a3316b6f65758"
+
+// ── the runner artifact, read from the binary rather than from a banner ────────────────────────
+
+// THE PREVIOUS RECEIPT KNEW THE RUNNER ONLY BY SIZE, AND THE MODEL DISAGREED WITH IT. This job asks
+// the guest's own Runner.Listener what it is and prints the answer, so the identity comes from the
+// artifact rather than from the service's greeting or from a directory listing.
+//
+// IT REPORTED 2.337.0, WHICH IS THE ROW gunbc.runner_microvm NOW PINS. Model and artifact agree, and
+// the agreement was measured rather than assumed.
+data runner_version_observed: NonEmptyStr = "2.337.0, printed by /mnt/runner/bin/Runner.Listener --version inside the job"
+data runner_version_modeled: NonEmptyStr = "actions_runner_release_2_337_0, the release row gunbc_runner_guest_image carries"
+
+// THIS IS STILL NOT THE MODELED COMPARATOR. gunbc.runner_microvm_boot_probe's boot_probe_verdict is
+// the function that decides a version mismatch and refuses; the two values above are printed beside
+// each other and compared by a reader. Wiring the observation into that comparator is what would
+// make the class structural, and this run does not do it.
+data runner_version_check_standing: NonEmptyStr = "observed and modeled versions agree, established by reading a job log rather than by boot_probe_verdict refusing a mismatch"
+
+// ── the writable workspace, which the first job did not have ───────────────────────────────────
+
+// GITHUB REPORTED "only 0 MB of available disk space left" ON THE FIRST JOB. That is why two echo
+// steps passed where a checkout could not, and it is the clearest example in this lane of a green
+// result establishing less than it appeared to: the job was too small to touch the thing that was
+// missing.
+type WorkspaceEvidence {
+  created: NonEmptyStr
+  seen_by_the_guest: NonEmptyStr
+  exercised_by_the_job: NonEmptyStr
+  destroyed: NonEmptyStr
+}
+
+data attempt_workspace: WorkspaceEvidence = WorkspaceEvidence {
+  created: "mke2fs against a 4294967296-byte file that did not exist a moment earlier -- freshness by construction, so there is no prior tenant to erase and no cleanup step whose omission would leak one job's tree into the next",
+  seen_by_the_guest: "ext2 mounted at the runner's _work tree with 3827 MB free, so the checkout, RUNNER_TEMP, downloaded actions and any cache share one bounded attempt-owned home",
+  exercised_by_the_job: "the job wrote 16 MiB of random bytes, read the size back, deleted the file and required both -- a step that fails loudly if the workspace is missing, so a future green run cannot mean the job was too small to notice",
+  destroyed: "the image is gone after the attempt: post-workspace-present=no",
+}
+
+// ── retirement, finally observed rather than decorated ─────────────────────────────────────────
+
+// THE PREVIOUS BUILD'S ABSENCE CHECKS RAN BEFORE THE UNMOUNT THAT PRODUCES THE ABSENCE. They
+// reported "post-jit-device-present=YES" and could not have reported anything else -- a check whose
+// failing case is unreachable where it stands, which the guarantee ladder calls a decoration and
+// treats as worse than no check at all.
+//
+// AND IT WAS ABOUT TO BE WRITTEN UP AS A CREDENTIAL LEAK. The reading was taken at face value long
+// enough to be alarming; what it actually measured was the ordering of two lines in a shell script.
+// The check now runs after the unmount and the capture no longer closes before reaching it -- the
+// terminal condition matched a line three steps short of the evidence.
+data retirement_evidence: List<NonEmptyStr> = [
+  "jail-removed=yes",
+  "post-jit-device-present=no -- the credential carrier does not outlive its attempt",
+  "post-workspace-present=no -- the job's own files do not outlive it",
+  "post-jailbase-entries=0 and post-jailbase-mounted=0 -- the tmpfs is unmounted, not merely emptied",
+  "post-cgroup-empty=yes then post-cgroup-removed=yes",
+  "post-tap-present=no, post-ruleset-present=no, post-nft-process=0",
+  "surviving-firecracker=0, surviving-jailer=0",
+]
+
+// THE CREDENTIAL CARRIER IS THE ONE THAT MATTERS MOST HERE. gunbc.runner_microvm claims
+// AttemptScopedSecrets as a property of the CARRIER rather than of a handler's promise, and a
+// carrier that outlived its attempt would falsify exactly that. It dies with the tmpfs, and this is
+// the first run in which that is readable.
+data attempt_scoped_secrets_standing: NonEmptyStr = "the JIT drive is absent after the unmount, which is what makes AttemptScopedSecrets a carrier property rather than a claim"
+
+// ── the join between the two observers ─────────────────────────────────────────────────────────
+
+// THE FIRST RECEIPT MATCHED ITS GITHUB RUN TO ITS HOST CAPTURE BY THE MINUTE THEY SHARED. That is
+// weak in the ordinary way -- two attempts close together would be indistinguishable -- and it was
+// recorded as a weakness rather than left implicit.
+//
+// THE DISPATCH NOW CARRIES THE HOST ATTEMPT ID and the job prints it, so the run and the capture
+// name each other. It is not yet a cryptographic binding; it is an identifier chosen by the operator
+// and echoed by both sides, which removes the ambiguity without pretending to remove the trust.
+data observer_join: NonEmptyStr = "the job printed attempt: runner-canary-6, which is the host build id the capture carries; the join is by a shared declared identifier rather than by timestamp"
+
+// ── three instrument defects this run found ────────────────────────────────────────────────────
+
+// THE PATTERN IS NOW THE MOST RELIABLE FINDING IN THIS LANE: what fails is usually the observer, and
+// it fails in the direction that makes the system look worse or better than it is rather than
+// producing an obvious error.
+data instrument_defects_found: List<NonEmptyStr> = [
+  "the absence checks ran before the unmount, so they were permanently YES and briefly read as a credential leak",
+  "the capture's terminal condition matched a line printed before cleanup, so the run whose retirement it was meant to prove ended three lines short of the evidence",
+  "wc -c reported 0 bytes for a sparse 4 GiB image that mke2fs had formatted and the guest mounted with 3827 MB free -- three readings, two agreeing and one being the instrument; stat asks the inode instead of counting through a read",
+]
+
+// ── what is still open ─────────────────────────────────────────────────────────────────────────
+
+// THE JOB IS STILL SMALL, AND THE WORKSPACE ONLY PROVES IT CAN BE WRITTEN. No checkout ran, no
+// JavaScript action was downloaded, no toolchain executed. A 16 MiB write establishes that the
+// device is real and mounted; it does not establish that a clone of this repository fits, that
+// git works over the filtered egress path, or that an action download resolves.
+data still_open: List<NonEmptyStr> = [
+  "actions/checkout over the filtered egress path",
+  "one JavaScript action, which exercises the action-download path and the runner's bundled node",
+  "a toolchain step, whose dependency fetches are a far wider destination set than any probe here",
+  "a SECOND attempt on the SAME host boot -- nothing yet shows that one job leaves the host able to run the next, which is the property a runner host actually needs",
+  "metered vCPU minutes against a declared charge interval, rather than a duration multiplied by a vcpu count",
+  "an authenticated, attempt-bound JIT envelope: the delivery endpoint is still unauthenticated in both directions",
+]
+
+// THE CREDENTIAL PATH IS UNCHANGED AND REMAINS THE NEXT SECURITY BOUNDARY. It was defensible for a
+// trivial canary holding no repository secret; it is not the production path, and nothing in this
+// run improved it.
+data credential_path_standing: NonEmptyStr = "unchanged from the first-job receipt: minted on demand, served once, spent on redemption -- and neither the requester nor the responder is authenticated"
