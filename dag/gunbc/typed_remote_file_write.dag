@@ -34,11 +34,13 @@ import gunbc.file_access { FileTreeScope, path_within_file_tree_scope }
 // under admit_callers. The ruling asked for a read-back DIGEST match; the landed arm compares the
 // declared content itself far-side, which is the stronger check -- see the read-back note below.
 
-// Operator ruling msg_71f67aa9 authorizes substrate-before-consumer landing on this PR: generic
-// FleetSsh tee+stdin here; wet roundtrip, stage-and-rename, mode/ownership, read-back digest, and
-// first production consumer follow on #8281 integration branch — not a Scaffold row and no
-// DissolutionCondition in this diff. Hermetic witnesses exercise seal, argv, preflight, and
-// RemoteExecAccepted routing via ssh.Session.ExecPortableWordsWithStdin mock_response only.
+// Operator ruling msg_71f67aa9 authorized substrate-before-consumer landing of the generic FleetSsh
+// tee+stdin route. STAGE-AND-RENAME AND CONTENT READ-BACK HAVE SINCE LANDED here in
+// converge_typed_remote_file and are no longer pending on #8281; what that ruling still describes as
+// future is MODE/OWNERSHIP READ-BACK, which remains unobserved and is therefore no longer claimed by
+// the converged carrier (see the carrier note below). Hermetic witnesses exercise seal, argv,
+// preflight, RemoteExecAccepted routing and the full converge route via
+// ssh.Session.ExecPortableWordsWithStdin mock_response.
 
 type TypedRemoteFileWrite sole_constructor {
   path: FilePath
@@ -83,7 +85,10 @@ type TypedRemoteFileWriteOutcome
 // the destination would prove only that the rename moved the same bytes, saying nothing about
 // whether those bytes were the ones intended, which is the question. Reading the file back and
 // comparing to the declared content answers it directly and the comparison happens in the model,
-// where a witness can exercise it. For a unit file the transfer is a few hundred bytes.
+// where a witness can exercise it -- as written that last clause is now stale: the comparison was
+// deliberately moved FAR-SIDE into `cmp -s -`, so what a witness exercises is the classification of
+// cmp's exit vocabulary plus the whole route over a hermetic fixture, not a near-side byte compare.
+// For a unit file the transfer is a few hundred bytes.
 type RemoteFileMode
   = RemoteFileModeOwnerReadWrite
   | RemoteFileModeOwnerReadWriteWorldRead
@@ -130,23 +135,44 @@ fn remote_file_mode_octal(mode: RemoteFileMode) -> String {
 // without duplicating its definition. A typed fingerprint may return later as a lookup projection;
 // it cannot stand in for the exact write in a carrier claiming evidence about these exact bytes.
 //
-// THE POSITIVE CONTROL IS ENROLLED, and an earlier revision of this annotation argued it did not need
-// to be. That argument was wrong and is retracted. It said the seal made a witness impossible and the
-// pass-through made one unnecessary -- but 4b(4) is explicit that a climb dissolves the redundant
-// lower-rung PRODUCTION machinery and never the evidence: the discriminating RED and the positive
-// control both stay enrolled, precisely so the higher rung is known to still be real. Deleting the
-// converged arm's only executed claim while KEEPING the sentence that the arm had landed is a silent
-// rung regression, which is the exact failure this PR exists to correct, committed a second time one
-// section below the retraction of the first.
+// THE POSITIVE CONTROL IS ENROLLED, and TWO earlier revisions of this annotation were wrong about it.
+// The first argued no witness was needed because the seal made one impossible and the pass-through
+// made one unnecessary. 4b(4) forecloses that: a climb dissolves redundant lower-rung PRODUCTION
+// machinery and never the evidence, so the RED and the positive control both stay enrolled.
 //
-// A seal is not a reason to have no positive control; it is a reason for the control to be NAMED.
-// admit_callers is a closed list, so admitting one witness by name costs nothing structurally -- every
-// unadmitted caller still refuses -- and it buys back the executed evidence. It also happens to close
-// the same-module coverage gap disclosed below, since the admitted witness lives in another module.
+// The second revision restored a control but admitted the WITNESS to this mint by name, and justified
+// it with the claim that a receipt naming a different subject "has no constructor". That claim is also
+// FALSE and is retracted. sole_constructor stops an OUTSIDE module from writing the record literal; it
+// does nothing about this module, where
+//   RemoteFileConverged { write: TypedRemoteFileWrite { path: write.path, content: "other" } }
+// is perfectly authorable. `write: write` is correct source WIRING, not a type-level proof. What is
+// actually established is narrower and is all that should ever be claimed here: outside callers cannot
+// forge the positive carrier, and the admitted mint's exact-subject passthrough is MUTATION-WITNESSED.
+//
+// The witness admission is gone with it, because it was never needed. converge_typed_remote_file is a
+// func over a hermetic ssh fixture, so a test drives the REAL four-leg route and receives the carrier
+// rather than minting one. A control that reaches the arm through production is strictly better
+// evidence than a control admitted straight to the mint, and it leaves the seal at one caller.
 
+// MODE IS NOT IN THIS CARRIER, and its absence is the point. The sequence chmods the STAGED file and
+// then renames, so the only post-publication observation is `cmp -s -`, which grounds the BYTES. The
+// destination's actual mode is never read back. Carrying the REQUESTED mode here would have asserted
+// convergence on an axis whose only evidence is that the chmod process reported success -- effect-
+// reported success standing in for convergence, which is the exact class this PR exists to retract,
+// and it would have been the third instance of it in one change.
+//
+// So the carrier narrows to what independent observation actually grounds: these exact bytes at this
+// exact path. The chmod still runs and a failure there still refuses at step "mode"; what is gone is
+// the CLAIM that the destination carries the requested mode.
+//
+// This is not a 4b(3) declared drop: nothing is being lowered, because mode convergence was never
+// grounded to begin with -- a false claim is being removed, not a real guarantee suspended. The
+// NEXT-RUNG TRIGGER is the capability, not an artifact: a typed stat operation that reads the
+// destination's octal mode after the rename, at which point mode returns to this carrier minted only
+// when the observed octal and the requested mode agree, with the three ordinary controls (expected
+// mode converges, wrong observed mode refuses, unavailable observation refuses separately).
 type RemoteFileConverged sole_constructor {
   write: TypedRemoteFileWrite
-  mode: RemoteFileMode
 }
 
 // Ordinary data on purpose. A report is a judgment ABOUT AN EXIT CODE and nothing more; it asserts
@@ -254,20 +280,15 @@ fn classify_typed_remote_file_comparison(
 
 fn remote_file_converged_from_report(
   write: TypedRemoteFileWrite,
-  mode: RemoteFileMode,
   report: RemoteFileComparisonReport,
 ) -> TypedRemoteFileConvergence
   admit_callers: [
     decl_ref(module_path: "gunbc.typed_remote_file_write", decl_name: "converge_typed_remote_file"),
-    decl_ref(
-      module_path: "test.claim.typed_remote_file_converge_witness_test",
-      decl_name: "a_report_of_identical_mints_a_receipt_naming_the_exact_write",
-    ),
   ]
   = match report {
       ComparisonIdentical =>
         TypedRemoteFileConverged {
-          converged: RemoteFileConverged { write: write, mode: mode },
+          converged: RemoteFileConverged { write: write },
         }
       ComparisonDiffers { reason: why } =>
         TypedRemoteFileConvergenceRefused { step: "compare", reason: why }
@@ -484,7 +505,6 @@ func converge_typed_remote_file(
                     Present { value: back } =>
                       remote_file_converged_from_report(
                         write: write,
-                        mode: mode,
                         report: classify_typed_remote_file_comparison(
                           write: write,
                           compare_exit_code: back.exit_code,

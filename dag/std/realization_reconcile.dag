@@ -93,7 +93,11 @@ fn grounding_qualified_by_durability<E, Target, ReadbackSubject>(
 // layer inversion this carrier exists to close — the correct helper standing BESIDE the raw path
 // instead of owning it (DESIGN 3). It is sole_constructor so that no caller outside this module can
 // mint a receipt asserting convergence: the only route to one is reconcile_effect, which derives
-// convergence from the POST-APPLY observation rather than from anything the caller claims.
+// convergence from the POST-APPLY observation rather than from the decision or the application arm.
+// That observation is itself a caller-supplied REPORT -- this module receives it, it does not perform
+// the read -- so "rather than from anything the caller claims", as an earlier revision of this line
+// read, was too strong. What is derived here is that the grounding was not asserted ALONGSIDE a
+// contradictory lifecycle, not that anyone independently observed anything.
 //
 // AN EARLIER REVISION OF THIS NOTE CLAIMED a caller "cannot lie about whether the sequence ran".
 // That was false, and it was rung inflation in the authority module itself (DESIGN 4b(1)) — worse

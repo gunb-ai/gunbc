@@ -46,12 +46,14 @@ fn apply_decision() -> UpsertDecision<String> {
   Apply { plan: "the plan" }
 }
 
-// The domain evidence value. In a real domain this is a SEALED carrier whose only producer is the
-// observation that earns it — gunbc.typed_remote_file_write RemoteFileConverged is the worked
-// example. Here it is a String because these witnesses are about the generic truth table, and the
+// The domain evidence value. In a real domain this is a SEALED carrier minted only behind the
+// authority that performed the effect — gunbc.typed_remote_file_write RemoteFileConverged is the
+// worked example. "The observation that EARNS it", as an earlier revision read, overstated it: the
+// mint is admitted to the func that ran the four legs, which is a restriction on WHO may mint, not a
+// proof that the legs ran. Here it is a String because these witnesses are about the generic truth table, and the
 // point being fixed is that the Apply route now demands a produced value at all rather than a Bool
 // any caller could write.
-fn applied_the_decided_plan() -> Application<String> {
+fn reported_application() -> Application<String> {
   Applied { evidence: "actuator receipt" }
 }
 
@@ -64,7 +66,7 @@ test fn an_applied_effect_whose_readback_does_not_ground_is_not_converged() -> B
   !reconciled_effect_converged(
     r: reconcile_effect(
       decision: apply_decision(),
-      application: applied_the_decided_plan(),
+      application: reported_application(),
       show_read: grounding_read(),
       grounding: does_not_ground(),
     )
@@ -78,7 +80,7 @@ test fn an_applied_effect_whose_readback_grounds_is_converged() -> Bool {
   reconciled_effect_converged(
     r: reconcile_effect(
       decision: apply_decision(),
-      application: applied_the_decided_plan(),
+      application: reported_application(),
       show_read: grounding_read(),
       grounding: grounds(),
     )
@@ -94,7 +96,7 @@ test fn a_refused_decision_cannot_be_laundered_into_convergence_by_a_grounding_r
   !reconciled_effect_converged(
     r: reconcile_effect(
       decision: Refuse { reason: "policy is observe-only" as NonEmptyStr },
-      application: applied_the_decided_plan(),
+      application: reported_application(),
       show_read: grounding_read(),
       grounding: grounds(),
     )
@@ -147,7 +149,7 @@ test fn a_noop_whose_observation_is_absent_is_not_converged() -> Bool {
 test fn the_receipt_carries_the_decision_that_produced_it() -> Bool {
   match reconcile_effect(
     decision: apply_decision(),
-    application: applied_the_decided_plan(),
+    application: reported_application(),
     show_read: grounding_read(),
     grounding: grounds(),
   ).decision {
@@ -166,7 +168,7 @@ test fn a_refusing_reconciliation_classifies_to_the_non_converged_arm() -> Bool 
   match classify_reconciled(
     r: reconcile_effect(
       decision: apply_decision(),
-      application: applied_the_decided_plan(),
+      application: reported_application(),
       show_read: grounding_read(),
       grounding: does_not_ground(),
     )
@@ -184,7 +186,7 @@ test fn a_converged_reconciliation_classifies_to_a_success_carrier_holding_its_e
   match classify_reconciled(
     r: reconcile_effect(
       decision: apply_decision(),
-      application: applied_the_decided_plan(),
+      application: reported_application(),
       show_read: grounding_read(),
       grounding: grounds(),
     )
@@ -199,8 +201,10 @@ test fn a_converged_reconciliation_classifies_to_a_success_carrier_holding_its_e
 // These four close the holes a review found in the first revision, where `applied` was an ordinary
 // Bool. Each is a state that WAS constructible and did converge, and each is now refused. They are
 // not variations on the readback RED above: that one asks whether the result is derived from the
-// observation, these ask whether the application was EARNED and whether it was the applied plan that
-// was decided. A carrier can pass the first and fail every one of these.
+// observation, these ask whether the reported application CONTRADICTS the decision beside it. An
+// earlier revision of this header said they establish that the application was EARNED and that the
+// applied plan was the one decided. Neither survives: the plan join was removed from std, and being
+// reported is not being earned. A carrier can pass the first and fail every one of these.
 
 // Decided to do nothing, then did something, and the end state grounds. Adherence is not "the world
 // happens to look right afterwards" — a Noop that was followed by an effect did not hold.
@@ -208,7 +212,7 @@ test fn a_noop_followed_by_an_application_does_not_converge() -> Bool {
   !reconciled_effect_converged(
     r: reconcile_effect(
       decision: Noop,
-      application: applied_the_decided_plan(),
+      application: reported_application(),
       show_read: grounding_read(),
       grounding: grounds(),
     )
@@ -221,7 +225,7 @@ test fn a_refusal_followed_by_an_application_does_not_converge() -> Bool {
   !reconciled_effect_converged(
     r: reconcile_effect(
       decision: Refuse { reason: "policy is observe-only" as NonEmptyStr },
-      application: applied_the_decided_plan(),
+      application: reported_application(),
       show_read: grounding_read(),
       grounding: grounds(),
     )
@@ -243,7 +247,7 @@ test fn a_lifecycle_violation_classifies_to_the_non_converged_arm() -> Bool {
   match classify_reconciled(
     r: reconcile_effect(
       decision: Noop,
-      application: applied_the_decided_plan(),
+      application: reported_application(),
       show_read: grounding_read(),
       grounding: grounds(),
     )

@@ -2,6 +2,10 @@ module test.claim.typed_remote_file_converge_witness_test
 
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import gunbc.file_access { FileTreeScope }
+import gunbc.fleet_known_hosts_anchor { SshTarget }
+import test.claim.typed_remote_file_write_fleet_ssh_fixture {
+  fleet_ssh_execution_context_hermetic_witness_fixture,
+}
 import gunbc.typed_remote_file_write {
   TypedRemoteFileWrite,
   TypedRemoteFileWriteAdmission,
@@ -17,7 +21,7 @@ import gunbc.typed_remote_file_write {
   typed_remote_file_rename_argv,
   typed_remote_file_compare_argv,
   classify_typed_remote_file_comparison,
-  remote_file_converged_from_report,
+  converge_typed_remote_file,
   TypedRemoteFileConvergence,
   TypedRemoteFileConverged,
   TypedRemoteFileConvergenceRefused,
@@ -31,6 +35,11 @@ import gunbc.typed_remote_file_write {
 data unit_dir_scope: FileTreeScope = FileTreeScope { root_path: "/home/gunbc/.config/systemd/user" as NonEmptyStr }
 
 data subject_path: FilePath = "/home/gunbc/.config/systemd/user/gunbc-serving.service" as FilePath
+
+data witness_converge_ssh_target: SshTarget = SshTarget {
+  endpoint: "srv-test.example" as NonEmptyStr,
+  principal: "gunbc-automation" as NonEmptyStr,
+}
 
 data subject_content: String = "[Unit]\nDescription=gunbc serving\n\n[Service]\nExecStart=/usr/bin/true\n"
 
@@ -221,30 +230,38 @@ test fn the_difference_and_the_error_do_not_render_the_same_reason() -> Bool {
     && !string_contains(errored, "are not the declared content")
 }
 
-// THE POSITIVE CONTROL FOR THE CONVERGED ARM. Round 3 of this PR deleted the one that existed
-// (a_destination_cmp_calls_identical_converges) because it reached the converged arm THROUGH the
-// classifier, which was the bypass being closed -- but deleting it left the converged arm with no
-// executed claim anywhere in the corpus while the module went on asserting the arm had landed. 4b(4)
-// forecloses that trade: a climb dissolves lower-rung production machinery, never the evidence.
+// THE POSITIVE CONTROL FOR THE CONVERGED ARM, reached THROUGH PRODUCTION. Round 3 deleted the control
+// that existed (a_destination_cmp_calls_identical_converges) because it reached the converged arm via
+// the classifier, which was the bypass being closed, and put nothing back -- leaving the arm with no
+// executed claim while the module asserted it had landed. 4b(4) forecloses that trade.
 //
-// This control is stronger than the one it restores. The old one asserted only that exit 0 reached
-// the converged arm. This one also reads the SUBJECT back out of the receipt, so it is the executed
-// evidence for the field that replaced content_digest: a receipt naming a path or content other than
-// the one handed to the mint fails here. The witness is admitted by name in the mint's admit_callers
-// list, so the seal is unchanged for every other caller -- and because this module is not the mint's
-// module, the admission it exercises is CROSS-module.
-test fn a_report_of_identical_mints_a_receipt_naming_the_exact_write() -> Bool {
+// A first repair restored a control by admitting THIS MODULE to the mint. That worked but was the
+// weaker instrument: it tested the mint's passthrough while skipping the four legs that earn the
+// right to call it. converge_typed_remote_file is a func, and the hermetic ssh fixture answers every
+// exec, so a witness can drive stage -> chmod -> rename -> far-side cmp and RECEIVE the carrier
+// instead of minting one. The mint's admit_callers is back to exactly one production caller.
+//
+// It also reads the SUBJECT back out of the receipt, so it is the executed evidence for the field
+// that replaced content_digest: a receipt naming a path or content other than the one requested fails
+// here. Mode is deliberately NOT asserted -- the carrier no longer claims it, because nothing reads
+// the destination's mode back.
+test fn the_converge_route_yields_a_receipt_naming_the_exact_write() -> Bool {
   match subject_write() {
     Present { value: w } =>
-      match remote_file_converged_from_report(
-        write: w,
-        mode: RemoteFileModeOwnerReadWrite,
-        report: ComparisonIdentical,
-      ) {
-        TypedRemoteFileConverged { converged: c } =>
-          ((c.write.path as String) == (subject_path as String))
-            && (c.write.content == subject_content)
-        TypedRemoteFileConvergenceRefused { step: _, reason: _ } => false
+      match fleet_ssh_execution_context_hermetic_witness_fixture() {
+        Present { value: context } =>
+          match converge_typed_remote_file(
+            target: witness_converge_ssh_target,
+            context: context,
+            admission: TypedRemoteFileWriteAdmitted { write: w },
+            mode: RemoteFileModeOwnerReadWrite,
+          ) {
+            TypedRemoteFileConverged { converged: c } =>
+              ((c.write.path as String) == (subject_path as String))
+                && (c.write.content == subject_content)
+            TypedRemoteFileConvergenceRefused { step: _, reason: _ } => false
+          }
+        Absent => false
       }
     Absent => false
   }
