@@ -15,6 +15,7 @@ import gunbc.spark.credential_workflow {
   spark_administrator_password_secret_ref_at_version,
 }
 import gunbc.spark.grant_privileged_operation { spark_grant_credential_path_env }
+import gunbc.host_reset_return { host_reset_return_receipt_path }
 import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
@@ -1697,7 +1698,7 @@ fn gunbc_ci_host_reset_return_invoke() -> String {
     entry: gunbc_ci_host_reset_return_target.entry,
     function: gunbc_ci_host_reset_return_target.function,
     claim_run: false,
-    receipt_rel: "target/host-reset-return.txt"
+    receipt_rel: host_reset_return_receipt_path as String
   )
 }
 

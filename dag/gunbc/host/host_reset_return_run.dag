@@ -31,6 +31,7 @@ import gunbc.host_reset_return {
   ObserverSelfIdentity,
   ObserverHostnameNotConverged,
   observer_identity_permits_issuance,
+  host_reset_return_receipt_path,
   ObserverSelfIdentityUnreadable,
   ResetObserverSelection,
   IssuedThroughConverge,
@@ -202,12 +203,17 @@ func observe_reset_return(host: NonEmptyStr, down_samples_max: Nat, back_samples
 // hostname says what it is, and the allocation roster says what the subject's would be. A runner
 // mislabeled onto the subject chassis passes the first and fails this.
 //
-// AN UNALLOCATED SUBJECT MAKES THE CHECK UNPERFORMABLE, AND UNPERFORMABLE REFUSES. This is not a
-// hypothetical arm today: gunbc.hostname_allocation gunbc_fleet_hostname_allocations carries srv1
-// through srv4 and no Mt. Collins row, so this arm is what the first reset attempt against that unit
-// will hit. That is the correct outcome and the reason nothing here invents a hostname for it -- a
-// canonical hostname is an ALLOCATION, and a guessed one would be a fabricated observation standing
-// exactly where the check that catches fabrication was supposed to be.
+// AN UNALLOCATED SUBJECT MAKES THE CHECK UNPERFORMABLE, AND UNPERFORMABLE REFUSES. Nothing here
+// invents a hostname to clear that refusal: a canonical hostname is an ALLOCATION, and a guessed one
+// would be a fabricated observation standing exactly where the check that catches fabrication runs,
+// so the guess would disarm the instrument it was feeding.
+//
+// THE ALLOCATION EXISTS, AND THIS COMMENT USED TO SAY IT DID NOT. An earlier version said
+// gunbc_fleet_hostname_allocations carried no Mt. Collins row and that the first attempt would refuse
+// here; that row is now authored in gunbc.hostname_allocation, so the arm is no longer what the first
+// attempt hits. Review 61747 caught the stale claim -- the same "a comment asserts a refusal that does
+// not happen" class this branch had already been caught by once, which is the argument for reading
+// every sentence that names a state as a claim to be re-measured rather than as description.
 func observer_self_corroboration(observer: HostIdentity, subject: HostIdentity) -> ObserverSelfIdentity
   uses net: std.resources.Network
 {
@@ -527,23 +533,19 @@ fn host_reset_return_attempt_label(observer: NonEmptyStr, subject: NonEmptyStr) 
 // world in materially different states and a caller retrying needs to know which -- a controller that
 // refused wrote nothing, a host that did not return is still down, and an observer that could not
 // establish its own identity did not look at all.
-// THE RECEIPT PATH IS FIXED AND THE ARTIFACT IS PER ATTEMPT. Two attempts write two files whose names
-// carry the attempt label, because appending a second attempt to the first artifact would change the
-// bytes the first receipt's digest names -- invalidating a receipt while leaving it looking valid,
-// which is the one failure this whole discipline exists to prevent.
-fn host_reset_return_receipt_path(attempt: NonEmptyStr) -> NonEmptyStr {
-  join(["target/host-reset-return-", attempt as String, ".txt"], "") as NonEmptyStr
-}
-
+// THE ATTEMPT LABEL MOVED FROM THE FILENAME INTO THE LINE, which is where it was always doing its
+// work. It identifies which attempt this transcript belongs to; it was never the thing that kept two
+// attempts apart on disk, because two attempts are two dispatches with two workspaces.
+//
 // THE MEASURED FIGURE IS WRITTEN ONLY ON THE ARM THAT MEASURED IT. A refusal line names its cause and
 // carries no number at all, rather than a zero standing in for one -- zero sorts to the top of any
 // ranking of outage times, which makes it the fabrication nobody finds by reading a list.
-fn host_reset_return_receipt_line(verdict: ResetReturnVerdict, subject: NonEmptyStr) -> String {
+fn host_reset_return_receipt_line(verdict: ResetReturnVerdict, subject: NonEmptyStr, attempt: NonEmptyStr) -> String {
   match verdict {
     HostDrivenBackToKnownState { downtime: ms } =>
-      join(["subject=", subject as String, " verdict=driven-back downtime_ms=", to_string(ms), "\n"], "")
+      join(["attempt=", attempt as String, " subject=", subject as String, " verdict=driven-back downtime_ms=", to_string(ms), "\n"], "")
     ResetReturnRefused { cause: _ } =>
-      join(["subject=", subject as String, " verdict=refused downtime_ms=unavailable\n"], "")
+      join(["attempt=", attempt as String, " subject=", subject as String, " verdict=refused downtime_ms=unavailable\n"], "")
   }
 }
 
@@ -551,14 +553,14 @@ func host_reset_return_exit(verdict: ResetReturnVerdict, subject: NonEmptyStr, a
   uses net: std.resources.Network
 {
   let _w = Filesystem.Write(
-    path: host_reset_return_receipt_path(attempt: attempt) as String,
-    content: host_reset_return_receipt_line(verdict: verdict, subject: subject),
+    path: host_reset_return_receipt_path as String,
+    content: host_reset_return_receipt_line(verdict: verdict, subject: subject, attempt: attempt),
   )
   return match verdict {
     HostDrivenBackToKnownState { downtime: _ } => ExitSuccess
     ResetReturnRefused { cause: _ } =>
       exit_failure(
-        reason: join(["host reset-return refused for ", subject as String, "; the attempt receipt at ", host_reset_return_receipt_path(attempt: attempt) as String, " carries the located cause"], "")
+        reason: join(["host reset-return refused for ", subject as String, "; the attempt receipt at ", host_reset_return_receipt_path as String, " carries the located cause"], "")
       )
   }
 }

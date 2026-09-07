@@ -752,6 +752,23 @@ fn second_attempt_property(
   }
 }
 
+// ── where the attempt transcript is written ────────────────────────────────────────────────────
+
+// ONE ROW, READ BY THE WRITER AND BY THE STEP THAT PRINTS IT, and it lives in this module rather than
+// beside either of them because it is the one fact they must agree on. Review 61747 found the fork it
+// replaces: the entry wrote target/host-reset-return-<attempt>.txt while the invoke stamped
+// receipt_rel "target/host-reset-return.txt", and gunbc_invoke_receipt_steps turns that into a
+// post-run cat of that exact path -- so a SUCCESSFUL reset would exit 0 and then fail on a file
+// nobody wrote. A green inverted into a red by a second spelling of one path.
+//
+// AND THE ATTEMPT LABEL IS OUT OF THE FILENAME, which is what made the fork unfixable rather than
+// merely wrong: the attempt is derived at run time from the machine the job landed on, so emit time
+// cannot name the file. Two attempts are two DISPATCHES, each with its own workspace and its own
+// uploaded artifact, so the run is already the thing that distinguishes them -- putting the label in
+// the name bought nothing and cost the agreement. The never-append discipline is unaffected: it
+// governs the COMMITTED artifacts a receipt names by digest, which are authored per attempt.
+data host_reset_return_receipt_path: NonEmptyStr = "target/host-reset-return.txt"
+
 // ── what this module does NOT yet carry ────────────────────────────────────────────────────────
 
 // NO EXECUTED RECEIPT ROW LIVES HERE YET, AND ITS ABSENCE IS THE HONEST STATE RATHER THAN AN

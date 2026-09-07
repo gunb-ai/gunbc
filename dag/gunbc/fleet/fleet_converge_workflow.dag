@@ -97,6 +97,7 @@ import gunbc.host_reset_return {
   NoResetSubjectRostered,
   reset_dispatch_observer_labels,
   reset_dispatch_pairings,
+  host_reset_return_receipt_path,
 }
 import gunbc.host_reset_subject_roster { reset_observer_peer_roster, reset_subject_roster }
 import gunbc.live_deploy.apply_receipt { rlm_plan_run_id_env_name, rlm_apply_run_id_env_name, rlm_plan_artifact_hash_env_name }
@@ -223,7 +224,7 @@ fn fleet_converge_host_reset_return_receipt_upload_step() -> Step {
     uses: upload_artifact_action,
     with: Present { value: [
       kv(key: "name", value: yaml_string(s: "host-reset-return")),
-      kv(key: "path", value: yaml_string(s: "target/host-reset-return-*.txt")),
+      kv(key: "path", value: yaml_string(s: host_reset_return_receipt_path as String)),
       kv(key: "if-no-files-found", value: yaml_string(s: "error")),
       kv(key: "retention-days", value: yaml_int(n: 30)),
     ] },
