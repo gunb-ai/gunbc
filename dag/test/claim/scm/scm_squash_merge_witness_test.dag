@@ -1,0 +1,371 @@
+module test.claim.scm_squash_merge_witness
+
+// CONTROLS FOR THE MERGE VERB, WRITTEN TO WHAT A COMPOSITION GETS WRONG.
+//
+// THE TWO HALVES ARE ALREADY CONTROLLED ELSEWHERE and are not re-asserted here: merge_base's
+// resurrection refusal has its own witness, and manifest_merge's four-line law has its own. What is
+// unproven until this file exists is that the JOIN preserves them -- that the verb actually consults
+// the base derivation rather than merging against a convenient commit, that a conflict stops the
+// commit rather than being counted and passed over, and that the squash records the source as
+// consumed so the SECOND merge is refused by the first one's receipt.
+//
+// THE FAILURE THIS SURFACE PRODUCES IS A SUCCESSFUL MERGE. Every wrong composition below returns a
+// well-formed repository with a well-formed new commit; none of them throws. So no claim here
+// asserts "a merge happened" -- each states the mutation it refutes.
+
+import std.types { Bool, String, List, Int, NonEmptyStr }
+import std.minted_identity { MintedId, MintedIdAllocator }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.scm.object_store { ObjectId, object_id_eq }
+import gunbc.scm.integration { NoSquashIntegration, SquashIntegrated }
+import gunbc.scm.ancestry { RepositoryCommitRef, RootCommit, DescendsFrom, repository_commit_ref_eq }
+import gunbc.scm.repository_envelope { RepositoryEnvelope, commit_at_reference }
+import gunbc.scm.staging { StagedEntries, StagedEntriesRefused, staged_entries }
+import gunbc.scm.merge_base {
+  MergeBaseOutcome, MergeBaseDerived, MergeBaseSourceAlreadyConsumed,
+  MergeBaseHistoryUnwalkable, MergeBaseHistoriesDisjoint,
+}
+import gunbc.scm.manifest_merge { ManifestPathConflict, PathState, PathAbsent, PathPresent }
+import gunbc.scm.squash_merge {
+  SquashMergeOutcome,
+  SquashMerged,
+  SquashMergeBaseRefused,
+  SquashMergeConflicted,
+  SquashMergeRootMissing,
+  SquashMergeRootIsAuthoredSource,
+  SquashMergeRootIsSemanticNode,
+  SquashMergeCommitMissing,
+  SquashMergeResultDuplicatePath,
+  SquashMergeResultLocatorCollision,
+  SquashMergeAllocatorInvalid,
+  SquashMergeMintParentMissing,
+  SquashMergeMintIntegrationSourceMissing,
+  MergeSideName, MergeBaseCommit, MergeSourceCommit, MergeTargetCommit,
+  squash_merge,
+}
+import test.fixture.scm_repository_builder {
+  MbBuild, MbBuilt, MbSetupFailed,
+  mb_start, mb_stage, mb_commit, mb_at, mb_head, mb_root_of,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SCENE IS A DIVERGENCE, NOT A FAST-FORWARD, and the distinction is load-bearing. If the target
+// had not moved since the base, taking the source's manifest wholesale would be correct, and every
+// claim below would pass against an implementation that ignores the base entirely. Both sides
+// therefore move, and they move on DIFFERENT paths so the merge is mergeable:
+//
+//   C0   a = A0                        the shared base
+//   T1   a = A0, t = T0    parent C0   the target adds its own path
+//   S1   a = A0, s = S0    parent C0   the source adds a different path
+//
+// The correct merge of T1 and S1 holds all three paths. An implementation that took the source's
+// manifest as the answer loses `t`; one that took the target's loses `s`; one that merged against
+// the wrong base can lose either.
+type Scene
+  = Scene { build: MbBuild, base: RepositoryCommitRef, target: RepositoryCommitRef, source: RepositoryCommitRef }
+  | SceneUnavailable
+
+fn scene() -> Scene {
+  let c0 = mb_commit(
+    build: mb_stage(build: mb_start(), path: "a", text: "A0"),
+    message: "base",
+    integration: NoSquashIntegration,
+  )
+  match mb_head(build: c0) {
+    Absent => SceneUnavailable
+    Present { value: base } =>
+      let t1 = mb_commit(
+        build: mb_stage(build: c0, path: "t", text: "T0"),
+        message: "target",
+        integration: NoSquashIntegration,
+      )
+      match mb_head(build: t1) {
+        Absent => SceneUnavailable
+        Present { value: target } =>
+          let s1 = mb_commit(
+            build: mb_stage(build: mb_at(build: t1, target: base), path: "s", text: "S0"),
+            message: "source",
+            integration: NoSquashIntegration,
+          )
+          match mb_head(build: s1) {
+            Absent => SceneUnavailable
+            Present { value: source } =>
+              Scene { build: s1, base: base, target: target, source: source }
+          }
+      }
+  }
+}
+
+fn scene_repository(s: Scene) -> RepositoryEnvelope? {
+  match s {
+    SceneUnavailable => none
+    Scene { build: b, base: _, target: _, source: _ } =>
+      match b {
+        MbSetupFailed => none
+        MbBuilt { repository: r, at: _ } => Present { value: r }
+      }
+  }
+}
+
+// READING THE COMMITTED CORPUS BACK OUT THROUGH THE ORDINARY STAGING READER rather than through the
+// outcome value. A claim that inspected the entries it had just handed to the merge would assert
+// that the merge returned its own argument; this asserts what the REPOSITORY now contains.
+fn paths_after(repository: RepositoryEnvelope, at: RepositoryCommitRef) -> List<String> {
+  match commit_at_reference(commits: repository.commits, reference: at) {
+    Absent => []
+    Present { value: c } =>
+      match staged_entries(
+        repository: RepositoryEnvelope {
+          store: repository.store,
+          commits: repository.commits,
+          commit_allocator: repository.commit_allocator,
+          checked_out: repository.checked_out,
+          staged: Present { value: c.root },
+        }
+      ) {
+        StagedEntriesRefused { cause: _ } => []
+        StagedEntries { entries: entries } => map(entries, e => e.path as String)
+      }
+  }
+}
+
+// A CONFLICT WHOSE THREE SIDES ARE ALL PRESENT is what a modify-versus-modify looks like, and the
+// claim states it rather than asserting a count, because a conflict reported with a fabricated
+// absence would still be one conflict on one path.
+fn state_is_present(state: PathState) -> Bool {
+  match state {
+    PathAbsent => false
+    PathPresent { source: _ } => true
+  }
+}
+
+fn conflict_is_all_present(conflict: ManifestPathConflict, path: String) -> Bool {
+  (conflict.path as String) == path
+    && state_is_present(state: conflict.base)
+    && state_is_present(state: conflict.source)
+    && state_is_present(state: conflict.target)
+}
+
+fn holds(paths: List<String>, path: String) -> Bool {
+  fold(paths, init: false, f: fn(found, p) { found || p == path })
+}
+
+// THE MERGE TAKES BOTH SIDES' WORK, WHICH IS THE ONE THING A WRONG COMPOSITION CANNOT FAKE. Taking
+// either side's manifest wholesale produces a valid repository and a valid commit; it just silently
+// drops the other side's file.
+test fn scm_sm_a_merge_carries_both_sides_paths() -> Bool {
+  match scene() {
+    SceneUnavailable => false
+    Scene { build: _, base: _, target: target, source: source } =>
+      match scene_repository(s: scene()) {
+        Absent => false
+        Present { value: repository } =>
+          match squash_merge(
+            repository: repository,
+            target: target,
+            source: source,
+            message: "merge",
+          ) {
+            SquashMerged { repository: merged, reference: at } =>
+              let paths = paths_after(repository: merged, at: at)
+              count(paths) == 3
+                && holds(paths: paths, path: "a")
+                && holds(paths: paths, path: "t")
+                && holds(paths: paths, path: "s")
+            SquashMergeConflicted { conflicts: _ } => false
+            SquashMergeBaseRefused { refusal: _ } => false
+            SquashMergeRootMissing { side: _, root: _ } => false
+            SquashMergeRootIsAuthoredSource { side: _, root: _ } => false
+            SquashMergeRootIsSemanticNode { side: _, root: _ } => false
+            SquashMergeCommitMissing { side: _, reference: _ } => false
+            SquashMergeResultDuplicatePath { path: _ } => false
+            SquashMergeResultLocatorCollision { identity: _ } => false
+            SquashMergeAllocatorInvalid => false
+            SquashMergeMintParentMissing { parent: _ } => false
+            SquashMergeMintIntegrationSourceMissing { source: _ } => false
+          }
+      }
+  }
+}
+
+// THE RESULT'S PARENT IS THE TARGET AND ITS INTEGRATION NAMES THE SOURCE. This is the operator's
+// squash workflow as a structural fact rather than a convention: ONE lineage edge, and the source
+// recorded as consumed rather than as a second parent. An implementation that parented the merge on
+// the SOURCE also produces a valid repository holding all three paths, so the previous claim does
+// not separate it from this one.
+test fn scm_sm_the_result_parents_the_target_and_records_the_source_consumed() -> Bool {
+  match scene() {
+    SceneUnavailable => false
+    Scene { build: _, base: _, target: target, source: source } =>
+      match scene_repository(s: scene()) {
+        Absent => false
+        Present { value: repository } =>
+          match squash_merge(
+            repository: repository,
+            target: target,
+            source: source,
+            message: "merge",
+          ) {
+            SquashMerged { repository: merged, reference: at } =>
+              match commit_at_reference(commits: merged.commits, reference: at) {
+                Absent => false
+                Present { value: c } =>
+                  match c.integration {
+                    NoSquashIntegration => false
+                    SquashIntegrated { source: recorded } =>
+                      repository_commit_ref_eq(left: recorded, right: source)
+                        && match c.ancestry {
+                             RootCommit => false
+                             DescendsFrom { parent: p } =>
+                               repository_commit_ref_eq(left: p, right: target)
+                           }
+                  }
+              }
+            SquashMergeConflicted { conflicts: _ } => false
+            SquashMergeBaseRefused { refusal: _ } => false
+            SquashMergeRootMissing { side: _, root: _ } => false
+            SquashMergeRootIsAuthoredSource { side: _, root: _ } => false
+            SquashMergeRootIsSemanticNode { side: _, root: _ } => false
+            SquashMergeCommitMissing { side: _, reference: _ } => false
+            SquashMergeResultDuplicatePath { path: _ } => false
+            SquashMergeResultLocatorCollision { identity: _ } => false
+            SquashMergeAllocatorInvalid => false
+            SquashMergeMintParentMissing { parent: _ } => false
+            SquashMergeMintIntegrationSourceMissing { source: _ } => false
+          }
+      }
+  }
+}
+
+// MERGING THE SAME SOURCE TWICE IS REFUSED BY THE FIRST MERGE'S OWN RECEIPT, and it is refused
+// THROUGH THE BASE DERIVATION rather than by a check this module added. That is what makes the
+// composition load-bearing: a verb that derived its base by any other route would merge again
+// happily, and the resurrection merge_base exists to prevent would arrive through the verb.
+test fn scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_receipt() -> Bool {
+  match scene() {
+    SceneUnavailable => false
+    Scene { build: _, base: _, target: target, source: source } =>
+      match scene_repository(s: scene()) {
+        Absent => false
+        Present { value: repository } =>
+          match squash_merge(
+            repository: repository,
+            target: target,
+            source: source,
+            message: "merge",
+          ) {
+            SquashMerged { repository: merged, reference: at } =>
+              match squash_merge(
+                repository: merged,
+                target: at,
+                source: source,
+                message: "merge again",
+              ) {
+                SquashMergeBaseRefused { refusal: r } =>
+                  match r {
+                    MergeBaseSourceAlreadyConsumed { recorded_at: rec, consumed: cons, source: _ } =>
+                      repository_commit_ref_eq(left: rec, right: at)
+                        && repository_commit_ref_eq(left: cons, right: source)
+                    MergeBaseDerived { base: _ } => false
+                    MergeBaseHistoryUnwalkable { side: _, walk: _ } => false
+                    MergeBaseHistoriesDisjoint { target: _, source: _ } => false
+                  }
+                SquashMerged { repository: _, reference: _ } => false
+                SquashMergeConflicted { conflicts: _ } => false
+                SquashMergeRootMissing { side: _, root: _ } => false
+                SquashMergeRootIsAuthoredSource { side: _, root: _ } => false
+                SquashMergeRootIsSemanticNode { side: _, root: _ } => false
+                SquashMergeCommitMissing { side: _, reference: _ } => false
+                SquashMergeResultDuplicatePath { path: _ } => false
+                SquashMergeResultLocatorCollision { identity: _ } => false
+                SquashMergeAllocatorInvalid => false
+                SquashMergeMintParentMissing { parent: _ } => false
+                SquashMergeMintIntegrationSourceMissing { source: _ } => false
+              }
+            SquashMergeConflicted { conflicts: _ } => false
+            SquashMergeBaseRefused { refusal: _ } => false
+            SquashMergeRootMissing { side: _, root: _ } => false
+            SquashMergeRootIsAuthoredSource { side: _, root: _ } => false
+            SquashMergeRootIsSemanticNode { side: _, root: _ } => false
+            SquashMergeCommitMissing { side: _, reference: _ } => false
+            SquashMergeResultDuplicatePath { path: _ } => false
+            SquashMergeResultLocatorCollision { identity: _ } => false
+            SquashMergeAllocatorInvalid => false
+            SquashMergeMintParentMissing { parent: _ } => false
+            SquashMergeMintIntegrationSourceMissing { source: _ } => false
+          }
+      }
+  }
+}
+
+// A CONFLICT STOPS THE LINE. The scene is re-cut so both sides modify the SAME path to different
+// content, which the four-line law refuses. What this claim adds over manifest_merge's own controls
+// is that the refusal REACHES THE REPOSITORY: no commit is minted, the conflict population arrives
+// intact, and the commit list is unchanged -- a verb that counted the conflicts and committed the
+// mergeable remainder would produce a corpus neither author wrote.
+test fn scm_sm_a_conflicting_path_mints_no_commit() -> Bool {
+  let c0 = mb_commit(
+    build: mb_stage(build: mb_start(), path: "a", text: "A0"),
+    message: "base",
+    integration: NoSquashIntegration,
+  )
+  match mb_head(build: c0) {
+    Absent => false
+    Present { value: base } =>
+      let t1 = mb_commit(
+        build: mb_stage(build: c0, path: "a", text: "TARGET"),
+        message: "target",
+        integration: NoSquashIntegration,
+      )
+      match mb_head(build: t1) {
+        Absent => false
+        Present { value: target } =>
+          let s1 = mb_commit(
+            build: mb_stage(build: mb_at(build: t1, target: base), path: "a", text: "SOURCE"),
+            message: "source",
+            integration: NoSquashIntegration,
+          )
+          match mb_head(build: s1) {
+            Absent => false
+            Present { value: source } =>
+              match s1 {
+                MbSetupFailed => false
+                MbBuilt { repository: repository, at: _ } =>
+                  let before = count(repository.commits)
+                  match squash_merge(
+                    repository: repository,
+                    target: target,
+                    source: source,
+                    message: "merge",
+                  ) {
+                    SquashMergeConflicted { conflicts: conflicts } =>
+                      count(conflicts) == 1
+                        && count(repository.commits) == before
+                        && fold(conflicts, init: false, f: fn(seen, c) {
+                             seen || conflict_is_all_present(conflict: c, path: "a")
+                           })
+                    SquashMerged { repository: _, reference: _ } => false
+                    SquashMergeBaseRefused { refusal: _ } => false
+                    SquashMergeRootMissing { side: _, root: _ } => false
+                    SquashMergeRootIsAuthoredSource { side: _, root: _ } => false
+                    SquashMergeRootIsSemanticNode { side: _, root: _ } => false
+                    SquashMergeCommitMissing { side: _, reference: _ } => false
+                    SquashMergeResultDuplicatePath { path: _ } => false
+                    SquashMergeResultLocatorCollision { identity: _ } => false
+                    SquashMergeAllocatorInvalid => false
+                    SquashMergeMintParentMissing { parent: _ } => false
+                    SquashMergeMintIntegrationSourceMissing { source: _ } => false
+                  }
+              }
+          }
+      }
+  }
+}
+
+test fn scm_squash_merge_witnesses_hold() -> Bool {
+  scm_sm_a_merge_carries_both_sides_paths()
+    && scm_sm_the_result_parents_the_target_and_records_the_source_consumed()
+    && scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_receipt()
+    && scm_sm_a_conflicting_path_mints_no_commit()
+}
