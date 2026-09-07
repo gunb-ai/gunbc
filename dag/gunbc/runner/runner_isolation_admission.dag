@@ -119,11 +119,58 @@ fn sandbox_provider_label(p: SandboxProvider) -> String {
   }
 }
 
-fn sandbox_provider_profile(p: SandboxProvider) -> IsolationProfile {
+// A CLASS IS CAPABLE OF A PROFILE; AN OFFER HAS EARNED ONE. Conflating them was a fail-open in this
+// module and the Mt. Collins lane is the live counterexample: an attempt with a dedicated guest
+// kernel received UNFILTERED SEGMENT ACCESS via a bridge. The class can deliver DefaultDenyEgress;
+// that realization had not, and this function would have said it did.
+//
+// SO THE CAPABILITY AND THE EVIDENCE ARE SEPARATE READINGS. sandbox_provider_class_profile is what
+// the class can do in principle. sandbox_provider_offer is what a REALIZATION has receipts for, and
+// only the offer may be matched against a requirement.
+fn sandbox_provider_class_profile(p: SandboxProvider) -> IsolationProfile {
   match p {
     DedicatedKernelSandboxProvider => dedicated_kernel_sandbox_profile()
     SharedKernelSandboxProvider => shared_kernel_sandbox_profile()
   }
+}
+
+// EACH GUARANTEE IS EARNED BY ITS OWN RECEIPT, not by the class it belongs to. A provider that has
+// proven a dedicated kernel and a private mount namespace has not thereby proven default-deny
+// egress, and a profile that bundles them lets one receipt pay for all seven.
+type GuaranteeEvidence
+  = GuaranteeHeldByReceipt { receipt: NonEmptyStr }
+  | GuaranteeNotYetEvidenced { blocking: NonEmptyStr }
+
+type SandboxOffer {
+  provider_class: SandboxProvider
+  evidenced: List<IsolationGuarantee>
+  withheld: List<IsolationGuarantee>
+  standing: NonEmptyStr
+}
+
+// THE MT. COLLINS OFFER, AT WHAT IT HAS ACTUALLY EARNED. Everything here is backed by a receipt in
+// this lane except default-deny egress, which is not merely unproven but observed ABSENT: the only
+// run that gave a guest any egress path did so with a bridge onto the physical segment.
+//
+// WITHHOLDING IT MAKES THE MODEL REFUSE ALL UNTRUSTED WORK TODAY, and that is the correct answer
+// rather than an inconvenience. The mechanism that would make such work safe is the slice being
+// built; admitting the work before it exists is precisely the ordering this module was written to
+// prevent.
+data mtcollins_dedicated_kernel_offer: SandboxOffer = SandboxOffer {
+  provider_class: DedicatedKernelSandboxProvider,
+  evidenced: [
+    FreshWritableRoot,
+    PrivateProcessNamespace,
+    PrivateUserNamespace,
+    AttemptScopedSecrets,
+    DedicatedKernel,
+  ],
+  withheld: [PrivateNetworkNamespace, DefaultDenyEgress],
+  standing: "the guest shares the host network namespace (--netns was never passed) and its only observed egress path was a bridge onto the physical segment; both are withheld until a filtered-egress receipt exists",
+}
+
+fn offer_profile(o: SandboxOffer) -> IsolationProfile {
+  IsolationProfile { guarantees: o.evidenced }
 }
 
 // A REFUSAL NAMES THE MISSING GUARANTEES rather than reporting that nothing matched. "No provider
@@ -134,10 +181,13 @@ type ProviderSelection
   = ProviderSelected { provider: SandboxProvider }
   | NoProviderSatisfies { missing: List<IsolationGuarantee> }
 
-fn provider_admits(provider: SandboxProvider, required: IsolationProfile) -> Bool {
+// ADMISSION READS THE OFFER, NEVER THE CLASS. This is the whole correction: the previous form asked
+// what the class could do and would have admitted untrusted work onto a realization that had not
+// earned default-deny egress.
+fn offer_admits(offer: SandboxOffer, required: IsolationProfile) -> Bool {
   (unsatisfied_isolation_guarantees(
      required: required,
-     provided: sandbox_provider_profile(p: provider),
+     provided: offer_profile(o: offer),
    ) |> count) == 0
 }
 
@@ -146,25 +196,23 @@ fn provider_admits(provider: SandboxProvider, required: IsolationProfile) -> Boo
 // resolves to the microVM path -- one operational path to debug, one cleanup contract, one
 // boundary. Ordering it the other way would silently move work to the weaker realization the moment
 // one existed.
-fn select_sandbox_provider(required: IsolationProfile) -> ProviderSelection {
-  if provider_admits(provider: DedicatedKernelSandboxProvider, required: required) {
-    ProviderSelected { provider: DedicatedKernelSandboxProvider }
+// THE REFUSAL NAMES WHAT THE OFFER LACKS, not what the class lacks, so an operator is sent to the
+// missing RECEIPT rather than to a different supplier they do not need.
+fn select_sandbox_offer(offer: SandboxOffer, required: IsolationProfile) -> ProviderSelection {
+  if offer_admits(offer: offer, required: required) {
+    ProviderSelected { provider: offer.provider_class }
   } else {
-    if provider_admits(provider: SharedKernelSandboxProvider, required: required) {
-      ProviderSelected { provider: SharedKernelSandboxProvider }
-    } else {
-      NoProviderSatisfies {
-        missing: unsatisfied_isolation_guarantees(
-          required: required,
-          provided: sandbox_provider_profile(p: DedicatedKernelSandboxProvider),
-        ),
-      }
+    NoProviderSatisfies {
+      missing: unsatisfied_isolation_guarantees(required: required, provided: offer_profile(o: offer)),
     }
   }
 }
 
 fn provider_for_work(p: RunnerWorkProvenance) -> ProviderSelection {
-  select_sandbox_provider(required: runner_work_isolation_requirement(p: p))
+  select_sandbox_offer(
+    offer: mtcollins_dedicated_kernel_offer,
+    required: runner_work_isolation_requirement(p: p),
+  )
 }
 
 // ── the host control agent is not a workload ────────────────────────────────────────────────────

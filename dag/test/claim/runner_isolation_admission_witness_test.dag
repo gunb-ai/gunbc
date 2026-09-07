@@ -5,6 +5,8 @@ import std.types { NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.fabric.isolation {
   DedicatedKernel,
+  FreshWritableRoot,
+  IsolationProfile,
   isolation_profile_contains,
   tenant_workload_isolation_requirement,
 }
@@ -22,7 +24,8 @@ import gunbc.runner.runner_isolation_admission {
   ThirdPartyAction,
   UnreviewedBranch,
   is_schedulable_work,
-  provider_admits,
+  mtcollins_dedicated_kernel_offer,
+  offer_admits,
   provider_for_work,
   runner_work_isolation_requirement,
 }
@@ -91,31 +94,40 @@ test fn a_qualified_fixed_operation_may_omit_the_dedicated_kernel() -> Bool {
 
 // ── provider selection follows the requirement, not a preference ────────────────────────────────
 
-test fn untrusted_work_selects_the_dedicated_kernel_provider() -> Bool {
+// THE ADMISSION ANSWER TODAY IS A REFUSAL, and that is the correction rather than a regression. The
+// Mt. Collins offer withholds DefaultDenyEgress because the only observed egress path was a bridge
+// onto the physical segment. Untrusted work requiring it therefore matches nothing until the
+// filtered-egress receipt exists -- which is the model refusing to admit the job before the slice
+// that makes it safe.
+test fn untrusted_work_is_refused_until_the_offer_earns_default_deny_egress() -> Bool {
   match provider_for_work(p: ForkPullRequest) {
-    ProviderSelected { provider: DedicatedKernelSandboxProvider } => true
+    NoProviderSatisfies { missing: m } => (m |> count) > 0
     _ => false
   }
+}
+
+// THE CONTROL THAT KEEPS THAT MEANINGFUL: the offer is not simply empty. It has earned a dedicated
+// kernel, and work needing only what it evidences is admitted.
+test fn the_offer_admits_a_requirement_it_has_evidenced() -> Bool {
+  offer_admits(
+    offer: mtcollins_dedicated_kernel_offer,
+    required: IsolationProfile { guarantees: [DedicatedKernel, FreshWritableRoot] },
+  )
 }
 
 // THE RED THAT MATTERS MOST. If a shared-kernel provider could ever admit work requiring a
 // dedicated kernel, every guarantee above is decorative -- the requirement would be stated and then
 // satisfied by a provider that cannot meet it.
-test fn the_shared_kernel_provider_cannot_admit_untrusted_work() -> Bool {
-  provider_admits(
-    provider: SharedKernelSandboxProvider,
+test fn the_offer_does_not_admit_untrusted_work() -> Bool {
+  offer_admits(
+    offer: mtcollins_dedicated_kernel_offer,
     required: runner_work_isolation_requirement(p: GeneralCiWorkload),
   ) == false
 }
 
 // AND THE POSITIVE CONTROL FOR THE SHARED-KERNEL PROVIDER, so the test above is not satisfied by a
 // provider that admits nothing at all.
-test fn the_shared_kernel_provider_admits_qualified_work() -> Bool {
-  provider_admits(
-    provider: SharedKernelSandboxProvider,
-    required: runner_work_isolation_requirement(p: QualifiedFixedOperation { qualification: "pinned and reviewed" }),
-  )
-}
+
 
 // ── the tenant floor is not the runner requirement ──────────────────────────────────────────────
 
