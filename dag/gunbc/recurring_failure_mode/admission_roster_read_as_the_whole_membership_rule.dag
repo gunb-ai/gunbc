@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.admission_roster_read_as_the_whole_membership_rule
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data admission_roster_read_as_the_whole_membership_rule: RecurringFailureMode = RecurringFailureMode {
+  identity: "admission_roster_read_as_the_whole_membership_rule" as NonEmptyStr,
+
+  receipts: [
+    "**an admission roster is read as the whole membership rule** (INVALID STATE: a hand-authored roster states a NECESSARY condition for a subject to be selected, a reader verifies the subject against that roster, and the roster's answer is then treated as the SUFFICIENT and only answer -- while the selecting mechanism carries additional admission paths the roster does not mention, and a completed run has already published which subjects it actually selected. ",
+
+    "HARM: the reader concludes a thing does not execute, and acts on it. That is worse than an ordinary wrong belief, because the actions it licenses are removals -- an enrolment withdrawn, a probe left unrouted, evidence declared dormant -- each justified by the non-execution and each invisible afterwards, since a subject believed not to run produces nothing whose absence anyone notices. ",
+
+    "DISTINGUISHING FACT, AND IT IS WHAT SEPARATES THIS FROM REASONING BADLY: THE ANSWER WAS PUBLISHED AND FREE. The mechanism's own run emits a per-subject disposition receipt, so membership is a fact to be READ, not derived. The roster was consulted because it is the artifact a reader can hold in mind; the receipt was skipped because holding it requires downloading it. That is a convenience gradient, not a knowledge gap, which is why verifying harder against the roster cannot fix it. ",
+
+    "**SPECIMEN, AND BOTH PARTIES MADE IT INDEPENDENTLY ON THE SAME RUN, gunbc 2026-09-07 (#10783).** test.claim.argument_shape_at_a_declared_position_probe_test matches no prefix in v2.workflow.required_floor required_gate_prefixes. From that, an author concluded the required floor discovers and does not run it, described the module as dormant in two carrier rows, and REMOVED its two expecting-red identities from v2.workflow.floor_expected_red on the ground that enrolling a never-executed identity asserts something false. A reviewer reached the same conclusion from the same roster, and a manager verified the prefix list and stopped there. The floor also plans a witness whose FILE THE CHANGE TOUCHES. The same run's required-floor-disposition artifact carries all four of that module's identities at disposition planned_as_changed_witness -- the only four rows at that disposition in a 16836-row census -- with the two expecting-red arms recorded failed. Un-enrolled, those two arms block their own landing change, which is the change that necessarily runs them. ",
+
+    "THE INSTRUMENT, NAMED RATHER THAN TRANSCRIBED (DESIGN section 6): required-floor-disposition, published as an artifact by every completed run of gunbc.witness_floor_workflow, one row per discovered identity carrying its disposition and outcome. Re-derive with gh run download <run id> -R <repo> -n required-floor-disposition and group by the disposition column read BY HEADER NAME. Its sibling required-floor-claim-cost answers cost on the same population and by the same route. ",
+
+    "WHAT SEPARATES THIS FROM ITS THREE NEAREST NEIGHBOURS, stated because folding it into any of them would lose the actionable part. roster_is_its_own_denominator is a roster that is SHORT -- it should hold a row and does not, so the receipt over it is incomplete; this roster is CORRECT and complete for what it governs, and the defect is reading it as governing more than it does. absent_reads_identically_to_never_looked is an instrument answering over a region it never read; here the instrument read its region correctly and the reader asked it a question it does not answer. selection_view_read_as_population is a threshold over MEASURED values mistaken for the population; this roster carries no measurement at all. The shared consequence is a confident claim about a population, and the shared remedy is not shared: only this one is fixed by reading a receipt that already exists. ",
+
+    "RUNG FOUND AT: mitigatable. The defect is caught by a reviewer or by the run refusing, after the removal it licensed has been authored. CEILING: mechanically preventable, and no higher, because the invalid state is a belief a human forms while reading -- nothing in the corpus is malformed at the moment it forms, so there is no state to make unwritable. ",
+
+    "NEXT-RUNG TRIGGER: a claim about whether a subject executes must cite the disposition receipt of a run, so that a citation naming only an admission roster is refusable at review. Nothing here is enrolled and no mechanism is claimed; this row's rung today rests on the recognition rule below and on nothing executing. ",
+
+    "RECOGNITION RULE, AND IT IS ONE QUESTION: when about to claim that something does or does not run, ask whether a completed run has already published the answer, and read that instead. PREFER THE RUN'S OWN RECEIPT TO ANY ROSTER YOU CAN REASON FROM. The behavioural tell is a sentence of the form 'it matches no X, so it is not run' with no artifact cited beside it.",
+  ],
+
+  evidence: [],
+}
