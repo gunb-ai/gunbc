@@ -86,6 +86,28 @@ data non_verdict_disposition_surfaces_as_refusal: RecurringFailureMode = Recurri
     "RECOGNITION RULE: ask what the gate reports when it could not measure, and compare it with what it reports when it measured and found the subject wrong. ",
 
     "If those two are the same value, the gate's refusals do not name a subject, and the tell is behavioural: people begin rerunning it rather than reading it.)",
+
+    "A SECOND, INDEPENDENT DISPOSITION PAIR ON THE SAME BOUNDARY, and it is worth appending here rather than minting a class because it is the same mechanism at a different pair -- two pairs on one boundary is much better evidence than one. ",
+
+    "The first specimen is INTERRUPTED-BEFORE-VERDICT against COMPLETED-OVER-COST-REQUIREMENT: a gate that ran out of time against a gate that judged. ",
+
+    "The second is DECLINED-OUTSIDE-DISCOVERY against CHANGED-WITNESS-BLOCKING: a gate that never started against a gate that judged, and it arrives from the opposite end of the same fold. ",
+
+    "The receipt is gunbc#10757 at its own required floor lane, whose two artifacts disagree about the same fifteen identities while both being correct. ",
+
+    "The disposition artifact counts them `declined_changed_witness_outside_discovery=15` -- they were enrolled because the DIFF touched them and then declined because DISCOVERY, which follows the source roots rather than the diff, reaches no module for them. ",
+
+    "The measurement receipt counts the same fifteen as blockers with `cause=changed_witness_blocking`. ",
+
+    "Nothing else in that run is red: 3,464 claims passed, 19 are known-red-held, 49 are route-gap-before-verdict, and ZERO failed. ",
+
+    "So a run in which no claim failed and fifteen claims never executed refuses, and the one bit it hands its merge gate is indistinguishable from the bit a genuine failure would produce. ",
+
+    "THAT ENROLMENT AND DISCOVERY DISAGREE IS THE STRUCTURAL FACT UNDER THIS SPECIMEN, and it is the part a reader should carry away: enrolment follows the DIFF, discovery follows the SOURCE ROOTS, and neither is wrong on its own terms. ",
+
+    "The consequence for a repair is that widening the source roots is NOT the fix -- it would silence one lane's fifteen and leave the boundary intact for the next, which is the section 5 shape of treating a symptom that names its own mechanism. ",
+
+    "The fix is the same one this row already names: the refusal must say WHICH of the two it is, and a declined witness must be discharged by being made reachable or by being declared unreachable, never by a rerun.)",
   ],
 
   evidence: [],
