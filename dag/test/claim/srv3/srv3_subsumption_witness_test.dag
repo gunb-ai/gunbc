@@ -209,8 +209,12 @@ test fn reach_build_cache_on_srv3_targets_srv3_not_the_actuator() -> Bool {
 test fn reach_os_install_actuator_on_srv3_runs_from_the_actuator_host() -> Bool {
   match reach_or_absent(kind: OsInstallActuator, host: operator_host_srv3) {
     Present { value: reach } =>
-      reach.target.identity == srv3_os_install_actuator_host.identity
-        && reach.access.host.identity == srv3_os_install_actuator_host.identity
+      match srv3_os_install_actuator_selection {
+        ActuatorSelected { host: actuator } =>
+          reach.target.identity == actuator.identity
+            && reach.access.host.identity == actuator.identity
+        ActuatorUnsatisfiable { reason: _ } => false
+      }
     Absent => false
   }
 }

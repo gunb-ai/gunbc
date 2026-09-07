@@ -5,9 +5,24 @@ type Srv3TypedReceipt {
   lines: List<String>
 }
 
-fn srv3_actuator_target() -> NodeControlPlane {
-  HostOs { node: srv3_os_install_actuator_host }
+type Srv3ApplyDisposition
+  = Srv3ApplyAttempted { reconciliation: Reconciliation<HostEffectIntent, HostEffectEvidence> }
+  | Srv3ApplyRefused { reason: String }
+
+fn srv3_actuator_target_or_refusal() -> Srv3ActuatorTarget {
+  srv3_actuator_target_under(selection: srv3_os_install_actuator_selection)
 }
+
+fn srv3_actuator_target_under(selection: OsInstallActuatorSelection) -> Srv3ActuatorTarget {
+  match selection {
+    ActuatorSelected { host: h } => Srv3ActuatorTargetSelected { target: HostOs { node: h } }
+    ActuatorUnsatisfiable { reason: why } => Srv3ActuatorTargetUnsatisfiable { reason: why }
+  }
+}
+
+type Srv3ActuatorTarget
+  = Srv3ActuatorTargetSelected { target: NodeControlPlane }
+  | Srv3ActuatorTargetUnsatisfiable { reason: String }
 
 data srv3_seeded_install_media_toolchain_ensure_deploy_access: DeployAccess = ci_deploy_srv1_access
 
@@ -23,47 +38,59 @@ fn srv3_seeded_install_media_toolchain_unprivileged_fixture_denied() -> Bool {
 
 fn srv3_host_effect_apply(
   effect: HostEffect,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  host_effect_apply(
-    target: srv3_actuator_target(),
-    effect: effect,
-    evidence: host_effect_identity_evidence,
-    transport: LocalShell,
-  )
+) -> Srv3ApplyDisposition {
+  match srv3_actuator_target_or_refusal() {
+    Srv3ActuatorTargetUnsatisfiable { reason: why } => Srv3ApplyRefused { reason: why }
+    Srv3ActuatorTargetSelected { target: t } =>
+      Srv3ApplyAttempted {
+        reconciliation: host_effect_apply(
+          target: t,
+          effect: effect,
+          evidence: host_effect_identity_evidence,
+          transport: LocalShell,
+        )
+      }
+  }
 }
 
-fn srv3_install_media_fetch_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn srv3_install_media_fetch_apply() -> Srv3ApplyDisposition {
   srv3_host_effect_apply(effect: Srv3InstallMediaFetch)
 }
 
-fn srv3_seeded_install_media_toolchain_ensure_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  host_effect_apply_gated(
-    access: srv3_seeded_install_media_toolchain_ensure_deploy_access,
-    target: srv3_actuator_target(),
-    effect: Srv3SeededInstallMediaToolchainEnsure,
-    evidence: host_effect_identity_evidence,
-    transport: srv3_seeded_install_media_toolchain_ensure_deploy_access.transport,
-    fixture_actor: none,
-  )
+fn srv3_seeded_install_media_toolchain_ensure_apply() -> Srv3ApplyDisposition {
+  match srv3_actuator_target_or_refusal() {
+    Srv3ActuatorTargetUnsatisfiable { reason: why } => Srv3ApplyRefused { reason: why }
+    Srv3ActuatorTargetSelected { target: t } =>
+      Srv3ApplyAttempted {
+        reconciliation: host_effect_apply_gated(
+          access: srv3_seeded_install_media_toolchain_ensure_deploy_access,
+          target: t,
+          effect: Srv3SeededInstallMediaToolchainEnsure,
+          evidence: host_effect_identity_evidence,
+          transport: srv3_seeded_install_media_toolchain_ensure_deploy_access.transport,
+          fixture_actor: none,
+        )
+      }
+  }
 }
 
-fn srv3_seeded_install_media_remaster_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn srv3_seeded_install_media_remaster_apply() -> Srv3ApplyDisposition {
   srv3_host_effect_apply(effect: Srv3SeededInstallMediaRemaster)
 }
 
-fn srv3_bmcweb_session_login_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn srv3_bmcweb_session_login_apply() -> Srv3ApplyDisposition {
   srv3_host_effect_apply(effect: Srv3BmcwebSessionLogin)
 }
 
-fn srv3_bmcweb_token_extract_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn srv3_bmcweb_token_extract_apply() -> Srv3ApplyDisposition {
   srv3_host_effect_apply(effect: Srv3BmcwebTokenExtract)
 }
 
-fn srv3_nbd_proxy_serve_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn srv3_nbd_proxy_serve_apply() -> Srv3ApplyDisposition {
   srv3_host_effect_apply(effect: srv3_nbd_proxy_serve_host_effect())
 }
 
-fn srv3_boot_once_read_back_sleep_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn srv3_boot_once_read_back_sleep_apply() -> Srv3ApplyDisposition {
   srv3_host_effect_apply(effect: Srv3BootOnceReadBackSleep)
 }
 
@@ -75,11 +102,11 @@ fn srv3_typed_receipt_from_lines(lines: List<String>) -> Srv3TypedReceipt {
   Srv3TypedReceipt { lines: lines }
 }
 
-fn srv3_receipt_emit_apply(receipt: Srv3TypedReceipt) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn srv3_receipt_emit_apply(receipt: Srv3TypedReceipt) -> Srv3ApplyDisposition {
   srv3_host_effect_apply(effect: Srv3ReceiptEmit { lines: receipt.lines })
 }
 
-fn srv3_shell_stdout_from_apply(
+fn srv3_shell_stdout_from_reconciliation(
   r: Reconciliation<HostEffectIntent, HostEffectEvidence>,
 ) -> String? {
   match r {
@@ -93,12 +120,31 @@ fn srv3_shell_stdout_from_apply(
   }
 }
 
+fn srv3_shell_stdout_from_apply(d: Srv3ApplyDisposition) -> String? {
+  match d {
+    Srv3ApplyRefused { reason: _ } => none
+    Srv3ApplyAttempted { reconciliation: r } => srv3_shell_stdout_from_reconciliation(r: r)
+  }
+}
+
 fn srv3_reconciliation_failure_reason(
   r: Reconciliation<HostEffectIntent, HostEffectEvidence>,
 ) -> String? {
   match r {
     Converged { evidence: _, applied: _ } => none
     NotConverged { reason: why, applied: _ } => Present { value: why }
+  }
+}
+
+fn srv3_apply_to_process_exit(
+  d: Srv3ApplyDisposition,
+  failure_prefix: String,
+) -> ProcessExit {
+  match d {
+    Srv3ApplyRefused { reason: why } =>
+      exit_failure(reason: concat(failure_prefix, concat("os-install actuator host unsatisfiable: ", why)))
+    Srv3ApplyAttempted { reconciliation: r } =>
+      srv3_reconciliation_to_process_exit(r: r, failure_prefix: failure_prefix)
   }
 }
 
@@ -117,8 +163,8 @@ fn srv3_reconciliation_to_process_exit(
 }
 
 fn srv3_emit_typed_receipt(receipt: Srv3TypedReceipt) -> ProcessExit {
-  srv3_reconciliation_to_process_exit(
-    r: srv3_receipt_emit_apply(receipt: receipt),
+  srv3_apply_to_process_exit(
+    d: srv3_receipt_emit_apply(receipt: receipt),
     failure_prefix: "srv3-receipt-emit: ",
   )
 }

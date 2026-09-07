@@ -15,10 +15,6 @@ test fn os_install_actuator_requirements_dispatch_through_kind_rows() -> Bool {
 
 test fn srv3_actuator_selection_live_fleet_never_unsatisfiable() -> Bool {
   srv3_os_install_actuator_selection_is_selected_on_live_fleet()
-    && match srv3_os_install_actuator_host_unsatisfiable_fallback_dissolution_trigger {
-      Scaffold { dissolves_to: _, bind: _ } => true
-      Terminal { reason: _ } => false
-    }
     && match srv3_os_install_actuator_per_host_observation_forks_dissolution_trigger {
       Scaffold { dissolves_to: _, bind: _ } => true
       Terminal { reason: _ } => false
@@ -28,7 +24,6 @@ test fn srv3_actuator_selection_live_fleet_never_unsatisfiable() -> Bool {
 test fn srv3_actuator_host_selected_because_requirements_and_policy() -> Bool {
   srv3_os_install_actuator_host_selected_because_requirements_and_policy()
     && srv3_os_install_actuator_host_is_derived_srv1()
-    && srv3_os_install_actuator_host == srv1_host
     && match srv3_os_install_actuator_tie_break_policy {
       OperatorHostPreference { order: order } =>
         order.first() == operator_host_srv1
@@ -39,5 +34,54 @@ test fn srv3_actuator_host_selected_because_requirements_and_policy() -> Bool {
 
 test fn srv3_actuator_host_failover_fixture_selects_srv2() -> Bool {
   srv3_os_install_actuator_host_failover_fixture_selects_srv2()
-    && srv3_os_install_actuator_host == srv1_host
+    && srv3_os_install_actuator_host_is_derived_srv1()
+}
+
+// DISCRIMINATING RED CONTROL for the fabricated-default fail-open this lane closed. Before the
+// repair, srv3_os_install_actuator_host answered srv1_host on the ActuatorUnsatisfiable arm, so an
+// unsatisfiable selection actuated an OS install against a DIFFERENT machine with no diagnostic
+// (DESIGN section 5, fabricated default). The declaration is deleted; these witnesses assert that
+// the two consumers which reach real hardware now refuse under an unsatisfiable selection rather
+// than naming any host at all.
+data unsatisfiable_actuator_selection_fixture: OsInstallActuatorSelection = ActuatorUnsatisfiable {
+  reason: "fixture: no candidate host satisfies the srv3 actuator requirement conjunction",
+}
+
+test fn unsatisfiable_selection_refuses_the_nbd_proxy_serve_step() -> Bool {
+  match actuator_step_realization_under(
+    step: os_install_actuator_steps(
+      mechanism: NbdProxyVirtualMediaInstall,
+      export: srv3_nbd_proxy_export_placeholder,
+    ).first(),
+    selection: unsatisfiable_actuator_selection_fixture,
+  ) {
+    ActuatorStepRefused { cause: c } =>
+      match c {
+        ActuatorStepActuatorHostUnsatisfiable { step: _, reason: why } =>
+          string_contains(s: why, pattern: "fixture: no candidate host")
+        ActuatorStepRealizationAbsent { step: _ } => false
+      }
+    ActuatorStepReady { intent: _ } => false
+  }
+}
+
+test fn unsatisfiable_selection_yields_no_actuator_target() -> Bool {
+  match srv3_actuator_target_under(selection: unsatisfiable_actuator_selection_fixture) {
+    Srv3ActuatorTargetUnsatisfiable { reason: why } =>
+      string_contains(s: why, pattern: "fixture: no candidate host")
+    Srv3ActuatorTargetSelected { target: _ } => false
+  }
+}
+
+// POSITIVE CONTROL: the same two consumers still produce a target on the live, satisfiable fleet,
+// so the witnesses above discriminate the arm rather than reporting a universally refusing path.
+test fn satisfiable_selection_still_yields_the_selected_actuator_target() -> Bool {
+  match srv3_actuator_target_under(selection: srv3_os_install_actuator_selection) {
+    Srv3ActuatorTargetSelected { target: t } =>
+      match t {
+        HostOs { node: h } => h == srv1_host
+        _ => false
+      }
+    Srv3ActuatorTargetUnsatisfiable { reason: _ } => false
+  }
 }
