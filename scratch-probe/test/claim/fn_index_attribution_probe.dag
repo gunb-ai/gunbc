@@ -9,6 +9,17 @@ module test.claim.fn_index_attribution_probe
 //
 // IT LIVES IN scratch-probe BECAUSE IT IS AN INSTRUMENT AND NOT A FLOOR WITNESS. These rows assert
 // only non-emptiness; they establish nothing about the corpus and must never be read as coverage.
+//
+// AND THAT HOME CARRIES AN EXPOSURE, STATED HERE AND IN THE ROW THAT CITES THIS FILE. scratch-probe
+// is reached by no source root, no scan dir and no other row, so this module sits OUTSIDE EVERY
+// COMPILED CLOSURE: a renamed builtin or a changed signature rots it with no red anywhere, and the
+// row citing it would then name an instrument that does not run. It is not homed in the test tree
+// because every home there ENROLS it -- floor exclusion is keyed on quarantine admission, not on a
+// long-lane prefix -- and these arms are expensive BY CONSTRUCTION, since they exist to measure a
+// multi-second cost. Six multi-second claims on the required floor to protect one citation is the
+// worse trade, so the exposure is accepted and declared rather than hidden. IF YOU ARE READING THIS
+// BECAUSE THE ROW SENT YOU: run it first and repair it if it has rotted, before quoting any finding
+// that depends on it.
 // What they are for is the SHAPE of the cost, which is why each arm is chosen to differ from its
 // neighbour in exactly one term.
 //
