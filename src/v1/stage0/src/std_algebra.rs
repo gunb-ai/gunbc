@@ -455,12 +455,14 @@ pub fn collection_filter_shape() -> Rc<AlgebraFieldTemplate> {
 }
 
 pub fn is_collection_filter_template(t: Rc<AlgebraFieldTemplate>) -> bool {
-    let proto = collection_filter_shape();
-    t.return_type == proto.return_type
-        && t.size_effect == proto.size_effect
-        && t.cost_shape == proto.cost_shape
-        && t.callback_element_position == proto.callback_element_position
-        && t.param_types == proto.param_types
+    {
+        let proto = collection_filter_shape();
+        (((((t.return_type.clone() == proto.return_type.clone())
+            && (t.size_effect.clone() == proto.size_effect.clone()))
+            && (t.cost_shape.clone() == proto.cost_shape.clone()))
+            && (t.callback_element_position.clone() == proto.callback_element_position.clone()))
+            && (t.param_types.clone() == proto.param_types.clone()))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
