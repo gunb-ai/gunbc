@@ -645,20 +645,28 @@ type ResetReturnVerdict
 // deleting: ResetWasNotAttempted sends a reader to the OBSERVER (its clock, its credential, its
 // identity), and SubjectWasNotUpBeforeIssuance sends them to the SUBJECT, which was already down
 // before anyone touched it and whose reset would have measured someone else's outage.
-fn subject_was_down_before_issuance(observation: HostReturnObservation) -> Bool {
+// IT RETURNS THE CAUSE, NOT A Bool, AND THAT IS THE SAME CORRECTION THIS MODULE ALREADY MADE ONE WALL
+// OVER. A Bool over a coproduct re-encodes a variant test the sum already carries and then discards
+// what it learned, so the caller mints SubjectWasNotUpBeforeIssuance a second time -- one fact with
+// two authorities, which is exactly what observer_identity_permits_issuance was dissolved into
+// observer_identity_issuance_block for after review 61872. I applied that lesson to the identity wall
+// and then reintroduced the shape here in the very next commit; review 62169 caught it.
+fn observation_issuance_block(observation: HostReturnObservation) -> ResetReturnRefusalCause? {
   match observation {
-    SubjectNotUpBeforeIssuance { probe: _, checked_at: _ } => true
-    HostObservedDownThenBack { probe: _, down_first_seen_at: _, back_first_seen_at: _, down_samples: _, back_samples: _ } => false
-    HostNeverObservedDown { probe: _, samples: _, watched_until: _ } => false
-    HostObservedDownAndNotBack { probe: _, down_first_seen_at: _, waited_until: _ } => false
-    HostReturnUnobserved { cause: _ } => false
+    SubjectNotUpBeforeIssuance { probe: _, checked_at: _ } =>
+      Present { value: SubjectWasNotUpBeforeIssuance }
+    HostObservedDownThenBack { probe: _, down_first_seen_at: _, back_first_seen_at: _, down_samples: _, back_samples: _ } => none
+    HostNeverObservedDown { probe: _, samples: _, watched_until: _ } => none
+    HostObservedDownAndNotBack { probe: _, down_first_seen_at: _, waited_until: _ } => none
+    HostReturnUnobserved { cause: _ } => none
   }
 }
 
 // THE ORDER OF THESE ARMS IS THE POINT AND IS NOT INTERCHANGEABLE. Route, then observer identity,
 // then the already-down reading, then acknowledgement, then observation, then the ordering of the
 // observation against the acknowledgement -- and only inside the last of those is any measured field
-// read. (The pre-acknowledgement position of the already-down check is argued directly above it.)
+// read. (The pre-acknowledgement position of the already-down block is argued above
+// observation_issuance_block, which now yields the CAUSE rather than a Bool the caller re-mints.)
 //
 // THE ISSUANCE INSTANT IS WHAT MAKES A STALE LIVENESS FACT UNUSABLE. A down observation timestamped
 // before the reset was issued is a reading of some earlier outage, or of a cache answering from
@@ -673,17 +681,17 @@ fn reset_return_verdict(observed: ResetAttemptObservation) -> ResetReturnVerdict
       match observer_identity_issuance_block(identity: observed.self_identity) {
         Present { value: blocked } => ResetReturnRefused { cause: blocked }
         Absent =>
-          if subject_was_down_before_issuance(observation: observed.observation) {
-            ResetReturnRefused { cause: SubjectWasNotUpBeforeIssuance }
-          } else {
-            match observed.acknowledgement {
-              ResetRefusedByController { diagnostic: d } =>
-                ResetReturnRefused { cause: ControllerDidNotAccept { diagnostic: d } }
-              ResetNotAttempted { cause: c } =>
-                ResetReturnRefused { cause: ResetWasNotAttempted { cause: c } }
-              ResetAccepted { controller_response: _, issued_at: issued } =>
-                reset_return_verdict_after_issuance(observation: observed.observation, issued_at: issued)
-            }
+          match observation_issuance_block(observation: observed.observation) {
+            Present { value: already } => ResetReturnRefused { cause: already }
+            Absent =>
+              match observed.acknowledgement {
+                ResetRefusedByController { diagnostic: d } =>
+                  ResetReturnRefused { cause: ControllerDidNotAccept { diagnostic: d } }
+                ResetNotAttempted { cause: c } =>
+                  ResetReturnRefused { cause: ResetWasNotAttempted { cause: c } }
+                ResetAccepted { controller_response: _, issued_at: issued } =>
+                  reset_return_verdict_after_issuance(observation: observed.observation, issued_at: issued)
+              }
           }
       }
   }
