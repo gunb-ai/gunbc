@@ -684,40 +684,6 @@ pub fn borrowed_census_callable_candidate(
     }
 }
 
-pub fn declaration_unbound_leaf_names(n: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Vec<String>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let name = crate::v1_std_core::authored_name_at(env.source_indices.clone(), n.clone());
-        let here = if ((((((n.connective.clone() == Connective::NoConnective)
-            && ((n.children.clone().len() as i64) == 0))
-            && (name.clone() != "".to_string()))
-            && !v1_rt::contains(name.clone(), ".".to_string()))
-            && !crate::std_types::is_kernel_type(name.clone()))
-            && (crate::v1_compiler_infer_env::lookup_binding_by_name_local(
-                env.clone(),
-                name.clone(),
-            ) == std::option::Option::None))
-        {
-            Rc::new(vec![name.clone()])
-        } else {
-            Rc::new(vec![])
-        };
-        v1_rt::concat(
-            here.clone(),
-            Rc::new({
-                let mut __result = Vec::new();
-                for ch in n.children.clone().iter().cloned() {
-                    __result.extend(
-                        (*declaration_unbound_leaf_names(ch.clone(), env.clone()))
-                            .iter()
-                            .cloned(),
-                    );
-                }
-                __result
-            }),
-        )
-    })
-}
-
 pub fn census_declaration_bound_formals(
     type_env: Rc<TypeEnv>,
     owner_module_path: String,
@@ -734,35 +700,9 @@ pub fn census_declaration_bound_formals(
             tp_names.clone(),
             type_env.source_indices.clone(),
         );
-        let return_type = match node.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved {
-                node: resolved_return,
-                ..
-            }) => resolved_return.clone(),
-            _ => match node.type_annotation.clone() {
-                Some(annotated_return) => annotated_return.clone(),
-                std::option::Option::None => error_type(),
-            },
-        };
-        let declaration_generic_names = v1_rt::concat(
-            tp_names.clone(),
-            v1_rt::concat(
-                declaration_unbound_leaf_names(return_type.clone(), declaration_env.clone()),
-                Rc::new({
-                    let mut __result = Vec::new();
-                    for p in node.params.clone().iter().cloned() {
-                        __result.extend(
-                            (*declaration_unbound_leaf_names(
-                                crate::v1_std_core::param_node_type_expr(p.clone()),
-                                declaration_env.clone(),
-                            ))
-                            .iter()
-                            .cloned(),
-                        );
-                    }
-                    __result
-                }),
-            ),
+        let declaration_generic_names = crate::v1_compiler_infer_env::borrowed_generic_param_names(
+            node.params.clone(),
+            type_env.source_indices.clone(),
         );
         Rc::new({
             let mut __result = Vec::new();
@@ -813,7 +753,7 @@ pub fn census_declaration_bound_formals(
                             crate::v1_compiler_infer_env::declaration_substitution_basis(
                                 declared_type.clone(),
                                 declaration_env.clone(),
-                                declaration_generic_names.clone(),
+                                Rc::new(v1_rt::map_keys(&declaration_generic_names)),
                             ),
                     })
                 });
