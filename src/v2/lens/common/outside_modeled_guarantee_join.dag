@@ -22,15 +22,17 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // THE CORPUS INDEX THE JOIN READS, AS ONE ZERO-ARG PRODUCER. #10706's still_outside called
-// decl_facts and module_declaration_facts_live over witness_layer_roots on every invocation —
-// six calls across three floor claims, twelve whole-corpus materializations, each ~30s against
-// a 500ms marginal cpu budget (control: #10699 run 34080451370, identical three identities,
-// no PLANTED_CONTROL rows). Section 2: several demands with a shared-state least common
-// ancestor are authored duplication; carry/rewire/share the first value, do not memoize the
-// later request. Spelling is a zero-arg fn (not a module-scope data row) so the producer stays
-// eligible for v2.workflow.floor_pure_producer_share enrollment by resolved declaration
-// identity — that measurement is a later step and is not this change. Callers hoist once and
-// pass the value in; still_outside never rebuilds.
+// decl_facts and module_declaration_facts_live over witness_layer_roots on every invocation
+// (control: #10699 run 34080451370 — identical three outside_modeled_guarantee_witness_test
+// identities, no PLANTED_CONTROL rows). Re-derive the cost from the floor's per-claim cost
+// receipt and the cross-claim demand census; do not transcribe those numbers here. Section 2:
+// several demands with a shared-state least common ancestor are authored duplication;
+// carry/rewire/share the first value, do not memoize the later request. The eval-frame memo
+// already collapses within-claim repetition, so this hoist buys no measured time today — it
+// removes the source-level duplication and keeps a zero-arg fn spelling (not a module-scope
+// data row) so the producer stays eligible for v2.workflow.floor_pure_producer_share as a warm
+// row whose fill can land outside the fold. That enrollment measurement is a later step and is
+// not this change. Callers hoist once and pass the value in; still_outside never rebuilds.
 type WitnessLayerDeclIndex {
   facts: List<DeclFact>
   modules: List<ModuleDeclarationFact>
