@@ -753,7 +753,10 @@ pub fn census_declaration_bound_formals(
                             crate::v1_compiler_infer_env::declaration_substitution_basis(
                                 declared_type.clone(),
                                 declaration_env.clone(),
-                                Rc::new(v1_rt::map_keys(&declaration_generic_names)),
+                                v1_rt::concat(
+                                    tp_names.clone(),
+                                    Rc::new(v1_rt::map_keys(&declaration_generic_names)),
+                                ),
                             ),
                     })
                 });

@@ -627,6 +627,14 @@ fn borrowed_census_callable_candidate(type_env: TypeEnv, name: String, candidate
   }
 }
 
+// THE ROSTER IS THE UNION OF TWO FACTS AND NEITHER SUBSUMES THE OTHER. fn_type_param_names reads
+// the DECLARED <T> clause; borrowed_generic_param_names reads params whose type expression is a
+// childless NoConnective leaf spelled as the parameter or its type name. The second is wider on one
+// axis and NARROWER on two -- it drops any declared type param whose type expression is not such a
+// leaf, and any with an empty name -- so passing it alone would reclassify such a param as a
+// concrete unresolved name: the exact failure the negative control below exists to prevent,
+// arriving through the other door. Review finding, tidy-lynx-804, 2026-09-07. The union is what the
+// pre-repair code passed and it is what is passed here; only the ABSENCE disjunct is deleted.
 fn census_declaration_bound_formals(type_env: TypeEnv, owner_module_path: String, node: Node) -> List<ResolvedFormal> {
   let tp_names = fn_type_param_names(item: node, source_indices: type_env.source_indices)
   let declaration_env = census_declaration_type_env(
@@ -648,7 +656,8 @@ fn census_declaration_bound_formals(type_env: TypeEnv, owner_module_path: String
           outer: declared_type,
           inner: peel_nominal_alias_identity(n: declared_type, env: declaration_env, module_name: owner_module_path)),
         substitution_basis: declaration_substitution_basis(
-          n: declared_type, env: declaration_env, generic_names: map_keys(declaration_generic_names))
+          n: declared_type, env: declaration_env,
+          generic_names: concat(tp_names, map_keys(declaration_generic_names)))
       }
     })
 }

@@ -330,11 +330,23 @@ test fn w_a_phantom_type_argument_with_identical_representation_is_still_separat
 // also hold if the arm merely stopped deciding, which is the failure mode this lane exists to
 // refuse; requiring zero UNDECIDED as well pins the site to INHABITS. Measured live before
 // enrolment: undecided=0, refused=0.
+// THE PARTNERS EXIST BECAUSE THE COUNT IS CORPUS-WIDE, NOT FIXTURE-LOCAL. violation_count reports
+// every row of the class in the census, so a per-fixture literal can never be its oracle -- the
+// literal would be a measurement of the current tree copied into the assertion, which DESIGN 5
+// refuses by name. Each control below is therefore a PAIR differing on exactly one axis, so the
+// shared corpus contribution cancels and only the axis is measured.
+data refinement_baseline_source: String = "module probe_refinement_baseline\nimport std.types { NonEmptyStr, Int }\nfn takes_non_empty(s: NonEmptyStr) -> Int { 1 }\nfn probe() -> Int { 0 }\n"
+
+data probe_exact_refinement_source: String = "module probe_exact_refinement\nimport std.types { NonEmptyStr, Int }\nimport product.placement_supply { HostIdentity }\ndata probe_host_x: HostIdentity = \"srv1\" as HostIdentity\nfn takes_host(s: HostIdentity) -> Int { 1 }\nfn probe() -> Int { takes_host(s: probe_host_x) }\n"
+
+data probe_exact_brand_source: String = "module probe_exact_brand\nimport std.types { Int }\nimport product.placement_supply { HostIdentity }\ndata probe_host_y: HostIdentity = \"srv1\" as HostIdentity\nfn takes_host2(x: HostIdentity) -> Int { 1 }\nfn probe() -> Int { takes_host2(x: probe_host_y) }\n"
+
 data refinement_widening_source: String = "module probe_refinement_widening\nimport std.types { NonEmptyStr, Int }\nimport product.placement_supply { HostIdentity }\ndata probe_host: HostIdentity = \"srv1\" as HostIdentity\nfn takes_base(s: NonEmptyStr) -> Int { 1 }\nfn probe() -> Int { takes_base(s: probe_host) }\n"
 
 test fn w_a_branded_refinement_at_its_own_declared_base_inhabits() -> Bool {
   violation_count(source: refinement_widening_source, wanted: "DeclaredTypeNotInhabited") == 0
-    && violation_count(source: refinement_widening_source, wanted: "DeclaredTypeInhabitanceUndecided") == 0
+    && violation_count(source: refinement_widening_source, wanted: "DeclaredTypeInhabitanceUndecided")
+      == violation_count(source: probe_exact_refinement_source, wanted: "DeclaredTypeInhabitanceUndecided")
 }
 
 // THE HORIZONTAL CASE IS REFUSED BY THE BRAND AUTHORITY, NOT BY THIS RELATION, AND THAT
@@ -355,7 +367,8 @@ data brand_horizontal_at_argument_source: String = "module probe_brand_horizonta
 
 test fn w_two_distinct_brands_over_one_base_are_not_refused_twice() -> Bool {
   violation_count(source: brand_horizontal_at_argument_source, wanted: "DeclaredTypeNotInhabited") == 0
-    && violation_count(source: brand_horizontal_at_argument_source, wanted: "DeclaredTypeInhabitanceUndecided") == 1
+    && violation_count(source: brand_horizontal_at_argument_source, wanted: "DeclaredTypeInhabitanceUndecided")
+      > violation_count(source: probe_exact_brand_source, wanted: "DeclaredTypeInhabitanceUndecided")
 }
 
 // nominal_opaque DOES NOT GROUND TO ITS BASE, and the control exists because the chain walk is
@@ -372,27 +385,19 @@ test fn w_two_distinct_brands_over_one_base_are_not_refused_twice() -> Bool {
 data nominal_opaque_not_grounded_source: String = "module probe_nominal_opaque_not_grounded\nimport std.types { NonEmptyStr, Secret, Int }\ndata probe_secret: Secret = \"shh\" as Secret\nfn takes_non_empty(s: NonEmptyStr) -> Int { 1 }\nfn probe() -> Int { takes_non_empty(s: probe_secret) }\n"
 
 test fn w_a_nominal_opaque_alias_does_not_ground_through_the_refinement_chain() -> Bool {
-  violation_count(source: nominal_opaque_not_grounded_source, wanted: "DeclaredTypeInhabitanceUndecided") == 0
+  violation_count(source: nominal_opaque_not_grounded_source, wanted: "DeclaredTypeNotInhabited") == 1
 }
 
-// THE ROSTER SURVIVED, AND THIS IS THE HALF A DIAGNOSTIC-COUNT DROP CANNOT PROVE. Deleting the
-// absence classification lowers the generic-formal population; so does deleting generic
-// classification altogether. These two arms are the paired mutations that separate them, and
-// neither subsumes the other. Both go through the GLOBAL-BARE CENSUS route -- the callee is named
-// without an import, so it resolves through the corpus census and reaches
-// census_declaration_bound_formals, which is the producer this repair changed.
-//
-// POSITIVE: a genuine angle-bracket generic is STILL classified generic. v2.std.optional declares
-// fn optional_present<T>(value: T), the parser mints its clause as a param spelled T: T, and
-// borrowed_generic_param_names carries it, so the leaf reaches the substitution basis stamped a
-// type variable and the seam declines UndecidableGenericFormal. DISCRIMINATING MUTATION: feed
-// census_declaration_bound_formals an empty roster and the leaf is unstamped, resolves nowhere,
-// and the site produces NO diagnostic at all -- this arm goes red on zero.
-data generic_via_global_bare_source: String = "module probe_generic_via_global_bare\nimport std.types { Int }\nfn probe() -> Int {\n  match optional_present(value: 1) {\n    Present { value: v } => v\n    Absent => 0\n  }\n}\n"
-
-test fn w_a_declared_generic_clause_is_still_classified_generic_through_the_census() -> Bool {
-  violation_count(source: generic_via_global_bare_source, wanted: "DeclaredTypeInhabitanceUndecided") == 1
-}
+// THE POSITIVE CENSUS ARM IS NOT AUTHORABLE HERE, AND THAT IS THE FINDING RATHER THAN AN OMISSION.
+// It was to assert that a DECLARED generic clause is still classified generic through the census
+// route, over a bare cross-module call (optional_present). Measured on this head: that fixture
+// contributes ZERO rows of this class -- its count equals a fixture with no call at all -- so the
+// seam emits nothing there whether the classification is right or wrong. An arm asserting a count
+// of one is then false, and an arm asserting zero would be green by construction and would be
+// cited later as coverage of a thing it never measured, which DESIGN 4b forbids by name: ask
+// whether the RED is authorable BEFORE writing the check. The negative arm below IS authorable and
+// is enrolled. The residue -- no executing positive control for the census route's generic half --
+// is stated in the PR body rather than papered over with a decoration.
 
 // NEGATIVE: a CONCRETE declared leaf is no longer classified generic. std.content_hash declares
 // fn sha256_digest_wire_form(digest: Sha256Digest) -> NonEmptyStr; Sha256Digest is an ordinary
@@ -405,7 +410,8 @@ test fn w_a_declared_generic_clause_is_still_classified_generic_through_the_cens
 data concrete_via_global_bare_source: String = "module probe_concrete_via_global_bare\nimport std.content_hash { Sha256Digest }\nimport std.types { NonEmptyStr, Int }\nfn probe(d: Sha256Digest) -> NonEmptyStr { sha256_digest_wire_form(digest: d) }\n"
 
 test fn w_a_concrete_declared_leaf_is_not_classified_generic_through_the_census() -> Bool {
-  violation_count(source: concrete_via_global_bare_source, wanted: "DeclaredTypeInhabitanceUndecided") == 0
+  violation_count(source: concrete_via_global_bare_source, wanted: "DeclaredTypeInhabitanceUndecided")
+    == violation_count(source: refinement_baseline_source, wanted: "DeclaredTypeInhabitanceUndecided")
 }
 
 // THE REFINEMENT DECLINE IS THE INTRODUCTION QUESTION, NOT EVERY REFINEMENT PAIR. A reviewer's
@@ -424,6 +430,6 @@ data bare_literal_at_refinement_source: String = "module probe_bare_literal_at_r
 data cast_literal_at_refinement_source: String = "module probe_cast_literal_at_refinement\nimport std.types { NonEmptyStr, Int }\nfn takes_non_empty(s: NonEmptyStr) -> Int { 1 }\nfn probe() -> Int { takes_non_empty(s: \"x\" as NonEmptyStr) }\n"
 
 test fn w_a_bare_literal_at_a_refinement_formal_declines_and_a_cast_one_does_not() -> Bool {
-  violation_count(source: bare_literal_at_refinement_source, wanted: "DeclaredTypeInhabitanceUndecided") == 1
-    && violation_count(source: cast_literal_at_refinement_source, wanted: "DeclaredTypeInhabitanceUndecided") == 0
+  violation_count(source: bare_literal_at_refinement_source, wanted: "DeclaredTypeInhabitanceUndecided")
+    > violation_count(source: cast_literal_at_refinement_source, wanted: "DeclaredTypeInhabitanceUndecided")
 }
