@@ -2,7 +2,7 @@ module gunbc.serving.turn_dispatch
 
 import std.types { Bool, String, NonEmptyStr, List, Timestamp }
 import std.nat { Nat }
-import std.measure { Second, second, MoneyAmountMicro, money_amount_micro, MoneyOnce, MoneyRate }
+import std.measure { Second, second, MoneyAmountMicro, money_amount_micro, MoneyOnce, MoneyRate, MoneyPerSecond }
 import extdeps.currency.currency { Usd }
 import v2.std.optional { Present, Absent }
 import product.fabric.identity { FabricIdentity, OfferKey }
@@ -218,3 +218,33 @@ fn serving_dispatch_inputs<P>(
     opportunity: opportunity,
   }
 }
+
+// ── THE ONE INPUT THAT IS A JUDGEMENT RATHER THAN A MEASUREMENT ───────────────────────────────
+//
+// select_supply takes a delay valuation, which is where "why would I choose this over that" stops
+// being derivable and becomes a statement about what waiting is worth. Every other quantity this
+// module supplies was measured; this one cannot be, because it prices OUR impatience rather than the
+// engine's behaviour.
+//
+// IT IS DECLARED RATHER THAN PASSED AS A LITERAL so that its status is visible. A number written at
+// the call site reads as an implementation detail; a row reads as what it is -- a business fact
+// somebody chose, sitting where it can be argued with.
+//
+// AND TODAY IT CANCELS, WHICH IS WHY A PLACEHOLDER IS HONEST HERE AND WOULD NOT BE ELSEWHERE. Both
+// Spark groups are owned and quoted at zero, so cash ties and the ordering falls entirely to the
+// time-denominated axes -- transition, delay, opportunity. Those are all multiplied by this one
+// rate, so ANY positive value produces the same ranking between two Sparks. The rate becomes
+// load-bearing the moment an offer with a non-zero quote joins the set, because then it decides how
+// many seconds of waiting a dollar is worth; at that point this row must be restated by someone who
+// can defend the number, and its dissolution trigger is exactly that.
+//
+// The value is one micro-dollar per second: positive, so orderings resolve, and small enough that
+// nobody reading a total mistakes it for a priced claim.
+data serving_delay_valuation_micros_per_second: Nat = 1
+
+data serving_delay_valuation: MoneyPerSecond = MoneyRate {
+  amount: money_amount_micro(count: serving_delay_valuation_micros_per_second),
+  currency: Usd,
+}
+
+data serving_delay_valuation_dissolution: NonEmptyStr = "an offer with a non-zero quote enters the serving offer set, at which point cash no longer ties and this rate decides how many seconds of waiting a dollar is worth -- a judgement this placeholder does not make and must not be read as having made" as NonEmptyStr
