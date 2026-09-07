@@ -37,6 +37,22 @@ data instrument_blind_spot_anti_correlated_with_severity: RecurringFailureMode =
 
     "It is an EVIDENCE-AVAILABILITY defect: it silently bounds what anyone can ever prove about the population it drops, and a bound on provability produces no symptom until someone tries to prove the thing. ",
 
+    "**SECOND INSTRUMENT, SAME CLASS, AND IT IS THE WORST OF THE THREE BECAUSE OF WHERE IT SITS.** The floor's `[over-cost]` ranking -- which announces itself as the run's most expensive claims -- excluded, in control run 34088506991, every one of the three claims that actually BLOCKED that run. ",
+
+    "Its top row is a determinism witness at `observed_cpu_ms=447`, UNDER the line, while three claims sat at tens of seconds and are absent, because a claim that never completes is right-censored out of the ranking. ",
+
+    "A report of the most expensive claims that structurally excludes every claim too expensive to finish is this class at the exact place a reader would MOST expect to find them, which is what makes this the worst instance rather than merely a third one. ",
+
+    "**THIRD INSTANCE, AND IT WEARS THE READER RATHER THAN THE INSTRUMENT, which is why it belongs on this row and not on a tooling one.** Reading that same control log, a search for `Interrupted` returned zero and was briefly believed -- the log spells the disposition `interrupted_before_verdict`, lowercase. ",
+
+    "A false negative from a wrong pattern, in the FLATTERING direction, on a run that had in fact refused three claims. ",
+
+    "The class is identical: an absent observation reading as `the thing did not happen` rather than as `I did not observe it`, and the asymmetry is the same one -- the reassuring reading is the one that requires no further work, so it is the one that survives. ",
+
+    "The only thing that caught it was a POSITIVE CONTROL in the same artifact: the two producers whose warm rows printed `disposition=Stored` in BOTH arms, which established that the log does report dispositions and therefore that a silence about a third producer was informative. ",
+
+    "A negative result is trustworthy only beside a positive that fires. ",
+
     "WHY IT IS NOT `absorbing_fallback`: that class substitutes a superset when a precise answer is unavailable, and its tell is a widening failure arm. ",
 
     "Here nothing widens and nothing is substituted -- the arm simply never runs, and the count of what it skipped is published honestly. ",
