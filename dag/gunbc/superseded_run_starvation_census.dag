@@ -1,6 +1,7 @@
 module gunbc.superseded_run_starvation_census
 
-import std.types { Bool, Int, Nat, NonEmptyStr, String, Timestamp }
+import std.types { Bool, Int, NonEmptyStr, String, Timestamp }
+import std.nat { Nat }
 import std.measure { Second, second, second_count }
 
 type SupersededRunPair {
