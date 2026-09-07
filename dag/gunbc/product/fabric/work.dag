@@ -320,6 +320,12 @@ fn output_obligations_material(declared: DeclaredOutputObligations) -> NonEmptyS
   )
 }
 
+// FAMILY-FIXED MINT. content_hash_of_value is Fnv1a64 structural only;
+// serialize_content_hash of that arm is the bare 16-hex digest. Roster revision
+// is computation identity, not byte integrity — Sha256Digest remains a different
+// question (warm-moth-142 completion module). serialize_content_hash is
+// family-asymmetric (two arms tagged, two bare); this mint never enters those
+// other arms, so the incidental width discriminator is not load-bearing here.
 fn output_obligations_revision(declared: DeclaredOutputObligations) -> OutputObligationsRevision {
   serialize_content_hash(
     hash: content_hash_of_value(value: output_obligations_material(declared: declared))
