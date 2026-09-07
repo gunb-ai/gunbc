@@ -2,11 +2,11 @@ module test.claim.spark.serving_critical_path_witness
 
 import std.types { Bool, String, Int, NonEmptyStr, List }
 import std.nat { Nat }
-import std.measure { microsecond_count, watt_count }
+import std.measure { microsecond_count, watt, watt_count }
 import v2.std.optional { Present, Absent }
 import gunbc.spark.serving_critical_path {
-  PowerEnvelope, spark_system_power_supply, spark_soc_thermal_envelope,
-  spark_gpu_power_envelope, spark_peripheral_power_envelope,
+  spark_system_power_supply, spark_soc_thermal_envelope,
+  GpuPowerFractionStanding, GpuPowerFraction, GpuDenominatorUnestablished, spark_gpu_power_fraction,
   SaturationClaim, GpuComputeSaturated, GpuComputeUnderutilised,
   ClaimConstruction, ClaimConstructible, ClaimNotConstructible,
   busy_fraction_constructs, power_below_ceiling_excludes_saturation,
@@ -26,7 +26,7 @@ import gunbc.spark.serving_critical_path {
   SharedMinusIdleFitContrast, shared_minus_idle_contrast,
   ServingCostSubject, PrefillSelfCost, CoTenantExternality,
   PolicyLeverage, OuterPolicyCanAddress, RequiresInnerExecutionChange, policy_leverage,
-  PerStepCostStanding, PerStepCostBounded, PerStepCostNotSeparable,
+  PerStepCostStanding, PerStepCostNotSeparable,
   spark_group_a_per_step_cost_standing,
   BudgetTradeStanding, BudgetTradeUnestablished, spark_group_a_budget_trade,
   ScalingSampleExcludedFromFit, spark_group_a_co_tenant_outlier,
@@ -63,12 +63,18 @@ test fn neither_saturation_nor_underutilisation_is_constructible_from_coarse_tel
 }
 
 // THE ENVELOPES NEST, and adding them is the first mistake available.
-test fn the_power_envelopes_nest_rather_than_sum() -> Bool {
-  watt_count(w: spark_system_power_supply.watts) == 240
-    && watt_count(w: spark_soc_thermal_envelope.watts) == 140
-    && watt_count(w: spark_gpu_power_envelope.watts) == 120
-    && watt_count(w: spark_gpu_power_envelope.watts) < watt_count(w: spark_soc_thermal_envelope.watts)
-    && string_contains(s: spark_gpu_power_envelope.covers as String, pattern: "nested inside")
+test fn the_power_facts_are_read_from_the_catalog_and_the_gpu_ceiling_refuses() -> Bool {
+  // The two published facts, consumed from extdeps.systems.nvidia rather than re-minted here.
+  watt_count(w: spark_system_power_supply) == 240
+    && watt_count(w: spark_soc_thermal_envelope) == 140
+    && watt_count(w: spark_soc_thermal_envelope) < watt_count(w: spark_system_power_supply)
+    // AND THE ONE THAT IS NOT PUBLISHED REFUSES. This is the discriminating half: an observed
+    // 36-44W draw cannot be turned into a fraction of a GPU-only ceiling nobody published, and the
+    // refusal names the denominator rather than substituting a plausible one.
+    && (match spark_gpu_power_fraction(observed: watt(count: 40)) {
+          GpuDenominatorUnestablished { because: b } => string_contains(s: b as String, pattern: "no GPU-only figure")
+          GpuPowerFraction { percent: _ } => false
+        })
 }
 
 // THE BUDGET IS OBSERVED BEHAVIOURALLY AND IS AN ORDER OF MAGNITUDE ABOVE THE NOMINAL 2048. Every
@@ -167,7 +173,6 @@ test fn the_idle_marginal_rate_is_a_projection_of_the_samples() -> Bool {
 // Both regressed against a step boundary that the measurement shows does not exist in range.
 test fn the_per_step_question_is_dissolved_rather_than_answered() -> Bool {
   match spark_group_a_per_step_cost_standing {
-    PerStepCostBounded { upper_micros: _ } => false
     PerStepCostNotSeparable { because: b, range_ceiling_tokens: t } =>
       t == 20082 && string_contains(s: b as String, pattern: "exactly one engine iteration")
   }

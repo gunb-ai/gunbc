@@ -4,9 +4,7 @@ import std.types { Bool, String, Int, NonEmptyStr, List }
 import std.nat { Nat }
 import std.measure { Watt, watt, watt_count, Milliwatt, milliwatt, milliwatt_count, Hertz, hertz, hertz_count, Percent, percent, percent_count, Microsecond, microsecond, microsecond_count }
 import v2.std.optional { Present, Absent }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
+import extdeps.systems.nvidia { nvidia_dgx_spark_1tb_catalog, nvidia_gb10_gpu_catalog }
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch }
 import gunbc.spark.serving_launch_instrumentation {
   LaunchInstrumentation, spark_group_a_pair_head_instrumentation,
@@ -14,48 +12,51 @@ import gunbc.spark.serving_launch_instrumentation {
   launch_attribution_availability,
 }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri { scheme: Https, locator: "docs.nvidia.com/dgx/dgx-spark/hardware.html" }
+// -- THE POWER FACTS ARE NVIDIA'S, SO THIS MODULE READS THEM AND DECLARES NONE ----------------
+//
+// This module previously minted its own ExternalAuthority for docs.nvidia.com/dgx/dgx-spark and an
+// ExternalModelScope whose subject was a GUNBC declaration, then re-stated 240W and 140W as local
+// literals. Both facts already live at extdeps.systems.nvidia under the same citation, so there
+// were two independently editable copies of one measured number, and the scope row asserted that a
+// gunbc module is an authority for NVIDIA hardware. DESIGN 3b names extdeps/ as the home for
+// external facts; the fix is to consume the catalog rather than to cite the same page twice.
+data spark_system_power_supply: Watt = nvidia_dgx_spark_1tb_catalog.external_power_supply
+data spark_soc_thermal_envelope: Watt = nvidia_dgx_spark_1tb_catalog.soc_thermal_design_power
+
+// AND THE GPU-ONLY CEILING IS NOT A FACT WE HAVE. Two further rows stood here asserting a 120W GPU
+// envelope and a 100W peripheral envelope under that same citation. The cited pages state neither.
+// extdeps.systems.nvidia leaves nvidia_gb10_gpu_catalog.tdp_watts as `none` deliberately, and its
+// annotation gives the reason in the same breath: the 140W figure is the WHOLE SoC's TDP, "not the
+// GPU alone or the CPU alone, so it is carried at the system row, never misattributed onto the
+// nested GPU catalog row's own tdp_watts field". This module performed exactly that
+// misattribution -- its own prose said "roughly 120W" and "about 100W is available to the rest",
+// which are an unofficial figure and an arithmetic remainder, and then promoted both to
+// authority-backed data.
+//
+// The denominator was load-bearing: it was what turned an observed 36-44W into "roughly 30-37% of
+// the GPU ceiling". So removing the fabricated rows is not enough -- the reading they supported has
+// to refuse rather than quietly lose its basis. It is now DERIVED from the catalog's optional field,
+// so it refuses today and starts answering by itself if NVIDIA ever publishes a GPU-only TDP and
+// that field is filled from the citation.
+type GpuPowerFractionStanding
+  = GpuPowerFraction { percent: Percent }
+  | GpuDenominatorUnestablished { because: NonEmptyStr }
+
+fn spark_gpu_power_fraction(observed: Watt) -> GpuPowerFractionStanding {
+  match nvidia_gb10_gpu_catalog.tdp_watts {
+    Absent =>
+      GpuDenominatorUnestablished {
+        because: "the cited docs.nvidia.com pages state a 240W external supply and a 140W whole-SoC TDP and no GPU-only figure, so extdeps.systems.nvidia carries tdp_watts as none; nvidia-smi reports GPU power alone, and dividing it by either published number answers about a different denominator than the one the reading belongs to" as NonEmptyStr
+      }
+    Present { value: ceiling } =>
+      if watt_count(w: ceiling) == 0 {
+        GpuDenominatorUnestablished { because: "the catalog carries a zero GPU ceiling, which no reading can be a fraction of" as NonEmptyStr }
+      } else {
+        GpuPowerFraction { percent: percent(count: (watt_count(w: observed) * 100) / watt_count(w: ceiling)) }
+      }
+  }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef { module_path: "gunbc.spark.serving_critical_path", decl_name: "PowerEnvelope", field: WholeDeclaration }
-  },
-  first_citation: extdeps_external_authority_anchor,
-  further_citations: [],
-}
-
-// ── THE POWER ENVELOPES, NESTED, BECAUSE ADDING THEM IS THE FIRST MISTAKE ─────────────────────
-//
-// A 240W figure is the EXTERNAL POWER SUPPLY. The GB10 SoC TDP is 140W and covers the integrated
-// CPU and GPU together; the GPU alone draws up to roughly 120W, and about 100W is available to the
-// rest of the system. The 120W is NESTED INSIDE the 140W, not an additional allocation on top of it.
-//
-// This matters because the denominator decides the reading. nvidia-smi reports GPU power -- not
-// wall, not CPU, not the ConnectX-7, not storage -- so an observed 36-44W is roughly 30-37% of the
-// GPU ceiling. Low, but not the far more dramatic fraction a 240W denominator would suggest.
-type PowerEnvelope {
-  watts: Watt
-  covers: NonEmptyStr
-}
-
-data spark_system_power_supply: PowerEnvelope = PowerEnvelope { watts: watt(count: 240), covers: "external power supply for the whole unit" as NonEmptyStr }
-data spark_soc_thermal_envelope: PowerEnvelope = PowerEnvelope { watts: watt(count: 140), covers: "GB10 SoC TDP, integrated CPU and GPU together" as NonEmptyStr }
-data spark_gpu_power_envelope: PowerEnvelope = PowerEnvelope { watts: watt(count: 120), covers: "GPU alone, the denominator nvidia-smi power.draw belongs to; nested inside the 140W SoC envelope" as NonEmptyStr }
-data spark_peripheral_power_envelope: PowerEnvelope = PowerEnvelope { watts: watt(count: 100), covers: "other system components" as NonEmptyStr }
-
-// ── WHAT THE TRACE OBSERVED, AS OBSERVATIONS ──────────────────────────────────────────────────
-//
-// Read-only sampling of all four group A ranks across one controlled cold prefill: nvidia-smi
-// utilisation, power and SM clock plus the RoCE transmit counter every 250ms, ~840 samples per rank,
-// launch invocation re-read before and after and unchanged.
-//
-//     rank    util-med  util<50%  power-med  power-max  sm-clock  roce
-//     .225       96%       2%       36.6W      42.9W     2398MHz  232.7 GB  7.80 Gb/s
-//     .226       96%       1%       36.1W      41.8W     2411MHz  235.8 GB  7.87 Gb/s
-//     .232       96%       1%       36.1W      41.9W     2411MHz  235.4 GB  7.87 Gb/s
-//     .233       96%       1%       37.8W      43.9W     2405MHz  233.6 GB  7.80 Gb/s
 type CriticalPathObservation
   = GpuKernelBusyFraction { busy: Percent }
   | GpuReportedPowerDraw { median_watts: Watt, max_watts: Watt }
@@ -436,9 +437,15 @@ fn shared_minus_idle_contrast() -> SharedMinusIdleFitContrast? {
 // Every idle window ran in one step, so there is no second step anywhere in the measured range from
 // which a per-step term could be distinguished from the per-request term. This is not a bound and not
 // an estimate; the question does not arise below the budget, and above it nothing has been measured.
+// ONE ARM, BECAUSE ONE ARM HAS A PRODUCER. A PerStepCostBounded { upper_micros: Nat } arm stood
+// here and was constructed by nothing -- the only reference outside the declaration was a witness
+// match returning false. gunbc.spark.serving_engine has now made this ruling twice against itself,
+// deleting WeightsExceedUsablePool and counts_device_reservation on the ground that an arm no
+// function emits is a fact the model asserts and never verifies. Its bare-scalar unit field was the
+// tell that noticed it; the defect was the arm, so the arm goes rather than its field's carrier.
+// It returns with its producer, and with a Microsecond, not before.
 type PerStepCostStanding
-  = PerStepCostBounded { upper_micros: Nat }
-  | PerStepCostNotSeparable { because: NonEmptyStr, range_ceiling_tokens: Nat }
+  = PerStepCostNotSeparable { because: NonEmptyStr, range_ceiling_tokens: Nat }
 
 data spark_group_a_per_step_cost_standing: PerStepCostStanding = PerStepCostNotSeparable {
   because: "every idle window from 512 to 20,082 computed tokens completed in exactly one engine iteration, so no per-step term is distinguishable from the fixed per-request term anywhere in the measured range" as NonEmptyStr,
