@@ -89,31 +89,41 @@ fn grounding_qualified_by_durability<E, Target, ReadbackSubject>(
 }
 
 // The canonical desired-state lifecycle carrier, and the reason this module rather than a new one:
-// independent readback already lives here, and a second module owning the sequence would be the very
-// layer inversion this carrier exists to close — the correct helper standing BESIDE the raw path
-// instead of owning it (DESIGN 3). It is sole_constructor so that no caller outside this module can
-// mint a receipt asserting convergence: the only route to one is reconcile_effect, which derives
-// convergence from the POST-APPLY observation rather than from the decision or the application arm.
-// That observation is itself a caller-supplied REPORT -- this module receives it, it does not perform
-// the read -- so "rather than from anything the caller claims", as an earlier revision of this line
-// read, was too strong. What is derived here is that the grounding was not asserted ALONGSIDE a
-// contradictory lifecycle, not that anyone independently observed anything.
+// the reconciliation and grounding VOCABULARY already lives here, and a second module owning the
+// sequence would be the very layer inversion this carrier exists to close — the correct helper
+// standing BESIDE the raw path instead of owning it (DESIGN 3). It is sole_constructor so that no
+// caller outside this module can mint a receipt asserting convergence: the only route to one is
+// reconcile_effect, which classifies convergence from the REPORTED EFFECTIVE READ AND GROUNDING
+// REPORT rather than from the decision or the application arm.
+//
+// Not a "post-apply observation": that phrase asserts a temporal order this module cannot establish.
+// A caller-constructed ReadObserved has not been shown to have occurred after anything, and the Noop
+// arm has no application for a read to be "post". What is derived here is that the grounding was not
+// asserted ALONGSIDE a contradictory lifecycle -- nothing about when, or whether, anyone looked.
 //
 // AN EARLIER REVISION OF THIS NOTE CLAIMED a caller "cannot lie about whether the sequence ran".
 // That was false, and it was rung inflation in the authority module itself (DESIGN 4b(1)) — worse
 // than sitting low, because an inflated class never ranks for climbing. The mint took `applied` as
 // an ordinary Bool, so `applied: true` beside a self-constructed observation minted a converged
 // receipt with nothing executed. What held was the classifier's truth table, not the lifecycle. The
-// Bool is gone; what stands now is stated exactly at Application below.
+// caller-supplied Bool is gone, and so is the derived one: a later review found that ReconciledEffect's
+// own `applied: Bool` was never read either, so it went with it. What stands now is stated exactly at
+// Application and at ReconciledEffect below.
 //
 // The seal is a source-level wall (DESIGN 4b rung 3), not a runtime one: an emitted or deserialized
 // representation of this record is not covered, so a decoder that reconstructs the field set
 // reconstitutes an unearned receipt. That gap is the class's next-rung trigger and is named rather
 // than papered over.
 
+// NO `applied: Bool` FIELD, and its removal is the same finding as the evidence payload above, found
+// one field over. #10720 added `applied: Bool` here and nothing ever read it: inside this module it
+// was only ever WRITTEN and then matched as `_`, and no consumer in the corpus projects it. A field
+// every producer sets and no fold reads is DESIGN 3c's dangling declaration exactly, and keeping it
+// after removing the evidence payload for that reason would have been indefensible. The Application
+// arm is the lifecycle fact; `outcome` is the verdict; a Boolean restating the arm is a third
+// representation of something already carried twice.
 type ReconciledEffect<P, E> sole_constructor {
   decision: UpsertDecision<P>
-  applied: Bool
   outcome: Reconciliation<Bool, E>
 }
 
@@ -142,7 +152,7 @@ type ReconciledEffect<P, E> sole_constructor {
 // example: RemoteFileConverged is sole_constructor, carries the EXACT WRITE so it names the bytes it
 // is evidence for, and is reachable only through a mint admitted to the func that ran the four
 // steps. What std still does is refuse the contradictory lifecycles below, and derive grounding from
-// the post-apply observation rather than from the decision or the application arm. Both the read and
+// the reported effective read rather than from the decision or the application arm. Both the read and
 // the grounding are themselves caller-constructed arguments routed through a truth table; this module
 // derives neither from the other, and an earlier revision of this line said "rather than from
 // anything asserted", which claimed an independence std does not have.
@@ -151,7 +161,7 @@ type ReconciledEffect<P, E> sole_constructor {
 // revision carried a payload here. Applied used to be Applied { evidence: A }, justified as making it
 // impossible to "get a CONVERGED receipt merely by writing a Bool". That justification did not
 // survive review: NO FOLD READ THE PAYLOAD. All three matches below discarded it, ReconciledEffect
-// stores only applied: Bool, and ConvergedEffect's evidence field is the GROUNDING evidence from
+// stored only an applied: Bool that nothing read either, and ConvergedEffect's evidence field is the GROUNDING evidence from
 // Grounding<E>, not this one -- so the value never reached any sink, and Applied { evidence: "" } was
 // exactly as writable as applied: true. The type parameter bought a rename of the Boolean, which is
 // DESIGN 3c's dangling declaration: a data row no fold reads.
@@ -191,15 +201,13 @@ fn reconcile_effect<P, R, E>(
         NotApplied =>
           ReconciledEffect {
             decision: decision,
-            applied: false,
             outcome: NotConverged { reason: why as String, applied: false },
           }
         Applied =>
           ReconciledEffect {
             decision: decision,
-            applied: true,
             outcome: NotConverged {
-              reason: "reconcile_effect: the decision refused and an application was reported",
+              reason: "reconcile_effect: Refuse was paired with an application report",
               applied: true,
             },
           }
@@ -209,15 +217,13 @@ fn reconcile_effect<P, R, E>(
         NotApplied =>
           ReconciledEffect {
             decision: decision,
-            applied: false,
             outcome: reconcile_grounded(apply_effect: false, show_read: show_read, grounding: grounding),
           }
         Applied =>
           ReconciledEffect {
             decision: decision,
-            applied: true,
             outcome: NotConverged {
-              reason: "reconcile_effect: Noop decided and an application was reported",
+              reason: "reconcile_effect: Noop was paired with an application report",
               applied: true,
             },
           }
@@ -227,16 +233,14 @@ fn reconcile_effect<P, R, E>(
         NotApplied =>
           ReconciledEffect {
             decision: decision,
-            applied: false,
             outcome: NotConverged {
-              reason: "reconcile_effect: Apply decided but the application was reported as not applied",
+              reason: "reconcile_effect: Apply was paired with NotApplied",
               applied: false,
             },
           }
         Applied =>
           ReconciledEffect {
             decision: decision,
-            applied: true,
             outcome: reconcile_grounded(apply_effect: true, show_read: show_read, grounding: grounding),
           }
       }

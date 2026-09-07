@@ -25,7 +25,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Every witness below drives the REAL runner rather than asserting over a hand-built carrier, which
+// Every witness below drives the real reconciliation CLASSIFIER rather than asserting over a
+// hand-built carrier -- classifier, not runner: nothing here runs an effect. Which
 // is not a stylistic choice: ReconciledEffect is sole_constructor, so a hand-built carrier is not
 // authorable here at all. That is the wall doing the work the witness would otherwise have to be
 // trusted to respect — the same shape the guarantee-probe corpus enrolls as a compile-time RED.
@@ -39,7 +40,7 @@ fn grounds() -> Grounding<String> {
 }
 
 fn does_not_ground() -> Grounding<String> {
-  DoesNotGround { reason: "post-apply observation does not satisfy the desired relation" }
+  DoesNotGround { reason: "reported effective read does not satisfy the desired relation" }
 }
 
 fn apply_decision() -> UpsertDecision<String> {
@@ -61,8 +62,9 @@ fn reported_application() -> Application {
 // refuses to call that convergence, because convergence is classified from the reported effective read
 // rather than from the application arm beside it. Nothing here executes an effect or performs a read:
 // this witness constructs a String report, a ReadObserved and a Grounds locally, and what it
-// establishes is the classifier's truth table, not lifecycle provenance. If this greens, the receipt means "something was attempted" rather than "the
-// desired relation now holds", which is the entire distinction the carrier exists to carry.
+// establishes is the classifier's truth table, not lifecycle provenance. If this greens, the receipt
+// means "an application was reported" rather than "the desired relation now holds", which is the
+// entire distinction the carrier exists to carry.
 
 test fn an_application_reported_with_a_non_grounding_read_is_not_converged() -> Bool {
   !reconciled_effect_converged(
