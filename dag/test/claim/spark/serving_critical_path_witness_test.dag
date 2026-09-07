@@ -63,14 +63,15 @@ test fn neither_saturation_nor_underutilisation_is_constructible_from_coarse_tel
 }
 
 // THE ENVELOPES NEST, and adding them is the first mistake available.
+//
+// The first three conjuncts consume the two PUBLISHED facts from extdeps.systems.nvidia rather than
+// re-minting them here. The fourth is the discriminating half: an observed 36-44W draw cannot be
+// turned into a fraction of a GPU-only ceiling nobody published, and the refusal names the missing
+// denominator rather than substituting a plausible one.
 test fn the_power_facts_are_read_from_the_catalog_and_the_gpu_ceiling_refuses() -> Bool {
-  // The two published facts, consumed from extdeps.systems.nvidia rather than re-minted here.
   watt_count(w: spark_system_power_supply) == 240
     && watt_count(w: spark_soc_thermal_envelope) == 140
     && watt_count(w: spark_soc_thermal_envelope) < watt_count(w: spark_system_power_supply)
-    // AND THE ONE THAT IS NOT PUBLISHED REFUSES. This is the discriminating half: an observed
-    // 36-44W draw cannot be turned into a fraction of a GPU-only ceiling nobody published, and the
-    // refusal names the denominator rather than substituting a plausible one.
     && (match spark_gpu_power_fraction(observed: watt(count: 40)) {
           GpuDenominatorUnestablished { because: b } => string_contains(s: b as String, pattern: "no GPU-only figure")
           GpuPowerFraction { percent: _ } => false
