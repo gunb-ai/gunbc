@@ -1030,7 +1030,7 @@ fn lookup_structural_method(receiver_type: Node, method_name: String, source_ind
         field_type.diagnostics
       Absent => enriched.diagnostics
     }
-    if method_diagnostics |> filter(d => is_interpreter_blocking_diagnostic(d)) |> count == 0 && enriched.ty.connective == Conj && enriched.ty.children |> count > 0 {
+    if method_diagnostics |> filter(d => is_interpreter_blocking_diagnostic(d.diagnostic)) |> count == 0 && enriched.ty.connective == Conj && enriched.ty.children |> count > 0 {
       let base_result = lookup_field_in_product(product: enriched.ty, method_name: method_name, source_indices: source_indices)
       match base_result {
         Present { value: mfr } =>
