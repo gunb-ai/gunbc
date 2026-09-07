@@ -5214,7 +5214,18 @@ fn collect_unprojectable_construct_refusals(n: Node, module_name: String, source
     ExprIf => collect_filter_in_guard_refusals(n: if_condition(texpr: n), module_name: module_name, source_indices: source_indices)
     _ => []
   }
-  let from_children = n.children |> flat_map(c => collect_unprojectable_construct_refusals(n: c, module_name: module_name, source_indices: source_indices))
+  // Skip the condition child of ExprIf: collect_filter_in_guard_refusals already walked that
+  // tree. Recursing into it would mint a second diagnostic for a nested if in the same guard.
+  let from_children = match n.expr_data {
+    ExprIf => concat(
+      collect_unprojectable_construct_refusals(n: if_then_branch(texpr: n), module_name: module_name, source_indices: source_indices),
+      match if_else_branch(texpr: n) {
+        Present { value: e } => collect_unprojectable_construct_refusals(n: e, module_name: module_name, source_indices: source_indices)
+        Absent => []
+      }
+    )
+    _ => n.children |> flat_map(c => collect_unprojectable_construct_refusals(n: c, module_name: module_name, source_indices: source_indices))
+  }
   let from_body = match n.body {
     Present { value: b } => collect_unprojectable_construct_refusals(n: b, module_name: module_name, source_indices: source_indices)
     Absent => []

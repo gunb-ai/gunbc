@@ -34,6 +34,8 @@ data any_in_guard_source: String = "module fx.any_guard\nimport std.types { List
 
 data filter_free_call_in_guard_source: String = "module fx.filter_call_guard\nimport std.types { List, Bool, Int }\nfn f(xs: List<Int>) -> Int {\n  if (filter(xs, x => x > 0) |> count) > 0 {\n    1\n  } else {\n    0\n  }\n}\n"
 
+data nested_if_filter_in_guard_source: String = "module fx.filter_nested_if_guard\nimport std.types { List, Bool, Int }\nfn f(xs: List<Int>) -> Int {\n  if (if (xs |> filter(x => x > 0) |> count) > 0 { true } else { false }) {\n    1\n  } else {\n    0\n  }\n}\n"
+
 fn unprojectable_blocking_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {
     CensusObserved { rows: rows } =>
@@ -53,6 +55,10 @@ test fn w_supported_guarded_any_lambda_still_emits() -> Bool {
 
 test fn w_free_call_algebra_filter_in_guard_refuses_at_emission() -> Bool {
   unprojectable_blocking_count(source: filter_free_call_in_guard_source) == 1
+}
+
+test fn w_nested_if_filter_in_guard_refuses_once() -> Bool {
+  unprojectable_blocking_count(source: nested_if_filter_in_guard_source) == 1
 }
 
 // Named occupant of publication atomicity. A discriminating RED over the published path set

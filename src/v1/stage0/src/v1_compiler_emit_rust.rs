@@ -10451,21 +10451,39 @@ pub fn collect_unprojectable_construct_refusals(
             ),
             _ => Rc::new(vec![]),
         };
-        let from_children = Rc::new({
-            let mut __result = Vec::new();
-            for c in n.children.clone().iter().cloned() {
-                __result.extend(
-                    (*collect_unprojectable_construct_refusals(
-                        c.clone(),
+        let from_children = match (*n.expr_data.clone()).clone() {
+            ExprData::ExprIf => {
+                let then_refusals = collect_unprojectable_construct_refusals(
+                    crate::v1_std_core::if_then_branch(n.clone()),
+                    module_name.clone(),
+                    source_indices.clone(),
+                );
+                let else_refusals = match crate::v1_std_core::if_else_branch(n.clone()) {
+                    Some(e) => collect_unprojectable_construct_refusals(
+                        e.clone(),
                         module_name.clone(),
                         source_indices.clone(),
-                    ))
-                    .iter()
-                    .cloned(),
-                );
+                    ),
+                    std::option::Option::None => Rc::new(vec![]),
+                };
+                v1_rt::concat(then_refusals.clone(), else_refusals.clone())
             }
-            __result
-        });
+            _ => Rc::new({
+                let mut __result = Vec::new();
+                for c in n.children.clone().iter().cloned() {
+                    __result.extend(
+                        (*collect_unprojectable_construct_refusals(
+                            c.clone(),
+                            module_name.clone(),
+                            source_indices.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            }),
+        };
         let from_body = match n.body.clone() {
             Some(b) => collect_unprojectable_construct_refusals(
                 b.clone(),
