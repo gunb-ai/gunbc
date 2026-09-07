@@ -1,0 +1,36 @@
+module gunbc.guarantee_stall.probe_program_assembled_from_string_literals_stall
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+
+// gunbc.instruments.fabric_capacity_standing capacity_probe_script builds an eleven-field bash
+// program by joining String literals -- command substitutions, pipelines, sed and grep -oE scripts,
+// and a per-field default -- and group_report ships it to `ssh ... bash -s` as a stdin payload.
+//
+// THE DEFECT IS NOT THAT IT IS SHELL. docs/plans/shell-to-dag-residual-census-and-arc-completion.md
+// splits the remaining arc in two, and a probe executed on a foreign host over SSH falls in its
+// LEGITIMATE SHELL bucket: foreign executors stay shell. But that same finding says legitimate shell
+// is "emitted through the v2 bash rows (grammar-owned), and is bounded", and this program is neither
+// -- it is assembled by string concatenation, so no grammar row describes it and nothing in the
+// substrate can read it. ROADMAP's translator row names exactly this population as what it deletes:
+// "the scripts assembled by gluing strings together".
+//
+// WHY IT IS A LADDER ROW AND NOT ONLY UNTIDINESS. Every field this probe returns is an input to a
+// capacity standing, and the program that produces them is opaque to the compiler: a quoting defect,
+// a pipeline that silently yields empty, or a sed expression that stops matching after an upstream
+// format change all reduce to the field's `-` default. The instrument then reports an unestablished
+// standing rather than a wrong number, which is the correct failure -- so this sits at mitigatable
+// rather than lower -- but the class of defect is invisible to every check the substrate can run,
+// and it stays invisible until the program has a grammar.
+//
+// It is declared here because the census that owns the class does not name this instance: the
+// document is dated 2026-07-12 against #6507 and predates this module, so without a row the
+// instance is an untracked member of a known population.
+data probe_program_assembled_from_string_literals_stall: GuaranteeStall = GuaranteeStall {
+  subject: "gunbc.instruments.fabric_capacity_standing capacity_probe_script assembles an eleven-field bash program from String literals and ships it to ssh bash -s, so no grammar row describes the program and no substrate check can read it",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding { grounding: "docs/plans/shell-to-dag-residual-census-and-arc-completion.md" },
+  population: BoundedPopulation { members: ["gunbc.instruments.fabric_capacity_standing"] },
+  next_rung_trigger: climbs_when(capability: "one translator that turns a described plan into a shell program while preserving order, captured output and failure behaviour, sufficient to express this probe's command substitutions, pipelines, per-field default and remote stdin delivery, so that the program is grammar-owned and no consumer assembles one by joining String literals")
+}

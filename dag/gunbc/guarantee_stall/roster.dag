@@ -60,6 +60,7 @@ import gunbc.guarantee_stall.synthesis_established_bound_patch_stall { synthesis
 import gunbc.guarantee_stall.fn_index_depth_agreement_floor_enrollment_stall { fn_index_depth_agreement_floor_enrollment_stall }
 import gunbc.guarantee_stall.eval_steps_outside_the_reading_coproduct_stall { eval_steps_outside_the_reading_coproduct_stall }
 import gunbc.guarantee_stall.signed_and_ratio_measure_carrier_stall { signed_and_ratio_measure_carrier_stall }
+import gunbc.guarantee_stall.probe_program_assembled_from_string_literals_stall { probe_program_assembled_from_string_literals_stall }
 
 // THE COHORT PROVENANCE NOTES BELOW WERE AUTHORED WHEN EVERY ROW SAT IN ONE FILE, and they are
 // carried here verbatim rather than split across the row modules they describe. Their membership
@@ -215,6 +216,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   fn_index_depth_agreement_floor_enrollment_stall,
   eval_steps_outside_the_reading_coproduct_stall,
   signed_and_ratio_measure_carrier_stall,
+  probe_program_assembled_from_string_literals_stall,
 ]
 
 // THE FOUR SUBJECTS RESTORED TO THE ROSTER, PINNED BY IDENTITY SO THEIR LOSS REFUSES.
