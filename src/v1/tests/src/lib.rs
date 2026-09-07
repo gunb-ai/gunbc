@@ -19,6 +19,8 @@ mod field_of_fractions_construction_test;
 #[cfg(test)]
 mod field_of_fractions_single_declaration_test;
 #[cfg(test)]
+mod if_join_pool_binding_test;
+#[cfg(test)]
 mod item_kind_dispatch_totality_test;
 #[cfg(test)]
 mod materialization_provider_resolved_graph_consumer_test;

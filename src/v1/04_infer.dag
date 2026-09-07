@@ -126,7 +126,7 @@ import v1.compiler.infer_env {
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, census_declaration_type_env, declaration_substitution_basis, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, binding_declares_name, type_reference_declaration_ref, type_reference_declaration, declaration_provenance_of_ref,
+  lookup_binding_by_name, lookup_binding_by_name_local, binding_declares_name, type_reference_declaration_ref, type_reference_declaration, declaration_provenance_of_ref,
   listed_import_required_bare_call_blocked,
   effective_visible_binding, unit_variant_index_shadow_insert,
   build_unit_variant_index, UnitVariantContribution
@@ -8341,7 +8341,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       Present { value: tn } => tn
       Absent => error_type
     }
-    let type_name_declares_own_type = match lookup_binding_by_name(env: scope.type_env, name: type_name.value) {
+    let type_name_declares_own_type = match lookup_binding_by_name_local(env: scope.type_env, name: type_name.value) {
       Present { value: name_binding } =>
         binding_declares_name(binding: name_binding, name: type_name.value, source_indices: scope.type_env.source_indices)
       Absent => false
