@@ -78,7 +78,7 @@ pub use crate::v1_compiler_infer_types::{
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallTargetIdentity::{
-    CallableTargetUndetermined, RuntimePrimitiveCall, SourceDeclarationCall,
+    CallableTargetUndetermined, LocallyBoundCall, RuntimePrimitiveCall, SourceDeclarationCall,
 };
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
@@ -289,8 +289,8 @@ pub fn resolved_plain_call_target_for_outcome(
             primitive_name: n.clone(),
             projected_from: std::option::Option::None,
         }),
-        CallTargetOutcome::LocallyBoundCallee { .. } => {
-            Rc::new(CallTargetIdentity::CallableTargetUndetermined)
+        CallTargetOutcome::LocallyBoundCallee { name: n, .. } => {
+            Rc::new(CallTargetIdentity::LocallyBoundCall { name: n.clone() })
         }
         CallTargetOutcome::CallableUnresolved { name: _, .. } => {
             Rc::new(CallTargetIdentity::CallableTargetUndetermined)

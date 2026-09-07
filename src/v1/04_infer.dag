@@ -185,7 +185,7 @@ import v1.compiler.infer_emit_info {
 }
 import v1.compiler.infer_items {
   ItemKind, FnItem, FuncItem, TypeItem, DataItem, ServiceItem, OtherItem,
-  ItemInfo, TypedModule, TypedGraph, ResolvedGraph, ModuleInterface,
+  ItemInfo, TypedModule, TypedGraph, ResolvedGraph, ModuleInterface, leaf_owner_modules_from_registry,
   ModuleTypecheckProgress, ItemsChecked, AbandonedBeforeItems,
   inferred_to_outputs, item_kind
 }
@@ -195,7 +195,7 @@ import v1.compiler.infer_service {
   collect_typed_service_calls,
   expand_transitive_services,
   EffectIncompleteness, UnresolvedCalleeEdge, ExpansionBudgetExhausted,
-  ResolvedCalleeRegistryRowAbsent, FunctionValueEffectsUnresolved,
+  ResolvedCalleeRegistryRowAbsent, FunctionValueEffectsUnresolved, LocalBindingEffectsUnresolved,
   ServiceEffectAnalysis, EffectsComplete, EffectsIncomplete,
   check_service_field_access_node, check_service_method_call_node,
   service_op_entry
@@ -13629,38 +13629,7 @@ fn build_enum_variant_shape_sets(modules: List<TypedModule>, type_summaries: Map
   )
 }
 
-// The leaf projection consumed by EmitGraphInfo and ModuleIndex alike -- one computation, two
-// carriers. It carries the OWNER MODULE PATH, not the row: the registry stays the only authority
-// for an ItemInfo, and infer_emit_info sits upstream of infer_items so it cannot name that type.
-// A leaf declared by two different modules maps to the empty string, which is not a legal module
-// path, so every identity built from it misses and the consumer refuses rather than being handed
-// whichever module folded last.
-// A module's registry carries rows for the names it IMPORTS as well as the ones it declares, and an
-// imported row names the importer. Counting those made every widely imported declaration look like
-// it had many owners, so the leaf resolved to the ambiguity sentinel and its use line was dropped --
-// the seed then failed to build on a function it could no longer name. This index is about
-// DECLARATIONS, so a row only counts inside the module that declares it.
-fn build_item_leaf_owner_modules(modules: List<TypedModule>) -> Map<String, String> {
-  modules |> fold(init: empty_map(), f: (acc, tm) =>
-    let owning_module = authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)
-    tm.item_registry |> map_keys |> fold(init: acc, f: (acc2, key) =>
-      match map_get(tm.item_registry, key) {
-        Present { value: info } =>
-          if info.module_name != owning_module { acc2 } else {
-            match map_get(acc2, info.name) {
-              Present { value: prior } =>
-                if prior == info.module_name { acc2 }
-                else { map_insert(acc2, info.name, "") }
-              Absent => map_insert(acc2, info.name, info.module_name)
-            }
-          }
-        Absent => acc2
-      }
-    )
-  )
-}
-
-fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
+fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> EmitGraphInfo {
   let init = EmitInfoBuildState {
     type_summaries: empty_map(),
     type_decl_items: empty_map(),
@@ -13682,7 +13651,7 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   let variant_shapes = build_enum_variant_shape_sets(modules: modules, type_summaries: built.type_summaries)
   let vtoe = derive_variant_to_enum(type_summaries: built.type_summaries)
   EmitGraphInfo {
-    item_leaf_owner_modules: build_item_leaf_owner_modules(modules: modules),
+    item_leaf_owner_modules: leaf_owner_modules_from_registry(registry: registry),
     type_summaries: built.type_summaries,
     type_decl_items: built.type_decl_items,
     fn_decl_items: built.fn_decl_items,
@@ -13793,6 +13762,11 @@ fn typecheck_with_census_extra(graph: ModuleGraph, source_indices: Map<String, N
       FunctionValueEffectsUnresolved { caller: caller } =>
         make_error_node(
           diagnostic: EffectSummaryIncompleteAtFunctionValue { caller: callable_identity(id: caller), span: no_span() },
+          module_name: caller.owner_module_path
+        )
+      LocalBindingEffectsUnresolved { caller: caller, name: name } =>
+        make_error_node(
+          diagnostic: EffectSummaryIncompleteAtLocalBinding { caller: callable_identity(id: caller), name: name, span: no_span() },
           module_name: caller.owner_module_path
         )
     }
@@ -14252,7 +14226,7 @@ fn reconcile_with_census_extra(graph: ModuleGraph, source_indices: Map<String, N
   let modules = rewire_type_env_parent_links(modules: typed.modules, source_indices: source_indices)
   let modules = rewire_type_env_import_str_binding_identity(modules: modules, source_indices: source_indices)
   let modules = rewire_func_env_parent_links(modules: modules, source_indices: source_indices)
-  let emit_info = build_emit_graph_info(modules: modules)
+  let emit_info = build_emit_graph_info(modules: modules, registry: typed.item_registry)
   ResolvedGraph {
     modules: modules,
     item_registry: typed.item_registry,

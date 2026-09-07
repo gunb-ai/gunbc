@@ -118,7 +118,9 @@ use crate::v1_compiler_infer_items::ItemKind::{
     DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
 };
 use crate::v1_compiler_infer_items::ModuleTypecheckProgress::{AbandonedBeforeItems, ItemsChecked};
-pub use crate::v1_compiler_infer_items::{inferred_to_outputs, item_kind};
+pub use crate::v1_compiler_infer_items::{
+    inferred_to_outputs, item_kind, leaf_owner_modules_from_registry,
+};
 pub use crate::v1_compiler_infer_items::{
     ItemInfo, ItemKind, ModuleInterface, ModuleTypecheckProgress, ResolvedGraph, TypedGraph,
     TypedModule,
@@ -160,8 +162,8 @@ pub use crate::v1_compiler_infer_resolve::{
 };
 pub use crate::v1_compiler_infer_resolve::{ItemResolveResult, NodeResolveResult};
 use crate::v1_compiler_infer_service::EffectIncompleteness::{
-    ExpansionBudgetExhausted, FunctionValueEffectsUnresolved, ResolvedCalleeRegistryRowAbsent,
-    UnresolvedCalleeEdge,
+    ExpansionBudgetExhausted, FunctionValueEffectsUnresolved, LocalBindingEffectsUnresolved,
+    ResolvedCalleeRegistryRowAbsent, UnresolvedCalleeEdge,
 };
 use crate::v1_compiler_infer_service::ServiceEffectAnalysis::{EffectsComplete, EffectsIncomplete};
 pub use crate::v1_compiler_infer_service::{
@@ -25390,57 +25392,10 @@ pub fn build_enum_variant_shape_sets(
     )
 }
 
-pub fn build_item_leaf_owner_modules(
+pub fn build_emit_graph_info(
     modules: Rc<Vec<Rc<TypedModule>>>,
-) -> Rc<HashMap<String, String>> {
-    modules.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, tm: _| {
-            let owning_module = crate::v1_std_core::authored_name_at(
-                tm.type_env.clone().source_indices.clone(),
-                tm.module.clone(),
-            );
-            Rc::new(v1_rt::map_keys(&tm.item_registry.clone()))
-                .iter()
-                .cloned()
-                .fold(
-                    acc,
-                    |acc2: Rc<HashMap<String, String>>, key: String| match v1_rt::map_get(
-                        &tm.item_registry.clone(),
-                        key.clone(),
-                    ) {
-                        Some(info) => {
-                            if (info.module_name.clone() != owning_module.clone()) {
-                                acc2.clone()
-                            } else {
-                                match v1_rt::map_get(&acc2, info.name.clone()) {
-                                    Some(prior) => {
-                                        if (prior.clone() == info.module_name.clone()) {
-                                            acc2.clone()
-                                        } else {
-                                            v1_rt::rc_map_insert(
-                                                acc2.clone(),
-                                                info.name.clone(),
-                                                "".to_string(),
-                                            )
-                                        }
-                                    }
-                                    std::option::Option::None => v1_rt::rc_map_insert(
-                                        acc2.clone(),
-                                        info.name.clone(),
-                                        info.module_name.clone(),
-                                    ),
-                                }
-                            }
-                        }
-                        std::option::Option::None => acc2.clone(),
-                    },
-                )
-        },
-    )
-}
-
-pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphInfo> {
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+) -> Rc<EmitGraphInfo> {
     {
         let init = Rc::new(EmitInfoBuildState {
             type_summaries: v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
@@ -25501,7 +25456,8 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
             built.type_summaries.clone(),
         );
         Rc::new(EmitGraphInfo {
-            item_leaf_owner_modules: build_item_leaf_owner_modules(modules.clone()),
+            item_leaf_owner_modules:
+                crate::v1_compiler_infer_items::leaf_owner_modules_from_registry(registry.clone()),
             type_summaries: built.type_summaries.clone(),
             type_decl_items: built.type_decl_items.clone(),
             fn_decl_items: built.fn_decl_items.clone(),
@@ -25686,6 +25642,11 @@ pub fn typecheck_with_census_extra(
     EffectIncompleteness::ResolvedCalleeRegistryRowAbsent { caller, callee, .. } => inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("effect summary incomplete: ".to_string(), crate::v1_std_core::callable_identity(caller.clone())), " calls ".to_string()), crate::v1_std_core::callable_identity(callee.clone())), ", whose identity is established but names no registry row, so the join contributed nothing and the caller's summary omits whatever that callee does".to_string()), crate::v1_std_core::no_span(), caller.owner_module_path.clone()),
     EffectIncompleteness::FunctionValueEffectsUnresolved { caller: caller, .. } => crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue {
     caller: crate::v1_std_core::callable_identity(caller.clone()),
+    span: crate::v1_std_core::no_span(),
+}), caller.owner_module_path.clone()),
+    EffectIncompleteness::LocalBindingEffectsUnresolved { caller, name, .. } => crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding {
+    caller: crate::v1_std_core::callable_identity(caller.clone()),
+    name: name.clone(),
     span: crate::v1_std_core::no_span(),
 }), caller.owner_module_path.clone()),
 });
@@ -26630,7 +26591,7 @@ pub fn reconcile_with_census_extra(
         let modules =
             rewire_type_env_import_str_binding_identity(modules.clone(), source_indices.clone());
         let modules = rewire_func_env_parent_links(modules.clone(), source_indices.clone());
-        let emit_info = build_emit_graph_info(modules.clone());
+        let emit_info = build_emit_graph_info(modules.clone(), typed.item_registry.clone());
         Rc::new(ResolvedGraph {
             modules: modules.clone(),
             item_registry: typed.item_registry.clone(),

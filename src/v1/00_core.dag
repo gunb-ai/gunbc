@@ -193,6 +193,7 @@ type DeclaredCallableIdentity {
 type CallTargetIdentity
   = RuntimePrimitiveCall { primitive_name: String, projected_from: DeclaredCallableIdentity? }
   | SourceDeclarationCall { owner_module_path: String, decl_name: String }
+  | LocallyBoundCall { name: String }
   | CallableTargetUndetermined
 
 type CallSemantics
@@ -396,6 +397,7 @@ type CompilerDiagnostic
   | AmbiguousAnonymousRecordLiteral { candidates: List<String>, span: SourceSpan }
   | ModuleFilenameCollision { filename: String, modules: List<String>, span: SourceSpan }
   | EffectSummaryIncompleteAtFunctionValue { caller: String, span: SourceSpan }
+  | EffectSummaryIncompleteAtLocalBinding { caller: String, name: String, span: SourceSpan }
   | CallArgumentNameUnknown { callee: String, argument: String, declared: List<String>, span: SourceSpan }
   | CallPositionalSurplus { callee: String, supplied: Int, capacity: Int, span: SourceSpan }
   | CallArgumentDuplicate { callee: String, argument: String, span: SourceSpan }
@@ -614,6 +616,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     AmbiguousAnonymousRecordLiteral { candidates: _, span: s } => s
     ModuleFilenameCollision { filename: _, modules: _, span: s } => s
     EffectSummaryIncompleteAtFunctionValue { caller: _, span: s } => s
+    EffectSummaryIncompleteAtLocalBinding { caller: _, name: _, span: s } => s
     CallArgumentNameUnknown { callee: _, argument: _, declared: _, span: s } => s
     CallPositionalSurplus { callee: _, supplied: _, capacity: _, span: s } => s
     CallArgumentDuplicate { callee: _, argument: _, span: s } => s
@@ -710,6 +713,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     AmbiguousAnonymousRecordLiteral { candidates: cs, span: _ } => concat("ambiguous anonymous record literal shape matches ", to_string(value: cs |> count), " structs: ", join(cs, separator: ", "), " — add a nominal type")
     ModuleFilenameCollision { filename: f, modules: ms, span: _ } => concat("module filename collision: ", to_string(value: ms |> count), " modules render one emitted file name '", f, "': ", join(ms, separator: ", "), " — module_to_filename maps '.' to '_', so these names are indistinguishable at the emitted path; rename one module segment")
     EffectSummaryIncompleteAtFunctionValue { caller: c, span: _ } => concat("effect summary incomplete: ", c, " calls through a function value, whose callee is chosen at runtime, so its effects are unknown rather than empty — the caller's summary is a lower bound, not the answer")
+    EffectSummaryIncompleteAtLocalBinding { caller: c, name: n, span: _ } => concat(concat(concat(concat("effect summary incomplete: ", c), " calls the local binding '"), n), "', whose effects this pass cannot join through the registry, so the caller's summary is a lower bound rather than the answer")
     CallArgumentNameUnknown { callee: c, argument: a, declared: ds, span: _ } =>
       concat("call shape mismatch calling '", c, "': no parameter named '", a, "' (declared: [", join(ds, separator: ", "), "])")
     CallPositionalSurplus { callee: c, supplied: s, capacity: cap, span: _ } =>
@@ -841,6 +845,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     AmbiguousAnonymousRecordLiteral { candidates: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ModuleFilenameCollision { filename: _, modules: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EffectSummaryIncompleteAtFunctionValue { caller: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+    EffectSummaryIncompleteAtLocalBinding { caller: _, name: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     CallArgumentNameUnknown { callee: _, argument: _, declared: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     CallPositionalSurplus { callee: _, supplied: _, capacity: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     CallArgumentDuplicate { callee: _, argument: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }

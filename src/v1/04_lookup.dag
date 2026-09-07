@@ -18,7 +18,7 @@ import v1.std.core {
   InferredNode, Resolved, TypeVariable,
   Cardinality, Required,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
-  CallTargetIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined,
+  CallTargetIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined, LocallyBoundCall,
   FieldAccessStyle, OptionalUnwrap,
   FieldValueShape, PlainValue, OptionalValue,
   FieldSummary,
@@ -341,7 +341,7 @@ fn resolved_plain_call_target_for_outcome(outcome: CallTargetOutcome) -> CallTar
     DeclaredCallableResolved { sig: _, declared: d } => resolved_declaration_call_target(declared: d)
     DeclaredCallableIdentityResolved { declared: d } => resolved_declaration_call_target(declared: d)
     BuiltinCallableResolved { primitive_name: n } => RuntimePrimitiveCall { primitive_name: n, projected_from: none }
-    LocallyBoundCallee { name: _, binding: _ } => CallableTargetUndetermined
+    LocallyBoundCallee { name: n, binding: _ } => LocallyBoundCall { name: n }
     CallableUnresolved { name: _ } => CallableTargetUndetermined
     CallableAmbiguous { candidates: _ } => CallableTargetUndetermined
     LocallyBoundBindingMissing { name: _ } => CallableTargetUndetermined

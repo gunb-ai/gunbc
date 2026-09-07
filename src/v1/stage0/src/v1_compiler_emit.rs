@@ -104,7 +104,7 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::ResolvedDirectCallSemantics;
 use crate::v1_std_core::CallTargetIdentity::{
-    CallableTargetUndetermined, RuntimePrimitiveCall, SourceDeclarationCall,
+    CallableTargetUndetermined, LocallyBoundCall, RuntimePrimitiveCall, SourceDeclarationCall,
 };
 use crate::v1_std_core::Cardinality::CardOptional;
 use crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled;
@@ -6944,6 +6944,7 @@ pub fn emit_typed_call_unified(
                     }),
                 ),
                 CallTargetIdentity::RuntimePrimitiveCall { .. } => std::option::Option::None,
+                CallTargetIdentity::LocallyBoundCall { name: _, .. } => std::option::Option::None,
                 CallTargetIdentity::CallableTargetUndetermined => std::option::Option::None,
             };
         let extra_args = match callee.clone() {

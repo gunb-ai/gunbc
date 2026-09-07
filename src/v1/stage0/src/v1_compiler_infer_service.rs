@@ -15,7 +15,7 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::FunctionValueCallSemantics;
 use crate::v1_std_core::CallTargetIdentity::{
-    CallableTargetUndetermined, RuntimePrimitiveCall, SourceDeclarationCall,
+    CallableTargetUndetermined, LocallyBoundCall, RuntimePrimitiveCall, SourceDeclarationCall,
 };
 use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::Connective::{Conj, NoConnective};
@@ -172,6 +172,9 @@ pub enum CalleeEdge {
     },
     PrimitiveCallee,
     FunctionValueCallee,
+    LocalBindingCallee {
+        name: String,
+    },
     UnresolvedCallee {
         spelling: String,
     },
@@ -201,6 +204,9 @@ pub fn callee_edge_of_semantics(cs: Option<Rc<CallSemantics>>, spelling: String)
                 }),
             }),
             CallTargetIdentity::RuntimePrimitiveCall { .. } => Rc::new(CalleeEdge::PrimitiveCallee),
+            CallTargetIdentity::LocallyBoundCall { name: n, .. } => {
+                Rc::new(CalleeEdge::LocalBindingCallee { name: n.clone() })
+            }
             CallTargetIdentity::CallableTargetUndetermined => {
                 Rc::new(CalleeEdge::UnresolvedCallee {
                     spelling: spelling.clone(),
@@ -222,6 +228,9 @@ pub fn callee_edge_dedup_key(edge: Rc<CalleeEdge>) -> String {
             spelling: spelling, ..
         } => v1_rt::concat("u:".to_string(), spelling.clone()),
         CalleeEdge::FunctionValueCallee => "v:".to_string(),
+        CalleeEdge::LocalBindingCallee { name: n, .. } => {
+            v1_rt::concat("l:".to_string(), n.clone())
+        }
         CalleeEdge::PrimitiveCallee => "".to_string(),
     }
 }
@@ -406,6 +415,10 @@ pub fn expand_transitive_services_once(
                                                     CalleeEdge::FunctionValueCallee => {
                                                         Rc::new(vec![])
                                                     }
+                                                    CalleeEdge::LocalBindingCallee {
+                                                        name: _,
+                                                        ..
+                                                    } => Rc::new(vec![]),
                                                     CalleeEdge::UnresolvedCallee {
                                                         spelling: _,
                                                         ..
@@ -507,6 +520,10 @@ pub enum EffectIncompleteness {
     FunctionValueEffectsUnresolved {
         caller: Rc<DeclaredCallableIdentity>,
     },
+    LocalBindingEffectsUnresolved {
+        caller: Rc<DeclaredCallableIdentity>,
+        name: String,
+    },
 }
 
 pub fn unresolved_callee_edges(
@@ -539,6 +556,9 @@ pub fn unresolved_callee_edges(
                                             }
                                             CalleeEdge::PrimitiveCallee => Rc::new(vec![]),
                                             CalleeEdge::FunctionValueCallee => Rc::new(vec![]),
+                                            CalleeEdge::LocalBindingCallee { name: _, .. } => {
+                                                Rc::new(vec![])
+                                            }
                                         })
                                         .iter()
                                         .cloned(),
@@ -582,6 +602,10 @@ pub fn unjoinable_callee_edges(
 },
     CalleeEdge::FunctionValueCallee => Rc::new(vec![Rc::new(EffectIncompleteness::FunctionValueEffectsUnresolved {
     caller: entry.item_identity.clone(),
+})]),
+    CalleeEdge::LocalBindingCallee { name: n, .. } => Rc::new(vec![Rc::new(EffectIncompleteness::LocalBindingEffectsUnresolved {
+    caller: entry.item_identity.clone(),
+    name: n.clone(),
 })]),
     CalleeEdge::PrimitiveCallee => Rc::new(vec![]),
     CalleeEdge::UnresolvedCallee { spelling: _, .. } => Rc::new(vec![]),

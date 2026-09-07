@@ -7,7 +7,7 @@ import std.types { SourceSpan }
 import v1.std.core {
   call_semantics_target, callable_identity, DeclaredCallableIdentity,
   CallSemantics, FunctionValueCallSemantics,
-  CallTargetIdentity, SourceDeclarationCall, RuntimePrimitiveCall, CallableTargetUndetermined,
+  CallTargetIdentity, SourceDeclarationCall, RuntimePrimitiveCall, CallableTargetUndetermined, LocallyBoundCall,
   Node,
   Connective, Conj, NoConnective,
   ExprData, NoExprData,
@@ -124,6 +124,7 @@ type CalleeEdge
   = ResolvedCallee { identity: DeclaredCallableIdentity }
   | PrimitiveCallee
   | FunctionValueCallee
+  | LocalBindingCallee { name: String }
   | UnresolvedCallee { spelling: String }
 
 type CalleeAccum {
@@ -148,6 +149,17 @@ type CalleeAccum {
 //     Dropping it would under-propagate effects exactly the way the authored-spelling join did,
 //     and falling back to the spelling would reinstate the defect this arm exists to remove. It
 //     is carried so the caller can refuse rather than publish a summary it cannot vouch for.
+// A LOCAL BINDING IS NOT AN UNESTABLISHED IDENTITY, and collapsing the two refused
+// correct programs. `let shadow_sentinel = local_sentinel` then `shadow_sentinel(1)` has a
+// callee the resolver named perfectly well -- LocallyBoundCallee -- and the seam below it
+// used to answer CallableTargetUndetermined for it, so the effect pass reported "no
+// established callee identity" about a call whose target was established. Measured: it
+// reddened the required floor on two v2.test.claim.local_binding_shadow fixtures.
+// 
+// It gets its own edge rather than joining the unresolved ones, because the two are
+// different facts with different repairs: an unresolved spelling names nothing and must
+// BLOCK; a local binding names something whose effects this pass cannot join through, which
+// is the same epistemic state as a function value and is reported the same advisory way.
 fn callee_edge_of_semantics(cs: CallSemantics?, spelling: String) -> CalleeEdge {
   match cs {
     Present { value: FunctionValueCallSemantics } => FunctionValueCallee
@@ -157,6 +169,7 @@ fn callee_edge_of_semantics(cs: CallSemantics?, spelling: String) -> CalleeEdge 
         SourceDeclarationCall { owner_module_path: owner, decl_name: decl } =>
           ResolvedCallee { identity: DeclaredCallableIdentity { owner_module_path: owner, decl_name: decl } }
         RuntimePrimitiveCall { primitive_name: _, projected_from: _ } => PrimitiveCallee
+        LocallyBoundCall { name: n } => LocalBindingCallee { name: n }
         CallableTargetUndetermined => UnresolvedCallee { spelling: spelling }
       }
   }
@@ -179,6 +192,7 @@ fn callee_edge_dedup_key(edge: CalleeEdge) -> String {
     ResolvedCallee { identity: identity } => concat("d:", callable_identity(id: identity))
     UnresolvedCallee { spelling: spelling } => concat("u:", spelling)
     FunctionValueCallee => "v:"
+    LocalBindingCallee { name: n } => concat("l:", n)
     PrimitiveCallee => ""
   }
 }
@@ -270,6 +284,7 @@ fn expand_transitive_services_once(module_callees: List<ModuleCallees>, registry
                 }
               PrimitiveCallee => []
               FunctionValueCallee => []
+              LocalBindingCallee { name: _ } => []
               UnresolvedCallee { spelling: _ } => []
             }
           )
@@ -362,6 +377,7 @@ type EffectIncompleteness
   | ExpansionBudgetExhausted { remaining_delta: Int }
   | ResolvedCalleeRegistryRowAbsent { caller: DeclaredCallableIdentity, callee: DeclaredCallableIdentity }
   | FunctionValueEffectsUnresolved { caller: DeclaredCallableIdentity }
+  | LocalBindingEffectsUnresolved { caller: DeclaredCallableIdentity, name: String }
 
 // The unresolved edges are a property of the PRECOMPUTED callee lists, not of any iteration, so
 // they are read once from the same structure the fold consumes rather than re-derived per pass.
@@ -375,6 +391,7 @@ fn unresolved_callee_edges(module_callees: List<ModuleCallees>) -> List<EffectIn
           ResolvedCallee { identity: _ } => []
           PrimitiveCallee => []
           FunctionValueCallee => []
+          LocalBindingCallee { name: _ } => []
         }
       )
     )
@@ -405,6 +422,7 @@ fn unjoinable_callee_edges(module_callees: List<ModuleCallees>, registry: Map<St
                     Absent => [ResolvedCalleeRegistryRowAbsent { caller: entry.item_identity, callee: callee_identity }]
                   }
                 FunctionValueCallee => [FunctionValueEffectsUnresolved { caller: entry.item_identity }]
+                LocalBindingCallee { name: n } => [LocalBindingEffectsUnresolved { caller: entry.item_identity, name: n }]
                 PrimitiveCallee => []
                 UnresolvedCallee { spelling: _ } => []
               }

@@ -163,8 +163,8 @@ pub use crate::v1_compiler_emit_core_support::{
     apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
     capitalize_first, escape_json_string, escape_string_literal_body, extract_test_projections,
     has_mock_prefix, is_leaf_type_item, is_type_alias_item, is_type_alias_return_node,
-    is_type_decl_item, is_type_def_item, is_upper, language_spec, leaf_owner_modules_from_registry,
-    make_indent, module_filename_collision_diagnostics, module_to_filename, sanitize_service_name,
+    is_type_decl_item, is_type_def_item, is_upper, language_spec, make_indent,
+    module_filename_collision_diagnostics, module_to_filename, sanitize_service_name,
     service_var_name, test_function_name, to_lower_char, to_pascal, to_screaming_snake, to_snake,
     to_string, to_string_helper, to_upper_char, unique_strings,
 };
@@ -252,7 +252,7 @@ use crate::v1_std_core::CallSemantics::{
     ResolvedDirectCallSemantics,
 };
 use crate::v1_std_core::CallTargetIdentity::{
-    CallableTargetUndetermined, RuntimePrimitiveCall, SourceDeclarationCall,
+    CallableTargetUndetermined, LocallyBoundCall, RuntimePrimitiveCall, SourceDeclarationCall,
 };
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
@@ -6072,7 +6072,10 @@ pub struct EmitRustContext {
 
 pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> {
     {
-        let base_info = crate::v1_compiler_infer::build_emit_graph_info(typed.modules.clone());
+        let base_info = crate::v1_compiler_infer::build_emit_graph_info(
+            typed.modules.clone(),
+            typed.item_registry.clone(),
+        );
         let ownership = build_ownership_results(typed.modules.clone());
         let shared = build_shared_types(
             base_info.type_summaries.clone(),
@@ -6099,10 +6102,7 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
                 merged_module_source_indices(typed.modules.clone()),
             );
         let emit_info = Rc::new(EmitGraphInfo {
-            item_leaf_owner_modules:
-                crate::v1_compiler_emit_core_support::leaf_owner_modules_from_registry(
-                    typed.item_registry.clone(),
-                ),
+            item_leaf_owner_modules: base_info.item_leaf_owner_modules.clone(),
             type_summaries: base_info.type_summaries.clone(),
             type_decl_items: base_info.type_decl_items.clone(),
             fn_decl_items: base_info.fn_decl_items.clone(),
@@ -7117,8 +7117,10 @@ pub fn emit_module(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Rc<TextFile> {
     {
-        let base_info =
-            crate::v1_compiler_infer::build_emit_graph_info(Rc::new(vec![typed_module.clone()]));
+        let base_info = crate::v1_compiler_infer::build_emit_graph_info(
+            Rc::new(vec![typed_module.clone()]),
+            registry.clone(),
+        );
         let shared = build_shared_types(
             base_info.type_summaries.clone(),
             base_info.recursive_type_set.clone(),
@@ -7144,10 +7146,7 @@ pub fn emit_module(
                 merged_module_source_indices(Rc::new(vec![typed_module.clone()])),
             );
         let emit_info = Rc::new(EmitGraphInfo {
-            item_leaf_owner_modules:
-                crate::v1_compiler_emit_core_support::leaf_owner_modules_from_registry(
-                    registry.clone(),
-                ),
+            item_leaf_owner_modules: base_info.item_leaf_owner_modules.clone(),
             type_summaries: base_info.type_summaries.clone(),
             type_decl_items: base_info.type_decl_items.clone(),
             fn_decl_items: base_info.fn_decl_items.clone(),
@@ -22535,6 +22534,7 @@ pub fn call_target_runtime_primitive_name(target: Rc<CallTargetIdentity>) -> Opt
             Some(primitive_name.clone())
         }
         CallTargetIdentity::SourceDeclarationCall { .. } => std::option::Option::None,
+        CallTargetIdentity::LocallyBoundCall { name: _, .. } => std::option::Option::None,
         CallTargetIdentity::CallableTargetUndetermined => std::option::Option::None,
     }
 }
@@ -22549,6 +22549,7 @@ pub fn call_target_projected_declaration(
     match (*target.clone()).clone() {
         CallTargetIdentity::RuntimePrimitiveCall { projected_from, .. } => projected_from.clone(),
         CallTargetIdentity::SourceDeclarationCall { .. } => std::option::Option::None,
+        CallTargetIdentity::LocallyBoundCall { name: _, .. } => std::option::Option::None,
         CallTargetIdentity::CallableTargetUndetermined => std::option::Option::None,
     }
 }
@@ -24323,6 +24324,9 @@ pub fn emit_typed_call(
                             crate::v1_compiler_emit::emit_ident(decl.clone(), RenderTarget::Rust),
                         )
                     }
+                }
+                CallTargetIdentity::LocallyBoundCall { name: n, .. } => {
+                    crate::v1_compiler_emit::emit_ident(n.clone(), RenderTarget::Rust)
                 }
                 CallTargetIdentity::CallableTargetUndetermined => {
                     crate::v1_compiler_emit::emit_error_expr(

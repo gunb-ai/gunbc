@@ -272,6 +272,30 @@ pub fn item_kind(item: Rc<Node>) -> ItemKind {
     }
 }
 
+pub fn leaf_owner_modules_from_registry(
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+) -> Rc<HashMap<String, String>> {
+    Rc::new(v1_rt::map_keys(&registry)).iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, String>(),
+        |acc: Rc<HashMap<String, String>>, key: String| match v1_rt::map_get(&registry, key.clone())
+        {
+            Some(info) => match v1_rt::map_get(&acc, info.name.clone()) {
+                Some(prior) => {
+                    if (prior.clone() == info.module_name.clone()) {
+                        acc.clone()
+                    } else {
+                        v1_rt::rc_map_insert(acc.clone(), info.name.clone(), "".to_string())
+                    }
+                }
+                std::option::Option::None => {
+                    v1_rt::rc_map_insert(acc.clone(), info.name.clone(), info.module_name.clone())
+                }
+            },
+            std::option::Option::None => acc.clone(),
+        },
+    )
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FnItem;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

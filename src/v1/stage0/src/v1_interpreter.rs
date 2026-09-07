@@ -11992,6 +11992,7 @@ fn reference_occurrence_binding_census_value(
             crate::cli_run::UnlistedImportBindingSource::ListedImport => "ListedImport",
             crate::cli_run::UnlistedImportBindingSource::PoolCoincidence => "PoolCoincidence",
             crate::cli_run::UnlistedImportBindingSource::DefinerResolvable => "DefinerResolvable",
+            crate::cli_run::UnlistedImportBindingSource::AmbiguousLeaf => "AmbiguousLeaf",
         }),
         fields: Rc::new(vec![]),
     };
@@ -12151,6 +12152,7 @@ fn unlisted_import_binding_source_value(
         crate::cli_run::UnlistedImportBindingSource::ListedImport => "ListedImport",
         crate::cli_run::UnlistedImportBindingSource::PoolCoincidence => "PoolCoincidence",
         crate::cli_run::UnlistedImportBindingSource::DefinerResolvable => "DefinerResolvable",
+        crate::cli_run::UnlistedImportBindingSource::AmbiguousLeaf => "AmbiguousLeaf",
     };
     Value::Variant {
         type_name: ctx.sym("UnlistedImportBindingSource"),

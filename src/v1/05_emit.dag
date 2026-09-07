@@ -7,7 +7,7 @@ import std.coercion { TypeRealizationDecision }
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
 import v1.std.core {
   call_semantics_target, callable_identity, DeclaredCallableIdentity,
-  CallTargetIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined,
+  CallTargetIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined, LocallyBoundCall,
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
   ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
   Node, ErrorNode, make_error_node, TransportEmissionNotModeled, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
@@ -3386,6 +3386,7 @@ fn emit_typed_call_unified(func: String, args: List<Node>, call_semantics: CallS
         decl_name: decl
       })
     RuntimePrimitiveCall { primitive_name: _, projected_from: _ } => Absent
+    LocallyBoundCall { name: _ } => Absent
     CallableTargetUndetermined => Absent
   }
   let extra_args = match callee {

@@ -35,7 +35,7 @@ import v1.std.core {
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn, make_expr_node, FieldSummary,
   StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond, OptionalValue,
   VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding,
-  MatchBoundBinding, CallTargetIdentity, DeclaredCallableIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined,
+  MatchBoundBinding, CallTargetIdentity, DeclaredCallableIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined, LocallyBoundCall,
   CallSemantics, PlainCallSemantics, ResolvedDirectCallSemantics, ResolvedCallFormal, LookupCallSemantics, FunctionValueCallSemantics, MethodSemantics,
   PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, MatchPattern,
   field_binding_pattern, TextFile, ErrorNode, make_error_node, InternalError,
@@ -256,7 +256,6 @@ import v1.compiler.emit_core_support {
   escape_json_string, module_to_filename, module_filename_collision_diagnostics, make_indent,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
   sanitize_service_name, capitalize_first, service_var_name, to_pascal,
-  leaf_owner_modules_from_registry,
   escape_string_literal_body, unique_strings, to_string, to_string_helper,
   test_function_name,
   apply_type_template1, apply_type_template2, apply_type_template3,
@@ -3058,7 +3057,7 @@ type EmitRustContext {
 }
 
 fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
-  let base_info = build_emit_graph_info(modules: typed.modules)
+  let base_info = build_emit_graph_info(modules: typed.modules, registry: typed.item_registry)
   let ownership = build_ownership_results(modules: typed.modules)
   let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust)
   let clone_bounded = v1_clone_bounded_type_params(
@@ -3076,7 +3075,7 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     source_indices: merged_module_source_indices(modules: typed.modules)
   )
   let emit_info = EmitGraphInfo {
-    item_leaf_owner_modules: leaf_owner_modules_from_registry(registry: typed.item_registry),
+    item_leaf_owner_modules: base_info.item_leaf_owner_modules,
     type_summaries: base_info.type_summaries,
     type_decl_items: base_info.type_decl_items,
     fn_decl_items: base_info.fn_decl_items,
@@ -3697,7 +3696,7 @@ fn emit_lib_rs_from_paths(all_module_paths: List<String>, has_compiler_tests: Bo
 }
 
 fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> TextFile {
-  let base_info = build_emit_graph_info(modules: [typed_module])
+  let base_info = build_emit_graph_info(modules: [typed_module], registry: registry)
   let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust)
   let clone_bounded = v1_clone_bounded_type_params(
     type_decl_items: base_info.type_decl_items,
@@ -3714,7 +3713,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     source_indices: merged_module_source_indices(modules: [typed_module])
   )
   let emit_info = EmitGraphInfo {
-    item_leaf_owner_modules: leaf_owner_modules_from_registry(registry: registry),
+    item_leaf_owner_modules: base_info.item_leaf_owner_modules,
     type_summaries: base_info.type_summaries,
     type_decl_items: base_info.type_decl_items,
     fn_decl_items: base_info.fn_decl_items,
@@ -10326,6 +10325,7 @@ fn call_target_runtime_primitive_name(target: CallTargetIdentity) -> String? {
   match target {
     RuntimePrimitiveCall { primitive_name: primitive_name, projected_from: _ } => Present { value: primitive_name }
     SourceDeclarationCall { owner_module_path: _, decl_name: _ } => none
+    LocallyBoundCall { name: _ } => none
     CallableTargetUndetermined => none
   }
 }
@@ -10342,6 +10342,7 @@ fn call_target_projected_declaration(target: CallTargetIdentity) -> DeclaredCall
   match target {
     RuntimePrimitiveCall { primitive_name: _, projected_from: projected_from } => projected_from
     SourceDeclarationCall { owner_module_path: _, decl_name: _ } => none
+    LocallyBoundCall { name: _ } => none
     CallableTargetUndetermined => none
   }
 }
@@ -11034,6 +11035,7 @@ fn emit_typed_call(func: String, args: List<Node>, call_semantics: CallSemantics
       SourceDeclarationCall { owner_module_path: owner, decl_name: decl } =>
         if owner == scope.module_name { emit_ident(name: decl, target: Rust) }
         else { concat("crate::", module_to_filename(name: owner), "::", emit_ident(name: decl, target: Rust)) }
+      LocallyBoundCall { name: n } => emit_ident(name: n, target: Rust)
       CallableTargetUndetermined =>
         emit_error_expr(message: "call target identity was not established before Rust emission", target: Rust)
       RuntimePrimitiveCall { primitive_name: unbridged_primitive, projected_from: projected_from } =>
