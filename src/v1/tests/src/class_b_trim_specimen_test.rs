@@ -296,7 +296,7 @@ fn wire_projection_pool_roots() -> Vec<String> {
 
 /// REGRESSION CONTROL for the service-op wire-projection class.
 ///
-/// THE CLASS AS REGISTERED (`extdeps.shell.exec` `service_op_string_wire_projection_method_fork_note`):
+/// THE CLASS AS REGISTERED (`gunbc.plans.model_realization_fork` §5):
 /// a service-op output field declared `T from "wire_key"` inferred as a FaithfulFreeMonoid/Coproduct
 /// carrier when the closure lacked v1-seed sources (`rust_corpus_repr`), so the METHOD form refused
 /// although the extdeps contract names String.

@@ -4,8 +4,8 @@ import std.types { String, Bool }
 import std.algebra { trim }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
-// Discriminating specimen for the service-op wire-projection class once registered on
-// extdeps.shell.exec service_op_string_wire_projection_method_fork_note.
+// Discriminating specimen for the service-op wire-projection class closed on
+// gunbc.plans.model_realization_fork §5.
 //
 // WHY THIS FILE EXISTS. That class was registered with monoid_specimen.dag named as its pinning
 // witness, and monoid_specimen cannot see it: its subject is a HAND-DECLARED FreeMonoid<String>
