@@ -69,7 +69,7 @@ data variable_sensitive_dominance_claim: ComplexityDominanceClaim = ComplexityDo
   falsification: algebra_receipts_diagnostic
 }
 
-fn polynomial_product_projected_complexity() -> ComplexityBound {
+fn polynomial_product_projected_complexity() -> ComplexityAssessment {
   complexity_bound_from_cost(cost: polynomial_product_degree_claim.input_cost)
 }
 
@@ -81,7 +81,7 @@ fn variable_sensitive_dominance_actual() -> Bool {
 }
 
 test fn algebra_receipts_polynomial_product_projection_holds() -> Bool {
-  polynomial_product_projected_complexity() == polynomial_product_degree_claim.expected_complexity
+  polynomial_product_projected_complexity() == established_complexity(bound: polynomial_product_degree_claim.expected_complexity)
 }
 
 test fn algebra_receipts_variable_sensitive_dominance_holds() -> Bool {
