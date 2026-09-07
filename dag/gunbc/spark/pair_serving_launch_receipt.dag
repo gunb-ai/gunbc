@@ -1,0 +1,199 @@
+module gunbc.spark.pair_serving_launch_receipt
+
+import std.types { Bool, String, Int, NonEmptyStr, List, EpochSecs }
+import v2.std.optional { Present, Absent }
+import std.nat { Nat }
+import std.content_hash { ContentHash }
+import gunbc.spark.vllm_serving_launch {
+  VllmServingLaunch, LaunchJoin, SameLaunch, same_launch, join_is_admissible,
+  launch_join_wire, launch_wire,
+}
+import gunbc.spark.vllm_kv_layout_observe { VllmKvLayoutReceipt, KvLayoutObserved, KvLayoutUnreadable, KvLayoutInconsistent }
+
+// ── A LAUNCH THAT FAILED EIGHT TIMES AND THEN WORKED IS NOT A LAUNCH THAT WORKED ───────────────
+//
+// WHAT THE APPLY PATH RECORDS TODAY. gunbc.spark.pair_serving_apply renders a unit, compares its
+// text, restarts when the text changed OR the unit is not active, and records one line per host:
+// applied, with a free-text detail. Everything between "started" and "the unit is active now" is
+// discarded. On 2026-09-05 the group A head reached restart counter 8, with status=137, before a
+// start that stuck -- and to both systemd and convergence the end state is indistinguishable from a
+// unit that came up first time. The failures were not merely unreported; they were unrepresentable.
+//
+// WHY THAT MATTERS BEYOND REPORTING. The three launches that head produced had 23.6, 21.29 and
+// 54.01 GiB of KV. A flapping bring-up is precisely the condition under which the surviving
+// incarnation is likely to be a degraded one, because each attempt starts against whatever memory
+// the previous attempts left behind. A convergence run that cannot see the flap cannot know it is
+// looking at the unlucky draw.
+
+// THE TERMINAL IS WHAT WAS OBSERVED OF THE PROCESS, and nothing more. Every arm here is a shape a
+// process-exit observation can actually have.
+type LaunchTerminal
+  = LaunchServing
+  | LaunchExited { code: Int }
+  | LaunchKilled { signal: Nat }
+  | LaunchReadinessTimedOut
+  | LaunchTerminalUnobserved { reason: NonEmptyStr }
+
+// EXIT 137 IS A SIGKILL SHAPE, AND SIGKILL IS NOT OOM. This is the inference the incident invites
+// and it is wrong: 128+n is the shell and systemd convention for "terminated by signal n", and
+// signal 9 is delivered by the kernel's OOM killer, by `docker rm -f`, by a stop timeout escalating,
+// and by an operator. Reading the exit code alone as OOM would attribute every forced teardown in
+// this deployment -- and the unit's own ExecStartPre runs `docker rm -f` -- to memory pressure, then
+// send someone to tune memory that was never the cause.
+//
+// So the classification stops at the signal, and OOM is a SEPARATE attribution that requires an
+// observation of its own, joined to the same incarnation.
+fn launch_terminal_from_exit(code: Int) -> LaunchTerminal {
+  if code == 0 {
+    LaunchServing
+  } else if code > 128 && code < 193 {
+    LaunchKilled { signal: code - 128 }
+  } else {
+    LaunchExited { code: code }
+  }
+}
+
+fn launch_terminal_wire(t: LaunchTerminal) -> String {
+  match t {
+    LaunchServing => "serving"
+    LaunchExited { code: c } => join(["exited(", to_string(c), ")"], "")
+    LaunchKilled { signal: s } => join(["killed(signal ", to_string(s), ")"], "")
+    LaunchReadinessTimedOut => "readiness-timed-out"
+    LaunchTerminalUnobserved { reason: r } => join(["terminal-unobserved(", r as String, ")"], "")
+  }
+}
+
+// ── ONE ATTEMPT ────────────────────────────────────────────────────────────────────────────────
+//
+// The desired digest is the rendered unit this attempt was made FROM, which is what makes a run of
+// attempts attributable to one convergence decision rather than to the unit's name. The layout
+// receipt is optional because a launch that never reached readiness has no layout to read, and an
+// absent receipt is a different fact from an inconsistent one.
+type PairServingLaunchAttempt {
+  incarnation: VllmServingLaunch
+  desired_digest: ContentHash
+  attempt_number: Nat
+  started_at: EpochSecs
+  terminal: LaunchTerminal
+  layout_receipt: VllmKvLayoutReceipt?
+}
+
+// ── OOM IS AN ATTRIBUTION, NOT A READING OF THE EXIT CODE ──────────────────────────────────────
+//
+// The evidence that promotes a SIGKILL to an OOM kill lives outside the process's own exit status:
+// a kernel ring-buffer line, a cgroup memory event counter, or systemd's own OOM result. Each names
+// a process; joining it to this attempt is what makes it about THIS launch, and the join goes
+// through same_launch for the same reason every other join does.
+type OomEvidenceSource
+  = KernelRingBuffer
+  | CgroupMemoryEvent
+  | SystemdOomResult
+
+fn oom_evidence_source_wire(s: OomEvidenceSource) -> String {
+  match s {
+    KernelRingBuffer => "kernel-ring-buffer"
+    CgroupMemoryEvent => "cgroup-memory-event"
+    SystemdOomResult => "systemd-oom-result"
+  }
+}
+
+type OomObservation {
+  incarnation: VllmServingLaunch
+  source: OomEvidenceSource
+  detail: NonEmptyStr
+}
+
+type OomAttribution
+  = KilledByOom { source: OomEvidenceSource, detail: NonEmptyStr }
+  | OomUnattributed { cause: NonEmptyStr }
+
+// The attribution refuses on three separate grounds, and they are not interchangeable: the attempt
+// was not signal-killed at all; no OOM observation was offered; or one was offered about a different
+// launch. The last is the one a host-keyed join would have accepted.
+fn attribute_oom(attempt: PairServingLaunchAttempt, observation: OomObservation?) -> OomAttribution {
+  match attempt.terminal {
+    LaunchKilled { signal: _ } =>
+      match observation {
+        Absent =>
+          OomUnattributed { cause: "the attempt was killed by a signal, but no kernel, cgroup or systemd OOM observation was joined to it; a signal kill is equally a forced teardown, a stop-timeout escalation or an operator" as NonEmptyStr }
+        Present { value: o } => {
+          let verdict = same_launch(a: o.incarnation, b: attempt.incarnation)
+          if join_is_admissible(j: verdict) {
+            KilledByOom { source: o.source, detail: o.detail }
+          } else {
+            OomUnattributed {
+              cause: join(["an OOM observation was offered but it describes another launch: ", launch_join_wire(j: verdict)], "") as NonEmptyStr,
+            }
+          }
+        }
+      }
+    LaunchServing => OomUnattributed { cause: "the attempt is serving, so there is no kill to attribute" as NonEmptyStr }
+    LaunchExited { code: _ } => OomUnattributed { cause: "the attempt exited with a status rather than being signal-killed, so an OOM kill is not the shape of what happened" as NonEmptyStr }
+    LaunchReadinessTimedOut => OomUnattributed { cause: "the attempt never reached readiness and was not observed to be killed" as NonEmptyStr }
+    LaunchTerminalUnobserved { reason: r } => OomUnattributed { cause: join(["the attempt's terminal was not observed, so nothing can be attributed to it: ", r as String], "") as NonEmptyStr }
+  }
+}
+
+// ── WHAT A RUN OF ATTEMPTS ESTABLISHES ─────────────────────────────────────────────────────────
+//
+// The standing a convergence run should report, folded over the attempts it made. "Serving" is not
+// one state: a unit that came up first time and a unit that came up on the ninth try are different
+// facts about the same host, and only the second one says the bring-up is unstable.
+type ServingStanding
+  = ServingOnFirstAttempt { incarnation: VllmServingLaunch }
+  | ServingRecoveredAfterFailures { incarnation: VllmServingLaunch, failed_attempts: Nat, terminals: List<String> }
+  | NotServing { failed_attempts: Nat, terminals: List<String> }
+  | ServingStandingUnobserved { cause: NonEmptyStr }
+
+fn attempt_is_serving(a: PairServingLaunchAttempt) -> Bool {
+  match a.terminal {
+    LaunchServing => true
+    LaunchExited { code: _ } => false
+    LaunchKilled { signal: _ } => false
+    LaunchReadinessTimedOut => false
+    LaunchTerminalUnobserved { reason: _ } => false
+  }
+}
+
+// ORDER IS THE CALLER'S, oldest first, because attempt_number is the convergence run's own counter
+// and a fold that re-sorted by it would be inventing an order the observations did not carry.
+fn serving_standing(attempts: List<PairServingLaunchAttempt>) -> ServingStanding {
+  let failures = filter(attempts, a => !attempt_is_serving(a: a))
+  let terminals = map(failures, a => launch_terminal_wire(t: a.terminal))
+  if length(attempts) == 0 {
+    ServingStandingUnobserved { cause: "no launch attempt was recorded for this unit, so whether it is serving is unobserved rather than false" as NonEmptyStr }
+  } else {
+    match first(filter(attempts, a => attempt_is_serving(a: a))) {
+      Absent => NotServing { failed_attempts: length(failures), terminals: terminals }
+      Present { value: winner } =>
+        if length(failures) == 0 {
+          ServingOnFirstAttempt { incarnation: winner.incarnation }
+        } else {
+          ServingRecoveredAfterFailures { incarnation: winner.incarnation, failed_attempts: length(failures), terminals: terminals }
+        }
+    }
+  }
+}
+
+fn serving_standing_wire(s: ServingStanding) -> String {
+  match s {
+    ServingOnFirstAttempt { incarnation: i } => join(["serving on first attempt: ", launch_wire(i: i)], "")
+    ServingRecoveredAfterFailures { incarnation: i, failed_attempts: n, terminals: ts } =>
+      join(["serving after ", to_string(n), " failed attempt(s): ", launch_wire(i: i), " [", join(ts, ", "), "]"], "")
+    NotServing { failed_attempts: n, terminals: ts } =>
+      join(["not serving after ", to_string(n), " attempt(s): [", join(ts, ", "), "]"], "")
+    ServingStandingUnobserved { cause: c } => join(["serving standing unobserved: ", c as String], "")
+  }
+}
+
+// A RECOVERED BRING-UP IS NOT A CLEAN ONE, and this is the predicate a convergence receipt should
+// consult rather than "is the unit active". It is deliberately not called `is_healthy`: the question
+// it answers is whether the run has anything to report, not whether the engine is good.
+fn bring_up_was_clean(s: ServingStanding) -> Bool {
+  match s {
+    ServingOnFirstAttempt { incarnation: _ } => true
+    ServingRecoveredAfterFailures { incarnation: _, failed_attempts: _, terminals: _ } => false
+    NotServing { failed_attempts: _, terminals: _ } => false
+    ServingStandingUnobserved { cause: _ } => false
+  }
+}

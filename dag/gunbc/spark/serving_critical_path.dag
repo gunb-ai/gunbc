@@ -1,0 +1,600 @@
+module gunbc.spark.serving_critical_path
+
+import std.types { Bool, String, Int, NonEmptyStr, List }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import gunbc.spark.vllm_serving_launch { VllmServingLaunch }
+import gunbc.spark.serving_launch_instrumentation {
+  LaunchInstrumentation, spark_group_a_pair_head_instrumentation,
+  AttributionAvailability, AttributableBy, NotAttributableOnThisLaunch,
+  launch_attribution_availability,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.nvidia.com/dgx/dgx-spark/hardware.html" }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef { module_path: "gunbc.spark.serving_critical_path", decl_name: "PowerEnvelope", field: WholeDeclaration }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+// ── THE POWER ENVELOPES, NESTED, BECAUSE ADDING THEM IS THE FIRST MISTAKE ─────────────────────
+//
+// A 240W figure is the EXTERNAL POWER SUPPLY. The GB10 SoC TDP is 140W and covers the integrated
+// CPU and GPU together; the GPU alone draws up to roughly 120W, and about 100W is available to the
+// rest of the system. The 120W is NESTED INSIDE the 140W, not an additional allocation on top of it.
+//
+// This matters because the denominator decides the reading. nvidia-smi reports GPU power -- not
+// wall, not CPU, not the ConnectX-7, not storage -- so an observed 36-44W is roughly 30-37% of the
+// GPU ceiling. Low, but not the far more dramatic fraction a 240W denominator would suggest.
+type PowerEnvelope {
+  watts: Nat
+  covers: NonEmptyStr
+}
+
+data spark_system_power_supply: PowerEnvelope = PowerEnvelope { watts: 240, covers: "external power supply for the whole unit" as NonEmptyStr }
+data spark_soc_thermal_envelope: PowerEnvelope = PowerEnvelope { watts: 140, covers: "GB10 SoC TDP, integrated CPU and GPU together" as NonEmptyStr }
+data spark_gpu_power_envelope: PowerEnvelope = PowerEnvelope { watts: 120, covers: "GPU alone, the denominator nvidia-smi power.draw belongs to; nested inside the 140W SoC envelope" as NonEmptyStr }
+data spark_peripheral_power_envelope: PowerEnvelope = PowerEnvelope { watts: 100, covers: "other system components" as NonEmptyStr }
+
+// ── WHAT THE TRACE OBSERVED, AS OBSERVATIONS ──────────────────────────────────────────────────
+//
+// Read-only sampling of all four group A ranks across one controlled cold prefill: nvidia-smi
+// utilisation, power and SM clock plus the RoCE transmit counter every 250ms, ~840 samples per rank,
+// launch invocation re-read before and after and unchanged.
+//
+//     rank    util-med  util<50%  power-med  power-max  sm-clock  roce
+//     .225       96%       2%       36.6W      42.9W     2398MHz  232.7 GB  7.80 Gb/s
+//     .226       96%       1%       36.1W      41.8W     2411MHz  235.8 GB  7.87 Gb/s
+//     .232       96%       1%       36.1W      41.9W     2411MHz  235.4 GB  7.87 Gb/s
+//     .233       96%       1%       37.8W      43.9W     2405MHz  233.6 GB  7.80 Gb/s
+type CriticalPathObservation
+  = GpuKernelBusyFraction { percent: Nat }
+  | GpuReportedPowerDraw { median_watts: Nat, max_watts: Nat }
+  | GpuClockObservation { median_mhz: Nat }
+  | RoceByteRate { gigabits_per_second_tenths: Nat, link_gigabits: Nat }
+  | RankCoarseSymmetry { power_spread_deciwatts: Nat, util_spread_percent: Nat }
+
+data spark_group_a_cold_prefill_observations: List<CriticalPathObservation> = [
+  GpuKernelBusyFraction { percent: 96 },
+  GpuReportedPowerDraw { median_watts: 36, max_watts: 44 },
+  GpuClockObservation { median_mhz: 2408 },
+  RoceByteRate { gigabits_per_second_tenths: 78, link_gigabits: 50 },
+  RankCoarseSymmetry { power_spread_deciwatts: 17, util_spread_percent: 0 },
+]
+
+// ── THE CONSTRUCTION RULES THAT MAKE LAST WEEK'S INFERENCE UNWRITABLE ─────────────────────────
+//
+// nvidia-smi utilisation is the percentage of the sample period during which one or more kernels
+// were executing. It is not FLOPs, not Tensor Core throughput, not SM occupancy, not memory
+// bandwidth, not issue bandwidth and not power. So it establishes that kernels were active and
+// nothing about whether the GPU was used well.
+//
+// An earlier version of this module wrote that kernels are present and not computing, and excluded
+// compute saturation because power did not rise with load. Both were wrong. The kernels ARE
+// executing, and low whole-GPU power does not exclude saturation of a NARROW bottleneck: a kernel
+// can fully occupy the unit that limits it while leaving most of the chip idle and the power draw
+// modest. The two rules below make that inference unwritable rather than merely discouraged.
+type SaturationClaim
+  = GpuComputeSaturated
+  | GpuComputeUnderutilised
+
+type ClaimConstruction
+  = ClaimConstructible { from: NonEmptyStr }
+  | ClaimNotConstructible { because: NonEmptyStr }
+
+fn busy_fraction_constructs(claim: SaturationClaim) -> ClaimConstruction {
+  match claim {
+    GpuComputeSaturated =>
+      ClaimNotConstructible { because: "kernel busy fraction counts residency, not work: 96% means kernels were almost always executing and says nothing about FLOPs, occupancy, memory bandwidth or stalls" as NonEmptyStr }
+    GpuComputeUnderutilised =>
+      ClaimNotConstructible { because: "the same reading is equally consistent with a fully saturated narrow bottleneck; residency cannot distinguish a busy chip from a busy corner of one" as NonEmptyStr }
+  }
+}
+
+fn power_below_ceiling_excludes_saturation() -> ClaimConstruction {
+  ClaimNotConstructible {
+    because: "36-44W against a ~120W GPU ceiling is low, but a kernel bound on one unit -- memory, issue, dependency latency, or a collective wait -- saturates that unit while the package draws modestly; the power reading bounds whole-chip utilisation and not the critical path" as NonEmptyStr
+  }
+}
+
+// ── THE EFFECTIVE BATCH BUDGET, READ BEHAVIOURALLY BECAUSE IT COULD NOT BE READ ANY OTHER WAY ──
+//
+// Two earlier versions of this module reasoned from a scheduler budget of 2048 tokens. It was never
+// observed: no served metric carries it, the process environment is unreadable unprivileged, and
+// 2048 is what the fallback WOULD select. The first version treated it as fact; the second correctly
+// downgraded it to nominal. Both were wrong to reason from it at all, and it is now measured.
+//
+// THE INSTRUMENT IS THE ENGINE ITSELF. On an IDLE engine the engine-wide iteration counter is the
+// per-request step count, because no other request increments it. So the budget is the token count
+// at which one iteration becomes two -- an observation of the EFFECTIVE value, needing no config
+// read, no privileged access and no restart.
+//
+//     computed tokens   iterations
+//              4,126        1
+//              5,969        1
+//              8,117        1
+//             12,023        1
+//             20,082        1
+//
+// No chunking occurs anywhere below 20,082 computed tokens. The budget is therefore at least that,
+// which is an order of magnitude above the 2048 that three separate conclusions rested on, and well
+// above the 8192 that the larger-memory default would have selected.
+// TWO FACTS, NOT ONE. What was measured is a floor on the work one iteration CARRIED; the configured
+// value may be higher, and max_num_batched_tokens may not even be the immediately governing quantity
+// -- a scheduled-token law or another runtime rule could bind first. Collapsing the observation into
+// a configuration readback would launder behaviour into config, which is the same move that turned
+// 158,764/83 into a scheduler budget.
+type EffectiveBatchBudget
+  = BehaviouralPerIterationCapacityAtLeast { computed_tokens: Nat, by: NonEmptyStr }
+  | ConfiguredSchedulerBudgetRead { tokens: Nat, source: NonEmptyStr }
+  | ConfiguredSchedulerBudgetUnread { because: NonEmptyStr }
+
+data spark_group_a_effective_batch_budget: EffectiveBatchBudget = BehaviouralPerIterationCapacityAtLeast {
+  computed_tokens: 20082,
+  by: "on an idle engine, where the engine-wide iteration counter is the per-request step count, a single 20,082-computed-token request completed in one iteration; no chunking was observed at any size probed from 512 upward" as NonEmptyStr,
+}
+
+// ── HOW PREFILL COST GROWS, ON AN IDLE ENGINE, IN A SINGLE STEP THROUGHOUT ────────────────────
+//
+// The earlier cost model here was two handwritten numbers fitted by hand to six points. It is
+// replaced by the samples, because a handwritten rate cannot be falsified by adding a measurement
+// and a derived one can.
+//
+// THE STEP-BOUNDARY PREMISE IS GONE, NOT WEAKENED. An earlier version built an experiment around
+// crossing 1,927 to 2,052 computed tokens, read a 0.088s excess as a per-step fixed cost, and
+// claimed it bounded above by the fit's residual. A later version withdrew the bound by fitting a
+// three-term model with a 126ms per-step term that described the same rows better. Both are void:
+// every window in this population, from 512 to 20,082 computed tokens, ran in ONE step. There was
+// never a boundary to cross, so the excess measured nothing and the three-term model regressed
+// against a step count that does not exist. What remains is one fixed per-request term and one
+// proportional term, and no per-step term is separable from the fixed one in this range at all.
+type ConcurrencyWitness {
+  max_running: Nat
+  max_waiting: Nat
+}
+
+// max_running COUNTS THE PROBE. A window with max_running of 1 therefore had NO co-tenant, and an
+// earlier version read that field as though 1 meant one other request.
+fn co_tenant_present(c: ConcurrencyWitness) -> Bool {
+  c.max_running > 1 || c.max_waiting > 0
+}
+
+// PRE-WINDOW CONCURRENCY IS THE ARM SELECTOR, and it is recorded separately from the maximum during
+// the window because they answer different questions: whether the engine was quiet when the request
+// ARRIVED, and whether anything joined while it ran.
+type PrefillScalingSample {
+  sequence: Nat
+  computed_tokens: Nat
+  cached_tokens: Nat
+  iteration_delta: Nat
+  wall_micros: Nat
+  arrived_with: ConcurrencyWitness
+  concurrency: ConcurrencyWitness
+}
+
+type SampleStanding
+  = ProbeAloneAtObservedConcurrencyGrain
+  | NoForeignCachedBookingObserved
+  | ForeignCachedBookingObserved { cached_tokens: Nat }
+
+fn sample_standing(s: PrefillScalingSample) -> SampleStanding {
+  if s.cached_tokens > 0 {
+    ForeignCachedBookingObserved { cached_tokens: s.cached_tokens }
+  } else {
+    if s.arrived_with.max_running == 0 && s.arrived_with.max_waiting == 0 {
+      ProbeAloneAtObservedConcurrencyGrain
+    } else {
+      NoForeignCachedBookingObserved
+    }
+  }
+}
+
+type EffectiveSchedulerConfigStanding
+  = EffectiveSchedulerConfigRead { max_num_batched_tokens: Nat, source: NonEmptyStr }
+  | EffectiveSchedulerConfigUnread { because: NonEmptyStr }
+
+// THE LAUNCH BINDING IS A STANDING, NOT A STRING. gunbc.spark.vllm_serving_launch exists precisely so
+// two observations can be compared by identity rather than by co-location, but these sweeps re-read
+// only the systemd invocation and never captured the unit and base-image digests a VllmServingLaunch
+// requires. Fabricating them to satisfy the type would be worse than not binding.
+type ExperimentLaunchBinding
+  = ExperimentLaunchBound { launch: VllmServingLaunch }
+  | ExperimentLaunchUnbound { observed_invocation: NonEmptyStr, missing: NonEmptyStr }
+
+type PrefillScalingExperiment {
+  launch: ExperimentLaunchBinding
+  acquisition: NonEmptyStr
+  scheduler_config: EffectiveSchedulerConfigStanding
+  ordered_samples: List<PrefillScalingSample>
+}
+
+type ExperimentJoinability
+  = JoinableByLaunch { launch: VllmServingLaunch }
+  | NotJoinable { because: NonEmptyStr }
+
+fn experiment_joinability(e: PrefillScalingExperiment) -> ExperimentJoinability {
+  match e.launch {
+    ExperimentLaunchBound { launch: l } => JoinableByLaunch { launch: l }
+    ExperimentLaunchUnbound { observed_invocation: _, missing: m } => NotJoinable { because: m }
+  }
+}
+
+// One sweep of interleaved repeated sizes, then a boundary probe walking upward. Sequence is
+// EXECUTION order: interleaving asserted only in prose cannot be distinguished from a sorted run on
+// a drifting machine. A co-tenant arrived at sequence 7 and stayed, which is what makes the
+// idle/co-tenant contrast below a within-experiment comparison rather than a cross-day one.
+data spark_group_a_prefill_scaling_experiment: PrefillScalingExperiment = PrefillScalingExperiment {
+  launch: ExperimentLaunchUnbound {
+    observed_invocation: "group A head 192.168.1.225, unit gunbc-spark-pair-head.service, health 200 before and after" as NonEmptyStr,
+    missing: "the unit digest and the unit-pinned base image digest were not captured during these sweeps, so no VllmServingLaunch can be constructed and these samples may not be joined by launch identity to any other observation" as NonEmptyStr,
+  },
+  acquisition: "one chat completion per window with a 32-character random nonce and random six-letter words so nothing is served from cache, max_tokens 1; computed and cached token deltas and the iteration count read from the served counters either side; running and waiting read once before the request and polled every 200ms throughout" as NonEmptyStr,
+  scheduler_config: EffectiveSchedulerConfigUnread {
+    because: "max_num_batched_tokens is carried by no served metric and the process environment is unreadable unprivileged; the effective value is instead bounded behaviourally by spark_group_a_effective_batch_budget" as NonEmptyStr
+  },
+  ordered_samples: [
+    PrefillScalingSample { sequence: 1, computed_tokens: 1910, cached_tokens: 0, iteration_delta: 1, wall_micros: 2050000, arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 2, computed_tokens: 512, cached_tokens: 0, iteration_delta: 1, wall_micros: 649000, arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 3, computed_tokens: 4072, cached_tokens: 0, iteration_delta: 1, wall_micros: 4288000, arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 1, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 4, computed_tokens: 2067, cached_tokens: 0, iteration_delta: 1, wall_micros: 2323000, arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 1, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 5, computed_tokens: 1046, cached_tokens: 0, iteration_delta: 1, wall_micros: 1176000, arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 6, computed_tokens: 9154, cached_tokens: 233728, iteration_delta: 4, wall_micros: 10050000, arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 7, computed_tokens: 2052, cached_tokens: 0, iteration_delta: 5, wall_micros: 2321000, arrived_with: ConcurrencyWitness { max_running: 1, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 8, computed_tokens: 3910, cached_tokens: 0, iteration_delta: 5, wall_micros: 4180000, arrived_with: ConcurrencyWitness { max_running: 1, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 9, computed_tokens: 513, cached_tokens: 0, iteration_delta: 4, wall_micros: 710000, arrived_with: ConcurrencyWitness { max_running: 1, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 10, computed_tokens: 2082, cached_tokens: 0, iteration_delta: 5, wall_micros: 2440000, arrived_with: ConcurrencyWitness { max_running: 1, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 11, computed_tokens: 1564, cached_tokens: 0, iteration_delta: 17, wall_micros: 2173000, arrived_with: ConcurrencyWitness { max_running: 1, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 12, computed_tokens: 4165, cached_tokens: 0, iteration_delta: 7, wall_micros: 4653000, arrived_with: ConcurrencyWitness { max_running: 1, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 13, computed_tokens: 1905, cached_tokens: 0, iteration_delta: 4, wall_micros: 2082000, arrived_with: ConcurrencyWitness { max_running: 1, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 14, computed_tokens: 2065, cached_tokens: 0, iteration_delta: 5, wall_micros: 2384000, arrived_with: ConcurrencyWitness { max_running: 1, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 15, computed_tokens: 2049, cached_tokens: 0, iteration_delta: 5, wall_micros: 2299000, arrived_with: ConcurrencyWitness { max_running: 1, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 16, computed_tokens: 4126, cached_tokens: 0, iteration_delta: 1, wall_micros: 4520000, arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 17, computed_tokens: 5969, cached_tokens: 0, iteration_delta: 1, wall_micros: 6310000, arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 18, computed_tokens: 8117, cached_tokens: 0, iteration_delta: 1, wall_micros: 8560000, arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 19, computed_tokens: 8281, cached_tokens: 0, iteration_delta: 1, wall_micros: 8900000, arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 20, computed_tokens: 12023, cached_tokens: 0, iteration_delta: 1, wall_micros: 12700000, arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 21, computed_tokens: 16397, cached_tokens: 0, iteration_delta: 1, wall_micros: 17420000, arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 22, computed_tokens: 20082, cached_tokens: 0, iteration_delta: 1, wall_micros: 21260000, arrived_with: ConcurrencyWitness { max_running: 0, max_waiting: 0 }, concurrency: ConcurrencyWitness { max_running: 0, max_waiting: 0 } },
+  ],
+}
+
+// THE 290-SECOND POINT IS RETAINED RATHER THAN DELETED. It is inadmissible to any fit and remains the
+// only observation of a delay that large. It is NOT a causal estimate: one event beside one co-tenant
+// attributes nothing, and the contrast below is what actually measures co-tenant cost.
+type ScalingSampleExcludedFromFit {
+  computed_tokens: Nat
+  wall_micros: Nat
+  cause: NonEmptyStr
+}
+
+data spark_group_a_co_tenant_outlier: ScalingSampleExcludedFromFit = ScalingSampleExcludedFromFit {
+  computed_tokens: 4840,
+  wall_micros: 290960000,
+  cause: "a co-tenant was running; 290.96s against a described 5.1s, roughly 57x, while larger windows at the same co-tenant count sat on the curve -- an extreme event observed beside a co-tenant, far outside the +130ms that the controlled contrast attributes to co-tenancy, and unexplained" as NonEmptyStr,
+}
+
+// ── THE FIT IS DERIVED FROM THE SAMPLES, PER ARM ──────────────────────────────────────────────
+//
+// Ordinary least squares in microseconds. Nobody can edit the marginal rate: it is a projection of
+// the sample population, and adding a measurement that disagrees moves it.
+type FitArm
+  = ArrivedIdle
+  | ArrivedWithCoTenant
+
+fn sample_in_arm(s: PrefillScalingSample, arm: FitArm) -> Bool {
+  if s.cached_tokens > 0 {
+    false
+  } else {
+    match arm {
+      ArrivedIdle => s.arrived_with.max_running == 0 && s.arrived_with.max_waiting == 0
+      ArrivedWithCoTenant => s.arrived_with.max_running > 0 || s.arrived_with.max_waiting > 0
+    }
+  }
+}
+
+fn arm_samples(arm: FitArm) -> List<PrefillScalingSample> {
+  filter(spark_group_a_prefill_scaling_experiment.ordered_samples, s => sample_in_arm(s: s, arm: arm))
+}
+
+type AffineFit {
+  intercept_micros: Int
+  micros_per_thousand_tokens: Int
+  sample_count: Nat
+}
+
+type PrefillScalingStanding
+  = AffineDescription { fit: AffineFit }
+  | ScalingUnderObserved { cause: NonEmptyStr }
+
+fn arm_fit(arm: FitArm) -> PrefillScalingStanding {
+  let xs = arm_samples(arm)
+  let n = length(xs)
+  if n < 4 {
+    ScalingUnderObserved { cause: "fewer than four admitted samples cannot separate a fixed term from a slope" as NonEmptyStr }
+  } else {
+    let sx = fold(xs, init: 0, f: (a, s) => a + s.computed_tokens)
+    let sy = fold(xs, init: 0, f: (a, s) => a + s.wall_micros)
+    let sxx = fold(xs, init: 0, f: (a, s) => a + (s.computed_tokens * s.computed_tokens))
+    let sxy = fold(xs, init: 0, f: (a, s) => a + (s.computed_tokens * s.wall_micros))
+    let denom = (n * sxx) - (sx * sx)
+    if denom == 0 {
+      ScalingUnderObserved { cause: "every admitted sample carries the same token count, so no slope is determined" as NonEmptyStr }
+    } else {
+      let slope_milli = (((n * sxy) - (sx * sy)) * 1000) / denom
+      AffineDescription {
+        fit: AffineFit {
+          intercept_micros: (sy - ((slope_milli * sx) / 1000)) / n,
+          micros_per_thousand_tokens: slope_milli,
+          sample_count: n,
+        },
+      }
+    }
+  }
+}
+
+fn predicted_micros(fit: AffineFit, tokens: Nat) -> Int {
+  fit.intercept_micros + ((fit.micros_per_thousand_tokens * tokens) / 1000)
+}
+
+fn abs_int(x: Int) -> Int {
+  if x < 0 { 0 - x } else { x }
+}
+
+fn arm_worst_residual_micros(arm: FitArm, fit: AffineFit) -> Int {
+  fold(arm_samples(arm), init: 0, f: (worst, s) => {
+    let e = abs_int(x: predicted_micros(fit: fit, tokens: s.computed_tokens) - s.wall_micros)
+    if e > worst { e } else { worst }
+  })
+}
+
+// ── WHAT A CO-TENANT COSTS, MEASURED RATHER THAN OBSERVED ─────────────────────────────────────
+//
+// Both arms come from ONE sweep minutes apart on one launch with one instrument. A co-tenant arrived
+// at sequence 7 and stayed, so the contrast is within-experiment: the same sizes, interleaved, either
+// side of a change in engine occupancy nobody arranged.
+//
+//     arm            n    fixed      marginal          worst residual
+//     arrived idle   12   ~0.08s     ~1.055 ms/token   ~0.09s
+//     co-tenant       9   ~0.26s     ~1.032 ms/token   ~0.30s
+//
+// THE MARGINAL RATE AGREES ACROSS THE ARMS to within about three percent, and the difference is not
+// resolved even in SIGN: the idle slope estimate moves between 1.026 and 1.057 MILLIseconds per token
+// depending on which idle subset is fitted, spanning the co-tenant arm's 1.032. So the honest claim
+// is that moderate co-tenancy did not materially change the per-token cost, not that it changed it by
+// a measured amount in a measured direction.
+//
+// The intercept difference is larger and robust to range matching. What it is NOT is a measurement of
+// what a co-tenant costs.
+//
+// ── TWO DIFFERENT SUBJECTS, AND CONFLATING THEM POINTS THE OPERATOR THE WRONG WAY ─────────────
+//
+// SELF-COST is what this experiment measures: what a cold prefill costs ITSELF, idle versus beside a
+// co-tenant. On that subject the proportional term dominates and outer policy cannot reduce it -- no
+// routing decision makes 20,082 tokens of execution cheaper than about 21 seconds.
+//
+// EXTERNALITY is a different subject entirely: what that execution costs OTHER requests. It is not
+// bounded by the self-cost contrast and is far larger -- a controlled decode-alone versus
+// decode-beside-prefill comparison measured 3.8s against 63.5s. That is the number a user feels, and
+// it is exactly what admission and routing can address: send a cold prefill to an idle replica,
+// reserve a replica for interactive decode, defer a new cold prefill while both heads carry decoders,
+// separate the workload classes.
+//
+// An earlier reading of this module's own result said outer layers could recover the fixed term "and
+// nothing else". That conflated the two subjects and would have argued AGAINST the most immediately
+// useful relief available. The correct statement is narrower and points the other way: outer layers
+// cannot make the expensive step cheap, and they can decide who is exposed to it.
+type ServingCostSubject
+  = PrefillSelfCost
+  | CoTenantExternality
+
+type PolicyLeverage
+  = OuterPolicyCanAddress { by: NonEmptyStr }
+  | RequiresInnerExecutionChange { by: NonEmptyStr }
+
+fn policy_leverage(subject: ServingCostSubject) -> PolicyLeverage {
+  match subject {
+    PrefillSelfCost =>
+      RequiresInnerExecutionChange { by: "the cost is proportional to computed tokens at about 1.03 MILLIseconds per token, roughly 950 tokens per second, and holds on an idle engine, so no admission, routing or batching decision outside the engine reduces it; only the execution layers can" as NonEmptyStr }
+    CoTenantExternality =>
+      OuterPolicyCanAddress { by: "a controlled decode-alone versus decode-beside-prefill comparison measured 3.8s against 63.5s, so the latency a co-tenant suffers is far larger than anything in the self-cost contrast and is addressable by placement, reservation, deferral and workload-class separation" as NonEmptyStr }
+  }
+}
+
+type SharedMinusIdleFitContrast {
+  intercept_difference_micros: Int
+  marginal_percent_difference: Int
+  at_observed_concurrency: Nat
+}
+
+fn shared_minus_idle_contrast() -> SharedMinusIdleFitContrast? {
+  match arm_fit(ArrivedIdle) {
+    ScalingUnderObserved { cause: _ } => none
+    AffineDescription { fit: i } =>
+      match arm_fit(ArrivedWithCoTenant) {
+        ScalingUnderObserved { cause: _ } => none
+        AffineDescription { fit: b } =>
+          Present { value: SharedMinusIdleFitContrast {
+            intercept_difference_micros: b.intercept_micros - i.intercept_micros,
+            marginal_percent_difference: ((b.micros_per_thousand_tokens - i.micros_per_thousand_tokens) * 100) / i.micros_per_thousand_tokens,
+            at_observed_concurrency: 2,
+          } }
+      }
+  }
+}
+
+// ── THE PER-STEP QUESTION IS DISSOLVED IN RANGE, NOT ANSWERED ─────────────────────────────────
+//
+// Every idle window ran in one step, so there is no second step anywhere in the measured range from
+// which a per-step term could be distinguished from the per-request term. This is not a bound and not
+// an estimate; the question does not arise below the budget, and above it nothing has been measured.
+type PerStepCostStanding
+  = PerStepCostBounded { upper_micros: Nat }
+  | PerStepCostNotSeparable { because: NonEmptyStr, range_ceiling_tokens: Nat }
+
+data spark_group_a_per_step_cost_standing: PerStepCostStanding = PerStepCostNotSeparable {
+  because: "every idle window from 512 to 20,082 computed tokens completed in exactly one engine iteration, so no per-step term is distinguishable from the fixed per-request term anywhere in the measured range" as NonEmptyStr,
+  range_ceiling_tokens: 20082,
+}
+
+// ── THE BUDGET COUNTERFACTUAL STAYS WITHDRAWN, FOR A NEW REASON ───────────────────────────────
+//
+// This module previously derived a budget trade from the fit and a withdrawn per-step bound, with
+// arithmetic that overcounted steps at exact multiples and billed padded tokens in the final partial
+// step -- so its zero-per-step-cost lower bound moved by half a second purely from changing the
+// budget, contradicting its own assumption.
+//
+// It stays withdrawn, and the measurement has replaced the reason. The engine does not chunk in the
+// range anyone would configure it toward, so a smaller budget is not a knob that is currently doing
+// anything; and the marginal rate has not been measured AT any other budget, so extrapolating one
+// slope across chunk shapes remains unfounded. Kernel and collective efficiency both change with
+// chunk size.
+type BudgetTradeStanding
+  = BudgetTradeUnestablished { missing: List<NonEmptyStr> }
+
+data spark_group_a_budget_trade: BudgetTradeStanding = BudgetTradeUnestablished {
+  missing: [
+    "the marginal rate measured AT each candidate budget, since invariance across chunk shapes is not established and one slope cannot be extrapolated across them" as NonEmptyStr,
+    "a launch that actually chunks in the range of interest, since the effective budget is at least 20,082 tokens and nothing below it is chunked" as NonEmptyStr,
+    "per-rank kernel spans, without which a smaller chunk cannot be predicted to cost more or less per token" as NonEmptyStr,
+  ],
+}
+
+// ── MECHANISM STANDINGS, AT THE GRAIN THE EVIDENCE ACTUALLY DECIDES ───────────────────────────
+//
+// The previous version carried one lumped collective-latency candidate and demoted it because cost
+// scales with tokens. That was too strong, and the error is worth naming: a collective's payload is
+// an activation buffer whose size grows with the scheduled token population, so a token-proportional
+// critical path is exactly what per-token collective work ALSO looks like. Proportionality separates
+// nothing.
+//
+// What it does NOT do, either, is weaken the token-independent term. That was the second version's
+// error: it read an affine fit's residual as a bound on the term the affine fit omitted. With the
+// counterexample above standing, every mechanism here is either unobserved at this grain or
+// unresolved, and one is observed.
+type CriticalPathMechanism
+  = GrossRankStraggler
+  | HostDispatchGaps
+  | BulkInterconnectBandwidth
+  | FixedPerRequestCost
+  | TokenProportionalCompute
+  | TokenProportionalCollectivePayload
+  | CollectiveSynchronisationWait
+  | MemoryOrKernelEfficiency
+  | PowerOrThermalThrottle
+  | CoTenantDelay
+
+type MechanismStanding
+  = NotObservedAtThisGrain { by: NonEmptyStr }
+  | Observed { by: NonEmptyStr }
+  | Unresolved { needs: NonEmptyStr }
+
+fn cold_prefill_mechanism_standing(m: CriticalPathMechanism) -> MechanismStanding {
+  match m {
+    GrossRankStraggler =>
+      NotObservedAtThisGrain { by: "median power within 1.7W and median utilisation within 0% across four ranks; a per-step rank timing could still show one rank extending the critical path" as NonEmptyStr }
+    HostDispatchGaps =>
+      NotObservedAtThisGrain { by: "kernels active in 98-99% of 250ms samples, so long gaps between kernels are unlikely; sub-sample gaps are invisible at this grain" as NonEmptyStr }
+    BulkInterconnectBandwidth =>
+      NotObservedAtThisGrain { by: "7.8 Gb/s sustained on a 50 Gb/s link, and about 9.8 Gb/s within a step; bulk saturation is not present, which does not speak to latency" as NonEmptyStr }
+    FixedPerRequestCost =>
+      Unresolved { needs: "a direct measurement of the fixed-only path; about 0.08s idle and 0.26s beside a co-tenant are affine INTERCEPT ESTIMATES, which absorb request setup, tokenizer and API overhead, fixed model-runner work, measurement-boundary bias and any curvature the affine form cannot carry. It is also not a per-STEP cost: every idle window in range ran in one step, so the two are not separable here" as NonEmptyStr }
+    TokenProportionalCompute =>
+      Unresolved { needs: "compute-kernel span attribution; token proportionality alone does not distinguish model compute from collective payload, and package power does not either" as NonEmptyStr }
+    TokenProportionalCollectivePayload =>
+      Unresolved { needs: "collective-kernel span attribution; an all-reduce over an activation buffer grows with the scheduled token population exactly as compute does, so it fits the observed proportionality equally well" as NonEmptyStr }
+    CollectiveSynchronisationWait =>
+      Unresolved { needs: "per-rank critical-path timing; waiting on a peer is invisible to the aggregate fit, to kernel residency and to package power alike" as NonEmptyStr }
+    MemoryOrKernelEfficiency =>
+      Unresolved { needs: "achieved-throughput or occupancy counters; a marginal rate near 950 tok/s at a third of the power ceiling is what a memory-bound or dequantisation-heavy path looks like, and equally what per-token collective work looks like" as NonEmptyStr }
+    PowerOrThermalThrottle =>
+      Unresolved { needs: "throttle-reason and temperature observations, neither of which this trace captured" as NonEmptyStr }
+    CoTenantDelay =>
+      Observed { by: "the controlled decode-alone versus decode-beside-prefill comparison, 3.8s against 63.5s, which is a matched treatment and control differing in the co-tenancy. The separate idle-versus-shared FIT CONTRAST in this module is descriptive evidence that moderate co-tenancy did not materially change the prefill's own per-token cost, and is not itself a measurement of what a co-tenant costs. The 290.96s outlier stays unexplained by either" as NonEmptyStr }
+  }
+}
+
+// ── THE PARTITION REMAINS UNRESOLVED, AND MAY NOT CALIBRATE ───────────────────────────────────
+type PartitionRequirement
+  = ComputeVersusCollectiveKernelSpans
+  | PerRankCriticalPathTiming
+  | OccupancyOrAchievedThroughput
+  | ThrottleAndMemoryStallEvidence
+  | HigherConcurrencyCoTenantParameterisation
+  | ChunkedRegimeMeasurement
+
+type CriticalPathPartition
+  = PartitionIncomplete { missing: List<PartitionRequirement> }
+  | PartitionEstablished { critical: CriticalPathMechanism, evidence: NonEmptyStr }
+
+data spark_group_a_cold_prefill_partition: CriticalPathPartition = PartitionIncomplete {
+  missing: [
+    ComputeVersusCollectiveKernelSpans,
+    PerRankCriticalPathTiming,
+    OccupancyOrAchievedThroughput,
+    ThrottleAndMemoryStallEvidence,
+    HigherConcurrencyCoTenantParameterisation,
+    ChunkedRegimeMeasurement,
+  ],
+}
+
+// ── WHY THE MISSING EVIDENCE IS MISSING, WHICH IS NOT THE SAME AS UNDONE ──────────────────────
+//
+// Four of the six missing requirements need kernel-level or per-rank attribution, and none of them is
+// waiting on effort or access. gunbc.spark.serving_launch_instrumentation measured that every
+// instrument capable of producing them binds at process start, and that this launch bound none -- so
+// on THIS launch they are not obtainable at all, and the remedy is a differently-configured launch.
+//
+// The distinction matters because "not yet measured" invites another attempt with the same tools,
+// which is what the last attempt was. Naming it unobtainable points at the launch profile instead.
+type MissingEvidenceDisposition
+  = ObtainableOnThisLaunch { by: NonEmptyStr }
+  | RequiresADifferentLaunch { because: NonEmptyStr, remedy: NonEmptyStr }
+
+fn attribution_disposition() -> MissingEvidenceDisposition {
+  match launch_attribution_availability(l: spark_group_a_pair_head_instrumentation) {
+    AttributableBy { instrument: _ } =>
+      ObtainableOnThisLaunch { by: "an attribution instrument is bound to the serving launch" as NonEmptyStr }
+    NotAttributableOnThisLaunch { because: b, remedy: r } =>
+      RequiresADifferentLaunch { because: b, remedy: r }
+  }
+}
+
+fn partition_may_calibrate(p: CriticalPathPartition) -> Bool {
+  match p {
+    PartitionEstablished { critical: _, evidence: _ } => true
+    PartitionIncomplete { missing: _ } => false
+  }
+}
+
+// ── THE LINK QUESTION, DERIVED FROM THE PARTITION RATHER THAN ANSWERED ────────────────────────
+//
+// This was previously a function that ignored its argument and returned false, so "a faster link
+// cannot help" was written as the answer rather than read from the evidence -- it would have kept
+// saying no even for a partition established on bulk bandwidth. What the trace supports is narrower
+// and is now what the function says: bulk saturation was not observed, so no link purchase is
+// justified by it, and a partition that did establish bulk bandwidth would change the verdict.
+type LinkUpgradeStanding
+  = LinkUpgradeJustified { by: NonEmptyStr }
+  | LinkUpgradeUnsupportedByCurrentEvidence { by: NonEmptyStr }
+
+fn link_upgrade_standing(p: CriticalPathPartition) -> LinkUpgradeStanding {
+  match p {
+    PartitionEstablished { critical: c, evidence: e } =>
+      match c {
+        BulkInterconnectBandwidth => LinkUpgradeJustified { by: e }
+        _ => LinkUpgradeUnsupportedByCurrentEvidence { by: "the established critical path is not bulk transfer, so link speed is not the lever" as NonEmptyStr }
+      }
+    PartitionIncomplete { missing: _ } =>
+      LinkUpgradeUnsupportedByCurrentEvidence {
+        by: "bulk saturation was not observed at any grain measured -- 7.8 Gb/s sustained and about 9.8 Gb/s within a step, on a 50 Gb/s link -- so a 100G or 200G breakout is not justified by this trace; that is weaker than a proof of no benefit under every eventual partition" as NonEmptyStr
+      }
+  }
+}

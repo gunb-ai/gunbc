@@ -1,0 +1,186 @@
+module test.claim.serving.fabric_binding_witness
+
+import std.types { Bool, String, NonEmptyStr, List, Int, Timestamp }
+import std.nat { Nat }
+import std.measure { money_amount_micro }
+import v2.std.optional { Present, Absent }
+import product.fabric.identity { FabricIdentity, OfferKey }
+import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef }
+import product.fabric.isolation { IsolationProfile, IsolationGuarantee, DedicatedKernel, PrivateProcessNamespace, isolation_profile_contains }
+import product.fabric.supply { SupplierOffer, OfferQuote, QuotedPerSecond, offer_quote_amount, OfferEvidence, ObservedSupply }
+import product.fabric.selection {
+  AvailabilityObservation, AvailableIndefinitely, AvailabilityUnobserved,
+  TransitionCostObservation, NoTransitionRequired, TransitionCostMeasured, TransitionCostUnread,
+  OpportunityCostObservation, NoFeasibleAlternativeUse, AlternativeUseDisplaced, AlternativeUseUnread,
+}
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire }
+import gunbc.spark.serving_offer {
+  SparkServingUnexpressed, KvBudgetNotExpressibleInShape, TensorParallelUnitNotDivisible,
+  InteractiveQualityCeilingNotAShapeAxis, IsolationNotObserved, spark_serving_unexpressed,
+  SparkOfferProjection, SparkOfferBinding, SparkOfferBound, SparkOfferBindingRefused,
+  SparkServingReadiness, ServingObserved, ServingUnobserved,
+  spark_serving_capability, spark_serving_quote, spark_serving_shape, bind_spark_serving_offer,
+}
+import gunbc.serving.turn_dispatch {
+  cold_prefill_millis, arriving_step_millis,
+  ConversationPlacementHistory, NeverPlaced, LastPlacedOn, serving_transition_cost,
+  ServingQueueReading, QueueDepthRead, QueueDepthUnread, serving_availability,
+  CoTenantDisplacement, DisplacementObserved, DisplacementLowerBound, DisplacementUnobserved,
+  displacement_millis,
+  ServingCoTenancy, GroupIdle, GroupServingInteractiveTurn, CoTenancyUnread, serving_opportunity_cost,
+  serving_isolation_profile, spark_serving_trust_domain, serving_delay_valuation,
+}
+
+fn r() -> ObservationReceiptRef { "test.receipt" as ObservationReceiptRef }
+
+// AN OFFER IS A CLAIM THAT WORK PLACED HERE WILL RUN, so a group whose engine was not observed
+// serving does not get to make it. This is the fabricated placement refused one layer earlier than
+// selection: a candidate nothing established never reaches the ranking at all.
+test fn an_unobserved_group_binds_no_offer() -> Bool {
+  match bind_spark_serving_offer(
+    principal: "gunbc" as NonEmptyStr,
+    executor: "group-a" as NonEmptyStr,
+    group: FabricGroupA,
+    model: "test-model" as NonEmptyStr,
+    trust_domain: spark_serving_trust_domain,
+    isolation: serving_isolation_profile(),
+    seats: 3,
+    readiness: ServingUnobserved { obligation: "the replica did not answer" as NonEmptyStr },
+  ) {
+    SparkOfferBindingRefused { group_wire: w, cause: c } =>
+      (w as String) == "group-a" && string_contains(s: c as String, pattern: "did not answer")
+    SparkOfferBound { bound: _ } => false
+  }
+}
+
+// AND AN OBSERVED ONE BINDS, QUOTED AT ZERO. The positive control -- without it the refusal above
+// would be permanently green. Zero is the owned-hardware fact: no meter starts when a turn lands, so
+// nothing must be reserved before a grant issues.
+test fn an_observed_group_binds_an_offer_quoted_at_zero() -> Bool {
+  match bind_spark_serving_offer(
+    principal: "gunbc" as NonEmptyStr,
+    executor: "group-a" as NonEmptyStr,
+    group: FabricGroupA,
+    model: "test-model" as NonEmptyStr,
+    trust_domain: spark_serving_trust_domain,
+    isolation: serving_isolation_profile(),
+    seats: 3,
+    readiness: ServingObserved { ready_at: "1788700000" as Timestamp, receipt: r() },
+  ) {
+    SparkOfferBindingRefused { group_wire: _, cause: _ } => false
+    SparkOfferBound { bound: p } =>
+      (p.offer.id.key as String) == "group-a"
+        && p.offer.quantity_bound == 3
+        && (money_amount_micro_count(m: offer_quote_amount(q: p.offer.quote)) == 0)
+        && string_contains(s: p.offer.capabilities as String, pattern: "test-model")
+  }
+}
+
+// THE CAPABILITY IS DERIVED FROM THE MODEL, not written twice. Two spellings of one fact drift the
+// first time a model is swapped, which is the cheapest form of the nickname failure.
+test fn the_capability_reference_tracks_the_model() -> Bool {
+  (string_contains(s: spark_serving_capability(model: "alpha" as NonEmptyStr) as String, pattern: "alpha"))
+    && (string_contains(s: spark_serving_capability(model: "beta" as NonEmptyStr) as String, pattern: "beta"))
+    && (spark_serving_capability(model: "alpha" as NonEmptyStr) as String)
+       != (spark_serving_capability(model: "beta" as NonEmptyStr) as String)
+}
+
+// A SERVING GROUP ISOLATES NOTHING BETWEEN TURNS, and the empty profile is the assertion. Work
+// requiring any guarantee is therefore non-fungible with a serving offer -- which is a safety
+// property that only exists because the offer states this rather than omitting it.
+test fn a_serving_offer_provides_no_isolation_guarantee() -> Bool {
+  !isolation_profile_contains(profile: serving_isolation_profile(), wanted: DedicatedKernel)
+    && !isolation_profile_contains(profile: serving_isolation_profile(), wanted: PrivateProcessNamespace)
+    && length(serving_isolation_profile().guarantees) == 0
+}
+
+// AND WHAT Shape CANNOT CARRY IS SAID RATHER THAN OMITTED. An offer whose shape silently drops a real
+// property reads as having no such property, which is the difference ubicloud's precedent exists to
+// prevent.
+test fn the_offer_names_what_its_shape_cannot_express() -> Bool {
+  length(spark_serving_unexpressed()) == 4
+    && fold(spark_serving_unexpressed(), init: false, f: (acc, u) =>
+         acc || (match u { KvBudgetNotExpressibleInShape { tokens: t } => t > 1000000  _ => false }))
+    && fold(spark_serving_unexpressed(), init: false, f: (acc, u) =>
+         acc || (match u { TensorParallelUnitNotDivisible { ranks: k } => k == 4  _ => false }))
+}
+
+// AFFINITY IS A TRANSITION COST: nothing to stay, a full cold prefill to move. This is the concept an
+// earlier attempt minted a ConversationIncumbent type for; the axis already existed.
+test fn staying_costs_nothing_and_moving_costs_a_cold_prefill() -> Bool {
+  (match serving_transition_cost(history: LastPlacedOn { group: FabricGroupA }, candidate: FabricGroupA, prompt_tokens: 50000, latency_micros_per_second: 1, receipt: r()) {
+     NoTransitionRequired => true
+     _ => false
+   })
+    && (match serving_transition_cost(history: LastPlacedOn { group: FabricGroupA }, candidate: FabricGroupB, prompt_tokens: 50000, latency_micros_per_second: 1, receipt: r()) {
+          TransitionCostMeasured { amount: _, receipt: _ } => true
+          _ => false
+        })
+    && (match serving_transition_cost(history: NeverPlaced, candidate: FabricGroupA, prompt_tokens: 50000, latency_micros_per_second: 1, receipt: r()) {
+          TransitionCostMeasured { amount: _, receipt: _ } => true
+          _ => false
+        })
+}
+
+// THE COLD PREFILL COST SCALES WITH TOKENS, which is the measured law and the reason a constant would
+// have been the wrong shape: a 50k prompt costs far more to rematerialize than a 500-token one.
+test fn the_prefill_cost_grows_with_the_prompt() -> Bool {
+  cold_prefill_millis(prompt_tokens: 500) < cold_prefill_millis(prompt_tokens: 50000)
+    && cold_prefill_millis(prompt_tokens: 0) == 78
+    && arriving_step_millis(prompt_tokens: 1000) == cold_prefill_millis(prompt_tokens: 1000)
+}
+
+// AN UNREAD QUEUE REACHES SELECTION AS AN OBLIGATION, NOT AS AN IDLE ENGINE. This is the rule the
+// whole programme was taught by a metric read wrong, expressed where selection will act on it.
+test fn an_unread_queue_is_an_obligation_and_a_read_one_is_a_delay() -> Bool {
+  (match serving_availability(reading: QueueDepthUnread { obligation: "metrics port silent" as NonEmptyStr }, step_millis: 2000, receipt: r()) {
+     AvailabilityUnobserved { obligation: o } => string_contains(s: o as String, pattern: "metrics port silent")
+     _ => false
+   })
+    && (match serving_availability(reading: QueueDepthRead { waiting: 0, running: 0 }, step_millis: 2000, receipt: r()) {
+          AvailableIndefinitely { delay: _, receipt: _ } => true
+          _ => false
+        })
+}
+
+// DISPLACEMENT REFUSES TO PRICE WHEN THE OVERLAP IS UNKNOWN. The controlled 3.8s-versus-63.5s
+// observation is one measurement of a PRODUCT, so pricing it as a constant would assert both factors
+// from an experiment that pinned neither. Unobserved refuses; the bound prices one step; observed
+// prices the product.
+test fn displacement_prices_a_product_or_refuses() -> Bool {
+  (match displacement_millis(d: DisplacementUnobserved { obligation: "victim steps unknown" as NonEmptyStr }) {
+     Absent => true
+     Present { value: _ } => false
+   })
+    && (match displacement_millis(d: DisplacementLowerBound { per_victim_step_millis: 2000 }) {
+          Present { value: v } => v == 2000
+          Absent => false
+        })
+    && (match displacement_millis(d: DisplacementObserved { per_victim_step_millis: 2000, victim_steps: 30 }) {
+          Present { value: v } => v == 60000
+          Absent => false
+        })
+}
+
+// AND AN UNPRICEABLE CO-TENANCY REACHES SELECTION AS UNREAD RATHER THAN AS FREE. An idle group
+// displaces nothing; a busy one whose victim is invisible cannot be priced, and saying zero there
+// would be the absorbing fallback.
+test fn co_tenancy_is_free_when_idle_and_unread_when_invisible() -> Bool {
+  (match serving_opportunity_cost(tenancy: GroupIdle, latency_micros_per_second: 1, receipt: r()) {
+     NoFeasibleAlternativeUse { receipt: _ } => true
+     _ => false
+   })
+    && (match serving_opportunity_cost(tenancy: GroupServingInteractiveTurn { displacement: DisplacementUnobserved { obligation: "unknown" as NonEmptyStr } }, latency_micros_per_second: 1, receipt: r()) {
+          AlternativeUseUnread { obligation: o } => string_contains(s: o as String, pattern: "unobserved")
+          _ => false
+        })
+    && (match serving_opportunity_cost(tenancy: GroupServingInteractiveTurn { displacement: DisplacementLowerBound { per_victim_step_millis: 2000 } }, latency_micros_per_second: 1, receipt: r()) {
+          AlternativeUseDisplaced { forgone: _, receipt: _ } => true
+          _ => false
+        })
+    && (match serving_opportunity_cost(tenancy: CoTenancyUnread { obligation: "gauges silent" as NonEmptyStr }, latency_micros_per_second: 1, receipt: r()) {
+          AlternativeUseUnread { obligation: o } => string_contains(s: o as String, pattern: "gauges silent")
+          _ => false
+        })
+}

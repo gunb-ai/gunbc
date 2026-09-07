@@ -1,0 +1,112 @@
+module test.claim.spark.serving_launch_instrumentation_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import gunbc.spark.serving_launch_instrumentation {
+  AttributionInstrument, NsightSystems, TorchProfilerEndpoint, FirstPartyStepObserver,
+  PostHocBindability, BindsToRunningProcess, BindsOnlyAtProcessStart,
+  instrument_post_hoc_bindability,
+  AttributionRemedy, RemedyIsAdditionalPrivilege, RemedyIsANewLaunch, attribution_remedy,
+  LaunchInstrumentation, spark_group_a_pair_head_instrumentation,
+  AttributionAvailability, AttributableBy, NotAttributableOnThisLaunch,
+  launch_attribution_availability,
+  PerturbationControl, MatchedUnprofiledControl, NoControlTaken,
+  CanaryLaunchProfile, spark_group_a_attribution_canary,
+  CanaryComparability, ComparableToProduction, NotComparableToProduction, canary_comparability,
+  RankCoverage, AllRanksCaptured, PartialRankCoverage, rank_coverage_admits_attribution,
+}
+import gunbc.spark.serving_critical_path {
+  MissingEvidenceDisposition, ObtainableOnThisLaunch, RequiresADifferentLaunch,
+  attribution_disposition,
+}
+
+// EVERY ATTRIBUTION INSTRUMENT BINDS AT PROCESS START, and each says which measurement established
+// it. This is the whole finding: nsys is installed and the profiler endpoint exists in the codebase,
+// so nothing is missing from the host except a binding only a start could have made.
+test fn no_attribution_instrument_binds_to_a_running_process() -> Bool {
+  fold([NsightSystems, TorchProfilerEndpoint, FirstPartyStepObserver], init: true, f: (acc, i) =>
+    acc && (match instrument_post_hoc_bindability(i: i) {
+      BindsOnlyAtProcessStart { because: _ } => true
+      BindsToRunningProcess { by: _ } => false
+    }))
+    && (match instrument_post_hoc_bindability(i: NsightSystems) {
+          BindsOnlyAtProcessStart { because: b } => string_contains(s: b as String, pattern: "no attach to an arbitrary pid")
+          BindsToRunningProcess { by: _ } => false
+        })
+    && (match instrument_post_hoc_bindability(i: TorchProfilerEndpoint) {
+          BindsOnlyAtProcessStart { because: b } => string_contains(s: b as String, pattern: "404")
+          BindsToRunningProcess { by: _ } => false
+        })
+}
+
+// SO NO GRANT REPAIRS IT. The tempting move after a refused measurement is to ask for more access;
+// this makes the answer structural rather than advisory. If any instrument ever did bind to a running
+// process, the remedy would flip to privilege and this goes red.
+test fn the_remedy_is_never_additional_privilege() -> Bool {
+  fold([NsightSystems, TorchProfilerEndpoint, FirstPartyStepObserver], init: true, f: (acc, i) =>
+    acc && (match attribution_remedy(i: i) {
+      RemedyIsANewLaunch { because: b } => string_contains(s: b as String, pattern: "no capability granted to an observer reaches it")
+      RemedyIsAdditionalPrivilege { by: _ } => false
+    }))
+}
+
+// THE SERVING LAUNCH CARRIES NONE, which is correct for serving and is why attribution refused.
+test fn the_production_launch_is_not_attributable_and_names_its_remedy() -> Bool {
+  length(spark_group_a_pair_head_instrumentation.bound_instruments) == 0
+    && (match launch_attribution_availability(l: spark_group_a_pair_head_instrumentation) {
+          NotAttributableOnThisLaunch { because: _, remedy: r } => string_contains(s: r as String, pattern: "binds only at process start")
+          AttributableBy { instrument: _ } => false
+        })
+    && string_contains(s: spark_group_a_pair_head_instrumentation.observed_by as String, pattern: "sessions list empty")
+}
+
+// AND A LAUNCH THAT DID BIND ONE WOULD BE ATTRIBUTABLE. The positive control: this is a property of
+// the launch, not a permanent property of the fabric.
+test fn a_launch_that_bound_an_instrument_is_attributable() -> Bool {
+  match launch_attribution_availability(l: LaunchInstrumentation {
+    bound_instruments: [FirstPartyStepObserver],
+    observed_by: "hypothetical launch declaring a step observer" as NonEmptyStr,
+    revision: spark_group_a_pair_head_instrumentation.revision,
+  }) {
+    AttributableBy { instrument: _ } => true
+    NotAttributableOnThisLaunch { because: _, remedy: _ } => false
+  }
+}
+
+// A CANARY WITHOUT A MATCHED CONTROL CANNOT BE COMPARED TO PRODUCTION AT ALL. The control is a field
+// rather than a recommendation precisely so this refusal exists.
+test fn a_canary_without_a_control_refuses_comparison() -> Bool {
+  (match canary_comparability(c: spark_group_a_attribution_canary) {
+     ComparableToProduction { via: v } => string_contains(s: v as String, pattern: "measured rather than assumed negligible")
+     NotComparableToProduction { because: _ } => false
+   })
+    && (match canary_comparability(c: CanaryLaunchProfile {
+          instruments: [NsightSystems],
+          workload: "same workload" as NonEmptyStr,
+          control: NoControlTaken,
+          rank_coverage_required: 4,
+        }) {
+          NotComparableToProduction { because: b } => string_contains(s: b as String, pattern: "perturbation is unmeasured")
+          ComparableToProduction { via: _ } => false
+        })
+}
+
+// PARTIAL RANK COVERAGE ADMITS NOTHING on a tensor-parallel deployment, because a missing rank is
+// exactly where a straggler would hide.
+test fn partial_rank_coverage_admits_no_attribution() -> Bool {
+  rank_coverage_admits_attribution(c: AllRanksCaptured { count: 4 })
+    && !rank_coverage_admits_attribution(c: PartialRankCoverage { captured: 3, required: 4 })
+    && spark_group_a_attribution_canary.rank_coverage_required == 4
+}
+
+// AND THE CRITICAL-PATH PARTITION NOW READS ITS MISSING EVIDENCE AS UNOBTAINABLE-HERE rather than
+// undone, which points at the launch profile instead of at another attempt with the same tools.
+test fn the_partitions_missing_attribution_requires_a_different_launch() -> Bool {
+  match attribution_disposition() {
+    ObtainableOnThisLaunch { by: _ } => false
+    RequiresADifferentLaunch { because: b, remedy: r } =>
+      string_contains(s: b as String, pattern: "no attribution instrument was bound")
+        && string_contains(s: r as String, pattern: "declares its instrumentation")
+  }
+}

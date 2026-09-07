@@ -1,0 +1,160 @@
+module gunbc.spark.serving_launch_instrumentation
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
+
+// ── WHETHER A LAUNCH CAN EVER BE ATTRIBUTED IS FIXED WHEN IT STARTS ───────────────────────────
+//
+// gunbc.spark.serving_critical_path spent this investigation unable to say where prefill wall time
+// goes. The final blocker turned out not to be privilege, effort or access. It is that EVERY
+// instrument capable of attributing kernel time binds to a process AT ITS START, so a launch that
+// began without one can never be attributed no matter what is granted afterwards.
+//
+// That makes instrumentation a property OF THE LAUNCH, on the same footing as its unit digest --
+// decided once, unchangeable while it runs, and determining what questions the launch can answer.
+// gunbc.spark.vllm_serving_launch rules that runtime facts belong in a receipt ABOUT a launch rather
+// than as fields of its identity, so this module is that receipt rather than an edit to the identity.
+//
+// THE MEASUREMENTS THIS RESTS ON, taken on the group A head on 2026-09-07 against the live launch:
+//
+//     nsys 2025.3.2.474 subcommands   launch, start, shutdown, sessions list -- and no attach
+//     nsys sessions list              empty; there is no session to join
+//     POST /start_profile             404, so the endpoint was never registered
+//
+// Neither instrument is missing from the host. nsys is installed at /usr/local/bin/nsys. What is
+// missing is a BINDING that only a start could have created.
+type AttributionInstrument
+  = NsightSystems
+  | TorchProfilerEndpoint
+  | FirstPartyStepObserver
+
+// THE LAW. Asking whether an instrument can be attached to an already-running engine is the question
+// whose wrong answer cost this investigation its last measurement, so it is answered per instrument
+// with the reason, and every answer is the same.
+type PostHocBindability
+  = BindsToRunningProcess { by: NonEmptyStr }
+  | BindsOnlyAtProcessStart { because: NonEmptyStr }
+
+fn instrument_post_hoc_bindability(i: AttributionInstrument) -> PostHocBindability {
+  match i {
+    NsightSystems =>
+      BindsOnlyAtProcessStart { because: "nsys profiles a process it launched into a session it owns; its subcommands are launch, start, shutdown and sessions list, with no attach to an arbitrary pid, and on this host sessions list was empty so there was no existing session to join" as NonEmptyStr }
+    TorchProfilerEndpoint =>
+      BindsOnlyAtProcessStart { because: "vLLM registers the profile routes only when VLLM_TORCH_PROFILER_DIR is set in the server process environment at startup; unset, POST /start_profile answers 404 and no request can create the route afterwards" as NonEmptyStr }
+    FirstPartyStepObserver =>
+      BindsOnlyAtProcessStart { because: "a scheduler wrapper is selected when the engine constructs its scheduler, so it must be installed and named before the process starts; nothing loads one into a running engine" as NonEmptyStr }
+  }
+}
+
+// AND THEREFORE NO GRANT REPAIRS IT. This is the claim worth making unwritable rather than merely
+// stating, because the tempting next move after a refused measurement is always to ask for more
+// access. Privilege is not what is missing.
+type AttributionRemedy
+  = RemedyIsAdditionalPrivilege { by: NonEmptyStr }
+  | RemedyIsANewLaunch { because: NonEmptyStr }
+
+fn attribution_remedy(i: AttributionInstrument) -> AttributionRemedy {
+  match instrument_post_hoc_bindability(i: i) {
+    BindsToRunningProcess { by: b } => RemedyIsAdditionalPrivilege { by: b }
+    BindsOnlyAtProcessStart { because: b } =>
+      RemedyIsANewLaunch {
+        because: join(["the binding is created at process start and cannot be created later, so no capability granted to an observer reaches it -- ", b as String], "") as NonEmptyStr
+      }
+  }
+}
+
+// ── WHAT A LAUNCH DECLARES ABOUT ITSELF ───────────────────────────────────────────────────────
+//
+// A launch carries the instruments bound to it. The empty list is the ordinary production case and
+// is not a defect: instrumentation costs perturbation, and a serving launch that carries none is
+// correctly configured for serving. What is a defect is being unable to SAY which case a launch is
+// in, which is how "we have not attributed it yet" survived as a description of something that was
+// never obtainable.
+type LaunchInstrumentation {
+  bound_instruments: List<AttributionInstrument>
+  observed_by: NonEmptyStr
+  revision: VllmSourceRevision
+}
+
+data spark_group_a_pair_head_instrumentation: LaunchInstrumentation = LaunchInstrumentation {
+  bound_instruments: [],
+  observed_by: "nsys sessions list empty and POST /start_profile 404 on the group A head, 2026-09-07, against the launch serving at the time" as NonEmptyStr,
+  revision: vllm_source_revision_read,
+}
+
+type AttributionAvailability
+  = AttributableBy { instrument: AttributionInstrument }
+  | NotAttributableOnThisLaunch { because: NonEmptyStr, remedy: NonEmptyStr }
+
+fn launch_attribution_availability(l: LaunchInstrumentation) -> AttributionAvailability {
+  match first(l.bound_instruments) {
+    Present { value: i } => AttributableBy { instrument: i }
+    Absent =>
+      NotAttributableOnThisLaunch {
+        because: "no attribution instrument was bound when this launch started" as NonEmptyStr,
+        remedy: "a separate launch that declares its instrumentation, since every instrument binds only at process start" as NonEmptyStr,
+      }
+  }
+}
+
+// ── THE CANARY IS A DIFFERENT LAUNCH IDENTITY, NOT A MODE OF THIS ONE ─────────────────────────
+//
+// A profiler-enabled engine is not the serving engine with a flag. It perturbs what it measures, so
+// its numbers describe ITSELF and may be joined to production numbers only through a matched control
+// that measures the perturbation. Modelling it as a mode would let a perturbed measurement inherit
+// the production launch's identity and be compared to unperturbed ones without anybody noticing.
+//
+// So a canary is a launch, and a measurement taken on it carries the control that prices its own
+// instrumentation. A canary WITHOUT a matched control cannot be compared to production at all --
+// which is the refusal below, and the reason the control is a field rather than a recommendation.
+type PerturbationControl
+  = MatchedUnprofiledControl { same_workload: NonEmptyStr }
+  | NoControlTaken
+
+type CanaryLaunchProfile {
+  instruments: List<AttributionInstrument>
+  workload: NonEmptyStr
+  control: PerturbationControl
+  rank_coverage_required: Nat
+}
+
+type CanaryComparability
+  = ComparableToProduction { via: NonEmptyStr }
+  | NotComparableToProduction { because: NonEmptyStr }
+
+fn canary_comparability(c: CanaryLaunchProfile) -> CanaryComparability {
+  match c.control {
+    NoControlTaken =>
+      NotComparableToProduction { because: "a profiled launch perturbs the timing it reports, and with no matched unprofiled control that perturbation is unmeasured, so its numbers describe the profiled launch only" as NonEmptyStr }
+    MatchedUnprofiledControl { same_workload: w } =>
+      ComparableToProduction { via: join(["the matched unprofiled control over ", w as String, " prices the instrumentation, so the difference between profiled and unprofiled is measured rather than assumed negligible"], "") as NonEmptyStr }
+  }
+}
+
+// PARTIAL RANK COVERAGE IS NOT PARTIAL EVIDENCE ON A TENSOR-PARALLEL DEPLOYMENT. Progress is bounded
+// by the slowest rank, so a trace missing one rank cannot distinguish a fast rank waiting from a
+// slow rank computing -- exactly the distinction the whole trace exists to make.
+type RankCoverage
+  = AllRanksCaptured { count: Nat }
+  | PartialRankCoverage { captured: Nat, required: Nat }
+
+fn rank_coverage_admits_attribution(c: RankCoverage) -> Bool {
+  match c {
+    AllRanksCaptured { count: _ } => true
+    PartialRankCoverage { captured: _, required: _ } => false
+  }
+}
+
+// The profile this fabric would need. It is a DESIRED shape and no launch has been made from it: the
+// data below is the specification a canary must satisfy, and canary_comparability refuses for any
+// construction that drops the control.
+data spark_group_a_attribution_canary: CanaryLaunchProfile = CanaryLaunchProfile {
+  instruments: [NsightSystems, FirstPartyStepObserver],
+  workload: "one bounded cold prefill near the observed per-iteration capacity floor and one well below it, on an engine with no other request admitted" as NonEmptyStr,
+  control: MatchedUnprofiledControl {
+    same_workload: "the identical prompt population replayed on an unprofiled launch of the same runtime image" as NonEmptyStr,
+  },
+  rank_coverage_required: 4,
+}

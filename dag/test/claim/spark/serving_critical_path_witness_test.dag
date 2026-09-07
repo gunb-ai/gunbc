@@ -1,0 +1,246 @@
+module test.claim.spark.serving_critical_path_witness
+
+import std.types { Bool, String, Int, NonEmptyStr, List }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import gunbc.spark.serving_critical_path {
+  PowerEnvelope, spark_system_power_supply, spark_soc_thermal_envelope,
+  spark_gpu_power_envelope, spark_peripheral_power_envelope,
+  SaturationClaim, GpuComputeSaturated, GpuComputeUnderutilised,
+  ClaimConstruction, ClaimConstructible, ClaimNotConstructible,
+  busy_fraction_constructs, power_below_ceiling_excludes_saturation,
+  EffectiveBatchBudget, BehaviouralPerIterationCapacityAtLeast, ConfiguredSchedulerBudgetRead,
+  ConfiguredSchedulerBudgetUnread,
+  spark_group_a_effective_batch_budget,
+  EffectiveSchedulerConfigStanding, EffectiveSchedulerConfigRead, EffectiveSchedulerConfigUnread,
+  ConcurrencyWitness, co_tenant_present,
+  PrefillScalingSample, PrefillScalingExperiment, spark_group_a_prefill_scaling_experiment,
+  SampleStanding, ProbeAloneAtObservedConcurrencyGrain, NoForeignCachedBookingObserved,
+  ForeignCachedBookingObserved, sample_standing,
+  ExperimentLaunchBinding, ExperimentLaunchBound, ExperimentLaunchUnbound,
+  ExperimentJoinability, JoinableByLaunch, NotJoinable, experiment_joinability,
+  FitArm, ArrivedIdle, ArrivedWithCoTenant, sample_in_arm, arm_samples,
+  AffineFit, PrefillScalingStanding, AffineDescription, ScalingUnderObserved,
+  arm_fit, predicted_micros, abs_int, arm_worst_residual_micros,
+  SharedMinusIdleFitContrast, shared_minus_idle_contrast,
+  ServingCostSubject, PrefillSelfCost, CoTenantExternality,
+  PolicyLeverage, OuterPolicyCanAddress, RequiresInnerExecutionChange, policy_leverage,
+  PerStepCostStanding, PerStepCostBounded, PerStepCostNotSeparable,
+  spark_group_a_per_step_cost_standing,
+  BudgetTradeStanding, BudgetTradeUnestablished, spark_group_a_budget_trade,
+  ScalingSampleExcludedFromFit, spark_group_a_co_tenant_outlier,
+  CriticalPathMechanism, GrossRankStraggler, HostDispatchGaps, BulkInterconnectBandwidth,
+  FixedPerRequestCost, TokenProportionalCompute, TokenProportionalCollectivePayload,
+  CollectiveSynchronisationWait, MemoryOrKernelEfficiency, PowerOrThermalThrottle, CoTenantDelay,
+  MechanismStanding, NotObservedAtThisGrain, Observed, Unresolved,
+  cold_prefill_mechanism_standing,
+  PartitionRequirement, ComputeVersusCollectiveKernelSpans, PerRankCriticalPathTiming,
+  OccupancyOrAchievedThroughput, ThrottleAndMemoryStallEvidence,
+  HigherConcurrencyCoTenantParameterisation, ChunkedRegimeMeasurement,
+  CriticalPathPartition, PartitionIncomplete, PartitionEstablished,
+  spark_group_a_cold_prefill_partition, partition_may_calibrate,
+  LinkUpgradeStanding, LinkUpgradeJustified, LinkUpgradeUnsupportedByCurrentEvidence,
+  link_upgrade_standing,
+}
+
+// THE INFERENCE THAT WAS WRONG IS NOW UNWRITABLE. An earlier version excluded compute saturation
+// because power did not rise with load. Low whole-GPU power cannot exclude saturation of a narrow
+// bottleneck, and kernel residency decides neither direction.
+test fn neither_saturation_nor_underutilisation_is_constructible_from_coarse_telemetry() -> Bool {
+  (match busy_fraction_constructs(claim: GpuComputeSaturated) {
+     ClaimNotConstructible { because: b } => string_contains(s: b as String, pattern: "residency, not work")
+     ClaimConstructible { from: _ } => false
+   })
+    && (match busy_fraction_constructs(claim: GpuComputeUnderutilised) {
+          ClaimNotConstructible { because: b } => string_contains(s: b as String, pattern: "narrow bottleneck")
+          ClaimConstructible { from: _ } => false
+        })
+    && (match power_below_ceiling_excludes_saturation() {
+          ClaimNotConstructible { because: b } => string_contains(s: b as String, pattern: "bounds whole-chip utilisation")
+          ClaimConstructible { from: _ } => false
+        })
+}
+
+// THE ENVELOPES NEST, and adding them is the first mistake available.
+test fn the_power_envelopes_nest_rather_than_sum() -> Bool {
+  spark_system_power_supply.watts == 240
+    && spark_soc_thermal_envelope.watts == 140
+    && spark_gpu_power_envelope.watts == 120
+    && spark_gpu_power_envelope.watts < spark_soc_thermal_envelope.watts
+    && string_contains(s: spark_gpu_power_envelope.covers as String, pattern: "nested inside")
+}
+
+// THE BUDGET IS OBSERVED BEHAVIOURALLY AND IS AN ORDER OF MAGNITUDE ABOVE THE NOMINAL 2048. Every
+// idle window in the population ran in exactly one engine iteration, at every size up to 20,082
+// computed tokens. Three separate conclusions in this branch's history rested on a 2048 boundary
+// that does not exist.
+test fn no_idle_window_chunks_anywhere_in_the_measured_range() -> Bool {
+  let idle = arm_samples(ArrivedIdle)
+  length(idle) == 12
+    && fold(idle, init: true, f: (acc, s) => acc && s.iteration_delta == 1)
+    && length(filter(idle, s => s.computed_tokens == 20082)) == 1
+    && length(filter(idle, s => s.computed_tokens > 20082)) == 0
+    && (match spark_group_a_effective_batch_budget {
+          BehaviouralPerIterationCapacityAtLeast { computed_tokens: t, by: _ } => t == 20082
+          ConfiguredSchedulerBudgetRead { tokens: _, source: _ } => false
+          ConfiguredSchedulerBudgetUnread { because: _ } => false
+        })
+}
+
+// AND ON A SHARED ENGINE THE SAME COUNTER MEANS NOTHING PER REQUEST. Three windows of about 2,050
+// computed tokens recorded 5, 5 and 5 iterations while one of 1,564 recorded 17 -- because co-tenant
+// decode steps increment the engine-wide counter too. This is what made 158,764/83 look like a
+// scheduler budget.
+test fn the_iteration_counter_is_not_a_per_request_step_count_under_co_tenancy() -> Bool {
+  let busy = arm_samples(ArrivedWithCoTenant)
+  length(busy) == 9
+    && fold(busy, init: true, f: (acc, s) => acc && s.iteration_delta > 1)
+    && length(filter(busy, s => s.iteration_delta == 17)) == 1
+    && length(filter(busy, s => s.iteration_delta > 17)) == 0
+}
+
+// max_running COUNTS THE PROBE, so a window with one running request had no co-tenant. Arrival
+// concurrency is what selects the arm, and it is recorded separately from the maximum during.
+test fn co_tenancy_is_read_from_the_field_rather_than_assumed() -> Bool {
+  !co_tenant_present(c: ConcurrencyWitness { max_running: 1, max_waiting: 0 })
+    && co_tenant_present(c: ConcurrencyWitness { max_running: 2, max_waiting: 0 })
+    && co_tenant_present(c: ConcurrencyWitness { max_running: 1, max_waiting: 1 })
+    && length(filter(spark_group_a_prefill_scaling_experiment.ordered_samples, s =>
+         match sample_standing(s: s) { ForeignCachedBookingObserved { cached_tokens: c } => c > 100000  _ => false })) == 1
+}
+
+// THE ARMS AGREE ON THE MARGINAL RATE TO WITHIN A FEW PERCENT, and the difference is not resolved in
+// sign -- the idle slope estimate moves across that band depending on which idle subset is fitted. So
+// the tolerance here is the claim: moderate co-tenancy did not materially change per-token cost.
+// Asserting a tighter band would assert a resolution the samples do not have.
+test fn the_arms_agree_on_the_marginal_rate_within_a_few_percent() -> Bool {
+  match shared_minus_idle_contrast() {
+    Absent => false
+    Present { value: c } =>
+      c.marginal_percent_difference <= 4
+        && c.marginal_percent_difference >= (0 - 4)
+        && c.at_observed_concurrency == 2
+  }
+}
+
+// THE INTERCEPT DIFFERENCE IS LARGER AND SURVIVES RANGE MATCHING, but it is a contrast between two
+// FITTED intercepts and is not named a co-tenant cost.
+test fn the_intercept_contrast_is_carried_as_a_fit_contrast_not_a_cost() -> Bool {
+  match shared_minus_idle_contrast() {
+    Absent => false
+    Present { value: c } => c.intercept_difference_micros > 100000 && c.intercept_difference_micros < 260000
+  }
+}
+
+// SELF-COST AND EXTERNALITY ARE DIFFERENT SUBJECTS WITH OPPOSITE POLICY ANSWERS. This is the
+// discriminator against the reading that outer layers "recover the fixed term and nothing else":
+// that conflated the two and argued against the most useful relief available.
+test fn policy_leverage_differs_between_self_cost_and_externality() -> Bool {
+  (match policy_leverage(subject: PrefillSelfCost) {
+     RequiresInnerExecutionChange { by: b } => string_contains(s: b as String, pattern: "only the execution layers")
+     OuterPolicyCanAddress { by: _ } => false
+   })
+    && (match policy_leverage(subject: CoTenantExternality) {
+          OuterPolicyCanAddress { by: b } => string_contains(s: b as String, pattern: "3.8s against 63.5s")
+          RequiresInnerExecutionChange { by: _ } => false
+        })
+}
+
+// THE IDLE FIT IS DERIVED AND TIGHT ACROSS A 39x TOKEN RANGE. The slope is a least squares projection
+// of the sample rows, not a literal: ~1.055 ms per token, about 948 tok/s marginal.
+test fn the_idle_marginal_rate_is_a_projection_of_the_samples() -> Bool {
+  match arm_fit(ArrivedIdle) {
+    ScalingUnderObserved { cause: _ } => false
+    AffineDescription { fit: f } =>
+      f.sample_count == 12
+        && f.micros_per_thousand_tokens >= 1000000
+        && f.micros_per_thousand_tokens <= 1120000
+        && f.intercept_micros >= 0
+        && f.intercept_micros <= 140000
+        && arm_worst_residual_micros(arm: ArrivedIdle, fit: f) < 120000
+  }
+}
+
+// THE PER-STEP QUESTION IS DISSOLVED, NOT BOUNDED AND NOT ESTIMATED. Two earlier versions answered
+// it -- one with a 95ms upper bound read off a residual, one with a 126ms three-term counterexample.
+// Both regressed against a step boundary that the measurement shows does not exist in range.
+test fn the_per_step_question_is_dissolved_rather_than_answered() -> Bool {
+  match spark_group_a_per_step_cost_standing {
+    PerStepCostBounded { upper_micros: _ } => false
+    PerStepCostNotSeparable { because: b, range_ceiling_tokens: t } =>
+      t == 20082 && string_contains(s: b as String, pattern: "exactly one engine iteration")
+  }
+}
+
+// THE BUDGET COUNTERFACTUAL STAYS WITHDRAWN, and the measurement supplied a new reason: the engine
+// does not chunk in the range anyone would tune toward, so a smaller budget is not currently a knob.
+test fn the_budget_counterfactual_stays_withdrawn_with_a_measured_reason() -> Bool {
+  match spark_group_a_budget_trade {
+    BudgetTradeUnestablished { missing: m } =>
+      length(m) == 3
+        && fold(m, init: false, f: (acc, r) => acc || string_contains(s: r as String, pattern: "at least 20,082"))
+        && fold(m, init: false, f: (acc, r) => acc || string_contains(s: r as String, pattern: "invariance across chunk shapes"))
+  }
+}
+
+// THE PROPORTIONAL TERM REMAINS UNATTRIBUTED, which is now the whole of the problem. Compute and
+// collective payload both scale with tokens and neither is decided.
+test fn the_proportional_mechanisms_remain_unresolved() -> Bool {
+  (match cold_prefill_mechanism_standing(m: TokenProportionalCompute) { Unresolved { needs: _ } => true  _ => false })
+    && (match cold_prefill_mechanism_standing(m: TokenProportionalCollectivePayload) { Unresolved { needs: _ } => true  _ => false })
+    && (match cold_prefill_mechanism_standing(m: CollectiveSynchronisationWait) { Unresolved { needs: _ } => true  _ => false })
+    && (match cold_prefill_mechanism_standing(m: MemoryOrKernelEfficiency) { Unresolved { needs: _ } => true  _ => false })
+    && (match cold_prefill_mechanism_standing(m: FixedPerRequestCost) {
+          Unresolved { needs: b } => string_contains(s: b as String, pattern: "INTERCEPT ESTIMATES")
+          _ => false
+        })
+    && (match cold_prefill_mechanism_standing(m: CoTenantDelay) {
+          Observed { by: b } => string_contains(s: b as String, pattern: "matched treatment and control")
+          _ => false
+        })
+}
+
+// THE OUTLIER IS RETAINED AND IS NOW VISIBLY OUTSIDE THE MEASURED CO-TENANT COST, which is the point
+// of keeping it: 291 seconds is not 0.13 seconds of scheduling latency, so it remains unexplained
+// rather than absorbed into the contrast.
+test fn the_outlier_is_kept_and_is_not_explained_by_the_measured_co_tenant_cost() -> Bool {
+  spark_group_a_co_tenant_outlier.computed_tokens == 4840
+    && spark_group_a_co_tenant_outlier.wall_micros == 290960000
+    && string_contains(s: spark_group_a_co_tenant_outlier.cause as String, pattern: "unexplained")
+}
+
+// THE UNBOUND LAUNCH STILL REFUSES TO JOIN. No VllmServingLaunch exists for these sweeps, so nothing
+// may compare them to another launch by identity.
+test fn the_unbound_launch_refuses_to_join_this_experiment_to_anything() -> Bool {
+  match experiment_joinability(e: spark_group_a_prefill_scaling_experiment) {
+    JoinableByLaunch { launch: _ } => false
+    NotJoinable { because: b } => string_contains(s: b as String, pattern: "may not be joined by launch identity")
+  }
+}
+
+// THE PARTITION IS STILL INCOMPLETE, but three requirements were discharged by measurement and the
+// two that replaced them are named by membership rather than counted.
+test fn the_partition_is_incomplete_and_names_what_measurement_did_not_close() -> Bool {
+  !partition_may_calibrate(p: spark_group_a_cold_prefill_partition)
+    && (match spark_group_a_cold_prefill_partition {
+          PartitionEstablished { critical: _, evidence: _ } => false
+          PartitionIncomplete { missing: m } =>
+            length(m) == 6
+              && contains(m, ComputeVersusCollectiveKernelSpans)
+              && contains(m, PerRankCriticalPathTiming)
+              && contains(m, HigherConcurrencyCoTenantParameterisation)
+              && contains(m, ChunkedRegimeMeasurement)
+        })
+}
+
+// THE LINK VERDICT IS READ FROM THE PARTITION, with an established-bulk-bandwidth positive control.
+test fn the_link_verdict_is_derived_and_a_bulk_bandwidth_partition_flips_it() -> Bool {
+  (match link_upgrade_standing(p: spark_group_a_cold_prefill_partition) {
+     LinkUpgradeUnsupportedByCurrentEvidence { by: b } => string_contains(s: b as String, pattern: "weaker than a proof of no benefit")
+     LinkUpgradeJustified { by: _ } => false
+   })
+    && (match link_upgrade_standing(p: PartitionEstablished { critical: BulkInterconnectBandwidth, evidence: "hypothetical established bulk saturation" as NonEmptyStr }) {
+          LinkUpgradeJustified { by: _ } => true
+          LinkUpgradeUnsupportedByCurrentEvidence { by: _ } => false
+        })
+}

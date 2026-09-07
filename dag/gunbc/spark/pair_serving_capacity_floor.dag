@@ -1,0 +1,205 @@
+module gunbc.spark.pair_serving_capacity_floor
+
+import std.types { Bool, String, Int, NonEmptyStr, List }
+import v2.std.optional { Present, Absent }
+import std.nat { Nat }
+import std.measure { TokenCount, token_count, token_count_value }
+import gunbc.spark.vllm_serving_launch { VllmServingLaunch, launch_wire }
+import gunbc.spark.vllm_kv_layout_observe {
+  VllmKvLayoutReceipt, KvLayoutObserved, KvLayoutUnreadable, KvLayoutInconsistent,
+}
+import gunbc.spark.pair_serving_launch_receipt {
+  ServingStanding, ServingOnFirstAttempt, ServingRecoveredAfterFailures, NotServing, ServingStandingUnobserved,
+}
+import extdeps.vllm.kv_layout {
+  ResolvedKvLayout, AdmissionCost, AdmissionCostBlocks, AdmissionCostUnestablished, cold_admission_blocks,
+}
+import gunbc.harness.harness_seat { harness_seat_operator_policy_seats }
+
+// ── THE FLOOR IS DECLARED IN THE UNIT THE OPERATOR ACTUALLY WANTS ──────────────────────────────
+//
+// WHAT NOT TO DECLARE. "54 GiB of KV" and "three concurrent sessions" are the same requirement said
+// twice, and once both are written down they drift: a change to the sequence budget moves the second
+// and leaves the first standing, and nothing detects that the pair no longer describes one intent.
+// So exactly one is declared -- the operational one, because it is the one anybody can argue about --
+// and the blocks are DERIVED from it against the engine's own layout.
+//
+// AND THE SESSION COUNT IS NOT A SECOND NUMBER EITHER. It is the same policy constant the harness
+// hands out seats against (gunbc.harness.harness_seat harness_seat_operator_policy_seats). A fabric
+// whose floor said four while the harness seated three would be holding capacity nobody could use,
+// and one whose floor said two would be admitting a seat the fabric never promised. They are one
+// fact, so they are read from one place; when that constant's drop retires and the count becomes
+// derived, the floor follows without an edit here.
+type MinimumColdSessions {
+  maximum_sequence_tokens: TokenCount
+  sessions: Nat
+}
+
+// COLD, meaning no prefix-cache credit. A prospective cache hit is not capacity: it belongs to a
+// prefix whose blocks another request may release at any moment, and reserving against it would be
+// spending a discount that has not been granted.
+data spark_pair_serving_minimum_cold_sessions: MinimumColdSessions = MinimumColdSessions {
+  maximum_sequence_tokens: token_count(count: 500000),
+  sessions: harness_seat_operator_policy_seats,
+}
+
+// ── CAPACITY IS A READINESS PROPERTY OF ONE INCARNATION ────────────────────────────────────────
+//
+// The blocks the floor requires are the per-request cost at the declared budget, times the declared
+// session count. Both come from the receipt's own layout, so a floor assessment is a statement about
+// THE ENGINE THE RECEIPT DESCRIBES and nothing else.
+type CapacityFloorStanding
+  = MeetsFloor { required_blocks: Nat, available_blocks: Nat }
+  | BelowFloor { required_blocks: Nat, available_blocks: Nat }
+  | FloorUnestablished { cause: NonEmptyStr }
+
+fn capacity_floor_standing(receipt: VllmKvLayoutReceipt, floor: MinimumColdSessions) -> CapacityFloorStanding {
+  match receipt {
+    KvLayoutUnreadable { incarnation: _, cause: c } =>
+      FloorUnestablished { cause: join(["the layout capture was unreadable: ", c as String], "") as NonEmptyStr }
+    KvLayoutInconsistent { incarnation: _, cause: c } =>
+      FloorUnestablished { cause: join(["the layout is inconsistent: ", c as String], "") as NonEmptyStr }
+    KvLayoutObserved { incarnation: _, layout: layout, reported: _, blocks_per_max_request: _, source_capture_digest: _ } =>
+      match cold_admission_blocks(layout: layout, sequence_budget: floor.maximum_sequence_tokens) {
+        AdmissionCostUnestablished { cause: c } => FloorUnestablished { cause: c }
+        AdmissionCostBlocks { blocks: per_request } => {
+          let required = per_request * floor.sessions
+          if required > layout.allocator_blocks {
+            BelowFloor { required_blocks: required, available_blocks: layout.allocator_blocks }
+          } else {
+            MeetsFloor { required_blocks: required, available_blocks: layout.allocator_blocks }
+          }
+        }
+      }
+  }
+}
+
+// ── WITHDRAWAL IS THE FIRST MOVE, AND IT IS NOT A RESTART ──────────────────────────────────────
+//
+// "Below floor, therefore restart" is one step where there are two decisions, and collapsing them is
+// how a convergence run bounces a busy engine. Free memory on a unified-memory host is a moving
+// target: a restart taken because the pool came up small can come up smaller, and a loop that
+// restarts on every unfavourable reading will keep restarting while requests are in flight.
+//
+// So the first move is always the same and is always safe: STOP SENDING NEW WORK. Withdrawal costs
+// nothing, is instantly reversible, and is correct under every failing standing including the ones
+// where the capacity is merely unknown. Whether to then restart is a separate question with its own
+// preconditions, asked below.
+type AdmissionPosture
+  = Admitting { available_blocks: Nat }
+  | Withdrawn { cause: NonEmptyStr }
+
+fn admission_posture(standing: CapacityFloorStanding) -> AdmissionPosture {
+  match standing {
+    MeetsFloor { required_blocks: _, available_blocks: a } => Admitting { available_blocks: a }
+    BelowFloor { required_blocks: r, available_blocks: a } =>
+      Withdrawn { cause: join(["the engine is below the declared floor: ", to_string(r), " blocks required, ", to_string(a), " available"], "") as NonEmptyStr }
+    FloorUnestablished { cause: c } =>
+      Withdrawn { cause: join(["the engine's capacity is unestablished, so it is withdrawn rather than assumed adequate: ", c as String], "") as NonEmptyStr }
+  }
+}
+
+// ── DRAIN ──────────────────────────────────────────────────────────────────────────────────────
+//
+// Withdrawal stops new work; it does not end the work already running. A restart taken over live
+// grants destroys them, and under the harness's quiescence release law the fabric cannot even tell
+// afterwards which seats were freed. Quiescence is therefore OBSERVED, never assumed from elapsed
+// time -- a deadline that passed says the lease may be reclaimed, not that the request stopped.
+type DrainStanding
+  = Quiesced
+  | GrantsOutstanding { count: Nat }
+  | DrainUnobserved { cause: NonEmptyStr }
+
+// ── RESTART IS ADMITTED, NOT TRIGGERED ─────────────────────────────────────────────────────────
+//
+// Five preconditions, and the fold names the FIRST unmet one so an operator reading a refusal learns
+// what to change rather than a list. Four of the five are decidable from facts this repository
+// already models. The fifth is not, and it refuses.
+//
+// THE UNIFIED-MEMORY ADMISSION IS THE MISSING ONE, and it is not an oversight. On a GB10 the KV pool
+// is a residual of a supply the host shares with the OS page cache, the model weights, the NCCL and
+// CUDA contexts and this deployment's own Ray object store; restarting without a plan over that
+// supply is what produced 23.6 GiB once and 54.01 GiB later from one unit text. Admitting a restart
+// while that plan is unmodelled would be promising an outcome nothing here can predict, so the
+// admission refuses and names the capability. That is the M4/M6 slice; when it lands, this arm is
+// replaced by a real precondition rather than deleted.
+type RestartPreconditionGap
+  = EngineStillAdmitting
+  | GrantsStillHeld { count: Nat }
+  | QuiescenceUnobserved { cause: NonEmptyStr }
+  | RetryAllowanceExhausted { used: Nat, allowance: Nat }
+  | UnifiedMemoryPlanUnmodelled
+
+fn restart_precondition_wire(g: RestartPreconditionGap) -> String {
+  match g {
+    EngineStillAdmitting => "the engine has not been withdrawn from new admission"
+    GrantsStillHeld { count: n } => join([to_string(n), " grant(s) are still outstanding against this incarnation"], "")
+    QuiescenceUnobserved { cause: c } => join(["quiescence was not observed: ", c as String], "")
+    RetryAllowanceExhausted { used: u, allowance: a } =>
+      join(["the bounded retry allowance is spent: ", to_string(u), " of ", to_string(a), " attempts used"], "")
+    UnifiedMemoryPlanUnmodelled =>
+      "no admitted unified-memory plan exists for this host, so the pool the restart would come up with is unpredictable; restarting on an unfavourable reading without one is what produced 23.6 GiB and 54.01 GiB from one unit text"
+  }
+}
+
+type RestartAdmission
+  = RestartAdmitted { next_attempt_number: Nat }
+  | RestartRefused { gap: RestartPreconditionGap }
+
+// The retry allowance is per CONVERGENCE RUN against one desired digest, not per unit lifetime: a
+// unit that is restarted once a week forever is healthy, and one restarted eight times in six
+// minutes is not, and only a run-scoped counter tells them apart.
+type RetryAllowance {
+  attempts_used: Nat
+  allowance: Nat
+}
+
+fn restart_admission(
+  posture: AdmissionPosture,
+  drain: DrainStanding,
+  retries: RetryAllowance,
+) -> RestartAdmission {
+  match posture {
+    Admitting { available_blocks: _ } => RestartRefused { gap: EngineStillAdmitting }
+    Withdrawn { cause: _ } =>
+      match drain {
+        GrantsOutstanding { count: n } => RestartRefused { gap: GrantsStillHeld { count: n } }
+        DrainUnobserved { cause: c } => RestartRefused { gap: QuiescenceUnobserved { cause: c } }
+        Quiesced =>
+          if retries.attempts_used >= retries.allowance {
+            RestartRefused { gap: RetryAllowanceExhausted { used: retries.attempts_used, allowance: retries.allowance } }
+          } else {
+            RestartRefused { gap: UnifiedMemoryPlanUnmodelled }
+          }
+      }
+  }
+}
+
+// ── RE-ADMISSION IS EARNED BY A FRESH RECEIPT, NOT BY THE RESTART HAVING HAPPENED ──────────────
+//
+// The loop closes here. A restart that completed proves a process started; it proves nothing about
+// the pool it came up with, and on this hardware that is exactly the thing that varies. So the new
+// incarnation is re-admitted only against a receipt of its OWN, assessed against the same floor --
+// and a receipt describing the incarnation that was just replaced does not count, which is why the
+// fresh receipt is joined rather than assumed.
+type ReAdmission
+  = ReAdmitted { incarnation: VllmServingLaunch, available_blocks: Nat }
+  | ReAdmissionRefused { cause: NonEmptyStr }
+
+fn re_admit(fresh: VllmKvLayoutReceipt, floor: MinimumColdSessions) -> ReAdmission {
+  match capacity_floor_standing(receipt: fresh, floor: floor) {
+    MeetsFloor { required_blocks: _, available_blocks: a } =>
+      match fresh {
+        KvLayoutObserved { incarnation: i, layout: _, reported: _, blocks_per_max_request: _, source_capture_digest: _ } =>
+          ReAdmitted { incarnation: i, available_blocks: a }
+        KvLayoutUnreadable { incarnation: _, cause: c } => ReAdmissionRefused { cause: c }
+        KvLayoutInconsistent { incarnation: _, cause: c } => ReAdmissionRefused { cause: c }
+      }
+    BelowFloor { required_blocks: r, available_blocks: a } =>
+      ReAdmissionRefused {
+        cause: join(["the restarted engine is still below the floor: ", to_string(r), " blocks required, ", to_string(a), " available"], "") as NonEmptyStr,
+      }
+    FloorUnestablished { cause: c } =>
+      ReAdmissionRefused { cause: join(["the restarted engine's capacity is unestablished, so it is not re-admitted: ", c as String], "") as NonEmptyStr }
+  }
+}

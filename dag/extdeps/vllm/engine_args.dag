@@ -76,10 +76,25 @@ fn vllm_distributed_executor_backend_wire(backend: VllmDistributedExecutorBacken
   }
 }
 
-// THE ARGUMENTS A LAUNCH ACTUALLY CARRIES. `max_num_batched_tokens` is deliberately ABSENT from this
-// record rather than present-and-optional: see the do-not-set row below, which is a typed refusal
-// subject and not a comment.
+// THE PREFILL SCHEDULING AXIS, WHICH IS A REQUEST AND NOT AN EFFECTIVE VALUE.
+//
+// A launch that omits `--max-num-batched-tokens` has NOT thereby chosen a value. This build resolves
+// the default from device memory, usage context, parallel configuration and performance mode, and
+// then adjusts it again when chunked prefill is off -- so the absence of the flag determines nothing
+// a consumer may read. `none` below means UNREQUESTED, and the effective budget is knowable only by
+// reading it back off the running engine.
+type ChunkedPrefillRequest
+  = ChunkedPrefillRequested
+  | ChunkedPrefillNotRequested
+
+type VllmPrefillSchedulingPolicy {
+  max_num_batched_tokens: TokenCount
+  chunked_prefill: ChunkedPrefillRequest
+}
+
+// THE ARGUMENTS A LAUNCH ACTUALLY CARRIES.
 type VllmEngineArgs {
+  prefill_scheduling: VllmPrefillSchedulingPolicy?
   tensor_parallel_size: Nat
   gpu_memory_utilization: VllmMemoryUtilization
   max_model_len: TokenCount
@@ -127,10 +142,23 @@ type VllmDiscouragedArg {
   ground: NonEmptyStr
 }
 
-data vllm_discouraged_max_num_batched_tokens: VllmDiscouragedArg = VllmDiscouragedArg {
-  arg: "--max-num-batched-tokens" as NonEmptyStr,
-  ground: "on a unified-memory GB10 this only reduces the KV pool; prefill is compute-bound so a larger batch buys no throughput" as NonEmptyStr
-}
+// WITHDRAWN 2026-09-07. This row said `--max-num-batched-tokens` "only reduces the KV pool; prefill
+// is compute-bound so a larger batch buys no throughput", and both halves are now unsupported.
+//
+// The batch budget is the per-iteration token budget the scheduler divides between decode and
+// prefill, so it participates in a LATENCY/FAIRNESS tradeoff whatever it does to aggregate
+// throughput: a co-tenant's next decode token cannot appear until the current mixed step finishes.
+// A measured comparison on this fleet -- the same decode taking 3.8s alone and 63.5s beside a cold
+// prefill -- is a serving result the old ground did not account for.
+//
+// And "prefill is compute-bound" was never established here. It was inferred from average link
+// utilisation (~7.9 Gb/s of 50 Gb/s during a cold prefill), and low AVERAGE bandwidth is equally
+// consistent with latency-bound collectives, one-rank stragglers, or host gaps between kernels.
+// Bulk transfer time is a lower bound on communication cost, not a share of the critical path.
+//
+// It is deliberately NOT replaced with a recommended value. The honest state is an unresolved policy
+// axis whose selection needs a step-level trace this repository does not yet capture, and encoding a
+// number here would be the same mistake in the other direction.
 
 data vllm_verified_negatives: List<VllmVerifiedNegative> = [
   vllm_negative_nvfp4_kv_for_mla,
@@ -138,5 +166,4 @@ data vllm_verified_negatives: List<VllmVerifiedNegative> = [
 ]
 
 data vllm_discouraged_args: List<VllmDiscouragedArg> = [
-  vllm_discouraged_max_num_batched_tokens,
 ]
