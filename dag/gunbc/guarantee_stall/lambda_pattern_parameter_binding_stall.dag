@@ -4,15 +4,10 @@ import v2.std.algebra { Cons, Empty }
 import gunbc.guarantee_rung { OutsideTheLadder, StructurallyImpossible }
 import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
 
-// CORRECTED 2026-09-07: the previous sentence here claimed all three in-tree receiver controls
-// pass under the candidate compiler.  One does not compile, and two readers in a row -- review
-// 62191 and the adjudication built on it -- concluded from that sentence that this row's trigger
-// was already discharged and the row should be deleted.  A DESIGN 4c annotation is exactly the
-// kind of claim no Accepted program can check, so a false one never reds and drifts in the
-// direction that flatters its row; this correction is recorded rather than silently substituted
-// so the next reader knows the population was measured against the tree, not against this prose.
-// The collection members are not re-asserted here: this row names them and leaves their status to
-// the instrument that reports it, rather than carrying a second copy of an answer it cannot check.
+// This row names its failing member and leaves every member's status to the instrument that
+// reports it, rather than carrying a second copy of an answer no Accepted program can check.
+// The shape is deliberate: an annotation asserting that a population passes cannot go red when it
+// stops being true, so such a claim drifts in the direction that flatters its row.
 data lambda_pattern_parameter_binding_stall: GuaranteeStall = GuaranteeStall {
   subject: "match-pattern-bound CALLABLE binding surviving into application at the lambda consumer boundary",
   current: OutsideTheLadder,
@@ -22,9 +17,9 @@ data lambda_pattern_parameter_binding_stall: GuaranteeStall = GuaranteeStall {
   },
   population: BoundedPopulation {
     members: Cons {
-      head: "test.claim.algebra_receiver_callable_witness_test matched_generic_callable_alias_remains_callable -- the declared subject and the member that still fails, not a passing control. Its failing arm is CallbackPresent { invoke } => invoke(41) == 42 -- a callable bound by a match pattern and applied in the body, which is this row's grounding verbatim and is what makes the row checkable against the source rather than against this prose; the required floor's witnesses lane is the instrument that reports the refusal, and gunbc.ci.ci_layer_roots carries its bounded floor exclusion.",
+      head: "test.claim.algebra_receiver_callable_witness_test matched_generic_callable_alias_remains_callable -- the declared subject and the member that still fails. Its failing arm is CallbackPresent { invoke } => invoke(41) == 42, a callable bound by a match pattern and applied in the body, which is this row's grounding.",
       tail: Cons {
-        head: "test.claim.algebra_receiver_application_witness_test and test.claim.algebra_receiver_forwarding_witness_test -- the collection-side receiver controls. This row asserts nothing about their status: the earlier claim that they pass is withdrawn rather than restated, because an unexecutable claim about them is what misled two reviewers into reading this stall as self-discharging. Their status is whatever the required floor reports.",
+        head: "test.claim.algebra_receiver_application_witness_test and test.claim.algebra_receiver_forwarding_witness_test -- the collection-side receiver controls. This row asserts nothing about their status.",
         tail: Cons {
           head: "emission_provenance_test (external specimen, shape-similar; causal relationship UNMEASURED)",
           tail: Empty {}
