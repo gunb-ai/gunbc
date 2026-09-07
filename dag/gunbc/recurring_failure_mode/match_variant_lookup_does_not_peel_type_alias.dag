@@ -7,7 +7,7 @@ data match_variant_lookup_does_not_peel_type_alias: RecurringFailureMode = Recur
   identity: "match_variant_lookup_does_not_peel_type_alias" as NonEmptyStr,
 
   receipts: [
-    "INVALID STATE: a match arm names a coproduct variant that the scrutinee type declares only through a type alias, and inference refuses variant not found in type AliasName rather than peeling the alias to the coproduct that constructors inhabit. ",
+    "INVALID STATE: a match arm names a coproduct variant on a scrutinee whose declared type is a container-typed generic use of an alias of that coproduct (type-argument children; List<T> = FreeMonoid<T>), and inference refuses variant not found in type AliasName. Nullary aliases already peel through expand_scrut_from_type_name and are not this state. What does not peel: is_user_generic_use_site returns false when is_container_type, so the expander looks up the authored name, the List use site is not a Disj, and find_child_named searches for Cons among the type arguments. ",
 
     "HARM: a legal pattern against the aliased coproduct is unwritable under the alias spelling, so authors either cannot express the match or take a second spelling of the same type (the coproduct name) to route around the wall -- DESIGN section 5 workaround. ",
 
@@ -15,7 +15,7 @@ data match_variant_lookup_does_not_peel_type_alias: RecurringFailureMode = Recur
 
     "NOT JOINED TO the Coproduct(FreeMonoid) method-lookup refusal on bold-swift at src/v2/extdeps/languages/c.dag:385 (method list_push not found). Shared carrier name and similar-shaped lookup failure is a topic match until a discriminator binds them. ",
 
-    "RECOGNITION RULE: a match of Cons or Empty against a binder whose declared type is an alias of FreeMonoid (or any alias of a coproduct) refuses naming the alias rather than the coproduct. Changing only the type spelling to the coproduct name, holding the pattern fixed, either accepts or moves the same diagnostic onto the next alias-typed field in the pattern. ",
+    "RECOGNITION RULE: a match of Cons or Empty against a binder whose declared type is a container-typed generic use of an alias of FreeMonoid (type-argument children) refuses naming the alias. Nullary aliases of a coproduct already peel -- enrolled and passing: src/v2/test/claim/algebra/generic_alias_coproduct_instantiation_test.dag, type SymbolPath = FreeMonoid<Symbol>, matches Cons. Changing only an outer type spelling to the coproduct name, holding the pattern fixed, moves the same diagnostic onto the next List-typed field in the pattern. ",
 
     "RUNG FOUND AT: mitigatable -- the refusal is loud. CEILING: structurally guaranteed when variant lookup peels aliases to the coproduct that declares the constructor, so the alias spelling and the coproduct spelling admit the same arms. ",
 
