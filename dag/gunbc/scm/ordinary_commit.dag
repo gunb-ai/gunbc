@@ -26,13 +26,14 @@ module gunbc.scm.ordinary_commit
 
 import std.types { String, Int }
 import gunbc.scm.ancestry { RepositoryCommitRef }
-import gunbc.scm.object_store { CorpusManifestObjectRef }
-import gunbc.scm.integration { NoSquashIntegration }
+
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
+  RepositoryManifestRoot,
   MintedCommit,
-  CommitParentAdmission, CommitParentAdmitted, CommitParentAbsent, admit_commit_parent,
-  mint_repository_commit_admitted,
+  OrdinaryCommitSubjectAdmission, OrdinaryCommitSubjectAdmitted,
+  OrdinaryCommitSubjectAllocatorInvalid, OrdinaryCommitSubjectParentMissing,
+  admit_ordinary_commit_subject, mint_repository_commit_admitted,
 }
 
 type OrdinaryCommitMint
@@ -51,27 +52,29 @@ type OrdinaryCommitMint
 // THE ADMISSION RULES ARE NOT DUPLICATED. `admit_commit_parent` is the same function the squash route
 // calls, and the row is built by the same constructor. What differs between the routes is only which
 // questions they ask, which is exactly what should differ.
+//
+// AND THE SUBJECT IS THE SEALED PAIR, so this helper cannot be handed a repository and a root that came
+// from different stores. It takes no repository argument at all: there is only one repository here, the
+// one the root was resolved or stored against.
+//
+// THE INTEGRATION ARM IS GONE FOR THE THIRD AND FINAL TIME, and the first two attempts are worth
+// recording because they were the same reflex. Attempt one kept the generic arm and explained in a
+// comment that it could not fire. Attempt two translated it into a parent-missing. Both are the
+// fabricated cause this stack keeps paying for -- a match closed with an answer nobody could have
+// observed. The question is now absent from the ADMISSION, not merely from this fold:
+// `admit_ordinary_commit_subject` never asks it, so there is no arm here to handle.
 fn mint_ordinary_commit(
-  repository: RepositoryEnvelope,
-  root: CorpusManifestObjectRef,
+  subject: RepositoryManifestRoot,
   message: String,
   parent: RepositoryCommitRef?,
 ) -> OrdinaryCommitMint {
-  if repository.commit_allocator.next_ordinal < 0 {
-    OrdinaryCommitAllocatorInvalid { next_ordinal: repository.commit_allocator.next_ordinal }
-  } else {
-    match admit_commit_parent(repository: repository, parent: parent) {
-      CommitParentAbsent { parent: p } => OrdinaryCommitParentMissing { parent: p }
-      CommitParentAdmitted { ancestry: ancestry } => {
-        let minted = mint_repository_commit_admitted(
-          repository: repository,
-          root: root,
-          message: message,
-          ancestry: ancestry,
-          integration: NoSquashIntegration,
-        )
-        OrdinaryCommitMinted { repository: minted.repository, reference: minted.reference }
-      }
+  match admit_ordinary_commit_subject(subject: subject, parent: parent) {
+    OrdinaryCommitSubjectAllocatorInvalid { next_ordinal: n } =>
+      OrdinaryCommitAllocatorInvalid { next_ordinal: n }
+    OrdinaryCommitSubjectParentMissing { parent: p } => OrdinaryCommitParentMissing { parent: p }
+    OrdinaryCommitSubjectAdmitted(admitted) => {
+      let minted = mint_repository_commit_admitted(admitted: admitted, message: message)
+      OrdinaryCommitMinted { repository: minted.repository, reference: minted.reference }
     }
   }
 }

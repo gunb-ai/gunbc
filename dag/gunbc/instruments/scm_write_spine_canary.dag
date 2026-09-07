@@ -30,7 +30,6 @@ import gunbc.scm.repository_slot {
   RepositoryPublication, RepositoryPublished,
   RepositoryPublicationSuperseded, RepositoryPublicationStoreUnavailable,
   RepositoryPublicationEncodeRefused, RepositoryPublicationKeyNotAddressable,
-  RepositoryPublicationDigestDisagreed,
   RepositorySlotRead, RepositorySlotAbsent, RepositorySlotHead,
   RepositorySlotStoreUnreadable, RepositorySlotDocumentUnparseable, RepositorySlotDocumentRefused,
   publish_new_repository, republish_repository, read_repository_slot,
@@ -99,8 +98,6 @@ fn publication_exit(publication: RepositoryPublication) -> ProcessExit {
       exit_failure(reason: "publication refused: the repository value did not encode")
     RepositoryPublicationKeyNotAddressable { key: _ } =>
       exit_failure(reason: "publication refused: the key does not address a slot")
-    RepositoryPublicationDigestDisagreed =>
-      exit_failure(reason: "publication refused: the proposed digest disagreed with its bytes")
   }
 }
 
@@ -221,7 +218,9 @@ func spine_commit_loaded(loaded: LoadedRepositoryGeneration, message: String) ->
     StagedCommitCandidateRefused { cause: _ } =>
       exit_failure(reason: "commit refused: the effective candidate could not be read")
     StagedCommitNothingToFreeze =>
-      exit_failure(reason: "commit refused: nothing is staged and no commit is checked out")
+      exit_failure(
+        reason: "commit refused: nothing to freeze -- the candidate is the snapshot already committed, or there is no snapshot at all"
+      )
     StagedCommitAllocatorInvalid { next_ordinal: _ } =>
       exit_failure(reason: "commit refused: the commit allocator is invalid")
     StagedCommitParentMissing { parent: _ } =>
@@ -413,28 +412,56 @@ func checkout_from(loaded: LoadedRepositoryGeneration, reference: RepositoryComm
 // that a publication cannot leave a readable prefix at a generation name -- is held by construction
 // through `DefaultAccessCreateOnly`, and the specimen for the unsafe binding belongs with retiring its
 // last consumer. Two facts, two controls; neither stands as evidence for the other.
-func spine_head(root: String, key: String, expect: String) -> ProcessExit {
+// THE EXPECTED GENERATION IS COMPARED, NOT ACCEPTED. The first version of this entry matched
+// `RepositorySlotDocumentUnparseable { generation: _ }` and called that success -- which distinguishes
+// "served a clean older head" from "some unparseable generation", and does NOT establish the claim it
+// was reported as making, that refusal happened AT the corrupt generation. A mutation hard-coding any
+// other generation into the refusal stayed green. The generation is the SUBJECT of this claim, not
+// diagnostic decoration beside it, so the caller states which one it expects and this compares.
+// Found by external review.
+func spine_head(root: String, key: String, expect: String, at_generation: String) -> ProcessExit {
   match admit_slot(root: root, key: key) {
     SlotRootEmpty => exit_failure(reason: slot_refusal(admission: SlotRootEmpty))
     SlotKeyEmpty => exit_failure(reason: slot_refusal(admission: SlotKeyEmpty))
-    SlotAdmitted(slot) => head_verdict(read: read_repository_slot(slot: slot), expect: expect)
+    SlotAdmitted(slot) =>
+      head_verdict(
+        read: read_repository_slot(slot: slot),
+        expect: expect,
+        at_generation: at_generation,
+      )
   }
 }
 
-fn head_verdict(read: RepositorySlotRead, expect: String) -> ProcessExit {
+fn head_verdict(read: RepositorySlotRead, expect: String, at_generation: String) -> ProcessExit {
   if expect == "decoded" {
     match read {
       RepositorySlotHead(_) => ExitSuccess
       other => exit_failure(reason: join(["head expected to decode, but ", slot_read_failure(read: other)], ""))
     }
   } else if expect == "unparseable" {
-    match read {
-      RepositorySlotDocumentUnparseable { generation: _, gap: _ } => ExitSuccess
-      RepositorySlotHead(_) =>
-        exit_failure(
-          reason: "head decoded cleanly -- the reader served an older generation instead of refusing at the corrupt one"
-        )
-      other => exit_failure(reason: join(["head expected to be unparseable, but ", slot_read_failure(read: other)], ""))
+    match parse_int(s: at_generation) {
+      Absent =>
+        exit_failure(reason: join(["--arg at_generation is not a number: ", at_generation], ""))
+      Present { value: expected } =>
+        match read {
+          RepositorySlotDocumentUnparseable { generation: g, gap: _ } =>
+            if cas_generation_count(g: g) == expected {
+              ExitSuccess
+            } else {
+              exit_failure(
+                reason: join([
+                  "the reader refused at generation ", cas_generation_count(g: g) as String,
+                  " but the corrupt generation is ", expected as String,
+                  " -- it refused about the wrong file",
+                ], "")
+              )
+            }
+          RepositorySlotHead(_) =>
+            exit_failure(
+              reason: "head decoded cleanly -- the reader served an older generation instead of refusing at the corrupt one"
+            )
+          other => exit_failure(reason: join(["head expected to be unparseable, but ", slot_read_failure(read: other)], ""))
+        }
     }
   } else {
     exit_failure(reason: join(["--arg expect must be decoded or unparseable, not ", expect], ""))
@@ -451,7 +478,9 @@ fn head_verdict(read: RepositorySlotRead, expect: String) -> ProcessExit {
 // which both publish is the defect this whole boundary exists to prevent, and it goes red.
 //
 // THE TWO PROPOSALS MUST DIFFER, or the run would be satisfied by a store that admits an idempotent
-// re-publication, which is a different property. They differ by their commit messages.
+// re-publication, which is a different property. They differ by their STAGED BYTES -- two authors who
+// read the same head and wrote different content at one path. An earlier revision said they differ by
+// commit message, which described the superseded setup that derived them by committing twice.
 func spine_race(root: String, key: String, manifest_path: String) -> ProcessExit {
   if manifest_path == "" {
     exit_failure(reason: "race refused: --arg manifest_path is empty")

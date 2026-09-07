@@ -19,7 +19,7 @@ module gunbc.scm.repository_envelope
 // one. The subject-parameterized identity from std.minted_identity stays stable across list insertion,
 // deletion and reorder without deriving meaning from content or position.
 
-import std.types { Bool, Int, List, Map, String }
+import std.types { Bool, Int, List, Map, String, NonEmptyStr }
 import std.minted_identity {
   MintedId,
   MintedIdAllocator,
@@ -98,6 +98,9 @@ import gunbc.scm.object_store {
   scm_object_ref_locator,
   empty_store,
   find_node_record,
+  CorpusManifestEntry,
+  CorpusManifestStored, CorpusManifestDuplicatePath, CorpusManifestLocatorCollision,
+  store_corpus_manifest,
 }
 import gunbc.scm.commit_closure {
   ClosureCensus,
@@ -605,33 +608,104 @@ type BrandedRootMint
   | BrandedRootParentMissing { parent: RepositoryCommitRef }
   | BrandedRootIntegrationSourceMissing { source: RepositoryCommitRef }
 
-fn mint_commit_from_stored_manifest(
+// A BRAND PROVES KIND IN SOME STORE, NOT IN WHICH STORE, AND THAT IS THE GAP THIS CARRIER CLOSES.
+//
+// `CorpusManifestObjectRef` says "the store that produced me held a corpus manifest at this locator".
+// It does not say WHICH store, so a mint taking a repository and a root as two independent parameters
+// accepts a root branded by a different store entirely -- and the commit that results names a manifest
+// its own repository does not hold. Everything downstream is well-formed: it encodes, it mints, and it
+// refuses only later at checkout, in the wrong place and naming the wrong owner.
+//
+// THE LIVE CALLERS ALL PAIRED CORRECTLY, WHICH IS EXACTLY WHY THIS IS WORTH SEALING RATHER THAN
+// CHECKING. The hazard was latent, so no test would have found it; `squash_merge` shows the shape most
+// clearly, having had to hand-build a fresh envelope around the advanced store and then pass the
+// reference beside it, with nothing but the author's care holding the two together.
+//
+// SO THE PAIR IS THE VALUE. `sole_constructor` means the only ways to obtain one are the two routes
+// below, and both derive the root and the repository from ONE motion: resolving a locator against that
+// repository's store, or storing entries into it. There is no argument through which the halves can be
+// sourced separately.
+type RepositoryManifestRoot sole_constructor {
+  repository: RepositoryEnvelope
+  root: CorpusManifestObjectRef
+}
+
+// RESOLVING KEEPS ALL THREE WRONG-KIND POPULATIONS APART, for the reason this stack has paid for
+// before: a locator OCCUPIED by a file or a node is not an EMPTY locator, and reporting one as the
+// other sends an author to restore an object that is already there.
+type RepositoryManifestRootResolution
+  = RepositoryManifestRootResolved(RepositoryManifestRoot)
+  | RepositoryManifestRootMissing { root: ObjectId }
+  | RepositoryManifestRootIsAuthoredSource { root: ObjectId }
+  | RepositoryManifestRootIsSemanticNode { root: ObjectId }
+
+fn repository_root_by_resolving(
   repository: RepositoryEnvelope,
-  root: CorpusManifestObjectRef,
+  root: CorpusManifestTarget,
+) -> RepositoryManifestRootResolution {
+  match find_corpus_manifest_record(
+    store: repository.store,
+    identity: corpus_manifest_target_locator(target: root)
+  ) {
+    CorpusManifestAbsent { identity: r } => RepositoryManifestRootMissing { root: r }
+    CorpusManifestIsAuthoredSource { identity: r } =>
+      RepositoryManifestRootIsAuthoredSource { root: r }
+    CorpusManifestIsSemanticNode { identity: r } =>
+      RepositoryManifestRootIsSemanticNode { root: r }
+    CorpusManifestFound(record) =>
+      RepositoryManifestRootResolved(
+        RepositoryManifestRoot { repository: repository, root: record.identity }
+      )
+  }
+}
+
+// STORING ADVANCES THE STORE AND BRANDS THE ROOT IN ONE MOTION, which is what a caller that just
+// built a manifest needs. Before this existed, `squash_merge` stored into `repository.store`, then
+// hand-assembled a new envelope around the advanced store, then passed the reference beside it -- three
+// steps in which the pairing was the author's responsibility. Now the advanced repository and the root
+// leave together and cannot be separated.
+type RepositoryManifestRootStore
+  = RepositoryManifestRootStored(RepositoryManifestRoot)
+  | RepositoryManifestRootDuplicatePath { path: NonEmptyStr }
+  | RepositoryManifestRootLocatorCollision { identity: ObjectId }
+
+fn repository_root_by_storing(
+  repository: RepositoryEnvelope,
+  entries: List<CorpusManifestEntry>,
+) -> RepositoryManifestRootStore {
+  match store_corpus_manifest(store: repository.store, entries: entries) {
+    CorpusManifestDuplicatePath { path: p } => RepositoryManifestRootDuplicatePath { path: p }
+    CorpusManifestLocatorCollision { identity: i, existing: _, incoming: _ } =>
+      RepositoryManifestRootLocatorCollision { identity: i }
+    CorpusManifestStored { store: stored, manifest: reference } =>
+      RepositoryManifestRootStored(
+        RepositoryManifestRoot {
+          repository: RepositoryEnvelope {
+            store: stored,
+            commits: repository.commits,
+            commit_allocator: repository.commit_allocator,
+            checked_out: repository.checked_out,
+            staged: repository.staged,
+          },
+          root: reference,
+        }
+      )
+  }
+}
+
+fn mint_commit_from_stored_manifest(
+  subject: RepositoryManifestRoot,
   message: String,
   parent: RepositoryCommitRef?,
   integration: CommitIntegration,
 ) -> BrandedRootMint {
-  if repository.commit_allocator.next_ordinal < 0 {
-    BrandedRootAllocatorInvalid { next_ordinal: repository.commit_allocator.next_ordinal }
-  } else {
-    match integration_anchor_resolves(repository: repository, integration: integration) {
-      Present { value: missing } => BrandedRootIntegrationSourceMissing { source: missing }
-      Absent =>
-        match admit_commit_parent(repository: repository, parent: parent) {
-          CommitParentAbsent { parent: p } => BrandedRootParentMissing { parent: p }
-          CommitParentAdmitted { ancestry: ancestry } =>
-            widen_minted_commit(
-              minted: mint_repository_commit_admitted(
-                repository: repository,
-                root: root,
-                message: message,
-                ancestry: ancestry,
-                integration: integration,
-              )
-            )
-        }
-    }
+  match admit_commit_subject(subject: subject, parent: parent, integration: integration) {
+    CommitSubjectAllocatorInvalid { next_ordinal: n } => BrandedRootAllocatorInvalid { next_ordinal: n }
+    CommitSubjectParentMissing { parent: p } => BrandedRootParentMissing { parent: p }
+    CommitSubjectIntegrationSourceMissing { source: s } =>
+      BrandedRootIntegrationSourceMissing { source: s }
+    CommitSubjectAdmitted(admitted) =>
+      widen_minted_commit(minted: mint_repository_commit_admitted(admitted: admitted, message: message))
   }
 }
 
@@ -648,20 +722,16 @@ fn mint_repository_commit(
   if repository.commit_allocator.next_ordinal < 0 {
     RepositoryCommitMintAllocatorInvalid { next_ordinal: repository.commit_allocator.next_ordinal }
   } else {
-    match find_corpus_manifest_record(
-      store: repository.store,
-      identity: corpus_manifest_target_locator(target: root)
-    ) {
-      CorpusManifestAbsent { identity: r } => RepositoryCommitMintRootMissing { root: r }
-      CorpusManifestIsAuthoredSource { identity: r } =>
+    match repository_root_by_resolving(repository: repository, root: root) {
+      RepositoryManifestRootMissing { root: r } => RepositoryCommitMintRootMissing { root: r }
+      RepositoryManifestRootIsAuthoredSource { root: r } =>
         RepositoryCommitMintRootIsAuthoredSource { root: r }
-      CorpusManifestIsSemanticNode { identity: r } =>
+      RepositoryManifestRootIsSemanticNode { root: r } =>
         RepositoryCommitMintRootIsSemanticNode { root: r }
-      CorpusManifestFound(record) =>
+      RepositoryManifestRootResolved(subject) =>
         widen_branded_root_mint(
           mint: mint_commit_from_stored_manifest(
-            repository: repository,
-            root: record.identity,
+            subject: subject,
             message: message,
             parent: parent,
             integration: integration,
@@ -723,13 +793,100 @@ fn admit_commit_parent(
   }
 }
 
-fn mint_repository_commit_admitted(
-  repository: RepositoryEnvelope,
-  root: CorpusManifestObjectRef,
-  message: String,
-  ancestry: CommitAncestry,
+// THE ADMITTED SUBJECT, SEALED, BECAUSE THE OUTPUT BRAND WAS NEVER THE PROBLEM.
+//
+// `mint_repository_commit_admitted` answers a `sole_constructor MintedCommit`, which says the value
+// came from here -- and says nothing about whether the admissions ran. The function is public, `.dag`
+// has no module privacy, and it appends the commit row WITHOUT checking the allocator, the parent, or
+// the integration anchor, because by contract those were already checked. So it was a forge factory:
+// a caller could hand it any repository, any root, and a `DescendsFrom` naming a commit that does not
+// exist, and receive a well-formed repository back. Sealing the OUTPUT cannot close that; the input
+// relation is what needed carrying. Found by external review.
+//
+// SO THE ADMISSIONS MINT THE SUBJECT. `AdmittedCommitSubject` can only be built by
+// `admit_commit_subject` below, which runs all three; this function takes nothing else and therefore
+// cannot be reached with an unadmitted one. The two routes -- ordinary and squash -- differ in which
+// questions they ASK, and both end at the same admission and the same row construction.
+type AdmittedCommitSubject sole_constructor {
+  subject: RepositoryManifestRoot
+  ancestry: CommitAncestry
+  integration: CommitIntegration
+}
+
+type CommitSubjectAdmission
+  = CommitSubjectAdmitted(AdmittedCommitSubject)
+  | CommitSubjectAllocatorInvalid { next_ordinal: Int }
+  | CommitSubjectParentMissing { parent: RepositoryCommitRef }
+  | CommitSubjectIntegrationSourceMissing { source: RepositoryCommitRef }
+
+fn admit_commit_subject(
+  subject: RepositoryManifestRoot,
+  parent: RepositoryCommitRef?,
   integration: CommitIntegration,
+) -> CommitSubjectAdmission {
+  let repository = subject.repository
+  if repository.commit_allocator.next_ordinal < 0 {
+    CommitSubjectAllocatorInvalid { next_ordinal: repository.commit_allocator.next_ordinal }
+  } else {
+    match integration_anchor_resolves(repository: repository, integration: integration) {
+      Present { value: missing } => CommitSubjectIntegrationSourceMissing { source: missing }
+      Absent =>
+        match admit_commit_parent(repository: repository, parent: parent) {
+          CommitParentAbsent { parent: p } => CommitSubjectParentMissing { parent: p }
+          CommitParentAdmitted { ancestry: ancestry } =>
+            CommitSubjectAdmitted(
+              AdmittedCommitSubject {
+                subject: subject,
+                ancestry: ancestry,
+                integration: integration,
+              }
+            )
+        }
+    }
+  }
+}
+
+// THE ORDINARY ROUTE DOES NOT ASK THE INTEGRATION QUESTION, so its admission does not carry the
+// answer. `integration_anchor_resolves` returns `Absent` for `NoSquashIntegration` by construction --
+// there is no source to look for -- so skipping it is not a weakened admission, it is the same
+// admission with a question that has no subject removed. The arm is therefore ABSENT from this
+// outcome rather than unreachable within it, which is the difference between a caller that cannot ask
+// and a caller that must match and invent.
+type OrdinaryCommitSubjectAdmission
+  = OrdinaryCommitSubjectAdmitted(AdmittedCommitSubject)
+  | OrdinaryCommitSubjectAllocatorInvalid { next_ordinal: Int }
+  | OrdinaryCommitSubjectParentMissing { parent: RepositoryCommitRef }
+
+fn admit_ordinary_commit_subject(
+  subject: RepositoryManifestRoot,
+  parent: RepositoryCommitRef?,
+) -> OrdinaryCommitSubjectAdmission {
+  let repository = subject.repository
+  if repository.commit_allocator.next_ordinal < 0 {
+    OrdinaryCommitSubjectAllocatorInvalid { next_ordinal: repository.commit_allocator.next_ordinal }
+  } else {
+    match admit_commit_parent(repository: repository, parent: parent) {
+      CommitParentAbsent { parent: p } => OrdinaryCommitSubjectParentMissing { parent: p }
+      CommitParentAdmitted { ancestry: ancestry } =>
+        OrdinaryCommitSubjectAdmitted(
+          AdmittedCommitSubject {
+            subject: subject,
+            ancestry: ancestry,
+            integration: NoSquashIntegration,
+          }
+        )
+    }
+  }
+}
+
+fn mint_repository_commit_admitted(
+  admitted: AdmittedCommitSubject,
+  message: String,
 ) -> MintedCommit {
+  let repository = admitted.subject.repository
+  let root = admitted.subject.root
+  let ancestry = admitted.ancestry
+  let integration = admitted.integration
   let allocation = mint_id(alloc: repository.commit_allocator)
   let reference = RepositoryCommitRef { identity: allocation.id }
   MintedCommit {

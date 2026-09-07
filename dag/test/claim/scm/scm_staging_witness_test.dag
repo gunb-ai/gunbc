@@ -8,17 +8,29 @@ module test.claim.scm_staging_witness
 // a control that asserts "it worked" discriminates nothing here, and each claim states the mutation
 // it is aimed at.
 //
-// THE FIXTURE BUILDERS ARE THIS FILE'S, AND THAT IS DELIBERATE RATHER THAN A GAP. The verbs that move
-// the selection -- `add` and `commit` -- land with the safe publisher they require, so there is no
-// production transition to reach for here. The builders below compose the object store's own
-// insertion and the envelope's own mint, which are the authorities either verb would use, so a
-// specimen built by them is a state a document can genuinely be in. What they must not become is a
-// second implementation of those verbs' POLICY, and they are FALLIBLE for the reason their own
-// header gives: a setup step that failed must stop the claim, never hand it a substitute specimen.
+// THE STAGING STEP GOES THROUGH THE PRODUCTION VERB, AND THIS PARAGRAPH USED TO EXPLAIN WHY IT COULD
+// NOT. It said `add` and `commit` land with the safe publisher they require -- true when written,
+// false now: `gunbc.scm.write_spine.stage_source_at_path` exists and is what an author invokes. The
+// paragraph's own closing rule is what condemned the code beneath it: the builders "must not become a
+// second implementation of those verbs' POLICY", and `stg_stage` was exactly that -- its own copy of
+// the replace-one-path-in-the-inherited-candidate rule, drifting silently against the real one while
+// its claims went on passing. It now delegates, so these scenes are built by the verb they are about.
+//
+// COMMITTING IS STILL THIS FILE'S OWN, and for a stated reason rather than by omission:
+// `commit_staged` CONSUMES the stage, while these claims need a repository whose stage and base are
+// both observable in order to say anything about standing. That is a genuinely different construction
+// subject, not a convenience.
+//
+// The builders stay FALLIBLE for the reason their own header gives: a setup step that failed must
+// stop the claim, never hand it a substitute specimen.
 
 import std.types { Bool, String, List, Int, NonEmptyStr }
 import std.minted_identity { MintedId, MintedIdAllocator }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.scm.write_spine {
+  StageIngress, Staged, StageCandidateRefused, StageSourceLocatorCollision,
+  StageManifestLocatorCollision, stage_source_at_path,
+}
 import gunbc.scm.object_store {
   ObjectStore, ObjectId, empty_store, object_id_eq,
   CorpusManifestEntry, CorpusManifestObjectRef, CorpusManifestTarget,
@@ -132,37 +144,11 @@ fn stg_stage(build: StgBuild, path: String, text: String) -> StgBuild {
   match build {
     StgSetupFailed => StgSetupFailed
     StgBuilt { repository: repository } =>
-      match staged_entries(repository: repository) {
-        StagedEntriesRefused { cause: _ } => StgSetupFailed
-        StagedEntries { entries: entries } =>
-          match store_authored_source(store: repository.store, text: text) {
-            SourceLocatorCollision { identity: _, existing: _, incoming: _ } => StgSetupFailed
-            SourceStored { store: with_source, source: source } =>
-              match store_corpus_manifest(
-                store: with_source,
-                entries: concat(
-                  filter(entries, fn(e) { (e.path as String) != path }),
-                  [CorpusManifestEntry {
-                    path: path as NonEmptyStr,
-                    source: AuthoredSourceTarget { locator: source.locator },
-                  }],
-                ),
-              ) {
-                CorpusManifestDuplicatePath { path: _ } => StgSetupFailed
-                CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } =>
-                  StgSetupFailed
-                CorpusManifestStored { store: with_manifest, manifest: manifest } =>
-                  StgBuilt {
-                    repository: RepositoryEnvelope {
-                      store: with_manifest,
-                      commits: repository.commits,
-                      commit_allocator: repository.commit_allocator,
-                      checked_out: repository.checked_out,
-                      staged: Present { value: manifest },
-                    }
-                  }
-              }
-          }
+      match stage_source_at_path(repository: repository, path: path as NonEmptyStr, text: text) {
+        Staged { repository: staged, manifest: _, source: _ } => StgBuilt { repository: staged }
+        StageCandidateRefused { cause: _ } => StgSetupFailed
+        StageSourceLocatorCollision { identity: _ } => StgSetupFailed
+        StageManifestLocatorCollision { identity: _ } => StgSetupFailed
       }
   }
 }

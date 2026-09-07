@@ -22,7 +22,7 @@ import std.types { String, NonEmptyStr, Int, List }
 import gunbc.scm.object_store {
   ObjectId,
   AuthoredSourceObjectRef, authored_source_target_of,
-  CorpusManifestObjectRef, CorpusManifestEntry, CorpusManifestRecord,
+  CorpusManifestObjectRef, CorpusManifestEntry, CorpusManifestRecord, CorpusManifestTarget,
   SourceStoreOutcome, SourceStored, SourceLocatorCollision, store_authored_source,
   PathUniqueManifestEntries, manifest_entries_with_path_replaced, manifest_entries_of_single,
   UniqueManifestStoreOutcome, UniqueManifestStored, UniqueManifestLocatorCollision,
@@ -30,6 +30,10 @@ import gunbc.scm.object_store {
 }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope, RepositoryCommitRef,
+  RepositoryManifestRoot,
+  RepositoryManifestRootResolved, RepositoryManifestRootMissing,
+  RepositoryManifestRootIsAuthoredSource, RepositoryManifestRootIsSemanticNode,
+  repository_root_by_resolving,
 }
 import gunbc.scm.ordinary_commit {
   OrdinaryCommitMint, OrdinaryCommitMinted,
@@ -42,16 +46,20 @@ import gunbc.scm.staging {
   effective_candidate,
   StageStanding, StageMatchesBase, StageDiffersFromBase, StageWithNoBase,
   NoCandidateAndNoBase, StageStandingRefused,
+  StageManifestMissingFromStore, StageManifestIsAuthoredSource, StageManifestIsSemanticNode,
   stage_standing,
 }
 
 // THE STAGING OUTCOME. Each refusal names a different owner and a different repair, which is why the
 // two collision arms are not folded together: a source-locator collision says the object table
 // already holds a DIFFERENT file under this file's identity, and a manifest-locator collision says
-// the same about the snapshot. The duplicate-path arm cannot arise from this verb's own construction
-// -- it replaces rather than appends -- but it is preserved because `store_corpus_manifest` is the
-// authority for that decision and swallowing its answer here would mean this module had quietly
-// decided a question it does not own.
+// the same about the snapshot.
+//
+// THERE IS NO DUPLICATE-PATH ARM. An earlier revision carried one and argued for keeping it on the
+// ground that `store_corpus_manifest` owns that decision. That reasoning is what the carry_mint class
+// looks like from the inside: this verb cannot produce a duplicate, so carrying the generic authority's
+// arm described the CALLEE's domain in this operation's signature. The route now ends at
+// `store_path_unique_manifest`, whose outcome has no such arm -- see `stage_source_at_path`.
 type StageIngress
   = Staged {
       repository: RepositoryEnvelope,
@@ -211,16 +219,46 @@ fn commit_staged(repository: RepositoryEnvelope, message: String) -> StagedCommi
   }
 }
 
+// THE ROOT IS RE-RESOLVED AGAINST THIS REPOSITORY BEFORE IT IS FROZEN, and the cost is declared rather
+// than dodged. `stage_standing` already found the record, so this is a second O(n) store lookup per
+// commit -- exactly what `mint_repository_commit` has always cost, and the reason it is paid here is
+// that the SEAL is what makes the pairing unwritable. Threading the sealed pair out through staging
+// would avoid the lookup and is the right shape once staging's carriers move; carrying a bare
+// reference forward to save it would put the pairing back in the author's hands.
+//
+// THE THREE WRONG-KIND ARMS CANNOT FIRE FROM HERE -- the root came from a record `stage_standing` just
+// resolved out of this same store -- so they are NOT re-reported as fabricated causes. They collapse to
+// the candidate-refusal arm, which is what they are from this verb's point of view: the candidate this
+// repository names could not be read as a manifest.
 fn freeze_root(
   repository: RepositoryEnvelope,
   root: CorpusManifestObjectRef,
   message: String,
 ) -> StagedCommit {
-  match mint_ordinary_commit(
+  match repository_root_by_resolving(
     repository: repository,
-    root: root,
+    root: CorpusManifestTarget { locator: root.locator },
+  ) {
+    RepositoryManifestRootMissing { root: r } =>
+      StagedCommitCandidateRefused { cause: StageManifestMissingFromStore { staged: r } }
+    RepositoryManifestRootIsAuthoredSource { root: r } =>
+      StagedCommitCandidateRefused { cause: StageManifestIsAuthoredSource { staged: r } }
+    RepositoryManifestRootIsSemanticNode { root: r } =>
+      StagedCommitCandidateRefused { cause: StageManifestIsSemanticNode { staged: r } }
+    RepositoryManifestRootResolved(subject) =>
+      freeze_sealed_root(subject: subject, parent: repository.checked_out, message: message)
+  }
+}
+
+fn freeze_sealed_root(
+  subject: RepositoryManifestRoot,
+  parent: RepositoryCommitRef?,
+  message: String,
+) -> StagedCommit {
+  match mint_ordinary_commit(
+    subject: subject,
     message: message,
-    parent: repository.checked_out,
+    parent: parent,
   ) {
     OrdinaryCommitAllocatorInvalid { next_ordinal: n } =>
       StagedCommitAllocatorInvalid { next_ordinal: n }

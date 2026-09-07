@@ -2,7 +2,7 @@ module gunbc.durable_cas_file_store
 
 import std.types { NonEmptyStr, String, Int, Bool }
 import std.content_hash { ContentHash, content_hash_of_value, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
-import std.durable_compare_and_set { CasAttempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_generation_first, cas_generation_next, cas_generation_count }
+import std.durable_compare_and_set { CasAttempt, cas_attempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_generation_first, cas_generation_next, cas_generation_count }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
 // The first production realization of std.durable_compare_and_set: one keyed
@@ -166,6 +166,44 @@ fn cas_admit_verified_digest(attempt: CasAttempt<NonEmptyStr>) -> CasAttemptAdmi
     ContentHashEqual => CasAttemptAdmitted { verified: VerifiedCasAttempt { attempt: attempt } }
     ContentHashDifferent => CasAttemptDigestMismatch { claimed: attempt.proposed_content, actual: actual }
     ContentHashCrossFamilyIncomparable => CasAttemptDigestIncomparable { claimed: attempt.proposed_content, actual: actual }
+  }
+}
+
+// A CALLER THAT DERIVED THE DIGEST FROM THE PAYLOAD CANNOT DISAGREE WITH ITSELF.
+//
+// `admit_cas_attempt` must ask, because it accepts a digest the caller SUPPLIED, and the whole point
+// of that check is that a supplied digest can be a forgery -- the generic mint's discriminating red.
+// But a caller that computes `content_hash_of_value` over the very value it is proposing has no
+// second opinion to disagree with: the comparison is `f(x)` against `f(x)`. Both digest arms are
+// unreachable for it, and `gunbc.scm.repository_slot` was carrying a public
+// `RepositoryPublicationDigestDisagreed` to match them -- the carry_mint class again, honest about
+// this module's domain and dishonest about the caller's. Found by external review.
+//
+// SO THE DIGEST IS DERIVED HERE RATHER THAN ACCEPTED, and the outcome narrows to the one refusal that
+// IS reachable: a key that does not address a slot. That is not a weaker admission -- it is the same
+// admission asked of a caller who has nothing to forge WITH, because it never held a digest to pass.
+type DerivedPayloadAdmission
+  = DerivedPayloadAdmitted { verified: VerifiedCasAttempt }
+  | DerivedPayloadKeyNotSlotAddressable { key: NonEmptyStr }
+
+fn admit_cas_attempt_for_derived_payload(
+  key: NonEmptyStr,
+  expected: CasExpectation,
+  proposed: NonEmptyStr,
+) -> DerivedPayloadAdmission {
+  if !cas_key_is_slot_addressable(key: key) {
+    DerivedPayloadKeyNotSlotAddressable { key: key }
+  } else {
+    DerivedPayloadAdmitted {
+      verified: VerifiedCasAttempt {
+        attempt: cas_attempt(
+          key: key,
+          expected: expected,
+          proposed: proposed,
+          proposed_content: content_hash_of_value(value: proposed),
+        )
+      }
+    }
   }
 }
 

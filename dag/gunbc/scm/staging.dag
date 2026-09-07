@@ -10,14 +10,17 @@ module gunbc.scm.staging
 // section 3), owing its own identity rule, its own codec, its own duplicate-path law and its own
 // version axis -- four authorities to keep in step with the four this reuses.
 //
-// THIS MODULE IS THE OBSERVATION HALF, AND THE VERBS THAT MOVE THE SELECTION ARE NOT HERE. `add` and
-// `commit` are transitions over a repository that must then be PUBLISHED, and publication over a
-// document another writer may be changing is an unsolved obligation in this tree: extdeps.filesystem
-// declares Write, WriteOwnerOnly, WriteCreateNew, Read, Delete and List and NO rename, so the
-// atomic-replace a conditional publication needs cannot be spelled at all. Landing the transitions
-// with no safe publisher would put a lost update behind a success report. They land with that
-// capability, and what lands here is what the read path can already answer truthfully about any
-// document it admits: the effective candidate, its entries, and its standing against the base.
+// THIS MODULE IS THE OBSERVATION HALF, AND THE VERBS THAT MOVE THE SELECTION LIVE NEXT DOOR.
+// `gunbc.scm.write_spine` holds `add` and `commit`; they consume `effective_candidate` and
+// `stage_standing` from here and are published through `gunbc.scm.repository_slot`, which binds the
+// store's failure-atomic create-only publication. When this paragraph was first written none of that
+// existed and it said so; it is replaced rather than annotated, because a premise that has been
+// overtaken is not context for a reader, it is a false statement about the tree.
+//
+// WHAT STAYS HERE IS THE READ PATH, and the split is not arbitrary: this module answers what the
+// effective candidate IS, its entries, and its standing against the base, for any document the
+// decoder admits. Deciding to MOVE the selection needs a publisher that can refuse a lost update,
+// which is a host boundary and belongs where the host is.
 //
 // WHAT THAT REUSE IS AND IS NOT, because the first draft of this header overclaimed it. Reusing the
 // manifest type means the store's existing idempotent insertion collapses an equal canonical record

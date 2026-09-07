@@ -37,7 +37,10 @@ module gunbc.scm.repository_slot
 // review found the claim before the code shipped. The repair is in the store, not here: publication
 // access is now a required binding, `DefaultAccessCreateOnly` routes through `Filesystem.WriteCreateNew`
 // -- staged, synchronized, then hard-linked into the generation name -- and this module selects it.
-// The owner-only binding retains the hazard under a declared drop, rostered at its own call sites.
+// The owner-only binding survives for one named caller -- `gunbc.srv3.srv3_boot_once_cd`, whose claim
+// root carries no modeled directory ownership -- under a declared CURRENT LIMITATION rather than a
+// rung drop, because no guarantee was given up: the hazard was undeclared from that module's first
+// commit. Its trigger is rostered at the binding, not here.
 //
 // THE THREE OUTCOMES STAY THREE. Published, refused-because-superseded, and store-unreadable have
 // different remedies and different owners: retry from the new head, look at what the other writer
@@ -58,9 +61,8 @@ import std.durable_compare_and_set {
 }
 import gunbc.durable_cas_file_store {
   DefaultAccessCreateOnly,
-  CasAttemptAdmission, CasAttemptAdmitted,
-  CasAttemptKeyNotSlotAddressable, CasAttemptDigestMismatch, CasAttemptDigestIncomparable,
-  admit_cas_attempt, file_compare_and_set, observe_cas_slot_state,
+  DerivedPayloadAdmission, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
+  admit_cas_attempt_for_derived_payload, file_compare_and_set, observe_cas_slot_state,
 }
 import extdeps.languages.json.emit { serialize_json }
 import extdeps.languages.json.parse {
@@ -87,10 +89,14 @@ import gunbc.scm.repository_envelope {
 //   EncodeRefused        the author of the repository value. It never reached the store.
 //   KeyNotAddressable    the caller. A key that would escape the store root or carry a separator is
 //                        refused at the mint rather than resolved into a path first.
-//   DigestDisagreed      an internal defect: this module computes the digest from the very value it
-//                        proposes, so the two can only disagree if that derivation is broken. It is
-//                        surfaced rather than swallowed because a silent wrong digest is exactly
-//                        what the store's admission exists to catch.
+//
+// THERE IS NO DIGEST-DISAGREEMENT ARM, AND REMOVING IT WAS A REPAIR RATHER THAN A SIMPLIFICATION. One
+// stood here, carrying the generic mint's two digest refusals, with an annotation calling it an
+// internal defect that could only fire if this module's own derivation were broken. That is the
+// admission that it could not fire at all: the digest is computed from the very document being
+// proposed, so the store compares f(x) with f(x). The arm is gone because the QUESTION is gone --
+// `admit_cas_attempt_for_derived_payload` derives the digest itself and its outcome carries only the
+// key refusal, which is genuinely reachable. Found by external review.
 // THE SLOT IS ONE VALUE, NOT A ROOT AND A KEY TRAVELLING TOGETHER BY CONVENTION. `file_compare_and_set`
 // binds its own read and write to one `root + attempt.key`, so it cannot be fooled -- but the wider
 // read-modify-write does not run inside that call, and two loose parameters let a caller load from one
@@ -119,7 +125,6 @@ type RepositoryPublication
   | RepositoryPublicationStoreUnavailable { cause: CasStoreFailure }
   | RepositoryPublicationEncodeRefused { cause: RepositoryEncodeRefusal }
   | RepositoryPublicationKeyNotAddressable { key: NonEmptyStr }
-  | RepositoryPublicationDigestDisagreed
 
 // THE EXPECTATION IS A PARAMETER, NOT AN OBSERVATION THIS FUNCTION TAKES. A publisher that read the
 // current generation here and then proposed against it would reintroduce the observe-then-write gap
@@ -148,8 +153,13 @@ type RepositoryPublication
 // anywhere in the module that accepts a loose slot beside a loose expectation, or loose bytes, so
 // there is no route through which the two halves of the relation can be sourced separately.
 //
-// This is the same repair as `RepositoryManifestRoot` one module over, and for the same reason: a raw
-// helper justified by facts available only to its intended caller is not sealed, it is documented.
+// This is the same repair as `gunbc.scm.repository_envelope` `RepositoryManifestRoot`, and for the same
+// reason: a raw helper justified by facts available only to its intended caller is not sealed, it is
+// documented. When this sentence was first written that carrier DID NOT EXIST -- the annotation cited a
+// repair that had never landed, which is the unbacked-claim class this cut filed a receipt about, in
+// the very comment describing a seal. It exists now, sealing the repository/root pairing the same way
+// this one seals the slot/expectation pairing, and both were latent rather than live: every caller
+// paired correctly, which is exactly why a check would never have found either.
 type PreparedRepositoryPublication sole_constructor {
   slot: RepositorySlot
   expected: CasExpectation
@@ -251,18 +261,13 @@ fn execute_preparation(prepared: RepositoryPublicationPreparation) -> Repository
 }
 
 fn publish_prepared(preparation: PreparedRepositoryPublication) -> RepositoryPublication {
-  match admit_cas_attempt(
-    attempt: cas_attempt(
-      key: preparation.slot.key,
-      expected: preparation.expected,
-      proposed: preparation.document,
-      proposed_content: content_hash_of_value(value: preparation.document),
-    )
+  match admit_cas_attempt_for_derived_payload(
+    key: preparation.slot.key,
+    expected: preparation.expected,
+    proposed: preparation.document,
   ) {
-    CasAttemptKeyNotSlotAddressable { key: k } => RepositoryPublicationKeyNotAddressable { key: k }
-    CasAttemptDigestMismatch { claimed: _, actual: _ } => RepositoryPublicationDigestDisagreed
-    CasAttemptDigestIncomparable { claimed: _, actual: _ } => RepositoryPublicationDigestDisagreed
-    CasAttemptAdmitted { verified: verified } =>
+    DerivedPayloadKeyNotSlotAddressable { key: k } => RepositoryPublicationKeyNotAddressable { key: k }
+    DerivedPayloadAdmitted { verified: verified } =>
       match file_compare_and_set(
         root: preparation.slot.root,
         publication: DefaultAccessCreateOnly,

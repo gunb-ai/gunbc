@@ -66,6 +66,8 @@ import gunbc.scm.repository_envelope {
   BrandedRootIntegrationSourceMissing,
   commit_at_reference,
   mint_commit_from_stored_manifest,
+  RepositoryManifestRootStored, RepositoryManifestRootDuplicatePath,
+  RepositoryManifestRootLocatorCollision, repository_root_by_storing,
 }
 
 // WHICH SIDE'S ROOT FAILED TO RESOLVE IS PART OF THE FACT, NOT CONTEXT FOR A LOG LINE. Three commits
@@ -201,22 +203,15 @@ fn commit_merged_manifest(
   message: String,
   entries: List<CorpusManifestEntry>,
 ) -> SquashMergeOutcome {
-  match store_corpus_manifest(store: repository.store, entries: entries) {
-    CorpusManifestDuplicatePath { path: p } =>
+  match repository_root_by_storing(repository: repository, entries: entries) {
+    RepositoryManifestRootDuplicatePath { path: p } =>
       SquashMergeResultDuplicatePath { path: p as String }
-    CorpusManifestLocatorCollision { identity: i, existing: _, incoming: _ } =>
+    RepositoryManifestRootLocatorCollision { identity: i } =>
       SquashMergeResultLocatorCollision { identity: i }
-    CorpusManifestStored { store: stored, manifest: reference } =>
+    RepositoryManifestRootStored(subject) =>
       carry_mint(
         mint: mint_commit_from_stored_manifest(
-          repository: RepositoryEnvelope {
-            store: stored,
-            commits: repository.commits,
-            commit_allocator: repository.commit_allocator,
-            checked_out: repository.checked_out,
-            staged: repository.staged,
-          },
-          root: reference,
+          subject: subject,
           message: message,
           parent: Present { value: target },
           integration: SquashIntegrated { source: source },

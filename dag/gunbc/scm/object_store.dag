@@ -935,9 +935,11 @@ fn manifest_entries_with_path_replaced(
 ) -> PathUniqueManifestEntries {
   PathUniqueManifestEntries {
     entries: concat(
-      fold(base.entries, init: [], f: fn(acc, entry) {
-        if entry.path == path { acc } else { concat(acc, [entry]) }
-      }),
+      reverse(
+        fold(base.entries, init: [], f: fn(acc, entry) {
+          if entry.path == path { acc } else { concat([entry], acc) }
+        })
+      ),
       [CorpusManifestEntry { path: path, source: source }],
     ),
   }
