@@ -16,6 +16,10 @@ import std.pareto {
 }
 import std.realization_schedule {
   CostAccount,
+  CostTimeAxis,
+  CostTimeMeasured,
+  CostTimePredicted,
+  CostTimeUnestablished,
 }
 import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDigest, resolved_graph_artifact_kind, parse_table_artifact_kind }
 
@@ -391,6 +395,21 @@ fn cache_reach_candidate_recompute() -> CacheReachCandidate {
   }
 }
 
+// A CACHE CANNOT BE JUSTIFIED AGAINST A RECOMPUTE COST NOBODY ESTABLISHED. DESIGN section 2 admits
+// a provider as an optimization only when measured total serving cost is below recomputation, so an
+// unestablished recompute time does not make the comparison conservative -- it makes it unanswerable.
+// Both consumers already had an honest arm for that: the probe returns none, and the justification
+// predicate returns false, which refuses the cache rather than admitting one whose benefit is
+// unmeasured. A PREDICTED time is accepted here, because section 2's rule is about the comparison
+// being grounded, not about which established basis grounds it.
+fn recompute_time_or_absent(recompute: CostAccount<Nano>) -> Nanosecond? {
+  match recompute.time {
+    CostTimeMeasured { value: t } => Present { value: t }
+    CostTimePredicted { value: t } => Present { value: t }
+    CostTimeUnestablished => none
+  }
+}
+
 fn cache_reach_candidate_probe(
   id: CacheInterfaceId,
   catalog: List<CacheInterfaceFacts>,
@@ -399,14 +418,18 @@ fn cache_reach_candidate_probe(
   match cache_facts_for_id(id: id, catalog: catalog) {
     Absent => none
     Present { value: facts } =>
-      let fetch = read_latency_cost(facts: facts)
-      Present {
-        value: CacheReachCandidate {
-          layer: Present { value: id }
-          fetch_cost: fetch
-          recompute_saved: recompute.time
-          latency: fetch
-        }
+      match recompute_time_or_absent(recompute: recompute) {
+        Absent => none
+        Present { value: saved } =>
+          let fetch = read_latency_cost(facts: facts)
+          Present {
+            value: CacheReachCandidate {
+              layer: Present { value: id }
+              fetch_cost: fetch
+              recompute_saved: saved
+              latency: fetch
+            }
+          }
       }
   }
 }
@@ -442,7 +465,12 @@ fn cache_layer_cost_justified(
 ) -> Bool {
   match cache_facts_for_id(id: id, catalog: catalog) {
     Absent => false
-    Present { value: facts } => nanosecond_count(n: recompute.time) >= nanosecond_count(n: read_latency_cost(facts: facts))
+    Present { value: facts } =>
+      match recompute_time_or_absent(recompute: recompute) {
+        Absent => false
+        Present { value: saved } =>
+          nanosecond_count(n: saved) >= nanosecond_count(n: read_latency_cost(facts: facts))
+      }
   }
 }
 
