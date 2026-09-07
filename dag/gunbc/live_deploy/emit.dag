@@ -90,6 +90,7 @@ import gunbc.host_layout {
   publication_spool_root,
   publication_request_dir,
   publication_answer_dir,
+  publication_refused_dir,
 }
 import gunbc.host_axis_caps {
   deploy_memory_cap_apply_script_for_host,
@@ -649,6 +650,12 @@ fn apply_publication_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
       owner: spec.names.publication_principal,
       group: spec.names.publication_principal,
       path: publication_answer_dir(instance_root: spec.service.instance_root as String),
+    )),
+    deploy_raw(command: install_directory_owned_command(
+      mode: publication_spool_answer_mode,
+      owner: spec.names.publication_principal,
+      group: spec.names.publication_principal,
+      path: publication_refused_dir(instance_root: spec.service.instance_root as String),
     )),
   ]
 }
