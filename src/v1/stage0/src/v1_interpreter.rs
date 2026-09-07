@@ -17804,6 +17804,39 @@ macro_rules! v1_builtin_arms {
                 )?))
             },
 
+            arm "free_call.decl_facts_at" { "decl_facts_at" } => {
+                let pool_roots = expect_str_list($positional.first().copied(), "decl_facts_at")?;
+                let qualified_name = expect_value_str($positional.get(1).copied(), "decl_facts_at")?;
+                Ok(Some(crate::coproduct_reflection::eval_decl_facts_at(
+                    $ctx,
+                    &pool_roots,
+                    qualified_name.as_str(),
+                )?))
+            },
+
+            arm "free_call.module_declaration_facts_at" { "module_declaration_facts_at" } => {
+                let pool_roots =
+                    expect_str_list($positional.first().copied(), "module_declaration_facts_at")?;
+                let module_path =
+                    expect_value_str($positional.get(1).copied(), "module_declaration_facts_at")?;
+                // A list of zero or one, not an Optional: the keyed read stays the same SHAPE as the
+                // population read it narrows, so a `.dag` consumer switching to it changes its
+                // source of rows and not its fold.
+                let mut items: Vec<Value> = Vec::new();
+                if let Some(f) =
+                    crate::cli_run::module_declaration_fact_at(&pool_roots, module_path.as_str())
+                {
+                    items.push(Value::Record {
+                        type_name: $ctx.sym("ModuleDeclarationFact"),
+                        fields: Rc::new(sorted_fields(vec![
+                            ($ctx.sym("module"), str_value(f.module)),
+                            ($ctx.sym("path"), str_value(f.path)),
+                        ])),
+                    });
+                }
+                Ok(Some(list_value(items)))
+            },
+
             arm "free_call.module_declaration_facts" { "module_declaration_facts" } => {
                 let pool_roots =
                     expect_str_list($positional.first().copied(), "module_declaration_facts")?;
