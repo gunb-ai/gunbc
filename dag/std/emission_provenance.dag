@@ -298,18 +298,33 @@ fn emission_append_operations_compose<R>(left: EmissionAppendOperation<R>, right
   EmissionAppendOperation { apply: fn(state) { right.apply(left.apply(state)) } }
 }
 
+fn emission_contribution_fold_parts<R>(
+  parts: FreeMonoid<EmissionContribution>,
+  acc: EmissionAppendOperation<R>,
+  read: fn(EmissionContribution) -> EmissionAppendOperation<R>
+) -> EmissionAppendOperation<R> {
+  match parts {
+    Empty => acc
+    Cons { head: part, tail: rest } =>
+      emission_contribution_fold_parts(
+        parts: rest,
+        acc: emission_append_operations_compose(
+          left: acc,
+          right: emission_contribution_fold(contribution: part, read: read)
+        ),
+        read: read
+      )
+  }
+}
+
 fn emission_contribution_fold<R>(
   contribution: EmissionContribution,
   read: fn(EmissionContribution) -> EmissionAppendOperation<R>
 ) -> EmissionAppendOperation<R> {
   let local = read(contribution)
   match contribution {
-    EmissionSourceComposition { origin: _, parts } => parts |> fold(
-      init: local,
-      f: fn(acc, part) { emission_append_operations_compose(
-        left: acc, right: emission_contribution_fold(contribution: part, read: read)
-      ) }
-    )
+    EmissionSourceComposition { origin: _, parts } =>
+      emission_contribution_fold_parts(parts: parts, acc: local, read: read)
     _ => local
   }
 }
@@ -381,15 +396,32 @@ fn emission_combined_read_layer(contribution: EmissionContribution) -> EmissionA
   } } }
 }
 
+fn emission_apply_fragments(
+  operation: EmissionAppendOperation<EmissionContributionFragments>,
+  state: EmissionContributionFragments
+) -> EmissionContributionFragments {
+  operation.apply(state)
+}
+
+fn emission_apply_source_fragments(
+  operation: EmissionAppendOperation<FreeMonoid<String>>,
+  state: FreeMonoid<String>
+) -> FreeMonoid<String> {
+  operation.apply(state)
+}
+
 fn emission_contribution_read(contribution: EmissionContribution) -> EmissionContributionRead {
   let operation = emission_contribution_fold(contribution: contribution, read: emission_combined_read_layer)
-  let fragments = operation.apply(EmissionContributionFragments { source: [], origins: EmissionOriginsObserved { origins: [] } })
+  let fragments = emission_apply_fragments(
+    operation: operation,
+    state: EmissionContributionFragments { source: [], origins: EmissionOriginsObserved { origins: [] } }
+  )
   EmissionContributionRead { source: fragments.source |> join(separator: ""), origins: fragments.origins }
 }
 
 fn emission_contribution_source(contribution: EmissionContribution) -> String {
   let operation = emission_contribution_fold(contribution: contribution, read: emission_source_read_layer)
-  operation.apply([]) |> join(separator: "")
+  emission_apply_source_fragments(operation: operation, state: []) |> join(separator: "")
 }
 
 fn emission_contribution_origins(contribution: EmissionContribution) -> EmissionOriginRead {
