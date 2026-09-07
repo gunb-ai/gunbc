@@ -294,7 +294,7 @@ data constructor_binding_channel_fixtures: List<FixtureModule> = [
 // lane, and rewriting them here would restate a measurement this change did not take. It is the
 // form to migrate, not the form to extend.
 //
-// So these seventeen are real modules under `fixtures/constructor_binding_channel_indirect/`,
+// So the modules rostered below are real files under `fixtures/constructor_binding_channel_indirect/`,
 // and this roster names them by PATH. Re-deriving case6 through case10 is now a command over
 // committed bytes rather than a transcription exercise:
 //
@@ -431,7 +431,7 @@ data constructor_binding_channel_indirect_fixture_files: List<FixtureModuleFile>
 // by one grep for that capability, and nobody ran it.
 //
 // THE REAL TRIGGER IS ENROLLMENT, not a missing surface: a `test.claim` module that builds the
-// seventeen committed fixture modules below into that fixture surface, asserts the case6-versus-case7
+// committed fixture modules rostered below into that fixture surface, asserts the case6-versus-case7
 // flip, and is admitted to `v2.workflow.required_floor` `required_gate_prefixes` -- the roster row
 // without which a witness module is discovered and never run. At that point case6 and case7 become
 // the enrollable discriminating pair and case8 the control that keeps it honest.
@@ -455,7 +455,62 @@ data regen_cannot_see_v2_corpus_emission_change: DeclarationRef = decl_ref(
   decl_name: "reference_derived_use_lines_note",
 )
 
-data constructor_binding_channel_evidence_standing: String = "TWO measurements, separately located because they were taken on different trees by different lanes and a single sentence covering both would misdate one of them. case1 through case5: once at 9917d4a9b3 on a BuildBuddy runner. case6 through case10: once at 413be13f38a in a session worktree, on a locally built gunbc, through `gunbc compile --source-root <dir> --entry <dir>/uab/<entry>.dag` over the seventeen fixture modules recorded below -- and case7 is the one that materially changed what this carrier claims, so it is the row a re-derivation should start from. NEITHER measurement is enrolled and NEITHER is re-measured. Rung: mitigatable. NEXT-RUNG TRIGGER, CORRECTED (review 61858): it used to read `a multi-source compile fixture surface`, and that surface EXISTS -- `tools.multi_module_compile_fixture` over the host `compile_dag_multi_module_fixture`, which takes a caller-authored source vector as one subject and is what gunbc#10740 consumes for the neighbouring class. Naming an existing capability as the blocker is an untracked stall wearing a trigger's clothes (DESIGN 4b(2)): it can never fire, so the class can never rank for climbing. THE REAL TRIGGER IS ENROLLMENT: a `test.claim` module that builds these seventeen committed fixture modules into that fixture surface and asserts the case6-versus-case7 flip, admitted to `v2.workflow.required_floor` `required_gate_prefixes` -- which is the row without which the witness would never run. Until that exists the rung stays MITIGATABLE and the reason is unbuilt work, not an absent capability."
+// WHY THE PRIOR TRIGGER COULD NOT FIRE, which is the one thing here that is irreducible rationale
+// rather than a typed fact, and so is the one thing left in prose (review 61895). The row below
+// used to be a String carrying rung, trigger, two commits and a citation; DESIGN 4c rules that a
+// String whose sole purpose is commentary is misplaced data, and rung-plus-trigger is exactly the
+// shape 4b already types. So the facts moved into carriers and this paragraph keeps only the why.
+//
+// The trigger this carrier shipped with named "a compile surface that admits a closure of several
+// named .dag sources as one subject". That surface already existed when the sentence was written --
+// `tools.multi_module_compile_fixture` over the host `compile_dag_multi_module_fixture` -- so the
+// trigger could never fire, the class could never rank for climbing, and the stall was untracked
+// while looking tracked. The tell was one grep for the capability, and nobody ran it. A trigger
+// written as a capability should be checkable that way; if it is not, it is a wish.
+type MeasurementEpisode {
+  cases: String
+  commit: String
+  where_run: String
+  command: String
+  enrolled: Bool
+  re_measured: Bool
+}
+
+data constructor_binding_channel_measurements: List<MeasurementEpisode> = [
+  {
+    cases: "case1 through case5",
+    commit: "9917d4a9b3",
+    where_run: "a BuildBuddy runner",
+    command: "gunbc compile --source-root <case> --entry <case>/user.dag --target dag",
+    enrolled: false,
+    re_measured: false,
+  },
+  {
+    cases: "case6 through case11",
+    commit: "413be13f38a",
+    where_run: "a session worktree, on a gunbc built from that tree",
+    command: "gunbc compile --source-root fixtures/constructor_binding_channel_indirect --entry fixtures/constructor_binding_channel_indirect/uab/<entry>.dag",
+    enrolled: false,
+    re_measured: false,
+  },
+]
+
+// THE TWO EPISODES ARE SEPARATE ROWS RATHER THAN ONE SENTENCE because they were taken on different
+// trees by different lanes, and a single covering claim misdates one of them. case7 is the row that
+// materially changed what this carrier claims, so a re-derivation should start there.
+type EvidenceStanding {
+  rung: String
+  ceiling: String
+  next_rung_trigger: String
+  why_the_rung_is_not_higher: String
+}
+
+data constructor_binding_channel_evidence_standing: EvidenceStanding = {
+  rung: "mitigatable",
+  ceiling: "mechanically preventable",
+  next_rung_trigger: "a test.claim module that builds the rostered fixture modules through tools.multi_module_compile_fixture, asserts the case6-versus-case7 flip, and is admitted to v2.workflow.required_floor required_gate_prefixes -- the roster row without which a witness module is discovered and never run",
+  why_the_rung_is_not_higher: "unbuilt work, NOT an absent capability. The fixture surface exists and the fixture modules are committed; nothing runs them. The new geometries widen what a single unenrolled measurement covers, they do not climb the rung",
+}
 
 // THE TWO REPAIRS THIS ESTABLISHES AND DELIBERATELY DOES NOT MAKE. Both sit in v1's infer stage,
 // which DESIGN names as load-bearing, and both are the namespace lane's to sequence: they change
