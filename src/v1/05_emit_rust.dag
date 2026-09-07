@@ -183,7 +183,7 @@ import v1.compiler.infer_method {
 }
 import v1.compiler.infer_sigs { ResolvedFuncEnv }
 import v1.compiler.infer_items {
-  is_duplicate_item_identity_marker, duplicate_item_identity_marker,
+  ItemLookup, ItemFound, ItemLeafAmbiguous, ItemNotFound,
   ResolvedGraph, TypedModule,
   ItemInfo, DataItem, TypeItem, OtherItem,
   item_kind
@@ -2561,8 +2561,8 @@ fn build_data_item_index(modules: List<TypedModule>) -> Map<String, Node> {
 // the declaration's own identity at construction, in fold_module_contributions, so there is one key
 // space and the homonym cannot arise from the key. What survives is the REVERSE question — which
 // module declares a bare leaf — and where two modules answer it, lookup_item_by_leaf yields
-// duplicate_item_identity_marker so the consumers below refuse instead of taking whichever module
-// was folded last.
+// ItemLeafAmbiguous, which a consumer cannot read past without writing an arm for it, so the
+// consumers below refuse instead of taking whichever module was folded last.
 
 fn value_ref_registry_lookup_key(resolved_name: String) -> String {
   let qualifier = value_ref_qualifier_prefix(name: resolved_name)
@@ -2592,46 +2592,52 @@ fn value_ref_registry_lookup_key(resolved_name: String) -> String {
 // Absent. A leaf two modules declare maps to the empty owner, which is not a legal module path, so
 // it lands in Absent and the caller takes its own refusal path -- never a row from the wrong module,
 // which is exactly what the old leaf-keyed map returned.
-fn lookup_item_by_leaf(leaf: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> ItemInfo? {
-  match map_get(emit_info.item_leaf_owner_modules, leaf) {
-    Present { value: owner } =>
-      if owner == "" {
-        Present { value: duplicate_item_identity_marker(name: leaf) }
-      } else {
-        lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: owner, decl_name: leaf })
-      }
-    Absent => Absent
+fn item_lookup_of_optional(found: ItemInfo?) -> ItemLookup {
+  match found {
+    Present { value: info } => ItemFound { info: info }
+    Absent => ItemNotFound
   }
 }
 
-fn lookup_item_for_value_ref(resolved_name: String, self_module: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> ItemInfo? {
+fn lookup_item_by_leaf(leaf: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> ItemLookup {
+  match map_get(emit_info.item_leaf_owner_modules, leaf) {
+    Present { value: owner } =>
+      if owner == "" {
+        ItemLeafAmbiguous { leaf: leaf }
+      } else {
+        item_lookup_of_optional(found: lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: owner, decl_name: leaf }))
+      }
+    Absent => ItemNotFound
+  }
+}
+
+// THE FALLBACK GOES THROUGH lookup_item_by_leaf, WHICH IS THE WHOLE REPAIR HERE.
+// It used to read the owner index itself and hand the raw owner to lookup_item_by_identity. On an
+// ambiguous leaf that owner is the empty string, which is not a legal module path, so the identity
+// missed and this returned "not found" -- and the ambiguity guards in its callers, which tested for
+// the in-band marker this function never produced, could not fire. Routing the fallback through the
+// one leaf-completing authority means the ambiguous case arrives as ItemLeafAmbiguous and the
+// callers' arms are reachable.
+fn lookup_item_for_value_ref(resolved_name: String, self_module: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> ItemLookup {
   let qualifier = value_ref_qualifier_prefix(name: resolved_name)
   let leaf = value_ref_qualified_leaf(name: resolved_name)
   if qualifier != "" {
-    lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: qualifier, decl_name: leaf })
+    item_lookup_of_optional(found: lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: qualifier, decl_name: leaf }))
   } else {
     match lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: self_module, decl_name: leaf }) {
-      Present { value: info } => Present { value: info }
-      Absent =>
-        match map_get(emit_info.item_leaf_owner_modules, leaf) {
-          Present { value: owner } =>
-            lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: owner, decl_name: leaf })
-          Absent => Absent
-        }
+      Present { value: info } => ItemFound { info: info }
+      Absent => lookup_item_by_leaf(leaf: leaf, registry: registry, emit_info: emit_info)
     }
   }
 }
 
 fn emit_qualified_value_ref_crate_ident(leaf: String, info: ItemInfo, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> String {
-  if is_duplicate_item_identity_marker(info: info) {
-    emit_error_expr(message: "duplicate item identity — two declarations of this leaf in one module", target: Rust)
-  } else {
-    concat("crate::", module_to_filename(name: info.module_name), "::", emit_import_name(emit_info: emit_info, n: leaf, registry: registry))
-  }
+  concat("crate::", module_to_filename(name: info.module_name), "::", emit_import_name(emit_info: emit_info, n: leaf, registry: registry))
 }
 
-fn value_ref_item_info_refusal(info: ItemInfo) -> String {
-  emit_error_expr(message: "duplicate item identity — two declarations of this leaf in one module", target: Rust)
+// ONE REFUSAL TEXT FOR THE AMBIGUOUS LEAF, NAMED SO THE ARMS BELOW CANNOT DRIFT APART.
+fn ambiguous_leaf_refusal(leaf: String) -> String {
+  emit_error_expr(message: concat("ambiguous leaf '", leaf, "' — two modules declare it, so no single declaration can be named"), target: Rust)
 }
 
 fn insert_scoped_data_item(scoped: Map<String, List<Node>>, name: String, item: Node) -> Map<String, List<Node>> {
@@ -4580,6 +4586,7 @@ type ReferenceDerivedCandidateDisposition
   | CandidateVariantDelegatedToParent { parent_enum: String }
   | CandidateVariantParentUnresolved
   | CandidateRegistryAbsent
+  | CandidateLeafAmbiguous
   | CandidateExportProofFailed { provider_module: String }
 
 // One decided candidate, at the grain the census reports: (module, name, disposition). The module is
@@ -4607,7 +4614,8 @@ fn reference_derived_candidate_disposition(name: String, this_module_name: Strin
     }
   } else {
   match lookup_item_by_leaf(leaf: name, registry: registry, emit_info: emit_info) {
-    Present { value: info } =>
+    ItemLeafAmbiguous { leaf: _ } => CandidateLeafAmbiguous
+    ItemFound { info: info } =>
       if info.module_name == this_module_name {
         CandidateOwnModule
       } else if provider_proven_exports_symbol(name: name, provider_module: info.module_name, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
@@ -4615,7 +4623,7 @@ fn reference_derived_candidate_disposition(name: String, this_module_name: Strin
       } else {
         CandidateExportProofFailed { provider_module: info.module_name }
       }
-    Absent => CandidateRegistryAbsent
+    ItemNotFound => CandidateRegistryAbsent
   }
   }
 }
@@ -4700,6 +4708,7 @@ fn reference_derived_row_diagnostics(rows: List<ReferenceDerivedCandidateRow>, m
       CandidateVariantDelegatedToParent { parent_enum: _ } => []
       CandidateVariantParentUnresolved => []
       CandidateRegistryAbsent => []
+      CandidateLeafAmbiguous => []
     }
   )
 }
@@ -4721,6 +4730,7 @@ fn reference_derived_disposition_name(disposition: ReferenceDerivedCandidateDisp
     CandidateVariantDelegatedToParent { parent_enum: _ } => "variant-delegated-to-parent"
     CandidateVariantParentUnresolved => "variant-parent-unresolved"
     CandidateRegistryAbsent => "registry-absent"
+    CandidateLeafAmbiguous => "leaf-ambiguous"
     CandidateExportProofFailed { provider_module: _ } => "export-proof-failed"
   }
 }
@@ -4762,6 +4772,7 @@ type ReferenceDerivedCensus {
   variant_delegated_to_parent: Int
   variant_parent_unresolved: Int
   registry_absent: Int
+  leaf_ambiguous: Int
   export_proof_failed: Int
 }
 
@@ -4779,7 +4790,7 @@ type ReferenceDerivedCensus {
 // whose parts do not add up to its whole is unrepresentable rather than merely unlikely.
 fn reference_derived_census(rows: List<ReferenceDerivedCandidateRow>) -> ReferenceDerivedCensus {
   rows |> fold(
-    init: ReferenceDerivedCensus { candidates: 0, survived: 0, own_module: 0, variant_delegated_to_parent: 0, variant_parent_unresolved: 0, registry_absent: 0, export_proof_failed: 0 },
+    init: ReferenceDerivedCensus { candidates: 0, survived: 0, own_module: 0, variant_delegated_to_parent: 0, variant_parent_unresolved: 0, registry_absent: 0, leaf_ambiguous: 0, export_proof_failed: 0 },
     f: (acc, r) =>
       match r.disposition {
         CandidateSurvived { provider_module: _ } =>
@@ -4790,6 +4801,7 @@ fn reference_derived_census(rows: List<ReferenceDerivedCandidateRow>) -> Referen
             variant_delegated_to_parent: acc.variant_delegated_to_parent,
             variant_parent_unresolved: acc.variant_parent_unresolved,
             registry_absent: acc.registry_absent,
+            leaf_ambiguous: acc.leaf_ambiguous,
             export_proof_failed: acc.export_proof_failed
           }
         CandidateOwnModule =>
@@ -4800,6 +4812,7 @@ fn reference_derived_census(rows: List<ReferenceDerivedCandidateRow>) -> Referen
             variant_delegated_to_parent: acc.variant_delegated_to_parent,
             variant_parent_unresolved: acc.variant_parent_unresolved,
             registry_absent: acc.registry_absent,
+            leaf_ambiguous: acc.leaf_ambiguous,
             export_proof_failed: acc.export_proof_failed
           }
         CandidateVariantDelegatedToParent { parent_enum: _ } =>
@@ -4810,6 +4823,7 @@ fn reference_derived_census(rows: List<ReferenceDerivedCandidateRow>) -> Referen
             variant_delegated_to_parent: acc.variant_delegated_to_parent + 1,
             variant_parent_unresolved: acc.variant_parent_unresolved,
             registry_absent: acc.registry_absent,
+            leaf_ambiguous: acc.leaf_ambiguous,
             export_proof_failed: acc.export_proof_failed
           }
         CandidateVariantParentUnresolved =>
@@ -4820,6 +4834,7 @@ fn reference_derived_census(rows: List<ReferenceDerivedCandidateRow>) -> Referen
             variant_delegated_to_parent: acc.variant_delegated_to_parent,
             variant_parent_unresolved: acc.variant_parent_unresolved + 1,
             registry_absent: acc.registry_absent,
+            leaf_ambiguous: acc.leaf_ambiguous,
             export_proof_failed: acc.export_proof_failed
           }
         CandidateRegistryAbsent =>
@@ -4830,6 +4845,18 @@ fn reference_derived_census(rows: List<ReferenceDerivedCandidateRow>) -> Referen
             variant_delegated_to_parent: acc.variant_delegated_to_parent,
             variant_parent_unresolved: acc.variant_parent_unresolved,
             registry_absent: acc.registry_absent + 1,
+            leaf_ambiguous: acc.leaf_ambiguous,
+            export_proof_failed: acc.export_proof_failed
+          }
+        CandidateLeafAmbiguous =>
+          ReferenceDerivedCensus {
+            candidates: acc.candidates + 1,
+            survived: acc.survived,
+            own_module: acc.own_module,
+            variant_delegated_to_parent: acc.variant_delegated_to_parent,
+            variant_parent_unresolved: acc.variant_parent_unresolved,
+            registry_absent: acc.registry_absent,
+            leaf_ambiguous: acc.leaf_ambiguous + 1,
             export_proof_failed: acc.export_proof_failed
           }
         CandidateExportProofFailed { provider_module: _ } =>
@@ -4840,6 +4867,7 @@ fn reference_derived_census(rows: List<ReferenceDerivedCandidateRow>) -> Referen
             variant_delegated_to_parent: acc.variant_delegated_to_parent,
             variant_parent_unresolved: acc.variant_parent_unresolved,
             registry_absent: acc.registry_absent,
+            leaf_ambiguous: acc.leaf_ambiguous,
             export_proof_failed: acc.export_proof_failed + 1
           }
       }
@@ -4940,8 +4968,9 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
       |> map(r => r.name)
     let resolved = unlisted |> flat_map(name =>
       match lookup_item_by_leaf(leaf: name, registry: registry, emit_info: emit_info) {
-        Present { value: info } => [ReferenceDerivedProviderBinding { name: name, provider_module: info.module_name }]
-        Absent => []
+        ItemFound { info: info } => [ReferenceDerivedProviderBinding { name: name, provider_module: info.module_name }]
+        ItemLeafAmbiguous { leaf: _ } => []
+        ItemNotFound => []
       }
     )
     let providers = unique_strings(items: resolved |> map(b => b.provider_module))
@@ -5005,8 +5034,9 @@ fn qualified_type_reference_rows(names: List<String>, this_module_name: String, 
         []
       } else {
         match lookup_item_by_leaf(leaf: leaf, registry: registry, emit_info: emit_info) {
-          Absent => [ReferenceDerivedCandidateRow { module_name: this_module_name, name: name, disposition: CandidateRegistryAbsent }]
-          Present { value: info } =>
+          ItemNotFound => [ReferenceDerivedCandidateRow { module_name: this_module_name, name: name, disposition: CandidateRegistryAbsent }]
+          ItemLeafAmbiguous { leaf: _ } => [ReferenceDerivedCandidateRow { module_name: this_module_name, name: name, disposition: CandidateLeafAmbiguous }]
+          ItemFound { info: info } =>
             if !(registry_row_is_type_declared_in(info: info, module_name: qualifier)) {
               []
             } else if provider_proven_exports_symbol(name: leaf, provider_module: qualifier, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
@@ -5166,8 +5196,9 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let this_mod_filename = module_to_filename(name: authored_name(env: scope.type_env, node: m))
   let all_svc_names = typed_module.items |> flat_map(item =>
     match lookup_item_by_leaf(leaf: authored_name(env: scope.type_env, node: item), registry: registry, emit_info: emit_info) {
-      Present { value: info } => info.service_names
-      Absent => []
+      ItemFound { info: info } => info.service_names
+      ItemLeafAmbiguous { leaf: _ } => []
+      ItemNotFound => []
     }
   )
   let extern_svc_imports = unique_strings(items: all_svc_names) |> flat_map(sn =>
@@ -5210,8 +5241,9 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
 
 fn emit_import_name(n: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> String {
   let is_data = match lookup_item_by_leaf(leaf: n, registry: registry, emit_info: emit_info) {
-    Present { value: info } => info.kind == DataItem
-    Absent => false
+    ItemFound { info: info } => info.kind == DataItem
+    ItemLeafAmbiguous { leaf: _ } => false
+    ItemNotFound => false
   }
   if is_data { to_snake(n) } else { n }
 }
@@ -9762,16 +9794,18 @@ fn emit_value_ref_ident(name: String, self_module: String, registry: Map<String,
     let qualifier = value_ref_qualifier_prefix(name: name)
     if qualifier != "" {
       match lookup_item_for_value_ref(resolved_name: name, self_module: self_module, registry: registry, emit_info: emit_info) {
-        Present { value: info } =>
+        ItemFound { info: info } =>
           emit_qualified_value_ref_crate_ident(leaf: leaf, info: info, registry: registry, emit_info: emit_info)
-        Absent =>
+        ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_refusal(leaf: ambiguous_leaf)
+        ItemNotFound =>
           emit_error_expr(message: "qualified value reference missing exact registry row — refuse authored qualifier", target: Rust)
       }
     } else {
       match lookup_item_by_leaf(leaf: leaf, registry: registry, emit_info: emit_info) {
-        Present { value: info } =>
+        ItemFound { info: info } =>
           emit_qualified_value_ref_crate_ident(leaf: leaf, info: info, registry: registry, emit_info: emit_info)
-        Absent =>
+        ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_refusal(leaf: ambiguous_leaf)
+        ItemNotFound =>
           if freemonoid_empty_from_emit_info(leaf_name: leaf, emit_info: emit_info) { emit_freemonoid_empty_rc_value() }
           else { emit_ident(name: leaf, target: Rust) }
       }
@@ -9826,10 +9860,9 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
         } else { body }
       Absent =>
         match lookup_item_for_value_ref(resolved_name: resolved_name, self_module: module_name, registry: registry, emit_info: emit_info) {
-          Present { value: info } =>
-            if is_duplicate_item_identity_marker(info: info) {
-              value_ref_item_info_refusal(info: info)
-            } else {
+          ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_refusal(leaf: ambiguous_leaf)
+          ItemFound { info: info } =>
+            {
               let is_data = info.kind == DataItem
               if is_data { concat(emit_value_ref_ident(name: name, self_module: module_name, registry: registry, emit_info: emit_info), "()") }
               else {
@@ -9849,7 +9882,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
               ident_str
               }
             }
-          Absent =>
+          ItemNotFound =>
             let ident = emit_value_ref_ident(name: resolved_name, self_module: module_name, registry: registry, emit_info: emit_info)
             let ident_str = if moves_by_value {
               ident
@@ -9896,15 +9929,12 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
               registry: registry,
               emit_info: emit_info
             ) {
-              Present { value: info } =>
-                if is_duplicate_item_identity_marker(info: info) {
-                  value_ref_item_info_refusal(info: info)
-                } else {
-                  let is_data = info.kind == DataItem
-                  if is_data { concat(emit_value_ref_ident(name: n, self_module: scope.module_name, registry: registry, emit_info: emit_info), "()") }
-                  else { emit_value_ref_ident(name: resolved_name, self_module: scope.module_name, registry: registry, emit_info: emit_info) }
-                }
-              Absent =>
+              ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_refusal(leaf: ambiguous_leaf)
+              ItemFound { info: info } =>
+                let is_data = info.kind == DataItem
+                if is_data { concat(emit_value_ref_ident(name: n, self_module: scope.module_name, registry: registry, emit_info: emit_info), "()") }
+                else { emit_value_ref_ident(name: resolved_name, self_module: scope.module_name, registry: registry, emit_info: emit_info) }
+              ItemNotFound =>
                 emit_value_ref_ident(name: resolved_name, self_module: scope.module_name, registry: registry, emit_info: emit_info)
             }
         }

@@ -195,6 +195,7 @@ import v1.compiler.infer_service {
   collect_typed_service_calls,
   expand_transitive_services,
   EffectIncompleteness, UnresolvedCalleeEdge, ExpansionBudgetExhausted,
+  ResolvedCalleeRegistryRowAbsent, FunctionValueEffectsUnresolved,
   ServiceEffectAnalysis, EffectsComplete, EffectsIncomplete,
   check_service_field_access_node, check_service_method_call_node,
   service_op_entry
@@ -13782,6 +13783,17 @@ fn typecheck_with_census_extra(graph: ModuleGraph, source_indices: Map<String, N
           message: "effect summary incomplete: transitive service expansion exhausted its pass budget while dependencies were still propagating, so the published summary is a truncation rather than a fixed point",
           span: no_span(),
           module_name: ""
+        )
+      ResolvedCalleeRegistryRowAbsent { caller: caller, callee: callee } =>
+        inference_error(
+          message: concat("effect summary incomplete: ", callable_identity(id: caller), " calls ", callable_identity(id: callee), ", whose identity is established but names no registry row, so the join contributed nothing and the caller's summary omits whatever that callee does"),
+          span: no_span(),
+          module_name: caller.owner_module_path
+        )
+      FunctionValueEffectsUnresolved { caller: caller } =>
+        make_error_node(
+          diagnostic: EffectSummaryIncompleteAtFunctionValue { caller: callable_identity(id: caller), span: no_span() },
+          module_name: caller.owner_module_path
         )
     }
   )

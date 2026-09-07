@@ -164,14 +164,21 @@ fn callee_edge_of_semantics(cs: CallSemantics?, spelling: String) -> CalleeEdge 
 
 // The dedup key is a DISCRIMINATED spelling, not the bare string: a resolved identity and an
 // unresolved authored spelling can coincide textually, and folding them together would let an
-// unresolved edge be silently absorbed by a resolved one and disappear from the refusal set. A
-// primitive edge has no key because it is dropped at collection -- the one absence that is an
-// answer rather than a gap.
+// unresolved edge be silently absorbed by a resolved one and disappear from the refusal set.
+//
+// AN EMPTY KEY DROPS THE EDGE AT COLLECTION, so it may be used only where the absence is an
+// ANSWER. A primitive is such a case: it has no `ItemInfo` and carries no declared effects, so
+// contributing nothing is the correct summary. A FUNCTION-VALUE CALL IS NOT such a case -- the
+// callee is a value chosen at runtime and its effects are unknown, not empty. It used to share
+// the primitive's empty key, so every higher-order call site vanished before any reader could
+// see it, and the caller published a summary that silently omitted whatever the value does. It
+// now carries a key, deduplicated per item because ONE unresolvable call site is already enough
+// for the caller to refuse and the identities of the rest add nothing to that decision.
 fn callee_edge_dedup_key(edge: CalleeEdge) -> String {
   match edge {
     ResolvedCallee { identity: identity } => concat("d:", callable_identity(id: identity))
     UnresolvedCallee { spelling: spelling } => concat("u:", spelling)
-    FunctionValueCallee => ""
+    FunctionValueCallee => "v:"
     PrimitiveCallee => ""
   }
 }
@@ -321,16 +328,40 @@ fn total_service_count(registry: Map<String, ItemInfo>) -> Int {
 // So the finalized map is reachable only through `EffectsComplete`. The incomplete arm still
 // carries what was computed, because a partial result is useful for diagnosis and measurement,
 // but it is named `partial` and cannot be mistaken for the answer by a reader that did not look.
+// WHAT THIS DISTINCTION GATES TODAY: NOTHING. Stated here because a reader meeting these two
+// arms will reasonably assume otherwise, and building a guarantee on a label that carries none is
+// how the assumption becomes load-bearing.
+//
+// Both arms carry the registry, and the caller in v1.compiler.infer takes it either way and hands
+// the same map to emission. The guarantee is carried entirely by WHICH CAUSES BLOCK -- an
+// unresolved callee identity and a resolved callee naming no registry row each stop the line,
+// while an unresolved function-value callee is advisory because the fact is not knowable at the
+// function that carries the call (see FunctionValueEffectsUnresolved). The label is DESCRIPTIVE.
+//
+// The consequence, left as an observation rather than acted on: if the gate reads the causes and
+// nothing reads the label, then the label is a second representation of what the cause list
+// already says -- DESIGN section 3, one fact with two carriers. Completeness is plausibly DERIVED
+// from the causes rather than stored beside them, and the right time to make that cut is when
+// effect polymorphism lands and this code is open anyway.
 type ServiceEffectAnalysis
   = EffectsComplete { registry: Map<String, ItemInfo> }
   | EffectsIncomplete { partial: Map<String, ItemInfo>, causes: List<EffectIncompleteness> }
 
-// Two ways an effect summary can fail to be trustworthy, kept apart because they have different
-// causes and different repairs: a callee whose identity was never established, and a closure the
-// pass budget did not finish walking.
+// The ways an effect summary can fail to be trustworthy, kept apart because they have different
+// causes and different repairs: a callee whose identity was never established; a closure the pass
+// budget did not finish walking; a callee whose identity IS established but names no registry row,
+// so the join found nothing to contribute; and a call through a function value, whose callee is
+// chosen at runtime and whose effects are therefore unknown.
+//
+// The last two used to be silent `[]` arms inside the propagation fold, which is the same shape
+// as the defect this pass exists to remove: a lookup that misses contributes nothing, and nothing
+// is indistinguishable from "this callee has no effects". Absence of instances is not absence of
+// effects, so both are now REPRESENTED and both make the analysis incomplete.
 type EffectIncompleteness
   = UnresolvedCalleeEdge { item_identity: DeclaredCallableIdentity, spelling: String }
   | ExpansionBudgetExhausted { remaining_delta: Int }
+  | ResolvedCalleeRegistryRowAbsent { caller: DeclaredCallableIdentity, callee: DeclaredCallableIdentity }
+  | FunctionValueEffectsUnresolved { caller: DeclaredCallableIdentity }
 
 // The unresolved edges are a property of the PRECOMPUTED callee lists, not of any iteration, so
 // they are read once from the same structure the fold consumes rather than re-derived per pass.
@@ -346,6 +377,40 @@ fn unresolved_callee_edges(module_callees: List<ModuleCallees>) -> List<EffectIn
           FunctionValueCallee => []
         }
       )
+    )
+  )
+}
+
+// THE REGISTRY KEY SET IS LOOP-INVARIANT. `expand_transitive_services_once` only ever
+// `map_insert`s under a key it just read as `Present`, so the set of keys is identical on the
+// first pass and the last. A resolved callee that names no row therefore names no row at any
+// point in the ascent, and this reader answers exactly once against the initial registry.
+//
+// The guard mirrors the fold's own: only an entry that is itself in the registry and has a body
+// contributes edges to the propagation, so only those edges can be a gap. Refusing over an entry
+// the fold never visits would manufacture a finding about a program that is not affected.
+fn unjoinable_callee_edges(module_callees: List<ModuleCallees>, registry: Map<String, ItemInfo>) -> List<EffectIncompleteness> {
+  module_callees |> flat_map(m =>
+    m.items |> flat_map(entry =>
+      match map_get(registry, callable_identity(id: entry.item_identity)) {
+        Absent => []
+        Present { value: _ } =>
+          if !entry.has_body { [] }
+          else {
+            entry.called |> flat_map(edge =>
+              match edge {
+                ResolvedCallee { identity: callee_identity } =>
+                  match map_get(registry, callable_identity(id: callee_identity)) {
+                    Present { value: _ } => []
+                    Absent => [ResolvedCalleeRegistryRowAbsent { caller: entry.item_identity, callee: callee_identity }]
+                  }
+                FunctionValueCallee => [FunctionValueEffectsUnresolved { caller: entry.item_identity }]
+                PrimitiveCallee => []
+                UnresolvedCallee { spelling: _ } => []
+              }
+            )
+          }
+      }
     )
   )
 }
@@ -403,7 +468,10 @@ fn expansion_pass_bound(registry: Map<String, ItemInfo>) -> Int {
 
 fn expand_transitive_services(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> ServiceEffectAnalysis {
   let module_callees = build_module_callees(modules: modules)
-  let unresolved = unresolved_callee_edges(module_callees: module_callees)
+  let unresolved = concat(
+    unresolved_callee_edges(module_callees: module_callees),
+    unjoinable_callee_edges(module_callees: module_callees, registry: registry)
+  )
   let closed = expand_transitive_services_loop(module_callees: module_callees, registry: registry, remaining_passes: expansion_pass_bound(registry: registry))
   match closed {
     EffectsComplete { registry: closed_registry } =>

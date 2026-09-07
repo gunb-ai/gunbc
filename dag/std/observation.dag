@@ -40,6 +40,12 @@ import std.change {
   KeyedDiffModifiedHunk,
 }
 import std.effect_grant { path_is_prefix }
+// fold_list was CALLED here without being imported. A bare free call resolves against the
+// corpus-wide declaration census, so it type-checked -- but the declaring module was never pulled
+// into the compiled population, so its registry row did not exist and this module's effect summary
+// silently omitted whatever fold_list does. Found by ResolvedCalleeRegistryRowAbsent, which is the
+// arm that exists to stop exactly that.
+import v2.std.algebra { fold_list }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.temporal_effect {
   EffectStallBudget,

@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.empty_grouping_key_silently_deletes_its_population
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data empty_grouping_key_silently_deletes_its_population: RecurringFailureMode = RecurringFailureMode {
+  identity: "empty_grouping_key_silently_deletes_its_population" as NonEmptyStr,
+
+  receipts: [
+    "an empty dedup or grouping key silently deletes its population (A COLLECTOR THAT DROPS ON A KEY PREDICATE DELETES EVERY MEMBER WHOSE KEY CAN BE EMPTY, and the deletion is indistinguishable at every consumer from the population being genuinely empty. ",
+
+    "Invalid state: an edge, row or event whose grouping key has an EMPTY inhabitant, in a collector that treats empty as `skip`. Harm: the member is dropped BEFORE any consumer exists, so every later count, wall, census or witness over that population reads a measured zero -- a number with a producer behind it, which is exactly why it survives review. ",
+
+    "RUNG FOUND AT: 1, mitigatable. Found by reading the collector while looking for something else. ",
+
+    "RECEIPT, gunbc#10688. `callee_edge_dedup_key` answered `\"\"` for `FunctionValueCallee`, and `collect_callee_edges_into` skips an edge whose key is `\"\"`. Every higher-order call site in the corpus was therefore removed at collection. The propagation fold below it had a `FunctionValueCallee => []` arm that LOOKED like a deliberate disposition of that case and could never execute, because no such edge ever reached it. ",
+
+    "THE NUMBER THIS PRODUCED: zero function-value call sites, corpus-wide. Giving the edge a key turned the same measurement into FORTY-FIVE, across `std.interval`, `std.keyed_row`, `std.keyed_roster`, `v1.std.core` and most of `v1.compiler.emit`. The population had not grown; it had been restored. ",
+
+    "WHY THE EMPTY KEY WAS THERE, and it is a legitimate use standing one arm away from an illegitimate one: `PrimitiveCallee` also keys empty, and for a primitive the drop is CORRECT -- it carries no declared effects, so contributing nothing is the answer. The two arms are one line apart and look identical. AN ABSENCE THAT IS AN ANSWER AND AN ABSENCE THAT IS A GAP SHARED ONE ENCODING. ",
+
+    "RECOGNITION RULE: wherever a collector drops on a key predicate, ask what an empty key MEANS and whether that state is constructible. If any producer can mint it, that producer's whole population is invisible downstream and every count over it is a floor, not a measurement. ",
+
+    "A SECOND RULE, because the first one only fires if you are already looking: an arm that disposes of a case which cannot reach it is DEAD, and dead arms read as coverage. If a match arm handles a variant, check that the variant survives collection before crediting the arm. ",
+
+    "CEILING: 4, structurally impossible. This is decidable and fully modeled -- a key type with no empty inhabitant cannot be dropped for being empty, so the drop predicate stops being writable rather than being checked. NEXT-RUNG TRIGGER, a capability: a non-empty key carrier for collector keys (`NonEmptyStr` already exists in `std.types`), so `skip when key is empty` fails to type-check and a deliberate omission must be an explicit arm that says so. ",
+
+    "WHAT IS NOT CLAIMED: the repair in that PR gave the edge a key. IT DID NOT REMOVE THE ENCODING -- `PrimitiveCallee` still keys empty and the drop predicate still exists, so the next producer to mint an empty key is deleted the same way. The class stands at rung 1 and the trigger above is unbuilt.)",
+  ],
+
+  evidence: [],
+}

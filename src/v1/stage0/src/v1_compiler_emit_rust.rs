@@ -193,11 +193,12 @@ pub use crate::v1_compiler_infer_env::{
     type_reference_declaration_ref,
 };
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer_items::item_kind;
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, OtherItem, TypeItem};
+use crate::v1_compiler_infer_items::ItemLookup::{ItemFound, ItemLeafAmbiguous, ItemNotFound};
 pub use crate::v1_compiler_infer_items::{
-    duplicate_item_identity_marker, is_duplicate_item_identity_marker, item_kind,
+    ItemInfo, ItemKind, ItemLookup, ResolvedGraph, TypedModule,
 };
-pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
 pub use crate::v1_compiler_infer_resolve::UnitVariantPhantomLookup;
 use crate::v1_compiler_infer_resolve::UnitVariantPhantomLookup::{
@@ -5046,26 +5047,33 @@ pub fn value_ref_registry_lookup_key(resolved_name: String) -> String {
     }
 }
 
+pub fn item_lookup_of_optional(found: Option<Rc<ItemInfo>>) -> Rc<ItemLookup> {
+    match found.clone() {
+        Some(info) => Rc::new(ItemLookup::ItemFound { info: info.clone() }),
+        std::option::Option::None => Rc::new(ItemLookup::ItemNotFound),
+    }
+}
+
 pub fn lookup_item_by_leaf(
     leaf: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> Option<Rc<ItemInfo>> {
+) -> Rc<ItemLookup> {
     match v1_rt::map_get(&emit_info.item_leaf_owner_modules.clone(), leaf.clone()) {
         Some(owner) => {
             if (owner.clone() == "".to_string()) {
-                Some(crate::v1_compiler_infer_items::duplicate_item_identity_marker(leaf.clone()))
+                Rc::new(ItemLookup::ItemLeafAmbiguous { leaf: leaf.clone() })
             } else {
-                crate::v1_compiler_emit::lookup_item_by_identity(
+                item_lookup_of_optional(crate::v1_compiler_emit::lookup_item_by_identity(
                     registry.clone(),
                     Rc::new(DeclaredCallableIdentity {
                         owner_module_path: owner.clone(),
                         decl_name: leaf.clone(),
                     }),
-                )
+                ))
             }
         }
-        std::option::Option::None => std::option::Option::None,
+        std::option::Option::None => Rc::new(ItemLookup::ItemNotFound),
     }
 }
 
@@ -5074,18 +5082,18 @@ pub fn lookup_item_for_value_ref(
     self_module: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> Option<Rc<ItemInfo>> {
+) -> Rc<ItemLookup> {
     {
         let qualifier = value_ref_qualifier_prefix(resolved_name.clone());
         let leaf = value_ref_qualified_leaf(resolved_name.clone());
         if (qualifier.clone() != "".to_string()) {
-            crate::v1_compiler_emit::lookup_item_by_identity(
+            item_lookup_of_optional(crate::v1_compiler_emit::lookup_item_by_identity(
                 registry.clone(),
                 Rc::new(DeclaredCallableIdentity {
                     owner_module_path: qualifier.clone(),
                     decl_name: leaf.clone(),
                 }),
-            )
+            ))
         } else {
             match crate::v1_compiler_emit::lookup_item_by_identity(
                 registry.clone(),
@@ -5094,18 +5102,9 @@ pub fn lookup_item_for_value_ref(
                     decl_name: leaf.clone(),
                 }),
             ) {
-                Some(info) => Some(info.clone()),
+                Some(info) => Rc::new(ItemLookup::ItemFound { info: info.clone() }),
                 std::option::Option::None => {
-                    match v1_rt::map_get(&emit_info.item_leaf_owner_modules.clone(), leaf.clone()) {
-                        Some(owner) => crate::v1_compiler_emit::lookup_item_by_identity(
-                            registry.clone(),
-                            Rc::new(DeclaredCallableIdentity {
-                                owner_module_path: owner.clone(),
-                                decl_name: leaf.clone(),
-                            }),
-                        ),
-                        std::option::Option::None => std::option::Option::None,
-                    }
+                    lookup_item_by_leaf(leaf.clone(), registry.clone(), emit_info.clone())
                 }
             }
         }
@@ -5118,30 +5117,24 @@ pub fn emit_qualified_value_ref_crate_ident(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
-    if crate::v1_compiler_infer_items::is_duplicate_item_identity_marker(info.clone()) {
-        crate::v1_compiler_emit::emit_error_expr(
-            "duplicate item identity — two declarations of this leaf in one module".to_string(),
-            RenderTarget::Rust,
-        )
-    } else {
+    v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
-                v1_rt::concat(
-                    "crate::".to_string(),
-                    crate::v1_compiler_emit_core_support::module_to_filename(
-                        info.module_name.clone(),
-                    ),
-                ),
-                "::".to_string(),
+                "crate::".to_string(),
+                crate::v1_compiler_emit_core_support::module_to_filename(info.module_name.clone()),
             ),
-            emit_import_name(leaf.clone(), registry.clone(), emit_info.clone()),
-        )
-    }
+            "::".to_string(),
+        ),
+        emit_import_name(leaf.clone(), registry.clone(), emit_info.clone()),
+    )
 }
 
-pub fn value_ref_item_info_refusal(info: Rc<ItemInfo>) -> String {
+pub fn ambiguous_leaf_refusal(leaf: String) -> String {
     crate::v1_compiler_emit::emit_error_expr(
-        "duplicate item identity — two declarations of this leaf in one module".to_string(),
+        v1_rt::concat(
+            v1_rt::concat("ambiguous leaf '".to_string(), leaf.clone()),
+            "' — two modules declare it, so no single declaration can be named".to_string(),
+        ),
         RenderTarget::Rust,
     )
 }
@@ -9047,6 +9040,7 @@ pub enum ReferenceDerivedCandidateDisposition {
     CandidateVariantDelegatedToParent { parent_enum: String },
     CandidateVariantParentUnresolved,
     CandidateRegistryAbsent,
+    CandidateLeafAmbiguous,
     CandidateExportProofFailed { provider_module: String },
 }
 
@@ -9090,8 +9084,11 @@ pub fn reference_derived_candidate_disposition(
             }
         }
     } else {
-        match lookup_item_by_leaf(name.clone(), registry.clone(), emit_info.clone()) {
-            Some(info) => {
+        match (*lookup_item_by_leaf(name.clone(), registry.clone(), emit_info.clone())).clone() {
+            ItemLookup::ItemLeafAmbiguous { leaf: _, .. } => {
+                Rc::new(ReferenceDerivedCandidateDisposition::CandidateLeafAmbiguous)
+            }
+            ItemLookup::ItemFound { info: info, .. } => {
                 if (info.module_name.clone() == this_module_name.clone()) {
                     Rc::new(ReferenceDerivedCandidateDisposition::CandidateOwnModule)
                 } else {
@@ -9115,7 +9112,7 @@ pub fn reference_derived_candidate_disposition(
                     }
                 }
             }
-            std::option::Option::None => {
+            ItemLookup::ItemNotFound => {
                 Rc::new(ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent)
             }
         }
@@ -9158,6 +9155,7 @@ pub fn reference_derived_row_diagnostics(
                     ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent => {
                         Rc::new(vec![])
                     }
+                    ReferenceDerivedCandidateDisposition::CandidateLeafAmbiguous => Rc::new(vec![]),
                 })
                 .iter()
                 .cloned(),
@@ -9196,6 +9194,9 @@ pub fn reference_derived_disposition_name(
         ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent => {
             "registry-absent".to_string()
         }
+        ReferenceDerivedCandidateDisposition::CandidateLeafAmbiguous => {
+            "leaf-ambiguous".to_string()
+        }
         ReferenceDerivedCandidateDisposition::CandidateExportProofFailed {
             provider_module: _,
             ..
@@ -9211,6 +9212,7 @@ pub struct ReferenceDerivedCensus {
     pub variant_delegated_to_parent: i64,
     pub variant_parent_unresolved: i64,
     pub registry_absent: i64,
+    pub leaf_ambiguous: i64,
     pub export_proof_failed: i64,
 }
 
@@ -9225,6 +9227,7 @@ pub fn reference_derived_census(
             variant_delegated_to_parent: 0,
             variant_parent_unresolved: 0,
             registry_absent: 0,
+            leaf_ambiguous: 0,
             export_proof_failed: 0,
         },
         |acc: ReferenceDerivedCensus, r: Rc<ReferenceDerivedCandidateRow>| match (*r
@@ -9241,6 +9244,7 @@ pub fn reference_derived_census(
                 variant_delegated_to_parent: acc.variant_delegated_to_parent.clone(),
                 variant_parent_unresolved: acc.variant_parent_unresolved.clone(),
                 registry_absent: acc.registry_absent.clone(),
+                leaf_ambiguous: acc.leaf_ambiguous.clone(),
                 export_proof_failed: acc.export_proof_failed.clone(),
             },
             ReferenceDerivedCandidateDisposition::CandidateOwnModule => ReferenceDerivedCensus {
@@ -9250,6 +9254,7 @@ pub fn reference_derived_census(
                 variant_delegated_to_parent: acc.variant_delegated_to_parent.clone(),
                 variant_parent_unresolved: acc.variant_parent_unresolved.clone(),
                 registry_absent: acc.registry_absent.clone(),
+                leaf_ambiguous: acc.leaf_ambiguous.clone(),
                 export_proof_failed: acc.export_proof_failed.clone(),
             },
             ReferenceDerivedCandidateDisposition::CandidateVariantDelegatedToParent {
@@ -9262,6 +9267,7 @@ pub fn reference_derived_census(
                 variant_delegated_to_parent: (acc.variant_delegated_to_parent.clone() + 1),
                 variant_parent_unresolved: acc.variant_parent_unresolved.clone(),
                 registry_absent: acc.registry_absent.clone(),
+                leaf_ambiguous: acc.leaf_ambiguous.clone(),
                 export_proof_failed: acc.export_proof_failed.clone(),
             },
             ReferenceDerivedCandidateDisposition::CandidateVariantParentUnresolved => {
@@ -9272,6 +9278,7 @@ pub fn reference_derived_census(
                     variant_delegated_to_parent: acc.variant_delegated_to_parent.clone(),
                     variant_parent_unresolved: (acc.variant_parent_unresolved.clone() + 1),
                     registry_absent: acc.registry_absent.clone(),
+                    leaf_ambiguous: acc.leaf_ambiguous.clone(),
                     export_proof_failed: acc.export_proof_failed.clone(),
                 }
             }
@@ -9283,6 +9290,19 @@ pub fn reference_derived_census(
                     variant_delegated_to_parent: acc.variant_delegated_to_parent.clone(),
                     variant_parent_unresolved: acc.variant_parent_unresolved.clone(),
                     registry_absent: (acc.registry_absent.clone() + 1),
+                    leaf_ambiguous: acc.leaf_ambiguous.clone(),
+                    export_proof_failed: acc.export_proof_failed.clone(),
+                }
+            }
+            ReferenceDerivedCandidateDisposition::CandidateLeafAmbiguous => {
+                ReferenceDerivedCensus {
+                    candidates: (acc.candidates.clone() + 1),
+                    survived: acc.survived.clone(),
+                    own_module: acc.own_module.clone(),
+                    variant_delegated_to_parent: acc.variant_delegated_to_parent.clone(),
+                    variant_parent_unresolved: acc.variant_parent_unresolved.clone(),
+                    registry_absent: acc.registry_absent.clone(),
+                    leaf_ambiguous: (acc.leaf_ambiguous.clone() + 1),
                     export_proof_failed: acc.export_proof_failed.clone(),
                 }
             }
@@ -9296,6 +9316,7 @@ pub fn reference_derived_census(
                 variant_delegated_to_parent: acc.variant_delegated_to_parent.clone(),
                 variant_parent_unresolved: acc.variant_parent_unresolved.clone(),
                 registry_absent: acc.registry_absent.clone(),
+                leaf_ambiguous: acc.leaf_ambiguous.clone(),
                 export_proof_failed: (acc.export_proof_failed.clone() + 1),
             },
         },
@@ -9632,13 +9653,26 @@ pub fn reference_derived_use_line_plan(
         let resolved = Rc::new({
             let mut __result = Vec::new();
             for name in unlisted.iter().cloned() {
-                __result.extend((*match lookup_item_by_leaf(name.clone(), registry.clone(), emit_info.clone()) {
-    Some(info) => Rc::new(vec![Rc::new(ReferenceDerivedProviderBinding {
-    name: name.clone(),
-    provider_module: info.module_name.clone(),
-})]),
-    std::option::Option::None => Rc::new(vec![]),
-}).iter().cloned());
+                __result.extend(
+                    (*match (*lookup_item_by_leaf(
+                        name.clone(),
+                        registry.clone(),
+                        emit_info.clone(),
+                    ))
+                    .clone()
+                    {
+                        ItemLookup::ItemFound { info: info, .. } => {
+                            Rc::new(vec![Rc::new(ReferenceDerivedProviderBinding {
+                                name: name.clone(),
+                                provider_module: info.module_name.clone(),
+                            })])
+                        }
+                        ItemLookup::ItemLeafAmbiguous { leaf: _, .. } => Rc::new(vec![]),
+                        ItemLookup::ItemNotFound => Rc::new(vec![]),
+                    })
+                    .iter()
+                    .cloned(),
+                );
             }
             __result
         });
@@ -9783,19 +9817,28 @@ pub fn qualified_type_reference_rows(
                             {
                                 Rc::new(vec![])
                             } else {
-                                match lookup_item_by_leaf(
+                                match (*lookup_item_by_leaf(
                                     leaf.clone(),
                                     registry.clone(),
                                     emit_info.clone(),
-                                ) {
-                                    std::option::Option::None => {
+                                ))
+                                .clone()
+                                {
+                                    ItemLookup::ItemNotFound => {
                                         Rc::new(vec![Rc::new(ReferenceDerivedCandidateRow {
     module_name: this_module_name.clone(),
     name: name.clone(),
     disposition: Rc::new(ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent),
 })])
                                     }
-                                    Some(info) => {
+                                    ItemLookup::ItemLeafAmbiguous { leaf: _, .. } => {
+                                        Rc::new(vec![Rc::new(ReferenceDerivedCandidateRow {
+    module_name: this_module_name.clone(),
+    name: name.clone(),
+    disposition: Rc::new(ReferenceDerivedCandidateDisposition::CandidateLeafAmbiguous),
+})])
+                                    }
+                                    ItemLookup::ItemFound { info: info, .. } => {
                                         if !registry_row_is_type_declared_in(
                                             info.clone(),
                                             qualifier.clone(),
@@ -10222,16 +10265,19 @@ pub fn emit_module_full(
             let mut __result = Vec::new();
             for item in typed_module.items.clone().iter().cloned() {
                 __result.extend(
-                    (*match lookup_item_by_leaf(
+                    (*match (*lookup_item_by_leaf(
                         crate::v1_compiler_infer_env::authored_name(
                             scope.type_env.clone(),
                             item.clone(),
                         ),
                         registry.clone(),
                         emit_info.clone(),
-                    ) {
-                        Some(info) => info.service_names.clone(),
-                        std::option::Option::None => Rc::new(vec![]),
+                    ))
+                    .clone()
+                    {
+                        ItemLookup::ItemFound { info: info, .. } => info.service_names.clone(),
+                        ItemLookup::ItemLeafAmbiguous { leaf: _, .. } => Rc::new(vec![]),
+                        ItemLookup::ItemNotFound => Rc::new(vec![]),
                     })
                     .iter()
                     .cloned(),
@@ -10408,9 +10454,12 @@ pub fn emit_import_name(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
-        let is_data = match lookup_item_by_leaf(n.clone(), registry.clone(), emit_info.clone()) {
-            Some(info) => (info.kind.clone() == ItemKind::DataItem),
-            std::option::Option::None => false,
+        let is_data = match (*lookup_item_by_leaf(n.clone(), registry.clone(), emit_info.clone()))
+            .clone()
+        {
+            ItemLookup::ItemFound { info: info, .. } => (info.kind.clone() == ItemKind::DataItem),
+            ItemLookup::ItemLeafAmbiguous { leaf: _, .. } => false,
+            ItemLookup::ItemNotFound => false,
         };
         if is_data.clone() {
             crate::v1_compiler_emit_core_support::to_snake(n.clone())
@@ -21274,19 +21323,28 @@ pub fn emit_value_ref_ident(
             let leaf = value_ref_qualified_leaf(name.clone());
             let qualifier = value_ref_qualifier_prefix(name.clone());
             if (qualifier.clone() != "".to_string()) {
-                match lookup_item_for_value_ref(name.clone(), self_module.clone(), registry.clone(), emit_info.clone()) {
-    Some(info) => emit_qualified_value_ref_crate_ident(leaf.clone(), info.clone(), registry.clone(), emit_info.clone()),
-    std::option::Option::None => crate::v1_compiler_emit::emit_error_expr("qualified value reference missing exact registry row — refuse authored qualifier".to_string(), RenderTarget::Rust),
+                match (*lookup_item_for_value_ref(name.clone(), self_module.clone(), registry.clone(), emit_info.clone())).clone() {
+    ItemLookup::ItemFound { info: info, .. } => emit_qualified_value_ref_crate_ident(leaf.clone(), info.clone(), registry.clone(), emit_info.clone()),
+    ItemLookup::ItemLeafAmbiguous { leaf: ambiguous_leaf, .. } => ambiguous_leaf_refusal(ambiguous_leaf.clone()),
+    ItemLookup::ItemNotFound => crate::v1_compiler_emit::emit_error_expr("qualified value reference missing exact registry row — refuse authored qualifier".to_string(), RenderTarget::Rust),
 }
             } else {
-                match lookup_item_by_leaf(leaf.clone(), registry.clone(), emit_info.clone()) {
-                    Some(info) => emit_qualified_value_ref_crate_ident(
-                        leaf.clone(),
-                        info.clone(),
-                        registry.clone(),
-                        emit_info.clone(),
-                    ),
-                    std::option::Option::None => {
+                match (*lookup_item_by_leaf(leaf.clone(), registry.clone(), emit_info.clone()))
+                    .clone()
+                {
+                    ItemLookup::ItemFound { info: info, .. } => {
+                        emit_qualified_value_ref_crate_ident(
+                            leaf.clone(),
+                            info.clone(),
+                            registry.clone(),
+                            emit_info.clone(),
+                        )
+                    }
+                    ItemLookup::ItemLeafAmbiguous {
+                        leaf: ambiguous_leaf,
+                        ..
+                    } => ambiguous_leaf_refusal(ambiguous_leaf.clone()),
+                    ItemLookup::ItemNotFound => {
                         if freemonoid_empty_from_emit_info(leaf.clone(), emit_info.clone()) {
                             emit_freemonoid_empty_rc_value()
                         } else {
@@ -21384,67 +21442,60 @@ pub fn emit_var_ref(
                                 body.clone()
                             }
                         }
-                        std::option::Option::None => match lookup_item_for_value_ref(
+                        std::option::Option::None => match (*lookup_item_for_value_ref(
                             resolved_name.clone(),
                             module_name.clone(),
                             registry.clone(),
                             emit_info.clone(),
-                        ) {
-                            Some(info) => {
-                                if crate::v1_compiler_infer_items::is_duplicate_item_identity_marker(
-                                    info.clone(),
-                                ) {
-                                    value_ref_item_info_refusal(info.clone())
+                        ))
+                        .clone()
+                        {
+                            ItemLookup::ItemLeafAmbiguous {
+                                leaf: ambiguous_leaf,
+                                ..
+                            } => ambiguous_leaf_refusal(ambiguous_leaf.clone()),
+                            ItemLookup::ItemFound { info: info, .. } => {
+                                let is_data = (info.kind.clone() == ItemKind::DataItem);
+                                if is_data.clone() {
+                                    v1_rt::concat(
+                                        emit_value_ref_ident(
+                                            name.clone(),
+                                            module_name.clone(),
+                                            registry.clone(),
+                                            emit_info.clone(),
+                                        ),
+                                        "()".to_string(),
+                                    )
                                 } else {
                                     {
-                                        let is_data = (info.kind.clone() == ItemKind::DataItem);
-                                        if is_data.clone() {
-                                            v1_rt::concat(
-                                                emit_value_ref_ident(
-                                                    name.clone(),
-                                                    module_name.clone(),
-                                                    registry.clone(),
-                                                    emit_info.clone(),
-                                                ),
-                                                "()".to_string(),
-                                            )
+                                        let is_function_value =
+                                            match binding_kind.clone().as_deref().cloned() {
+                                                Some(VarBindingKind::FunctionValueBinding) => true,
+                                                _ => false,
+                                            };
+                                        let ident = emit_value_ref_ident(
+                                            resolved_name.clone(),
+                                            module_name.clone(),
+                                            registry.clone(),
+                                            emit_info.clone(),
+                                        );
+                                        let ident_str = if is_function_value.clone() {
+                                            ident.clone()
                                         } else {
-                                            {
-                                                let is_function_value = match binding_kind
-                                                    .clone()
-                                                    .as_deref()
-                                                    .cloned()
-                                                {
-                                                    Some(VarBindingKind::FunctionValueBinding) => {
-                                                        true
-                                                    }
-                                                    _ => false,
-                                                };
-                                                let ident = emit_value_ref_ident(
-                                                    resolved_name.clone(),
-                                                    module_name.clone(),
-                                                    registry.clone(),
-                                                    emit_info.clone(),
-                                                );
-                                                let ident_str = if is_function_value.clone() {
-                                                    ident.clone()
-                                                } else {
-                                                    if moves_by_value.clone() {
-                                                        ident.clone()
-                                                    } else {
-                                                        match resolved_type.clone() {
+                                            if moves_by_value.clone() {
+                                                ident.clone()
+                                            } else {
+                                                match resolved_type.clone() {
     Some(_) => crate::v1_compiler_emit_core_support::apply_type_template1(sharing.clone_value.clone(), ident.clone()),
     _ => ident.clone(),
 }
-                                                    }
-                                                };
-                                                ident_str.clone()
                                             }
-                                        }
+                                        };
+                                        ident_str.clone()
                                     }
                                 }
                             }
-                            std::option::Option::None => {
+                            ItemLookup::ItemNotFound => {
                                 let ident = emit_value_ref_ident(
                                     resolved_name.clone(),
                                     module_name.clone(),
@@ -21538,21 +21589,46 @@ pub fn emit_typed_expr_base(
                                     n.clone(),
                                     scope.module_name.clone(),
                                 );
-                                match lookup_item_for_value_ref(resolved_name.clone(), scope.module_name.clone(), registry.clone(), emit_info.clone()) {
-    Some(info) => if crate::v1_compiler_infer_items::is_duplicate_item_identity_marker(info.clone()) {
-                            value_ref_item_info_refusal(info.clone())
-                        } else {
-                            {
-                                let is_data = (info.kind.clone() == ItemKind::DataItem);
-if is_data.clone() {
-                                    v1_rt::concat(emit_value_ref_ident(n.clone(), scope.module_name.clone(), registry.clone(), emit_info.clone()), "()".to_string())
-                                } else {
-                                    emit_value_ref_ident(resolved_name.clone(), scope.module_name.clone(), registry.clone(), emit_info.clone())
+                                match (*lookup_item_for_value_ref(
+                                    resolved_name.clone(),
+                                    scope.module_name.clone(),
+                                    registry.clone(),
+                                    emit_info.clone(),
+                                ))
+                                .clone()
+                                {
+                                    ItemLookup::ItemLeafAmbiguous {
+                                        leaf: ambiguous_leaf,
+                                        ..
+                                    } => ambiguous_leaf_refusal(ambiguous_leaf.clone()),
+                                    ItemLookup::ItemFound { info: info, .. } => {
+                                        let is_data = (info.kind.clone() == ItemKind::DataItem);
+                                        if is_data.clone() {
+                                            v1_rt::concat(
+                                                emit_value_ref_ident(
+                                                    n.clone(),
+                                                    scope.module_name.clone(),
+                                                    registry.clone(),
+                                                    emit_info.clone(),
+                                                ),
+                                                "()".to_string(),
+                                            )
+                                        } else {
+                                            emit_value_ref_ident(
+                                                resolved_name.clone(),
+                                                scope.module_name.clone(),
+                                                registry.clone(),
+                                                emit_info.clone(),
+                                            )
+                                        }
+                                    }
+                                    ItemLookup::ItemNotFound => emit_value_ref_ident(
+                                        resolved_name.clone(),
+                                        scope.module_name.clone(),
+                                        registry.clone(),
+                                        emit_info.clone(),
+                                    ),
                                 }
-}
-                        },
-    std::option::Option::None => emit_value_ref_ident(resolved_name.clone(), scope.module_name.clone(), registry.clone(), emit_info.clone()),
-}
                             }
                         }
                     }
@@ -35245,7 +35321,7 @@ pub fn emit_unrealizable_shell_channel(channel: ShellResultChannel) -> String {
         crate::v1_compiler_emit::shell_emission_refusal_fact(Rc::new(
             ShellEmissionRefusal::ShellChannelNotRealizedByTarget {
                 key: crate::v1_compiler_emit::shell_result_channel_key(channel.clone()),
-                target_name: render_target_name(RenderTarget::Rust),
+                target_name: crate::v1_compiler_emit::render_target_name(RenderTarget::Rust),
             },
         )),
         RenderTarget::Rust,

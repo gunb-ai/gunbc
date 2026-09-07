@@ -1,0 +1,36 @@
+module gunbc.recurring_failure_mode.resolution_scope_conflated_with_ownership_scope
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data resolution_scope_conflated_with_ownership_scope: RecurringFailureMode = RecurringFailureMode {
+  identity: "resolution_scope_conflated_with_ownership_scope" as NonEmptyStr,
+
+  receipts: [
+    "resolution scope conflated with ownership scope (THE SCOPE THAT LETS YOU FIND A NAME AND THE SCOPE THAT OWNS ITS DECLARATION ARE TWO FACTS, and every instance of this class is a place where one carrier held both. ",
+
+    "The invalid state is an IDENTITY WHOSE OWNER IS THE REFERENCING SCOPE. The harm is that such an identity addresses a registry key that cannot exist, so the lookup misses -- and a lookup that misses contributes NOTHING, which is indistinguishable from a callee that genuinely has no effects. ",
+
+    "RUNG FOUND AT: 1, mitigatable. Found by reading diagnostics, not by any check. ",
+
+    "THREE INSTANCES IN ONE PR, gunbc#10688, at three different levels, which is what earns the row rather than three separate ones. ",
+
+    "FIRST: `lookup_item_by_leaf` resolves a leaf name with NO referencing module at all, so an unrelated homonym anywhere in the corpus becomes an AMBIGUITY the referencing module could never have observed -- resolution scope widened to the whole corpus while ownership was never asked. ",
+
+    "SECOND: `func_sig_from_global_bare` consults the module type environment first and stamps that module as the callee's owner. AN IMPORT IS PRECISELY A NAME PLACED INTO THE IMPORTING MODULE'S ENVIRONMENT, so every imported callable was identified as owned by its IMPORTER. Receipt: `v1.compiler.parse.parse_expr_loop calls v1.compiler.parse.make_file_span`, where `make_file_span` is declared in `v1.std.core`. The identity named the caller's module for a declaration it does not own. ",
+
+    "THIRD: the service-effect registry is keyed on the declaring module, so those identities joined against nothing and the caller published a summary omitting whatever the imported callee does. That is the SILENT half, and it is why the class survived: nothing refused. ",
+
+    "RECOGNITION RULE: when a function derives an owner, ask WHICH SCOPE IT SEARCHED. If the answer is an environment, a type env, a set of visible bindings, or anything else a reference can reach, it has computed where the name was FOUND and not where it was DECLARED. Ownership is obtainable only from the census that holds declarations. ",
+
+    "THE ORDERING LESSON, WHICH IS THE MORE IMPORTANT RECEIPT AND WAS A NEAR MISS. The repair under way in that PR was to make a missing registry row BLOCK rather than contribute silently. Landing that wall before verifying how the identity was DERIVED would have refused thirteen CORRECT programs, and the author would have read those refusals as findings about the registry PRODUCER and gone hunting there. A blocking arm manufactures evidence for a defect that is not there when the identity it refuses over is itself wrong. ",
+
+    "So: A BLOCKING ARM MUST NOT BE LANDED OVER AN IDENTITY WHOSE DERIVATION HAS NOT ITSELF BEEN VERIFIED. The refusals it produces will be read as findings about the thing it refuses, not about the key it refused on. ",
+
+    "WHAT IS NOT CLAIMED: the repair takes the owner from the census and this row does not assert the census is always right. It asserts only that an ENVIRONMENT is never the place to ask. ",
+
+    "REMEDY STATE, stated plainly: the two sites are repaired individually and the CONFLATION REMAINS REPRESENTABLE -- a third site can still take an owner from an environment tomorrow. The next-rung trigger is a carrier from which an owner is obtainable ONLY via the declaration census, so `take the owner from the env` stops type-checking. That is unbuilt, and the class stands at rung 1 until it is.)",
+  ],
+
+  evidence: [],
+}

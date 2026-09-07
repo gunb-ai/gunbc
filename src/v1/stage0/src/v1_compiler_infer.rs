@@ -160,7 +160,8 @@ pub use crate::v1_compiler_infer_resolve::{
 };
 pub use crate::v1_compiler_infer_resolve::{ItemResolveResult, NodeResolveResult};
 use crate::v1_compiler_infer_service::EffectIncompleteness::{
-    ExpansionBudgetExhausted, UnresolvedCalleeEdge,
+    ExpansionBudgetExhausted, FunctionValueEffectsUnresolved, ResolvedCalleeRegistryRowAbsent,
+    UnresolvedCalleeEdge,
 };
 use crate::v1_compiler_infer_service::ServiceEffectAnalysis::{EffectsComplete, EffectsIncomplete};
 pub use crate::v1_compiler_infer_service::{
@@ -2878,7 +2879,7 @@ pub fn where_refinement_diags_for_predicate(
                     }
                 },
                 std::option::Option::None => {
-                    if expr_is_any_literal(value_expr.clone()) {
+                    if crate::v1_std_core::expr_is_any_literal(value_expr.clone()) {
                         refinement_refusal
                     } else {
                         Rc::new(vec![where_refinement_unenforced_error(
@@ -2899,7 +2900,7 @@ pub fn where_refinement_diags_for_predicate(
                         match crate::v1_std_core::expr_literal_string_optional(value_expr.clone()) {
                             Some(v) => Some(v.clone()),
                             std::option::Option::None => {
-                                expr_literal_symbol_optional(value_expr.clone())
+                                crate::v1_std_core::expr_literal_symbol_optional(value_expr.clone())
                             }
                         };
                     match string_literal_value.clone() {
@@ -2925,7 +2926,7 @@ pub fn where_refinement_diags_for_predicate(
                             }
                         }
                         std::option::Option::None => {
-                            if expr_is_any_literal(value_expr.clone()) {
+                            if crate::v1_std_core::expr_is_any_literal(value_expr.clone()) {
                                 refinement_refusal
                             } else {
                                 Rc::new(vec![where_refinement_unenforced_error(
@@ -9329,8 +9330,8 @@ pub fn infer_binop_operands(
     scope: Rc<InferScope>,
 ) -> Rc<BinopOperands> {
     {
-        let left_is_literal = expr_is_any_literal(left_expr.clone());
-        let right_is_literal = expr_is_any_literal(right_expr.clone());
+        let left_is_literal = crate::v1_std_core::expr_is_any_literal(left_expr.clone());
+        let right_is_literal = crate::v1_std_core::expr_is_any_literal(right_expr.clone());
         if (right_is_literal.clone() && !left_is_literal.clone()) {
             {
                 let l = infer_expr(left_expr.clone(), scope.clone(), std::option::Option::None);
@@ -9755,7 +9756,9 @@ Rc::new(InferResult {
                 ) {
                     Some(refusal) => refusal.clone(),
                     std::option::Option::None => {
-                        let sig = call_target_declared_sig(call_target.clone());
+                        let sig = crate::v1_compiler_infer_sigs::call_target_declared_sig(
+                            call_target.clone(),
+                        );
                         let sig_params = match sig.clone() {
                             Some(s) => s.params.clone(),
                             std::option::Option::None => Rc::new(vec![]),
@@ -10190,7 +10193,9 @@ Rc::new(InferResult {
                         }, scope.service_registry.clone(), scope.type_env.clone().source_indices.clone())
                     };
                                 let callee_is_body_binding =
-                                    call_target_is_locally_bound(call_target.clone());
+                                    crate::v1_compiler_infer_sigs::call_target_is_locally_bound(
+                                        call_target.clone(),
+                                    );
                                 let is_known_method = (!callee_is_body_binding.clone()
                                     && (method_resolution.result_type.clone()
                                         != std::option::Option::None));
@@ -10556,7 +10561,7 @@ Rc::new(InferResult {
 }
                                 } else {
                                     {
-                                        let callable_local = match call_target_local_binding(call_target.clone()) {
+                                        let callable_local = match crate::v1_compiler_infer_sigs::call_target_local_binding(call_target.clone()) {
     Some(carried) => if ((carried.resolved.clone().params.clone().len() as i64) > 0) {
                                             Some(carried.resolved.clone())
                                         } else {
@@ -11006,7 +11011,9 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 }),
                 std::option::Option::None => match expected.clone() {
                     Some(expected_type) => Rc::new(vec![expected_type.clone()]),
-                    std::option::Option::None => Rc::new(vec![divergent_type()]),
+                    std::option::Option::None => {
+                        Rc::new(vec![crate::v1_std_core::divergent_type()])
+                    }
                 },
             };
             let unified_arm_type = match arm_body_types.clone().first().cloned() {
@@ -21015,7 +21022,7 @@ pub fn transparent_alias_qualified_name(
     decl_modules: Rc<HashMap<String, String>>,
     name: String,
 ) -> String {
-    if ((module_path_segments(name.clone()).len() as i64) > 1) {
+    if ((crate::v1_std_core::module_path_segments(name.clone()).len() as i64) > 1) {
         name.clone()
     } else {
         match v1_rt::map_get(&decl_modules, name.clone()) {
@@ -25676,6 +25683,11 @@ pub fn typecheck_with_census_extra(
                 __result.push(match (*reason.clone()).clone() {
     EffectIncompleteness::UnresolvedCalleeEdge { item_identity, spelling, .. } => inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("effect summary incomplete: call to '".to_string(), spelling.clone()), "' in ".to_string()), crate::v1_std_core::callable_identity(item_identity.clone())), " has no established callee identity, so its effects cannot be joined".to_string()), crate::v1_std_core::no_span(), item_identity.owner_module_path.clone()),
     EffectIncompleteness::ExpansionBudgetExhausted { remaining_delta: _, .. } => inference_error("effect summary incomplete: transitive service expansion exhausted its pass budget while dependencies were still propagating, so the published summary is a truncation rather than a fixed point".to_string(), crate::v1_std_core::no_span(), "".to_string()),
+    EffectIncompleteness::ResolvedCalleeRegistryRowAbsent { caller, callee, .. } => inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("effect summary incomplete: ".to_string(), crate::v1_std_core::callable_identity(caller.clone())), " calls ".to_string()), crate::v1_std_core::callable_identity(callee.clone())), ", whose identity is established but names no registry row, so the join contributed nothing and the caller's summary omits whatever that callee does".to_string()), crate::v1_std_core::no_span(), caller.owner_module_path.clone()),
+    EffectIncompleteness::FunctionValueEffectsUnresolved { caller: caller, .. } => crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue {
+    caller: crate::v1_std_core::callable_identity(caller.clone()),
+    span: crate::v1_std_core::no_span(),
+}), caller.owner_module_path.clone()),
 });
             }
             __result

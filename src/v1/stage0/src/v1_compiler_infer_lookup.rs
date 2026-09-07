@@ -826,6 +826,18 @@ pub fn census_declaration_bound_formals(
     }
 }
 
+pub fn declaring_module_for_local_binding(type_env: Rc<TypeEnv>, name: String) -> String {
+    match (*borrowed_census_decl(type_env.clone(), name.clone())).clone() {
+        BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
+            declaration: bd, ..
+        } => bd.owner_module_path.clone(),
+        BorrowedCensusDeclLookup::BorrowedCensusDeclAmbiguous { candidates: _, .. } => {
+            type_env.module_path.clone()
+        }
+        BorrowedCensusDeclLookup::BorrowedCensusDeclNotFound => type_env.module_path.clone(),
+    }
+}
+
 pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<FuncSigLookup> {
     if crate::std_algebra::algebra_method_template_name(name.clone()) {
         Rc::new(FuncSigLookup::FuncSigUnresolved)
@@ -839,7 +851,10 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                 ) {
                     Some(binding) => Rc::new(BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
                         declaration: Rc::new(BorrowedCensusDecl {
-                            owner_module_path: type_env.module_path.clone(),
+                            owner_module_path: declaring_module_for_local_binding(
+                                type_env.clone(),
+                                name.clone(),
+                            ),
                             node: binding.resolved.clone(),
                         }),
                     }),

@@ -15318,6 +15318,27 @@ fn finish_resolved_graph_assembly(
                         crate::v1_std_core::no_span(),
                         String::new(),
                     ),
+                    crate::v1_compiler_infer_service::EffectIncompleteness::ResolvedCalleeRegistryRowAbsent {
+                        caller,
+                        callee,
+                    } => v1_compiler_infer::inference_error(
+                        format!(
+                            "effect summary incomplete: {} calls {}, whose identity is established but names no registry row, so the join contributed nothing and the caller's summary omits whatever that callee does",
+                            crate::v1_std_core::callable_identity(caller.clone()),
+                            crate::v1_std_core::callable_identity(callee.clone())
+                        ),
+                        crate::v1_std_core::no_span(),
+                        caller.owner_module_path.clone(),
+                    ),
+                    crate::v1_compiler_infer_service::EffectIncompleteness::FunctionValueEffectsUnresolved {
+                        caller,
+                    } => crate::v1_std_core::make_error_node(
+                        Rc::new(crate::v1_std_core::CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue {
+                            caller: crate::v1_std_core::callable_identity(caller.clone()),
+                            span: crate::v1_std_core::no_span(),
+                        }),
+                        caller.owner_module_path.clone(),
+                    ),
                 })
                 .collect();
             (partial.clone(), diags)

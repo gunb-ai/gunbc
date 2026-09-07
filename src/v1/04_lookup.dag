@@ -2,7 +2,6 @@ module v1.compiler.infer_lookup
 
 import std.induction { SubValueRelation }
 import v1.compiler.infer_items { ItemKind, FnItem, FuncItem, TypeItem, ServiceItem, DataItem, OtherItem, item_kind }
-import v1.compiler.infer_items { ItemKind, FnItem, FuncItem, TypeItem, ServiceItem, DataItem, OtherItem, item_kind }
 import std.types { is_kernel_type }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.primitive_projection {
@@ -711,6 +710,31 @@ fn census_declaration_bound_formals(type_env: TypeEnv, owner_module_path: String
     })
 }
 
+// A BINDING IN THIS MODULE'S ENVIRONMENT IS NOT A DECLARATION BY THIS MODULE.
+//
+// The arm below reads `lookup_binding_by_name_local`, which searches `env.str_bindings` and
+// `env.bindings` -- the module's type environment, which is exactly where an IMPORT puts a name. It
+// then stamped `type_env.module_path` as the declaration's owner, so every imported callable was
+// identified as belonging to the module that imported it. That is the owner-discarding join this
+// branch exists to remove, surviving one level up: the effect registry is keyed on the DECLARING
+// module, so an identity naming the importer addresses a key that cannot exist, and the callee's
+// summary silently contributed nothing. Measured on the corpus it produced 13 such identities --
+// v1.compiler.parse.make_file_span among them, whose declaration is in v1.std.core.
+//
+// The census already knows the declaring module, so it is asked. The importer is used only where
+// the census has no answer at all, which is the genuinely-local case: a module that declares a name
+// and calls it, where the environment binding and the declaration are the same thing.
+//
+// Only the OWNER is taken from the census. The node stays the local binding, so this changes which
+// module the callee is identified as, and changes nothing about how the call is typed.
+fn declaring_module_for_local_binding(type_env: TypeEnv, name: String) -> String {
+  match borrowed_census_decl(type_env: type_env, name: name) {
+    BorrowedCensusDeclFound { declaration: bd } => bd.owner_module_path
+    BorrowedCensusDeclAmbiguous { candidates: _ } => type_env.module_path
+    BorrowedCensusDeclNotFound => type_env.module_path
+  }
+}
+
 fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
   if algebra_method_template_name(name: name) {
     FuncSigUnresolved
@@ -719,7 +743,10 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
     Present { value: _ } => FuncSigUnresolved
     Absent =>
   let borrowed = match lookup_binding_by_name_local(env: type_env, name: name) {
-    Present { value: binding } => BorrowedCensusDeclFound { declaration: BorrowedCensusDecl { owner_module_path: type_env.module_path, node: binding.resolved } }
+    Present { value: binding } => BorrowedCensusDeclFound { declaration: BorrowedCensusDecl {
+      owner_module_path: declaring_module_for_local_binding(type_env: type_env, name: name),
+      node: binding.resolved
+    } }
     Absent => borrowed_census_decl(type_env: type_env, name: name)
   }
   match borrowed {

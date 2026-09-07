@@ -221,7 +221,7 @@ pub fn callee_edge_dedup_key(edge: Rc<CalleeEdge>) -> String {
         CalleeEdge::UnresolvedCallee {
             spelling: spelling, ..
         } => v1_rt::concat("u:".to_string(), spelling.clone()),
-        CalleeEdge::FunctionValueCallee => "".to_string(),
+        CalleeEdge::FunctionValueCallee => "v:".to_string(),
         CalleeEdge::PrimitiveCallee => "".to_string(),
     }
 }
@@ -500,6 +500,13 @@ pub enum EffectIncompleteness {
     ExpansionBudgetExhausted {
         remaining_delta: i64,
     },
+    ResolvedCalleeRegistryRowAbsent {
+        caller: Rc<DeclaredCallableIdentity>,
+        callee: Rc<DeclaredCallableIdentity>,
+    },
+    FunctionValueEffectsUnresolved {
+        caller: Rc<DeclaredCallableIdentity>,
+    },
 }
 
 pub fn unresolved_callee_edges(
@@ -548,6 +555,39 @@ pub fn unresolved_callee_edges(
                 .iter()
                 .cloned(),
             );
+        }
+        __result
+    })
+}
+
+pub fn unjoinable_callee_edges(
+    module_callees: Rc<Vec<Rc<ModuleCallees>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+) -> Rc<Vec<Rc<EffectIncompleteness>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for m in module_callees.iter().cloned() {
+            __result.extend((*Rc::new({ let mut __result = Vec::new(); for entry in m.items.clone().iter().cloned() { __result.extend((*match v1_rt::map_get(&registry, crate::v1_std_core::callable_identity(entry.item_identity.clone())) {
+    std::option::Option::None => Rc::new(vec![]),
+    Some(_) => if !entry.has_body.clone() {
+        Rc::new(vec![])
+    } else {
+        Rc::new({ let mut __result = Vec::new(); for edge in entry.called.clone().iter().cloned() { __result.extend((*match (*edge.clone()).clone() {
+    CalleeEdge::ResolvedCallee { identity: callee_identity, .. } => match v1_rt::map_get(&registry, crate::v1_std_core::callable_identity(callee_identity.clone())) {
+    Some(_) => Rc::new(vec![]),
+    std::option::Option::None => Rc::new(vec![Rc::new(EffectIncompleteness::ResolvedCalleeRegistryRowAbsent {
+    caller: entry.item_identity.clone(),
+    callee: callee_identity.clone(),
+})]),
+},
+    CalleeEdge::FunctionValueCallee => Rc::new(vec![Rc::new(EffectIncompleteness::FunctionValueEffectsUnresolved {
+    caller: entry.item_identity.clone(),
+})]),
+    CalleeEdge::PrimitiveCallee => Rc::new(vec![]),
+    CalleeEdge::UnresolvedCallee { spelling: _, .. } => Rc::new(vec![]),
+}).iter().cloned()); } __result })
+    },
+}).iter().cloned()); } __result })).iter().cloned());
         }
         __result
     })
@@ -627,7 +667,10 @@ pub fn expand_transitive_services(
 ) -> Rc<ServiceEffectAnalysis> {
     {
         let module_callees = build_module_callees(modules.clone());
-        let unresolved = unresolved_callee_edges(module_callees.clone());
+        let unresolved = v1_rt::concat(
+            unresolved_callee_edges(module_callees.clone()),
+            unjoinable_callee_edges(module_callees.clone(), registry.clone()),
+        );
         let closed = expand_transitive_services_loop(
             module_callees.clone(),
             registry.clone(),

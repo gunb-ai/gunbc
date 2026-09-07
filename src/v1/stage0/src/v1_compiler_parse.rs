@@ -12763,7 +12763,7 @@ pub fn parse_expr_loop(
                 {
                     let operator_span =
                         token_span(token_stream_first(skip_newlines(tokens.clone())));
-                    let ambiguity_span = make_file_span(
+                    let ambiguity_span = crate::v1_std_core::make_file_span(
                         lhs.span.clone().file.clone(),
                         lhs.span.clone().start.clone(),
                         operator_span.end.clone(),
@@ -13253,8 +13253,11 @@ pub fn parse_caret_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
             Some(TokenShape::ShIdent) => {
                 let spelling = next.clone().unwrap().text.clone();
                 let end_span = token_span(next.clone());
-                let lit_span =
-                    make_file_span(span.file.clone(), span.start.clone(), end_span.end.clone());
+                let lit_span = crate::v1_std_core::make_file_span(
+                    span.file.clone(),
+                    span.start.clone(),
+                    end_span.end.clone(),
+                );
                 parsed_expr_result(
                     token_stream_advance(after_caret.clone(), 1),
                     ctx.clone(),
@@ -13293,7 +13296,7 @@ pub fn parse_caret_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                         err: r2.err.clone(),
                     });
                 }
-                let call_span = make_file_span(
+                let call_span = crate::v1_std_core::make_file_span(
                     span.file.clone(),
                     span.start.clone(),
                     r2.token.clone().span.clone().end.clone(),
@@ -14617,7 +14620,7 @@ pub fn parse_expr_loop_no_brace(
                 {
                     let operator_span =
                         token_span(token_stream_first(skip_newlines(tokens.clone())));
-                    let ambiguity_span = make_file_span(
+                    let ambiguity_span = crate::v1_std_core::make_file_span(
                         lhs.span.clone().file.clone(),
                         lhs.span.clone().start.clone(),
                         operator_span.end.clone(),

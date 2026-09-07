@@ -794,6 +794,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             "AmbiguousAnonymousRecordLiteral"
         }
         CompilerDiagnostic::ModuleFilenameCollision { .. } => "ModuleFilenameCollision",
+        CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { .. } => {
+            "EffectSummaryIncompleteAtFunctionValue"
+        }
         CompilerDiagnostic::CallArgumentNameUnknown { .. } => "CallArgumentNameUnknown",
         CompilerDiagnostic::CallPositionalSurplus { .. } => "CallPositionalSurplus",
         CompilerDiagnostic::CallPositionalDeficit { .. } => "CallPositionalDeficit",
@@ -881,6 +884,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             candidates.iter().cloned().collect::<Vec<_>>().join("|")
         }
         CompilerDiagnostic::ModuleFilenameCollision { filename, .. } => filename.clone(),
+        CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { caller, .. } => caller.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { argument, .. } => argument.clone(),
         CompilerDiagnostic::CallPositionalSurplus { callee, .. } => callee.clone(),
         CompilerDiagnostic::CallPositionalDeficit { parameter, .. } => parameter.clone(),
