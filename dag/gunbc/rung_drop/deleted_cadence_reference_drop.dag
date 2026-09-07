@@ -28,7 +28,6 @@ data deleted_cadence_reference_drop: RungDrop = RungDrop {
     "v2.lens.witness_cost_locality per_pr_admission_law",
     "gunbc.ci_layer_roots enforcement_coverage_exclusion_note",
     "gunbc.ci_layer_roots bin_witness_wet_note",
-    "tools.namespace_import_closure_behavioral_transport nic_doc",
     "v2.compiler.self_host.seed_emitter_behavioral_wet_module_bindings falsifier_self_host_wet_module_bindings_revocation_note",
     "test.claim.instrument_sandbox_witness fixture_line_remaining",
     "test.claim.self_host_use_site_verdict_behavioral_witness self_host_use_site_verdict_behavioral_receipt_holds",

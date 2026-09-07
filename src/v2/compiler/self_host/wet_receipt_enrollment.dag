@@ -46,19 +46,7 @@ fn self_host_wet_entry(entry: String, f: String) -> ScheduleWitnessEntry {
   ScheduleWitnessEntry { entry: entry, function: f, kind: ExecutionWitnessKind }
 }
 
-// The second template row is NOT a per-module self-host receipt — it is the emit-CLASS receipt for
-// the Gate-1 import-closure derivation (emit_import_closure_root). It enrolls as a template row
-// rather than a SelfHostWetReceiptBinding because it is bound to no single module_path: it proves a
-// property of the EMITTER (an import-free namespace module referencing a sibling cross-module emits
-// cargo-compiling Rust) on a synthetic fixture, so no frontier row flips to gate it. It is required
-// coverage, not redundancy: regen only exercises the seed corpus, which is import-based, so the
-// self-host fixed point is unchanged by the pass and cannot witness this class.
-
 data falsifier_self_host_wet_template_entries: List<ScheduleWitnessEntry> = [
-  self_host_wet_entry(
-    entry: "dag/test/claim/namespace_import_closure_witness_test.dag",
-    f: "namespace_import_closure_receipt_holds"
-  ),
   self_host_wet_entry(
     entry: "src/v2/test/claim/execution/emit_on_demand_kernel_witness_test.dag",
     f: ""
@@ -94,10 +82,6 @@ data falsifier_self_host_wet_template_entries: List<ScheduleWitnessEntry> = [
   self_host_wet_entry(
     entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
     f: ""
-  ),
-  self_host_wet_entry(
-    entry: "dag/test/claim/interpreter_dispatch_bijection_real_roster_witness_test.dag",
-    f: "interpreter_dispatch_bijection_real_roster_red_holds"
   )
 ]
 
@@ -108,6 +92,11 @@ data falsifier_self_host_wet_template_entries: List<ScheduleWitnessEntry> = [
 // witness_cadence_has_scheduled_route). The flag stood at true, so dropping the conjunct changes no
 // result today; it separates the state-space, per DESIGN's state-space-conflation failure mode.
 
+// Returns false: the R1 bijection identity has been rehomed from FalsifierSelfHostWet to
+// LocalRepoWetLane (2026-09-06, dashboard node adhoc-cf84ab88-8dc). It is no longer on
+// falsifier_self_host_wet_template_entries and is instead enrolled in
+// v2.workflow.local_repo_wet_terminal local_repo_wet_schedule. The fold below returns false
+// because the entry was removed from the roster — this is computed from the data, not hardcoded.
 fn dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet() -> Bool {
   fold(
     falsifier_self_host_wet_template_entries,

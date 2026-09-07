@@ -416,7 +416,7 @@ fn witness_admission_manifest_entry_key(entry: String, function: String) -> Stri
 }
 
 fn witness_admission_explicit_consumer_manifest() -> List<String> {
-  fold_list(
+  let roster_keys = fold_list(
     xs:       concat(
         concat(
           concat(falsifier_self_host_wet_entries(), bin_witness_wet_entries),
@@ -435,6 +435,16 @@ fn witness_admission_explicit_consumer_manifest() -> List<String> {
       list_snoc_item(
         xs: acc,
         item: witness_admission_manifest_entry_key(entry: w.entry, function: w.function)
+      )
+    }
+  )
+  fold_list(
+    xs: local_repo_wet_schedule(),
+    empty: roster_keys,
+    cons: fn(acc, wc) {
+      list_snoc_item(
+        xs: acc,
+        item: witness_admission_manifest_entry_key(entry: wc.entry, function: wc.function)
       )
     }
   )

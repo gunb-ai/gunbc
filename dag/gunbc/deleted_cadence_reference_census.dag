@@ -7,6 +7,7 @@ import std.witness_admission {
   FalsifierSelfHostWet,
   FalsifierRehomedBinWet,
   FalsifierSubstrateLongLane,
+  LocalRepoWetLane,
   witness_cadence_has_scheduled_route,
 }
 import gunbc.rung_drop { RungDrop }
@@ -381,9 +382,15 @@ fn deleted_cadence_references() -> List<DeletedCadenceReference> {
     },
     DeletedCadenceReference {
       site: decl_ref(module_path: "tools.namespace_import_closure_behavioral_transport", decl_name: "nic_doc"),
-      standing: PremiseInvalidated {
-        affected_decision: decl_ref(module_path: "v2.compiler.self_host.wet_receipt_enrollment", decl_name: "falsifier_self_host_wet_enrollment_note"),
-        current_coverage: self_host_wet_roster_coverage,
+      standing: ReboundToExecutingConsumer {
+        consumer: ExecutingConsumerReceipt {
+          scheduled_entry_point: "v2.workflow.local_repo_wet_terminal local_repo_wet_schedule",
+          exact_command: "local-repo wet lane (claim_executor --required-lane witnesses)",
+          witness_population: "namespace_import_closure_receipt_holds and interpreter_dispatch_bijection_real_roster_red_holds",
+          entry_point_exists: true,
+          cadence: LocalRepoWetLane,
+          terminal: TerminalVerdictObserved { run_identity: "34065943608" as NonEmptyStr },
+        },
       },
     },
     DeletedCadenceReference {

@@ -227,8 +227,6 @@ fn floor_route_gap_chunk_01() -> List<String> {
       tail: Cons {
       head: "test.claim.materialized_ssh_key_file_real_execution_witness.witness_write_owner_only_refuses_when_path_already_exists",
       tail: Cons {
-      head: "test.claim.namespace_import_closure_witness.namespace_import_closure_receipt_holds",
-      tail:    Cons {
       head: "test.claim.parse_test.parse_witness_floor_holds",
       tail: Cons {
       head: "test.claim.parse_test.parse_witness_perf_holds",
@@ -279,7 +277,6 @@ fn floor_route_gap_chunk_01() -> List<String> {
       tail: Cons {
       head: "test.claim.self_host_03_ingest_behavioral_witness.self_host_03_ingest_behavioral_receipt_holds",
       tail: Empty {}
-    }
     }
     }
     }
@@ -580,6 +577,8 @@ fn floor_route_gap_expectation_chunk_02() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.interpreter_dispatch_bijection_real_roster_witness_test.interpreter_dispatch_bijection_real_roster_red_holds", operation: "Check", ground: NoMockResponse {} },
     tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.namespace_import_closure_witness.namespace_import_closure_receipt_holds", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.json_protocol_schema_memory_split_wet_witness_test.wet_finish_parse_largest_protocol_schema_only", operation: "Check", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.json_protocol_schema_memory_split_wet_witness_test.wet_finish_parse_canonicalize_largest_protocol_schema_only", operation: "Check", ground: NoMockResponse {} },
@@ -616,6 +615,7 @@ fn floor_route_gap_expectation_chunk_02() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.stage0_rust_host_observation_live_witness.scaffold_host_observation_reaches_path_derived_verdict", operation: "git.Inspect.HeadCommit", ground: UnpublishedMockCase {} },
     tail: Empty {}
+  }
   }
   }
   }

@@ -381,6 +381,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/eval_model_probe_test.dag",
       function: "and_with_true_left_removes_file",
       expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.namespace_import_closure_witness", function: "namespace_import_closure_receipt_holds" },
+      entry: "dag/test/claim/namespace_import_closure_witness_test.dag",
+      function: "namespace_import_closure_receipt_holds",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.interpreter_dispatch_bijection_real_roster_witness_test", function: "interpreter_dispatch_bijection_real_roster_red_holds" },
+      entry: "dag/test/claim/interpreter_dispatch_bijection_real_roster_witness_test.dag",
+      function: "interpreter_dispatch_bijection_real_roster_red_holds",
+      expectation: ExpectedToHold {}
     }
   ]
 }
