@@ -199,3 +199,36 @@ test fn l_floor_claim_shape() -> Bool {
     decls: fn_arrow_decl_facts_live(pool_roots: floor_roots, pool_files: floor_files)
   )
 }
+
+// m FINISHES WHAT h STARTS, and it exists because h narrows the cause without isolating it.
+//
+// h holds the pool at one pool and does two walks in one frame. It came in near c rather than near
+// 2c, which eliminates 'two walks in a frame is enough' -- frame sharing per se is not the payer,
+// and neither is anything per-frame that does not depend on the pool. What h leaves standing is
+// POOL DIVERSITY, and two rival explanations of it are still both alive: keying, where a memo probe
+// that cannot match by identity must compare a pool-sized value structurally on every call; and
+// RETENTION, where holding two pools live doubles the frame's footprint and pays in allocation and
+// paging. h cannot separate those, because one pool means both one key universe AND one retained
+// pool.
+//
+// m separates them by taking the two apart. It ACQUIRES both pools in one frame -- so retention is
+// two pools, exactly as in g -- while WALKING only over the small one, so the repeated pool-sized
+// probes are over a single pool, as in c.
+//
+//   m ~ c + e   two-pool retention is free; the blowup needs two pools flowing into REPEATED
+//               probes, which is the keying signature and not the pressure one.
+//   m ~ g       retention is the payer; the memo hypothesis is dead and the repair is about
+//               footprint, not about how a key is derived.
+//
+// Run it with GUNBC_INTERP_STATS=1, which prints retained-value accounting and VmHWM, so the memory
+// half of the question is answered by measurement rather than by inferring footprint from time.
+test fn m_two_pools_retained_one_pool_walked() -> Bool {
+  length(xs: decls_of(roots: lens_roots))
+    + length(xs: decls_of(roots: lens_plus_std_roots))
+    + length(xs: call_reachable_decls(
+        entry_module: entry,
+        terminal_callee_symbols: no_terminals,
+        closure_modules: closure_of(roots: lens_roots),
+        decls: decls_of(roots: lens_roots)
+      )) > 0
+}
