@@ -36,19 +36,20 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // Materialization also refuses composed argv (calls and coproduct helpers) on operations that
 // this pin does not name; git.Plumbing.ReadTreeIntoIndex is the exemplar. Do not read the residue
 // pin as the set of operations whose argv is too composed to compare.
-// A FULL-CORPUS ARGV REMATERIALIZATION CANNOT BE A MERGE-BLOCKING WITNESS IDENTITY.
-// DESIGN 4b next-rung, measured: witness_duplicate_authority_pairs_are_well_formed hit
-// changed-witness interrupted_before_verdict against the claim CPU deadline
-// (required_floor_claim_cpu_safety_limit_ms). The obstacle is that deadline, not the
-// absence of a check. Mechanism: this module's tally already rematerializes once; a
-// second claim identity that rematerializes again does not fit. Sampling is not a wall.
-// A count or closed roster over pairs is the absorbing fallback. The trigger is a
-// cheaper argv identity -- materialization results shared across claim identities, or
-// an identity derivable without rematerializing -- not "someone should write the check".
+// Argv-list identity cannot be walled as its own merge-blocking witness identity UNDER
+// THE CURRENT COST MODEL, in which every claim identity pays its own full-corpus
+// rematerialization. DESIGN 4b next-rung, measured: witness_duplicate_authority_pairs_are_well_formed
+// hit changed-witness interrupted_before_verdict against the required-floor claim CPU
+// deadline (required_floor_claim_cpu_safety_limit_ms). The obstacle is that second
+// rematerialization against that deadline, not the analysis and not the absence of a check.
+// Sampling is not a wall. A count or closed roster over pairs is the absorbing fallback.
 // Cite claim_batch's [witness] cpu= line against that deadline function; do not copy
 // milliseconds into this note. A declaration-only fold over the same enumerator (output
 // from-keys, no argv expansion) has been observed under the deadline as its own claim
 // identity; that is a different class and does not retire this rung.
+// Next-rung trigger (the capability, not an artifact): materialization results shared
+// across claim identities, or an argv identity derivable without rematerializing. Either
+// makes the wall affordable; writing another witness does not.
 // A Hamming-1 relation (same program and flags; one position a declaration literal vs a
 // generic bound-slot) would catch shell.Codegen.Check versus shell.Test.IsFile. It is a
 // second named relation, not list identity, not "same policy" (undecidable), and was not
