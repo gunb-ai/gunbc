@@ -19,7 +19,6 @@ import extdeps.printing.bambu_lab_lan_protocol {
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { uri_wire }
 import extdeps.tools.mosquitto_pub { mosquitto_publish_command }
-import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.mosquitto_options_binding {
   MosquittoOptionsBinding, MosquittoOptionsPlacement, MosquittoOptionsPlaced,
   MosquittoOptionsRefused, MosquittoOptionsRefusedResidueRemains,
@@ -122,6 +121,47 @@ fn printer_serial(printer: PhysicalAssetIdentity) -> PrinterSerialLookup {
 // unobservable at the call site.
 type PinnedCaBundle sole_constructor {
   path: FilePath
+}
+
+// THE ATTEMPT IDENTITY IS THE WORKSPACE'S NAME, WHICH IS WHERE THE UNIQUENESS ACTUALLY LIVES.
+//
+// mktemp -d creates a directory the kernel guarantees did not already exist, so its name is distinct
+// from that of every attempt whose workspace is SIMULTANEOUSLY ALLOCATED on this filesystem. That is
+// the whole guarantee, and it is deliberately narrower than the one this paragraph first claimed.
+//
+// THE EXCLUSION ENDS WHEN THE DIRECTORY DOES, WHICH IS BEFORE ANY REPORT IS READ. This leg removes
+// the workspace immediately after the publish, folded into `cleaned`, and returns. So the window in
+// which the filesystem namespace is actually preventing a collision spans mint -> publish -> cleanup,
+// and NOT mint -> publish -> report reconciliation. A first draft of this note asserted the longer
+// window on the grounds that a report can only belong to an attempt whose observer has not finished
+// -- true, and not something the construction underwrites once the name has been released. Random
+// mktemp naming makes reuse very unlikely, and "very unlikely" is exactly the better-odds-as-identity
+// claim rejected two paragraphs up for the millisecond clock. Rejecting it there and accepting it
+// here would be the same error with a different entropy source.
+//
+// WHAT HOLDS TODAY is therefore: two attempts whose publishes overlap cannot share an identity. What
+// does NOT hold is that an attempt which published, cleaned up, and whose report is still in flight
+// cannot be aliased by a later attempt. Nothing consumes the report topic yet, so nothing currently
+// depends on the stronger property -- which is why this is a stated boundary rather than a defect.
+//
+// NEXT-RUNG TRIGGER, NAMING THE CAPABILITY AND NOT AN ARTIFACT: the identity's allocation must be
+// owned by the whole publish-then-observe transaction rather than by the publish alone, so the
+// workspace (or a dedicated name reservation) is released only once report attribution has
+// terminated. A report-topic observer may not be built against the longer window until that lifetime
+// join exists; building one first would make an unheld guarantee load-bearing, which is the shape
+// this module has now corrected three times on this one field.
+//
+// The scope is narrow in two further ways worth stating rather than discovering: two attempts on
+// different hosts, or separated by a cleanup of /tmp, may reuse a name.
+//
+// IT READS THE WORKSPACE THAT ALREADY EXISTS INSTEAD OF MINTING A SECOND ONE. A dedicated mktemp
+// would be a second directory to create, remove, and account for on every arm -- and its removal
+// result would be a third cleanup signal that either joins `cleaned` or gets dropped. The CA
+// workspace is already created, already removed, and already folded into `cleaned`, so taking the
+// identity from it adds no effect and no untracked residue. It also means a failed mint is already
+// refused: CaBundleRefused fires when no workspace could be created, before anything is published.
+fn start_attempt_identity(workspace: FilePath) -> NonEmptyStr {
+  workspace as NonEmptyStr
 }
 
 fn pinned_ca_bundle_path(bundle: PinnedCaBundle) -> FilePath { bundle.path }
@@ -260,12 +300,36 @@ fn start_may_be_replayed(o: PrintStart) -> Bool {
 // is minted here, from the clock, because "which attempt" is a fact about THIS execution and there
 // is nothing at the call site that knows it better.
 //
-// AN UNREADABLE CLOCK REFUSES RATHER THAN PUBLISHING WITH A CONSTANT. clock_now_probed_at's absent
-// arm renders "clock-unreadable", which would collide across every attempt and hand the observer an
-// id that looks like data. Refusing costs a print; publishing costs the ability to attribute the
-// report -- and reconciliation by reading that report is the ONLY defence this leg has against the
-// duplicate-actuation risk the protocol module states is unresolved. A start nobody can attribute is
-// the one that must not be sent.
+// A TIMESTAMP IS NOT AN ATTEMPT IDENTITY, AND THE FIRST REPAIR HERE ONLY LOOKED LIKE ONE.
+//
+// The identity itself is start_attempt_identity, declared beside the CA workspace it reads. The
+// previous revision minted the id from clock_now_probed_at, which forwards Clock.Now().timestamp,
+// which is emitted as `date -u +%Y-%m-%dT%H:%M:%SZ` -- ONE-SECOND granularity. Two legitimate start
+// attempts in the same second alias, so the value carried the identity property in its name and not
+// in its construction. That is the same shape as the defect it was introduced to fix: the payload
+// digest was a stable name for the wrong subject, and a second-resolution clock is a distinct name
+// for the wrong grain. Reaching for Clock.UnixMillis would only shrink the window; a finer clock
+// reduces the collision domain and never structurally guarantees uniqueness, so it would leave the
+// same overclaim with better odds.
+//
+// SO THE UNIQUENESS IS TAKEN FROM SOMETHING THAT ACTUALLY HAS IT. mktemp -d creates a directory the
+// kernel guarantees did not already exist, so its name is distinct from every OTHER LIVE ATTEMPT's
+// on this filesystem -- and that is exactly the population a report join can confuse, because a
+// report can only be attributed to an attempt whose publish has happened and whose observer has not
+// yet finished. The guarantee is scoped rather than absolute: two attempts on different hosts, or
+// separated by a cleanup of /tmp, may reuse a name. That scope is stated because a report observer
+// must be built against the guarantee that exists and not the one the field name suggests.
+//
+// THE DIRECTORY IS THE MINT AND IS REMOVED IMMEDIATELY. Nothing is stored in it; what is wanted is
+// the kernel's exclusion, not the storage.
+//
+// A FAILED MINT ALREADY REFUSES, AND IT REFUSES BEFORE ANYTHING IS PUBLISHED. The workspace is the
+// CA bundle's, so a directory that could not be created is CaBundleRefused, reached while the leg
+// still has nothing on the wire. There is no arm that falls back to a constant spelling: one would
+// collide across every attempt and hand an observer an id that looks like data. Refusing costs a
+// print; publishing costs the ability to attribute the report -- and reconciliation by reading that
+// report is the ONLY defence this leg has against the duplicate-actuation risk the protocol module
+// states is unresolved. A start nobody can attribute is the one that must not be sent.
 func start_print_on_printer(
   printer: PhysicalAssetIdentity,
   remote_name: NonEmptyStr,
@@ -274,11 +338,6 @@ func start_print_on_printer(
 ) -> PrintStart
   uses net: Network
 {
-  match clock_now_probed_at() {
-    Absent =>
-      PrintStartRefused { printer: printer,
-        cause: "the clock could not be read, so this start attempt has no identity the report topic could be joined on; the start refuses rather than publishing a command whose outcome could not afterwards be attributed to it" }
-    Present { value: sequence_id } =>
   match printer_serial(printer: printer) {
     PrinterSerialUnknown { printer: p } =>
       PrintStartRefused { printer: p,
@@ -342,9 +401,8 @@ func start_print_on_printer(
         SecretCredentialReady { credential: credential, resolved_version: _ } =>
           publish_start_with_credential(
             printer: printer, serial: serial, lan_address: lan_address,
-            remote_name: remote_name, sequence_id: sequence_id, credential: credential)
+            remote_name: remote_name, credential: credential)
       }
-  }
   }
   }
   }
@@ -359,7 +417,6 @@ func publish_start_with_credential(
   serial: NonEmptyStr,
   lan_address: NonEmptyStr,
   remote_name: NonEmptyStr,
-  sequence_id: NonEmptyStr,
   credential: Secret,
 ) -> PrintStart
   uses net: Network
@@ -395,7 +452,9 @@ func publish_start_with_credential(
               command: mosquitto_publish_command(
                 endpoint: endpoint,
                 topic: topic as NonEmptyStr,
-                payload: bambu_start_payload_json(command: command, sequence_id: sequence_id),
+                payload: bambu_start_payload_json(
+                  command: command,
+                  sequence_id: start_attempt_identity(workspace: workspace) as String),
                 qos: bambu_start_command_qos,
                 ca_bundle: pinned_ca_bundle_path(bundle: bundle))),
             transport: LocalExec
@@ -403,16 +462,9 @@ func publish_start_with_credential(
           let credential_shredded = shred_mosquitto_options_binding(binding: binding)
           let workspace_dropped = shell.Remove.RecursiveForce(path: workspace).success
           let cleaned = credential_shredded && workspace_dropped
-          match outcome {
-            ProcessRefused { exit_code: _, stderr: stderr } =>
-              start_refusal(printer: printer, stderr: stderr, cleaned: cleaned)
-            ProcessOutputAbsent =>
-              start_receipt(printer: printer, topic: topic, remote_name: remote_name,
-                sequence_id: sequence_id, cleaned: cleaned)
-            ProcessOutputPresent { text: _ } =>
-              start_receipt(printer: printer, topic: topic, remote_name: remote_name,
-                sequence_id: sequence_id, cleaned: cleaned)
-          }
+          classify_publish_outcome(
+            printer: printer, outcome: outcome, topic: topic, remote_name: remote_name,
+            sequence_id: start_attempt_identity(workspace: workspace), cleaned: cleaned)
         }
       }
   }
@@ -438,6 +490,39 @@ fn start_receipt(
       receipt: receipt,
       cause: "the start command was published but the credential shred or the CA workspace removal did not complete",
     }
+  }
+}
+
+// THE WHOLE PROCESS OUTCOME IS CLASSIFIED HERE, AND PRODUCTION CLASSIFIES NOWHERE ELSE.
+//
+// The effect used to match ProcessOutcome inline, bind exit_code to `_`, and call start_refusal with
+// the stderr alone. That left the enrolled witness pinning the HELPER's semantics rather than the
+// fact it was written to protect: a later edit could branch on exit_code at the call site, produce
+// PrintStartRefused for an auth failure, and every row in the witness file would stay green because
+// none of them can see the call site. A witness is not a consumer, and a pure helper reached through
+// an unwitnessed match is a helper whose caller is free to disagree with it.
+//
+// So the seam takes the ProcessOutcome ITSELF -- exit code included, deliberately unread -- and the
+// effect's body is one call to it. The decision not to consult the exit code is now inside the
+// thing the witness executes, which is what makes "every nonzero result is unknown" a claim about
+// production rather than about a function production happens to use today.
+fn classify_publish_outcome(
+  printer: PhysicalAssetIdentity,
+  outcome: ProcessOutcome,
+  topic: MqttTopic,
+  remote_name: NonEmptyStr,
+  sequence_id: NonEmptyStr,
+  cleaned: Bool,
+) -> PrintStart {
+  match outcome {
+    ProcessRefused { exit_code: _, stderr: stderr } =>
+      start_refusal(printer: printer, stderr: stderr, cleaned: cleaned)
+    ProcessOutputAbsent =>
+      start_receipt(printer: printer, topic: topic, remote_name: remote_name,
+        sequence_id: sequence_id, cleaned: cleaned)
+    ProcessOutputPresent { text: _ } =>
+      start_receipt(printer: printer, topic: topic, remote_name: remote_name,
+        sequence_id: sequence_id, cleaned: cleaned)
   }
 }
 

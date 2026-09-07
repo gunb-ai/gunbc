@@ -2,6 +2,7 @@ module test.claim.printer_job_start_witness_test
 
 import std.types { Bool, String, NonEmptyStr, Secret, FilePath, List }
 import extdeps.exec.command { argv_words }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.oasis.mqtt {
   MqttQos, AtMostOnce, AtLeastOnce, ExactlyOnce, mqtt_qos_wire_level,
   MqttEndpoint, MqttOverTls,
@@ -19,7 +20,7 @@ import gunbc.fleet.printer_job_start {
   PrintStart, PrintStartPublished, PrintStartRefused,
   PrintStartOutcomeUnknown, PrintStartOutcomeUnknownResidueRemains,
   PrintStartRefusedResidueRemains, PrintStartPublishedCleanupRefused,
-  start_refusal, start_receipt, start_may_be_replayed,
+  start_refusal, start_receipt, start_may_be_replayed, classify_publish_outcome,
 }
 import gunbc.fleet_asset_identity { printer_01, printer_02, ams_01 }
 
@@ -186,7 +187,13 @@ test fn the_lan_broker_endpoint_is_tls() -> Bool {
 // connection and then drops it mid-publish; the classification is the part that was wrong, and it is
 // reachable from a fixture.
 test fn a_lost_connection_is_not_reported_as_a_refusal() -> Bool {
-  match start_refusal(printer: printer_02, stderr: "Error: The connection was lost.", cleaned: true) {
+  match classify_publish_outcome(
+    printer: printer_02,
+    outcome: ProcessRefused { exit_code: 7, stderr: "Error: The connection was lost." },
+    topic: bambu_request_topic(serial: a_serial),
+    remote_name: a_remote_name,
+    sequence_id: "1" as NonEmptyStr,
+    cleaned: true) {
     PrintStartOutcomeUnknown { printer: _, cause: _ } => true
     PrintStartRefused { printer: _, cause: _ } => false
     PrintStartOutcomeUnknownResidueRemains { printer: _, cause: _ } => false
@@ -216,7 +223,13 @@ test fn an_unknown_outcome_with_residue_is_still_unknown() -> Bool {
 // mapping is inferred from the shape of a situation instead. If the table is ever measured, THIS row
 // is the one that must be changed to admit the narrower arm -- which is the point of enrolling it.
 test fn every_nonzero_publish_result_is_unknown_until_the_table_is_measured() -> Bool {
-  match start_refusal(printer: printer_02, stderr: "Connection Refused: not authorised.", cleaned: true) {
+  match classify_publish_outcome(
+    printer: printer_02,
+    outcome: ProcessRefused { exit_code: 5, stderr: "Connection Refused: not authorised." },
+    topic: bambu_request_topic(serial: a_serial),
+    remote_name: a_remote_name,
+    sequence_id: "1" as NonEmptyStr,
+    cleaned: true) {
     PrintStartOutcomeUnknown { printer: _, cause: _ } => true
     PrintStartRefused { printer: _, cause: _ } => false
     PrintStartOutcomeUnknownResidueRemains { printer: _, cause: _ } => false
@@ -243,40 +256,64 @@ test fn the_unknown_cause_warns_that_the_printer_may_be_printing() -> Bool {
   }
 }
 
-// THE NO-REPLAY LAW OVER THE WHOLE COPRODUCT. Every arm this leg can produce is spelled out, so an
-// arm added later without a replay decision does not compile -- and a future observer that wanted to
-// republish would have to change this row in the open rather than by adding a case.
-test fn no_start_outcome_authorizes_a_second_publish() -> Bool {
-  let arms = [
+// THE NO-REPLAY LAW OVER THE WHOLE COPRODUCT -- AND IT USED TO SAY THAT WHILE COVERING FOUR ARMS OF
+// SIX. The population came from the two pure producers, which between them reach Unknown,
+// Unknown+residue, Published and Published+cleanup-refused; the two Refused arms have no pure
+// producer, because the only paths that reach them are the serial, endpoint, credential and
+// workspace refusals inside the effect. The comment asserted a universal and the list was
+// existential, which is the same overclaim this branch has been finding in prose all day, written
+// into the row that is supposed to be the check.
+//
+// PrintStart IS AN ORDINARY COPRODUCT, so those two arms are constructible directly. A variant
+// literal is the honest fixture here: nothing about the replay law depends on how an arm was
+// produced, only on which arm it is.
+fn every_start_outcome_arm() -> List<PrintStart> {
+  [
     start_refusal(printer: printer_02, stderr: "Error: The connection was lost.", cleaned: true),
     start_refusal(printer: printer_02, stderr: "Error: The connection was lost.", cleaned: false),
     start_receipt(printer: printer_02, topic: bambu_request_topic(serial: a_serial),
       remote_name: a_remote_name, sequence_id: "1" as NonEmptyStr, cleaned: true),
     start_receipt(printer: printer_02, topic: bambu_request_topic(serial: a_serial),
       remote_name: a_remote_name, sequence_id: "1" as NonEmptyStr, cleaned: false),
+    PrintStartRefused { printer: printer_02, cause: "a fixture refusal" as NonEmptyStr },
+    PrintStartRefusedResidueRemains { printer: printer_02, cause: "a fixture refusal with residue" as NonEmptyStr },
   ]
-  (arms |> filter(o => start_may_be_replayed(o: o)) |> length) == 0
 }
 
-// THE POSITIVE CONTROL FOR THE ROW ABOVE. A filter over an empty list is also zero, and a
-// no-replay witness that passes because it examined nothing is the fixture-at-an-absorbing-extreme
-// failure this repository already records.
-test fn the_no_replay_law_examined_a_nonempty_population() -> Bool {
-  let arms = [
-    start_refusal(printer: printer_02, stderr: "Error: The connection was lost.", cleaned: true),
-    start_refusal(printer: printer_02, stderr: "Error: The connection was lost.", cleaned: false),
-    start_receipt(printer: printer_02, topic: bambu_request_topic(serial: a_serial),
-      remote_name: a_remote_name, sequence_id: "1" as NonEmptyStr, cleaned: true),
-    start_receipt(printer: printer_02, topic: bambu_request_topic(serial: a_serial),
-      remote_name: a_remote_name, sequence_id: "1" as NonEmptyStr, cleaned: false),
-  ]
-  (arms |> length) == 4
+test fn no_start_outcome_authorizes_a_second_publish() -> Bool {
+  (every_start_outcome_arm() |> filter(o => start_may_be_replayed(o: o)) |> length) == 0
+}
+
+// THE POSITIVE CONTROL FOR THE ROW ABOVE, AND ITS COUNT IS THE COPRODUCT'S WIDTH. A filter over an
+// empty list is also zero, so the law needs a witness that it examined anything -- and asserting SIX
+// rather than "more than zero" is what makes an arm added later without a fixture fail here as well
+// as at the total match in production.
+test fn the_no_replay_law_examined_every_arm() -> Bool {
+  (every_start_outcome_arm() |> length) == 6
+}
+
+// THE TWO REFUSED ARMS ARE REALLY IN THE POPULATION, not four Unknowns wearing different names. A
+// count of six passes just as well if a producer silently returns the wrong variant, which is
+// exactly what this file exists to catch one function over.
+test fn the_population_contains_both_refused_arms() -> Bool {
+  let refused_arms = every_start_outcome_arm() |> filter(o =>
+    match o {
+      PrintStartRefused { printer: _, cause: _ } => true
+      PrintStartRefusedResidueRemains { printer: _, cause: _ } => true
+      PrintStartPublished { receipt: _ } => false
+      PrintStartPublishedCleanupRefused { receipt: _, cause: _ } => false
+      PrintStartOutcomeUnknown { printer: _, cause: _ } => false
+      PrintStartOutcomeUnknownResidueRemains { printer: _, cause: _ } => false
+    })
+  (refused_arms |> length) == 2
 }
 
 // A CLEAN PUBLISH STILL REACHES THE PUBLISHED ARM, so the reclassification above did not simply
 // route everything to unknown. Without this the four rows would pass on a leg that never succeeds.
 test fn a_clean_publish_is_still_published() -> Bool {
-  match start_receipt(printer: printer_02, topic: bambu_request_topic(serial: a_serial),
+  match classify_publish_outcome(
+    printer: printer_02, outcome: ProcessOutputAbsent,
+    topic: bambu_request_topic(serial: a_serial),
     remote_name: a_remote_name, sequence_id: "1" as NonEmptyStr, cleaned: true) {
     PrintStartPublished { receipt: _ } => true
     PrintStartPublishedCleanupRefused { receipt: _, cause: _ } => false
