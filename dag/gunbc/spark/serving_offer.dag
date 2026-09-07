@@ -1,0 +1,164 @@
+module gunbc.spark.serving_offer
+
+import std.types { Bool, String, NonEmptyStr, List, Int, Timestamp }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import product.fabric.identity { FabricIdentity, OfferKey }
+import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef }
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.supply { SupplierOffer, OfferQuote, QuotedPerSecond, OfferEvidence, ObservedSupply }
+import std.measure { ByteSize, Second, second, MoneyRate, MoneyPerSecond, MoneyAmountMicro, money_amount_micro, HardwareThreadCount, hardware_thread_count }
+import extdeps.currency.currency { Usd }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire }
+
+// ── THE SPARKS BECOME SUPPLY, WHICH IS WHAT PUTS SERVING ON THE FABRIC ────────────────────────
+//
+// product.supplier.ubicloud is the precedent and this is the same work for a supplier we own:
+// normalize what a serving group actually offers into the fabric's carrier, so selection has
+// something real to rank. Until a Spark group is a SupplierOffer, every question about where a turn
+// runs has to be answered somewhere else -- which is exactly how this repository ended up with two
+// placement authorities that disagreed.
+//
+// IT RESTATES NOTHING ABOUT THE GROUP. The served model, the head, the units and the engine are
+// gunbc.spark.pair_serving_desired's facts and stay there; this module consumes them.
+//
+// A FIRST ATTEMPT AT THIS PROBLEM WENT THE OTHER WAY and is worth recording, because the shape of
+// the mistake is reusable. It minted a serving-specific placement outcome, a serving-specific
+// candidate, and a serving-specific admissibility verdict -- all of which already existed in
+// product.fabric.selection as SupplySelection, CandidateOffer and OfferCandidacy, and the
+// re-minted admissibility was strictly weaker: a string reason where the fabric carries typed arms.
+// Whether a group serves the requested model needs no new type at all; it is capability fungibility,
+// and supply.dag already answers it with CapabilitiesNotOffered.
+
+// ── WHAT WE SANCTION THE GROUP FOR ────────────────────────────────────────────────────────────
+//
+// work.dag is explicit that the capability reference on the OFFER side is our own fleet knowledge
+// and never a supplier claim: "What a given executor is sanctioned for is our own fleet knowledge,
+// never a supplier claim, and it is joined against this at admission." For a box we deploy
+// ourselves that is straightforwardly true -- we know what the group serves because we put it there.
+//
+// The reference is derived from the served model rather than written twice. A hand-written string
+// beside the model name is the nickname failure in its cheapest form: two spellings of one fact,
+// free to drift the first time a model is swapped.
+fn spark_serving_capability(model: NonEmptyStr) -> CapabilityManifestRef {
+  join(["gunbc.capabilities.spark-serving.", model as String], "") as CapabilityManifestRef
+}
+
+// ── WHAT Shape CANNOT SAY ABOUT A SERVING GROUP ───────────────────────────────────────────────
+//
+// ubicloud carries UnexpressedSupplyFact for the same reason and the precedent is followed rather
+// than re-argued: an offer whose shape omits a real property must SAY it omits it, because a silent
+// omission reads as an absent requirement rather than an unexpressed one.
+//
+// Shape is threads plus a resource envelope. A serving group's load-bearing properties are none of
+// those: what it can hold is a KV token budget, what limits concurrency is an interactive-quality
+// policy, and what makes it one unit at all is a four-rank tensor-parallel topology that cannot be
+// subdivided. A demand for half a serving group is not a smaller demand; it is meaningless.
+type SparkServingUnexpressed
+  = KvBudgetNotExpressibleInShape { tokens: Nat }
+  | TensorParallelUnitNotDivisible { ranks: Nat }
+  | InteractiveQualityCeilingNotAShapeAxis
+  | IsolationNotObserved
+
+fn spark_serving_unexpressed() -> List<SparkServingUnexpressed> {
+  [
+    KvBudgetNotExpressibleInShape { tokens: 11770000 },
+    TensorParallelUnitNotDivisible { ranks: 4 },
+    InteractiveQualityCeilingNotAShapeAxis,
+    IsolationNotObserved,
+  ]
+}
+
+// A PROJECTION BESIDE THE OFFER, NOT A SECOND KIND OF OFFER -- ubicloud's naming caution, applied.
+// These are named for the Spark rather than generically because there are two supplier bindings in
+// the corpus and two instances is not yet proof of a shared concept; a generic minted now would be
+// a bare alias, and DESIGN section 6 asks for proven coincidence instead.
+type SparkOfferProjection<P> {
+  offer: SupplierOffer<P>
+  unexpressed: List<SparkServingUnexpressed>
+}
+
+// ── AN OWNED GROUP'S QUOTE IS ZERO, AND THAT IS A FACT RATHER THAN A PLACEHOLDER ──────────────
+//
+// The Sparks are owned outright, so the cash that must be RESERVED before a grant issues is nothing:
+// no meter starts when a turn lands. selection.dag draws exactly this line -- liability is "the four
+// axes that actually move money", while the comparison number additionally carries opportunity cost,
+// "which is real economics and not cash", and valued delay, "the buyer's own statement of what
+// waiting is worth".
+//
+// SO THE RANKING IS NOT LOST BY QUOTING ZERO; IT MOVES TO WHERE IT BELONGS. Cash ties at zero across
+// two identical owned groups, and the ordering falls entirely to opportunity and delay -- which is
+// the correct answer for serving, where the only thing distinguishing group A from group B is what
+// each would do to the turns already on it. selection.dag's own warning is the mirror image of our
+// case: "Ranking on cash alone waits minutes to save cents."
+//
+// A consequence worth stating because it removes a decision nobody has to make yet: with both
+// candidates quoted at zero, any positive delay valuation produces the SAME ordering, since the rate
+// multiplies both sides. The rate only becomes load-bearing when a Spark is compared against
+// capacity we would actually pay for.
+fn spark_serving_quote() -> OfferQuote {
+  QuotedPerSecond(MoneyRate { amount: money_amount_micro(count: 0), currency: Usd })
+}
+
+data spark_serving_billing_quantum: Second = second(count: 1)
+
+// ── READINESS IS OBSERVED OR THE OFFER DOES NOT EXIST ─────────────────────────────────────────
+//
+// ubicloud refuses to bind an offer whose readiness is unmeasured, and the same rule is stronger
+// here rather than weaker: an offer is a claim that work placed on this executor will run, and a
+// group whose engine has not been observed serving is not making that claim. Binding it anyway would
+// put a candidate in front of selection that nothing established -- the fabricated placement the
+// whole exercise exists to remove, arriving one layer earlier.
+type SparkServingReadiness
+  = ServingObserved { ready_at: Timestamp, receipt: ObservationReceiptRef }
+  | ServingUnobserved { obligation: NonEmptyStr }
+
+type SparkOfferBinding<P>
+  = SparkOfferBound { bound: SparkOfferProjection<P> }
+  | SparkOfferBindingRefused { group_wire: NonEmptyStr, cause: NonEmptyStr }
+
+// THE SHAPE IS DELIBERATELY UNSTATED RATHER THAN INVENTED. Every axis Shape offers -- threads, cpu,
+// gpu vram, memory, storage, network -- would be a number nobody measured for this group, and
+// envelope.dag rules that an absent axis is "a requirement nobody expressed, not a requirement
+// satisfied by everything". Unstated is therefore the honest shape, and the properties that DO
+// matter travel as unexpressed facts beside it until a fungibility axis exists that can carry them.
+fn spark_serving_shape() -> Shape {
+  Shape { hard: HardRequirements { threads: hardware_thread_count(count: 0) }, envelope: unstated_envelope() }
+}
+
+fn bind_spark_serving_offer<P>(
+  principal: P,
+  executor: P,
+  group: FabricGroup,
+  model: NonEmptyStr,
+  trust_domain: TrustDomainRef,
+  isolation: IsolationProfile,
+  seats: Int,
+  readiness: SparkServingReadiness,
+) -> SparkOfferBinding<P> {
+  match readiness {
+    ServingUnobserved { obligation: why } =>
+      SparkOfferBindingRefused { group_wire: fabric_group_wire(g: group), cause: why }
+    ServingObserved { ready_at: at, receipt: r } =>
+      SparkOfferBound {
+        bound: SparkOfferProjection {
+          offer: SupplierOffer {
+            id: FabricIdentity { principal: principal, key: fabric_group_wire(g: group) },
+            executor: executor,
+            shape: spark_serving_shape(),
+            capabilities: spark_serving_capability(model: model),
+            trust_domain: trust_domain,
+            isolation: isolation,
+            quantity_bound: seats,
+            ready_at: at,
+            quote: spark_serving_quote(),
+            billing_quantum: spark_serving_billing_quantum,
+            evidence: ObservedSupply { observed_at: at, receipt: r },
+          },
+          unexpressed: spark_serving_unexpressed(),
+        },
+      }
+  }
+}

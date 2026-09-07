@@ -1,0 +1,154 @@
+module gunbc.serving.turn_demand
+
+import std.types { Bool, String, NonEmptyStr, List, Timestamp }
+import std.nat { Nat }
+import std.measure { MoneyAmountMicro, money_amount_micro }
+import extdeps.currency.currency { Usd }
+import v2.std.optional { Present, Absent }
+import product.fabric.identity { FabricIdentity, WorkKey, DemandKey }
+import product.fabric.work {
+  Work, WorkContract, WorkStep, ResumabilityTier, ReceiptSatisfiable, IdempotentUnderKey, OpaqueEffects,
+  ProgramRef, SourceManifestRef, ArtifactManifestRef, EffectContractRef, OutputContractRef,
+  ExecutionRequirements, CapacityClass, Shape, CapabilityManifestRef, TrustDomainRef,
+  WorkKey, derive_work_key,
+}
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.demand {
+  Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, BudgetAccountId, ObservationReceiptRef,
+}
+
+// ── A SERVING TURN IS PROVIDER-NEUTRAL WORK ───────────────────────────────────────────────────
+//
+// The fabric's whole discipline is that Work says WHAT computation is requested and nothing about
+// where it runs: work.dag excludes chosen host, cache presence, queue position, attempts and budget
+// from work identity by construction, because the identity function takes no other argument.
+// Expressing a serving turn here rather than inventing a serving-shaped request is what lets one
+// selection answer "which group" for inference and for CI alike.
+//
+// WHAT THE TURN'S IDENTITY IS, AND WHY IT FALLS OUT RATHER THAN BEING DECIDED. work_identity digests
+// every contract and requirement field, so two turns differing in prompt, model, runtime closure or
+// trust domain are different Work automatically. An earlier sketch of this programme proposed that
+// model-plus-prompt-prefix WAS the identity; it is not, and the difference matters. A prefix is a
+// reusable SUBCOMPUTATION shared by successive turns in one conversation; the turn is the whole
+// request. Collapsing them would have made a cache fact into an identity fact -- and, because Work
+// is shared with the CI binding, would have done it to a carrier serving-work does not own.
+
+// THE PREFIX IS A CONTRACT INPUT, NOT AN IDENTITY SHORTCUT. It reaches identity the ordinary way,
+// as part of the inputs manifest, so a turn that shares a prefix with its predecessor still differs
+// from it wherever the rest of the request differs.
+type ServingTurnRequest {
+  model: NonEmptyStr
+  runtime_closure: ArtifactManifestRef
+  inputs: ArtifactManifestRef
+  effect_contract: EffectContractRef
+  output_contract: OutputContractRef
+}
+
+data serving_turn_program: ProgramRef = "gunbc.serving.inference-turn" as ProgramRef
+
+// A TURN IS ONE STEP WITH OPAQUE EFFECTS, and that arm is the honest one rather than the tidy one.
+// A stream that dies partway has already delivered tokens the caller may have consumed and acted on,
+// so the effects are outside what a receipt can describe and a retry is not free. ReceiptSatisfiable
+// would claim a completed receipt settles the step, and IdempotentUnderKey would claim a rerun under
+// one key is safe; neither is true of a half-delivered stream.
+fn serving_turn_steps() -> List<WorkStep> {
+  [WorkStep {
+    step_id: "inference-turn" as NonEmptyStr,
+    resumability: OpaqueEffects { reason: "a streamed turn delivers tokens before it completes, so a partial stream has effects no terminal receipt describes and no idempotency key makes replayable" as NonEmptyStr },
+  }]
+}
+
+fn serving_turn_contract(request: ServingTurnRequest) -> WorkContract {
+  WorkContract {
+    program: serving_turn_program,
+    steps: serving_turn_steps(),
+    source: request.model as SourceManifestRef,
+    inputs: request.inputs,
+    runtime_closure: request.runtime_closure,
+    effect_contract: request.effect_contract,
+    output_contract: request.output_contract,
+  }
+}
+
+// THE CAPACITY CLASS IS A PARAMETER RATHER THAN A CONSTANT HERE, because it is a security posture
+// and this module has not observed one. An inference turn evaluates prompt content that may not be
+// ours, which argues for customer-executable capacity; the harness's own turns are our content,
+// which argues for control-plane. Those have different isolation consequences, so the caller that
+// knows whose content it is states it, and nothing is asserted on their behalf.
+fn serving_turn_requirements(
+  capacity_class: CapacityClass,
+  capabilities: CapabilityManifestRef,
+  trust_domain: TrustDomainRef,
+  isolation: IsolationProfile,
+  shape: Shape,
+) -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: capacity_class,
+    shape: shape,
+    capabilities: capabilities,
+    trust_domain: trust_domain,
+    isolation: isolation,
+  }
+}
+
+fn serving_turn_work<P>(principal: P, request: ServingTurnRequest, requirements: ExecutionRequirements) -> Work<P> {
+  let contract = serving_turn_contract(request: request)
+  Work {
+    id: FabricIdentity { principal: principal, key: derive_work_key(contract: contract, requirements: requirements) },
+    contract: contract,
+    requirements: requirements,
+  }
+}
+
+// ── WHAT THE TURN IS WILLING TO PAY, WHICH FOR OWNED HARDWARE IS NOTHING ──────────────────────
+//
+// gunbc.spark.serving_offer quotes an owned group at zero because the cash is already sunk, and the
+// demand side has to agree or nothing clears: a reservation price below every offer refuses them
+// all. Zero against zero is affordable, and it is the honest pair rather than two numbers chosen to
+// meet.
+//
+// A NON-ZERO RESERVATION PRICE WOULD BE THE INVENTED VALUATION. selection.dag already separates the
+// cash that must be reserved from the number offers are RANKED on -- the latter carrying opportunity
+// cost and valued delay, "the buyer's own statement of what waiting is worth". Serving's trade lives
+// entirely in that second number, so pricing the first above zero would reserve money nobody pays in
+// order to express a preference that has its own axis.
+fn serving_turn_buy_terms(account: BudgetAccountId) -> BuyTerms {
+  BuyTerms {
+    budget_account: account,
+    currency: Usd,
+    reservation_price: money_amount_micro(count: 0),
+    maximum_buy_order: money_amount_micro(count: 0),
+  }
+}
+
+// STEP REUSE IS THE WARM PREFIX, AND THE FIELD ALREADY EXISTED. A turn that permits step reuse is a
+// turn willing to have its shared prefix served from what the executor already holds, which is the
+// whole reason conversation affinity is worth anything. It is permitted by default and refusable by
+// a caller that needs a cold evaluation -- a determinism probe, or a comparison against a control.
+fn serving_turn_satisfaction(step_reuse_permitted: Bool) -> SatisfactionRequirement {
+  SatisfactionRequirement {
+    terminal_receipt_may_satisfy: true,
+    new_attempt_required: false,
+    step_reuse_permitted: step_reuse_permitted,
+  }
+}
+
+fn serving_turn_demand<P>(
+  principal: P,
+  work: FabricIdentity<P, WorkKey>,
+  demand_key: NonEmptyStr,
+  origin: ObservationReceiptRef,
+  submitted_at: Timestamp,
+  deadline: Timestamp?,
+  account: BudgetAccountId,
+  step_reuse_permitted: Bool,
+) -> Demand<P> {
+  Demand {
+    id: FabricIdentity { principal: principal, key: demand_key },
+    work: work,
+    origin: origin,
+    submitted_at: submitted_at,
+    admission: AdmissionTerms { deadline: deadline, buy: serving_turn_buy_terms(account: account) },
+    satisfaction: serving_turn_satisfaction(step_reuse_permitted: step_reuse_permitted),
+  }
+}
