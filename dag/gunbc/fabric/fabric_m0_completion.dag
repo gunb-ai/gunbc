@@ -1,0 +1,411 @@
+module gunbc.fabric_m0_completion
+
+import std.types { List, NonEmptyStr, Bool }
+import std.content_hash { Sha256Digest, content_hash_eq_cryptographic }
+import std.scoped_authorization { AttemptIdentity }
+
+// The fabric-M0 durable-completion authority: the single function that may call a job successful.
+// It is modeled before any cache exists because a cache accelerates a completion contract and
+// cannot supply one — building the fast path first produces something that looks like storage
+// without establishing that a successful job's required outputs outlive the worker.
+//
+// WHY THE DIGEST CARRIERS BELOW ARE Sha256Digest AND NOT ContentHash: std.content_hash makes
+// ContentHash a family coproduct whose Fnv1a64Structural arm is a structural FINGERPRINT, minted
+// for computation identity and not from transferred bytes. A union-typed field would let a
+// structural fingerprint stand where a byte-integrity digest is required, and until Phase B of
+// feature:content-hash-family-grounded lands, the substrate still admits cross-family `==` at
+// typecheck. Pinning the family AT THE CARRIER is the same move GateRosterHash and v2.std.node.Hash
+// already make for Fnv1a64Structural, and it puts this class at structurally impossible rather than
+// validated: there is no constructor here that accepts a structural fingerprint as an integrity
+// digest, so the confusion has no representation instead of a check that could be skipped.
+
+// THE ATTEMPT IS NOT THIS MODULE'S CONCEPT TO NAME. An earlier revision minted
+// AttemptId here for the executor of a job. std.scoped_authorization already declares
+// AttemptIdentity for exactly that entity -- the consumer identity a grant is issued to,
+// where a grant for attempt A refuses attempt B -- and gunbc.auth.approval_broker uses that
+// same type for who executes a work claim. One concept under two names is the section 3
+// nicknaming violation, and it was introduced by coining before DFS-ing the concept DAG.
+// Dissolved rather than carried, because a second spelling outlives the mistake.
+type RequiredArtifactId = NonEmptyStr where brand("RequiredArtifactId")
+
+type RequiredReceiptId = NonEmptyStr where brand("RequiredReceiptId")
+
+// The obligation roster, whose declared-but-empty and never-read arms are DIFFERENT CONSTRUCTORS.
+//
+// This is the module's load-bearing distinction. A job that legitimately produces no artifacts and
+// a job whose declaration could not be read both present zero required ids, so a bare List would
+// make an unreadable declaration satisfiable by producing nothing — the obligation set silently
+// shrinking to match whatever arrived. Separating the arms means the weakened-obligation case has
+// no representation rather than a validator that a later caller could bypass.
+type ArtifactObligations
+  = ArtifactObligationsDeclared { required: List<RequiredArtifactId> }
+  | ArtifactObligationsUnreadable { cause: NonEmptyStr }
+
+type ReceiptObligations
+  = ReceiptObligationsDeclared { required: List<RequiredReceiptId> }
+  | ReceiptObligationsUnreadable { cause: NonEmptyStr }
+
+// What an independent reader observed at the origin, WITHOUT consulting the producer's cache.
+//
+// ReadbackUnknown is a third arm rather than a failure because a lost acknowledgement does not
+// establish that the write failed, and an object's mere existence does not establish it is the
+// intended object. Folding unknown into either decided arm is the absorbing fallback DESIGN 5
+// forbids: into failure it discards a possibly-committed result and re-executes; into success it
+// publishes green over bytes nobody has read.
+type OriginReadback
+  = ReadbackConfirmed { observed_digest: Sha256Digest }
+  | ReadbackAbsent
+  | ReadbackUnknown { cause: NonEmptyStr }
+
+type CommittedArtifact {
+  id: RequiredArtifactId
+  attempt: AttemptIdentity
+  recorded_digest: Sha256Digest
+}
+
+type CommittedReceipt {
+  id: RequiredReceiptId
+  attempt: AttemptIdentity
+  recorded_digest: Sha256Digest
+}
+
+// The computation's own verdict, kept separate from every storage fact below it.
+type ComputationOutcome
+  = ComputationSucceeded
+  | ComputationFailed { cause: NonEmptyStr }
+
+// Per-obligation verdicts, and the three-valued space the roster fold lives in.
+// ObligationUnenumerable is the roster-grain arm: not one obligation that failed, but a population
+// nobody could list. It dominates the meet because a job whose obligations cannot be enumerated
+// cannot be shown complete by any number of satisfied siblings -- and keeping it as a VERDICT rather
+// than an early return is what lets the readable rosters still be assessed beside it. "Cannot
+// enumerate this population" is not "stop examining every other population".
+type ObligationVerdict
+  = ObligationSatisfied
+  | ObligationUnsatisfied { subject: NonEmptyStr, cause: NonEmptyStr }
+  | ObligationUndetermined { subject: NonEmptyStr, cause: NonEmptyStr }
+  | ObligationUnenumerable { subject: NonEmptyStr, cause: NonEmptyStr }
+
+// Unsatisfied DOMINATES undetermined, which is not arbitrary: an absent required object is already
+// decided, so no later readback can turn the population complete, while an unknown one may still
+// reconcile. Taking the meet in the other direction would park a definitely-incomplete result in
+// pending forever, and taking it toward satisfied would publish success over a missing output.
+fn obligation_meet(a: ObligationVerdict, b: ObligationVerdict) -> ObligationVerdict {
+  if obligation_rank(v: a) >= obligation_rank(v: b) { a } else { b }
+}
+
+// One ordering, stated once. Unenumerable dominates Unsatisfied dominates Undetermined dominates
+// Satisfied: a decided absence cannot be reconciled away, so it must not sit behind an unknown that
+// may still resolve; and an unlistable roster outranks both because it is not even a claim about a
+// particular obligation.
+fn obligation_rank(v: ObligationVerdict) -> Int {
+  match v {
+    ObligationSatisfied => 0
+    ObligationUndetermined { subject: _, cause: _ } => 1
+    ObligationUnsatisfied { subject: _, cause: _ } => 2
+    ObligationUnenumerable { subject: _, cause: _ } => 3
+  }
+}
+
+fn readback_digest_verdict(subject: NonEmptyStr, recorded: Sha256Digest, readback: OriginReadback) -> ObligationVerdict {
+  match readback {
+    ReadbackConfirmed { observed_digest: observed } =>
+      if content_hash_eq_cryptographic(left: recorded, right: observed) {
+        ObligationSatisfied
+      } else {
+        ObligationUnsatisfied { subject: subject, cause: "origin readback digest differs from the committed record" }
+      }
+    ReadbackAbsent => ObligationUnsatisfied { subject: subject, cause: "required artifact absent at origin" }
+    ReadbackUnknown { cause: c } => ObligationUndetermined { subject: subject, cause: c }
+  }
+}
+
+// THE READ IS A SEPARATE POPULATION FROM THE WRITE, JOINED HERE RATHER THAN ASSEMBLED BY THE CALLER.
+//
+// This shape exists because the previous one carried `readback` as a FIELD of each committed row,
+// which made a readback exist for every committed object by construction: "no origin read was
+// performed for this subject" had no representation, and the nearest expressible thing --
+// ReadbackUnknown -- was a value a caller had to deliberately choose. A record whose read result is
+// always present and whose two compared halves are both supplied by one caller is checking a claim
+// about a commit rather than the commit; it is the seeded-true fold answering "complete" over a
+// population it never examined.
+//
+// Splitting them makes the unexamined case the DEFAULT rather than an option: an observation
+// population that no reader wrote to is empty, every required subject misses its join, and the fold
+// cannot reach success. Undetermined rather than unsatisfied is deliberate -- an unperformed read
+// says nothing about whether the object is there, so it must reconcile, not fail.
+//
+// What this does NOT establish, stated plainly: nothing here proves a reader ran. That is the
+// observation-to-slot boundary std.durable_compare_and_set already declares outside its guarantee,
+// and no pure fold can close it. What it does establish is that the AUTHORITY performs the join, so
+// a missing read is structurally distinguishable from a satisfied one instead of being absorbed.
+//
+// THE REMAINING GAP AND ITS TRIGGER, STATED AS A CAPABILITY. An observation's digest is still
+// ASSERTED rather than computed from the bytes read back, which is the rostered class
+// gunbc.recurring_failure_mode.subject_and_its_digest_as_independent_parameters -- a value and a
+// summary of it standing side by side with no arm relating them. That row already declares the
+// repair: derive the digest from the value at the point the value is obtained, never accept it as a
+// peer parameter. It is not applied here because it is not CONSTRUCTIBLE here.
+//
+// NEXT-RUNG TRIGGER, AS A CAPABILITY: a function in the substrate computing SHA-256 over Bytes, so
+// a digest and the bytes it names are produced by one operation. Not "a digest for the manifest" --
+// a trigger naming less than the capability is satisfied while the capability stays dead.
+//
+// THAT TRIGGER IS THE CLIMB, NOT A PREREQUISITE, AND THE DISTINCTION MATTERS BECAUSE TWO DIGEST
+// SHAPES LOOK ALIKE. extdeps.crypto.hash sha256_digest takes HEX -- an author asserts a digest and
+// nothing computes it. extdeps.tools.sha256sum sha256sum_file_digest_via_shell takes a PATH and
+// COMPUTES over the bytes there, with a typed Sha256FileDigestUnavailable arm; by section 3 that is
+// a handler bound to a digest shape, one of N, and it is live in
+// gunbc.instruments.fabric_control_plane_live_probe. No .dag function takes Bytes and returns a
+// digest, so the rostered repair is reachable exactly where the subject bytes EXIST AT A PATH.
+// These subjects are stored objects, so a durable-origin readback that stages what it fetched puts
+// them at a path and the chain is buildable at a mitigatable rung today.
+//
+// THE CONSTRAINT ON THAT REALIZATION: the digested file must be the ORIGIN readback's own output
+// and never a cache copy. Computing a byte-exact digest over locally-sourced bytes would launder
+// the cache-read refusal in gunbc.fabric_m0_commit manifest_readback_for_slot into a confirmation --
+// a correct computation over the wrong provenance.
+type OriginObservation {
+  subject: NonEmptyStr
+  readback: OriginReadback
+}
+
+fn readback_verdict_for(observations: List<OriginObservation>, subject: NonEmptyStr, recorded: Sha256Digest) -> ObligationVerdict {
+  let seen = observations |> filter(o => o.subject == subject)
+  if seen.count() == 0 {
+    ObligationUndetermined { subject: subject, cause: "no origin read is recorded for this subject" }
+  } else if seen.count() > 1 {
+    ObligationUnsatisfied { subject: subject, cause: "several origin observations claim this subject; no authoritative read" }
+  } else {
+    match seen |> first {
+      Present { value: o } => readback_digest_verdict(subject: subject, recorded: recorded, readback: o.readback)
+      Absent => ObligationUndetermined { subject: subject, cause: "no origin read is recorded for this subject" }
+    }
+  }
+}
+
+// AMBIGUITY REFUSES RATHER THAN RESOLVING BY POSITION. The former shape took the first match, so a
+// second, conflicting or undetermined row for the same identity was discarded before any fold could
+// see it -- and evidence dropped at selection cannot be recovered by preserving everything after it.
+// An unconstrained list whose first element wins establishes neither a unique admitted observation
+// nor an authoritative choice among a history, so this refuses and names the count.
+fn committed_artifacts_for(committed: List<CommittedArtifact>, wanted: RequiredArtifactId, attempt: AttemptIdentity) -> List<CommittedArtifact> {
+  committed |> filter(c => (c.id == wanted) && (c.attempt == attempt))
+}
+
+fn committed_receipts_for(committed: List<CommittedReceipt>, wanted: RequiredReceiptId, attempt: AttemptIdentity) -> List<CommittedReceipt> {
+  committed |> filter(c => (c.id == wanted) && (c.attempt == attempt))
+}
+
+fn required_artifact_verdict(
+  committed: List<CommittedArtifact>,
+  observations: List<OriginObservation>,
+  members: List<ManifestMember>,
+  wanted: RequiredArtifactId,
+  attempt: AttemptIdentity
+) -> ObligationVerdict {
+  let rows = committed_artifacts_for(committed: committed, wanted: wanted, attempt: attempt)
+  if rows.count() == 0 {
+    ObligationUnsatisfied { subject: wanted, cause: "no committed artifact bound to this attempt" }
+  } else if rows.count() > 1 {
+    ObligationUnsatisfied { subject: wanted, cause: "several committed artifacts claim this identity for one attempt; no authoritative row" }
+  } else {
+    match rows |> first {
+      Present { value: c } =>
+        obligation_meet(
+          a: readback_verdict_for(observations: observations, subject: wanted, recorded: c.recorded_digest),
+          b: manifest_membership_verdict(members: members, subject: wanted, expected: c.recorded_digest)
+        )
+      Absent => ObligationUnsatisfied { subject: wanted, cause: "no committed artifact bound to this attempt" }
+    }
+  }
+}
+
+fn required_receipt_verdict(
+  committed: List<CommittedReceipt>,
+  observations: List<OriginObservation>,
+  members: List<ManifestMember>,
+  wanted: RequiredReceiptId,
+  attempt: AttemptIdentity
+) -> ObligationVerdict {
+  let rows = committed_receipts_for(committed: committed, wanted: wanted, attempt: attempt)
+  if rows.count() == 0 {
+    ObligationUnsatisfied { subject: wanted, cause: "no committed receipt bound to this attempt" }
+  } else if rows.count() > 1 {
+    ObligationUnsatisfied { subject: wanted, cause: "several committed receipts claim this identity for one attempt; no authoritative row" }
+  } else {
+    match rows |> first {
+      Present { value: c } =>
+        obligation_meet(
+          a: readback_verdict_for(observations: observations, subject: wanted, recorded: c.recorded_digest),
+          b: manifest_membership_verdict(members: members, subject: wanted, expected: c.recorded_digest)
+        )
+      Absent => ObligationUnsatisfied { subject: wanted, cause: "no committed receipt bound to this attempt" }
+    }
+  }
+}
+
+// The manifest names the committed set, so membership is CHECKED rather than asserted by a comment.
+//
+// Independent checks of several objects do not establish the relationships between them: without
+// this, the contract said only "these objects each passed, and something labelled this attempt's
+// manifest passed", never "that manifest names these objects at these contents". Reconstructing a
+// result after the worker is gone needs the second.
+type ManifestMember {
+  subject: NonEmptyStr
+  content: Sha256Digest
+}
+
+fn manifest_membership_verdict(members: List<ManifestMember>, subject: NonEmptyStr, expected: Sha256Digest) -> ObligationVerdict {
+  let named = members |> filter(m => m.subject == subject)
+  if named.count() == 0 {
+    ObligationUnsatisfied { subject: subject, cause: "commit manifest does not name this required object" }
+  } else if named.count() > 1 {
+    ObligationUnsatisfied { subject: subject, cause: "commit manifest names this required object more than once" }
+  } else {
+    match named |> first {
+      Present { value: m } =>
+        if content_hash_eq_cryptographic(left: m.content, right: expected) {
+          ObligationSatisfied
+        } else {
+          ObligationUnsatisfied { subject: subject, cause: "commit manifest names a different content for this required object" }
+        }
+      Absent => ObligationUnsatisfied { subject: subject, cause: "commit manifest does not name this required object" }
+    }
+  }
+}
+
+type CommitManifest {
+  attempt: AttemptIdentity
+  manifest_digest: Sha256Digest
+  members: List<ManifestMember>
+}
+
+fn manifest_verdict(manifest: CommitManifest, observations: List<OriginObservation>, attempt: AttemptIdentity) -> ObligationVerdict {
+  if (manifest.attempt == attempt) == false {
+    ObligationUnsatisfied { subject: "commit-manifest", cause: "manifest is bound to a different attempt" }
+  } else {
+    readback_verdict_for(observations: observations, subject: "commit-manifest", recorded: manifest.manifest_digest)
+  }
+}
+
+// Each roster contributes verdicts whether or not its SIBLING could be read.
+fn artifact_roster_verdicts(
+  artifacts: ArtifactObligations,
+  committed: List<CommittedArtifact>,
+  observations: List<OriginObservation>,
+  members: List<ManifestMember>,
+  attempt: AttemptIdentity
+) -> List<ObligationVerdict> {
+  match artifacts {
+    ArtifactObligationsUnreadable { cause: c } =>
+      [ObligationUnenumerable { subject: "artifact-obligations", cause: c }]
+    ArtifactObligationsDeclared { required: required } =>
+      required |> map(wanted => required_artifact_verdict(committed: committed, observations: observations, members: members, wanted: wanted, attempt: attempt))
+  }
+}
+
+fn receipt_roster_verdicts(
+  receipts: ReceiptObligations,
+  committed: List<CommittedReceipt>,
+  observations: List<OriginObservation>,
+  members: List<ManifestMember>,
+  attempt: AttemptIdentity
+) -> List<ObligationVerdict> {
+  match receipts {
+    ReceiptObligationsUnreadable { cause: c } =>
+      [ObligationUnenumerable { subject: "receipt-obligations", cause: c }]
+    ReceiptObligationsDeclared { required: required } =>
+      required |> map(wanted => required_receipt_verdict(committed: committed, observations: observations, members: members, wanted: wanted, attempt: attempt))
+  }
+}
+
+fn storage_assessment(
+  attempt: AttemptIdentity,
+  artifacts: ArtifactObligations,
+  receipts: ReceiptObligations,
+  committed_artifacts: List<CommittedArtifact>,
+  committed_receipts: List<CommittedReceipt>,
+  observations: List<OriginObservation>,
+  manifest: CommitManifest
+) -> List<ObligationVerdict> {
+  concat(
+    concat(
+      artifact_roster_verdicts(artifacts: artifacts, committed: committed_artifacts, observations: observations, members: manifest.members, attempt: attempt),
+      receipt_roster_verdicts(receipts: receipts, committed: committed_receipts, observations: observations, members: manifest.members, attempt: attempt)
+    ),
+    [manifest_verdict(manifest: manifest, observations: observations, attempt: attempt)]
+  )
+}
+
+fn verdict_is_unresolved(v: ObligationVerdict) -> Bool {
+  match v {
+    ObligationSatisfied => false
+    ObligationUnsatisfied { subject: _, cause: _ } => true
+    ObligationUndetermined { subject: _, cause: _ } => true
+    ObligationUnenumerable { subject: _, cause: _ } => true
+  }
+}
+
+fn unresolved_obligations(verdicts: List<ObligationVerdict>) -> List<ObligationVerdict> {
+  verdicts |> filter(v => verdict_is_unresolved(v: v))
+}
+
+fn verdicts_meet(verdicts: List<ObligationVerdict>) -> ObligationVerdict {
+  fold(verdicts, init: ObligationSatisfied, f: (acc, v) => obligation_meet(a: acc, b: v))
+}
+
+type JobPublication
+  = PublishSuccess { attempt: AttemptIdentity, manifest_digest: Sha256Digest }
+  | PublishComputationFailed { attempt: AttemptIdentity, cause: NonEmptyStr, unresolved: List<ObligationVerdict> }
+  | PublishFinalizationFailed { attempt: AttemptIdentity, subject: NonEmptyStr, cause: NonEmptyStr, unresolved: List<ObligationVerdict> }
+  | PublishPendingReconciliation { attempt: AttemptIdentity, subject: NonEmptyStr, cause: NonEmptyStr, unresolved: List<ObligationVerdict> }
+  | PublishObligationsUnreadable { attempt: AttemptIdentity, subject: NonEmptyStr, cause: NonEmptyStr, unresolved: List<ObligationVerdict> }
+
+// THE SUCCESS AUTHORITY. Total over five outcomes.
+//
+// SHORT-CIRCUIT THE CHOICE OF OUTCOME, NEVER THE COLLECTION OF EVIDENCE. The storage assessment is
+// computed FIRST and unconditionally -- it is a pure fold over supplied observations, so computing
+// it neither performs a read nor delays recognising the build failure -- and only then does the
+// computation verdict decide the published outcome. Failure dominance is therefore a property of
+// the RESULT rather than of skipping the assessment, which is what the earlier shape got wrong: a
+// failed build returned before any obligation was examined, so a job that failed to compile AND had
+// an unresolved receipt upload reported the compile error and silently dropped the reconciliation
+// work. Both facts are true and only the second says what to do next.
+//
+// Success remains the last arm and is reachable only from a wholly satisfied assessment.
+fn admit_job_publication(
+  attempt: AttemptIdentity,
+  computation: ComputationOutcome,
+  artifacts: ArtifactObligations,
+  receipts: ReceiptObligations,
+  committed_artifacts: List<CommittedArtifact>,
+  committed_receipts: List<CommittedReceipt>,
+  observations: List<OriginObservation>,
+  manifest: CommitManifest
+) -> JobPublication {
+  let verdicts = storage_assessment(
+    attempt: attempt,
+    artifacts: artifacts,
+    receipts: receipts,
+    committed_artifacts: committed_artifacts,
+    committed_receipts: committed_receipts,
+    observations: observations,
+    manifest: manifest
+  )
+  let unresolved = unresolved_obligations(verdicts: verdicts)
+  match computation {
+    ComputationFailed { cause: c } =>
+      PublishComputationFailed { attempt: attempt, cause: c, unresolved: unresolved }
+    ComputationSucceeded =>
+      match verdicts_meet(verdicts: verdicts) {
+        ObligationSatisfied => PublishSuccess { attempt: attempt, manifest_digest: manifest.manifest_digest }
+        ObligationUnsatisfied { subject: s, cause: c } =>
+          PublishFinalizationFailed { attempt: attempt, subject: s, cause: c, unresolved: unresolved }
+        ObligationUndetermined { subject: s, cause: c } =>
+          PublishPendingReconciliation { attempt: attempt, subject: s, cause: c, unresolved: unresolved }
+        ObligationUnenumerable { subject: s, cause: c } =>
+          PublishObligationsUnreadable { attempt: attempt, subject: s, cause: c, unresolved: unresolved }
+      }
+  }
+}

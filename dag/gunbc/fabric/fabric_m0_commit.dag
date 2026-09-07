@@ -1,0 +1,227 @@
+module gunbc.fabric_m0_commit
+
+import std.types { List, NonEmptyStr }
+import std.content_hash { Sha256Digest }
+import std.scoped_authorization { AttemptIdentity }
+import std.durable_compare_and_set {
+  CasOutcome,
+  CasCommitted,
+  CasPreconditionFailed,
+  CasStoreRefused,
+}
+import gunbc.fabric_m0_completion {
+  ArtifactObligations,
+  ReceiptObligations,
+  ComputationOutcome,
+  CommittedArtifact,
+  CommittedReceipt,
+  CommitManifest,
+  OriginObservation,
+  ManifestMember,
+  OriginReadback,
+  ReadbackConfirmed,
+  ReadbackAbsent,
+  ReadbackUnknown,
+  JobPublication,
+  admit_job_publication,
+}
+
+// The commit boundary: it turns what the STORE said about the manifest slot into the readback the
+// completion authority consumes, and it is the only place allowed to make that translation.
+//
+// WHY THIS LAYER EXISTS AT ALL rather than the caller handing a readback straight to
+// admit_job_publication: the completion authority takes an OriginReadback as a given, so somebody
+// has to derive one honestly from a real conditional write. Doing that at the call site would put
+// the timeout rule below in every caller, which is the second-representation failure -- and the
+// arm most likely to be got wrong is the one that costs nothing to get wrong locally.
+
+// A store answer and the ABSENCE of a store answer are different facts.
+//
+// std.durable_compare_and_set's CasOutcome distinguishes committed, precondition-failed and
+// store-refused, and every one of those is something the store SAID. A request that timed out or
+// whose acknowledgement was lost obtained none of them, so rendering it as any CasOutcome would
+// manufacture a store verdict to fit the branches available -- fabricating the one fact the caller
+// most needs to not be invented. It is a sibling of the outcome, never an arm of it.
+type CommitTransportOutcome
+  = StoreAnswered { slot: NonEmptyStr, outcome: CasOutcome<Sha256Digest> }
+  | StoreDidNotAnswer { slot: NonEmptyStr, cause: NonEmptyStr }
+
+// THE SLOT AN ANSWER IS ABOUT, carried so it can be compared with the slot we asked about.
+//
+// std.durable_compare_and_set declares this boundary rather than closing it: its CasSlotVersion
+// deliberately drops the key, and it records that an unkeyed observation describes NO slot, so
+// cas_decide never reads attempt.key and an observation read from slot B still commits to slot A
+// when the generations agree. It names the realization as the owner of that relation, and this
+// module is that realization's boundary, so the comparison lives here or nowhere.
+//
+// One authority for the slot name: the key is DERIVED from the attempt rather than passed beside
+// it, because a caller-supplied key next to a caller-supplied attempt is two spellings of one fact
+// and they can disagree -- which is the shape the CAS module already had to correct once.
+// The namespace is RECEIVED, never spelled here. A versioned namespace is a binding decision owned
+// by whoever selects and configures the durable origin, so a literal prefix in this fold would be
+// business policy sitting inside an interface -- the layer inversion DESIGN 3 names, whose tell is
+// exactly this: a literal carried where a parameter belongs.
+//
+// What stays derived is the KEY, because that is the part with a correctness argument: taking a
+// caller-supplied key beside a caller-supplied attempt would be two spellings of one fact that can
+// disagree. Receiving the namespace and deriving the key from it keeps one authority for the
+// derivation while leaving the namespace free to be versioned, re-homed, or bound to an on-fleet
+// origin without touching this module.
+type CommitNamespace = NonEmptyStr where brand("CommitNamespace")
+
+fn commit_slot_key(namespace: CommitNamespace, attempt: AttemptIdentity) -> NonEmptyStr {
+  namespace + "/" + attempt
+}
+
+fn transport_slot(transport: CommitTransportOutcome) -> NonEmptyStr {
+  match transport {
+    StoreAnswered { slot: s, outcome: _ } => s
+    StoreDidNotAnswer { slot: s, cause: _ } => s
+  }
+}
+
+// A foreign-slot answer is UNKNOWN about our object, never absence and never confirmation.
+//
+// It is not a softer refusal: an answer about someone else's slot carries no information about
+// ours, so reporting absence would assert something nobody observed, and reporting confirmation
+// would be the wrong-slot commit this check exists to stop. Unknown with a cause naming the
+// mismatch is the honest state, and it cannot publish success.
+fn slot_mismatch_readback(expected: NonEmptyStr, actual: NonEmptyStr) -> OriginReadback {
+  ReadbackUnknown { cause: "store answered about a different slot: expected " + expected + ", answer names " + actual }
+}
+
+// What an independent reader saw at the manifest slot afterwards, kept separate from what the write
+// call returned. A write that reported success and a read that confirms the intended bytes are two
+// observations, and only the second establishes the object is there to be recovered.
+// WHERE A CONFIRMING READ CAME FROM, because a read that did not reach the durable origin cannot
+// establish durability no matter how correct its bytes are.
+//
+// This closes the hole that would hollow out the milestone: the local cache and the durable origin
+// address the SAME immutable object by the SAME content key, so a cache hit and an origin read are
+// byte-identical and indistinguishable once the digest is in hand. Without a source, "we read H back
+// and it matched" is satisfied by reading the copy on the machine that is about to be lost -- and
+// the job publishes success for an output that exists nowhere else. Same content identity,
+// different AUTHORITY.
+//
+// HONEST RUNG: this is a declared boundary, not a construction. DurableOriginRead is freely
+// authorable here, exactly like the readback-provenance assertion std.materialization_provider
+// already records against itself, and for the same reason -- confinement of the constructor to the
+// modeled read is not available until a byte-owning origin exists. What changes is that the fact is
+// now STATABLE and REFUSABLE rather than absent: before this, there was nowhere to even record that
+// a confirmation came from a cache.
+type ReadSource
+  = DurableOriginRead
+  | DisposableCacheRead { provider: NonEmptyStr }
+
+type ManifestReadbackObservation
+  = ManifestRead { observed_digest: Sha256Digest, source: ReadSource }
+  | ManifestNotFound
+  | ManifestReadUnavailable { cause: NonEmptyStr }
+
+// THE TRANSLATION, and the only rule in this module with teeth.
+//
+// THE READ DECIDES WHAT DURABLE STATE EXISTS; the write outcome decides only what happened to THIS
+// invocation. Those are different questions and publication cares about the first, so the fold is
+// driven by the observation and consults the transport for exactly one thing: whether "not found"
+// is established or merely unobserved.
+//
+// An unanswered write with nothing found yields Unknown, NOT absent -- "we stopped waiting" and "we
+// observed non-commitment" are different facts, and collapsing them either re-executes work that may
+// already be committed or publishes over bytes nobody read. When the store DID answer, its answer
+// plus a fruitless read does establish absence.
+//
+// CasPreconditionFailed USED TO SHORT-CIRCUIT TO ABSENT HERE, and that was wrong in the case this
+// module exists to serve. A precondition failure proves only that the requested conditional
+// transition did not happen on this invocation; it does not prove the desired state is missing. The
+// slot key is DERIVED FROM THE ATTEMPT, so the occupant of attempt A's slot is most often A's own
+// earlier write -- the lost-acknowledgement retry: A writes, the acknowledgement is lost, the retry
+// asks create-if-absent, the store answers precondition-failed because A's own manifest is already
+// there. Reporting that as absence fails a job whose result is committed and readable. A CONFLICTING
+// occupant is still caught, one layer up: the readback digest is compared against the recorded
+// manifest digest, so a foreign manifest at our slot reports a content mismatch rather than success.
+fn manifest_readback(namespace: CommitNamespace, attempt: AttemptIdentity, transport: CommitTransportOutcome, observed: ManifestReadbackObservation) -> OriginReadback {
+  let expected = commit_slot_key(namespace: namespace, attempt: attempt)
+  let actual = transport_slot(transport: transport)
+  if (expected == actual) == false {
+    slot_mismatch_readback(expected: expected, actual: actual)
+  } else {
+    manifest_readback_for_slot(transport: transport, observed: observed)
+  }
+}
+
+fn manifest_readback_for_slot(transport: CommitTransportOutcome, observed: ManifestReadbackObservation) -> OriginReadback {
+  match observed {
+    ManifestRead { observed_digest: d, source: src } =>
+      match src {
+        DurableOriginRead => ReadbackConfirmed { observed_digest: d }
+        DisposableCacheRead { provider: pr } =>
+          ReadbackUnknown { cause: "manifest read from disposable cache " + pr + ", not the durable origin; durability unestablished" }
+      }
+    ManifestReadUnavailable { cause: rc } => ReadbackUnknown { cause: rc }
+    ManifestNotFound =>
+      match transport {
+        StoreAnswered { slot: _, outcome: _ } => ReadbackAbsent
+        StoreDidNotAnswer { slot: _, cause: c } => ReadbackUnknown { cause: c }
+      }
+  }
+}
+
+// The manifest states WHAT WAS OWED; it no longer carries a read result.
+fn commit_manifest(attempt: AttemptIdentity, manifest_digest: Sha256Digest, members: List<ManifestMember>) -> CommitManifest {
+  CommitManifest {
+    attempt: attempt,
+    manifest_digest: manifest_digest,
+    members: members,
+  }
+}
+
+// A store that says committed is still not a recovered result: the manifest is only confirmed by an
+// independent read of the intended object, so what this boundary contributes to the completion
+// authority is an OBSERVATION -- the READ's verdict -- and never the write's.
+//
+// This is the only manifest observation the authority will find under that subject, and it is
+// DERIVED here from the transport and the read rather than accepted from the caller. A caller of
+// publish_after_commit supplies reads of the required objects; it cannot supply the manifest's,
+// because the slot the manifest lives at is derived from the namespace and the attempt one layer
+// down and a hand-supplied observation could disagree with it.
+fn manifest_observation(
+  namespace: CommitNamespace,
+  attempt: AttemptIdentity,
+  transport: CommitTransportOutcome,
+  observed: ManifestReadbackObservation
+) -> OriginObservation {
+  OriginObservation {
+    subject: "commit-manifest",
+    readback: manifest_readback(namespace: namespace, attempt: attempt, transport: transport, observed: observed),
+  }
+}
+
+// The consumer: one call from a real commit attempt to a published outcome.
+fn publish_after_commit(
+  namespace: CommitNamespace,
+  attempt: AttemptIdentity,
+  computation: ComputationOutcome,
+  artifacts: ArtifactObligations,
+  receipts: ReceiptObligations,
+  committed_artifacts: List<CommittedArtifact>,
+  committed_receipts: List<CommittedReceipt>,
+  observations: List<OriginObservation>,
+  manifest_digest: Sha256Digest,
+  members: List<ManifestMember>,
+  transport: CommitTransportOutcome,
+  observed: ManifestReadbackObservation
+) -> JobPublication {
+  admit_job_publication(
+    attempt: attempt,
+    computation: computation,
+    artifacts: artifacts,
+    receipts: receipts,
+    committed_artifacts: committed_artifacts,
+    committed_receipts: committed_receipts,
+    observations: concat(
+      observations,
+      [manifest_observation(namespace: namespace, attempt: attempt, transport: transport, observed: observed)]
+    ),
+    manifest: commit_manifest(attempt: attempt, manifest_digest: manifest_digest, members: members)
+  )
+}
