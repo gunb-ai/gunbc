@@ -4,6 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import extdeps.currency.currency { CurrencyCode }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
+import extdeps.external_authority { CeilingTranscribedUncited }
 import std.measure {
   Bandwidth,
   ByteSize,
@@ -30,6 +31,16 @@ import std.decision {
   RealizationSelectionResult,
   UniqueSurvivorRequired,
   select_realization,
+  DecisionVariable,
+  ContextParameter,
+  DecisionConstraint,
+  ObjectiveTerm,
+  ObjectiveMeasure,
+  ChoiceDomain,
+  DecisionSubject,
+  DecisionAssessment,
+  PhysicalModelUnestablished,
+  CausalModelUnestablished,
 }
 import product.build_fulfillment {
   CashDerived,
@@ -324,12 +335,64 @@ data build_selection_unique_policy: DeclarationRef = decl_ref(
   decl_name: "build_selection_unique_policy",
 )
 
+data build_var: DecisionVariable = DecisionVariable {
+  identity: decl_ref(module_path: "product.build_selection", decl_name: "build_var"),
+}
+data build_term: ObjectiveTerm = ObjectiveTerm {
+  identity: decl_ref(module_path: "product.build_selection", decl_name: "build_term"),
+  ground: CeilingTranscribedUncited {
+    read_obligation: "build-selection objective term is not yet cited to an external authority" as NonEmptyStr,
+  },
+}
+data build_constraint: DecisionConstraint = DecisionConstraint {
+  identity: build_selection_constraint_authority,
+}
+data build_param: ContextParameter = ContextParameter {
+  identity: decl_ref(module_path: "product.build_selection", decl_name: "build_param"),
+}
+data build_objective: ObjectiveMeasure = ObjectiveMeasure {
+  identity: decl_ref(module_path: "product.build_selection", decl_name: "build_objective"),
+  goal: HigherIsBetter,
+  terms: [build_term],
+}
+data build_domain: ChoiceDomain = ChoiceDomain {
+  identity: decl_ref(module_path: "product.build_selection", decl_name: "build_domain"),
+  variables: [build_var],
+}
+data build_decision_subject: DecisionSubject = DecisionSubject {
+  identity: build_selection_subject,
+  question: "which admitted build candidate to realize" as NonEmptyStr,
+  parameters: [build_param],
+  constraints: [build_constraint],
+  objective: build_objective,
+  choice_domain: build_domain,
+}
+
+fn build_selection_assessment() -> DecisionAssessment {
+  DecisionAssessment {
+    subject: build_decision_subject,
+    sensitivities: [],
+    constraints: [],
+    parameters: [],
+    selected_candidate: Absent,
+    term_drops: [],
+    physical_model: PhysicalModelUnestablished {
+      subject: build_selection_subject,
+      read_obligation: "build-selection physical model is unestablished; SelectedWithin is unwritable until the subject closure joins" as NonEmptyStr,
+    },
+    causal_model: CausalModelUnestablished {
+      subject: build_selection_subject,
+      read_obligation: "build-selection causal model is unestablished" as NonEmptyStr,
+    },
+  }
+}
+
 fn select_build(
   candidates: List<BuildCandidate>,
   declared: CurrencyCode,
 ) -> RealizationSelectionResult<ParetoEntry> {
   select_realization(
-    decision_subject: build_selection_subject,
+    assessment: build_selection_assessment(),
     candidate_field_identity: build_selection_field,
     field: project_field(candidates: candidates, declared: declared),
     axes: build_selection_axes(),

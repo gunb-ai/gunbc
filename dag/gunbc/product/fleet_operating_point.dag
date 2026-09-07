@@ -15,6 +15,7 @@ import std.decision {
   UniqueSurvivorRequired,
   select_realization,
 }
+import product.mt_collins_power_policy { mt_collins_power_assessment }
 
 // FIRST SUBJECT OF REALIZATION SELECTION: an operating point, not a clock.
 // The actuator is what the platform exposes — a socket/chassis power limit is the
@@ -28,10 +29,6 @@ data throughput_by_operating_point_axis: DeclarationRef = decl_ref(
 data ac_power_by_operating_point_axis: DeclarationRef = decl_ref(
   module_path: "product.fleet_operating_point",
   decl_name: "ac_power_by_operating_point_axis",
-)
-data fleet_operating_point_subject: DeclarationRef = decl_ref(
-  module_path: "product.fleet_operating_point",
-  decl_name: "fleet_operating_point_subject",
 )
 data fleet_operating_point_field: DeclarationRef = decl_ref(
   module_path: "product.fleet_operating_point",
@@ -107,7 +104,7 @@ fn fleet_operating_point_field_rows() -> List<ParetoEntry> {
 
 fn fleet_operating_point_selection() -> RealizationSelectionResult<ParetoEntry> {
   select_realization(
-    decision_subject: fleet_operating_point_subject,
+    assessment: mt_collins_power_assessment(),
     candidate_field_identity: fleet_operating_point_field,
     field: fleet_operating_point_field_rows(),
     axes: fleet_operating_point_axes(),
