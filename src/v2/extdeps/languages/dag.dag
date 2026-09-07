@@ -414,14 +414,14 @@ fn dag_surface_operator_canonicalization_lookup(
 fn dag_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: KeywordPattern { text: text }
+    pattern: KeywordPattern { text: chars(s: text) }
   }
 }
 
 fn dag_literal_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: text }
+    pattern: LiteralPattern { text: chars(s: text) }
   }
 }
 

@@ -862,9 +862,9 @@ fn target_lex_rule_literal_step(
           if c == token_class {
             match pattern {
               LiteralPattern { text: text } =>
-                Accepted { value: text, diagnostics: None }
+                Accepted { value: chars_to_string(chars: text, start: 0, end: length(xs: text)), diagnostics: None }
               KeywordPattern { text: text } =>
-                Accepted { value: text, diagnostics: None }
+                Accepted { value: chars_to_string(chars: text, start: 0, end: length(xs: text)), diagnostics: None }
               _ =>
                 Rejected {
                   diagnostics: diagnostics_singleton(
@@ -938,7 +938,7 @@ fn render_target_text(t: TargetText) -> String {
 }
 
 fn target_text_is_empty(t: TargetText) -> Bool {
-  is_empty(xs: t.source)
+  is_empty(xs: chars(s: t.source))
 }
 
 fn bound_tokens_source_text(
@@ -4103,7 +4103,7 @@ fn target_value_expression_char_unicode_scalar(codepoint: Char) -> TargetValueEx
             kind: TypeNode {
               connective: Atom {
                 identity: symbol_intern_lexeme(
-                  lexeme: list_snoc_item(xs: Empty, item: codepoint)
+                  lexeme: chars_to_string(chars: list_snoc_item(xs: Empty, item: codepoint), start: 0, end: 1)
                 )
               }
             },

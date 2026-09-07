@@ -100,7 +100,6 @@ import v2.std.optional {
 }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { HeadAbsent, HeadFound, TailAbsent, TailFound, any, contains, filter, fold_list, fold_list_right, is_empty, length, list_append, list_head, list_reverse, list_snoc_item, list_tail, unique }
-import v2.std.text { Char, CharAbsent, CharFound, string_head }
 import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
 import std.cache_identity { ArtifactKindId, CacheInterfaceId }
 import std.realization { Materialization }
@@ -592,7 +591,7 @@ fn parse_grammar_digest(validated: ValidatedGrammarRoot) -> Hash {
 
 fn parse_lexeme_digest(lexeme: Lexeme) -> Hash {
   fold_list(
-    xs: lexeme,
+    xs: chars(s: lexeme),
     empty: symbol_identity_digest(sym: ^parse_lexeme_digest_nil),
     cons: fn(acc, ch) {
       combine_hash(a: acc, b: byte_limb_hash_peano_digest(limb: ch))
@@ -939,7 +938,7 @@ fn parse_flatten_diag_batches(batches: List<List<Diagnostic>>) -> List<Diagnosti
   ).reverse()
 }
 
-fn parse_char_is_arm_pattern_lead(c: Char) -> Bool {
+fn parse_char_is_arm_pattern_lead(c: Int) -> Bool {
   (c == 95) || ((c >= 65) && (c <= 90))
 }
 
@@ -998,27 +997,25 @@ fn parse_looks_like_match_arm_start(tokens: List<Token>) -> Bool {
   match parse_token_first(tokens: tokens) {
     Absent => false
     Present { value: tok0 } =>
-      match string_head(s: tok0.lexeme) {
-        CharFound { value: c } =>
-          if parse_char_is_arm_pattern_lead(c: c) {
-            match parse_token_second(tokens: tokens) {
-              Present { value: tok1 } =>
-                if parse_token_lexeme_is(tok: tok1, lit: "=>") {
-                  true
-                } else if parse_token_lexeme_is(tok: tok1, lit: "{") {
-                  parse_scan_fat_arrow_after_lbrace(
-                    tokens: parse_tokens_drop(tokens: tokens, count: 2),
-                    depth: 1
-                  )
-                } else {
-                  false
-                }
-              Absent => false
+      if string_length(s: tok0.lexeme) == 0 {
+        false
+      } else if parse_char_is_arm_pattern_lead(c: code_point(c: char_at(s: tok0.lexeme, pos: 0))) {
+        match parse_token_second(tokens: tokens) {
+          Present { value: tok1 } =>
+            if parse_token_lexeme_is(tok: tok1, lit: "=>") {
+              true
+            } else if parse_token_lexeme_is(tok: tok1, lit: "{") {
+              parse_scan_fat_arrow_after_lbrace(
+                tokens: parse_tokens_drop(tokens: tokens, count: 2),
+                depth: 1
+              )
+            } else {
+              false
             }
-          } else {
-            false
-          }
-        CharAbsent => false
+          Absent => false
+        }
+      } else {
+        false
       }
   }
 }
