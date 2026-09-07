@@ -234,8 +234,7 @@ fn pick_first_decl(acc: FirstDeclChannel, decl: FnArrowDecl) -> FirstDeclChannel
       atom_callees: length(
         xs: callees_from_node(
           node: decl.output,
-          terminal_callee_symbols: no_terminal_callees,
-          param_names: param_names_of(decl: decl)
+          terminal_callee_symbols: no_terminal_callees
         )
       )
     }
@@ -294,8 +293,7 @@ fn bounded_compare_step(
     let atom = length(
       xs: callees_from_node(
         node: decl.output,
-        terminal_callee_symbols: no_terminal_callees,
-        param_names: param_names_of(decl: decl)
+        terminal_callee_symbols: no_terminal_callees
       )
     )
     BoundedChannelCompare {
@@ -373,8 +371,7 @@ fn tally_decl(
   let deep_callees = length(
     xs: callees_from_node(
       node: decl.output,
-      terminal_callee_symbols: no_terminal_callees,
-      param_names: param_names_of(decl: decl)
+      terminal_callee_symbols: no_terminal_callees
     )
   )
   DepthAgreementTally {

@@ -2355,6 +2355,30 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
     out
 }
 
+/// The KEYED read of the same module census `module_declaration_facts` publishes: the row for
+/// `module_path`, or none.
+///
+/// The population read exists because a consumer wanted every module; this exists because most
+/// consumers want ONE — "is this module declared, and where does it live". Both project the one
+/// `build_module_path_index` authority, so a hit here is the same `(module, path)` pair the list
+/// carries; the difference is that the keyed form neither materializes nor sorts ~thousands of rows
+/// to answer about one, and the interpreter never marshals them.
+///
+/// `Option`, not a bool: the two questions a keyed caller asks — declared? at which path? — are one
+/// lookup, and answering only the first would send the second back through the population read.
+pub fn module_declaration_fact_at(
+    pool_roots: &[String],
+    module_path: &str,
+) -> Option<ModuleDeclarationFactRaw> {
+    let abs_pool_roots = pool_roots_abs(pool_roots);
+    build_module_path_index(&abs_pool_roots)
+        .get(module_path)
+        .map(|path| ModuleDeclarationFactRaw {
+            module: module_path.to_string(),
+            path: path.clone(),
+        })
+}
+
 /// Project reference edges into the `ImportResolutionFactRaw` channel the module-graph adjacency and
 /// closure consumers already read (the `module_graph.dag` single-swap-point contract — downstream is
 /// edge-source-agnostic). `strict` drops `AmbiguousBare` edges.
