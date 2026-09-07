@@ -29,10 +29,12 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // several demands with a shared-state least common ancestor are authored duplication;
 // carry/rewire/share the first value, do not memoize the later request. The eval-frame memo
 // already collapses within-claim repetition, so this hoist buys no measured time today — it
-// removes the source-level duplication and keeps a zero-arg fn spelling (not a module-scope
-// data row) so the producer stays eligible for v2.workflow.floor_pure_producer_share as a warm
-// row whose fill can land outside the fold. That enrollment measurement is a later step and is
-// not this change. The join mints via this producer only; a caller cannot pass a narrower list.
+// removes source-level duplication only. Cross-claim sharing via
+// v2.workflow.floor_pure_producer_share is closed for this producer: run 34088508298 refused
+// PureProducerShareWarmNotStored / ByteBudgetExceeded (control arm 34088506991). The residual
+// cost is a corpus-wide question asked once per boundary, charged mainly inside opaque host
+// calls rather than evaluator steps — a substrate problem, not a repetition the hoist can move.
+// The join mints via this producer only; a caller cannot pass a narrower list.
 type WitnessLayerDeclIndex {
   facts: List<DeclFact>
   modules: List<ModuleDeclarationFact>
