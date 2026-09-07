@@ -25,7 +25,7 @@ import v2.extdeps.languages.python {
   python_emitted_add_fn_node,
   python_target_model
 }
-import v2.extdeps.languages.typescript { ts_target_model }
+import v2.extdeps.languages.typescript { ts_source_text, ts_target_model }
 
 import v2.std.grammar { ParseTree }
 import v2.std.logic { Bool }
@@ -103,7 +103,16 @@ test fn cross_language_emit_inhabitant_neutralization_fails_closed() -> Bool {
   }
 }
 
-test fn cross_language_emit_inhabitant_neutralization_refuses_underived_holds() -> Bool {
+// FLIPPED 2026-09-07 per DESIGN 4b(4): this was
+// `cross_language_emit_inhabitant_neutralization_refuses_underived_holds`, asserting emit after
+// python→typescript neutralization refused headed by infer_grounding_not_derived while the typescript
+// inhabitants were on the grounding frontier. The declared-inhabitant membership derivation widening
+// to the closed ingest set (v2.compiler.infer infer_node_declared_in_language_inhabitants) grounded
+// them, so the chain now ACCEPTS and emits the canonical typescript add fn byte-identical to
+// ts_source_text. It stands as the permanent regression control for that acceptance; the raw
+// (un-neutralized) emit refusal stays covered by
+// cross_language_emit_inhabitant_neutralization_fails_closed above.
+test fn cross_language_emit_inhabitant_neutralization_round_trip_holds() -> Bool {
   match neutralize_core_for_target(
     core: python_emitted_add_fn_node(),
     target: ts_target_model()
@@ -112,9 +121,9 @@ test fn cross_language_emit_inhabitant_neutralization_refuses_underived_holds() 
       match infer(tree: neutralized) {
         Accepted { value: inferred, diagnostics: _ } =>
           match emit(tree: inferred, target: ts_target_model()) {
-            Rejected { diagnostics: d } =>
-              d.head.reason == ^infer_grounding_not_derived
-            Accepted { value: _, diagnostics: _ } => false
+            Accepted { value: source, diagnostics: _ } =>
+              source.carried == ts_source_text
+            Rejected { diagnostics: _ } => false
           }
         Rejected { diagnostics: _ } => false
       }
@@ -134,7 +143,7 @@ test fn cross_language_add_python_to_typescript_chain_status_holds() -> Bool {
         Accepted { value: python_core, diagnostics: _ } =>
           python_core == python_emitted_add_fn_node()
 
-            && cross_language_compile_on_real_tree_refuses_underived_holds(parse_tree: python_parse_tree)
+            && cross_language_compile_on_real_tree_round_trip_holds(parse_tree: python_parse_tree)
             && ts_effect_io_emit_holds()
         Rejected { diagnostics: _ } => false
       }
@@ -142,15 +151,19 @@ test fn cross_language_add_python_to_typescript_chain_status_holds() -> Bool {
   }
 }
 
-fn cross_language_compile_on_real_tree_refuses_underived_holds(parse_tree: ParseTree) -> Bool {
+// FLIPPED 2026-09-07 per DESIGN 4b(4): the real-tree python→typescript compile refused headed by
+// infer_grounding_not_derived until the declared-inhabitant membership derivation widened to the
+// closed ingest set; it now accepts byte-identical to ts_source_text, and this helper is the
+// regression control for that acceptance.
+fn cross_language_compile_on_real_tree_round_trip_holds(parse_tree: ParseTree) -> Bool {
   match cross_language_compile(
     parse_tree: parse_tree,
     source_model: python_target_model(),
     target_model: ts_target_model()
   ) {
-    Rejected { diagnostics: d } =>
-      d.head.reason == ^infer_grounding_not_derived
-    Accepted { value: _, diagnostics: _ } => false
+    Accepted { value: source, diagnostics: _ } =>
+      source.carried == ts_source_text
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -173,10 +186,13 @@ data cross_language_emit_matrix: List<CrossLanguageEmitMatrixRow> = [
     status: ChainProven {}
   },
 
+  // python→typescript moved ChainFailsClosedAtCheck { check: ^infer_grounding_not_derived } →
+  // ChainProven on 2026-09-07 when the declared-inhabitant membership derivation widened to the
+  // closed ingest set; the round-trip witnesses above are the executing evidence.
   CrossLanguageEmitMatrixRow {
     source_language: ^python,
     target_language: ^typescript,
-    status: ChainFailsClosedAtCheck { check: ^infer_grounding_not_derived }
+    status: ChainProven {}
   },
 
   CrossLanguageEmitMatrixRow {

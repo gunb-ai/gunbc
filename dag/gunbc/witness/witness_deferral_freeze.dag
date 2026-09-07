@@ -960,7 +960,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
   FrozenPathDeferral {
     entry: "src/v2/test/claim/long/inhabitant_neutralization_e2e_witness_test.dag",
     functions: [
-      "inhabitant_neutralization_python_to_ts_cross_language_compile_refuses_underived_holds",
+      "inhabitant_neutralization_python_to_ts_cross_language_compile_round_trip_holds",
       "inhabitant_neutralization_python_to_go_cross_language_compile_refuses_underived_holds",
       "inhabitant_neutralization_python_to_go_discriminates_on_real_tree",
       "inhabitant_neutralization_python_to_go_holds",
