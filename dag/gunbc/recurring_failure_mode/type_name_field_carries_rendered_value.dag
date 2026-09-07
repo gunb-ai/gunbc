@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.type_name_field_carries_rendered_value
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data type_name_field_carries_rendered_value: RecurringFailureMode = RecurringFailureMode {
+  identity: "type_name_field_carries_rendered_value" as NonEmptyStr,
+
+  receipts: [
+    "**a field named type_name holds a type name on three arms and a fully rendered value on the fourth** (INVALID STATE: ExitClass::NotProcessExit is one spelling whose payload field is called type_name. `classify_exit` Variant arms that are not ProcessExit put ctx.resolve of the variant type symbol, or ProcessExit plus the unknown variant, into it — an actual type or variant name. The final other arm puts ctx.format_value of the non-variant value — the rendered value — into the same field. `exit_status_for_class` interpolates that field into the returned-quote slot with no second match, so every refusal path reads one name for two facts. HARM: a reader of the interpolation site infers the field's contents from its NAME and concludes a String projector yields the word String; a reader of the producer and a live stderr file concludes the markdown body is in the diagnostic. Both readings of adjacent code are correct; the name is a third surface and it lied. ",
+
+    "SPECIMEN, 2026-09-06, executed both ways. clever-otter-298 read `exit_status_for_class` and the enrolled control `non_process_exit_refuses_rather_than_printing_and_succeeding` (which constructs NotProcessExit with a fixture type_name Bool and never goes through `classify_exit`) and asserted the diagnostic names the type. wise-badger-902 read the interpolation site and ruled the same. quick-heron-85 held proj3.err at 1062137 bytes. The manager then RAN the projector: EXIT=2, stdout 0 bytes, stderr 578588 bytes opening with the markdown. The field name said type; the field held format_value. ",
+
+    "WHY THE FORK SURVIVED, and it is a section 4b evidence gap not a naming smell. `non_process_exit_refuses_rather_than_printing_and_succeeding` hand-constructs ExitClass::NotProcessExit with type_name the literal Bool and starts from an already-classified value. It never calls `classify_exit`. Nothing executing joins the field's name to its contents on the non-variant path — the only enrolled evidence feeds the field a literal that matches its name, which is exactly the input that cannot discriminate. The control's RED is unauthorable for this defect, so it was permanently green over the case that mattered and got cited as coverage. A field carrying two facts is ordinary; a field carrying two facts with a control that only ever sees one of them is why three of us read adjacent code correctly and reached three answers. ",
+
+    "THIS IS NOT `docs_markdown_projections_have_no_completing_actuator`. That row is the absence of a ProcessExit actuator and a content gate over generated `docs/*.md`. This row is a meaning fork inside `ExitClass`, reachable with no docs file in sight. Neighbour `meaning_fork` is the generic class; this instance is filed because the fork sat in the struct every refusal path reads and produced the three-way contradiction. Neighbour `diagnostic_name_mechanism_silent` is a diagnostic NAME silent about its predicate; here the FIELD name is accurate for three arms and false for the fourth. ",
+
+    "RECOGNITION RULE: when a field is named for a kind of contents, read every constructor, not the interpolation site. If one constructor writes a different kind, the name has forked. ",
+
+    "RUNG FOUND AT: mitigatable — the wrong inference is a human reading; the runtime still refuses with exit 2 and does not print-and-succeed. CEILING: structurally impossible when `NotProcessExit` cannot be constructed with a rendered value under a field named for a type — two variants, or a field named for what it actually holds. ",
+
+    "NEXT-RUNG TRIGGER, a capability: `ExitClass` distinguishes a type-name refusal from a rendered-value refusal in the type, so interpolating one as the other will not compile.)",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "classify_exit", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "exit_status_for_class", field: WholeDeclaration },
+  ],
+}

@@ -930,30 +930,7 @@ fn apply_systemd_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevision
   ))
 }
 
-fn live_deploy_tree_sync_unit_file(spec: DeploymentSpec, tree_path: String) -> ServiceUnitFile {
-  let user = spec.service.service_user
-  ServiceUnitFile {
-    unit: [Description {
-      text: "gunbc source tree sync (service-user-principal rsync from CI runner checkout)" as NonEmptyStr,
-    }],
-    service: [
-      ServiceType { mode: "oneshot" as NonEmptyStr },
-      ServiceUser { name: user },
-      ServiceGroup { name: user },
-      ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
-      EnvironmentFile { path: spec.names.tree_sync_env_path },
-      ExecStart { command: join([
-        "/usr/bin/rsync -rlpt --delete ", deployed_tree_rsync_exclude_flags(),
-        " \"$\{GUNBC_TREE_SRC\}/\" ", tree_path, "/",
-      ], "") as NonEmptyStr },
-    ],
-    install: NotInstallable,
-  }
-}
 
-fn emit_tree_sync_unit_doc(spec: DeploymentSpec, tree_path: String) -> Doc {
-  doc_text(text: serialize_systemd_unit_file(file: live_deploy_tree_sync_unit_file(spec: spec, tree_path: tree_path)))
-}
 
 // THE SAME PER-INSTANCE ONESHOT CHANGES REALIZATION AFTER ITS TWO INPUTS EXIST. GunbcSourceTree
 // first installs the owner-run working-byte sync; ServeBinary then installs the admitted binary and
@@ -997,12 +974,6 @@ fn repository_convergence_readback_command(
   ])
 }
 
-fn apply_tree_sync_unit_write_step(spec: DeploymentSpec, tree_path: String) -> PipelineStep {
-  deploy_raw(command: deploy_stage_write_command(
-    stage_name: "gunbc-tree-sync.service",
-    content: render(doc: emit_tree_sync_unit_doc(spec: spec, tree_path: tree_path), proto: live_deploy_protocol),
-  ))
-}
 
 // gunbc-tree-sync.service (#7011 realization) failed its control process on every srv1 deploy since
 // landing (receipt 29928424523 and its predecessor 29926422286), and the bare 'sudo -n systemctl
@@ -1326,12 +1297,6 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
     TreePublication => if !plan_publishes_tree(plan: plan) { [] } else { [
       deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: "/opt/gunbc", privileged: true)),
       deploy_raw(command: install_d_owned_command(spec: spec, path: spec.service.repo_root as String)),
-      apply_tree_sync_unit_write_step(spec: spec, tree_path: spec.service.repo_root as String),
-      deploy_raw(command: deploy_stage_install_command(
-        stage_name: "gunbc-tree-sync.service",
-        mode: install_file_shared_mode,
-        dest: tree_sync_unit_path(names: spec.names) as String,
-      )),
       deploy_raw(command: deploy_stage_write_expansion_command(
         stage_name: "gunbc-tree-sync.env",
         format: "GUNBC_TREE_SRC=%s\n",
@@ -1351,8 +1316,6 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
         mode: install_file_shared_mode,
         dest: deployment_slice_unit_path(names: spec.names) as String,
       )),
-      deploy_effect(inv: systemctl_daemon_reload_effect()),
-      tree_sync_restart_step_with_diagnosis(spec: spec),
       deploy_raw(command: install_d_owned_command(
         spec: spec,
         path: instance_receipts_dir(instance_root: spec.service.instance_root as String),
@@ -1439,14 +1402,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         mode: install_file_shared_mode,
         dest: deployment_slice_unit_path(names: spec.names) as String,
       )),
-      apply_tree_sync_unit_write_step(spec: spec, tree_path: art.path as String),
-      deploy_raw(command: deploy_stage_install_command(
-        stage_name: "gunbc-tree-sync.service",
-        mode: install_file_shared_mode,
-        dest: tree_sync_unit_path(names: spec.names) as String,
-      )),
       deploy_effect(inv: systemctl_daemon_reload_effect()),
-      tree_sync_restart_step_with_diagnosis(spec: spec),
     ]
     ServeBinary => [
       deploy_raw(command: install_directory_command(
@@ -1918,9 +1874,6 @@ fn live_deploy_systemd_unit_for(spec: DeploymentSpec, revision: ReleaseRevisionB
   render(doc: emit_systemd_unit_doc(spec: spec, revision: revision), proto: live_deploy_protocol)
 }
 
-fn live_deploy_tree_sync_unit_for(spec: DeploymentSpec) -> String {
-  render(doc: emit_tree_sync_unit_doc(spec: spec, tree_path: spec.service.repo_root as String), proto: live_deploy_protocol)
-}
 
 fn deployment_ensure_dependency_intent(dep: DeploymentDependencyStep) -> Pipeline {
   Pipeline {
