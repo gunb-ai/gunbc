@@ -1091,17 +1091,17 @@ fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
 // substitution basis. Synthesized constructors can mention a parent generic that is not exposed
 // as one of their own generic params; after resolution that leaf otherwise looks like a concrete
 // Primitive(T). No consumer may reconstruct this distinction through the caller environment.
+// THE ROSTER IS THE WHOLE TEST. A second disjunct used to stamp any bare, unqualified,
+// non-kernel leaf that lookup_binding_by_name_local missed, which read absence from a lookup as
+// positive evidence of generic ownership (DESIGN section 5's absorbing fallback) and, at the
+// census caller whose declaration env carries no bindings at all, was total over every concrete
+// type name a parameter mentions. generic_names is the authority for this question and is now
+// the only one consulted; a leaf that is not on it and resolves nowhere is UNRESOLVED, which is
+// a different fact with its own reported reason.
 fn declaration_substitution_basis(n: Node, env: TypeEnv, generic_names: List<String>) -> Node {
   let children = n.children |> map(ch => declaration_substitution_basis(n: ch, env: env, generic_names: generic_names))
   let with_children = node_with_children(n: n, children: children)
   let name = authored_name_at(source_indices: env.source_indices, node: n)
-  // THE ROSTER IS THE WHOLE TEST. A second disjunct used to stamp any bare, unqualified,
-  // non-kernel leaf that `lookup_binding_by_name_local` missed, which read absence from a
-  // lookup as positive evidence of generic ownership (DESIGN section 5's absorbing fallback)
-  // and, at the census caller whose declaration env carries no bindings at all, was total over
-  // every concrete type name a parameter mentions. `generic_names` is the authority for this
-  // question and is now the only one consulted; a leaf that is not on it and resolves nowhere
-  // is UNRESOLVED, which is a different fact with its own reported reason.
   let generic_leaf = n.connective == NoConnective
     && (n.children |> count) == 0
     && name != ""
