@@ -4,12 +4,12 @@ import std.logic { Bool }
 import std.types { Int }
 import std.human_intervention {
   ProvisioningHumanBurden, HumanIntervention, FleetOnce, DeviceOnce, EveryProvision,
-  BreakGlassOnly, human_intervention_count_at, human_burden_break_glass_count,
+  BreakGlassOnly, human_intervention_count_at, HumanInterventionIdentity,
 }
 import gunbc.auth.approval_ntfy_deployment {
-  approval_ntfy_human_burden, approval_ntfy_listen_address, approval_ntfy_upstream_base_url,
+  approval_ntfy_human_burden, approval_ntfy_listen_address,
   approval_ntfy_endpoint, approval_ntfy_server_install_intervention, approval_ntfy_state_root,
-  approval_ntfy_subscriber_grant_intervention,
+  approval_ntfy_subscriber_grant_intervention, approval_ntfy_phone_subscription_intervention,
 }
 import extdeps.ntfy.ntfy { NtfyTopic }
 import gunbc.auth.approval_notification { approval_ntfy_topic }
@@ -22,57 +22,69 @@ import gunbc.fleet_posix_accounts {
 
 data srv1: HostIdentity = "srv1" as HostIdentity
 
-// THE LOAD-BEARING CLAIM: the notification path costs a person NOTHING per run. A design that
-// needed a human step on every approval would defeat its own purpose -- the operator is the thing
-// being economized -- and this is the assertion that goes red if a future row is added at the
-// wrong frequency. The other counts are pinned beside it so that adding a step is a visible
-// change to a number rather than a silent drift in what enrollment costs.
+// THE ONE COUNT WORTH ASSERTING, and the reason it is not a change detector: zero is a DESIGN
+// CLAIM, not a measurement copied from the roster beside it. The notification path must cost a
+// person nothing per run -- the operator is the thing being economized -- so this stays true for
+// any future roster and goes red exactly when someone adds a step at the wrong frequency.
+//
+// The sibling counts this file used to carry (FleetOnce == 4, DeviceOnce == 1, total == 6) are
+// DELETED. They were measurements of a roster authored three files away in the same PR, so
+// automating their update would have collapsed them to `measure() == measure()` -- §5's own review
+// tell for a change detector. Adding a legitimate seventh step should not redden a test whose
+// subject is not the number of steps.
 test fn witness_no_per_run_human_cost() -> Bool {
   human_intervention_count_at(burden: approval_ntfy_human_burden(), frequency: EveryProvision) == 0
 }
 
-test fn witness_fleet_once_rows_are_the_four_server_side_steps() -> Bool {
-  human_intervention_count_at(burden: approval_ntfy_human_burden(), frequency: FleetOnce) == 4
+// A STRUCTURAL PROPERTY THAT SURVIVES ROSTER GROWTH. Every intervention must be uniquely
+// identified, because the identity is what a discharge record would key on -- two rows sharing one
+// identity would let discharging either close both. This is also the check that catches the
+// copy-paste a count cannot see: duplicating a row and deleting another keeps every count equal.
+fn identity_occurrence_count(b: ProvisioningHumanBurden, id: HumanInterventionIdentity) -> Int {
+  list_length(items: filter(xs: b.interventions, f: i => i.identity == id))
 }
 
-test fn witness_device_once_row_is_the_phone() -> Bool {
-  human_intervention_count_at(burden: approval_ntfy_human_burden(), frequency: DeviceOnce) == 1
+fn every_identity_occurs_once(b: ProvisioningHumanBurden) -> Bool {
+  all(xs: b.interventions, f: i => identity_occurrence_count(b: b, id: i.identity) == 1)
 }
 
-test fn witness_break_glass_row_is_the_relay_withdrawal() -> Bool {
-  human_burden_break_glass_count(burden: approval_ntfy_human_burden()) == 1
+test fn witness_every_intervention_has_a_distinct_identity() -> Bool {
+  every_identity_occurs_once(b: approval_ntfy_human_burden())
 }
 
-// THE FOUR COUNTS ABOVE CONTROL EACH OTHER, which is what keeps witness_no_per_run_human_cost from
-// being a check that passes because the counter is broken. The roster holds six rows; a counter
-// that ignored its frequency argument would answer 6 to all four and fail three of them, and one
-// that always answered 0 would fail the other three. Only a counter that genuinely partitions by
-// frequency satisfies 4 + 1 + 1 + 0 over a six-row roster -- so the zero is load-bearing rather
-// than vacuous. This witness pins the total that makes that argument hold.
+// POSITIVE CONTROL ON THAT PROPERTY, so it is not green because the predicate cannot fail. A
+// burden holding one row twice must be refused.
+fn burden_with_a_duplicated_row() -> ProvisioningHumanBurden {
+  ProvisioningHumanBurden {
+    interventions: [
+      approval_ntfy_phone_subscription_intervention(),
+      approval_ntfy_phone_subscription_intervention(),
+    ],
+  }
+}
+
+test fn witness_duplicate_identities_are_refused() -> Bool {
+  !every_identity_occurs_once(b: burden_with_a_duplicated_row())
+}
+
+// EVERY ROW MUST ACTUALLY TELL A PERSON WHAT TO DO. An intervention with an empty instruction is
+// a roster entry that looks like coverage and discharges nothing.
+test fn witness_every_intervention_carries_an_instruction() -> Bool {
+  all(xs: approval_ntfy_human_burden().interventions, f: i => (i.instruction as String) != "" && (i.subject as String) != "")
+}
+
+// THE LOOPBACK BIND IS A POLICY REQUIREMENT, not a measurement -- which is what makes comparing it
+// to a literal legitimate under §5 (an explicit policy budget, grounded outside the tree). The
+// requirement is that this address MUST be loopback: it is what makes tailscale serve the sole
+// route in, and the sole route is what makes the identity header on the approval route
+// trustworthy. A 0.0.0.0 bind would let anything on the host forge it.
 //
-// The neighbouring property -- that a BreakGlassOnly row does not enter routine burden at all --
-// belongs to std.human_intervention's own comparison function and is tested there, not restated
-// here over our roster (DESIGN §2: the same check in two places is one authority forked).
-test fn witness_roster_total_is_the_partitioned_sum() -> Bool {
-  let b = approval_ntfy_human_burden()
-  human_intervention_count_at(burden: b, frequency: FleetOnce)
-    + human_intervention_count_at(burden: b, frequency: DeviceOnce)
-    + human_intervention_count_at(burden: b, frequency: BreakGlassOnly)
-    + human_intervention_count_at(burden: b, frequency: EveryProvision)
-    == 6
-}
-
-// THE LOOPBACK BIND IS THE SECURITY BOUNDARY, so it is asserted rather than left to a comment.
-// If this address ever widens, the tailnet identity header on the neighbouring approval route
-// stops being trustworthy -- anything on the host could reach the backend and forge it.
+// The former witness_upstream_relay_is_declared is DELETED: it compared
+// approval_ntfy_upstream_base_url to its own literal, which is `measure() == measure()` and
+// asserted nothing at all.
 test fn witness_server_binds_loopback_only() -> Bool {
   approval_ntfy_listen_address == "127.0.0.1"
 }
-
-test fn witness_upstream_relay_is_declared() -> Bool {
-  approval_ntfy_upstream_base_url == "https://ntfy.sh"
-}
-
 
 // THE DERIVED INSTRUCTION ACTUALLY CARRIES THE DECLARED VALUES. This is what stops the config
 // declarations from being dangling data beside an English restatement of themselves: if the port

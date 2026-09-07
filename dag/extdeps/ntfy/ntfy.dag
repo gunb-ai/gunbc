@@ -125,84 +125,21 @@ fn ntfy_publish_succeeded(o: NtfyPublishOutcome) -> Bool {
 // may treat a publish receipt as consent, as read-receipt, or as a reason to advance a deadline.
 data publish_is_not_consent_note: NonEmptyStr = "NtfyPublished establishes server acceptance only. It is not delivery, not a read receipt, and never approval. A notification retry re-asks the SAME question under the same request identity and must not reset the request's expiry, because a re-notification is not a new request and an operator who ignores three reminders has not consented three times."
 
-// WHICH SERVER IS A DEPLOYMENT FACT, AND IT IS HOMED HERE UNDER PROTEST. §3's
-// interface/realization/policy split puts the operation shape in extdeps and the address in the
-// workflow that owns the deployment, so this row is a layer inversion and is declared as one
-// rather than left to look natural.
+// THE SERVICE BINDING IS NOT HERE, AND THAT IS THE POINT. This module owns what ntfy IS -- its
+// message shape, its priority and cache vocabularies, its outcome type, and the two access-control
+// facts a consumer must not get wrong. It does NOT own the REST binding or the address, because
+// DESIGN §3 rules that "the transport (shell, REST, SDK) is a §2 Realization handler bound to that
+// shape, one of N, never a fact about the dependency".
 //
-// It is here because the language cannot currently express the correct form. The interpreter
-// resolves `endpoint:` by evaluating its value node in the operation's PARAMETER environment
-// (v1_interpreter find_service_config_string), so `endpoint: server_base_url` bound to an
-// operation input would work at runtime -- but the RESOLVER does not model config identifiers as
-// parameter-bound and refuses with `undefined variable 'server_base_url'` at compile, which blocks
-// `gunbc run` as well. MEASURED, not assumed: both the compile and the run were attempted in that
-// form and refused identically.
+// An earlier revision kept the service here and pinned `endpoint` to a literal, first to the public
+// ntfy.sh and then to this fleet's own host. Both were layer inversions and the second was the
+// worse one: it silently narrowed the module to exactly one deployment, so every future consumer
+// would inherit srv1 by default. Relocating the transport to the realization layer removes the
+// debt rather than rostering it -- the endpoint is now a fact of the workflow that owns the
+// deployment, which is where a second deployment would add its own binding without touching this
+// file at all.
 //
-// What this row is NOT is the previous state. The config previously pinned the literal
-// "https://ntfy.sh", which made the public service the silent destination for anything that did
-// not say otherwise -- for a topic carrying approval capabilities, the worst available default.
-// A named row for the one deployment that exists is weaker than a parameter and stronger than a
-// literal nobody had to think about.
-//
-// dissolve-on: the resolver binds config identifiers to operation parameters, at which point
-// `server_base_url` becomes an operation input, this row is DELETED rather than edited, and the
-// endpoint returns to the caller that owns the deployment. The trigger names that resolver
-// capability and not any artifact that merely contributes to it.
-data ntfy_deployment_base_url: NonEmptyStr = "https://srv1.tailecbe08.ts.net:8443"
-// NTFY'S JSON PUBLISH ENDPOINT, not the /{topic} header form, and the difference is OBSERVABLE ON
-// THE PHONE. The header form takes the message as a RAW body, but this transport always converts
-// `body:` to wire JSON -- so publishing `{ message: body }` to /{topic} stored the literal text
-// `{"message":"..."}` as the notification, which is what the operator's device would have
-// displayed. MEASURED against the live self-hosted server: the cached message read back as raw
-// JSON before this change, which no static check could have told me.
-//
-// ntfy's documented JSON endpoint POSTs to "/" with topic and fields in the body, which is exactly
-// the shape a JSON-only transport can express faithfully. Cache stays a header because it is a
-// delivery directive rather than message content.
-service ntfy.Publish {
-  config {
-    endpoint: ntfy_deployment_base_url
-    auth: Bearer
-    auth_input: access_token
-  }
-
-  operation PublishMessage {
-    input {
-      access_token: Secret
-      topic: NtfyTopic
-      title: NonEmptyStr
-      body: NonEmptyStr
-      priority: Int
-      click: NonEmptyStr
-      cache: NonEmptyStr
-    }
-    output {
-      message_id: String from "id"
-      outcome: RestOutcome
-    }
-    transport rest {
-      method: POST,
-      path: "/",
-      headers: {
-        "Cache": cache
-      },
-      body: {
-        topic: topic,
-        message: body,
-        title: title,
-        priority: priority,
-        click: click
-      }
-    }
-    response {
-      200 => NtfyPublishReceipt
-      401 => NtfyErrorShape
-      403 => NtfyErrorShape
-      429 => NtfyErrorShape
-      5xx => NtfyErrorShape
-    }
-  }
-}
+// The publish binding for the approval loop lives in gunbc.auth.approval_ntfy_deployment.
 
 type NtfyPublishReceipt {
   id: String

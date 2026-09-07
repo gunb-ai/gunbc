@@ -8,7 +8,10 @@ import std.human_intervention {
   InterventionCompletionEvidence, NoDischargeSiteModeled,
 }
 import gunbc.auth.approval_notification { approval_ntfy_topic }
-import extdeps.ntfy.ntfy { NtfyTopic }
+import extdeps.ntfy.ntfy { NtfyTopic, NtfyPublishReceipt, NtfyErrorShape }
+import extdeps.uri { Uri, Https }
+import std.types { Secret }
+import v2.std.network { POST }
 import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation, EnsureSystemAccount, executor_privileged_operation_shell_command,
 }
@@ -235,3 +238,64 @@ fn approval_ntfy_human_burden() -> ProvisioningHumanBurden {
     ],
   }
 }
+
+
+// ── The publish binding: transport and address, in the layer that owns them ──────────────────
+// DESIGN §3 puts the interface shape in extdeps and the TRANSPORT in realization -- "one of N,
+// never a fact about the dependency" -- so the REST binding and the server address live here,
+// with the deployment they belong to, rather than in extdeps.ntfy where they would narrow that
+// module to this one fleet.
+//
+// This is also what makes a second deployment additive: another server is another binding beside
+// this one, and extdeps.ntfy does not change.
+//
+// The address is the tailnet name rather than the loopback bind because it is what a CLIENT
+// dials; the loopback bind is what the SERVER listens on, and tailscale serve joins them. Both
+// are declared, and witnesses hold them to their separate jobs.
+data approval_ntfy_base_url: NonEmptyStr = "https://srv1.tailecbe08.ts.net:8443"
+
+service ntfy.Publish {
+  config {
+    endpoint: approval_ntfy_base_url
+    auth: Bearer
+    auth_input: access_token
+  }
+
+  operation PublishMessage {
+    input {
+      access_token: Secret
+      topic: NtfyTopic
+      title: NonEmptyStr
+      body: NonEmptyStr
+      priority: Int
+      click: NonEmptyStr
+      cache: NonEmptyStr
+    }
+    output {
+      message_id: String from "id"
+      outcome: RestOutcome
+    }
+    transport rest {
+      method: POST,
+      path: "/",
+      headers: {
+        "Cache": cache
+      },
+      body: {
+        topic: topic,
+        message: body,
+        title: title,
+        priority: priority,
+        click: click
+      }
+    }
+    response {
+      200 => NtfyPublishReceipt
+      401 => NtfyErrorShape
+      403 => NtfyErrorShape
+      429 => NtfyErrorShape
+      5xx => NtfyErrorShape
+    }
+  }
+}
+
