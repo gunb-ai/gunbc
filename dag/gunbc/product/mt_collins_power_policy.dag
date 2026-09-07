@@ -1,7 +1,7 @@
 module product.mt_collins_power_policy
 
 import std.types { List, NonEmptyStr }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { decl_ref }
 import std.pareto { HigherIsBetter }
 import extdeps.external_authority { CeilingCitedToAuthority, CeilingTranscribedUncited }
 import extdeps.cpu.ampere { ampere_altra_classic_rev_a1_datasheet_authority }
@@ -26,12 +26,11 @@ import std.decision {
   SettledPolicyAcceptance,
   PhysicalModelPopulation,
   PhysicalModelEstablished,
-  PhysicalModelUnestablished,
   CausalModelPopulation,
   CausalModelUnestablished,
 }
 
-// FIRST CONSUMER OF std.decision: fleet operating-point selection, Deferred/NeedsEvidence.
+// FIRST CONSUMER OF std.decision: fleet operating-point selection.
 //
 // Question: which admitted socket-power-cap and active-chassis policy should the Mt. Collins
 // deployment use within its declared workload and site constraints.
@@ -40,10 +39,12 @@ import std.decision {
 // power limit. Throughput-per-watt and friends are different objectives and are not silently
 // substituted here.
 //
-// First honest standing is Deferred. Do not encode the withdrawn ~250 W platform constant or the
-// inferred 2.6-2.8 GHz optimum. Obligations join the existing refusal in strategy.mt_collins_power
-// (PowerAssumedOnly while memory population is unread / node_draw refuses) and name the missing
-// controlled BMC power-cap sweep of wall draw and achieved frequency.
+// First honest standing is DecisionRefused: fan power is in the physical model and absent from the
+// declared objective, so term_set_join refuses ObjectiveUnderModeled. Do not encode the withdrawn
+// ~250 W platform constant or the inferred 2.6-2.8 GHz optimum. Named obligations still join
+// strategy.mt_collins_power (PowerAssumedOnly while memory population is unread / node_draw refuses)
+// and the missing BMC power-cap sweep; they cannot become Deferred standing while the term-set
+// join refuses.
 
 data var_socket_power_cap: DecisionVariable = DecisionVariable {
   identity: decl_ref(module_path: "product.mt_collins_power_policy", decl_name: "var_socket_power_cap"),
@@ -222,18 +223,8 @@ fn mt_collins_power_parameters() -> List<ParameterDisposition> {
 
 fn mt_collins_physical_model() -> PhysicalModelPopulation {
   PhysicalModelEstablished {
-    terms: [term_service_capacity.identity, term_platform_power.identity],
+    terms: [term_service_capacity.identity, term_platform_power.identity, term_fan_power.identity],
   }
-}
-
-fn mt_collins_physical_model_with_fan() -> List<DeclarationRef> {
-  concat(
-    match mt_collins_physical_model() {
-      PhysicalModelEstablished { terms: ts } => ts
-      PhysicalModelUnestablished { subject: _, read_obligation: _ } => [],
-    },
-    [term_fan_power.identity],
-  )
 }
 
 fn mt_collins_causal_model() -> CausalModelPopulation {

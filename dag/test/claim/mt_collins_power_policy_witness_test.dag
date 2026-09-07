@@ -9,7 +9,7 @@ import product.mt_collins_power_policy {
   obligation_memory_population_unread,
   obligation_bmc_power_cap_sweep,
   mt_collins_power_policy_subject,
-  mt_collins_physical_model_with_fan,
+  mt_collins_physical_model,
   objective_max_capacity_under_site_power,
   term_platform_power,
   term_service_capacity,
@@ -24,6 +24,9 @@ import std.decision {
   SettledPolicyAccepted,
   SettledPolicyRejectedDeferred,
   SettledPolicyRejectedRefused,
+  PhysicalModelEstablished,
+  PhysicalModelUnestablished,
+  ObjectiveUnderModeledCause,
   required_sensitivity_cells,
   term_set_join,
   TermSetsJoinComplete,
@@ -31,34 +34,35 @@ import std.decision {
   ObjectiveDeclaresUnwarrantedTerms,
 }
 
-test fn mt_collins_power_policy_acceptance_rejects_deferred() -> Bool {
+test fn mt_collins_power_policy_acceptance_rejects_under_modeled() -> Bool {
   match mt_collins_power_policy_acceptance() {
-    SettledPolicyRejectedDeferred { obligations: o, reopen_trigger: _ } =>
-      any(o, x => x == obligation_memory_population_unread)
-        && any(o, x => x == obligation_bmc_power_cap_sweep)
+    SettledPolicyRejectedRefused { cause: c } =>
+      match c {
+        ObjectiveUnderModeledCause { missing_from_objective: missing } =>
+          any(missing, id => declaration_ref_eq(a: id, b: term_fan_power.identity))
+        _ => false
+      }
     SettledPolicyAccepted { policy: _ } => false
-    SettledPolicyRejectedRefused { cause: _ } => false
+    SettledPolicyRejectedDeferred { obligations: _, reopen_trigger: _ } => false
   }
 }
 
-test fn mt_collins_power_policy_standing_is_deferred() -> Bool {
+test fn mt_collins_power_policy_standing_is_refused_under_modeled() -> Bool {
   match mt_collins_power_policy_standing() {
-    Deferred { obligations: _, reopen_trigger: _ } => true
+    DecisionRefused { cause: c } =>
+      match c {
+        ObjectiveUnderModeledCause { missing_from_objective: missing } =>
+          any(missing, id => declaration_ref_eq(a: id, b: term_fan_power.identity))
+        _ => false
+      }
+    Deferred { obligations: _, reopen_trigger: _ } => false
     Settled { policy: _ } => false
-    DecisionRefused { cause: _ } => false
   }
 }
 
-test fn mt_collins_joins_memory_unread_and_bmc_sweep_obligations() -> Bool {
-  match mt_collins_power_policy_standing() {
-    Deferred { obligations: o, reopen_trigger: _ } =>
-      any(o, x => x == obligation_memory_population_unread)
-        && any(o, x => x == obligation_bmc_power_cap_sweep)
-        && string_contains(s: obligation_memory_population_unread as String, pattern: "PowerAssumedOnly")
-        && string_contains(s: obligation_bmc_power_cap_sweep as String, pattern: "ACHIEVED frequency")
-    Settled { policy: _ } => false
-    DecisionRefused { cause: _ } => false
-  }
+test fn mt_collins_names_memory_unread_and_bmc_sweep_obligations() -> Bool {
+  string_contains(s: obligation_memory_population_unread as String, pattern: "PowerAssumedOnly")
+    && string_contains(s: obligation_bmc_power_cap_sweep as String, pattern: "ACHIEVED frequency")
 }
 
 test fn mt_collins_objective_is_one_structural_measure() -> Bool {
@@ -93,23 +97,27 @@ test fn mt_collins_required_cells_cover_both_variables_and_both_terms() -> Bool 
 }
 
 test fn mt_collins_fan_power_is_objective_under_modeling() -> Bool {
-  match term_set_join(
-    terms: mt_collins_physical_model_with_fan(),
-    objective: objective_max_capacity_under_site_power,
-    subject: mt_collins_power_policy_subject.identity,
-  ) {
-    ObjectiveUnderModeled { subject: _, missing_from_objective: missing } =>
-      any(missing, id => declaration_ref_eq(a: id, b: term_fan_power.identity))
-    TermSetsJoinComplete => false
-    ObjectiveDeclaresUnwarrantedTerms { subject: _, extras: _ } => false
+  match mt_collins_physical_model() {
+    PhysicalModelEstablished { terms: ts } =>
+      match term_set_join(
+        terms: ts,
+        objective: objective_max_capacity_under_site_power,
+        subject: mt_collins_power_policy_subject.identity,
+      ) {
+        ObjectiveUnderModeled { subject: _, missing_from_objective: missing } =>
+          any(missing, id => declaration_ref_eq(a: id, b: term_fan_power.identity))
+        TermSetsJoinComplete => false
+        ObjectiveDeclaresUnwarrantedTerms { subject: _, extras: _ } => false
+      }
+    PhysicalModelUnestablished { subject: _, read_obligation: _ } => false
   }
 }
 
 fn mt_collins_power_policy_witness_main() -> ProcessExit {
   let all_pass =
-    mt_collins_power_policy_standing_is_deferred()
-      && mt_collins_power_policy_acceptance_rejects_deferred()
-      && mt_collins_joins_memory_unread_and_bmc_sweep_obligations()
+    mt_collins_power_policy_standing_is_refused_under_modeled()
+      && mt_collins_power_policy_acceptance_rejects_under_modeled()
+      && mt_collins_names_memory_unread_and_bmc_sweep_obligations()
       && mt_collins_objective_is_one_structural_measure()
       && mt_collins_required_cells_cover_both_variables_and_both_terms()
       && mt_collins_fan_power_is_objective_under_modeling()
