@@ -3,6 +3,7 @@ module extdeps.github.actions_jit_runner
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.github.github { default_api_base }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -95,5 +96,109 @@ fn jit_config_mint_outcome(status: Int, encoded: String, runner_id: Int, error_b
     }
   } else {
     JitConfigMintRefused { status: status, reason: error_body }
+  }
+}
+
+
+// THE ABSOLUTE URL IS ASSEMBLED HERE FROM THE TWO AUTHORITIES THAT OWN ITS HALVES, and not at a
+// call site. extdeps.github.github owns the API base and org_generate_jitconfig_path above owns the
+// org-scoped path; a transport that interpolated an org login into a URL template would be a third
+// place that decides which organization's runners are addressed.
+fn org_generate_jitconfig_url(org_login: NonEmptyStr) -> String {
+  join([default_api_base as String, org_generate_jitconfig_path(org_login: org_login)], "")
+}
+
+// THE REQUEST BODY IS RENDERED HERE BECAUSE ITS SHAPE IS UPSTREAM'S, not ours. The field spellings
+// are GitHub's documented ones; a caller assembling this JSON would be a second authority for a
+// structure the cited endpoint owns.
+fn jit_runner_labels_json(labels: List<JitRunnerLabel>) -> String {
+  join(["[", join(map(labels, l => join(["\"", jit_runner_label_wire(l: l), "\""], "")), ","), "]"], "")
+}
+
+fn jit_config_request_body(request: JitRunnerConfigRequest) -> String {
+  join([
+    "{\"name\":\"", request.name.value as String,
+    "\",\"runner_group_id\":", to_string(request.runner_group_id.value),
+    ",\"labels\":", jit_runner_labels_json(labels: request.labels),
+    ",\"work_folder\":\"", request.work_folder.value as String,
+    "\"}",
+  ], "")
+}
+
+// THE MINTED CREDENTIAL NEVER TOUCHES STDOUT, AND THAT IS THE OPERATION'S SHAPE RATHER THAN A
+// CALLER'S DISCIPLINE.
+//
+// curl writes the response BODY to response_file with -o and writes only the HTTP status to stdout
+// with -w. So the blob reaches a file the caller chose and nothing else: not a captured stdout
+// string, not a log line, not a receipt. The Authorization header travels as -H @file for the same
+// reason extdeps.github.app already gives -- an argv is world-readable in /proc for the life of the
+// call, and gunbc.credential_argv_exposure measures what that cost this fleet once.
+//
+// IT USES curl WHERE THE REST OF THIS REPOSITORY REACHES FOR `gh api`, AND THE DIVERGENCE IS THE
+// CREDENTIAL. extdeps.github.org_actions reaches the same API as `gh api orgs/{org}/...`, which is
+// the house style and is right for every response this fleet reads -- but `gh api` can only write
+// its response to STDOUT. This endpoint's response body IS the credential, so the house style would
+// put a secret on stdout, into any captured output, and into every receipt derived from one. curl
+// is the transport that can write a body to a file and a status to stdout SEPARATELY, which is the
+// only shape that keeps the blob off both. The divergence is therefore forced by the payload, not a
+// preference, and it does not extend to the observing operations next door.
+//
+// IT IS NOT `readonly`. Every other operation modeled against this API observes; this one CREATES a
+// runner identity against the organization. A retry is not free: it mints a second identity that
+// must be reconciled by name, which is why the runner name is the attempt's unit name rather than a
+// fresh identifier.
+service github.CliActionsJitRunner {
+  operation GenerateOrgJitConfig {
+    input {
+      token_header_file: String
+      request_body_file: String
+      response_file: String
+      endpoint_url: String
+    }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: [
+        "curl", "-sS", "-X", "POST",
+        "-H", "@{token_header_file}",
+        "-H", "Accept: application/vnd.github+json",
+        "-H", "X-GitHub-Api-Version: 2022-11-28",
+        "--data-binary", "@{request_body_file}",
+        "-o", "{response_file}",
+        "-w", "%{http_code}",
+        "{endpoint_url}"
+      ]
+    }
+  }
+}
+
+// THE BLOB MOVES FILE-TO-FILE AND IS NEVER A VALUE IN THIS PROCESS, which is the only handling the
+// opaque-credential rule above actually permits. The extractor reads the response document and
+// writes the single documented field to the drive path; it prints NOTHING on success, so the
+// credential is absent from stdout, from any captured output, and from every receipt derived from
+// one. `encoded_jit_config` is GitHub's field spelling, which is why this extraction lives in the
+// module that cites the endpoint rather than at a call site.
+service github.CliJitConfigDrive {
+  operation WriteEncodedJitConfigToDrive {
+    input {
+      response_file: String
+      drive_file: String
+    }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: [
+        "python3", "-c",
+        "import sys,json; d=json.load(open(sys.argv[1])); c=d.get('encoded_jit_config') or ''; sys.exit(3) if not c else open(sys.argv[2],'w').write(c)",
+        "{response_file}",
+        "{drive_file}"
+      ]
+    }
   }
 }
