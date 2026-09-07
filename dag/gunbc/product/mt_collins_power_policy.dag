@@ -1,7 +1,7 @@
 module product.mt_collins_power_policy
 
 import std.types { Bool, Int, List, NonEmptyStr }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.pareto { HigherIsBetter }
 import extdeps.external_authority { CeilingCitedToAuthority, CeilingTranscribedUncited }
 import extdeps.cpu.ampere { ampere_altra_classic_rev_a1_datasheet_authority }
@@ -249,7 +249,7 @@ fn mt_collins_fan_power_under_modeling() -> Bool {
     subject: mt_collins_power_policy_subject.identity,
   ) {
     ObjectiveUnderModeled { subject: _, missing_from_objective: missing } =>
-      (missing |> count) == 1
+      any(missing, id => declaration_ref_eq(a: id, b: term_fan_power.identity))
     _ => false
   }
 }
@@ -283,14 +283,6 @@ fn mt_collins_power_policy_is_deferred() -> Bool {
     SettledPolicyRejectedDeferred { obligations: _, reopen_trigger: _ } => true
     SettledPolicyAccepted { policy: _ } => false
     SettledPolicyRejectedRefused { cause: _ } => false
-  }
-}
-
-fn mt_collins_power_policy_cannot_settle() -> Bool {
-  match mt_collins_power_policy_acceptance() {
-    SettledPolicyAccepted { policy: _ } => false
-    SettledPolicyRejectedDeferred { obligations: _, reopen_trigger: _ } => true
-    SettledPolicyRejectedRefused { cause: _ } => true
   }
 }
 

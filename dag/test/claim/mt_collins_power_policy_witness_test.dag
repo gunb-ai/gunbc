@@ -6,7 +6,6 @@ import std.decl_ref { declaration_ref_eq }
 import product.mt_collins_power_policy {
   mt_collins_power_policy_standing,
   mt_collins_power_policy_is_deferred,
-  mt_collins_power_policy_cannot_settle,
   mt_collins_required_cell_count,
   mt_collins_fan_power_under_modeling,
   obligation_memory_population_unread,
@@ -27,7 +26,6 @@ import std.decision {
 
 test fn mt_collins_power_policy_standing_is_deferred() -> Bool {
   mt_collins_power_policy_is_deferred()
-    && mt_collins_power_policy_cannot_settle()
 }
 
 test fn mt_collins_joins_memory_unread_and_bmc_sweep_obligations() -> Bool {

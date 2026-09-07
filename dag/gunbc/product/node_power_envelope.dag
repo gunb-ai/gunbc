@@ -87,12 +87,10 @@ type MemoryElectricalContext {
 // So the figures are carried where consumed, with their uncitedness TYPED rather than invisible: a
 // consumer can ask whether the ceiling it used is grounded, and the read obligation names what
 // would ground it. A declared boundary fact, not a silent constant.
-type RateCeilingEvidence = CitedFigureStanding
-
 type TwoDpcRateCeiling {
   min_rank_count: Nat
   ceiling: MegatransfersPerSecond
-  evidence: RateCeilingEvidence
+  evidence: CitedFigureStanding
 }
 
 type TwoDpcRateCeilingTable {
