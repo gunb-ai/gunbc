@@ -469,7 +469,38 @@ fn cas_failed_publication(
         cas_publication_refused(detail: detail)
       }
     ProbedAbsent => cas_publication_refused(detail: detail)
-    ProbedBeyondBound { bound: _ } => cas_publication_refused(detail: detail)
+    ProbedBeyondBound { bound: b } => cas_publication_beyond_bound(bound: b)
+  }
+}
+
+// THE BOUND ARM CANNOT SAY THE STORE REFUSED TO PUBLISH, AND A FIRST CUT SAID IT ANYWAY.
+//
+// It routed `ProbedBeyondBound` to the publication refusal along with the other two, on the reasoning
+// that the write had failed and the target had not appeared. The second half does not follow. Consider
+// a slot whose head is 4095 and two writers targeting 4096:
+//
+//   the other writer wins 4096; this writer's create fails
+//   the re-observation reads 4096 successfully and probes 4097
+//   4097 exceeds the bound, so the probe answers ProbedBeyondBound
+//
+// Another writer DID publish. Reporting a publication refusal there invents the wrong cause -- the
+// same fabrication the lost-race repair one screen up exists to remove, reappearing in the arm that
+// repair did not consider. Found by external review.
+//
+// SO THIS ANSWERS WHAT IS ACTUALLY KNOWN: the slot could not be observed. It is a slot-observation
+// refusal, not a publication refusal and not a precondition failure, because the probe no longer holds
+// a readable head to report as the winner. The ordinary two-writer control runs far below the bound
+// and cannot discriminate this arm, so it has its own control.
+fn cas_publication_beyond_bound(bound: Int) -> CasOutcome<NonEmptyStr> {
+  CasStoreRefused {
+    cause: CasSlotObservationRefused {
+      cause: CasUnreadableMalformed {
+        detail: concat(
+          "a publication failed and the slot could not then be observed: it exceeds the generation probe bound of ",
+          bound as String
+        ) as NonEmptyStr
+      }
+    }
   }
 }
 

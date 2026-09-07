@@ -107,12 +107,19 @@ type RepositorySlot {
 }
 
 // AND THE EXPECTATION IS NOT A PARAMETER OF THE MUTATION PATH AT ALL. `sole_constructor` means only
-// `read_repository_slot` below can mint this, so the slot, the generation, and the envelope in it are
-// always the ones ONE observation produced. Publication derives all three from this single value:
-// there is no argument through which a caller could pair an envelope it read at generation 7 of slot A
-// with an expectation of generation 7 of slot B. That is the construction the earlier signature was
-// missing, and validation could not have supplied it -- nothing downstream can tell two agreeing
-// generations apart after the fact.
+// `read_repository_slot` below can mint this, so the slot, the generation and the envelope in it are
+// always the ones ONE observation produced, and publication derives the TARGET SLOT and the EXPECTED
+// GENERATION from that single value. Nothing downstream can tell two agreeing generations apart after
+// the fact, so validation could not have supplied this.
+//
+// WHAT IT DOES NOT BIND, STATED BECAUSE AN EARLIER REVISION OVERCLAIMED IT. This seals slot-to-
+// expectation; it does NOT seal proposal provenance. `republish_repository(loaded_from_B, repo_A)` is
+// still authorable: the write lands on slot B at the generation B was observed at, carrying a document
+// derived from somewhere else. That is a real remaining hole and it is smaller than the one that was
+// closed -- the expectation can no longer be about a different slot than the write -- but the earlier
+// sentence said pairing an envelope from A with B's expectation was impossible, and it is not. Sealing
+// the proposed transition, so that the published document must be derived from the observation being
+// advanced, is the next construction here. Found by external review.
 type LoadedRepositoryGeneration sole_constructor {
   slot: RepositorySlot
   generation: CasGeneration

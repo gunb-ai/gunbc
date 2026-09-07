@@ -37,7 +37,7 @@ import gunbc.scm.repository_envelope {
 }
 
 type OrdinaryCommitMint
-  = OrdinaryCommitMinted { repository: RepositoryEnvelope, reference: RepositoryCommitRef }
+  = OrdinaryCommitMinted(MintedCommit)
   | OrdinaryCommitAllocatorInvalid { next_ordinal: Int }
   | OrdinaryCommitParentMissing { parent: RepositoryCommitRef }
 
@@ -72,9 +72,7 @@ fn mint_ordinary_commit(
     OrdinaryCommitSubjectAllocatorInvalid { next_ordinal: n } =>
       OrdinaryCommitAllocatorInvalid { next_ordinal: n }
     OrdinaryCommitSubjectParentMissing { parent: p } => OrdinaryCommitParentMissing { parent: p }
-    OrdinaryCommitSubjectAdmitted(admitted) => {
-      let minted = mint_repository_commit_admitted(admitted: admitted, message: message)
-      OrdinaryCommitMinted { repository: minted.repository, reference: minted.reference }
-    }
+    OrdinaryCommitSubjectAdmitted(admitted) =>
+      OrdinaryCommitMinted(mint_repository_commit_admitted(admitted: admitted, message: message))
   }
 }

@@ -719,25 +719,26 @@ fn mint_repository_commit(
   parent: RepositoryCommitRef?,
   integration: CommitIntegration,
 ) -> RepositoryCommitMint {
-  if repository.commit_allocator.next_ordinal < 0 {
-    RepositoryCommitMintAllocatorInvalid { next_ordinal: repository.commit_allocator.next_ordinal }
-  } else {
-    match repository_root_by_resolving(repository: repository, root: root) {
-      RepositoryManifestRootMissing { root: r } => RepositoryCommitMintRootMissing { root: r }
-      RepositoryManifestRootIsAuthoredSource { root: r } =>
-        RepositoryCommitMintRootIsAuthoredSource { root: r }
-      RepositoryManifestRootIsSemanticNode { root: r } =>
-        RepositoryCommitMintRootIsSemanticNode { root: r }
-      RepositoryManifestRootResolved(subject) =>
-        widen_branded_root_mint(
-          mint: mint_commit_from_stored_manifest(
-            subject: subject,
-            message: message,
-            parent: parent,
-            integration: integration,
+  match admit_commit_allocator(repository: repository) {
+    CommitAllocatorInvalid { next_ordinal: n } =>
+      RepositoryCommitMintAllocatorInvalid { next_ordinal: n }
+    CommitAllocatorAdmitted =>
+      match repository_root_by_resolving(repository: repository, root: root) {
+        RepositoryManifestRootMissing { root: r } => RepositoryCommitMintRootMissing { root: r }
+        RepositoryManifestRootIsAuthoredSource { root: r } =>
+          RepositoryCommitMintRootIsAuthoredSource { root: r }
+        RepositoryManifestRootIsSemanticNode { root: r } =>
+          RepositoryCommitMintRootIsSemanticNode { root: r }
+        RepositoryManifestRootResolved(subject) =>
+          widen_branded_root_mint(
+            mint: mint_commit_from_stored_manifest(
+              subject: subject,
+              message: message,
+              parent: parent,
+              integration: integration,
+            )
           )
-        )
-    }
+      }
   }
 }
 
@@ -807,6 +808,23 @@ fn admit_commit_parent(
 // `admit_commit_subject` below, which runs all three; this function takes nothing else and therefore
 // cannot be reached with an unadmitted one. The two routes -- ordinary and squash -- differ in which
 // questions they ASK, and both end at the same admission and the same row construction.
+// THE ALLOCATOR RULE, HELD ONCE. `next_ordinal < 0` was spelled independently in three executable
+// places -- the generic route before root resolution, and both subject admissions -- directly beneath
+// a rationale claiming the admission rules have one authority each. Three copies of a rule is three
+// rules, and the seal that stops a bypass does nothing about drift between them. Found by external
+// review.
+type CommitAllocatorAdmission
+  = CommitAllocatorAdmitted
+  | CommitAllocatorInvalid { next_ordinal: Int }
+
+fn admit_commit_allocator(repository: RepositoryEnvelope) -> CommitAllocatorAdmission {
+  if repository.commit_allocator.next_ordinal < 0 {
+    CommitAllocatorInvalid { next_ordinal: repository.commit_allocator.next_ordinal }
+  } else {
+    CommitAllocatorAdmitted
+  }
+}
+
 type AdmittedCommitSubject sole_constructor {
   subject: RepositoryManifestRoot
   ancestry: CommitAncestry
@@ -825,24 +843,24 @@ fn admit_commit_subject(
   integration: CommitIntegration,
 ) -> CommitSubjectAdmission {
   let repository = subject.repository
-  if repository.commit_allocator.next_ordinal < 0 {
-    CommitSubjectAllocatorInvalid { next_ordinal: repository.commit_allocator.next_ordinal }
-  } else {
-    match integration_anchor_resolves(repository: repository, integration: integration) {
-      Present { value: missing } => CommitSubjectIntegrationSourceMissing { source: missing }
-      Absent =>
-        match admit_commit_parent(repository: repository, parent: parent) {
-          CommitParentAbsent { parent: p } => CommitSubjectParentMissing { parent: p }
-          CommitParentAdmitted { ancestry: ancestry } =>
-            CommitSubjectAdmitted(
-              AdmittedCommitSubject {
-                subject: subject,
-                ancestry: ancestry,
-                integration: integration,
-              }
-            )
-        }
-    }
+  match admit_commit_allocator(repository: repository) {
+    CommitAllocatorInvalid { next_ordinal: n } => CommitSubjectAllocatorInvalid { next_ordinal: n }
+    CommitAllocatorAdmitted =>
+      match integration_anchor_resolves(repository: repository, integration: integration) {
+        Present { value: missing } => CommitSubjectIntegrationSourceMissing { source: missing }
+        Absent =>
+          match admit_commit_parent(repository: repository, parent: parent) {
+            CommitParentAbsent { parent: p } => CommitSubjectParentMissing { parent: p }
+            CommitParentAdmitted { ancestry: ancestry } =>
+              CommitSubjectAdmitted(
+                AdmittedCommitSubject {
+                  subject: subject,
+                  ancestry: ancestry,
+                  integration: integration,
+                }
+              )
+          }
+      }
   }
 }
 
@@ -862,20 +880,21 @@ fn admit_ordinary_commit_subject(
   parent: RepositoryCommitRef?,
 ) -> OrdinaryCommitSubjectAdmission {
   let repository = subject.repository
-  if repository.commit_allocator.next_ordinal < 0 {
-    OrdinaryCommitSubjectAllocatorInvalid { next_ordinal: repository.commit_allocator.next_ordinal }
-  } else {
-    match admit_commit_parent(repository: repository, parent: parent) {
-      CommitParentAbsent { parent: p } => OrdinaryCommitSubjectParentMissing { parent: p }
-      CommitParentAdmitted { ancestry: ancestry } =>
-        OrdinaryCommitSubjectAdmitted(
-          AdmittedCommitSubject {
-            subject: subject,
-            ancestry: ancestry,
-            integration: NoSquashIntegration,
-          }
-        )
-    }
+  match admit_commit_allocator(repository: repository) {
+    CommitAllocatorInvalid { next_ordinal: n } =>
+      OrdinaryCommitSubjectAllocatorInvalid { next_ordinal: n }
+    CommitAllocatorAdmitted =>
+      match admit_commit_parent(repository: repository, parent: parent) {
+        CommitParentAbsent { parent: p } => OrdinaryCommitSubjectParentMissing { parent: p }
+        CommitParentAdmitted { ancestry: ancestry } =>
+          OrdinaryCommitSubjectAdmitted(
+            AdmittedCommitSubject {
+              subject: subject,
+              ancestry: ancestry,
+              integration: NoSquashIntegration,
+            }
+          )
+      }
   }
 }
 

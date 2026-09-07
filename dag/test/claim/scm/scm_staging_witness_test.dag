@@ -126,12 +126,16 @@ fn stg_empty_repository() -> RepositoryEnvelope {
 // repository to hand on, so every later step propagates it and every specimen must eliminate it
 // before it can assert anything. There is no arm in which a claim runs against a substitute.
 //
-// WHAT THESE HELPERS ARE, STATED SO THEY ARE NOT MISREAD AS PRODUCTION. They compose the object
-// store's own insertion and the envelope's own mint to reach a state a document can genuinely be in.
-// The replacement of an existing path binding is a CONSTRUCTION CHOICE DECLARED HERE, not a law of
-// the manifest type: uniqueness of a path is the type's property, and replacing rather than refusing
-// or requiring authorization is an update policy that belongs to whichever verb makes it. Nothing
-// below is evidence that a future `add` makes the same choice, and this recipe is not its authority.
+// WHAT THESE HELPERS ARE, AND THIS PARAGRAPH HAS BEEN INVERTED BY THE TREE MOVING UNDER IT. It used to
+// say the replacement of an existing path binding was a construction choice DECLARED HERE, that update
+// policy belongs to whichever verb makes it, and that nothing below is evidence about a future `add`.
+// The first two clauses were right and are exactly why the third is now false: the policy does belong
+// to the verb, the verb exists, and `stg_stage` delegates to it. So these scenes ARE built by
+// `gunbc.scm.write_spine.stage_source_at_path` and every claim over them is evidence about it.
+//
+// The mint is still this file's own, for the stated reason above: `commit_staged` CONSUMES the stage,
+// while these claims need a repository whose stage and base are both observable to say anything about
+// standing. That is a different construction subject, not a leftover.
 type StgBuild
   = StgBuilt { repository: RepositoryEnvelope }
   | StgSetupFailed

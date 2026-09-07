@@ -30,7 +30,7 @@ import gunbc.scm.object_store {
 }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope, RepositoryCommitRef,
-  RepositoryManifestRoot,
+  RepositoryManifestRoot, MintedCommit,
   RepositoryManifestRootResolved, RepositoryManifestRootMissing,
   RepositoryManifestRootIsAuthoredSource, RepositoryManifestRootIsSemanticNode,
   repository_root_by_resolving,
@@ -73,17 +73,37 @@ type StageIngress
 // THE CANDIDATE AS A RECORD, OR THE REFUSAL THAT MEANS THERE IS NONE. The empty-corpus arm is its own
 // answer and NOT an empty record, which is the distinction staging spent a data-loss incident
 // establishing: no history is an empty corpus, an unreadable base is not.
+// THE BASE AND THE REPOSITORY TRAVEL SEALED, for the same reason the commit subject does one module
+// over. An earlier revision had `stage_into(repository, base: CorpusManifestRecord?, ...)`, whose two
+// arguments are exactly the relation-breaking pair: a record obtained from store A passed beside
+// repository B produces a manifest in B whose inherited entries reference sources only A holds. Every
+// caller obtained both from one repository, and `.dag` has no module privacy, so nothing but care held
+// them together -- the raw-helper bypass this cut already repaired twice elsewhere. Found by external
+// review.
+//
+// `StagingBase` is sole-constructed by `candidate_record` below, which derives the base FROM the
+// repository it is handed. There is no route by which the halves can be sourced separately.
+type StagingBase sole_constructor {
+  repository: RepositoryEnvelope
+  base: CorpusManifestRecord?
+}
+
 type CandidateRecord
-  = CandidateRecordIs { record: CorpusManifestRecord }
-  | CandidateRecordEmptyCorpus
+  = CandidateRecordIs(StagingBase)
   | CandidateRecordRefused { cause: StagingRefusal }
 
+// THE EMPTY CORPUS IS A SEALED BASE OF `none`, NOT A THIRD ARM. It is still distinct from a refusal --
+// which is the distinction staging spent a data-loss incident establishing -- but it is not distinct
+// from "a base this repository does not have", because that is what it is.
 fn candidate_record(repository: RepositoryEnvelope) -> CandidateRecord {
   match effective_candidate(repository: repository) {
     CandidateRefused { cause: c } => CandidateRecordRefused { cause: c }
-    CandidateEmptyCorpus => CandidateRecordEmptyCorpus
-    CandidateFromStage { record: r } => CandidateRecordIs { record: r }
-    CandidateInheritedFromBase { record: r } => CandidateRecordIs { record: r }
+    CandidateEmptyCorpus =>
+      CandidateRecordIs(StagingBase { repository: repository, base: none })
+    CandidateFromStage { record: r } =>
+      CandidateRecordIs(StagingBase { repository: repository, base: Present { value: r } })
+    CandidateInheritedFromBase { record: r } =>
+      CandidateRecordIs(StagingBase { repository: repository, base: Present { value: r } })
   }
 }
 
@@ -109,19 +129,17 @@ fn stage_source_at_path(
 ) -> StageIngress {
   match candidate_record(repository: repository) {
     CandidateRecordRefused { cause: c } => StageCandidateRefused { cause: c }
-    CandidateRecordEmptyCorpus =>
-      stage_into(repository: repository, base: none, path: path, text: text)
-    CandidateRecordIs { record: record } =>
-      stage_into(repository: repository, base: Present { value: record }, path: path, text: text)
+    CandidateRecordIs(subject) => stage_into(subject: subject, path: path, text: text)
   }
 }
 
 fn stage_into(
-  repository: RepositoryEnvelope,
-  base: CorpusManifestRecord?,
+  subject: StagingBase,
   path: NonEmptyStr,
   text: String,
 ) -> StageIngress {
+  let repository = subject.repository
+  let base = subject.base
   match store_authored_source(store: repository.store, text: text) {
     SourceLocatorCollision { identity: id, existing: _, incoming: _ } =>
       StageSourceLocatorCollision { identity: id }
@@ -154,11 +172,14 @@ fn stage_into(
 
 // `commit`.
 //
-// THE ROOT IS THE MANIFEST THE CANDIDATE ALREADY NAMES, TAKEN AS A BRAND RATHER THAN AS A LOCATOR.
-// `stage_standing` hands back the reference the STORE produced for the record it actually found, so
-// this verb never re-resolves and never has an opportunity to name a manifest the store does not
-// hold. That is why the refusal surface below has no root-missing or wrong-kind arm: those states are
-// not reachable from a branded root, and minting an arm for them would be a fabricated cause.
+// THE ROOT IS THE MANIFEST THE CANDIDATE ALREADY NAMES, AND IT IS RE-RESOLVED ANYWAY.
+//
+// An earlier revision of this paragraph said the verb "never re-resolves", which contradicted the code
+// directly beneath it once the seal landed: `freeze_root` goes through `repository_root_by_resolving`.
+// The construction is right and the sentence was stale, so the sentence is replaced. `stage_standing`
+// hands back a reference the store really produced -- but a REFERENCE is not a proof of membership in
+// THIS repository's store, which is exactly the gap `RepositoryManifestRoot` exists to close, so the
+// resolution is what mints the sealed pair rather than a redundant check of something already known.
 //
 // IT ASKS `stage_standing`, NOT `effective_candidate`, AND THE FIRST WRITING ASKED THE WRONG ONE.
 // `effective_candidate` answers WHAT the snapshot is; `stage_standing` answers whether that snapshot
@@ -197,12 +218,19 @@ type StagedCommit
 // optional. Leaving the checkout behind would make the next `add` inherit from the OLD snapshot, so
 // the commit just made would be invisible to the corpus that follows it. Leaving the stage in place
 // would make the next commit freeze the same manifest again under a new identity.
-fn advance_to_commit(repository: RepositoryEnvelope, reference: RepositoryCommitRef) -> RepositoryEnvelope {
+//
+// IT TAKES THE MINTED PAIR, NOT A REPOSITORY AND A REFERENCE. Those two arguments are the same
+// relation-breaking shape as the staging base above: a reference from another repository installs a
+// DANGLING SELECTION through a function that succeeds, and the next candidate then inherits from a
+// commit that does not exist. `MintedCommit` is sole-constructed by the mint, which produces the
+// repository and the reference in one motion, so the selection can only ever name a commit this
+// repository just gained. Found by external review.
+fn advance_to_commit(minted: MintedCommit) -> RepositoryEnvelope {
   RepositoryEnvelope {
-    store: repository.store,
-    commits: repository.commits,
-    commit_allocator: repository.commit_allocator,
-    checked_out: Present { value: reference },
+    store: minted.repository.store,
+    commits: minted.repository.commits,
+    commit_allocator: minted.repository.commit_allocator,
+    checked_out: Present { value: minted.reference },
     staged: none,
   }
 }
@@ -263,10 +291,10 @@ fn freeze_sealed_root(
     OrdinaryCommitAllocatorInvalid { next_ordinal: n } =>
       StagedCommitAllocatorInvalid { next_ordinal: n }
     OrdinaryCommitParentMissing { parent: p } => StagedCommitParentMissing { parent: p }
-    OrdinaryCommitMinted { repository: minted, reference: reference } =>
+    OrdinaryCommitMinted(minted) =>
       StagedCommitMinted {
-        repository: advance_to_commit(repository: minted, reference: reference),
-        reference: reference,
+        repository: advance_to_commit(minted: minted),
+        reference: minted.reference,
       }
   }
 }

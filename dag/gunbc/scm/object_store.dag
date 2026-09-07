@@ -968,11 +968,16 @@ type UniqueManifestStoreOutcome
       incoming: ScmObject
     }
 
-fn store_path_unique_manifest(
+// THE INSERTION IS SHARED; ONLY THE DUPLICATE QUESTION DIFFERS. A first cut of the narrow route
+// copied five steps out of the generic one -- canonicalize, derive the locator, build the record, wrap
+// it, admit it -- so the unreachable-arm repair created two compositions that would drift on every
+// future manifest change. That is the redundancy DESIGN section 2 names, introduced by a fix for a
+// different defect. Found by external review. The two routes now differ in exactly the one thing that
+// should differ: whether they ask about duplicate paths before inserting.
+fn insert_canonical_manifest(
   store: ObjectStore,
-  unique: PathUniqueManifestEntries,
+  canonical: List<CorpusManifestEntry>,
 ) -> UniqueManifestStoreOutcome {
-  let canonical = canonical_manifest_entries(entries: unique.entries)
   let reference = CorpusManifestObjectRef {
     locator: corpus_manifest_identity(entries: canonical),
   }
@@ -990,6 +995,16 @@ fn store_path_unique_manifest(
   }
 }
 
+fn store_path_unique_manifest(
+  store: ObjectStore,
+  unique: PathUniqueManifestEntries,
+) -> UniqueManifestStoreOutcome {
+  insert_canonical_manifest(
+    store: store,
+    canonical: canonical_manifest_entries(entries: unique.entries),
+  )
+}
+
 fn store_corpus_manifest(
   store: ObjectStore,
   entries: List<CorpusManifestEntry>
@@ -998,21 +1013,12 @@ fn store_corpus_manifest(
   match a_duplicated_manifest_path(entries: canonical) {
     Present { value: path } => CorpusManifestDuplicatePath { path: path }
     Absent =>
-  let reference = CorpusManifestObjectRef {
-    locator: corpus_manifest_identity(entries: canonical),
-  }
-  let object = CorpusManifestObject(
-    CorpusManifestRecord { identity: reference, entries: canonical },
-  )
-  match insert_admission(store: store, object: object) {
-    AdmitStored(next) => CorpusManifestStored { store: next, manifest: reference }
-    AdmitCollision { existing: existing } =>
-      CorpusManifestLocatorCollision {
-        identity: reference.locator,
-        existing: existing,
-        incoming: object,
+      match insert_canonical_manifest(store: store, canonical: canonical) {
+        UniqueManifestStored { store: next, manifest: reference } =>
+          CorpusManifestStored { store: next, manifest: reference }
+        UniqueManifestLocatorCollision { identity: i, existing: e, incoming: n } =>
+          CorpusManifestLocatorCollision { identity: i, existing: e, incoming: n }
       }
-  }
   }
 }
 
