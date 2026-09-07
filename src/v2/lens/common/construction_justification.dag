@@ -21,6 +21,15 @@ type GuaranteeBoundaryKind
   | ExternalEvidenceRequired { evidence: DeclarationRef }
   | PolicyJudgmentRequired { judgment: DeclarationRef }
 
+// required_capability is typed as DeclarationRef, so an unlanded capability has to be
+// written as an identity the declaration index can walk. That is a job the type cannot
+// type: the join (v2.lens.common.outside_modeled_guarantee_join guarantee_boundary_still_outside)
+// is true only on DeclarationRefDeclarationAbsent, which means the cited symbol must NOT
+// exist. A name may be a string; an identity may not (DESIGN §3 peeler). The required-absent
+// population and its inverse trigger (PLANTED-CONTROL-RESOLVES, not a mute) are
+// PLANTED_CONTROL_CITATIONS in v1_compiler.cli_run.declaration_index — that roster is the
+// authority; this annotation does not copy it. The carrier change is a modelling decision,
+// not a silence of those rows.
 type GuaranteeBoundary {
   subject: DeclarationRef
   required_capability: DeclarationRef
