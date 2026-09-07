@@ -146,19 +146,19 @@ fn printer_access_code_locus(printer: PhysicalAssetIdentity) -> PrinterAccessCod
 // lane has applied to every other positive standing: the thing downstream trusts must have been
 // earned, and must carry the identity it was earned for.
 //
-// AND THE RECEIPT DOES NOT YET MEET THAT RULE, WHICH IS STATED HERE BECAUSE AN EARLIER REVISION OF
-// THIS NOTE CLAIMED IT DID. SecretProvisionReceipt has no seal, and secret_provision_receipt is a
-// pure fn whose arguments are all supplied by its caller -- so a receipt can be minted out of
-// nothing, and sealing the type alone would not fix it, because the constructor takes no
-// effect-earned input either. The roster below is an ordinary authored list. What stops a forged
-// entry today is that nobody has written one, which is DISCIPLINE, NOT CONSTRUCTION -- and the tell
-// is exactly the one §5 names: the guarantee can be satisfied by editing a declaration.
+// AND THE POSITIVE ARM NOW MEETS THAT RULE, WHICH IS WORTH STATING PRECISELY BECAUSE TWO EARLIER
+// REVISIONS OF THIS NOTE DESCRIBED THE OPPOSITE STATE. The old text said a receipt could be minted
+// out of nothing, that the roster was an ordinary authored list, and that only discipline stopped a
+// forged entry. All three sentences described code that no longer exists, and they sat directly
+// above the arm that unlocks a credential fetch against a machine on the operator LAN -- the worst
+// place in this module for prose to disagree with the wall beneath it.
 //
-// WHY THAT IS TOLERABLE TODAY AND NOT AFTER ONBOARDING LANDS. The roster is empty, so the positive
-// arm is uninhabited and every printer reaches ProvisionRequired through the remote observation. The
-// defect is latent; it goes live at the exact moment something is allowed to inhabit
-// PrinterCredentialProvisioned, because that arm is what unlocks a credential fetch against a
-// machine on the operator LAN.
+// WHAT IS TRUE NOW: nothing here reads an authored population. What inhabits the positive arm is
+// VerifiedVersionForAttempt, whose only producer is the arm of add_initial_version where the write
+// landed, the returned identity named this very secret, the read-back identity equalled what
+// AddVersion reported, and the bytes equalled the ones this run captured. The guarantee can no
+// longer be satisfied by editing a declaration, which is the §5 tell the old note correctly named
+// and correctly admitted it failed.
 //
 // RUNG: mitigation. CEILING: structural impossibility -- membership is decidable, so the invalid
 // state can be made unwritable. NEXT-RUNG TRIGGER, named as the capability and not as an artifact:
@@ -439,12 +439,12 @@ fn verification_names_secret(verified: VerifiedVersionForAttempt, desired: Secre
 // "is there a second reader" stopped being the interesting question. The interesting question is
 // whether anyone can MINT one, and sole_constructor answers it in the type rather than in a grep.
 //
-// THIS IS THE SEAM WHERE B4 WILL LAND. What this function reads today is an ordinary authored list,
-// so RecordedMaterialization is currently only as trustworthy as the discipline described above the
-// roster. When the provisioning actuator becomes the sole minter of an effect-earned receipt, ONLY
-// THIS FUNCTION CHANGES: the classifier already speaks in records rather than in receipts, and the
-// witnesses already author records directly, so neither has to move. That is the whole reason the
-// narrow type exists before the actuator does.
+// B4 LANDED HERE, AND THE PREDICTION THE OLD NOTE MADE ABOUT ITSELF HELD: only this function
+// changed. The classifier already spoke in records rather than receipts and the witnesses already
+// authored records directly, so neither had to move -- which is what the narrow record type existed
+// for. RecordedMaterialization is no longer "as trustworthy as the discipline above the roster",
+// because there is no roster and no discipline in the path: the population arrives as a parameter
+// whose element type has no constructor outside the provisioning actuator.
 fn materialization_lookup_for(
   desired: SecretRef,
   materializations: List<VerifiedVersionForAttempt>,

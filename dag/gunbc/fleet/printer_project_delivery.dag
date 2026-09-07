@@ -691,6 +691,11 @@ func deliver_project_to_printer(
           refuse_and_drop(printer: printer, payload: payload, cause: "the access code could not be read: Secret Manager access has not been granted to this identity")
         SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
           refuse_and_drop(printer: printer, payload: payload, cause: "the Secret Manager response for the access code did not decode")
+        SecretCredentialResolvedVersionMismatch { requested: requested, resolved: resolved } =>
+          refuse_and_drop(printer: printer, payload: payload, cause: concat(concat(
+            "the access code fetch asked for ", requested),
+            concat(" and the service answered about ", concat(resolved,
+              "; the credential this printer would authenticate with is not the one the receipt verified"))))
         SecretCredentialFetchRefused { reason: reason } =>
           refuse_and_drop(printer: printer, payload: payload, cause: reason)
         SecretCredentialReady { credential: credential, resolved_version: credential_version } => {

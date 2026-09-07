@@ -1689,6 +1689,10 @@ func bmc_fan_run(
       exit_failure(reason: access_token_upsert_required_reason(plan: plan))
     SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
       exit_failure(reason: "secret manager access version wire decode refused")
+    SecretCredentialResolvedVersionMismatch { requested: requested, resolved: resolved } =>
+      exit_failure(reason: concat(concat(
+        "secret manager answered about a different version than requested: asked ", requested),
+        concat(", answered ", resolved)))
     SecretCredentialFetchRefused { reason: reason } =>
       exit_failure(reason: reason as String)
     SecretCredentialReady { credential: credential, resolved_version: _ } =>
