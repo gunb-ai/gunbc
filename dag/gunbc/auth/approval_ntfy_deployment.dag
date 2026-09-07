@@ -1,0 +1,362 @@
+module gunbc.auth.approval_ntfy_deployment
+
+import std.types { NonEmptyStr, String, Int, Port }
+import std.logic { Bool }
+import std.human_intervention {
+  HumanIntervention, HumanInterventionFrequency, FleetOnce, DeviceOnce, EveryProvision,
+  BreakGlassOnly, ProvisioningHumanBurden, HumanInterventionIdentity,
+  InterventionCompletionEvidence, NoDischargeSiteModeled,
+}
+import gunbc.auth.approval_notification { approval_ntfy_topic }
+import extdeps.ntfy.ntfy { NtfyTopic, NtfyPublishReceipt, NtfyErrorShape }
+import extdeps.transports.rest { RestOutcome }
+import extdeps.uri { Uri, Https }
+import std.types { Secret }
+import v2.std.network { POST }
+import gunbc.executor_privileged_operation {
+  ExecutorPrivilegedOperation, EnsureSystemAccount, executor_privileged_operation_shell_command,
+}
+import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path }
+import gunbc.fleet_intent_network { fleet_intent_network, operator_host_srv1 }
+
+// ── The self-hosted notification server on srv1 ──────────────────────────────────────────────
+// It follows gunbc-publication exactly: its own system account, its own state directory owned by
+// that account, and a unit whose User= is that principal rather than the service user. That is not
+// stylistic symmetry -- it is the only pattern in this deployment where a unit runs as something
+// the dispatched sessions are not, and the approval loop needs precisely that property.
+data approval_ntfy_principal_name: NonEmptyStr = "gunbc-ntfy"
+data approval_ntfy_state_root: NonEmptyStr = "/var/lib/gunbc-ntfy"
+data approval_ntfy_config_path: NonEmptyStr = "/etc/gunbc-ntfy/server.yml"
+data approval_ntfy_unit_name: NonEmptyStr = "gunbc-ntfy.service"
+
+// LOOPBACK, AND THAT IS THE SECURITY BOUNDARY RATHER THAN A DEFAULT. The server binds 127.0.0.1
+// and reaches the tailnet only through tailscale serve, which is what makes the tailnet identity
+// on an approval request meaningful: a header injected by the proxy is trustworthy exactly
+// insofar as the proxy is the only route in. A server listening on 0.0.0.0 would let anything on
+// the host reach the topic directly and forge that header on the neighbouring approval route.
+data approval_ntfy_listen_address: NonEmptyStr = "127.0.0.1"
+data approval_ntfy_listen_port: Port = 2586
+
+
+// THE UPSTREAM RELAY, AND WHAT IT COSTS. An iPhone is woken by APNs and only Apple can send an
+// APNs push, so a self-hosted server forwards a poll request upstream and the app fetches the body
+// from us. The upstream sees a hashed topic and a message id -- never the topic name, the body, or
+// the approval URL -- so the credential stays on the tailnet and the residual disclosure is
+// timing. gunbc.auth.approval_notification carries that argument in full.
+data approval_ntfy_upstream_base_url: NonEmptyStr = "https://ntfy.sh"
+
+// ── The acquisition facts this install owes ─────────────────────────────────────────────────
+// merry-ibex-741 (2026-09-07) asked that the acquisition facts be recorded at install time rather
+// than re-derived later from a host already changed, because they are the fields a modeled
+// EnsureDependency row will carry. They are NOT declared here yet, and their absence is the honest
+// state: no release tag has been chosen and no artifact has been fetched or hashed, so a version
+// row would be a guess and a digest row would read as verification that never happened.
+//
+// What the hand install owes, before it counts as complete: the exact release tag, the artifact
+// URL for srv1's architecture, and the sha256 of the bytes actually installed -- added here as
+// data rows, at which point they become the transcription an EnsureDependency row copies. Source:
+// github.com/binwiederhier/ntfy/releases.
+
+// ── What a person has to do, typed rather than written in a commit message ───────────────────
+// Every step below is one a machine in this repository cannot take, and each says so for a
+// different reason. They are HumanIntervention rows so they are countable, priced by frequency,
+// and visible to anything that asks what this deployment costs a person -- rather than prose in a
+// PR body that the next reader has to find.
+//
+// completion_evidence is NoDischargeSiteModeled on all of them, honestly: this repository has no
+// per-intervention discharge carrier yet, and filling the field with a nearby declaration would be
+// a placeholder wearing the shape of evidence. std.human_intervention makes that arm explicit for
+// exactly this reason.
+fn approval_ntfy_intervention(
+  identity: NonEmptyStr,
+  frequency: HumanInterventionFrequency,
+  subject: NonEmptyStr,
+  instruction: NonEmptyStr,
+) -> HumanIntervention {
+  HumanIntervention {
+    identity: identity as HumanInterventionIdentity,
+    frequency: frequency,
+    subject: subject,
+    instruction: instruction,
+    completion_evidence: NoDischargeSiteModeled,
+  }
+}
+
+// DECLARING A PRINCIPAL IS NOT CREATING AN ACCOUNT, and conflating the two is how a runbook comes
+// to be missing the step that actually blocks. gunbc.fleet_posix_accounts now carries
+// FleetAccountNotificationService -- its login policy, its empty sudo grant set, and its persistent
+// realization standing -- which fixes WHAT the principal is. But the useradd that MAKES it on srv1
+// is rendered today only by the live_deploy member that creates gunbc-publication, and no member
+// renders one for this principal yet. So the account is a human step for now, and it says so.
+//
+// dissolve-on, stated as a CAPABILITY rather than an artifact (§4b(3): a trigger naming less than
+// the capability it restores is satisfied while the capability stays dead). This row retires when
+// convergence CREATES AND VERIFIES this principal on srv1 with no human in the path -- a member
+// that renders EnsureSystemAccount for FleetAccountNotificationService AND whose post-apply
+// readback establishes the account exists. A member that emits the argv is not sufficient: an
+// installer that exits zero over an account that is still absent is precisely the state the
+// reconcile carrier exists to refuse.
+// THE ARGV IS RENDERED, NOT TRANSCRIBED. Writing the useradd line by hand beside the declared
+// login is the §6 tell "a hand-authored projection the model should generate": a rename of
+// approval_ntfy_principal_name would leave the operator following a stale command while every
+// modeled consumer moved. This calls the same renderer the converged member will call, so the
+// hand-run command and the eventual converged one are one authority by construction rather than
+// by anyone remembering to keep them equal.
+fn approval_ntfy_account_operation() -> ExecutorPrivilegedOperation {
+  EnsureSystemAccount {
+    login: approval_ntfy_principal_name,
+    shell: fleet_posix_nologin_shell_path,
+  }
+}
+
+fn approval_ntfy_account_command() -> String {
+  executor_privileged_operation_shell_command(op: approval_ntfy_account_operation())
+}
+
+fn approval_ntfy_account_intervention() -> HumanIntervention {
+  approval_ntfy_intervention(
+    identity: "approval-ntfy-account",
+    frequency: FleetOnce,
+    subject: "gunbc-ntfy system account",
+    instruction: join([
+      "On srv1, run: ",
+      approval_ntfy_account_command(),
+      " -- this string is RENDERED BY the operation that converges the account, not transcribed",
+      " beside it, so it cannot go stale against the declared login or shell. It is run by hand",
+      " only because no converged member renders it for this principal yet: the shape is modeled,",
+      " the actuation is not. TEMPORARY: retires only when convergence both creates this account",
+      " and verifies it by readback, never merely because a member emits the argv.",
+    ], "") as NonEmptyStr,
+  )
+}
+
+// THE SERVER BINARY ITSELF IS ALSO A HUMAN STEP TODAY, for a different and more durable reason:
+// this repository models the ntfy PROTOCOL surface (extdeps.ntfy.ntfy) and the deployment's shape,
+// but it does not package third-party binaries. gunbc.package_delivery is where that would land.
+// THE INSTRUCTION IS DERIVED FROM THE DECLARED VALUES, not written beside them. An earlier
+// revision spelled the port, the state root and the config path as English inside this string
+// while declaring them as data three screens up -- one fact in two places, where only the prose is
+// what a person actually follows, so a drift in the declarations would be invisible (DESIGN 3, and
+// 3c: those declarations had no consumer at all). Joining them here makes the declarations
+// load-bearing: the operator reads values the model owns, and a witness can check the two agree.
+fn approval_ntfy_endpoint() -> String {
+  join([approval_ntfy_listen_address as String, ":", to_string(approval_ntfy_listen_port)], "")
+}
+
+fn approval_ntfy_server_install_intervention() -> HumanIntervention {
+  approval_ntfy_intervention(
+    identity: "approval-ntfy-server-install",
+    frequency: FleetOnce,
+    subject: "ntfy server binary and unit on srv1",
+    instruction: join([
+      "Install the ntfy server on srv1 and run it as ",
+      approval_ntfy_principal_name as String,
+      " under a systemd unit named ",
+      approval_ntfy_unit_name as String,
+      ", configured at ",
+      approval_ntfy_config_path as String,
+      " with listen-http set to ",
+      approval_ntfy_endpoint(),
+      ", base-url set to srv1's tailnet name, cache-file and attachment-cache-dir under ",
+      approval_ntfy_state_root as String,
+      ", auth-default-access set to deny, and upstream-base-url set to ",
+      approval_ntfy_upstream_base_url as String,
+      " so iOS push works. The loopback bind is load-bearing rather than conventional: it is what",
+      " makes tailscale serve the sole route in, and the sole route is what makes the identity",
+      " header on the approval route trustworthy -- a 0.0.0.0 bind would let anything on the host",
+      " reach the backend directly and assert whatever identity it liked.",
+      " TEMPORARY, AND IT IS TWO CAPABILITIES RATHER THAN ONE: this row retires only when",
+      " convergence acquires the verified ntfy binary (a modeled EnsureDependency carrying this",
+      " version and digest) AND converges the unit that runs it, each confirmed by post-apply",
+      " readback -- the binary alone leaves a host that looks provisioned and serves nothing.",
+    ], "") as NonEmptyStr,
+  )
+}
+
+fn approval_ntfy_publisher_token_intervention() -> HumanIntervention {
+  approval_ntfy_intervention(
+    identity: "approval-ntfy-publisher-token",
+    frequency: FleetOnce,
+    subject: "gunbc-ntfy publisher credential",
+    instruction: "On srv1, create the ntfy user the broker publishes as and record its access token where the unit can read it as a systemd credential. The token must NOT be committed, placed in the unit's Environment=, or passed on any argv: extdeps.ntfy.ntfy makes the credential a required input precisely so an unauthenticated publish is not expressible, and gunbc.credential_argv_exposure forbids the argv form. A machine cannot do this because the token does not exist until a person creates it, and it must not be minted by anything the requester can read.",
+  )
+}
+
+fn approval_ntfy_subscriber_grant_intervention() -> HumanIntervention {
+  approval_ntfy_intervention(
+    identity: "approval-ntfy-subscriber-grant",
+    frequency: FleetOnce,
+    subject: "gunbc-ntfy topic access policy",
+    instruction: join([
+      "Set the server's default access to deny and grant read on topic '",
+      approval_ntfy_topic as String,
+      "' ONLY to the operator's own ntfy user. ntfy's documented default is read-write, so a topic",
+      " left at the default is publishable and readable by anyone who learns its name -- and the",
+      " approval URL is a credential, so a readable topic is a spendable approval. Publisher",
+      " authentication alone does not close this: it protects who may SEND, and the leak is on the",
+      " READ side.",
+    ], "") as NonEmptyStr,
+  )
+}
+
+fn approval_ntfy_phone_subscription_intervention() -> HumanIntervention {
+  approval_ntfy_intervention(
+    identity: "approval-ntfy-phone-subscription",
+    frequency: DeviceOnce,
+    subject: "operator iPhone ntfy subscription",
+    instruction: join([
+      "Install the ntfy iOS app, add the self-hosted server as a custom server, sign in as the",
+      " operator user, and subscribe to topic '",
+      approval_ntfy_topic as String,
+      "'. Subscribing to any other topic receives nothing, silently -- which is why the topic is",
+      " joined from its declaration here rather than spelled in prose. Tailscale must be up on the",
+      " phone: the app fetches each message body from srv1 over the tailnet, and the approval link",
+      " opens there too. DeviceOnce rather than FleetOnce because a replacement phone pays it again.",
+    ], "") as NonEmptyStr,
+  )
+}
+
+// BREAK-GLASS IS NOT A ROUTINE STEP, and std.human_intervention deliberately keeps it out of the
+// routine burden comparison: an emergency path is not cheaper for being rare, and pricing it as
+// routine would let a design buy a better score by moving work into it.
+fn approval_ntfy_relay_withdrawal_intervention() -> HumanIntervention {
+  approval_ntfy_intervention(
+    identity: "approval-ntfy-relay-withdrawal",
+    frequency: BreakGlassOnly,
+    subject: "upstream APNs relay",
+    instruction: "If the upstream relay must stop being trusted with even the timing of approval requests, remove upstream-base-url from the server config and converge. iOS push stops working: notifications then arrive only while the app is foregrounded, so the operator must be told, and the durable pending request becomes the only reliable route to a decision. This is a deliberate loss of delivery, not a configuration tweak.",
+  )
+}
+
+fn approval_ntfy_human_burden() -> ProvisioningHumanBurden {
+  ProvisioningHumanBurden {
+    interventions: [
+      approval_ntfy_account_intervention(),
+      approval_ntfy_server_install_intervention(),
+      approval_ntfy_publisher_token_intervention(),
+      approval_ntfy_subscriber_grant_intervention(),
+      approval_ntfy_phone_subscription_intervention(),
+      approval_ntfy_relay_withdrawal_intervention(),
+    ],
+  }
+}
+
+
+// ── The publish binding: transport and address, in the layer that owns them ──────────────────
+// DESIGN §3 puts the interface shape in extdeps and the TRANSPORT in realization -- "one of N,
+// never a fact about the dependency" -- so the REST binding and the server address live here,
+// with the deployment they belong to, rather than in extdeps.ntfy where they would narrow that
+// module to this one fleet.
+//
+// This is also what makes a second deployment additive: another server is another binding beside
+// this one, and extdeps.ntfy does not change.
+//
+// ── §3c: WHO CONSUMES THIS, AND BY WHAT ROUTE ───────────────────────────────────────────────
+// Stated plainly because the honest answer today is "nothing in production yet", and a reviewer
+// should not have to grep to discover that. `ntfy.Publish.PublishMessage`, the `RestOutcome`
+// opt-in, `ntfy_publish_outcome_of` and `approval_ntfy_human_burden` have NO production caller in
+// this tree. §3c admits exactly three states, and this is the middle one -- a DECLARED FRONTIER --
+// which is admissible only with its trigger stated, so it is stated here.
+//
+// CONSUMED BY EXECUTION TODAY: the publish operation and the outcome fold are exercised against
+// the live self-hosted server by a wet probe (NtfyPublished { message_id: znjShbquiXow }), and
+// every arm of the fold plus every intervention property is exercised by
+// test.claim.ntfy_publish_outcome_witness_test and
+// test.claim.approval_ntfy_deployment_witness_test. That is execution, not a typecheck -- but a
+// witness is not a production consumer and this note does not claim it is.
+//
+// THE NAMED CONSUMER, AND ITS TRIGGER: the approval broker publishes a notification for a pending
+// AccessRequest. It lands when the request-minting path exists -- an AccessRequest produced from a
+// real refusal, its capability signed, and gunbc.roadmap_serve's ApprovalDecideHandler redeeming
+// it rather than answering 501, which it does today. Until that lands, nothing in production has a
+// reason to publish, and manufacturing an intermediate caller would only move the danglingness up
+// one level rather than remove it.
+//
+// If that consumer does not land, THIS BINDING IS THE THING TO DELETE. It is not infrastructure
+// worth keeping on its own: it exists to carry approval requests to a phone, and with no requests
+// it carries nothing.
+
+// THE ADDRESS IS JOINED FROM THE AUTHORITIES THAT ALREADY OWN ITS PARTS, not spelled as one
+// literal. An earlier revision wrote "https://srv1.tailecbe08.ts.net:8443" here, which re-minted
+// two facts the corpus owns elsewhere -- the tailnet domain at gunbc.fleet_intent_network
+// `fleet_intent_network.tailnet_domain`, and srv1's identity at `operator_host_srv1`. Relocating
+// the binding out of extdeps fixed the LAYER; it left the DUPLICATION, which is §3's nicknaming
+// under a different roof. Renaming the tailnet or the host would have left this string stale while
+// every modeled consumer moved.
+//
+// The address a CLIENT dials is a different fact from the address the SERVER listens on
+// (approval_ntfy_listen_address, held to loopback by policy); tailscale serve is what joins them,
+// and each is asserted for its own job.
+//
+// THE ABSENT ARM FAILS LOUD RATHER THAN PLAUSIBLY. tailnet_domain is Optional, and the service
+// config's `endpoint` cannot carry an Optional -- so a deployment whose tailnet domain is
+// undeclared has no address, and the honest encoding of that is a host in the RFC 2606 `.invalid`
+// TLD, which is guaranteed never to resolve. That is a structural failure, not an absorbing
+// fallback: it cannot succeed, cannot widen, and cannot be mistaken for a working endpoint. The
+// arm is witnessed so it is not merely asserted.
+fn approval_ntfy_base_url_from(domain: NonEmptyStr?) -> NonEmptyStr {
+  match domain {
+    Present { value: d } =>
+      join([
+        "https://",
+        operator_host_srv1 as String,
+        ".",
+        d as String,
+        ":",
+        to_string(approval_ntfy_serve_port),
+      ], "") as NonEmptyStr
+    Absent => "https://tailnet-domain-undeclared.invalid" as NonEmptyStr
+  }
+}
+
+// The TLS port tailscale serve publishes on, distinct from the loopback port ntfy binds. srv1's
+// :443 already carries the dashboard, so the approval server takes its own.
+data approval_ntfy_serve_port: Port = 8443
+
+data approval_ntfy_base_url: NonEmptyStr = approval_ntfy_base_url_from(domain: fleet_intent_network.tailnet_domain)
+
+service ntfy.Publish {
+  config {
+    endpoint: approval_ntfy_base_url
+    auth: Bearer
+    auth_input: access_token
+  }
+
+  operation PublishMessage {
+    input {
+      access_token: Secret
+      topic: NtfyTopic
+      title: NonEmptyStr
+      body: NonEmptyStr
+      priority: Int
+      click: NonEmptyStr
+      cache: NonEmptyStr
+    }
+    output {
+      message_id: String from "id"
+      outcome: RestOutcome
+    }
+    transport rest {
+      method: POST,
+      path: "/",
+      headers: {
+        "Cache": cache
+      },
+      body: {
+        topic: topic,
+        message: body,
+        title: title,
+        priority: priority,
+        click: click
+      }
+    }
+    response {
+      200 => NtfyPublishReceipt
+      401 => NtfyErrorShape
+      403 => NtfyErrorShape
+      429 => NtfyErrorShape
+      5xx => NtfyErrorShape
+    }
+  }
+}
+

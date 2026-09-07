@@ -107,6 +107,7 @@ type FleetPosixAccountKey
   | FleetAccountAutomation
   | FleetAccountInferenceService
   | FleetAccountPublicationHelper
+  | FleetAccountNotificationService
 
 data fleet_posix_root_user: PosixUser = PosixUser {
   name: "root",
@@ -550,6 +551,13 @@ fn fleet_principal_intent(key: FleetPosixAccountKey) -> FleetPrincipalIntent {
         name_requirements: service_name_requirements,
         sudo_grants: fleet_posix_publication_helper_sudo_grants(),
       }
+    FleetAccountNotificationService =>
+      FleetPrincipalIntent {
+        principal: key,
+        login_policy: NoLoginServiceIdentity,
+        name_requirements: service_name_requirements,
+        sudo_grants: fleet_posix_notification_service_sudo_grants(),
+      }
   }
 }
 
@@ -588,6 +596,16 @@ fn fleet_posix_inference_service_sudo_grants() -> List<PosixSudoGrant> {
 // the run. A principal with no grants running a process that starts no session has no such surface,
 // and that is a fact about what the helper DOES rather than a promise about what it will not do.
 fn fleet_posix_publication_helper_sudo_grants() -> List<PosixSudoGrant> {
+  []
+}
+
+// EMPTY BY CONSTRUCTION, for a sharper reason than its sibling's. This principal runs the
+// notification server that carries approval links, and an approval link is a spendable capability
+// -- so a grant here would let the process that HANDLES approvals also ACT on them, collapsing the
+// separation the whole loop is built to maintain. The server only binds a loopback port, reads its
+// own config, and writes its own state directory; none of that needs sudo, and the account is
+// declared empty so a future grant is a visible edit to this function rather than a roster append.
+fn fleet_posix_notification_service_sudo_grants() -> List<PosixSudoGrant> {
   []
 }
 
@@ -846,6 +864,20 @@ fn publication_helper_realization_standing(host: HostIdentity) -> ServicePrincip
   }
 }
 
+// THE NOTIFICATION SERVER'S REALIZATION IS PERSISTENT FOR THE SAME REASON AS ITS SIBLING'S, not by
+// copying it: the server owns a state directory across restarts (its message database and the
+// subscriber's read position), and a supervisor-managed dynamic identity gets a fresh uid each
+// start, so the files it wrote yesterday would not be its own today. The uid is host-assigned by
+// useradd --system at first converge, so the standing is AccountUnallocated until an observation
+// records what the host chose.
+fn notification_service_realization_standing(host: HostIdentity) -> ServicePrincipalRealizationStanding {
+  PersistentServiceAccount {
+    allocation: AccountUnallocated {
+      occurrence: PosixAccountOccurrence { host: host, principal: FleetAccountNotificationService },
+    },
+  }
+}
+
 // TOTAL PER-ACCOUNT ACCESSORS for the principals whose accounts WERE observed, so the question
 // "what is this account" has an answer that needs no host parameter and no optional. Callers
 // asking about a host-scoped principal must go through ground_posix_principal with an occurrence.
@@ -941,6 +973,7 @@ fn fleet_posix_principal(key: FleetPosixAccountKey) -> GroundedPosixPrincipalOut
     FleetAccountAutomation => PrincipalRequiresHostScope { principal: key }
     FleetAccountInferenceService => PrincipalRequiresHostScope { principal: key }
     FleetAccountPublicationHelper => PrincipalRequiresHostScope { principal: key }
+    FleetAccountNotificationService => PrincipalRequiresHostScope { principal: key }
   }
 }
 
