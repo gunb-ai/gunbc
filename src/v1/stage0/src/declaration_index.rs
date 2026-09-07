@@ -1475,6 +1475,20 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
         "",
     ),
     (
+        "test.claim.decl_ref_keyed_read_agreement_witness_test",
+        "keyed_and_population_routes_agree_on_declaration_absent",
+        "test.fixture.decl_facts_reflection.specimens",
+        "no_such_declaration_KEYED_RED",
+        "",
+    ),
+    (
+        "test.claim.decl_ref_keyed_read_agreement_witness_test",
+        "keyed_and_population_routes_agree_on_field_absent",
+        "test.fixture.decl_facts_reflection.specimens",
+        "disposition_scaffold",
+        "no_such_field_KEYED_RED",
+    ),
+    (
         "test.claim.long.decl_ref_resolution_witness_test",
         "decl_ref_refuses_ambiguous_binding",
         "v2.std.node",

@@ -88,10 +88,17 @@ test fn keyed_and_population_routes_agree_on_resolved() -> Bool {
   )
 }
 
+// The module-absent ref names a namespace root the corpus sweep never observes, so the ingestion
+// index classifies it as outside the index by construction rather than by an authored exemption
+// (v1_compiler.declaration_index citation_is_outside_index). The two rows below cite REAL modules
+// and cannot take that route -- a declaration-absent or field-absent arm is only reachable through
+// a module that exists -- so those two are enrolled in FIXTURE_CARRIER_CITATION_EXEMPTIONS beside
+// the sibling planted controls, which is the roster that exists for exactly this and which refuses
+// a row whose citation stops refusing.
 test fn keyed_and_population_routes_agree_on_module_absent() -> Bool {
   routes_agree_on(
     ref: DeclarationRef {
-      module_path: "test.fixture.no_such_module_KEYED_RED",
+      module_path: "synthetic.keyed_read_module_absent_RED",
       decl_name: "anything",
       field: WholeDeclaration,
     },
