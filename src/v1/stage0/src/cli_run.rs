@@ -24637,6 +24637,68 @@ fn parse_entry_live_tree_disposition(entry: &str, content: &str) -> Result<bool,
     Ok(declared.unwrap_or(true))
 }
 
+/// Unquoted callees in an entry body that walk the live checkout (builtin nested
+/// compile, filesystem list/read, or a `*_facts_live` producer). The disposition
+/// row is parsed textually and never joined to these; this roster is the other
+/// side of that missing join, at DIRECT-CALL grain, not import adjacency.
+const DIRECT_LIVE_TREE_SINK_CALLEES: &[&str] = &[
+    "compile_dag_diagnostic_census",
+    "compile_dag_rust_emit_check",
+    "compile_dag_multi_module_fixture",
+    "compile_dag_reference_occurrence_binding_census",
+    "compile_dag_source_to_target_text",
+    "filesystem_read",
+    "filesystem_list",
+    "Filesystem.Read",
+    "Filesystem.List",
+    "decl_facts",
+    "module_declaration_facts",
+    "module_declaration_facts_live",
+    "layer_import_facts",
+    "layer_import_facts_live",
+    "fn_arrow_decl_facts_live",
+];
+
+fn line_has_unquoted_callee(line: &str, callee: &str) -> bool {
+    let stripped = strip_line_comment(line);
+    let paren = format!("{callee}(");
+    let spaced = format!("{callee} (");
+    stripped.contains(&paren) || stripped.contains(&spaced)
+}
+
+fn entry_direct_live_tree_sinks(content: &str) -> Vec<&'static str> {
+    DIRECT_LIVE_TREE_SINK_CALLEES
+        .iter()
+        .copied()
+        .filter(|callee| {
+            content
+                .lines()
+                .any(|line| line_has_unquoted_callee(line, callee))
+        })
+        .collect()
+}
+
+/// Entry-grain disagreement: stamped SubstrateInputsOnly, body unquoted-calls a
+/// live-checkout sink. Identity is the entry path. Import-adjacency is a
+/// different, over-approximate grain and is not folded in here.
+fn substrate_stamp_direct_live_disagreements(
+    files: &[(String, String)],
+) -> Result<Vec<(String, Vec<&'static str>)>, String> {
+    let mut out = Vec::new();
+    for (rel, content) in files {
+        let reads_live = parse_entry_live_tree_disposition(rel, content)?;
+        if reads_live {
+            continue;
+        }
+        let sinks = entry_direct_live_tree_sinks(content);
+        if !sinks.is_empty() {
+            out.push((rel.clone(), sinks));
+        }
+    }
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(out)
+}
+
 fn read_entry_live_tree_disposition(entry: &str) -> Result<bool, String> {
     let content = std::fs::read_to_string(entry).map_err(|e| {
         format!(
@@ -26265,6 +26327,75 @@ new file mode 100644
     }
 
     #[test]
+    fn quoted_census_callee_is_not_a_direct_live_sink() {
+        let source = "module m\n\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\ndata note: String = \"compile_dag_diagnostic_census(source)\"\n";
+        assert!(super::entry_direct_live_tree_sinks(source).is_empty());
+    }
+
+    #[test]
+    fn unquoted_census_callee_is_a_direct_live_sink() {
+        let source = "module m\n\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\nfn f(source: String) -> Int { compile_dag_diagnostic_census(source) }\n";
+        assert_eq!(
+            super::entry_direct_live_tree_sinks(source),
+            vec!["compile_dag_diagnostic_census"]
+        );
+    }
+
+    #[test]
+    fn substrate_stamp_direct_live_disagreements_is_an_identity_join() {
+        let files = vec![
+            (
+                "lying.dag".to_string(),
+                "module lying\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\nfn f(s: String) -> Int { compile_dag_diagnostic_census(s) }\n"
+                    .to_string(),
+            ),
+            (
+                "honest_sio.dag".to_string(),
+                "module honest_sio\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\nfn f() -> Bool { true }\n"
+                    .to_string(),
+            ),
+            (
+                "honest_live.dag".to_string(),
+                "module honest_live\ndata live_tree_disposition: LiveTreeDisposition = ReadsLiveTree\nfn f(s: String) -> Int { compile_dag_diagnostic_census(s) }\n"
+                    .to_string(),
+            ),
+        ];
+        let rows = super::substrate_stamp_direct_live_disagreements(&files).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, "lying.dag");
+        assert_eq!(rows[0].1, vec!["compile_dag_diagnostic_census"]);
+        assert!(
+            !rows
+                .iter()
+                .any(|(p, _)| p == "honest_sio.dag" || p == "honest_live.dag"),
+            "agreement is not disagreement: {rows:?}"
+        );
+    }
+
+    #[test]
+    fn named_census_specimens_still_carry_the_direct_sio_live_disagreement() {
+        let ws = workspace_root();
+        let specimens = [
+            "dag/test/claim/fabric/fabric_output_contract_resolution_witness_test.dag",
+            "dag/test/claim/match_exhaustiveness_coproduct_witness_test.dag",
+            "dag/test/claim/direct_call_argument_type_witness_test.dag",
+        ];
+        let mut files = Vec::new();
+        for rel in specimens {
+            let content =
+                std::fs::read_to_string(ws.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
+            files.push((rel.to_string(), content));
+        }
+        let rows = super::substrate_stamp_direct_live_disagreements(&files).unwrap();
+        for rel in specimens {
+            assert!(
+                rows.iter().any(|(p, sinks)| p == rel && !sinks.is_empty()),
+                "{rel} missing from disagreement set {rows:?}"
+            );
+        }
+    }
+
+    #[test]
     fn import_closure_carrier_home_matches_submodules() {
         use std::collections::HashSet;
 
@@ -26333,6 +26464,33 @@ new file mode 100644
             lying.is_empty(),
             "lying SubstrateInputsOnly stamps must be re-stamped ReadsLiveTree before merge"
         );
+    }
+
+    #[test]
+    #[ignore = "live-corpus: walks every stamped .dag; the receipts lane runs these with --ignored"]
+    fn substrate_stamp_direct_live_disagreement_census() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let files = super::corpus_dag_files();
+        let rows =
+            super::substrate_stamp_direct_live_disagreements(&files).expect("disposition parse");
+        eprintln!(
+            "SubstrateInputsOnly entries whose body unquoted-calls a live-checkout sink: {}",
+            rows.len()
+        );
+        for (rel, sinks) in &rows {
+            eprintln!("  {rel}  ->  {sinks:?}");
+        }
+        for rel in [
+            "dag/test/claim/fabric/fabric_output_contract_resolution_witness_test.dag",
+            "dag/test/claim/match_exhaustiveness_coproduct_witness_test.dag",
+            "dag/test/claim/direct_call_argument_type_witness_test.dag",
+        ] {
+            assert!(
+                rows.iter().any(|(p, _)| p == rel),
+                "{rel} dropped out of the derived disagreement set"
+            );
+        }
     }
 
     #[test]
