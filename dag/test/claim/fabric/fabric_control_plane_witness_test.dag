@@ -1,5 +1,7 @@
 module test.claim.fabric_control_plane_witness
 
+import product.fabric.provider_route { ProviderRoute }
+import std.decl_ref { decl_ref }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.durable_compare_and_set {
   CasUnreadableReadRefused, ExpectSlotAbsent,
@@ -187,6 +189,7 @@ fn cp_offer_for(executor: NonEmptyStr) -> SupplierOffer<NonEmptyStr> {
   SupplierOffer {
     id: cp_offer_id(key: "offer-1"),
     executor: executor,
+    route: cp_route(),
     shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 1) }, envelope: unstated_envelope() },
     capabilities: "gunbc.capabilities.linux-rust-toolchain",
     trust_domain: "gunbc.trust.internal-fleet",
@@ -743,4 +746,14 @@ test fn a_receipt_from_another_attempt_is_refused_before_the_budget() -> Bool {
       },
     ),
   )
+}
+
+// One fixture route for this witness. provider, service and region are CITED rather than spelled,
+// so an offer and a sanction agree by declaration identity and not by matching strings.
+fn cp_route() -> ProviderRoute {
+  ProviderRoute {
+    provider: decl_ref(module_path: "test.claim.fabric_control_plane_witness", decl_name: "cp_provider"),
+    service: decl_ref(module_path: "test.claim.fabric_control_plane_witness", decl_name: "cp_service"),
+    region: decl_ref(module_path: "test.claim.fabric_control_plane_witness", decl_name: "cp_region"),
+  }
 }

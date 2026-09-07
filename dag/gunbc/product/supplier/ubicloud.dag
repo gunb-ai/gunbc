@@ -9,6 +9,8 @@ import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, Tru
 import product.fabric.envelope { cpu_memory_envelope }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.supply { SupplierOffer, OfferQuote, QuotedPerMinute, OfferEvidence, QuotedSupply }
+import product.fabric.provider_route { ProviderRoute }
+import std.decl_ref { decl_ref }
 import extdeps.pricing.ubicloud {
   UbicloudRunnerPriceRow, ubicloud_runner_price_catalog,
 }
@@ -61,6 +63,7 @@ data ubicloud_billing_quantum: Second = second(count: 60)
 type UnexpressedSupplyFact
   = DiskNotExpressibleInShape { provided: ByteSize }
   | IsolationNotObserved
+  | RegionNotObserved
 
 // A PROJECTION BESIDE THE OFFER, NOT A SECOND KIND OF OFFER. The name matters more than it
 // looks: this type was briefly called SupplierOffer, which is also what the fabric carrier is
@@ -102,10 +105,31 @@ fn ubicloud_unobserved_isolation() -> IsolationProfile {
   IsolationProfile { guarantees: [] }
 }
 
+// THE ROUTE THIS VENDOR'S OFFERS SIT ON, AND THE HONEST GAP IN IT. provider and service cite
+// declarations that exist in the upstream module - the external authority anchor and the runner
+// types authority - so both are checkable by the namespace tree rather than agreed by spelling.
+//
+// THE REGION IS NOT OBSERVED, AND IT IS SPELLED AS THAT RATHER THAN GUESSED. Nothing in this
+// vendor's catalog names a location, so any region we wrote here would be invented. Citing
+// RegionNotObserved is the same move this module already makes for isolation: an explicit,
+// resolvable statement that nobody looked, carried as a row in ubicloud_unexpressed so it is a
+// counted coverage obligation rather than a silent blank. It is also fail-closed by construction -
+// no sanction roster cites RegionNotObserved, so every offer on this route refuses as
+// ProviderRouteUnclassified until the region is actually read. That refusal is the correct
+// current answer, not a defect.
+fn ubicloud_route() -> ProviderRoute {
+  ProviderRoute {
+    provider: decl_ref(module_path: "extdeps.cloud.ubicloud", decl_name: "extdeps_external_authority_anchor"),
+    service: decl_ref(module_path: "extdeps.cloud.ubicloud", decl_name: "ubicloud_runner_types_authority"),
+    region: decl_ref(module_path: "product.supplier.ubicloud", decl_name: "RegionNotObserved"),
+  }
+}
+
 fn ubicloud_unexpressed(catalog: UbicloudRunnerCatalogRow) -> List<UnexpressedSupplyFact> {
   [
     DiskNotExpressibleInShape { provided: catalog.disk_bytes },
     IsolationNotObserved,
+    RegionNotObserved,
   ]
 }
 
@@ -165,6 +189,7 @@ fn bind_ubicloud_offer<P>(
           offer: SupplierOffer {
             id: FabricIdentity { principal: principal, key: row.catalog.runs_on_label },
             executor: executor,
+            route: ubicloud_route(),
             shape: ubicloud_shape(catalog: row.catalog),
             capabilities: capabilities,
             trust_domain: trust_domain,

@@ -1,5 +1,7 @@
 module test.claim.fabric_selection_witness
 
+import product.fabric.provider_route { ProviderRoute }
+import std.decl_ref { decl_ref }
 import std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.nat { Nat }
@@ -85,6 +87,7 @@ fn t_offer(key: OfferKey, quote: OfferQuote, quantum: Second) -> SupplierOffer<N
   SupplierOffer {
     id: FabricIdentity { principal: "gunbc", key: key },
     executor: "gunbc",
+    route: sel_route(),
     shape: t_shape(threads: hardware_thread_count(count: 64)),
     capabilities: t_caps(),
     trust_domain: t_trust(),
@@ -750,4 +753,14 @@ test fn a_finite_window_still_admits_a_bounded_job_that_fits_it() -> Bool {
   )
   selected_key(s: selection) == "offer-rented-hourly"
     && selected_total(s: selection) == 0
+}
+
+// One fixture route for this witness. provider, service and region are CITED rather than spelled,
+// so an offer and a sanction agree by declaration identity and not by matching strings.
+fn sel_route() -> ProviderRoute {
+  ProviderRoute {
+    provider: decl_ref(module_path: "test.claim.fabric_selection_witness", decl_name: "sel_provider"),
+    service: decl_ref(module_path: "test.claim.fabric_selection_witness", decl_name: "sel_service"),
+    region: decl_ref(module_path: "test.claim.fabric_selection_witness", decl_name: "sel_region"),
+  }
 }

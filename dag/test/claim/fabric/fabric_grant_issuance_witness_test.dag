@@ -1,5 +1,7 @@
 module test.claim.fabric_grant_issuance_witness
 
+import product.fabric.provider_route { ProviderRoute }
+import std.decl_ref { decl_ref }
 import std.types { NonEmptyStr, Bool, Int, List }
 import std.measure { Count, One, MoneyRate, money_amount_micro, money_amount_micro_count, hardware_thread_count, second }
 import std.nat { Nat }
@@ -131,6 +133,7 @@ data foreign_attempt: Attempt<NonEmptyStr> = Attempt {
 data admitted_offer: SupplierOffer<NonEmptyStr> = SupplierOffer {
   id: FabricIdentity { principal: "supplier", key: "offer-1" },
   executor: "srv3",
+  route: gi_route(),
   shape: fixture_shape,
   capabilities: "linux-x86_64-cargo",
   trust_domain: "gunbc-ci",
@@ -145,6 +148,7 @@ data admitted_offer: SupplierOffer<NonEmptyStr> = SupplierOffer {
 data foreign_domain_offer: SupplierOffer<NonEmptyStr> = SupplierOffer {
   id: FabricIdentity { principal: "supplier", key: "offer-2" },
   executor: "srv4",
+  route: gi_route(),
   shape: fixture_shape,
   capabilities: "linux-x86_64-cargo",
   trust_domain: "public-untrusted",
@@ -581,4 +585,14 @@ test fn the_recorded_liability_is_the_booked_liability() -> Bool {
     money_amount_micro_count(m: g.context.maximum_liability)
       == money_amount_micro_count(m: money_request.maximum_liability)
   ))
+}
+
+// One fixture route for this witness. provider, service and region are CITED rather than spelled,
+// so an offer and a sanction agree by declaration identity and not by matching strings.
+fn gi_route() -> ProviderRoute {
+  ProviderRoute {
+    provider: decl_ref(module_path: "test.claim.fabric_grant_issuance_witness", decl_name: "gi_provider"),
+    service: decl_ref(module_path: "test.claim.fabric_grant_issuance_witness", decl_name: "gi_service"),
+    region: decl_ref(module_path: "test.claim.fabric_grant_issuance_witness", decl_name: "gi_region"),
+  }
 }

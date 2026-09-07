@@ -1,5 +1,7 @@
 module tools.fabric_control_plane_live_probe
 
+import product.fabric.provider_route { ProviderRoute }
+import std.decl_ref { decl_ref }
 import std.types { Bool, Int, List, NonEmptyStr, String, GitRef }
 import std.algebra { trim }
 import v2.std.algebra { HeadAbsent, HeadFound, list_head, list_tail }
@@ -1637,6 +1639,7 @@ fn cp_probe_offer_for(executor: NonEmptyStr) -> SupplierOffer<NonEmptyStr> {
   SupplierOffer {
     id: cp_probe_offer_id(key: "offer-1"),
     executor: executor,
+    route: probe_route(),
     shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 8) }, envelope: unstated_envelope() },
     capabilities: "gunbc.capabilities.linux-rust-toolchain",
     trust_domain: "gunbc.trust.internal-fleet",
@@ -1856,4 +1859,14 @@ func fci1_live_release_with_receipt(root: NonEmptyStr, path: String) -> ProcessE
       if slot == "srv3-06" { ExitSuccess } else { exit_failure(reason: "release receipt named wrong slot") }
     _ => exit_failure(reason: join(["reservation release refused: ", fci1_cell_hold_end_wire(outcome: outcome)], ""))
   } }
+}
+
+// One fixture route for this witness. provider, service and region are CITED rather than spelled,
+// so an offer and a sanction agree by declaration identity and not by matching strings.
+fn probe_route() -> ProviderRoute {
+  ProviderRoute {
+    provider: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_provider"),
+    service: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_service"),
+    region: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_region"),
+  }
 }

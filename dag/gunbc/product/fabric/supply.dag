@@ -10,6 +10,7 @@ import std.measure {
 }
 import extdeps.currency.currency { CurrencyCode }
 import product.fabric.identity { FabricIdentity, OfferKey }
+import product.fabric.provider_route { ProviderRoute }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.work { Shape, CapabilityManifestRef, TrustDomainRef, ExecutionRequirements }
 import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
@@ -120,9 +121,33 @@ type OfferEvidence
       receipt: ObservationReceiptRef,
     }
 
+// STATED DIVERGENCE FROM THE CAPACITY-CLASS RULING (DESIGN section 3b), because that ruling is
+// about this very type and must be answered rather than stepped around.
+// gunbc.fabric_capacity_class_gap rules THE CLASS GOES ON THE WORK, NOT THE OFFER: an offer is
+// what a SUPPLIER SAYS ABOUT CAPACITY, so putting a safety assertion there asks the party with the
+// least knowledge and the most incentive to say yes, a supplier that omits the field is admitted,
+// and the claim is unfalsifiable from this side.
+//
+// `route` is admitted here anyway, and the three legs of that ruling are why it is a different
+// fact. It is IDENTITY, not a safety assertion - which provider, service and region this offer
+// IS - and it asserts nothing about whether we may use it. It is minted by OUR adapter reading a
+// supplier catalog (product.supplier.ubicloud is our module, not theirs), so the party with the
+// incentive is not the one filling it in. And omission cannot be admitted twice over: the field is
+// not optional, and a route absent from our own sanction roster refuses as
+// ProviderRouteUnclassified rather than defaulting - the exact fail-open arm the ruling was
+// protecting against runs the other way here.
+//
+// What it buys is the cross-check that is otherwise unwritable: product.fabric.selection's
+// bind_candidate can require the permit's route to equal the offer's, so a permit admitted for one
+// route can never be carried onto an offer sitting on another.
+//
+// What it does NOT establish is that the cited region is where the work actually runs. That stays
+// a fact about someone else's machine - section 4b's outside-the-modeled-guarantee column, carried
+// with its evidence in product.fabric.provider_route and never fabricated.
 type SupplierOffer<P> {
   id: FabricIdentity<P, OfferKey>
   executor: P
+  route: ProviderRoute
   shape: Shape
   capabilities: CapabilityManifestRef
   trust_domain: TrustDomainRef

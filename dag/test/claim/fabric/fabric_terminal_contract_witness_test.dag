@@ -1,5 +1,7 @@
 module test.claim.fabric_terminal_contract_witness
 
+import product.fabric.provider_route { ProviderRoute }
+import std.decl_ref { decl_ref }
 import std.types { NonEmptyStr, String, Bool, Int }
 import std.measure { money_amount_micro, money_amount_micro_count, hardware_thread_count, second, Second, MoneyRate }
 import std.content_hash { content_hash_of_value }
@@ -229,6 +231,7 @@ test fn principals_do_not_share_work_identity() -> Bool {
 data owned_offer: SupplierOffer<NonEmptyStr> = SupplierOffer {
   id: FabricIdentity { principal: "operator", key: "offer-srv3-slot" },
   executor: "srv3",
+  route: tc_route(),
   shape: fixture_shape,
   capabilities: "linux-arm64",
   trust_domain: "fleet-owned",
@@ -243,6 +246,7 @@ data owned_offer: SupplierOffer<NonEmptyStr> = SupplierOffer {
 data rented_offer: SupplierOffer<NonEmptyStr> = SupplierOffer {
   id: FabricIdentity { principal: "operator", key: "offer-rented-1" },
   executor: "rented-pool",
+  route: tc_route(),
   shape: fixture_shape,
   capabilities: "linux-arm64",
   trust_domain: "rented",
@@ -550,4 +554,14 @@ test fn resumability_is_declared_not_assumed() -> Bool {
     && idempotent_tier == "idempotent-under-key"
     && opaque == "opaque-effects"
     && idempotent_tier != opaque
+}
+
+// One fixture route for this witness. provider, service and region are CITED rather than spelled,
+// so an offer and a sanction agree by declaration identity and not by matching strings.
+fn tc_route() -> ProviderRoute {
+  ProviderRoute {
+    provider: decl_ref(module_path: "test.claim.fabric_terminal_contract_witness", decl_name: "tc_provider"),
+    service: decl_ref(module_path: "test.claim.fabric_terminal_contract_witness", decl_name: "tc_service"),
+    region: decl_ref(module_path: "test.claim.fabric_terminal_contract_witness", decl_name: "tc_region"),
+  }
 }

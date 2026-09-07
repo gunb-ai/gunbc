@@ -13,6 +13,8 @@ module test.claim.fabric_floor_dispatch_witness
 // So every row below turns on a fact that belongs to the floor specifically: its eight threads, its
 // capability ref, its satisfaction requirement.
 
+import product.fabric.provider_route { ProviderRoute }
+import std.decl_ref { decl_ref }
 import std.logic { Bool }
 import std.types { Int, List, NonEmptyStr, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -58,6 +60,7 @@ fn d_offer(key: OfferKey, threads: HardwareThreadCount) -> SupplierOffer<NonEmpt
   SupplierOffer {
     id: FabricIdentity { principal: "gunbc", key: key },
     executor: "gunbc",
+    route: fd_route(),
     shape: Shape { hard: HardRequirements { threads: threads }, envelope: unstated_envelope() },
     capabilities: d_caps(),
     trust_domain: d_trust(),
@@ -167,4 +170,14 @@ test fn the_floor_demand_carries_the_authority_satisfaction_requirement() -> Boo
     deadline: none,
   )
   !d.satisfaction.terminal_receipt_may_satisfy && d.satisfaction.new_attempt_required
+}
+
+// One fixture route for this witness. provider, service and region are CITED rather than spelled,
+// so an offer and a sanction agree by declaration identity and not by matching strings.
+fn fd_route() -> ProviderRoute {
+  ProviderRoute {
+    provider: decl_ref(module_path: "test.claim.fabric_floor_dispatch_witness", decl_name: "fd_provider"),
+    service: decl_ref(module_path: "test.claim.fabric_floor_dispatch_witness", decl_name: "fd_service"),
+    region: decl_ref(module_path: "test.claim.fabric_floor_dispatch_witness", decl_name: "fd_region"),
+  }
 }
