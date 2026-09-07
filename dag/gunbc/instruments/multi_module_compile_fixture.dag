@@ -97,11 +97,15 @@ type MultiModuleCompileFixture {
 // and resource arms; service_var_name for services), concatenated authored → resource → service.
 // The merged graph registry is bare-name keyed across the closure; publishing from it alone would
 // drop colliding names and make lookup report Absent for a function that resolved — fail-open on
-// every negative control. So the walk is per TypedModule and rows are keyed
-// (owner_module, declaration_name): the same bare name in two modules yields two rows (legal DAG),
-// never FixtureInstrumentRefused. The expanded graph row overlays only when it still names this
-// module under that bare name; otherwise the per-module ItemInfo stands — so a merge survivor
-// cannot steal another module's service expansion.
+// every negative control if we only published the survivor. So the walk is per TypedModule and
+// rows are keyed (owner_module, declaration_name). When the same bare Fn/Func name appears in two
+// or more modules, those rows are OMITTED (lookup → ResolvedRustFnAbsent) — never
+// FixtureInstrumentRefused, and never a fallback to the un-expanded per-module ItemInfo.
+// expand_transitive_services writes only the merged registry, and emit_func_def looks up services
+// by bare name on that same map; publishing the loser's un-expanded row would omit service_names
+// while the emitter still binds the survivor's — a silent wrong answer. Present/absent consumers
+// already treat Absent as false on both polarities, so omission is fail-closed. Non-colliding
+// names overlay the expanded graph row when it still names this module under that bare name.
 
 // The type name says Rust because compile_fixture is Rust-target only; a target-agnostic name
 // over that reader would be the DESIGN section 3 meaning fork. The field name

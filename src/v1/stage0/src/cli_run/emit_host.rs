@@ -317,8 +317,8 @@ pub fn compile_dag_multi_module_fixture(
         // Resolved-registry projection BEFORE emit consumes the graph. Subject grain: ItemInfo
         // parameter binding (with emit_ident / service_var_name transforms), keyed by source
         // identity — not emitted file bytes. Emit-path fidelity is the declared next-rung climb.
-        // Walk per TypedModule registry (not the bare-name-merged graph.item_registry) so two
-        // modules that both declare `f0` each keep a (owner_module, declaration_name) row.
+        // Walk per TypedModule registry. Bare Fn/Func names that collide across modules are
+        // omitted (Absent) — never InstrumentRefused, never an un-expanded loser row.
         let resolved_rust_functions = project_resolved_rust_fn_signatures(resolved.as_ref());
         let result = v1_compiler_compile::emit_resolved_for_target(
             resolved,
@@ -361,11 +361,17 @@ pub fn compile_dag_multi_module_fixture(
 /// names, then `service_var_name` per service, concatenated in that order — the same per-arm
 /// transforms `emit_func_params` uses today. Not a text parse of emitted bytes.
 ///
-/// Rows are keyed `(owner_module, declaration_name)`, so the same bare name in two modules yields
-/// two rows — legal DAG, not an instrument refusal. Publishing from the bare-name-merged graph
-/// registry alone would drop one of those modules. Service-name overlay: use the expanded graph
-/// registry row only when it still names *this* module under that bare name (otherwise keep the
-/// per-module `ItemInfo`; on collision the merge's survivor must not overlay the other module).
+/// Rows are keyed `(owner_module, declaration_name)`. When the same bare Fn/Func name appears in
+/// two or more modules, those rows are **omitted** (lookup → `ResolvedRustFnAbsent`) — not an
+/// instrument refusal, and not a fallback to the un-expanded per-module `ItemInfo`.
+///
+/// Why omit: `expand_transitive_services` writes only the bare-name-merged `graph.item_registry`,
+/// and `emit_func_def` resolves services via `lookup_item` on that same merged map (no module
+/// check). Publishing the loser's un-expanded local row would report missing `service_names`
+/// while the emitter still binds the survivor's services — a silent wrong answer (§5). Both
+/// present/absent consumers already treat `Absent` as false on both polarities, so omission is
+/// fail-closed. Service-name overlay for non-colliding names: use the expanded graph row when it
+/// still names this module under that bare name.
 ///
 /// Below ceiling on ORDER and MEMBERSHIP (§3b middle value — deliberate divergence with stated
 /// reason on `ResolvedRustFnSignature`): second walk over ItemInfo, not a consumption of
@@ -382,15 +388,29 @@ fn project_resolved_rust_fn_signatures(
     use crate::v1_compiler_emit::emit_ident;
     use crate::v1_compiler_infer_items::ItemKind;
     use crate::v1_std_core::param_node_name_at;
+    use std::collections::HashMap;
     let Some(graph) = resolved.graph.as_ref() else {
         return Vec::new();
     };
     let source_indices = resolved.source_indices.clone();
+    // Bare Fn/Func name → how many TypedModules publish it. Count > 1 ⇒ omit every row for
+    // that name (see doc above); never publish the un-expanded loser.
+    let mut bare_fn_module_count: HashMap<String, usize> = HashMap::new();
+    for typed in graph.modules.iter() {
+        for local in typed.item_registry.values() {
+            if matches!(local.kind, ItemKind::FnItem | ItemKind::FuncItem) {
+                *bare_fn_module_count.entry(local.name.clone()).or_insert(0) += 1;
+            }
+        }
+    }
     let mut rows: Vec<crate::cli_run::ResolvedRustFnSignature> = Vec::new();
     for typed in graph.modules.iter() {
         for local in typed.item_registry.values() {
             match local.kind {
                 ItemKind::FnItem | ItemKind::FuncItem => {
+                    if bare_fn_module_count.get(&local.name).copied().unwrap_or(0) > 1 {
+                        continue;
+                    }
                     // Prefer the expanded graph registry row when it still names this module —
                     // transitive service expansion is applied there, not on TypedModule.item_registry.
                     let info = match graph.item_registry.get(&local.name) {
