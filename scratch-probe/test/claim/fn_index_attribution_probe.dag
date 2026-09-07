@@ -159,3 +159,43 @@ test fn h_two_walks_one_frame_same_pool() -> Bool {
     decls: decls_of(roots: lens_roots)
   )) > 0
 }
+
+// ── THE FLOOR SUBJECT, WHICH IS NOT THE DIRECTORY SUBJECT ─────────────────────────────────────
+//
+// EVERY ARM ABOVE MEASURES A DIFFERENT EXECUTION FROM THE ONE THAT BLOCKS LANES, and conflating
+// them would aim a repair at the wrong subject. The floor claim
+// v2.test.claim.enforcement.determinism_transitive_witness.determinism_live_intra_holds runs at
+// FILE grain over one file, with pool_roots EMPTY and pool_files naming affected_set.dag, and it
+// builds its closure from those same empty roots. So it is not arm c at smaller n: its pool is one
+// file rather than a directory, and its closure list comes from an EMPTY root list, which is a term
+// no arm above exercises at all.
+//
+// These arms reproduce the floor's own subject term by term, so the question "does the directory
+// grain magnify the floor claim, or measure something else" is settled by execution rather than by
+// reading the two call sites side by side and judging them similar.
+data floor_roots: List<String> = []
+data floor_files: List<String> = ["src/v2/lens/affected_set.dag"]
+
+test fn i_floor_acquisition_only() -> Bool {
+  length(xs: fn_arrow_decl_facts_live(pool_roots: floor_roots, pool_files: floor_files)) > 0
+}
+
+// k IS NOT A TIMING ARM. The rung-drop row records that the floor's closure fold runs over a list
+// that is empty today, and that claim is load-bearing -- an empty closure means the walk follows no
+// callee edges, which is WHY the witness was renamed from transitive to intra. If this arm goes
+// RED the closure is not empty, that recorded fact is stale, and every reading built on it needs
+// revisiting. It is cheap and it is the one arm here that can falsify a written row.
+test fn k_floor_closure_is_empty() -> Bool {
+  length(xs: closure_of(roots: floor_roots)) == 0
+}
+
+// l IS THE FLOOR CLAIM'S OWN BODY, reproduced exactly. l minus i is what the walk and the
+// determinism fold cost at the grain that actually blocks, and that difference -- not any ratio
+// among the directory arms -- is what a repair aimed at the floor has to move.
+test fn l_floor_claim_shape() -> Bool {
+  determinism_transitive_holds(
+    entry_module: entry,
+    closure_modules: closure_of(roots: floor_roots),
+    decls: fn_arrow_decl_facts_live(pool_roots: floor_roots, pool_files: floor_files)
+  )
+}
