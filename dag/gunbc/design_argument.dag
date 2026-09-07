@@ -85,7 +85,7 @@ data conformance_domains: List<ConformanceDomain> = [
       "an extdeps module that carries our own policy, an observation this repository made, a coverage state, or a product-specific dispatch among upstreams",
       "a generic extdeps hub enumerating concrete products or versions instead of one module per independently versioned upstream"
     ],
-    narrative: "each independently versioned upstream its own module, anchored by `extdeps.external_authority` `ExternalModelScope`; this is the strongest instance and was, until this section, the only one with a reviewer",
+    narrative: "each independently versioned upstream has its own module; this is the strongest instance and was, until this section, the only one with a reviewer",
   },
   ConformanceDomain {
     key: "conformance-realization",
