@@ -188,7 +188,7 @@ fn launch_from_fields(group: FabricGroup, head: HostIdentity, f: CapacityProbeFi
               group: group,
               head: head,
               systemd_invocation: f.invocation as NonEmptyStr,
-              unit_pinned_image_digest: Sha256Hash(image),
+              unit_pinned_base_image_digest: Sha256Hash(image),
               unit_digest: Sha256Hash(unit),
               started_at: f.started_at,
             ) }

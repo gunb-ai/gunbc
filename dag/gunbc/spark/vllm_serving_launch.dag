@@ -33,12 +33,22 @@ import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
 // invocation and discriminates no pair the invocation does not already separate. It was a redundant
 // field with a root-shaped price, which is how it came to block an unprivileged instrument.
 //
-// WHAT REPLACED THE IMAGE DIGEST, stated precisely because the two are not the same claim.
-// `unit_pinned_image_digest` is the digest the UNIT PINS, read out of the unit text -- the
-// ExecStartPre pulls `...@sha256:<digest>` and creates from it, so hashing what systemd will run is
-// unprivileged and exact about the SPECIFICATION. It is not proof of what the running container is:
-// a container started outside the unit could differ, and nothing here detects that. The residual is
-// named rather than closed, and closing it needs the privileged leg rather than a standing grant.
+// WHAT REPLACED THE IMAGE DIGEST, AND HOW LITTLE IT CLAIMS. An earlier spelling of this field said
+// the unit "pulls ...@sha256:<digest> and creates from it". It does not. The realization is:
+//
+//     docker image pull  aidendle94/sparkrun-vllm-ds4-gb10@sha256:<digest>   <- the pinned BASE
+//     docker build --tag gunbc-spark-pair-runtime:ray-2.58.0 /var/lib/...    <- a LOCAL image
+//     docker create --name gunbc-spark-pair ... (from the local TAG)         <- what actually runs
+//
+// So the container is created from a locally built image whose digest is nowhere in the unit text.
+// The field is named for the only thing it establishes: the unit text names this pinned base-image
+// digest as an INPUT TO ITS BUILD.
+//
+// It does NOT establish the locally built runtime image's digest, the image the active container was
+// created from, the executable bytes, the build context, or that no out-of-band replacement
+// occurred. Those are privileged runtime facts and they belong in a separate provenance receipt
+// ABOUT this launch -- never as a prerequisite for constructing the launch identity, which is the
+// dependency that made the identity unreadable to the ordinary observer in the first place.
 //
 // WHAT IS DELIBERATELY NOT A FIELD. The engine's self-reported vLLM version string is not identity.
 // extdeps.vllm.server already carries a VllmSourceRevision for what the LAWS were established
@@ -53,7 +63,7 @@ type VllmServingLaunch sole_constructor {
   group: FabricGroup
   head: HostIdentity
   systemd_invocation: NonEmptyStr
-  unit_pinned_image_digest: ContentHash
+  unit_pinned_base_image_digest: ContentHash
   unit_digest: ContentHash
   started_at: EpochSecs
 }
@@ -62,7 +72,7 @@ fn vllm_serving_launch(
   group: FabricGroup,
   head: HostIdentity,
   systemd_invocation: NonEmptyStr,
-  unit_pinned_image_digest: ContentHash,
+  unit_pinned_base_image_digest: ContentHash,
   unit_digest: ContentHash,
   started_at: EpochSecs,
 ) -> VllmServingLaunch {
@@ -70,7 +80,7 @@ fn vllm_serving_launch(
     group: group,
     head: head,
     systemd_invocation: systemd_invocation,
-    unit_pinned_image_digest: unit_pinned_image_digest,
+    unit_pinned_base_image_digest: unit_pinned_base_image_digest,
     unit_digest: unit_digest,
     started_at: started_at,
   }
@@ -143,7 +153,7 @@ fn digest_agreement_row(field: NonEmptyStr, agreement: DigestAgreement) -> Field
 fn agreement_rows(a: VllmServingLaunch, b: VllmServingLaunch) -> List<FieldAgreement> {
   [
     field_agreement(field: "head" as NonEmptyStr, agrees: (a.head as String) == (b.head as String)),
-    digest_agreement_row(field: "unit_pinned_image_digest" as NonEmptyStr, agreement: digests_agree(left: a.unit_pinned_image_digest, right: b.unit_pinned_image_digest)),
+    digest_agreement_row(field: "unit_pinned_base_image_digest" as NonEmptyStr, agreement: digests_agree(left: a.unit_pinned_base_image_digest, right: b.unit_pinned_base_image_digest)),
     digest_agreement_row(field: "unit_digest" as NonEmptyStr, agreement: digests_agree(left: a.unit_digest, right: b.unit_digest)),
     field_agreement(field: "group" as NonEmptyStr, agrees: (fabric_group_wire(g: a.group) as String) == (fabric_group_wire(g: b.group) as String)),
     field_agreement(field: "started_at" as NonEmptyStr, agrees: a.started_at == b.started_at),

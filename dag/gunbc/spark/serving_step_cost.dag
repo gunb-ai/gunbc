@@ -31,37 +31,60 @@ import std.measure { TokenCount, token_count, token_count_value }
 // single step where its prefill completes (158,764 in one observation here), exactly like
 // prompt_tokens_total does for the booked total. The step COUNT is what carries usable per-step
 // information, and only when polled faster than the steps complete.
+type StepCostObservation sole_constructor {
+  profile: NonEmptyStr
+  shape: ServingStepShape
+  elapsed_millis: Nat
+  provenance: NonEmptyStr
+}
+
 type ServingStepShape {
   computed_prefill: TokenCount
   decode_sequences: Nat
 }
 
-// An observation belongs to the realization that produced it. A cell measured on one launch does not
-// silently describe another: the profile is named, and a consumer comparing across profiles is
-// comparing different engines.
-type StepCostObservation sole_constructor {
+// WHAT THE POLL ACTUALLY EARNED, WHICH IS A RUN AGGREGATE AND NOT A STEP CELL.
+//
+// An earlier shape of this module recorded a single StepCostObservation whose shape was 1,913
+// computed tokens at a 2,300ms median. Those two numbers were never observed together: 1,913 is the
+// RUN-WIDE AVERAGE (158,764 tokens over 83 iterations) and 2,300ms is the MEDIAN of the observed
+// inter-iteration intervals. Pairing an average token count with a median duration and calling it
+// one step's cost is a fabricated observation -- nobody measured a 1,913-token step taking 2.30s,
+// and still less that every 2,048-token step costs that.
+//
+// So the evidence is carried at the grain it was taken: one cold-prefill run, its totals, and the
+// distribution of intervals between completed iterations. Every derived quantity below comes from
+// run-level terms only.
+type ColdPrefillRunAggregate sole_constructor {
   profile: NonEmptyStr
-  shape: ServingStepShape
-  samples: Nat
-  median_millis: Nat
-  min_millis: Nat
-  max_millis: Nat
+  total_computed_prefill: TokenCount
+  completed_iterations: Nat
+  elapsed_millis: Nat
+  inter_iteration_min_millis: Nat
+  inter_iteration_median_millis: Nat
+  inter_iteration_max_millis: Nat
   provenance: NonEmptyStr
 }
 
-data spark_group_a_profile: NonEmptyStr = "spark group A, head spark-3bd5, TP=4 over the 50G RoCE rail, deepseek-v4-flash:iq3s-split, fp8_ds_mla, image sha256:f869281d, launch invocation d140fa39c1174403bf2ce4d7ed8c2d74" as NonEmptyStr
+data spark_group_a_profile: NonEmptyStr = "spark group A, head spark-3bd5, TP=4 over the 50G RoCE rail, deepseek-v4-flash:iq3s-split, fp8_ds_mla, launch invocation d140fa39c1174403bf2ce4d7ed8c2d74" as NonEmptyStr
 
-data spark_group_a_cold_prefill_step: StepCostObservation = StepCostObservation {
+data spark_group_a_cold_prefill_run: ColdPrefillRunAggregate = ColdPrefillRunAggregate {
   profile: spark_group_a_profile,
-  shape: ServingStepShape { computed_prefill: token_count(count: 1913), decode_sequences: 0 },
-  samples: 83,
-  median_millis: 2300,
-  min_millis: 940,
-  max_millis: 2680,
-  provenance: "200ms poll of vllm:iteration_tokens_total_count across one cold 158,764-token prefill on an otherwise idle engine, 2026-09-07; inter-step intervals taken between consecutive count advances, never between polls" as NonEmptyStr,
+  total_computed_prefill: token_count(count: 158764),
+  completed_iterations: 83,
+  elapsed_millis: 185500,
+  inter_iteration_min_millis: 940,
+  inter_iteration_median_millis: 2300,
+  inter_iteration_max_millis: 2680,
+  provenance: "200ms poll of vllm:iteration_tokens_total_count across one cold 158,764-token prefill on an otherwise idle engine, 2026-09-07; intervals taken between consecutive count advances, never between polls" as NonEmptyStr,
 }
 
-data spark_serving_step_costs: List<StepCostObservation> = [spark_group_a_cold_prefill_step]
+// THE EXACT PER-STEP POPULATION IS EMPTY, AND THAT IS THE HONEST STATE. A cell here requires knowing,
+// for one completed scheduler step, which requests received how many COMPUTED tokens and how long
+// that step took. No served metric carries it (extdeps.vllm.metrics refuses the pairing) and the
+// poll above cannot recover it. The authorised privileged step trace is what promotes individual
+// steps into this list; until then it stays empty and every lookup refuses.
+data spark_serving_step_costs: List<StepCostObservation> = []
 
 // ── THE ONE PREDICTION THIS CELL SUPPORTS ─────────────────────────────────────────────────────
 //
@@ -76,24 +99,24 @@ type CoTenantDecodeRate
   = DecodeRatePredicted { milli_tokens_per_second: Nat, from: NonEmptyStr }
   | DecodeRateOutsideCalibration { cause: NonEmptyStr }
 
-fn co_tenant_decode_rate(obs: StepCostObservation) -> CoTenantDecodeRate {
-  if obs.median_millis == 0 {
+fn co_tenant_decode_rate(run: ColdPrefillRunAggregate) -> CoTenantDecodeRate {
+  if run.inter_iteration_median_millis == 0 {
     DecodeRateOutsideCalibration { cause: "a zero-duration step predicts an unbounded rate" as NonEmptyStr }
   } else {
     DecodeRatePredicted {
-      milli_tokens_per_second: 1000000 / obs.median_millis,
-      from: obs.profile,
+      milli_tokens_per_second: 1000000 / run.inter_iteration_median_millis,
+      from: run.profile,
     }
   }
 }
 
 // COMPUTED PREFILL THROUGHPUT IS DERIVED, NOT DECLARED. Nobody should be able to edit "890 tok/s"
 // as a literal: it is tokens per step over step duration, and it moves when either does.
-fn computed_prefill_tokens_per_second(obs: StepCostObservation) -> Nat? {
-  if obs.median_millis == 0 {
+fn computed_prefill_tokens_per_second(run: ColdPrefillRunAggregate) -> Nat? {
+  if run.elapsed_millis == 0 {
     none
   } else {
-    Present { value: (token_count_value(t: obs.shape.computed_prefill) * 1000) / obs.median_millis }
+    Present { value: (token_count_value(t: run.total_computed_prefill) * 1000) / run.elapsed_millis }
   }
 }
 
@@ -115,7 +138,7 @@ fn step_cost_for(shape: ServingStepShape) -> StepCostLookup {
         cause: join([
           "no step-cost cell for ", to_string(token_count_value(t: shape.computed_prefill)),
           " computed prefill tokens beside ", to_string(shape.decode_sequences),
-          " decode sequence(s) on this profile; the measured population is one cold-prefill cell and nothing interpolates from it",
+          " decode sequence(s): the exact per-step population is EMPTY until the privileged step trace runs, and the cold-prefill run aggregate is not a step cell",
         ], "") as NonEmptyStr,
       }
   }
