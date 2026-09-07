@@ -1,0 +1,81 @@
+module gunbc.declaration_lookup_index_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust added by indexing the three declaration lookups inside
+// the decl_facts marshal. Authored because gunbc.seed_growth_admission
+// seed_growth_forward_freeze_policy_note makes unenumerated hand growth in src/v1 a stop-line, and
+// this change adds items to two files.
+//
+// HAND-ITEM DELTA: +2 citable production declarations, +1 citable test module carrying +2 citable
+// declarations, PLUS 3 uncitable impl methods enumerated in prose below.
+//
+// WHAT THE CHANGE IS, AND WHAT IT IS NOT. It originates NO capability: every lookup it touches
+// already existed and already returned exactly the answer it returns now. What changes is the SHAPE
+// of the walk behind them. coproduct_reflection.eval_decl_facts marshals every declaration row of
+// the corpus, and for each DataItem row data_initializer_identity reached three lookups that were
+// linear scans re-slicing authored names out of source spans:
+// typed_module_for_path (declarations x modules), and module_path_for_type_decl_node and
+// coproduct_type_item_parse_tree (declarations x modules x items). Every factor is a corpus
+// population and they grow together, so one whole-corpus inventory was a PRODUCT rather than a
+// lookup -- DESIGN section 6's always-fixed cost-shape defect, which is fixed regardless of the
+// realized n because "n is small here" is not time-stable.
+//
+// FIRST-DECLARER-WINS IS PRESERVED AND IS THE CORRECTNESS CONTENT. Both indices are filled by
+// walking ctx.modules in the SAME order the replaced loops walked, inserting only where the key is
+// absent, so an ambiguous name resolves to the same declaration the `find` and the `for`/`return`
+// resolved to. An index that took the LAST declarer would not be a slower or faster answer, it
+// would be a different one; that is why the fill order is stated here rather than left to the
+// reader of the HashMap.
+//
+// WHY IT IS RUST AND NOT .dag. The subject is a host walk over ctx.modules -- the seed's own
+// prepared typecheck inventory, which the substrate cannot name -- reached from inside the host
+// marshal that turns host rows into interpreter values. The lookups have to run on the side of the
+// seam where TypedModule and its items still exist as host structures; running them on the other
+// side is the cost being removed. This is the same boundary gunbc.decl_facts_shared_memo_seed_growth
+// and gunbc.keyed_declaration_read_seed_growth record one and two seams over.
+//
+// WHAT IT DOES NOT CLAIM. It closes no currently-red gate. gunbc#10741's keyed read took the three
+// v2.test.claim.construction_justification.outside_modeled_guarantee_witness_test identities inside
+// their line by narrowing ONE path off the population read; it deleted no population read, and the
+// remaining decl_facts(pool_roots:) population call sites across v2.lens and v2.workflow still pay
+// this marshal. Re-derive the cost from the floor's per-claim cost receipt rather than transcribing
+// a figure: the staged measurement that established both scans was taken against a pre-#10741 tree
+// and that tree no longer exists.
+//
+// UNCITABLE ITEMS ADDED BY THIS CHANGE (prose-only until std.decl_ref gains ImplMethod), all three
+// in `impl InterpContext` in v1_compiler.v1_interpreter. They are enumerated here rather than keyed
+// into gunbc.seed_growth_admission seed_growth_uncitable_item_keys, following the precedent
+// gunbc.reference_closure_binder_seed_growth set for its own three impl methods: that roster's rows
+// are rendered by gunbc.rust_item_identity rust_item_identity_key from the OBSERVED item, so a
+// hand-guessed spelling would be a fabricated value that the completeness join compares against and
+// refuses on. The prose is the honest enumeration until the key comes from the producer:
+//   typed_module_for_authored_path  -- the authored-path -> TypedModule lookup, filling on first ask
+//   typed_module_by_path_fill_count -- how many times that index was BUILT, which is what lets a
+//                                      test tell an index from a scan; asserting only that the
+//                                      lookup ANSWERS would be a decoration, since the scan
+//                                      answered too
+//   type_decl_index                 -- the same lazy fill for the two type-declaration lookups
+// They are hand Rust and they are enumerated; what they are not is CITABLE, and stating that is the
+// point of listing them here rather than minting a DeclarationRef spelling the carrier cannot
+// represent.
+//
+// THE THREE NEW ctx FIELDS (typed_module_by_path, typed_module_by_path_fills, type_decl_index) and
+// the two rewritten lookup bodies are ExistingSeedItemModified per
+// gunbc.seed_growth_admission SeedGrowthChangeDisposition, capability_origin NoNewCapability: no
+// new declaration, and no answer that did not already exist.
+data declaration_lookup_index_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.data_initializer_identity", decl_name: "TypeDeclIndex", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.data_initializer_identity", decl_name: "build_type_decl_index", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "typed_module_index_tests", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.typed_module_index_tests", decl_name: "ctx", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.typed_module_index_tests", decl_name: "module_lookup_walks_the_corpus_once_however_many_times_it_is_asked", field: WholeDeclaration }
+  ],
+  reason: "An index over the seed's own prepared typecheck inventory is a property of the host that holds that inventory. TypeDeclIndex and build_type_decl_index are one item each because they are the carrier and its producer, and the producer is separate because it fills BOTH maps in one pass: module_by_file_and_type_name for module_path_for_type_decl_node and coproduct_by_bare_name for coproduct_type_item_parse_tree. Two passes would walk the corpus twice to answer two questions about the same items, which is the defect being repaired, one level up.\n\nTHE TEST MODULE IS ENUMERATED RATHER THAN WAVED THROUGH because it is the change's only discriminating red. A fill count is the property: an index and a scan both ANSWER, and only the count distinguishes them, so the test asserts 64 lookups walk the corpus once. Its honest rung is stated where it lives -- the assertion executes under cargo test, which no CI step runs (gunbc.rung_drop rust_unit_tests_off_the_merge_path), so it is the authorable red at the fixture boundary and not required-path evidence. What it does buy on the required path is attribution: naming the accessor makes deleting it a compile error under cargo clippy --all-targets, which IS a required lane, so a reintroduced scan cannot come back silently and surface only as a slow witness blamed on whatever change is in flight.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete all three when the declaration census is a MODELED operation over a modeled prepared inventory rather than a host walk -- at which point 'which module declares this path' and 'which type item carries this name' are ordinary modeled queries over modeled collections, and an index over them is a realization decision the substrate makes rather than a host structure anyone hand-writes. This receipt dissolves with gunbc.decl_facts_shared_memo_seed_growth and gunbc.keyed_declaration_read_seed_growth and not before: they are one seam, and retiring the marshal while its lookups stayed hand-indexed would leave an index keyed on a population nothing models.",
+  current_boundary: "Two lazily-filled maps derived from ctx.modules, which the InterpContext owns as an Rc<im::Vector> set once at construction and never mutated on a live ctx -- so neither index can go stale, and both die with the ctx exactly as the adjacent param_name_cache, var_sym_cache, call_func_name_cache and cast_kernel_cache do. They hold no state beyond that derivation, decide nothing, and answer no question the scans did not answer. What they do NOT bound is the demand: the marshal still asks once per DataItem row, so the walk is amortized across the rows of ONE inventory and re-walked for the next ctx. That is the correct scope -- the ctx is the least common ancestor of those per-row demands -- and it is why this is a carry rather than a cache: nothing is retained past the frame whose rows asked."
+}

@@ -17704,60 +17704,86 @@ pub fn v1_call_forwarding_clone_bound_param_names(
     shared_types: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if ((generic_param_names.clone().len() as i64) == 0) {
+            return Rc::new(vec![]);
+        }
+        let here = match (*body.expr_data.clone()).clone() {
+            ExprData::ExprCall { .. } => v1_call_site_clone_forwarded_param_names(
+                body.clone(),
+                generic_param_names.clone(),
+                fn_decl_items.clone(),
+                emit_info.clone(),
+                shared_types.clone(),
+                source_indices.clone(),
+            ),
+            _ => Rc::new(vec![]),
+        };
+        body.children.clone().iter().cloned().fold(
+            here.clone(),
+            |acc: Rc<Vec<String>>, child: Rc<Node>| {
+                crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
+                    acc,
+                    v1_call_forwarding_clone_bound_param_names(
+                        generic_param_names.clone(),
+                        child.clone(),
+                        fn_decl_items.clone(),
+                        emit_info.clone(),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                    ),
+                )
+            },
+        )
+    })
+}
+
+pub fn v1_call_site_clone_forwarded_param_names(
+    call: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     {
         let si = source_indices.clone();
-        let call_node = match (*body.expr_data.clone()).clone() {
-            ExprData::ExprCall { .. } => Some(body.clone()),
-            ExprData::ExprLambda => {
-                let lb = crate::v1_std_core::lambda_body(body.clone());
-                match (*lb.expr_data.clone()).clone() {
-                    ExprData::ExprCall { .. } => Some(lb.clone()),
-                    _ => std::option::Option::None,
-                }
-            }
-            _ => std::option::Option::None,
-        };
-        match call_node.clone() {
+        let callee_name = crate::v1_std_core::expr_call_func_at(call.clone(), si.clone());
+        match v1_rt::map_get(&fn_decl_items, callee_name.clone()) {
             std::option::Option::None => Rc::new(vec![]),
-            Some(call) => {
-                let callee_name = crate::v1_std_core::expr_call_func_at(call.clone(), si.clone());
-                match v1_rt::map_get(&fn_decl_items, callee_name.clone()) {
-                    std::option::Option::None => Rc::new(vec![]),
-                    Some(callee_item) => match callee_item.body.clone() {
-                        std::option::Option::None => Rc::new(vec![]),
-                        Some(callee_body) => {
-                            let callee_params = callee_item.params.clone();
-                            let callee_type_params = function_type_params(callee_params.clone());
-                            let callee_generic_param_names = Rc::new({
-                                let mut __result = Vec::new();
-                                for p in callee_type_params.iter().cloned() {
-                                    __result.push(crate::v1_std_core::generic_param_name_at(
-                                        p.clone(),
-                                        si.clone(),
-                                    ));
-                                }
-                                __result
-                            });
-                            let callee_clone_param_names = v1_fn_body_derived_clone_param_names(
-                                callee_params.clone(),
-                                crate::v1_compiler_infer_types::resolved_type(callee_item.clone()),
-                                callee_body.clone(),
-                                emit_info.clone(),
-                                shared_types.clone(),
+            Some(callee_item) => match callee_item.body.clone() {
+                std::option::Option::None => Rc::new(vec![]),
+                Some(callee_body) => {
+                    let callee_params = callee_item.params.clone();
+                    let callee_type_params = function_type_params(callee_params.clone());
+                    let callee_generic_param_names = Rc::new({
+                        let mut __result = Vec::new();
+                        for p in callee_type_params.iter().cloned() {
+                            __result.push(crate::v1_std_core::generic_param_name_at(
+                                p.clone(),
                                 si.clone(),
-                            );
-                            v1_call_forwarding_forwarded_param_names(
-                                call.clone(),
-                                function_value_params(callee_params.clone()),
-                                callee_generic_param_names.clone(),
-                                callee_clone_param_names.clone(),
-                                generic_param_names.clone(),
-                                si.clone(),
-                            )
+                            ));
                         }
-                    },
+                        __result
+                    });
+                    let callee_clone_param_names = v1_fn_body_derived_clone_param_names(
+                        callee_params.clone(),
+                        crate::v1_compiler_infer_types::resolved_type(callee_item.clone()),
+                        callee_body.clone(),
+                        emit_info.clone(),
+                        shared_types.clone(),
+                        si.clone(),
+                    );
+                    v1_call_forwarding_forwarded_param_names(
+                        call.clone(),
+                        function_value_params(callee_params.clone()),
+                        callee_generic_param_names.clone(),
+                        callee_clone_param_names.clone(),
+                        generic_param_names.clone(),
+                        si.clone(),
+                    )
                 }
-            }
+            },
         }
     }
 }

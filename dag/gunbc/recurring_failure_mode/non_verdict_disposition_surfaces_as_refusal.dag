@@ -86,6 +86,28 @@ data non_verdict_disposition_surfaces_as_refusal: RecurringFailureMode = Recurri
     "RECOGNITION RULE: ask what the gate reports when it could not measure, and compare it with what it reports when it measured and found the subject wrong. ",
 
     "If those two are the same value, the gate's refusals do not name a subject, and the tell is behavioural: people begin rerunning it rather than reading it.)",
+
+    "**REPAIR RECEIPT AT ONE BOUNDARY, gunbc#10757's pair, landed by the changed-witness projection.** This row's claim is that a computed distinction is erased ON THE WAY OUT; on the changed-witness boundary the erasure was ONE LINE in each realization, and it is now closed there. ",
+
+    "`v2.workflow.floor_changed_witness` `changed_witness_blocking_identities` folded `List<ChangedWitnessRow>` -- every row carrying its full `ChangedWitnessExecutionStanding`, the `Declined` arm carrying the disposition itself -- down to `List<String>`, and the host mirror did the same into `RequiredFloorOutcome.changed_witness_blocking: Vec<String>`. ",
+
+    "With nothing left to say, `claim_executor` stamped the constant `changed_witness_blocking` on every member: the name of the POPULATION rather than of anything that happened. ",
+
+    "The fold now returns `ChangedWitnessBlocker { identity, cause }` and the cause is chosen in the same expression that chooses the standing, so a decline that never executed, a planned witness that ran and reached no verdict, an override with no published cost, and an identity with no disposition row reach the merge gate as four different strings. ",
+
+    "A DECLINE'S CAUSE IS THE DISPOSITION'S OWN WIRE NAME, UNPREFIXED, so the measurement receipt and `required_floor_disposition.tsv` now spell one fact one way -- the join gunbc#10757 required a human to make by reading two artifacts side by side. ",
+
+    "WHAT DID NOT CHANGE, DELIBERATELY: the exits. Those fifteen identities still block, and the two ways to discharge them are still the two real ones -- make the witness reachable, or declare it unreachable. ",
+
+    "Widening `--source-root` to reach them was proposed and WITHDRAWN BY THE LANE THAT ASKED FOR IT, because it silences one lane's fifteen and leaves the boundary standing for the next; a decline made non-blocking is that same widening wearing a different hat. ",
+
+    "What changes is that the gate no longer offers `run it again` as the affordance for a state a rerun cannot discharge, which is this row's own sentence: a wall that is discharged by rerunning is not a wall. ",
+
+    "RUNG ON THIS BOUNDARY: mechanically preventable. ",
+
+    "The cause is now carried rather than reconstructed, and a blocking row with an empty cause REFUSES in `changed_witness_projection_rows` rather than travelling as a blank -- but the invalid state is still writable, since nothing structurally binds a blocker's cause to the standing that produced it. ",
+
+    "It is not the row's ceiling and it is not the row's whole subject: the interrupted-before-verdict / completed-over-cost-requirement pair above is a DIFFERENT boundary in the same fold and is untouched by this repair, so the class's rung remains the minimum across its boundaries.",
   ],
 
   evidence: [],

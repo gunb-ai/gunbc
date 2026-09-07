@@ -1,0 +1,7 @@
+module fixtures.free_call_pool_binding_offchain.offchain_definer
+
+// The off-chain definer for arm C. A separate top-level container on purpose: it shares no
+// ancestor with `fixtures.free_call_pool_binding.subject_offchain` below the root.
+fn pool_specimen_offchain_call(n: Int) -> Int {
+  n
+}
