@@ -2,7 +2,6 @@ module test.claim.fabric_output_contract_resolution_witness
 
 import std.types { NonEmptyStr, Bool, String, Int, List }
 import std.measure { hardware_thread_count }
-import std.content_hash { serialize_content_hash }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus, CensusObserved, CensusNotRunnable,
