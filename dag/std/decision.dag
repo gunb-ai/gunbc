@@ -919,11 +919,41 @@ fn entry_by_identity(field: List<ParetoEntry>, wanted: DeclarationRef) -> Pareto
   (filter(field, e => declaration_ref_eq(a: e.identity, b: wanted))).first()
 }
 
+fn declaration_refs_same_set(a: List<DeclarationRef>, b: List<DeclarationRef>) -> Bool {
+  (a |> count) == (b |> count)
+    && all(a, x => any(b, y => declaration_ref_eq(a: x, b: y)))
+    && all(b, x => any(a, y => declaration_ref_eq(a: x, b: y)))
+}
+
+fn nonempty_str_lists_same_set(a: List<NonEmptyStr>, b: List<NonEmptyStr>) -> Bool {
+  (a |> count) == (b |> count)
+    && all(a, x => any(b, y => x == y))
+    && all(b, x => any(a, y => x == y))
+}
+
+fn candidate_field_standing_eq(a: CandidateFieldStanding, b: CandidateFieldStanding) -> Bool {
+  match a {
+    CandidateFieldEstablished { identities: ia } =>
+      match b {
+        CandidateFieldEstablished { identities: ib } => declaration_refs_same_set(a: ia, b: ib)
+        CandidateFieldUnestablishedStanding { causes: _ } => false
+      }
+    CandidateFieldUnestablishedStanding { causes: ca } =>
+      match b {
+        CandidateFieldUnestablishedStanding { causes: cb } => nonempty_str_lists_same_set(a: ca, b: cb)
+        CandidateFieldEstablished { identities: _ } => false
+      }
+  }
+}
+
 fn receipts_eq(a: SelectionReceipt, b: SelectionReceipt) -> Bool {
   declaration_ref_eq(a: a.decision_subject, b: b.decision_subject)
     && declaration_ref_eq(a: a.candidate_field_identity, b: b.candidate_field_identity)
+    && candidate_field_standing_eq(a: a.candidate_field_standing, b: b.candidate_field_standing)
     && declaration_ref_eq(a: a.constraint_authority, b: b.constraint_authority)
+    && declaration_refs_same_set(a: a.funded_axes, b: b.funded_axes)
     && declaration_ref_eq(a: a.evidence_snapshot, b: b.evidence_snapshot)
+    && declaration_refs_same_set(a: a.pareto_survivors, b: b.pareto_survivors)
     && declaration_ref_eq(a: a.policy_authority, b: b.policy_authority)
     && declaration_ref_eq(a: a.selected_identity, b: b.selected_identity)
 }

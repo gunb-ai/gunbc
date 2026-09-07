@@ -193,6 +193,10 @@ fn axes_reversed() -> List<SelectionAxis> {
   ]
 }
 
+fn axes_power_only() -> List<SelectionAxis> {
+  [SelectionAxis { identity: ax_power, goal: LowerIsBetter }]
+}
+
 fn reading(axis: DeclarationRef, v: Int) -> AxisReading {
   AxisReading { axis: axis, interval_micro: degenerate_interval(point: v) }
 }
@@ -407,6 +411,36 @@ test fn changing_evidence_or_field_identity_invalidates_receipt() -> Bool {
   }
 }
 
+test fn different_funded_axes_are_a_different_receipt() -> Bool {
+  let feasible = entry(id: id_b, label: "ok" as NonEmptyStr, tput: 10, power: 50)
+  match select_realization(
+    assessment: closed_selection_assessment(),
+    candidate_field_identity: id_field,
+    field: [feasible],
+    axes: axes_forward(),
+    constraints: [power_cap],
+    constraint_authority: id_constraints,
+    policy: UniqueSurvivorRequired { identity: id_policy_unique },
+    evidence_snapshot: id_evidence,
+  ) {
+    SelectedWithin { candidate: _, receipt: r1 } =>
+      match select_realization(
+        assessment: closed_selection_assessment(),
+        candidate_field_identity: id_field,
+        field: [feasible],
+        axes: axes_power_only(),
+        constraints: [power_cap],
+        constraint_authority: id_constraints,
+        policy: UniqueSurvivorRequired { identity: id_policy_unique },
+        evidence_snapshot: id_evidence,
+      ) {
+        SelectedWithin { candidate: _, receipt: r2 } => !receipts_eq(a: r1, b: r2)
+        _ => false
+      }
+    _ => false
+  }
+}
+
 test fn world_converge_refuses_unresolved_selection() -> Bool {
   match fleet_operating_point_selection() {
     SelectionNeedsEvidence { needs: ns } => (ns |> count) > 0
@@ -524,6 +558,8 @@ fn realization_selection_witness_main() -> ProcessExit {
     ExitFailure { code: 1, reason: "6 policy-changes-survivor" as NonEmptyStr }
   } else if !changing_evidence_or_field_identity_invalidates_receipt() {
     ExitFailure { code: 1, reason: "7 receipt-identity" as NonEmptyStr }
+  } else if !different_funded_axes_are_a_different_receipt() {
+    ExitFailure { code: 1, reason: "7b funded-axes-identity" as NonEmptyStr }
   } else if !world_converge_refuses_unresolved_selection() {
     ExitFailure { code: 1, reason: "8 converge-unresolved" as NonEmptyStr }
   } else if !selected_within_feeds_world_converge_readback() {
