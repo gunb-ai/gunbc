@@ -83,7 +83,7 @@ fn fixture_blocking_class_count(o: MultiModuleCompileFixtureOutcome, wanted: Str
   match o {
     FixtureCompileRefused { module_count: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
       census_total_count(rows: fixture_blocking_rows(rows: fixture_rows_of_class(rows: rows, wanted: wanted)))
-    FixtureCompileCompleted { module_count: _, emitted_files: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+    FixtureCompileCompleted { module_count: _, emitted_files: _, emitted_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
       census_total_count(rows: fixture_blocking_rows(rows: fixture_rows_of_class(rows: rows, wanted: wanted)))
     FixtureInstrumentRefused { cause: _ } => -1
   }

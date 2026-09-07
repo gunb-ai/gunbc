@@ -58,14 +58,14 @@ test fn omitted_required_record_field_refuses() -> Bool {
             && count(compiler_digest as String) > 0
         Absent => false
       }
-    FixtureCompileCompleted { module_count: _, emitted_files: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+    FixtureCompileCompleted { module_count: _, emitted_files: _, emitted_rust_functions: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
     FixtureInstrumentRefused { cause: _ } => false
   }
 }
 
 test fn complete_required_record_literal_accepts() -> Bool {
   match required_record_fields_supplied_run() {
-    FixtureCompileCompleted { module_count: _, emitted_files: files, diagnostics: rows, source_digest: source_digest, compiler_digest: compiler_digest } =>
+    FixtureCompileCompleted { module_count: _, emitted_files: files, emitted_rust_functions: _, diagnostics: rows, source_digest: source_digest, compiler_digest: compiler_digest } =>
       count(rows) == 0
         && count(files) > 0
         && count(source_digest as String) > 0

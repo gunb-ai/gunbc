@@ -314,13 +314,17 @@ pub fn compile_dag_multi_module_fixture(
             Some(g) => g.modules.len() as i64,
             None => 0,
         };
+        // Resolved-registry projection BEFORE emit consumes the graph. Subject grain: ItemInfo
+        // parameter binding (with emit_ident / service_var_name transforms), keyed by source
+        // identity — not emitted file bytes. Emit-path fidelity is the declared next-rung climb.
+        let emitted_rust_functions = project_emitted_rust_fn_signatures(resolved.as_ref());
         let result = v1_compiler_compile::emit_resolved_for_target(
             resolved,
             crate::v1_compiler_artifact::RenderTarget::Rust,
         );
-        (module_count, result)
+        (module_count, emitted_rust_functions, result)
     }));
-    let (module_count, result) = match compiled {
+    let (module_count, emitted_rust_functions, result) = match compiled {
         Ok(r) => r,
         Err(_) => {
             return MultiModuleCompileFixtureOutcome::InstrumentRefused {
@@ -342,10 +346,70 @@ pub fn compile_dag_multi_module_fixture(
     MultiModuleCompileFixtureOutcome::CompileCompleted {
         module_count,
         emitted_files: result.files.iter().map(|f| f.path.clone()).collect(),
+        emitted_rust_functions,
         diagnostics: rows,
         source_digest,
         compiler_digest,
     }
+}
+
+/// Resolved-registry projection for the Rust emit target: one row per `FnItem` / `FuncItem` in
+/// `item_registry`. `ordered_parameter_names` applies `emit_ident(..., Rust)` on authored params
+/// and resource-use names, then `service_var_name` per service, concatenated in that order — the
+/// same per-arm transforms `emit_func_params` uses today. Not a text parse of emitted bytes.
+///
+/// Below ceiling on ORDER and MEMBERSHIP: this is a second walk over ItemInfo, not a consumption
+/// of `emit_func_params`. Nothing refuses if the emit path and this projection disagree. Next-rung
+/// trigger: derive from the same source `emit_func_params` reads (or from its emit result). Why
+/// unbuilt: emit_rust seed regen + #10688 surface. Name spelling via `emit_ident` /
+/// `service_var_name` is required at this grain so membership cannot miss a reserved-word or
+/// camelCase name the registry arms will hand to emit.
+fn project_emitted_rust_fn_signatures(
+    resolved: &v1_compiler_compile::ResolvedPipelineResult,
+) -> Vec<crate::cli_run::EmittedRustFnSignature> {
+    use crate::v1_compiler_artifact::RenderTarget;
+    use crate::v1_compiler_emit::emit_ident;
+    use crate::v1_compiler_infer_items::ItemKind;
+    use crate::v1_std_core::param_node_name_at;
+    let Some(graph) = resolved.graph.as_ref() else {
+        return Vec::new();
+    };
+    let source_indices = resolved.source_indices.clone();
+    let mut rows: Vec<crate::cli_run::EmittedRustFnSignature> = Vec::new();
+    for info in graph.item_registry.values() {
+        match info.kind {
+            ItemKind::FnItem | ItemKind::FuncItem => {
+                let mut ordered: Vec<String> = Vec::new();
+                for p in info.params.iter() {
+                    ordered.push(emit_ident(
+                        param_node_name_at(p.clone(), source_indices.clone()),
+                        RenderTarget::Rust,
+                    ));
+                }
+                for r in info.resource_names.iter() {
+                    ordered.push(emit_ident(r.clone(), RenderTarget::Rust));
+                }
+                for sn in info.service_names.iter() {
+                    ordered.push(crate::v1_compiler_emit_core_support::service_var_name(
+                        sn.clone(),
+                    ));
+                }
+                rows.push(crate::cli_run::EmittedRustFnSignature {
+                    owner_module: info.module_name.clone(),
+                    declaration_name: info.name.clone(),
+                    ordered_parameter_names: ordered,
+                });
+            }
+            ItemKind::TypeItem
+            | ItemKind::DataItem
+            | ItemKind::ServiceItem
+            | ItemKind::OtherItem => {}
+        }
+    }
+    rows.sort_by(|a, b| {
+        (&a.owner_module, &a.declaration_name).cmp(&(&b.owner_module, &b.declaration_name))
+    });
+    rows
 }
 
 /// Reference-occurrence-grain binding observation over exactly one supplied source vector.

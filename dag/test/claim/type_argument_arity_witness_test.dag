@@ -54,14 +54,14 @@ fn refused_with_class(o: MultiModuleCompileFixtureOutcome, wanted: String) -> Bo
   match o {
     FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
       fixture_has_class(rows, wanted) && count(fixture_blocking_rows(rows)) > 0,
-    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureCompileCompleted { module_count: n, emitted_files: files, emitted_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
     FixtureInstrumentRefused { cause: c } => false
   }
 }
 
 fn completed_with_no_diagnostics(o: MultiModuleCompileFixtureOutcome) -> Bool {
   match o {
-    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+    FixtureCompileCompleted { module_count: n, emitted_files: files, emitted_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
       count(rows) == 0 && count(files) > 0 && n > 0,
     FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
     FixtureInstrumentRefused { cause: c } => false

@@ -83,7 +83,7 @@ fn ubtr_diagnosed_as(o: MultiModuleCompileFixtureOutcome, wanted: String) -> Boo
   match o {
     FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
       fixture_has_class(rows: rows, wanted: wanted),
-    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+    FixtureCompileCompleted { module_count: n, emitted_files: files, emitted_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
       fixture_has_class(rows: rows, wanted: wanted),
     FixtureInstrumentRefused { cause: c } => false
   }
@@ -91,7 +91,7 @@ fn ubtr_diagnosed_as(o: MultiModuleCompileFixtureOutcome, wanted: String) -> Boo
 
 fn ubtr_completed_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
   match o {
-    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+    FixtureCompileCompleted { module_count: n, emitted_files: files, emitted_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
       count(rows) == 0 && count(files) > 0 && n > 0,
     FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
     FixtureInstrumentRefused { cause: c } => false

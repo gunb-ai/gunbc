@@ -3056,6 +3056,26 @@ pub struct MultiModuleFixtureSource {
     pub content: String,
 }
 
+/// Per-function **resolved-registry** projection for the Rust emit target: source identity plus
+/// the ordered parameter name list taken from `ItemInfo` with `emit_ident` /
+/// `service_var_name` transforms. See `tools.multi_module_compile_fixture`
+/// `EmittedRustFnSignature`. Not a read of emitted file bytes — the type name admits the Rust
+/// target, not emit-path observation.
+///
+/// **Names only (permanent ceiling, no next-rung trigger):** no parameter or return types.
+///
+/// **Registry mirror, not emit join (below ceiling — order and membership):** nothing refuses if
+/// `emit_func_params` / `emit_func_def` and this projection disagree. **Next-rung trigger:**
+/// derive from the same source `emit_func_params` reads (or from its emit result). **Why
+/// unbuilt:** emit_rust seed regeneration + #10688 surface. Stall admission must resolve outside
+/// the diff (DESIGN §5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmittedRustFnSignature {
+    pub owner_module: String,
+    pub declaration_name: String,
+    pub ordered_parameter_names: Vec<String>,
+}
+
 /// Outcome of [`compile_dag_multi_module_fixture`]. THE THREE ARMS HAVE THREE DIFFERENT OWNERS:
 /// `InstrumentRefused` is the harness's own fault (malformed manifest, entry naming no supplied
 /// module, panic), `CompileRefused` is the SUBJECT's fault and carries the compiler's judgment,
@@ -3081,6 +3101,7 @@ pub enum MultiModuleCompileFixtureOutcome {
     CompileCompleted {
         module_count: i64,
         emitted_files: Vec<String>,
+        emitted_rust_functions: Vec<EmittedRustFnSignature>,
         diagnostics: Vec<CompileDiagnosticCensusRow>,
         source_digest: String,
         compiler_digest: String,
