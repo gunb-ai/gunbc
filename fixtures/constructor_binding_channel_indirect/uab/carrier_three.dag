@@ -1,0 +1,5 @@
+module uab.carrier_three
+
+import uab.foreign_three { three_marker }
+
+fn carry_three() -> Int { three_marker() }

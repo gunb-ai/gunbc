@@ -1,6 +1,7 @@
 module gunbc.recurring_failure_mode.binding_chosen_by_pool_membership_rather_than_by_the_declared_rule
 
 import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.recurring_failure_mode { RecurringFailureMode }
 
 data binding_chosen_by_pool_membership_rather_than_by_the_declared_rule: RecurringFailureMode = RecurringFailureMode {
@@ -36,6 +37,12 @@ data binding_chosen_by_pool_membership_rather_than_by_the_declared_rule: Recurri
     "It lives in fixtures.if_join_pool_binding as four modules: declaring_module holds the subject and is byte-identical across both arms, colliding_module is the whole of the perturbation, and closure_with_collision and closure_without_collision are the two entry points. ",
 
     "Reproduce with gunbc compile --source-root dag --source-root fixtures/if_join_pool_binding --entry fixtures/if_join_pool_binding/closure_with_collision.dag, which refuses at declaring_module with Coproduct(PoolSpecimenShape) vs Product(PoolSpecimenSquare), against the same command at closure_without_collision.dag, which reports 0 diagnostics. ",
+
+    "THAT FIXTURE NOW HAS AN EXECUTING CONSUMER, which it did not when it landed: for its first weeks nothing in the tree named the directory -- no Rust test, no gate, no witness row -- so the class had a ratified rule, a committed synthetic and a next-rung trigger with NOTHING THAT COULD GO RED, which is the tier DESIGN section 4b rates worse than an absent check because a committed fixture is read as coverage. test.claim.if_join_pool_binding_witness_test reads those four files and hands them to tools.multi_module_compile_fixture as two manifests -- with and without colliding_module, the SAME declaring_module bytes in both -- and is admitted at exact module grain by v2.workflow.required_floor required_gate_prefixes, so the two arms fold on the required floor of every push. ",
+
+    "ITS RED ARM IS PINNED AS A DEFECT AND NOT AS A CONTRACT: when the repair below lands the collided manifest must COMPILE CLEAN and that arm must be rewritten, which is the wall landing rather than the witness breaking. ",
+
+    "THE DISCRIMINATION WAS DEMONSTRATED BY MUTATION rather than assumed: deleting colliding_module from the perturbed manifest reds exactly the two arms whose subject it is and leaves the positive control green, and pointing any manifest path at a file that does not exist refuses the read rather than rendering as zero diagnostics. ",
 
     "The fixture is deliberately OUTSIDE the compiled source roots: an authentic collision committed into dag or src/v2 would be a real corpus fork, so the specimen is source handed to the compiler by a fixture, which is the position DESIGN section 4b names when it asks whether a RED is authorable. ",
 
@@ -224,5 +231,9 @@ data binding_chosen_by_pool_membership_rather_than_by_the_declared_rule: Recurri
     "CROSS-LINK: this class is what makes join_judged_against_its_sibling_rather_than_its_declared_context visible; repairing that join alone would silence the diagnostic while leaving the wrong binding in place, so the ordering is resolution first.",
   ],
 
-  evidence: [],
+  evidence: [
+    DeclarationRef { module_path: "test.claim.if_join_pool_binding_witness_test", decl_name: "an_unrelated_pool_member_refuses_the_declaring_modules_own_if_join", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.if_join_pool_binding_witness_test", decl_name: "the_same_declaring_module_compiles_clean_without_the_pool_member", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.if_join_pool_binding_witness_test", decl_name: "the_fixture_modules_are_readable", field: WholeDeclaration },
+  ],
 }

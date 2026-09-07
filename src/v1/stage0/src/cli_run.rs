@@ -40368,6 +40368,20 @@ fn long_home_storage_agreement(
     }
 }
 
+/// ONE BLOCKING CHANGED-WITNESS ROW AS ITS CONSUMER RECEIVES IT: the identity, and the CAUSE that
+/// made it block. Host mirror of `v2.workflow.floor_changed_witness` `ChangedWitnessBlocker`.
+///
+/// The pair travels together because the identity alone is what this population used to carry,
+/// and the cause is exactly what its consumer could not recover: `claim_executor` had one
+/// constant to stamp, so a declined witness that never executed and a claim that ran and failed
+/// arrived at the merge gate as the same bit. `cause` is never empty on a blocking row —
+/// `changed_witness_projection_rows` refuses rather than emitting one that is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChangedWitnessBlocker {
+    pub identity: String,
+    pub cause: String,
+}
+
 /// What one required-floor attempt did. The three identity counts are separate fields rather
 /// than one `total` because the operator's acceptance census asks them to be EQUAL, and a
 /// single number cannot be compared with itself: a run that planned 9,267 claims, executed
@@ -40561,9 +40575,19 @@ pub struct RequiredFloorOutcome {
     pub changed_witness_rows: usize,
     /// The changed identities whose `ChangedWitnessExecutionStanding`
     /// (`v2.workflow.floor_changed_witness`) BLOCKS — declined, missing from the disposition
-    /// receipt, or planned without a terminal Passed verdict. Non-empty reds the required
-    /// context; see `required_floor_outcome_is_clean` in `claim_executor`.
-    pub changed_witness_blocking: Vec<String>,
+    /// receipt, or planned without a terminal Passed verdict — EACH WITH THE CAUSE THAT MADE IT
+    /// BLOCK. Non-empty reds the required context; see `required_floor_outcome_is_clean` in
+    /// `claim_executor`.
+    ///
+    /// THIS WAS A `Vec<String>` AND THE CAUSE WAS THE DEFECT. The standings above are computed
+    /// per row and were dropped on the way into this field, so `claim_executor` had one constant
+    /// to stamp on all of them and the merge gate received one bit for four materially different
+    /// states. Measured on gunbc#10757: fifteen identities that never executed (the disposition
+    /// artifact counts them `declined_changed_witness_outside_discovery=15`) reached the
+    /// measurement receipt as `cause=changed_witness_blocking`, indistinguishable from a claim
+    /// that ran and failed, in a run where zero claims failed. Authority for the cause spelling:
+    /// `v2.workflow.floor_changed_witness` `changed_witness_blocking_cause`.
+    pub changed_witness_blocking: Vec<ChangedWitnessBlocker>,
 }
 
 fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {

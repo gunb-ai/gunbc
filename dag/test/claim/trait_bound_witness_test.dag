@@ -72,7 +72,8 @@ test fn current_defect_reproduces_bare_generic_no_clone_impl() -> Bool {
 
 // gunbc dashboard node://adhoc-574e999b-39c, Row 1b. Proves
 // v1_call_forwarding_clone_bound_param_names / v1_call_forwarding_bound_wrapper_param_names
-// (src/v1/trait_bound_witness.dag, TraitBoundWitnessScope BoundedToDirectSingleCallLambdaBody)
+// (src/v1/trait_bound_witness.dag; the TraitBoundWitnessScope variant that once fenced this,
+// BoundedToDirectSingleCallLambdaBody, is retired -- the clone walk is recursive now)
 // through the real emit pipeline via compile_dag_rust_emit_check, same discipline as the sibling
 // RC-match witness above -- no v1.compiler import. Fixture is traced to reproduce
 // src/v2/std/staging.dag's real cached_stage<A, B> shape (compound-arity CacheProbe<B> forwarded
@@ -89,11 +90,16 @@ test fn current_defect_reproduces_bare_generic_no_clone_impl() -> Bool {
 // cached_stage_governed<A, B> shape, confirmed unbounded against a live compile this session. That
 // residual gap does not manifest as a rustc error in the census entrypoint's dependency closure
 // (cached_stage_governed has zero callers there, and its own generic body never itself requires A:
-// Clone / B: Clone to typecheck), so it is recorded here as a declared, non-silent scope boundary
-// rather than fixed -- fixing it would require the same recursive body-walker (mirroring
-// emit_rust_expr_if/emit_rust_expr_let's accessor shapes) that
-// BoundedToDirectSingleCallLambdaBody's own note already names as its next-rung trigger, and is
-// deliberately not built in this PR (DESIGN.md S6).
+// Clone / B: Clone to typecheck). THAT BOUNDARY IS NOW CLOSED, and this witness records the climb
+// rather than the fence: it was written expecting RED (asserting the bare <A, B> signature and the
+// ABSENCE of the bound), and the recursive body walker its own note named as the next-rung trigger
+// has since been built, so the expectations are INVERTED here and the witness stands as a permanent
+// regression control -- an expecting-red probe that greens when its wall lands does not retire
+// (DESIGN.md S4b(4)). The trigger fired on a second specimen, std.realization_schedule
+// cost_account_time_count<S>, whose body reaches its call through a match scrutinee; regen refused
+// that seed with E0277 until the walk descended. Verified by execution: before the walk this
+// fixture emitted `fn cached_stage_governed<A, B>(`, and it now emits
+// `fn cached_stage_governed<A: Clone, B: Clone>(`.
 
 fn w_call_forwarding_derives_clone_bound_from_callee() -> Bool {
   compile_dag_rust_emit_check(
@@ -108,15 +114,15 @@ test fn call_forwarding_derives_clone_bound_from_callee() -> Bool {
   w_call_forwarding_derives_clone_bound_from_callee()
 }
 
-fn w_call_forwarding_scope_excludes_match_wrapped_body() -> Bool {
+fn w_call_forwarding_reaches_match_wrapped_body() -> Bool {
   compile_dag_rust_emit_check(
     "module fn_clone_bound_witness.call_forwarding_match_wrapped\ntype CacheProbe<B>\n  = Miss\n  | Hit { value: B }\n\nfn resolve_probe<A, B>(probe: CacheProbe<B>, stage: fn(A) -> B, x: A) -> B {\n  match probe {\n    Hit { value: hit } => hit\n    Miss => stage(x)\n  }\n}\n\nfn cached_stage_governed<A, B>(governed: Bool, lookup: fn(A) -> CacheProbe<B>, stage: fn(A) -> B) -> fn(A) -> B {\n  fn(x) {\n    match governed {\n      true => resolve_probe(probe: lookup(x), stage: stage, x: x)\n      false => stage(x)\n    }\n  }\n}\n",
     "src/fn_clone_bound_witness_call_forwarding_match_wrapped.rs",
-    ["fn cached_stage_governed<A, B>("],
-    ["fn cached_stage_governed<A: Clone, B: Clone>("]
+    ["fn cached_stage_governed<A: Clone, B: Clone>("],
+    ["fn cached_stage_governed<A, B>("]
   )
 }
 
-test fn call_forwarding_scope_excludes_match_wrapped_body() -> Bool {
-  w_call_forwarding_scope_excludes_match_wrapped_body()
+test fn call_forwarding_reaches_match_wrapped_body() -> Bool {
+  w_call_forwarding_reaches_match_wrapped_body()
 }

@@ -1,0 +1,123 @@
+module extdeps.tools.mosquitto_pub
+
+import std.types { String, NonEmptyStr, Bool, Port, FilePath, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.version { VersionConstraint }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.tools { CliTool, SourceApt }
+import extdeps.apt { package_mosquitto_clients }
+import extdeps.oasis.mqtt { MqttQos, mqtt_qos_wire_level, MqttEndpoint }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "mosquitto.org/man/mosquitto_pub-1.html"
+  }
+}
+
+// THE OPTIONS FILE IS A SEPARATE CITATION BECAUSE IT IS A SEPARATE GUARANTEE. The publish flags are
+// documented on the page above; the FILE that supplies flags without putting them in argv is
+// documented as the "Files" section of that same manual, and it is the whole reason this tool is
+// admissible on this fleet at all. Citing only the flag page would attribute to a source the fact
+// that makes the credential safe, which it does state -- but a reader checking the claim needs to be
+// sent to the sentence that states it, not to the page that contains it somewhere.
+data mosquitto_pub_options_file_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "mosquitto.org/man/mosquitto_pub-1.html#idm140"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.mosquitto_pub",
+      decl_name: "mosquitto_publish_command",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.tools.mosquitto_pub.extdeps_external_authority_anchor,
+  further_citations: [extdeps.tools.mosquitto_pub.mosquitto_pub_options_file_authority],
+}
+
+// 2.0 IS THE FLOOR, AND IT IS NOT A ROUNDED-UP PREFERENCE. The options file this module depends on
+// for keeping the credential out of argv is a libmosquitto 2.0 client feature; a 1.x mosquitto_pub
+// would ignore the file, connect with no credential at all, and be refused by the broker with a
+// message that reads exactly like a wrong access code. That is the fail-open shape where the
+// diagnostic sends the next reader to rotate a credential that was never the problem, so the
+// version is a correctness constraint rather than hygiene.
+data mosquitto_pub_pinned_version: VersionConstraint = ">= 2.0"
+
+data mosquitto_pub_cli_tool: CliTool = CliTool {
+  name: "mosquitto_pub",
+  min_version: Present { value: mosquitto_pub_pinned_version },
+  installable_via: [SourceApt { package: package_mosquitto_clients }],
+}
+
+data mosquitto_pub_program: NonEmptyStr = "mosquitto_pub"
+
+// THE OPTIONS FILE'S NAME IS FIXED BY THE TOOL, WHICH IS WHY THE CALLER BINDS A DIRECTORY.
+// mosquitto_pub reads $XDG_CONFIG_HOME/mosquitto_pub -- the basename is the program's own name and
+// is not selectable, unlike curl's --netrc-file, which takes a path. A caller therefore cannot point
+// the tool at a file it chose; it can only control which DIRECTORY the tool looks in, by setting
+// XDG_CONFIG_HOME. The consequence for the credential bracket is real rather than cosmetic: the
+// private thing that must be created, sealed and destroyed is a DIRECTORY containing a file at this
+// exact name, so gunbc.auth.mosquitto_options_binding seals a directory and not a path.
+data mosquitto_pub_options_file_name: NonEmptyStr = "mosquitto_pub"
+data mosquitto_pub_options_dir_env: NonEmptyStr = "XDG_CONFIG_HOME"
+
+// --insecure DISABLES HOSTNAME CHECKING ONLY, AND READING IT AS "SKIP TLS VERIFICATION" IS THE
+// ERROR THIS NOTE EXISTS TO PREVENT. It was measured here, not assumed: a publish to a Bambu
+// printer with --tls-use-os-certs --insecure still failed with OpenSSL
+// error:0A000086 certificate verify failed. The chain is verified regardless; what --insecure
+// waives is the comparison of the certificate's subject against the -h argument. So a caller that
+// reaches for it as curl's -k gets a refusal, and a caller that supplies no CA at all gets one too.
+//
+// THE CA IS THEREFORE REQUIRED, NOT OPTIONAL, and this builder has no arm that omits it. A tool
+// wrapper whose signature admits an unverified transport is a wrapper whose safe and unsafe
+// invocations are indistinguishable at the call site, which is the shape extdeps.tools.curl already
+// records for --ssl-reqd: there is no arm of that builder producing an unencrypted transfer, and
+// there is no arm of this one producing an unverified peer.
+//
+// WHAT --insecure COSTS IS STATED RATHER THAN HIDDEN. With hostname checking off, any certificate
+// the pinned CA issued is accepted, so this argv authenticates THE ISSUER and not THE MACHINE. It
+// is waived because the fact making it impossible to satisfy is a property of the DEVICE: a Bambu
+// printer's certificate carries its SERIAL as the subject CN, and the client connects to an IP
+// address, so a subject-versus-host comparison compares two things that are never equal by
+// construction. The machine-level identity available instead is the serial, which the caller already
+// holds and spends in the topic; binding the connection to it needs a client that can assert an
+// expected CN, and naming that capability is what keeps this from sitting below its ceiling
+// unnoticed.
+data mosquitto_pub_insecure_flag: NonEmptyStr = "--insecure"
+
+// NO -u AND NO -P PARAMETER EXISTS ON THIS BUILDER, WHICH IS THE POINT. mosquitto_pub offers three
+// ways to supply a password and all three put it in argv: -P, -L's URL userinfo, and nothing else.
+// gunbc.credential_argv_exposure records what an argv word costs on this fleet -- /proc carries no
+// hidepid, /proc/PID/cmdline is mode 0444 -- so a builder with a `password: Secret` parameter would
+// have added a new instance to the class the repository is retiring, in a module written after the
+// class was already known. The account name goes in the options file BESIDE the password rather than
+// on the command line, for the same reason extdeps.tools.curl puts the login in the netrc: splitting
+// them would make the file's presence invisible in the argv and leave a caller believing the tool
+// was authenticated by the -u it can see.
+fn mosquitto_publish_command(
+  endpoint: MqttEndpoint,
+  topic: NonEmptyStr,
+  payload: String,
+  qos: MqttQos,
+  ca_bundle: FilePath,
+) -> ArgvCommand {
+  argv_command(
+    program: mosquitto_pub_program,
+    arguments: [
+      "-h", endpoint.host as String,
+      "-p", to_string(n: endpoint.port),
+      "--cafile", ca_bundle as String,
+      mosquitto_pub_insecure_flag as String,
+      "-q", to_string(n: mqtt_qos_wire_level(qos: qos)),
+      "-t", topic as String,
+      "-m", payload,
+    ],
+  )
+}
