@@ -3,7 +3,10 @@ module gunbc.spark.serving_step_receipt
 import std.types { Bool, String, NonEmptyStr, List }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
-import gunbc.spark.serving_launch_instrumentation { LaunchInstrumentation, AttributionInstrument, FirstPartyStepObserver }
+import gunbc.spark.serving_launch_instrumentation {
+  LaunchInstrumentation, AttributionInstrument, NsightSystems, TorchProfilerEndpoint, FirstPartyStepObserver,
+}
+import gunbc.spark.vllm_serving_launch { VllmServingLaunch }
 
 // ── THE FACT NO SERVED METRIC CAN CARRY ───────────────────────────────────────────────────────
 //
@@ -74,20 +77,105 @@ type ObservationGap {
   because: NonEmptyStr
 }
 
+// ── THE SUBJECT IS A LAUNCH, NOT A DESCRIPTION OF ONE ─────────────────────────────────────────
+//
+// An earlier shape hung the population off a LaunchInstrumentation, which carries bound instruments,
+// prose and a revision -- and no launch identity. Two different systemd invocations with the same
+// instrumentation description would then drop into one population with no contradiction, and
+// step_sequence, which only means anything within a single process, would be silently pooled across
+// restarts. The population's subject is therefore the launch itself, with instrumentation beside it.
+type InstrumentedServingLaunch {
+  launch: VllmServingLaunch
+  instrumentation: LaunchInstrumentation
+}
+
+// AND THE OBSERVER SPECIFICALLY, NOT ANY INSTRUMENT. The three instruments are orthogonal: the
+// first-party observer establishes scheduler ALLOCATIONS, nsys establishes physical SPANS, the torch
+// profiler establishes its own operator trace. None substitutes for another, so a launch carrying
+// only nsys must not admit a population of semantic step receipts -- which the previous nonempty
+// check would have allowed.
+fn launch_binds_step_observer(l: LaunchInstrumentation) -> Bool {
+  fold(l.bound_instruments, init: false, f: (acc, i) =>
+    acc || (match i {
+      FirstPartyStepObserver => true
+      NsightSystems => false
+      TorchProfilerEndpoint => false
+    }))
+}
+
+// ── COMPLETENESS IS RECONCILED, NOT REPORTED ──────────────────────────────────────────────────
+//
+// An earlier shape called a population complete whenever its gap list was empty, without ever reading
+// a step_sequence. That trusts the observer to report the observations it failed to make, which is
+// the one thing a dropping sink cannot be relied on to do: receipts 1 and 3 with no gap recorded
+// looked exactly like a complete run.
+//
+// So the population declares the range it claims to cover, and admission reconciles three independent
+// populations against each other -- the declared range, the receipts present, and the gaps reported.
+// A defect in the observer now shows up as a contradiction rather than as a shorter list.
+type CaptureBoundary {
+  first_sequence: Nat
+  last_sequence: Nat
+}
+
+type SequenceScan {
+  ordered: Bool
+  in_bounds: Bool
+  seen: Nat
+  prev: Nat
+}
+
+fn declared_step_count(b: CaptureBoundary) -> Nat {
+  (b.last_sequence - b.first_sequence) + 1
+}
+
 type StepReceiptPopulation {
-  launch: LaunchInstrumentation
+  subject: InstrumentedServingLaunch
+  boundary: CaptureBoundary
   receipts: List<ServingStepReceipt>
   gaps: List<ObservationGap>
+}
+
+fn scan_sequences(p: StepReceiptPopulation) -> SequenceScan {
+  fold(p.receipts, init: SequenceScan { ordered: true, in_bounds: true, seen: 0, prev: 0 }, f: (acc, r) =>
+    SequenceScan {
+      ordered: acc.ordered && (acc.seen == 0 || r.step_sequence > acc.prev),
+      in_bounds: acc.in_bounds
+        && r.step_sequence >= p.boundary.first_sequence
+        && r.step_sequence <= p.boundary.last_sequence,
+      seen: acc.seen + 1,
+      prev: r.step_sequence,
+    })
+}
+
+fn reported_missing_count(p: StepReceiptPopulation) -> Nat {
+  fold(p.gaps, init: 0, f: (acc, g) => acc + g.missing_count)
 }
 
 type PopulationCompleteness
   = ContiguousAndComplete { steps: Nat }
   | HasObservationGaps { gaps: Nat, first_missing: Nat }
+  | PopulationSelfContradictory { because: NonEmptyStr }
 
 fn population_completeness(p: StepReceiptPopulation) -> PopulationCompleteness {
-  match first(p.gaps) {
-    Absent => ContiguousAndComplete { steps: length(p.receipts) }
-    Present { value: g } => HasObservationGaps { gaps: length(p.gaps), first_missing: g.first_missing_sequence }
+  let scan = scan_sequences(p: p)
+  let declared = declared_step_count(b: p.boundary)
+  let accounted = length(p.receipts) + reported_missing_count(p: p)
+  if !scan.ordered {
+    PopulationSelfContradictory { because: "step sequences are not strictly increasing, so the population contains a duplicate or an out-of-order receipt" as NonEmptyStr }
+  } else {
+    if !scan.in_bounds {
+      PopulationSelfContradictory { because: "a receipt carries a step sequence outside the capture boundary this population declares" as NonEmptyStr }
+    } else {
+      if accounted != declared {
+        PopulationSelfContradictory { because: "receipts plus reported missing steps do not account for the declared capture range, so the observer lost observations it did not report" as NonEmptyStr }
+      } else {
+        match first(p.gaps) {
+          Absent => ContiguousAndComplete { steps: length(p.receipts) }
+          Present { value: g } => HasObservationGaps { gaps: length(p.gaps), first_missing: g.first_missing_sequence }
+        }
+      }
+    }
   }
 }
 
@@ -98,17 +186,18 @@ type CalibrationAdmission
   = AdmittedToCalibration { steps: Nat }
   | RefusedForObservationGap { because: NonEmptyStr }
   | RefusedForUninstrumentedLaunch { because: NonEmptyStr }
+  | RefusedForSelfContradiction { because: NonEmptyStr }
 
 fn population_admits_calibration(p: StepReceiptPopulation) -> CalibrationAdmission {
-  match first(p.launch.bound_instruments) {
-    Absent =>
-      RefusedForUninstrumentedLaunch { because: "this population claims receipts from a launch that bound no observer, so its provenance is unaccounted" as NonEmptyStr }
-    Present { value: _ } =>
-      match population_completeness(p: p) {
-        HasObservationGaps { gaps: n, first_missing: f } =>
-          RefusedForObservationGap { because: "the receipt population has a recorded hole, and a fold over it would report a complete-looking answer over an incomplete population" as NonEmptyStr }
-        ContiguousAndComplete { steps: s } => AdmittedToCalibration { steps: s }
-      }
+  if !launch_binds_step_observer(l: p.subject.instrumentation) {
+    RefusedForUninstrumentedLaunch { because: "this population claims step receipts from a launch that bound no first-party step observer; nsys and the torch profiler establish physical spans and operator traces, neither of which is a scheduler allocation" as NonEmptyStr }
+  } else {
+    match population_completeness(p: p) {
+      PopulationSelfContradictory { because: b } => RefusedForSelfContradiction { because: b }
+      HasObservationGaps { gaps: n, first_missing: f } =>
+        RefusedForObservationGap { because: "the receipt population has a recorded hole, and a fold over it would report a complete-looking answer over an incomplete population" as NonEmptyStr }
+      ContiguousAndComplete { steps: s } => AdmittedToCalibration { steps: s }
+    }
   }
 }
 
@@ -126,6 +215,7 @@ fn largest_scheduled_step(p: StepReceiptPopulation) -> BudgetEvidence {
   match population_admits_calibration(p: p) {
     RefusedForObservationGap { because: b } => NoStepObserved { because: b }
     RefusedForUninstrumentedLaunch { because: b } => NoStepObserved { because: b }
+    RefusedForSelfContradiction { because: b } => NoStepObserved { because: b }
     AdmittedToCalibration { steps: _ } =>
       fold(p.receipts, init: NoStepObserved { because: "the admitted population contains no steps" as NonEmptyStr }, f: (best, r) => {
         let t = step_computed_tokens(r: r)

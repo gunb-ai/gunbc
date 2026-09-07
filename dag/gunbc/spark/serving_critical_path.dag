@@ -366,7 +366,7 @@ fn arm_worst_residual_micros(arm: FitArm, fit: AffineFit) -> Int {
 //     co-tenant       9   ~0.26s     ~1.032 ms/token   ~0.30s
 //
 // THE MARGINAL RATE AGREES ACROSS THE ARMS to within about three percent, and the difference is not
-// resolved even in SIGN: the idle slope estimate moves between 1.026 and 1.057 microseconds per token
+// resolved even in SIGN: the idle slope estimate moves between 1.026 and 1.057 MILLIseconds per token
 // depending on which idle subset is fitted, spanning the co-tenant arm's 1.032. So the honest claim
 // is that moderate co-tenancy did not materially change the per-token cost, not that it changed it by
 // a measured amount in a measured direction.
@@ -402,7 +402,7 @@ type PolicyLeverage
 fn policy_leverage(subject: ServingCostSubject) -> PolicyLeverage {
   match subject {
     PrefillSelfCost =>
-      RequiresInnerExecutionChange { by: "the cost is proportional to computed tokens at about 1.03 microseconds per token and holds on an idle engine, so no admission, routing or batching decision outside the engine reduces it; only the execution layers can" as NonEmptyStr }
+      RequiresInnerExecutionChange { by: "the cost is proportional to computed tokens at about 1.03 MILLIseconds per token, roughly 950 tokens per second, and holds on an idle engine, so no admission, routing or batching decision outside the engine reduces it; only the execution layers can" as NonEmptyStr }
     CoTenantExternality =>
       OuterPolicyCanAddress { by: "a controlled decode-alone versus decode-beside-prefill comparison measured 3.8s against 63.5s, so the latency a co-tenant suffers is far larger than anything in the self-cost contrast and is addressable by placement, reservation, deferral and workload-class separation" as NonEmptyStr }
   }

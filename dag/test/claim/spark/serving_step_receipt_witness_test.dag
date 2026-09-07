@@ -1,25 +1,43 @@
 module test.claim.spark.serving_step_receipt_witness
 
-import std.types { Bool, String, NonEmptyStr, List }
+import std.types { Bool, String, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
+import std.content_hash { ContentHash, content_hash_of_value }
+import product.placement_supply { HostIdentity }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA }
+import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
 import gunbc.spark.serving_launch_instrumentation {
-  LaunchInstrumentation, AttributionInstrument, FirstPartyStepObserver,
+  LaunchInstrumentation, AttributionInstrument, NsightSystems, TorchProfilerEndpoint, FirstPartyStepObserver,
   spark_group_a_pair_head_instrumentation,
 }
 import gunbc.spark.serving_step_receipt {
   RequestPhase, Prefill, Decode, PrefillAndDecodeInSameStep,
   RequestStepAllocation, ServingStepReceipt, step_computed_tokens, step_request_count,
-  ObservationGap, StepReceiptPopulation,
-  PopulationCompleteness, ContiguousAndComplete, HasObservationGaps, population_completeness,
+  ObservationGap, InstrumentedServingLaunch, launch_binds_step_observer,
+  CaptureBoundary, SequenceScan, declared_step_count, StepReceiptPopulation,
+  scan_sequences, reported_missing_count,
+  PopulationCompleteness, ContiguousAndComplete, HasObservationGaps, PopulationSelfContradictory,
+  population_completeness,
   CalibrationAdmission, AdmittedToCalibration, RefusedForObservationGap, RefusedForUninstrumentedLaunch,
-  population_admits_calibration,
+  RefusedForSelfContradiction, population_admits_calibration,
   BudgetEvidence, LargestScheduledStep, NoStepObserved, largest_scheduled_step,
   StepExclusivity, StepServedOneRequest, StepServedSeveral, StepServedNothing, step_exclusivity,
   ProducerStanding, ProducerBound, ProducerUnbuilt, spark_step_receipt_producer,
 }
 
-fn observed_launch() -> LaunchInstrumentation {
+fn fixture_launch(invocation: NonEmptyStr) -> VllmServingLaunch {
+  vllm_serving_launch(
+    group: FabricGroupA,
+    head: "srv-fixture" as HostIdentity,
+    systemd_invocation: invocation,
+    unit_pinned_base_image_digest: content_hash_of_value(value: "fixture-base" as NonEmptyStr),
+    unit_digest: content_hash_of_value(value: "fixture-unit" as NonEmptyStr),
+    started_at: 1788700000,
+  )
+}
+
+fn observed_instrumentation() -> LaunchInstrumentation {
   LaunchInstrumentation {
     bound_instruments: [FirstPartyStepObserver],
     observed_by: "fixture launch with a step observer bound at start" as NonEmptyStr,
@@ -27,7 +45,11 @@ fn observed_launch() -> LaunchInstrumentation {
   }
 }
 
-fn one_request_step(seq: Nat, tokens: Nat) -> ServingStepReceipt {
+fn subject_with(i: LaunchInstrumentation) -> InstrumentedServingLaunch {
+  InstrumentedServingLaunch { launch: fixture_launch(invocation: "inv-a" as NonEmptyStr), instrumentation: i }
+}
+
+fn step_at(seq: Nat, tokens: Nat) -> ServingStepReceipt {
   ServingStepReceipt {
     step_sequence: seq,
     started_micros: 0,
@@ -52,85 +74,136 @@ fn shared_step(seq: Nat) -> ServingStepReceipt {
   }
 }
 
-// THE PER-STEP TOTAL IS DERIVED FROM THE ALLOCATIONS, never reported alongside them. A reported total
-// would be a second authority for one quantity, and the two could disagree.
+fn population(i: LaunchInstrumentation, b: CaptureBoundary, rs: List<ServingStepReceipt>, gs: List<ObservationGap>) -> StepReceiptPopulation {
+  StepReceiptPopulation { subject: subject_with(i: i), boundary: b, receipts: rs, gaps: gs }
+}
+
+// THE PER-STEP TOTAL IS DERIVED FROM ITS ALLOCATIONS, never reported beside them, so no second
+// authority for one quantity can disagree with the first.
 test fn the_step_total_is_a_fold_over_its_allocations() -> Bool {
   step_computed_tokens(r: shared_step(seq: 1)) == 2001
     && step_request_count(r: shared_step(seq: 1)) == 2
-    && step_computed_tokens(r: one_request_step(seq: 1, tokens: 4096)) == 4096
+    && step_computed_tokens(r: step_at(seq: 1, tokens: 4096)) == 4096
 }
 
-// A GAP REFUSES CALIBRATION. This is the wall the whole contract exists for: a dropped receipt is
-// invisible in the surviving population, so a fold over it would report a complete-looking answer
-// over an incomplete population -- exactly the absorbing fallback this programme refuses.
-test fn an_observation_gap_refuses_calibration_rather_than_shrinking_the_population() -> Bool {
-  let holed = StepReceiptPopulation {
-    launch: observed_launch(),
-    receipts: [one_request_step(seq: 1, tokens: 1000), one_request_step(seq: 3, tokens: 1000)],
-    gaps: [ObservationGap { first_missing_sequence: 2, missing_count: 1, because: "sink full" as NonEmptyStr }],
-  }
-  (match population_completeness(p: holed) {
-     HasObservationGaps { gaps: n, first_missing: f } => n == 1 && f == 2
-     ContiguousAndComplete { steps: _ } => false
-   })
-    && (match population_admits_calibration(p: holed) {
-          RefusedForObservationGap { because: b } => string_contains(s: b as String, pattern: "complete-looking answer")
-          _ => false
-        })
-}
-
-// AND A POPULATION FROM AN UNINSTRUMENTED LAUNCH REFUSES FOR A DIFFERENT REASON, which is why the two
-// refusals are separate arms: one is a hole in the evidence, the other is evidence with no provenance.
-test fn receipts_claiming_an_uninstrumented_launch_refuse_separately() -> Bool {
-  match population_admits_calibration(p: StepReceiptPopulation {
-    launch: spark_group_a_pair_head_instrumentation,
-    receipts: [one_request_step(seq: 1, tokens: 1000)],
-    gaps: [],
-  }) {
-    RefusedForUninstrumentedLaunch { because: b } => string_contains(s: b as String, pattern: "provenance is unaccounted")
+// A MISSING SEQUENCE IS CAUGHT WITHOUT THE OBSERVER CONFESSING IT. This is the discriminating RED
+// against the previous contract, which called any gap-free population complete without ever reading a
+// step_sequence -- so receipts 1 and 3 with no gap recorded passed as a complete run. That trusted a
+// dropping sink to report the observations it failed to make.
+test fn an_unreported_missing_sequence_is_a_self_contradiction() -> Bool {
+  match population_admits_calibration(p: population(
+    i: observed_instrumentation(),
+    b: CaptureBoundary { first_sequence: 1, last_sequence: 3 },
+    rs: [step_at(seq: 1, tokens: 1000), step_at(seq: 3, tokens: 1000)],
+    gs: [])) {
+    RefusedForSelfContradiction { because: b } => string_contains(s: b as String, pattern: "did not report")
     _ => false
   }
 }
 
-// A COMPLETE POPULATION ON AN INSTRUMENTED LAUNCH IS ADMITTED. The positive control -- without it the
-// two refusals above would be permanently green and carry no information.
-test fn a_complete_population_on_an_instrumented_launch_is_admitted() -> Bool {
-  match population_admits_calibration(p: StepReceiptPopulation {
-    launch: observed_launch(),
-    receipts: [one_request_step(seq: 1, tokens: 1000), one_request_step(seq: 2, tokens: 2000)],
-    gaps: [],
-  }) {
+// AND SO IS A DUPLICATE OR OUT-OF-ORDER SEQUENCE, which a count-based reconciliation alone would
+// miss: two receipts both numbered 2 account for the range arithmetically.
+test fn a_duplicate_sequence_is_a_self_contradiction() -> Bool {
+  (match population_admits_calibration(p: population(
+     i: observed_instrumentation(),
+     b: CaptureBoundary { first_sequence: 1, last_sequence: 2 },
+     rs: [step_at(seq: 2, tokens: 1000), step_at(seq: 2, tokens: 1000)],
+     gs: [])) {
+     RefusedForSelfContradiction { because: b } => string_contains(s: b as String, pattern: "strictly increasing")
+     _ => false
+   })
+    && (match population_admits_calibration(p: population(
+          i: observed_instrumentation(),
+          b: CaptureBoundary { first_sequence: 1, last_sequence: 9 },
+          rs: [step_at(seq: 4, tokens: 1000), step_at(seq: 11, tokens: 1000)],
+          gs: [ObservationGap { first_missing_sequence: 1, missing_count: 7, because: "sink full" as NonEmptyStr }])) {
+          RefusedForSelfContradiction { because: b } => string_contains(s: b as String, pattern: "outside the capture boundary")
+          _ => false
+        })
+}
+
+// A RECORDED GAP STILL REFUSES CALIBRATION, and now only when the arithmetic actually reconciles --
+// so the gap arm means "the observer told us what it lost", not "the observer said nothing".
+test fn a_reconciled_recorded_gap_refuses_calibration() -> Bool {
+  match population_admits_calibration(p: population(
+    i: observed_instrumentation(),
+    b: CaptureBoundary { first_sequence: 1, last_sequence: 3 },
+    rs: [step_at(seq: 1, tokens: 1000), step_at(seq: 3, tokens: 1000)],
+    gs: [ObservationGap { first_missing_sequence: 2, missing_count: 1, because: "sink full" as NonEmptyStr }])) {
+    RefusedForObservationGap { because: b } => string_contains(s: b as String, pattern: "complete-looking answer")
+    _ => false
+  }
+}
+
+// CALIBRATION REQUIRES THE STEP OBSERVER SPECIFICALLY. The previous admission accepted any nonempty
+// instrument list, so a launch carrying only nsys would have admitted a population of semantic step
+// receipts -- physical spans standing in for scheduler allocations.
+test fn a_launch_carrying_only_a_profiler_does_not_admit_step_receipts() -> Bool {
+  let profiler_only = LaunchInstrumentation {
+    bound_instruments: [NsightSystems, TorchProfilerEndpoint],
+    observed_by: "fixture launch with profilers but no step observer" as NonEmptyStr,
+    revision: spark_group_a_pair_head_instrumentation.revision,
+  }
+  !launch_binds_step_observer(l: profiler_only)
+    && launch_binds_step_observer(l: observed_instrumentation())
+    && (match population_admits_calibration(p: population(
+          i: profiler_only,
+          b: CaptureBoundary { first_sequence: 1, last_sequence: 1 },
+          rs: [step_at(seq: 1, tokens: 1000)],
+          gs: [])) {
+          RefusedForUninstrumentedLaunch { because: b } => string_contains(s: b as String, pattern: "neither of which is a scheduler allocation")
+          _ => false
+        })
+}
+
+// A COMPLETE, RECONCILED POPULATION ON AN OBSERVER-BOUND LAUNCH IS ADMITTED. Without this positive
+// control every refusal above would be permanently green and carry no information.
+test fn a_complete_reconciled_population_is_admitted() -> Bool {
+  match population_admits_calibration(p: population(
+    i: observed_instrumentation(),
+    b: CaptureBoundary { first_sequence: 1, last_sequence: 2 },
+    rs: [step_at(seq: 1, tokens: 1000), step_at(seq: 2, tokens: 2000)],
+    gs: [])) {
     AdmittedToCalibration { steps: s } => s == 2
     _ => false
   }
 }
 
-// THE BUDGET BECOMES ANSWERABLE UNDER LOAD. Today it is a behavioural floor obtained by making the
-// engine idle, which is the one condition production is never in. A receipt population answers it
-// directly, and refuses through the same admission wall when the population is holed.
+// THE POPULATION IS SCOPED TO ONE LAUNCH, so step_sequence -- which means nothing across a restart --
+// cannot be pooled across two invocations. The subject carries the launch identity, not a description
+// of one.
+test fn the_population_subject_carries_a_launch_identity() -> Bool {
+  let p = population(i: observed_instrumentation(), b: CaptureBoundary { first_sequence: 1, last_sequence: 1 }, rs: [step_at(seq: 1, tokens: 5)], gs: [])
+  (p.subject.launch.systemd_invocation as String) == "inv-a"
+    && declared_step_count(b: CaptureBoundary { first_sequence: 4, last_sequence: 9 }) == 6
+    && reported_missing_count(p: p) == 0
+}
+
+// THE BUDGET BECOMES ANSWERABLE UNDER LOAD and inherits every refusal above, so a holed population
+// cannot quietly yield a largest-step answer.
 test fn the_budget_is_read_from_receipts_and_inherits_the_refusal() -> Bool {
-  (match largest_scheduled_step(p: StepReceiptPopulation {
-     launch: observed_launch(),
-     receipts: [one_request_step(seq: 1, tokens: 1000), one_request_step(seq: 2, tokens: 8192), one_request_step(seq: 3, tokens: 4096)],
-     gaps: [],
-   }) {
+  (match largest_scheduled_step(p: population(
+     i: observed_instrumentation(),
+     b: CaptureBoundary { first_sequence: 1, last_sequence: 3 },
+     rs: [step_at(seq: 1, tokens: 1000), step_at(seq: 2, tokens: 8192), step_at(seq: 3, tokens: 4096)],
+     gs: [])) {
      LargestScheduledStep { computed_tokens: t, at_step: s } => t == 8192 && s == 2
      NoStepObserved { because: _ } => false
    })
-    && (match largest_scheduled_step(p: StepReceiptPopulation {
-          launch: observed_launch(),
-          receipts: [one_request_step(seq: 1, tokens: 8192)],
-          gaps: [ObservationGap { first_missing_sequence: 2, missing_count: 4, because: "sink full" as NonEmptyStr }],
-        }) {
+    && (match largest_scheduled_step(p: population(
+          i: observed_instrumentation(),
+          b: CaptureBoundary { first_sequence: 1, last_sequence: 5 },
+          rs: [step_at(seq: 1, tokens: 8192)],
+          gs: [ObservationGap { first_missing_sequence: 2, missing_count: 4, because: "sink full" as NonEmptyStr }])) {
           NoStepObserved { because: b } => string_contains(s: b as String, pattern: "complete-looking answer")
           LargestScheduledStep { computed_tokens: _, at_step: _ } => false
         })
 }
 
-// EXCLUSIVITY BECOMES A PROPERTY OF EACH STEP rather than something arranged by emptying the engine.
-// This is what lets self-cost be separated from co-tenancy in production instead of a laboratory.
+// EXCLUSIVITY IS READ PER STEP rather than arranged by emptying the engine, which is the difference
+// between measuring production and measuring a laboratory.
 test fn exclusivity_is_read_per_step_rather_than_arranged() -> Bool {
-  (match step_exclusivity(r: one_request_step(seq: 1, tokens: 1000)) {
+  (match step_exclusivity(r: step_at(seq: 1, tokens: 1000)) {
      StepServedOneRequest { request_id: r } => (r as String) == "req-a"
      _ => false
    })
@@ -140,8 +213,8 @@ test fn exclusivity_is_read_per_step_rather_than_arranged() -> Bool {
         })
 }
 
-// THE CONTRACT DECLARES ITS OWN FRONTIER, and the trigger names a CAPABILITY rather than an artifact
-// -- what the observer must be SUFFICIENT FOR, not merely that one exists.
+// THE CONTRACT DECLARES ITS OWN FRONTIER with a trigger naming what the observer must be SUFFICIENT
+// FOR, not merely that one exists.
 test fn the_producer_is_declared_unbuilt_with_a_capability_trigger() -> Bool {
   match spark_step_receipt_producer {
     ProducerBound { instrument: _ } => false
