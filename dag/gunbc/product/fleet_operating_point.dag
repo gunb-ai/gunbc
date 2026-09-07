@@ -1,9 +1,7 @@
 module product.fleet_operating_point
 
-import std.types { List, NonEmptyStr, Bool }
-import std.nat { Nat }
+import std.types { List, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.measure { Watt, watt }
 import std.pareto {
   AxisGap,
   LowerIsBetter,
@@ -16,18 +14,12 @@ import std.decision {
   RealizationSelectionResult,
   UniqueSurvivorRequired,
   select_realization,
-  result_needs_evidence,
 }
 
 // FIRST SUBJECT OF REALIZATION SELECTION: an operating point, not a clock.
 // The actuator is what the platform exposes — a socket/chassis power limit is the
 // variable; achieved frequency is an observation. Do not encode a withdrawn 250 W
 // platform constant or a 2.6–2.8 GHz optimum.
-type FleetOperatingPoint {
-  active_server_count: Nat
-  per_server_power_control: Watt
-  workload_placement: DeclarationRef
-}
 
 data throughput_by_operating_point_axis: DeclarationRef = decl_ref(
   module_path: "product.fleet_operating_point",
@@ -56,10 +48,6 @@ data fleet_operating_point_evidence: DeclarationRef = decl_ref(
 data fleet_operating_point_policy: DeclarationRef = decl_ref(
   module_path: "product.fleet_operating_point",
   decl_name: "fleet_operating_point_policy",
-)
-data placement_default: DeclarationRef = decl_ref(
-  module_path: "product.fleet_operating_point",
-  decl_name: "placement_default",
 )
 data candidate_cap_low: DeclarationRef = decl_ref(
   module_path: "product.fleet_operating_point",
@@ -117,12 +105,6 @@ fn fleet_operating_point_field_rows() -> List<ParetoEntry> {
   ]
 }
 
-data example_operating_point: FleetOperatingPoint = FleetOperatingPoint {
-  active_server_count: 16,
-  per_server_power_control: watt(count: 1),
-  workload_placement: placement_default,
-}
-
 fn fleet_operating_point_selection() -> RealizationSelectionResult<ParetoEntry> {
   select_realization(
     decision_subject: fleet_operating_point_subject,
@@ -134,8 +116,4 @@ fn fleet_operating_point_selection() -> RealizationSelectionResult<ParetoEntry> 
     policy: UniqueSurvivorRequired { identity: fleet_operating_point_policy },
     evidence_snapshot: fleet_operating_point_evidence,
   )
-}
-
-fn fleet_operating_point_needs_evidence() -> Bool {
-  result_needs_evidence(result: fleet_operating_point_selection())
 }

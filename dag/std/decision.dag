@@ -1214,36 +1214,3 @@ fn admit_world_converge(result: RealizationSelectionResult<ParetoEntry>) -> Conv
       ConvergenceRefusedUnresolvedSelection { result_kind: "SelectionRefused" as NonEmptyStr }
   }
 }
-
-fn result_is_selected_within(result: RealizationSelectionResult<ParetoEntry>) -> Bool {
-  match result {
-    SelectedWithin { candidate: _, receipt: _ } => true
-    CandidateFieldUnestablished { causes: _ } => false
-    NoFeasibleRealization { causes: _ } => false
-    SelectionNeedsEvidence { gaps: _ } => false
-    SelectionNeedsPolicy { survivors: _ } => false
-    RealizationSelectionRefused { defects: _ } => false
-  }
-}
-
-fn result_needs_evidence(result: RealizationSelectionResult<ParetoEntry>) -> Bool {
-  match result {
-    SelectionNeedsEvidence { gaps: _ } => true
-    SelectedWithin { candidate: _, receipt: _ } => false
-    CandidateFieldUnestablished { causes: _ } => false
-    NoFeasibleRealization { causes: _ } => false
-    SelectionNeedsPolicy { survivors: _ } => false
-    RealizationSelectionRefused { defects: _ } => false
-  }
-}
-
-fn result_needs_policy(result: RealizationSelectionResult<ParetoEntry>) -> Bool {
-  match result {
-    SelectionNeedsPolicy { survivors: _ } => true
-    SelectedWithin { candidate: _, receipt: _ } => false
-    CandidateFieldUnestablished { causes: _ } => false
-    NoFeasibleRealization { causes: _ } => false
-    SelectionNeedsEvidence { gaps: _ } => false
-    RealizationSelectionRefused { defects: _ } => false
-  }
-}
