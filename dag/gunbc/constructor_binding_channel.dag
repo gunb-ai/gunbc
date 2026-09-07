@@ -34,10 +34,22 @@ import std.decl_ref { DeclarationRef, decl_ref }
 // admitted with NO diagnostic of any kind. Same absent import, same absent containment relation,
 // two different observabilities: the advisory channel does not cover constructors.
 //
-// WHAT IS NOT CLAIMED. This is not a silent-arbitrary-pick finding. With two owners of one arm
-// name inside the compiled closure the compile REFUSES (case5). The defects found are narrower and
-// are named as next rungs below, not repaired here: the refusal names the wrong situation, and the
-// ambiguity domain is the CLOSURE rather than the source root.
+// WHAT IS NOT CLAIMED, AS CORRECTED. The original sentence here read: "This is not a
+// silent-arbitrary-pick finding. With two owners of one arm name inside the compiled closure the
+// compile REFUSES (case5)." That generalised case5 past its own geometry and is FALSE in three of
+// the four geometries measured below. It is corrected in place rather than deleted, because the
+// false form is what a reader would otherwise carry away, and because a lane acting on it would
+// conclude the channel already fails closed and stop looking.
+//
+// What case5 actually establishes is narrower: when the referring module reaches BOTH owners
+// DIRECTLY, by its own references, the compile refuses. Reach either owner only indirectly -- a
+// carrier module in the closure imports it, and nothing else does -- and the wall does not apply,
+// because the fold it lives in (insert_variant_owner_checked, over the module's own declarations
+// and its DIRECT imports) never sees the pair. The whole-closure base merged underneath it has no
+// collision arm at all: build_global_bare_variant_locals matches only GlobalBareUniqueBinding and
+// sends everything else to `_ => acc`. So the honest statement of the channel is that it refuses
+// on the per-FILE pair and is silent on the per-CLOSURE one, and the defects named as next rungs
+// below stand alongside a silent-wrong-bind finding rather than instead of one.
 
 // WHAT THE REFERRING MODULE USES THE UNIMPORTED NAME AS. The two arms are the discriminator: they
 // are the only difference between case1 and case4.
@@ -108,7 +120,47 @@ data constructor_binding_channel_probes: List<ChannelProbe> = [
     owner_modules_in_source_root: 2,
     owner_modules_in_compiled_closure: 2,
     outcome: RefusedWithDiagnostic { diagnostic: "undefined variable 'ZqxProbeRed'", situation: "MISLEADING -- the name is declared twice, not zero times. The channel fails closed, and then describes the closure as if the declaration were absent" },
-    what_it_establishes: "the channel does not silently pick a winner under in-closure ambiguity. It refuses -- under a diagnostic that names the wrong situation",
+    what_it_establishes: "the channel does not silently pick a winner under in-closure ambiguity. It refuses -- under a diagnostic that names the wrong situation. READ CASE6 THROUGH CASE10 BEFORE GENERALISING THIS ROW: its geometry has the referring module reaching BOTH owners DIRECTLY, and that is what the wall covers",
+  },
+  {
+    case_name: "case6 -- one foreign STANDALONE type competing with an arm, reached only indirectly",
+    reference_kind: ConstructorReference { position: "the else branch of an if whose join is the declaring module's own coproduct" },
+    owner_modules_in_source_root: 2,
+    owner_modules_in_compiled_closure: 2,
+    outcome: RefusedWithDiagnostic { diagnostic: "if branches resolve to incompatible types: Coproduct(Shape) vs Product(Sq)", situation: "MISLEADING IN A SECOND WAY, distinct from case5's. Nothing is reported as ambiguous or absent; the arm is bound to the FOREIGN declaration and the only observable is a type error at declaring.dag, a file that neither declares nor imports the competitor and is byte-identical to the arm that compiles clean" },
+    what_it_establishes: "the per-file wall of case5 does not reach here. No single file imports two owners: the competitor is reached foreign -> carrier -> entry, so insert_variant_owner_checked never sees the pair and the whole-closure base binds it unopposed. This is the silent-arbitrary-pick the original WHAT IS NOT CLAIMED denied",
+  },
+  {
+    case_name: "case7 -- the SAME geometry with a SECOND standalone competitor added",
+    reference_kind: ConstructorReference { position: "identical to case6, byte-identical declaring module" },
+    owner_modules_in_source_root: 3,
+    owner_modules_in_compiled_closure: 3,
+    outcome: BoundSilently { emitted: "11 files emitted, 0 diagnostics, exit 0 -- and the bind is CORRECT" },
+    what_it_establishes: "THE NON-MONOTONICITY, IN ISOLATION. Adding a competitor REPAIRS the compile. build_global_bare_variant_locals inserts only under GlobalBareUniqueBinding; a second competitor makes the census entry Ambiguous, which falls to its bare `_ => acc`, so nothing enters the base and the arm widens to its own owner correctly. The consequence: a repair validated on a corpus where most spellings have several answers will look correct and still be wrong, and any severity census that ranks by competitor count has the sign backwards",
+  },
+  {
+    case_name: "case8 -- case6 plus one NON-competing foreign module (the closure-size control)",
+    reference_kind: ConstructorReference { position: "identical to case6" },
+    owner_modules_in_source_root: 3,
+    owner_modules_in_compiled_closure: 3,
+    outcome: RefusedWithDiagnostic { diagnostic: "if branches resolve to incompatible types: Coproduct(Shape) vs Product(Sq)", situation: "same as case6" },
+    what_it_establishes: "case7's repair is not an artefact of closure size or module count. This closure is the same size as case7's and stays red; the only variable that moves the verdict is how many declarations answer to the one SPELLING",
+  },
+  {
+    case_name: "case9 -- the competitor is a foreign COPRODUCT ARM rather than a standalone type",
+    reference_kind: ConstructorReference { position: "identical to case6" },
+    owner_modules_in_source_root: 2,
+    owner_modules_in_compiled_closure: 2,
+    outcome: BoundSilently { emitted: "9 files emitted, 0 diagnostics, exit 0 -- and the bind is CORRECT" },
+    what_it_establishes: "AN ARM IS NOT A COMPETITOR ON THIS CHANNEL. Measured at one and at two such foreign coproducts, both clean. The committed fixture at fixtures/if_join_pool_binding declaring its perturbation as `type PoolSpecimenSquare { s: Int }` -- a standalone product, not an arm -- is therefore load-bearing rather than incidental, and a census that counts arm-shaped answers to a spelling is measuring a population that does not perturb",
+  },
+  {
+    case_name: "case10 -- one standalone competitor AND one coproduct-arm competitor",
+    reference_kind: ConstructorReference { position: "identical to case6" },
+    owner_modules_in_source_root: 3,
+    owner_modules_in_compiled_closure: 3,
+    outcome: RefusedWithDiagnostic { diagnostic: "if branches resolve to incompatible types: Coproduct(Shape) vs Product(Sq)", situation: "same as case6" },
+    what_it_establishes: "the two previous rows are one fact, not two. An arm-shaped answer does not perturb AND does not count toward the ambiguity that would have repaired case6 -- had it counted, this closure would have gone clean like case7. So the competitor population is non-monotone in one direction and blind in the other, which is the whole reason these five rows are recorded rather than summarised",
   },
 ]
 
