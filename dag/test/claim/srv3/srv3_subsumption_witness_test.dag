@@ -179,6 +179,7 @@ fn reach_or_absent(kind: HostToolchainKind, host: HostIdentity) -> HostToolchain
     ReachResolved { reach: reach } => Present { value: reach }
     ReachTargetAbsent => none
     ReachAccessAbsent { target_identity: _ } => none
+    ReachActuatorUnsatisfiable { reason: _ } => none
   }
 }
 

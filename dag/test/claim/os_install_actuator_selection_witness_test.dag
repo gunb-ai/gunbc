@@ -85,3 +85,21 @@ test fn satisfiable_selection_still_yields_the_selected_actuator_target() -> Boo
     Srv3ActuatorTargetUnsatisfiable { reason: _ } => false
   }
 }
+
+// The third consumer that reaches real hardware. Collapsing an unsatisfiable selection into an
+// Optional made this path answer "host absent from compute inventory", inventing a cause with a
+// different remedy for a failure it did not have; DESIGN section 5 asks for a typed and LOCATED
+// diagnostic, and a located one names the selection. This asserts the reason survives the reach.
+test fn unsatisfiable_selection_names_the_selection_not_the_inventory() -> Bool {
+  match host_toolchain_ensure_reach_under(
+    kind: OsInstallActuator,
+    host: operator_host_srv3,
+    selection: unsatisfiable_actuator_selection_fixture,
+  ) {
+    ReachActuatorUnsatisfiable { reason: why } =>
+      string_contains(s: why, pattern: "fixture: no candidate host")
+    ReachResolved { reach: _ } => false
+    ReachTargetAbsent => false
+    ReachAccessAbsent { target_identity: _ } => false
+  }
+}
