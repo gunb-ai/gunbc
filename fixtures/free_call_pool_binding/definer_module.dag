@@ -1,0 +1,10 @@
+module fixtures.free_call_pool_binding.definer_module
+
+// THE DEFINER. It declares the free function every subject in this fixture calls, plus one
+// unrelated type so an entry can put this module in a closure WITHOUT naming the call's own
+// spelling. Nothing here varies across the arms.
+type PoolSpecimenTag { t: Int }
+
+fn pool_specimen_free_call(n: Int) -> Int {
+  n
+}

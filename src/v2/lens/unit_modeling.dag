@@ -141,8 +141,7 @@ fn unit_modeling_gate(node: Node) -> Outcome<Witness<Node>> {
   }
 }
 
+// Next-rung: gunbc.guarantee_stall.unit_modeling_carrier_totality_stall.
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
-
-// Next-rung: gunbc.guarantee_stall.unit_modeling_carrier_totality_stall.

@@ -1,0 +1,7 @@
+module fixtures.free_call_pool_binding.unrelated_module
+
+// THE PERTURBATION, AND IT IS DELIBERATELY IRRELEVANT. `subject_with_import` imports this and
+// nothing else changes. It does not declare, import or mention `pool_specimen_free_call` or
+// `definer_module`, so it cannot be the reason the call stops resolving -- only the EXISTENCE of
+// an import line can be.
+type UnrelatedTag { u: Int }
