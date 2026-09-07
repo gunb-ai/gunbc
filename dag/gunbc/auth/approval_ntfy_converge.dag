@@ -1,0 +1,193 @@
+module gunbc.auth.approval_ntfy_converge
+
+import std.types { NonEmptyStr, String, List, Int, Bool }
+import gunbc.executor_privileged_operation {
+  ExecutorPrivilegedOperation, EnsureSystemAccount, EnsureOwnedDirectory,
+  SystemdDaemonReload, SystemdEnableUnit, SystemdStartUnit,
+  executor_privileged_operation_argv, executor_privileged_operation_converge_command,
+}
+import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path }
+import gunbc.auth.approval_ntfy_deployment {
+  approval_ntfy_principal_name, approval_ntfy_state_root, approval_ntfy_config_dir,
+  approval_ntfy_unit_name,
+}
+
+// ── The ntfy service as CONVERGED MEMBERS, not as instructions to a person ────────────────────
+// Everything this file declares was, before it existed, a sentence telling an operator which
+// command to run. That was the §6 tell out loud -- "a hand-authored workflow, deployment or
+// migration script (out-of-band actuation)" -- and the operator ruled it directly: fleet
+// convergence must be honored on srv1 rather than worked around.
+//
+// The gap was never the ACCOUNT and DIRECTORY operations. gunbc.executor_privileged_operation
+// already renders those, and what was missing was a declaration of what the host should contain so
+// something could reconcile against it. These rows are that declaration for the members it names.
+//
+// THIS SET CANNOT CONVERGE A FRESH HOST, and the boundary is exactly where file CONTENT begins.
+// Two facts this deployment needs are files whose bytes nothing here models -- the server config at
+// approval_ntfy_config_path and the systemd unit -- and one is a third-party binary, which is the
+// EnsureDependency concern of the acquisition gap analysis. InstallFile copies a source that must
+// already exist on the host; with no modeled content there is no source, so the honest position is
+// that those members are ABSENT from this roster rather than represented by something adjacent.
+//
+// An earlier revision did exactly the dishonest thing: it carried a member named
+// `NtfyUnitInstalled` that rendered only `systemctl daemon-reload`. The name claimed an obligation
+// the projection did not discharge, so enable and start appeared to converge while succeeding only
+// because a human had already placed the unit file -- a plausible convergence that realizes
+// something other than the fact it names (§5), on a host where the difference is invisible because
+// the file happens to be there. The member is now named for what it does.
+//
+// SO WHAT THIS ROSTER IS: the members that make an ALREADY-INSTALLED host converge to the declared
+// account, ownership, permissions and unit state, idempotently. That is strictly less than "srv1's
+// state is rendered by the model", and the difference is the two file members and the binary.
+//
+// It also does not OBSERVE the host, so it cannot answer whether a member is already converged --
+// an installer exiting zero over an absent member would go unnoticed. That readback is the
+// lifecycle carrier merry-ibex-741 is landing in std.realization_reconcile (ReconciledEffect /
+// ConvergedEffect), and this family is shaped to plug into it rather than grow a second answer for
+// "did the plan converge".
+
+// ── §3c: WHO CONSUMES THIS FAMILY ───────────────────────────────────────────────────────────
+// Nothing in production, today. approval_ntfy_desired_members and approval_ntfy_converge_commands
+// are consumed by witnesses and by an operator running the rendered commands; no fleet converge
+// plan reads this family, and nothing observes the host afterwards. §3c admits three states and
+// this is the middle one -- a DECLARED FRONTIER -- so its trigger is stated rather than left for a
+// reader to discover by grepping.
+//
+// NAMED CONSUMER AND TRIGGER: a member family in gunbc.fleet_converge_plan that reconciles this
+// desired set against an observation of the host, discharged through the ConvergedEffect half of
+// std.realization_reconcile so applying can establish that it worked. When that lands, the
+// ownership constraint above becomes structural and the duplicate-key witness becomes a property of
+// a reconcile that actually runs.
+//
+// WHAT IT ALREADY DOES, which is why it is a frontier and not speculation: the rendered commands
+// were applied to srv1 and converge it idempotently -- 7 commands, 0 failures across two
+// consecutive passes, service active afterwards. The desired side is real and executes; the
+// observed side does not exist.
+type NtfyConvergedMember
+  = NtfyServiceAccount
+  | NtfyStateDirectory { path: NonEmptyStr }
+  | NtfyConfigDirectory { path: NonEmptyStr }
+  | NtfyUnitDaemonReloaded
+  | NtfyUnitEnabled
+  | NtfyUnitStarted
+
+// OWNERSHIP IS A REQUIREMENT ON THE RECONCILE THAT DOES NOT EXIST YET, AND IS NOT DECLARED AS A
+// FUNCTION HERE. A prior revision carried `ntfy_member_ownership(m) -> Ownership?` that IGNORED its
+// parameter and answered `Present { value: Ensured }` for every input, plus a witness asserting no
+// member is Owned. That witness was permanently green by construction -- no member COULD be Owned,
+// so its failing arm was unreachable -- and §4b names exactly this: "the check is not a weak wall
+// but a decoration ... worse than absent because it will be cited as coverage." It was cited as
+// coverage, by this annotation, for the claim that a retract cannot destroy pending-request
+// history. It established nothing.
+//
+// The constraint is real and belongs to whoever wires the reconcile: every member of this family
+// must be Ensured, never Owned, because the state directory holds the message cache and the
+// subscriber's read position and the account owns those files by uid -- a retract that removed
+// either would destroy the pending-request history the approval loop depends on. live_deploy
+// already had a lab twin's retract delete a production artifact store; this is the same hazard.
+//
+// The honest way to hold it is at rung 4 -- Owned unrepresentable for this family by construction,
+// at which point no check is needed -- and that decision belongs with the reconcile wiring, not
+// with a lookup that answers one value. Declaring an Optional that is never Absent would be a third
+// representation of a decision nobody makes.
+
+// THE KEY IS CONSUMED BY WITNESSES ONLY, which is a weaker statement than the one this heading
+// used to make. It is not production-consumed, and saying so plainly matters because the whole
+// module is a declared frontier (see the §3c note at the top): the key exists so the desired roster
+// can be checked for duplicate members, and the thing that will finally read it is the reconcile.
+//
+// Its former companions -- ntfy_member_key_eq, ntfy_member_value_eq and approval_ntfy_member_argv --
+// had no consumer at all, not even a witness, and are deleted.
+//
+// Deleting them was not tidying. ntfy_member_value_eq compared members by KEY ALONE, so a
+// NtfyStateDirectory and a NtfyConfigDirectory sharing a path compared EQUAL -- a wrong equality
+// that would have silently collapsed two members in the reconcile it was written for. Nothing
+// caught it because nothing ran it, which is §3c's argument in one artifact: unconsumed code is not
+// merely idle, it is unexamined, and it accumulates defects that surface only when someone finally
+// wires it up.
+fn ntfy_member_key(m: NtfyConvergedMember) -> NonEmptyStr {
+  match m {
+    NtfyServiceAccount => "account"
+    NtfyStateDirectory { path: p } => p
+    NtfyConfigDirectory { path: p } => p
+    NtfyUnitDaemonReloaded => "unit-daemon-reloaded"
+    NtfyUnitEnabled => "unit-enabled"
+    NtfyUnitStarted => "unit-started"
+  }
+}
+
+// DERIVED, NOT RE-MINTED. These previously spelled "/var/lib/gunbc-ntfy/attachments" and
+// "/etc/gunbc-ntfy" as literals while importing the declarations that own both roots -- two sources
+// for one path, so renaming the state root would have left this roster ensuring directories the
+// server does not use. It is the same nicknaming this PR removed from the base URL, in a file that
+// already had the authorities in scope.
+data ntfy_attachments_dir_name: NonEmptyStr = "attachments"
+
+fn ntfy_attachment_cache_dir() -> NonEmptyStr {
+  join([approval_ntfy_state_root as String, "/", ntfy_attachments_dir_name as String], "") as NonEmptyStr
+}
+
+data ntfy_state_dir_mode: NonEmptyStr = "0750"
+
+// THE DESIRED SET, derived from the deployment's own declarations rather than restated. The order
+// is the dependency order a first convergence needs -- the account must exist before a directory
+// can be installed owned by it, which is exactly the failure the publication helper hit on its
+// first deploy (`install: invalid user`).
+fn approval_ntfy_desired_members() -> List<NtfyConvergedMember> {
+  [
+    NtfyServiceAccount,
+    NtfyStateDirectory { path: approval_ntfy_state_root },
+    NtfyStateDirectory { path: ntfy_attachment_cache_dir() },
+    NtfyConfigDirectory { path: approval_ntfy_config_dir },
+    NtfyUnitDaemonReloaded,
+    NtfyUnitEnabled,
+    NtfyUnitStarted,
+  ]
+}
+
+// ONE PROJECTION FROM MEMBER TO OPERATION, so the command that converges a member and the command
+// an operator would read are the same bytes. This is what makes the hand-run install auditable
+// against the model: the argv below is what was actually run on srv1, and a witness holds them
+// equal rather than trusting that they were.
+// THE CONFIG DIRECTORY IS ROOT-OWNED AND GROUP-READABLE, not owned by the service. The server
+// reads its config and must never rewrite it; a config a compromised service can edit is a config
+// that can be pointed at a different upstream, or told to accept anonymous publishes -- which on a
+// topic carrying approval capabilities is the whole boundary.
+fn ntfy_member_operations(m: NtfyConvergedMember) -> List<ExecutorPrivilegedOperation> {
+  match m {
+    NtfyServiceAccount => [
+      EnsureSystemAccount {
+        login: approval_ntfy_principal_name,
+        shell: fleet_posix_nologin_shell_path,
+      },
+    ]
+    NtfyStateDirectory { path: p } => [
+      EnsureOwnedDirectory {
+        path: p,
+        owner: approval_ntfy_principal_name,
+        group: approval_ntfy_principal_name,
+        mode: ntfy_state_dir_mode,
+      },
+    ]
+    NtfyConfigDirectory { path: p } => [
+      EnsureOwnedDirectory {
+        path: p,
+        owner: "root",
+        group: approval_ntfy_principal_name,
+        mode: ntfy_state_dir_mode,
+      },
+    ]
+    NtfyUnitDaemonReloaded => [SystemdDaemonReload]
+    NtfyUnitEnabled => [SystemdEnableUnit { unit: approval_ntfy_unit_name }]
+    NtfyUnitStarted => [SystemdStartUnit { unit: approval_ntfy_unit_name }]
+  }
+}
+
+// THE COMMANDS A CONVERGENCE ACTUALLY RUNS, each carrying its precondition so a second apply is a
+// no-op. MEASURED on srv1 before the guard existed: the account step returned rc=9 and the other
+// six returned rc=0, so an unguarded converge would have failed on every run after the first.
+fn approval_ntfy_converge_commands() -> List<String> {
+  flat_map(approval_ntfy_desired_members(), m =>
+    map(ntfy_member_operations(m: m), op => executor_privileged_operation_converge_command(op: op))
+  )
+}
