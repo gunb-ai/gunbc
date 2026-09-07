@@ -50,6 +50,11 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // Next-rung trigger (the capability, not an artifact): materialization results shared
 // across claim identities, or an argv identity derivable without rematerializing. Either
 // makes the wall affordable; writing another witness does not.
+// E0S0 is not a defect class. No stdout product plus branchable failure (exit_code,
+// stderr) is a legitimate contract; git.Plumbing is the exemplar. Reading the A0B0C0
+// empty E0S0 cell as corpus-wide emptiness treats a slice as the table. Browser effect
+// operations with output {} (Close, Click, Fill, UploadFile, Screenshot, Wait) are a
+// finding for that upstream, not a floor witness.
 // A Hamming-1 relation (same program and flags; one position a declaration literal vs a
 // generic bound-slot) would catch shell.Codegen.Check versus shell.Test.IsFile. It is a
 // second named relation, not list identity, not "same policy" (undecidable), and was not
