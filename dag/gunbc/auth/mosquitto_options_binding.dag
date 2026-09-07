@@ -1,0 +1,126 @@
+module gunbc.auth.mosquitto_options_binding
+
+import std.types { NonEmptyStr, String, Bool, Secret, FilePath, List }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import v2.std.orchestration { EnvBinding, EnvSet }
+import extdeps.tools.mosquitto_pub {
+  mosquitto_pub_options_file_name, mosquitto_pub_options_dir_env,
+}
+
+// THE SECOND CREDENTIAL BINDING ON THIS FLEET, AND IT IS A SIBLING OF THE NETRC ONE RATHER THAN A
+// COPY OF IT.
+//
+// gunbc.auth.netrc_binding already answers "how does a secret reach a subprocess without entering
+// argv" for every tool that accepts a credential FILE PATH: curl's --netrc-file, and the Redfish
+// callers behind it. mosquitto_pub does not accept one. Its only credential flags are -P and -L's
+// URL userinfo, both of which are argv words, and the single non-argv route it offers is an options
+// file whose NAME IT CHOOSES -- $XDG_CONFIG_HOME/mosquitto_pub. So the thing a caller can control is
+// the DIRECTORY, and the thing that must be created private, sealed and destroyed is a directory
+// rather than a file.
+//
+// THAT DIFFERENCE IS WHY THIS IS A SEPARATE MODULE AND NOT A PARAMETER ON THE NETRC ONE. A shared
+// carrier would have to hold "a path that is sometimes the credential file and sometimes the
+// directory containing it", which is one name over two materially different meanings -- the meaning
+// fork DESIGN section 3 forbids -- and every consumer would then have to know which of the two it
+// was handed. What the two modules genuinely share is the REASONING, and reasoning is not a
+// carrier: the mode, the removal-before-write order, the shred-on-every-arm rule and the reason no
+// locator leaves the module are argued once at gunbc.auth.netrc_binding and applied here, and if
+// that reasoning changes it changes in both places because both are consumers of the same recorded
+// incident, gunbc.credential_argv_exposure.
+//
+// THE SEAL ESTABLISHES A MINT-TIME FACT AND NOTHING MORE, exactly as recorded next door. Possessing
+// a MosquittoOptionsBinding is evidence that this module created the directory 0700 and wrote the
+// options file owner-only. It does not bound the value's LIFETIME -- .dag has no linear or region
+// types, so nothing stops a holder carrying it past its shred -- so the honest rung is MITIGATION,
+// the window is one function body, every consumer shreds on every arm out, and the next-rung trigger
+// is a bracket whose callback cannot return the binding.
+type MosquittoOptionsBinding sole_constructor {
+  dir: FilePath
+}
+
+// THE BINDING PROJECTS TO AN ENVIRONMENT BINDING, NOT TO A PATH. A consumer needs XDG_CONFIG_HOME
+// set for the subprocess and has no other use for the directory, so exposing the raw path would let
+// a caller do something with it that this module cannot see -- and would put a directory that
+// dereferences to a credential into a value a diagnostic could render. What leaves here is the one
+// thing the transport actually needs.
+fn mosquitto_options_env(binding: MosquittoOptionsBinding) -> List<EnvBinding> {
+  [EnvSet { name: mosquitto_pub_options_dir_env as String, value: binding.dir as String }]
+}
+
+// THE FILE'S CONTENT IS THE TOOL'S OWN OPTION SYNTAX, ONE PER LINE, and the account name sits beside
+// the password rather than on the command line. Splitting them -- -u in argv, -P in the file --
+// would compile and work, and would leave a reader of the emitted argv believing the visible -u was
+// how the tool authenticated, which is the invisible half of this class rather than a smaller
+// version of it.
+fn mosquitto_options_content(login: NonEmptyStr, password: Secret) -> String {
+  concat(
+    concat("-u ", concat(login as String, "\n")),
+    concat("-P ", concat(password as String, "\n")),
+  )
+}
+
+// NO LOCATOR IS CARRIED ON ANY REFUSAL ARM. gunbc.auth.netrc_binding records why in full: a path
+// that dereferences to a credential is a credential locator, the rule does not care that the
+// pathname itself is not the secret, and a sole_constructor seal does NOT prevent a holder casting
+// the value and rendering it. The refusal states that material may remain and requires cleanup; the
+// directory stays inside this module, which is the authority able to act on it.
+type MosquittoOptionsPlacement
+  = MosquittoOptionsPlaced { binding: MosquittoOptionsBinding }
+  | MosquittoOptionsRefused { cause: NonEmptyStr }
+  | MosquittoOptionsRefusedResidueRemains { cause: NonEmptyStr }
+
+fn mosquitto_options_write_refusal(removed_after_failure: Bool) -> MosquittoOptionsPlacement {
+  if removed_after_failure {
+    MosquittoOptionsRefused {
+      cause: "the owner-only mosquitto options file could not be created; the private directory was removed, so no credential is on disk for the subprocess to use",
+    }
+  } else {
+    MosquittoOptionsRefusedResidueRemains {
+      cause: "the owner-only mosquitto options file could not be created AND the private directory could not be removed, so credential material may remain and requires cleanup",
+    }
+  }
+}
+
+// A PRIVATE DIRECTORY PER PLACEMENT, for the reason the netrc module measured rather than supposed:
+// a fixed path is a substitution race with no attacker in it. Two starts running together against a
+// shared directory would delete and replace each other's options file between mint and use, and one
+// would publish with the other's access code or with none. mktemp -d creates a fresh 0700 directory
+// per call, which makes the collision unspellable rather than unlikely -- and here the directory IS
+// the binding, so there is no arm of this function that produces a shared one.
+func place_mosquitto_options_privately(
+  login: NonEmptyStr,
+  password: Secret,
+) -> MosquittoOptionsPlacement
+{
+  let created = shell.Mktemp.Dir()
+  if created.success == false {
+    MosquittoOptionsRefused {
+      cause: "no private directory could be created for the credential, so none was placed",
+    }
+  } else {
+    let options_path = concat(
+      concat(created.path as String, "/"),
+      mosquitto_pub_options_file_name as String)
+    if Filesystem.WriteOwnerOnly(
+      path: options_path,
+      content: mosquitto_options_content(login: login, password: password)
+    ).success {
+      MosquittoOptionsPlaced {
+        binding: MosquittoOptionsBinding { dir: created.path as FilePath },
+      }
+    } else {
+      mosquitto_options_write_refusal(
+        removed_after_failure: shell.Remove.RecursiveForce(path: created.path as FilePath).success)
+    }
+  }
+}
+
+// SHREDDING IS UNCONDITIONAL AT THE CALL SITE, INCLUDING ON THE FAILING ARM. A refused publish that
+// leaves the access code on disk has converted a transient failure into a standing exposure. The
+// whole directory goes, not just the file inside it: the directory is what this module created and
+// what the seal names, and removing only its contents would leave a 0700 directory the next mktemp
+// cannot reuse and the caller cannot see.
+func shred_mosquitto_options_binding(binding: MosquittoOptionsBinding) -> Bool {
+  shell.Remove.RecursiveForce(path: binding.dir).success
+}
