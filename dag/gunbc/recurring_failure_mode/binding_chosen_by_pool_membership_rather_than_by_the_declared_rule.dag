@@ -198,7 +198,6 @@ data binding_chosen_by_pool_membership_rather_than_by_the_declared_rule: Recurri
   evidence: [
     DeclarationRef { module_path: "test.claim.if_join_pool_binding_witness_test", decl_name: "an_unrelated_pool_member_refuses_the_declaring_modules_own_if_join", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.if_join_pool_binding_witness_test", decl_name: "the_same_declaring_module_compiles_clean_without_the_pool_member", field: WholeDeclaration },
-    DeclarationRef { module_path: "test.claim.if_join_pool_binding_witness_test", decl_name: "the_verdict_flips_on_pool_membership_alone", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.if_join_pool_binding_witness_test", decl_name: "the_fixture_modules_are_readable", field: WholeDeclaration },
   ],
 }
