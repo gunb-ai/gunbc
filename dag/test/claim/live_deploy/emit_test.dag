@@ -1,8 +1,11 @@
 module test.claim.live_deploy.emit
 
-import gunbc.live_deploy.member_identity { ReleaseEffectPlan, converged_effect_plan, InstallExecutable, TreeKept, UnitFileKept, ManagerKept, RestartService }
+import gunbc.live_deploy.member_identity {
+  ReleaseEffectPlan, converged_effect_plan, InstallExecutable, TreeKept, UnitFileKept, ManagerKept, RestartService,
+  ConvergedMember, TreePublication, Executable, UnitFile, UnitManager, ServiceProcess,
+}
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable_digest, deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan, deploy_witness_release_target }
-import std.types { Bool, String, List, NonEmptyStr }
+import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.os.types { Apt }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
@@ -23,9 +26,14 @@ import gunbc.live_deploy.spec {
   srv1_live_deployment_names,
   ArtifactStep,
   Dependency,
+  DeploymentStep,
   deployment_tailnet_url,
   gunbc_roadmap_unit_name,
   ServeBinary,
+  OwnedArtifactKind,
+  GunbcSourceTree,
+  AttemptStateRoot,
+  SystemdUnit,
   FleetConvergeTimerUnit,
   TailscaleServeMapping,
   TeardownDisposition,
@@ -75,6 +83,7 @@ import gunbc.live_deploy.effect_leaf {
   dpkg_status_effect,
 }
 import gunbc.live_deploy.emit {
+  emit_release_member_effects,
   deploy_receipt_command,
   install_d_shared_mode,
   path_parent_dir,
@@ -106,7 +115,7 @@ import gunbc.host_axis_caps {
 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import std.measure { byte_size_count }
-import v2.std.orchestration { Do, Run }
+import v2.std.orchestration { Do, Run, PipelineStep, Comment, Exit, If, For, While, Retry, Let, Call }
 import std.disposition { Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.generated_artifact {
@@ -959,17 +968,75 @@ test fn the_preamble_ensures_the_publication_principal_as_a_nologin_system_accou
 // repository_convergence_is_ordered_after_binary_and_before_readback and
 // the_full_plan_lands_its_members_in_the_deployments_order below, over the one full render the module
 // shares; rendering it here too put this claim over the floor's per-claim line.
+// ── The member projection, read without rendering the whole apply script ────────────────────────
+//
+// A CLAIM ABOUT ONE MEMBER'S FRAGMENTS SHOULD NOT COST A WHOLE DEPLOYMENT RENDER, and the floor
+// charges per witness, so paying one was not a style question: both claims below were preempted by
+// the changed-witness CPU deadline before they reached a verdict, twice. The projection they
+// actually assert over is emit_release_member_effects -- the steps ONE member contributes -- and
+// reading those directly is both cheaper and a closer statement of the subject than grepping the
+// serialized script for their absence.
+//
+// THE ORDERING HALF IS NOT ASSERTED OVER TEXT EITHER, and it does not need to be: the emitter folds
+// flat_map over spec.steps, so the order of the emitted fragments IS the order of the deployment's
+// own step list, by construction rather than by coincidence. What is worth witnessing is therefore
+// the AUTHORITY -- that the tree, the runtime roots and the unit sit in that order in the
+// deployment's steps -- because that is the fact a regression would change. A rendered-text control
+// still exists in the sibling claims that hold the shared render.
+fn member_fragment_text(member: ConvergedMember, plan: ReleaseEffectPlan) -> String {
+  join(
+    map(
+      emit_release_member_effects(member: member, plan: plan, spec: deployment_spec_srv1()),
+      st => match st {
+        Do { run } => run.command
+        Comment { text: _ } => ""
+        Exit { status: _ } => ""
+        If { cond: _, then_: _, else_: _ } => ""
+        For { binder: _, over: _, body: _ } => ""
+        While { cond: _, body: _ } => ""
+        Retry { body: _, escalations: _, on_exhausted: _ } => ""
+        Let { name: _, value: _ } => ""
+        Call { callee: _, args: _ } => ""
+      },
+    ),
+    "\n",
+  )
+}
+
+// THE STEP LIST IS TAKEN ONCE AND PASSED, not rebuilt per lookup: reading it from
+// deployment_spec_srv1() inside the fold made four ordering comparisons construct the whole
+// deployment spec four times. That is the copied-accumulator shape and the standing rule fixes it
+// regardless of the realized n -- but THE MEASUREMENT DOES NOT CREDIT IT, and saying so is the
+// point of this note. The claim read 469ms before the change and 496ms after, which is noise: the
+// spec rebuild was not where its cost was, and the cost that remains is unattributed. What actually
+// moved this claim was giving up the full apply render (4830ms -> ~480ms). A reader who takes this
+// parameterization as the cost repair will look for the next one in the wrong place.
+fn owned_step_index(steps: List<DeploymentStep>, kind: OwnedArtifactKind) -> Int {
+  fold(
+    steps,
+    init: StepScan { at: 0, found: 0 - 1 },
+    f: (acc, st) => StepScan {
+      at: acc.at + 1,
+      found: match st {
+        ArtifactStep { step: art } => if art.kind == kind && acc.found < 0 { acc.at } else { acc.found }
+        Dependency { step: _ } => acc.found
+      },
+    },
+  ).found
+}
+
+type StepScan {
+  at: Int
+  found: Int
+}
+
 test fn a_zero_mutation_plan_installs_publishes_and_restarts_nothing_of_the_release() -> Bool {
-  let spec = deployment_spec_srv1()
-  let idle = live_deploy_apply_script_for(spec: spec, plan: converged_effect_plan(target: deploy_witness_release_target(spec: spec)))
-  let restart = deploy_effect_command(inv: systemctl_restart_effect(unit: spec.service.unit_name))
-  !string_contains(s: idle, pattern: "target/release/gunbc")
-    && !string_contains(s: idle, pattern: "--function repository_converge_srv1_owner_wet")
-    && !string_contains(s: idle, pattern: "repository_convergence_readback_wet")
-    && !string_contains(s: idle, pattern: restart)
-    && !string_contains(s: idle, pattern: "sha256sum -c")
-    && string_contains(s: idle, pattern: "GENERATED APPLY by dag/gunbc/live_deploy/emit.dag")
-    && string_contains(s: idle, pattern: srv1_dispatch_attempt_state_root as String)
+  let idle = converged_effect_plan(target: deploy_witness_release_target(spec: deployment_spec_srv1()))
+  member_fragment_text(member: Executable, plan: idle) == ""
+    && member_fragment_text(member: TreePublication, plan: idle) == ""
+    && member_fragment_text(member: UnitFile, plan: idle) == ""
+    && member_fragment_text(member: UnitManager, plan: idle) == ""
+    && member_fragment_text(member: ServiceProcess, plan: idle) == ""
 }
 
 // THE FULL PLAN LANDS ITS MEMBERS IN THE DEPLOYMENT'S ORDER, NOT AHEAD OF IT. The repository
@@ -980,15 +1047,16 @@ test fn a_zero_mutation_plan_installs_publishes_and_restarts_nothing_of_the_rele
 // against the destination after it, so the two verify lines bracket the install.
 test fn the_full_plan_lands_its_members_in_the_deployments_order() -> Bool {
   let spec = deployment_spec_srv1()
-  let apply = witness_apply_script()
-  let converge = "--function repository_converge_srv1_owner_wet"
-  let root = srv1_dispatch_attempt_state_root as String
-  let restart = deploy_effect_command(inv: systemctl_restart_effect(unit: spec.service.unit_name))
-  let verify_source = join(["echo '5555555555555555555555555555555555555555555555555555555555555555  target/release/gunbc' | sha256sum -c -"], "")
+  let full = deploy_witness_full_install_plan(spec: spec)
+  let executable = member_fragment_text(member: Executable, plan: full)
+  let verify_source = "echo '5555555555555555555555555555555555555555555555555555555555555555  target/release/gunbc' | sha256sum -c -"
   let verify_dest = join(["echo '5555555555555555555555555555555555555555555555555555555555555555  ", spec.service.serve_binary as String, "' | sha256sum -c -"], "")
-  three_markers_in_order(text: apply, first: converge, second: root, third: restart)
-    && three_markers_in_order(text: apply, first: verify_source, second: "target/release/gunbc' '", third: verify_dest)
-    && three_markers_in_order(text: apply, first: verify_dest, second: converge, third: restart)
+  let steps = spec.steps
+  three_markers_in_order(text: executable, first: verify_source, second: "target/release/gunbc' '", third: verify_dest)
+    && owned_step_index(steps: steps, kind: ServeBinary) < owned_step_index(steps: steps, kind: GunbcSourceTree)
+    && owned_step_index(steps: steps, kind: GunbcSourceTree) < owned_step_index(steps: steps, kind: AttemptStateRoot)
+    && owned_step_index(steps: steps, kind: AttemptStateRoot) < owned_step_index(steps: steps, kind: SystemdUnit)
+    && member_fragment_text(member: ServiceProcess, plan: full) == ""
 }
 
 // A BINARY-ONLY PLAN INSTALLS THE EXECUTABLE AND RESTARTS, AND DOES NOT PUBLISH THE TREE: the
