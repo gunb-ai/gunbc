@@ -1,0 +1,940 @@
+module test.claim.host_reset_return_witness_test
+
+import std.logic { Bool }
+import std.types { EpochMs, Int, List, Milliseconds, NonEmptyStr, String }
+import std.observation { Measured, MeasuredValue, MeasuredUnavailable }
+import std.content_hash { ContentHash, Fnv1a64, Fnv1a64Structural, Sha256Digest, Sha256Hash }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.host_reset_return {
+  AttemptIdentitiesNotDistinct,
+  AttemptTimingUnavailable,
+  ControllerDidNotAccept,
+  DispatchAssignment,
+  DispatchAssignmentRefused,
+  ObserverAssignedToTwoSubjects,
+  AssignmentPairingRefused,
+  DownObservedBeforeIssuance,
+  EvidenceArtifactShared,
+  EvidenceDigestsIdentical,
+  EvidenceDigestsIncomparable,
+  FirstAttemptRefused,
+  HostDrivenBackToKnownState,
+  HostNeverObservedDown,
+  HostObservedDownAndNotBack,
+  HostObservedDownThenBack,
+  HostReturnObservation,
+  HostReturnNotMeasured,
+  HostReturnUnobserved,
+  SubjectNotUpBeforeIssuance,
+  SubjectWasNotUpBeforeIssuance,
+  IssuanceWasOutOfBand,
+  IssuedByHandOutOfBand,
+  IssuedThroughConverge,
+  NoPeerAvailable,
+  ObserverDistinctFromSubject,
+  ObserverIdentityUnreadable,
+  ObserverIsSubject,
+  ObserverIsTheSubjectMachine,
+  ObserverHostnameNotConverged,
+  ObserverHostnameUnconverged,
+  ObserverNotRostered,
+  ObserverSelected,
+  ObserverSelectionRefused,
+  ObserverSelfIdentity,
+  ObserverSelfIdentityUnreadable,
+  ObserverWasTheSubjectMachine,
+  ResetAccepted,
+  ResetCommandAcknowledgement,
+  ResetIssuanceRoute,
+  ResetNotAttempted,
+  ResetReceiptCommit,
+  ReceiptCommitted,
+  ReceiptCommitRefused,
+  ResetObserverSelection,
+  ResetRefusedByController,
+  ResetReturnRefused,
+  ResetReturnVerdict,
+  ResetWasNotAttempted,
+  SecondAttemptRefused,
+  SecondAttemptRefusedCause,
+  SecondAttemptStartedCleanly,
+  SecondIssuedBeforeFirstReturned,
+  SubjectNotRostered,
+  SubjectsDiffer,
+  observer_self_identity,
+  observer_identity_permits_issuance,
+  reset_dispatch_assignment,
+  reset_dispatch_pairings,
+  reset_dispatch_observer_labels,
+  subject_for_observer,
+  reset_downtime,
+  commit_reset_attempt_receipt,
+  mint_reset_attempt_receipt,
+  reset_return_verdict_of_commit,
+  second_attempt_property_of_commits,
+  select_reset_observer,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── the fixture vocabulary ─────────────────────────────────────────────────────────────────────
+
+// THE SUBJECT AND THE PEERS. mtcollins1 is the one host in the corpus with a landed BMC access
+// observation, so it is the one reset subject the derived roster admits; srv1..srv4 are the peers.
+// These are spelled here as FIXTURE input rather than imported, because a witness that consumed the
+// production rosters would go green or red as those rosters changed and would be testing the fleet
+// rather than the fold.
+data fx_subject_roster: List<NonEmptyStr> = ["mtcollins1"]
+data fx_peer_roster: List<NonEmptyStr> = ["srv1", "srv2", "srv3", "srv4"]
+
+data fx_converge_route: ResetIssuanceRoute = IssuedThroughConverge {
+  workflow: "fleet-converge",
+  mode: "host_reset_return",
+  run_id: "fixture-run",
+}
+
+// THE PAIRING CANNOT BE SPELLED HERE, AND THAT IS THE POINT MEASURED RATHER THAN ASSERTED. The
+// first draft of this witness authored a ResetObserverPairing literal and was refused at resolve:
+// "sole_constructor type 'ResetObserverPairing' cannot be constructed outside its defining module".
+// So every fixture below reaches its pairing through the mint, exactly as a caller must.
+fn fx_selection() -> ResetObserverSelection {
+  select_reset_observer(
+    subject_roster: fx_subject_roster,
+    peer_roster: fx_peer_roster,
+    subject: "mtcollins1",
+    observer: "srv1",
+  )
+}
+
+data fx_distinct_identity: ObserverSelfIdentity = ObserverDistinctFromSubject {
+  observer_machine_id: "srv1-machine-id",
+  subject_machine_id: "mtcollins1-machine-id",
+}
+
+// THE ISSUANCE INSTANT EVERY FIXTURE IS ANCHORED TO. Every timestamp below is stated relative to
+// this so a reader can see the ordering without arithmetic: issued at T, down at T+9s, back at
+// T+96s, giving an 87-second outage.
+data fx_issued_at: EpochMs = 1788000000000
+
+data fx_accepted: ResetCommandAcknowledgement = ResetAccepted {
+  controller_response: "chassis power cycle accepted",
+  issued_at: fx_issued_at,
+}
+
+data fx_down_then_back: HostReturnObservation = HostObservedDownThenBack {
+  probe: "tcp:22 from the observer",
+  down_first_seen_at: 1788000009000,
+  back_first_seen_at: 1788000096000,
+  down_samples: 3,
+  back_samples: 2,
+}
+
+data fx_digest_first: ContentHash = Sha256Hash(Sha256Digest {
+  hex: "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+})
+
+data fx_digest_second: ContentHash = Sha256Hash(Sha256Digest {
+  hex: "3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+})
+
+data fx_digest_structural: ContentHash = Fnv1a64(Fnv1a64Structural { digest: "0123456789abcdef" })
+
+fn fx_receipt(
+  attempt: NonEmptyStr,
+  route: ResetIssuanceRoute,
+  self_identity: ObserverSelfIdentity,
+  acknowledgement: ResetCommandAcknowledgement,
+  observation: HostReturnObservation,
+  evidence_path: NonEmptyStr,
+  evidence_digest: ContentHash,
+) -> ResetReceiptCommit {
+  commit_reset_attempt_receipt(
+    mint: mint_reset_attempt_receipt(
+      selection: fx_selection(),
+      attempt: attempt,
+      route: route,
+      self_identity: self_identity,
+      acknowledgement: acknowledgement,
+      observation: observation,
+    ),
+    evidence_path: evidence_path,
+    evidence_digest: evidence_digest,
+  )
+}
+
+// THE ACCEPTANCE RECEIPT, varied one field at a time by every red below. Holding everything else
+// equal is what makes each red attributable to the field it changed.
+fn fx_good_first() -> ResetReceiptCommit {
+  fx_receipt(
+    attempt: "attempt-1",
+    route: fx_converge_route,
+    self_identity: fx_distinct_identity,
+    acknowledgement: fx_accepted,
+    observation: fx_down_then_back,
+    evidence_path: "artifacts/host/mtcollins1-reset-attempt-1.json",
+    evidence_digest: fx_digest_first,
+  )
+}
+
+fn fx_good_second() -> ResetReceiptCommit {
+  fx_receipt(
+    attempt: "attempt-2",
+    route: fx_converge_route,
+    self_identity: fx_distinct_identity,
+    acknowledgement: ResetAccepted {
+      controller_response: "chassis power cycle accepted",
+      issued_at: 1788000200000,
+    },
+    observation: HostObservedDownThenBack {
+      probe: "tcp:22 from the observer",
+      down_first_seen_at: 1788000209000,
+      back_first_seen_at: 1788000301000,
+      down_samples: 3,
+      back_samples: 2,
+    },
+    evidence_path: "artifacts/host/mtcollins1-reset-attempt-2.json",
+    evidence_digest: fx_digest_second,
+  )
+}
+
+fn verdict_refuses(verdict: ResetReturnVerdict) -> Bool {
+  match verdict {
+    ResetReturnRefused { cause: _ } => true
+    HostDrivenBackToKnownState { downtime: _ } => false
+  }
+}
+
+fn downtime_is_unavailable(m: Measured<Milliseconds>) -> Bool {
+  match m {
+    MeasuredUnavailable { cause: _ } => true
+    MeasuredValue { value: _ } => false
+  }
+}
+
+// ── the positive controls ──────────────────────────────────────────────────────────────────────
+
+// READ THIS ONE FIRST. Every refusal witness below is vacuous if the acceptance path does not
+// actually reach acceptance, and a suite of green refusals over a fixture nothing accepts is the
+// most convincing empty result available -- it looks like twelve walls and is one typo.
+test fn w_a_converge_issued_reset_observed_down_then_back_is_driven_back() -> Bool {
+  match reset_return_verdict_of_commit(commit: fx_good_first()) {
+    HostDrivenBackToKnownState { downtime: ms } => ms == 87000
+    ResetReturnRefused { cause: _ } => false
+  }
+}
+
+// THE SECOND POSITIVE CONTROL, AND IT IS THE CONJUNCT ITSELF: two attempts, two artifacts, the
+// second issued after the first returned.
+test fn w_two_distinct_attempts_in_order_start_cleanly() -> Bool {
+  match second_attempt_property_of_commits(first: fx_good_first(), second: fx_good_second()) {
+    SecondAttemptStartedCleanly { first_downtime: a, second_downtime: b } =>
+      a == 87000 && b == 92000
+    SecondAttemptRefused { cause: _ } => false
+  }
+}
+
+// ── the reds on the reset/return distinction ───────────────────────────────────────────────────
+
+// THE RED THIS WHOLE MODULE EXISTS FOR. The controller accepted the command and the host never went
+// anywhere. A receipt carrying only the acknowledgement renders this as a successful reset, which is
+// the empty value read as a positive answer. It must refuse, and it must refuse on the MEASUREMENT
+// cause rather than on the acknowledgement -- the controller did nothing wrong.
+test fn w_an_accepted_command_with_the_host_never_down_refuses() -> Bool {
+  match reset_return_verdict_of_commit(
+    commit: fx_receipt(
+      attempt: "attempt-1",
+      route: fx_converge_route,
+      self_identity: fx_distinct_identity,
+      acknowledgement: fx_accepted,
+      observation: HostNeverObservedDown {
+        probe: "tcp:22 from the observer",
+        samples: 40,
+        watched_until: 1788000300000,
+      },
+      evidence_path: "artifacts/host/never-down.json",
+      evidence_digest: fx_digest_first,
+    )
+  ) {
+    ResetReturnRefused { cause: c } =>
+      match c { HostReturnNotMeasured { cause: _ } => true  _ => false }
+    HostDrivenBackToKnownState { downtime: _ } => false
+  }
+}
+
+// AND THE NUMBER IS UNAVAILABLE RATHER THAN ZERO. This is the same state read through the duration
+// fold instead of the verdict, because the fabrication that costs the most is not a wrong verdict
+// but a plausible zero: it sorts to the top of any ranking of outage times and is therefore the one
+// nobody finds by looking at a list.
+test fn w_a_host_never_observed_down_has_no_downtime_not_a_zero() -> Bool {
+  downtime_is_unavailable(
+    m: reset_downtime(
+      observation: HostNeverObservedDown {
+        probe: "tcp:22 from the observer",
+        samples: 40,
+        watched_until: 1788000300000,
+      }
+    )
+  )
+}
+
+test fn w_a_host_that_did_not_return_has_no_downtime_not_a_zero() -> Bool {
+  downtime_is_unavailable(
+    m: reset_downtime(
+      observation: HostObservedDownAndNotBack {
+        probe: "tcp:22 from the observer",
+        down_first_seen_at: 1788000009000,
+        waited_until: 1788000900000,
+      }
+    )
+  )
+}
+
+// A FAILED MEASUREMENT IS NOT A MEASURED FAILURE. The observer's own probe broke; that establishes
+// nothing about the host in either direction and must not be readable as either.
+test fn w_an_unobserved_return_has_no_downtime_not_a_zero() -> Bool {
+  downtime_is_unavailable(
+    m: reset_downtime(observation: HostReturnUnobserved { cause: "the observer lost its route to the segment mid-window" })
+  )
+}
+
+// THE STALE-LIVENESS RED. A down observation timestamped BEFORE the reset was issued is a reading of
+// an earlier outage, or a cache answering from before the command. It cannot testify to this reset,
+// and without this arm "down then up" would be satisfiable by one query answered twice.
+test fn w_a_down_observation_predating_the_issuance_refuses() -> Bool {
+  match reset_return_verdict_of_commit(
+    commit: fx_receipt(
+      attempt: "attempt-1",
+      route: fx_converge_route,
+      self_identity: fx_distinct_identity,
+      acknowledgement: fx_accepted,
+      observation: HostObservedDownThenBack {
+        probe: "a liveness fact captured before the reset",
+        down_first_seen_at: 1787999000000,
+        back_first_seen_at: 1788000096000,
+        down_samples: 3,
+        back_samples: 2,
+      },
+      evidence_path: "artifacts/host/stale.json",
+      evidence_digest: fx_digest_first,
+    )
+  ) {
+    ResetReturnRefused { cause: c } =>
+      match c { DownObservedBeforeIssuance { issued_at: _, down_first_seen_at: _ } => true  _ => false }
+    HostDrivenBackToKnownState { downtime: _ } => false
+  }
+}
+
+// AN INCOHERENT PAIR IS UNAVAILABLE, NOT A SHORT OUTAGE. Back at or before down would otherwise
+// produce a number, and a small number is exactly what a reader would accept without checking.
+test fn w_a_back_reading_at_or_before_the_down_reading_is_incoherent() -> Bool {
+  downtime_is_unavailable(
+    m: reset_downtime(
+      observation: HostObservedDownThenBack {
+        probe: "tcp:22 from the observer",
+        down_first_seen_at: 1788000096000,
+        back_first_seen_at: 1788000009000,
+        down_samples: 3,
+        back_samples: 2,
+      }
+    )
+  )
+}
+
+// THE BASELINE RED, AND IT IS THE ONE AN OBSERVER WRITTEN STRAIGHT THROUGH WOULD MISS. A host that
+// was ALREADY down when the reset was issued satisfies a down watch instantly, and anything that
+// later brings it back satisfies the back watch too -- a complete, ordered, entirely fabricated
+// reading of a reset that moved nothing. The refusal has its own cause because its remedy is its
+// own: find out why the machine is down, which is a different job from resetting it.
+test fn w_a_subject_already_down_at_issuance_refuses_on_its_own_cause() -> Bool {
+  match reset_return_verdict_of_commit(
+    commit: fx_receipt(
+      attempt: "attempt-1",
+      route: fx_converge_route,
+      self_identity: fx_distinct_identity,
+      acknowledgement: fx_accepted,
+      observation: SubjectNotUpBeforeIssuance {
+        probe: "tcp:22 from the observer",
+        checked_at: 1787999999000,
+      },
+      evidence_path: "artifacts/host/already-down.json",
+      evidence_digest: fx_digest_first,
+    )
+  ) {
+    ResetReturnRefused { cause: c } =>
+      match c { SubjectWasNotUpBeforeIssuance => true  _ => false }
+    HostDrivenBackToKnownState { downtime: _ } => false
+  }
+}
+
+test fn w_a_subject_already_down_at_issuance_has_no_downtime_not_a_zero() -> Bool {
+  downtime_is_unavailable(
+    m: reset_downtime(
+      observation: SubjectNotUpBeforeIssuance {
+        probe: "tcp:22 from the observer",
+        checked_at: 1787999999000,
+      }
+    )
+  )
+}
+
+// ── the reds on WHO issued and WHO observed ────────────────────────────────────────────────────
+
+// A HAND-DRIVEN RESET IS A REFUSAL AND NOT A LESSER RECEIPT. A receipt taken over a hand-invoked
+// CLI is evidence that someone was PRESENT, which is the negation of the unattended property this
+// carrier exists to establish.
+test fn w_an_out_of_band_issuance_refuses_however_well_observed() -> Bool {
+  match reset_return_verdict_of_commit(
+    commit: fx_receipt(
+      attempt: "attempt-1",
+      route: IssuedByHandOutOfBand { what: "ipmitool run from an operator workstation" },
+      self_identity: fx_distinct_identity,
+      acknowledgement: fx_accepted,
+      observation: fx_down_then_back,
+      evidence_path: "artifacts/host/by-hand.json",
+      evidence_digest: fx_digest_first,
+    )
+  ) {
+    ResetReturnRefused { cause: c } =>
+      match c { IssuanceWasOutOfBand { what: _ } => true  _ => false }
+    HostDrivenBackToKnownState { downtime: _ } => false
+  }
+}
+
+// THE PRE-PROBE REFUSAL, AND IT IS CHECKED ON A RECEIPT WHOSE OBSERVATION IS PERFECT. That is the
+// point: the observation is the one a self-observing job could never have produced, so accepting it
+// would mean the label-grain guarantee was the only thing standing between us and a receipt written
+// by the machine it describes.
+test fn w_an_observer_on_the_subject_machine_refuses_despite_a_clean_observation() -> Bool {
+  match reset_return_verdict_of_commit(
+    commit: fx_receipt(
+      attempt: "attempt-1",
+      route: fx_converge_route,
+      self_identity: ObserverIsTheSubjectMachine { machine_id: "mtcollins1-machine-id" },
+      acknowledgement: fx_accepted,
+      observation: fx_down_then_back,
+      evidence_path: "artifacts/host/self-observed.json",
+      evidence_digest: fx_digest_first,
+    )
+  ) {
+    ResetReturnRefused { cause: c } =>
+      match c { ObserverWasTheSubjectMachine { machine_id: _ } => true  _ => false }
+    HostDrivenBackToKnownState { downtime: _ } => false
+  }
+}
+
+// AN UNREADABLE SELF-IDENTITY IS ITS OWN REFUSAL AND NOT A PASS. The check that cannot be performed
+// is not the check that passed -- the same distinction the observation arms keep.
+test fn w_an_unreadable_observer_identity_refuses_rather_than_passing() -> Bool {
+  match reset_return_verdict_of_commit(
+    commit: fx_receipt(
+      attempt: "attempt-1",
+      route: fx_converge_route,
+      self_identity: ObserverSelfIdentityUnreadable { cause: "no machine-id file on the observer" },
+      acknowledgement: fx_accepted,
+      observation: fx_down_then_back,
+      evidence_path: "artifacts/host/no-machine-id.json",
+      evidence_digest: fx_digest_first,
+    )
+  ) {
+    ResetReturnRefused { cause: c } =>
+      match c { ObserverIdentityUnreadable { cause: _ } => true  _ => false }
+    HostDrivenBackToKnownState { downtime: _ } => false
+  }
+}
+
+test fn w_matching_machine_ids_are_the_subject_machine() -> Bool {
+  match observer_self_identity(
+    observer_machine_id: "mtcollins1",
+    observer_allocated_hostname: "srv1",
+    subject_machine_id: "mtcollins1",
+  ) {
+    ObserverIsTheSubjectMachine { machine_id: _ } => true
+    _ => false
+  }
+}
+
+// A CONVERGED PEER IS THE ONLY THING THAT ESTABLISHES A DIFFERENCE.
+test fn w_a_converged_peer_is_distinct_from_the_subject() -> Bool {
+  match observer_self_identity(
+    observer_machine_id: "srv1",
+    observer_allocated_hostname: "srv1",
+    subject_machine_id: "mtcollins1",
+  ) {
+    ObserverDistinctFromSubject { observer_machine_id: _, subject_machine_id: _ } => true
+    _ => false
+  }
+}
+
+// THE RED THAT MAKES THE THIRD NAME NECESSARY, and the naive two-name check passes it. An observer
+// that never converged its hostname reports something that differs from the subject just as surely
+// as a correct peer does -- so the difference is real and establishes nothing, because a hostname is
+// DESIRED state and this machine has not been made to answer to its own.
+test fn w_an_unconverged_observer_establishes_nothing_even_though_it_differs() -> Bool {
+  match observer_self_identity(
+    observer_machine_id: "ubuntu",
+    observer_allocated_hostname: "srv1",
+    subject_machine_id: "mtcollins1",
+  ) {
+    ObserverHostnameNotConverged { observed: _, allocated: _ } => true
+    _ => false
+  }
+}
+
+// THE ORDERING RED, AND IT IS WHY THE SUBJECT QUESTION IS ASKED FIRST. A runner labelled as a peer
+// but living on the subject chassis answers to the SUBJECT's hostname, so it fails both predicates
+// at once. Answering NotConverged here would report the exact substitution this check exists to
+// catch as an ordinary maintenance problem, and the two have opposite remedies.
+test fn w_a_peer_labelled_runner_on_the_subject_machine_reports_substitution_not_drift() -> Bool {
+  match observer_self_identity(
+    observer_machine_id: "mtcollins1",
+    observer_allocated_hostname: "srv1",
+    subject_machine_id: "mtcollins1",
+  ) {
+    ObserverIsTheSubjectMachine { machine_id: _ } => true
+    ObserverHostnameNotConverged { observed: _, allocated: _ } => false
+    _ => false
+  }
+}
+
+// AND IT REFUSES THE VERDICT ON ITS OWN CAUSE, over an otherwise perfect observation.
+test fn w_an_unconverged_observer_refuses_the_verdict_on_its_own_cause() -> Bool {
+  match reset_return_verdict_of_commit(
+    commit: fx_receipt(
+      attempt: "attempt-1",
+      route: fx_converge_route,
+      self_identity: ObserverHostnameNotConverged { observed: "ubuntu", allocated: "srv1" },
+      acknowledgement: fx_accepted,
+      observation: fx_down_then_back,
+      evidence_path: "artifacts/host/unconverged-observer.json",
+      evidence_digest: fx_digest_first,
+    )
+  ) {
+    ResetReturnRefused { cause: c } =>
+      match c { ObserverHostnameUnconverged { observed: _, allocated: _ } => true  _ => false }
+    HostDrivenBackToKnownState { downtime: _ } => false
+  }
+}
+
+// ── the gate that runs BEFORE the controller is touched ────────────────────────────────────────
+
+// CLASSIFICATION AND ENFORCEMENT ARE DIFFERENT CLAIMS, AND ONLY THE SECOND PROTECTS HARDWARE. The
+// four witnesses above establish that an unestablished observer identity is CLASSIFIED correctly.
+// This one is about the predicate the executing entry consults BEFORE it writes: the first draft of
+// that entry computed the identity, carried it into the receipt, and issued the reset anyway, so a
+// job running on its own subject would have power-cycled the machine it was standing on and then
+// reported the refusal. Exactly one arm may proceed, and it is the only one that established
+// anything.
+test fn w_only_a_converged_distinct_observer_may_issue() -> Bool {
+  observer_identity_permits_issuance(identity: fx_distinct_identity)
+    && observer_identity_permits_issuance(identity: ObserverIsTheSubjectMachine { machine_id: "mtcollins1" }) == false
+    && observer_identity_permits_issuance(identity: ObserverHostnameNotConverged { observed: "ubuntu", allocated: "srv1" }) == false
+    && observer_identity_permits_issuance(identity: ObserverSelfIdentityUnreadable { cause: "no hostname" }) == false
+}
+
+// ── the reds on the acknowledgement ────────────────────────────────────────────────────────────
+
+test fn w_a_controller_refusal_is_its_own_cause_not_a_measurement_failure() -> Bool {
+  match reset_return_verdict_of_commit(
+    commit: fx_receipt(
+      attempt: "attempt-1",
+      route: fx_converge_route,
+      self_identity: fx_distinct_identity,
+      acknowledgement: ResetRefusedByController { diagnostic: "chassis power cycle returned a non-zero status" },
+      observation: fx_down_then_back,
+      evidence_path: "artifacts/host/refused.json",
+      evidence_digest: fx_digest_first,
+    )
+  ) {
+    ResetReturnRefused { cause: c } =>
+      match c { ControllerDidNotAccept { diagnostic: _ } => true  _ => false }
+    HostDrivenBackToKnownState { downtime: _ } => false
+  }
+}
+
+test fn w_a_reset_never_attempted_is_distinct_from_one_refused() -> Bool {
+  match reset_return_verdict_of_commit(
+    commit: fx_receipt(
+      attempt: "attempt-1",
+      route: fx_converge_route,
+      self_identity: fx_distinct_identity,
+      acknowledgement: ResetNotAttempted { cause: "no credential path was supplied; refused before any controller write" },
+      observation: fx_down_then_back,
+      evidence_path: "artifacts/host/not-attempted.json",
+      evidence_digest: fx_digest_first,
+    )
+  ) {
+    ResetReturnRefused { cause: c } =>
+      match c { ResetWasNotAttempted { cause: _ } => true  _ => false }
+    HostDrivenBackToKnownState { downtime: _ } => false
+  }
+}
+
+// ── the reds on the second-attempt relation ────────────────────────────────────────────────────
+
+// APPENDING THE SECOND ATTEMPT TO THE FIRST ARTIFACT. This is the shape the receipt discipline
+// forbids: it changes the bytes the first receipt's digest names, invalidating that receipt while
+// leaving it looking valid. Both receipts here are individually perfect, which is why the relation
+// has to catch it.
+test fn w_two_attempts_sharing_one_evidence_artifact_refuse() -> Bool {
+  match second_attempt_property_of_commits(
+    first: fx_good_first(),
+    second: fx_receipt(
+      attempt: "attempt-2",
+      route: fx_converge_route,
+      self_identity: fx_distinct_identity,
+      acknowledgement: ResetAccepted { controller_response: "accepted", issued_at: 1788000200000 },
+      observation: HostObservedDownThenBack {
+        probe: "tcp:22 from the observer",
+        down_first_seen_at: 1788000209000,
+        back_first_seen_at: 1788000301000,
+        down_samples: 3,
+        back_samples: 2,
+      },
+      evidence_path: "artifacts/host/mtcollins1-reset-attempt-1.json",
+      evidence_digest: fx_digest_second,
+    )
+  ) {
+    SecondAttemptRefused { cause: c } =>
+      match c { EvidenceArtifactShared { path: _ } => true  _ => false }
+    SecondAttemptStartedCleanly { first_downtime: _, second_downtime: _ } => false
+  }
+}
+
+// ONE READING RECORDED TWICE DOES NOT BECOME TWO OBSERVATIONS BY BEING WRITTEN TO TWO PATHS.
+test fn w_two_attempts_with_identical_evidence_digests_refuse() -> Bool {
+  match second_attempt_property_of_commits(
+    first: fx_good_first(),
+    second: fx_receipt(
+      attempt: "attempt-2",
+      route: fx_converge_route,
+      self_identity: fx_distinct_identity,
+      acknowledgement: ResetAccepted { controller_response: "accepted", issued_at: 1788000200000 },
+      observation: HostObservedDownThenBack {
+        probe: "tcp:22 from the observer",
+        down_first_seen_at: 1788000209000,
+        back_first_seen_at: 1788000301000,
+        down_samples: 3,
+        back_samples: 2,
+      },
+      evidence_path: "artifacts/host/mtcollins1-reset-attempt-2.json",
+      evidence_digest: fx_digest_first,
+    )
+  ) {
+    SecondAttemptRefused { cause: c } =>
+      match c { EvidenceDigestsIdentical { path: _ } => true  _ => false }
+    SecondAttemptStartedCleanly { first_downtime: _, second_downtime: _ } => false
+  }
+}
+
+// DISTINCTNESS ESTABLISHED BY AN INCOMPARABILITY IS NO EVIDENCE AT ALL. Two receipts hashed under
+// different families would otherwise pass the distinctness check by being unreadable against each
+// other, which is the strongest-looking and emptiest form of the check passing.
+test fn w_cross_family_evidence_digests_refuse_rather_than_reading_as_distinct() -> Bool {
+  match second_attempt_property_of_commits(
+    first: fx_good_first(),
+    second: fx_receipt(
+      attempt: "attempt-2",
+      route: fx_converge_route,
+      self_identity: fx_distinct_identity,
+      acknowledgement: ResetAccepted { controller_response: "accepted", issued_at: 1788000200000 },
+      observation: HostObservedDownThenBack {
+        probe: "tcp:22 from the observer",
+        down_first_seen_at: 1788000209000,
+        back_first_seen_at: 1788000301000,
+        down_samples: 3,
+        back_samples: 2,
+      },
+      evidence_path: "artifacts/host/mtcollins1-reset-attempt-2.json",
+      evidence_digest: fx_digest_structural,
+    )
+  ) {
+    SecondAttemptRefused { cause: c } =>
+      match c { EvidenceDigestsIncomparable => true  _ => false }
+    SecondAttemptStartedCleanly { first_downtime: _, second_downtime: _ } => false
+  }
+}
+
+// ONE RECEIPT HANDED IN TWICE IS NOT A SECOND ATTEMPT, AND THIS IS CHECKED BEFORE EITHER VERDICT.
+// Both verdicts would pass -- it is the same passing receipt -- so an identity check performed
+// after them would never run.
+test fn w_one_receipt_passed_as_both_attempts_refuses_on_identity() -> Bool {
+  match second_attempt_property_of_commits(first: fx_good_first(), second: fx_good_first()) {
+    SecondAttemptRefused { cause: c } =>
+      match c { AttemptIdentitiesNotDistinct { attempt: _ } => true  _ => false }
+    SecondAttemptStartedCleanly { first_downtime: _, second_downtime: _ } => false
+  }
+}
+
+// TWO CLEAN ATTEMPTS AGAINST TWO DIFFERENT HOSTS ARE NOT A SECOND ATTEMPT ON EITHER OF THEM.
+test fn w_attempts_against_different_subjects_refuse() -> Bool {
+  match second_attempt_property_of_commits(
+    first: fx_good_first(),
+    second: commit_reset_attempt_receipt(
+      mint: mint_reset_attempt_receipt(
+        selection: select_reset_observer(
+          subject_roster: ["mtcollins1", "srv3"],
+          peer_roster: fx_peer_roster,
+          subject: "srv3",
+          observer: "srv1",
+        ),
+        attempt: "attempt-2",
+        route: fx_converge_route,
+        self_identity: fx_distinct_identity,
+        acknowledgement: ResetAccepted { controller_response: "accepted", issued_at: 1788000200000 },
+        observation: HostObservedDownThenBack {
+          probe: "tcp:22 from the observer",
+          down_first_seen_at: 1788000209000,
+          back_first_seen_at: 1788000301000,
+          down_samples: 3,
+          back_samples: 2,
+        },
+      ),
+      evidence_path: "artifacts/host/srv3-reset-attempt-2.json",
+      evidence_digest: fx_digest_second,
+    )
+  ) {
+    SecondAttemptRefused { cause: c } =>
+      match c { SubjectsDiffer { first: _, second: _ } => true  _ => false }
+    SecondAttemptStartedCleanly { first_downtime: _, second_downtime: _ } => false
+  }
+}
+
+// THE ORDERING RED. Two genuinely distinct, individually clean attempts whose second was issued
+// while the first had not yet returned are not a first-then-second sequence; they are two
+// overlapping resets, and calling them a clean second attempt would be the claim the canary
+// receipt says nobody has yet earned.
+test fn w_a_second_attempt_issued_before_the_first_returned_refuses() -> Bool {
+  match second_attempt_property_of_commits(
+    first: fx_good_first(),
+    second: fx_receipt(
+      attempt: "attempt-2",
+      route: fx_converge_route,
+      self_identity: fx_distinct_identity,
+      acknowledgement: ResetAccepted { controller_response: "accepted", issued_at: 1788000050000 },
+      observation: HostObservedDownThenBack {
+        probe: "tcp:22 from the observer",
+        down_first_seen_at: 1788000060000,
+        back_first_seen_at: 1788000150000,
+        down_samples: 3,
+        back_samples: 2,
+      },
+      evidence_path: "artifacts/host/mtcollins1-reset-attempt-2.json",
+      evidence_digest: fx_digest_second,
+    )
+  ) {
+    SecondAttemptRefused { cause: c } =>
+      match c { SecondIssuedBeforeFirstReturned { first_back_at: _, second_issued_at: _ } => true  _ => false }
+    SecondAttemptStartedCleanly { first_downtime: _, second_downtime: _ } => false
+  }
+}
+
+// A REFUSED FIRST ATTEMPT CANNOT BE COMPLETED BY A CLEAN SECOND ONE, and the cause is carried
+// through rather than flattened: a reader has to be able to see WHICH attempt failed and why.
+test fn w_a_refused_first_attempt_refuses_the_relation_carrying_its_cause() -> Bool {
+  match second_attempt_property_of_commits(
+    first: fx_receipt(
+      attempt: "attempt-1",
+      route: fx_converge_route,
+      self_identity: fx_distinct_identity,
+      acknowledgement: fx_accepted,
+      observation: HostNeverObservedDown {
+        probe: "tcp:22 from the observer",
+        samples: 40,
+        watched_until: 1788000100000,
+      },
+      evidence_path: "artifacts/host/mtcollins1-reset-attempt-1.json",
+      evidence_digest: fx_digest_first,
+    ),
+    second: fx_good_second(),
+  ) {
+    SecondAttemptRefused { cause: c } =>
+      match c { FirstAttemptRefused { cause: _ } => true  _ => false }
+    SecondAttemptStartedCleanly { first_downtime: _, second_downtime: _ } => false
+  }
+}
+
+test fn w_a_refused_second_attempt_refuses_the_relation_carrying_its_cause() -> Bool {
+  match second_attempt_property_of_commits(
+    first: fx_good_first(),
+    second: fx_receipt(
+      attempt: "attempt-2",
+      route: fx_converge_route,
+      self_identity: fx_distinct_identity,
+      acknowledgement: ResetAccepted { controller_response: "accepted", issued_at: 1788000200000 },
+      observation: HostObservedDownAndNotBack {
+        probe: "tcp:22 from the observer",
+        down_first_seen_at: 1788000209000,
+        waited_until: 1788001000000,
+      },
+      evidence_path: "artifacts/host/mtcollins1-reset-attempt-2.json",
+      evidence_digest: fx_digest_second,
+    ),
+  ) {
+    SecondAttemptRefused { cause: c } =>
+      match c { SecondAttemptRefusedCause { cause: _ } => true  _ => false }
+    SecondAttemptStartedCleanly { first_downtime: _, second_downtime: _ } => false
+  }
+}
+
+// ── the observer-selection mint ────────────────────────────────────────────────────────────────
+
+test fn w_a_rostered_peer_observing_a_rostered_subject_is_selected() -> Bool {
+  match select_reset_observer(
+    subject_roster: fx_subject_roster,
+    peer_roster: fx_peer_roster,
+    subject: "mtcollins1",
+    observer: "srv1",
+  ) {
+    ObserverSelected { pairing: p } =>
+      (p.observer as String) == "srv1" && (p.subject as String) == "mtcollins1"
+    ObserverSelectionRefused { cause: _ } => false
+  }
+}
+
+// THE SELF-OBSERVING PAIRING HAS NO MINT. This is the arm that makes the runner-selection guarantee
+// a construction rather than a convention: the pair is not rejected downstream, it is never made.
+test fn w_a_host_may_not_observe_itself() -> Bool {
+  match select_reset_observer(
+    subject_roster: ["srv1"],
+    peer_roster: fx_peer_roster,
+    subject: "srv1",
+    observer: "srv1",
+  ) {
+    ObserverSelectionRefused { cause: c } =>
+      match c { ObserverIsSubject { host: _ } => true  _ => false }
+    ObserverSelected { pairing: _ } => false
+  }
+}
+
+// MEMBERSHIP IS CHECKED BEFORE EQUALITY, AND THIS WITNESS IS WHAT PINS THAT ORDER. An unrostered
+// host naming itself satisfies BOTH conditions; answering ObserverIsSubject would send a caller off
+// to find a peer when the real answer is that the host was never admitted as a subject at all.
+test fn w_an_unrostered_subject_naming_itself_refuses_on_the_roster_not_the_equality() -> Bool {
+  match select_reset_observer(
+    subject_roster: fx_subject_roster,
+    peer_roster: fx_peer_roster,
+    subject: "srv9",
+    observer: "srv9",
+  ) {
+    ObserverSelectionRefused { cause: c } =>
+      match c { SubjectNotRostered { subject: _ } => true  _ => false }
+    ObserverSelected { pairing: _ } => false
+  }
+}
+
+test fn w_an_unrostered_observer_refuses() -> Bool {
+  match select_reset_observer(
+    subject_roster: fx_subject_roster,
+    peer_roster: fx_peer_roster,
+    subject: "mtcollins1",
+    observer: "srv9",
+  ) {
+    ObserverSelectionRefused { cause: c } =>
+      match c { ObserverNotRostered { observer: _ } => true  _ => false }
+    ObserverSelected { pairing: _ } => false
+  }
+}
+
+// A FIXTURE-REACHED ARM, DECLARED AS SUCH. With one subject and four peers, no production dispatch
+// can reach a subject whose only candidate observer is itself, so this arm is driven from a fixture
+// and is NOT reported as measured on the acceptance path. It is still a wall: DESIGN section 4b
+// rules that a state unrepresentable in the accepted corpus may be representable as source handed
+// to the compiler by a fixture, and declining that evidence is specification-without-execution.
+test fn w_a_subject_whose_only_peer_is_itself_refuses_from_a_fixture() -> Bool {
+  match select_reset_observer(
+    subject_roster: ["lonely"],
+    peer_roster: ["lonely"],
+    subject: "lonely",
+    observer: "lonely",
+  ) {
+    ObserverSelectionRefused { cause: c } =>
+      match c { ObserverIsSubject { host: _ } => true  _ => false }
+    ObserverSelected { pairing: _ } => false
+  }
+}
+
+// ── the derived dispatch assignment ────────────────────────────────────────────────────────────
+
+test fn w_dispatch_observer_labels_are_the_selected_observers_in_order() -> Bool {
+  match reset_dispatch_pairings(subject_roster: fx_subject_roster, peer_roster: fx_peer_roster) {
+    DispatchAssignment { pairings: ps } =>
+      reset_dispatch_observer_labels(pairings: ps) == ["srv1", "srv2", "srv3", "srv4"]
+    DispatchAssignmentRefused { cause: _ } => false
+  }
+}
+
+// THE INVERSE IS TOTAL AND IS WHAT THE JOB CALLS. A job knows the runner it landed on; this is how
+// it learns what it is watching, and the answer never comes from a dispatch field anyone typed.
+test fn w_an_assigned_observer_recovers_its_subject() -> Bool {
+  match subject_for_observer(
+    assignment: reset_dispatch_pairings(subject_roster: fx_subject_roster, peer_roster: fx_peer_roster),
+    observer: "srv2",
+  ) {
+    Present { value: subject } => (subject as String) == "mtcollins1"
+    Absent => false
+  }
+}
+
+// AN UNASSIGNED OBSERVER RECOVERS NOTHING, which a job must read as a refusal rather than as a
+// subject it may pick. The absorbing arm here would be answering with the only subject there
+// happens to be -- correct today, silently wrong the first time a second one lands.
+test fn w_an_unassigned_observer_recovers_no_subject() -> Bool {
+  match subject_for_observer(
+    assignment: reset_dispatch_pairings(subject_roster: fx_subject_roster, peer_roster: fx_peer_roster),
+    observer: "srv9",
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// ONE UNMINTABLE PAIRING REFUSES THE WHOLE ASSIGNMENT. A fold that dropped the refused candidate
+// would shrink the option list quietly, and a subject nobody could observe would stop being offered
+// with no diagnostic -- the absorbing fallback, which fails open twice: it hides the deficit, and it
+// denominates the loss in the roster rather than in the change.
+test fn w_one_refused_candidate_refuses_the_whole_assignment() -> Bool {
+  match reset_dispatch_assignment(
+    selections: [
+      select_reset_observer(subject_roster: fx_subject_roster, peer_roster: fx_peer_roster, subject: "mtcollins1", observer: "srv1"),
+      select_reset_observer(subject_roster: fx_subject_roster, peer_roster: fx_peer_roster, subject: "mtcollins1", observer: "srv9"),
+    ]
+  ) {
+    DispatchAssignmentRefused { cause: c } =>
+      match c {
+        AssignmentPairingRefused { cause: inner } =>
+          match inner { ObserverNotRostered { observer: _ } => true  _ => false }
+        ObserverAssignedToTwoSubjects { observer: _, first_subject: _, second_subject: _ } => false
+      }
+    DispatchAssignment { pairings: _ } => false
+  }
+}
+
+// A HOST ON BOTH ROSTERS REFUSES THE WHOLE ASSIGNMENT, driven from a fixture because production has
+// one subject that is on no peer roster. The refusal is the two rosters disagreeing about what a
+// machine is, and stopping is the only honest answer to that.
+test fn w_a_host_rostered_as_both_subject_and_peer_refuses_the_assignment() -> Bool {
+  match reset_dispatch_pairings(subject_roster: ["srv1"], peer_roster: ["srv1", "srv2"]) {
+    DispatchAssignmentRefused { cause: c } =>
+      match c {
+        AssignmentPairingRefused { cause: inner } =>
+          match inner { ObserverIsSubject { host: _ } => true  _ => false }
+        ObserverAssignedToTwoSubjects { observer: _, first_subject: _, second_subject: _ } => false
+      }
+    DispatchAssignment { pairings: _ } => false
+  }
+}
+
+// THE TWO-SUBJECT AMBIGUITY, THE ARM THAT MAKES THE OBSERVER-KEYED DISPATCH HONEST. Two subjects
+// sharing a peer give one observer label two subjects, so runs-on could not say what the job was
+// watching. Unreachable from production today with one rostered subject, which is exactly why it is
+// driven here and reported as fixture-reached rather than as measured.
+test fn w_an_observer_assigned_to_two_subjects_refuses_from_a_fixture() -> Bool {
+  match reset_dispatch_pairings(subject_roster: ["subject-a", "subject-b"], peer_roster: ["srv1"]) {
+    DispatchAssignmentRefused { cause: c } =>
+      match c {
+        ObserverAssignedToTwoSubjects { observer: _, first_subject: _, second_subject: _ } => true
+        AssignmentPairingRefused { cause: _ } => false
+      }
+    DispatchAssignment { pairings: _ } => false
+  }
+}

@@ -82,6 +82,22 @@ import gunbc.ci_spec {
 import gunbc.fleet_converge_receipt { fleet_converge_expected_host_env_name, fleet_converge_plan_run_id_env_name }
 import gunbc.actions_run_binding { rlm_expected_revision_env_name }
 import gunbc.spark.credential_workflow { spark_administrator_credential_roster_hosts }
+import gunbc.fleet_runner_connectivity { fleet_hosts }
+import gunbc.host_reset_return {
+  DispatchAssignment,
+  DispatchAssignmentRefused,
+  ObserverAssignedToTwoSubjects,
+  AssignmentPairingRefused,
+  ObserverIsSubject,
+  ObserverNotRostered,
+  NoPeerAvailable,
+  SubjectNotRostered,
+  ResetDispatchAssignment,
+  ResetDispatchAssignmentRefusalCause,
+  reset_dispatch_observer_labels,
+  reset_dispatch_pairings,
+}
+import gunbc.host_reset_subject_roster { reset_observer_peer_roster, reset_subject_roster }
 import gunbc.live_deploy.apply_receipt { rlm_plan_run_id_env_name, rlm_apply_run_id_env_name, rlm_plan_artifact_hash_env_name }
 import gunbc.roadmap_launch_deployment_cli { rlm_dashboard_run_id_env_name }
 import gunbc.fleet_converge_plan { fleet_converge_plan_artifact_dir }
@@ -98,7 +114,13 @@ import std.types { NonEmptyStr, List, String, Int }
 // cadence on every enrolled CI host (timer install route is TimerRetired fleet-wide). Standalone
 // dispatch carries its own build job (release-bins pack/upload) so the converge job never downloads
 // an artifact the current run did not produce.
-data fleet_converge_enrolled_host_options: List<String> = ["srv1", "srv2", "srv3", "srv4"]
+// THE ENROLLED HOST CHOICES ARE DERIVED, NOT SPELLED, for the reason the Spark target list beside
+// this one already records. The literal that stood here was gunbc.fleet_runner_connectivity
+// fleet_hosts() written out a second time -- a §3 fork that happened to agree, which is the only
+// state in which a fork is cheap to remove. It is now the same list its consumers fold as the
+// eligible executor set, so enrolling or retiring an executor host moves this input with it and
+// nobody can dispatch against a host the fleet does not think it has.
+data fleet_converge_enrolled_host_options: List<String> = map(fleet_hosts(), h => h as String)
 
 // THE TARGET CHOICES ARE THE ROSTERED SPARKS, DERIVED, NOT SPELLED. The literal pair here refused the
 // first bootstrap dispatch against srv7 with an HTTP 422 from GitHub -- the workflow admitted two of
@@ -107,7 +129,106 @@ data fleet_converge_enrolled_host_options: List<String> = ["srv1", "srv2", "srv3
 // with procurement, so enrolling a Spark makes it dispatchable and nothing else can.
 data fleet_converge_spark_target_options: List<String> = map(spark_administrator_credential_roster_hosts(), h => h as String)
 
-data fleet_converge_mode_options: List<String> = ["plan", "launch_environment_plan", "allocation_store_plan", "apply", "org_actions_observe", "app_control_plane_observe", "microvm_host_converge", "guest_image_observe", "guest_image_converge", "microvm_boot_probe", "spark_grants", "spark_bootstrap", "spark_serving_apply", "dashboard_deploy", "rlm_launch_deployment_receipt"]
+data fleet_converge_mode_options: List<String> = ["plan", "launch_environment_plan", "allocation_store_plan", "apply", "org_actions_observe", "app_control_plane_observe", "microvm_host_converge", "guest_image_observe", "guest_image_converge", "microvm_boot_probe", "spark_grants", "spark_bootstrap", "spark_serving_apply", "dashboard_deploy", "rlm_launch_deployment_receipt", "host_reset_return"]
+
+// ── the host reset-return mode ─────────────────────────────────────────────────────────────────
+
+// THIS MODE CANNOT LIVE IN THE HOST-PINNED JOB, AND THAT IS THE WHOLE REASON IT HAS ITS OWN. Every
+// other host-scoped mode is an if-gated step inside `fleet-converge`, whose runner is
+// fleet_converge_host_pinned_runner_spec() -- pinned to a runner ON the selected host. A job running
+// on the host it is resetting dies at the reset and cannot observe the return; worse, whatever it
+// wrote before dying is exactly the empty value that would then read as a positive answer.
+//
+// AND A SEPARATE JOB IS NECESSARY BUT NOT SUFFICIENT. gunbc_ci_runner_spec() is the shared
+// self-hosted arm64 pool, and the subject IS a self-hosted arm64 machine, so an unpinned observer can
+// land on its subject by ordinary scheduling.
+//
+// SO THE INPUT IS INVERTED: the dispatch field carries the OBSERVER label, runs-on consumes it
+// directly, and the SUBJECT is not a dispatch field at all -- gunbc.host_reset_return_run learns it
+// from the machine it is running on, through the assignment below. The invalid pairing is not
+// rejected downstream; there is no form field in which to state it.
+data fleet_converge_reset_assignment: ResetDispatchAssignment = reset_dispatch_pairings(
+  subject_roster: reset_subject_roster(),
+  peer_roster: reset_observer_peer_roster(),
+)
+
+// THE OPTION LIST IS DERIVED FROM THE ASSIGNMENT, and an unmintable one yields an EMPTY list that the
+// emission gate below refuses on. The empty list is never serialized: expected_fleet_converge_yml is
+// the only producer of this workflow's yaml and it checks the assignment before it serializes
+// anything, the same way it already checks the capability closure and the timeout ceiling.
+data fleet_converge_reset_observer_options: List<String> = match fleet_converge_reset_assignment {
+  DispatchAssignment { pairings: ps } => reset_dispatch_observer_labels(pairings: ps)
+  DispatchAssignmentRefused { cause: _ } => []
+}
+
+data fleet_converge_reset_observer_runner_expression: String = "${{ fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.reset_observer)) }}"
+
+fn fleet_converge_reset_observer_runner_spec() -> RunnerSpec {
+  RunsOnExpression { expression: fleet_converge_reset_observer_runner_expression }
+}
+
+data fleet_converge_host_reset_return_step_if: String = "github.event.inputs.mode == 'host_reset_return'"
+
+// THE JOB'S OWN if GATE, not just the step's. A job whose only step is skipped still occupies a
+// runner on the observer host for the length of a checkout and a build download, which is a standing
+// cost on every dispatch of every other mode.
+fn fleet_converge_host_reset_return_job() -> Job {
+  Job {
+    id: "host-reset-return",
+    name: none,
+    runner: fleet_converge_reset_observer_runner_spec(),
+    steps: concat(
+      concat(
+        fleet_converge_consumer_prelude_steps(),
+        [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step()]
+      ),
+      [fleet_converge_host_reset_return_step(), fleet_converge_host_reset_return_receipt_upload_step()]
+    ),
+    needs: ["build"],
+    env: none,
+    outputs: none,
+    if_condition: Present { value: fleet_converge_host_reset_return_step_if },
+    timeout_minutes: Present { value: gunbc_ci_fleet_job_backstop_timeout_minutes() },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none,
+  }
+}
+
+fn fleet_converge_host_reset_return_step() -> Step {
+  RunStep {
+    name: Present { value: "Host reset-return: drive the subject through its controller and measure the return from a peer" },
+    id: Present { value: "host_reset_return" },
+    run: gunbc_ci_host_reset_return_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_host_reset_return_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_fleet_step_timeout_minutes }
+  }
+}
+
+// THE RECEIPT IS UPLOADED ON FAILURE TOO, for the reason the boot-probe receipt beside it is: the
+// refused case is the one somebody needs to read, and an upload conditioned on success discards the
+// evidence exactly then.
+fn fleet_converge_host_reset_return_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload host reset-return attempt receipt" },
+    id: Present { value: "host_reset_return_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "host-reset-return")),
+      kv(key: "path", value: yaml_string(s: "target/host-reset-return-*.txt")),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: concat("always() && (", concat(fleet_converge_host_reset_return_step_if, ")")) },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
 
 data fleet_converge_host_runner_expression: String = "${{ fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host)) }}"
 
@@ -953,7 +1074,7 @@ data fleet_converge_workflow: Workflow = Workflow {
         },
         DispatchInput {
           name: "mode",
-          description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; microvm_host_converge installs the cited Firecracker release on the selected host and refuses the kvm grant by name; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' vLLM units over the password session, workers before heads" },
+          description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; microvm_host_converge installs the cited Firecracker release on the selected host and refuses the kvm grant by name; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' vLLM units over the password session, workers before heads; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject" },
           required: true,
           default: none,
           type: InputChoice { options: fleet_converge_mode_options },
@@ -964,6 +1085,13 @@ data fleet_converge_workflow: Workflow = Workflow {
           required: false,
           default: none,
           type: InputChoice { options: fleet_converge_spark_target_options },
+        },
+        DispatchInput {
+          name: "reset_observer",
+          description: Present { value: "host_reset_return only: the PEER that observes the reset. The subject is NOT an input -- it is derived from this observer through the modeled pairing, so a job cannot be pointed at the host it is resetting" },
+          required: false,
+          default: none,
+          type: InputChoice { options: fleet_converge_reset_observer_options },
         },
         DispatchInput {
           name: "plan_artifact_hash",
@@ -1013,7 +1141,7 @@ data fleet_converge_workflow: Workflow = Workflow {
   concurrency: none,
   env: none,
   permissions: none,
-  jobs: [fleet_converge_build_job(), fleet_converge_job(), fleet_converge_dashboard_deploy_job(), fleet_converge_rlm_launch_deployment_receipt_job()],
+  jobs: [fleet_converge_build_job(), fleet_converge_job(), fleet_converge_host_reset_return_job(), fleet_converge_dashboard_deploy_job(), fleet_converge_rlm_launch_deployment_receipt_job()],
 }
 
 type FleetConvergeYamlGenerationOutcome
@@ -1040,7 +1168,42 @@ fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
   }
 }
 
+// THE ASSIGNMENT IS CHECKED BEFORE ANYTHING IS SERIALIZED, because an unmintable observer pairing
+// leaves fleet_converge_reset_observer_options empty and an empty choice list is a dispatch form that
+// silently cannot run the mode. A refusal that names its cause is the only honest arm: emitting a
+// workflow whose reset mode is unselectable would be the absorbing fallback DESIGN section 5 forbids,
+// with the loss denominated in the roster rather than in the change that caused it.
+fn fleet_converge_reset_assignment_refusal_reason(cause: ResetDispatchAssignmentRefusalCause) -> String {
+  match cause {
+    ObserverAssignedToTwoSubjects { observer: o, first_subject: a, second_subject: b } =>
+      join([
+        "REFUSED gunbc.fleet_converge_workflow: the reset observer ", o as String,
+        " is assigned to two subjects (", a as String, " and ", b as String,
+        "), so runs-on could not say which machine the job is watching. The dispatch input carries the OBSERVER and the subject is derived from it, which requires that mapping to be a function. Encode the pair in the option value, or give each subject its own peer.",
+      ], "")
+    AssignmentPairingRefused { cause: inner } =>
+      match inner {
+        ObserverIsSubject { host: h } =>
+          join(["REFUSED gunbc.fleet_converge_workflow: ", h as String, " is rostered as BOTH a reset subject and a reset observer, so the two rosters disagree about what that machine is. gunbc.host_reset_subject_roster derives subjects from BMC power-control admission and peers from fleet_hosts(); a host in both needs one of those two answers withdrawn."], "")
+        SubjectNotRostered { subject: sname } =>
+          join(["REFUSED gunbc.fleet_converge_workflow: ", sname as String, " is not an admitted reset subject (gunbc.host_reset_subject_roster admits a host only when a landed BMC access observation and its capability row admit power control)."], "")
+        ObserverNotRostered { observer: o } =>
+          join(["REFUSED gunbc.fleet_converge_workflow: ", o as String, " is not an executor fleet host, so no runner carries its label and no job could be scheduled on it."], "")
+        NoPeerAvailable { subject: sname } =>
+          join(["REFUSED gunbc.fleet_converge_workflow: ", sname as String, " has no peer that could observe its reset; a subject cannot observe its own return."], "")
+      }
+  }
+}
+
 fn fleet_converge_yml_after_toolchain_admission() -> FleetConvergeYamlGenerationOutcome {
+  match fleet_converge_reset_assignment {
+    DispatchAssignmentRefused { cause: c } =>
+      FleetConvergeYamlGenerationRefused { reason: fleet_converge_reset_assignment_refusal_reason(cause: c) }
+    DispatchAssignment { pairings: _ } => fleet_converge_yml_after_reset_assignment()
+  }
+}
+
+fn fleet_converge_yml_after_reset_assignment() -> FleetConvergeYamlGenerationOutcome {
   if fleet_converge_build_job_capability_closure_holds() {
     match checked_job_timeout_minutes(computed: gunbc_ci_fleet_job_backstop_timeout_minutes()) {
       JobTimeoutExceedsCeiling { minutes: _, ceiling: _ } =>

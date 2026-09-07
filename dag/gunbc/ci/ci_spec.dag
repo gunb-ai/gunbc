@@ -769,6 +769,14 @@ data gunbc_ci_runner_microvm_host_converge_target: GunbcRunStepTarget = GunbcRun
   function: "runner_microvm_host_converge_wet",
 }
 
+// THE OBSERVER SIDE OF ONE RESET ATTEMPT. It takes the credential path as its single String argument
+// and learns its subject from the machine it is running on -- there is no parameter through which a
+// dispatch could name one, which is what keeps a reset job from being pointed at its own host.
+data gunbc_ci_host_reset_return_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/host/host_reset_return_run.dag",
+  function: "host_reset_return_wet",
+}
+
 data gunbc_ci_runner_microvm_boot_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_microvm_boot_probe.dag",
   function: "runner_microvm_boot_probe_wet",
@@ -914,6 +922,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_guest_image_converge_target,
     gunbc_ci_runner_microvm_host_converge_target,
     gunbc_ci_runner_microvm_boot_probe_target,
+    gunbc_ci_host_reset_return_target,
     gunbc_ci_spark_grant_install_target,
     gunbc_ci_spark_bootstrap_target,
     gunbc_ci_spark_serving_apply_target,
@@ -1679,6 +1688,16 @@ fn gunbc_ci_runner_microvm_host_converge_invoke() -> String {
     function: gunbc_ci_runner_microvm_host_converge_target.function,
     claim_run: false,
     receipt_rel: "target/runner-microvm-host-standing.txt"
+  )
+}
+
+fn gunbc_ci_host_reset_return_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_host_reset_return_target.entry,
+    function: gunbc_ci_host_reset_return_target.function,
+    claim_run: false,
+    receipt_rel: "target/host-reset-return.txt"
   )
 }
 
