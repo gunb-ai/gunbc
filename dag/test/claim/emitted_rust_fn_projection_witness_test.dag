@@ -21,11 +21,11 @@ import tools.multi_module_compile_fixture {
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE INSTRUMENT'S OWN DISCRIMINATING PAIR. Both fixtures COMPILE CLEANLY. The only variable is
-// whether the top-level function carries the parameter `marker`. A witness asserts over the
-// structured EmittedRustFnSignature projection — never over emitted text — so the green arm is
-// not a substring that could match prose, and the red arm is authorable as a clean emit whose
-// ordered parameter list simply lacks the name (DESIGN 4b: the RED must be authorable or the
-// check is a decoration).
+// whether the top-level function's registry row carries the parameter `marker`. A witness asserts
+// over the structured EmittedRustFnSignature projection (resolved-registry grain — never over
+// emitted text), so the green arm is not a substring that could match prose, and the red arm is
+// authorable as a clean compile whose ordered parameter list simply lacks the name (DESIGN 4b:
+// the RED must be authorable or the check is a decoration).
 //
 // WHAT THIS DOES NOT ESTABLISH. It does not prove service-effect propagation to the top of a
 // call chain. That real consumer is test.claim.emitted_rust_fn_service_chain_consumer_witness
