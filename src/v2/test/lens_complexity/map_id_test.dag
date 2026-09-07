@@ -1,7 +1,7 @@
 module v2.test.lens_complexity.map_id
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.lens.complexity { ComplexityBound, complexity_lens, linear_complexity }
+import v2.lens.complexity { ComplexityBound, ComplexityAssessment, complexity_lens, linear_complexity, established_complexity }
 import v2.lens.cost { LinearCost, SizeVariable, SymbolicCost, cost_lens }
 import v2.std.logic { Bool }
 import v2.std.diagnostic {
@@ -69,7 +69,7 @@ fn map_id_actual_cost() -> Witness<SymbolicCost> {
   cost_lens(n: map_id_input)
 }
 
-fn map_id_actual_complexity() -> ComplexityBound {
+fn map_id_actual_complexity() -> ComplexityAssessment {
   complexity_lens(n: map_id_input)
 }
 
@@ -81,5 +81,5 @@ test fn map_id_cost_projection_holds() -> Bool {
 }
 
 test fn map_id_complexity_projection_holds() -> Bool {
-  map_id_actual_complexity() == map_id_claim.expected_complexity
+  map_id_actual_complexity() == established_complexity(bound: map_id_claim.expected_complexity)
 }
