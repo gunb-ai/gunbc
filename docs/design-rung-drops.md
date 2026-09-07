@@ -70,15 +70,15 @@ CI — **RUNG DROP, DECLARED (2026-08-15, the floor cut).** WHAT WAS HERE: one c
 
 ### Whole-corpus compile-phase frontier receipts — latest validated row
 
-Milestones: parse PASSES / expand PASSES / resolve PASSES / typeck 155 remaining / borrowck not yet reached
+Milestones: parse PASSES / expand PASSES / resolve PASSES / typeck PASSES / borrowck PASSES
 
-Tree: `sha1:d424154bb6fb8c40b149be07f2ddd8d61e89108e`
+Tree: `sha1:07eee038259e268e1a543edddb9d3f105e2d11cf`
 
-Invocation: `buildbuddy-44d90e35-ccba-41d1-9a90-928a914b26a2`
+Invocation: `local-8b8875a1-eac3-47b1-a041-aa04fa22b2dd`
 
-Census identity digest (self-host-compile-phase-census-canonical-identity-set-v1): `049d0a54eea70534`
+Census identity digest (self-host-compile-phase-census-canonical-identity-set-v1): `4325dac985bbe897`
 
-Error identities: 155 total = 155 coded + 0 codeless
+Error identities: 0 total = 0 coded + 0 codeless
 
 Producer: `tools.emission_entry_instrument::measure_entry_emission`
 
