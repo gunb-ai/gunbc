@@ -185,6 +185,69 @@ fn predicted_step_micros(law: FittedExecutionLaw, budget: Nat) -> Nat {
   law.per_step_micros + ((law.micros_per_thousand_tokens * budget) / 1000)
 }
 
+// ── THE AFFINE LAW IS A SHALLOW-CONTEXT APPROXIMATION, AND HERE IS ITS RANGE ──────────────────
+//
+// FittedExecutionLaw carries a CONSTANT per-token term. Over the population it was fitted on --
+// every probe at or below 20,192 computed tokens -- that holds to 82 microseconds rms. It does not
+// hold at depth, and the fleet's own traffic averages around 149,000 prompt tokens, which is
+// outside the fitted range by an order of magnitude.
+//
+// Measured on one 1,048,575-token prefill by sampling KV allocation every 90 seconds, fifteen
+// windows from 8k to 1.0M of depth, the per-token cost is AFFINE IN CONTEXT DEPTH:
+//
+//     ms per token  =  0.9236  +  1.4159 microseconds per MILLION tokens of depth
+//
+// with residuals at or below 0.05 ms across a 123x depth range, and an intercept of 0.9236 against
+// an independently measured 0.984 at 16k.
+//
+//     depth      16,000  ->  0.946 ms/token   (1057 tok/s instantaneous)
+//     depth     150,000  ->  1.136            ( 880)
+//     depth     500,000  ->  1.632            ( 613)
+//     depth   1,048,575  ->  2.408            ( 415)
+//
+// A per-token cost linear in depth means TOTAL PREFILL IS QUADRATIC IN PROMPT LENGTH: each token
+// does work proportional to the context before it. Integrating the rate predicts 1747s for the
+// full 1,048,575 against a MEASURED 1598s, so the model runs about 9% high extrapolated over 26
+// minutes; the measurement is the authority and the law is the approximation.
+//
+// WHAT THIS DOES TO THE BATCH BUDGET, and it is the load-bearing consequence: chunking does not
+// change WHICH token pairs are scored, only how they are grouped into forward passes. So the
+// quadratic term is INDEPENDENT of max_num_batched_tokens, and the budget only ever moves the
+// ceil(tokens/budget) * per_step term. That is why the measured throughput gain from 2048 to 16384
+// was at most 7.5% and could not have been more: it is pure per-step amortisation and nothing else.
+//
+// AND THE CO-TENANT STALL IS NOT CONSTANT. Step duration is per_step + rate(depth) * budget, so the
+// stall a co-tenant suffers GROWS as the offending prefill gets deeper -- roughly 2.1s at 16k
+// against 5.1s near 1M at budget 2048, and 8.0s against 19.9s at budget 8192. For long-context
+// traffic the budget choice matters more, not less.
+//
+// WHICH SUBSYSTEM this depth term lives in is NOT established. A pass whose cost is linear in prior
+// context is what an attention or key-selection scan looks like, and this checkpoint uses a sparse
+// attention capped at 512 selected keys per token -- which would make the SELECTION scan, not the
+// attention proper, the candidate. That is a hypothesis and the operation ladder is what would
+// settle it.
+type DepthDependentRate sole_constructor {
+  base_micros_per_thousand_tokens: Nat
+  micros_per_thousand_tokens_per_million_depth: Nat
+  fitted_from_depth: Nat
+  fitted_to_depth: Nat
+  worst_residual_micros: Nat
+  provenance: NonEmptyStr
+}
+
+data spark_group_a_depth_rate: DepthDependentRate = DepthDependentRate {
+  base_micros_per_thousand_tokens: 923600,
+  micros_per_thousand_tokens_per_million_depth: 1415900,
+  fitted_from_depth: 8200,
+  fitted_to_depth: 1007145,
+  worst_residual_micros: 51,
+  provenance: "TP=2 at max_model_len 1,048,576, one 1,048,575-token request, KV allocation sampled every 90s for fifteen windows plus the 16k probe as the shallow anchor; the whole request completed in 1598.1s at a mean of 1.5241 ms/token in exactly 512 steps" as NonEmptyStr,
+}
+
+fn depth_micros_per_thousand_tokens(r: DepthDependentRate, depth: Nat) -> Nat {
+  r.base_micros_per_thousand_tokens + ((r.micros_per_thousand_tokens_per_million_depth * depth) / 1000000)
+}
+
 // ── THE CO-TENANT EXTERNALITY, WITH THE OVERLAP ESTABLISHED RATHER THAN ASSUMED ───────────────
 //
 // WHY THE OVERLAP IS A FIELD. The first attempt at this measurement produced a decode-alone figure
