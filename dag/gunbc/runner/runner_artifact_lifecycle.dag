@@ -1,0 +1,216 @@
+module gunbc.runner.runner_artifact_lifecycle
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+
+// NO BYTE IN A MANAGED LOCATION WITHOUT A CONTENT IDENTITY, AN OWNER, A PURPOSE, A RETENTION ROOT
+// AND A TERMINAL LIFECYCLE ACTION.
+//
+// This is the artifact counterpart of the closed runtime surface: no process without a declaration,
+// no byte without an identity and a lifetime. It exists because nineteen images accumulated on one
+// export during one session and nothing owned any of them.
+
+// ── the axes are separate questions, and conflating them is the whole defect ───────────────────
+
+// "STORE IT IN R2", "STREAM IT", AND "DOWNLOAD THEN REAP" ARE NOT THREE ANSWERS TO ONE QUESTION.
+// They answer different ones, and a store that blurs them ends up with a path acting as an identity.
+type ArtifactQuestion
+  = WhatAreTheseBytes
+  | WhereCanTheyBeReacquired
+  | WhereAreTheyMaterializedNow
+  | WhyMustThisMaterializationRemain
+  | WhenMayItDisappear
+  | WhoProvesDeletion
+
+// IDENTITY IS ALREADY OWNED AND IS NOT RE-COINED HERE. gunbc.boot_artifact's BootArtifact carries
+// purpose, architecture, digest, format, entrypoint and build identity, and carries NO location --
+// which is exactly right and is why a path or filename can only ever be a realization of it.
+data artifact_identity_authority: NonEmptyStr = "gunbc.boot_artifact BootArtifact: purpose, architecture, digest, format, entrypoint, build_identity -- location deliberately absent"
+
+// AN ISO AND THE EFI IMAGE INSIDE IT ARE TWO ARTIFACTS WITH TWO DIGESTS. Treating the envelope's
+// digest as the host image's would make a receipt about what booted unresolvable, because the bytes
+// the firmware actually loaded are not the bytes the digest names.
+type VirtualMediaEnvelope {
+  envelope_digest: NonEmptyStr
+  embedded_host_image_digest: NonEmptyStr
+  layout_identity: NonEmptyStr
+}
+
+// ── the lifecycle, as states that cannot be skipped ────────────────────────────────────────────
+
+// EACH ARROW IS A DIFFERENT FACT AND THE LANE HAS ALREADY CONFLATED TWO OF THEM. A clean VMM exit
+// was read as an attempt succeeding; a present file was read as a verified artifact. The states are
+// separate so that the evidence for one cannot be spent on another.
+type ArtifactLifecycle
+  = BuiltArtifact { digest: NonEmptyStr, build_receipt: NonEmptyStr }
+  | BlobCommitted { backend: NonEmptyStr, key: NonEmptyStr, put_receipt: NonEmptyStr, readback_receipt: NonEmptyStr }
+  | ArtifactMaterialized { location: NonEmptyStr, observed_digest: NonEmptyStr, lease: NonEmptyStr }
+  | ArtifactPresented { controller: NonEmptyStr, unit: NonEmptyStr, attempt: NonEmptyStr }
+  | PresentationReleased { released_receipt: NonEmptyStr }
+  | MaterializationReaped { absence_readback: NonEmptyStr }
+  | LifecycleRefused { at_state: NonEmptyStr, cause: NonEmptyStr }
+
+// THE SEPARATIONS, WRITTEN OUT BECAUSE EACH ONE HAS ALREADY BEEN COLLAPSED SOMEWHERE.
+data lifecycle_separations: List<NonEmptyStr> = [
+  "a successful blob upload is not local publication",
+  "local publication is not BMC attachment",
+  "BMC attachment is not host execution",
+  "host execution is not permission to delete: the firmware's dependence on the medium ends later",
+  "a DELETE returning success is not proof of disappearance -- the read-back decides",
+  "reaping a local materialization says nothing about the durable object",
+]
+
+// ── retention roots ────────────────────────────────────────────────────────────────────────────
+
+// A GARBAGE COLLECTOR DERIVES ITS ROOTS FROM MODELED STATE RATHER THAN FROM AN AUTHOR'S SENSE OF
+// WHAT MIGHT BE WANTED. Each root has different placement consequences: evidence pins a durable
+// object and pins no cache, an active presentation pins a cache and no attempt tmpfs.
+type ArtifactRetentionRoot
+  = CommittedReceiptEvidence
+  | CurrentDesiredDeployment
+  | ActiveBootAttempt
+  | ActiveBmcPresentation
+  | ActiveVmAttempt
+  | ExplicitOperationalHold { reason: NonEmptyStr }
+
+// AN OBJECT WITH NO ROOTS IS COLLECTIBLE. A local materialization with no live lease is reaped
+// immediately; a durable object with no root waits out a declared grace period, because the cost of
+// a premature durable deletion is unrecoverable and the cost of a stale cache entry is disk.
+data root_placement_rule: NonEmptyStr = "a root pins bytes at the placements its own semantics require and at no others; unrooted local materializations reap immediately, unrooted durable objects after a declared grace"
+
+// ── the ruling's reap rule needs one condition this fleet does not yet satisfy ─────────────────
+
+// THE DISPOSITION SAYS: committed receipt pins the CAS object, an active lease pins the local
+// materialization, and a materialization with no lease is reaped. THAT IS CORRECT ONLY ONCE A CAS
+// OBJECT EXISTS.
+//
+// TODAY THERE IS NO DURABLE BACKING. There is no blob client, no credential and no reachable object
+// store on this host, so the copy under the local export is the ONLY copy. Applying the lease rule
+// unconditionally would delete the last bytes a committed receipt cites -- turning an evidence root
+// into a deletion, which is the exact inversion the roots exist to prevent.
+//
+// SO THE LEASE RULE IS GUARDED BY DURABILITY. A materialization may be reaped for want of a lease
+// only when the artifact is durably mirrored; until then CommittedReceiptEvidence pins the local
+// copy as well, because locally is the only place the bytes are.
+type MaterializationReapAdmission
+  = ReapAdmitted { because: NonEmptyStr }
+  | ReapRefusedLastCopy { because: NonEmptyStr }
+
+data reap_rule_today: MaterializationReapAdmission = ReapRefusedLastCopy {
+  because: "no durable object exists for any host image on this fleet, so a receipt-cited local copy is the only copy and the evidence root must pin it where it actually is",
+}
+
+data reap_rule_after_cas: MaterializationReapAdmission = ReapAdmitted {
+  because: "once the artifact is durably mirrored, the local export is a cache: the evidence root pins the durable object and the presentation lease alone pins the cache entry",
+}
+
+// ── upstream bytes: two honest standings, and only one of them is enough ───────────────────────
+
+// AN UPSTREAM URL PLUS A DIGEST PROVES WHAT BYTES WOULD BE ACCEPTABLE. It does not promise those
+// bytes will still be served tomorrow, and a host image needed to recover a server is exactly the
+// case where that distinction decides whether recovery is possible.
+type UpstreamStanding
+  = DurablyMirrored { managed_blob: NonEmptyStr, upstream_provenance: NonEmptyStr }
+  | ReacquirableOnly { upstream_location: NonEmptyStr, expected_digest: NonEmptyStr, availability_not_guaranteed: Bool }
+
+data actions_runner_standing: UpstreamStanding = ReacquirableOnly {
+  upstream_location: "github.com/actions/runner releases",
+  expected_digest: "the sha256 extdeps.github.actions_runner records from the release body",
+  availability_not_guaranteed: true,
+}
+
+data host_image_required_standing: NonEmptyStr = "a repository-built host image, a receipt-bearing canary image, and anything needed to recover a server all require DurablyMirrored; ReacquirableOnly is acceptable for a public vendor artifact consumed inside one attempt"
+
+// ── why not the existing LRU store ─────────────────────────────────────────────────────────────
+
+// std.artifact_store HAS THE RIGHT AXES AND THE WRONG POLICY. Content-address lookup, write-once,
+// provider retention, release at scope exit or never, capacity and replacement are all reusable
+// vocabulary. Its realization is a budgeted LRU cache keyed on compiler closure inputs.
+//
+// LRU EVICTION IS WRONG FOR EVIDENCE. A receipt-pinned artifact promises durable byte availability,
+// and an eviction policy that removes whatever was least recently READ will eventually remove the
+// image nobody has booted in months -- which is precisely the one an old receipt cites. Garbage
+// collection here removes UNROOTED objects, not cold ones.
+data blob_realization_axes: List<NonEmptyStr> = [
+  "lookup: content address",
+  "write: write-once, no overwrite for a digest key",
+  "consistency: read-after-write, verified by an independent read",
+  "release: manually, or never for receipt-pinned objects",
+  "capacity: an explicit provider policy, not a budget that evicts",
+  "replacement: none -- a digest key is not reassignable",
+]
+
+data lru_is_not_the_authority: NonEmptyStr = "std.artifact_store's axes are reused; its LRU realization is not, because evicting the least recently read object is exactly wrong for evidence nobody has needed to read"
+
+// AND THE PROVIDER'S OWN LIFECYCLE MUST NOT DELETE INDEPENDENTLY. A bucket TTL quietly expiring a
+// receipt-pinned blob recreates this same lifecycle fork at remote-storage grain, with the
+// authority sitting in a console rather than in this repository.
+data provider_lifecycle_rule: NonEmptyStr = "provider-side expiry is either modeled as the authoritative policy or disabled; a bucket TTL that can delete a receipt-pinned blob is a second retention authority"
+
+// ── hard invariants ────────────────────────────────────────────────────────────────────────────
+
+// THESE ARE THE CHECKS, NOT A PROMISE THAT CLEANUP HAPPENS. Each names a state that must not exist
+// rather than a behaviour that should occur.
+data artifact_invariants: List<NonEmptyStr> = [
+  "no attach without a verified materialization",
+  "no local materialization without one artifact identity and one lifecycle owner",
+  "no local pathname shared by two different content digests",
+  "no overwrite of a presented or leased materialization",
+  "no reap while a BMC presentation or runtime consumer lease is live",
+  "no successful reap receipt without an absence read-back",
+  "no receipt-pinned durable blob selected for garbage collection",
+  "no attempt-scoped materialization surviving successful attempt retirement",
+  "no unverified Internet bytes becoming bootable or executable",
+]
+
+// THE LAST INVARIANT LIMITS GENUINE STREAMING, and that is a consequence rather than a preference.
+// Upstream bytes must be fully staged and hashed before firmware or a VMM consumes them: a direct
+// stream into a running consumer discovers a digest mismatch after the consumer has already acted
+// on the wrong bytes.
+data streaming_limit: NonEmptyStr = "a digest mismatch discovered mid-stream is discovered after the consumer has seen the wrong bytes, so verification precedes consumption and streaming into firmware is refused"
+
+// ── what launch must consume ───────────────────────────────────────────────────────────────────
+
+// A HOST MUST NEVER LAUNCH FROM A PATH BECAUSE A FILE IS THERE. Today's host verifies digests and
+// then launches from a path, which is two facts standing next to each other rather than one
+// depending on the other. The launch should consume a value that cannot exist without the
+// verification having happened.
+type VerifiedGuestArtifactMaterialization {
+  artifact: NonEmptyStr
+  attempt: NonEmptyStr
+  local_path: NonEmptyStr
+  observed_digest: NonEmptyStr
+  lease: NonEmptyStr
+}
+
+data launch_admission_gap: NonEmptyStr = "the host verifies staged and jailed digests and separately launches from a path; nothing yet makes the launch REQUIRE the verification's result, so a future edit could reorder them without anything refusing"
+
+// ── the JIT envelope is not one of these ───────────────────────────────────────────────────────
+
+// A CREDENTIAL IS NOT A DURABLE IMAGE ARTIFACT AND MUST NOT ENTER THE PUBLIC BUCKET beside kernels
+// and ISOs. It is an attempt-scoped capability: authenticated at the control plane, bound to this
+// boot and attempt, redeemed once, and retired. Its correct terminal state is destruction, not
+// retention, which is the opposite of everything else in this module.
+data jit_envelope_is_not_an_artifact: NonEmptyStr = "the JIT envelope is a secret attempt-scoped capability whose terminal action is destruction; artifacts here are immutable content whose terminal action is a rooted retention decision"
+
+// ── this module's own standing ─────────────────────────────────────────────────────────────────
+
+// THE BINDING OBLIGATION ALREADY EXISTS AND IS UNMET. gunbc.machine_intake.staging lists
+// ContentAddressedArtifactStore and DurableReceiptBackup among the capabilities REQUIRED for any
+// intake, and intake_staging_realization_today is StagingUnobserved. This is the missing realization
+// of that requirement rather than a runner-specific storage policy invented alongside it.
+data existing_obligation: NonEmptyStr = "gunbc.machine_intake.staging requires ContentAddressedArtifactStore and DurableReceiptBackup and records StagingUnobserved; nothing here is a new requirement"
+
+// AND THE BLOCKING FACT IS OPERATIONAL, NOT ARCHITECTURAL. This host has no blob client, no
+// credential and no reachable object store, so the upload, read-back and durable-receipt steps
+// cannot be performed at all -- not performed badly, not approximated. Standing up a second local
+// directory and calling it a CAS would satisfy the shape of the requirement while providing none of
+// the durability the requirement exists for.
+data blocked_on: NonEmptyStr = "no reachable object store: no blob client, no credential, no endpoint. The upload, independent read-back and durable receipt cannot be executed until one is provisioned, and a local directory standing in for it would be a fake"
+
+data unblocked_work: List<NonEmptyStr> = [
+  "digest-derived export naming, so a local pathname cannot be shared by two content digests",
+  "presentation leases read from the BMC's redirection configuration rather than inferred",
+  "an absence read-back on every reap",
+  "making launch consume a verified materialization instead of a path",
+  "attempt-scoped guest materializations reaped at attempt retirement, which the supervisor loop already proves",
+]
