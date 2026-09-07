@@ -150,6 +150,7 @@ import product.cooling_qualification {
 import extdeps.bmc.endpoint { BmcFirmwareFamily, OpenBmc, AmiMegaRac }
 import std.content_hash {
   ContentHash,
+  Fnv1a64Structural,
   content_hash_atom,
   content_hash_combine_structural,
   content_hash_tagged,
@@ -390,7 +391,7 @@ type BmcFanBackupManifest {
 
 fn bmc_firmware_family_content_hash(
   family: BmcFirmwareFamily,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   match family {
     OpenBmc => content_hash_atom(value: "OpenBmc"),
     AmiMegaRac => content_hash_atom(value: "AmiMegaRac"),
