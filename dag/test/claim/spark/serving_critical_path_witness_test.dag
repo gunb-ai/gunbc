@@ -9,29 +9,31 @@ import gunbc.spark.serving_critical_path {
   SaturationClaim, GpuComputeSaturated, GpuComputeUnderutilised,
   ClaimConstruction, ClaimConstructible, ClaimNotConstructible,
   busy_fraction_constructs, power_below_ceiling_excludes_saturation,
+  EffectiveBatchBudget, BatchBudgetAtLeast, BatchBudgetExact, BatchBudgetUnobserved,
+  spark_group_a_effective_batch_budget,
   EffectiveSchedulerConfigStanding, EffectiveSchedulerConfigRead, EffectiveSchedulerConfigUnread,
   ConcurrencyWitness, co_tenant_present,
   PrefillScalingSample, PrefillScalingExperiment, spark_group_a_prefill_scaling_experiment,
   SampleStanding, ProbeAloneAtObservedConcurrencyGrain, NoForeignCachedBookingObserved,
-  ForeignCachedBookingObserved, sample_standing, probe_alone_at_observed_grain, admitted_scaling_samples,
+  ForeignCachedBookingObserved, sample_standing,
   ExperimentLaunchBinding, ExperimentLaunchBound, ExperimentLaunchUnbound,
   ExperimentJoinability, JoinableByLaunch, NotJoinable, experiment_joinability,
-  AffineFit, PrefillScalingStanding, SharedEngineAffineDescription, ScalingUnderObserved,
-  prefill_scaling_standing, predicted_micros, abs_int, affine_worst_residual_micros,
-  StepAwareFitCandidate, spark_group_a_step_aware_alternative,
-  nominal_steps, step_aware_predicted_micros, step_aware_worst_residual_micros,
-  PerStepCostStanding, PerStepCostBounded, NominalBoundaryEffectUnidentified,
+  FitArm, ArrivedIdle, ArrivedWithCoTenant, sample_in_arm, arm_samples,
+  AffineFit, PrefillScalingStanding, AffineDescription, ScalingUnderObserved,
+  arm_fit, predicted_micros, abs_int, arm_worst_residual_micros,
+  CoTenantCostDecomposition, co_tenant_cost,
+  PerStepCostStanding, PerStepCostBounded, PerStepCostNotSeparable,
   spark_group_a_per_step_cost_standing,
   BudgetTradeStanding, BudgetTradeUnestablished, spark_group_a_budget_trade,
   ScalingSampleExcludedFromFit, spark_group_a_co_tenant_outlier,
   CriticalPathMechanism, GrossRankStraggler, HostDispatchGaps, BulkInterconnectBandwidth,
-  TokenIndependentStepLatency, TokenProportionalCompute, TokenProportionalCollectivePayload,
+  FixedPerRequestCost, TokenProportionalCompute, TokenProportionalCollectivePayload,
   CollectiveSynchronisationWait, MemoryOrKernelEfficiency, PowerOrThermalThrottle, CoTenantDelay,
   MechanismStanding, NotObservedAtThisGrain, Observed, Unresolved,
   cold_prefill_mechanism_standing,
   PartitionRequirement, ComputeVersusCollectiveKernelSpans, PerRankCriticalPathTiming,
-  OccupancyOrAchievedThroughput, ThrottleAndMemoryStallEvidence, EffectiveSchedulerConfigReadback,
-  PerRequestStepAllocation, IsolatedOrAttributedScalingSamples,
+  OccupancyOrAchievedThroughput, ThrottleAndMemoryStallEvidence,
+  HigherConcurrencyCoTenantParameterisation, ChunkedRegimeMeasurement,
   CriticalPathPartition, PartitionIncomplete, PartitionEstablished,
   spark_group_a_cold_prefill_partition, partition_may_calibrate,
   LinkUpgradeStanding, LinkUpgradeJustified, LinkUpgradeUnsupportedByCurrentEvidence,
@@ -56,8 +58,7 @@ test fn neither_saturation_nor_underutilisation_is_constructible_from_coarse_tel
         })
 }
 
-// THE ENVELOPES NEST, and adding them is the first mistake available. The 120W GPU sits INSIDE the
-// 140W SoC TDP, which sits inside what a 240W supply feeds.
+// THE ENVELOPES NEST, and adding them is the first mistake available.
 test fn the_power_envelopes_nest_rather_than_sum() -> Bool {
   spark_system_power_supply.watts == 240
     && spark_soc_thermal_envelope.watts == 140
@@ -66,57 +67,131 @@ test fn the_power_envelopes_nest_rather_than_sum() -> Bool {
     && string_contains(s: spark_gpu_power_envelope.covers as String, pattern: "nested inside")
 }
 
-// max_running COUNTS THE PROBE. This is the reading error the previous witness enshrined: it asserted
-// every sample had max_running > 0 and called that a co-tenant being present throughout, which is
-// vacuously true of any served request. Exactly one window ran with the probe alone, and eleven had a
-// co-tenant -- so the honest statement is "nine of ten admitted windows", not "all of them".
+// THE BUDGET IS OBSERVED BEHAVIOURALLY AND IS AN ORDER OF MAGNITUDE ABOVE THE NOMINAL 2048. Every
+// idle window in the population ran in exactly one engine iteration, at every size up to 20,082
+// computed tokens. Three separate conclusions in this branch's history rested on a 2048 boundary
+// that does not exist.
+test fn no_idle_window_chunks_anywhere_in_the_measured_range() -> Bool {
+  let idle = arm_samples(ArrivedIdle)
+  length(idle) == 12
+    && fold(idle, init: true, f: (acc, s) => acc && s.iteration_delta == 1)
+    && length(filter(idle, s => s.computed_tokens == 20082)) == 1
+    && length(filter(idle, s => s.computed_tokens > 20082)) == 0
+    && (match spark_group_a_effective_batch_budget {
+          BatchBudgetAtLeast { tokens: t, by: _ } => t == 20082
+          BatchBudgetExact { tokens: _, source: _ } => false
+          BatchBudgetUnobserved { because: _ } => false
+        })
+}
+
+// AND ON A SHARED ENGINE THE SAME COUNTER MEANS NOTHING PER REQUEST. Three windows of about 2,050
+// computed tokens recorded 5, 5 and 5 iterations while one of 1,564 recorded 17 -- because co-tenant
+// decode steps increment the engine-wide counter too. This is what made 158,764/83 look like a
+// scheduler budget.
+test fn the_iteration_counter_is_not_a_per_request_step_count_under_co_tenancy() -> Bool {
+  let busy = arm_samples(ArrivedWithCoTenant)
+  length(busy) == 9
+    && fold(busy, init: true, f: (acc, s) => acc && s.iteration_delta > 1)
+    && length(filter(busy, s => s.iteration_delta == 17)) == 1
+    && length(filter(busy, s => s.iteration_delta > 17)) == 0
+}
+
+// max_running COUNTS THE PROBE, so a window with one running request had no co-tenant. Arrival
+// concurrency is what selects the arm, and it is recorded separately from the maximum during.
 test fn co_tenancy_is_read_from_the_field_rather_than_assumed() -> Bool {
   !co_tenant_present(c: ConcurrencyWitness { max_running: 1, max_waiting: 0 })
     && co_tenant_present(c: ConcurrencyWitness { max_running: 2, max_waiting: 0 })
     && co_tenant_present(c: ConcurrencyWitness { max_running: 1, max_waiting: 1 })
-    && length(filter(spark_group_a_prefill_scaling_experiment.ordered_samples, s => !co_tenant_present(c: s.concurrency))) == 1
-    && length(filter(admitted_scaling_samples(), s => co_tenant_present(c: s.concurrency))) == 9
+    && length(filter(spark_group_a_prefill_scaling_experiment.ordered_samples, s =>
+         match sample_standing(s: s) { ForeignCachedBookingObserved { cached_tokens: c } => c > 100000  _ => false })) == 1
 }
 
-// EXACTLY ONE WINDOW EARNS PROBE ISOLATION, which is a population of one and fits nothing, so the
-// fit stays a shared-engine description. Admission earns only the weaker standing: no foreign cached
-// booking was observed. The two rejected windows are rejected for a quarter-million cached tokens,
-// not for their concurrency, which matched admitted windows exactly.
-test fn admission_earns_the_weak_standing_and_isolation_is_a_population_of_one() -> Bool {
-  let all = spark_group_a_prefill_scaling_experiment.ordered_samples
-  length(filter(all, s => probe_alone_at_observed_grain(s: s))) == 1
-    && length(admitted_scaling_samples()) == 10
-    && length(filter(admitted_scaling_samples(), s =>
-         match sample_standing(s: s) { NoForeignCachedBookingObserved => true  _ => false })) == 9
-    && length(filter(admitted_scaling_samples(), s =>
-         match sample_standing(s: s) { ProbeAloneAtObservedConcurrencyGrain => true  _ => false })) == 1
-    && length(filter(all, s => match sample_standing(s: s) { ForeignCachedBookingObserved { cached_tokens: c } => c > 100000  _ => false })) == 2
+// THE ARMS ARE FITTED SEPARATELY AND THE MARGINAL RATE IS INVARIANT BETWEEN THEM. This is the
+// finding: within half a percent, a co-tenant does not slow per-token work at all.
+test fn the_marginal_rate_is_invariant_to_co_tenancy() -> Bool {
+  match co_tenant_cost() {
+    Absent => false
+    Present { value: c } =>
+      c.marginal_percent_change <= 2
+        && c.marginal_percent_change >= (0 - 2)
+        && c.at_observed_concurrency == 2
+  }
 }
 
-// THE EXPERIMENT CARRIES ITS SUBJECT, and the one fact that most changes the reading is a refusal:
-// the effective scheduler budget was never read back, so 2048 is nominal. The execution order is
-// recorded too, because interleaving asserted only in prose is indistinguishable from a sorted run.
-test fn the_experiment_binds_its_subject_and_refuses_the_unread_config() -> Bool {
-  (match spark_group_a_prefill_scaling_experiment.scheduler_config {
-     EffectiveSchedulerConfigUnread { because: b } => string_contains(s: b as String, pattern: "never read back")
-     EffectiveSchedulerConfigRead { max_num_batched_tokens: _, source: _ } => false
-   })
-    && length(spark_group_a_prefill_scaling_experiment.ordered_samples) == 12
-    && (match spark_group_a_prefill_scaling_experiment.launch {
-          ExperimentLaunchUnbound { observed_invocation: i, missing: _ } => string_contains(s: i as String, pattern: "192.168.1.225")
-          ExperimentLaunchBound { launch: _ } => false
+// AND THE ENTIRE CO-TENANT COST LANDS IN THE FIXED PER-REQUEST TERM, which roughly triples. That is
+// a scheduling cost, and it is the only part admission and routing can recover.
+test fn the_whole_co_tenant_cost_is_a_fixed_per_request_term() -> Bool {
+  match co_tenant_cost() {
+    Absent => false
+    Present { value: c } => c.fixed_micros_added > 60000 && c.fixed_micros_added < 220000
+  }
+}
+
+// THE IDLE FIT IS DERIVED AND TIGHT ACROSS A 39x TOKEN RANGE. The slope is a least squares projection
+// of the sample rows, not a literal: ~1.055 ms per token, about 948 tok/s marginal.
+test fn the_idle_marginal_rate_is_a_projection_of_the_samples() -> Bool {
+  match arm_fit(ArrivedIdle) {
+    ScalingUnderObserved { cause: _ } => false
+    AffineDescription { fit: f } =>
+      f.sample_count == 12
+        && f.micros_per_thousand_tokens >= 1000000
+        && f.micros_per_thousand_tokens <= 1120000
+        && f.intercept_micros >= 0
+        && f.intercept_micros <= 140000
+        && arm_worst_residual_micros(arm: ArrivedIdle, fit: f) < 120000
+  }
+}
+
+// THE PER-STEP QUESTION IS DISSOLVED, NOT BOUNDED AND NOT ESTIMATED. Two earlier versions answered
+// it -- one with a 95ms upper bound read off a residual, one with a 126ms three-term counterexample.
+// Both regressed against a step boundary that the measurement shows does not exist in range.
+test fn the_per_step_question_is_dissolved_rather_than_answered() -> Bool {
+  match spark_group_a_per_step_cost_standing {
+    PerStepCostBounded { upper_micros: _ } => false
+    PerStepCostNotSeparable { because: b, range_ceiling_tokens: t } =>
+      t == 20082 && string_contains(s: b as String, pattern: "exactly one engine iteration")
+  }
+}
+
+// THE BUDGET COUNTERFACTUAL STAYS WITHDRAWN, and the measurement supplied a new reason: the engine
+// does not chunk in the range anyone would tune toward, so a smaller budget is not currently a knob.
+test fn the_budget_counterfactual_stays_withdrawn_with_a_measured_reason() -> Bool {
+  match spark_group_a_budget_trade {
+    BudgetTradeUnestablished { missing: m } =>
+      length(m) == 3
+        && fold(m, init: false, f: (acc, r) => acc || string_contains(s: r as String, pattern: "at least 20,082"))
+        && fold(m, init: false, f: (acc, r) => acc || string_contains(s: r as String, pattern: "invariance across chunk shapes"))
+  }
+}
+
+// THE PROPORTIONAL TERM REMAINS UNATTRIBUTED, which is now the whole of the problem. Compute and
+// collective payload both scale with tokens and neither is decided.
+test fn the_proportional_mechanisms_remain_unresolved() -> Bool {
+  (match cold_prefill_mechanism_standing(m: TokenProportionalCompute) { Unresolved { needs: _ } => true  _ => false })
+    && (match cold_prefill_mechanism_standing(m: TokenProportionalCollectivePayload) { Unresolved { needs: _ } => true  _ => false })
+    && (match cold_prefill_mechanism_standing(m: CollectiveSynchronisationWait) { Unresolved { needs: _ } => true  _ => false })
+    && (match cold_prefill_mechanism_standing(m: MemoryOrKernelEfficiency) { Unresolved { needs: _ } => true  _ => false })
+    && (match cold_prefill_mechanism_standing(m: FixedPerRequestCost) {
+          Observed { by: b } => string_contains(s: b as String, pattern: "not a per-STEP cost")
+          _ => false
         })
-    && (match first(spark_group_a_prefill_scaling_experiment.ordered_samples) {
-          Absent => false
-          Present { value: f } => f.sequence == 1 && f.computed_tokens == 1491
+    && (match cold_prefill_mechanism_standing(m: CoTenantDelay) {
+          Observed { by: b } => string_contains(s: b as String, pattern: "nothing per token")
+          _ => false
         })
 }
 
-// AND THE UNBOUND LAUNCH MAKES THE EXPERIMENT UNJOINABLE, which is what stops the binding being
-// decorative. Because the sweep never captured the unit and base-image digests, no VllmServingLaunch
-// exists for it, so nothing may compare these samples against a measurement from another launch by
-// identity. A prose description of the head would have permitted exactly that comparison while
-// looking like provenance.
+// THE OUTLIER IS RETAINED AND IS NOW VISIBLY OUTSIDE THE MEASURED CO-TENANT COST, which is the point
+// of keeping it: 291 seconds is not 0.13 seconds of scheduling latency, so it remains unexplained
+// rather than absorbed into the contrast.
+test fn the_outlier_is_kept_and_is_not_explained_by_the_measured_co_tenant_cost() -> Bool {
+  spark_group_a_co_tenant_outlier.computed_tokens == 4840
+    && spark_group_a_co_tenant_outlier.wall_micros == 290960000
+    && string_contains(s: spark_group_a_co_tenant_outlier.cause as String, pattern: "unexplained")
+}
+
+// THE UNBOUND LAUNCH STILL REFUSES TO JOIN. No VllmServingLaunch exists for these sweeps, so nothing
+// may compare them to another launch by identity.
 test fn the_unbound_launch_refuses_to_join_this_experiment_to_anything() -> Bool {
   match experiment_joinability(e: spark_group_a_prefill_scaling_experiment) {
     JoinableByLaunch { launch: _ } => false
@@ -124,115 +199,22 @@ test fn the_unbound_launch_refuses_to_join_this_experiment_to_anything() -> Bool
   }
 }
 
-// THE FIT IS DERIVED, NOT WRITTEN DOWN. This is the discriminator against the module it replaced,
-// which carried 250ms and 950 tok/s as literals nothing could falsify. The slope is a least squares
-// projection of the sample rows: ~1.056 ms per token, i.e. ~947 tok/s marginal.
-test fn the_marginal_rate_is_a_projection_of_the_samples() -> Bool {
-  match prefill_scaling_standing() {
-    ScalingUnderObserved { cause: _ } => false
-    SharedEngineAffineDescription { fit: f } =>
-      f.sample_count == 10
-        && f.micros_per_thousand_tokens >= 1000000
-        && f.micros_per_thousand_tokens <= 1120000
-        && f.intercept_micros >= 100000
-        && f.intercept_micros <= 210000
-  }
-}
-
-// AND THE COUNTEREXAMPLE THAT WITHDRAWS THE PER-STEP BOUND IS EXECUTED, NOT ASSERTED. A three-term
-// fit over the SAME admitted rows describes them strictly better while carrying a 126ms per-step
-// term -- larger than the 95ms the module previously claimed as an upper bound. That is the whole
-// refutation: an affine fit's residual cannot bound the term the affine fit omitted. If the affine
-// description ever became the better one, this goes red and the withdrawal has to be revisited.
-test fn a_step_aware_fit_describes_the_same_rows_better_with_a_larger_per_step_term() -> Bool {
-  match prefill_scaling_standing() {
-    ScalingUnderObserved { cause: _ } => false
-    SharedEngineAffineDescription { fit: f } => {
-      let affine_worst = affine_worst_residual_micros(fit: f)
-      let step_worst = step_aware_worst_residual_micros(c: spark_group_a_step_aware_alternative)
-      step_worst < affine_worst
-        && spark_group_a_step_aware_alternative.micros_per_step > 95000
-        && affine_worst > 90000
-        && nominal_steps(tokens: 1927, budget: 2048) == 1
-        && nominal_steps(tokens: 2052, budget: 2048) == 2
-        && nominal_steps(tokens: 4096, budget: 2048) == 2
-    }
-  }
-}
-
-// SO THE PER-STEP TERM IS UNIDENTIFIED, NOT BOUNDED, and every confounder is carried rather than
-// summarised. PerStepCostBounded still exists as a constructor because a future measurement may earn
-// it; nothing constructs it today.
-test fn the_per_step_term_is_unidentified_and_names_its_confounders() -> Bool {
-  match spark_group_a_per_step_cost_standing {
-    PerStepCostBounded { upper_micros: _ } => false
-    NominalBoundaryEffectUnidentified { observed_excess_micros: e, confounded_by: c } =>
-      e == 88000
-        && length(c) == 4
-        && fold(c, init: false, f: (acc, r) => acc || string_contains(s: r as String, pattern: "never observed"))
-        && fold(c, init: false, f: (acc, r) => acc || string_contains(s: r as String, pattern: "smaller worst residual"))
-  }
-}
-
-// THE BUDGET COUNTERFACTUAL IS WITHDRAWN. There is no function here that will answer "what would a
-// 512-token budget cost": the standing is the only thing a consumer can reach, and it names what
-// would have to be measured first. The previous version answered anyway while the partition refused
-// to calibrate, which made that refusal ornamental.
-test fn the_budget_counterfactual_is_withdrawn_and_names_what_it_needs() -> Bool {
-  match spark_group_a_budget_trade {
-    BudgetTradeUnestablished { missing: m } =>
-      length(m) == 5
-        && fold(m, init: false, f: (acc, r) => acc || string_contains(s: r as String, pattern: "effective scheduler configuration"))
-        && fold(m, init: false, f: (acc, r) => acc || string_contains(s: r as String, pattern: "invariance across chunk shapes"))
-  }
-}
-
-// EVERY PROPORTIONAL MECHANISM IS UNRESOLVED, AND SO IS THE TOKEN-INDEPENDENT ONE. The second version
-// weakened the token-independent term on the residual argument the counterexample above refutes, so
-// it returns to Unresolved rather than staying weakened.
-test fn no_mechanism_is_weakened_by_the_scaling_argument() -> Bool {
-  (match cold_prefill_mechanism_standing(m: TokenIndependentStepLatency) {
-     Unresolved { needs: n } => string_contains(s: n as String, pattern: "per-request step allocation")
-     _ => false
-   })
-    && (match cold_prefill_mechanism_standing(m: TokenProportionalCompute) { Unresolved { needs: _ } => true  _ => false })
-    && (match cold_prefill_mechanism_standing(m: TokenProportionalCollectivePayload) { Unresolved { needs: _ } => true  _ => false })
-    && (match cold_prefill_mechanism_standing(m: CollectiveSynchronisationWait) { Unresolved { needs: _ } => true  _ => false })
-    && (match cold_prefill_mechanism_standing(m: MemoryOrKernelEfficiency) { Unresolved { needs: _ } => true  _ => false })
-    && (match cold_prefill_mechanism_standing(m: PowerOrThermalThrottle) { Unresolved { needs: _ } => true  _ => false })
-}
-
-// THE OUTLIER IS RETAINED BUT ATTRIBUTES NOTHING. Co-tenant delay is Observed on the controlled
-// decode-alone versus decode-beside-prefill comparison, not on this single extreme event.
-test fn the_outlier_is_kept_without_becoming_a_causal_estimate() -> Bool {
-  spark_group_a_co_tenant_outlier.computed_tokens == 4840
-    && spark_group_a_co_tenant_outlier.wall_micros == 290960000
-    && string_contains(s: spark_group_a_co_tenant_outlier.cause as String, pattern: "not a measured co-tenant cost")
-    && (match cold_prefill_mechanism_standing(m: CoTenantDelay) {
-          Observed { by: b } => string_contains(s: b as String, pattern: "decode-alone")
-          _ => false
-        })
-}
-
-// THE PARTITION NAMES ITS MISSING REQUIREMENTS BY MEMBERSHIP, not by count. The previous witness
-// checked only that the list had five entries, so swapping any requirement for any other left it
-// green -- the check carried no information about what was actually missing.
-test fn the_partition_is_incomplete_and_names_the_three_newly_owed_requirements() -> Bool {
+// THE PARTITION IS STILL INCOMPLETE, but three requirements were discharged by measurement and the
+// two that replaced them are named by membership rather than counted.
+test fn the_partition_is_incomplete_and_names_what_measurement_did_not_close() -> Bool {
   !partition_may_calibrate(p: spark_group_a_cold_prefill_partition)
     && (match spark_group_a_cold_prefill_partition {
           PartitionEstablished { critical: _, evidence: _ } => false
           PartitionIncomplete { missing: m } =>
-            length(m) == 7
-              && contains(m, EffectiveSchedulerConfigReadback)
-              && contains(m, PerRequestStepAllocation)
-              && contains(m, IsolatedOrAttributedScalingSamples)
+            length(m) == 6
               && contains(m, ComputeVersusCollectiveKernelSpans)
+              && contains(m, PerRankCriticalPathTiming)
+              && contains(m, HigherConcurrencyCoTenantParameterisation)
+              && contains(m, ChunkedRegimeMeasurement)
         })
 }
 
-// THE LINK VERDICT IS READ FROM THE PARTITION. Previously it ignored its argument and returned false,
-// so it would have said no even to a partition established on bulk bandwidth. The positive control is
-// the discriminator: an established bulk-bandwidth partition flips it.
+// THE LINK VERDICT IS READ FROM THE PARTITION, with an established-bulk-bandwidth positive control.
 test fn the_link_verdict_is_derived_and_a_bulk_bandwidth_partition_flips_it() -> Bool {
   (match link_upgrade_standing(p: spark_group_a_cold_prefill_partition) {
      LinkUpgradeUnsupportedByCurrentEvidence { by: b } => string_contains(s: b as String, pattern: "weaker than a proof of no benefit")
@@ -241,9 +223,5 @@ test fn the_link_verdict_is_derived_and_a_bulk_bandwidth_partition_flips_it() ->
     && (match link_upgrade_standing(p: PartitionEstablished { critical: BulkInterconnectBandwidth, evidence: "hypothetical established bulk saturation" as NonEmptyStr }) {
           LinkUpgradeJustified { by: _ } => true
           LinkUpgradeUnsupportedByCurrentEvidence { by: _ } => false
-        })
-    && (match link_upgrade_standing(p: PartitionEstablished { critical: MemoryOrKernelEfficiency, evidence: "hypothetical established kernel inefficiency" as NonEmptyStr }) {
-          LinkUpgradeUnsupportedByCurrentEvidence { by: _ } => true
-          LinkUpgradeJustified { by: _ } => false
         })
 }

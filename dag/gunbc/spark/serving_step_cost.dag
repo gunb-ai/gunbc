@@ -16,11 +16,13 @@ import std.measure { TokenCount, token_count, token_count_value }
 //
 // AN EARLIER VERSION OF THIS SECTION DREW TWO CONCLUSIONS FROM THAT, AND BOTH ARE WITHDRAWN.
 //
-// It read 158,764 / 83 as ~1,913 computed tokens per step, matched that to the 2048 fallback, and
-// declared the scheduler budget observed and already at its floor. The engine was never asked what
-// its effective max_num_batched_tokens was, and extdeps.vllm.engine_args rules that an omitted
-// argument determines no effective value -- so 2048 remains a NOMINAL expectation. An engine-wide
-// iteration count is also not a per-request step allocation: other requests consume the same budget.
+// It read 158,764 / 83 as ~1,913 computed tokens per step and matched that to the 2048 fallback,
+// declaring the scheduler budget observed and already at its floor. Both halves are refuted by
+// direct measurement, not merely unsupported. On an idle engine a single request of 20,082 computed
+// tokens completes in ONE engine iteration, so the effective batch budget is at least 20,082 and
+// nothing chunks below it -- see gunbc.spark.serving_critical_path. And the engine-wide iteration
+// counter is not a per-request step count: on a shared engine the same ~2,050-token request recorded
+// 4, 5 and 17 iterations across one sweep, because co-tenant decode steps increment it too.
 //
 // It then said a step takes 2.3 seconds to compute 2,048 tokens, and that this is not a scheduling
 // problem. That paired a RUN-WIDE AVERAGE token count with a MEDIAN interval, two numbers never
