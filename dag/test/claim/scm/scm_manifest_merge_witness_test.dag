@@ -1,0 +1,427 @@
+module test.claim.scm_manifest_merge_witness
+
+// CONTROLS FOR THE THREE-WAY DECISION, WRITTEN TO THE CASES A FOUR-LINE LAW OVER BARE LOCATORS GETS
+// WRONG. Every wrong implementation here returns a VALID MANIFEST, so a control asserting "a manifest
+// came back" discriminates nothing; each claim states the mutation it refutes.
+
+import std.types { Bool, String, List, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.scm.object_store {
+  ObjectStore, ObjectId, empty_store, object_id_eq,
+  CorpusManifestEntry, AuthoredSourceTarget,
+  ManifestEntryComparand, manifest_comparands,
+  SourceStored, SourceLocatorCollision, store_authored_source,
+  CorpusManifestRecord, store_corpus_manifest,
+  CorpusManifestStored, CorpusManifestDuplicatePath, CorpusManifestLocatorCollision,
+  find_corpus_manifest_record,
+  CorpusManifestFound, CorpusManifestAbsent,
+  CorpusManifestIsSemanticNode, CorpusManifestIsAuthoredSource,
+}
+import gunbc.scm.manifest_merge {
+  PathState, PathAbsent, PathPresent, path_state_eq,
+  ManifestPathConflict,
+  ManifestMergeOutcome, ManifestMerged, ManifestConflicted,
+  merge_manifests,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// TWO DISTINCT AUTHORED SOURCES, DERIVED THROUGH THE STORE rather than by naming digests, so the
+// specimens are locators the store actually produces. A fixture that invented an ObjectId would be
+// asserting over a value no producer makes.
+// THREE DISTINCT SOURCES, NOT TWO, AND THE THIRD IS LOAD-BEARING RATHER THAN SPARE. A two-source
+// fixture cannot express "base, source and target all differ at one path": with only x and y, any
+// path where source and target disagree has one of them equal to the base, which the law resolves
+// instead of refusing. The first writing of the complete-population claim below had exactly that
+// defect -- it intended two conflicting paths and built one, and the claim caught it.
+type Trio
+  = Trio { x: AuthoredSourceTarget, y: AuthoredSourceTarget, z: AuthoredSourceTarget }
+  | TrioUnavailable
+
+fn pair() -> Trio {
+  match store_authored_source(store: empty_store(), text: "X") {
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } => TrioUnavailable
+    SourceStored { store: s1, source: x } =>
+      match store_authored_source(store: s1, text: "Y") {
+        SourceLocatorCollision { identity: _, existing: _, incoming: _ } => TrioUnavailable
+        SourceStored { store: s2, source: y } =>
+          match store_authored_source(store: s2, text: "Z") {
+            SourceLocatorCollision { identity: _, existing: _, incoming: _ } => TrioUnavailable
+            SourceStored { store: _, source: z } =>
+              Trio {
+                x: AuthoredSourceTarget { locator: x.locator },
+                y: AuthoredSourceTarget { locator: y.locator },
+                z: AuthoredSourceTarget { locator: z.locator },
+              }
+          }
+      }
+  }
+}
+
+fn at(path: String, source: AuthoredSourceTarget) -> List<CorpusManifestEntry> {
+  [CorpusManifestEntry { path: path as NonEmptyStr, source: source }]
+}
+
+// THE THREE SIDES ARE STORE-CONSTRUCTED, NOT ASSEMBLED HERE. `CorpusManifestRecord` is
+// sole_constructor precisely so a fixture cannot forge one, so every specimen below is a record the
+// store actually minted -- which also means these claims exercise the uniqueness guarantee the merge
+// law now depends on instead of assuming it.
+//
+// EVERY WAY OF FAILING TO BUILD A SPECIMEN REDS THE CLAIM. `MergeUnavailable` is returned to a `false`
+// at each call site rather than being skipped, because a fixture that silently failed to build would
+// make each claim vacuously true -- a green with no subject, which is the specification-without-
+// execution trap wearing a fixture's clothes.
+type Manifest
+  = Manifest(CorpusManifestRecord)
+  | ManifestUnavailable
+
+fn manifest(entries: List<CorpusManifestEntry>) -> Manifest {
+  match store_corpus_manifest(store: empty_store(), entries: entries) {
+    CorpusManifestDuplicatePath { path: _ } => ManifestUnavailable
+    CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } => ManifestUnavailable
+    CorpusManifestStored { store: s, manifest: reference } =>
+      match find_corpus_manifest_record(store: s, identity: reference.locator) {
+        CorpusManifestAbsent { identity: _ } => ManifestUnavailable
+        CorpusManifestIsSemanticNode { identity: _ } => ManifestUnavailable
+        CorpusManifestIsAuthoredSource { identity: _ } => ManifestUnavailable
+        CorpusManifestFound(record) => Manifest(record)
+      }
+  }
+}
+
+type Merged
+  = Merged(ManifestMergeOutcome)
+  | MergeUnavailable
+
+fn merged(
+  base: List<CorpusManifestEntry>,
+  source: List<CorpusManifestEntry>,
+  target: List<CorpusManifestEntry>,
+) -> Merged {
+  match manifest(entries: base) {
+    ManifestUnavailable => MergeUnavailable
+    Manifest(b) =>
+      match manifest(entries: source) {
+        ManifestUnavailable => MergeUnavailable
+        Manifest(s) =>
+          match manifest(entries: target) {
+            ManifestUnavailable => MergeUnavailable
+            Manifest(t) => Merged(merge_manifests(base: b, source: s, target: t))
+          }
+      }
+  }
+}
+
+fn entries_hold(entries: List<CorpusManifestEntry>, path: String, source: AuthoredSourceTarget) -> Bool {
+  count(entries) == 1
+    && fold(entries, init: false, f: fn(found, e) {
+         found || ((e.path as String) == path && object_id_eq(left: e.source.locator, right: source.locator))
+       })
+}
+
+// THE SIX PRESENCE CASES, ASSERTED AS ONE CLAIM BECAUSE THEY ARE ONE LAW. Splitting them would
+// suggest six rules exist; the point of the operand widening is that they are consequences.
+//
+// THE SIX SPECIMENS BELOW, IN ORDER, and what each one is:
+//
+//   B=x  S=absent  T=x       source deleted a path the target left at base  -> DELETED
+//   B=x  S=absent  T=absent  both deleted                                   -> DELETED
+//   B=-  S=y       T=absent  source added a path the target does not have   -> ADDED
+//   B=-  S=y       T=y       both added the same content                    -> ADDED, no conflict
+//   B=x  S=x       T=absent  target deleted a path the source left at base  -> DELETED
+//   B=-  S=y       T=x       both added different content                   -> CONFLICT
+test fn scm_mm_the_presence_cases_fall_out_of_the_one_law() -> Bool {
+  match pair() {
+    TrioUnavailable => false
+    Trio { x: x, y: y, z: _ } =>
+      (match merged(base: at(path: "a", source: x), source: [], target: at(path: "a", source: x)) {
+         MergeUnavailable => false
+         Merged(outcome) =>
+           match outcome {
+            ManifestMerged { entries: e } => count(e) == 0
+            ManifestConflicted { conflicts: _ } => false
+      }
+       })
+      && (match merged(base: at(path: "a", source: x), source: [], target: []) {
+            MergeUnavailable => false
+            Merged(outcome) =>
+              match outcome {
+            ManifestMerged { entries: e } => count(e) == 0
+            ManifestConflicted { conflicts: _ } => false
+      }
+          })
+      && (match merged(base: [], source: at(path: "a", source: y), target: []) {
+            MergeUnavailable => false
+            Merged(outcome) =>
+              match outcome {
+            ManifestMerged { entries: e } => entries_hold(entries: e, path: "a", source: y)
+            ManifestConflicted { conflicts: _ } => false
+      }
+          })
+      && (match merged(base: [], source: at(path: "a", source: y), target: at(path: "a", source: y)) {
+            MergeUnavailable => false
+            Merged(outcome) =>
+              match outcome {
+            ManifestMerged { entries: e } => entries_hold(entries: e, path: "a", source: y)
+            ManifestConflicted { conflicts: _ } => false
+      }
+          })
+      && (match merged(base: at(path: "a", source: x), source: at(path: "a", source: x), target: []) {
+            MergeUnavailable => false
+            Merged(outcome) =>
+              match outcome {
+            ManifestMerged { entries: e } => count(e) == 0
+            ManifestConflicted { conflicts: _ } => false
+      }
+          })
+      && (match merged(base: [], source: at(path: "a", source: y), target: at(path: "a", source: x)) {
+            MergeUnavailable => false
+            Merged(outcome) =>
+              match outcome {
+            ManifestMerged { entries: _ } => false
+            ManifestConflicted { conflicts: c } => count(c) == 1
+      }
+          })
+  }
+}
+
+// DELETE VERSUS MODIFY. The central claim, and the reason the operand carries presence: a bare-locator
+// law has no state to compare here and must either take the deletion -- silently discarding the
+// target's edit -- or take the edit, silently resurrecting a file the source deleted on purpose. Both
+// produce a valid manifest and neither is visible to the caller.
+test fn scm_mm_a_delete_against_a_modify_conflicts_and_says_which_side_was_absent() -> Bool {
+  match pair() {
+    TrioUnavailable => false
+    Trio { x: x, y: y, z: _ } =>
+      match merged(base: at(path: "a", source: x), source: [], target: at(path: "a", source: y)) {
+        MergeUnavailable => false
+        Merged(outcome) =>
+          match outcome {
+            ManifestMerged { entries: _ } => false
+            ManifestConflicted { conflicts: c } =>
+              count(c) == 1
+                && fold(c, init: false, f: fn(found, k) {
+                     found || (
+                       (k.path as String) == "a"
+                         && path_state_eq(left: k.base, right: PathPresent { source: x })
+                         && path_state_eq(left: k.source, right: PathAbsent)
+                         && path_state_eq(left: k.target, right: PathPresent { source: y })
+                     )
+                   })
+      }
+      }
+  }
+}
+
+// MODIFY VERSUS DELETE, the mirror. Written separately because the two are decided by the SAME absent
+// arm from opposite sides, and an implementation that special-cased one would pass the other.
+test fn scm_mm_a_modify_against_a_delete_conflicts_and_says_which_side_was_absent() -> Bool {
+  match pair() {
+    TrioUnavailable => false
+    Trio { x: x, y: y, z: _ } =>
+      match merged(base: at(path: "a", source: x), source: at(path: "a", source: y), target: []) {
+        MergeUnavailable => false
+        Merged(outcome) =>
+          match outcome {
+            ManifestMerged { entries: _ } => false
+            ManifestConflicted { conflicts: c } =>
+              count(c) == 1
+                && fold(c, init: false, f: fn(found, k) {
+                     found || (
+                       path_state_eq(left: k.base, right: PathPresent { source: x })
+                         && path_state_eq(left: k.source, right: PathPresent { source: y })
+                         && path_state_eq(left: k.target, right: PathAbsent)
+                     )
+                   })
+      }
+      }
+  }
+}
+
+// THE COMPLETE POPULATION, AND A MERGEABLE PATH ALONGSIDE THEM. A first-wins implementation reports
+// one conflict and passes every single-conflict control above; only a specimen with TWO conflicting
+// paths separates it. The third path is mergeable and must NOT appear as a conflict, so the claim
+// also refutes an implementation that gives up wholesale once any path conflicts.
+//
+// THE THREE PATHS, AND WHY EACH IS THE ONE IT IS:
+//
+//   a: B=x  S=y       T=z   all three differ         -> CONFLICT
+//   b: B=x  S=absent  T=y   delete versus modify     -> CONFLICT
+//   c: B=x  S=x       T=y   source untouched         -> take target, MERGEABLE
+//
+// The mergeable third path is not filler: it is what makes the claim distinguish "reported every
+// conflict" from "reported every path".
+test fn scm_mm_every_conflicting_path_is_reported_not_the_first() -> Bool {
+  match pair() {
+    TrioUnavailable => false
+    Trio { x: x, y: y, z: z } =>
+      match merged(
+        base: concat(at(path: "a", source: x), concat(at(path: "b", source: x), at(path: "c", source: x))),
+        source: concat(at(path: "a", source: y), at(path: "c", source: x)),
+        target: concat(at(path: "a", source: z), concat(at(path: "b", source: y), at(path: "c", source: y))),
+      ) {
+        MergeUnavailable => false
+        Merged(outcome) =>
+          match outcome {
+            ManifestMerged { entries: _ } => false
+            ManifestConflicted { conflicts: c } =>
+              count(c) == 2
+                && fold(c, init: false, f: fn(f2, k) { f2 || (k.path as String) == "a" })
+                && fold(c, init: false, f: fn(f2, k) { f2 || (k.path as String) == "b" })
+                && !fold(c, init: false, f: fn(f2, k) { f2 || (k.path as String) == "c" })
+      }
+      }
+  }
+}
+
+// WHY THERE IS NO CLAIM HERE FOR THE `S == T` ARM RETURNING "EITHER" OPERAND. An earlier draft
+// carried one, on the reasoning that "they are equal so it does not matter" is the shape that hid an
+// identity defect one module over. It was a DECORATION and is deleted rather than repaired. The arm
+// is reached only when `path_state_eq` holds, `path_state_eq` on two present states compares
+// locators, and `AuthoredSourceTarget` carries a locator and nothing else -- so the two operands are
+// not merely equal, they are indistinguishable to every observer this corpus can write, including
+// `entries_hold`. There is no fixture that makes the choice observable, so no input can turn the
+// claim red, so it asserted nothing while looking like coverage (DESIGN section 4b). The
+// unobservability is structural, which is a stronger statement than the claim was making.
+//
+// ITS RED BECOMES AUTHORABLE THE DAY `AuthoredSourceTarget` GAINS A FIELD OUTSIDE THE EQUALITY --
+// at which point the arm has a real choice and this claim must come back with it.
+
+// COMPARING TWO OUTCOMES AT THE GRAIN A CONSUMER SEES. Conflicts are compared by path and merged
+// entries by path and locator, because those are the whole observable content of each arm -- an
+// equality that looked at anything else would be asserting about a representation rather than a fact.
+fn conflict_paths(conflicts: List<ManifestPathConflict>) -> List<String> {
+  map(conflicts, c => c.path as String)
+}
+
+// THE ENTRY COMPARISON IS object_store's OWN, NOT A SECOND ONE COINED HERE. `manifest_comparands` is
+// already the authority for "are these two manifests the same content", used by
+// `manifest_entries_equal`; writing a private path-and-locator tuple beside it would be a second
+// answer to one question (DESIGN section 3).
+//
+// THE FIRST WRITING OF THIS COMPARED PATHS ALONE, while the annotation above claimed path AND
+// locator -- weaker than its own description. The asymmetric-conflict mutation walked straight
+// through the symmetry claim on that: both directions produce an entry at path "a", disagreeing only
+// about WHICH side's content it holds, which is the entire defect the claim exists to catch. Caught
+// by RUNNING the mutation, not by reading the code, and it is the same lesson as the decoration
+// deleted above -- a claim is worth what its red proves, not what its annotation asserts.
+fn entry_keys(entries: List<CorpusManifestEntry>) -> List<ManifestEntryComparand> {
+  manifest_comparands(entries: entries)
+}
+
+fn outcomes_agree(left: ManifestMergeOutcome, right: ManifestMergeOutcome) -> Bool {
+  match left {
+    ManifestConflicted { conflicts: lc } =>
+      match right {
+        ManifestConflicted { conflicts: rc } => conflict_paths(conflicts: lc) == conflict_paths(conflicts: rc)
+        ManifestMerged { entries: _ } => false
+      }
+    ManifestMerged { entries: le } =>
+      match right {
+        ManifestConflicted { conflicts: _ } => false
+        ManifestMerged { entries: re } => entry_keys(entries: le) == entry_keys(entries: re)
+      }
+  }
+}
+
+fn resolves_to(
+  base: List<CorpusManifestEntry>,
+  source: List<CorpusManifestEntry>,
+  target: List<CorpusManifestEntry>,
+  expect: AuthoredSourceTarget,
+) -> Bool {
+  match merged(base: base, source: source, target: target) {
+    MergeUnavailable => false
+    Merged(outcome) =>
+      match outcome {
+        ManifestConflicted { conflicts: _ } => false
+        ManifestMerged { entries: e } => entries_hold(entries: e, path: "a", source: expect)
+      }
+  }
+}
+
+// THE LAW IS SYMMETRIC IN SOURCE AND TARGET, AND THIS IS THE CLAIM THAT REPLACES THE DELETED ONE.
+//
+// The annotation above records why the "S == T returns either operand" claim was a decoration: the
+// two operands are indistinguishable, so no input could turn it red. The statement WORTH making is
+// not about that arm's operand at all -- it is about the whole law. Read the four lines with source
+// and target exchanged and each maps onto another: S==B->T becomes T==B->S, T==B->S becomes S==B->T,
+// S==T->S is fixed because the operands are equal, and the conflict arm is fixed because it prefers
+// neither. So the merged result must not depend on WHICH side was handed in as source.
+//
+// ITS RED IS AUTHORABLE, WHICH IS THE WHOLE DIFFERENCE. The tempting wrong law resolves a conflict by
+// preferring one side -- the behaviour a git user knows as `-X ours` -- and that is asymmetric by
+// construction. The mutation table records it reding here.
+//
+// THE FIXTURE MIXES RESOLVABLE AND CONFLICTING PATHS ON PURPOSE. A symmetry claim over paths that all
+// resolve would be satisfied by a law with an asymmetric CONFLICT arm, which is the only arm where
+// asymmetry is tempting.
+test fn scm_mm_the_law_does_not_depend_on_which_side_is_source() -> Bool {
+  match pair() {
+    TrioUnavailable => false
+    Trio { x: x, y: y, z: z } =>
+      let b = concat(at(path: "a", source: x), at(path: "b", source: x))
+      let s = concat(at(path: "a", source: y), at(path: "b", source: x))
+      let t = concat(at(path: "a", source: z), at(path: "b", source: y))
+      match merged(base: b, source: s, target: t) {
+        MergeUnavailable => false
+        Merged(forward) =>
+          match merged(base: b, source: t, target: s) {
+            MergeUnavailable => false
+            Merged(backward) => outcomes_agree(left: forward, right: backward)
+          }
+      }
+  }
+}
+
+// THE LAW MUST NOT REFUSE TOO MUCH, WHICH NO OTHER CLAIM HERE STATES. Every mutation in the table
+// tests that the law refuses ENOUGH; a law that conflicted on every path whose three sides were not
+// all equal would pass all of them, and would be useless. These are the three all-present cases that
+// MUST resolve, and they are the exact cases a conflict wall over-reaches into:
+//
+//   B=x  S=x  T=y  -> take target   only the target moved
+//   B=x  S=y  T=x  -> take source   only the source moved
+//   B=x  S=y  T=y  -> take either   both moved to the same place
+test fn scm_mm_a_path_only_one_side_moved_resolves_rather_than_conflicting() -> Bool {
+  match pair() {
+    TrioUnavailable => false
+    Trio { x: x, y: y, z: _ } =>
+      resolves_to(base: at(path: "a", source: x), source: at(path: "a", source: x),
+                  target: at(path: "a", source: y), expect: y)
+        && resolves_to(base: at(path: "a", source: x), source: at(path: "a", source: y),
+                       target: at(path: "a", source: x), expect: y)
+        && resolves_to(base: at(path: "a", source: x), source: at(path: "a", source: y),
+                       target: at(path: "a", source: y), expect: y)
+  }
+}
+
+// THE UNION IS THE SUBJECT, NOT THE BASE. A path added only by the source is decided; an
+// implementation iterating the base's paths drops it silently and returns a manifest missing a file
+// the source added.
+test fn scm_mm_a_path_only_one_side_has_is_still_decided() -> Bool {
+  match pair() {
+    TrioUnavailable => false
+    Trio { x: x, y: y, z: _ } =>
+      match merged(base: [], source: at(path: "new", source: y), target: at(path: "kept", source: x)) {
+        MergeUnavailable => false
+        Merged(outcome) =>
+          match outcome {
+            ManifestConflicted { conflicts: _ } => false
+            ManifestMerged { entries: e } =>
+              count(e) == 2
+                && fold(e, init: false, f: fn(f2, k) { f2 || (k.path as String) == "new" })
+                && fold(e, init: false, f: fn(f2, k) { f2 || (k.path as String) == "kept" })
+      }
+      }
+  }
+}
+
+test fn scm_manifest_merge_witnesses_hold() -> Bool {
+  scm_mm_the_presence_cases_fall_out_of_the_one_law()
+    && scm_mm_a_delete_against_a_modify_conflicts_and_says_which_side_was_absent()
+    && scm_mm_a_modify_against_a_delete_conflicts_and_says_which_side_was_absent()
+    && scm_mm_every_conflicting_path_is_reported_not_the_first()
+    && scm_mm_a_path_only_one_side_has_is_still_decided()
+    && scm_mm_the_law_does_not_depend_on_which_side_is_source()
+    && scm_mm_a_path_only_one_side_moved_resolves_rather_than_conflicting()
+}
