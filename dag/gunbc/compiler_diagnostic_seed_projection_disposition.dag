@@ -1,0 +1,132 @@
+module gunbc.compiler_diagnostic_seed_projection_disposition
+
+import gunbc.capability_origin { CapabilityOrigin, ModeledCapability, NoNewCapability }
+import gunbc.compiler_diagnostic_seed_projection {
+  CoproductProjectionAnchor,
+  compiler_diagnostic_dag_authority,
+  compiler_diagnostic_seed_projection_anchors
+}
+import gunbc.seed_growth_admission {
+  ExistingSeedItemModified,
+  GeneratedInstead,
+  GrowthRefused,
+  HandRustDeleted,
+  RetainedKernel,
+  SeedBridgeAuthorized,
+  SeedGrowthChangeDisposition
+}
+import std.decl_ref { DeclarationRef }
+import std.types { List, String }
+import v2.std.algebra { fold_list, length, list_append, list_map }
+
+// THE CompilerDiagnostic SEED PROJECTION, STATED IN THE VOCABULARY THE CORPUS ALREADY OWNS.
+//
+// gunbc.compiler_diagnostic_seed_projection carries the anchor identity and is a leaf, because the
+// plan that renders the receipt cannot reach the admission machinery without closing an import
+// cycle (that module's own note records the refusal). This module is the other half: it DERIVES one
+// SeedGrowthChangeDisposition per anchor rather than re-authoring the identities, so the two can
+// never disagree about which seed item the receipt is about.
+//
+// WHY A DISPOSITION AND NOT A SeedGrowthJustification. A justification declares hand-Rust that is
+// ADDED and owes a deletion trigger. Extending a coproduct adds no seed item: it forces new arms
+// inside an item that already exists, which is exactly ExistingSeedItemModified, and its
+// capability_origin field carries the claim seven lanes were each writing out in prose --
+// NoNewCapability, the arms being the mechanical consequence of the .dag change. Filing this as a
+// justification would have inflated the addition census by an item nobody added.
+data compiler_diagnostic_seed_projection_dispositions: List<SeedGrowthChangeDisposition> = list_map(xs: compiler_diagnostic_seed_projection_anchors, f: anchor_disposition)
+
+fn anchor_disposition(a: CoproductProjectionAnchor) -> SeedGrowthChangeDisposition {
+  ExistingSeedItemModified {
+    item: a.item,
+    dag_authority: compiler_diagnostic_dag_authority(),
+    capability_origin: NoNewCapability,
+    current_boundary: a.boundary as String
+  }
+}
+
+// WELL-FORMEDNESS, AND THE ONE PROPERTY THAT MAKES THIS RECEIPT MEAN ANYTHING.
+//
+// The receipt's whole content is that a coproduct extension modifies a named seed item and
+// ORIGINATES NO CAPABILITY THERE. A row whose capability_origin is ModeledCapability is a different
+// claim wearing this receipt's name -- it says the seed gained semantics, which is precisely what
+// this receipt exists to deny -- and a row whose dag_authority is not the coproduct is a receipt
+// about something else filed here. Both are authorable, so both are refused rather than assumed,
+// and the witness executes each as a discriminating RED beside the real rows.
+type SeedProjectionReceiptVerdict
+  = SeedProjectionReceiptWellFormed { items: List<String> }
+  | SeedProjectionReceiptRefused { detail: String }
+
+fn disposition_refusal(d: SeedGrowthChangeDisposition) -> String {
+  match d {
+    SeedBridgeAuthorized => "SeedBridgeAuthorized is not a coproduct-projection disposition: an authorized bridge ADDS a seed item, and extending a coproduct adds none"
+    GeneratedInstead => "GeneratedInstead is not a coproduct-projection disposition: the total match is hand-Rust, not emitted"
+    HandRustDeleted => "HandRustDeleted is not a coproduct-projection disposition: an extension modifies the total match, it does not delete it"
+    RetainedKernel => "RetainedKernel is not a coproduct-projection disposition: the match dissolves with the seed rather than being retained"
+    GrowthRefused => "GrowthRefused is not a coproduct-projection disposition: the arms are forced by the .dag change and are not refusable growth"
+    ExistingSeedItemModified { item: item, dag_authority: authority, capability_origin: origin, current_boundary: _ } =>
+      modified_row_refusal(item: item, authority: authority, origin: origin)
+  }
+}
+
+fn modified_row_refusal(item: DeclarationRef, authority: DeclarationRef, origin: CapabilityOrigin) -> String {
+  match origin {
+    ModeledCapability { origin: _ } =>
+      concat(
+        concat("'", item.decl_name),
+        "' claims ModeledCapability: the seed projection of a coproduct originates no semantics, so a modelled capability filed here is a different claim wearing this receipt's name"
+      )
+    NoNewCapability =>
+      if authority.decl_name == compiler_diagnostic_dag_authority().decl_name
+        && authority.module_path == compiler_diagnostic_dag_authority().module_path {
+        ""
+      } else {
+        concat(
+          concat(concat("'", item.decl_name), "' names the authority '"),
+          concat(concat(authority.module_path, " "), concat(authority.decl_name, "', which is not the coproduct this receipt is about"))
+        )
+      }
+  }
+}
+
+fn disposition_item_key(d: SeedGrowthChangeDisposition) -> String {
+  match d {
+    SeedBridgeAuthorized => ""
+    GeneratedInstead => ""
+    HandRustDeleted => ""
+    RetainedKernel => ""
+    GrowthRefused => ""
+    ExistingSeedItemModified { item: item, dag_authority: _, capability_origin: _, current_boundary: _ } =>
+      concat(concat(item.module_path, " "), item.decl_name)
+  }
+}
+
+fn seed_projection_refusals(rows: List<SeedGrowthChangeDisposition>) -> List<String> {
+  fold_list(
+    xs: rows,
+    empty: [] as List<String>,
+    cons: fn(acc, d) {
+      if disposition_refusal(d: d) == "" {
+        acc
+      } else {
+        list_append(left: acc, right: [disposition_refusal(d: d)])
+      }
+    }
+  )
+}
+
+fn seed_projection_receipt_verdict_of(rows: List<SeedGrowthChangeDisposition>) -> SeedProjectionReceiptVerdict {
+  let refusals = seed_projection_refusals(rows: rows)
+  if length(xs: rows) == 0 {
+    SeedProjectionReceiptRefused { detail: "the receipt names no seed item: a coproduct whose projection modifies nothing is not a receipt, it is an empty claim" }
+  } else if length(xs: refusals) == 0 {
+    SeedProjectionReceiptWellFormed { items: list_map(xs: rows, f: disposition_item_key) }
+  } else {
+    SeedProjectionReceiptRefused {
+      detail: fold_list(xs: refusals, empty: "", cons: fn(acc, r) { concat(acc, concat(r, "; ")) })
+    }
+  }
+}
+
+fn compiler_diagnostic_seed_projection_verdict() -> SeedProjectionReceiptVerdict {
+  seed_projection_receipt_verdict_of(rows: compiler_diagnostic_seed_projection_dispositions)
+}

@@ -1,11 +1,11 @@
 module test.claim.compiler_diagnostic_seed_projection_witness_test
 
 import gunbc.capability_origin { CapabilityPresentOnBase, ModeledCapability, NoNewCapability }
-import gunbc.compiler_diagnostic_seed_projection {
+import gunbc.compiler_diagnostic_seed_projection { compiler_diagnostic_seed_projection_paragraphs }
+import gunbc.compiler_diagnostic_seed_projection_disposition {
   SeedProjectionReceiptRefused,
   SeedProjectionReceiptWellFormed,
   compiler_diagnostic_seed_projection_dispositions,
-  compiler_diagnostic_seed_projection_paragraphs,
   compiler_diagnostic_seed_projection_verdict,
   disposition_item_key,
   seed_projection_receipt_verdict_of
