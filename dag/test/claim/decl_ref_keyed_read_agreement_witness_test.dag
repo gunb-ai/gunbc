@@ -88,13 +88,13 @@ test fn keyed_and_population_routes_agree_on_resolved() -> Bool {
   )
 }
 
-// The module-absent ref names a namespace root the corpus sweep never observes, so the ingestion
-// index classifies it as outside the index by construction rather than by an authored exemption
-// (v1_compiler.declaration_index citation_is_outside_index). The two rows below cite REAL modules
-// and cannot take that route -- a declaration-absent or field-absent arm is only reachable through
-// a module that exists -- so those two are enrolled in FIXTURE_CARRIER_CITATION_EXEMPTIONS beside
-// the sibling planted controls, which is the roster that exists for exactly this and which refuses
-// a row whose citation stops refusing.
+// ALL THREE PLANTED-ABSENT ROWS BELOW ARE ENROLLED IN FIXTURE_CARRIER_CITATION_EXEMPTIONS
+// (v1_compiler.declaration_index), the roster that exists for exactly this and which refuses a row
+// whose citation stops refusing. The module-absent one was authored expecting a different route --
+// that a namespace root the corpus sweep never observes is classified outside the index by
+// construction -- and required run 34097895230 refused it as CITED-MODULE-ABSENT, so the
+// expectation was wrong and the roster is the route for all three. A planted absence a witness
+// needs and the corpus must not silently carry is exactly what the roster is identity-grained for.
 test fn keyed_and_population_routes_agree_on_module_absent() -> Bool {
   routes_agree_on(
     ref: DeclarationRef {
