@@ -5295,13 +5295,35 @@ fn is_import_graph_type_name(name: String, import_module: String, typed_modules:
 // no `compile_error!`; the alternative on offer here was substituting a plausible module, which
 // compiles and is wrong.
 //
-// RUNG, HONESTLY: this is MITIGATION, not construction. The refusal is real and it is located in
-// the emitted crate rather than in the compiler that had the fact, which is the wrong compiler and
-// the wrong phase. NEXT-RUNG TRIGGER, a capability: a diagnostic channel through the reference-
-// derived import planner, which already carries `ReferenceDerivedCandidateRow` with a
-// `CandidateLeafAmbiguous` disposition for the same fact one layer above -- when the three
-// `item_defining_module_filename` call sites can return a row instead of a string, the refusal
-// moves to acceptance and this rendering dissolves.
+// RUNG, HONESTLY, AND AT TWO GRAINS BECAUSE THE TWO CLAIMS HAVE DIFFERENT EVIDENCE.
+//
+// THE CONSTRUCTION CLAIM NEEDS NO EXECUTION AND IS MADE WITHOUT ONE: `LeafOwner` gives ambiguity its
+// own arm, so the empty-string owner is unwritable and no reader can reach an owner without writing
+// the arm that says there is none. That is a property of the type.
+//
+// THE BEHAVIOURAL CLAIM IS UNEXERCISED AND THIS SAYS SO RATHER THAN ASSERTING IT. Nothing in the
+// corpus executes this arm: no witness reaches `ItemLeafAmbiguous` or `LeafAmbiguous`, and the one
+// census witness over the dispositions above passes an EMPTY leaf-owner index at every site, so it
+// cannot reach ambiguity by construction. That this refusal STOPS a build is therefore an argument
+// about the emitted path, not a measured fact, and an annotation asserting it would be the one kind
+// of claim in this corpus that no `Accepted` program can ever refute -- section 4c, and the shape
+// `subject_and_its_digest_as_independent_parameters` already rosters as prose adjacency mistaken
+// for a join.
+//
+// TRIGGER, AND IT IS AUTHORABLE TODAY, WHICH IS WHY THIS IS 4b(2) AND NOT AN UNTRACKED STALL:
+// `tools.multi_module_compile_fixture` compiles authored sources, and
+// `v2.test.claim.local_binding_shadow_compile` already uses it to make two modules declare one
+// spelling. So the RED is expressible in a fixture even though an ambiguous leaf is not authorable
+// in the ACCEPTED corpus, and declining to write it would be specification-without-execution by
+// section 4b's own test. It lands next, as its own witness rather than a change to this wall.
+//
+// AND THE CEILING ABOVE BOTH: this rendering is MITIGATION even once exercised, because the refusal
+// lands in the emitted crate rather than in the compiler that held the fact -- the wrong compiler
+// and the wrong phase. Its next-rung trigger is a capability: a diagnostic channel through the
+// reference-derived import planner, which already carries `ReferenceDerivedCandidateRow` with a
+// `CandidateLeafAmbiguous` disposition for this same fact one layer above. When the three
+// `item_defining_module_filename` call sites can return a row instead of a string, the refusal moves
+// to acceptance and this rendering dissolves.
 fn ambiguous_leaf_module_refusal(leaf: String) -> String {
   concat("__ambiguous_leaf__", leaf, "__declared_by_two_modules")
 }
