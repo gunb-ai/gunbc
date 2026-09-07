@@ -82,9 +82,10 @@ fn empty_output_obligations() -> DeclaredOutputObligations {
 }
 
 // Revision of a declared roster — identity of WHICH roster was resolved.
-// Branded so a foreign ContentHash (source manifest, trainer closure, …) is
-// ill-typed as a revision rather than silently inhabiting the field (§3 / §6).
-type OutputObligationsRevision = ContentHash where brand("OutputObligationsRevision")
+// Branded NonEmptyStr (same shape as WorkKey): ContentHash is a sum, so
+// `ContentHash where brand(...)` cannot be minted by casting a variant (§3 / §6
+// still hold — a foreign digest string is ill-typed as this brand).
+type OutputObligationsRevision = NonEmptyStr where brand("OutputObligationsRevision")
 
 // WHICH policy a sealed result answers under. Warm-moth-142: revision identity
 // alone does not say whether a job is judged against the roster it started on or
@@ -320,7 +321,9 @@ fn output_obligations_material(declared: DeclaredOutputObligations) -> NonEmptyS
 }
 
 fn output_obligations_revision(declared: DeclaredOutputObligations) -> OutputObligationsRevision {
-  content_hash_of_value(value: output_obligations_material(declared: declared)) as OutputObligationsRevision
+  serialize_content_hash(
+    hash: content_hash_of_value(value: output_obligations_material(declared: declared))
+  ) as OutputObligationsRevision
 }
 
 // The only route to a terminal-success-eligible roster on the .dag path. Empty
