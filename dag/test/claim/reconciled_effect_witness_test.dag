@@ -11,12 +11,11 @@ import std.realization_reconcile {
   Grounds,
   DoesNotGround,
   reconcile_effect,
-  reconciled_effect_converged,
-  ConvergedEffect,
-  ReconciledOutcome,
+  classify_reconciled,
   EffectConverged,
   EffectNotConverged,
-  classify_reconciled,
+  ConvergedEffect,
+  ReconciledOutcome,
   Application,
   NotApplied,
   Applied,
@@ -59,6 +58,17 @@ fn reported_application() -> Application {
   Applied
 }
 
+// Test-local, deliberately. std no longer exports a Bool predicate over the outcome coproduct -- the
+// canonical surface is classify_reconciled / ReconciledOutcome -- but a witness asserting a verdict
+// wants a Bool. Folding it here keeps the predicate out of the authority module while leaving these
+// assertions readable.
+fn converged(r: ReconciledEffect<String, String>) -> Bool {
+  match classify_reconciled(r: r) {
+    EffectConverged { converged: _ } => true
+    EffectNotConverged { reason: _, attempt: _ } => false
+  }
+}
+
 // THE DISCRIMINATING RED. The application arm is REPORTED as Applied, and the carrier still
 // refuses to call that convergence, because convergence is classified from the reported effective read
 // rather than from the application arm beside it. Nothing here executes an effect or performs a read:
@@ -68,7 +78,7 @@ fn reported_application() -> Application {
 // entire distinction the carrier exists to carry.
 
 test fn an_application_reported_with_a_non_grounding_read_is_not_converged() -> Bool {
-  !reconciled_effect_converged(
+  !converged(
     r: reconcile_effect(
       decision: apply_decision(),
       application: reported_application(),
@@ -82,7 +92,7 @@ test fn an_application_reported_with_a_non_grounding_read_is_not_converged() -> 
 // unconditionally would satisfy the RED above and establish nothing.
 
 test fn an_application_reported_with_a_grounding_read_is_converged() -> Bool {
-  reconciled_effect_converged(
+  converged(
     r: reconcile_effect(
       decision: apply_decision(),
       application: reported_application(),
@@ -97,7 +107,7 @@ test fn an_application_reported_with_a_grounding_read_is_converged() -> Bool {
 // would report convergence for an effect the policy declined to run.
 
 test fn a_refused_decision_cannot_be_laundered_into_convergence_by_a_reported_grounding_read() -> Bool {
-  !reconciled_effect_converged(
+  !converged(
     r: reconcile_effect(
       decision: Refuse { reason: "policy is observe-only" as NonEmptyStr },
       application: reported_application(),
@@ -111,7 +121,7 @@ test fn a_refused_decision_cannot_be_laundered_into_convergence_by_a_reported_gr
 // hold for an unrelated reason; that does not discharge an Apply reported as not applied.
 
 test fn an_apply_reported_as_not_applied_is_not_converged() -> Bool {
-  !reconciled_effect_converged(
+  !converged(
     r: reconcile_effect(
       decision: apply_decision(),
       application: NotApplied,
@@ -126,7 +136,7 @@ test fn an_apply_reported_as_not_applied_is_not_converged() -> Bool {
 // the convergence test in either direction.
 
 test fn a_noop_over_a_grounding_read_is_converged() -> Bool {
-  reconciled_effect_converged(
+  converged(
     r: reconcile_effect(
       decision: Noop,
       application: NotApplied,
@@ -137,7 +147,7 @@ test fn a_noop_over_a_grounding_read_is_converged() -> Bool {
 }
 
 test fn a_noop_whose_read_is_absent_is_not_converged() -> Bool {
-  !reconciled_effect_converged(
+  !converged(
     r: reconcile_effect(
       decision: Noop,
       application: NotApplied,
@@ -213,7 +223,7 @@ test fn a_converged_reconciliation_classifies_to_a_success_carrier_holding_its_e
 // Noop paired with Applied, with a grounding read report. Adherence is not "the reported end state
 // looks right" — a Noop reported beside an application did not hold.
 test fn a_noop_reported_beside_an_application_does_not_converge() -> Bool {
-  !reconciled_effect_converged(
+  !converged(
     r: reconcile_effect(
       decision: Noop,
       application: reported_application(),
@@ -226,7 +236,7 @@ test fn a_noop_reported_beside_an_application_does_not_converge() -> Bool {
 // Refuse paired with Applied. The refusal is the whole content of the decision; an application
 // reported beside it is a lifecycle violation even where the read report grounds.
 test fn a_refusal_reported_beside_an_application_does_not_converge() -> Bool {
-  !reconciled_effect_converged(
+  !converged(
     r: reconcile_effect(
       decision: Refuse { reason: "policy is observe-only" as NonEmptyStr },
       application: reported_application(),

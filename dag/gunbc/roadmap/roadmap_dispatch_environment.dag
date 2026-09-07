@@ -8,7 +8,13 @@ import std.upsert_decision {
   Refuse,
   upsert_decision_label,
 }
-import std.realization_reconcile { ReconciledEffect, reconciled_effect_converged, NotApplied }
+import std.realization_reconcile {
+  ReconciledEffect,
+  classify_reconciled,
+  EffectConverged,
+  EffectNotConverged,
+  NotApplied,
+}
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.ensure {
   EnsureObservation,
@@ -133,17 +139,17 @@ fn capability_readback_reason(realization: CapabilityRealization) -> String {
   ], "")
 }
 
+// Takes the REFUSAL REASON the outcome already carries rather than a Bool the caller re-branches on.
+// An earlier revision took `grounded: Bool`, which meant the coproduct was collapsed to a Boolean at
+// the call site and then immediately re-expanded here -- and the reason std had classified was
+// discarded and a fresh string invented in its place. The empty string is the converged arm, which
+// classify_reconciled reaches only through Grounds.
 fn capability_receipt_reason(
   decision: UpsertDecision<String>,
-  grounded: Bool,
+  refusal: String,
 ) -> String {
   match decision {
-    Noop =>
-      if grounded {
-        ""
-      } else {
-        "capability observation did not ground the requirement"
-      }
+    Noop => refusal
     Apply { plan: _ } =>
       "capability-specific apply is required before admission; no effect ran in the decision layer"
     Refuse { reason: reason } => reason as String
@@ -172,15 +178,27 @@ fn capability_ensure_receipt(
     after_satisfies: identity_matches,
     after_mismatch_reason: capability_readback_reason(realization: realization),
   )
-  let grounded = reconciled_effect_converged(r: reconciled)
-  CapabilityEnsureReceipt {
-    capability: realization.capability,
-    capability_label: execution_capability_label(capability: realization.capability),
-    executable: realization.executable as String,
-    decision: reconciled.decision,
-    grounded: grounded,
-    evidence: ensure_observation_evidence(observation: observation),
-    reason: capability_receipt_reason(decision: reconciled.decision, grounded: grounded),
+  match classify_reconciled(r: reconciled) {
+    EffectConverged { converged: c } =>
+      CapabilityEnsureReceipt {
+        capability: realization.capability,
+        capability_label: execution_capability_label(capability: realization.capability),
+        executable: realization.executable as String,
+        decision: c.decision,
+        grounded: true,
+        evidence: ensure_observation_evidence(observation: observation),
+        reason: capability_receipt_reason(decision: c.decision, refusal: ""),
+      }
+    EffectNotConverged { reason: why, attempt: a } =>
+      CapabilityEnsureReceipt {
+        capability: realization.capability,
+        capability_label: execution_capability_label(capability: realization.capability),
+        executable: realization.executable as String,
+        decision: a.decision,
+        grounded: false,
+        evidence: ensure_observation_evidence(observation: observation),
+        reason: capability_receipt_reason(decision: a.decision, refusal: why),
+      }
   }
 }
 

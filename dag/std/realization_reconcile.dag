@@ -42,18 +42,35 @@ data reconcile_grounded_instance_contract: Disposition = Terminal {
   reason: "carrier cannot re-run the grounding predicate over the observed read (v1-seed substrate limit): every instance must couple grounding to that read inline and land a discriminating perturb-RED witness"
 }
 
+// Normalizes the two reported inputs into ONE grounding verdict. An absent read cannot ground
+// whatever the grounding report says beside it; an observed read defers to that report. Neither
+// branch establishes that anyone looked.
+//
+// THIS IS THE SINGLE AUTHORITY FOR THAT TABLE. reconcile_grounded below is expressed over it rather
+// than restating it: an earlier revision of this change authored the same law twice, once returning
+// Grounding<E> and once returning Reconciliation<A, E>, differing only in carrier -- two sources for
+// one fact, free to drift (DESIGN 2, 3). The annotation two screens down was making the
+// single-authority argument while the function beside it broke it.
+fn classify_reported_grounding<R, E>(
+  show_read: ShowEffectiveRead<R>,
+  grounding: Grounding<E>,
+) -> Grounding<E> {
+  match show_read {
+    ReadAbsent { reason: why } => DoesNotGround { reason: why }
+    ReadObserved { value: _ } => grounding
+  }
+}
+
+// The same verdict, carried in Reconciliation<A, E> so the effect/intent payload rides along for the
+// host and deployment pipelines that consume it. It adds the payload; it does not re-decide.
 fn reconcile_grounded<A, R, E>(
   apply_effect: A,
   show_read: ShowEffectiveRead<R>,
   grounding: Grounding<E>
 ) -> Reconciliation<A, E> {
-  match show_read {
-    ReadAbsent { reason: why } => NotConverged { reason: why, applied: apply_effect }
-    ReadObserved { value: _ } =>
-      match grounding {
-        Grounds { evidence: e } => Converged { evidence: e, applied: apply_effect }
-        DoesNotGround { reason: why } => NotConverged { reason: why, applied: apply_effect }
-      }
+  match classify_reported_grounding(show_read: show_read, grounding: grounding) {
+    Grounds { evidence: e } => Converged { evidence: e, applied: apply_effect }
+    DoesNotGround { reason: why } => NotConverged { reason: why, applied: apply_effect }
   }
 }
 
@@ -144,19 +161,6 @@ type ReconciledEffect<P, E> sole_constructor {
 // not-converged pair in the same authority. Reconciliation<Application, E> was considered and
 // rejected: no sink reads it, so it would keep a field only to satisfy the older shape -- the exact
 // dangling-data move this carrier just removed twice.
-
-// Normalizes the two reported inputs into the single grounding verdict the carrier claims. An absent
-// read cannot ground, whatever the grounding report says beside it; an observed read defers to that
-// report. Neither branch establishes that anyone looked.
-fn classify_reported_grounding<R, E>(
-  show_read: ShowEffectiveRead<R>,
-  grounding: Grounding<E>,
-) -> Grounding<E> {
-  match show_read {
-    ReadAbsent { reason: why } => DoesNotGround { reason: why }
-    ReadObserved { value: _ } => grounding
-  }
-}
 
 // WHAT THIS IS, STATED AT THE WEAKEST TRUE STRENGTH.
 //
@@ -277,12 +281,12 @@ fn reconcile_effect<P, R, E>(
   }
 }
 
-fn reconciled_effect_converged<P, E>(r: ReconciledEffect<P, E>) -> Bool {
-  match r.classified_grounding {
-    Grounds { evidence: _ } => true
-    DoesNotGround { reason: _ } => false
-  }
-}
+// reconciled_effect_converged IS GONE. It was a hand-rolled two-arm Bool fold over the Grounding
+// coproduct, which left std carrying two sibling *_converged predicates over isomorphic coproducts;
+// worse, its only production consumer took the Bool and then RE-BRANCHED on it to build a reason
+// string, so the coproduct was collapsed and immediately re-expanded. Consumers match
+// classify_reconciled / ReconciledOutcome directly, which is the canonical surface and carries the
+// refusal reason the Bool had discarded.
 
 // ReconciledEffect is an OUTCOME, not a success witness: it faithfully carries a refusal or an
 // unapplied Apply, which is what makes it honest and what makes it insufficient as a sink's
