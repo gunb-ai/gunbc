@@ -18,7 +18,11 @@ import extdeps.filesystem.filesystem_io {
 import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, FleetSsh, EmitArtifactThenThinRun }
 import gunbc.host_effect_realize { run_typed_argv_transport }
 import gunbc.typed_argv_exec { TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
-import gunbc.live_deploy.spec { DeploymentSpec, deployment_systemd_unit_path, deployment_plan_listen_port }
+import gunbc.live_deploy.spec {
+  DeploymentSpec, deployment_systemd_unit_path, deployment_plan_listen_port,
+  DeploymentStep, ArtifactStep, Dependency,
+  DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot,
+}
 import gunbc.live_deploy.candidate { CandidateRelease }
 import gunbc.live_deploy.emit { live_deploy_systemd_unit_for, ReleaseRevisionBinding, RevisionBoundAtEmission }
 import gunbc.live_deploy.readiness { live_deploy_healthz_get_for_port, healthz_release_identity_refusal, healthz_refusal_reason }
@@ -36,8 +40,9 @@ import gunbc.live_deploy.member_identity {
   MemberIdentity, TreeIdentity, ExecutableIdentity, UnitFileAt, UnitManagerAt, ProcessAt,
   ObservedMember, MemberObserved, MemberAbsentOnHost, MemberUnobservable,
   MemberDecision, MemberRefused, DesiredExecutableUnreadable, DesiredExecutableAbsent, DesiredIdentityIsForAnotherMember,
-  decide_member, ReleaseMemberDecisions, ReleaseTarget,
-  EffectDerivation, EffectsDerived, EffectsRefused, derive_effects, effect_labels, plan_mutation_count,
+  decide_member, release_member_roster, MemberDecision, ConvergedMember, ReleaseTarget,
+  DirectoryRoot, DirectoryRootIdentity, RootAt,
+  EffectDerivation, EffectsDerived, EffectsRefused, derive_member_plan, effect_labels, plan_mutation_count,
 }
 
 // THE HOST'S SIDE OF THE RECONCILE, read by the evaluator that plans the deploy so the decision and
@@ -463,20 +468,113 @@ fn desired_tree(candidate: CandidateRelease) -> MemberIdentity {
   TreeIdentity { tree: TreePublicationIdentity { revision: candidate.revision, tracked_projection_clean: true } }
 }
 
-fn release_member_decisions(spec: DeploymentSpec, candidate: CandidateRelease, transport: HostEffectTransport, desired_bin: MemberIdentity) -> ReleaseMemberDecisions {
-  let arm = observation_arm(transport: transport)
-  ReleaseMemberDecisions {
-    executable: decide_member(member: Executable, desired: desired_bin, observed: observe_executable(arm: arm, path: spec.service.serve_binary as String)),
-    tree: decide_member(member: TreePublication, desired: desired_tree(candidate: candidate), observed: observe_tree(arm: arm, spec: spec, candidate: candidate)),
-    unit_file: decide_member(member: UnitFile, desired: desired_unit_file(spec: spec, candidate: candidate), observed: observe_unit_file(arm: arm, spec: spec)),
-    unit_manager: decide_member(member: UnitManager, desired: desired_unit_manager(), observed: observe_unit_manager(arm: arm, unit: spec.service.unit_name)),
-    process: decide_member(member: ServiceProcess, desired: desired_service_process(candidate: candidate), observed: observe_service_process(spec: spec, transport: transport)),
+// THE DECISIONS ARE MAPPED FROM THE ROSTER, not assembled slot by slot. Naming each member on the
+// left of an assignment made the roster and the decisions two lists an author had to keep in step;
+// mapping the roster makes them one. Adding a member is a row in the roster and an arm in each of
+// these two total functions -- the compiler names the arm it is missing, which a record of slots
+// could not do because a slot left unwritten is a type error somewhere else entirely.
+// THE ROOT ROSTER COMES FROM THE SPEC, not from a list here. A second host, or the twin, owns
+// different roots at different paths, and a roster written here would be a second authority for
+// what the deployment owns -- the steps already say it. Only the three directory roots join today;
+// the timer units and the tailscale route are still on the apply-all path and contribute no member,
+// which is what keeps this an incremental frontier rather than a rewrite: a kind that names no
+// member emits exactly as it does now.
+fn root_members_of_step(st: DeploymentStep) -> List<ConvergedMember> {
+  match st {
+    ArtifactStep { step: art } => match art.kind {
+      DispatchWorktreeRoot => [DirectoryRoot { path: art.path }]
+      AttemptStateRoot => [DirectoryRoot { path: art.path }]
+      ComputeRoot => [DirectoryRoot { path: art.path }]
+      _ => []
+    }
+    Dependency { step: _ } => []
   }
 }
 
-// THE WHOLE DECISION FOR ONE DEPLOY: five observations, five decisions, one effect derivation. The
-// executable's DESIRED side is itself an observation (the local build's digest), so a missing local
-// build refuses the plan rather than planning an install of nothing.
+fn deployment_member_roster(spec: DeploymentSpec) -> List<ConvergedMember> {
+  concat(release_member_roster(), flat_map(spec.steps, st => root_members_of_step(st: st)))
+}
+
+// A ROOT'S OWNER IS READ, NOT ASSUMED. Presence alone would call a root:root-owned directory
+// converged, and the service user still could not write it -- which is the state a hand-repaired
+// host leaves and the state a fresh host reaches if install ran under the wrong principal.
+fn root_owner_leg(arm: ObservationArm, path: String) -> Leg {
+  let argv = ["stat", "-c", "%U", "--", path]
+  let leg = join(["reading the owner of ", path], "")
+  match arm {
+    OnTheHostItself => remote_leg(transport: LocalShell, argv: argv, leg: leg)
+    OverTransport { transport } => remote_leg(transport: transport, argv: argv, leg: leg)
+  }
+}
+
+fn observe_directory_root(arm: ObservationArm, path: NonEmptyStr) -> ObservedMember {
+  let member = DirectoryRoot { path: path }
+  match entry_presence(arm: arm, path: path as String) {
+    EntryPresenceIndeterminate { cause } => MemberUnobservable { member: member, cause: cause }
+    EntryAbsent => MemberAbsentOnHost { member: member }
+    EntryPresent => match root_owner_leg(arm: arm, path: path as String) {
+      LegRefused { cause } => MemberUnobservable { member: member, cause: cause }
+      LegOut { stdout } => {
+        let owner = trim(stdout)
+        if owner == "" {
+          MemberUnobservable { member: member, cause: join(["the owner of ", path as String, " read back empty"], "") }
+        } else {
+          MemberObserved { identity: RootAt { root: DirectoryRootIdentity { path: path, owner: owner as NonEmptyStr } } }
+        }
+      }
+    }
+  }
+}
+
+fn desired_member_identity(
+  member: ConvergedMember,
+  spec: DeploymentSpec,
+  candidate: CandidateRelease,
+  desired_bin: MemberIdentity,
+) -> MemberIdentity {
+  match member {
+    Executable => desired_bin
+    TreePublication => desired_tree(candidate: candidate)
+    UnitFile => desired_unit_file(spec: spec, candidate: candidate)
+    UnitManager => desired_unit_manager()
+    ServiceProcess => desired_service_process(candidate: candidate)
+    DirectoryRoot { path } => RootAt { root: DirectoryRootIdentity { path: path, owner: spec.service.service_user } }
+  }
+}
+
+fn observed_member_on_host(
+  member: ConvergedMember,
+  spec: DeploymentSpec,
+  candidate: CandidateRelease,
+  transport: HostEffectTransport,
+  arm: ObservationArm,
+) -> ObservedMember {
+  match member {
+    Executable => observe_executable(arm: arm, path: spec.service.serve_binary as String)
+    TreePublication => observe_tree(arm: arm, spec: spec, candidate: candidate)
+    UnitFile => observe_unit_file(arm: arm, spec: spec)
+    UnitManager => observe_unit_manager(arm: arm, unit: spec.service.unit_name)
+    ServiceProcess => observe_service_process(spec: spec, transport: transport)
+    DirectoryRoot { path } => observe_directory_root(arm: arm, path: path)
+  }
+}
+
+fn release_member_plan(
+  spec: DeploymentSpec,
+  candidate: CandidateRelease,
+  transport: HostEffectTransport,
+  desired_bin: MemberIdentity,
+  target: ReleaseTarget,
+) -> EffectDerivation {
+  let arm = observation_arm(transport: transport)
+  derive_member_plan(
+    roster: deployment_member_roster(spec: spec),
+    desired: m => desired_member_identity(member: m, spec: spec, candidate: candidate, desired_bin: desired_bin),
+    observed: m => observed_member_on_host(member: m, spec: spec, candidate: candidate, transport: transport, arm: arm),
+    target: target,
+  )
+}
+
 fn deployment_effect_plan(spec: DeploymentSpec, candidate: CandidateRelease, transport: HostEffectTransport) -> EffectDerivation {
   match desired_executable() {
     MemberUnobservable { member: _, cause } =>
@@ -485,8 +583,11 @@ fn deployment_effect_plan(spec: DeploymentSpec, candidate: CandidateRelease, tra
       EffectsRefused { refusals: [MemberRefused { member: Executable, cause: DesiredExecutableAbsent }] }
     MemberObserved { identity: desired_bin } => match desired_bin {
       ExecutableIdentity { digest } =>
-        derive_effects(
-          decisions: release_member_decisions(spec: spec, candidate: candidate, transport: transport, desired_bin: desired_bin),
+        release_member_plan(
+          spec: spec,
+          candidate: candidate,
+          transport: transport,
+          desired_bin: desired_bin,
           target: ReleaseTarget { revision: candidate.revision, executable: digest, unit: spec.service.unit_name },
         )
       _ =>
