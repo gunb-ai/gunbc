@@ -11,7 +11,8 @@ import tools.namespace_import_closure_behavioral_transport { nic_behavioral_rece
 // the required floor's local-repo wet lane (LocalRepoWetLane) rather than per-PR hermetic
 // discovery — rehomed from the dead FalsifierSelfHostWet cadence (falsifier.yml deleted
 // 611fd02770/#8283, 2026-08-15) by dashboard node adhoc-cf84ab88-8dc (2026-09-06). Enrolled in
-// v2.workflow.local_repo_wet_terminal local_repo_wet_schedule; measured wet before scheduling.
+// v2.workflow.local_repo_wet_terminal local_repo_wet_schedule; WET EXECUTION NOT YET MEASURED
+// as of this commit — first execution is CI's local_repo_wet lane on this PR.
 
 test fn namespace_import_closure_receipt_holds() -> Bool {
   nic_behavioral_receipt_holds()
