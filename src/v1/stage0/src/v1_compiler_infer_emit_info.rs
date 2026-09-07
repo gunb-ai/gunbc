@@ -20,6 +20,8 @@ use crate::v1_std_core::Connective::{Arrow, Conj, NoConnective};
 use crate::v1_std_core::FieldAccessStyle::{EnumAccessor, StoredField, TupleFirst, TupleSecond};
 use crate::v1_std_core::FieldValueShape::{OptionalValue, PlainValue};
 use crate::v1_std_core::InferredNode::{Resolved, TypeVariable};
+pub use crate::v1_std_core::LeafOwner;
+use crate::v1_std_core::LeafOwner::*;
 use crate::v1_std_core::ParsedModuleItemKind::{
     ModuleItemDataValue, ModuleItemFunction, ModuleItemResource, ModuleItemService,
     ModuleItemTypeDeclaration, ModuleItemUnrecognized, NotAModuleItem,
@@ -215,7 +217,7 @@ pub struct EmitGraphInfo {
     pub fn_type_env: Rc<TypeEnv>,
     pub fn_return_type: Option<Rc<Node>>,
     pub expected_type: Option<Rc<Node>>,
-    pub item_leaf_owner_modules: Rc<HashMap<String, String>>,
+    pub item_leaf_owner_modules: Rc<HashMap<String, Rc<LeafOwner>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -229,7 +231,7 @@ pub struct EmitInfoBuildState {
 
 pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     Rc::new(EmitGraphInfo {
-        item_leaf_owner_modules: v1_rt::rc_empty_map::<String, String>(),
+        item_leaf_owner_modules: v1_rt::rc_empty_map::<String, Rc<LeafOwner>>(),
         type_summaries: v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
         type_decl_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
         fn_decl_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),

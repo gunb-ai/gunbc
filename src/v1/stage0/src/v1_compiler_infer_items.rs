@@ -23,6 +23,8 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
+pub use crate::v1_std_core::LeafOwner;
+use crate::v1_std_core::LeafOwner::*;
 pub use crate::v1_std_core::{
     authored_name_at, expr_has_non_tail_self_call, expr_has_self_call, make_field_node,
     make_param_node, no_span, node_name_span, param_node_name_at, param_node_type_expr,
@@ -274,22 +276,35 @@ pub fn item_kind(item: Rc<Node>) -> ItemKind {
 
 pub fn leaf_owner_modules_from_registry(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-) -> Rc<HashMap<String, String>> {
+) -> Rc<HashMap<String, Rc<LeafOwner>>> {
     Rc::new(v1_rt::map_keys(&registry)).iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, key: String| match v1_rt::map_get(&registry, key.clone())
-        {
+        v1_rt::rc_empty_map::<String, Rc<LeafOwner>>(),
+        |acc: Rc<HashMap<String, Rc<LeafOwner>>>, key: String| match v1_rt::map_get(
+            &registry,
+            key.clone(),
+        ) {
             Some(info) => match v1_rt::map_get(&acc, info.name.clone()) {
-                Some(prior) => {
-                    if (prior.clone() == info.module_name.clone()) {
-                        acc.clone()
-                    } else {
-                        v1_rt::rc_map_insert(acc.clone(), info.name.clone(), "".to_string())
+                Some(prior) => match (*prior.clone()).clone() {
+                    LeafOwner::SingleOwner { module: m, .. } => {
+                        if (m.clone() == info.module_name.clone()) {
+                            acc.clone()
+                        } else {
+                            v1_rt::rc_map_insert(
+                                acc.clone(),
+                                info.name.clone(),
+                                Rc::new(LeafOwner::LeafAmbiguous),
+                            )
+                        }
                     }
-                }
-                std::option::Option::None => {
-                    v1_rt::rc_map_insert(acc.clone(), info.name.clone(), info.module_name.clone())
-                }
+                    LeafOwner::LeafAmbiguous => acc.clone(),
+                },
+                std::option::Option::None => v1_rt::rc_map_insert(
+                    acc.clone(),
+                    info.name.clone(),
+                    Rc::new(LeafOwner::SingleOwner {
+                        module: info.module_name.clone(),
+                    }),
+                ),
             },
             std::option::Option::None => acc.clone(),
         },

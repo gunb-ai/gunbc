@@ -16,6 +16,7 @@ use self::FieldAccessStyle::*;
 use self::FieldValueShape::*;
 use self::FunctionSizeEffect::*;
 use self::InferredNode::*;
+use self::LeafOwner::*;
 use self::MatchPattern::*;
 use self::MethodSemantics::*;
 use self::NodeFieldRole::*;
@@ -291,6 +292,21 @@ pub enum CallTargetIdentity {
         name: String,
     },
     CallableTargetUndetermined,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum LeafOwner {
+    SingleOwner { module: String },
+    LeafAmbiguous,
+}
+impl LeafOwner {
+    pub fn module(&self) -> String {
+        match self {
+            LeafOwner::SingleOwner { module: __val, .. } => __val.clone(),
+            LeafOwner::LeafAmbiguous => panic!("no module on unit variant"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

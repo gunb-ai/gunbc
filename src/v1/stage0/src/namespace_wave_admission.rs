@@ -1560,48 +1560,92 @@ pub struct TransitionAdmission {
 /// the carrier in `product.cable_leg_observation`, base and head bind each spelling identically,
 /// and all four report CONSUMED, coming due on this roster's next touch. Adjudicate that deletion
 /// by joining each row against main's tree on its own tuple, not by trusting this sentence.
-const LEG_OBSERVATION_REHOME_LABEL: &str =
-    "gunbc#10671 transceiver layer split: the cable-leg observation carrier moves from the \
-     SFF-8636 byte-meaning module extdeps.transceiver.sff_8636 to product.cable_leg_observation";
+
+/// THE SCM REPOSITORY BUILDER MOVES TO A SHARED FIXTURE (2026-09-06, gunbc#10676). No ordinal is
+/// claimed, for the reason the entries above give.
+///
+/// `test.claim.scm_merge_base_witness` authored a repository builder -- `MbBuild` with its two arms
+/// `MbBuilt` and `MbSetupFailed`, and the six operations `mb_start`, `mb_stage`, `mb_commit`,
+/// `mb_at`, `mb_head`, `mb_root_of` -- to construct scenes through the real store and mint rather
+/// than by forging rows. The squash-merge verb's witness needs that construction VERBATIM. Copying
+/// it would put one construction rule in two files, and the drift would be INVISIBLE: each copy
+/// would keep passing its own claims while the two fixtures quietly stopped describing the same
+/// repository (DESIGN.md §2). So the builder is rehomed to `test.fixture.scm_repository_builder`,
+/// which is where this repository already puts fixtures shared across claims, and both witnesses
+/// import it.
+///
+/// NINE BINDINGS IN ONE MODULE resolve to the new declarer, which is `TargetChanged` and is not
+/// auto-admitted: seven inside `mb_scene` and two inside
+/// `scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on`. Every spelling is identical
+/// on both sides; only the declaring module differs, which is the membership motion this roster
+/// exists to adjudicate.
+///
+/// ONE CHANGE CLASS, AND NOTHING IS REQUALIFIED. No spelling changes, no behaviour changes, and the
+/// evidence that the move is behaviour-preserving is executed rather than asserted: all twelve
+/// `scm_merge_base_witness` claims pass unchanged against the shared fixture. That is the positive
+/// control for a rehome -- a builder that had silently changed would show up as a claim that
+/// stopped discriminating, not as a compile error.
+///
+/// THE gunbc#10676 ROWS DISSOLVED HERE (2026-09-07), BY THEIR OWN TRIGGER AND ON THE ROSTER TOUCH
+/// THEY NAMED, exactly as the gunbc#10671 rows did one day earlier. Those rows said their death was
+/// gunbc#10676 merging: main would then declare the builder in `test.fixture.scm_repository_builder`,
+/// base and head would bind every spelling identically, and all nine would report CONSUMED, coming
+/// due on this roster's next touch. gunbc#10676 has merged and the run reports all nine CONSUMED, so
+/// this change -- which touches the roster to admit the `call_semantics_target` re-home -- is that
+/// touch, and the phase refuses until the deletion is taken.
+///
+/// ADJUDICATED BY THE JOIN THOSE ROWS DEMANDED RATHER THAN BY THEIR OWN SENTENCE, in all three
+/// directions, per spelling. `test.fixture.scm_repository_builder` DECLARES all eight:
+/// `MbBuilt` and `MbSetupFailed` as arms of `MbBuild`, and `mb_start`, `mb_stage`, `mb_commit`,
+/// `mb_at`, `mb_head`, `mb_root_of` as functions. `test.claim.scm_merge_base_witness` declares NONE
+/// of them -- every remaining occurrence there is a use or a match arm, and it IMPORTS all eight from
+/// the fixture. So base and head bind each spelling to the same declarer, no run can produce those
+/// nine deltas, and CONSUMED is the correct reading rather than an author error.
+///
+/// THE gunbc#10671 ROWS DISSOLVED ON THE PREVIOUS TOUCH (2026-09-06), same trigger, same join: on
+/// main `product.cable_leg_observation` DECLARES `SecondaryNotObserved` as an arm of its compliance
+/// coproduct while `extdeps.transceiver.sff_8636` does not -- its only remaining occurrence of the
+/// spelling is prose recording that an earlier head authored it, which is exactly the trap a
+/// grep-count would fall into and a declaration check does not.
+/// SIXTH TRANSITION (2026-09-07, gunbc#10688). `call_semantics_target` moved from
+/// `v1.compiler.emit_rust` to `v1.std.core`, so the two emit-side bindings of that spelling report
+/// `TargetChanged`. It is a re-home and not a re-spelling: the function reads a `CallSemantics` and
+/// answers a `CallTargetIdentity`, both declared in `v1.std.core`, and this change gave that
+/// coproduct a `LocallyBoundCall` arm — so the reduction is now consumed by `v1.compiler.infer` and
+/// `v1.compiler.service` as well as by emission. Leaving it in `v1.compiler.emit_rust` would have
+/// made the inference and effect tiers import the EMITTER to ask what a call names, which is the
+/// second-representation pressure DESIGN §3 forbids: the alternative on offer was a second copy
+/// beside the type. It sits beside `CallSemantics` because that is the declaration it destructures.
+///
+/// TWO ROWS, ONE PER BINDING SITE, enumerated rather than matched by module pattern, for the same
+/// reason the fourth transition was: the roster's population is an enumeration, never a predicate.
+/// The membership deltas this change also produces are `ExplicitlyEvaluatedZeroDelta` and
+/// auto-admit, and the `resolved_plain_call_target_for_outcome` delta is an
+/// `AuthoredReferenceResolution`, so all of them are deliberately absent here.
+const CALL_SEMANTICS_TARGET_REHOME_LABEL: &str =
+    "gunbc#10688 call-target identity re-home: `call_semantics_target` moves from \
+     v1.compiler.emit_rust to v1.std.core beside the `CallSemantics` it reads and the \
+     `CallTargetIdentity` it answers, so inference and the effect pass read one reduction \
+     instead of importing the emitter";
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: LEG_OBSERVATION_REHOME_LABEL,
+        label: CALL_SEMANTICS_TARGET_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.cable_leg_coding_witness",
-            in_declaration: "delivered_fs_leg",
-            spelling: "SecondaryNotObserved",
-            target: "product.cable_leg_observation",
+            module: "v1.compiler.emit_rust",
+            in_declaration: "emit_rust_expr_call",
+            spelling: "call_semantics_target",
+            target: "v1.std.core",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: LEG_OBSERVATION_REHOME_LABEL,
+        label: CALL_SEMANTICS_TARGET_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.cable_leg_coding_witness",
-            in_declaration: "leg_with_unmodelled_code",
-            spelling: "SecondaryNotObserved",
-            target: "product.cable_leg_observation",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: LEG_OBSERVATION_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.cable_order_admission_witness",
-            in_declaration: "correctly_coded_leg",
-            spelling: "SecondaryNotObserved",
-            target: "product.cable_leg_observation",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: LEG_OBSERVATION_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.cable_order_admission_witness",
-            in_declaration: "delivered_leg",
-            spelling: "SecondaryNotObserved",
-            target: "product.cable_leg_observation",
+            module: "v1.compiler.emit_rust",
+            in_declaration: "emit_rust_tco_non_self_call",
+            spelling: "call_semantics_target",
+            target: "v1.std.core",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },

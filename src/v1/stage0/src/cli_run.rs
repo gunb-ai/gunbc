@@ -80,7 +80,7 @@ use crate::v1_std_core::{
     make_error_node, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
     module_items, no_span, param_node_name_at, param_node_type_expr, Cardinality,
     CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable,
-    MatchPattern, NewlineIndex, Node,
+    LeafOwner, MatchPattern, NewlineIndex, Node,
 };
 use serde::Serialize;
 
@@ -4908,8 +4908,9 @@ fn import_module_paths_for_typed_module(tm: &Rc<TypedModule>) -> HashSet<String>
 /// asking the modelled index, which is one map lookup and, being the same authority the emitted
 /// path reads, cannot disagree with it.
 ///
-/// The empty owner is that index's ambiguity marker: no declaration has an empty module path, so a
-/// leaf two modules declare lands there by construction rather than by a second check here.
+/// The index's value is the `LeafOwner` coproduct, so ambiguity arrives as an ARM this match has to
+/// write rather than as a sentinel this reader had to remember to test for -- the shape review 61778
+/// found here, and the same one `__DUPLICATE_ITEM_IDENTITY__` was retired for.
 enum DefinerLookup {
     Definer(String),
     /// Several modules declare the leaf. The symbol RESOLVES; its definer is not nameable.
@@ -4923,8 +4924,10 @@ fn definer_lookup_for_name(graph: &ResolvedGraph, name: &str) -> DefinerLookup {
     }
     match graph.emit_graph_info.item_leaf_owner_modules.get(name) {
         None => DefinerLookup::Unresolved,
-        Some(owner) if owner.is_empty() => DefinerLookup::AmbiguousLeaf,
-        Some(owner) => DefinerLookup::Definer(owner.clone()),
+        Some(owner) => match &**owner {
+            LeafOwner::LeafAmbiguous => DefinerLookup::AmbiguousLeaf,
+            LeafOwner::SingleOwner { module, .. } => DefinerLookup::Definer(module.clone()),
+        },
     }
 }
 

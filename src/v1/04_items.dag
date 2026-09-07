@@ -264,16 +264,22 @@ fn item_kind(item: Node) -> ItemKind {
 // name. The merged registry is the same object every consumer of this index is already reading, and
 // it holds one row per declaration identity, so deriving from it makes the index complete exactly
 // when the registry is. A leaf two modules declare gets the empty owner, which is not a legal module
-// path, so consumers refuse rather than taking whichever row was folded last.
-fn leaf_owner_modules_from_registry(registry: Map<String, ItemInfo>) -> Map<String, String> {
+// path, so consumers refuse rather than taking whichever row was folded last. The ambiguous case is
+// now the LeafAmbiguous ARM of v1.std.core LeafOwner rather than an in-band empty string, so no
+// reader can forget to test for it and no producer can forget to mark it.
+fn leaf_owner_modules_from_registry(registry: Map<String, ItemInfo>) -> Map<String, LeafOwner> {
   registry |> map_keys |> fold(init: empty_map(), f: (acc, key) =>
     match map_get(registry, key) {
       Present { value: info } =>
         match map_get(acc, info.name) {
           Present { value: prior } =>
-            if prior == info.module_name { acc }
-            else { map_insert(acc, info.name, "") }
-          Absent => map_insert(acc, info.name, info.module_name)
+            match prior {
+              SingleOwner { module: m } =>
+                if m == info.module_name { acc }
+                else { map_insert(acc, info.name, LeafAmbiguous) }
+              LeafAmbiguous => acc
+            }
+          Absent => map_insert(acc, info.name, SingleOwner { module: info.module_name })
         }
       Absent => acc
     }

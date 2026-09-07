@@ -2601,10 +2601,10 @@ fn item_lookup_of_optional(found: ItemInfo?) -> ItemLookup {
 fn lookup_item_by_leaf(leaf: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> ItemLookup {
   match map_get(emit_info.item_leaf_owner_modules, leaf) {
     Present { value: owner } =>
-      if owner == "" {
-        ItemLeafAmbiguous { leaf: leaf }
-      } else {
-        item_lookup_of_optional(found: lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: owner, decl_name: leaf }))
+      match owner {
+        SingleOwner { module: m } =>
+          item_lookup_of_optional(found: lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: m, decl_name: leaf }))
+        LeafAmbiguous => ItemLeafAmbiguous { leaf: leaf }
       }
     Absent => ItemNotFound
   }
@@ -5303,10 +5303,38 @@ fn is_import_graph_type_name(name: String, import_module: String, typed_modules:
   }
 }
 
+// A MODULE PATH NO CRATE CAN RESOLVE, WHICH IS THE ONLY REFUSAL CHANNEL A `use` LINE HAS. The
+// emitted Rust names modules by path, and this position takes a path -- there is no diagnostic row
+// reachable from here to refuse into. So an unnameable owner is written as a path that cannot
+// resolve and that says why, and rustc stops on it citing the leaf. The precedent is
+// `05_emit_python` rendering its refusal as the nearest thing the target admits when the target has
+// no `compile_error!`; the alternative on offer here was substituting a plausible module, which
+// compiles and is wrong.
+//
+// RUNG, HONESTLY: this is MITIGATION, not construction. The refusal is real and it is located in
+// the emitted crate rather than in the compiler that had the fact, which is the wrong compiler and
+// the wrong phase. NEXT-RUNG TRIGGER, a capability: a diagnostic channel through the reference-
+// derived import planner, which already carries `ReferenceDerivedCandidateRow` with a
+// `CandidateLeafAmbiguous` disposition for the same fact one layer above -- when the three
+// `item_defining_module_filename` call sites can return a row instead of a string, the refusal
+// moves to acceptance and this rendering dissolves.
+fn ambiguous_leaf_module_refusal(leaf: String) -> String {
+  concat("__ambiguous_leaf__", leaf, "__declared_by_two_modules")
+}
+
+// AMBIGUITY IS NOT ABSENCE, AND THIS FUNCTION USED TO SPEND ONE ARM ON BOTH. `Absent` means no
+// module in the registry declares this leaf, and the caller`s own module is the right guess for a
+// name the index has never heard of -- that is the pre-existing reading and it stands. `LeafAmbiguous`
+// means two modules declare it and the emitted line can name neither, and answering THAT with the
+// caller`s own module is a failure arm that widens: it substitutes a plausible defining module and
+// proceeds, which DESIGN section 5 forbids. Splitting the arm is what the LeafOwner coproduct buys.
 fn item_defining_module_filename(name: String, module_index: ModuleIndex, fallback: String) -> String {
   match map_get(module_index.leaf_owner_modules, name) {
     Present { value: owner } =>
-      if owner == "" { fallback } else { module_to_filename(name: owner) }
+      match owner {
+        SingleOwner { module: m } => module_to_filename(name: m)
+        LeafAmbiguous => ambiguous_leaf_module_refusal(leaf: name)
+      }
     Absent => fallback
   }
 }
@@ -5314,10 +5342,10 @@ fn item_defining_module_filename(name: String, module_index: ModuleIndex, fallba
 type ModuleIndex {
   by_name: Map<String, TypedModule>
   by_filename: Map<String, List<TypedModule>>
-  leaf_owner_modules: Map<String, String>
+  leaf_owner_modules: Map<String, LeafOwner>
 }
 
-fn build_module_index(modules: List<TypedModule>, leaf_owner_modules: Map<String, String>) -> ModuleIndex {
+fn build_module_index(modules: List<TypedModule>, leaf_owner_modules: Map<String, LeafOwner>) -> ModuleIndex {
   let by_name = modules |> fold(init: empty_map(), f: (acc, tm) =>
     let nm = authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)
     match map_get(acc, nm) {
@@ -5774,7 +5802,11 @@ fn alias_rhs_base_module_filename(name: String, alias_module: String, imports: L
   let local_mod = module_to_filename(name: alias_module)
   let owner_info = match map_get(module_index.leaf_owner_modules, name) {
     Present { value: owner } =>
-      lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: owner, decl_name: name })
+      match owner {
+        SingleOwner { module: m } =>
+          lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: m, decl_name: name })
+        LeafAmbiguous => Absent
+      }
     Absent => Absent
   }
   match owner_info {

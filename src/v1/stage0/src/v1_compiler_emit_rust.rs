@@ -272,6 +272,8 @@ use crate::v1_std_core::FieldAccessStyle::{
 };
 use crate::v1_std_core::FieldValueShape::OptionalValue;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
+pub use crate::v1_std_core::LeafOwner;
+use crate::v1_std_core::LeafOwner::*;
 use crate::v1_std_core::MatchPattern::*;
 use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
@@ -5060,19 +5062,20 @@ pub fn lookup_item_by_leaf(
     emit_info: Rc<EmitGraphInfo>,
 ) -> Rc<ItemLookup> {
     match v1_rt::map_get(&emit_info.item_leaf_owner_modules.clone(), leaf.clone()) {
-        Some(owner) => {
-            if (owner.clone() == "".to_string()) {
-                Rc::new(ItemLookup::ItemLeafAmbiguous { leaf: leaf.clone() })
-            } else {
+        Some(owner) => match (*owner.clone()).clone() {
+            LeafOwner::SingleOwner { module: m, .. } => {
                 item_lookup_of_optional(crate::v1_compiler_emit::lookup_item_by_identity(
                     registry.clone(),
                     Rc::new(DeclaredCallableIdentity {
-                        owner_module_path: owner.clone(),
+                        owner_module_path: m.clone(),
                         decl_name: leaf.clone(),
                     }),
                 ))
             }
-        }
+            LeafOwner::LeafAmbiguous => {
+                Rc::new(ItemLookup::ItemLeafAmbiguous { leaf: leaf.clone() })
+            }
+        },
         std::option::Option::None => Rc::new(ItemLookup::ItemNotFound),
     }
 }
@@ -10577,19 +10580,25 @@ pub fn is_import_graph_type_name(
     }
 }
 
+pub fn ambiguous_leaf_module_refusal(leaf: String) -> String {
+    v1_rt::concat(
+        v1_rt::concat("__ambiguous_leaf__".to_string(), leaf.clone()),
+        "__declared_by_two_modules".to_string(),
+    )
+}
+
 pub fn item_defining_module_filename(
     name: String,
     module_index: Rc<ModuleIndex>,
     fallback: String,
 ) -> String {
     match v1_rt::map_get(&module_index.leaf_owner_modules.clone(), name.clone()) {
-        Some(owner) => {
-            if (owner.clone() == "".to_string()) {
-                fallback
-            } else {
-                crate::v1_compiler_emit_core_support::module_to_filename(owner.clone())
+        Some(owner) => match (*owner.clone()).clone() {
+            LeafOwner::SingleOwner { module: m, .. } => {
+                crate::v1_compiler_emit_core_support::module_to_filename(m.clone())
             }
-        }
+            LeafOwner::LeafAmbiguous => ambiguous_leaf_module_refusal(name.clone()),
+        },
         std::option::Option::None => fallback,
     }
 }
@@ -10598,12 +10607,12 @@ pub fn item_defining_module_filename(
 pub struct ModuleIndex {
     pub by_name: Rc<HashMap<String, Rc<TypedModule>>>,
     pub by_filename: Rc<HashMap<String, Rc<Vec<Rc<TypedModule>>>>>,
-    pub leaf_owner_modules: Rc<HashMap<String, String>>,
+    pub leaf_owner_modules: Rc<HashMap<String, Rc<LeafOwner>>>,
 }
 
 pub fn build_module_index(
     modules: Rc<Vec<Rc<TypedModule>>>,
-    leaf_owner_modules: Rc<HashMap<String, String>>,
+    leaf_owner_modules: Rc<HashMap<String, Rc<LeafOwner>>>,
 ) -> Rc<ModuleIndex> {
     {
         let by_name = modules.iter().cloned().fold(
@@ -11802,13 +11811,18 @@ pub fn alias_rhs_base_module_filename(
             crate::v1_compiler_emit_core_support::module_to_filename(alias_module.clone());
         let owner_info =
             match v1_rt::map_get(&module_index.leaf_owner_modules.clone(), name.clone()) {
-                Some(owner) => crate::v1_compiler_emit::lookup_item_by_identity(
-                    registry.clone(),
-                    Rc::new(DeclaredCallableIdentity {
-                        owner_module_path: owner.clone(),
-                        decl_name: name.clone(),
-                    }),
-                ),
+                Some(owner) => match (*owner.clone()).clone() {
+                    LeafOwner::SingleOwner { module: m, .. } => {
+                        crate::v1_compiler_emit::lookup_item_by_identity(
+                            registry.clone(),
+                            Rc::new(DeclaredCallableIdentity {
+                                owner_module_path: m.clone(),
+                                decl_name: name.clone(),
+                            }),
+                        )
+                    }
+                    LeafOwner::LeafAmbiguous => std::option::Option::None,
+                },
                 std::option::Option::None => std::option::Option::None,
             };
         match owner_info.clone() {

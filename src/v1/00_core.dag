@@ -196,6 +196,21 @@ type CallTargetIdentity
   | LocallyBoundCall { name: String }
   | CallableTargetUndetermined
 
+// WHO OWNS A LEAF SPELLING, WITH AMBIGUITY AS AN ARM RATHER THAN AS A VALUE THE OWNER FIELD CANNOT
+// HOLD. The reverse of the item registry's key -- registry rows answer "what is THIS declaration",
+// and emission repeatedly asks "which module declares this spelling". The first encoding of that
+// index answered a contested leaf with the empty string, on the argument that an empty string is not
+// a legal module path so every consumer would miss and refuse. That argument is the one this
+// compiler already retired once, under `__DUPLICATE_ITEM_IDENTITY__`: the illegal state stayed
+// representable, and safety depended on every producer remembering to mint the sentinel and every
+// reader remembering to test for it. Four readers had to remember. As a coproduct the test is an
+// exhaustiveness arm the compiler demands, the producer cannot forget to mark ambiguity because
+// there is no other way to write it, and a reader that would have widened has to write the widening
+// down where a reviewer can see it. DESIGN section 5: correctness by construction, not validation.
+type LeafOwner
+  = SingleOwner { module: String }
+  | LeafAmbiguous
+
 type CallSemantics
   = PlainCallSemantics { target: CallTargetIdentity }
   | ResolvedDirectCallSemantics { target: CallTargetIdentity, application_plan: List<ResolvedCallFormal> }
