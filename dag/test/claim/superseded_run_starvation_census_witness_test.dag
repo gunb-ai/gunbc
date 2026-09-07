@@ -1,11 +1,35 @@
 module test.claim.superseded_run_starvation_census_witness
 
+import std.types { Bool, Int, String, Timestamp }
+import std.measure { Second }
 import gunbc.superseded_run_starvation_census {
   dead_head_start_standing,
   DeadHeadReachedInProgressFirst,
   LiveHeadRegisteredJobFirst,
-  NeitherRunRegisteredAJob
+  NeitherRunRegisteredAJob,
+  pr_number_for_run,
+  first_run_with_different_head,
+  find_group,
+  count_jobs,
+  count_jobs_with_conclusion,
+  count_jobs_with_status,
+  filter_completed_jobs,
+  earliest_started_at,
+  latest_completed_before,
 }
+import extdeps.github.workflow_runs {
+  WorkflowRun,
+  WorkflowRunPullRequest,
+  WorkflowJobRun,
+  Queued,
+  Completed,
+  InProgress,
+  Success,
+  Cancelled,
+  Failure,
+}
+
+// ── Existing dead_head_start_standing tests ───────────────────────────────
 
 test fn dead_start_before_registered_live_job_is_starvation() -> Bool {
   match dead_head_start_standing(
@@ -48,5 +72,240 @@ test fn absent_job_rosters_remain_a_coverage_obligation() -> Bool {
     DeadHeadReachedInProgressFirst => false
     LiveHeadRegisteredJobFirst => false
     NeitherRunRegisteredAJob => true
+  }
+}
+
+// ── pr_number_for_run tests ───────────────────────────────────────────────
+
+data run_with_pull_request: WorkflowRun = WorkflowRun {
+  id: 1,
+  name: none,
+  path: none,
+  head_sha: "abc123",
+  status: Queued,
+  conclusion: none,
+  workflow_id: 10,
+  run_number: 1,
+  event: "pull_request",
+  html_url: "https://github.com/owner/repo/actions/runs/1",
+  created_at: "2026-09-01T00:00:00Z",
+  updated_at: "2026-09-01T01:00:00Z",
+  run_started_at: none,
+  pull_requests: [WorkflowRunPullRequest { number: 42 }],
+}
+
+data run_without_pull_request: WorkflowRun = WorkflowRun {
+  id: 2,
+  name: none,
+  path: none,
+  head_sha: "def456",
+  status: Queued,
+  conclusion: none,
+  workflow_id: 10,
+  run_number: 2,
+  event: "push",
+  html_url: "https://github.com/owner/repo/actions/runs/2",
+  created_at: "2026-09-01T00:00:00Z",
+  updated_at: "2026-09-01T01:00:00Z",
+  run_started_at: none,
+  pull_requests: [],
+}
+
+test fn pr_number_for_run_with_pr_returns_number() -> Bool {
+  match pr_number_for_run(run: run_with_pull_request) {
+    Present { value: n } => n == 42
+    Absent => false
+  }
+}
+
+test fn pr_number_for_run_without_pr_returns_none() -> Bool {
+  match pr_number_for_run(run: run_without_pull_request) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// ── first_run_with_different_head tests ───────────────────────────────────
+
+data run_sha_abc: WorkflowRun = WorkflowRun {
+  id: 3,
+  name: none,
+  path: none,
+  head_sha: "abc123",
+  status: Queued,
+  conclusion: none,
+  workflow_id: 10,
+  run_number: 3,
+  event: "pull_request",
+  html_url: "https://github.com/owner/repo/actions/runs/3",
+  created_at: "2026-09-01T00:00:00Z",
+  updated_at: "2026-09-01T01:00:00Z",
+  run_started_at: none,
+  pull_requests: [WorkflowRunPullRequest { number: 42 }],
+}
+
+data run_sha_def: WorkflowRun = WorkflowRun {
+  id: 4,
+  name: none,
+  path: none,
+  head_sha: "def456",
+  status: Queued,
+  conclusion: none,
+  workflow_id: 10,
+  run_number: 4,
+  event: "pull_request",
+  html_url: "https://github.com/owner/repo/actions/runs/4",
+  created_at: "2026-09-01T01:00:00Z",
+  updated_at: "2026-09-01T02:00:00Z",
+  run_started_at: none,
+  pull_requests: [WorkflowRunPullRequest { number: 42 }],
+}
+
+test fn first_run_with_different_head_finds_differing_sha() -> Bool {
+  match first_run_with_different_head(head_sha: "abc123", runs: [run_sha_def]) {
+    Present { value: r } => r.id == 4
+    Absent => false
+  }
+}
+
+test fn first_run_with_different_head_skips_matching_and_finds_differing() -> Bool {
+  match first_run_with_different_head(head_sha: "abc123", runs: [run_sha_abc, run_sha_def]) {
+    Present { value: r } => r.id == 4
+    Absent => false
+  }
+}
+
+test fn first_run_with_different_head_returns_none_when_no_differing() -> Bool {
+  match first_run_with_different_head(head_sha: "abc123", runs: [run_sha_abc, run_sha_abc]) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn first_run_with_different_head_returns_none_when_empty() -> Bool {
+  match first_run_with_different_head(head_sha: "abc123", runs: []) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// ── find_group tests ──────────────────────────────────────────────────────
+
+import gunbc.superseded_run_starvation_census { PrGroup }
+
+data group_pr_42: PrGroup = PrGroup { pr: 42, runs: [run_sha_abc] }
+data group_pr_99: PrGroup = PrGroup { pr: 99, runs: [run_sha_def] }
+
+test fn find_group_matches_existing_pr() -> Bool {
+  match find_group(groups: [group_pr_42, group_pr_99], pr: 42) {
+    Present { value: g } => g.pr == 42
+    Absent => false
+  }
+}
+
+test fn find_group_returns_none_for_absent_pr() -> Bool {
+  match find_group(groups: [group_pr_42, group_pr_99], pr: 100) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// ── Job counting tests ────────────────────────────────────────────────────
+
+data job_cancelled: WorkflowJobRun = WorkflowJobRun {
+  id: 100,
+  run_id: 1,
+  name: "test-job",
+  status: "completed",
+  conclusion: Present { value: "cancelled" },
+  started_at: Present { value: "2026-09-01T00:10:00Z" },
+  completed_at: Present { value: "2026-09-01T00:20:00Z" },
+}
+
+data job_failed: WorkflowJobRun = WorkflowJobRun {
+  id: 101,
+  run_id: 1,
+  name: "build-job",
+  status: "completed",
+  conclusion: Present { value: "failure" },
+  started_at: Present { value: "2026-09-01T00:00:00Z" },
+  completed_at: Present { value: "2026-09-01T00:15:00Z" },
+}
+
+data job_success: WorkflowJobRun = WorkflowJobRun {
+  id: 102,
+  run_id: 1,
+  name: "lint-job",
+  status: "completed",
+  conclusion: Present { value: "success" },
+  started_at: Present { value: "2026-09-01T00:05:00Z" },
+  completed_at: Present { value: "2026-09-01T00:10:00Z" },
+}
+
+data job_queued: WorkflowJobRun = WorkflowJobRun {
+  id: 103,
+  run_id: 1,
+  name: "deploy-job",
+  status: "queued",
+  conclusion: none,
+  started_at: none,
+  completed_at: none,
+}
+
+data job_in_progress: WorkflowJobRun = WorkflowJobRun {
+  id: 104,
+  run_id: 1,
+  name: "test-in-progress",
+  status: "in_progress",
+  conclusion: none,
+  started_at: Present { value: "2026-09-01T00:30:00Z" },
+  completed_at: none,
+}
+
+test fn count_jobs_counts_all_jobs() -> Bool {
+  count_jobs(jobs: [job_cancelled, job_failed, job_success]) == 3
+}
+
+test fn count_jobs_empty_returns_zero() -> Bool {
+  count_jobs(jobs: []) == 0
+}
+
+test fn count_jobs_with_conclusion_counts_exact_match() -> Bool {
+  count_jobs_with_conclusion(jobs: [job_cancelled, job_failed, job_success], conclusion: "cancelled") == 1
+}
+
+test fn count_jobs_with_conclusion_counts_no_match_as_zero() -> Bool {
+  count_jobs_with_conclusion(jobs: [job_cancelled, job_failed, job_success], conclusion: "success") == 1
+}
+
+test fn count_jobs_with_status_count_queued() -> Bool {
+  count_jobs_with_status(jobs: [job_cancelled, job_queued, job_in_progress], status: "queued") == 1
+}
+
+test fn filter_completed_jobs_only_returns_completed_jobs() -> Bool {
+  let completed = filter_completed_jobs(jobs: [job_cancelled, job_queued, job_success, job_in_progress])
+  count_jobs(jobs: completed) == 2
+}
+
+// ── earliest_started_at tests ─────────────────────────────────────────────
+
+test fn earliest_started_at_finds_min_timestamp() -> Bool {
+  match earliest_started_at(jobs: [job_success, job_cancelled, job_failed]) {
+    Present { value: ts } => ts == "2026-09-01T00:00:00Z"
+    Absent => false
+  }
+}
+
+test fn earliest_started_at_returns_none_when_no_jobs() -> Bool {
+  match earliest_started_at(jobs: []) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn earliest_started_at_skips_jobs_without_started_at() -> Bool {
+  match earliest_started_at(jobs: [job_queued, job_success]) {
+    Present { value: ts } => ts == "2026-09-01T00:05:00Z"
+    Absent => false
   }
 }
