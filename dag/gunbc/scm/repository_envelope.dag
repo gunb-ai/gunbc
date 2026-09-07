@@ -552,6 +552,101 @@ type RepositoryCommitMint
 // mint could produce a result and its supposed consumed source in one motion -- a self-consistent
 // repository whose provenance describes an event that could not have happened, and whose consumed
 // join would then refuse or admit on a record nothing ever integrated.
+// It answers with the UNRESOLVABLE ANCHOR rather than a Bool, because the refusal has to name which
+// reference could not be found and a Bool would force the caller to rediscover it.
+fn integration_anchor_resolves(
+  repository: RepositoryEnvelope,
+  integration: CommitIntegration,
+) -> RepositoryCommitRef? {
+  match integration {
+    NoSquashIntegration => none
+    SquashIntegrated { source: s } =>
+      match commit_at_reference(commits: repository.commits, reference: s) {
+        Present { value: _ } => none
+        Absent => Present { value: s }
+      }
+  }
+}
+
+// A ROOT THE STORE ITSELF JUST BRANDED HAS NOTHING LEFT TO RESOLVE, so this route cannot refuse for
+// root resolution and its outcome type does not carry the arms.
+//
+// THE ROUTE EXISTS BECAUSE A CALLER CAN HOLD STRONGER EVIDENCE THAN `mint_repository_commit`
+// ACCEPTS. That function takes a `CorpusManifestTarget`, which is a PROPOSITION about a locator, so
+// its return type honestly carries the three ways resolving that proposition can fail. But a caller
+// that has just received `CorpusManifestStored { store, manifest }` does not hold a proposition: it
+// holds the `CorpusManifestObjectRef` THE STORE HANDED BACK, for an object that store demonstrably
+// contains -- had the locator been absent or occupied by another kind, the store call would have
+// returned its own refusal instead. Re-asking `find_corpus_manifest_record` there is asking a
+// question that has already been answered, and then having to say something about an answer that
+// cannot arrive.
+//
+// THE ALTERNATIVE THAT WAS BUILT FIRST AND REJECTED was for the caller to keep the generic route and
+// TRANSLATE the three impossible root refusals into one coarser cause. That is worse than it looks.
+// It fabricates a public arm no execution can produce, and it does so by REASONING ABOUT THE
+// CALLER'S CONTEXT INSIDE A FUNCTION THAT CANNOT SEE IT -- a translator handed a
+// `RepositoryCommitMint` has no evidence its argument came from the store one line earlier. And the
+// three arms are not one fact even in the impossible case: a missing root would mean the object
+// vanished, while a wrong-kind root would mean the locator now denotes something else, which
+// contradicts a collision-aware insertion far more strongly. Collapsing them would erase the
+// evidence needed to tell which invariant had failed.
+//
+// So the question is REMOVED rather than answered more elegantly, which is DESIGN section 5's
+// construction over validation and section 4b's top rung: the invalid state has no constructor on
+// this route.
+//
+// EVERY OTHER ADMISSION STILL RUNS. This is not a fast path around the mint's rules -- the allocator,
+// the integration anchor's preexistence and the parent's existence are all still decided here, and
+// `mint_repository_commit` now reaches them THROUGH this function rather than beside it, so there is
+// one authority for those rules rather than two copies free to drift.
+type BrandedRootMint
+  = BrandedRootMinted { repository: RepositoryEnvelope, reference: RepositoryCommitRef }
+  | BrandedRootAllocatorInvalid { next_ordinal: Int }
+  | BrandedRootParentMissing { parent: RepositoryCommitRef }
+  | BrandedRootIntegrationSourceMissing { source: RepositoryCommitRef }
+
+fn mint_commit_from_stored_manifest(
+  repository: RepositoryEnvelope,
+  root: CorpusManifestObjectRef,
+  message: String,
+  parent: RepositoryCommitRef?,
+  integration: CommitIntegration,
+) -> BrandedRootMint {
+  if repository.commit_allocator.next_ordinal < 0 {
+    BrandedRootAllocatorInvalid { next_ordinal: repository.commit_allocator.next_ordinal }
+  } else {
+    match integration_anchor_resolves(repository: repository, integration: integration) {
+      Present { value: missing } => BrandedRootIntegrationSourceMissing { source: missing }
+      Absent =>
+        match parent {
+          Present { value: parent_ref } =>
+            match commit_at_reference(commits: repository.commits, reference: parent_ref) {
+              Absent => BrandedRootParentMissing { parent: parent_ref }
+              Present { value: _ } =>
+                mint_repository_commit_admitted(
+                  repository: repository,
+                  root: root,
+                  message: message,
+                  ancestry: DescendsFrom { parent: parent_ref },
+                  integration: integration,
+                )
+            }
+          Absent =>
+            mint_repository_commit_admitted(
+              repository: repository,
+              root: root,
+              message: message,
+              ancestry: RootCommit,
+              integration: integration,
+            )
+        }
+    }
+  }
+}
+
+// THE GENERIC ROUTE RESOLVES THE ROOT AND THEN DELEGATES, so the admission rules live in exactly one
+// place. A caller holding only a locator still gets the three root refusals, because for that caller
+// they are reachable and real.
 fn mint_repository_commit(
   repository: RepositoryEnvelope,
   root: CorpusManifestTarget,
@@ -572,52 +667,31 @@ fn mint_repository_commit(
       CorpusManifestIsSemanticNode { identity: r } =>
         RepositoryCommitMintRootIsSemanticNode { root: r }
       CorpusManifestFound(record) =>
-        match integration_anchor_resolves(repository: repository, integration: integration) {
-          Present { value: missing } =>
-            RepositoryCommitMintIntegrationSourceMissing { source: missing }
-          Absent =>
-            match parent {
-              Present { value: parent_ref } =>
-                match commit_at_reference(commits: repository.commits, reference: parent_ref) {
-                  Absent => RepositoryCommitMintParentMissing { parent: parent_ref }
-                  Present { value: _ } =>
-                    mint_repository_commit_admitted(
-                      repository: repository,
-                      root: record.identity,
-                      message: message,
-                      ancestry: DescendsFrom { parent: parent_ref },
-                      integration: integration,
-                    )
-                }
-              Absent =>
-                mint_repository_commit_admitted(
-                  repository: repository,
-                  root: record.identity,
-                  message: message,
-                  ancestry: RootCommit,
-                  integration: integration,
-                )
-            }
-        }
+        widen_branded_root_mint(
+          mint: mint_commit_from_stored_manifest(
+            repository: repository,
+            root: record.identity,
+            message: message,
+            parent: parent,
+            integration: integration,
+          )
+        )
     }
   }
 }
 
-// It answers with the UNRESOLVABLE ANCHOR rather than a Bool, because the refusal has to name which
-// reference could not be found and a Bool would force the caller to rediscover it.
-fn integration_anchor_resolves(
-  repository: RepositoryEnvelope,
-  integration: CommitIntegration,
-) -> RepositoryCommitRef? {
-  match integration {
-    NoSquashIntegration => none
-    SquashIntegrated { source: s } =>
-      match commit_at_reference(commits: repository.commits, reference: s) {
-        Present { value: _ } => none
-        Absent => Present { value: s }
-      }
+fn widen_branded_root_mint(mint: BrandedRootMint) -> RepositoryCommitMint {
+  match mint {
+    BrandedRootMinted { repository: r, reference: c } =>
+      RepositoryCommitMinted { repository: r, reference: c }
+    BrandedRootAllocatorInvalid { next_ordinal: n } =>
+      RepositoryCommitMintAllocatorInvalid { next_ordinal: n }
+    BrandedRootParentMissing { parent: p } => RepositoryCommitMintParentMissing { parent: p }
+    BrandedRootIntegrationSourceMissing { source: s } =>
+      RepositoryCommitMintIntegrationSourceMissing { source: s }
   }
 }
+
 
 fn mint_repository_commit_admitted(
   repository: RepositoryEnvelope,
@@ -625,10 +699,10 @@ fn mint_repository_commit_admitted(
   message: String,
   ancestry: CommitAncestry,
   integration: CommitIntegration,
-) -> RepositoryCommitMint {
+) -> BrandedRootMint {
   let allocation = mint_id(alloc: repository.commit_allocator)
   let reference = RepositoryCommitRef { identity: allocation.id }
-  RepositoryCommitMinted {
+  BrandedRootMinted {
     repository: RepositoryEnvelope {
       store: repository.store,
       commits: concat(repository.commits, [RepositoryCommit {
