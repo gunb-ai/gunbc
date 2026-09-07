@@ -1024,9 +1024,6 @@ fn lookup_structural_method(receiver_type: Node, method_name: String, source_ind
         templates |> filter(t => t.name == method_name) |> first
       Absent => none
     }
-    // Use method-specific diagnostics if a template is found, otherwise fall back to enriched diagnostics.
-    // Without this narrowing, a blocking diagnostic from ANY method's template enrichment poisons the
-    // lookup for the one actually requested (codex review 61311 finding 1).
     let method_diagnostics = match template_match {
       Present { value: t } =>
         let field_type = instantiate_algebra_field(template: t, base: receiver_type, source_indices: source_indices)
