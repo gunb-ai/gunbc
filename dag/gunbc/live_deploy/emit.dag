@@ -59,6 +59,7 @@ import extdeps.systemd.unit_file {
 }
 import gunbc.live_deploy.member_identity {
   ReleaseEffectPlan, ConvergedMember, TreePublication, Executable, UnitFile, UnitManager, ServiceProcess,
+  DirectoryRoot, plan_mutation_of, mutation_is_keep, PlanMutationLookup, MutationInPlan, MemberNotInPlan,
   plan_installs_executable, plan_publishes_tree, plan_writes_unit, plan_reloads_manager, plan_restarts_process,
 }
 import extdeps.crypto.hash { digest_shell_verify_line }
@@ -857,20 +858,43 @@ fn identity_member_of_step(step: DeploymentStep) -> ConvergedMember? {
       GunbcSourceTree => Present { value: TreePublication }
       ServeBinary => Present { value: Executable }
       SystemdUnit => Present { value: UnitFile }
+      DispatchWorktreeRoot => Present { value: DirectoryRoot { path: art.path } }
+      AttemptStateRoot => Present { value: DirectoryRoot { path: art.path } }
+      ComputeRoot => Present { value: DirectoryRoot { path: art.path } }
       _ => none
     }
     Dependency { step: _ } => none
   }
 }
 
-fn identity_member_step(step: DeploymentStep) -> Bool {
-  match identity_member_of_step(step: step) { Present { value: _ } => true  Absent => false }
+// TWO QUESTIONS, NOT ONE, AND CONFLATING THEM SILENTLY DROPPED THE RUNTIME ROOTS.
+//
+// `identity_member_of_step` answers WHICH MEMBER a step is, and it has two consumers that need
+// opposite things. deployment_apply_plan excludes a step from the membership reconcile when the
+// step's commands come from emit_release_member_effects instead -- otherwise the step would be
+// emitted twice. apply_step_effects asks the same function to decide whether the plan GATES the
+// step. Those coincided while every identity member rendered its own commands.
+//
+// A directory root breaks the coincidence: its identity decides WHETHER it is installed, but the
+// command still comes from the step's own upsert, because the attempt-state root installs a managed
+// directory and the other two an owned one. So a root must stay IN the reconcile and still be gated.
+// Answering the exclusion question with "is it an identity member" removed all three roots from the
+// reconcile, left no effect for their steps to match, and emitted nothing for them -- caught by two
+// pre-existing witnesses, not by anything in the types.
+fn step_renders_its_own_member_commands(step: DeploymentStep) -> Bool {
+  match identity_member_of_step(step: step) {
+    Absent => false
+    Present { value: member } => match member {
+      DirectoryRoot { path: _ } => false
+      _ => true
+    }
+  }
 }
 
 fn deployment_apply_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentStep, DeploymentStepMemberAt> {
   membership_plan_admitting_outcome(
     outcome: membership_reconcile(
-      desired: filter(spec.steps, s => !identity_member_step(step: s)),
+      desired: filter(spec.steps, s => !step_renders_its_own_member_commands(step: s)),
       observed: [],
       key_of: deployment_step_key,
       key_eq: deployment_step_key_eq,
@@ -1290,6 +1314,12 @@ fn deploy_memory_cap_apply_steps(spec: DeploymentSpec) -> List<PipelineStep> {
 // build that changed in between, or a copy that did not land, stops the line -- an installed
 // executable can never differ from the identity the plan declared converged. The unit renders from
 // the plan's own revision, the one carrier of that fact.
+// A ROOT IS EMITTED THROUGH ITS OWN STEP, NOT HERE, because the command differs per root -- the
+// attempt-state root installs a managed directory and the other two an owned one -- and the step
+// knows its kind while a DirectoryRoot member carries only a path. apply_step_effects gates that
+// step's existing emission on this plan's mutation, so the identity decides WHETHER the root is
+// installed and the step decides HOW. The DirectoryRoot arm below exists because the match is total
+// over ConvergedMember, and it is genuinely unreached from this function.
 fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan, spec: DeploymentSpec) -> List<PipelineStep> {
   let revision = RevisionBoundAtEmission { revision: plan.target.revision }
   match member {
@@ -1376,6 +1406,7 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
     )
     UnitManager => []
     ServiceProcess => []
+    DirectoryRoot { path: _ } => []
   }
 }
 
@@ -1688,6 +1719,10 @@ fn member_effect_step(e: MemberEffect<DeploymentStep>) -> DeploymentStep {
 // step projects to the membership effects the apply-all reconcile derived for its key. The order is
 // therefore spec.steps' order -- gunbc.live_deploy.spec deployment_steps_apply_order, the one
 // authority -- and this function adds no ordering of its own.
+// A ROOT THE PLAN DOES NOT COVER IS EMITTED, NOT SKIPPED. MemberNotInPlan means the plan makes no
+// claim about the member -- not that it decided to keep it -- so the only safe reading is the one
+// the apply-all era used. Skipping on absent knowledge is how the roots silently stopped being
+// provisioned when the canonical plans covered a smaller roster than the emitter walked.
 fn apply_step_effects(
   step: DeploymentStep,
   effects: List<MemberEffect<DeploymentStep>>,
@@ -1695,12 +1730,31 @@ fn apply_step_effects(
   plan: ReleaseEffectPlan,
 ) -> List<PipelineStep> {
   match identity_member_of_step(step: step) {
-    Present { value: member } => emit_release_member_effects(member: member, plan: plan, spec: spec)
-    Absent => flat_map(
-      filter(effects, e => deployment_step_key_eq(a: deployment_step_key(step: member_effect_step(e: e)), b: deployment_step_key(step: step))),
-      e => emit_deploy_member_effect(effect: e, spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision }),
-    )
+    Present { value: member } => match member {
+      DirectoryRoot { path: _ } => match plan_mutation_of(plan: plan, member: member) {
+        MemberNotInPlan => step_membership_effects(step: step, effects: effects, spec: spec, plan: plan)
+        MutationInPlan { mutation } =>
+          if mutation_is_keep(e: mutation) { [] }
+          else { step_membership_effects(step: step, effects: effects, spec: spec, plan: plan) }
+      }
+      _ => emit_release_member_effects(member: member, plan: plan, spec: spec)
+    }
+    Absent => step_membership_effects(step: step, effects: effects, spec: spec, plan: plan)
   }
+}
+
+// THE STEP'S OWN EMISSION, unchanged from the apply-all era. A step whose kind names no converged
+// member still renders exactly what it always did; a root renders it only when its identity says so.
+fn step_membership_effects(
+  step: DeploymentStep,
+  effects: List<MemberEffect<DeploymentStep>>,
+  spec: DeploymentSpec,
+  plan: ReleaseEffectPlan,
+) -> List<PipelineStep> {
+  flat_map(
+    filter(effects, e => deployment_step_key_eq(a: deployment_step_key(step: member_effect_step(e: e)), b: deployment_step_key(step: step))),
+    e => emit_deploy_member_effect(effect: e, spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision }),
+  )
 }
 
 fn apply_intent_from_effects(

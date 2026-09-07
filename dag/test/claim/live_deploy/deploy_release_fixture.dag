@@ -4,6 +4,7 @@ import std.types { CommitSha, String, NonEmptyStr }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import gunbc.live_deploy.spec { DeploymentSpec }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan, ReleaseTarget, full_install_plan }
+import gunbc.live_deploy.member_observe { deployment_member_roster }
 
 // ONE FIXTURE REVISION FOR EVERY DEPLOY WITNESS, DECLARED HERE AND NOWHERE ELSE. The launch
 // revision is now an input to the emitted unit, the readiness comparison, and the apply fold, so
@@ -33,7 +34,10 @@ fn deploy_witness_release_target(spec: DeploymentSpec) -> ReleaseTarget {
 }
 
 fn deploy_witness_full_install_plan(spec: DeploymentSpec) -> ReleaseEffectPlan {
-  full_install_plan(target: deploy_witness_release_target(spec: spec))
+  full_install_plan(
+    roster: deployment_member_roster(spec: spec),
+    target: deploy_witness_release_target(spec: spec),
+  )
 }
 
 data deploy_witness_other_release_revision: CommitSha = "89abcdef0123456789abcdef0123456789abcdef"

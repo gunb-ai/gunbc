@@ -1,9 +1,11 @@
 module test.claim.live_deploy.emit
 
 import gunbc.live_deploy.member_identity {
-  ReleaseEffectPlan, converged_effect_plan, InstallExecutable, TreeKept, UnitFileKept, ManagerKept, RestartService,
-  ConvergedMember, TreePublication, Executable, UnitFile, UnitManager, ServiceProcess,
+  ReleaseEffectPlan, converged_effect_plan, uniform_release_plan, InstallExecutable, RestartService, KeepMember,
+  plan_mutation_is, CreateRoot,
+  ConvergedMember, TreePublication, Executable, UnitFile, UnitManager, ServiceProcess, DirectoryRoot,
 }
+import gunbc.live_deploy.member_observe { deployment_member_roster }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable_digest, deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan, deploy_witness_release_target }
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.os.types { Apt }
@@ -1031,7 +1033,10 @@ type StepScan {
 }
 
 test fn a_zero_mutation_plan_installs_publishes_and_restarts_nothing_of_the_release() -> Bool {
-  let idle = converged_effect_plan(target: deploy_witness_release_target(spec: deployment_spec_srv1()))
+  let idle = converged_effect_plan(
+    roster: deployment_member_roster(spec: deployment_spec_srv1()),
+    target: deploy_witness_release_target(spec: deployment_spec_srv1()),
+  )
   member_fragment_text(member: Executable, plan: idle) == ""
     && member_fragment_text(member: TreePublication, plan: idle) == ""
     && member_fragment_text(member: UnitFile, plan: idle) == ""
@@ -1064,15 +1069,17 @@ test fn the_full_plan_lands_its_members_in_the_deployments_order() -> Bool {
 // change that touched no tree.
 test fn a_binary_only_plan_installs_and_restarts_without_publishing_the_tree() -> Bool {
   let spec = deployment_spec_srv1()
-  let sh = live_deploy_apply_script_for(spec: spec, plan: ReleaseEffectPlan {
+  let sh = live_deploy_apply_script_for(spec: spec, plan: uniform_release_plan(
+    roster: deployment_member_roster(spec: spec),
     target: deploy_witness_release_target(spec: spec),
-    executable: InstallExecutable,
-    tree: TreeKept,
-    unit_file: UnitFileKept,
-    manager: ManagerKept,
-    process: RestartService,
-  })
+    mutation_for: m => match m {
+      Executable => InstallExecutable
+      ServiceProcess => RestartService
+      _ => KeepMember
+    },
+  ))
   string_contains(s: sh, pattern: "target/release/gunbc")
     && string_contains(s: sh, pattern: deploy_effect_command(inv: systemctl_restart_effect(unit: spec.service.unit_name)))
     && !string_contains(s: sh, pattern: "--function repository_converge_srv1_owner_wet")
 }
+
