@@ -26,6 +26,7 @@ use self::StringPart::*;
 use self::TokenShape::*;
 use self::TransportKind::*;
 use self::UnaryOpKind::*;
+use self::UnprojectableConstruct::*;
 use self::VarBindingKind::*;
 use crate::std_algebra::CollectionSizeEffect::*;
 use crate::std_algebra::CostShape::*;
@@ -495,14 +496,14 @@ pub enum UnprojectableConstruct {
     FilterInBranchCondition,
 }
 
-pub fn unprojectable_construct_identity(c: Rc<UnprojectableConstruct>) -> String {
-    match (*c.clone()).clone() {
+pub fn unprojectable_construct_identity(c: UnprojectableConstruct) -> String {
+    match c.clone() {
         UnprojectableConstruct::FilterInBranchCondition => "FilterInBranchCondition".to_string(),
     }
 }
 
-pub fn unprojectable_construct_prose(c: Rc<UnprojectableConstruct>) -> String {
-    match (*c.clone()).clone() {
+pub fn unprojectable_construct_prose(c: UnprojectableConstruct) -> String {
+    match c.clone() {
         UnprojectableConstruct::FilterInBranchCondition => "filter in branch condition".to_string(),
     }
 }
@@ -793,7 +794,7 @@ pub enum CompilerDiagnostic {
         span: Rc<SourceSpan>,
     },
     EmissionConstructUnprojectable {
-        construct: Rc<UnprojectableConstruct>,
+        construct: UnprojectableConstruct,
         span: Rc<SourceSpan>,
     },
 }
@@ -5233,6 +5234,8 @@ pub struct ShellTransport;
 pub struct FileTransport;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LocalTransport;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FilterInBranchCondition;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SeverityError;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

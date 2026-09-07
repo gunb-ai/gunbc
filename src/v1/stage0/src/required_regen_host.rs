@@ -2735,7 +2735,7 @@ mod tests {
                                 construct,
                                 ..
                             } if matches!(
-                                construct.as_ref(),
+                                construct,
                                 crate::v1_std_core::UnprojectableConstruct::FilterInBranchCondition
                             )
                         ) && crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())

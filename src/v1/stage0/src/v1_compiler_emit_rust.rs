@@ -279,6 +279,7 @@ use crate::v1_std_core::ParsedModuleItemKind::{
 };
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 use crate::v1_std_core::UnaryOpKind::*;
+use crate::v1_std_core::UnprojectableConstruct::FilterInBranchCondition;
 use crate::v1_std_core::VarBindingKind::{
     FunctionValueBinding, LocalValueBinding, MatchBoundBinding, VariantValueBinding,
 };
@@ -310,7 +311,7 @@ pub use crate::v1_std_core::{
     CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic, Connective,
     DeclaredCallableIdentity, ErrorNode, ExprData, FieldAccessStyle, FieldSummary, FieldValueShape,
     InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, ParsedModuleItemKind,
-    ResolvedCallFormal, StringPart, TextFile, UnaryOpKind, VarBindingKind,
+    ResolvedCallFormal, StringPart, TextFile, UnaryOpKind, UnprojectableConstruct, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -10493,9 +10494,7 @@ pub fn collect_filter_in_guard_refusals(
         {
             __result.push(crate::v1_std_core::make_error_node(
                 Rc::new(CompilerDiagnostic::EmissionConstructUnprojectable {
-                    construct: Rc::new(
-                        crate::v1_std_core::UnprojectableConstruct::FilterInBranchCondition,
-                    ),
+                    construct: UnprojectableConstruct::FilterInBranchCondition {},
                     span: call.span.clone(),
                 }),
                 module_name.clone(),

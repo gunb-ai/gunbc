@@ -5226,7 +5226,7 @@ fn collect_filter_in_guard_refusals(n: Node, module_name: String, source_indices
   collect_filter_method_calls(n: n, source_indices: source_indices) |> map(call =>
     make_error_node(
       diagnostic: EmissionConstructUnprojectable {
-        construct: FilterInBranchCondition,
+        construct: FilterInBranchCondition {},
         span: call.span
       },
       module_name: module_name

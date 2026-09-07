@@ -312,17 +312,17 @@ type TextFile {
 // nickname the same membership in the mint site, the native probe, and the histogram key, so a
 // typo would silently split the census. Adding a shape is adding a variant.
 type UnprojectableConstruct
-  = FilterInBranchCondition
+  = FilterInBranchCondition {}
 
 fn unprojectable_construct_identity(c: UnprojectableConstruct) -> String {
   match c {
-    FilterInBranchCondition => "FilterInBranchCondition"
+    FilterInBranchCondition {} => "FilterInBranchCondition"
   }
 }
 
 fn unprojectable_construct_prose(c: UnprojectableConstruct) -> String {
   match c {
-    FilterInBranchCondition => "filter in branch condition"
+    FilterInBranchCondition {} => "filter in branch condition"
   }
 }
 
