@@ -1531,332 +1531,144 @@ pub struct TransitionAdmission {
 /// entry above records happened once and is not re-recorded here: this branch had deleted the same
 /// eight rows independently, the two deletions agree, and main's entry is the one authority.
 ///
-/// THE PROBE CAPTURE MOVES TO THE DECODER THAT READS IT (2026-09-06, gunbc#10639). No ordinal is
-/// claimed, for the reason the entries above give. The Ollama-era Spark serving tree is deleted at
-/// the root in that change, and `gunbc.spark.serving_terminal_health` went with it. One type it
-/// declared, `SparkServingProbeCapture` with its three arms `ProbeNeverRan`, `ProbeFailed` and
-/// `ProbeAnswered`, had a consumer outside the tree: `gunbc.spark.training_ready`, which decodes
-/// probe captures into retirement observations and pool readings. The type is rehomed there. It
-/// is not a serving fact; it is the shape of a probe result, and the decoder was its only reader.
+/// THE gunbc#10639 ROWS DISSOLVED HERE (2026-09-06), BY THEIR OWN TRIGGER AND ON THE ROSTER TOUCH
+/// THEY NAMED. gunbc#10639 merged as 8769167dd05, which is an ancestor of this change's base.
+/// Adjudicated by the join those rows asked for rather than by their sentence: on main,
+/// `gunbc.spark.training_ready` declares `SparkServingProbeCapture` itself, so base and head bind
+/// every one of the thirty spellings to the same declaration, no run can produce the delta, and
+/// all thirty report CONSUMED -- due on this touch, which is this change.
 ///
-/// THIRTY BINDINGS ACROSS TWO MODULES resolve to the new declarer, which is `TargetChanged` and is
-/// not auto-admitted: nine in `gunbc.spark.training_ready` (the three decoders that match on the
-/// capture) and twenty-one in `test.claim.spark.spark_training_ready_witness_test` (the fixture
-/// constructors and the claims that read them). Every spelling is identical on both sides; only
-/// the declaring module differs, which is the membership motion this roster exists to adjudicate.
+/// THE OBSERVATION CARRIER MOVES OUT OF THE SPEC MODULE (2026-09-06, gunbc#10671). No ordinal is
+/// claimed, for the reason the entries above give. `extdeps.transceiver.sff_8636` models what
+/// SFF-8636 bytes MEAN. It had also come to declare what THIS REPOSITORY READ off a delivered
+/// cable, which DESIGN section 3 refuses in terms: "Observations produced by this repository are
+/// receipts in the observing product or workflow layer, not facts owned by the observed upstream."
+/// The observation carrier and its unread/observed distinction are rehomed to
+/// `product.cable_leg_observation`, whose subject is a leg this repository holds.
+///
+/// FOUR BINDINGS ACROSS TWO TEST MODULES resolve to the new declarer, which is `TargetChanged` and
+/// is not auto-admitted: the four fixture constructors that spell `SecondaryNotObserved`. The
+/// spelling is identical on both sides; only the declaring module differs, which is the membership
+/// motion this roster exists to adjudicate. The three membership additions the same run reported
+/// are `ExplicitlyEvaluatedZeroDelta` and the one removal is `SameDeclarationIdentityRebind`, so
+/// they are auto-admitted and are deliberately not rostered here.
 ///
 /// ONE CHANGE CLASS. Nothing is requalified; every spelling is imported under the leaf it always
-/// had, and the declaration behind it moved. The twenty-one `NewUnresolvedness` deltas the same
-/// run reported are not admitted here: they came from `v2.test.claim.spark_observation_scope`,
-/// whose whole subject was a deleted module, and that test is deleted in the same change, so no
-/// run against its head can produce them.
+/// had, and the declaration behind it moved.
 ///
-/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10639 merges. Main then declares
-/// the capture in `gunbc.spark.training_ready`, base and head bind each spelling identically, and
-/// all thirty report CONSUMED, coming due on this roster's next touch. Adjudicate that deletion by
-/// joining each row against main's tree on its own tuple, not by trusting this sentence.
-const PROBE_CAPTURE_REHOME_LABEL: &str =
-    "gunbc#10639 serving-tree cut: SparkServingProbeCapture and its arms move from the deleted \
-     gunbc.spark.serving_terminal_health to their only reader, gunbc.spark.training_ready";
+/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10671 merges. Main then declares
+/// the carrier in `product.cable_leg_observation`, base and head bind each spelling identically,
+/// and all four report CONSUMED, coming due on this roster's next touch. Adjudicate that deletion
+/// by joining each row against main's tree on its own tuple, not by trusting this sentence.
+
+/// THE gunbc#10671 ROWS DISSOLVED HERE (2026-09-06), BY THEIR OWN TRIGGER AND ON THE ROSTER TOUCH
+/// THEY NAMED. gunbc#10671 merged, so the four cable-leg rows reported CONSUMED and came due on the
+/// next roster-touching change, which is this one.
+///
+/// ADJUDICATED BY THE JOIN THOSE ROWS DEMANDED RATHER THAN BY THEIR OWN SENTENCE, in all three
+/// directions the join has. On main, `product.cable_leg_observation` DECLARES `SecondaryNotObserved`
+/// as an arm of its compliance coproduct; `extdeps.transceiver.sff_8636` does NOT declare it -- its
+/// only remaining occurrence of the spelling is prose recording that an earlier head authored it,
+/// which is exactly the trap a grep-count would have fallen into and a declaration check does not;
+/// and both consumers, `test.claim.cable_leg_coding_witness` and
+/// `test.claim.cable_order_admission_witness`, import the spelling from the new declarer. So base and
+/// head bind it identically, no run can produce those four deltas, and CONSUMED is the correct
+/// reading rather than an author error.
+///
+/// THE gunbc#10676 ROWS DISSOLVE HERE (2026-09-07), BY THEIR OWN TRIGGER AND ON THIS ROSTER TOUCH.
+/// gunbc#10676 merged; the nine builder-rehome rows reported CONSUMED. Joined on origin/main against
+/// each row's (module, in_declaration, spelling, target), not the trigger sentence:
+///
+///   `test.fixture.scm_repository_builder` DECLARES `MbBuild` with arms `MbBuilt` and
+///   `MbSetupFailed`, and `fn mb_start`, `mb_stage`, `mb_commit`, `mb_at`, `mb_head`, `mb_root_of`.
+///   `test.claim.scm_merge_base_witness` DECLARES none of those nine spellings -- they appear only
+///   as an import from the fixture (and as uses inside `mb_scene` and
+///   `scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on`). Both consumers --
+///   `test.claim.scm_merge_base_witness` and `test.claim.scm_squash_merge_witness` -- import every
+///   one of those spellings from the new declarer. So base and head bind identically; CONSUMED is
+///   the correct reading for all nine.
+///
+/// EXIT_OK RELOCATES TO std.process. Seven `TargetChanged` bindings in
+/// `tools.floor_effect_gate_witness` (`<gate>_passes` for emit_host_gate, cheap_claim_pool_gate,
+/// extdeps_external_authority_gate, dag_compile_clean_gate, generated_artifact_drift_gate,
+/// extdeps_scope_placement_gate, prose_row_introduction_gate) resolve `exit_ok` at base to
+/// `tools.ci_gates` and at head to `std.process`. Spelling unchanged; predicate exhaustive with no
+/// wildcard arm; behaviour unchanged; the witnesses that consume it are unchanged. TRIGGER: they
+/// go when this relocation is on main, then report CONSUMED and come due on the roster's next touch.
+/// Adjudicate that deletion by joining each row against main on its own tuple, not this sentence.
+const EXIT_OK_REHOME_LABEL: &str =
+    "exit_ok relocates from tools.ci_gates to std.process: spelling unchanged, behaviour \
+     unchanged, the predicate is exhaustive with no wildcard arm, and the floor witnesses \
+     that consume it are unchanged";
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
+        label: EXIT_OK_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.training_ready",
-            in_declaration: "spark_serving_absence_from_probe",
-            spelling: "ProbeAnswered",
-            target: "gunbc.spark.training_ready",
+            module: "tools.floor_effect_gate_witness",
+            in_declaration: "emit_host_gate_passes",
+            spelling: "exit_ok",
+            target: "std.process",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
+        label: EXIT_OK_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.training_ready",
-            in_declaration: "spark_serving_absence_from_probe",
-            spelling: "ProbeFailed",
-            target: "gunbc.spark.training_ready",
+            module: "tools.floor_effect_gate_witness",
+            in_declaration: "cheap_claim_pool_gate_passes",
+            spelling: "exit_ok",
+            target: "std.process",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
+        label: EXIT_OK_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.training_ready",
-            in_declaration: "spark_serving_absence_from_probe",
-            spelling: "ProbeNeverRan",
-            target: "gunbc.spark.training_ready",
+            module: "tools.floor_effect_gate_witness",
+            in_declaration: "extdeps_external_authority_gate_passes",
+            spelling: "exit_ok",
+            target: "std.process",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
+        label: EXIT_OK_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.training_ready",
-            in_declaration: "spark_serving_absence_from_probe",
-            spelling: "SparkServingProbeCapture",
-            target: "gunbc.spark.training_ready",
+            module: "tools.floor_effect_gate_witness",
+            in_declaration: "dag_compile_clean_gate_passes",
+            spelling: "exit_ok",
+            target: "std.process",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
+        label: EXIT_OK_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.training_ready",
-            in_declaration: "spark_serving_retirement_observation_from_probes",
-            spelling: "SparkServingProbeCapture",
-            target: "gunbc.spark.training_ready",
+            module: "tools.floor_effect_gate_witness",
+            in_declaration: "generated_artifact_drift_gate_passes",
+            spelling: "exit_ok",
+            target: "std.process",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
+        label: EXIT_OK_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.training_ready",
-            in_declaration: "spark_unified_pool_observation_from_capture",
-            spelling: "ProbeAnswered",
-            target: "gunbc.spark.training_ready",
+            module: "tools.floor_effect_gate_witness",
+            in_declaration: "extdeps_scope_placement_gate_passes",
+            spelling: "exit_ok",
+            target: "std.process",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
+        label: EXIT_OK_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.training_ready",
-            in_declaration: "spark_unified_pool_observation_from_capture",
-            spelling: "ProbeFailed",
-            target: "gunbc.spark.training_ready",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.training_ready",
-            in_declaration: "spark_unified_pool_observation_from_capture",
-            spelling: "ProbeNeverRan",
-            target: "gunbc.spark.training_ready",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.training_ready",
-            in_declaration: "spark_unified_pool_observation_from_capture",
-            spelling: "SparkServingProbeCapture",
-            target: "gunbc.spark.training_ready",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_training_ready_witness_test",
-            in_declaration: "w_a_capture_whose_body_is_not_a_count_is_refused",
-            spelling: "ProbeAnswered",
-            target: "gunbc.spark.training_ready",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_training_ready_witness_test",
-            in_declaration: "w_a_connect_failure_never_establishes_endpoint_absence",
-            spelling: "ProbeFailed",
-            target: "gunbc.spark.training_ready",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_training_ready_witness_test",
-            in_declaration: "w_a_pool_number_without_a_read_is_refused",
-            spelling: "ProbeNeverRan",
-            target: "gunbc.spark.training_ready",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_training_ready_witness_test",
-            in_declaration: "w_a_pool_over_an_unestablished_retirement_is_refused",
-            spelling: "ProbeAnswered",
-            target: "gunbc.spark.training_ready",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_training_ready_witness_test",
-            in_declaration: "w_a_still_serving_endpoint_refuses",
-            spelling: "ProbeAnswered",
-            target: "gunbc.spark.training_ready",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_training_ready_witness_test",
-            in_declaration: "w_an_enumeration_that_never_ran_establishes_no_endpoint_absence",
-            spelling: "ProbeNeverRan",
-            target: "gunbc.spark.training_ready",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_training_ready_witness_test",
-            in_declaration: "w_endpoint_absence",
-            spelling: "SparkServingProbeCapture",
-            target: "gunbc.spark.training_ready",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_training_ready_witness_test",
-            in_declaration: "w_endpoint_absent_capture",
-            spelling: "ProbeAnswered",
-            target: "gunbc.spark.training_ready",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_training_ready_witness_test",
-            in_declaration: "w_endpoint_absent_capture",
-            spelling: "SparkServingProbeCapture",
-            target: "gunbc.spark.training_ready",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_training_ready_witness_test",
-            in_declaration: "w_only_a_completed_empty_enumeration_establishes_endpoint_absence",
-            spelling: "ProbeAnswered",
-            target: "gunbc.spark.training_ready",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_training_ready_witness_test",
-            in_declaration: "w_pool_or_refused",
-            spelling: "ProbeAnswered",
-            target: "gunbc.spark.training_ready",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_training_ready_witness_test",
-            in_declaration: "w_process_absent_capture",
-            spelling: "ProbeFailed",
-            target: "gunbc.spark.training_ready",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_training_ready_witness_test",
-            in_declaration: "w_process_absent_capture",
-            spelling: "SparkServingProbeCapture",
-            target: "gunbc.spark.training_ready",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_training_ready_witness_test",
-            in_declaration: "w_silent_capture",
-            spelling: "ProbeNeverRan",
-            target: "gunbc.spark.training_ready",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_training_ready_witness_test",
-            in_declaration: "w_silent_capture",
-            spelling: "SparkServingProbeCapture",
-            target: "gunbc.spark.training_ready",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_training_ready_witness_test",
-            in_declaration: "w_the_refusal_carries_a_cause_rather_than_a_bare_negative",
-            spelling: "ProbeFailed",
-            target: "gunbc.spark.training_ready",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_training_ready_witness_test",
-            in_declaration: "w_the_unit_axis_establishes_absence_by_answering_not_by_failing",
-            spelling: "ProbeAnswered",
-            target: "gunbc.spark.training_ready",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_training_ready_witness_test",
-            in_declaration: "w_the_unit_axis_establishes_absence_by_answering_not_by_failing",
-            spelling: "ProbeFailed",
-            target: "gunbc.spark.training_ready",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_training_ready_witness_test",
-            in_declaration: "w_unit_absence",
-            spelling: "SparkServingProbeCapture",
-            target: "gunbc.spark.training_ready",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_training_ready_witness_test",
-            in_declaration: "w_unit_absent_capture",
-            spelling: "ProbeAnswered",
-            target: "gunbc.spark.training_ready",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PROBE_CAPTURE_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_training_ready_witness_test",
-            in_declaration: "w_unit_absent_capture",
-            spelling: "SparkServingProbeCapture",
-            target: "gunbc.spark.training_ready",
+            module: "tools.floor_effect_gate_witness",
+            in_declaration: "prose_row_introduction_gate_passes",
+            spelling: "exit_ok",
+            target: "std.process",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },

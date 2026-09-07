@@ -1,0 +1,112 @@
+module product.capacity.lease
+
+import std.types { String, Bool, Int, NonEmptyStr, EpochSecs }
+import std.nat { Nat }
+import product.capacity.event_chain { EventId }
+
+// THE LEASE SEPARATES THREE FACTS THE OLD CARRIERS FUSED: which write won (the chain's append
+// decision, not carried here), whether a resource may still honour a holder (the fence), and how
+// long the authorization lasts (the declared term). Operator ruling 2026-09-06: the append
+// compare-and-set is the linearization fence and is not automatically the resource fence -- a
+// process holding an older grant can keep touching the resource after the log has moved on -- so
+// every effect performed under a lease is attributable to its grant, and a resource that can fence
+// rejects an obsolete one.
+
+// THE GRANT IS THE ADMITTING EVENT'S ID, and the generation is the partition's generation at that
+// admission. A resource compares generations to reject a superseded holder; it compares grants to
+// reject a holder from a different admission at the same generation, which a replay could present.
+type GrantIdentity = NonEmptyStr where brand("GrantIdentity")
+
+type LeaseFence {
+  grant: GrantIdentity
+  generation: Nat
+}
+
+fn lease_fence_of(admitting_event: EventId, generation: Nat) -> LeaseFence {
+  LeaseFence { grant: (admitting_event as String) as GrantIdentity, generation: generation }
+}
+
+type FenceVerdict
+  = FenceCurrent
+  | FenceObsolete { presented: Nat, current: Nat }
+  | FenceForeignGrant { presented: GrantIdentity, current: GrantIdentity }
+
+fn fence_verdict(current: LeaseFence, presented: LeaseFence) -> FenceVerdict {
+  if presented.generation < current.generation {
+    FenceObsolete { presented: presented.generation, current: current.generation }
+  } else if (presented.grant as String) != (current.grant as String) {
+    FenceForeignGrant { presented: presented.grant, current: current.grant }
+  } else {
+    FenceCurrent
+  }
+}
+
+// THE TERM IS DECLARED, NEVER DERIVED FROM AN OBSERVATION. A maximum duration is policy for the
+// pool the lease is on; the deadline is that policy applied at the grant instant. Token budgets
+// and observed decode rates may inform whether to admit, never manufacture the deadline
+// (operator ruling 2026-09-06).
+type LeasePolicy {
+  maximum_duration_seconds: Nat
+  release_law: ReleaseLaw
+}
+
+type LeaseGrant {
+  reference: NonEmptyStr
+  fence: LeaseFence
+  granted_at: EpochSecs
+  maximum_duration_seconds: Nat
+  expires_at: EpochSecs
+}
+
+fn lease_grant(reference: NonEmptyStr, fence: LeaseFence, granted_at: EpochSecs, policy: LeasePolicy) -> LeaseGrant {
+  LeaseGrant {
+    reference: reference,
+    fence: fence,
+    granted_at: granted_at,
+    maximum_duration_seconds: policy.maximum_duration_seconds,
+    expires_at: granted_at + policy.maximum_duration_seconds,
+  }
+}
+
+fn lease_grant_expired_at(grant: LeaseGrant, at: EpochSecs) -> Bool {
+  grant.expires_at <= at
+}
+
+// EXPIRY ENDS THE AUTHORIZATION; IT FREES THE CAPACITY ONLY WHEN STALE USE IS IMPOSSIBLE. Under a
+// fenced resource, an expired holder's next touch is rejected by the fence, so the seat is free
+// the moment the term ends. Under a resource that cannot fence, the seat stays held until the old
+// effect is observed quiescent, or a timed lease would turn a stuck worker into oversubscription.
+type ReleaseLaw
+  = FencedResource
+  | QuiescenceRequired
+
+type QuiescenceFact
+  = Quiescent { observed_at: EpochSecs }
+  | QuiescenceUnobserved
+
+type CapacityAfterExpiry
+  = LeaseNotExpired { until: EpochSecs }
+  | CapacityFreed
+  | CapacityHeldPendingQuiescence
+
+fn capacity_after_expiry(law: ReleaseLaw, grant: LeaseGrant, at: EpochSecs, quiescence: QuiescenceFact) -> CapacityAfterExpiry {
+  if !lease_grant_expired_at(grant: grant, at: at) {
+    LeaseNotExpired { until: grant.expires_at }
+  } else {
+    match law {
+      FencedResource => CapacityFreed
+      QuiescenceRequired =>
+        match quiescence {
+          Quiescent { observed_at: _ } => CapacityFreed
+          QuiescenceUnobserved => CapacityHeldPendingQuiescence
+        }
+    }
+  }
+}
+
+fn release_law_wire(law: ReleaseLaw) -> String {
+  match law {
+    FencedResource => "fenced-resource"
+    QuiescenceRequired => "quiescence-required"
+  }
+}

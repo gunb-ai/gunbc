@@ -1,0 +1,126 @@
+module gunbc.instruments.fabric_event_log_probe
+
+import std.types { String, Bool, Int, NonEmptyStr, List, FilePath, EpochSecs }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.nat { Nat }
+import std.measure { Measure, Count, One }
+import extdeps.git.plumbing
+import extdeps.git.plumbing { GitWorktreeAt }
+import product.capacity.pool { Pool, NoReplenishment, pool_of }
+import product.capacity.event_chain { PartitionId, EventId, ChainEvent, HeadExpectation, HeadAbsent, HeadAt, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted }
+import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolReleased, SeatRequest }
+import product.capacity.lease { LeasePolicy, FencedResource }
+import gunbc.fabric_event_log {
+  EventLogRemote, RemoteLocalPath, EventLogLayout, event_log_layout,
+  HeadObservation, HeadObserved, HeadObservationRefused, event_log_observe_head,
+  PartitionRead, PartitionReadOk, PartitionReadRefused, event_log_read_partition,
+  EventAppend, EventAppended, EventAppendStale, EventAppendRefused, event_log_append,
+  SeatAcquisition, SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, fabric_seat_acquire,
+}
+
+// THE LIVE RECEIPT FOR THE CARRIER, against a bare repository the probe creates under an empty
+// directory the caller names, so the placement under test is local and the transport is git's own.
+// Run it as
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/fabric_event_log_probe.dag --function fabric_event_log_probe \
+//     --arg root=<an existing EMPTY directory>
+//
+// It returns 0 when every step held and the number of the first step that did not, so a red names
+// its step. Steps: 1 remote init, 2 empty partition reads absent, 3 first append admitted against
+// absent, 4 second append against absent is STALE with the first as observed head, 5 append against
+// the first is admitted, 6 the partition reads two events oldest first, 7 a one-seat pool grants
+// the first seat, 8 the second request is full, 9 a release then a third request is granted.
+
+fn probe_partition() -> PartitionId { "probe-seats" as PartitionId }
+fn probe_actor() -> NonEmptyStr { "probe" as NonEmptyStr }
+fn probe_policy() -> LeasePolicy { LeasePolicy { maximum_duration_seconds: 300, release_law: FencedResource } }
+fn probe_root_pool() -> Pool<Count, One> { pool_of(identity: "probe-seats" as NonEmptyStr, ceiling: Measure { count: 1 }, replenishment: NoReplenishment) }
+
+fn probe_event(parent: HeadExpectation, at: EpochSecs, payload: PoolEvent) -> ChainEvent<PoolEvent> {
+  ChainEvent {
+    partition: probe_partition(),
+    parent: match parent { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
+    recorded_at: at,
+    actor: probe_actor(),
+    payload: payload,
+  }
+}
+
+fn probe_layout(root: NonEmptyStr) -> EventLogLayout {
+  event_log_layout(root: root as FilePath, remote: RemoteLocalPath { path: join([root as String, "/remote.git"], "") as FilePath })
+}
+
+fn fabric_event_log_probe(root: NonEmptyStr) -> ProcessExit {
+  let step = fabric_event_log_probe_step(root: root)
+  if step == 0 { ExitSuccess } else { exit_failure(reason: join(["fabric event log probe failed at step ", to_string(step)], "")) }
+}
+
+fn fabric_event_log_probe_step(root: NonEmptyStr) -> Int {
+  let layout = probe_layout(root: root)
+  let init = git.Plumbing.InitBareAt(address: GitWorktreeAt { path: root as FilePath }, path: join([root as String, "/remote.git"], "") as FilePath)
+  if init.exit_code != 0 { 1 } else {
+    match event_log_observe_head(layout: layout, partition: probe_partition()) {
+      HeadObservationRefused { step: _, reason: _ } => 2
+      HeadObserved { head: HeadAt { id: _ } } => 2
+      HeadObserved { head: HeadAbsent } =>
+        match event_log_append(layout: layout, partition: probe_partition(), event: probe_event(parent: HeadAbsent, at: 1000, payload: PoolAcquired { reference: "e1" as NonEmptyStr, amount: 1, term_seconds: 300 }), expected: HeadAbsent) {
+          EventAppendRefused { step: _, reason: _ } => 3
+          EventAppendStale { expected: _, observed: _ } => 3
+          EventAppended { id: first_id } =>
+            match event_log_append(layout: layout, partition: probe_partition(), event: probe_event(parent: HeadAbsent, at: 1001, payload: PoolReleased { reference: "e1" as NonEmptyStr, reason: "racer" as NonEmptyStr }), expected: HeadAbsent) {
+              EventAppended { id: _ } => 4
+              EventAppendRefused { step: _, reason: _ } => 4
+              EventAppendStale { expected: _, observed: o } =>
+                if !(match o { HeadAt { id: h } => (h as String) == (first_id as String)  HeadAbsent => false }) { 4 } else {
+                  match event_log_append(layout: layout, partition: probe_partition(), event: probe_event(parent: HeadAt { id: first_id }, at: 1002, payload: PoolReleased { reference: "e1" as NonEmptyStr, reason: "done" as NonEmptyStr }), expected: HeadAt { id: first_id }) {
+                    EventAppendRefused { step: _, reason: _ } => 5
+                    EventAppendStale { expected: _, observed: _ } => 5
+                    EventAppended { id: second } =>
+                      match event_log_read_partition(layout: layout, partition: probe_partition(), budget: 16) {
+                        PartitionReadRefused { step: _, reason: _ } => 6
+                        PartitionReadOk { head: head, walk: walk } =>
+                          if !(match head { HeadAt { id: h } => (h as String) == (second as String)  HeadAbsent => false }) { 6 } else {
+                            match walk {
+                              ChainIncomplete { missing: _, newest_first_so_far: _ } => 6
+                              ChainBudgetExhausted { at: _ } => 6
+                              ChainWalked { oldest_first: xs } =>
+                                if !(length(xs) == 2 && (match first(xs) { Present { value: x } => (x.id as String) == (first_id as String)  Absent => false })) { 6 } else {
+                                  match fabric_seat_acquire(layout: layout, partition: probe_partition(), root: probe_root_pool(), actor: probe_actor(), request: SeatRequest { reference: "turn-a" as NonEmptyStr, amount: 1, at: 2000, term_seconds: 300 }, policy: probe_policy(), attempts: 3, budget: 16) {
+                                    SeatFull { wire: _, attempts_used: _ } => 7
+                                    SeatContended { attempts: _ } => 7
+                                    SeatAcquireRefused { step: _, reason: _, attempts_used: _ } => 7
+                                    SeatGranted { grant: ga, generation: gen_a, attempts_used: _ } =>
+                                      if !(gen_a == 3 && ga.expires_at == 2300) { 7 } else {
+                                        match fabric_seat_acquire(layout: layout, partition: probe_partition(), root: probe_root_pool(), actor: probe_actor(), request: SeatRequest { reference: "turn-b" as NonEmptyStr, amount: 1, at: 2001, term_seconds: 300 }, policy: probe_policy(), attempts: 3, budget: 16) {
+                                          SeatGranted { grant: _, generation: _, attempts_used: _ } => 8
+                                          SeatContended { attempts: _ } => 8
+                                          SeatAcquireRefused { step: _, reason: _, attempts_used: _ } => 8
+                                          SeatFull { wire: w, attempts_used: _ } =>
+                                            if w != "pool-full" { 8 } else {
+                                              match event_log_append(layout: layout, partition: probe_partition(), event: probe_event(parent: HeadAt { id: ga.fence.grant as String as EventId }, at: 2002, payload: PoolReleased { reference: "turn-a" as NonEmptyStr, reason: "done" as NonEmptyStr }), expected: HeadAt { id: ga.fence.grant as String as EventId }) {
+                                                EventAppendRefused { step: _, reason: _ } => 9
+                                                EventAppendStale { expected: _, observed: _ } => 9
+                                                EventAppended { id: _ } =>
+                                                  match fabric_seat_acquire(layout: layout, partition: probe_partition(), root: probe_root_pool(), actor: probe_actor(), request: SeatRequest { reference: "turn-c" as NonEmptyStr, amount: 1, at: 2003, term_seconds: 300 }, policy: probe_policy(), attempts: 3, budget: 16) {
+                                                    SeatGranted { grant: _, generation: gen_c, attempts_used: _ } => if gen_c == 5 { 0 } else { 9 }
+                                                    SeatFull { wire: _, attempts_used: _ } => 9
+                                                    SeatContended { attempts: _ } => 9
+                                                    SeatAcquireRefused { step: _, reason: _, attempts_used: _ } => 9
+                                                  }
+                                              }
+                                            }
+                                        }
+                                      }
+                                  }
+                                }
+                            }
+                          }
+                      }
+                  }
+                }
+            }
+        }
+    }
+  }
+}

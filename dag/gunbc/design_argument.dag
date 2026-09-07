@@ -1,5 +1,7 @@
 module gunbc.design_argument
 
+import std.types { String, List }
+import std.decl_ref { DeclarationRef, decl_ref }
 
 // EACH PROPOSITION CARRIES ITS OWN REVIEW READING, OR NONE. A DesignRow is one proposition of the
 // serial argument plus, where the proposition is checkable on a single change, the question a
@@ -9,10 +11,109 @@ module gunbc.design_argument
 // nowhere else (operator, 2026-09-06: DESIGN criteria flow to reviews with no dual representation).
 // A proposition without a review reading (an axiom's consequence, or a program like self-hosting) is
 // still part of the argument and simply mints no reviewer.
+// HOW A REVIEWER'S ANSWER MAPS TO A VERDICT IS A PROPERTY OF THE QUESTION, NOT OF THE REVIEWER.
+// Most criteria ask a yes/no question whose yes is a defect. Conformance (DESIGN section 3b) asks a
+// three-valued one, and the middle value -- a divergence with its reason stated -- is admitted, so
+// collapsing it to yes/no would either block every deliberate departure or admit every accidental
+// one. The verdict words themselves belong to gunbc.roadmap.roadmap_review_role (HeadVerdict); this
+// algebra only says which shape of answer the question has, and that module maps it.
+type ReviewAnswerAlgebra
+  = YesIsADefect
+  | ConformanceThreeValued
+
 type PropositionReview {
   part: String
   question: String
   tells: List<String>
+  answer: ReviewAnswerAlgebra
+  homes: List<DeclarationRef>
+}
+
+// A CONFORMANCE DOMAIN IS ONE CONCEPT THE CORPUS ALREADY HOMES, WITH THE DECLARATIONS THAT ARE ITS
+// HOME (DESIGN section 3b). The conformance proposition's review parts are DERIVED from these rows,
+// one reviewer per domain, so the domain list has one authority and the prose in DESIGN.md names it
+// rather than repeating it. A domain is added by adding a row; a domain whose home does not yet exist
+// is a modeling obligation, not a row; a home that does not resolve is a section-3 citation defect.
+type ConformanceDomain {
+  key: String
+  question: String
+  homes: List<DeclarationRef>
+  tells: List<String>
+}
+
+data conformance_domains: List<ConformanceDomain> = [
+  ConformanceDomain {
+    key: "conformance-extdeps",
+    question: "Does the change carry a fact that other parties already agree on -- an upstream specification, a vendor's product, a protocol, a unit, a tool's interface -- without pointing at the extdeps module that owns it, or put such a fact somewhere other than the layer that owns it: a cited upstream fact modeled inside a product or workflow module, or a product policy or observation authored inside extdeps?",
+    homes: [decl_ref(module_path: "extdeps.external_authority", decl_name: "ExternalModelScope")],
+    tells: [
+      "a new type, enum or constant that restates what a standard, vendor sheet, man page or API document already defines, with no extdeps module citing it",
+      "a value that is really an upstream fact (a port, a field name, a version, a limit, a wire shape) spelled as a literal in gunbc/ or a workflow module",
+      "an extdeps module that carries our own policy, an observation this repository made, a coverage state, or a product-specific dispatch among upstreams",
+      "a generic extdeps hub enumerating concrete products or versions instead of one module per independently versioned upstream"
+    ],
+  },
+  ConformanceDomain {
+    key: "conformance-realization",
+    question: "Does the change cache, memoize, build, emit or execute something without inhabiting the corpus's realization model -- a content-addressed pure spec realized by a bound handler -- and if it departs from that model, does it say why?",
+    homes: [
+      decl_ref(module_path: "std.realization", decl_name: "Materialization"),
+      decl_ref(module_path: "std.materialization_provider", decl_name: "ArtifactRequest"),
+      decl_ref(module_path: "std.artifact_store", decl_name: "ArtifactStore"),
+      decl_ref(module_path: "std.cache_interface", decl_name: "StorageSurface"),
+      decl_ref(module_path: "std.content_hash", decl_name: "HashFamily"),
+    ],
+    tells: [
+      "a hand-rolled map, memo flag or scratch directory keyed by something other than declared-input content",
+      "a shell or host call that executes what a realization handler already binds",
+      "an output attached to a request that did not succeed, or a cache read that cannot say what produced the hit"
+    ],
+  },
+  ConformanceDomain {
+    key: "conformance-leasing",
+    question: "Does the change take exclusive or bounded use of something -- a slot, a head, a host, a file, a budget -- without inhabiting the corpus's lease and grant model, and if it departs from that model, does it say why?",
+    homes: [
+      decl_ref(module_path: "std.temporal_effect", decl_name: "HeldLease"),
+      decl_ref(module_path: "std.durable_compare_and_set", decl_name: "CasExpectation"),
+      decl_ref(module_path: "std.scoped_authorization", decl_name: "ScopedAuthorization"),
+      decl_ref(module_path: "std.effect_grant", decl_name: "Grant"),
+      decl_ref(module_path: "std.resources", decl_name: "ResourceHandle"),
+    ],
+    tells: [
+      "a flag file, a sleep, a retry loop or a bare Bool standing where a lease with a declared deadline was available",
+      "a write to a shared head that does not carry the expectation it was computed against",
+      "an effect performed without the grant that names who may perform it and how it is released"
+    ],
+  },
+  ConformanceDomain {
+    key: "conformance-compute",
+    question: "Does the change allocate, place or negotiate resources -- a machine, a serving head, a build slot, a budget -- without inhabiting the corpus's compute and fabric model, and if it departs from that model, does it say why?",
+    homes: [
+      decl_ref(module_path: "gunbc.compute.work_request", decl_name: "WorkOperation"),
+      decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "ComputeLayout"),
+      decl_ref(module_path: "gunbc.fabric_control_plane", decl_name: "CellReservation"),
+      decl_ref(module_path: "gunbc.fabric_executor_class", decl_name: "CapacityClassAdmission"),
+    ],
+    tells: [
+      "a host name, address or port chosen in the change instead of resolved from the fabric",
+      "work run in the caller's own process or tree instead of requested as an exact-tree operation from a provider",
+      "a capacity or budget literal that the provider's admission already decides"
+    ],
+  },
+]
+
+fn conformance_review_part(d: ConformanceDomain) -> PropositionReview {
+  PropositionReview {
+    part: d.key,
+    question: d.question,
+    tells: d.tells,
+    answer: ConformanceThreeValued,
+    homes: d.homes,
+  }
+}
+
+fn yes_no_review(part: String, question: String, tells: List<String>) -> PropositionReview {
+  PropositionReview { part: part, question: question, tells: tells, answer: YesIsADefect, homes: [] }
 }
 
 // WHETHER A PROPOSITION IS REVIEWABLE ON ONE CHANGE IS ITSELF A MODELED FACT, with its reason when it
@@ -63,16 +164,7 @@ data design_section_1_rows: List<DesignRow> = [
       statement: "grounding is intersubjective: because time is the only assumed-shared value, a fact is grounded only by pointing at a shared, time-stable framework",
       premises: ["A2", "A3"]
     },
-    review: ReviewableOnChange { parts: [PropositionReview {
-      part: "extdeps-placement",
-      question: "Does the change carry a fact that other parties already agree on -- an upstream specification, a vendor's product, a protocol, a unit, a tool's interface -- without pointing at that shared authority, or does it put such a fact somewhere other than the layer that owns it: a cited upstream fact modeled inside a product or workflow module, or a product policy or observation authored inside extdeps?",
-      tells: [
-        "a new type, enum or constant that restates what a standard, vendor sheet, man page or API document already defines, with no extdeps module citing it",
-        "a value that is really an upstream fact (a port, a field name, a version, a limit, a wire shape) spelled as a literal in gunbc/ or a workflow module",
-        "an extdeps module that carries our own policy, an observation this repository made, a coverage state, or a product-specific dispatch among upstreams",
-        "a generic extdeps hub enumerating concrete products or versions instead of one module per independently versioned upstream"
-      ],
-    }] },
+    review: NotReviewableOnChange { reason: "its checkable form on a change is conformance to the shared authority's home; that reviewer is the conformance-extdeps domain of s3b.conformance, and asking it here as well would be two authorities for one judgment" },
   },
 
   DesignRow {
@@ -98,15 +190,15 @@ data design_section_2_to_7_rows: List<DesignRow> = [
       statement: "minimize redundancy is the master move for cost and complexity: redundant work loses on all three of §1's quantities at once, so a perfectly DRY process is by meaning the minimal/efficient one",
       premises: ["s1.minimal-safe-efficient"]
     },
-    review: ReviewableOnChange { parts: [PropositionReview {
+    review: ReviewableOnChange { parts: [yes_no_review(
       part: "minimize-redundancy",
       question: "Does the change add work that already exists somewhere in the repository: a second representation of a fact, a copied accumulator, a parallel path beside a modeled one?",
       tells: [
         "a new type or function whose shape matches an existing one under another name",
         "a hand-written projection of something the model could generate",
         "a quadratic fold or a copied list where a single fold would do"
-      ],
-    }] },
+      ]
+    )] },
   },
 
   DesignRow {
@@ -115,16 +207,43 @@ data design_section_2_to_7_rows: List<DesignRow> = [
       statement: "single authority keeps §2 from being undone: minimization holds only if each fact lives in exactly one place; the recurring violation is nicknaming (a second name for one concept)",
       premises: ["s2.minimize-redundancy"]
     },
-    review: ReviewableOnChange { parts: [PropositionReview {
+    review: ReviewableOnChange { parts: [yes_no_review(
       part: "single-authority",
       question: "Does the change give one concept a second name or a second home, or cite a position where a symbol exists?",
       tells: [
-        "a new enum or record for a concept an extdeps or std module already owns",
         "a literal string where a modeled value exists",
         "a file:line citation in prose or a row where a module and symbol could be named",
         "the same fact now answerable from two carriers with no relation stated between them"
-      ],
-    }] },
+      ]
+    )] },
+  },
+
+  DesignRow {
+    proposition: Proposition {
+      id: "s3b.conformance",
+      statement: "conformance is §2–§3 applied to a change: for every concept domain a change touches the corpus already homes the concept, so the change inhabits that model or states why it diverges; an unstated divergence is a fork that will be consolidated later at interest",
+      premises: ["s2.minimize-redundancy", "s3.single-authority"]
+    },
+    review: ReviewableOnChange { parts: map(conformance_domains, d => conformance_review_part(d: d)) },
+  },
+
+  DesignRow {
+    proposition: Proposition {
+      id: "s3c.consumption",
+      statement: "consumption is the converse of conformance: every declaration a change adds is consumed by a named consumer over an executing route, or it is redundant work by §2 and specification-without-execution by §5, however well modeled it is",
+      premises: ["s2.minimize-redundancy", "s5.fail-closed"]
+    },
+    review: ReviewableOnChange { parts: [yes_no_review(
+      part: "consumption",
+      question: "Does the change add a declaration -- a type, function, data row, module or witness -- that nothing consumes by execution, or whose only consumer is a typecheck, a grep, or a witness asserting it exists? For each added declaration name the consumer and the route by which it is reached at execution, or the later change that will consume it with its trigger; a declaration with neither is dangling.",
+      tells: [
+        "a pub declaration with no call site anywhere in the closure the change compiles",
+        "a data row no fold reads, or a module no module imports",
+        "a witness that asserts a declaration exists or has a shape, rather than exercising it through its consumer",
+        "consumption described in the change's prose or PR body but absent from the diff",
+        "a frontier row naming a future consumer with no trigger beside it"
+      ]
+    )] },
   },
 
   DesignRow {
@@ -133,15 +252,15 @@ data design_section_2_to_7_rows: List<DesignRow> = [
       statement: "the closed, grounded substrate makes §2–§3 decidable: you can unify and decompose mechanically only in a closed, grounded system, and grounding is intersubjective",
       premises: ["s2.minimize-redundancy", "s3.single-authority", "s1.grounding-intersubjective"]
     },
-    review: ReviewableOnChange { parts: [PropositionReview {
+    review: ReviewableOnChange { parts: [yes_no_review(
       part: "closed-grounded-substrate",
       question: "Does the change leave something opaque that is not atomic, or route around the substrate: a stringly leaf hiding named parts, a heuristic where a fact was available, an annotation inside a body?",
       tells: [
         "a String field carrying structure a record could name",
         "a threshold or guess standing where the richer source exists",
         "a // annotation inside a fn or type body rather than above a module-scope declaration"
-      ],
-    }] },
+      ]
+    )] },
   },
 
   DesignRow {
@@ -150,7 +269,7 @@ data design_section_2_to_7_rows: List<DesignRow> = [
       statement: "fail-closed is §1's safety axis: minimizing cost and complexity is worthless if a wrong thing passes silently; stronger than catching a wrong state is making it unwritable (correctness by construction, not validation)",
       premises: ["s1.minimal-safe-efficient"]
     },
-    review: ReviewableOnChange { parts: [PropositionReview {
+    review: ReviewableOnChange { parts: [yes_no_review(
       part: "fail-closed",
       question: "Does any failure arm in the change widen, default, or fall silent instead of refusing with a typed, located reason; and does any check stand where a construction was available?",
       tells: [
@@ -158,8 +277,8 @@ data design_section_2_to_7_rows: List<DesignRow> = [
         "an Option or wildcard that collapses two states with different remedies",
         "a toggle, env var or flag whose only effect is to skip a refusal",
         "a validator for a state the model could have made unwritable"
-      ],
-    }] },
+      ]
+    )] },
   },
 
   DesignRow {
@@ -168,15 +287,15 @@ data design_section_2_to_7_rows: List<DesignRow> = [
       statement: "how to work given §1–§5: model by DFS-ing the concept DAG, prioritize holistically and denominate the benefit as displaced cost, and enforce by construction-first then lenses for the unstructurable residue",
       premises: ["s2.minimize-redundancy", "s3.single-authority", "s4.closed-grounded-substrate", "s5.fail-closed"]
     },
-    review: ReviewableOnChange { parts: [PropositionReview {
+    review: ReviewableOnChange { parts: [yes_no_review(
       part: "how-to-work",
       question: "Does the change land temporary work, a workaround, or an unmarked scaffold without an operator's verdict, or a proven cost-shape defect left in place?",
       tells: [
         "'for now', 'temporary', 'until', 'bridge', 'shim', 'compatibility' with no dissolution obligation beside it",
         "a second path beside an existing modeled route",
         "a change that routes around a substrate refusal instead of naming it"
-      ],
-    }] },
+      ]
+    )] },
   },
 
   DesignRow {

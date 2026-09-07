@@ -1,7 +1,7 @@
 module test.claim.roadmap.roadmap_review_function_witness_test
 
 import std.types { Bool, String, List, NonEmptyStr }
-import gunbc.roadmap.roadmap_review_criteria { review_criteria, review_criterion_identities_are_unique, review_criterion_by_key, GroundedOnDesignProposition, GroundedOnTheNodeContract }
+import gunbc.roadmap.roadmap_review_criteria { review_criteria, review_criterion_identities_are_unique, review_criterion_by_key, GroundedOnDesignProposition, GroundedOnTheNodeContract, ReviewCriterion }
 import gunbc.roadmap.roadmap_review_role { ReviewReceiptPresent, ReviewReceiptAbsent, ReviewReceiptSource }
 import gunbc.roadmap.roadmap_review_function {
   ReviewSubject, ReviewPlan, ReviewCall, ReviewObservation, review_plan, review_plan_revision, review_plan_revision_of, review_subject_id,
@@ -31,18 +31,19 @@ fn all_approved(plan: ReviewPlan) -> List<ReviewObservation> {
   map(plan.calls, c => obs(plan: plan, key: c.id, text: approve_text()))
 }
 
-// THE PARTS: identities are unique, the roster carries the extdeps-placement part grounded on the
-// intersubjective-grounding proposition, and the revision is the roster's content -- change a question
+// THE PARTS: identities are unique, the roster carries the conformance-extdeps domain grounded on the
+// conformance proposition (DESIGN section 3b), and the revision is the roster's content -- change a question
 // and the revision moves; the same roster gives the same revision.
 test fn the_roster_is_derived_with_unique_identities_and_a_content_revision() -> Bool {
   review_criterion_identities_are_unique()
     && count(review_criteria) >= 6
-    && (match review_criterion_by_key(key: "extdeps-placement") {
-      Present { value: c } => match c.ground { GroundedOnDesignProposition { proposition_id } => proposition_id == "s1.grounding-intersubjective"  GroundedOnTheNodeContract => false }
+    && (match review_criterion_by_key(key: "conformance-extdeps") {
+      Present { value: c } => match c.ground { GroundedOnDesignProposition { proposition_id } => proposition_id == "s3b.conformance"  GroundedOnTheNodeContract => false }
       Absent => false
     })
     && review_plan_revision() == review_plan_revision_of(criteria: review_criteria)
     && review_plan_revision_of(criteria: review_criteria) != review_plan_revision_of(criteria: filter(review_criteria, c => c.key != "fail-closed"))
+    && review_plan_revision_of(criteria: review_criteria) != review_plan_revision_of(criteria: map(review_criteria, c => ReviewCriterion { key: c.key, ground: c.ground, question: c.question, tells: c.tells, answer: c.answer, homes: [] }))
     && review_plan_revision().length() == 16
 }
 
@@ -107,10 +108,10 @@ test fn the_aggregate_regroups_by_file_counts_the_overlap_and_names_the_incomple
     && any(f.must_fix, g => g.path == "dag/x.dag" && count(g.findings) == 2)
     && f.approved == ["closed-grounded-substrate"]
     && any(f.incomplete, k => k == "how-to-work")
-    && any(f.incomplete, k => k == "extdeps-placement")
+    && any(f.incomplete, k => k == "conformance-extdeps")
     && string_contains(s: text, pattern: "Fix, by file: dag/y.dag — minimize-redundancy: changes requested — a copied fold · dag/x.dag — single-authority: changes requested — a second name for one concept; fail-closed: changes requested — an arm widens")
     && string_contains(s: text, pattern: "1 file(s) were named by more than one criterion")
-    && string_contains(s: text, pattern: "Still reviewing (2, this report is not complete): extdeps-placement, how-to-work")
+    && string_contains(s: text, pattern: "Still reviewing (6, this report is not complete): conformance-extdeps, conformance-realization, conformance-leasing, conformance-compute, consumption, how-to-work")
     && !string_contains(s: text, pattern: "closed-grounded")
     && report.reconciliation.detail == text
 }
