@@ -108,6 +108,15 @@ jobs:
           key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: |
             cargo-ci-${{ runner.os }}-${{ runner.arch }}-
+      - name: "Reset-return dispatch admission: refuse an unnamed observer before anything is scheduled"
+        id: reset_observer_dispatch_admission
+        run: |
+          if [ "${{ github.event.inputs.mode }}" = "host_reset_return" ] && [ -z "${{ github.event.inputs.reset_observer }}" ]; then
+            echo "::error::ResetObserverUnnamed: mode=host_reset_return was dispatched with an empty reset_observer. The reset job's runs-on interpolates that label, so an empty value asks for a runner carrying no label and the job would queue until its backstop with no receipt. The subject is DERIVED from the observer through gunbc.host_reset_return reset_dispatch_pairings, so an unnamed observer names no subject and there is nothing to reset. Re-dispatch naming one of the rostered observers the form offers." >&2
+            exit 1
+          fi
+          echo "reset-observer dispatch admission: ok"
+        timeout-minutes: 5
       - name: Build release bins (claim_executor + gunbc)
         id: release_build
         run: |

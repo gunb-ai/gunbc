@@ -1,13 +1,14 @@
 module test.claim.workflow_dispatch_input_witness
 
 import extdeps.github.actions {
-  WorkflowDispatch, DispatchInput, InputString, InputChoice
+  WorkflowDispatch, DispatchInput, InputString, InputChoice, Step, RunStep, UsesStep
 }
 import gunbc.fleet_converge_workflow {
   FleetConvergeWorkflowMode, fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire,
   fleet_converge_mode_step_if, fleet_converge_mode_scope,
   FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, DashboardDeploy,
   fleet_converge_spark_bootstrap_step_if, fleet_converge_mode_options,
+  fleet_converge_reset_observer_dispatch_admission_step,
   fleet_converge_workflow, expected_fleet_converge_yml,
   FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused,
 }
@@ -228,6 +229,39 @@ test fn the_fleet_converge_workflow_carries_no_org_admin_repository_secret() -> 
   !string_contains(s: expected_fleet_converge_yml_content(), pattern: "secrets.GUNBC_ORG_ADMIN_TOKEN")
 }
 
+
+// THE UNNAMED OBSERVER REFUSES WHERE IT CAN STILL BE HEARD (review 61950). reset_observer is
+// required:false, and its value is interpolated into the reset job's runs-on -- so a dispatch that
+// omits it asks for a runner carrying an empty label, and the job queues silently until its backstop.
+// The refusal cannot live in that job, whose runs-on is resolved before any of its steps exist, so it
+// lives in `build`: generic labels, always schedulable, and needed by every host-scoped job.
+//
+// THE DISCRIMINATING CONJUNCTS ARE THE LAST TWO. A guard that fired on the mode alone would refuse
+// every correctly-dispatched reset, and one that tested emptiness without the mode would refuse every
+// OTHER mode's dispatch -- both would satisfy a witness that only looked for the error string.
+test fn an_unnamed_reset_observer_refuses_in_the_always_schedulable_job() -> Bool {
+  match fleet_converge_reset_observer_dispatch_admission_step() {
+    RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      string_contains(s: r, pattern: "ResetObserverUnnamed")
+        && string_contains(s: r, pattern: "exit 1")
+        && string_contains(s: r, pattern: "mode }}\" = \"host_reset_return\"")
+        && string_contains(s: r, pattern: "-z \"$\{\{ github.event.inputs.reset_observer \}\}\"")
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  }
+}
+
+// AND IT IS ACTUALLY IN THE JOB. A step function nothing calls is the dangling-declaration shape
+// (DESIGN section 3c) and would leave the guard passing its own witness while never running.
+test fn the_build_job_carries_the_reset_observer_dispatch_admission() -> Bool {
+  any(
+    fleet_converge_workflow.jobs[0].steps,
+    st => match st {
+      RunStep { name: n, id: i, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+        match i { Present { value: v } => v == "reset_observer_dispatch_admission"  Absent => false }
+      UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+    }
+  ) && fleet_converge_workflow.jobs[0].id == "build"
+}
 
 // THE VOCABULARY IS THE ONLY SPELLING AUTHORITY, and these are the facts that make that a claim
 // rather than a hope.

@@ -369,6 +369,10 @@ fn fleet_converge_build_job_annotations() -> List<CapabilityAnnotatedStep> {
         step_name: "Build release binaries",
         role: consumes_only(capabilities: [CargoCapability]),
       },
+      CapabilityAnnotatedStep {
+        step_name: "Reset-return dispatch admission: refuse an unnamed observer before anything is scheduled",
+        role: capability_neutral,
+      },
       CapabilityAnnotatedStep { step_name: "Pack release bins", role: capability_neutral },
       CapabilityAnnotatedStep { step_name: "Upload release bins", role: capability_neutral },
     ],
@@ -381,6 +385,49 @@ fn fleet_converge_build_job_capability_closure_holds() -> Bool {
   )
 }
 
+// THE ONE PAIRING STATE REACHABLE AT DISPATCH TIME, REFUSED WHERE IT CAN STILL BE HEARD. Review 61950
+// found the hole: reset_observer is required:false because it is meaningful for exactly one mode, and
+// its value is interpolated into the reset job's runs-on. A dispatch of mode=host_reset_return that
+// omits it -- which an API or `gh workflow run` dispatch does by supplying "" -- passes the job's if:
+// gate and asks for labels ["self-hosted","linux","arm64",""]. No runner carries an empty label, so
+// the job QUEUES until the 105-minute backstop and then dies with no diagnostic, no receipt and no
+// upload; the upload step never runs, so not even its if-no-files-found: error fires. A silent stall
+// standing exactly where the rest of this mode puts a loud refusal.
+//
+// WHY THE CHECK CANNOT LIVE IN THE RESET JOB. runs-on is resolved before any step of that job exists,
+// so a refusal step inside it is unreachable in precisely the state it would diagnose. The build job
+// is this workflow's only always-schedulable job -- generic labels, no interpolation -- and every
+// host-scoped job needs it, so a refusal here stops the line before anything is scheduled rather than
+// after something has queued.
+//
+// WHY NOT A DEFAULT, which was the other arm the review offered. Defaulting the observer would make an
+// omitted field silently select a machine and POWER-CYCLE ITS PAIRED SUBJECT. A default is the right
+// shape for a preference and the wrong one for an effect nobody asked for: the dispatcher who omits
+// the field has not chosen a subject, and inventing one for them is the fabricated-plausible-output
+// arm of DESIGN section 5, not a convenience. Refusing costs one re-dispatch; defaulting costs a reboot.
+fn fleet_converge_reset_observer_dispatch_admission_step() -> Step {
+  RunStep {
+    name: Present { value: "Reset-return dispatch admission: refuse an unnamed observer before anything is scheduled" },
+    id: Present { value: "reset_observer_dispatch_admission" },
+    run: join([
+      "if [ \"${{ github.event.inputs.mode }}\" = \"host_reset_return\" ] && [ -z \"${{ github.event.inputs.reset_observer }}\" ]; then\n",
+      "  echo \"::error::ResetObserverUnnamed: mode=host_reset_return was dispatched with an empty reset_observer. ",
+      "The reset job's runs-on interpolates that label, so an empty value asks for a runner carrying no label and the job would queue until its backstop with no receipt. ",
+      "The subject is DERIVED from the observer through gunbc.host_reset_return reset_dispatch_pairings, so an unnamed observer names no subject and there is nothing to reset. ",
+      "Re-dispatch naming one of the rostered observers the form offers.\" >&2\n",
+      "  exit 1\n",
+      "fi\n",
+      "echo \"reset-observer dispatch admission: ok\"\n",
+    ], ""),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
 fn fleet_converge_build_job() -> Job {
   Job {
     id: "build",
@@ -388,7 +435,12 @@ fn fleet_converge_build_job() -> Job {
     runner: gunbc_ci_runner_spec(),
     steps: concat(
       ci_prelude_steps_with_checkout(checkout: fleet_converge_checkout_step(), exact_head_preflight: []),
-      [ci_release_build_step(), ci_release_bins_pack_step(), ci_release_bins_upload_step()],
+      [
+        fleet_converge_reset_observer_dispatch_admission_step(),
+        ci_release_build_step(),
+        ci_release_bins_pack_step(),
+        ci_release_bins_upload_step(),
+      ],
     ),
     needs: [],
     env: none,
