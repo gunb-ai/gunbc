@@ -641,6 +641,7 @@ func deliver_project_to_printer(
   printer: PhysicalAssetIdentity,
   payload: IdentifiedProjectPayload,
   token_source: AccessTokenSource,
+  materializations: List<VerifiedVersionForAttempt>,
 ) -> ProjectDelivery
   uses net: Network
 {
@@ -655,7 +656,7 @@ func deliver_project_to_printer(
       refuse_and_drop(printer: p, payload: payload,
         cause: "an endpoint names this printer but is not a LAN fabrication appliance, so it is not the file channel and delivery refuses rather than authenticating to it")
     PrinterAddressFound { address: lan_address } =>
-  match observe_printer_secret_container(printer: printer, token_source: token_source) {
+  match observe_printer_secret_container(printer: printer, token_source: token_source, materializations: materializations) {
     PrinterCredentialObservationRefused { printer: p, cause: cause } =>
       refuse_and_drop(printer: p, payload: payload, cause: cause)
     PrinterCredentialLocusUndeclared { printer: p } =>

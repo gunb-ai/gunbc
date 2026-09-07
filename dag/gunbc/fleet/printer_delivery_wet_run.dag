@@ -1,6 +1,7 @@
 module gunbc.fleet.printer_delivery_wet_run
 
-import std.types { NonEmptyStr, String }
+import std.types { NonEmptyStr, String, List }
+import gunbc.secret_provision_actuator { VerifiedVersionForAttempt }
 import std.resources { Network }
 import extdeps.shell
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
@@ -59,6 +60,14 @@ import extdeps.cloud.gcp.secret_ref { secret_ref_secret_resource }
 // every other operator and it rots the moment a scratchpad is cleared. The variable is read rather
 // than defaulted, because a default here could only be a guess at a file, and delivering the wrong
 // geometry to a printer is a physical, hour-long, filament-spending error.
+// THIS ACTUATOR CARRIES NO VERIFIED MATERIALIZATIONS, AND THAT IS WHY IT REFUSES RATHER THAN
+// PRINTS. A verification can only be minted by add_initial_version's agreeing arm, so a
+// delivery-only entry point has none to offer and will reach PROVISION REQUIRED for any printer
+// whose credential this process did not just write. The fix is not to hand this file a population
+// -- there is nowhere honest to get one -- but to invoke provisioning and delivery as ONE run, which
+// is the next cut. Until then this empty list is a true statement about this entry point.
+data no_wet_run_materializations: List<VerifiedVersionForAttempt> = []
+
 data wet_run_payload_env: NonEmptyStr = "PRINT_N_WET_PAYLOAD"
 
 // THE PRINTER IS NAMED BY THE INVOKER FOR THE SAME REASON THE PAYLOAD IS. This actuator carried
@@ -126,7 +135,8 @@ func run() -> ProcessExit uses net: Network {
       match deliver_project_to_printer(
         printer: target,
         payload: identified,
-        token_source: OperatorSuppliedToken { token: operator_token }
+        token_source: OperatorSuppliedToken { token: operator_token },
+        materializations: no_wet_run_materializations,
       ) {
         ProjectDeliveryUnattempted { printer: _, cause: cause } =>
           exit_failure(reason: concat("UNATTEMPTED: ", cause as String))
