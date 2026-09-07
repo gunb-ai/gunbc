@@ -1,0 +1,104 @@
+module extdeps.oasis.mqtt
+
+import std.types { NonEmptyStr, Bool, Port }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// MQTT, MODELED BECAUSE A DEVICE THIS REPOSITORY OWNS SPEAKS IT AND NOTHING HERE DID. The delivery
+// leg already models FTPS at extdeps.ietf.ftps; the leg that STARTS a job is MQTT, and it was the
+// piece previously actuated by a hand-written client outside the substrate.
+//
+// THE VERSION IS PART OF THE SUBJECT. MQTT 3.1.1 and MQTT 5.0 are separately governed OASIS
+// standards, not revisions of one document, and they differ where it matters to a publisher: 5.0
+// adds reason codes to PUBACK, so a 5.0 client can be told WHY a broker rejected a publish while a
+// 3.1.1 client learns only that the packet was acknowledged. Modeling one enum spanning both would
+// be the meaning fork DESIGN section 3 forbids -- one name over two materially different contracts.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html"
+  }
+}
+
+data mqtt_v5_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html"
+  }
+}
+
+data mqtt_port_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.xhtml"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.oasis.mqtt",
+      decl_name: "MqttQos",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.oasis.mqtt.extdeps_external_authority_anchor,
+  further_citations: [
+    extdeps.oasis.mqtt.mqtt_v5_authority,
+    extdeps.oasis.mqtt.mqtt_port_authority,
+  ]
+}
+
+type MqttProtocolVersion
+  = Mqtt311
+  | Mqtt5
+
+// THE THREE DELIVERY GUARANTEES, KEPT AS UPSTREAM SPELLS THEM RATHER THAN AS A BARE INTEGER. The
+// wire encoding is 0/1/2, and carrying the integer would let a caller write 3 -- a value the
+// protocol does not define -- so the closed variant is what makes that unwritable rather than
+// validated.
+//
+// THE DISTINCTION IS LOAD-BEARING FOR A PRINT COMMAND SPECIFICALLY. AtMostOnce may be dropped
+// silently by the broker, which for a start-print command means the job never begins and nothing
+// reports why. AtLeastOnce may be DELIVERED TWICE, which for a start-print command is a second job
+// on a machine already printing. Neither is a safe default, so this module declines to name one and
+// the choice is made where the consequence is understood.
+type MqttQos
+  = AtMostOnce
+  | AtLeastOnce
+  | ExactlyOnce
+
+fn mqtt_qos_wire_level(qos: MqttQos) -> Int {
+  match qos {
+    AtMostOnce => 0
+    AtLeastOnce => 1
+    ExactlyOnce => 2
+  }
+}
+
+// TLS IS NOT A PROPERTY OF THE PORT, AND PAIRING THEM IS THE ERROR THIS SHAPE PREVENTS. 1883 is
+// registered for plaintext MQTT and 8883 for MQTT over TLS, but a broker may serve TLS anywhere, so
+// deriving one from the other would encode a convention as a necessity. They are carried
+// separately and the default port is derived from the transport only where the caller does not say.
+type MqttTransportSecurity
+  = MqttPlaintext
+  | MqttOverTls
+
+data mqtt_plaintext_default_port: Port = 1883 as Port
+data mqtt_tls_default_port: Port = 8883 as Port
+
+fn mqtt_default_port(security: MqttTransportSecurity) -> Port {
+  match security {
+    MqttPlaintext => mqtt_plaintext_default_port
+    MqttOverTls => mqtt_tls_default_port
+  }
+}
+
+type MqttEndpoint {
+  host: NonEmptyStr
+  port: Port
+  security: MqttTransportSecurity
+}
+
+type MqttTopic = NonEmptyStr where brand("MqttTopic")

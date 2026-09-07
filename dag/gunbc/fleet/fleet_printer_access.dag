@@ -6,7 +6,13 @@ import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending, secret_ref_secret_
 import extdeps.uri { Uri, uri_https }
 import gunbc.fleet_asset_identity { printer_01, printer_02 }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
-import gunbc.secret_provision { fleet_secret_ref, SecretProvisionReceipt }
+import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
+import gunbc.secret_provision_actuator {
+  VerifiedVersionForAttempt, verified_version, verified_exact_ref,
+}
+import extdeps.cloud.gcp.secret_manager {
+  sm_resolved_version_secret_resource, SmVersionSecretProjected, SmVersionSecretNotAVersionResource,
+}
 import extdeps.cloud.gcp.secret_manager
 import extdeps.transports.rest {
   RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
@@ -140,19 +146,19 @@ fn printer_access_code_locus(printer: PhysicalAssetIdentity) -> PrinterAccessCod
 // lane has applied to every other positive standing: the thing downstream trusts must have been
 // earned, and must carry the identity it was earned for.
 //
-// AND THE RECEIPT DOES NOT YET MEET THAT RULE, WHICH IS STATED HERE BECAUSE AN EARLIER REVISION OF
-// THIS NOTE CLAIMED IT DID. SecretProvisionReceipt has no seal, and secret_provision_receipt is a
-// pure fn whose arguments are all supplied by its caller -- so a receipt can be minted out of
-// nothing, and sealing the type alone would not fix it, because the constructor takes no
-// effect-earned input either. The roster below is an ordinary authored list. What stops a forged
-// entry today is that nobody has written one, which is DISCIPLINE, NOT CONSTRUCTION -- and the tell
-// is exactly the one §5 names: the guarantee can be satisfied by editing a declaration.
+// AND THE POSITIVE ARM NOW MEETS THAT RULE, WHICH IS WORTH STATING PRECISELY BECAUSE TWO EARLIER
+// REVISIONS OF THIS NOTE DESCRIBED THE OPPOSITE STATE. The old text said a receipt could be minted
+// out of nothing, that the roster was an ordinary authored list, and that only discipline stopped a
+// forged entry. All three sentences described code that no longer exists, and they sat directly
+// above the arm that unlocks a credential fetch against a machine on the operator LAN -- the worst
+// place in this module for prose to disagree with the wall beneath it.
 //
-// WHY THAT IS TOLERABLE TODAY AND NOT AFTER ONBOARDING LANDS. The roster is empty, so the positive
-// arm is uninhabited and every printer reaches ProvisionRequired through the remote observation. The
-// defect is latent; it goes live at the exact moment something is allowed to inhabit
-// PrinterCredentialProvisioned, because that arm is what unlocks a credential fetch against a
-// machine on the operator LAN.
+// WHAT IS TRUE NOW: nothing here reads an authored population. What inhabits the positive arm is
+// VerifiedVersionForAttempt, whose only producer is the arm of add_initial_version where the write
+// landed, the returned identity named this very secret, the read-back identity equalled what
+// AddVersion reported, and the bytes equalled the ones this run captured. The guarantee can no
+// longer be satisfied by editing a declaration, which is the §5 tell the old note correctly named
+// and correctly admitted it failed.
 //
 // RUNG: mitigation. CEILING: structural impossibility -- membership is decidable, so the invalid
 // state can be made unwritable. NEXT-RUNG TRIGGER, named as the capability and not as an artifact:
@@ -160,7 +166,17 @@ fn printer_access_code_locus(printer: PhysicalAssetIdentity) -> PrinterAccessCod
 // from the response of a performed AddVersion, with the type sealed so no other module can spell
 // one. A trigger naming merely "the onboarding workflow exists" would be satisfied while a pure
 // public constructor still stood beside it.
-data printer_access_code_provision_receipts: List<SecretProvisionReceipt> = []
+// THE AUTHORED ROSTER IS GONE RATHER THAN EMPTY, AND THAT DIFFERENCE IS THE WHOLE OF B4. Leaving
+// `data printer_access_code_provision_receipts = []` beside the sealed population would hand a
+// future author two routes to the same fact: thread an earned verification, or just append a row
+// here. The second is precisely what this cut exists to eliminate, and an empty list is the most
+// inviting possible version of it -- it costs one line and looks like it was left for you.
+//
+// WHAT REPLACES IT CANNOT BE AUTHORED. The population is now VerifiedVersionForAttempt, whose only
+// producer is the arm of add_initial_version where the exact-version read-back agreed with the bytes
+// this run captured. A caller cannot write one, so "our records say version N holds it" can no
+// longer be asserted by anyone who did not perform the write and read it back.
+data no_printer_materializations: List<VerifiedVersionForAttempt> = []
 
 // TWO QUESTIONS, ASKED IN ORDER, AND ONLY THE FIRST CAN BE ASKED OF THE REMOTE.
 //
@@ -335,6 +351,7 @@ fn classify_container_observation(
 func observe_printer_secret_container(
   printer: PhysicalAssetIdentity,
   token_source: AccessTokenSource,
+  materializations: List<VerifiedVersionForAttempt>,
 ) -> PrinterCredentialResolution uses net: Network {
   match printer_access_code_locus(printer: printer) {
     PrinterAccessCodeLocusUnknown { printer: p } =>
@@ -343,7 +360,7 @@ func observe_printer_secret_container(
       PrinterCredentialLocusConflicted { printer: p, matches: m }
     PrinterAccessCodeDesiredLocusFound { locus: locus } => {
   let desired = locus.secret
-  match materialization_lookup_for(desired: desired) {
+  match materialization_lookup_for(desired: desired, materializations: materializations) {
     MaterializationRecordConflict { matches: m } =>
       PrinterCredentialProvisionAmbiguous { printer: printer, matches: m }
     MaterializationRecordFound { record: record } =>
@@ -386,8 +403,19 @@ func observe_printer_secret_container(
 //
 // WHY A JOIN AT ALL, rather than "is the roster non-empty": otherwise any successfully provisioned
 // secret in the fleet would satisfy printer-01. The receipt has to be about THIS printer's secret.
-fn receipt_names_secret(receipt: SecretProvisionReceipt, desired: SecretRef) -> Bool {
-  secret_ref_secret_resource(ref: receipt.identity) == secret_ref_secret_resource(ref: desired)
+// THE JOIN IS AGAINST THE SECRET RESOURCE THE WRITE ACTUALLY RESOLVED TO, not against anything the
+// caller asked for. verified_exact_ref carries what AddVersion returned and AccessVersion confirmed,
+// so this compares the container the bytes DEMONSTRABLY landed in with the container delivery wants.
+//
+// VERSION IS STILL EXCLUDED FROM THE COMPARISON, for the reason the old receipt join recorded: the
+// desired identity says pending precisely because it does not know the version, and the verification
+// is the authority that supplies it. Comparing versions would make the join unsatisfiable.
+fn verification_names_secret(verified: VerifiedVersionForAttempt, desired: SecretRef) -> Bool {
+  match sm_resolved_version_secret_resource(identity: verified_exact_ref(v: verified)) {
+    SmVersionSecretNotAVersionResource { supplied: _ } => false
+    SmVersionSecretProjected { secret_resource: r } =>
+      (r as String) == secret_ref_secret_resource(ref: desired)
+  }
 }
 
 // THE PRODUCTION ADAPTER: the ONE place a stored receipt becomes a record the classifier will act on.
@@ -403,21 +431,26 @@ fn receipt_names_secret(receipt: SecretProvisionReceipt, desired: SecretRef) -> 
 // filter in the observer to build the match count. A claim of single authority is falsified by any
 // second reader, and it was falsified by two.
 //
-// SO THE CLAIM CARRIES ITS OWN CHECK: grep the tree for printer_access_code_provision_receipts. Two
-// hits are correct -- the declaration and this function. A third is a second reader and falsifies
-// this note. A sole-authority claim is a universal over the whole tree, and the previous one was
-// justified by a local reading instead; the grep is cited here so a reader can refuse the sentence
-// without taking the author's word for it.
+// SO THE CLAIM CARRIES ITS OWN CHECK, AND THE CHECK CHANGED WHEN THE ROSTER DIED. It used to say:
+// grep for printer_access_code_provision_receipts, two hits are correct. That symbol no longer
+// exists, so the old sentence would have been a check that passes because its subject is gone --
+// worse than no check, because it still reads like one. The claim is now structural instead: the
+// population arrives as a PARAMETER whose element type has no constructor outside the actuator, so
+// "is there a second reader" stopped being the interesting question. The interesting question is
+// whether anyone can MINT one, and sole_constructor answers it in the type rather than in a grep.
 //
-// THIS IS THE SEAM WHERE B4 WILL LAND. What this function reads today is an ordinary authored list,
-// so RecordedMaterialization is currently only as trustworthy as the discipline described above the
-// roster. When the provisioning actuator becomes the sole minter of an effect-earned receipt, ONLY
-// THIS FUNCTION CHANGES: the classifier already speaks in records rather than in receipts, and the
-// witnesses already author records directly, so neither has to move. That is the whole reason the
-// narrow type exists before the actuator does.
-fn materialization_lookup_for(desired: SecretRef) -> PrinterMaterializationLookup {
-  let matches = printer_access_code_provision_receipts
-    |> filter(r => receipt_names_secret(receipt: r, desired: desired))
+// B4 LANDED HERE, AND THE PREDICTION THE OLD NOTE MADE ABOUT ITSELF HELD: only this function
+// changed. The classifier already spoke in records rather than receipts and the witnesses already
+// authored records directly, so neither had to move -- which is what the narrow record type existed
+// for. RecordedMaterialization is no longer "as trustworthy as the discipline above the roster",
+// because there is no roster and no discipline in the path: the population arrives as a parameter
+// whose element type has no constructor outside the provisioning actuator.
+fn materialization_lookup_for(
+  desired: SecretRef,
+  materializations: List<VerifiedVersionForAttempt>,
+) -> PrinterMaterializationLookup {
+  let matches = materializations
+    |> filter(v => verification_names_secret(verified: v, desired: desired))
   let count = matches |> length
   if count > 1 {
     MaterializationRecordConflict { matches: count }
@@ -425,7 +458,11 @@ fn materialization_lookup_for(desired: SecretRef) -> PrinterMaterializationLooku
     match matches |> first {
       Absent => MaterializationRecordFound { record: NoRecordedMaterialization }
       Present { value: found } =>
-        MaterializationRecordFound { record: RecordedMaterialization { exact_ref: found.identity } }
+        MaterializationRecordFound {
+          record: RecordedMaterialization {
+            exact_ref: secret_ref_pin_version(ref: desired, version: verified_version(v: found)),
+          },
+        }
     }
   }
 }
