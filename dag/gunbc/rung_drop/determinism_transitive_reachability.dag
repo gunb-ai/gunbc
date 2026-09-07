@@ -22,13 +22,67 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutRep
 // CAUSE CORRECTED BY MEASUREMENT, 2026-09-07. This row previously attributed the budget
 // pressure to the NUMBER OF REACHABLE DECLARATIONS, and that attribution is refuted rather
 // than refined: the directory-grain walk this drop is gated on reaches FEWER THAN A HUNDRED
-// declarations -- barely more than the 78 it seeds from -- and still costs twenty times the
-// per-claim line. The cost is not in the reached set; it is in the CANDIDATE POOL that
-// decls_matching_callee rescans for every callee of every reached declaration. The wrong
-// sentence has been replaced rather than annotated, because a restoration trigger is the
-// whole check: a trigger naming a term that is not the cost is satisfied by nothing, and it
-// would stand forever with an honest-looking receipt attached while anyone chasing it
-// optimised a quantity that does not move the number.
+// declarations -- barely more than the 78 it seeds from -- and still costs many times the
+// per-claim line. The cost is not in the reached set. The wrong sentence was replaced rather
+// than annotated, because a restoration trigger is the whole check: a trigger naming a term
+// that is not the cost is satisfied by nothing, and it would stand forever with an
+// honest-looking receipt attached while anyone chasing it optimised a quantity that does not
+// move the number.
+//
+// AND THE REPLACEMENT SENTENCE WAS ITSELF REFUTED, 2026-09-07, BY THE FIRST LANE THAT TRIED TO
+// SATISFY IT. That correction named the mechanism as decls_matching_callee RESCANNING the
+// candidate pool -- filter(decls_in_modules(decls, modules), name == callee) evaluated once per
+// callee per reached declaration -- and the trigger it derived prescribed an index over that
+// lookup. gunbc#10753 built the index and measured it at directory grain: three alternating
+// BEFORE/AFTER repetitions in ONE dispatch on one machine, with only src/v2/std/fn_index.dag
+// swapped between arms. The index does not reach the line -- both arms are twelve to fourteen
+// times it -- and it is measurably WORSE than the lookup it replaced.
+//
+// THE VERDICT RULE WAS WRITTEN BEFORE THE NUMBERS EXISTED, which is the only reason it can be
+// quoted here as a result rather than as a rationalisation. Each run is normalised by ITS OWN
+// positive control (the_live_subject_is_not_empty, which does not call the walk at all) so that
+// machine drift cancels within the run; the index is HARMFUL iff the AFTER normalised range lies
+// entirely above the BEFORE range, BENEFICIAL iff entirely below, NEUTRAL if they overlap.
+// BEFORE normalised: 20.11, 20.06, 19.90. AFTER normalised: 23.07, 23.51, 23.56. The ranges are
+// disjoint, so the verdict is HARMFUL -- the index ADDS about 1.1 seconds (6068-6139ms before,
+// 7129-7304ms after) and removes nothing.
+//
+// THE FIRST PAIR TAKEN DID NOT DISCRIMINATE AND IS RECORDED RATHER THAN DISCARDED. At n=1 per arm
+// the control moved +24.3% against the subject's +19.8% -- a control that cannot be affected by
+// the change moving MORE than the thing under test, which licenses no conclusion in either
+// direction. At n=3 the control is stable (303-310ms across all six runs) and that excursion is
+// visible as a cold-start artifact of the first run in a dispatch. The non-discriminating reading
+// was correct for the data available when it was taken, and the rule that caught it is the one
+// worth keeping: a negative is trustworthy only beside a positive control that fires.
+//
+// WHY THAT MECHANISM CANNOT BE WHAT EXECUTES. decls_in_modules(decls, closure_modules) is a
+// plain-valued call with hashable arguments, and the v1 interpreter carries an eval-frame call
+// memo that is ON BY DEFAULT (GUNBC_EVAL_MEMO), keyed by fn identity x argument identity. So the
+// loop-invariant the trigger asked a lane to hoist HAD ALREADY BEEN HOISTED by the interpreter:
+// it is evaluated once per walk and served from the memo thereafter, as are repeated lookups of
+// the same callee. The rescan named as the cost was not being paid.
+//
+// WHAT THIS ROW NOW SEPARATES, AND WHY THE SEPARATION IS THE POINT. The FIT is unchanged and is
+// still good evidence: directory-grain cost remains consistent with a term involving the reached
+// set and the candidate-pool size, and O(reached^2) remains refuted by 44x. The MECHANISM behind
+// that fit is UNESTABLISHED. A correct fit carrying a false mechanism is the more dangerous
+// artifact of the two, because it keeps recruiting repairs aimed at the wrong thing while
+// looking like it has already been diagnosed -- which is exactly what it did to gunbc#10753.
+//
+// THE TRIGGER IS WITHDRAWN, NOT WEAKENED, and the distinction is load-bearing. A restoration
+// trigger is a repair PRESCRIPTION, not a note; once its mechanism is false, leaving it standing
+// as the declared way out with an "an index did not help" remark beside it would be precisely
+// the misleading artifact this row exists to prevent. Nothing is prescribed until the charged
+// cost is attributed to something that actually executes.
+//
+// ONE OBSERVATION, AT THE GRAIN IT WAS TAKEN AND NO WIDER. Under claim_batch on a BuildBuddy
+// runner the directory-grain walk EXECUTES, COMPLETES AND PASSES at 6-7 seconds -- it is not
+// interrupted there. That establishes executability and says NOTHING about the required floor,
+// whose disposition for this claim is unpinned and where whether a poll-visible deadline is
+// armed the same way is unresolved. So this row's `interrupted_before_verdict` cause is recorded
+// as UNVERIFIED PENDING REQUIRED-FLOOR INSTRUMENTATION: not "cannot finish", and equally not
+// "finishes over budget on the floor", because the run that would license the second sentence
+// has not been taken.
 data determinism_transitive_reachability: RungDrop = RungDrop {
   identity: "determinism_transitive_reachability" as NonEmptyStr,
 
@@ -46,6 +100,6 @@ data determinism_transitive_reachability: RungDrop = RungDrop {
       "v2.lens.affected_set.corpus_dependency_view (fn-arrow composition, deleted)",
       "v2.lens.affected_set.entry_selection (fn-arrow declarations, deleted)",
     ],
-    restoration_trigger: "CAPABILITY: THE CALLEE LOOKUP ANSWERS BY INDEX RATHER THAN BY SCANNING THE CANDIDATE POOL — v2.std.fn_index.decls_matching_callee resolves (module set, callee name) to its matching declarations through an index built once per acquisition, so the walk's cost is a function of the declarations it REACHES and not of the pool it was handed. SUFFICIENT FOR: determinism_transitive_holds with pool_roots=['src/v2/lens'] and pool_files=[] reaching a verdict (Holds or Findings) within the 500ms required_floor_claim_cpu_safety_limit_ms, at directory grain, without narrowing the subject. MEASURED CAUSE, replacing this row's previous attribution to the number of reachable declarations, which is refuted: at directory grain the walk reaches FEWER THAN 100 declarations against a candidate pool of 1500-2000 and costs 10137ms — about 90ms per reached declaration, against 2.9ms per reached declaration at file grain where the pool equals the reached set. The two cost models separate cleanly across the two grains: O(reached x pool) agrees within 1.9x, O(reached squared) disagrees by 44x. The mechanism is that decls_matching_callee runs filter(decls_in_modules(decls, modules), name == callee) — a full scan of the candidate pool plus a module-membership scan — once per callee per reached declaration. At file grain pool equals n, so the shape LOOKS quadratic in the reached set; at directory grain the two decouple and the pool dominates. Re-derive the instrument rather than trusting these figures: claim_batch over a probe calling call_reachable_decls at both grains, bracketing the reached count and the pool size by threshold ladder. BOTH REPAIRS THIS ROW PREVIOUSLY PRESCRIBED ARE REFUTED BY THAT MEASUREMENT AND ARE NAMED HERE SO THEY ARE NOT RE-ATTEMPTED. (i) Reducing PER-DECLARATION cost in determinism_findings or callees_from_node cannot reach the line: the reached population is under 100 and the walk is 10137ms, so even halving per-declaration work leaves seconds. (ii) Scoping pool_roots to exactly the modules reachable from affected_set.dag WOULD lower the number, and that is the trap rather than the repair — it lowers it by SHRINKING THE POOL, leaving the shape intact, and it is the same narrow-the-subject move that created this drop in the first place. A drop retired that way re-breaks the moment the subject widens, and the widening is the thing the drop exists to restore. THREE COST SHAPES IN THIS WALK ARE REAL AND ARE EXPLICITLY NOT THE COST, recorded so a later reader does not fix them and believe the defect is gone: call_reachable_decls_go scans `reached` linearly per seed (decl_in_list) and appends to it with a copied accumulator (list_snoc_item), and list_append(rest, callee_decls) copies the seed list per step — all three quadratic in the reached set, all three subject to the bare-minimum-cost rule, and all three small at the measured reached counts. determinism_transitive_findings folds with concat(acc, determinism_findings(...)), a copied accumulator that is FREE while the corpus is clean and degrades quadratically exactly when findings appear, so it is invisible in every green run and expensive only when something is already wrong. determinism_live_closure_modules folds list_snoc_item over module_declaration_facts_live(pool_roots: []), a copied accumulator over a list that is empty today. Until this trigger fires, determinism over the fn-arrow call graph is unverified.",
+    restoration_trigger: "CAPABILITY WITHDRAWN, NOT WEAKENED, 2026-09-07 -- THIS ROW PRESCRIBES NO REPAIR UNTIL THE COST IS ATTRIBUTED. The previously declared capability (the callee lookup answering BY INDEX rather than by scanning the candidate pool) is withdrawn because the mechanism it was derived from is refuted by execution: v2.std.fn_index.decls_in_modules is a plain-valued call with hashable arguments and the v1 interpreter eval-frame call memo (GUNBC_EVAL_MEMO, on by default, keyed by fn identity x argument identity) had already collapsed it to one evaluation per walk, so the per-lookup rescan that trigger asked a lane to remove was not being paid. gunbc#10753 built exactly that index and measured it at directory grain, both arms in ONE dispatch on one machine with only src/v2/std/fn_index.dag swapped between arms, three alternating repetitions: 6068-6139ms before, 7129-7304ms after, all six PASS, all twelve to fourteen times the 500ms required_floor_claim_cpu_safety_limit_ms. THE VERDICT RULE WAS PRE-REGISTERED BEFORE THE NUMBERS EXISTED -- normalise each run by its own positive control (the_live_subject_is_not_empty, which does not call the walk), HARMFUL iff the AFTER normalised range lies entirely above the BEFORE range -- and the ranges are disjoint (BEFORE 19.90/20.06/20.11, AFTER 23.07/23.51/23.56), so the index is HARMFUL: it adds about 1.1 seconds and removes nothing. The FIRST pair taken did not discriminate at all and that is recorded rather than discarded: at n=1 per arm the control moved +24.3% against the subject +19.8%, licensing no conclusion in either direction, and at n=3 the control is stable at 303-310ms across all six runs with the excursion visible as a cold-start artifact of the first run in a dispatch. WHAT SURVIVES: the O(reached x pool) FIT, unchanged, agreeing within 1.9x across file and directory grain where O(reached^2) misses by 44x. WHAT DOES NOT: the causal sentence behind that fit, which is now UNESTABLISHED. THE NEXT TRIGGER IS AN ATTRIBUTION, NOT A REPAIR -- CAPABILITY: the charged directory-grain cost of determinism_transitive_holds over pool_roots=['src/v2/lens'] is attributed by MEASUREMENT to an executing mechanism, at a grain that separates acquisition, the reachability walk, and the determinism fold over the reached set, and that distinguishes cost tracking the candidate POOL from cost tracking what the walk REACHES by holding the closure fixed while the pool varies. Only once that attribution exists may this row name a repair, and the repair it names must be derived from it. SUFFICIENT FOR (unchanged, and still the thing being restored): determinism_transitive_holds with pool_roots=['src/v2/lens'] and pool_files=[] reaching a verdict within the per-claim line at directory grain, WITHOUT NARROWING THE SUBJECT -- scoping pool_roots to the modules the walk happens to reach remains the trap and not the repair, for the reason it always was: it lowers the number by shrinking the population, leaves the cost shape intact, and re-breaks the moment the subject widens, which is the widening this drop exists to restore. THREE COST SHAPES IN THIS WALK ARE REAL AND ARE EXPLICITLY NOT KNOWN TO BE THE COST, recorded so a later reader does not fix them and believe the defect is gone: call_reachable_decls_go scans `reached` linearly per seed (decl_in_list) and appends with a copied accumulator (list_snoc_item), and list_append(rest, callee_decls) copies the seed list per step; determinism_transitive_findings folds with concat(acc, determinism_findings(...)), a copied accumulator that is FREE while the corpus is clean and degrades quadratically exactly when findings appear, so it is invisible in every green run; determinism_live_closure_modules folds list_snoc_item over a list that is empty today. Until an attribution exists, determinism over the fn-arrow call graph is unverified and this row states no way out.",
   }
 }
