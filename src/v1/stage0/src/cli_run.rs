@@ -38924,7 +38924,7 @@ impl Drop for FloorPreparedAuthorityGuard {
 /// Install prepared source bytes. Only `register_floor_prepared_authority_guard` calls this so
 /// Drop always clears the thread-locals and compile memo.
 fn register_floor_prepared_authority(inventory: Vec<PreparedSourceView>) {
-    crate::coproduct_reflection::register_floor_decl_parse_memo();
+    crate::coproduct_reflection::register_decl_census_memo();
     let inventory_digest = floor_inventory_content_digest(&inventory);
     FLOOR_PREPARED_AUTHORITY.with(|cell| {
         *cell.borrow_mut() = Some(FloorPreparedAuthority {
@@ -38939,7 +38939,7 @@ fn register_floor_prepared_authority(inventory: Vec<PreparedSourceView>) {
 pub fn clear_floor_prepared_authority() {
     FLOOR_PREPARED_AUTHORITY.with(|cell| *cell.borrow_mut() = None);
     FLOOR_LANGUAGES_RECORDS.with(|cell| *cell.borrow_mut() = None);
-    crate::coproduct_reflection::clear_floor_decl_parse_memo();
+    crate::coproduct_reflection::clear_decl_census_memo();
     crate::v1_interpreter::clear_cross_claim_pure_memos();
 }
 
