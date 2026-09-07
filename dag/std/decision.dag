@@ -888,10 +888,11 @@ fn scan_feasibility(
   if (unfunded |> count) > 0 {
     FeasibilityRefused { defects: unfunded }
   } else {
+  let wanted = feasibility_unread_axes(axes: axes, constraints: constraints)
   let folded = fold(field, init: FeasibilityAccum { remaining: [], gaps: [], defects: [] }, f: (acc, entry) => {
     let unread = unread_axis_gaps(
       entry: entry,
-      wanted: feasibility_unread_axes(axes: axes, constraints: constraints),
+      wanted: wanted,
     )
     if (unread |> count) > 0 {
       FeasibilityAccum { remaining: acc.remaining, gaps: concat(acc.gaps, unread), defects: acc.defects }
