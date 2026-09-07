@@ -1,0 +1,596 @@
+module std.decision
+
+import std.types { Bool, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import std.observation_completeness {
+  ObservationCompleteness,
+  ObservationComplete,
+  ObservationRepeatedExpected,
+  ObservationMissingExpected,
+  ObservationForeignObserved,
+  ObservationRepeatedObserved,
+  observation_completeness,
+}
+import std.pareto {
+  AxisGoal,
+  AxisComparison,
+  Better,
+  Same,
+  Worse,
+  UndecidedOnEvidence,
+  DominanceVerdict,
+  Dominates,
+  Dominated,
+  Equivalent,
+  Incomparable,
+  DominanceUndecided,
+}
+
+// DECISION COMPLETENESS — a closed subject, not an optimizer's output.
+//
+// Scalarization, Pareto comparison, feasibility solving and enumeration are REALIZATIONS of a
+// decision subject. They do not mint the subject, and they may not silently drop a term, variable,
+// constraint or candidate the subject still owns. Completeness is a bidirectional identity join
+// over required (objective-term × decision-variable) cells, derived from named authorities —
+// never from the disposition list that carries answers for those cells.
+//
+// std.pareto.SelectionAxis stays a criterion for ordering candidate readings. It is not widened
+// here: DecisionVariable / ContextParameter / DecisionConstraint / ObjectiveTerm are the split
+// that prevents that meaning fork (DESIGN section 3).
+
+type DecisionVariable {
+  identity: DeclarationRef
+}
+
+type ContextParameter {
+  identity: DeclarationRef
+}
+
+type DecisionConstraint {
+  identity: DeclarationRef
+}
+
+type ObjectiveTerm {
+  identity: DeclarationRef
+}
+
+// ONE explicitly chosen measure. Throughput-per-watt, cores-per-watt, max throughput under a hard
+// cap, and min energy per job are DIFFERENT objectives: each is its own identity. Switching among
+// them without changing this row is a silent objective fork.
+type ObjectiveMeasure {
+  identity: DeclarationRef
+  goal: AxisGoal
+  terms: List<ObjectiveTerm>
+}
+
+// The authoritative choice population — candidates the subject admits — named apart from any
+// method's explored set. Closing one variable's axis does not close this population.
+type ChoiceDomain {
+  identity: DeclarationRef
+  variables: List<DecisionVariable>
+}
+
+type DecisionSubject {
+  identity: DeclarationRef
+  question: NonEmptyStr
+  variables: List<DecisionVariable>
+  parameters: List<ContextParameter>
+  constraints: List<DecisionConstraint>
+  objective: ObjectiveMeasure
+  choice_domain: ChoiceDomain
+}
+
+type DecisionRegion {
+  identity: DeclarationRef
+}
+
+type TermVariableRelation
+  = MonotoneIncreasing
+  | MonotoneDecreasing
+  | NonMonotone
+  | RelationOtherwiseEstablished { note: NonEmptyStr }
+
+// Invariance is a RELATION over (term, variable, region), never a property of an axis alone.
+// Region and evidence are required fields: omitting them is unwritable at construction.
+type ObjectiveTermSensitivity
+  = VariesAlong {
+      term: DeclarationRef
+      variable: DeclarationRef
+      region: DecisionRegion
+      relation: TermVariableRelation
+      evidence: NonEmptyStr
+    }
+  | InvariantAlong {
+      term: DeclarationRef
+      variable: DeclarationRef
+      region: DecisionRegion
+      evidence: NonEmptyStr
+    }
+  | SensitivityUnestablished {
+      term: DeclarationRef
+      variable: DeclarationRef
+      obligation: NonEmptyStr
+    }
+
+type SensitivityCell {
+  term: DeclarationRef
+  variable: DeclarationRef
+}
+
+fn sensitivity_cell_eq(a: SensitivityCell, b: SensitivityCell) -> Bool {
+  declaration_ref_eq(a: a.term, b: b.term) && declaration_ref_eq(a: a.variable, b: b.variable)
+}
+
+fn sensitivity_cell_of(row: ObjectiveTermSensitivity) -> SensitivityCell {
+  match row {
+    VariesAlong { term: t, variable: v, region: _, relation: _, evidence: _ } =>
+      SensitivityCell { term: t, variable: v }
+    InvariantAlong { term: t, variable: v, region: _, evidence: _ } =>
+      SensitivityCell { term: t, variable: v }
+    SensitivityUnestablished { term: t, variable: v, obligation: _ } =>
+      SensitivityCell { term: t, variable: v }
+  }
+}
+
+fn sensitivity_is_unestablished(row: ObjectiveTermSensitivity) -> Bool {
+  match row {
+    SensitivityUnestablished { term: _, variable: _, obligation: _ } => true
+    VariesAlong { term: _, variable: _, region: _, relation: _, evidence: _ } => false
+    InvariantAlong { term: _, variable: _, region: _, evidence: _ } => false
+  }
+}
+
+fn sensitivity_obligation(row: ObjectiveTermSensitivity) -> NonEmptyStr? {
+  match row {
+    SensitivityUnestablished { term: _, variable: _, obligation: o } => Present { value: o }
+    VariesAlong { term: _, variable: _, region: _, relation: _, evidence: _ } => Absent
+    InvariantAlong { term: _, variable: _, region: _, evidence: _ } => Absent
+  }
+}
+
+// Required (term, variable) cells are the cartesian product of the objective's term population and
+// the subject's decision variables. Derived from the subject authorities — never from the
+// sensitivity disposition list.
+fn required_sensitivity_cells(subject: DecisionSubject) -> List<SensitivityCell> {
+  flat_map(subject.objective.terms, term =>
+    map(subject.variables, variable =>
+      SensitivityCell { term: term.identity, variable: variable.identity }
+    )
+  )
+}
+
+fn assessed_sensitivity_cells(rows: List<ObjectiveTermSensitivity>) -> List<SensitivityCell> {
+  map(rows, row => sensitivity_cell_of(row: row))
+}
+
+type SensitivityClosure
+  = SensitivityClosureComplete
+  | SensitivityClosureRepeatedExpected { cells: List<SensitivityCell> }
+  | SensitivityClosureMissing { cells: List<SensitivityCell> }
+  | SensitivityClosureForeign { cells: List<SensitivityCell> }
+  | SensitivityClosureRepeatedObserved { cells: List<SensitivityCell> }
+
+fn sensitivity_closure(
+  subject: DecisionSubject,
+  rows: List<ObjectiveTermSensitivity>,
+) -> SensitivityClosure {
+  match observation_completeness(
+    expected: required_sensitivity_cells(subject: subject),
+    observed: assessed_sensitivity_cells(rows: rows),
+    key_eq: sensitivity_cell_eq,
+  ) {
+    ObservationComplete => SensitivityClosureComplete
+    ObservationRepeatedExpected { keys: cells } => SensitivityClosureRepeatedExpected { cells: cells }
+    ObservationMissingExpected { keys: cells } => SensitivityClosureMissing { cells: cells }
+    ObservationForeignObserved { keys: cells } => SensitivityClosureForeign { cells: cells }
+    ObservationRepeatedObserved { keys: cells } => SensitivityClosureRepeatedObserved { cells: cells }
+  }
+}
+
+fn subject_variable_identities(subject: DecisionSubject) -> List<DeclarationRef> {
+  map(subject.variables, v => v.identity)
+}
+
+fn choice_domain_variable_identities(domain: ChoiceDomain) -> List<DeclarationRef> {
+  map(domain.variables, v => v.identity)
+}
+
+type VariablePopulationClosure
+  = VariablePopulationComplete
+  | VariablePopulationRepeatedExpected { identities: List<DeclarationRef> }
+  | VariablePopulationMissing { identities: List<DeclarationRef> }
+  | VariablePopulationForeign { identities: List<DeclarationRef> }
+  | VariablePopulationRepeatedObserved { identities: List<DeclarationRef> }
+
+// The subject's variable roster must agree with the choice-domain authority's variables. A method
+// that varies only socket_power_cap while the choice domain still includes powered_chassis_count
+// cannot close this join — and therefore cannot mint Settled.
+fn variable_population_closure(subject: DecisionSubject) -> VariablePopulationClosure {
+  match observation_completeness(
+    expected: choice_domain_variable_identities(domain: subject.choice_domain),
+    observed: subject_variable_identities(subject: subject),
+    key_eq: declaration_ref_eq,
+  ) {
+    ObservationComplete => VariablePopulationComplete
+    ObservationRepeatedExpected { keys: ids } => VariablePopulationRepeatedExpected { identities: ids }
+    ObservationMissingExpected { keys: ids } => VariablePopulationMissing { identities: ids }
+    ObservationForeignObserved { keys: ids } => VariablePopulationForeign { identities: ids }
+    ObservationRepeatedObserved { keys: ids } => VariablePopulationRepeatedObserved { identities: ids }
+  }
+}
+
+type ConstraintDisposition
+  = ConstraintSatisfied { constraint: DeclarationRef, evidence: NonEmptyStr }
+  | ConstraintViolated { constraint: DeclarationRef, evidence: NonEmptyStr }
+  | ConstraintUnestablished { constraint: DeclarationRef, obligation: NonEmptyStr }
+
+fn constraint_identity(row: ConstraintDisposition) -> DeclarationRef {
+  match row {
+    ConstraintSatisfied { constraint: c, evidence: _ } => c
+    ConstraintViolated { constraint: c, evidence: _ } => c
+    ConstraintUnestablished { constraint: c, obligation: _ } => c
+  }
+}
+
+fn required_constraint_identities(subject: DecisionSubject) -> List<DeclarationRef> {
+  map(subject.constraints, c => c.identity)
+}
+
+type ConstraintClosure
+  = ConstraintClosureComplete
+  | ConstraintClosureRepeatedExpected { identities: List<DeclarationRef> }
+  | ConstraintClosureMissing { identities: List<DeclarationRef> }
+  | ConstraintClosureForeign { identities: List<DeclarationRef> }
+  | ConstraintClosureRepeatedObserved { identities: List<DeclarationRef> }
+
+fn constraint_closure(
+  subject: DecisionSubject,
+  rows: List<ConstraintDisposition>,
+) -> ConstraintClosure {
+  match observation_completeness(
+    expected: required_constraint_identities(subject: subject),
+    observed: map(rows, r => constraint_identity(row: r)),
+    key_eq: declaration_ref_eq,
+  ) {
+    ObservationComplete => ConstraintClosureComplete
+    ObservationRepeatedExpected { keys: ids } => ConstraintClosureRepeatedExpected { identities: ids }
+    ObservationMissingExpected { keys: ids } => ConstraintClosureMissing { identities: ids }
+    ObservationForeignObserved { keys: ids } => ConstraintClosureForeign { identities: ids }
+    ObservationRepeatedObserved { keys: ids } => ConstraintClosureRepeatedObserved { identities: ids }
+  }
+}
+
+type ParameterDisposition
+  = ParameterBound { parameter: DeclarationRef, evidence: NonEmptyStr }
+  | ParameterUnestablished { parameter: DeclarationRef, obligation: NonEmptyStr }
+
+fn parameter_identity(row: ParameterDisposition) -> DeclarationRef {
+  match row {
+    ParameterBound { parameter: p, evidence: _ } => p
+    ParameterUnestablished { parameter: p, obligation: _ } => p
+  }
+}
+
+fn required_parameter_identities(subject: DecisionSubject) -> List<DeclarationRef> {
+  map(subject.parameters, p => p.identity)
+}
+
+type ParameterClosure
+  = ParameterClosureComplete
+  | ParameterClosureRepeatedExpected { identities: List<DeclarationRef> }
+  | ParameterClosureMissing { identities: List<DeclarationRef> }
+  | ParameterClosureForeign { identities: List<DeclarationRef> }
+  | ParameterClosureRepeatedObserved { identities: List<DeclarationRef> }
+
+fn parameter_closure(
+  subject: DecisionSubject,
+  rows: List<ParameterDisposition>,
+) -> ParameterClosure {
+  match observation_completeness(
+    expected: required_parameter_identities(subject: subject),
+    observed: map(rows, r => parameter_identity(row: r)),
+    key_eq: declaration_ref_eq,
+  ) {
+    ObservationComplete => ParameterClosureComplete
+    ObservationRepeatedExpected { keys: ids } => ParameterClosureRepeatedExpected { identities: ids }
+    ObservationMissingExpected { keys: ids } => ParameterClosureMissing { identities: ids }
+    ObservationForeignObserved { keys: ids } => ParameterClosureForeign { identities: ids }
+    ObservationRepeatedObserved { keys: ids } => ParameterClosureRepeatedObserved { identities: ids }
+  }
+}
+
+// A method may drop an objective term only with an order-preservation derivation against the
+// actual objective composition. Absent that authority, scalarization that eliminates a term refuses.
+type OrderPreservationAuthority
+  = OrderPreservationEstablished {
+      authority: DeclarationRef
+      dropped_term: DeclarationRef
+      evidence: NonEmptyStr
+    }
+  | OrderPreservationAbsent { dropped_term: DeclarationRef, obligation: NonEmptyStr }
+
+type TermDropStanding
+  = TermDropAdmitted { authority: DeclarationRef }
+  | TermDropRefused { cause: NonEmptyStr }
+
+fn term_drop_standing(authority: OrderPreservationAuthority) -> TermDropStanding {
+  match authority {
+    OrderPreservationEstablished { authority: a, dropped_term: _, evidence: _ } =>
+      TermDropAdmitted { authority: a }
+    OrderPreservationAbsent { dropped_term: _, obligation: o } =>
+      TermDropRefused { cause: o }
+  }
+}
+
+type DecisionAssessment {
+  subject: DecisionSubject
+  sensitivities: List<ObjectiveTermSensitivity>
+  constraints: List<ConstraintDisposition>
+  parameters: List<ParameterDisposition>
+  selected_candidate: DeclarationRef?
+  term_drops: List<OrderPreservationAuthority>
+}
+
+type StructuralClosureCause
+  = SensitivityCellsIncomplete { detail: SensitivityClosure }
+  | VariablePopulationIncomplete { detail: VariablePopulationClosure }
+  | ConstraintsIncomplete { detail: ConstraintClosure }
+  | ParametersIncomplete { detail: ParameterClosure }
+  | TermDropWithoutOrderPreservation { cause: NonEmptyStr }
+  | SelectedCandidateAbsent
+
+type DecisionClosure
+  = DecisionClosureSettledReady
+  | DecisionClosureDeferred { obligations: List<NonEmptyStr>, reopen_trigger: NonEmptyStr }
+  | DecisionClosureRefused { cause: StructuralClosureCause }
+
+fn collect_sensitivity_obligations(rows: List<ObjectiveTermSensitivity>) -> List<NonEmptyStr> {
+  flat_map(rows, row =>
+    match sensitivity_obligation(row: row) {
+      Present { value: o } => [o]
+      Absent => []
+    }
+  )
+}
+
+fn collect_constraint_obligations(rows: List<ConstraintDisposition>) -> List<NonEmptyStr> {
+  flat_map(rows, row =>
+    match row {
+      ConstraintUnestablished { constraint: _, obligation: o } => [o]
+      ConstraintSatisfied { constraint: _, evidence: _ } => []
+      ConstraintViolated { constraint: _, evidence: _ } => []
+    }
+  )
+}
+
+fn collect_parameter_obligations(rows: List<ParameterDisposition>) -> List<NonEmptyStr> {
+  flat_map(rows, row =>
+    match row {
+      ParameterUnestablished { parameter: _, obligation: o } => [o]
+      ParameterBound { parameter: _, evidence: _ } => []
+    }
+  )
+}
+
+fn first_term_drop_refusal(drops: List<OrderPreservationAuthority>) -> NonEmptyStr? {
+  flat_map(drops, d =>
+    match term_drop_standing(authority: d) {
+      TermDropRefused { cause: c } => [c]
+      TermDropAdmitted { authority: _ } => []
+    }
+  ).first()
+}
+
+fn structural_join_refuses(
+  sensitivity: SensitivityClosure,
+  variables: VariablePopulationClosure,
+  constraints: ConstraintClosure,
+  parameters: ParameterClosure,
+) -> StructuralClosureCause? {
+  match sensitivity {
+    SensitivityClosureComplete =>
+      match variables {
+        VariablePopulationComplete =>
+          match constraints {
+            ConstraintClosureComplete =>
+              match parameters {
+                ParameterClosureComplete => Absent
+                ParameterClosureRepeatedExpected { identities: ids } =>
+                  Present { value: ParametersIncomplete { detail: ParameterClosureRepeatedExpected { identities: ids } } }
+                ParameterClosureMissing { identities: ids } =>
+                  Present { value: ParametersIncomplete { detail: ParameterClosureMissing { identities: ids } } }
+                ParameterClosureForeign { identities: ids } =>
+                  Present { value: ParametersIncomplete { detail: ParameterClosureForeign { identities: ids } } }
+                ParameterClosureRepeatedObserved { identities: ids } =>
+                  Present { value: ParametersIncomplete { detail: ParameterClosureRepeatedObserved { identities: ids } } }
+              }
+            ConstraintClosureRepeatedExpected { identities: ids } =>
+              Present { value: ConstraintsIncomplete { detail: ConstraintClosureRepeatedExpected { identities: ids } } }
+            ConstraintClosureMissing { identities: ids } =>
+              Present { value: ConstraintsIncomplete { detail: ConstraintClosureMissing { identities: ids } } }
+            ConstraintClosureForeign { identities: ids } =>
+              Present { value: ConstraintsIncomplete { detail: ConstraintClosureForeign { identities: ids } } }
+            ConstraintClosureRepeatedObserved { identities: ids } =>
+              Present { value: ConstraintsIncomplete { detail: ConstraintClosureRepeatedObserved { identities: ids } } }
+          }
+        VariablePopulationRepeatedExpected { identities: ids } =>
+          Present { value: VariablePopulationIncomplete { detail: VariablePopulationRepeatedExpected { identities: ids } } }
+        VariablePopulationMissing { identities: ids } =>
+          Present { value: VariablePopulationIncomplete { detail: VariablePopulationMissing { identities: ids } } }
+        VariablePopulationForeign { identities: ids } =>
+          Present { value: VariablePopulationIncomplete { detail: VariablePopulationForeign { identities: ids } } }
+        VariablePopulationRepeatedObserved { identities: ids } =>
+          Present { value: VariablePopulationIncomplete { detail: VariablePopulationRepeatedObserved { identities: ids } } }
+      }
+    SensitivityClosureRepeatedExpected { cells: cells } =>
+      Present { value: SensitivityCellsIncomplete { detail: SensitivityClosureRepeatedExpected { cells: cells } } }
+    SensitivityClosureMissing { cells: cells } =>
+      Present { value: SensitivityCellsIncomplete { detail: SensitivityClosureMissing { cells: cells } } }
+    SensitivityClosureForeign { cells: cells } =>
+      Present { value: SensitivityCellsIncomplete { detail: SensitivityClosureForeign { cells: cells } } }
+    SensitivityClosureRepeatedObserved { cells: cells } =>
+      Present { value: SensitivityCellsIncomplete { detail: SensitivityClosureRepeatedObserved { cells: cells } } }
+  }
+}
+
+// THE ORDINARY CONSUMER PATH. Settlement is minted only here. An incomplete closure cannot produce
+// Settled — that invalid state is unwritable because SettledPolicy is sole_constructor and this
+// mint is the only admitted constructor, and it refuses incomplete structure.
+fn decision_closure(assessment: DecisionAssessment) -> DecisionClosure {
+  let sens = sensitivity_closure(subject: assessment.subject, rows: assessment.sensitivities)
+  let vars = variable_population_closure(subject: assessment.subject)
+  let cons = constraint_closure(subject: assessment.subject, rows: assessment.constraints)
+  let params = parameter_closure(subject: assessment.subject, rows: assessment.parameters)
+  match structural_join_refuses(sensitivity: sens, variables: vars, constraints: cons, parameters: params) {
+    Present { value: cause } => DecisionClosureRefused { cause: cause }
+    Absent =>
+      match first_term_drop_refusal(drops: assessment.term_drops) {
+        Present { value: cause } => DecisionClosureRefused { cause: TermDropWithoutOrderPreservation { cause: cause } }
+        Absent => {
+          let sens_obs = collect_sensitivity_obligations(rows: assessment.sensitivities)
+          let cons_obs = collect_constraint_obligations(rows: assessment.constraints)
+          let param_obs = collect_parameter_obligations(rows: assessment.parameters)
+          let obligations = concat(sens_obs, concat(cons_obs, param_obs))
+          if (obligations |> count) > 0 {
+            DecisionClosureDeferred {
+              obligations: obligations,
+              reopen_trigger: "every listed obligation discharged with evidence that closes its cell or constraint without dropping an objective term absent an order-preservation authority" as NonEmptyStr,
+            }
+          } else {
+            match assessment.selected_candidate {
+              Absent => DecisionClosureRefused { cause: SelectedCandidateAbsent }
+              Present { value: _ } => DecisionClosureSettledReady
+            }
+          }
+        }
+      }
+  }
+}
+
+// Settled is reachable only through mint_settled_policy. Deferred and Refused stay ordinary —
+// unresolved evidence is honest standing, not the invalid state. The invalid state is Settled
+// carrying an incomplete closure, and sole_constructor + this mint make that unwritable.
+type SettledPolicy sole_constructor {
+  subject: DeclarationRef
+  selected_candidate: DeclarationRef
+}
+
+type DecisionStanding
+  = Settled { policy: SettledPolicy }
+  | Deferred { obligations: List<NonEmptyStr>, reopen_trigger: NonEmptyStr }
+  | DecisionRefused { cause: StructuralClosureCause }
+
+fn mint_settled_policy(assessment: DecisionAssessment) -> DecisionStanding {
+  match decision_closure(assessment: assessment) {
+    DecisionClosureSettledReady =>
+      match assessment.selected_candidate {
+        Present { value: selected } => Settled {
+          policy: SettledPolicy {
+            subject: assessment.subject.identity,
+            selected_candidate: selected,
+          }
+        }
+        Absent => DecisionRefused { cause: SelectedCandidateAbsent }
+      }
+    DecisionClosureDeferred { obligations: o, reopen_trigger: t } =>
+      Deferred { obligations: o, reopen_trigger: t }
+    DecisionClosureRefused { cause: c } => DecisionRefused { cause: c }
+  }
+}
+
+// Consumer wall: convergence / actuation accepts only Settled. Deferred and Refused cannot pass.
+type SettledPolicyAcceptance
+  = SettledPolicyAccepted { policy: SettledPolicy }
+  | SettledPolicyRejectedDeferred { obligations: List<NonEmptyStr>, reopen_trigger: NonEmptyStr }
+  | SettledPolicyRejectedRefused { cause: StructuralClosureCause }
+
+fn accept_settled_policy(standing: DecisionStanding) -> SettledPolicyAcceptance {
+  match standing {
+    Settled { policy: p } => SettledPolicyAccepted { policy: p }
+    Deferred { obligations: o, reopen_trigger: t } =>
+      SettledPolicyRejectedDeferred { obligations: o, reopen_trigger: t }
+    DecisionRefused { cause: c } => SettledPolicyRejectedRefused { cause: c }
+  }
+}
+
+fn standing_is_settled(standing: DecisionStanding) -> Bool {
+  match standing {
+    Settled { policy: _ } => true
+    Deferred { obligations: _, reopen_trigger: _ } => false
+    DecisionRefused { cause: _ } => false
+  }
+}
+
+fn standing_is_deferred(standing: DecisionStanding) -> Bool {
+  match standing {
+    Deferred { obligations: _, reopen_trigger: _ } => true
+    Settled { policy: _ } => false
+    DecisionRefused { cause: _ } => false
+  }
+}
+
+fn standing_is_refused(standing: DecisionStanding) -> Bool {
+  match standing {
+    DecisionRefused { cause: _ } => true
+    Settled { policy: _ } => false
+    Deferred { obligations: _, reopen_trigger: _ } => false
+  }
+}
+
+// Candidate comparison reuses std.pareto's vocabulary: Incomparable is a proved trade-off;
+// UndecidedOnEvidence / DominanceUndecided means the evidence is too coarse. Opposite remedies.
+type CandidateComparisonStanding
+  = CandidatesComparable { verdict: DominanceVerdict }
+  | CandidatesIncomparableTradeoff
+  | CandidatesUndecidedOnEvidence
+  | CandidateComparisonRefused { cause: NonEmptyStr }
+
+fn candidate_comparison_standing(verdict: DominanceVerdict) -> CandidateComparisonStanding {
+  match verdict {
+    Incomparable => CandidatesIncomparableTradeoff
+    DominanceUndecided => CandidatesUndecidedOnEvidence
+    Dominates => CandidatesComparable { verdict: Dominates }
+    Dominated => CandidatesComparable { verdict: Dominated }
+    Equivalent => CandidatesComparable { verdict: Equivalent }
+  }
+}
+
+fn axis_comparison_is_undecided(cmp: AxisComparison) -> Bool {
+  match cmp {
+    UndecidedOnEvidence => true
+    Better => false
+    Same => false
+    Worse => false
+  }
+}
+
+// A variable is irrelevant only when EVERY applicable objective term and constraint has a closed
+// relation to it and those relations jointly prove changing it cannot change feasibility or
+// ordering. It may never be authored as Invariant or Ignored as a whole-axis claim.
+fn variable_irrelevance_is_derived(
+  subject: DecisionSubject,
+  variable: DeclarationRef,
+  rows: List<ObjectiveTermSensitivity>,
+) -> Bool {
+  let required = required_sensitivity_cells(subject: subject)
+    |> filter(c => declaration_ref_eq(a: c.variable, b: variable))
+  let for_var = rows |> filter(r => declaration_ref_eq(a: sensitivity_cell_of(row: r).variable, b: variable))
+  match observation_completeness(
+    expected: required,
+    observed: assessed_sensitivity_cells(rows: for_var),
+    key_eq: sensitivity_cell_eq,
+  ) {
+    ObservationComplete =>
+      all(for_var, r =>
+        match r {
+          InvariantAlong { term: _, variable: _, region: _, evidence: _ } => true
+          VariesAlong { term: _, variable: _, region: _, relation: _, evidence: _ } => false
+          SensitivityUnestablished { term: _, variable: _, obligation: _ } => false
+        }
+      )
+    ObservationRepeatedExpected { keys: _ } => false
+    ObservationMissingExpected { keys: _ } => false
+    ObservationForeignObserved { keys: _ } => false
+    ObservationRepeatedObserved { keys: _ } => false
+  }
+}

@@ -1,0 +1,600 @@
+module test.claim.decision_completeness_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.pareto {
+  HigherIsBetter,
+  DominanceVerdict, Incomparable, DominanceUndecided, Dominates, Dominated, Equivalent,
+}
+import std.decision {
+  DecisionVariable,
+  ContextParameter,
+  DecisionConstraint,
+  ObjectiveTerm,
+  ObjectiveMeasure,
+  ChoiceDomain,
+  DecisionSubject,
+  DecisionRegion,
+  ObjectiveTermSensitivity,
+  VariesAlong,
+  InvariantAlong,
+  SensitivityUnestablished,
+  MonotoneDecreasing,
+  ConstraintDisposition,
+  ConstraintSatisfied,
+  ParameterDisposition,
+  ParameterBound,
+  OrderPreservationAbsent,
+  OrderPreservationEstablished,
+  term_drop_standing,
+  TermDropRefused,
+  TermDropAdmitted,
+  DecisionAssessment,
+  Settled,
+  Deferred,
+  DecisionRefused,
+  mint_settled_policy,
+  accept_settled_policy,
+  SettledPolicyAccepted,
+  SettledPolicyRejectedDeferred,
+  SettledPolicyRejectedRefused,
+  standing_is_settled,
+  standing_is_deferred,
+  standing_is_refused,
+  required_sensitivity_cells,
+  sensitivity_closure,
+  SensitivityClosureComplete,
+  SensitivityClosureMissing,
+  SensitivityClosureForeign,
+  SensitivityClosureRepeatedObserved,
+  SensitivityClosureRepeatedExpected,
+  variable_population_closure,
+  VariablePopulationComplete,
+  VariablePopulationMissing,
+  VariablePopulationRepeatedExpected,
+  VariablePopulationForeign,
+  VariablePopulationRepeatedObserved,
+  candidate_comparison_standing,
+  CandidatesIncomparableTradeoff,
+  CandidatesUndecidedOnEvidence,
+  CandidatesComparable,
+  CandidateComparisonRefused,
+  variable_irrelevance_is_derived,
+}
+
+// SYNTHETIC CLOSED SUBJECT — positive control and discriminating reds. Required populations are
+// named data rows (authorities). Disposition lists are built per test and never used as the
+// required-population oracle.
+
+data id_var_a: DeclarationRef = decl_ref(module_path: "test.claim.decision_completeness_witness", decl_name: "var_a")
+data id_var_b: DeclarationRef = decl_ref(module_path: "test.claim.decision_completeness_witness", decl_name: "var_b")
+data id_term_power: DeclarationRef = decl_ref(module_path: "test.claim.decision_completeness_witness", decl_name: "term_power")
+data id_term_throughput: DeclarationRef = decl_ref(module_path: "test.claim.decision_completeness_witness", decl_name: "term_throughput")
+data id_constraint: DeclarationRef = decl_ref(module_path: "test.claim.decision_completeness_witness", decl_name: "constraint_budget")
+data id_param: DeclarationRef = decl_ref(module_path: "test.claim.decision_completeness_witness", decl_name: "param_workload")
+data id_objective: DeclarationRef = decl_ref(module_path: "test.claim.decision_completeness_witness", decl_name: "objective_capacity")
+data id_domain: DeclarationRef = decl_ref(module_path: "test.claim.decision_completeness_witness", decl_name: "choice_domain")
+data id_subject: DeclarationRef = decl_ref(module_path: "test.claim.decision_completeness_witness", decl_name: "subject")
+data id_region: DeclarationRef = decl_ref(module_path: "test.claim.decision_completeness_witness", decl_name: "region_r")
+data id_candidate: DeclarationRef = decl_ref(module_path: "test.claim.decision_completeness_witness", decl_name: "candidate_selected")
+data id_foreign_term: DeclarationRef = decl_ref(module_path: "test.claim.decision_completeness_witness", decl_name: "foreign_term")
+data id_order_auth: DeclarationRef = decl_ref(module_path: "test.claim.decision_completeness_witness", decl_name: "order_preservation_authority")
+
+data var_a: DecisionVariable = DecisionVariable { identity: id_var_a }
+data var_b: DecisionVariable = DecisionVariable { identity: id_var_b }
+data term_power: ObjectiveTerm = ObjectiveTerm { identity: id_term_power }
+data term_throughput: ObjectiveTerm = ObjectiveTerm { identity: id_term_throughput }
+data constraint_budget: DecisionConstraint = DecisionConstraint { identity: id_constraint }
+data param_workload: ContextParameter = ContextParameter { identity: id_param }
+data region_r: DecisionRegion = DecisionRegion { identity: id_region }
+
+data objective_capacity: ObjectiveMeasure = ObjectiveMeasure {
+  identity: id_objective,
+  goal: HigherIsBetter,
+  terms: [term_throughput, term_power],
+}
+
+data choice_domain: ChoiceDomain = ChoiceDomain {
+  identity: id_domain,
+  variables: [var_a, var_b],
+}
+
+data subject: DecisionSubject = DecisionSubject {
+  identity: id_subject,
+  question: "synthetic decision completeness control" as NonEmptyStr,
+  variables: [var_a, var_b],
+  parameters: [param_workload],
+  constraints: [constraint_budget],
+  objective: objective_capacity,
+  choice_domain: choice_domain,
+}
+
+// Required cells come from the subject authorities (2 terms × 2 variables), not from dispositions.
+test fn required_cells_are_the_cartesian_product_of_term_and_variable_authorities() -> Bool {
+  let required = required_sensitivity_cells(subject: subject)
+  (required |> count) == 4
+    && any(required, c => declaration_ref_eq(a: c.term, b: id_term_power) && declaration_ref_eq(a: c.variable, b: id_var_a))
+    && any(required, c => declaration_ref_eq(a: c.term, b: id_term_power) && declaration_ref_eq(a: c.variable, b: id_var_b))
+    && any(required, c => declaration_ref_eq(a: c.term, b: id_term_throughput) && declaration_ref_eq(a: c.variable, b: id_var_a))
+    && any(required, c => declaration_ref_eq(a: c.term, b: id_term_throughput) && declaration_ref_eq(a: c.variable, b: id_var_b))
+}
+
+fn closed_sensitivities() -> List<ObjectiveTermSensitivity> {
+  [
+    InvariantAlong {
+      term: id_term_power,
+      variable: id_var_a,
+      region: region_r,
+      evidence: "fixture: power invariant along var_a over region_r" as NonEmptyStr,
+    },
+    VariesAlong {
+      term: id_term_power,
+      variable: id_var_b,
+      region: region_r,
+      relation: MonotoneDecreasing,
+      evidence: "fixture: power decreases as var_b rises" as NonEmptyStr,
+    },
+    VariesAlong {
+      term: id_term_throughput,
+      variable: id_var_a,
+      region: region_r,
+      relation: MonotoneDecreasing,
+      evidence: "fixture: throughput moves with var_a" as NonEmptyStr,
+    },
+    VariesAlong {
+      term: id_term_throughput,
+      variable: id_var_b,
+      region: region_r,
+      relation: MonotoneDecreasing,
+      evidence: "fixture: throughput moves with var_b" as NonEmptyStr,
+    },
+  ]
+}
+
+fn closed_constraints() -> List<ConstraintDisposition> {
+  [
+    ConstraintSatisfied {
+      constraint: id_constraint,
+      evidence: "fixture budget satisfied" as NonEmptyStr,
+    },
+  ]
+}
+
+fn closed_parameters() -> List<ParameterDisposition> {
+  [
+    ParameterBound {
+      parameter: id_param,
+      evidence: "fixture workload bound" as NonEmptyStr,
+    },
+  ]
+}
+
+fn settled_assessment() -> DecisionAssessment {
+  DecisionAssessment {
+    subject: subject,
+    sensitivities: closed_sensitivities(),
+    constraints: closed_constraints(),
+    parameters: closed_parameters(),
+    selected_candidate: Present { value: id_candidate },
+    term_drops: [],
+  }
+}
+
+test fn positive_control_closed_subject_mints_settled() -> Bool {
+  match mint_settled_policy(assessment: settled_assessment()) {
+    Settled { policy: p } =>
+      declaration_ref_eq(a: p.subject, b: id_subject)
+        && declaration_ref_eq(a: p.selected_candidate, b: id_candidate)
+    Deferred { obligations: _, reopen_trigger: _ } => false
+    DecisionRefused { cause: _ } => false
+  }
+}
+
+test fn consumer_accepts_settled_and_rejects_deferred() -> Bool {
+  let settled = mint_settled_policy(assessment: settled_assessment())
+  let deferred_assessment = DecisionAssessment {
+    subject: subject,
+    sensitivities: [
+      SensitivityUnestablished {
+        term: id_term_power,
+        variable: id_var_a,
+        obligation: "need measurement" as NonEmptyStr,
+      },
+      SensitivityUnestablished {
+        term: id_term_power,
+        variable: id_var_b,
+        obligation: "need measurement" as NonEmptyStr,
+      },
+      SensitivityUnestablished {
+        term: id_term_throughput,
+        variable: id_var_a,
+        obligation: "need measurement" as NonEmptyStr,
+      },
+      SensitivityUnestablished {
+        term: id_term_throughput,
+        variable: id_var_b,
+        obligation: "need measurement" as NonEmptyStr,
+      },
+    ],
+    constraints: closed_constraints(),
+    parameters: closed_parameters(),
+    selected_candidate: Present { value: id_candidate },
+    term_drops: [],
+  }
+  let deferred = mint_settled_policy(assessment: deferred_assessment)
+  match accept_settled_policy(standing: settled) {
+    SettledPolicyAccepted { policy: _ } =>
+      match accept_settled_policy(standing: deferred) {
+        SettledPolicyRejectedDeferred { obligations: o, reopen_trigger: _ } => (o |> count) > 0
+        SettledPolicyAccepted { policy: _ } => false
+        SettledPolicyRejectedRefused { cause: _ } => false
+      }
+    SettledPolicyRejectedDeferred { obligations: _, reopen_trigger: _ } => false
+    SettledPolicyRejectedRefused { cause: _ } => false
+  }
+}
+
+// Omit powered_chassis_count analogue (var_b) from the subject variables while choice domain still
+// requires it — variable population join refuses; settlement impossible.
+test fn omitting_choice_domain_variable_refuses_closure() -> Bool {
+  let truncated = DecisionSubject {
+    identity: id_subject,
+    question: "truncated variables" as NonEmptyStr,
+    variables: [var_a],
+    parameters: [param_workload],
+    constraints: [constraint_budget],
+    objective: objective_capacity,
+    choice_domain: choice_domain,
+  }
+  match variable_population_closure(subject: truncated) {
+    VariablePopulationMissing { identities: ids } =>
+      any(ids, id => declaration_ref_eq(a: id, b: id_var_b))
+        && standing_is_refused(standing: mint_settled_policy(assessment: DecisionAssessment {
+          subject: truncated,
+          sensitivities: [
+            InvariantAlong {
+              term: id_term_power,
+              variable: id_var_a,
+              region: region_r,
+              evidence: "x" as NonEmptyStr,
+            },
+            VariesAlong {
+              term: id_term_throughput,
+              variable: id_var_a,
+              region: region_r,
+              relation: MonotoneDecreasing,
+              evidence: "x" as NonEmptyStr,
+            },
+          ],
+          constraints: closed_constraints(),
+          parameters: closed_parameters(),
+          selected_candidate: Present { value: id_candidate },
+          term_drops: [],
+        }))
+    VariablePopulationComplete => false
+    VariablePopulationRepeatedExpected { identities: _ } => false
+    VariablePopulationForeign { identities: _ } => false
+    VariablePopulationRepeatedObserved { identities: _ } => false
+  }
+}
+
+// Remove platform power from the assessment while it remains in the objective term population.
+test fn omitting_objective_term_cell_makes_sensitivity_closure_missing() -> Bool {
+  let without_power_cells = [
+    VariesAlong {
+      term: id_term_throughput,
+      variable: id_var_a,
+      region: region_r,
+      relation: MonotoneDecreasing,
+      evidence: "x" as NonEmptyStr,
+    },
+    VariesAlong {
+      term: id_term_throughput,
+      variable: id_var_b,
+      region: region_r,
+      relation: MonotoneDecreasing,
+      evidence: "x" as NonEmptyStr,
+    },
+  ]
+  match sensitivity_closure(subject: subject, rows: without_power_cells) {
+    SensitivityClosureMissing { cells: cells } =>
+      any(cells, c => declaration_ref_eq(a: c.term, b: id_term_power))
+        && standing_is_refused(standing: mint_settled_policy(assessment: DecisionAssessment {
+          subject: subject,
+          sensitivities: without_power_cells,
+          constraints: closed_constraints(),
+          parameters: closed_parameters(),
+          selected_candidate: Present { value: id_candidate },
+          term_drops: [],
+        }))
+    SensitivityClosureComplete => false
+    SensitivityClosureForeign { cells: _ } => false
+    SensitivityClosureRepeatedObserved { cells: _ } => false
+    SensitivityClosureRepeatedExpected { cells: _ } => false
+  }
+}
+
+// Carry platform power but omit its relation to one variable.
+test fn omitting_one_required_sensitivity_cell_blocks_settlement() -> Bool {
+  let missing_one = [
+    InvariantAlong {
+      term: id_term_power,
+      variable: id_var_a,
+      region: region_r,
+      evidence: "x" as NonEmptyStr,
+    },
+    VariesAlong {
+      term: id_term_throughput,
+      variable: id_var_a,
+      region: region_r,
+      relation: MonotoneDecreasing,
+      evidence: "x" as NonEmptyStr,
+    },
+    VariesAlong {
+      term: id_term_throughput,
+      variable: id_var_b,
+      region: region_r,
+      relation: MonotoneDecreasing,
+      evidence: "x" as NonEmptyStr,
+    },
+  ]
+  match sensitivity_closure(subject: subject, rows: missing_one) {
+    SensitivityClosureMissing { cells: cells } =>
+      any(cells, c =>
+        declaration_ref_eq(a: c.term, b: id_term_power) && declaration_ref_eq(a: c.variable, b: id_var_b)
+      )
+        && !standing_is_settled(standing: mint_settled_policy(assessment: DecisionAssessment {
+          subject: subject,
+          sensitivities: missing_one,
+          constraints: closed_constraints(),
+          parameters: closed_parameters(),
+          selected_candidate: Present { value: id_candidate },
+          term_drops: [],
+        }))
+    SensitivityClosureComplete => false
+    SensitivityClosureForeign { cells: _ } => false
+    SensitivityClosureRepeatedObserved { cells: _ } => false
+    SensitivityClosureRepeatedExpected { cells: _ } => false
+  }
+}
+
+test fn two_answers_for_one_cell_refuse_as_repeated_observed() -> Bool {
+  let dup = concat(closed_sensitivities(), [
+    InvariantAlong {
+      term: id_term_power,
+      variable: id_var_a,
+      region: region_r,
+      evidence: "second answer" as NonEmptyStr,
+    },
+  ])
+  match sensitivity_closure(subject: subject, rows: dup) {
+    SensitivityClosureRepeatedObserved { cells: cells } =>
+      any(cells, c =>
+        declaration_ref_eq(a: c.term, b: id_term_power) && declaration_ref_eq(a: c.variable, b: id_var_a)
+      )
+        && standing_is_refused(standing: mint_settled_policy(assessment: DecisionAssessment {
+          subject: subject,
+          sensitivities: dup,
+          constraints: closed_constraints(),
+          parameters: closed_parameters(),
+          selected_candidate: Present { value: id_candidate },
+          term_drops: [],
+        }))
+    SensitivityClosureComplete => false
+    SensitivityClosureMissing { cells: _ } => false
+    SensitivityClosureForeign { cells: _ } => false
+    SensitivityClosureRepeatedExpected { cells: _ } => false
+  }
+}
+
+test fn foreign_term_or_variable_refuses_rather_than_ignored() -> Bool {
+  let foreign = concat(closed_sensitivities(), [
+    SensitivityUnestablished {
+      term: id_foreign_term,
+      variable: id_var_a,
+      obligation: "foreign" as NonEmptyStr,
+    },
+  ])
+  match sensitivity_closure(subject: subject, rows: foreign) {
+    SensitivityClosureForeign { cells: cells } =>
+      any(cells, c => declaration_ref_eq(a: c.term, b: id_foreign_term))
+        && standing_is_refused(standing: mint_settled_policy(assessment: DecisionAssessment {
+          subject: subject,
+          sensitivities: foreign,
+          constraints: closed_constraints(),
+          parameters: closed_parameters(),
+          selected_candidate: Present { value: id_candidate },
+          term_drops: [],
+        }))
+    SensitivityClosureComplete => false
+    SensitivityClosureMissing { cells: _ } => false
+    SensitivityClosureRepeatedObserved { cells: _ } => false
+    SensitivityClosureRepeatedExpected { cells: _ } => false
+  }
+}
+
+test fn overlapping_regions_yield_deferred_never_settled() -> Bool {
+  let pending = DecisionAssessment {
+    subject: subject,
+    sensitivities: [
+      SensitivityUnestablished {
+        term: id_term_power,
+        variable: id_var_a,
+        obligation: "regions overlap; need sharper evidence" as NonEmptyStr,
+      },
+      SensitivityUnestablished {
+        term: id_term_power,
+        variable: id_var_b,
+        obligation: "regions overlap; need sharper evidence" as NonEmptyStr,
+      },
+      SensitivityUnestablished {
+        term: id_term_throughput,
+        variable: id_var_a,
+        obligation: "regions overlap; need sharper evidence" as NonEmptyStr,
+      },
+      SensitivityUnestablished {
+        term: id_term_throughput,
+        variable: id_var_b,
+        obligation: "regions overlap; need sharper evidence" as NonEmptyStr,
+      },
+    ],
+    constraints: closed_constraints(),
+    parameters: closed_parameters(),
+    selected_candidate: Present { value: id_candidate },
+    term_drops: [],
+  }
+  standing_is_deferred(standing: mint_settled_policy(assessment: pending))
+    && !standing_is_settled(standing: mint_settled_policy(assessment: pending))
+}
+
+test fn scalar_method_without_order_preservation_refuses() -> Bool {
+  match term_drop_standing(authority: OrderPreservationAbsent {
+    dropped_term: id_term_power,
+    obligation: "cannot drop platform power from a ratio objective without order-preservation authority" as NonEmptyStr,
+  }) {
+    TermDropRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "order-preservation")
+        && standing_is_refused(standing: mint_settled_policy(assessment: DecisionAssessment {
+          subject: subject,
+          sensitivities: closed_sensitivities(),
+          constraints: closed_constraints(),
+          parameters: closed_parameters(),
+          selected_candidate: Present { value: id_candidate },
+          term_drops: [
+            OrderPreservationAbsent {
+              dropped_term: id_term_power,
+              obligation: "cannot drop platform power from a ratio objective without order-preservation authority" as NonEmptyStr,
+            },
+          ],
+        }))
+    TermDropAdmitted { authority: _ } => false
+  }
+}
+
+test fn order_preservation_authority_admits_term_drop() -> Bool {
+  match term_drop_standing(authority: OrderPreservationEstablished {
+    authority: id_order_auth,
+    dropped_term: id_term_power,
+    evidence: "additive constant under pure minimization" as NonEmptyStr,
+  }) {
+    TermDropAdmitted { authority: a } => declaration_ref_eq(a: a, b: id_order_auth)
+    TermDropRefused { cause: _ } => false
+  }
+}
+
+test fn proved_tradeoff_is_incomparable_coarse_evidence_is_undecided() -> Bool {
+  match candidate_comparison_standing(verdict: Incomparable) {
+    CandidatesIncomparableTradeoff =>
+      match candidate_comparison_standing(verdict: DominanceUndecided) {
+        CandidatesUndecidedOnEvidence =>
+          match candidate_comparison_standing(verdict: Dominates) {
+            CandidatesComparable { verdict: v } =>
+              match v {
+                Dominates => true
+                Dominated => false
+                Equivalent => false
+                Incomparable => false
+                DominanceUndecided => false
+              }
+            CandidatesIncomparableTradeoff => false
+            CandidatesUndecidedOnEvidence => false
+            CandidateComparisonRefused { cause: _ } => false
+          }
+        CandidatesIncomparableTradeoff => false
+        CandidatesComparable { verdict: _ } => false
+        CandidateComparisonRefused { cause: _ } => false
+      }
+    CandidatesUndecidedOnEvidence => false
+    CandidatesComparable { verdict: _ } => false
+    CandidateComparisonRefused { cause: _ } => false
+  }
+}
+
+test fn variable_irrelevance_is_derived_never_authored() -> Bool {
+  let all_invariant_for_a = [
+    InvariantAlong {
+      term: id_term_power,
+      variable: id_var_a,
+      region: region_r,
+      evidence: "fixture: power invariant along var_a" as NonEmptyStr,
+    },
+    InvariantAlong {
+      term: id_term_throughput,
+      variable: id_var_a,
+      region: region_r,
+      evidence: "fixture: throughput invariant along var_a" as NonEmptyStr,
+    },
+    VariesAlong {
+      term: id_term_power,
+      variable: id_var_b,
+      region: region_r,
+      relation: MonotoneDecreasing,
+      evidence: "fixture: power moves with var_b" as NonEmptyStr,
+    },
+    VariesAlong {
+      term: id_term_throughput,
+      variable: id_var_b,
+      region: region_r,
+      relation: MonotoneDecreasing,
+      evidence: "fixture: throughput moves with var_b" as NonEmptyStr,
+    },
+  ]
+  variable_irrelevance_is_derived(subject: subject, variable: id_var_a, rows: all_invariant_for_a)
+    && !variable_irrelevance_is_derived(subject: subject, variable: id_var_b, rows: all_invariant_for_a)
+    && !variable_irrelevance_is_derived(subject: subject, variable: id_var_a, rows: closed_sensitivities())
+}
+
+test fn required_population_oracle_is_not_the_disposition_list() -> Bool {
+  let required = required_sensitivity_cells(subject: subject)
+  let dispositions = [
+    SensitivityUnestablished {
+      term: id_term_power,
+      variable: id_var_a,
+      obligation: "only one disposition authored" as NonEmptyStr,
+    },
+  ]
+  (required |> count) == 4
+    && (dispositions |> count) == 1
+    && match sensitivity_closure(subject: subject, rows: dispositions) {
+      SensitivityClosureMissing { cells: cells } => (cells |> count) == 3
+      SensitivityClosureComplete => false
+      SensitivityClosureForeign { cells: _ } => false
+      SensitivityClosureRepeatedObserved { cells: _ } => false
+      SensitivityClosureRepeatedExpected { cells: _ } => false
+    }
+}
+
+fn decision_completeness_witness_main() -> ProcessExit {
+  if !required_cells_are_the_cartesian_product_of_term_and_variable_authorities() {
+    ExitFailure { code: 1, reason: "fail: required_cells" as NonEmptyStr }
+  } else if !positive_control_closed_subject_mints_settled() {
+    ExitFailure { code: 1, reason: "fail: positive_control_settled" as NonEmptyStr }
+  } else if !consumer_accepts_settled_and_rejects_deferred() {
+    ExitFailure { code: 1, reason: "fail: consumer_wall" as NonEmptyStr }
+  } else if !omitting_choice_domain_variable_refuses_closure() {
+    ExitFailure { code: 1, reason: "fail: omit_choice_domain_variable" as NonEmptyStr }
+  } else if !omitting_objective_term_cell_makes_sensitivity_closure_missing() {
+    ExitFailure { code: 1, reason: "fail: omit_objective_term" as NonEmptyStr }
+  } else if !omitting_one_required_sensitivity_cell_blocks_settlement() {
+    ExitFailure { code: 1, reason: "fail: omit_one_cell" as NonEmptyStr }
+  } else if !two_answers_for_one_cell_refuse_as_repeated_observed() {
+    ExitFailure { code: 1, reason: "fail: repeated_observed" as NonEmptyStr }
+  } else if !foreign_term_or_variable_refuses_rather_than_ignored() {
+    ExitFailure { code: 1, reason: "fail: foreign" as NonEmptyStr }
+  } else if !overlapping_regions_yield_deferred_never_settled() {
+    ExitFailure { code: 1, reason: "fail: deferred_pending" as NonEmptyStr }
+  } else if !scalar_method_without_order_preservation_refuses() {
+    ExitFailure { code: 1, reason: "fail: scalar_no_order_preservation" as NonEmptyStr }
+  } else if !order_preservation_authority_admits_term_drop() {
+    ExitFailure { code: 1, reason: "fail: order_preservation_admits" as NonEmptyStr }
+  } else if !proved_tradeoff_is_incomparable_coarse_evidence_is_undecided() {
+    ExitFailure { code: 1, reason: "fail: incomparable_vs_undecided" as NonEmptyStr }
+  } else if !variable_irrelevance_is_derived_never_authored() {
+    ExitFailure { code: 1, reason: "fail: variable_irrelevance" as NonEmptyStr }
+  } else if !required_population_oracle_is_not_the_disposition_list() {
+    ExitFailure { code: 1, reason: "fail: oracle_not_disposition_list" as NonEmptyStr }
+  } else {
+    ExitSuccess
+  }
+}

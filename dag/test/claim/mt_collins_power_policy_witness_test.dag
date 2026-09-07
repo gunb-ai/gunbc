@@ -1,0 +1,81 @@
+module test.claim.mt_collins_power_policy_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.decl_ref { declaration_ref_eq }
+import product.mt_collins_power_policy {
+  mt_collins_power_policy_standing,
+  mt_collins_power_policy_is_deferred,
+  mt_collins_power_policy_cannot_settle,
+  mt_collins_power_policy_acceptance_rejects_deferred,
+  mt_collins_required_cell_count,
+  available_chassis_count,
+  obligation_memory_population_unread,
+  obligation_bmc_power_cap_sweep,
+  mt_collins_power_policy_subject,
+  objective_max_capacity_under_site_power,
+  term_platform_power,
+  term_service_capacity,
+  var_socket_power_cap,
+  var_powered_chassis_count,
+}
+import std.decision {
+  Deferred,
+  Settled,
+  DecisionRefused,
+  required_sensitivity_cells,
+}
+
+test fn mt_collins_power_policy_standing_is_deferred() -> Bool {
+  mt_collins_power_policy_is_deferred()
+    && mt_collins_power_policy_cannot_settle()
+    && mt_collins_power_policy_acceptance_rejects_deferred()
+}
+
+test fn mt_collins_joins_memory_unread_and_bmc_sweep_obligations() -> Bool {
+  match mt_collins_power_policy_standing() {
+    Deferred { obligations: o, reopen_trigger: _ } =>
+      any(o, x => x == obligation_memory_population_unread)
+        && any(o, x => x == obligation_bmc_power_cap_sweep)
+        && string_contains(s: obligation_memory_population_unread as String, pattern: "PowerAssumedOnly")
+        && string_contains(s: obligation_bmc_power_cap_sweep as String, pattern: "ACHIEVED frequency")
+    Settled { policy: _ } => false
+    DecisionRefused { cause: _ } => false
+  }
+}
+
+test fn mt_collins_objective_is_one_structural_measure() -> Bool {
+  let terms = objective_max_capacity_under_site_power.terms
+  (terms |> count) == 2
+    && any(terms, t => declaration_ref_eq(a: t.identity, b: term_service_capacity.identity))
+    && any(terms, t => declaration_ref_eq(a: t.identity, b: term_platform_power.identity))
+}
+
+test fn mt_collins_required_cells_cover_both_variables_and_both_terms() -> Bool {
+  let cells = required_sensitivity_cells(subject: mt_collins_power_policy_subject)
+  mt_collins_required_cell_count() == 4
+    && available_chassis_count == 20
+    && any(
+      cells,
+      c => declaration_ref_eq(a: c.variable, b: var_powered_chassis_count.identity)
+        && declaration_ref_eq(a: c.term, b: term_platform_power.identity),
+    )
+    && any(
+      cells,
+      c => declaration_ref_eq(a: c.variable, b: var_socket_power_cap.identity)
+        && declaration_ref_eq(a: c.term, b: term_service_capacity.identity),
+    )
+}
+
+fn mt_collins_power_policy_witness_main() -> ProcessExit {
+  let all_pass =
+    mt_collins_power_policy_standing_is_deferred()
+      && mt_collins_joins_memory_unread_and_bmc_sweep_obligations()
+      && mt_collins_objective_is_one_structural_measure()
+      && mt_collins_required_cells_cover_both_variables_and_both_terms()
+  if all_pass {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: "mt collins power policy witness failed" as NonEmptyStr }
+  }
+}
