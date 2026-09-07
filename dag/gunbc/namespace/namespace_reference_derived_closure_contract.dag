@@ -31,9 +31,12 @@ import std.types { Bool, Int, List, String }
 //
 // This module deliberately does NOT derive visibility or dependencies.
 // namespace_reference_derived_closure_acceptance_admissions carries six typed unavailable rows
-// today: structural visibility/order/ambiguity wait on the P2a candidate producer in #7515,
-// dependency dedupe on its binding projection, and pool-independent closure on that projection's
-// Class-B wall. The fixture witnesses construct observations to prove this fold discriminates, but
+// today: structural visibility/order/ambiguity wait on production candidate observations,
+// dependency dedupe on a complete, load-bearing binding projection covering every
+// dependency-inducing occurrence category, and pool-independent closure on that projection's
+// Class-B wall. The projection must be sufficient for the host to load the correct file
+// set with no scanner or pool fallback answering behind it. Existing #7515 symbols do
+// not satisfy these capability triggers. The fixture witnesses prove this fold discriminates, but
 // the quarantined closing witness consumes only the production-admission function; copying fixture
 // observations into it would be specification-without-execution and would not satisfy the contract.
 

@@ -90,6 +90,7 @@ mod census_heads;
 pub mod declaration_index;
 mod required_floor_runner;
 pub mod rostered_row_join;
+mod scanner_closure_refusal;
 mod serve_budget_refusal;
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
@@ -3676,32 +3677,13 @@ fn regen_input_sources_over_roots(
         }
     }
 
-    // Grow the closure through `extend_sources_to_both_closure_fixpoint` — import edges PLUS
-    // dotted-reference PLUS bare-reference modules, to a joint fixpoint — not the import-only
-    // walk this function used to run.
-    //
-    // WHY (§3 de-fork). An `import` line and a qualified or bare reference are the SAME
-    // dependency edge, so an import-only walk is not a narrower closure but one that goes BLIND
-    // when a module spells a dependency any other way. That function's doc-comment calls itself
-    // "The ONE closure-extension authority" and names "Both source loaders — the per-entry
-    // witness loader and the affected-set compile-clean gate loader". There are THREE; this was
-    // the third, and its subject feeds regeneration of the seed itself. The single-authority
-    // claim was true of its own enumeration and false of the concept — the prose asserting the
-    // fork's absence was load-bearing and never re-audited against the call graph.
-    //
-    // The same class was repaired once for the gate loader, which ran only
-    // `extend_with_reference_closure` and dropped providers reached purely by bare name (ARM1
-    // ref-only = 3 unresolved-type diags; +bare = 0).
-    //
-    // LATENT HERE, FATAL NEXT DOOR. On this branch every seed dependency is still spelled as an
-    // import, so the import-only walk reaches everything and the defect is unobservable from the
-    // corpus alone. On `integration/namespace-cut`, where the `dag/` imports are deleted, the
-    // identical code admits `src/v1` and NOTHING else: the queue drains on its first pass and
-    // regen refuses with `unresolved type 'std.types.SourceSpan'` while `std.types` sits present
-    // in the authority. The regression test below fixes the behaviour independently of either
-    // corpus.
+    // Regeneration starts with raw entry-root seeds, unlike the entry and gate
+    // loaders. Prepared-cut bridge: preserve import supply before scanner observation.
+    // Dissolves when the complete reference-derived binding projection supplies
+    // regeneration's required file closure with no scanner or pool fallback.
     let mei = build_multi_entry_index(abs_roots);
-    let closure = extend_sources_to_both_closure_fixpoint(seeds, &mei)?;
+    let sources = resolve_transitively(seeds, &mei.source_files, &mei.module_graph_facts)?;
+    let closure = extend_sources_to_both_closure_fixpoint(sources, &mei)?;
 
     let mut result: Vec<(String, String)> = closure
         .into_iter()
@@ -4053,72 +4035,28 @@ fn load_compile_clean_entry_sources(
     extend_sources_to_both_closure_fixpoint(sources, mei)
 }
 
-/// Reference-derived dependency closure (namespace Rule-1 interim). A qualified reference
-/// `container.member` is a dependency edge exactly as an `import` line was: with dag/ imports
-/// stripped, the import-edge closure alone silently drops every module reached only by
-/// qualified reference (they fall out of the census and their qualified names refuse
-/// corpus-wide). Projection is text-level longest-prefix against the declared module-path
-/// index, iterated to fixpoint; each addition pulls its own import closure. The ONE closure
-/// authority for the whole-tree compile-clean walk and the per-entry claim/witness loaders (a
-/// second rule would be a §3 fork). Dissolves into the parsed-tree reference projection when
-/// the Rule-1 terminal step (import as parse error, deps derived from references) lands.
+/// Scanner proposals cannot supply dependencies while the containment binding
+/// projection is unavailable. An attempted extension stops the loader with a
+/// located refusal; proposals already covered by the input closure add nothing.
 fn extend_with_reference_closure(
-    mut sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     index: &ModuleSourceIndex,
     facts: &ModuleGraphFactsLive,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let path_lookup = path_to_source_lookup(index);
-    let mut known_paths: std::collections::HashSet<String> = sources
-        .iter()
-        .flat_map(|s| [s.path.clone(), workspace_relative_repo_path(&s.path)])
-        .collect();
-    let mut scan_queue: Vec<Rc<v1_compiler_compile::SourceFile>> = sources.clone();
-    while let Some(sf) = scan_queue.pop() {
-        // Sub-attribution of `load` (entry-graph-union slice 1, operator review):
-        // `load` being 68% of resolve-span time does not by itself say whether the cost is
-        // this content scan, file I/O, or pool bookkeeping — and THAT ratio is what
-        // separates "a content-hash memo on a pure function" from "a union graph". Timed
-        // here because this is the call the duplication factor multiplies.
-        let scan_started = std::time::Instant::now();
-        let referenced = referenced_module_paths_in_text(&sf.content, index);
-        resolve_stage_slot_add(|s| {
-            s.load_reference_scan += scan_started.elapsed().as_nanos();
-            s.load_reference_scan_bytes += sf.content.len() as u128;
-            s.load_reference_scan_calls += 1;
-        });
-        for module_path in referenced {
-            let Some(dep) = index.get(&module_path) else {
-                continue;
-            };
-            let dep_rel = workspace_relative_repo_path(&dep.path);
-            if known_paths.contains(&dep_rel) || known_paths.contains(&dep.path) {
-                continue;
-            }
-            if !facts.declares_repo_path(&dep_rel) {
-                return Err(format!(
-                    "reference_closure: referenced module '{module_path}' at '{dep_rel}' \
-                     has no provenance in the module-graph facts pool (fail-closed)"
-                ));
-            }
-            for path in import_closure_live_paths_with_facts(&dep_rel, facts) {
-                let rel = workspace_relative_repo_path(&path);
-                if known_paths.contains(&rel) {
-                    continue;
-                }
-                let Some(dep_sf) = path_lookup.get(&rel).cloned() else {
-                    return Err(format!(
-                        "reference_closure: closure path '{rel}' (via referenced module \
-                         '{module_path}') has no provenance in module index (fail-closed)"
-                    ));
-                };
-                known_paths.insert(rel);
-                known_paths.insert(dep_sf.path.clone());
-                sources.push(dep_sf.clone());
-                scan_queue.push(dep_sf);
-            }
-        }
+    let mut proposed = HashMap::new();
+    for source in &sources {
+        proposed.insert(
+            workspace_relative_repo_path(&source.path),
+            reference_pull_paths_for_source(source, index, facts)?,
+        );
     }
-    Ok(sources)
+    scanner_closure_refusal::refuse_scanner_extension(
+        sources,
+        &proposed,
+        None,
+        scanner_closure_refusal::HostClosureScanner::DottedModulePathScanner,
+    )
+    .map_err(|refusal| refusal.render())
 }
 
 fn extend_with_reference_closure_for_pool(
@@ -4126,12 +4064,13 @@ fn extend_with_reference_closure_for_pool(
     mei: &MultiEntryIndex,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
     let edges = both_closure_edge_index(mei)?;
-    extend_sources_via_edge_map(
+    scanner_closure_refusal::refuse_scanner_extension(
         sources,
         &edges.ref_out,
         None,
-        &path_to_source_lookup(&mei.source_files),
+        scanner_closure_refusal::HostClosureScanner::DottedModulePathScanner,
     )
+    .map_err(|refusal| refusal.render())
 }
 
 /// Candidate module paths referenced by dotted names in `content`: every maximal
@@ -8810,47 +8749,6 @@ fn source_declares_import_lines(content: &str) -> bool {
         .any(|l| l.trim_start().starts_with("import "))
 }
 
-/// BFS closure extension over a precomputed per-file edge map.
-fn extend_sources_via_edge_map(
-    mut sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
-    edge_map: &HashMap<String, Vec<String>>,
-    scan_eligible: Option<&HashSet<String>>,
-    path_lookup: &HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
-) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let mut known_paths: HashSet<String> = sources
-        .iter()
-        .flat_map(|s| [s.path.clone(), workspace_relative_repo_path(&s.path)])
-        .collect();
-    let mut queue: VecDeque<String> = sources
-        .iter()
-        .map(|s| workspace_relative_repo_path(&s.path))
-        .collect();
-    while let Some(file_rel) = queue.pop_front() {
-        if scan_eligible.is_some_and(|eligible| !eligible.contains(&file_rel)) {
-            continue;
-        }
-        let Some(pulled) = edge_map.get(&file_rel) else {
-            continue;
-        };
-        for rel in pulled {
-            if known_paths.contains(rel) {
-                continue;
-            }
-            let Some(dep_sf) = path_lookup.get(rel).cloned() else {
-                return Err(format!(
-                    "closure_edge_map: pulled path '{rel}' (from '{file_rel}') has no \
-                     provenance in module index (fail-closed)"
-                ));
-            };
-            known_paths.insert(rel.clone());
-            known_paths.insert(dep_sf.path.clone());
-            sources.push(dep_sf.clone());
-            queue.push_back(rel.clone());
-        }
-    }
-    Ok(sources)
-}
-
 fn bare_reference_pull_paths_for_source(
     sf: &Rc<v1_compiler_compile::SourceFile>,
     index: &MultiEntryIndex,
@@ -9359,15 +9257,8 @@ pub fn warm_bare_reference_edge_index(
     })
 }
 
-/// Extend the closure with the modules the tree census resolves each source's
-/// BARE references to (namespace Rule-1 direction: deps derived from names, not
-/// import statements — the import-stripped corpus has no import edges to follow,
-/// which surfaced as `no such function` at witness runtime: typecheck resolved a
-/// name through the census while the interpreter never loaded its body). A bare
-/// name resolves exactly as the typecheck lookup will: census-unique → that
-/// module; ambiguous → the nearest-ancestor candidate from the referencing
-/// module's containment position; still ambiguous → load nothing (the typecheck
-/// refusal stays the loud authority, the loader never guesses a side).
+/// Refuse additions proposed by the bare scanner. The census remains an
+/// observation source for this prepared cut, never permission to load a file.
 fn extend_with_bare_reference_closure(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     index: &MultiEntryIndex,
@@ -9378,64 +9269,33 @@ fn extend_with_bare_reference_closure(
     let (edges, edge_nanos) = nanos_net_of_pool_parse(|| both_closure_edge_index(index));
     let edges = edges?;
     resolve_stage_slot_add(|s| s.load_bare_edge_index += edge_nanos);
-    let lookup_started = std::time::Instant::now();
-    let lookup = path_to_source_lookup(&index.source_files);
-    resolve_stage_slot_add(|s| {
-        s.load_bare_path_lookup += lookup_started.elapsed().as_nanos();
-        s.load_bare_path_lookup_calls += 1;
-    });
     let walk_started = std::time::Instant::now();
-    let out = extend_sources_via_edge_map(
+    let out = scanner_closure_refusal::refuse_scanner_extension(
         sources,
         &edges.bare_out,
         Some(&edges.bare_scan_eligible),
-        &lookup,
-    );
+        scanner_closure_refusal::HostClosureScanner::BareReferenceScanner,
+    )
+    .map_err(|refusal| refusal.render());
     resolve_stage_slot_add(|s| s.load_bare_edge_walk += walk_started.elapsed().as_nanos());
     out
 }
 
-/// The full name-derived closure for one entry: import edges + dotted-reference
-/// modules + BARE-reference modules (via the tree census), iterated to a joint
-/// fixpoint — a bare-pulled module can carry new dotted references and vice
-/// versa. This is the loader the witness paths use; the raw-pair
-/// `load_sources_for_entry_with_index` stays the dotted-only base for callers
-/// without a pool index.
-/// The ONE closure-extension authority: run the bare/service-name and the
-/// module-path reference closures to a joint fixpoint (each newly-pulled module
-/// can carry either edge kind). Both source loaders — the per-entry witness
-/// loader and the affected-set compile-clean gate loader — call this, so the
-/// single-authority claim in `extend_with_reference_closure`'s doc-comment is
-/// true by construction rather than by two functions happening to hold identical
-/// loop bodies (the §2 duplicate that dissolving the §3 fork would otherwise
-/// have left behind).
+/// Check both scanner observations against the import-supplied closure. Neither
+/// may extend it, so a successful pass cannot create another fixpoint round.
 fn extend_sources_to_both_closure_fixpoint(
-    mut sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     mei: &MultiEntryIndex,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    loop {
-        let before = sources.len();
-        // Sub-attribution of `load` (entry-graph-union slice 1). This fixpoint is the
-        // "#6848 once-per-entry bare-reference fixpoint" DESIGN's floor-memoization thread
-        // names as the residual; the rows below are what let that claim be priced instead
-        // of asserted.
-        let bare_started = std::time::Instant::now();
-        sources = extend_with_bare_reference_closure(sources, mei)?;
-        resolve_stage_slot_add(|s| {
-            s.load_bare_reference_closure += bare_started.elapsed().as_nanos()
-        });
-        let pool_started = std::time::Instant::now();
-        sources = extend_with_reference_closure_for_pool(sources, mei)?;
-        resolve_stage_slot_add(|s| {
-            s.load_pool_reference_closure += pool_started.elapsed().as_nanos();
-            s.load_fixpoint_rounds += 1;
-        });
-        sources.sort_by(|a, b| a.path.cmp(&b.path));
-        sources.dedup_by(|a, b| a.path == b.path);
-        if sources.len() == before {
-            break;
-        }
-    }
+    let bare_started = std::time::Instant::now();
+    let sources = extend_with_bare_reference_closure(sources, mei)?;
+    resolve_stage_slot_add(|s| s.load_bare_reference_closure += bare_started.elapsed().as_nanos());
+    let pool_started = std::time::Instant::now();
+    let sources = extend_with_reference_closure_for_pool(sources, mei)?;
+    resolve_stage_slot_add(|s| {
+        s.load_pool_reference_closure += pool_started.elapsed().as_nanos();
+        s.load_fixpoint_rounds += 1;
+    });
     Ok(sources)
 }
 
@@ -39123,31 +38983,10 @@ pub fn assemble_prepared_subject_closure(
                     |e| format!("REQUIRED-FLOOR REFUSAL cause=GateClosureUnresolvable entry={path} — {e}"),
                 )?;
             }
-            // TWO MORE EDGE KINDS, TO A JOINT FIXPOINT, because the loader's both-closure is
-            // narrower than the claim scope the fold will build over this subject:
-            //
-            // 1. CONTAINMENT ANCESTORS. Under containment-tree resolution a module sees the
-            //    declarations of the modules that contain it by name (`a.b.c` sees `a.b`), and
-            //    a test that imports only `x.module_refs` still binds `x`'s types that way. The
-            //    entry loader's both-closure does not add those ancestors (measured
-            //    2026-08-29: 206 unresolved names, all in modules importing a child of the
-            //    declaring module).
-            //
-            // 2. BARE REFERENCES FROM EVERY MODULE. `build_both_closure_edge_index` runs the
-            //    bare-reference scan only for sources that declare NO import line; a module
-            //    with one import and one bare cross-module call has that edge dropped by the
-            //    loader and followed by `claim_scope_for`. Under the whole-tree subject the
-            //    flat bare-name channel hid the difference; under this subject the referenced
-            //    module is simply absent (measured 2026-08-29: v2.test.lens_vacuity.vacuity_test
-            //    refused no-such-function `rust_target_model_staging`, then `eval_context`, one
-            //    hop per run). So every module in the closure is bare-scanned here with the
-            //    loader's own scanner, and each pulled module joins with its own both-closure.
-            let path_to_module: HashMap<String, String> = full_index
-                .iter()
-                .map(|(m, sf)| (workspace_relative_repo_path(&sf.path), m.clone()))
-                .collect();
+            // Ancestor admission remains structural. The additional bare scan
+            // of import-bearing modules is observation only: it must use the same
+            // refusal boundary as both entry-loader scanner paths.
             let mut bare_scanned: HashSet<String> = HashSet::new();
-            let mut bare_pulled_modules = 0usize;
             loop {
                 let before = keep.len();
                 let mut ancestors: Vec<String> = Vec::new();
@@ -39178,6 +39017,7 @@ pub fn assemble_prepared_subject_closure(
                     .cloned()
                     .collect();
                 to_scan.sort();
+                let mut proposals = HashMap::new();
                 for module in to_scan {
                     bare_scanned.insert(module.clone());
                     let Some(sf) = full_index.get(&module) else {
@@ -39190,29 +39030,19 @@ pub fn assemble_prepared_subject_closure(
                                  module={module} — bare-reference scan: {e}"
                             )
                         })?;
-                    for rel in pulled {
-                        let Some(target) = path_to_module.get(&rel) else {
-                            return Err(format!(
-                                "REQUIRED-FLOOR REFUSAL cause=GateClosureUnresolvable \
-                                 module={module} — bare reference pulled '{rel}', which is not a \
-                                 module under the source roots (fail-closed)"
-                            ));
-                        };
-                        if keep.contains(target) {
-                            continue;
-                        }
-                        bare_pulled_modules += 1;
-                        let path = full_index[target].path.replace('\\', "/");
-                        collect_both_closure_module_names_for_entry(entry_index, &path, &mut keep)
-                            .map_err(|e| {
-                                format!(
-                                    "REQUIRED-FLOOR REFUSAL cause=GateClosureUnresolvable \
-                                     entry={path} — {e}"
-                                )
-                            })?;
-                        keep.insert(target.clone());
-                    }
+                    proposals.insert(workspace_relative_repo_path(&sf.path), pulled);
                 }
+                let sources = keep
+                    .iter()
+                    .map(|module| full_index[module].clone())
+                    .collect();
+                scanner_closure_refusal::refuse_scanner_extension(
+                    sources,
+                    &proposals,
+                    None,
+                    scanner_closure_refusal::HostClosureScanner::BareReferenceScanner,
+                )
+                .map_err(|refusal| refusal.render())?;
                 if keep.len() == before {
                     break;
                 }
@@ -39227,12 +39057,11 @@ pub fn assemble_prepared_subject_closure(
             }
             eprintln!(
                 "[floor-phase] phase=gate-closure state=completed wall_ms={} prefixes={} seeds={} \
-                 closure={} bare_pulled={} outside_closure={} corpus={}",
+                 closure={} outside_closure={} corpus={}",
                 started.elapsed().as_millis(),
                 prefixes.len(),
                 seeds,
                 keep.len(),
-                bare_pulled_modules,
                 full_index.len() - keep.len(),
                 full_index.len()
             );

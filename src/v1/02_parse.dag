@@ -6278,6 +6278,12 @@ fn collect_fn_lambda_params(tokens: TokenStream, ctx: ParseContext, acc: List<Pa
   }
 }
 
+// Surface arity asymmetry: `a => ...` and `(a, b) => ...` are admitted, but `(a) => ...`
+// is not. This recognizer requires at least two parenthesized parameters; a single parameter
+// falls back to grouped-expression parsing and currently reports "expected RParen, found
+// FatArrow" rather than naming that constraint. Naming the call argument (`f: (a) => ...`)
+// does not change this decision. Until this parser rule changes, use the bare single-parameter
+// form; the host reference-closure type-binding seam encountered both failed spellings.
 fn try_lambda_params(tokens: TokenStream, ctx: ParseContext) -> LambdaCheckResult {
   let r = collect_lambda_idents(tokens: tokens, ctx: ctx, acc: [])
   if r.success && count(r.params) >= 2 {

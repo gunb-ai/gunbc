@@ -1,7 +1,13 @@
 module std.occurrence_binding_resolve
 
-import std.algebra { FreeMonoid, Empty }
+import std.algebra { FreeMonoid, Empty, Cons }
 import std.types { String, List, Int }
+import std.coercion {
+  TypeDeclarationProvenance,
+  CorpusDeclared,
+  KernelMinted,
+  DeclarationIdentityAbsent,
+}
 import std.occurrence_binding {
   ContainmentPath,
   BindingOccurrence,
@@ -301,22 +307,31 @@ fn reference_occurrence_by_id(
   map_get(validated.references_by_id, occurrence.value)
 }
 
-fn resolve_reference_occurrence_binding_validated(
+type ReferenceBindingCandidatePopulation
+  = ReferenceBindingCandidatePopulationReady {
+      reference: ReferenceOccurrence,
+      candidates: FreeMonoid<BindingCandidate<OccurrenceId>>,
+    }
+  | ReferenceBindingCandidatePopulationRefused {
+      refusal: OccurrenceTransportRefusal,
+    }
+
+fn reference_binding_candidates_validated(
   validated: ValidatedOccurrenceTransport,
   occurrence: OccurrenceId,
   supplied_candidates: List<OccurrenceId>
-) -> OccurrenceReferenceBindingOutcome {
+) -> ReferenceBindingCandidatePopulation {
   match map_get(validated.entries_by_id, occurrence.value) {
     Absent =>
       match reference_occurrence_by_id(validated: validated, occurrence: occurrence) {
         Present { value: reference } =>
-          OccurrenceReferenceBindingTransportRefused {
+          ReferenceBindingCandidatePopulationRefused {
             refusal: MissingAuthoredOccurrenceIdentity {
               diagnostic_span: reference.diagnostic_span,
             },
           }
         Absent =>
-          OccurrenceReferenceBindingTransportRefused {
+          ReferenceBindingCandidatePopulationRefused {
             refusal: UnknownOccurrenceIdentity { occurrence: occurrence },
           }
       }
@@ -325,7 +340,7 @@ fn resolve_reference_occurrence_binding_validated(
         Absent =>
           match map_get(validated.declarations_by_id, occurrence.value) {
             Present { value: observed_declaration } =>
-              OccurrenceReferenceBindingTransportRefused {
+              ReferenceBindingCandidatePopulationRefused {
                 refusal: WrongOccurrenceRole {
                   occurrence: occurrence,
                   expected: ReferenceRole,
@@ -334,7 +349,7 @@ fn resolve_reference_occurrence_binding_validated(
                 },
               }
             Absent =>
-              OccurrenceReferenceBindingTransportRefused {
+              ReferenceBindingCandidatePopulationRefused {
                 refusal: MissingAuthoredOccurrenceIdentity {
                   diagnostic_span: entry.projection.diagnostic_span,
                 },
@@ -348,19 +363,37 @@ fn resolve_reference_occurrence_binding_validated(
           )
           match build.refusal {
             Present { value: refusal } =>
-              OccurrenceReferenceBindingTransportRefused {
+              ReferenceBindingCandidatePopulationRefused {
                 refusal: refusal,
               }
             Absent =>
-              OccurrenceReferenceBindingDecided {
-                result: occurrence_binding_from_candidates(
-                  occurrence: binding_occurrence_from_reference(
-                    reference: reference,
-                  ),
-                  candidates: build.candidates,
-                ),
+              ReferenceBindingCandidatePopulationReady {
+                reference: reference,
+                candidates: build.candidates,
               }
           }
+      }
+  }
+}
+
+fn resolve_reference_occurrence_binding_validated(
+  validated: ValidatedOccurrenceTransport,
+  occurrence: OccurrenceId,
+  supplied_candidates: List<OccurrenceId>
+) -> OccurrenceReferenceBindingOutcome {
+  match reference_binding_candidates_validated(
+    validated: validated,
+    occurrence: occurrence,
+    supplied_candidates: supplied_candidates,
+  ) {
+    ReferenceBindingCandidatePopulationRefused { refusal: refusal } =>
+      OccurrenceReferenceBindingTransportRefused { refusal: refusal }
+    ReferenceBindingCandidatePopulationReady { reference: reference, candidates: candidates } =>
+      OccurrenceReferenceBindingDecided {
+        result: occurrence_binding_from_candidates(
+          occurrence: binding_occurrence_from_reference(reference: reference),
+          candidates: candidates,
+        ),
       }
   }
 }
@@ -379,5 +412,247 @@ fn resolve_reference_occurrence_binding(
         occurrence: occurrence,
         supplied_candidates: supplied_candidates,
       )
+  }
+}
+
+
+// Identity and declaration evidence are different coordinates. A reference or scope retains its
+// authored identity with DeclarationIdentityAbsent: it is not a type declaration. Kernel terminals
+// carry the actual producer's KernelMinted evidence and have no authored OccurrenceId. In
+// particular, CorpusDeclared.decl_file never replaces the declaration's exact occurrence identity.
+type TypeBindingIdentity {
+  occurrence: OccurrenceId?
+  provenance: TypeDeclarationProvenance
+}
+
+type TypeDeclarationOccurrenceEvidence {
+  occurrence: OccurrenceId
+  provenance: TypeDeclarationProvenance
+}
+
+type TypeBindingEvidenceRefusal
+  = TypeBindingReferenceCategoryRefused {
+      occurrence: OccurrenceId,
+      observed: OccurrenceCategory,
+    }
+  | TypeBindingDeclarationEvidenceMissing {
+      occurrence: OccurrenceId,
+    }
+  | TypeBindingDeclarationEvidenceRepeated {
+      occurrence: OccurrenceId,
+      first: TypeDeclarationProvenance,
+      repeated: TypeDeclarationProvenance,
+    }
+  | TypeBindingAuthoredDeclarationEvidenceRefused {
+      occurrence: OccurrenceId,
+      observed: TypeDeclarationProvenance,
+    }
+  | TypeBindingKernelDeclarationEvidenceRefused {
+      observed: TypeDeclarationProvenance,
+    }
+  | TypeBindingKernelDeclarationRepeated {
+      observed: TypeDeclarationProvenance,
+    }
+
+type TypeOccurrenceReferenceBindingOutcome
+  = TypeOccurrenceReferenceBindingDecided {
+      result: OccurrenceBindingResult<TypeBindingIdentity>,
+    }
+  | TypeOccurrenceReferenceBindingTransportRefused {
+      refusal: OccurrenceTransportRefusal,
+    }
+  | TypeOccurrenceReferenceBindingEvidenceRefused {
+      refusal: TypeBindingEvidenceRefusal,
+    }
+
+type TypeDeclarationEvidenceIndexBuild {
+  evidence: Map<Int, TypeDeclarationProvenance>
+  refusal: TypeBindingEvidenceRefusal?
+}
+
+fn type_declaration_evidence_index(
+  rows: List<TypeDeclarationOccurrenceEvidence>
+) -> TypeDeclarationEvidenceIndexBuild {
+  fold(
+    rows,
+    init: TypeDeclarationEvidenceIndexBuild { evidence: empty_map(), refusal: none },
+    f: (build, row) => match build.refusal {
+      Present { value: _ } => build
+      Absent => match map_get(build.evidence, row.occurrence.value) {
+        Present { value: first } => TypeDeclarationEvidenceIndexBuild {
+          evidence: build.evidence,
+          refusal: Present { value: TypeBindingDeclarationEvidenceRepeated {
+            occurrence: row.occurrence,
+            first: first,
+            repeated: row.provenance,
+          } },
+        }
+        Absent => TypeDeclarationEvidenceIndexBuild {
+          evidence: map_insert(build.evidence, row.occurrence.value, row.provenance),
+          refusal: none,
+        }
+      }
+    },
+  )
+}
+
+fn type_binding_nondeclaration_identity(occurrence: OccurrenceId) -> TypeBindingIdentity {
+  TypeBindingIdentity { occurrence: Present { value: occurrence }, provenance: DeclarationIdentityAbsent }
+}
+
+fn type_binding_reference_path(path: OccurrenceContainmentPath) -> ContainmentPath<TypeBindingIdentity> {
+  ContainmentPath {
+    ancestors: map(path.ancestors, ancestor => type_binding_nondeclaration_identity(occurrence: ancestor)),
+    terminal: type_binding_nondeclaration_identity(occurrence: path.terminal),
+  }
+}
+
+type TypeBindingCandidateUnionBuild {
+  candidates_reversed: List<BindingCandidate<TypeBindingIdentity>>
+  kernel_names: Map<String, TypeDeclarationProvenance>
+  refusal: TypeBindingEvidenceRefusal?
+}
+
+fn type_binding_authored_candidate_step(
+  build: TypeBindingCandidateUnionBuild,
+  candidate: BindingCandidate<OccurrenceId>,
+  evidence: Map<Int, TypeDeclarationProvenance>
+) -> TypeBindingCandidateUnionBuild {
+  match build.refusal {
+    Present { value: _ } => build
+    Absent => match map_get(evidence, candidate.containment.terminal.value) {
+      Absent => TypeBindingCandidateUnionBuild {
+        candidates_reversed: build.candidates_reversed,
+        kernel_names: build.kernel_names,
+        refusal: Present { value: TypeBindingDeclarationEvidenceMissing {
+          occurrence: candidate.containment.terminal,
+        } },
+      }
+      Present { value: provenance } => match provenance {
+        CorpusDeclared { decl_file: _ } => TypeBindingCandidateUnionBuild {
+          candidates_reversed: Cons {
+            head: BindingCandidate { containment: ContainmentPath {
+              ancestors: map(candidate.containment.ancestors, ancestor => type_binding_nondeclaration_identity(occurrence: ancestor)),
+              terminal: TypeBindingIdentity {
+                occurrence: Present { value: candidate.containment.terminal },
+                provenance: provenance,
+              },
+            } },
+            tail: build.candidates_reversed,
+          },
+          kernel_names: build.kernel_names,
+          refusal: none,
+        }
+        _ => TypeBindingCandidateUnionBuild {
+          candidates_reversed: build.candidates_reversed,
+          kernel_names: build.kernel_names,
+          refusal: Present { value: TypeBindingAuthoredDeclarationEvidenceRefused {
+            occurrence: candidate.containment.terminal,
+            observed: provenance,
+          } },
+        }
+      }
+    }
+  }
+}
+
+fn type_binding_kernel_candidate_step(
+  build: TypeBindingCandidateUnionBuild,
+  provenance: TypeDeclarationProvenance
+) -> TypeBindingCandidateUnionBuild {
+  match build.refusal {
+    Present { value: _ } => build
+    Absent => match provenance {
+      KernelMinted { minted_name: minted_name } => match map_get(build.kernel_names, minted_name) {
+        Present { value: _ } => TypeBindingCandidateUnionBuild {
+          candidates_reversed: build.candidates_reversed,
+          kernel_names: build.kernel_names,
+          refusal: Present { value: TypeBindingKernelDeclarationRepeated { observed: provenance } },
+        }
+        Absent => TypeBindingCandidateUnionBuild {
+          candidates_reversed: Cons {
+            head: BindingCandidate { containment: ContainmentPath {
+              ancestors: Empty,
+              terminal: TypeBindingIdentity { occurrence: none, provenance: provenance },
+            } },
+            tail: build.candidates_reversed,
+          },
+          kernel_names: map_insert(build.kernel_names, minted_name, provenance),
+          refusal: none,
+        }
+      }
+      _ => TypeBindingCandidateUnionBuild {
+        candidates_reversed: build.candidates_reversed,
+        kernel_names: build.kernel_names,
+        refusal: Present { value: TypeBindingKernelDeclarationEvidenceRefused { observed: provenance } },
+      }
+    }
+  }
+}
+
+// The caller supplies structurally selected declarations, just as for the authored-only P1 seam.
+// Kernel evidence is read from the compiler's actual declaration producer. This function neither
+// selects a name nor manufactures provenance. There is exactly one cardinality decision, AFTER
+// the two candidate populations have been combined; an authored/kernel collision cannot privilege
+// either class. A non-type reference refuses before this type-specific union can be constructed.
+fn resolve_type_occurrence_binding_with_kernel_candidates(
+  transport: OccurrenceTransport,
+  occurrence: OccurrenceId,
+  supplied_candidates: List<OccurrenceId>,
+  declaration_evidence: List<TypeDeclarationOccurrenceEvidence>,
+  kernel_candidates: List<TypeDeclarationProvenance>
+) -> TypeOccurrenceReferenceBindingOutcome {
+  match occurrence_transport_validate(transport: transport) {
+    OccurrenceTransportRefused { refusal: refusal } =>
+      TypeOccurrenceReferenceBindingTransportRefused { refusal: refusal }
+    OccurrenceTransportValidated { transport: validated } =>
+      match reference_binding_candidates_validated(
+        validated: validated,
+        occurrence: occurrence,
+        supplied_candidates: supplied_candidates,
+      ) {
+        ReferenceBindingCandidatePopulationRefused { refusal: refusal } =>
+          TypeOccurrenceReferenceBindingTransportRefused { refusal: refusal }
+        ReferenceBindingCandidatePopulationReady { reference: reference, candidates: candidates } =>
+          match reference.category {
+            TypeOccurrence =>
+              let evidence = type_declaration_evidence_index(rows: declaration_evidence)
+              match evidence.refusal {
+                Present { value: refusal } => TypeOccurrenceReferenceBindingEvidenceRefused { refusal: refusal }
+                Absent =>
+                  let authored = fold(
+                    candidates,
+                    init: TypeBindingCandidateUnionBuild {
+                      candidates_reversed: Empty,
+                      kernel_names: empty_map(),
+                      refusal: none,
+                    },
+                    f: (build, candidate) => type_binding_authored_candidate_step(
+                      build: build,
+                      candidate: candidate,
+                      evidence: evidence.evidence,
+                    ),
+                  )
+                  let combined = fold(
+                    kernel_candidates,
+                    init: authored,
+                    f: (build, provenance) => type_binding_kernel_candidate_step(build: build, provenance: provenance),
+                  )
+                  match combined.refusal {
+                    Present { value: refusal } => TypeOccurrenceReferenceBindingEvidenceRefused { refusal: refusal }
+                    Absent => TypeOccurrenceReferenceBindingDecided {
+                      result: occurrence_binding_from_candidates(
+                        occurrence: BindingOccurrence { containment: type_binding_reference_path(path: reference.containment) },
+                        candidates: reverse(combined.candidates_reversed),
+                      ),
+                    }
+                  }
+              }
+            _ => TypeOccurrenceReferenceBindingEvidenceRefused { refusal: TypeBindingReferenceCategoryRefused {
+              occurrence: reference.occurrence,
+              observed: reference.category,
+            } }
+          }
+      }
   }
 }

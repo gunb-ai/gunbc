@@ -1,0 +1,131 @@
+module gunbc.namespace_qualified_reference_host_closure_gap
+
+import std.types { FilePath, List, NonEmptyStr, String }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+// TYPED REFUSAL for the two zero-import dotted pairs that HostScannerClosureRefused
+// still surfaces on the generated-artifact carrier after the XL-6 scanner wall:
+//   src/v2/std/artifact.dag → src/v2/std/refinement.dag
+//   src/v2/std/cross_tree/resolution.dag → src/v2/std/layer.dag
+//
+// Scoped to the std/v2 reference-derived host-closure carrier
+// (std.occurrence_binding_candidates / std.occurrence_binding_resolve consumed by
+// that path). This row does NOT cover v1 callable/occurrence supply: v1's
+// occurrence binding (src/v1/04_occurrence_binding.dag) imports only std.types and
+// does not consume those std binding resolvers — same question asked of two
+// representations (seed/target duality), not one shared capability.
+//
+// The missing capability is named below; this row does NOT encode the join, does NOT
+// reclassify TypeOccurrence, and does NOT widen the scanner wall. The continuing red
+// on those pairs is the correct terminal for the prepared cut until the capability
+// lands and can be measured by the named instrument.
+
+type JoinedQualifiedReferencePathInductionCapability sole_constructor {
+  name: NonEmptyStr
+  carrier_scope: NonEmptyStr
+  sufficient_for: NonEmptyStr
+}
+
+data joined_qualified_reference_path_induction: JoinedQualifiedReferencePathInductionCapability =
+  JoinedQualifiedReferencePathInductionCapability {
+    name: "joined qualified-reference path induction for host file dependency" as NonEmptyStr,
+    carrier_scope:
+      "std/v2 reference-derived host closure via std.occurrence_binding_candidates and std.occurrence_binding_resolve — not v1 infer_sigs / v1.04_occurrence_binding callable supply"
+        as NonEmptyStr,
+    sufficient_for:
+      "producing a host-closure edge on the std/v2 reference-derived host-closure carrier from a zero-import dotted cross-module reference, not merely projecting a provider name"
+        as NonEmptyStr,
+  }
+
+// Analogy only: a v1 lane may wait on qualified refs arriving as leaf-plus-separate
+// segments under infer_sigs; this gap is dotted refs on the std/v2 occurrence
+// transport with no joined path (one concatenated TypeOccurrence, or Field spines).
+// Related by the question "given a qualified reference, find the provider"; separated
+// by carrier and resolver. Neither identity nor unrelatedness is claimed.
+data joined_qualified_path_induction_v1_analogy_note: String =
+  "Analogous to — not the same as — v1 qualified-reference supply gaps: both ask how a qualified reference finds its provider; v1 does not consume std.occurrence_binding_candidates/resolve, so satisfying one does not retire the other."
+
+type HostClosurePairObligation {
+  source_path: FilePath
+  proposed_dependency_path: FilePath
+}
+
+type HostClosurePairRefusalCause
+  = MissingJoinedQualifiedReferencePathInduction {
+      capability: JoinedQualifiedReferencePathInductionCapability,
+    }
+
+type HostClosurePairRefusal {
+  pair: HostClosurePairObligation
+  cause: HostClosurePairRefusalCause
+}
+
+data host_closure_pairs_refused_for_missing_joined_qualified_path_induction:
+  List<HostClosurePairRefusal> = [
+  HostClosurePairRefusal {
+    pair: HostClosurePairObligation {
+      source_path: "src/v2/std/artifact.dag" as FilePath,
+      proposed_dependency_path: "src/v2/std/refinement.dag" as FilePath,
+    },
+    cause: MissingJoinedQualifiedReferencePathInduction {
+      capability: joined_qualified_reference_path_induction,
+    },
+  },
+  HostClosurePairRefusal {
+    pair: HostClosurePairObligation {
+      source_path: "src/v2/std/cross_tree/resolution.dag" as FilePath,
+      proposed_dependency_path: "src/v2/std/layer.dag" as FilePath,
+    },
+    cause: MissingJoinedQualifiedReferencePathInduction {
+      capability: joined_qualified_reference_path_induction,
+    },
+  },
+]
+
+// ONE CAUSE, NOT FOUR FAILURES. On this prepared branch the required-lane reds
+// (required-witnesses-build, required-witnesses-floor, heal-generated-artifacts,
+// witnesses aggregate) collapse to a single HostScannerClosureRefused with
+// count=2 on DottedModulePathScanner for exactly the two pairs above. Stage0-
+// mirrors drift and heal's inability to answer are consequences of the generated-
+// artifact carrier declining after that refusal — not independent defects. Naming
+// that collapse here stops the next reader from "fixing" the deadlock four wrong
+// ways. Automated "CI failing, push a fix" nudges that treat the red as ordinary
+// breakage are noise for the life of this draft; greening would require the missing
+// capability or a forbidden widen.
+data host_closure_ci_red_is_one_cause: String =
+  "HostScannerClosureRefused count=2 on DottedModulePathScanner for the two pairs in host_closure_pairs_refused_for_missing_joined_qualified_path_induction; mirror drift and heal refusal are downstream of the carrier declining to answer."
+
+// Evidence for whether the capability is still missing is RE-DERIVED by this
+// instrument (occurrence-category census at file grain). Cite the entry point
+// by its Cargo bin name; do not copy its numbers into this row. Dated BuildBuddy
+// runs may corroborate but are not the sole provenance once the instrument is enrolled.
+data occurrence_category_file_census_instrument: NonEmptyStr =
+  "occurrence_category_file_census" as NonEmptyStr
+
+data occurrence_category_file_census_crate: NonEmptyStr =
+  "v1-compiler" as NonEmptyStr
+
+data occurrence_category_file_census_source_path: NonEmptyStr =
+  "src/v1/stage0/src/bin/occurrence_category_file_census.rs" as NonEmptyStr
+
+data occurrence_category_file_census_invocation: String =
+  "cargo build --release -p v1-compiler --bin occurrence_category_file_census && ./target/release/occurrence_category_file_census <path.dag>..."
+
+data occurrence_category_file_census_measures: String =
+  "per named source path: decls, refs, clause_e_selected, ns_segment_refs, dotted_type_refs"
+
+// REACHABILITY: cargo build of the named bin from source is enough. This instrument is
+// the same class as carrier_realization_census — an on-demand census cited by a gap row,
+// not a floor/WitnessBin consumer. It is deliberately NOT enrolled in
+// gunbc.ci_release_bins (that pack is for bins the floor or a WitnessBin transport
+// invokes; packing it would be a standing fleet claim without a production invoker).
+// The dissolve-on trigger's "re-derive via … entry point" means the Cargo argv above.
+data occurrence_category_file_census_reachability: String =
+  "Cargo bin entry point from source (same class as carrier_realization_census); not a gunbc.ci_release_bins member."
+
+// Retires only when the std/v2 reference-derived host-closure carrier gains the
+// scoped capability below — not when a v1 infer_sigs/callable-supply repair greens.
+data host_closure_joined_qualified_path_gap_dissolve_on: DissolutionCondition =
+  unbound_dissolution(description:
+    "Retire this refusal roster when joined qualified-reference path induction for host file dependency, scoped to the std/v2 reference-derived host-closure carrier (std.occurrence_binding_candidates / std.occurrence_binding_resolve), is sufficient to produce a host-closure edge from each zero-import dotted cross-module reference named in host_closure_pairs_refused_for_missing_joined_qualified_path_induction, with no DottedModulePathScanner or BareReferenceScanner addition answering behind the loaded closure. A v1-only repair of qualified leaf/segment binding does not satisfy this trigger. Re-derive the occurrence-category evidence via the occurrence_category_file_census instrument entry point; transcribed counts do not satisfy this trigger."
+  )

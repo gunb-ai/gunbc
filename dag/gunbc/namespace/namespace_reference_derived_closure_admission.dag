@@ -60,6 +60,17 @@ type ReferenceDerivedClosureAdmission
       trigger: ReferenceDerivedClosureTrigger,
     }
 
+// These historical variant names identify capability obligations, not completion
+// of PR #7515. The existence of its symbols does not satisfy any trigger.
+// StructuralCandidateProducer requires production binding observations for all
+// four structural capabilities. ReferenceDependencyProjection requires a complete,
+// load-bearing reference-derived binding projection covering every dependency-
+// inducing occurrence category, sufficient for the host closure to load the correct
+// file set with no scanner or pool fallback answering behind it. The pool-independent
+// trigger additionally requires that unrelated loaded files cannot change those
+// exact bindings or their dependency projection. Acceptance requires executing the
+// corresponding production observations; an unavailable row remains unavailable
+// until that capability is established.
 type ReferenceDerivedClosureTrigger
   = P2aStructuralCandidateProducer7515
   | P2aReferenceDependencyProjection7515

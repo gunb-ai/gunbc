@@ -15,7 +15,8 @@ import v1.std.core {
 import v1.compiler.infer_types {
   resolved_type, normalize_access_type_node,
   node_type_equals, node_is_keyed_collection,
-  node_is_element_collection, for_each_element_type_node
+  node_is_element_collection, for_each_element_type_node,
+  CollectionElementTypeResolved, CollectionElementTypeRefused
 }
 
 
@@ -86,8 +87,14 @@ fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, 
           let malformed_diags = [access_error(message: "malformed keyed collection type in index access", span: span, module_name: module_name)]
           access_result(inferred: unit_type, diagnostics: malformed_diags, span: span, fallback_message: "malformed keyed collection type in index access")
         } else if is_ordered_element_collection(name: authored_name_at(source_indices: source_indices, node: normed)) && node_is_element_collection(n: normed, source_indices: source_indices) && index_is_int {
-          let elem = for_each_element_type_node(n: normed, source_indices: source_indices)
-          access_result(inferred: with_optional_cardinality(n: elem), diagnostics: [], span: span, fallback_message: "list index access")
+          match for_each_element_type_node(n: normed, source_indices: source_indices, span: span) {
+            CollectionElementTypeResolved { element: elem } =>
+              access_result(inferred: with_optional_cardinality(n: elem), diagnostics: [], span: span, fallback_message: "list index access")
+            CollectionElementTypeRefused { diagnostic: diagnostic } => AccessCheckResultNode {
+              inferred: Present { value: CompilerError { message: diagnostic_to_message(d: diagnostic), span: span } },
+              diagnostics: [make_error_node(diagnostic: diagnostic, module_name: module_name)]
+            }
+          }
         } else {
           let diags = [access_error(message: "indexing is only supported for String, keyed collection, and list values", span: span, module_name: module_name)]
           access_result(inferred: unit_type, diagnostics: diags, span: span, fallback_message: "invalid index access")

@@ -8,6 +8,7 @@ import std.occurrence_binding {
   OccurrenceBound,
   OccurrenceUnbound,
   OccurrenceAmbiguous,
+  AmbiguousBindingCandidates,
 }
 import std.occurrence_identity {
   OccurrenceId,
@@ -1053,7 +1054,7 @@ fn bound_reference_population_fold_step(
             more_failures_reversed: concat([projection], acc.more_failures_reversed),
           }
       }
-    ReferenceBindingProjectionAmbiguous { occurrence: _ } =>
+    ReferenceBindingProjectionAmbiguous { occurrence: _, candidates: _ } =>
       match acc.first_failure {
         Absent =>
           BoundReferencePopulationBuild {
@@ -2492,7 +2493,10 @@ fn reference_derived_clause_e_production_from_assembled_closure(
 type ReferenceBindingProjection
   = ReferenceBindingProjectionBound { provider: BoundReferenceProvider }
   | ReferenceBindingProjectionUnbound { occurrence: OccurrenceId }
-  | ReferenceBindingProjectionAmbiguous { occurrence: OccurrenceId }
+  | ReferenceBindingProjectionAmbiguous {
+      occurrence: OccurrenceId
+      candidates: AmbiguousBindingCandidates<OccurrenceId>
+    }
   | ReferenceBindingProjectionTransportRefused { refusal: OccurrenceTransportRefusal }
   | ReferenceBindingProjectionModulePathRefused { refusal: OccurrenceModulePathIndexRefusal }
   | ReferenceBindingProjectionExposureRefused { refusal: DeclarationExposureIndexRefusal }
@@ -2560,8 +2564,11 @@ fn resolve_reference_via_structural_candidates(
       match result {
         OccurrenceUnbound { occurrence: _ } =>
           ReferenceBindingProjectionUnbound { occurrence: reference.occurrence }
-        OccurrenceAmbiguous { occurrence: _, candidates: _ } =>
-          ReferenceBindingProjectionAmbiguous { occurrence: reference.occurrence }
+        OccurrenceAmbiguous { occurrence: _, candidates: candidates } =>
+          ReferenceBindingProjectionAmbiguous {
+            occurrence: reference.occurrence,
+            candidates: candidates,
+          }
         OccurrenceBound { binding: binding } =>
           let declaration_occurrence = binding.candidate.containment.terminal
           match module_of_occurrence(
