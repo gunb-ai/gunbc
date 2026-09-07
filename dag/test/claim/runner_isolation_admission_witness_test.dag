@@ -5,6 +5,7 @@ import std.types { NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.fabric.isolation {
   DedicatedKernel,
+  DefaultDenyEgress,
   FreshWritableRoot,
   IsolationProfile,
   isolation_profile_contains,
@@ -94,12 +95,17 @@ test fn a_qualified_fixed_operation_may_omit_the_dedicated_kernel() -> Bool {
 
 // ── provider selection follows the requirement, not a preference ────────────────────────────────
 
-// THE ADMISSION ANSWER TODAY IS A REFUSAL, and that is the correction rather than a regression. The
-// Mt. Collins offer withholds DefaultDenyEgress because the only observed egress path was a bridge
-// onto the physical segment. Untrusted work requiring it therefore matches nothing until the
-// filtered-egress receipt exists -- which is the model refusing to admit the job before the slice
-// that makes it safe.
-test fn untrusted_work_is_refused_until_the_offer_earns_default_deny_egress() -> Bool {
+// THE ADMISSION ANSWER IS STILL A REFUSAL, BUT NO LONGER FOR THE REASON THIS TEST WAS NAMED AFTER.
+// DefaultDenyEgress has since been EARNED -- a filtered-egress run proved four denials and two
+// grants, each by both the guest's outcome and its own rule counter -- and the offer now evidences
+// it. What keeps untrusted work refused today is PrivateNetworkNamespace: the VMM still shares the
+// host network namespace, because --netns was never passed.
+//
+// THE TEST WOULD HAVE STAYED GREEN THROUGH THAT CHANGE WITHOUT ANYONE NOTICING, which is the thing
+// worth recording. It asserts only that SOMETHING is missing, so it survived the guarantee it was
+// named for being satisfied. A refusal test that does not name what it expects missing cannot tell
+// a boundary holding for the right reason from one holding by accident.
+test fn untrusted_work_is_refused_while_a_required_guarantee_is_unevidenced() -> Bool {
   match provider_for_work(p: ForkPullRequest) {
     NoProviderSatisfies { missing: m } => (m |> count) > 0
     _ => false
@@ -107,12 +113,32 @@ test fn untrusted_work_is_refused_until_the_offer_earns_default_deny_egress() ->
 }
 
 // THE CONTROL THAT KEEPS THAT MEANINGFUL: the offer is not simply empty. It has earned a dedicated
-// kernel, and work needing only what it evidences is admitted.
+// kernel and a default-deny egress path, and work needing only what it evidences is admitted.
+//
+// THIS CONTROL NAMED FreshWritableRoot UNTIL THE OFFER STOPPED CLAIMING IT, and CI caught the
+// disagreement rather than a reviewer. The guarantee was withdrawn deliberately: this offer gives an
+// IMMUTABLE digest-verified root plus a separate fresh workspace, which is stronger than a writable
+// root for what tenants care about and DIFFERENT from what the name asserts.
+//
+// THE FIX IS TO NAME A GUARANTEE THE OFFER ACTUALLY EVIDENCES, not to restore the claim so the test
+// passes. A positive control asserting something the subject does not provide is not a control --
+// it is a second place saying what the offer contains, and it would have been "fixed" by making the
+// offer lie.
 test fn the_offer_admits_a_requirement_it_has_evidenced() -> Bool {
   offer_admits(
     offer: mtcollins_dedicated_kernel_offer,
-    required: IsolationProfile { guarantees: [DedicatedKernel, FreshWritableRoot] },
+    required: IsolationProfile { guarantees: [DedicatedKernel, DefaultDenyEgress] },
   )
+}
+
+// AND THE WITHDRAWN GUARANTEE GETS ITS OWN ARM, so the withdrawal is asserted rather than merely
+// implied by its absence from the list above. Work requiring a writable root must be REFUSED by this
+// offer, and refused for that reason.
+test fn the_offer_refuses_work_requiring_a_writable_root() -> Bool {
+  offer_admits(
+    offer: mtcollins_dedicated_kernel_offer,
+    required: IsolationProfile { guarantees: [FreshWritableRoot] },
+  ) == false
 }
 
 // THE RED THAT MATTERS MOST. If a shared-kernel provider could ever admit work requiring a
