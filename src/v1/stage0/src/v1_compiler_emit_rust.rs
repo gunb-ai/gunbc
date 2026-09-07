@@ -5125,7 +5125,7 @@ pub fn emit_qualified_value_ref_crate_ident(
             ),
             "::".to_string(),
         ),
-        emit_import_name(leaf.clone(), registry.clone(), emit_info.clone()),
+        emit_import_name(info.module_name.clone(), leaf.clone(), registry.clone()),
     )
 }
 
@@ -9702,7 +9702,7 @@ let fallback = Rc::new({ let mut __result = Vec::new(); for nm in names.iter().c
                 Rc::new(vec![])
             } else {
                 if provider_proven_exports_symbol(nm.clone(), provider.clone(), export_sets.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone()) {
-                    Rc::new(vec![v1_rt::concat(rust_visibility_prefix(), v1_rt::concat("use crate::".to_string(), v1_rt::concat(crate::v1_compiler_emit_core_support::module_to_filename(provider.clone()), v1_rt::concat("::".to_string(), v1_rt::concat(emit_import_name(nm.clone(), registry.clone(), emit_info.clone()), ";".to_string())))))])
+                    Rc::new(vec![v1_rt::concat(rust_visibility_prefix(), v1_rt::concat("use crate::".to_string(), v1_rt::concat(crate::v1_compiler_emit_core_support::module_to_filename(provider.clone()), v1_rt::concat("::".to_string(), v1_rt::concat(emit_import_name(provider.clone(), nm.clone(), registry.clone()), ";".to_string())))))])
                 } else {
                     Rc::new(vec![])
                 }
@@ -9748,11 +9748,8 @@ v1_rt::concat(block_lines.clone(), fallback.clone())
             source_indices.clone(),
             module_index.clone(),
         );
-        let qualified_lines = qualified_type_reference_use_lines(
-            qualified_rows.clone(),
-            registry.clone(),
-            emit_info.clone(),
-        );
+        let qualified_lines =
+            qualified_type_reference_use_lines(qualified_rows.clone(), registry.clone());
         Rc::new(ReferenceDerivedUseLinePlan {
             lines: v1_rt::concat(lines.clone(), qualified_lines.clone()),
             rows: v1_rt::concat(rows.clone(), qualified_rows.clone()),
@@ -9897,7 +9894,6 @@ pub fn registry_row_is_type_declared_in(info: Rc<ItemInfo>, module_name: String)
 pub fn qualified_type_reference_use_lines(
     rows: Rc<Vec<Rc<ReferenceDerivedCandidateRow>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    emit_info: Rc<EmitGraphInfo>,
 ) -> Rc<Vec<String>> {
     crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
         let mut __result = Vec::new();
@@ -9922,9 +9918,9 @@ pub fn qualified_type_reference_use_lines(
                                 "::".to_string(),
                             ),
                             emit_import_name(
+                                provider.clone(),
                                 crate::v1_std_core::qualified_last_segment(r.name.clone()),
                                 registry.clone(),
-                                emit_info.clone(),
                             ),
                         ),
                         ";".to_string(),
@@ -10264,19 +10260,21 @@ pub fn emit_module_full(
             let mut __result = Vec::new();
             for item in typed_module.items.clone().iter().cloned() {
                 __result.extend(
-                    (*match (*lookup_item_by_leaf(
-                        crate::v1_compiler_infer_env::authored_name(
-                            scope.type_env.clone(),
-                            item.clone(),
-                        ),
+                    (*match crate::v1_compiler_emit::lookup_item_by_identity(
                         registry.clone(),
-                        emit_info.clone(),
-                    ))
-                    .clone()
-                    {
-                        ItemLookup::ItemFound { info: info, .. } => info.service_names.clone(),
-                        ItemLookup::ItemLeafAmbiguous { leaf: _, .. } => Rc::new(vec![]),
-                        ItemLookup::ItemNotFound => Rc::new(vec![]),
+                        Rc::new(DeclaredCallableIdentity {
+                            owner_module_path: crate::v1_compiler_infer_env::authored_name(
+                                scope.type_env.clone(),
+                                m.clone(),
+                            ),
+                            decl_name: crate::v1_compiler_infer_env::authored_name(
+                                scope.type_env.clone(),
+                                item.clone(),
+                            ),
+                        }),
+                    ) {
+                        Some(info) => info.service_names.clone(),
+                        std::option::Option::None => Rc::new(vec![]),
                     })
                     .iter()
                     .cloned(),
@@ -10448,22 +10446,57 @@ pub fn emit_module_full(
 }
 
 pub fn emit_import_name(
+    owner_module: String,
     n: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
-        let is_data = match (*lookup_item_by_leaf(n.clone(), registry.clone(), emit_info.clone()))
-            .clone()
-        {
-            ItemLookup::ItemFound { info: info, .. } => (info.kind.clone() == ItemKind::DataItem),
-            ItemLookup::ItemLeafAmbiguous { leaf: _, .. } => false,
-            ItemLookup::ItemNotFound => false,
+        let is_data = match crate::v1_compiler_emit::lookup_item_by_identity(
+            registry.clone(),
+            Rc::new(DeclaredCallableIdentity {
+                owner_module_path: owner_module.clone(),
+                decl_name: n.clone(),
+            }),
+        ) {
+            Some(info) => (info.kind.clone() == ItemKind::DataItem),
+            std::option::Option::None => false,
         };
         if is_data.clone() {
             crate::v1_compiler_emit_core_support::to_snake(n.clone())
         } else {
             n.clone()
+        }
+    }
+}
+
+pub fn graph_type_import_module_path(
+    name: String,
+    import_module: String,
+    mod_name: String,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_index: Rc<ModuleIndex>,
+) -> String {
+    if has_physical_type_def_in_module_filename(
+        name.clone(),
+        mod_name.clone(),
+        typed_modules.clone(),
+        source_indices.clone(),
+        module_index.clone(),
+    ) {
+        import_module.clone()
+    } else {
+        match reexport_source_module_name(
+            name.clone(),
+            import_module.clone(),
+            typed_modules.clone(),
+            export_sets.clone(),
+            source_indices.clone(),
+            module_index.clone(),
+        ) {
+            Some(src) => src.clone(),
+            std::option::Option::None => import_module.clone(),
         }
     }
 }
@@ -12964,9 +12997,17 @@ pub fn emit_specific_import_block(
                                         let mut __result = Vec::new();
                                         for n in group.iter().cloned() {
                                             __result.push(emit_import_name(
+                                                graph_type_import_module_path(
+                                                    n.clone(),
+                                                    import_module.clone(),
+                                                    mod_name.clone(),
+                                                    typed_modules.clone(),
+                                                    export_sets.clone(),
+                                                    source_indices.clone(),
+                                                    module_index.clone(),
+                                                ),
                                                 n.clone(),
                                                 registry.clone(),
-                                                emit_info.clone(),
                                             ));
                                         }
                                         __result
@@ -13002,9 +13043,9 @@ pub fn emit_specific_import_block(
                             let mut __result = Vec::new();
                             for n in other_direct_names.iter().cloned() {
                                 __result.push(emit_import_name(
+                                    import_module.clone(),
                                     n.clone(),
                                     registry.clone(),
-                                    emit_info.clone(),
                                 ));
                             }
                             __result

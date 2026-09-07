@@ -2631,7 +2631,7 @@ fn lookup_item_for_value_ref(resolved_name: String, self_module: String, registr
 }
 
 fn emit_qualified_value_ref_crate_ident(leaf: String, info: ItemInfo, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> String {
-  concat("crate::", module_to_filename(name: info.module_name), "::", emit_import_name(emit_info: emit_info, n: leaf, registry: registry))
+  concat("crate::", module_to_filename(name: info.module_name), "::", emit_import_name(owner_module: info.module_name, n: leaf, registry: registry))
 }
 
 // ONE REFUSAL TEXT FOR THE AMBIGUOUS LEAF, NAMED SO THE ARMS BELOW CANNOT DRIFT APART.
@@ -4986,7 +4986,7 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
         if (emitted_here |> any(e => e == nm)) || (is_known_variant(type_summaries: emit_info.type_summaries, name: nm) && !emit_map_has(m: type_position_set, key: nm)) {
           []
         } else if provider_proven_exports_symbol(name: nm, provider_module: provider, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
-          [concat(rust_visibility_prefix(), concat("use crate::", concat(module_to_filename(name: provider), concat("::", concat(emit_import_name(emit_info: emit_info, n: nm, registry: registry), ";")))))]
+          [concat(rust_visibility_prefix(), concat("use crate::", concat(module_to_filename(name: provider), concat("::", concat(emit_import_name(owner_module: provider, n: nm, registry: registry), ";")))))]
         } else {
           []
         }
@@ -4995,7 +4995,7 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
     )
     let names_already_in_lines = lines |> flat_map(l => imported_names_in_use_line(line: l))
     let qualified_rows = qualified_type_reference_rows(emit_info: emit_info, names: qualified_item_emit_surface_compatibility_names(candidates: origin_candidates) |> filter(nm => emit_map_has(m: emitted_source_token_set, key: qualified_last_segment(name: nm))), this_module_name: this_module_name, already: already, names_already_in_lines: names_already_in_lines, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
-    let qualified_lines = qualified_type_reference_use_lines(emit_info: emit_info, rows: qualified_rows, registry: registry)
+    let qualified_lines = qualified_type_reference_use_lines(rows: qualified_rows, registry: registry)
     ReferenceDerivedUseLinePlan { lines: concat(lines, qualified_lines), rows: concat(rows, qualified_rows) }
   }
 }
@@ -5054,11 +5054,11 @@ fn registry_row_is_type_declared_in(info: ItemInfo, module_name: String) -> Bool
   if info.module_name != module_name { false } else { match info.kind { TypeItem => true  _ => false } }
 }
 
-fn qualified_type_reference_use_lines(rows: List<ReferenceDerivedCandidateRow>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> List<String> {
+fn qualified_type_reference_use_lines(rows: List<ReferenceDerivedCandidateRow>, registry: Map<String, ItemInfo>) -> List<String> {
   unique_strings(items: rows |> flat_map(r =>
     match r.disposition {
       CandidateSurvived { provider_module: provider } =>
-        [concat(rust_visibility_prefix(), "use crate::", module_to_filename(name: provider), "::", emit_import_name(emit_info: emit_info, n: qualified_last_segment(name: r.name), registry: registry), ";")]
+        [concat(rust_visibility_prefix(), "use crate::", module_to_filename(name: provider), "::", emit_import_name(owner_module: provider, n: qualified_last_segment(name: r.name), registry: registry), ";")]
       _ => []
     }
   ))
@@ -5096,6 +5096,17 @@ fn emit_module_full_with_dispositions(typed_module: TypedModule, ctx: EmitRustCo
 
 // The graph summary is deliberately module-neutral. Every renderer consumes the selected
 // module's own identity census; an empty summary env is unobserved, not a negative.
+// THE SERVICE IMPORTS THIS MODULE OWES ARE ASKED OF THIS MODULE, NOT OF THE CORPUS. `all_svc_names`
+// folds `typed_module.items` -- declarations this module itself authors -- so the module that owns
+// each leaf is never in question and must not be re-derived from a corpus-wide leaf index. A leaf
+// this module declares that any other module also declares would come back ambiguous, and an empty
+// answer there silently drops that item`s `service_names`: the `use crate::<mod>::<Service>;` line
+// is never emitted and the generated Rust names a service it never imported. That is a failure arm
+// that widens instead of refusing, which DESIGN section 5 forbids, and it is both classes this same
+// change files -- resolution scope conflated with ownership scope, and an absence-that-is-an-answer
+// sharing one encoding with an absence-that-is-a-gap. The owning identity is already in hand as this
+// module`s own authored name, which `this_mod_filename` reads two lines above, so the question is
+// exact and `Absent` recovers one meaning: this module declares no such item.
 fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, shared_types: Set<String>, svc_module_map: Map<String, String>, data_items: Map<String, Node>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, unlisted_type_names: List<String>) -> ModuleEmission {
   let m = typed_module.module
   let scope = module_emit_scope(typed_module: typed_module)
@@ -5194,10 +5205,9 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let imports_section = if merged_imports == "" { "" } else { concat("\n", merged_imports) }
   let this_mod_filename = module_to_filename(name: authored_name(env: scope.type_env, node: m))
   let all_svc_names = typed_module.items |> flat_map(item =>
-    match lookup_item_by_leaf(leaf: authored_name(env: scope.type_env, node: item), registry: registry, emit_info: emit_info) {
-      ItemFound { info: info } => info.service_names
-      ItemLeafAmbiguous { leaf: _ } => []
-      ItemNotFound => []
+    match lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: authored_name(env: scope.type_env, node: m), decl_name: authored_name(env: scope.type_env, node: item) }) {
+      Present { value: info } => info.service_names
+      Absent => []
     }
   )
   let extern_svc_imports = unique_strings(items: all_svc_names) |> flat_map(sn =>
@@ -5238,13 +5248,36 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   }
 }
 
-fn emit_import_name(n: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> String {
-  let is_data = match lookup_item_by_leaf(leaf: n, registry: registry, emit_info: emit_info) {
-    ItemFound { info: info } => info.kind == DataItem
-    ItemLeafAmbiguous { leaf: _ } => false
-    ItemNotFound => false
+// THE NAME IS ASKED OF ONE OWNER, BECAUSE EVERY CALLER ALREADY KNOWS WHICH MODULE IT IS WRITING A
+// `use` LINE FOR. `is_data` decides whether the Rust spelling is snake_cased, so answering it from a
+// corpus-wide leaf index would let a leaf declared in two modules flip the case of an identifier
+// that this line names in ONE of them -- emitting a symbol that does not exist. Worse, the ambiguous
+// answer had no arm of its own: it collapsed into the same `false` as "no such declaration", which
+// is `empty_grouping_key_silently_deletes_its_population`'s absence-that-is-an-answer conflated with
+// absence-that-is-a-gap. Keyed on the owning identity the question is exact and the ambiguity cannot
+// arise, so `Absent` recovers its single honest meaning: this identity declares nothing, therefore
+// it is not a data item, therefore the name is not snake_cased.
+fn emit_import_name(owner_module: String, n: String, registry: Map<String, ItemInfo>) -> String {
+  let is_data = match lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: owner_module, decl_name: n }) {
+    Present { value: info } => info.kind == DataItem
+    Absent => false
   }
   if is_data { to_snake(n) } else { n }
+}
+
+// THE MODULE PATH THE `use` LINE ACTUALLY NAMES, beside the filename form directly above it. The
+// filename is what the emitted path needs; the PATH is what the registry is keyed on, and deriving
+// one from the other by re-spelling would be a second reduction of the same fact. Both read the same
+// re-export resolution, so they cannot disagree about which module owns the name.
+fn graph_type_import_module_path(name: String, import_module: String, mod_name: String, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> String {
+  if has_physical_type_def_in_module_filename(rhs_name: name, mod_filename: mod_name, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
+    import_module
+  } else {
+    match reexport_source_module_name(name: name, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
+      Present { value: src } => src
+      Absent => import_module
+    }
+  }
 }
 
 fn is_import_graph_type_name(name: String, import_module: String, typed_modules: List<TypedModule>, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, type_summaries: Map<String, TypeSummary>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> Bool {
@@ -6179,14 +6212,14 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
       )
       if group |> count > 0 {
         let names_str = group |> map(n =>
-          emit_import_name(emit_info: emit_info, n: n, registry: registry)
+          emit_import_name(owner_module: graph_type_import_module_path(name: n, import_module: import_module, mod_name: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index), n: n, registry: registry)
         ) |> join(separator: ", ")
         concat(rust_visibility_prefix(), "use crate::", def_mod, "::{", names_str, "};")
       } else { "" }
     )
     let other_direct_line = if other_direct_names |> count > 0 {
       let names_str = other_direct_names |> map(n =>
-        emit_import_name(emit_info: emit_info, n: n, registry: registry)
+        emit_import_name(owner_module: import_module, n: n, registry: registry)
       ) |> join(separator: ", ")
       concat(rust_visibility_prefix(), "use crate::", mod_name, "::{", names_str, "};")
     } else { "" }
