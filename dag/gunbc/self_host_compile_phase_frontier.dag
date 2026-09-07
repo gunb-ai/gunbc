@@ -2054,8 +2054,103 @@ fn receipt_2_66765317_receipt() -> CompilePhaseFrontierReceipt {
   )
 }
 
+// Receipt 3 was produced by the same one-entry instrument in a local invocation over the branch
+// tree at 5ee4892b70, three commits past receipt_2's subject, and it records the XL-N lane's
+// arrival: THE EMITTED CLOSURE'S CARGO CENSUS IS EMPTY. cargo check --lib on the 172-file emitted
+// crate reports zero error diagnostics (coded and codeless), so the board attributes every phase
+// a PhaseCount of zero and furthest_phase_reached stands at Borrowck. The fifteen removals against
+// receipt_2 need no disposition -- the ratchet admits a shrinking population -- and nothing was
+// added, so newly_exposed is empty and no epoch machinery is in play.
+//
+// THE EPOCH DOES NOT CHANGE, AND THE INSTRUMENT CHANGE UNDER THIS RECEIPT IS WHY THAT CLAIM IS
+// CHECKABLE. The cargo half now copies the repo's rust-toolchain.toml into the scratch crate
+// before invoking cargo (tools.emission_entry_instrument measure_cargo_half), so the measured
+// channel is pinned by construction rather than by host default. Every recorded comparison field
+// is nevertheless IDENTICAL to receipt_2 -- cargo 1.93.0, rustc 1.93.0, the pinned triple, the
+// check/dev profile, the classification policy digest -- because receipt_2's census was already
+// compiled by that toolchain (the run's target-dir rustc fingerprint records 1.93.0), and the pin
+// removes the host-default resolution path that a later run fell through to. comparison_inputs_same
+// therefore answers true against receipt_2, and the same-epoch arm forbids a reclassified
+// predecessor, so none is carried.
+//
+// THE THREE LANDED REPAIRS, each measured before this receipt was taken. The emitter's
+// substituted-declaration provenance guard (b21d3282cf) routes a Conj/Disj type-argument node --
+// inference substitutes the resolved declaration into a data annotation's type-argument position --
+// to its own-span provenance, so BooleanAlgebra<v2.std.logic.Bool> renders the structural enum
+// instead of the kernel bool that the referencing scope's #9813 shadowing answers for the bare
+// leaf; that cleared the python.rs:328 / typescript.rs:177 pair. The source-side carrier batch
+// (285b02eed2) converts at the construction boundaries the receipt_2 census named: lex-pattern
+// text goes structural at construction in lexing.dag and the three language modules, the bool
+// groundings qualify their annotation, target_model returns the host carrier out of
+// target_lex_rule_literal_step and converts at its two other boundaries, qualified_name.dag and
+// 02_parse.dag move their two-character lookahead and emptiness checks onto host-carrier
+// operations, and row_key's concat pipeline becomes nested calls so the lowering no longer emits a
+// method that does not exist. The channel pin (5ee4892b70) is the instrument repair above.
+//
+// ONE HONESTY NOTE ON THE ARTIFACT IDENTITY. This receipt's emitted_artifact_identity differs from
+// the pre-commit validation run's over the SAME bytes-by-value closure: the known import-set
+// ordering class (src/v1/05_emit_rust.dag's rostered annotation -- pure `pub use` reordering,
+// normalized-identical after rustfmt) makes the raw emitted bytes run-dependent, and this
+// instrument digests the raw bytes. The census the ratchet compares is order-independent and
+// unaffected; the identity is recorded as this run's observation, not a reproducibility claim.
+data receipt_3_5ee4892b_parse_observation: RustfmtParseObservation = RustfmtParseObservation {
+  producer: "rustfmt --emit stdout --edition 2021",
+  files_observed: 171,
+  refused_files: []
+}
+
+data receipt_3_5ee4892b_raw_error_diagnostic_identities: List<String> = [
+]
+
+data receipt_3_5ee4892b_phase_board_fold: PersistedPhaseBoardFold = phase_board_from_census_identities(
+  parse_observation: receipt_3_5ee4892b_parse_observation,
+  raw_identities: receipt_3_5ee4892b_raw_error_diagnostic_identities
+)
+
+fn receipt_3_5ee4892b_receipt() -> CompilePhaseFrontierReceipt {
+  let receipt_2 = receipt_2_66765317_receipt()
+  seal_compile_phase_receipt(
+    sequence: 3,
+    observed_at: "2026-09-07T23:07:19Z" as NonEmptyStr,
+    subject: CompilePhaseReceiptSubject {
+      source_revision: "5ee4892b709bd42fc9ba6a067cecf888ed2673f1" as CommitSha,
+      git_tree_object: floor_discovery_tree_id(object_id: GitSha1ObjectId { digest: Sha1Digest { hex: "07eee038259e268e1a543edddb9d3f105e2d11cf" } }),
+      emitted_artifact_identity: sha256_digest(hex: "83d95342004c0aa5954eaf46bf9c1cf5112473de5d38fce98d33ad2f889b6e11" as NonEmptyStr),
+      compiler_identity: sha256_digest(hex: "a31526e509283dc2235f470bc737f0906cd83baa2fd18fa603f0d3c573249a0b" as NonEmptyStr),
+      assembler_identity: sha256_digest(hex: "bb7f3c7684a9288c0401e4d7d63cefcd644d0f02e80330c021b6f53c4e1009a6" as NonEmptyStr),
+      cargo_identity: "cargo 1.93.0 (083ac5135 2025-12-15)" as NonEmptyStr,
+      rustc_identity: "rustc 1.93.0 (254b59607 2026-01-19); commit 254b59607d4417e9dffbc307138ae5c86280fe4c; host x86_64-unknown-linux-gnu; LLVM 21.1.8" as NonEmptyStr,
+      invocation: CompilePhaseInvocation {
+        target: "x86_64-unknown-linux-gnu",
+        target_selection: TargetPinnedOnInvocation,
+        profile: "check/dev",
+        features: []
+      },
+      classification_policy_digest: rustc_phase_classification_policy_digest,
+      comparison_epoch: "rustc-1.93.0-x86_64-pinned-check-dev-rustc-error-index-1.93.0" as NonEmptyStr
+    },
+    invocation: "local-8b8875a1-eac3-47b1-a041-aa04fa22b2dd" as NonEmptyStr,
+    position: PhaseBoardSuccessor { predecessor_invocation: "local-105b239b-7518-43d7-b526-a5e2ee0b610b" as NonEmptyStr },
+    previous_prefix_digest: Present { value: receipt_2.prefix_digest },
+    parse_evidence: ParseReached { evidence: receipt_3_5ee4892b_parse_observation },
+    board: receipt_3_5ee4892b_phase_board_fold.board,
+    raw_error_diagnostic_identities: receipt_3_5ee4892b_raw_error_diagnostic_identities,
+    unplaced_identities: receipt_3_5ee4892b_phase_board_fold.unplaced_identities,
+    newly_exposed: [],
+    unadmitted_regressions: [],
+    regression_repairs: [],
+    reclassified_predecessor_board: none,
+    producer: PhaseBoardProducer {
+      module_path: "tools.emission_entry_instrument",
+      function: "measure_entry_emission",
+      entry: "src/v2/compiler/00_compile.dag"
+    }
+  )
+}
+
 data self_host_compile_phase_frontier_receipts: List<CompilePhaseFrontierReceipt> = [
   genesis_5006ddc6_receipt(),
   receipt_1_eced9d24_receipt(),
-  receipt_2_66765317_receipt()
+  receipt_2_66765317_receipt(),
+  receipt_3_5ee4892b_receipt()
 ]
