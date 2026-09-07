@@ -26,31 +26,48 @@ data egress_outcome: EgressAttemptOutcome = GuestEgressNotEstablished {
 
 // ── the NIC actually carries a link ─────────────────────────────────────────────────────────────
 
-// PREVIOUSLY UNOBSERVED AND NOW READ. runner_host_hardware_observation listed "that either
-// interface carries traffic" among the things a PCI identity cannot establish, and every boot since
-// has only shown igb BINDING. This run shows the physical link negotiated:
+// WHAT WAS OBSERVED IS LINK NEGOTIATION, AND AN EARLIER REVISION OF THIS ROW CLAIMED MORE. The line
 //
 //   igb 0002:02:00.0 eth0: igb: eth0 NIC Link is Up 1000 Mbps Full Duplex, Flow Control: RX/TX
 //
-// That is layer 1 and 2 on the port whose MAC the firmware used for PXE -- the same port the fleet
-// would reach. It is not egress, and it is the half of egress that hardware owns.
-data nic_link_observed: NonEmptyStr = "igb eth0 negotiated 1000 Mbps full duplex; the physical link on the fleet-facing port is established for the first time"
+// establishes that the driver bound and the PHY negotiated 1000 Mbps full duplex on the port whose
+// MAC the firmware used for PXE. It does NOT establish that the interface carried a single frame.
+//
+// SO THE HARDWARE LANE'S OPEN ITEM STAYS OPEN. runner_host_hardware_observation lists "that either
+// interface carries traffic" among the things a PCI identity cannot settle, and this row was written
+// as though it closed that. It does not: closing it needs packet counters moving or a capture, on
+// this boot. Carrier is not a data plane, and promoting one to the other is how a layer-1 reading
+// becomes a reachability claim.
+type LinkObservation
+  = PhysicalLinkNegotiated { interface: NonEmptyStr, speed: NonEmptyStr, duplex: NonEmptyStr }
+  | InterfaceCarriedTraffic { evidence: NonEmptyStr }
+
+data nic_link_observed: LinkObservation = PhysicalLinkNegotiated {
+  interface: "eth0, the fleet-facing port",
+  speed: "1000 Mbps",
+  duplex: "full",
+}
 
 // ── the bridge was correct, and only its readback was broken ────────────────────────────────────
 
-// AN EARLIER RUN REPORTED AN EMPTY BRIDGE AND THE BRIDGE WAS FINE. `brctl show br0` takes no
-// argument in busybox, so passing one printed nothing, and nothing read as no members. Reading
-// /sys/class/net/br0/brif instead shows both interfaces enslaved.
+// AN EARLIER RUN REPORTED AN EMPTY BRIDGE AND THE BRIDGE WAS FINE. Reading
+// /sys/class/net/br0/brif shows both interfaces enslaved.
 //
-// THE LESSON IS THE ONE THIS LANE KEEPS RELEARNING: an instrument that cannot express the question
-// returns an answer that looks like a measurement. The sysfs read is unambiguous because it is the
-// kernel's own representation rather than a tool's rendering of it.
+// THE EXPLANATION FIRST GIVEN FOR THE EMPTY OUTPUT WAS WRONG AND IS WITHDRAWN. This row claimed
+// `brctl show br0` takes no argument in busybox; busybox 1.36.1 documents `show [BRIDGE]...` and
+// iterates the bridges it is given, so the invocation was valid and the explanation was invented to
+// fit the symptom. WHY that rendering came back empty is unresolved.
+//
+// REPLACING A BAD MEASUREMENT WITH A CONFIDENT WRONG CAUSE IS WORSE THAN LEAVING IT OPEN, because
+// the correction reads as understanding and stops anyone looking further. What survives is narrow:
+// sysfs established membership, the brctl rendering did not agree with it, and the disagreement is
+// unexplained.
 data bridge_membership: List<NonEmptyStr> = [
   "eth0 -- the host NIC",
   "the attempt's tap device",
 ]
 
-data bridge_readback_defect: NonEmptyStr = "brctl show br0 takes no argument in busybox and printed nothing, which read as an empty bridge; /sys/class/net/br0/brif shows both members"
+data bridge_readback_defect: NonEmptyStr = "sysfs established both bridge members; an earlier brctl show br0 rendering came back empty and the cause is unresolved -- the first explanation offered, that busybox rejects the argument, is false and is withdrawn"
 
 // ── the cpu bound has a cause now ───────────────────────────────────────────────────────────────
 
@@ -63,17 +80,28 @@ data bridge_readback_defect: NonEmptyStr = "brctl show br0 takes no argument in 
 // controller is delegated from the root -- and the interface file still cannot be created in the
 // leaf. memory.max and pids.max in the same leaf apply.
 //
-// THIS IS A NARROWING, NOT A DIAGNOSIS. What changed is that the failure is now an errno at a path
-// instead of an empty read, which is the difference between an open question and an invisible one.
-// The next slice owes the actual cause.
+// AND THE CAUSE IS NOW READ FROM THE KERNEL CONFIG RATHER THAN GUESSED: the built config carries
+//
+//   CONFIG_CGROUP_SCHED=y
+//   CONFIG_FAIR_GROUP_SCHED=y
+//   # CONFIG_CFS_BANDWIDTH is not set
+//
+// CFS bandwidth provisioning is what creates cpu.max on a non-root cgroup, and it defaults off. So
+// the file does not exist, the shell redirect tried to CREATE an arbitrary file inside cgroupfs, and
+// the kernel answered EPERM. The cpu controller being listed in cgroup.controllers is consistent
+// with this: weight-based control is present and bandwidth control is not.
+//
+// THE REPAIR IS A KERNEL OPTION, and the acceptance is not "cpu.max reads back". A present interface
+// is not an enforced boundary -- the receipt for that owes a controlled CPU load and cpu.stat
+// throttling counters moving.
 type CpuBoundFailure
   = CpuBoundAppliedNow { value: NonEmptyStr }
   | CpuBoundRefusedWithErrno { errno: NonEmptyStr, path_shape: NonEmptyStr, root_subtree: NonEmptyStr }
 
 data cpu_bound_failure: CpuBoundFailure = CpuBoundRefusedWithErrno {
-  errno: "EPERM -- Permission denied, creating the interface file",
+  errno: "EPERM -- the file does not exist and cgroupfs refuses its creation, because CONFIG_CFS_BANDWIDTH is not set in this kernel",
   path_shape: "the attempt leaf's cpu.max",
-  root_subtree: "cpu memory pids -- the controller IS delegated from the root",
+  root_subtree: "cpu memory pids -- the controller is delegated, and weight control is not bandwidth control",
 }
 
 // ── what stopped the egress, at the grain observed ──────────────────────────────────────────────
@@ -81,20 +109,25 @@ data cpu_bound_failure: CpuBoundFailure = CpuBoundRefusedWithErrno {
 // THE DHCP CLIENT REPORTED SUCCESS AND APPLIED NOTHING, TWICE, FOR TWO DIFFERENT REASONS -- and the
 // second is unresolved.
 //
-// FIRST: busybox udhcpc obtains a lease and configures nothing without a -s script. It exited 0 with
-// no address, which reads exactly like a working client. A script was added.
+// FIRST: this image's callback applied no configuration and udhcpc exited 0 with no address, which
+// reads exactly like a working client. A -s script was added.
 //
-// SECOND, AND OPEN: the script is present in the initramfs at a known path and was never invoked.
-// It logs unconditionally on entry, and /run/dhcp.log is empty -- so udhcpc did not call it, while
-// still exiting 0 under -n, which is the flag that should make a lease-less run exit non-zero.
-// Those two facts do not reconcile and no explanation is offered here.
+// SECOND, AND OPEN: the script is present at a known path and its log is empty. An earlier revision
+// concluded from that "udhcpc never invoked it" and called the facts irreconcilable. They are not.
+// The empty log establishes only that the script BODY never reached its first statement -- and
+// udhcpc does not inspect or propagate a callback's result, so an exec that failed before the log
+// (mode, interpreter line, mount flags, path) is indistinguishable from a callback never attempted.
 //
-// A THIRD POSSIBILITY NOT YET EXCLUDED: that the segment simply did not answer DHCP for the bridge's
-// MAC. Nothing in this run distinguishes "no offer" from "offer discarded", which is exactly the
-// distinction the lease log was added to make and which it failed to produce.
+// SO THE HONEST STANDING IS THAT THE CALLBACK PATH IS UNPROVEN AT BOTH ENDS. Candidate causes are
+// enumerable -- script not executable, noexec mount, missing or malformed interpreter, log
+// destination unwritable, the -s argument not reaching the applet -- and none is excluded.
+//
+// AND A THIRD POSSIBILITY REMAINS OPEN TOO: that the segment answered no DHCP for the bridge's MAC.
+// Nothing distinguishes "no offer" from "offer obtained and discarded", which is exactly what the
+// lease log was added to settle and did not.
 data egress_blocked_by: List<NonEmptyStr> = [
-  "busybox udhcpc applies nothing without a -s script; it exited 0 with no address, which is indistinguishable from a working client",
-  "with a script supplied and present in the image, udhcpc still never invoked it -- the script logs on entry and its log is empty",
+  "this image's callback did not apply configuration and udhcpc exited 0 with no address, which is indistinguishable from a working client. An earlier revision said busybox applies nothing WITHOUT -s; that is too strong, since busybox carries a compiled default script path and -s replaces it",
+  "with a script supplied and present in the image, its log is empty -- which establishes the script body did not reach its first statement, NOT that udhcpc never attempted the callback. udhcpc does not propagate a callback failure, so an exec that failed before the log would look exactly like this",
   "and no observation distinguishes 'the segment offered no lease' from 'a lease was obtained and discarded'",
 ]
 
@@ -113,7 +146,7 @@ data egress_policy_debt: NonEmptyStr = "the bridge grants unfiltered segment acc
 
 data egress_open: List<NonEmptyStr> = [
   "why udhcpc exits 0 without invoking its own script, and whether the segment offered a lease at all",
-  "the actual cause of EPERM on cpu.max in a leaf whose parent delegates cpu",
+  "a kernel built with CONFIG_CFS_BANDWIDTH, and then a controlled load showing cpu.stat throttling -- the interface existing would not establish enforcement",
   "a filtered egress path: netfilter built in, an nft or equivalent binary in the image, and a default-deny ruleset",
   "guest egress itself, which nothing here established",
   "the JIT-registered runner, which egress is the prerequisite for",
