@@ -1,0 +1,20 @@
+module test.claim.algebra_receiver_callable_witness_test
+
+import std.types { Bool, Int }
+
+type ApplicationUnary<T> = fn(T) -> T
+
+type ApplicationCallback = CallbackPresent { invoke: ApplicationUnary<Int> } | CallbackAbsent
+
+fn application_increment(value: Int) -> Int { value + 1 }
+
+fn declared_application_callback() -> ApplicationCallback {
+  CallbackPresent { invoke: application_increment }
+}
+
+test fn matched_generic_callable_alias_remains_callable() -> Bool {
+  match declared_application_callback() {
+    CallbackPresent { invoke } => invoke(41) == 42
+    CallbackAbsent => false
+  }
+}
