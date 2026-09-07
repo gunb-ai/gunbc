@@ -221,20 +221,73 @@ and custom all-reduce needs single-node P2P.
 - "It will not solve the ~1.055 ms/token term" — correct, and now measured: the term
   is invariant to batch size over 32x.
 
-## 8. What is still open
+## 8. TP=4 against TP=2: the batch axis could not move the per-token term, and this does
 
-The per-token 0.9661 ms is intrinsic per-token work at every batch size tested, so
-the remaining candidates are unchanged and the review's ranking of them is sound:
+Run 2026-09-07 on the same head, holding everything: same image and container, same
+model snapshot and tokenizer, same executor, same backend selections, same fresh-nonce
+cache standing, batch budget **pinned explicitly at 2048 in both arms**, MFU metrics on
+in both, and the same context ceiling of 131,072 — lowered from the production
+1,048,576 for BOTH arms, because a TP=2 rank holds roughly half of a ~168.7 GB model
+against a ~99.8 GiB budget and the production ceiling is untested there.
 
-1. **TP=4 vs TP=2** (review B3) — now the top experiment. With the batch axis
-   closed, collective topology is the largest untested factor.
-2. **Ray vs mp executor** (B4) — cheap A/B, holds everything else fixed.
-3. **The operation ladder** (B6) — GEMM → grouped MoE → sparse attention → layer →
-   model, to locate the per-token cost inside a step.
-4. **Platform** — clocks, thermals, UVM behaviour, driver/firmware parity per rank.
+    quantity                  TP=4         TP=2      TP=2 against TP=4
+    marginal per token      1.053 us     0.786 us     25.4% cheaper
+    prefill throughput       949 tok/s   1272 tok/s     34% higher
+    decode alone             30.2 ms      40.5 ms       34% WORSE
+    co-tenant stall         2146 ms      1629 ms        24% shorter
+    KV pool at 131,072    6,175,555    2,310,685        63% LESS
 
-`--enable-mfu-metrics` should be on for all of these: it is the per-step counter,
-and it also carries estimated FLOPs and memory traffic per step.
+The gain holds at every probe above 2,048 tokens across a 40x range (510 → 20,192
+computed tokens) and is only 7% at 510, where the fixed per-request term still
+dominates. Step counts from the per-step FLOPs counter matched `ceil(tokens/2048)` in
+both arms, so the budget really was pinned and the comparison really is topology.
+
+**Review candidate #3 is confirmed: TP=4 over-shards this prefill.** It is the first
+mechanism found that moves the per-token term at all — the batch axis could not touch
+it — and the largest single lever measured on this fleet.
+
+**It is not a free win, and the two workloads want opposite topologies.** Decode is
+34% worse at TP=2, which is what you would expect: decode is memory-bound per token
+and fewer ranks means less aggregate bandwidth to stream weights, while prefill is
+compute-and-collective-bound and pays for every extra participant.
+
+### The topologies are not numerically interchangeable
+
+A greedy text comparison would have been worthless here — the two arms diverge at the
+first token (" The" against " the") and separate from there, which a near-tie plus
+greedy decoding produces from an arbitrarily small logit difference.
+
+So the measurement is **prompt logprobs over one fixed 22-token input**: a single
+deterministic forward pass, no sampling, identical bytes in.
+
+    same token sequence:  yes
+    max |delta|:          1.517 nats   (a 4.56x ratio on one token's probability)
+    mean |delta|:         0.330 nats
+
+That is orders of magnitude above float reduction-order noise. Something about the
+sharding changes the computation and not merely its rounding. The candidates are
+**unseparated**: per-shard fp8 accumulation, routed-expert selection under a different
+partition of the 256 experts, or a shape-dependent kernel choice. The carrier refuses
+substitution rather than reporting a warning — a 25% speed win may not silently carry
+a numerical change into production.
+
+**Missing control, named rather than glossed:** no arm was repeated, so within-topology
+run-to-run variation is unmeasured and the 25.4% carries no interval.
+
+## 9. What is still open
+
+1. **Whether TP=2 fits the production 1,048,576 ceiling at all** — untested, and the
+   weights rather than the KV pool are the binding constraint.
+2. **Whether the numerical divergence is a defect or an accepted consequence of
+   resharding.** This blocks adoption on its own.
+3. **Within-topology repeat runs**, to put an interval on the 25.4%.
+4. **Ray vs mp executor** (review B4) — cheap A/B, everything else fixed.
+5. **The operation ladder** (B6) — GEMM → grouped MoE → sparse attention → layer →
+   model, to locate *where inside the step* the recovered 25% was being spent.
+6. **Platform** — clocks, thermals, UVM behaviour, driver/firmware parity per rank.
+
+`--enable-mfu-metrics` should be on for all of these: it is the per-step counter, and
+it also carries estimated FLOPs and memory traffic per step.
 
 ## 9. Suggested carrier changes
 

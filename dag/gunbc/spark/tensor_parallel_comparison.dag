@@ -1,0 +1,170 @@
+module gunbc.spark.tensor_parallel_comparison
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import std.measure { TokenCount, token_count, token_count_value }
+
+// ── TP=4 AGAINST TP=2 ON ONE HEAD, EVERYTHING ELSE HELD ───────────────────────────────────────
+//
+// WHY THIS EXPERIMENT AND WHY NOW. gunbc.spark.prefill_batch_sweep closed the batch axis: the
+// per-token cost is invariant from 512 to 16,384 tokens per step, so the ~1 microsecond per token
+// is not a batching, scheduling or routed-expert-granularity artifact. That left collective
+// topology as the largest untested factor, and this is the discriminating cut for it.
+//
+// WHAT WAS HELD CONSTANT: the same head, the same runtime image and container, the same model
+// snapshot, the same tokenizer, the same executor (Ray), the same backend selections, the same
+// prefix-cache standing (a fresh 32-character nonce per probe), the same batch budget PINNED
+// EXPLICITLY at 2048 in both arms, the same observability profile (--enable-mfu-metrics in both),
+// and the same context ceiling. Only the tensor-parallel degree and the participant count differ.
+//
+// THE CONTEXT CEILING IS 131,072 IN BOTH ARMS AND IS NOT THE PRODUCTION CEILING. Production runs
+// at 1,048,576. TP=2 was never tested there and may not fit at all -- the model repository is
+// ~168.7 GB, so a TP=2 rank holds roughly half of it against a ~99.8 GiB budget. Lowering the
+// ceiling for both arms is what keeps this a topology comparison rather than a capacity handicap,
+// and the capacity each arm bought at that ceiling is carried below rather than dropped.
+type TopologyArm sole_constructor {
+  tensor_parallel_size: Nat
+  context_ceiling: TokenCount
+  max_num_batched_tokens: Nat
+  marginal_micros_per_thousand_tokens: Nat
+  prefill_tokens_per_second: Nat
+  decode_alone_micros: Nat
+  co_tenant_stall_micros: Nat
+  gpu_kv_cache_tokens: Nat
+  provenance: NonEmptyStr
+}
+
+data spark_group_a_tp4_arm: TopologyArm = TopologyArm {
+  tensor_parallel_size: 4,
+  context_ceiling: token_count(count: 131072),
+  max_num_batched_tokens: 2048,
+  marginal_micros_per_thousand_tokens: 1053,
+  prefill_tokens_per_second: 949,
+  decode_alone_micros: 30200,
+  co_tenant_stall_micros: 2146300,
+  gpu_kv_cache_tokens: 6175555,
+  provenance: "group A head 192.168.1.225, 2026-09-07, seven cold probes from 510 to 20,192 computed tokens on an idle engine, ordinary least squares over the population; step counts read from vllm:estimated_flops_per_gpu_total and consistent with ceil(tokens/2048) throughout" as NonEmptyStr,
+}
+
+data spark_group_a_tp2_arm: TopologyArm = TopologyArm {
+  tensor_parallel_size: 2,
+  context_ceiling: token_count(count: 131072),
+  max_num_batched_tokens: 2048,
+  marginal_micros_per_thousand_tokens: 786,
+  prefill_tokens_per_second: 1272,
+  decode_alone_micros: 40500,
+  co_tenant_stall_micros: 1628600,
+  gpu_kv_cache_tokens: 2310685,
+  provenance: "the same head minutes apart under the same harness and the same pinned budget; the per-step FLOPs quantum doubled, which is what two ranks carrying the work of four looks like from a per-GPU counter" as NonEmptyStr,
+}
+
+// ── THE RESULT, AND IT IS NOT ONE NUMBER ──────────────────────────────────────────────────────
+//
+//     quantity                  TP=4        TP=2      TP=2 against TP=4
+//     marginal per token     1.053 us    0.786 us     25.4% cheaper
+//     prefill throughput      949 tok/s  1272 tok/s    34% higher
+//     decode alone            30.2 ms     40.5 ms      34% WORSE
+//     co-tenant stall        2146 ms     1629 ms       24% shorter
+//     KV pool at 131,072    6,175,555   2,310,685      63% LESS
+//
+// SO TP=4 IS OVER-SHARDING THIS PREFILL, which is the first mechanism found that moves the
+// per-token term at all -- the batch axis could not touch it. The gain is real and it is the
+// largest single lever measured on this fleet.
+//
+// AND IT IS NOT A FREE WIN. Decode gets materially worse in the same move, because decode is
+// memory-bound per token and fewer ranks means less aggregate bandwidth to read the weights with,
+// while prefill is compute-and-collective-bound and pays for every extra participant. The two
+// workloads want opposite topologies, which is a product decision about which one this replica is
+// FOR, not a tuning constant.
+type TopologyComparison
+  = TopologyMovesPerTokenCost { faster: Nat, percent_cheaper: Nat, by: NonEmptyStr }
+  | TopologyDoesNotMovePerTokenCost { by: NonEmptyStr }
+
+data spark_group_a_topology_comparison: TopologyComparison = TopologyMovesPerTokenCost {
+  faster: 2,
+  percent_cheaper: 25,
+  by: "matched at context ceiling 131,072 and batch budget 2048, TP=2 costs 0.786 microseconds per computed token against TP=4's 1.053, a 25.4% reduction sustained across a 40x token range from 510 to 20,192; the gain appears at every probe above 2,048 tokens and is 7% at 510, which is where the fixed per-request term still dominates" as NonEmptyStr,
+}
+
+// ── THE TWO TOPOLOGIES ARE NOT NUMERICALLY INTERCHANGEABLE, AND THIS IS A REFUSAL ─────────────
+//
+// WHY A GREEDY TEXT COMPARISON WOULD HAVE BEEN WORTHLESS. Sampled continuations from the two arms
+// diverge at the first token (" The" against " the") and then follow different wordings. That is
+// NOT evidence of a numerical defect: greedy decoding turns an arbitrarily small logit difference
+// at a near-tie into a different token and the sequences separate from there. A text diff cannot
+// distinguish a rounding difference from a broken kernel.
+//
+// SO THE MEASUREMENT IS PROMPT LOGPROBS OVER ONE FIXED 22-TOKEN INPUT: one deterministic forward
+// pass, no sampling, identical bytes in, so every difference out is numerical.
+//
+// THE RESULT IS LARGER THAN ROUNDING. The token sequence is identical, and the per-token logprobs
+// differ by up to 1.517 nats with a mean of 0.330 -- the largest single divergence is a factor of
+// 4.56 in the probability the model assigns a token of its own prompt. Float reduction-order noise
+// on a bf16/fp8 model is orders of magnitude below that. Something about the sharding changes the
+// computation, not merely its rounding, and the candidates are unseparated: per-shard accumulation
+// in fp8, routed-expert selection under a different partition, or a shape-dependent kernel choice.
+type NumericalAgreement
+  = TokenSequenceAndLogprobsAgree { max_delta_millinats: Nat }
+  | TokenSequenceAgreesLogprobsDiverge { max_delta_millinats: Nat, mean_delta_millinats: Nat, worst_probability_ratio_hundredths: Nat, unseparated_causes: NonEmptyStr }
+  | TokenSequenceDiffers { at_index: Nat }
+  | NumericalAgreementUnmeasured { because: NonEmptyStr }
+
+data spark_group_a_topology_numerical_agreement: NumericalAgreement = TokenSequenceAgreesLogprobsDiverge {
+  max_delta_millinats: 1517,
+  mean_delta_millinats: 330,
+  worst_probability_ratio_hundredths: 456,
+  unseparated_causes: "per-shard fp8 accumulation order, routed-expert selection under a different partition of 256 experts, or a shape-dependent kernel choice; one fixed 22-token prompt on one model is too small a population to separate them, and no arm was repeated to establish within-topology run-to-run variation, which is the control this measurement is missing" as NonEmptyStr,
+}
+
+// THE GATE. A consumer may not read "TP=2 is 25% cheaper" as "serve on TP=2": the speed result and
+// the equivalence result are different subjects, and only the second decides substitutability.
+// Divergence REFUSES rather than returning a warning, because the whole point of the fail-closed
+// arm is that a performance win cannot silently carry a numerical change into production.
+type TopologySubstitution
+  = TopologySubstitutable { note: NonEmptyStr }
+  | TopologySubstitutionRefused { cause: NonEmptyStr }
+
+fn topology_substitutable(agreement: NumericalAgreement) -> TopologySubstitution {
+  match agreement {
+    TokenSequenceAndLogprobsAgree { max_delta_millinats: _ } =>
+      TopologySubstitutable { note: "the two topologies agree to within rounding on a deterministic forward pass" as NonEmptyStr }
+    TokenSequenceAgreesLogprobsDiverge { max_delta_millinats: m, mean_delta_millinats: _, worst_probability_ratio_hundredths: _, unseparated_causes: c } =>
+      TopologySubstitutionRefused {
+        cause: join([
+          "the topologies are not numerically interchangeable: prompt logprobs on one fixed input differ by up to ",
+          to_string(m), " millinats, which is a materially different model output and not a rounding difference. Unseparated causes: ", c as String,
+        ], "") as NonEmptyStr,
+      }
+    TokenSequenceDiffers { at_index: i } =>
+      TopologySubstitutionRefused {
+        cause: join(["the topologies do not agree on the prompt's own token sequence, diverging at index ", to_string(i)], "") as NonEmptyStr,
+      }
+    NumericalAgreementUnmeasured { because: b } =>
+      TopologySubstitutionRefused {
+        cause: join(["numerical agreement was not measured: ", b as String], "") as NonEmptyStr,
+      }
+  }
+}
+
+// ── WHAT THIS DECIDES AND WHAT IT DELIBERATELY DOES NOT ───────────────────────────────────────
+//
+// DECIDED: collective topology reaches the per-token term and the batch axis does not. Review
+// candidate 3 (TP=4 over-shards this workload) is CONFIRMED on this fleet at this context ceiling.
+//
+// NOT DECIDED, and none of these is a detail:
+//   - whether TP=2 fits the production 1,048,576 ceiling at all (untested; the weights alone are
+//     the binding constraint, not the KV pool);
+//   - whether the numerical divergence is a defect or an accepted consequence of resharding;
+//   - within-topology run-to-run variation, which was never measured, so the 25.4% carries no
+//     interval;
+//   - whether TP=1 or pipeline parallelism does better still;
+//   - where inside the step the recovered 25% was being spent, which needs the operation ladder.
+type TopologyStanding
+  = TopologyMeasuredNotAdopted { confirmed: NonEmptyStr, blocked_on: NonEmptyStr }
+  | TopologyAdopted { degree: Nat }
+
+data spark_group_a_topology_standing: TopologyStanding = TopologyMeasuredNotAdopted {
+  confirmed: "TP=4 over-shards prefill on this model and fleet: TP=2 is 25.4% cheaper per computed token and 34% higher in prefill throughput, matched at 131,072 context and a 2048 batch budget" as NonEmptyStr,
+  blocked_on: "the numerical divergence must be explained before a topology change can be served, and the production context ceiling must be shown to fit at TP=2; the two workloads also want opposite topologies -- decode is 34% worse at TP=2 -- so an adoption is a decision about what a replica is FOR and not a tuning change" as NonEmptyStr,
+}
