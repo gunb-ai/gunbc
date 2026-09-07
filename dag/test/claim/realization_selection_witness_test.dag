@@ -527,18 +527,38 @@ test fn generated_section_3d_and_reviewer_execute() -> Bool {
 test fn fleet_operating_point_names_throughput_and_ac_power_gaps() -> Bool {
   match fleet_operating_point_selection() {
     SelectionNeedsEvidence { needs: ns } =>
-      any(ns, n =>
-        match n {
-          UnfundedAxis { gap: g } => declaration_ref_eq(a: g.axis, b: gap_aggregate_throughput.axis)
-          _ => false
-        }
-      )
+      (ns |> count) == 4
+        && any(ns, n =>
+          match n {
+            UnfundedAxis { gap: g } => declaration_ref_eq(a: g.axis, b: gap_aggregate_throughput.axis)
+            _ => false
+          }
+        )
         && any(ns, n =>
           match n {
             UnfundedAxis { gap: g } => declaration_ref_eq(a: g.axis, b: gap_ac_power_energy.axis)
             _ => false
           }
         )
+    _ => false
+  }
+}
+
+test fn two_unevidenced_candidates_accumulate_every_gap() -> Bool {
+  match select_realization(
+    assessment: closed_selection_assessment(),
+    candidate_field_identity: id_field,
+    field: [
+      entry_missing_power(id: id_a, label: "a missing power" as NonEmptyStr, tput: 90),
+      entry_missing_power(id: id_b, label: "b missing power" as NonEmptyStr, tput: 10),
+    ],
+    axes: axes_forward(),
+    constraints: [power_cap],
+    constraint_authority: id_constraints,
+    policy: UniqueSurvivorRequired { identity: id_policy_unique },
+    evidence_snapshot: id_evidence,
+  ) {
+    SelectionNeedsEvidence { needs: ns } => (ns |> count) == 2
     _ => false
   }
 }
@@ -570,6 +590,8 @@ fn realization_selection_witness_main() -> ProcessExit {
     ExitFailure { code: 1, reason: "10 design-section-reviewer" as NonEmptyStr }
   } else if !fleet_operating_point_names_throughput_and_ac_power_gaps() {
     ExitFailure { code: 1, reason: "11 fleet-gaps" as NonEmptyStr }
+  } else if !two_unevidenced_candidates_accumulate_every_gap() {
+    ExitFailure { code: 1, reason: "12 accumulate-every-gap" as NonEmptyStr }
   } else {
     ExitSuccess
   }

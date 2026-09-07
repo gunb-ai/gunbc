@@ -781,6 +781,12 @@ type FeasibilityScan
   | FeasibilityNeedsEvidence { gaps: List<AxisGap> }
   | FeasibilityRefused { defects: List<NonEmptyStr> }
 
+type FeasibilityAccum {
+  remaining: List<ParetoEntry>
+  gaps: List<AxisGap>
+  defects: List<NonEmptyStr>
+}
+
 fn axis_goal_for(axes: List<SelectionAxis>, wanted: DeclarationRef) -> AxisGoal? {
   match (filter(axes, a => declaration_ref_eq(a: a.identity, b: wanted))).first() {
     Absent => Absent
@@ -846,92 +852,119 @@ fn scan_feasibility(
   axes: List<SelectionAxis>,
   constraints: List<HardConstraint>,
 ) -> FeasibilityScan {
-  fold(field, init: FeasibilityReady { remaining: [] }, f: (acc, entry) =>
-    match acc {
-      FeasibilityNeedsEvidence { gaps: gs } => FeasibilityNeedsEvidence { gaps: gs }
-      FeasibilityRefused { defects: ds } => FeasibilityRefused { defects: ds }
-      FeasibilityReady { remaining: rem } => {
-        let unread = unread_axis_gaps(
-          entry: entry,
-          wanted: feasibility_unread_axes(axes: axes, constraints: constraints),
-        )
-        if (unread |> count) > 0 {
-          FeasibilityNeedsEvidence { gaps: unread }
-        } else {
-          let undecided = any(constraints, c =>
-            match constraint_cmp(entry: entry, constraint: c, axes: axes) {
-              Present { value: cmp } =>
-                match cmp {
-                  UndecidedOnEvidence => true
-                  Better => false
-                  Same => false
-                  Worse => false
-                }
-              Absent => true
+  let folded = fold(field, init: FeasibilityAccum { remaining: [], gaps: [], defects: [] }, f: (acc, entry) => {
+    let unread = unread_axis_gaps(
+      entry: entry,
+      wanted: feasibility_unread_axes(axes: axes, constraints: constraints),
+    )
+    if (unread |> count) > 0 {
+      FeasibilityAccum { remaining: acc.remaining, gaps: concat(acc.gaps, unread), defects: acc.defects }
+    } else {
+      let undecided = any(constraints, c =>
+        match constraint_cmp(entry: entry, constraint: c, axes: axes) {
+          Present { value: cmp } =>
+            match cmp {
+              UndecidedOnEvidence => true
+              Better => false
+              Same => false
+              Worse => false
             }
-          )
-          if undecided {
-            FeasibilityNeedsEvidence {
-              gaps: map(constraints, c => AxisGap {
-                axis: c.axis,
-                cause: "constraint bound not separable from candidate reading" as NonEmptyStr,
-              })
-            }
-          } else {
-            let infeasible = any(constraints, c =>
-              match constraint_cmp(entry: entry, constraint: c, axes: axes) {
-                Present { value: cmp } =>
-                  match cmp {
-                    Worse => true
-                    Better => false
-                    Same => false
-                    UndecidedOnEvidence => false
-                  }
-                Absent => false
+          Absent => true
+        }
+      )
+      if undecided {
+        FeasibilityAccum {
+          remaining: acc.remaining,
+          gaps: concat(
+            acc.gaps,
+            map(constraints, c => AxisGap {
+              axis: c.axis,
+              cause: "constraint bound not separable from candidate reading" as NonEmptyStr,
+            }),
+          ),
+          defects: acc.defects,
+        }
+      } else {
+        let infeasible = any(constraints, c =>
+          match constraint_cmp(entry: entry, constraint: c, axes: axes) {
+            Present { value: cmp } =>
+              match cmp {
+                Worse => true
+                Better => false
+                Same => false
+                UndecidedOnEvidence => false
               }
-            )
-            if infeasible {
-              FeasibilityReady { remaining: rem }
-            } else {
-              FeasibilityReady { remaining: concat(rem, [entry]) }
-            }
+            Absent => false
+          }
+        )
+        if infeasible {
+          acc
+        } else {
+          FeasibilityAccum {
+            remaining: concat(acc.remaining, [entry]),
+            gaps: acc.gaps,
+            defects: acc.defects,
           }
         }
       }
     }
-  )
+  })
+  if (folded.defects |> count) > 0 {
+    FeasibilityRefused { defects: folded.defects }
+  } else if (folded.gaps |> count) > 0 {
+    FeasibilityNeedsEvidence { gaps: folded.gaps }
+  } else {
+    FeasibilityReady { remaining: folded.remaining }
+  }
 }
 
 fn funded_axis_refs(axes: List<SelectionAxis>) -> List<DeclarationRef> {
   map(axes, a => a.identity)
 }
 
+type SurvivorFoldAccum {
+  survivors: List<DeclarationRef>
+  needs: List<SelectionEvidenceNeed>
+  defects: List<NonEmptyStr>
+}
+
 fn pareto_survivor_identities(field: List<ParetoEntry>, axes: List<SelectionAxis>) -> RealizationSelectionResult<ParetoEntry> {
-  fold(field, init: SelectionNeedsPolicy { survivors: [] }, f: (acc, entry) =>
-    match acc {
-      RealizationSelectionRefused { defects: ds } => RealizationSelectionRefused { defects: ds }
-      SelectionNeedsEvidence { needs: ns } => SelectionNeedsEvidence { needs: ns }
-      CandidateFieldUnestablished { causes: cs } => CandidateFieldUnestablished { causes: cs }
-      NoFeasibleRealization { causes: cs } => NoFeasibleRealization { causes: cs }
-      SelectedWithin { candidate: c, receipt: r } => SelectedWithin { candidate: c, receipt: r }
-      SelectionNeedsPolicy { survivors: sv } =>
-        match entry_standing(subject: entry, field: field, axes: axes, sensitivities: []) {
-          ProvisionallyNonDominated { sensitivities: _ } =>
-            SelectionNeedsPolicy { survivors: concat(sv, [entry.identity]) }
-          DominatedBy { dominators: _ } => SelectionNeedsPolicy { survivors: sv }
-          NotComputable { missing: m } =>
-            SelectionNeedsEvidence {
-              needs: [CandidateStandingIncomplete { candidate: entry.identity, cause: m }],
-            }
-          PendingEvidence { undecided: u } =>
-            SelectionNeedsEvidence {
-              needs: [CandidateStandingIncomplete { candidate: entry.identity, cause: u }],
-            }
-          SelectionRefused { cause: c } =>
-            RealizationSelectionRefused { defects: [c] }
+  let folded = fold(field, init: SurvivorFoldAccum { survivors: [], needs: [], defects: [] }, f: (acc, entry) =>
+    match entry_standing(subject: entry, field: field, axes: axes, sensitivities: []) {
+      ProvisionallyNonDominated { sensitivities: _ } =>
+        SurvivorFoldAccum {
+          survivors: concat(acc.survivors, [entry.identity]),
+          needs: acc.needs,
+          defects: acc.defects,
+        }
+      DominatedBy { dominators: _ } => acc
+      NotComputable { missing: m } =>
+        SurvivorFoldAccum {
+          survivors: acc.survivors,
+          needs: concat(acc.needs, [CandidateStandingIncomplete { candidate: entry.identity, cause: m }]),
+          defects: acc.defects,
+        }
+      PendingEvidence { undecided: u } =>
+        SurvivorFoldAccum {
+          survivors: acc.survivors,
+          needs: concat(acc.needs, [CandidateStandingIncomplete { candidate: entry.identity, cause: u }]),
+          defects: acc.defects,
+        }
+      SelectionRefused { cause: c } =>
+        SurvivorFoldAccum {
+          survivors: acc.survivors,
+          needs: acc.needs,
+          defects: concat(acc.defects, [c]),
         }
     }
   )
+  if (folded.defects |> count) > 0 {
+    RealizationSelectionRefused { defects: folded.defects }
+  } else if (folded.needs |> count) > 0 {
+    SelectionNeedsEvidence { needs: folded.needs }
+  } else {
+    SelectionNeedsPolicy { survivors: folded.survivors }
+  }
 }
 
 fn entry_by_identity(field: List<ParetoEntry>, wanted: DeclarationRef) -> ParetoEntry? {
