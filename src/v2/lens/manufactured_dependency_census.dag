@@ -98,6 +98,23 @@ fn import_targets_by_path(edges: List<ImportResolutionFact>) -> Map<String, List
   )
 }
 
+// THE LOOKUP IS THE TOTAL ONE, AND THE REASON IS UNREACHABILITY BY CONSTRUCTION RATHER THAN BY
+// CORPUS ACCIDENT -- stated because unchanged figures across the repair would otherwise read as
+// evidence the new path is CORRECT on a refusal, when they are evidence there is no refusal to be
+// correct about. An earlier cut of this file called `v2.std.collection` `map_get` and folded its
+// `Rejected` arm into `Absent`, which the `Absent` arm below reads as `true` -- a rejection counted
+// as a manufactured edge, inflating the census with no located diagnostic (DESIGN section 5).
+// `map_get` is literally `outcome_accepted(map_lookup(...))` and `outcome_accepted`'s only
+// constructor is `Accepted`, so that `Rejected` arm was UNCONSTRUCTIBLE: no fixture can hand the
+// compiler a source that produces one, which is why declining to enrol a probe for it is not
+// specification-without-execution. `v2.std.collection` says the same thing at the declaration --
+// a caller reaching for `map_get` must match an arm no producer can construct, and binds it to
+// whichever domain answer is nearest, which is exactly what happened here.
+//
+// Calling the total `map_lookup` removes the arm from the return type instead of disposing of it
+// honestly, so the hazard is now unwritable rather than merely unwritten. `Absent` below is a total
+// answer with a real meaning: this file authored no imports at all, so every reference edge from it
+// is manufactured.
 fn edge_is_manufactured(
   by_path: Map<String, List<String>>,
   edge: ImportResolutionFact
