@@ -55,7 +55,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn emc_decls(n: Int) -> List<InferredTree> {
   if n <= 0 {
-    Empty
+    []
   } else if n == 1 {
     [emit_eval_subject_tree()]
   } else if n == 2 {
@@ -146,7 +146,7 @@ test fn emc_production_text_is_byte_identical_to_repeated_append_holds() -> Bool
 // declaration text followed by exactly one separator -- so a golden that adds or drops a separator
 // is refused. Without this, the equality specimen could be green over two identically-broken folds.
 test fn emc_separator_placement_discriminates_holds() -> Bool {
-  emc_text_matches(n: 0, golden: Empty)
+  emc_text_matches(n: 0, golden: "")
     && !emc_text_matches(n: 0, golden: emit_module_decl_separator)
     && emc_text_matches(n: 1, golden: emc_expected_one())
     && !emc_text_matches(n: 1, golden: rust_source_text)
