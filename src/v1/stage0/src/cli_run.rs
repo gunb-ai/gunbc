@@ -24741,7 +24741,7 @@ const EFFECT_REACH_HOST_SINK_MARKERS: &[&str] = &[
     "Exec.Run",
 ];
 
-fn source_has_path_like_string_data(content: &str) -> bool {
+pub(crate) fn source_has_path_like_string_data(content: &str) -> bool {
     content.lines().any(source_line_has_path_like_string_data)
 }
 
@@ -26430,6 +26430,31 @@ new file mode 100644
         assert!(
             !super::source_has_host_effect_sink(source),
             "a census call must not be reclassified by effect_reach; otherwise a lying SIO stamp would not buy a predict-skip"
+        );
+    }
+
+    #[test]
+    fn adding_the_census_marker_would_still_lose_the_conjunction_on_the_remaining_specimen() {
+        let ws = workspace_root();
+        let rel = "dag/test/claim/citation_cause_subject_disjointness_witness_test.dag";
+        let content =
+            std::fs::read_to_string(ws.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
+        assert!(
+            !super::parse_entry_live_tree_disposition(rel, &content).unwrap(),
+            "{rel} must still be SubstrateInputsOnly for this check"
+        );
+        assert!(
+            super::entry_direct_live_tree_sinks(&content)
+                .contains(&"compile_dag_diagnostic_census"),
+            "specimen lost its census call"
+        );
+        assert!(
+            !super::source_has_host_effect_sink(&content),
+            "the mechanism: census is absent from EFFECT_REACH_HOST_SINK_MARKERS"
+        );
+        assert!(
+            !super::source_has_path_like_string_data(&content),
+            "even a roster patch would still lose ConjunctionOfIndependentExistentials: this entry compiles in-memory source strings, not a dag/ or src/ path literal"
         );
     }
 
