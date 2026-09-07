@@ -338,7 +338,7 @@ fn callee_dedup_step(state: CalleeDedupState, text: String) -> CalleeDedupState 
 fn callees_from_node(node: Node, terminal_callee_symbols: List<String>) -> List<String> {
   let state = fold_list(
     xs: callee_texts_in_subtree(node: node),
-    empty: CalleeDedupState { seen: empty_map, out: empty_fn_arrow_string_list },
+    empty: CalleeDedupState { seen: empty_map(), out: empty_fn_arrow_string_list },
     cons: fn(acc, text) {
       if contains(xs: terminal_callee_symbols, item: text, eq: fn_index_string_eq) {
         acc
@@ -442,7 +442,7 @@ fn call_reachable_decls(
     closure_modules: closure_modules,
     decls: decls,
     reached_reversed: empty_fn_arrow_decl_list,
-    seen: empty_map
+    seen: empty_map()
   )
 }
 
@@ -479,6 +479,6 @@ fn call_reachable_decls_from_root(
     closure_modules: closure_modules,
     decls: decls,
     reached_reversed: empty_fn_arrow_decl_list,
-    seen: empty_map
+    seen: empty_map()
   )
 }
