@@ -1,0 +1,246 @@
+module gunbc.spark.prefill_batch_sweep
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import std.measure { TokenCount, token_count, token_count_value }
+import extdeps.vllm.batch_defaults { UpstreamBatchDefaultResolution, spark_gb10_batch_default_resolution }
+
+// ── WHAT THE PREFILL BATCH BUDGET BUYS AND COSTS, MEASURED ACROSS FOUR LAUNCHES ───────────────
+//
+// THE EXPERIMENT. On 2026-09-07 the group A head was restarted four times behind a temporary
+// systemd drop-in, each launch differing ONLY in `--max-num-batched-tokens` and each carrying
+// `--enable-mfu-metrics` so the step population could be read. Group B was not touched and served
+// throughout. Group A was restored to its authored unit afterwards, verified by the drop-in being
+// absent, enable_mfu_metrics reading False, and the budget reading 2048 again.
+//
+// EVERY PROBE was a single `/v1/completions` with `max_tokens: 1` on an engine polled to zero
+// running and zero waiting first, prefixed with a 32-character random nonce so nothing was served
+// from the prefix cache, and the returned `usage.prompt_tokens` was carried rather than the
+// requested size.
+//
+// WHY THE STEP POPULATION IS TRUSTWORTHY HERE AND WAS NOT BEFORE. The step count is read from
+// `vllm:estimated_flops_per_gpu_total`, which advances once per ENGINE STEP in a fixed quantum --
+// not from `vllm:iteration_tokens_total_count`, which advances once per output batch and therefore
+// reads 1 for a prefill of any chunk count. Both were recorded on every probe, and the second read
+// 1 on requests the first measured at 10 steps. See extdeps.vllm.metrics.
+
+// ── MEASURED AND PREDICTED ARE DIFFERENT TYPES, NOT VARIANTS OF ONE ───────────────────────────
+//
+// This is the load-bearing shape of the module. A prediction and a measurement are not two
+// confidence levels of one thing; consuming them through one type is how a modelled row becomes an
+// observed one at the first `match` that treats the arms uniformly. There is deliberately no
+// function that accepts either, and no list containing both. A consumer that wants the modelled
+// 1024 row must name the predicted population explicitly and thereby say so.
+type MeasuredBatchArm sole_constructor {
+  max_num_batched_tokens: Nat
+  probe_computed_tokens: TokenCount
+  probe_wall_micros: Nat
+  probe_steps: Nat
+  co_tenant_decode_alone_micros: Nat
+  co_tenant_decode_during_prefill_micros: Nat
+  gpu_kv_cache_tokens: Nat
+  binding: ArmLaunchBinding
+}
+
+type PredictedBatchArm sole_constructor {
+  max_num_batched_tokens: Nat
+  predicted_wall_micros_at_16400: Nat
+  predicted_step_micros: Nat
+  from_law: NonEmptyStr
+}
+
+// ── WHAT WAS AND WAS NOT CAPTURED ABOUT EACH ARM'S LAUNCH ─────────────────────────────────────
+//
+// The systemd invocation was re-read for the CONTROL arm and not for the other three, which is a
+// defect in the acquisition and is recorded rather than repaired by inference. What every arm does
+// carry is the budget read back from the engine's own banner and the KV pool it reported, which
+// discriminate the four launches from each other; what they do not carry is a fleet-unique launch
+// identity, so these rows may not be joined by identity to observations taken outside this sweep.
+type ArmLaunchBinding
+  = ArmLaunchInvocationRead { invocation: NonEmptyStr, budget_read_back: Nat }
+  | ArmLaunchDiscriminatedByReadback { budget_read_back: Nat, missing: NonEmptyStr }
+
+data arm_2048_binding: ArmLaunchBinding = ArmLaunchInvocationRead {
+  invocation: "794afae389e44952a9049452c0619620" as NonEmptyStr,
+  budget_read_back: 2048,
+}
+
+data arm_8192_binding: ArmLaunchBinding = ArmLaunchDiscriminatedByReadback {
+  budget_read_back: 8192,
+  missing: "the systemd invocation was not re-read for this arm; the banner readback and the KV pool distinguish it from the other three arms but do not identify it fleet-wide" as NonEmptyStr,
+}
+
+data arm_16384_binding: ArmLaunchBinding = ArmLaunchDiscriminatedByReadback {
+  budget_read_back: 16384,
+  missing: "the systemd invocation was not re-read for this arm; the banner readback and the KV pool distinguish it from the other three arms but do not identify it fleet-wide" as NonEmptyStr,
+}
+
+// ── THE MEASURED POPULATION ───────────────────────────────────────────────────────────────────
+//
+// One row per arm, at the ~16.4k-token probe so the three are directly comparable, with the
+// co-tenant pair taken on the same launch minutes later.
+data spark_group_a_measured_arms: List<MeasuredBatchArm> = [
+  MeasuredBatchArm {
+    max_num_batched_tokens: 2048,
+    probe_computed_tokens: token_count(count: 16510),
+    probe_wall_micros: 17759300,
+    probe_steps: 9,
+    co_tenant_decode_alone_micros: 30100,
+    co_tenant_decode_during_prefill_micros: 2168200,
+    gpu_kv_cache_tokens: 11767856,
+    binding: arm_2048_binding,
+  },
+  MeasuredBatchArm {
+    max_num_batched_tokens: 8192,
+    probe_computed_tokens: token_count(count: 16463),
+    probe_wall_micros: 16652100,
+    probe_steps: 3,
+    co_tenant_decode_alone_micros: 30100,
+    co_tenant_decode_during_prefill_micros: 8224600,
+    gpu_kv_cache_tokens: 8704293,
+    binding: arm_8192_binding,
+  },
+  MeasuredBatchArm {
+    max_num_batched_tokens: 16384,
+    probe_computed_tokens: token_count(count: 16508),
+    probe_wall_micros: 16327100,
+    probe_steps: 2,
+    co_tenant_decode_alone_micros: 29500,
+    co_tenant_decode_during_prefill_micros: 15929800,
+    gpu_kv_cache_tokens: 5836755,
+    binding: arm_16384_binding,
+  },
+]
+
+// ── THE PREDICTED POPULATION, WHICH NOBODY MEASURED ───────────────────────────────────────────
+//
+// The sweep was stopped after 16384 and these two arms were never run. They are the ONLY rows that
+// speak to the direction that helps interactive latency, which makes it especially important that
+// they cannot be mistaken for observations.
+data spark_group_a_predicted_arms: List<PredictedBatchArm> = [
+  PredictedBatchArm {
+    max_num_batched_tokens: 1024,
+    predicted_wall_micros_at_16400: 19179000,
+    predicted_step_micros: 1179000,
+    from_law: "the three-term law below, whose step-duration term it reproduces to within 1% at every MEASURED budget; no 1024 launch was ever run" as NonEmptyStr,
+  },
+  PredictedBatchArm {
+    max_num_batched_tokens: 512,
+    predicted_wall_micros_at_16400: 22217000,
+    predicted_step_micros: 685000,
+    from_law: "the three-term law below; no 512 launch was ever run, and this budget is far enough outside the measured range that the law's per-step term is doing most of the work" as NonEmptyStr,
+  },
+]
+
+// ── THE EXECUTION LAW, AS A FITTED PROJECTION OF THE MEASURED PROBES ──────────────────────────
+//
+// wall = request_fixed + per_step * steps + per_token * computed_tokens
+//
+// Fitted by ordinary least squares over 20 probes spanning 511..20,194 computed tokens and 1..10
+// steps across the three measured arms. THE COEFFICIENTS ARE ESTIMATES, not observed primitives:
+// they carry their residuals and their producer, and adding a probe that disagrees moves them.
+//
+// THE PRODUCER IS NAMED RATHER THAN THE NUMBERS RE-DERIVED HERE (DESIGN section 6). The fit is a
+// three-parameter normal-equations solve, which this module does not implement; it names the entry
+// point that computed it and the receipt population it consumed. THE RUNG IS HONEST: these three
+// numbers are TRANSCRIBED from that producer, so editing them here would not be caught by anything.
+// NEXT-RUNG TRIGGER, named as a capability: a least-squares fold over a declared design matrix in
+// std, sufficient to derive an n-parameter fit from a sample list inside the substrate, at which
+// point these fields become derived and a hand-edited coefficient stops being writable.
+type FittedExecutionLaw sole_constructor {
+  request_fixed_micros: Nat
+  per_step_micros: Nat
+  micros_per_thousand_tokens: Nat
+  sample_count: Nat
+  worst_residual_micros: Nat
+  rms_residual_micros: Nat
+  producer: NonEmptyStr
+}
+
+data spark_group_a_execution_law: FittedExecutionLaw = FittedExecutionLaw {
+  request_fixed_micros: 105800,
+  per_step_micros: 189900,
+  micros_per_thousand_tokens: 966,
+  sample_count: 20,
+  worst_residual_micros: 201800,
+  rms_residual_micros: 82200,
+  producer: "docs/receipts/prefill-batch-sweep/analyse.py over the arm-2048, arm-8192 and arm-16384 receipts beside it; step counts from vllm:estimated_flops_per_gpu_total, one contaminated probe (a foreign request raised computed tokens to 81,697) excluded and named" as NonEmptyStr,
+}
+
+fn predicted_wall_micros(law: FittedExecutionLaw, steps: Nat, tokens: Nat) -> Nat {
+  law.request_fixed_micros + (law.per_step_micros * steps) + ((law.micros_per_thousand_tokens * tokens) / 1000)
+}
+
+// A STEP'S DURATION IS THE QUANTITY A CO-TENANT FEELS, so it gets its own name rather than being
+// re-derived at each call site. It is also the law's most strongly validated consequence.
+fn predicted_step_micros(law: FittedExecutionLaw, budget: Nat) -> Nat {
+  law.per_step_micros + ((law.micros_per_thousand_tokens * budget) / 1000)
+}
+
+// ── THE CO-TENANT EXTERNALITY, WITH THE OVERLAP ESTABLISHED RATHER THAN ASSUMED ───────────────
+//
+// WHY THE OVERLAP IS A FIELD. The first attempt at this measurement produced a decode-alone figure
+// and a decode-during-prefill figure that were the SAME, because the decoder's 120 requested tokens
+// completed in 3.6s and the prefill was submitted at 6s. The two never overlapped, and nothing in
+// the recorded numbers said so. The corrected acquisition timestamps every decode token and
+// partitions them by the prefill's own start and end, so a row can only be constructed from tokens
+// that actually arrived while the prefill was running.
+//
+// THE MECHANISM, which is what makes this predictive rather than anecdotal: chunked prefill runs as
+// a MIXED batch, so a co-tenant decoder receives exactly one token per chunk, at the chunk's
+// duration. The measured degradation is therefore not a queueing artifact to be tuned away -- it is
+// the step duration, and it moves with the budget by construction.
+type CoTenantOverlapStanding
+  = OverlapEstablishedByTimestamp { decode_tokens_during_prefill: Nat }
+  | OverlapAssumedNotEstablished { because: NonEmptyStr }
+
+type CoTenantExternality sole_constructor {
+  max_num_batched_tokens: Nat
+  decode_alone_micros: Nat
+  decode_during_prefill_micros: Nat
+  prefill_computed_tokens: TokenCount
+  overlap: CoTenantOverlapStanding
+  note: NonEmptyStr
+}
+
+data spark_group_a_co_tenant_externality: CoTenantExternality = CoTenantExternality {
+  max_num_batched_tokens: 2048,
+  decode_alone_micros: 30100,
+  decode_during_prefill_micros: 2168200,
+  prefill_computed_tokens: token_count(count: 16381),
+  overlap: OverlapEstablishedByTimestamp { decode_tokens_during_prefill: 15 },
+  note: "one launch, one victim, one 18.5s prefill; the victim's inter-token latency partitioned by the prefill's start and end. 2168.2ms is one 2048-token step, and the ratio to the 30.1ms baseline is ~72x. This is the number a user experiences as ~0.4 tokens per second, and it is NOT a prefill-throughput number" as NonEmptyStr,
+}
+
+fn co_tenant_degradation_ratio(e: CoTenantExternality) -> Nat? {
+  if e.decode_alone_micros == 0 {
+    none
+  } else {
+    Present { value: e.decode_during_prefill_micros / e.decode_alone_micros }
+  }
+}
+
+// ── WHAT THE SWEEP DECIDES, AND WHAT IT LEAVES UNDECIDED ──────────────────────────────────────
+//
+// THE PER-TOKEN TERM IS INVARIANT ACROSS A 32x RANGE OF BATCH SIZE. That is the sweep's strongest
+// negative result and it closes a candidate rather than opening one: the ~1 microsecond per token
+// is not a batching, scheduling or routed-expert-granularity artifact. Going from 48 to 384 tokens
+// per routed expert per step moved it by about 2 percent. Whatever the remaining cost is, the batch
+// axis does not reach it.
+//
+// SO THE BUDGET BUYS ONLY PER-STEP OVERHEAD AMORTISATION -- at most 7.5% of a 16.4k prefill between
+// 2048 and 16384 -- while the co-tenant stall and the KV pool both move against it linearly.
+type BatchBudgetDecision
+  = BestAmongMeasuredArms { tokens: Nat, objective: NonEmptyStr, undecided: NonEmptyStr }
+  | BudgetUndecided { because: NonEmptyStr }
+
+data spark_group_a_batch_budget_decision: BatchBudgetDecision = BestAmongMeasuredArms {
+  tokens: 2048,
+  objective: "preserving interactive decode progress on a shared replica: 2048 gives up ~7.5% of bulk prefill throughput against 16384 and buys a 7.3x shorter co-tenant stall and twice the KV pool" as NonEmptyStr,
+  undecided: "NOT established as globally optimal and NOT established as a floor. The 1024 and 512 arms are predicted and were never run, and they are the only direction that improves the interactive objective further. The value is currently selected by an upstream absorbing fallback rather than by this decision -- see extdeps.vllm.batch_defaults -- so the product should pin it explicitly in the next authored launch. Explicit 2048 was measured to be a no-op, so nothing needs restarting to make that true" as NonEmptyStr,
+}
+
+// The resolution this decision currently depends on, carried as a reference so the dependency is
+// visible: today the fleet gets 2048 because a probe failed, not because anyone chose it.
+data spark_group_a_current_budget_provenance: UpstreamBatchDefaultResolution = spark_gb10_batch_default_resolution
