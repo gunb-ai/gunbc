@@ -111,6 +111,7 @@ fn f0_has_setsw_probe(o: MultiModuleCompileFixtureOutcome) -> Bool {
   }
 }
 
+// Absent must not green a "lacks parameter" RED — that is the fail-open the collision finding named.
 fn f0_lacks_setsw_probe(o: MultiModuleCompileFixtureOutcome) -> Bool {
   match resolved_rust_fn_lookup(
     functions: completed_functions(o),
@@ -119,7 +120,6 @@ fn f0_lacks_setsw_probe(o: MultiModuleCompileFixtureOutcome) -> Bool {
   ) {
     ResolvedRustFnFound { signature: sig } =>
       !resolved_rust_fn_has_parameter(signature: sig, parameter_name: "setsw_probe"),
-    // Absent must not green a "lacks parameter" RED — that is the fail-open the collision finding named.
     ResolvedRustFnAbsent => false
   }
 }

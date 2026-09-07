@@ -82,6 +82,7 @@ fn observed_has_marker(o: MultiModuleCompileFixtureOutcome) -> Bool {
   }
 }
 
+// Absent is not evidence the parameter is missing — the row itself is missing (DESIGN §5).
 fn observed_lacks_marker(o: MultiModuleCompileFixtureOutcome) -> Bool {
   match resolved_rust_fn_lookup(
     functions: completed_functions(o),
@@ -90,7 +91,6 @@ fn observed_lacks_marker(o: MultiModuleCompileFixtureOutcome) -> Bool {
   ) {
     ResolvedRustFnFound { signature: sig } =>
       !resolved_rust_fn_has_parameter(signature: sig, parameter_name: "marker"),
-    // Absent is not evidence the parameter is missing — the row itself is missing (DESIGN §5).
     ResolvedRustFnAbsent => false
   }
 }
