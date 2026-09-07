@@ -102,12 +102,11 @@ fn collect_type_node_import_surface_names(n: Node, source_indices: Map<String, N
 // and cannot answer "which module declares this leaf". Emission asks the reverse wherever it holds
 // only a spelling -- an unqualified reference to an imported value above all. It used to come back
 // for free because the registry was itself leaf-keyed, and it came back wrong whenever two modules
-// declared the leaf. This index carries the OWNER MODULE PATH rather than the ItemInfo, for two
+// declared the leaf. This index carries a v1.std.core LeafOwner rather than the ItemInfo, for two
 // reasons: the row still has exactly one authority, the registry, and this module sits upstream of
 // v1.compiler.infer_items, so naming ItemInfo here would close an import cycle -- the one structural
-// law the graph has. A leaf claimed by more than one module maps to the empty string, which is not
-// A leaf claimed by more than one module maps to the LeafAmbiguous arm of v1.std.core LeafOwner,
-// which is not a module path at all rather than an empty one, so the ambiguous case fails closed by
+// law the graph has. A leaf claimed by more than one module answers the LeafAmbiguous arm, which is
+// not a module path at all rather than an empty one, so the ambiguous case fails closed by
 // CONSTRUCTION: a reader cannot reach an owner without writing the arm that says there is none.
 type EmitGraphInfo {
   type_summaries: Map<String, TypeSummary>
