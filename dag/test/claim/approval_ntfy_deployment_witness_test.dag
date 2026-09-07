@@ -10,7 +10,9 @@ import gunbc.auth.approval_ntfy_deployment {
   approval_ntfy_human_burden, approval_ntfy_listen_address,
   approval_ntfy_endpoint, approval_ntfy_server_install_intervention, approval_ntfy_state_root,
   approval_ntfy_subscriber_grant_intervention, approval_ntfy_phone_subscription_intervention,
+  approval_ntfy_base_url, approval_ntfy_base_url_from,
 }
+import gunbc.fleet_intent_network { fleet_intent_network, operator_host_srv1 }
 import extdeps.ntfy.ntfy { NtfyTopic }
 import gunbc.auth.approval_notification { approval_ntfy_topic }
 import std.types { String }
@@ -159,4 +161,39 @@ test fn witness_grant_instruction_does_not_name_an_unrelated_topic() -> Bool {
     s: approval_ntfy_subscriber_grant_intervention().instruction as String,
     pattern: "gunbc-approvals-staging",
   )
+}
+
+
+// THE CLIENT ADDRESS IS JOINED FROM THE MODEL, and this is the witness the module's annotation
+// previously CLAIMED existed but did not -- an annotation asserting coverage that no executing
+// check provided, which is the failure mode this corpus names for citation walls: the symbol
+// resolved, the quantified claim about it was never true.
+//
+// These are identity joins against the network authority, not transcriptions: the host and the
+// tailnet domain are read from gunbc.fleet_intent_network, so renaming either reddens this rather
+// than leaving a stale literal behind.
+test fn witness_base_url_carries_the_declared_host() -> Bool {
+  string_contains(s: approval_ntfy_base_url as String, pattern: operator_host_srv1 as String)
+}
+
+test fn witness_base_url_carries_the_declared_tailnet_domain() -> Bool {
+  match fleet_intent_network.tailnet_domain {
+    Present { value: d } => string_contains(s: approval_ntfy_base_url as String, pattern: d as String)
+    Absent => false
+  }
+}
+
+// THE ABSENT ARM CANNOT SILENTLY WORK. An undeclared tailnet domain must yield an address that is
+// structurally unroutable rather than a plausible one -- RFC 2606 reserves `.invalid` precisely so
+// this cannot resolve anywhere. Asserting it here is what keeps the arm from being an absorbing
+// fallback nobody ever exercised.
+test fn witness_absent_tailnet_domain_yields_an_unroutable_address() -> Bool {
+  let u = approval_ntfy_base_url_from(domain: none) as String
+  string_contains(s: u, pattern: ".invalid") && !string_contains(s: u, pattern: "ts.net")
+}
+
+// POSITIVE CONTROL ON THAT ARM: the Present path must NOT produce the unroutable marker, or the
+// witness above would pass over an address that never works.
+test fn witness_present_tailnet_domain_is_not_the_unroutable_address() -> Bool {
+  !string_contains(s: approval_ntfy_base_url as String, pattern: ".invalid")
 }

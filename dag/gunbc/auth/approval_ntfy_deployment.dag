@@ -17,6 +17,7 @@ import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation, EnsureSystemAccount, executor_privileged_operation_shell_command,
 }
 import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path }
+import gunbc.fleet_intent_network { fleet_intent_network, operator_host_srv1 }
 
 // ── The self-hosted notification server on srv1 ──────────────────────────────────────────────
 // It follows gunbc-publication exactly: its own system account, its own state directory owned by
@@ -250,10 +251,69 @@ fn approval_ntfy_human_burden() -> ProvisioningHumanBurden {
 // This is also what makes a second deployment additive: another server is another binding beside
 // this one, and extdeps.ntfy does not change.
 //
-// The address is the tailnet name rather than the loopback bind because it is what a CLIENT
-// dials; the loopback bind is what the SERVER listens on, and tailscale serve joins them. Both
-// are declared, and witnesses hold them to their separate jobs.
-data approval_ntfy_base_url: NonEmptyStr = "https://srv1.tailecbe08.ts.net:8443"
+// ── §3c: WHO CONSUMES THIS, AND BY WHAT ROUTE ───────────────────────────────────────────────
+// Stated plainly because the honest answer today is "nothing in production yet", and a reviewer
+// should not have to grep to discover that. `ntfy.Publish.PublishMessage`, the `RestOutcome`
+// opt-in, `ntfy_publish_outcome_of` and `approval_ntfy_human_burden` have NO production caller in
+// this tree. §3c admits exactly three states, and this is the middle one -- a DECLARED FRONTIER --
+// which is admissible only with its trigger stated, so it is stated here.
+//
+// CONSUMED BY EXECUTION TODAY: the publish operation and the outcome fold are exercised against
+// the live self-hosted server by a wet probe (NtfyPublished { message_id: znjShbquiXow }), and
+// every arm of the fold plus every intervention property is exercised by
+// test.claim.ntfy_publish_outcome_witness_test and
+// test.claim.approval_ntfy_deployment_witness_test. That is execution, not a typecheck -- but a
+// witness is not a production consumer and this note does not claim it is.
+//
+// THE NAMED CONSUMER, AND ITS TRIGGER: the approval broker publishes a notification for a pending
+// AccessRequest. It lands when the request-minting path exists -- an AccessRequest produced from a
+// real refusal, its capability signed, and gunbc.roadmap_serve's ApprovalDecideHandler redeeming
+// it rather than answering 501, which it does today. Until that lands, nothing in production has a
+// reason to publish, and manufacturing an intermediate caller would only move the danglingness up
+// one level rather than remove it.
+//
+// If that consumer does not land, THIS BINDING IS THE THING TO DELETE. It is not infrastructure
+// worth keeping on its own: it exists to carry approval requests to a phone, and with no requests
+// it carries nothing.
+
+// THE ADDRESS IS JOINED FROM THE AUTHORITIES THAT ALREADY OWN ITS PARTS, not spelled as one
+// literal. An earlier revision wrote "https://srv1.tailecbe08.ts.net:8443" here, which re-minted
+// two facts the corpus owns elsewhere -- the tailnet domain at gunbc.fleet_intent_network
+// `fleet_intent_network.tailnet_domain`, and srv1's identity at `operator_host_srv1`. Relocating
+// the binding out of extdeps fixed the LAYER; it left the DUPLICATION, which is §3's nicknaming
+// under a different roof. Renaming the tailnet or the host would have left this string stale while
+// every modeled consumer moved.
+//
+// The address a CLIENT dials is a different fact from the address the SERVER listens on
+// (approval_ntfy_listen_address, held to loopback by policy); tailscale serve is what joins them,
+// and each is asserted for its own job.
+//
+// THE ABSENT ARM FAILS LOUD RATHER THAN PLAUSIBLY. tailnet_domain is Optional, and the service
+// config's `endpoint` cannot carry an Optional -- so a deployment whose tailnet domain is
+// undeclared has no address, and the honest encoding of that is a host in the RFC 2606 `.invalid`
+// TLD, which is guaranteed never to resolve. That is a structural failure, not an absorbing
+// fallback: it cannot succeed, cannot widen, and cannot be mistaken for a working endpoint. The
+// arm is witnessed so it is not merely asserted.
+fn approval_ntfy_base_url_from(domain: NonEmptyStr?) -> NonEmptyStr {
+  match domain {
+    Present { value: d } =>
+      join([
+        "https://",
+        operator_host_srv1 as String,
+        ".",
+        d as String,
+        ":",
+        to_string(approval_ntfy_serve_port),
+      ], "") as NonEmptyStr
+    Absent => "https://tailnet-domain-undeclared.invalid" as NonEmptyStr
+  }
+}
+
+// The TLS port tailscale serve publishes on, distinct from the loopback port ntfy binds. srv1's
+// :443 already carries the dashboard, so the approval server takes its own.
+data approval_ntfy_serve_port: Port = 8443
+
+data approval_ntfy_base_url: NonEmptyStr = approval_ntfy_base_url_from(domain: fleet_intent_network.tailnet_domain)
 
 service ntfy.Publish {
   config {
