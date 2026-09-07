@@ -1,0 +1,42 @@
+module gunbc.guarantee_stall.signed_and_ratio_measure_carrier_stall
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+
+// WHY THIS ROW EXISTS RATHER THAN A FOURTH REVIEW ROUND. Three reviews in succession flagged the
+// unit-modeling class across gunbc.spark.serving_critical_path. Most of it was a real fork and is
+// now migrated: started_micros, elapsed_micros, four inter-iteration millis, wall_micros across
+// twenty-four sample rows, and two watt fields all consume std.measure.
+//
+// Three fields did not migrate, and leaving them as bare Int with no row is precisely what the
+// third review objected to -- not the Int, but the SILENCE. DESIGN 4b(2) says a class below its
+// ceiling must name its next-rung trigger, and 4b(3) says a rung may be lowered only by declaring
+// it. An undeclared Int beside a migrated Microsecond in the same record is an unstated divergence.
+//
+// WHAT ACTUALLY BLOCKS THEM, which is a carrier gap and not effort:
+//
+//   intercept_micros             a fit intercept, computed by division, may be negative
+//   intercept_difference_micros  a difference of two intercepts, signed by construction
+//   micros_per_thousand_tokens   a RATE: microseconds per token
+//
+// std.measure declares Microsecond as Measure<Time, Micro, Nat>. It is Nat-backed, so it cannot
+// carry either signed value. There is no signed duration alias in the module. And the rate is worse
+// than signed: it is a dimensional QUOTIENT, and std.measure publishes measure_add, measure_le,
+// measure_count and two scale-fraction folds -- no product, no quotient, and no composition on the
+// Quantity type. A microseconds-per-token carrier cannot be spelled at all today.
+//
+// WHY NOT WRAP ANYWAY. Unlike the migrated fields -- inert data, or summed and compared through
+// measure_add and measure_le -- every site consuming these three is arithmetic: a division that
+// produces the intercept, a multiply-and-divide that predicts from the slope, a subtraction that
+// contrasts two fits. Wrapping would mean constructing a carrier and unwrapping it on the next
+// line at every site, which DESIGN 4b names directly: a brand or wrapper is cosmetic until
+// construction and acceptance enforce the distinction. It would make the row citable as coverage
+// it does not provide, which is worse than the honest Int this row now declares.
+data signed_and_ratio_measure_carrier_stall: GuaranteeStall = GuaranteeStall {
+  subject: "gunbc.spark.serving_critical_path AffineFit intercept_micros and micros_per_thousand_tokens, and InterceptContrast intercept_difference_micros, carry bare Int beside migrated Microsecond fields in the same modules, because std.measure has no signed duration alias and no dimensional quotient",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding { grounding: "std.measure" },
+  population: BoundedPopulation { members: ["gunbc.spark.serving_critical_path"] },
+  next_rung_trigger: climbs_when(capability: "std.measure carries a signed duration magnitude and a dimensional quotient with the arithmetic to inhabit them, sufficient to express a fit intercept computed by division, a signed difference of two intercepts, and a microseconds-per-token rate multiplied by a token count, without any consumer unwrapping to a bare Int to do so")
+}

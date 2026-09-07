@@ -20,7 +20,7 @@ import extdeps.vllm.kv_layout {
   recovered_blocks_per_max_length_request,
   PrintedLinesAgreement, PrintedLinesAgree, PrintedLinesDisagree, PrintedLinesUncheckable, printed_lines_agree,
   AdmissionCost, AdmissionCostBlocks, AdmissionCostUnestablished, cold_admission_blocks,
-  AllocatorUsage, UsageReading, UsageRead, FreeCountImpossible, allocator_usage, allocator_usage_is_occupancy,
+  AllocatorUsage, UsageReading, UsageRead, FreeCountImpossible, allocator_usage,
   group_blocks_for,
 }
 
@@ -160,7 +160,7 @@ test fn neither_reconstruction_is_authoritative_and_usage_is_not_occupancy() -> 
   !vllm_pool_reconstruction_is_authoritative(r: BlockCountTimesBlockSize)
     && !vllm_pool_reconstruction_is_authoritative(r: UtilizationTimesTotalMemory)
     && (match allocator_usage(layout: w_layout(groups: []), free_blocks: 545) {
-          UsageRead { usage: u } => u.referenced_or_retained_blocks == 53930 && !allocator_usage_is_occupancy(usage: u)
+          UsageRead { usage: u } => u.referenced_or_retained_blocks == 53930
           FreeCountImpossible { free_blocks: _, allocator_blocks: _ } => false
         })
 }

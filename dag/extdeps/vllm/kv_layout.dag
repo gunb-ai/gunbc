@@ -395,6 +395,16 @@ fn allocator_usage(layout: ResolvedKvLayout, free_blocks: Nat) -> UsageReading {
 
 // There is deliberately NO function from AllocatorUsage to a request count or a token count. The
 // numerator mixes live references with evictable retention, and nothing here can separate them.
-fn allocator_usage_is_occupancy(usage: AllocatorUsage) -> Bool {
-  false
-}
+//
+// AND THAT RULING IS THE ABSENCE ITSELF, NOT A PREDICATE ANSWERING "no". This module carried
+// `allocator_usage_is_occupancy(usage) -> Bool { false }`, which ignored its argument and returned a
+// constant, and its only consumer asserted `!allocator_usage_is_occupancy(...)` -- `!false`, for
+// every input, forever. DESIGN 4b: a check whose forbidden state cannot be expressed anywhere the
+// check could run "is not a weak wall but a decoration -- permanently green by construction,
+// carrying no information, and worse than absent because it will be cited as coverage."
+//
+// It was also the weaker of two available statements of one fact. "There is no such function" is
+// enforced by construction: a caller that wants an occupancy ratio finds nothing to call and stops
+// at resolve. A function that exists and answers `false` invites the caller to ask, then hands back
+// an answer that reads as a measurement. The absence is the wall; the predicate was validation
+// standing where construction was already in place.
