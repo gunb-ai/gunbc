@@ -2,6 +2,7 @@ module gunbc.host_reset_return_run
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.nat { Nat, nat_range_inclusive }
+import std.measure { Second, second }
 import std.algebra { trim }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import extdeps.clock {
@@ -14,7 +15,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import extdeps.ssh.session
 import extdeps.tools.hostname
-import extdeps.tools.sleep
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 import product.placement_supply { HostIdentity }
 import gunbc.host_reset_return {
@@ -137,7 +138,7 @@ func watch_step(acc: WatchFold, want_reachable: Bool, host: NonEmptyStr) -> Watc
               last_seen_at: now,
             }
           } else {
-            let _s = sleep.Delay.Seconds(seconds: "1" as NonEmptyStr)
+            let _s = sleep_delay_seconds_second_carrier_projection(duration: host_reset_watch_sample_cadence)
             WatchFold { outcome: none, samples: acc.samples + 1, last_seen_at: now }
           }
       }
@@ -316,6 +317,19 @@ fn acknowledgement_of_handoff(outcome: OobBootHandoffOutcome, issued_at: EpochMs
       ResetNotAttempted { cause: "the controller was not admitted for out-of-band drive; no write was attempted" }
   }
 }
+
+// THE SAMPLE CADENCE IS A MEASURED DURATION, NOT A STRING. This paced the watch with
+// sleep.Delay.Seconds(seconds: "1") until review 61938, which is a flat scalar naming a domain unit
+// where std.measure already carries one -- and extdeps.tools.sleep does not merely offer the carrier,
+// it declares the flat-scalar form's own dissolution binding onto
+// sleep_delay_seconds_second_carrier_projection. Minting the duration again as a bare string was
+// therefore re-inventing a concept that already has an authority (DESIGN sections 2 and 3), on the
+// exact line the upstream module had marked for retirement.
+//
+// IT IS ALSO WHAT MAKES THE WATCH BOUNDS MEAN ANYTHING. The sample counts below are derived from the
+// step budget by multiplying by this cadence; with the cadence spelled as a string at the call site,
+// that arithmetic was carried in prose and nothing tied the two together.
+data host_reset_watch_sample_cadence: Second = second(count: 1)
 
 // HOW LONG THE OBSERVER WATCHES, in samples rather than in seconds, because a sample is what the
 // fold actually counts and a seconds figure would be a second unit for the same bound. The receipt
