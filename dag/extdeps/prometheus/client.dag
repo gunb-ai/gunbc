@@ -1,0 +1,61 @@
+module extdeps.prometheus.client
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/prometheus/client_python/blob/master/prometheus_client/process_collector.py"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.prometheus.client",
+      decl_name: "PrometheusProcessSeries",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE PROCESS COLLECTOR IS THE CLIENT LIBRARY'S, NOT THE SERVING ENGINE'S.
+//
+// Anything exporting through prometheus_client on Linux also exports a small population of series
+// about the exporting PROCESS itself, registered by the library rather than by the application. It
+// is modelled here and not in extdeps.vllm.metrics for the reason external decomposition already
+// fixes: prometheus_client is independently versioned upstream, and a vLLM upgrade does not move
+// its rows. A serving engine is one exporter among several this fleet will read.
+//
+// WHY ONLY ONE SERIES IS HERE. process_start_time_seconds is the one this repository consumes, and
+// it is consumed for an unobvious reason: it is the cheapest fact that DISTINGUISHES ONE LAUNCH OF
+// A SERVER FROM ITS SUCCESSOR over an ordinary unprivileged HTTP read. The other process series --
+// resident memory, cpu seconds, open file descriptors -- have no consumer, so they are not written
+// down. Adding one is a row here.
+type PrometheusProcessSeries
+  = ProcessStartTimeSeconds
+
+fn prometheus_process_series_name(s: PrometheusProcessSeries) -> NonEmptyStr {
+  match s {
+    ProcessStartTimeSeconds => "process_start_time_seconds" as NonEmptyStr
+  }
+}
+
+// WHAT THE SERIES ESTABLISHES AND WHAT IT DOES NOT, because the gap is where a reader would build a
+// wrong join. It is the exporting process's start time, in seconds since the epoch, as the kernel
+// reports it. Two readings that differ establish that the process was REPLACED between them, which
+// is what makes it usable as launch discrimination. Two readings that agree establish only that the
+// same process is answering: they say nothing about what that process loaded, which image it was
+// created from, or whether its model weights changed underneath it. It is a discriminator, never a
+// provenance.
+data prometheus_process_start_time_is_discrimination_not_provenance: NonEmptyStr = "a change in process_start_time_seconds establishes that the exporting process was replaced; an unchanged value establishes only that the same process is answering, and nothing about the image, weights or configuration it is serving" as NonEmptyStr
+
+// THE SERIES IS EXPORTED WITHOUT LABELS, so its exposition line carries no brace section and a
+// reader that finds a metric by matching `name{` will not find it. Stated here because the
+// serving gauges beside it DO carry labels, so one reader over one body meets both shapes.
+data prometheus_process_series_carry_no_labels: NonEmptyStr = "the process collector's series are exported without labels, so their exposition lines are `name value` with no brace section, unlike the labelled application gauges served beside them" as NonEmptyStr

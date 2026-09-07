@@ -25,11 +25,13 @@ import gunbc.roadmap.roadmap_review_role { review_verdict_shape_text }
 import gunbc.harness.harness_wire { harness_engine_model, harness_engine_context_window }
 import gunbc.harness.harness_backend { HarnessBackendUrl, BackendUrlBound, BackendUrlRefused, harness_serving_backend_url }
 import gunbc.harness.harness_seat {
-  HarnessSeatBinding, HarnessSeatBound, HarnessSeatRefused, harness_bind_seat,
+  HarnessSeatBinding, HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, harness_bind_seat,
   HarnessSeatRelease, HarnessSeatReleased, HarnessSeatReleaseRefused, harness_release_seat, harness_seat_release_wire,
+  harness_release_reference, harness_turn_work_standing,
 }
 import product.capacity.lease { LeasePolicy, QuiescenceRequired }
 import extdeps.tools.hostname
+import extdeps.filesystem.filesystem_io
 
 // THE FIRST WET ENTRY FOR THE DEDICATED HARNESS. It exists to make DCH-2 provable by execution
 // rather than by typecheck -- DESIGN section 5's specification-without-execution trap names exactly
@@ -258,6 +260,58 @@ fn harness_backend_refusal_exit(detail: String) -> ProcessExit {
   ExitFailure { code: 1, reason: join(["harness backend: ", detail], "") }
 }
 
+// A PENDING PLACEMENT IS NOT A BACKEND REFUSAL, AND THE EXIT SAYS SO. Every admissible serving
+// group is occupied by an interactive turn already in flight, so placing this one beside it would
+// stall a decode somebody is reading. The remedy is to run again in a moment, and an operator or a
+// belt reading this line needs to be able to tell that apart from a fleet that is broken.
+fn harness_placement_pending_exit(detail: String) -> ProcessExit {
+  ExitFailure { code: 1, reason: join(["harness placement pending: ", detail], "") }
+}
+
+// ── THE CALLABLE PLACEMENT BOUNDARY, WHICH IS WHAT A ROUTER CALLS INSTEAD OF PICKING ──────────
+//
+// gunbc.serving.router_realization says what the ctrl router may and may not do once the fabric owns
+// placement. These two entries are the half of that boundary this repository can supply: ask for a
+// placement, and give the seat back.
+//
+// WHY IT IS TWO ENTRIES AND NOT ONE. The harness's own turns acquire and release inside one process,
+// so a binding value carries the release. A proxied request cannot: the grant is handed across a
+// process boundary and the release happens when the proxied response ends, which is a different
+// invocation. So the grant is printed in a form the caller can hand back -- the group wire and the
+// grant reference -- and harness_release_cli performs the same append the in-process release does.
+//
+// THE ENDPOINT PRINTED IS THE ONE THE GRANT NAMES. A caller that takes this url is talking to the
+// engine the seat was taken against; a caller that ignores it and picks its own host has left the
+// boundary, which is the capability router_realization forbids by name.
+fn harness_place_cli(actor: String, receipt: String) -> ProcessExit {
+  match harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: actor as NonEmptyStr, policy: harness_seat_policy) {
+    HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
+    HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
+    HarnessSeatBound { url, grant, partition: _, group_wire, launch, work, layout: _ } => {
+      let line = join([
+        "url=", url,
+        " group=", group_wire,
+        " launch=", launch.process_start_field as String,
+        " reference=", grant.reference as String,
+        " expires_at=", to_string(grant.expires_at),
+        " ", harness_turn_work_standing(w: work), "\n",
+      ], "")
+      let w = Filesystem.Write(path: receipt, content: line)
+      if w.success { ExitSuccess } else { ExitFailure { code: 1, reason: join(["harness placement receipt write failed: ", w.error], "") } }
+    }
+  }
+}
+
+// THE RELEASE IS NOT BEST-EFFORT. A seat that was granted and never released stays held until
+// quiescence is established, so a failed release is a line stop rather than a footnote: the caller
+// learns it, and the operator sees a group whose pool does not drain.
+fn harness_release_cli(group_wire: String, reference: String, reason: String) -> ProcessExit {
+  match harness_release_reference(short_hostname: harness_executor_short_hostname(), group_wire: group_wire, reference: reference as NonEmptyStr, reason: reason as NonEmptyStr) {
+    HarnessSeatReleased { partition: _ } => ExitSuccess
+    HarnessSeatReleaseRefused { detail: d } => ExitFailure { code: 1, reason: join(["harness seat release refused: ", d], "") }
+  }
+}
+
 fn harness_probe_cli() -> ProcessExit {
   match harness_serving_backend_url(shape: harness_default_wire_shape) {
     BackendUrlRefused { detail } => harness_backend_refusal_exit(detail: detail)
@@ -351,7 +405,8 @@ fn harness_worker_cli(
   let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["worker:", worktree], "") as NonEmptyStr, policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, layout: _ } => {
+    HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
+    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, work: _, layout: _ } => {
       let outcome = harness_run_turn(
         config: harness_worker_config(
           worktree: worktree as FilePath,
@@ -432,7 +487,8 @@ fn harness_reviewer_cli(
   let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["reviewer:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, layout: _ } => {
+    HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
+    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, work: _, layout: _ } => {
       let outcome = harness_run_turn(
         config: harness_reviewer_config(
           worktree: worktree as FilePath,
@@ -500,7 +556,8 @@ fn harness_auditor_cli(
   let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["auditor:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, layout: _ } => {
+    HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
+    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, work: _, layout: _ } => {
       let outcome = harness_run_turn(
         config: harness_auditor_config(
           worktree: worktree as FilePath,

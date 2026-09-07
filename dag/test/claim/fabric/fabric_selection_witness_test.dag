@@ -771,3 +771,177 @@ test fn a_finite_window_still_admits_a_bounded_job_that_fits_it() -> Bool {
   selected_key(s: selection) == "offer-rented-hourly"
     && selected_total(s: selection) == 0
 }
+
+// ── THE EQUAL-COST TIE POLICY, WHICH WAS ROSTER ORDER AND IS NOW NAMED ────────────────────────
+//
+// These fixtures are two IDENTICAL owned offers differing only in their key, which is the shape a
+// fleet of interchangeable machines actually has and the shape under which the implicit policy did
+// its damage: equal totals, so the comparator's strict less-than never displaces the held candidate,
+// so the roster-first offer wins every time and the second machine is never used.
+
+fn t_twin_offer(key: OfferKey) -> SupplierOffer<NonEmptyStr> {
+  t_offer(
+    key: key,
+    quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(count: 0), currency: Usd }),
+    quantum: second(count: 0),
+  )
+}
+
+fn t_twin_candidate(key: OfferKey) -> List<CandidateOffer<NonEmptyStr>> {
+  t_bound(
+    offer: t_twin_offer(key: key),
+    inputs: t_inputs(
+      key: key,
+      availability: t_ready_now(),
+      commitment: PayAsYouGo,
+      operating: OperatingCostBorneBySupplier,
+      opportunity: t_idle(),
+    ),
+  )
+}
+
+fn t_twins() -> List<CandidateOffer<NonEmptyStr>> {
+  concat(t_twin_candidate(key: "offer-group-a"), t_twin_candidate(key: "offer-group-b"))
+}
+
+fn t_twins_reversed() -> List<CandidateOffer<NonEmptyStr>> {
+  concat(t_twin_candidate(key: "offer-group-b"), t_twin_candidate(key: "offer-group-a"))
+}
+
+fn t_select_tie(candidates: List<CandidateOffer<NonEmptyStr>>, tie: EqualCostOfferTieBreak, demand_key: NonEmptyStr) -> SupplySelection<NonEmptyStr> {
+  select_supply(
+    requirements: t_requirements(),
+    candidates: candidates,
+    duration: t_ninety_seconds(),
+    maximum_buy_order: money_amount_micro(count: 1000000),
+    budget_currency: Usd,
+    delay_valuation: t_no_delay_valuation(),
+    tie: tie,
+    demand_key: demand_key,
+  )
+}
+
+fn t_rendezvous_winner(demand_key: NonEmptyStr) -> NonEmptyStr {
+  selected_key(s: t_select_tie(candidates: t_twins(), tie: DemandKeyedRendezvous, demand_key: demand_key))
+}
+
+// TWO EQUAL OFFERS TIE EXACTLY, WHICH IS THE PRECONDITION EVERYTHING BELOW DEPENDS ON. If the
+// fixtures ever stopped tying, every tie witness would still pass while testing nothing -- so the
+// tie itself is asserted first, against the totals rather than against the outcome.
+test fn the_twin_offers_actually_tie() -> Bool {
+  let a = selected_total(s: t_select_tie(candidates: t_twin_candidate(key: "offer-group-a"), tie: StableRosterOrder, demand_key: "d"))
+  let b = selected_total(s: t_select_tie(candidates: t_twin_candidate(key: "offer-group-b"), tie: StableRosterOrder, demand_key: "d"))
+  a == b && length(t_twins()) == 2
+}
+
+// ROSTER ORDER IS A POLICY, AND UNDER IT THE ANSWER IS THE ORDER. Held for the consumers pinned to
+// it, and stated as a control rather than as a comment: reversing the candidate list reverses the
+// winner, which is exactly what "the roster decided" means.
+test fn stable_roster_order_returns_the_first_offer_handed_to_it() -> Bool {
+  (selected_key(s: t_select_tie(candidates: t_twins(), tie: StableRosterOrder, demand_key: "d")) as String) == "offer-group-a"
+    && (selected_key(s: t_select_tie(candidates: t_twins_reversed(), tie: StableRosterOrder, demand_key: "d")) as String) == "offer-group-b"
+}
+
+// AND UNDER THE RENDEZVOUS THE ANSWER DOES NOT DEPEND ON THE ORDER. This is the discriminating
+// control for the whole arm: the same demand over the same offers gets the same winner whichever way
+// the roster is walked, so the outcome is a function of the demand and the offers rather than of the
+// caller's list.
+test fn the_rendezvous_is_invariant_under_roster_order() -> Bool {
+  fold(["alpha" as NonEmptyStr, "beta" as NonEmptyStr, "gamma" as NonEmptyStr, "delta" as NonEmptyStr], init: true, f: (acc, d) =>
+    acc && ((selected_key(s: t_select_tie(candidates: t_twins(), tie: DemandKeyedRendezvous, demand_key: d)) as String)
+             == (selected_key(s: t_select_tie(candidates: t_twins_reversed(), tie: DemandKeyedRendezvous, demand_key: d)) as String)))
+}
+
+// A RETRY OF ONE PLACEMENT LANDS WHERE THE FIRST ATTEMPT DID. A key minted per attempt would spread
+// one demand across offers on successive tries, which is worse than concentrating it: the second
+// attempt would prefill somewhere the first attempt did not warm.
+test fn one_demand_retries_onto_the_same_offer() -> Bool {
+  let first = t_rendezvous_winner(demand_key: "worker:/w/session-a")
+  let second = t_rendezvous_winner(demand_key: "worker:/w/session-a")
+  let third = t_rendezvous_winner(demand_key: "worker:/w/session-a")
+  ((first as String) == (second as String)) && ((second as String) == (third as String))
+}
+
+// AND SEQUENTIAL DIFFERENT DEMANDS DO NOT ALL LAND ON ONE OFFER, which is the defect the arm exists
+// to remove. The claim is deliberately weak -- SOME demand in a small population lands elsewhere --
+// because a hash is not obliged to alternate, and a control asserting a specific split would be
+// asserting the digest's arithmetic rather than the policy's behaviour.
+test fn sequential_demands_do_not_all_take_the_roster_first_offer() -> Bool {
+  let keys = ["worker:/w/one" as NonEmptyStr, "worker:/w/two" as NonEmptyStr, "worker:/w/three" as NonEmptyStr, "worker:/w/four" as NonEmptyStr, "reviewer:/v/five" as NonEmptyStr, "auditor:/v/six" as NonEmptyStr]
+  let on_a = fold(keys, init: 0, f: (n, d) => if (t_rendezvous_winner(demand_key: d) as String) == "offer-group-a" { n + 1 } else { n })
+  on_a > 0 && on_a < length(keys)
+}
+
+// THE PRIMARY ORDERING STILL DOMINATES. A tie policy that could overturn a cheaper offer would be a
+// second ranking, not a tie-break, so the cheap-versus-expensive pair must come back cheapest-first
+// under both policies.
+test fn a_cheaper_offer_still_wins_under_the_rendezvous() -> Bool {
+  let mixed = concat(t_owned_candidate(commitment: PayAsYouGo, opportunity: t_idle()), t_twin_candidate(key: "offer-group-b"))
+  let owned_total = selected_total(s: t_select_tie(candidates: t_owned_candidate(commitment: PayAsYouGo, opportunity: t_idle()), tie: StableRosterOrder, demand_key: "d"))
+  let twin_total = selected_total(s: t_select_tie(candidates: t_twin_candidate(key: "offer-group-b"), tie: StableRosterOrder, demand_key: "d"))
+  (owned_total != twin_total)
+    && (selected_key(s: t_select_tie(candidates: mixed, tie: DemandKeyedRendezvous, demand_key: "d")) as String)
+        == (if owned_total < twin_total { "offer-owned-srv1" } else { "offer-group-b" })
+}
+
+// THE TIE POLICY RESCUES NOTHING. A refused candidate is refused before any comparison happens, so a
+// demand whose digest would have favoured it does not resurrect it -- a tie-break that could admit an
+// inadmissible offer would be an escape hatch around every wall selection has.
+test fn the_rendezvous_never_rescues_a_refused_offer() -> Bool {
+  let unavailable = t_rented_candidate(
+    availability: AvailabilityUnobserved { obligation: "the vendor's console did not answer" as NonEmptyStr },
+    commitment: PayAsYouGo,
+    opportunity: t_idle(),
+  )
+  let population = concat(unavailable, t_twin_candidate(key: "offer-group-a"))
+  fold(["one" as NonEmptyStr, "two" as NonEmptyStr, "three" as NonEmptyStr, "four" as NonEmptyStr], init: true, f: (acc, d) =>
+    acc && ((selected_key(s: t_select_tie(candidates: population, tie: DemandKeyedRendezvous, demand_key: d)) as String) == "offer-group-a"))
+}
+
+// THE SPREAD KEYS ON THE EXACT OFFER IDENTITY. Two offers whose keys differ are two subjects to the
+// policy, which is what makes a restart-keyed offer key meaningful downstream: the same group under a
+// new launch is a new subject and can win a demand its predecessor lost.
+test fn the_digest_keys_on_the_exact_offer_identity() -> Bool {
+  let renamed = concat(t_twin_candidate(key: "offer-group-a"), t_twin_candidate(key: "offer-group-b@second-launch"))
+  fold(["one" as NonEmptyStr, "two" as NonEmptyStr, "three" as NonEmptyStr, "four" as NonEmptyStr, "five" as NonEmptyStr, "six" as NonEmptyStr], init: false, f: (acc, d) =>
+    acc || ((selected_key(s: t_select_tie(candidates: renamed, tie: DemandKeyedRendezvous, demand_key: d)) as String) == "offer-group-b@second-launch"))
+}
+
+// A COLLISION REFUSES RATHER THAN FALLING BACK. Two candidates carrying the SAME offer identity
+// produce the same digest, and the honest answer is that the policy could not choose -- returning
+// the roster-first one would reinstate the policy this arm replaces, in the one case nobody would
+// notice.
+test fn an_unresolvable_tie_refuses_instead_of_taking_the_first() -> Bool {
+  let twinned = concat(t_twin_candidate(key: "offer-group-a"), t_twin_candidate(key: "offer-group-a"))
+  match t_select_tie(candidates: twinned, tie: DemandKeyedRendezvous, demand_key: "d") {
+    EqualCostTieUnresolved { digest: _, considered: cs } => length(cs) == 2
+    OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => false
+    NoAdmissibleOffer { considered: _ } => false
+  }
+}
+
+// AND THE COLLISION IS STICKY. A later candidate must not overwrite it: dropping the collision and
+// continuing would hand back a winner chosen by the order the collision happened to occur in.
+test fn a_collision_survives_a_later_candidate() -> Bool {
+  let twinned = concat(concat(t_twin_candidate(key: "offer-group-a"), t_twin_candidate(key: "offer-group-a")), t_twin_candidate(key: "offer-group-b"))
+  match t_select_tie(candidates: twinned, tie: DemandKeyedRendezvous, demand_key: "d") {
+    EqualCostTieUnresolved { digest: _, considered: cs } => length(cs) == 3
+    OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => false
+    NoAdmissibleOffer { considered: _ } => false
+  }
+}
+
+// THE OUTCOME SAYS WHICH POLICY DECIDED, so a reader of a placement receipt can tell a rendezvous
+// answer from a roster-order one without knowing what the caller passed.
+test fn the_outcome_carries_the_policy_that_decided_it() -> Bool {
+  (match t_select_tie(candidates: t_twins(), tie: DemandKeyedRendezvous, demand_key: "d") {
+     OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: p } =>
+       match p { DemandKeyedRendezvous => true  StableRosterOrder => false }
+     _ => false
+   })
+    && (match t_select_tie(candidates: t_twins(), tie: StableRosterOrder, demand_key: "d") {
+          OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: p } =>
+            match p { StableRosterOrder => true  DemandKeyedRendezvous => false }
+          _ => false
+        })
+}

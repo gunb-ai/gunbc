@@ -1,0 +1,69 @@
+module gunbc.spark.vllm_serving_launch
+
+import std.types { Bool, String, NonEmptyStr }
+import product.fabric.demand { ObservationReceiptRef }
+import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
+
+// ── ONE LAUNCH IS ONE SUBJECT, AND THE GROUP IS NOT IT ─────────────────────────────────────────
+//
+// WHY THIS EXISTS. Every capacity, queue, readiness and routing observation this repository takes
+// about a serving engine has been joined on the GROUP -- FabricGroupA, FabricGroupB. A group is a
+// pair of machines, and it outlives arbitrarily many engine processes: the group A head produced
+// three different KV capacities in one day from three incarnations of one unrendered unit. Joined on
+// the group those are three readings of one object whose capacity is unstable. Joined on the
+// incarnation they are three objects with one reading each.
+//
+// THE CONFUSION IS A SAFETY DEFECT AND NOT ONLY A REPORTING ONE, WHICH IS WHY IT IS HERE RATHER
+// THAN IN THE EVIDENCE LANE. An offer is a claim that work placed on this executor will run, and it
+// is priced from observations -- readiness, queue depth, seat headroom. If the offer's identity is
+// the group, then a restart between the observation and the placement leaves the offer key
+// unchanged, and the successor engine inherits its predecessor's evidence: a different KV state, a
+// different queue, a different effective batch policy, possibly a different runtime. Restart is
+// precisely the event that invalidates every outstanding observation, so an offer that cannot name
+// its incarnation cannot be fenced against one.
+//
+// WHAT IDENTIFIES A LAUNCH HERE, AND WHY IT IS THE CHEAP FACT RATHER THAN THE COMPLETE ONE. The
+// serving engine exports its Prometheus client's process collector, which publishes the exporting
+// process's start time. Two readings that differ establish that the process was REPLACED between
+// them; that is exactly the discrimination an offer key needs, and it costs one unprivileged GET of
+// an endpoint the placement path already reads.
+//
+// WHAT IT IS NOT. It is not provenance: an unchanged start time says the same process is answering
+// and says nothing about the image it was created from, the weights it loaded, or the flags it was
+// launched with. Those are privileged runtime facts, and a receipt carrying them is a separate
+// observation ABOUT this launch -- never a prerequisite for constructing the identity, because
+// making the identity depend on a privileged read is what leaves the ordinary observer with no
+// identity at all and sends it back to joining on the group.
+//
+// THE VALUE IS CARRIED AS THE EXPORTED FIELD, BYTE FOR BYTE, AND IS NOT PARSED INTO A TIME. Nothing
+// here does arithmetic on it, orders it, or renders it to a human; the only operation is equality
+// between two readings of one endpoint, and the exporter emits a stable rendering. Parsing it into
+// integral seconds would buy nothing and would lose the discrimination between two launches inside
+// one second.
+type VllmServingLaunch sole_constructor {
+  group: FabricGroup
+  endpoint: NonEmptyStr
+  process_start_field: NonEmptyStr
+}
+
+fn vllm_serving_launch(group: FabricGroup, endpoint: NonEmptyStr, process_start_field: NonEmptyStr) -> VllmServingLaunch {
+  VllmServingLaunch { group: group, endpoint: endpoint, process_start_field: process_start_field }
+}
+
+// THE OFFER KEY. It is the group wire and the launch discriminator, in one string, because an offer
+// key is one opaque name and every consumer that recovers a group from it does so by asking this
+// module rather than by taking a prefix.
+fn vllm_serving_launch_key(launch: VllmServingLaunch) -> NonEmptyStr {
+  join([fabric_group_wire(g: launch.group) as String, "@", launch.process_start_field as String], "") as NonEmptyStr
+}
+
+fn vllm_serving_launch_is(launch: VllmServingLaunch, other: VllmServingLaunch) -> Bool {
+  (vllm_serving_launch_key(launch: launch) as String) == (vllm_serving_launch_key(launch: other) as String)
+}
+
+// AN UNREADABLE LAUNCH IS NOT A LAUNCH, AND THAT IS THE WHOLE POINT OF THE COPRODUCT. A group whose
+// incarnation could not be read cannot be offered: the alternative is an offer keyed on the group,
+// which is the identity this module exists to replace.
+type VllmServingLaunchObservation
+  = LaunchObserved { launch: VllmServingLaunch, receipt: ObservationReceiptRef }
+  | LaunchUnobserved { group: FabricGroup, obligation: NonEmptyStr }

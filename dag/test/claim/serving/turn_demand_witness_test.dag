@@ -1,0 +1,111 @@
+module test.claim.serving.turn_demand_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import v2.std.optional { Present, Absent }
+import product.fabric.work {
+  SourceManifestRef, ArtifactManifestRef, EffectContractRef, OutputContractRef,
+  ExecutionRequirements, ControlPlaneCapacity, Shape, HardRequirements,
+  CapabilityManifestRef, TrustDomainRef, ResumabilityTier, OpaqueEffects, ReceiptSatisfiable, IdempotentUnderKey,
+  OutputObligation, OutputObligationKind, OutputArtifactObligation, TerminalResultObligation,
+}
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.demand { ObservationReceiptRef, SatisfactionRequirement }
+import std.measure { hardware_thread_count }
+import gunbc.serving.turn_demand {
+  ServingTurnRequest, ServingTurnSource, TurnSourceManifest, TurnSourceUnestablished,
+  serving_turn_source_unestablished, serving_turn_steps, serving_turn_output_obligations,
+  ServingTurnContract, TurnContractBound, TurnContractUnestablished, serving_turn_contract,
+  ServingTurnWork, TurnWorkBound, TurnWorkUnestablished, serving_turn_work,
+  serving_turn_requirements, serving_turn_satisfaction,
+}
+
+fn probe_requirements() -> ExecutionRequirements {
+  serving_turn_requirements(
+    capacity_class: ControlPlaneCapacity,
+    capabilities: "gunbc.capabilities.spark-serving.probe" as CapabilityManifestRef,
+    trust_domain: "gunbc.trust.spark-fleet" as TrustDomainRef,
+    isolation: IsolationProfile { guarantees: [] },
+    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 0) }, envelope: unstated_envelope() },
+  )
+}
+
+fn request_with(source: ServingTurnSource) -> ServingTurnRequest {
+  ServingTurnRequest {
+    source: source,
+    runtime_closure: "probe.runtime" as ArtifactManifestRef,
+    inputs: "probe.inputs" as ArtifactManifestRef,
+    effect_contract: "probe.effects" as EffectContractRef,
+    output_contract: "probe.outputs" as OutputContractRef,
+  }
+}
+
+// ── AN ALIAS IS NOT A SOURCE MANIFEST, AND THE REFUSAL IS THE WHOLE POINT ─────────────────────
+//
+// What shipped before cast the served model alias straight into SourceManifestRef, which gave one
+// Work identity to engines that may be serving different weights, tokenizers or quantizations. There
+// is no arm here that turns an unestablished source into a Work: the turn has no exact identity
+// until something observes what the launch loaded, and the obligation says which consumer is waiting
+// and what would discharge it.
+test fn an_unestablished_source_refuses_to_mint_work() -> Bool {
+  let w = serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request_with(source: serving_turn_source_unestablished()), requirements: probe_requirements())
+  match w {
+    TurnWorkUnestablished { obligation: o } =>
+      string_contains(s: o as String, pattern: "no canonical source manifest")
+        && string_contains(s: o as String, pattern: "launch receipt")
+    TurnWorkBound { work: _ } => false
+  }
+}
+
+// AND THE POSITIVE CONTROL, so the refusal above is a wall and not a function that cannot succeed. A
+// request carrying an observed manifest mints Work, and its key comes from the fabric's own
+// constructor rather than from a second derivation here.
+test fn an_observed_manifest_mints_work_through_the_fabric_constructor() -> Bool {
+  let source = TurnSourceManifest { manifest: "probe.model-manifest" as SourceManifestRef, receipt: "test.claim.serving.turn_demand_witness" as ObservationReceiptRef }
+  match serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request_with(source: source), requirements: probe_requirements()) {
+    TurnWorkBound { work: work } => length(work.contract.steps) == 1 && length(work.id.key as String) > 0
+    TurnWorkUnestablished { obligation: _ } => false
+  }
+}
+
+// TWO SOURCES ARE TWO WORKS. This is what the alias cast destroyed: the identity is derived from the
+// contract, so a different manifest is a different key without anyone deciding it should be.
+test fn two_source_manifests_are_two_works() -> Bool {
+  let one = TurnSourceManifest { manifest: "probe.model-a" as SourceManifestRef, receipt: "probe" as ObservationReceiptRef }
+  let two = TurnSourceManifest { manifest: "probe.model-b" as SourceManifestRef, receipt: "probe" as ObservationReceiptRef }
+  match serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request_with(source: one), requirements: probe_requirements()) {
+    TurnWorkUnestablished { obligation: _ } => false
+    TurnWorkBound { work: a } =>
+      match serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request_with(source: two), requirements: probe_requirements()) {
+        TurnWorkUnestablished { obligation: _ } => false
+        TurnWorkBound { work: b } => (a.id.key as String) != (b.id.key as String)
+      }
+  }
+}
+
+// ── A STREAMED TURN IS NOT RESUMABLE AND ITS STEP IS NOT REUSABLE ─────────────────────────────
+//
+// The one declared step is the entire streamed turn with opaque effects. An earlier spelling set
+// step_reuse_permitted from a "warm prefix is fine" flag, which is a different permission at a
+// different grain: the warm prefix is an internal subcomputation of this step, and permitting reuse
+// of the STEP would permit answering from a previous turn's recorded execution.
+test fn a_turn_step_is_opaque_and_never_reused() -> Bool {
+  let steps = serving_turn_steps()
+  let s = serving_turn_satisfaction()
+  (match first(steps) {
+     Present { value: st } => match st.resumability { OpaqueEffects { reason: r } => string_contains(s: r as String, pattern: "partial stream")  _ => false }
+     Absent => false
+   })
+    && !s.step_reuse_permitted
+    && !s.terminal_receipt_may_satisfy
+    && s.new_attempt_required
+}
+
+// WHAT THE TURN OWES IS A TERMINAL RESULT, AND THE KIND IS PART OF THE IDENTITY. An artifact
+// obligation with the same id is a different owed subject, which is why the roster is typed rather
+// than a list of names.
+test fn a_turn_owes_one_terminal_result() -> Bool {
+  let owed = serving_turn_output_obligations()
+  length(owed.required) == 1
+    && fold(owed.required, init: true, f: (acc, o) => acc && (match o.kind { TerminalResultObligation {} => true  OutputArtifactObligation {} => false }))
+}

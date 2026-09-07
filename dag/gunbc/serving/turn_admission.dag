@@ -1,0 +1,240 @@
+module gunbc.serving.turn_admission
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import std.measure { Second, second, MoneyAmountMicro, money_amount_micro, MoneyOnce, MoneyRate, MoneyPerSecond }
+import extdeps.currency.currency { Usd }
+import v2.std.optional { Present, Absent }
+import product.fabric.identity { FabricIdentity, OfferKey }
+import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.selection {
+  AvailabilityObservation, AvailableForInterval, AvailableIndefinitely, AvailabilityUnobserved,
+  CommitmentState,
+  StartCostObservation, StartCostMeasured, StartCostUnread,
+  TransitionCostObservation, NoTransitionRequired, TransitionCostMeasured, TransitionCostUnread,
+  OperatingCostObservation, OperatingCostMeasured, OperatingCostBorneBySupplier, OperatingCostUnread,
+  OpportunityCostObservation, NoFeasibleAlternativeUse, AlternativeUseDisplaced, AlternativeUseUnread,
+  DispatchInputs,
+}
+import product.fabric.isolation { IsolationProfile, IsolationGuarantee }
+import product.fabric.work { TrustDomainRef }
+import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
+
+// ── CO-TENANCY IS AN ADMISSION CONSTRAINT, NOT A PRICE ────────────────────────────────────────
+//
+// THE DECISION THIS MODULE REVERSES, STATED FIRST BECAUSE IT WAS MINE. The earlier design priced
+// co-tenancy on the opportunity axis and let a busy group merely RANK WORSE, on the reasoning that
+// a price is the more general mechanism and a ceiling is a blunt instrument. That is the right
+// instinct for a preference and the wrong one for a quality violation, and the difference is not a
+// matter of tuning: a soft price lets the damaging group WIN whenever the alternatives look worse.
+// Both groups occupied, the other group unreadable, the estimate too low, every candidate bad but
+// one numerically least bad -- in each of those the priced arm places the arriving turn exactly
+// where the measurement says it must not go, and does so quietly, because a ranking outcome carries
+// no refusal.
+//
+// WHAT THE MEASUREMENT ESTABLISHES. A cold prefill sharing a serving group with an active
+// interactive decoder forces that decoder onto approximately one token per prefill chunk: its
+// inter-token latency degrades by about two orders of magnitude for as long as the overlap lasts.
+// The victim is a turn already in flight and already being read by someone. That is not a cost
+// traded off against throughput; it is the interactive product failing while it is being used.
+//
+// The controlled overlap experiment that establishes it -- one launch, one victim, decode alone
+// against decode beside a cold prefill, temporal overlap established rather than inferred -- is
+// cited by receipt below and its typed carrier is authored by the serving-evidence lane. This
+// module deliberately does not restate its numbers: a magnitude copied into prose here would be a
+// second authority for a measurement, and the first thing to rot when the experiment is repeated.
+data serving_co_tenancy_overlap_receipt: ObservationReceiptRef = "gunbc.serving.corrected-overlap-experiment" as ObservationReceiptRef
+
+// ── WHAT THE SERVED GAUGES SAY, AND WHAT AN UNREAD GAUGE IS NOT ───────────────────────────────
+//
+// Two counts, or neither. A reading carrying one gauge and defaulting the other is an observation
+// half-invented, and the half that gets invented is always the one that admits.
+type ServingQueueReading
+  = QueueDepthRead { waiting: Nat, running: Nat }
+  | QueueDepthUnread { obligation: NonEmptyStr }
+
+// UNREAD IS NOT IDLE. This is the whole rule, and it is stated as a coproduct rather than as a
+// caution because it has been got wrong here before: a probe that did not answer was treated as an
+// engine with nothing running, and the placement went ahead on that. An unreadable group carries an
+// obligation to go and measure -- never a licence to place beside whatever is actually running on
+// it.
+type ServingCoTenancy
+  = GroupIdle
+  | GroupServingInteractiveTurn { running: Nat }
+  | CoTenancyUnread { obligation: NonEmptyStr }
+
+fn serving_co_tenancy(reading: ServingQueueReading) -> ServingCoTenancy {
+  match reading {
+    QueueDepthUnread { obligation: o } => CoTenancyUnread { obligation: o }
+    QueueDepthRead { waiting: w, running: r } =>
+      if r == 0 {
+        if w == 0 { GroupIdle } else { GroupServingInteractiveTurn { running: w } }
+      } else {
+        GroupServingInteractiveTurn { running: r }
+      }
+  }
+}
+
+// A GROUP WITH WORK WAITING IS NOT IDLE EITHER, which is why the reading above folds waiting into
+// the occupied arm rather than looking only at running. A request admitted and waiting is a request
+// that will start the moment the engine is free, so placing a cold prefill in front of it produces
+// the same overlap one scheduler step later. The count carried is whichever gauge established the
+// occupancy; nothing downstream prices it, so no ordering depends on which one it was.
+
+// ── THE ADMISSION VERDICT ─────────────────────────────────────────────────────────────────────
+//
+// Three arms and no fourth. There is deliberately no arm meaning "occupied but acceptable": that is
+// the priced reading this module replaces, and re-admitting it here as a constructor would let a
+// caller reconstruct it. A group that is occupied is not a candidate for fresh cold-risk work, and a
+// group whose occupancy is unread is not a candidate either.
+//
+// WHAT MAKES A TURN COLD-RISK, AND WHY THERE IS NO WARM ARM YET. A turn is cold-risk when the
+// prefix it would prefill is not established to be resident on the candidate. Nothing in this
+// repository observes prefix residency, so every turn is cold-risk today and the type carries no
+// second arm for a state nothing can produce. The trigger for a warm arm is an observed prefix-hit
+// standing on a named launch; until then, a warm turn is unrepresentable rather than assumed.
+type ServingGroupAdmission
+  = AdmissibleForColdPrefill { receipt: ObservationReceiptRef }
+  | InadmissibleActiveInteractiveTurn { occupied_by: Nat, basis: ObservationReceiptRef }
+  | AdmissibilityUnread { obligation: NonEmptyStr }
+
+fn serving_group_admission(tenancy: ServingCoTenancy, receipt: ObservationReceiptRef) -> ServingGroupAdmission {
+  match tenancy {
+    CoTenancyUnread { obligation: o } => AdmissibilityUnread { obligation: o }
+    GroupIdle => AdmissibleForColdPrefill { receipt: receipt }
+    GroupServingInteractiveTurn { running: r } =>
+      InadmissibleActiveInteractiveTurn { occupied_by: r, basis: serving_co_tenancy_overlap_receipt }
+  }
+}
+
+fn serving_admission_detail(group: FabricGroup, admission: ServingGroupAdmission) -> String {
+  match admission {
+    AdmissibleForColdPrefill { receipt: _ } =>
+      join([fabric_group_wire(g: group) as String, ": idle and admissible"], "")
+    InadmissibleActiveInteractiveTurn { occupied_by: r, basis: _ } =>
+      join([fabric_group_wire(g: group) as String, ": ", to_string(r), " interactive request(s) in flight, so a cold prefill placed here would stall a decode already being read"], "")
+    AdmissibilityUnread { obligation: o } =>
+      join([fabric_group_wire(g: group) as String, ": occupancy unread, which is not idle -- ", o as String], "")
+  }
+}
+
+fn serving_admission_is_admissible(admission: ServingGroupAdmission) -> Bool {
+  match admission {
+    AdmissibleForColdPrefill { receipt: _ } => true
+    InadmissibleActiveInteractiveTurn { occupied_by: _, basis: _ } => false
+    AdmissibilityUnread { obligation: _ } => false
+  }
+}
+
+// AN UNREAD GROUP IS PENDING AND AN OCCUPIED ONE IS PENDING; NEITHER IS A REFUSAL OF THE DEMAND.
+// The distinction reaches the caller because the remedies differ in kind: an occupied group will
+// free itself and a retry is the whole remedy, while an unread group frees nobody and the remedy is
+// to go and measure. Fusing them into one "no" would make the second look like patience.
+fn serving_admission_is_retryable(admission: ServingGroupAdmission) -> Bool {
+  match admission {
+    AdmissibleForColdPrefill { receipt: _ } => false
+    InadmissibleActiveInteractiveTurn { occupied_by: _, basis: _ } => true
+    AdmissibilityUnread { obligation: _ } => false
+  }
+}
+
+// ── WHAT AN ADMITTED CANDIDATE COSTS, WHICH IS THE PART THIS CUT DELIBERATELY DOES NOT MODEL ──
+//
+// Every quantitative axis below is zero or absent, and that is the point of the cut rather than an
+// omission in it. The refuted execution model that priced them -- a fixed prefill term, a per-token
+// term, and a whole-prefill step duration -- has been withdrawn, and rebuilding placement on top of
+// its successor before that successor exists is how the withdrawn one got here. So the axes carry
+// what is actually established today and no more, and the decision is made by ADMISSION and by the
+// tie policy rather than by arithmetic over estimates.
+//
+// AVAILABILITY. An admitted candidate is idle with a seat available, so there is no delay before it
+// can start. This is not a queue-delay model: a group with anything queued is not admitted at all,
+// so the arm that would need one is unreachable from here.
+fn serving_availability(receipt: ObservationReceiptRef) -> AvailabilityObservation {
+  AvailableIndefinitely { delay: second(count: 0), receipt: receipt }
+}
+
+// TRANSITION. A fresh demand has no residency anywhere, so there is nothing to move and no
+// transition is required to place it here. The prefill it will pay is the WORK ITSELF, identical on
+// every candidate, and pricing identical work as a differentiator ranks nothing.
+//
+// AND INCUMBENCY IS ABSENT ON PURPOSE, WHICH IS THE SECOND THING THIS CUT REVERSES. The earlier
+// design read "this conversation was last placed on group A" as NoTransitionRequired -- a measured
+// zero materialization cost. Last placement does not establish current materialization: an engine
+// restart, a KV eviction, a launch replacement, or a prefix that simply differs from the previous
+// turn's all leave the record intact and the cache empty. Those are separate facts -- last
+// placement, exact current launch, prefix hit observed, prefix miss observed, prefix standing unread
+// -- and only the last of them is true today. So affinity buys nothing here until prefix standing
+// is observed on a named launch, and this module offers no way to spell a zero it has not measured.
+fn serving_transition_cost() -> TransitionCostObservation {
+  NoTransitionRequired
+}
+
+// OPPORTUNITY. An admitted candidate is idle, so placing work on it displaces no alternative use.
+// The busy case does not reach this function: it was refused at admission, which is precisely the
+// change this module makes.
+fn serving_opportunity_cost(receipt: ObservationReceiptRef) -> OpportunityCostObservation {
+  NoFeasibleAlternativeUse { receipt: receipt }
+}
+
+// START AND OPERATING. The engine is already running when the turn arrives, so there is no start to
+// pay; the group is ours, so no supplier bills us for the seconds it runs.
+// OperatingCostBorneBySupplier is literally true when the supplier is us, and it says nothing about
+// electricity, which is real and is not a cost this selection reserves against.
+fn serving_start_cost(receipt: ObservationReceiptRef) -> StartCostObservation {
+  StartCostMeasured { amount: MoneyOnce { amount: money_amount_micro(count: 0), currency: Usd }, receipt: receipt }
+}
+
+fn serving_operating_cost() -> OperatingCostObservation {
+  OperatingCostBorneBySupplier
+}
+
+fn serving_dispatch_inputs<P>(
+  offer: FabricIdentity<P, OfferKey>,
+  commitment: CommitmentState,
+  receipt: ObservationReceiptRef,
+) -> DispatchInputs<P> {
+  DispatchInputs {
+    offer: offer,
+    availability: serving_availability(receipt: receipt),
+    commitment: commitment,
+    start: serving_start_cost(receipt: receipt),
+    transition: serving_transition_cost(),
+    operating: serving_operating_cost(),
+    opportunity: serving_opportunity_cost(receipt: receipt),
+  }
+}
+
+// ── THE ONE INPUT THAT IS A JUDGEMENT RATHER THAN A MEASUREMENT ───────────────────────────────
+//
+// select_supply takes a delay valuation, and with every axis above at zero it multiplies nothing:
+// two admitted Spark groups tie exactly, and the tie policy decides. It is declared as a row rather
+// than written as a literal at the call site so that its status is visible, and its value is one
+// micro-dollar per second -- positive, so orderings resolve, and small enough that nobody reading a
+// total mistakes it for a priced claim. It becomes load-bearing the moment an offer with a non-zero
+// quote joins the set, and at that point it must be restated by someone who can defend the number.
+data serving_delay_valuation_micros_per_second: Nat = 1
+
+data serving_delay_valuation: MoneyPerSecond = MoneyRate {
+  amount: money_amount_micro(count: serving_delay_valuation_micros_per_second),
+  currency: Usd,
+}
+
+data serving_delay_valuation_dissolution: NonEmptyStr = "an offer with a non-zero quote enters the serving offer set, at which point cash no longer ties and this rate decides how many seconds of waiting a dollar is worth -- a judgement this placeholder does not make and must not be read as having made" as NonEmptyStr
+
+// ── A SERVING TURN IS NOT ISOLATED FROM THE TURNS BESIDE IT ───────────────────────────────────
+//
+// Turns on a group share one engine process, one KV cache and one container: there is no fresh root
+// per turn, no private namespace per turn, no attempt-scoped secret, and no dedicated kernel. Every
+// guarantee in the vocabulary is about separating one unit of work from another, and a serving group
+// separates none of them. So the profile is empty, and empty here is an ASSERTION derived from how
+// the engine runs rather than a gap left by a probe that failed.
+//
+// The consequence is one the fabric already handles: work requiring any guarantee cannot be made
+// fungible with a serving offer, and the refusal names the missing guarantee rather than saying the
+// offer is not isolated enough.
+fn serving_isolation_profile() -> IsolationProfile {
+  IsolationProfile { guarantees: [] }
+}
+
+data spark_serving_trust_domain: TrustDomainRef = "gunbc.trust.spark-fleet" as TrustDomainRef

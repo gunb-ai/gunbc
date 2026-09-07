@@ -14,7 +14,7 @@ import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import product.capacity.pool { Pool }
+import product.capacity.pool { Pool, PoolReading, PoolRead, PoolReadingRefused, pool_reading_at }
 import product.capacity.event_chain {
   PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, HeadAbsent, HeadAt, head_expectation_eq,
   event_parent_expectation, AppendDecision, AppendAdmitted, AppendStale, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted, chain_from_head,
@@ -298,6 +298,51 @@ type SeatAcquisition
 type SeatAttemptState {
   done: SeatAcquisition?
   attempted: Nat
+}
+
+// ── READING THE POOL WITHOUT TAKING FROM IT ───────────────────────────────────────────────────
+//
+// seat_attempt below learns whether a pool has room by PROPOSING an acquire and seeing it refused.
+// That is an outcome, and a caller who needs to know the standing BEFORE deciding cannot use it:
+// asking costs an attempt, and a refusal is indistinguishable from a race it lost.
+//
+// gunbc.serving.turn_admission needs the standing as an observation, because its whole discipline is
+// that an unread axis refuses rather than admitting -- and a seat inferred from a failed CAS is
+// exactly the fabricated reading it exists to forbid.
+//
+// SO THIS IS THE SAME CHAIN MINUS THE APPEND: read the partition, walk it, fold it into the pool,
+// and take a reading. Every step is the one seat_attempt already runs, which is what keeps this a
+// second QUESTION rather than a second authority -- there is no separate notion here of what a seat
+// is or when a pool is full.
+type SeatStandingObservation
+  = SeatRoomObserved { headroom: Nat, generation: Nat }
+  | SeatFullObserved { generation: Nat }
+  | SeatStandingUnobserved { step: String, reason: String }
+
+fn fabric_seat_observe(layout: EventLogLayout, partition: PartitionId, root: Pool<Count, One>, at: EpochSecs, budget: Nat) -> SeatStandingObservation {
+  match event_log_read_partition(layout: layout, partition: partition, budget: budget) {
+    PartitionReadRefused { step: s, reason: why } => SeatStandingUnobserved { step: s, reason: why }
+    PartitionReadOk { head: _, walk: walk } =>
+      match walk {
+        ChainIncomplete { missing: m, newest_first_so_far: _ } =>
+          SeatStandingUnobserved { step: "chain", reason: join(["partition chain is missing event ", m as String], "") }
+        ChainBudgetExhausted { at: a } =>
+          SeatStandingUnobserved { step: "chain", reason: join(["partition chain exceeded the read budget at ", a as String], "") }
+        ChainWalked { oldest_first: xs } =>
+          match pool_fold(root: root, oldest_first: xs) {
+            PoolFoldRefused { at_event: e, wire: w } =>
+              SeatStandingUnobserved { step: "fold", reason: join(["event ", e as String, " refused: ", w], "") }
+            PoolFolded { pool: p, generation: g } =>
+              match pool_reading_at(pool: p, at: at) {
+                PoolReadingRefused { at: t, anchor: a } =>
+                  SeatStandingUnobserved { step: "reading", reason: join(["instant ", to_string(t), " precedes the pool anchor ", to_string(a)], "") }
+                PoolRead { committed: _, ceiling: _, headroom: h, over_committed: _ } =>
+                  if h.count > 0 { SeatRoomObserved { headroom: h.count, generation: g } }
+                  else { SeatFullObserved { generation: g } }
+              }
+          }
+      }
+  }
 }
 
 fn seat_attempt(layout: EventLogLayout, partition: PartitionId, root: Pool<Count, One>, actor: NonEmptyStr, request: SeatRequest, policy: LeasePolicy, budget: Nat, attempt: Nat) -> SeatAcquisition? {

@@ -1,0 +1,97 @@
+module gunbc.serving.router_realization
+
+import std.types { Bool, String, NonEmptyStr, List }
+
+// ── WHAT THE ROUTER MAY DO ONCE THE FABRIC DECIDES PLACEMENT ──────────────────────────────────
+//
+// THE ROUTER IS A REALIZATION, AND THIS IS ITS CONTRACT. The ctrl dashboard router ranks replicas by
+// their running-request count and forwards to the winner. That is a placement policy, and it is a
+// SECOND one: the harness had its own, they disagreed, and neither took a seat the other could see.
+// One of those authorities is now the fabric's, and what is left for the router is proxying.
+//
+// A ROSTER OF CAPABILITIES RATHER THAN A PARAGRAPH, because the forbidden ones are things the
+// realization does TODAY. A prose boundary is satisfied by whoever reads it last; a roster can be
+// pointed at, tested against, and used as the acceptance list for the ctrl-side change. Every
+// forbidden arm carries the reason it is forbidden, so a later reader who wants it back has to
+// answer the argument rather than rediscover it.
+//
+// THE CALLABLE HALF OF THIS BOUNDARY IS gunbc.harness.harness_cli: harness_place_cli asks the fabric
+// for a placement and prints the granted endpoint, the group, the exact launch and the grant
+// reference; harness_release_cli gives the seat back by that reference when the proxied request
+// ends. Those two entries are what a router calls INSTEAD of scoring replicas.
+//
+// WHAT IS NOT IN THIS REPOSITORY IS THE ROUTER ITSELF. Its realization lives in the ctrl codebase,
+// so the paired change -- deleting its load score and its host selection, and calling these two
+// entries -- cannot land in this commit. This roster is the contract that change is measured
+// against, and the state today is that the contract exists and the realization does not yet meet it.
+type RealizationPermission
+  = PermittedInRealization
+  | ForbiddenInRealization { because: NonEmptyStr }
+
+type RouterCapability
+  = NormaliseRequestToDemand
+  | AskPlacementAuthority
+  | ProjectEndpointFromGrant
+  | ProxyBytes
+  | ReleaseSeatOnCompletion
+  | ComputeOwnLoadScore
+  | SelectHostDirectly
+  | MaintainAuthoritativeBindingLedger
+  | FabricatePlacementWhenUnreadable
+
+fn router_capability_permission(c: RouterCapability) -> RealizationPermission {
+  match c {
+    NormaliseRequestToDemand => PermittedInRealization
+    AskPlacementAuthority => PermittedInRealization
+    ProjectEndpointFromGrant => PermittedInRealization
+    ProxyBytes => PermittedInRealization
+    ReleaseSeatOnCompletion => PermittedInRealization
+    ComputeOwnLoadScore =>
+      ForbiddenInRealization { because: "ranking replicas is the placement policy's decision; a second scoring function beside it is the fork this boundary exists to remove" as NonEmptyStr }
+    SelectHostDirectly =>
+      ForbiddenInRealization { because: "picking a host instead of requesting one through the work contract and provider is the divergence DESIGN section 3b names for the fabric domain" as NonEmptyStr }
+    MaintainAuthoritativeBindingLedger =>
+      ForbiddenInRealization { because: "the fabric grant history is authoritative for where a turn is placed; a router-local file may cache that answer, and an absent or corrupt cache must reconstruct from history rather than reshuffle the fleet" as NonEmptyStr }
+    FabricatePlacementWhenUnreadable =>
+      ForbiddenInRealization { because: "returning some endpoint because the request has to go somewhere is the absorbing fallback: it lands a cold prefill on a stream already suffering, in exactly the condition the policy exists to prevent" as NonEmptyStr }
+  }
+}
+
+fn router_capability_wire(c: RouterCapability) -> NonEmptyStr {
+  match c {
+    NormaliseRequestToDemand => "normalise-request-to-demand" as NonEmptyStr
+    AskPlacementAuthority => "ask-placement-authority" as NonEmptyStr
+    ProjectEndpointFromGrant => "project-endpoint-from-grant" as NonEmptyStr
+    ProxyBytes => "proxy-bytes" as NonEmptyStr
+    ReleaseSeatOnCompletion => "release-seat-on-completion" as NonEmptyStr
+    ComputeOwnLoadScore => "compute-own-load-score" as NonEmptyStr
+    SelectHostDirectly => "select-host-directly" as NonEmptyStr
+    MaintainAuthoritativeBindingLedger => "maintain-authoritative-binding-ledger" as NonEmptyStr
+    FabricatePlacementWhenUnreadable => "fabricate-placement-when-unreadable" as NonEmptyStr
+  }
+}
+
+data router_capabilities: List<RouterCapability> = [
+  NormaliseRequestToDemand,
+  AskPlacementAuthority,
+  ProjectEndpointFromGrant,
+  ProxyBytes,
+  ReleaseSeatOnCompletion,
+  ComputeOwnLoadScore,
+  SelectHostDirectly,
+  MaintainAuthoritativeBindingLedger,
+  FabricatePlacementWhenUnreadable,
+]
+
+fn router_capability_line(c: RouterCapability) -> String {
+  match router_capability_permission(c: c) {
+    PermittedInRealization => join(["permitted ", router_capability_wire(c: c) as String], "")
+    ForbiddenInRealization { because: b } => join(["forbidden ", router_capability_wire(c: c) as String, ": ", b as String], "")
+  }
+}
+
+// THE CONTRACT IS EMITTABLE, so the ctrl-side change can read it rather than transcribe it. A
+// transcription is a second copy of a roster that is going to grow.
+fn router_realization_contract() -> String {
+  join(map(router_capabilities, c => join([router_capability_line(c: c), "\n"], "")), "")
+}

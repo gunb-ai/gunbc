@@ -1,0 +1,65 @@
+module extdeps.vllm.metrics
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/vllm-project/vllm/blob/main/vllm/v1/metrics/loggers.py"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vllm.metrics",
+      decl_name: "VllmServingMetric",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// WHAT THIS MODULE IS, AND WHAT IT DELIBERATELY DOES NOT CARRY YET.
+//
+// The two request-count gauges are the only served metrics this repository's placement path reads,
+// and they are the only ones modelled here. The token, iteration and flops counters are ALSO served
+// on this endpoint and are ALSO wanted -- by the serving-evidence lane, which owns what each of
+// them observes and which questions each refuses. They are absent here rather than sketched,
+// because a half-stated semantic row is worse than none: it reads as settled.
+//
+// WHY THE NAMES LIVE UPSTREAM AT ALL. A metric name spelled at its consumer is a second authority
+// for an upstream fact, free to drift the first time the exposition is renamed. Both consumers of
+// these gauges reach them through this module.
+//
+// THESE ARE INSTANTANEOUS GAUGES OVER THE SCHEDULER'S OWN QUEUES: how many requests the engine is
+// currently running, and how many are admitted but not yet running. They answer HOW BUSY THIS
+// REPLICA IS. They are NOT a saturation signal for the KV pool -- that question belongs to a
+// different series and has already been answered wrongly from this one in this deployment.
+type VllmServingMetric
+  = NumRequestsRunning
+  | NumRequestsWaiting
+
+fn vllm_metric_name(m: VllmServingMetric) -> NonEmptyStr {
+  match m {
+    NumRequestsRunning => "vllm:num_requests_running" as NonEmptyStr
+    NumRequestsWaiting => "vllm:num_requests_waiting" as NonEmptyStr
+  }
+}
+
+// THE EXPOSITION IS PROMETHEUS TEXT AND EVERY VALUE IN IT IS A FLOAT, INCLUDING THE COUNTS.
+//
+// This is the fact a reader is most likely to get wrong, so it is stated as a row rather than left
+// to be rediscovered: the Python client renders a gauge holding 4 as `4.0`. An integer parse over
+// that field FAILS. A consumer that treats the failure as "some positive amount" collapses every
+// positive count to one -- 4 waiting and 3 running both read as 1 -- and the collapse is silent,
+// because the shape of the answer is still a count. The reading law lives with the consumer that
+// parses the field; what belongs here is that the rendering is a float.
+data vllm_metric_values_are_rendered_as_floats: NonEmptyStr = "the Prometheus text exposition renders every gauge value as a float, so a gauge holding 4 is written 4.0 and an integer parse of the value field fails on an ordinary reading" as NonEmptyStr
+
+data vllm_metric_semantics_established_against: VllmSourceRevision = vllm_source_revision_read
