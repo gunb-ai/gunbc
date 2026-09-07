@@ -144,6 +144,10 @@ type WorkStep {
   resumability: ResumabilityTier
 }
 
+// WorkContract.output_contract is opaque identity of the output contract — never
+// the obligation roster. output_obligations is the structured roster the work
+// owes; identity material includes it, so changing what is owed changes the
+// work key without stuffing the roster into the contract name.
 type WorkContract {
   program: ProgramRef
   steps: List<WorkStep>
@@ -151,11 +155,7 @@ type WorkContract {
   inputs: ArtifactManifestRef
   runtime_closure: ArtifactManifestRef
   effect_contract: EffectContractRef
-  // Opaque identity of the output contract — never the obligation roster.
   output_contract: OutputContractRef
-  // Structured obligations the work owes. Identity material includes this field,
-  // so changing what is owed changes the work key without stuffing the roster into
-  // the contract name.
   output_obligations: DeclaredOutputObligations
 }
 
