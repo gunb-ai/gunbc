@@ -13,30 +13,41 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // ceiling must name its next-rung trigger, and 4b(3) says a rung may be lowered only by declaring
 // it. An undeclared Int beside a migrated Microsecond in the same record is an unstated divergence.
 //
-// WHAT ACTUALLY BLOCKS THEM, which is a carrier gap and not effort:
+// WHAT ACTUALLY BLOCKS EACH ONE. Three different carrier gaps, not one:
 //
 //   intercept_micros             a fit intercept, computed by division, may be negative
 //   intercept_difference_micros  a difference of two intercepts, signed by construction
 //   micros_per_thousand_tokens   a RATE: microseconds per token
+//   milli_tokens_per_second      a rate at MILLI scale, in gunbc.spark.serving_step_cost
+//   gigabits_per_second_tenths   a link throughput reading
+//   link_gigabits                the link's rated throughput
 //
-// std.measure declares Microsecond as Measure<Time, Micro, Nat>. It is Nat-backed, so it cannot
-// carry either signed value. There is no signed duration alias in the module. And the rate is worse
-// than signed: it is a dimensional QUOTIENT, and std.measure publishes measure_add, measure_le,
-// measure_count and two scale-fraction folds -- no product, no quotient, and no composition on the
-// Quantity type. A microseconds-per-token carrier cannot be spelled at all today.
+// SIGNED. Microsecond is Measure<Time, Micro, Nat>, Nat-backed, so it cannot hold either of the two
+// signed values, and std.measure declares no signed duration alias.
 //
-// WHY NOT WRAP ANYWAY. Unlike the migrated fields -- inert data, or summed and compared through
-// measure_add and measure_le -- every site consuming these three is arithmetic: a division that
-// produces the intercept, a multiply-and-divide that predicts from the slope, a subtraction that
-// contrasts two fits. Wrapping would mean constructing a carrier and unwrapping it on the next
-// line at every site, which DESIGN 4b names directly: a brand or wrapper is cosmetic until
-// construction and acceptance enforce the distinction. It would make the row citable as coverage
-// it does not provide, which is worse than the honest Int this row now declares.
+// QUOTIENT. micros_per_thousand_tokens is a dimensional quotient. std.measure publishes
+// measure_add, measure_le, measure_count and two scale-fraction folds -- no product, no quotient,
+// and no composition on the Quantity type -- so a microseconds-per-token carrier cannot be spelled.
+//
+// SCALE. milli_tokens_per_second is a rate at milli scale. TokensPerSecond is Measure<Frequency,
+// One, Nat>, and its module states the reason the milli scaling exists: rounding a sub-unit rate to
+// an integer would report zero. Migrating to the One-scaled alias would erase the distinction the
+// field was created to preserve, so this needs Measure<Frequency, Milli, Nat> and no alias exists.
+//
+// AND ONE IS BLOCKED BY A FORK RATHER THAN AN ABSENCE, which is the worst of the four. The two RoCE
+// fields would take std.measure Bandwidth = Measure<DataRate, One, Nat>, and std.measure's own
+// comment beside MegatransfersPerSecond declares DataRate to be bits/s. Its live consumers do not
+// agree with that or with each other: extdeps.systems.nvidia records the GB10's 273 GB/s memory
+// bandwidth as bandwidth(count: 273000000000), which is bytes per second, while extdeps.colo
+// natcoweb records colo transit ports as bandwidth(count: 1000000) and bandwidth(count: 10000000),
+// which are neither. Three consumers, at least two mutually inconsistent readings of one carrier's
+// base unit. Joining that carrier would make these rows a THIRD reading and cement the fork, so they
+// stay declared here until the base unit has one answer.
 data signed_and_ratio_measure_carrier_stall: GuaranteeStall = GuaranteeStall {
-  subject: "gunbc.spark.serving_critical_path AffineFit intercept_micros and micros_per_thousand_tokens, and InterceptContrast intercept_difference_micros, carry bare Int beside migrated Microsecond fields in the same modules, because std.measure has no signed duration alias and no dimensional quotient",
+  subject: "unit fields across gunbc.spark.serving_critical_path and gunbc.spark.serving_step_cost carry bare Nat or Int beside migrated Watt, Hertz, Percent, Milliwatt and Microsecond fields in the same records, because std.measure has no signed duration alias, no dimensional quotient, no milli-scaled frequency alias, and no agreed base unit for Bandwidth",
   current: Mitigatable,
   ceiling: StructurallyGuaranteed,
   blocker: AwaitsOneGrounding { grounding: "std.measure" },
-  population: BoundedPopulation { members: ["gunbc.spark.serving_critical_path"] },
-  next_rung_trigger: climbs_when(capability: "std.measure carries a signed duration magnitude and a dimensional quotient with the arithmetic to inhabit them, sufficient to express a fit intercept computed by division, a signed difference of two intercepts, and a microseconds-per-token rate multiplied by a token count, without any consumer unwrapping to a bare Int to do so")
+  population: BoundedPopulation { members: ["gunbc.spark.serving_critical_path", "gunbc.spark.serving_step_cost"] },
+  next_rung_trigger: climbs_when(capability: "std.measure carries a signed duration magnitude, a dimensional quotient with the arithmetic to inhabit it, a milli-scaled frequency alias, and one adjudicated base unit for DataRate that every live Bandwidth consumer is migrated onto, sufficient to express a fit intercept computed by division, a signed difference of two intercepts, a microseconds-per-token rate, a sub-unit token rate, and a link throughput without any consumer unwrapping to a bare scalar to do so")
 }

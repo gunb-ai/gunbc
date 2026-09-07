@@ -2,7 +2,7 @@ module gunbc.spark.serving_critical_path
 
 import std.types { Bool, String, Int, NonEmptyStr, List }
 import std.nat { Nat }
-import std.measure { Watt, watt, Microsecond, microsecond, microsecond_count }
+import std.measure { Watt, watt, watt_count, Milliwatt, milliwatt, milliwatt_count, Hertz, hertz, hertz_count, Percent, percent, percent_count, Microsecond, microsecond, microsecond_count }
 import v2.std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -57,18 +57,18 @@ data spark_peripheral_power_envelope: PowerEnvelope = PowerEnvelope { watts: wat
 //     .232       96%       1%       36.1W      41.9W     2411MHz  235.4 GB  7.87 Gb/s
 //     .233       96%       1%       37.8W      43.9W     2405MHz  233.6 GB  7.80 Gb/s
 type CriticalPathObservation
-  = GpuKernelBusyFraction { percent: Nat }
+  = GpuKernelBusyFraction { busy: Percent }
   | GpuReportedPowerDraw { median_watts: Watt, max_watts: Watt }
-  | GpuClockObservation { median_mhz: Nat }
+  | GpuClockObservation { median_clock: Hertz }
   | RoceByteRate { gigabits_per_second_tenths: Nat, link_gigabits: Nat }
-  | RankCoarseSymmetry { power_spread_deciwatts: Nat, util_spread_percent: Nat }
+  | RankCoarseSymmetry { power_spread: Milliwatt, util_spread: Percent }
 
 data spark_group_a_cold_prefill_observations: List<CriticalPathObservation> = [
-  GpuKernelBusyFraction { percent: 96 },
+  GpuKernelBusyFraction { busy: percent(count: 96) },
   GpuReportedPowerDraw { median_watts: watt(count: 36), max_watts: watt(count: 44) },
-  GpuClockObservation { median_mhz: 2408 },
+  GpuClockObservation { median_clock: hertz(count: 2408000000) },
   RoceByteRate { gigabits_per_second_tenths: 78, link_gigabits: 50 },
-  RankCoarseSymmetry { power_spread_deciwatts: 17, util_spread_percent: 0 },
+  RankCoarseSymmetry { power_spread: milliwatt(count: 1700), util_spread: percent(count: 0) },
 ]
 
 // ── THE CONSTRUCTION RULES THAT MAKE LAST WEEK'S INFERENCE UNWRITABLE ─────────────────────────
