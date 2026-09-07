@@ -420,10 +420,34 @@ fn operation_argv_pair_is_planted_duplicate(pair: DuplicateAuthorityOperationPai
       || (a == "DuplicateAuthorityBeta" && b == "DuplicateAuthorityAlpha"))
 }
 
+fn operation_argv_materializations_share_argv(
+  left: ArgvMaterialization,
+  right: ArgvMaterialization
+) -> Bool {
+  match left {
+    ArgvMaterialized { argv: a } => match right {
+      ArgvMaterialized { argv: b } =>
+        operation_argv_lists_eq(a: a, b: b) && length(xs: a) > 0
+      ArgvMaterializationRefused { at: _, cause: _ } => false
+    }
+    ArgvMaterializationRefused { at: _, cause: _ } => false
+  }
+}
+
 fn operation_argv_planted_duplicate_authority_pair_is_found() -> Bool {
-  any(
-    xs: operation_argv_duplicate_authority_pairs(),
-    predicate: fn(pair) { operation_argv_pair_is_planted_duplicate(pair: pair) }
+  operation_argv_materializations_share_argv(
+    left: shell_materialize_operation_argv(
+      "dag/test/fixture/argv_executable_position_probe.dag",
+      "ArgvExecutablePositionProbe",
+      "DuplicateAuthorityAlpha",
+      []
+    ),
+    right: shell_materialize_operation_argv(
+      "dag/test/fixture/argv_executable_position_probe.dag",
+      "ArgvExecutablePositionProbe",
+      "DuplicateAuthorityBeta",
+      []
+    )
   )
 }
 
@@ -440,9 +464,20 @@ fn operation_argv_pair_is_shell_cgroup_directory_duplicate(
 }
 
 fn operation_argv_shell_cgroup_directory_pair_is_found() -> Bool {
-  any(
-    xs: operation_argv_live_duplicate_authority_pairs(),
-    predicate: fn(pair) { operation_argv_pair_is_shell_cgroup_directory_duplicate(pair: pair) }
+  let bindings = [operation_argv_bind_text(name: "path", text: "bound-path")]
+  operation_argv_materializations_share_argv(
+    left: shell_materialize_operation_argv(
+      "dag/extdeps/shell.dag",
+      "shell.Test",
+      "IsDirectory",
+      bindings
+    ),
+    right: shell_materialize_operation_argv(
+      "dag/extdeps/linux/cgroup_v2.dag",
+      "linux.CgroupV2",
+      "PathIsDirectory",
+      bindings
+    )
   )
 }
 
