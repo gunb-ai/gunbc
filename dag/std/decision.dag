@@ -722,10 +722,7 @@ fn decision_closure(assessment: DecisionAssessment) -> DecisionClosure {
                               reopen_trigger: "every listed obligation discharged with evidence that closes its cell or constraint without dropping an objective term absent an order-preservation authority" as NonEmptyStr,
                             }
                           } else {
-                            match assessment.selected_candidate {
-                              Absent => DecisionClosureRefused { cause: SelectedCandidateAbsent }
-                              Present { value: _ } => DecisionClosureSettledReady
-                            }
+                            DecisionClosureSettledReady
                           }
                         }
                       }
@@ -1150,8 +1147,33 @@ fn apply_policy(
   }
 }
 
+fn bind_selected_within_to_subject_closure(
+  assessment: DecisionAssessment,
+  pick: RealizationSelectionResult<ParetoEntry>,
+) -> RealizationSelectionResult<ParetoEntry> {
+  match pick {
+    SelectedWithin { candidate: c, receipt: r } =>
+      match decision_closure(assessment: assessment) {
+        DecisionClosureSettledReady => SelectedWithin { candidate: c, receipt: r }
+        DecisionClosureDeferred { obligations: o, reopen_trigger: _ } =>
+          SelectionNeedsEvidence {
+            gaps: map(o, ob => AxisGap { axis: assessment.subject.identity, cause: ob }),
+          }
+        DecisionClosureRefused { cause: _ } =>
+          RealizationSelectionRefused {
+            defects: ["SelectedWithin refused: subject completeness join is not closed" as NonEmptyStr],
+          }
+      }
+    CandidateFieldUnestablished { causes: cs } => CandidateFieldUnestablished { causes: cs }
+    NoFeasibleRealization { causes: cs } => NoFeasibleRealization { causes: cs }
+    SelectionNeedsEvidence { gaps: gs } => SelectionNeedsEvidence { gaps: gs }
+    SelectionNeedsPolicy { survivors: sv } => SelectionNeedsPolicy { survivors: sv }
+    RealizationSelectionRefused { defects: ds } => RealizationSelectionRefused { defects: ds }
+  }
+}
+
 fn select_realization(
-  decision_subject: DeclarationRef,
+  assessment: DecisionAssessment,
   candidate_field_identity: DeclarationRef,
   field: List<ParetoEntry>,
   axes: List<SelectionAxis>,
@@ -1161,7 +1183,7 @@ fn select_realization(
   evidence_snapshot: DeclarationRef,
 ) -> RealizationSelectionResult<ParetoEntry> {
   let standing = establish_candidate_field(field: field)
-  match standing {
+  let pick = match standing {
     CandidateFieldUnestablishedStanding { causes: cs } => CandidateFieldUnestablished { causes: cs }
     CandidateFieldEstablished { identities: _ } =>
       match scan_feasibility(field: field, axes: axes, constraints: constraints) {
@@ -1182,7 +1204,7 @@ fn select_realization(
                   remaining: rem,
                   survivors: sv,
                   policy: policy,
-                  decision_subject: decision_subject,
+                  decision_subject: assessment.subject.identity,
                   candidate_field_identity: candidate_field_identity,
                   field_standing: standing,
                   constraint_authority: constraint_authority,
@@ -1193,6 +1215,7 @@ fn select_realization(
           }
       }
   }
+  bind_selected_within_to_subject_closure(assessment: assessment, pick: pick)
 }
 
 type ConvergenceAdmission
