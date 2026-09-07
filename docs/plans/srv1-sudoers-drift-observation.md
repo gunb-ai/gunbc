@@ -51,17 +51,15 @@ cleanup, which is why the work stopped here rather than proceeding and filing th
 
 ## The discriminator, fixed in advance
 
-Stated before the evidence exists, because a post-convergence green is uninformative unless what
-would falsify it was named first.
+**Stated in the authority row, not here.** The discriminating negative control, its positive
+control, and why neither alone is sufficient are carried by
+`gunbc.recurring_failure_mode.capability_arrives_outside_the_converged_path` — the row whose specimen
+this document details. It is written there because that is the carrier the class lives on, and
+restating it here would give one fact two independently editable homes.
 
-- **Negative control (the discriminating RED):** invoke the granted binary under a **different,
-  inert argv** than the modeled one. Under an exact-argv grant this is refused **at sudo, before the
-  binary runs** — so the refusal is attributable to the grant rather than to the tool. Under an
-  unrestricted grant it is admitted.
-- **Positive control:** the modeled argv succeeds.
-
-Neither alone is sufficient. The **pair** is what licenses reading the KVM grant as converged;
-the positive alone is exactly the uninformative green described above.
+What this document adds is only the *occasion*: the discriminator was fixed **before** the evidence
+existed, because a post-convergence green is uninformative unless what would falsify it was named
+first.
 
 ## A second, independent fact recorded at the same time
 
