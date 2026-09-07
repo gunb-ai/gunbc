@@ -1,12 +1,12 @@
 module test.manual.emission_provenance_specimen_red
 
-// DISCRIMINATING RED: this module is not a `test`-marked sidecar because the
-// required floor folds every prepared `.dag` source, including `dag/test/manual`,
-// through floor_discovery_fold_source. A `test fn` here is FloorDiscoveryRefused
-// (TestMarkedDecl). The compiler defect at
+// DISCRIMINATING RED: `emission_combined_read_preserves_content_order_and_origin_multiplicity`
+// is an unmarked `fn`, not a `test` decl. The required floor folds every prepared `.dag`
+// source, including `dag/test/manual`, through floor_discovery_fold_source, so a `test`
+// marker here is FloorDiscoveryRefused (TestMarkedDecl). The compiler defect at
 // gunbc.recurring_failure_mode.match_bound_element_type_mask makes the
 // element type arrive as Empty when a FreeMonoid<DeclarationRef> bound
-// by a match-arm pattern is consumed inside a lambda, so the body does not
+// by a match-arm pattern is consumed inside a lambda, so this body does not
 // compile and cannot be an enrolled floor row until gunbc#10625 lands.
 //
 // When that repair lands, mark this function `test` and move the file into
