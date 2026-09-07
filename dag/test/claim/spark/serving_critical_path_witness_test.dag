@@ -1,76 +1,168 @@
 module test.claim.spark.serving_critical_path_witness
 
-import std.types { Bool, String, NonEmptyStr, List }
+import std.types { Bool, String, Int, NonEmptyStr, List }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
 import gunbc.spark.serving_critical_path {
-  CriticalPathCandidate, CompleteRankStraggler, HostDispatchGaps, InterconnectBandwidth,
-  ComputeSaturation, CollectiveLatency,
-  CandidateStanding, CandidateExcluded, CandidateRemains, CandidateUnexamined,
-  cold_prefill_candidate_standing,
+  PowerEnvelope, spark_system_power_supply, spark_soc_thermal_envelope,
+  spark_gpu_power_envelope, spark_peripheral_power_envelope,
+  SaturationClaim, GpuComputeSaturated, GpuComputeUnderutilised,
+  ClaimConstruction, ClaimConstructible, ClaimNotConstructible,
+  busy_fraction_constructs, power_below_ceiling_excludes_saturation,
+  PrefillScalingSample, ConcurrencyWitness, spark_group_a_prefill_scaling_samples,
+  SampleAdmission, AdmittedToIsolatedFit, ExcludedFromIsolatedFit, sample_admission,
+  admitted_scaling_samples,
+  AffineFit, PrefillScalingStanding, AffineWithinObservedRange, ScalingUnderObserved,
+  prefill_scaling_standing, predicted_micros,
+  PerStepFixedCost, PerStepCostBoundedAbove, PerStepCostUnmeasured,
+  spark_group_a_per_step_fixed_cost, per_step_upper_micros,
+  ScalingSampleExcludedFromIsolatedFit, spark_group_a_co_tenant_outlier,
+  CriticalPathMechanism, GrossRankStraggler, HostDispatchGaps, BulkInterconnectBandwidth,
+  TokenIndependentStepLatency, TokenProportionalCompute, TokenProportionalCollectivePayload,
+  CollectiveSynchronisationWait, MemoryOrKernelEfficiency, PowerOrThermalThrottle, CoTenantDelay,
+  MechanismStanding, NotObservedAtThisGrain, WeakenedWithinMeasuredRange, Observed, Unresolved,
+  cold_prefill_mechanism_standing,
+  BudgetTrade, budget_trade,
   CriticalPathPartition, PartitionIncomplete, PartitionEstablished,
-  PartitionRequirement, KernelNameAttribution, PerStepSchedulerAllocation, ProbePerturbationBound,
   spark_group_a_cold_prefill_partition, partition_may_calibrate, faster_link_addresses_partition,
 }
 
-fn w_excluded(c: CriticalPathCandidate) -> Bool {
-  match cold_prefill_candidate_standing(c: c) {
-    CandidateExcluded { by: _ } => true
-    _ => false
+// THE INFERENCE THAT WAS WRONG IS NOW UNWRITABLE. An earlier version excluded compute saturation
+// because power did not rise with load. Low whole-GPU power cannot exclude saturation of a narrow
+// bottleneck, and kernel residency decides neither direction.
+test fn neither_saturation_nor_underutilisation_is_constructible_from_coarse_telemetry() -> Bool {
+  (match busy_fraction_constructs(claim: GpuComputeSaturated) {
+     ClaimNotConstructible { because: b } => string_contains(s: b as String, pattern: "residency, not work")
+     ClaimConstructible { from: _ } => false
+   })
+    && (match busy_fraction_constructs(claim: GpuComputeUnderutilised) {
+          ClaimNotConstructible { because: b } => string_contains(s: b as String, pattern: "narrow bottleneck")
+          ClaimConstructible { from: _ } => false
+        })
+    && (match power_below_ceiling_excludes_saturation() {
+          ClaimNotConstructible { because: b } => string_contains(s: b as String, pattern: "bounds whole-chip utilisation")
+          ClaimConstructible { from: _ } => false
+        })
+}
+
+// THE ENVELOPES NEST, and adding them is the first mistake available. The 120W GPU sits INSIDE the
+// 140W SoC TDP, which sits inside what a 240W supply feeds.
+test fn the_power_envelopes_nest_rather_than_sum() -> Bool {
+  spark_system_power_supply.watts == 240
+    && spark_soc_thermal_envelope.watts == 140
+    && spark_gpu_power_envelope.watts == 120
+    && spark_gpu_power_envelope.watts < spark_soc_thermal_envelope.watts
+    && string_contains(s: spark_gpu_power_envelope.covers as String, pattern: "nested inside")
+}
+
+// CONCURRENCY COUNT IS NOT THE ADMISSION TEST. Both excluded samples ran at the same maximum running
+// count as admitted ones; what excludes them is a quarter-million cached tokens accounted inside a
+// window whose own probe was ~1500 tokens. A rule keyed on running count would admit both.
+test fn admission_is_keyed_on_foreign_accounting_not_on_concurrency() -> Bool {
+  let excluded = filter(spark_group_a_prefill_scaling_samples, s =>
+    match sample_admission(s: s) { ExcludedFromIsolatedFit { cause: _ } => true  AdmittedToIsolatedFit => false })
+  length(excluded) == 2
+    && fold(excluded, init: true, f: (acc, s) => acc && s.cached_tokens > 100000)
+    && fold(excluded, init: true, f: (acc, s) => acc && s.concurrency.max_running == 2)
+    && length(admitted_scaling_samples()) == 10
+}
+
+// THE FIT IS DERIVED, NOT WRITTEN DOWN. This is the discriminator against the module it replaced,
+// which carried 250ms and 950 tok/s as literals nothing could falsify. The slope here is a least
+// squares projection of the sample rows: ~1.056 ms per token, i.e. ~947 tok/s marginal.
+test fn the_marginal_rate_is_a_projection_of_the_samples() -> Bool {
+  match prefill_scaling_standing() {
+    ScalingUnderObserved { cause: _ } => false
+    AffineWithinObservedRange { fit: f } =>
+      f.sample_count == 10
+        && f.micros_per_thousand_tokens >= 1000000
+        && f.micros_per_thousand_tokens <= 1120000
+        && f.intercept_micros >= 100000
+        && f.intercept_micros <= 210000
   }
 }
 
-// THE THREE NEGATIVES THE TRACE EARNED, each from a different measurement so no single instrument
-// carries the partition alone: rank symmetry excludes a straggler, kernel residency excludes host
-// gaps, link utilisation excludes bandwidth, and power invariance under load excludes compute.
-test fn the_trace_excludes_four_candidates_on_independent_measurements() -> Bool {
-  w_excluded(c: CompleteRankStraggler)
-    && w_excluded(c: HostDispatchGaps)
-    && w_excluded(c: InterconnectBandwidth)
-    && w_excluded(c: ComputeSaturation)
-}
-
-// POWER INVARIANCE IS THE LOAD-BEARING ONE and its reason must survive rewording: 36.4W under a full
-// cold prefill against 37.1W under a fifth of the traffic. A compute-bound critical path cannot draw
-// the same power idle and saturated.
-test fn compute_saturation_is_excluded_by_power_invariance_not_by_utilisation() -> Bool {
-  match cold_prefill_candidate_standing(c: ComputeSaturation) {
-    CandidateExcluded { by: b } =>
-      string_contains(s: b as String, pattern: "invariant to load")
-        && string_contains(s: b as String, pattern: "36.4W")
-    _ => false
+// AND THE PER-STEP BOUND IS JUSTIFIED BY THOSE RESIDUALS RATHER THAN CHOSEN. Every admitted sample
+// lands within the declared per-step upper bound of the fit. That is the whole argument for calling
+// the 88ms boundary crossing indistinguishable from zero: it is smaller than the error the fit
+// already carries everywhere else. If a future sample missed by more than the bound, this goes red
+// and the bound has to be restated -- which is the property a written-down 95000 would not have.
+test fn the_per_step_bound_is_the_fits_own_worst_residual() -> Bool {
+  let bound = per_step_upper_micros(c: spark_group_a_per_step_fixed_cost)
+  match prefill_scaling_standing() {
+    ScalingUnderObserved { cause: _ } => false
+    AffineWithinObservedRange { fit: f } =>
+      fold(admitted_scaling_samples(), init: true, f: (acc, s) => {
+        let err = predicted_micros(fit: f, tokens: s.computed_tokens) - s.wall_micros
+        acc && err < bound && err > (0 - bound)
+      })
   }
 }
 
-// SURVIVING EXCLUSION IS NOT CONFIRMATION. Collective latency is the only candidate the evidence
-// does not exclude, and it is recorded as REMAINING rather than established — nvidia-smi cannot tell
-// an NCCL kernel from a compute kernel, and that distinction is exactly what is missing.
-test fn the_surviving_candidate_is_not_promoted_to_a_conclusion() -> Bool {
-  (match cold_prefill_candidate_standing(c: CollectiveLatency) {
-     CandidateRemains { by: b } => string_contains(s: b as String, pattern: "do not exclude")
+// THE PER-STEP COST IS A BOUND, AND CANNOT BE READ AS A POINT ESTIMATE. The carrier records that it
+// is not distinguishable from zero, so a consumer that wants a single number has to confront that.
+test fn the_per_step_cost_is_bounded_and_not_distinguishable_from_zero() -> Bool {
+  match spark_group_a_per_step_fixed_cost {
+    PerStepCostUnmeasured { cause: _ } => false
+    PerStepCostBoundedAbove { upper_micros: u, distinguishable_from_zero: d } => u == 95000 && !d
+  }
+}
+
+// SO THE BUDGET TRADE COMES OUT AS AN INTERVAL. A smaller budget strictly shortens the co-tenant
+// stall; whether it lengthens total prefill is exactly what the unresolved per-step term decides, so
+// the two bounds straddle it instead of a single total asserting more than was measured.
+test fn the_budget_trade_is_derived_and_returns_an_interval() -> Bool {
+  match prefill_scaling_standing() {
+    ScalingUnderObserved { cause: _ } => false
+    AffineWithinObservedRange { fit: f } =>
+      match budget_trade(fit: f, cost: spark_group_a_per_step_fixed_cost, prompt_tokens: 158764, budget_tokens: 512) {
+        Absent => false
+        Present { value: small } =>
+          match budget_trade(fit: f, cost: spark_group_a_per_step_fixed_cost, prompt_tokens: 158764, budget_tokens: 2048) {
+            Absent => false
+            Present { value: big } =>
+              small.step_micros < big.step_micros
+                && small.total_prefill_micros_low < small.total_prefill_micros_high
+                && small.total_prefill_micros_high > big.total_prefill_micros_low
+          }
+      }
+  }
+}
+
+// TOKEN SCALING WEAKENS ONLY THE TOKEN-INDEPENDENT MEMBER. This is the correction that split the old
+// lumped collective candidate: payload cost and compute both scale with tokens, so neither is
+// decided, and saying otherwise was the over-claim.
+test fn scaling_weakens_the_token_independent_term_and_decides_neither_proportional_one() -> Bool {
+  (match cold_prefill_mechanism_standing(m: TokenIndependentStepLatency) {
+     WeakenedWithinMeasuredRange { by: b } => string_contains(s: b as String, pattern: "2048-token scheduler boundary")
      _ => false
    })
-    && (match spark_group_a_cold_prefill_partition {
-          PartitionIncomplete { excluded: e, remaining: r, missing: m } =>
-            length(e) == 4 && length(r) == 1 && length(m) == 3
-          PartitionEstablished { critical: _, evidence: _ } => false
-        })
+    && (match cold_prefill_mechanism_standing(m: TokenProportionalCompute) { Unresolved { needs: _ } => true  _ => false })
+    && (match cold_prefill_mechanism_standing(m: TokenProportionalCollectivePayload) { Unresolved { needs: _ } => true  _ => false })
+    && (match cold_prefill_mechanism_standing(m: CollectiveSynchronisationWait) { Unresolved { needs: _ } => true  _ => false })
+    && (match cold_prefill_mechanism_standing(m: MemoryOrKernelEfficiency) { Unresolved { needs: _ } => true  _ => false })
 }
 
-// AN INCOMPLETE PARTITION MAY NOT CALIBRATE. This is what stops the surviving candidate becoming a
-// simulation input before kernel attribution runs.
-test fn an_incomplete_partition_cannot_populate_calibration() -> Bool {
-  !partition_may_calibrate(p: spark_group_a_cold_prefill_partition)
-    && partition_may_calibrate(p: PartitionEstablished {
-         critical: CollectiveLatency,
-         evidence: "hypothetical established partition" as NonEmptyStr,
-       })
-}
-
-// THE ANSWER TO THE QUESTION THAT STARTED IT. Bandwidth is excluded at 16% utilisation, so a faster
-// rail cannot return the missing time — whatever the surviving candidate turns out to be.
-test fn a_faster_link_does_not_address_this_partition() -> Bool {
-  !faster_link_addresses_partition(p: spark_group_a_cold_prefill_partition)
-    && (match cold_prefill_candidate_standing(c: InterconnectBandwidth) {
-          CandidateExcluded { by: b } => string_contains(s: b as String, pattern: "16%")
+// THE OUTLIER IS RETAINED AS THE ONLY MAGNITUDE EVIDENCE FOR CO-TENANT DELAY, which is why it is not
+// simply dropped from the population. Its standing is Observed while every proportional mechanism is
+// Unresolved -- the one thing this sweep actually caught happening.
+test fn the_co_tenant_outlier_is_kept_and_is_the_only_observed_mechanism() -> Bool {
+  spark_group_a_co_tenant_outlier.computed_tokens == 4840
+    && spark_group_a_co_tenant_outlier.wall_micros == 290960000
+    && (match cold_prefill_mechanism_standing(m: CoTenantDelay) {
+          Observed { by: b } => string_contains(s: b as String, pattern: "not yet parameterised")
           _ => false
         })
+}
+
+// THE PARTITION STILL REFUSES TO CALIBRATE, and the rerun on an idle engine is one of the named
+// missing requirements rather than a footnote -- every admitted sample had a co-tenant present.
+test fn the_partition_remains_incomplete_and_names_the_idle_rerun() -> Bool {
+  !partition_may_calibrate(p: spark_group_a_cold_prefill_partition)
+    && !faster_link_addresses_partition(p: spark_group_a_cold_prefill_partition)
+    && (match spark_group_a_cold_prefill_partition {
+          PartitionIncomplete { missing: m } => length(m) == 5
+          PartitionEstablished { critical: _, evidence: _ } => false
+        })
+    && fold(spark_group_a_prefill_scaling_samples, init: true, f: (acc, s) => acc && s.concurrency.max_running > 0)
 }
