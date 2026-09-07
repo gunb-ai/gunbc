@@ -19,7 +19,8 @@ data emission_provenance_missing_consumer: GuaranteeStall = GuaranteeStall {
     "std.emission_provenance.EmissionDeclarationCorrespondence",
     "std.emission_provenance.emission_contribution_read",
     "std.emission_provenance.emission_contribution_origins",
-    "std.emission_provenance.emission_resolution_correspondence"
+    "std.emission_provenance.emission_resolution_correspondence",
+    "test.manual.emission_provenance_specimen_red.emission_combined_read_preserves_content_order_and_origin_multiplicity"
   ] },
-  next_rung_trigger: climbs_when(capability: "a required executing control constructs an EmissionContribution from a real emitter path (not a hand-built fixture), reads it through emission_contribution_read, and asserts the materialized source and origins match the contributed text and metadata. The control must exercise EmissionAuthoredFragment, EmissionSourceComposition and EmissionUnobservedFragment — all three contribution arms — through emission_contribution_fold.")
+  next_rung_trigger: climbs_when(capability: "a required executing control constructs an EmissionContribution from a real emitter path (not a hand-built fixture), reads it through emission_contribution_read, and asserts the materialized source and origins match the contributed text and metadata. The control must exercise EmissionAuthoredFragment, EmissionSourceComposition and EmissionUnobservedFragment — all three contribution arms — through emission_contribution_fold. Satisfaction also requires test.manual.emission_provenance_specimen_red emission_combined_read_preserves_content_order_and_origin_multiplicity to compile and run as a required-floor test fn under dag/test/claim — a // annotation cannot discharge that move.")
 }
