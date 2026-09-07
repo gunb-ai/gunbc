@@ -28,7 +28,6 @@ data approval_ntfy_unit_name: NonEmptyStr = "gunbc-ntfy.service"
 data approval_ntfy_listen_address: NonEmptyStr = "127.0.0.1"
 data approval_ntfy_listen_port: Port = 2586
 
-data loopback_bind_is_the_boundary_note: NonEmptyStr = "Binding 127.0.0.1 is what makes tailscale serve the sole route, and the sole route is what makes the injected identity header trustworthy on the approval route beside it. A 0.0.0.0 bind does not merely widen access to notifications -- it lets anything on the host reach the backend directly and assert whatever identity it likes."
 
 // THE UPSTREAM RELAY, AND WHAT IT COSTS. An iPhone is woken by APNs and only Apple can send an
 // APNs push, so a self-hosted server forwards a poll request upstream and the app fetches the body
@@ -84,12 +83,40 @@ fn approval_ntfy_account_intervention() -> HumanIntervention {
 // THE SERVER BINARY ITSELF IS ALSO A HUMAN STEP TODAY, for a different and more durable reason:
 // this repository models the ntfy PROTOCOL surface (extdeps.ntfy.ntfy) and the deployment's shape,
 // but it does not package third-party binaries. gunbc.package_delivery is where that would land.
+// THE INSTRUCTION IS DERIVED FROM THE DECLARED VALUES, not written beside them. An earlier
+// revision spelled the port, the state root and the config path as English inside this string
+// while declaring them as data three screens up -- one fact in two places, where only the prose is
+// what a person actually follows, so a drift in the declarations would be invisible (DESIGN 3, and
+// 3c: those declarations had no consumer at all). Joining them here makes the declarations
+// load-bearing: the operator reads values the model owns, and a witness can check the two agree.
+fn approval_ntfy_endpoint() -> String {
+  join([approval_ntfy_listen_address as String, ":", to_string(approval_ntfy_listen_port)], "")
+}
+
 fn approval_ntfy_server_install_intervention() -> HumanIntervention {
   approval_ntfy_intervention(
     identity: "approval-ntfy-server-install",
     frequency: FleetOnce,
     subject: "ntfy server binary and unit on srv1",
-    instruction: "Install the ntfy server on srv1 and run it as gunbc-ntfy under a systemd unit, with a config that sets listen-http to 127.0.0.1:2586, base-url to srv1's tailnet name, cache-file and attachment-cache-dir under /var/lib/gunbc-ntfy, auth-default-access to deny, and upstream-base-url to https://ntfy.sh so iOS push works. The loopback bind is load-bearing rather than conventional -- see loopback_bind_is_the_boundary_note. TEMPORARY: retires when the unit is a converged member.",
+    instruction: join([
+      "Install the ntfy server on srv1 and run it as ",
+      approval_ntfy_principal_name as String,
+      " under a systemd unit named ",
+      approval_ntfy_unit_name as String,
+      ", configured at ",
+      approval_ntfy_config_path as String,
+      " with listen-http set to ",
+      approval_ntfy_endpoint(),
+      ", base-url set to srv1's tailnet name, cache-file and attachment-cache-dir under ",
+      approval_ntfy_state_root as String,
+      ", auth-default-access set to deny, and upstream-base-url set to ",
+      approval_ntfy_upstream_base_url as String,
+      " so iOS push works. The loopback bind is load-bearing rather than conventional: it is what",
+      " makes tailscale serve the sole route in, and the sole route is what makes the identity",
+      " header on the approval route trustworthy -- a 0.0.0.0 bind would let anything on the host",
+      " reach the backend directly and assert whatever identity it liked.",
+      " TEMPORARY: retires when the unit is a converged member.",
+    ], "") as NonEmptyStr,
   )
 }
 
