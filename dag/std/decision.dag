@@ -936,6 +936,36 @@ fn entry_declares_gap(entry: ParetoEntry, axis: DeclarationRef) -> Bool {
   any(entry.missing_inputs, g => declaration_ref_eq(a: g.axis, b: axis))
 }
 
+fn unique_decl_refs(ids: List<DeclarationRef>) -> List<DeclarationRef> {
+  fold(ids, init: [], f: (acc, id) =>
+    if any(acc, x => declaration_ref_eq(a: x, b: id)) {
+      acc
+    } else {
+      concat(acc, [id])
+    }
+  )
+}
+
+fn feasibility_unread_axes(axes: List<SelectionAxis>, constraints: List<HardConstraint>) -> List<DeclarationRef> {
+  unique_decl_refs(ids: concat(map(axes, a => a.identity), map(constraints, c => c.axis)))
+}
+
+fn unread_axis_gaps(entry: ParetoEntry, wanted: List<DeclarationRef>) -> List<AxisGap> {
+  flat_map(wanted, ax =>
+    match reading_for(e: entry, wanted: ax) {
+      ReadingFound { interval_micro: _ } => []
+      ReadingDuplicated { duplicated_axis: dax } =>
+        [AxisGap { axis: dax, cause: "duplicated funded-axis reading" as NonEmptyStr }]
+      ReadingAbsent { absent_axis: aax } =>
+        if entry_declares_gap(entry: entry, axis: aax) {
+          filter(entry.missing_inputs, g => declaration_ref_eq(a: g.axis, b: aax))
+        } else {
+          [AxisGap { axis: aax, cause: "required funded-axis reading absent" as NonEmptyStr }]
+        }
+    }
+  )
+}
+
 fn scan_feasibility(
   field: List<ParetoEntry>,
   axes: List<SelectionAxis>,
@@ -946,28 +976,12 @@ fn scan_feasibility(
       FeasibilityNeedsEvidence { gaps: gs } => FeasibilityNeedsEvidence { gaps: gs }
       FeasibilityRefused { defects: ds } => FeasibilityRefused { defects: ds }
       FeasibilityReady { remaining: rem } => {
-        let axis_missing = any(constraints, c =>
-          match reading_for(e: entry, wanted: c.axis) {
-            ReadingAbsent { absent_axis: _ } => true
-            ReadingDuplicated { duplicated_axis: _ } => true
-            ReadingFound { interval_micro: _ } => false
-          }
+        let unread = unread_axis_gaps(
+          entry: entry,
+          wanted: feasibility_unread_axes(axes: axes, constraints: constraints),
         )
-        if axis_missing {
-          let gaps = flat_map(constraints, c =>
-            match reading_for(e: entry, wanted: c.axis) {
-              ReadingFound { interval_micro: _ } => []
-              ReadingDuplicated { duplicated_axis: ax } =>
-                [AxisGap { axis: ax, cause: "duplicated funded-axis reading" as NonEmptyStr }]
-              ReadingAbsent { absent_axis: ax } =>
-                if entry_declares_gap(entry: entry, axis: ax) {
-                  filter(entry.missing_inputs, g => declaration_ref_eq(a: g.axis, b: ax))
-                } else {
-                  [AxisGap { axis: ax, cause: "required funded-axis reading absent" as NonEmptyStr }]
-                }
-            }
-          )
-          FeasibilityNeedsEvidence { gaps: gaps }
+        if (unread |> count) > 0 {
+          FeasibilityNeedsEvidence { gaps: unread }
         } else {
           let undecided = any(constraints, c =>
             match constraint_cmp(entry: entry, constraint: c, axes: axes) {

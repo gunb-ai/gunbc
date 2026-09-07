@@ -6,6 +6,7 @@ import std.realization_schedule {
   CostBasis,
   CostAxisObserved,
   CostAxisUnobserved,
+  Measured,
   cost_account_predicted_zero,
   cost_account_time_count,
 }
@@ -17,11 +18,13 @@ import std.realization_measurement {
 import extdeps.realization.v1_handler { v1_eval_expr_measure_handler_id }
 import gunbc.fleet_intent {
   WorkUnitId,
+  PerformanceReceipt,
   performance_receipt_host_single_sample,
   cost_account_from_performance_receipts,
   performance_receipts_total_time,
 }
 import std.measure { ByteSize, byte_size, byte_size_count, Nanosecond, nanosecond, nanosecond_count }
+import std.types { NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -81,6 +84,35 @@ fn witness_space_rolls_up_across_receipts() -> Bool {
   }
 }
 
+fn witness_unobserved_space_is_not_observed_zero() -> Bool {
+  let seen = performance_receipt_host_single_sample(
+    work_shape: sample_work_shape,
+    wall_time: sample_wall_time,
+    space: sample_space_a,
+  )
+  let unread = PerformanceReceipt {
+    provider: seen.provider,
+    work_shape: seen.work_shape,
+    cost: CostAccount {
+      time: seen.cost.time
+      space: CostAxisUnobserved {
+        obligation: "fixture unread space" as NonEmptyStr
+      }
+      power: seen.cost.power
+      basis: Measured
+    },
+    cpu_seconds: seen.cpu_seconds,
+    sample_count: seen.sample_count,
+    measurement_context: seen.measurement_context,
+    confidence: seen.confidence,
+    cache_state_summary: seen.cache_state_summary,
+  }
+  match cost_account_from_performance_receipts(receipts: [seen, unread]).space {
+    CostAxisUnobserved { obligation: _ } => true
+    CostAxisObserved { value: _ } => false
+  }
+}
+
 fn witness_measured_rollup_red_on_predicted_zero() -> Bool {
   witness_measured_rollup_differs_from_predicted_zero(wall_time: sample_wall_time)
 }
@@ -94,6 +126,7 @@ test fn realization_measurement_keystone_witnesses() -> Bool {
   witness_predicted_zero_is_predicted_basis()
     && witness_measured_receipt_rollup_uses_lens()
     && witness_space_rolls_up_across_receipts()
+    && witness_unobserved_space_is_not_observed_zero()
     && witness_measured_rollup_red_on_predicted_zero()
     && witness_v1_handler_id_declared()
     && witness_concurrent_memory_peak_per_share_divides()

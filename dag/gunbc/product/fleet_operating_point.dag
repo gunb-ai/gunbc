@@ -10,7 +10,6 @@ import std.pareto {
   SelectionAxis,
 }
 import std.decision {
-  HardConstraint,
   RealizationSelectionResult,
   UniqueSurvivorRequired,
   select_realization,
@@ -71,21 +70,6 @@ fn fleet_operating_point_axes() -> List<SelectionAxis> {
   ]
 }
 
-fn fleet_operating_point_hard_constraints() -> List<HardConstraint> {
-  [
-    HardConstraint {
-      identity: fleet_operating_point_constraints,
-      axis: ac_power_by_operating_point_axis,
-      bound_micro: 1,
-    },
-    HardConstraint {
-      identity: fleet_operating_point_constraints,
-      axis: throughput_by_operating_point_axis,
-      bound_micro: 1,
-    },
-  ]
-}
-
 fn unevidenced_point(identity: DeclarationRef, label: NonEmptyStr) -> ParetoEntry {
   ParetoEntry {
     identity: identity,
@@ -108,7 +92,7 @@ fn fleet_operating_point_selection() -> RealizationSelectionResult<ParetoEntry> 
     candidate_field_identity: fleet_operating_point_field,
     field: fleet_operating_point_field_rows(),
     axes: fleet_operating_point_axes(),
-    constraints: fleet_operating_point_hard_constraints(),
+    constraints: [],
     constraint_authority: fleet_operating_point_constraints,
     policy: UniqueSurvivorRequired { identity: fleet_operating_point_policy },
     evidence_snapshot: fleet_operating_point_evidence,
