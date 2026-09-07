@@ -610,6 +610,52 @@ fn reset_return_verdict_after_issuance(
   }
 }
 
+// THE REFUSAL CAUSE, RENDERED, AND IT LIVES HERE BECAUSE IT IS PART OF THE MODEL RATHER THAN OF THE
+// PRINTING. Review 61786 found the cause computed and then DISCARDED on the only production
+// serialization path: the receipt line bound `cause: _` and wrote "verdict=refused" while the
+// annotation above it, the exit reason, and the upload step that exists to make refusals readable all
+// said the file carried the located cause. Three claims and no code.
+//
+// EVERY ARM CARRIES WHAT THE READER HAS TO ACT ON, because that is what "located" means -- the
+// remedies genuinely differ. A controller that refused wrote nothing; a host that did not return is
+// still down; an observer that could not establish its identity did not look; an override that
+// applied while the cycle was refused left the controller holding an unconsumed next-boot override.
+// A single "refused" collapses all of those into one symbol, which is the state-space conflation that
+// sends a reader to the wrong machine.
+fn reset_observer_refusal_cause_wire(cause: ResetObserverRefusalCause) -> String {
+  match cause {
+    ObserverIsSubject { host: h } => join(["observer-is-subject observer=", h as String], "")
+    SubjectNotRostered { subject: sname } => join(["subject-not-rostered subject=", sname as String], "")
+    ObserverNotRostered { observer: o } => join(["observer-not-rostered observer=", o as String], "")
+    NoPeerAvailable { subject: sname } => join(["no-peer-available subject=", sname as String], "")
+  }
+}
+
+fn reset_return_refusal_cause_wire(cause: ResetReturnRefusalCause) -> String {
+  match cause {
+    PairingNotMinted { cause: c } =>
+      join(["pairing-not-minted ", reset_observer_refusal_cause_wire(cause: c)], "")
+    IssuanceWasOutOfBand { what: w } =>
+      join(["issuance-out-of-band what=", w as String], "")
+    ObserverWasTheSubjectMachine { machine_id: m } =>
+      join(["observer-is-the-subject-machine machine_id=", m as String], "")
+    ObserverIdentityUnreadable { cause: c } =>
+      join(["observer-identity-unreadable cause=", c as String], "")
+    ObserverHostnameUnconverged { observed: o, allocated: a } =>
+      join(["observer-hostname-unconverged observed=", o as String, " allocated=", a as String], "")
+    ControllerDidNotAccept { diagnostic: d } =>
+      join(["controller-did-not-accept diagnostic=", d as String], "")
+    ResetWasNotAttempted { cause: c } =>
+      join(["reset-not-attempted cause=", c as String], "")
+    HostReturnNotMeasured { cause: c } =>
+      join(["host-return-not-measured cause=", c as String], "")
+    DownObservedBeforeIssuance { issued_at: i, down_first_seen_at: d } =>
+      join(["down-observed-before-issuance issued_at=", to_string(i), " down_first_seen_at=", to_string(d)], "")
+    SubjectWasNotUpBeforeIssuance =>
+      "subject-not-up-before-issuance"
+  }
+}
+
 // ── the second-attempt property, computed over two receipts ────────────────────────────────────
 
 // THE PROPERTY THE CANARY COULD NOT SHOW. One boot working is not a runner host; what a runner host

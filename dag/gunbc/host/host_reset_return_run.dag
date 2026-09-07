@@ -33,6 +33,7 @@ import gunbc.host_reset_return {
   observer_identity_permits_issuance,
   host_reset_return_receipt_path,
   host_reset_observer_label_env,
+  reset_return_refusal_cause_wire,
   ObserverSelfIdentityUnreadable,
   ResetObserverSelection,
   IssuedThroughConverge,
@@ -559,8 +560,8 @@ fn host_reset_return_receipt_line(verdict: ResetReturnVerdict, subject: NonEmpty
   match verdict {
     HostDrivenBackToKnownState { downtime: ms } =>
       join(["attempt=", attempt as String, " subject=", subject as String, " verdict=driven-back downtime_ms=", to_string(ms), "\n"], "")
-    ResetReturnRefused { cause: _ } =>
-      join(["attempt=", attempt as String, " subject=", subject as String, " verdict=refused downtime_ms=unavailable\n"], "")
+    ResetReturnRefused { cause: c } =>
+      join(["attempt=", attempt as String, " subject=", subject as String, " verdict=refused downtime_ms=unavailable cause=", reset_return_refusal_cause_wire(cause: c), "\n"], "")
   }
 }
 
@@ -573,9 +574,9 @@ func host_reset_return_exit(verdict: ResetReturnVerdict, subject: NonEmptyStr, a
   )
   return match verdict {
     HostDrivenBackToKnownState { downtime: _ } => ExitSuccess
-    ResetReturnRefused { cause: _ } =>
+    ResetReturnRefused { cause: c } =>
       exit_failure(
-        reason: join(["host reset-return refused for ", subject as String, "; the attempt receipt at ", host_reset_return_receipt_path as String, " carries the located cause"], "")
+        reason: join(["host reset-return refused for ", subject as String, ": ", reset_return_refusal_cause_wire(cause: c), " (receipt at ", host_reset_return_receipt_path as String, ")"], "")
       )
   }
 }

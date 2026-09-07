@@ -54,6 +54,10 @@ import gunbc.host_reset_return {
   ResetObserverSelection,
   ResetRefusedByController,
   ResetReturnRefused,
+  ResetReturnRefusalCause,
+  ControllerDidNotAccept,
+  HostReturnNotMeasured,
+  PairingNotMinted,
   ResetReturnVerdict,
   ResetWasNotAttempted,
   SecondAttemptRefused,
@@ -72,6 +76,7 @@ import gunbc.host_reset_return {
   commit_reset_attempt_receipt,
   mint_reset_attempt_receipt,
   reset_return_verdict_of_commit,
+  reset_return_refusal_cause_wire,
   second_attempt_property_of_commits,
   select_reset_observer,
 }
@@ -514,6 +519,48 @@ test fn w_an_unconverged_observer_refuses_the_verdict_on_its_own_cause() -> Bool
       match c { ObserverHostnameUnconverged { observed: _, allocated: _ } => true  _ => false }
     HostDrivenBackToKnownState { downtime: _ } => false
   }
+}
+
+// ── the refusal reaches the reader ────────────────────────────────────────────────────────────
+
+// THE CAUSE WAS COMPUTED AND DISCARDED WHILE THREE CLAIMS SAID IT WAS CARRIED. Review 61786: the
+// receipt line bound the cause and threw it away, writing only "verdict=refused", while the
+// annotation above it, the exit reason, and the upload step that exists to make refusals readable all
+// said the file carried the located cause. This witness is what makes the claim answerable: it
+// discriminates ARMS rather than checking that some string came back, because a renderer that
+// returned one label for every cause would satisfy any weaker test and would be exactly the
+// state-space conflation that sends a reader to the wrong machine.
+fn wire_of(cause: ResetReturnRefusalCause) -> String {
+  reset_return_refusal_cause_wire(cause: cause)
+}
+
+test fn w_every_refusal_cause_renders_something_a_reader_can_act_on() -> Bool {
+  wire_of(cause: SubjectWasNotUpBeforeIssuance) == "subject-not-up-before-issuance"
+    && wire_of(cause: ObserverWasTheSubjectMachine { machine_id: "mtcollins1" }) == "observer-is-the-subject-machine machine_id=mtcollins1"
+    && wire_of(cause: ObserverHostnameUnconverged { observed: "ubuntu", allocated: "srv1" }) == "observer-hostname-unconverged observed=ubuntu allocated=srv1"
+    && wire_of(cause: DownObservedBeforeIssuance { issued_at: 10, down_first_seen_at: 5 }) == "down-observed-before-issuance issued_at=10 down_first_seen_at=5"
+}
+
+// THE ARMS ARE DISTINGUISHABLE FROM ONE ANOTHER, which is the property a reader actually depends on
+// and the one a "renders non-empty" test cannot see. These four leave the world in materially
+// different states -- the controller wrote nothing, the host is still down, the observer never
+// looked, the override applied while the cycle was refused -- and a renderer collapsing any pair of
+// them would send someone to the wrong machine.
+test fn w_refusal_causes_do_not_collapse_into_one_another() -> Bool {
+  let a = wire_of(cause: ControllerDidNotAccept { diagnostic: "same text" })
+  let b = wire_of(cause: ResetWasNotAttempted { cause: "same text" })
+  let c = wire_of(cause: HostReturnNotMeasured { cause: "same text" })
+  let d = wire_of(cause: ObserverIdentityUnreadable { cause: "same text" })
+  a != b && a != c && a != d && b != c && b != d && c != d
+}
+
+// AND A PAIRING REFUSAL CARRIES ITS INNER CAUSE THROUGH rather than flattening to "not minted": the
+// four ways a pairing fails to mint have four different owners.
+test fn w_a_pairing_refusal_carries_its_inner_cause_through() -> Bool {
+  wire_of(cause: PairingNotMinted { cause: ObserverIsSubject { host: "srv1" } })
+    == "pairing-not-minted observer-is-subject observer=srv1"
+    && wire_of(cause: PairingNotMinted { cause: NoPeerAvailable { subject: "mtcollins1" } })
+      == "pairing-not-minted no-peer-available subject=mtcollins1"
 }
 
 // ── the gate that runs BEFORE the controller is touched ────────────────────────────────────────

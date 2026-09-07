@@ -11,14 +11,19 @@ on:
         options: [srv1, srv2, srv3, srv4]
         type: choice
       mode:
-        description: plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; microvm_host_converge installs the cited Firecracker release on the selected host and refuses the kvm grant by name; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' vLLM units over the password session, workers before heads
+        description: plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; microvm_host_converge installs the cited Firecracker release on the selected host and refuses the kvm grant by name; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' vLLM units over the password session, workers before heads; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject
         required: true
-        options: [plan, launch_environment_plan, allocation_store_plan, apply, org_actions_observe, app_control_plane_observe, microvm_host_converge, guest_image_observe, guest_image_converge, microvm_boot_probe, spark_grants, spark_bootstrap, spark_serving_apply, dashboard_deploy, rlm_launch_deployment_receipt]
+        options: [plan, launch_environment_plan, allocation_store_plan, apply, org_actions_observe, app_control_plane_observe, microvm_host_converge, guest_image_observe, guest_image_converge, microvm_boot_probe, spark_grants, spark_bootstrap, spark_serving_apply, dashboard_deploy, rlm_launch_deployment_receipt, host_reset_return]
         type: choice
       target:
         description: Spark target host for the spark_* modes, naming the administrator credential the run materializes (any rostered Spark, srv5..srv11); apply reads the subject off the plan artifact
         required: false
         options: [srv5, srv6, srv7, srv8, srv9, srv10, srv11, srv12]
+        type: choice
+      reset_observer:
+        description: "host_reset_return only: the PEER that observes the reset. The subject is NOT an input -- it is derived from this observer through the modeled pairing, so a job cannot be pointed at the host it is resetting"
+        required: false
+        options: [srv1, srv2, srv3, srv4]
         type: choice
       plan_artifact_hash:
         description: Fnv1a64Structural bundle digest of plan.txt + apply.sh — required for apply (printed by plan step).
@@ -534,6 +539,52 @@ jobs:
           if [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k || true; fi
         if: always()
         timeout-minutes: 5
+  host-reset-return:
+    runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.reset_observer)) }}
+    needs: [build]
+    timeout-minutes: 105
+    if: github.event.inputs.mode == 'host_reset_return'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.expected_revision || github.ref }}
+      - name: Download release-bins artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-bins
+        timeout-minutes: 10
+      - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
+        id: release_bins
+        run: |
+          # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          mkdir -p "$ROOT/target/release"
+          tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
+          rm -f "$ROOT/release-bins.tgz"
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness" "$ROOT/target/release/codex_app_server_stdio_session"
+        timeout-minutes: 5
+      - name: "Host reset-return: drive the subject through its controller and measure the return from a peer"
+        id: host_reset_return
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/host/host_reset_return_run.dag --function host_reset_return_wet
+          cat "$ROOT/target/host-reset-return.txt"
+        env:
+          GUNBC_HOST_RESET_OBSERVER: ${{ github.event.inputs.reset_observer }}
+        if: github.event.inputs.mode == 'host_reset_return'
+        timeout-minutes: 30
+      - name: Upload host reset-return attempt receipt
+        id: host_reset_return_receipt_upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-reset-return
+          path: target/host-reset-return.txt
+          if-no-files-found: error
+          retention-days: 30
+        if: always() && (github.event.inputs.mode == 'host_reset_return')
+        timeout-minutes: 10
   dashboard-deploy:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
