@@ -357,7 +357,9 @@ test fn w_a_subject_already_down_at_issuance_refuses_on_its_own_cause() -> Bool 
       attempt: "attempt-1",
       route: fx_converge_route,
       self_identity: fx_distinct_identity,
-      acknowledgement: fx_accepted,
+      acknowledgement: ResetNotAttempted {
+        cause: "the pre-issuance baseline refused, so no controller write was attempted",
+      },
       observation: SubjectNotUpBeforeIssuance {
         probe: "tcp:22 from the observer",
         checked_at: 1787999999000,
@@ -370,6 +372,42 @@ test fn w_a_subject_already_down_at_issuance_refuses_on_its_own_cause() -> Bool 
       match c { SubjectWasNotUpBeforeIssuance => true  _ => false }
     HostDrivenBackToKnownState { downtime: _ } => false
   }
+}
+
+// THE PRODUCTION ALREADY-DOWN SHAPE AND ITS DISCRIMINATOR. The witness above now mints the pairing the
+// production path ACTUALLY produces -- a refused baseline yields ResetNotAttempted alongside the
+// SubjectNotUpBeforeIssuance observation, because a refused baseline means nothing was written. It
+// previously paired that observation with ResetAccepted, which host_reset_return_attempt cannot
+// construct, so the arm was green on a shape no run reaches (review 61829).
+//
+// This second witness is the discriminator that keeps the fix from being a widening: an ordinary
+// not-attempted attempt, carrying no already-down reading, must still land on ResetWasNotAttempted.
+// Without it, "always refuse SubjectWasNotUpBeforeIssuance" would pass the witness above.
+test fn w_a_not_attempted_reset_without_an_already_down_reading_stays_not_attempted() -> Bool {
+  match reset_return_verdict_of_commit(
+    commit: fx_receipt(
+      attempt: "attempt-1",
+      route: fx_converge_route,
+      self_identity: fx_distinct_identity,
+      acknowledgement: ResetNotAttempted {
+        cause: "the observer could not read its own clock, so no issuance instant exists and no write was attempted",
+      },
+      observation: HostReturnUnobserved {
+        cause: "no issuance instant was established, so nothing was watched",
+      },
+      evidence_path: "artifacts/host/no-clock.json",
+      evidence_digest: fx_digest_first,
+    )
+  ) {
+    ResetReturnRefused { cause: c } =>
+      match c { ResetWasNotAttempted { cause: _ } => true  _ => false }
+    HostDrivenBackToKnownState { downtime: _ } => false
+  }
+}
+
+test fn w_the_two_not_attempted_causes_do_not_render_the_same_sentence() -> Bool {
+  reset_return_refusal_cause_wire(cause: SubjectWasNotUpBeforeIssuance)
+    != reset_return_refusal_cause_wire(cause: ResetWasNotAttempted { cause: "the pre-issuance baseline refused, so no controller write was attempted" })
 }
 
 test fn w_a_subject_already_down_at_issuance_has_no_downtime_not_a_zero() -> Bool {

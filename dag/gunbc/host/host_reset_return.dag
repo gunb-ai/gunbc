@@ -518,9 +518,33 @@ type ResetReturnVerdict
   = HostDrivenBackToKnownState { downtime: Milliseconds }
   | ResetReturnRefused { cause: ResetReturnRefusalCause }
 
+// THE ALREADY-DOWN READING OUTRANKS THE ACKNOWLEDGEMENT, and getting that order wrong is what review
+// 61829 found. The baseline refusing is the ONLY way SubjectNotUpBeforeIssuance is ever constructed,
+// and a refused baseline necessarily means no controller write was attempted -- so the mint pairs
+// that observation with ResetNotAttempted. Matching the acknowledgement first therefore swallowed it:
+// every production already-down subject reported ResetWasNotAttempted, and SubjectWasNotUpBeforeIssuance
+// was reachable only from a fixture pairing ResetAccepted with an observation the acceptance path
+// cannot produce. That is the declared-refusal-the-acceptance-path-cannot-express class this lane has
+// now hit three times (NoPeerAvailable, the observer-identity walls, this) -- a type read as coverage.
+//
+// The two causes are not interchangeable and that is why the arm is worth keeping rather than
+// deleting: ResetWasNotAttempted sends a reader to the OBSERVER (its clock, its credential, its
+// identity), and SubjectWasNotUpBeforeIssuance sends them to the SUBJECT, which was already down
+// before anyone touched it and whose reset would have measured someone else's outage.
+fn subject_was_down_before_issuance(observation: HostReturnObservation) -> Bool {
+  match observation {
+    SubjectNotUpBeforeIssuance { probe: _, checked_at: _ } => true
+    HostObservedDownThenBack { probe: _, down_first_seen_at: _, back_first_seen_at: _, down_samples: _, back_samples: _ } => false
+    HostNeverObservedDown { probe: _, samples: _, watched_until: _ } => false
+    HostObservedDownAndNotBack { probe: _, down_first_seen_at: _, waited_until: _ } => false
+    HostReturnUnobserved { cause: _ } => false
+  }
+}
+
 // THE ORDER OF THESE ARMS IS THE POINT AND IS NOT INTERCHANGEABLE. Route, then observer identity,
-// then acknowledgement, then observation, then the ordering of the observation against the
-// acknowledgement -- and only inside the last of those is any measured field read.
+// then the already-down reading, then acknowledgement, then observation, then the ordering of the
+// observation against the acknowledgement -- and only inside the last of those is any measured field
+// read. (The pre-acknowledgement position of the already-down check is argued directly above it.)
 //
 // THE ISSUANCE INSTANT IS WHAT MAKES A STALE LIVENESS FACT UNUSABLE. A down observation timestamped
 // before the reset was issued is a reading of some earlier outage, or of a cache answering from
@@ -540,13 +564,17 @@ fn reset_return_verdict(observed: ResetAttemptObservation) -> ResetReturnVerdict
         ObserverHostnameNotConverged { observed: o, allocated: a } =>
           ResetReturnRefused { cause: ObserverHostnameUnconverged { observed: o, allocated: a } }
         ObserverDistinctFromSubject { observer_machine_id: _, subject_machine_id: _ } =>
-          match observed.acknowledgement {
-            ResetRefusedByController { diagnostic: d } =>
-              ResetReturnRefused { cause: ControllerDidNotAccept { diagnostic: d } }
-            ResetNotAttempted { cause: c } =>
-              ResetReturnRefused { cause: ResetWasNotAttempted { cause: c } }
-            ResetAccepted { controller_response: _, issued_at: issued } =>
-              reset_return_verdict_after_issuance(observation: observed.observation, issued_at: issued)
+          if subject_was_down_before_issuance(observation: observed.observation) {
+            ResetReturnRefused { cause: SubjectWasNotUpBeforeIssuance }
+          } else {
+            match observed.acknowledgement {
+              ResetRefusedByController { diagnostic: d } =>
+                ResetReturnRefused { cause: ControllerDidNotAccept { diagnostic: d } }
+              ResetNotAttempted { cause: c } =>
+                ResetReturnRefused { cause: ResetWasNotAttempted { cause: c } }
+              ResetAccepted { controller_response: _, issued_at: issued } =>
+                reset_return_verdict_after_issuance(observation: observed.observation, issued_at: issued)
+            }
           }
       }
   }
