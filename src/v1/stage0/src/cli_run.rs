@@ -4896,12 +4896,20 @@ fn import_module_paths_for_typed_module(tm: &Rc<TypedModule>) -> HashSet<String>
 /// This used to answer a bare leaf with `.values().find(...)` -- the first matching row, silently,
 /// for exactly the question the `.dag` side refuses (`lookup_item_by_leaf` -> `ItemLeafAmbiguous`).
 /// An annotation saying "it is a guess either way" made the guess visible to a READER and not to a
-/// CONSUMER, which is the distinction DESIGN section 5 turns on: every path succeeds fully or fails
-/// with a typed outcome, and a first-row-wins answer is a fabricated one.
+/// CONSUMER, which is the distinction DESIGN section 5 turns on.
 ///
-/// The registry is keyed on `owner.decl`, so a qualified spelling is a direct hit. A bare spelling
-/// names no owner, so it is answered by scanning -- and the scan now collects the DISTINCT owning
-/// modules rather than stopping at the first, because whether there is one is the whole question.
+/// IT DOES NOT SCAN. The first repair collected the distinct owning modules by walking
+/// `item_registry.values()`, which answered correctly and re-derived, per call, an index this
+/// compiler already builds: `leaf_owner_modules_from_registry` (v1.compiler.infer_items), carried
+/// on `ResolvedGraph.emit_graph_info.item_leaf_owner_modules`. That is DESIGN section 2
+/// re-invention -- net concepts must not grow by re-invention -- and a section 6 cost-shape defect
+/// besides, since `classify_unlisted_import_binding_source` and its callers put roughly four full
+/// registry passes behind every census row and the census is thousands of rows. Both are fixed by
+/// asking the modelled index, which is one map lookup and, being the same authority the emitted
+/// path reads, cannot disagree with it.
+///
+/// The empty owner is that index's ambiguity marker: no declaration has an empty module path, so a
+/// leaf two modules declare lands there by construction rather than by a second check here.
 enum DefinerLookup {
     Definer(String),
     /// Several modules declare the leaf. The symbol RESOLVES; its definer is not nameable.
@@ -4913,17 +4921,10 @@ fn definer_lookup_for_name(graph: &ResolvedGraph, name: &str) -> DefinerLookup {
     if let Some(info) = graph.item_registry.get(name) {
         return DefinerLookup::Definer(info.module_name.clone());
     }
-    let mut owners: BTreeSet<String> = BTreeSet::new();
-    for info in graph.item_registry.values() {
-        if info.name == name {
-            owners.insert(info.module_name.clone());
-        }
-    }
-    let mut it = owners.into_iter();
-    match (it.next(), it.next()) {
-        (None, _) => DefinerLookup::Unresolved,
-        (Some(only), None) => DefinerLookup::Definer(only),
-        (Some(_), Some(_)) => DefinerLookup::AmbiguousLeaf,
+    match graph.emit_graph_info.item_leaf_owner_modules.get(name) {
+        None => DefinerLookup::Unresolved,
+        Some(owner) if owner.is_empty() => DefinerLookup::AmbiguousLeaf,
+        Some(owner) => DefinerLookup::Definer(owner.clone()),
     }
 }
 

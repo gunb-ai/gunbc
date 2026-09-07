@@ -12,7 +12,8 @@ import tools.multi_module_compile_fixture {
   FixtureSource,
   fixture_source,
   compile_fixture,
-  fixture_has_class
+  fixture_has_class,
+  fixture_blocking_rows
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -57,9 +58,28 @@ fn shadow_compile(entry: String) -> MultiModuleCompileFixtureOutcome {
   })
 }
 
+// "CLEAN" HERE MEANS NOT REFUSED, WHICH IS WHAT THIS PREDICATE IS FOR AND WHAT IT NOW MEASURES.
+//
+// It used to read `count(rows) == 0` -- EVERY diagnostic row, advisory ones included. The comment
+// above the positional test states the intent: an assertion about a program the compiler REFUSES
+// would be no verdict, so this exists to establish the program is admitted. An advisory row does
+// not refuse anything, so counting it made this predicate answer a different question from the one
+// its consumers ask, and made it sensitive to any new advisory the compiler learns to emit
+// anywhere -- a change detector rather than a check.
+//
+// MEASURED, NOT ARGUED: the effect pass learned to say that a call to a LOCAL BINDING cannot have
+// its callee's effects joined through a registry keyed on declarations, which is true of
+// `let shadow_sentinel = local_sentinel` and is advisory because it stops nothing. That one row
+// turned this predicate false while the program compiled exactly as before.
+//
+// THE DISCRIMINATION IS UNCHANGED, which is the test that this is a tightening and not a
+// weakening: a refusal still fails here through the two arms below, a BLOCKING diagnostic still
+// fails through fixture_blocking_rows, and the sibling control in
+// `the_shape_tier_reads_the_shadowing_local_as_a_function_value` carries no advisory row in either
+// arm -- entry_declaration_labeled has no local binding at all -- so its verdict does not move.
 fn compiles_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
   match o {
-    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } => count(rows) == 0,
+    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } => count(fixture_blocking_rows(rows)) == 0,
     FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
     FixtureInstrumentRefused { cause: c } => false
   }
