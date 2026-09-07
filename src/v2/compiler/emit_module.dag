@@ -3,7 +3,7 @@ module v2.compiler.emit_module
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredTree }
 import v2.compiler.target_carriers { target_source_medium }
-import std.decl_ref { decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.emission_provenance {
   EmissionAuthoredFragment,
   EmissionContribution,
@@ -75,16 +75,20 @@ fn emit_module_decl_contribution(
   )
 }
 
-fn emit_module_contribution_step(
+// ONE accumulation for every contribution fold in this module. The module fold and the family
+// fold differ only in how an element becomes a contribution, so that difference is a parameter,
+// not a second copy of the fold (DESIGN.md S2): a fix to the seed, the append order or the
+// composition wrap cannot land on one and miss the other.
+fn emit_contribution_parts_step<T>(
   acc: Outcome<FreeMonoid<EmissionContribution>>,
-  tree: InferredTree,
-  target: TargetModel
+  item: T,
+  contribution_of: fn(T) -> Outcome<EmissionContribution>
 ) -> Outcome<FreeMonoid<EmissionContribution>> {
   bind_outcome(
     o: acc,
     f: fn(parts) {
       bind_outcome(
-        o: emit_module_decl_contribution(tree: tree, target: target),
+        o: contribution_of(item),
         f: fn(part) {
           outcome_accepted(value: parts.append(part))
         }
@@ -93,29 +97,36 @@ fn emit_module_contribution_step(
   )
 }
 
+fn emit_contribution_composition<T>(
+  items: List<T>,
+  origin: DeclarationRef,
+  contribution_of: fn(T) -> Outcome<EmissionContribution>
+) -> Outcome<EmissionContribution> {
+  bind_outcome(
+    o: fold_list(
+      xs: items,
+      empty: Accepted { value: Empty, diagnostics: None },
+      cons: fn(acc, item) {
+        emit_contribution_parts_step(acc: acc, item: item, contribution_of: contribution_of)
+      }
+    ),
+    f: fn(parts) {
+      outcome_accepted(value: EmissionSourceComposition { origin: origin, parts: parts })
+    }
+  )
+}
+
 fn emit_module_contribution(
   decls: List<InferredTree>,
   target: TargetModel
 ) -> Outcome<EmissionContribution> {
-  bind_outcome(
-    o: fold_list(
-      xs: decls,
-      empty: Accepted { value: Empty, diagnostics: None },
-      cons: fn(acc, tree) {
-        emit_module_contribution_step(acc: acc, tree: tree, target: target)
-      }
+  emit_contribution_composition(
+    items: decls,
+    origin: decl_ref(
+      module_path: "v2.compiler.emit_module",
+      decl_name: "emit_module_contribution"
     ),
-    f: fn(parts) {
-      outcome_accepted(
-        value: EmissionSourceComposition {
-          origin: decl_ref(
-            module_path: "v2.compiler.emit_module",
-            decl_name: "emit_module_contribution"
-          ),
-          parts: parts
-        }
-      )
-    }
+    contribution_of: fn(tree) { emit_module_decl_contribution(tree: tree, target: target) }
   )
 }
 
@@ -148,39 +159,15 @@ type EmitFamilyMember {
   target: TargetModel
 }
 
-fn emit_family_member_contribution(member: EmitFamilyMember) -> Outcome<EmissionContribution> {
-  emit_module_decl_contribution(tree: member.tree, target: member.target)
-}
-
 fn emit_family_contribution(members: List<EmitFamilyMember>) -> Outcome<EmissionContribution> {
-  bind_outcome(
-    o: fold_list(
-      xs: members,
-      empty: Accepted { value: Empty, diagnostics: None },
-      cons: fn(acc, member) {
-        bind_outcome(
-          o: acc,
-          f: fn(parts) {
-            bind_outcome(
-              o: emit_family_member_contribution(member: member),
-              f: fn(part) {
-                outcome_accepted(value: parts.append(part))
-              }
-            )
-          }
-        )
-      }
+  emit_contribution_composition(
+    items: members,
+    origin: decl_ref(
+      module_path: "v2.compiler.emit_module",
+      decl_name: "emit_family_contribution"
     ),
-    f: fn(parts) {
-      outcome_accepted(
-        value: EmissionSourceComposition {
-          origin: decl_ref(
-            module_path: "v2.compiler.emit_module",
-            decl_name: "emit_family_contribution"
-          ),
-          parts: parts
-        }
-      )
+    contribution_of: fn(member) {
+      emit_module_decl_contribution(tree: member.tree, target: member.target)
     }
   )
 }
