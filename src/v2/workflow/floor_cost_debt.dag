@@ -722,6 +722,28 @@ fn floor_cost_debt_censored_chunk_02() -> List<String> {
   Cons { head: "v2.test.claim.enforcement_live_witness.unbound_contracts_omit_semantic_receipts", tail: Cons { head: "v2.test.lens_wiring_liveness.wiring_liveness_corpus_test.wiring_liveness_corpus_witnesses", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.compiler_substrate_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.extdeps_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.gunbc_consumers_reach_transport_vocabulary_only_by_named_admission", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.test_corpus_reaches_cli_vocabulary_only_as_declared_exercise", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.withdrawing_the_consumer_admissions_surfaces_exactly_three", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.dropping_the_definition_edge_roster_surfaces_more", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.rest_path_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.rest_path_reaches_no_target_ast_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.withdrawing_the_admission_surfaces_the_known_cli_edge", tail: Empty {} } } } } } } } } } } }
 }
 
+// CENSORED ADDITION 2026-09-07: OutsideModeledGuarantee join witnesses from gunbc#10706.
+//
+// Discovered on required-floor run 34083823277 (head f34b6ed904) once the planted-control
+// enrollment cleared the declarations-phase mask that had kept main from reaching these rows.
+// All three call `v2.lens.common.outside_modeled_guarantee_join` `guarantee_boundary_still_outside`,
+// which builds `decl_facts` + `module_declaration_facts_live` over `witness_layer_roots` and is
+// preempted at the first cooperative poll (eval_steps=4096) with cpu_at_least ~33-41s against
+// `required_floor_claim_cpu_safety_limit_ms` (500). Outcome `budget_interrupted` /
+// `raised_by=cpu_deadline` — CENSORED class, no established own-work marginal under the ceiling.
+//
+// Sibling controls in the same module that do NOT call that join (ladder stamps, projection reds,
+// subject-as-required) stay on the ordinary floor and continue to execute.
+//
+// TRIGGER (CAPABILITY): floor preparation warms the witness-layer `decl_facts` /
+// `module_declaration_facts_live` producers the join reads (PREPARATION-FORCEABLE arm this file
+// already names for shared builds), so a re-measure under the 500ms line reaches a verdict on
+// own work; then delete these three lines. Roster erasure, moving the witnesses to test/claim/long,
+// or narrowing the join population beside a corpus authority is NOT the trigger.
+fn floor_cost_debt_censored_chunk_03() -> List<String> {
+  Cons { head: "v2.test.claim.construction_justification.outside_modeled_guarantee_witness_test.live_undecidable_residues_are_outside_modeled_guarantee", tail: Cons { head: "v2.test.claim.construction_justification.outside_modeled_guarantee_witness_test.planted_absent_decl_still_outside_holds", tail: Cons { head: "v2.test.claim.construction_justification.outside_modeled_guarantee_witness_test.planted_outside_for_existing_decl_reds", tail: Empty {} } } }
+}
+
 // THE THIRD EVIDENCE CLASS: STRADDLING (2026-09-04, gunbc#10366-era main).
 //
 // A STRADDLING ROW REACHES A VERDICT AND PASSES, ITS DETERMINISTIC WORK MEASURE IS INVARIANT
@@ -955,7 +977,7 @@ fn floor_cost_debt_proven_chunks() -> List<List<String>> {
 }
 
 fn floor_cost_debt_censored_chunks() -> List<List<String>> {
-  Cons { head: floor_cost_debt_censored_chunk_00(), tail: Cons { head: floor_cost_debt_censored_chunk_01(), tail: Cons { head: floor_cost_debt_censored_chunk_02(), tail: Empty {} }}}
+  Cons { head: floor_cost_debt_censored_chunk_00(), tail: Cons { head: floor_cost_debt_censored_chunk_01(), tail: Cons { head: floor_cost_debt_censored_chunk_02(), tail: Cons { head: floor_cost_debt_censored_chunk_03(), tail: Empty {} }}}}
 }
 
 fn floor_cost_debt_proven_roster() -> List<String> {
