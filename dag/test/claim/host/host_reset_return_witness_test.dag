@@ -67,7 +67,8 @@ import gunbc.host_reset_return {
   SubjectNotRostered,
   SubjectsDiffer,
   observer_self_identity,
-  observer_identity_permits_issuance,
+  observer_identity_issuance_block,
+  reset_issuance_block,
   reset_dispatch_assignment,
   reset_dispatch_pairings,
   reset_dispatch_observer_labels,
@@ -410,6 +411,67 @@ test fn w_the_two_not_attempted_causes_do_not_render_the_same_sentence() -> Bool
     != reset_return_refusal_cause_wire(cause: ResetWasNotAttempted { cause: "the pre-issuance baseline refused, so no controller write was attempted" })
 }
 
+fn block_is_absent(b: ResetReturnRefusalCause?) -> Bool {
+  match b { Absent => true  Present { value: _ } => false }
+}
+
+fn block_is_present(b: ResetReturnRefusalCause?) -> Bool {
+  match b { Absent => false  Present { value: _ } => true }
+}
+
+fn block_renders(b: ResetReturnRefusalCause?, expected: String) -> Bool {
+  match b {
+    Absent => false
+    Present { value: c } => reset_return_refusal_cause_wire(cause: c) == expected
+  }
+}
+
+// THE REFUSED PAIRING STOPS THE WRITE, AND THIS IS THE ARM REVIEW 61872 FOUND OPEN. The gate used to
+// consult the identity alone, so an ObserverSelectionRefused fell through to oob_boot_handoff and the
+// machine was power-cycled before the receipt got to say no pairing was ever made. Every refusal cause
+// the selection can carry is checked, because ObserverIsSubject in particular is the one the module
+// advertises as the wall against resetting your own host.
+test fn every_selection_refusal_blocks_issuance_before_any_controller_write() -> Bool {
+  block_is_present(b: reset_issuance_block(selection: ObserverSelectionRefused { cause: ObserverIsSubject { host: "srv1" } }, identity: fx_distinct_identity))
+    && block_is_present(b: reset_issuance_block(selection: ObserverSelectionRefused { cause: SubjectNotRostered { subject: "srv9" } }, identity: fx_distinct_identity))
+    && block_is_present(b: reset_issuance_block(selection: ObserverSelectionRefused { cause: ObserverNotRostered { observer: "srv9" } }, identity: fx_distinct_identity))
+    && block_is_present(b: reset_issuance_block(selection: ObserverSelectionRefused { cause: NoPeerAvailable { subject: "mtcollins1" } }, identity: fx_distinct_identity))
+}
+
+// THE DISCRIMINATOR. A gate that blocked everything would pass the witness above, so an admitted
+// pairing with a distinct identity must be the one shape that is NOT blocked.
+test fn an_admitted_pairing_with_a_distinct_identity_is_the_only_unblocked_shape() -> Bool {
+  block_is_absent(b: reset_issuance_block(selection: fx_selection(), identity: fx_distinct_identity))
+    && block_is_present(b: reset_issuance_block(selection: fx_selection(), identity: ObserverIsTheSubjectMachine { machine_id: "mtcollins1" }))
+}
+
+// THE BLOCK AND THE VERDICT AGREE BECAUSE THEY READ ONE CLASSIFIER. Before review 61872 the gate
+// returned a Bool and the verdict independently matched the same coproduct to causes, so the two
+// could drift apart with nothing to notice. This holds the identity arm's cause identical on both
+// readings.
+test fn the_issuance_block_and_the_verdict_name_the_same_identity_cause() -> Bool {
+  let ident = ObserverIsTheSubjectMachine { machine_id: "mtcollins1" }
+  match observer_identity_issuance_block(identity: ident) {
+    Absent => false
+    Present { value: blocked } =>
+      match reset_return_verdict_of_commit(
+        commit: fx_receipt(
+          attempt: "attempt-1",
+          route: fx_converge_route,
+          self_identity: ident,
+          acknowledgement: fx_accepted,
+          observation: fx_down_then_back,
+          evidence_path: "artifacts/host/self-reset.json",
+          evidence_digest: fx_digest_first,
+        )
+      ) {
+        ResetReturnRefused { cause: c } =>
+          reset_return_refusal_cause_wire(cause: c) == reset_return_refusal_cause_wire(cause: blocked)
+        HostDrivenBackToKnownState { downtime: _ } => false
+      }
+  }
+}
+
 test fn w_a_subject_already_down_at_issuance_has_no_downtime_not_a_zero() -> Bool {
   downtime_is_unavailable(
     m: reset_downtime(
@@ -611,10 +673,10 @@ test fn w_a_pairing_refusal_carries_its_inner_cause_through() -> Bool {
 // reported the refusal. Exactly one arm may proceed, and it is the only one that established
 // anything.
 test fn w_only_a_converged_distinct_observer_may_issue() -> Bool {
-  observer_identity_permits_issuance(identity: fx_distinct_identity)
-    && observer_identity_permits_issuance(identity: ObserverIsTheSubjectMachine { machine_id: "mtcollins1" }) == false
-    && observer_identity_permits_issuance(identity: ObserverHostnameNotConverged { observed: "ubuntu", allocated: "srv1" }) == false
-    && observer_identity_permits_issuance(identity: ObserverSelfIdentityUnreadable { cause: "no hostname" }) == false
+  block_is_absent(b: observer_identity_issuance_block(identity: fx_distinct_identity))
+    && block_renders(b: observer_identity_issuance_block(identity: ObserverIsTheSubjectMachine { machine_id: "mtcollins1" }), expected: "observer-is-the-subject-machine machine_id=mtcollins1")
+    && block_is_present(b: observer_identity_issuance_block(identity: ObserverHostnameNotConverged { observed: "ubuntu", allocated: "srv1" }))
+    && block_is_present(b: observer_identity_issuance_block(identity: ObserverSelfIdentityUnreadable { cause: "no hostname" }))
 }
 
 // ── the reds on the acknowledgement ────────────────────────────────────────────────────────────

@@ -30,10 +30,10 @@ import gunbc.host_reset_return {
   ObserverIsTheSubjectMachine,
   ObserverSelfIdentity,
   ObserverHostnameNotConverged,
-  observer_identity_permits_issuance,
   host_reset_return_receipt_path,
   host_reset_observer_label_env,
   reset_return_refusal_cause_wire,
+  reset_issuance_block,
   ObserverSelfIdentityUnreadable,
   ResetObserverSelection,
   IssuedThroughConverge,
@@ -353,15 +353,22 @@ func host_reset_return_attempt(
     observer: observer,
   )
   let identity = observer_self_corroboration(observer: observer as HostIdentity, subject: candidate.host)
-  if observer_identity_permits_issuance(identity: identity) == false {
-    return mint_reset_attempt_receipt(
-      selection: selection,
-      attempt: attempt,
-      route: route,
-      self_identity: identity,
-      acknowledgement: ResetNotAttempted { cause: "the observer could not establish that it is a converged peer of the subject; refusing before any controller write" },
-      observation: HostReturnUnobserved { cause: "no reset was issued, so nothing was watched" },
-    )
+  match reset_issuance_block(selection: selection, identity: identity) {
+    Present { value: blocked } =>
+      return mint_reset_attempt_receipt(
+        selection: selection,
+        attempt: attempt,
+        route: route,
+        self_identity: identity,
+        acknowledgement: ResetNotAttempted {
+          cause: join([
+            "issuance was blocked before any controller write: ",
+            reset_return_refusal_cause_wire(cause: blocked),
+          ], "") as NonEmptyStr,
+        },
+        observation: HostReturnUnobserved { cause: "no reset was issued, so nothing was watched" },
+      )
+    Absent => none
   }
   return match subject_baseline(host: subject) {
     Present { value: refused } =>

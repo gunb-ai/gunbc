@@ -294,6 +294,14 @@ fn observer_self_identity(
   }
 }
 
+// WHETHER THIS RUN MAY WRITE TO A CONTROLLER, ANSWERED ONCE. Two claims used to answer it: this
+// module returned a Bool over ObserverSelfIdentity for the gate, and reset_return_verdict
+// independently matched the SAME coproduct to per-arm refusal causes for the receipt. One fact, two
+// authorities -- and the Bool was the lossy one, since it knew an arm was fatal but not why, so the
+// caller had to invent a sentence the verdict already owned. Review 61872 found it. The classifier
+// below is now the only place an identity arm is called fatal, and the verdict and the gate are two
+// readings of it.
+//
 // AN UNESTABLISHED OBSERVER IDENTITY REFUSES BEFORE THE FIRST PROBE AND BEFORE THE FIRST WRITE, and
 // this ordering is the enforcement rather than the classification. The first draft of this func
 // computed the identity, carried it into the receipt, and went on to issue the reset anyway -- so a
@@ -303,12 +311,39 @@ fn observer_self_identity(
 // depends on; gunbc.machine_intake_mtcollins1_actuate says exactly this about its own denied-admission
 // control, and the reading rule it gives is the one that applies here: a non-zero exit is necessary
 // and not sufficient, and the load-bearing observation is external -- that nothing moved.
-fn observer_identity_permits_issuance(identity: ObserverSelfIdentity) -> Bool {
+fn observer_identity_issuance_block(identity: ObserverSelfIdentity) -> ResetReturnRefusalCause? {
   match identity {
-    ObserverDistinctFromSubject { observer_machine_id: _, subject_machine_id: _ } => true
-    ObserverIsTheSubjectMachine { machine_id: _ } => false
-    ObserverHostnameNotConverged { observed: _, allocated: _ } => false
-    ObserverSelfIdentityUnreadable { cause: _ } => false
+    ObserverDistinctFromSubject { observer_machine_id: _, subject_machine_id: _ } => none
+    ObserverIsTheSubjectMachine { machine_id: m } =>
+      Present { value: ObserverWasTheSubjectMachine { machine_id: m } }
+    ObserverHostnameNotConverged { observed: o, allocated: a } =>
+      Present { value: ObserverHostnameUnconverged { observed: o, allocated: a } }
+    ObserverSelfIdentityUnreadable { cause: c } =>
+      Present { value: ObserverIdentityUnreadable { cause: c } }
+  }
+}
+
+// A REFUSED PAIRING MUST STOP THE WRITE TOO, and that it did not is the other half of review 61872.
+// The gate checked the identity and nothing else, so an ObserverSelectionRefused -- ObserverIsSubject,
+// SubjectNotRostered, ObserverNotRostered, NoPeerAvailable -- fell through to the power cycle, and the
+// receipt then said "pairing-not-minted" ABOUT A RUN THAT HAD ALREADY WRITTEN TO A CONTROLLER. The
+// selection is the arm that carries ObserverIsSubject, so the wall this module advertises against
+// resetting your own machine was sitting behind the write it exists to prevent.
+//
+// IT WAS UNREACHABLE ONLY BECAUSE OF THE CALLER, which is the part that makes it worth fixing rather
+// than documenting: subject_for_observer pre-filters, so host_reset_return_wet never presented a
+// refused selection. Safety coming from the caller is not safety coming from the wall -- the next
+// caller does not inherit it, and this module presents the arm as the wall.
+//
+// THE SELECTION IS ASKED FIRST because a refused pairing means there is no established subject at
+// all, so an identity comparison against it would be comparing to a host nobody admitted.
+fn reset_issuance_block(
+  selection: ResetObserverSelection,
+  identity: ObserverSelfIdentity,
+) -> ResetReturnRefusalCause? {
+  match selection {
+    ObserverSelectionRefused { cause: c } => Present { value: PairingNotMinted { cause: c } }
+    ObserverSelected { pairing: _ } => observer_identity_issuance_block(identity: identity)
   }
 }
 
@@ -556,14 +591,9 @@ fn reset_return_verdict(observed: ResetAttemptObservation) -> ResetReturnVerdict
     IssuedByHandOutOfBand { what: w } =>
       ResetReturnRefused { cause: IssuanceWasOutOfBand { what: w } }
     IssuedThroughConverge { workflow: _, mode: _, run_id: _ } =>
-      match observed.self_identity {
-        ObserverIsTheSubjectMachine { machine_id: m } =>
-          ResetReturnRefused { cause: ObserverWasTheSubjectMachine { machine_id: m } }
-        ObserverSelfIdentityUnreadable { cause: c } =>
-          ResetReturnRefused { cause: ObserverIdentityUnreadable { cause: c } }
-        ObserverHostnameNotConverged { observed: o, allocated: a } =>
-          ResetReturnRefused { cause: ObserverHostnameUnconverged { observed: o, allocated: a } }
-        ObserverDistinctFromSubject { observer_machine_id: _, subject_machine_id: _ } =>
+      match observer_identity_issuance_block(identity: observed.self_identity) {
+        Present { value: blocked } => ResetReturnRefused { cause: blocked }
+        Absent =>
           if subject_was_down_before_issuance(observation: observed.observation) {
             ResetReturnRefused { cause: SubjectWasNotUpBeforeIssuance }
           } else {

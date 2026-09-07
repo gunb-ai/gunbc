@@ -142,21 +142,25 @@ test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
 // THE COUNT IS KEPT BESIDE THE NAMES DELIBERATELY, and it moved from 2 to 3 because a
 // `dashboard-deploy` job was added -- not because the check was in the way. Naming each job without
 // pinning the total would let a fourth job appear unobserved; pinning the total without naming them
-// would pass for any three jobs at all. Together they are an exact partition, which is the identity
+// would pass for any set of jobs at all. Together they are an exact partition, which is the identity
 // join DESIGN section 5 asks for rather than a count standing in for one.
 //
-// BOTH DEPLOYING JOBS NEED `build`, and that is the property this witness is really about: the
-// release binaries are produced once and consumed by everything that installs them, so a job that
-// mutates a host without that edge would be installing whatever happened to be lying around.
+// EVERY JOB THAT TOUCHES A HOST NEEDS `build`, and that is the property this witness is really about:
+// the release binaries are produced once and consumed by everything that installs them, so a job
+// that mutates a host without that edge would be installing whatever happened to be lying around.
+// `host-reset-return` is held to it for a sharper reason than the others -- it POWER-CYCLES its
+// subject, so a stale binary there would drive a real machine from a model nobody reviewed.
 test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
-  fleet_converge_workflow.jobs.length() == 4
+  fleet_converge_workflow.jobs.length() == 5
     && fleet_converge_workflow.jobs[0].id == "build"
     && fleet_converge_workflow.jobs[1].id == "fleet-converge"
     && fleet_converge_workflow.jobs[1].needs == ["build"]
-    && fleet_converge_workflow.jobs[2].id == "dashboard-deploy"
+    && fleet_converge_workflow.jobs[2].id == "host-reset-return"
     && fleet_converge_workflow.jobs[2].needs == ["build"]
-    && fleet_converge_workflow.jobs[3].id == "rlm-launch-deployment-receipt"
+    && fleet_converge_workflow.jobs[3].id == "dashboard-deploy"
     && fleet_converge_workflow.jobs[3].needs == ["build"]
+    && fleet_converge_workflow.jobs[4].id == "rlm-launch-deployment-receipt"
+    && fleet_converge_workflow.jobs[4].needs == ["build"]
 }
 
 fn expected_fleet_converge_yml_content() -> String {
@@ -211,13 +215,20 @@ test fn fleet_converge_org_actions_mode_binds_secret_and_modeled_entry_holds() -
 // THE VOCABULARY IS THE ONLY SPELLING AUTHORITY, and these are the facts that make that a claim
 // rather than a hope.
 //
-// COUNT AND DISTINCTNESS TOGETHER. Fifteen members is not enough on its own: two members returning
-// the same wire string would still be fifteen, and the dispatch menu would silently offer one option
-// twice while one mode became unselectable. Counting the DISTINCT wire values is what refuses that.
-test fn the_mode_vocabulary_has_fifteen_members_with_fifteen_distinct_wire_values() -> Bool {
+// COUNT AND DISTINCTNESS TOGETHER. The count alone is not enough: two members returning the same
+// wire string would still meet it, and the dispatch menu would silently offer one option twice while
+// one mode became unselectable. Counting the DISTINCT wire values is what refuses that.
+//
+// THE LITERAL MOVED FROM FIFTEEN TO SIXTEEN when HostResetReturn was added, and the roster
+// annotation in gunbc.fleet_converge_workflow says why a literal is here at all: nothing reflects
+// over a closed vocabulary to produce its members, so fleet_converge_workflow_modes is hand-ordered
+// and this count is what makes a member DROPPED from that roster visible. The count is grounded in
+// the coproduct, not copied from a measurement of itself -- adding a variant without rostering it
+// leaves the type and the roster disagreeing, and this is the only place that disagreement is loud.
+test fn the_mode_vocabulary_members_have_that_many_distinct_wire_values() -> Bool {
   let wires = map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m))
-  count(fleet_converge_workflow_modes) == 15
-    && count(wires) == 15
+  count(fleet_converge_workflow_modes) == 16
+    && count(wires) == 16
     && unique(xs: wires, eq: (a, b) => a == b)
 }
 
@@ -225,7 +236,7 @@ test fn the_mode_vocabulary_has_fifteen_members_with_fifteen_distinct_wire_value
 // to a hand-kept list that merely happens to agree with it today.
 test fn every_dispatch_option_is_a_wire_value_of_the_vocabulary() -> Bool {
   let wires = map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m))
-  count(fleet_converge_mode_options) == 15
+  count(fleet_converge_mode_options) == 16
     && all(fleet_converge_mode_options, o => any(wires, w => w == o))
 }
 
