@@ -5624,10 +5624,14 @@ fn in_flight_cross_claim_fill(raw_cpu_nanos: u128) -> Option<(String, u128)> {
 /// path, so thread CPU rises at least as much as fill over any interval. The saturating
 /// subtraction covers only sampling skew between the two reads.
 ///
-/// WHAT THIS DOES NOT REACH: the WALL deadline (`witness_wall_deadline`) is still armed on a raw
-/// `Instant` and still charges a fill to whichever claim paid it. Every interruption in the
-/// repaired population was on the CPU clock — 44 of 44 `Cpu` on run 33185280160 — so the wall
-/// half is a real, currently unexercised residue, not a fix silently omitted.
+/// THE WALL DEADLINE NETS THE SAME FILL, BY ITS OWN BASELINE RATHER THAN THIS CLOCK.
+/// `arm_wall_deadline` captures `shared_artifact_fill_wall_nanos()` at arm time and
+/// `wall_deadline_marginal_nanos` subtracts the fill accrued since, so both enforced figures
+/// exclude the fill and neither is a function of which claim happened to pay it. Until
+/// gunbc#10748 the wall half was armed on a raw `Instant`, and this comment said so beside a
+/// receipt for why that residue was unexercised; the residue was exercised, repaired, and the
+/// sentence stayed. It is replaced rather than annotated because a reader diagnosing a wall
+/// refusal needs the mechanism that runs, not the one that used to.
 pub fn budgeted_cpu_nanos() -> u128 {
     thread_cpu_nanos().saturating_sub(shared_artifact_fill_cpu_nanos())
 }
