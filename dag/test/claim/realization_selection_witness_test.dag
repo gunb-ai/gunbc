@@ -1,9 +1,9 @@
 module test.claim.realization_selection_witness
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
-import std.interval { degenerate_interval }
+import std.interval { degenerate_interval, closed_interval, IntervalReady, IntervalRefused, OrderedClosedInterval }
 import std.pareto {
   AxisGap,
   AxisReading,
@@ -24,6 +24,7 @@ import std.decision {
   RealizationSelectionRefused,
   NoFeasibleRealization,
   CandidateFieldUnestablished,
+  SubjectClosureIncomplete,
   UnfundedAxis,
   select_realization,
   receipts_eq,
@@ -58,6 +59,12 @@ import gunbc.world_converge {
 }
 import product.fleet_operating_point {
   fleet_operating_point_selection,
+  fleet_operating_point_field_rows,
+  fleet_operating_point_axes,
+  fleet_operating_point_field,
+  fleet_operating_point_constraints,
+  fleet_operating_point_evidence,
+  fleet_operating_point_policy,
   gap_aggregate_throughput,
   gap_ac_power_energy,
 }
@@ -80,6 +87,7 @@ data id_policy_a: DeclarationRef = decl_ref(module_path: "test.claim.realization
 data id_policy_b: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_policy_b")
 data ax_tput: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "ax_tput")
 data ax_power: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "ax_power")
+data ax_orphan: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "ax_orphan")
 
 data id_var: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "var_sel")
 data id_term: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "term_sel")
@@ -223,6 +231,27 @@ data power_cap: HardConstraint = HardConstraint {
   identity: id_constraints,
   axis: ax_power,
   bound_micro: 100,
+}
+
+data tput_floor: HardConstraint = HardConstraint {
+  identity: id_constraints,
+  axis: ax_tput,
+  bound_micro: 5,
+}
+
+data orphan_cap: HardConstraint = HardConstraint {
+  identity: id_constraints,
+  axis: ax_orphan,
+  bound_micro: 1,
+}
+
+fn le_int(a: Int, b: Int) -> Bool { a <= b }
+
+fn span(low: Int, high: Int) -> OrderedClosedInterval<Int> {
+  match closed_interval(low: low, high: high, le: le_int) {
+    IntervalReady { interval: iv } => iv
+    IntervalRefused { reason: _ } => degenerate_interval(point: 0)
+  }
 }
 
 fn selected_id(field: List<ParetoEntry>, axes: List<SelectionAxis>, constraints: List<HardConstraint>, pol: SelectionPolicy, evidence: DeclarationRef, field_id: DeclarationRef) -> DeclarationRef? {
@@ -443,7 +472,7 @@ test fn different_funded_axes_are_a_different_receipt() -> Bool {
 
 test fn world_converge_refuses_unresolved_selection() -> Bool {
   match fleet_operating_point_selection() {
-    SelectionNeedsEvidence { needs: ns } => (ns |> count) > 0
+    RealizationSelectionRefused { defects: ds } => (ds |> count) > 0
     SelectedWithin { candidate: _, receipt: _ } => false
     _ => false
   }
@@ -525,7 +554,16 @@ test fn generated_section_3d_and_reviewer_execute() -> Bool {
 }
 
 test fn fleet_operating_point_names_throughput_and_ac_power_gaps() -> Bool {
-  match fleet_operating_point_selection() {
+  match select_realization(
+    assessment: closed_selection_assessment(),
+    candidate_field_identity: fleet_operating_point_field,
+    field: fleet_operating_point_field_rows(),
+    axes: fleet_operating_point_axes(),
+    constraints: [],
+    constraint_authority: fleet_operating_point_constraints,
+    policy: UniqueSurvivorRequired { identity: fleet_operating_point_policy },
+    evidence_snapshot: fleet_operating_point_evidence,
+  ) {
     SelectionNeedsEvidence { needs: ns } =>
       (ns |> count) == 4
         && any(ns, n =>
@@ -537,6 +575,100 @@ test fn fleet_operating_point_names_throughput_and_ac_power_gaps() -> Bool {
         && any(ns, n =>
           match n {
             UnfundedAxis { gap: g } => declaration_ref_eq(a: g.axis, b: gap_ac_power_energy.axis)
+            _ => false
+          }
+        )
+    _ => false
+  }
+}
+
+test fn fleet_operating_point_refuses_under_modeled_subject() -> Bool {
+  match fleet_operating_point_selection() {
+    RealizationSelectionRefused { defects: ds } =>
+      any(ds, d => string_contains(s: d as String, pattern: "subject completeness join is not closed"))
+    _ => false
+  }
+}
+
+test fn deferred_subject_merges_into_field_evidence_needs() -> Bool {
+  let incomplete = entry_missing_power(id: id_a, label: "no power" as NonEmptyStr, tput: 90)
+  match select_realization(
+    assessment: unestablished_selection_assessment(),
+    candidate_field_identity: id_field,
+    field: [incomplete],
+    axes: axes_forward(),
+    constraints: [power_cap],
+    constraint_authority: id_constraints,
+    policy: UniqueSurvivorRequired { identity: id_policy_unique },
+    evidence_snapshot: id_evidence,
+  ) {
+    SelectionNeedsEvidence { needs: ns } =>
+      any(ns, n =>
+        match n {
+          UnfundedAxis { gap: g } => declaration_ref_eq(a: g.axis, b: ax_power)
+          _ => false
+        }
+      )
+        && any(ns, n =>
+          match n {
+            SubjectClosureIncomplete { subject: s, obligation: _ } => declaration_ref_eq(a: s, b: id_subject)
+            _ => false
+          }
+        )
+    _ => false
+  }
+}
+
+test fn unfunded_constraint_axis_refuses_not_needs_evidence() -> Bool {
+  let feasible = entry(id: id_b, label: "ok" as NonEmptyStr, tput: 10, power: 50)
+  match select_realization(
+    assessment: closed_selection_assessment(),
+    candidate_field_identity: id_field,
+    field: [feasible],
+    axes: axes_forward(),
+    constraints: [power_cap, orphan_cap],
+    constraint_authority: id_constraints,
+    policy: UniqueSurvivorRequired { identity: id_policy_unique },
+    evidence_snapshot: id_evidence,
+  ) {
+    RealizationSelectionRefused { defects: ds } =>
+      any(ds, d => string_contains(s: d as String, pattern: "not a funded selection axis"))
+    SelectionNeedsEvidence { needs: _ } => false
+    _ => false
+  }
+}
+
+test fn undecided_constraint_does_not_gap_decided_constraints() -> Bool {
+  let mixed = ParetoEntry {
+    identity: id_b,
+    display_label: "sharp tput, wide power" as NonEmptyStr,
+    readings: [
+      reading(axis: ax_tput, v: 90),
+      AxisReading { axis: ax_power, interval_micro: span(low: 40, high: 120) },
+    ],
+    missing_inputs: [],
+  }
+  match select_realization(
+    assessment: closed_selection_assessment(),
+    candidate_field_identity: id_field,
+    field: [mixed],
+    axes: axes_forward(),
+    constraints: [tput_floor, power_cap],
+    constraint_authority: id_constraints,
+    policy: UniqueSurvivorRequired { identity: id_policy_unique },
+    evidence_snapshot: id_evidence,
+  ) {
+    SelectionNeedsEvidence { needs: ns } =>
+      (ns |> count) == 1
+        && any(ns, n =>
+          match n {
+            UnfundedAxis { gap: g } => declaration_ref_eq(a: g.axis, b: ax_power)
+            _ => false
+          }
+        )
+        && !any(ns, n =>
+          match n {
+            UnfundedAxis { gap: g } => declaration_ref_eq(a: g.axis, b: ax_tput)
             _ => false
           }
         )
@@ -590,6 +722,14 @@ fn realization_selection_witness_main() -> ProcessExit {
     ExitFailure { code: 1, reason: "10 design-section-reviewer" as NonEmptyStr }
   } else if !fleet_operating_point_names_throughput_and_ac_power_gaps() {
     ExitFailure { code: 1, reason: "11 fleet-gaps" as NonEmptyStr }
+  } else if !fleet_operating_point_refuses_under_modeled_subject() {
+    ExitFailure { code: 1, reason: "11b fleet-refused-subject" as NonEmptyStr }
+  } else if !deferred_subject_merges_into_field_evidence_needs() {
+    ExitFailure { code: 1, reason: "11c deferred-merges-needs" as NonEmptyStr }
+  } else if !unfunded_constraint_axis_refuses_not_needs_evidence() {
+    ExitFailure { code: 1, reason: "11d unfunded-constraint-axis" as NonEmptyStr }
+  } else if !undecided_constraint_does_not_gap_decided_constraints() {
+    ExitFailure { code: 1, reason: "11e undecided-does-not-widen" as NonEmptyStr }
   } else if !two_unevidenced_candidates_accumulate_every_gap() {
     ExitFailure { code: 1, reason: "12 accumulate-every-gap" as NonEmptyStr }
   } else {
