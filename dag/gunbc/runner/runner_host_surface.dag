@@ -409,12 +409,17 @@ fn expected_process_count(
   }
 }
 
-type ObservedProcess {
-  identity: ProcessIdentity
-  role_claimed: HostProcessRole
-  parent_identity: ProcessIdentity
-  executable_digest: NonEmptyStr
-}
+// ObservedProcess IS DELETED, and its deletion is the point rather than a tidy-up. It carried
+// `role_claimed`, which invites the producer to label a process with the role it was LOOKING FOR --
+// so a firecracker running as root would be recorded as the attempt-execution role and then
+// compared against the very declaration it was supposed to be tested against. A role must be
+// DERIVED from executable identity, invocation, attempt and phase, never asserted by the thing
+// doing the looking.
+//
+// IT HAD NO CONSUMERS AND STILL DID HARM. gunbc.runner.runner_runtime_snapshot added
+// RawProcessObservation, which carries only what /proc said; leaving this beside it made two
+// observation types for one concept where the weaker one was authorable -- the section 3 fork, with
+// the fail-open half still writable. Deleting it leaves one route.
 
 // THE FAILURES ARE TYPED AND EACH NAMES A DIFFERENT REMEDY. A single Bool here would be the
 // typed-cause-erased failure this repository keeps finding: "the surface does not match" sends

@@ -1,0 +1,185 @@
+module gunbc.runner.runner_live_census_receipt
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+
+// THE FIRST CENSUS TAKEN WHILE A GUEST WAS ALIVE. Attempt slice4-census-47eac00e on the Mt. Collins
+// unit, 2026-09-06. Every earlier receipt in this lane recorded cgroup placement, namespaces and
+// capabilities as NOT OBSERVED, and the reason was always the same: the run was looked at only
+// after it ended. A post-mortem cannot read a capability set from a process that is gone, and
+// cannot tell a cleaned-up cgroup from one that never existed.
+//
+// IT CONFIRMED ONE MODEL CLAIM AND FALSIFIED ANOTHER, which is the point of taking it.
+
+data census_attempt: NonEmptyStr = "slice4-census-47eac00e"
+data census_evidence: NonEmptyStr = "artifacts/bmc/mtcollins1-live-census.log"
+data census_evidence_sha256: NonEmptyStr = "303fbca14dd47ce3032fee474f23301f42e1efe46a75032c549d980681d91dbd"
+data census_evidence_byte_count: Int = 199481
+
+// ── the topology claim, confirmed by identity ───────────────────────────────────────────────────
+
+// THE SAME PID IN BOTH PHASES. The process launched as the jailer and the process running
+// Firecracker were pid 1649, parented to init. That is the in-place exec the surface model was
+// corrected to describe, established by identity rather than by reading the jailer's source.
+type ExecTransitionEvidence {
+  launcher_pid: Int
+  firecracker_pid: Int
+  parent_pid: Int
+  same_identity: Bool
+}
+
+data census_exec_transition: ExecTransitionEvidence = ExecTransitionEvidence {
+  launcher_pid: 1649,
+  firecracker_pid: 1649,
+  parent_pid: 1,
+  same_identity: true,
+}
+
+// ── privilege, all seven axes ───────────────────────────────────────────────────────────────────
+
+// FAR STRONGER THAN "NONZERO UID", and it took a live read to say so. Every capability set that
+// grants authority is empty, no_new_privs is set, and seccomp is in filter mode. The bounding set
+// is NOT dropped, which is recorded because it is the one axis that is not what a reader would
+// assume from the others.
+type CensusPrivilege {
+  uid: Int
+  gid: Int
+  cap_effective: NonEmptyStr
+  cap_permitted: NonEmptyStr
+  cap_inheritable: NonEmptyStr
+  cap_ambient: NonEmptyStr
+  cap_bounding: NonEmptyStr
+  no_new_privs: Bool
+  seccomp_mode: Int
+}
+
+data census_privilege: CensusPrivilege = CensusPrivilege {
+  uid: 1000,
+  gid: 1000,
+  cap_effective: "0000000000000000",
+  cap_permitted: "0000000000000000",
+  cap_inheritable: "0000000000000000",
+  cap_ambient: "0000000000000000",
+  cap_bounding: "000001ffffffffff",
+  no_new_privs: true,
+  seccomp_mode: 2,
+}
+
+data census_privilege_reading: NonEmptyStr = "zero effective, permitted, inheritable and ambient capabilities; no_new_privs set; seccomp in filter mode. The BOUNDING set is undropped, so the process could regain capabilities only by a path the empty permitted set already forecloses -- but the axis is not clear and is not claimed to be."
+
+// ── namespaces, by inode ────────────────────────────────────────────────────────────────────────
+
+// THE SHARED ANSWERS ARE EVIDENCE TOO. Only the mount namespace differs, which is exactly what an
+// invocation without --new-pid-ns and without --netns should produce -- so this reading establishes
+// both that the pivot happened AND that no unrequested namespace was quietly introduced. A boolean
+// "namespaced" could have said neither.
+type CensusNamespace {
+  kind: NonEmptyStr
+  supervisor_inode: NonEmptyStr
+  jailed_inode: NonEmptyStr
+  relation: NonEmptyStr
+}
+
+data census_namespaces: List<CensusNamespace> = [
+  CensusNamespace { kind: "mnt", supervisor_inode: "mnt:[4026531841]", jailed_inode: "mnt:[4026533570]", relation: "distinct" },
+  CensusNamespace { kind: "pid", supervisor_inode: "pid:[4026531836]", jailed_inode: "pid:[4026531836]", relation: "shared" },
+  CensusNamespace { kind: "net", supervisor_inode: "net:[4026531840]", jailed_inode: "net:[4026531840]", relation: "shared" },
+  CensusNamespace { kind: "user", supervisor_inode: "user:[4026531837]", jailed_inode: "user:[4026531837]", relation: "shared" },
+  CensusNamespace { kind: "ipc", supervisor_inode: "ipc:[4026531839]", jailed_inode: "ipc:[4026531839]", relation: "shared" },
+  CensusNamespace { kind: "uts", supervisor_inode: "uts:[4026531838]", jailed_inode: "uts:[4026531838]", relation: "shared" },
+  CensusNamespace { kind: "cgroup", supervisor_inode: "cgroup:[4026531835]", jailed_inode: "cgroup:[4026531835]", relation: "shared" },
+]
+
+// ── THE FINDING: no cgroup containment happened ─────────────────────────────────────────────────
+
+// THE VMM RAN IN THE ROOT CGROUP. /proc/1649/cgroup read `0::/` while the guest was alive -- so
+// despite --cgroup-version 2 on the jailer invocation, the attempt was placed in no cgroup of its
+// own and NOTHING BOUNDED ITS CPU OR MEMORY.
+//
+// ONLY A LIVE LOOK COULD FIND THIS, and that is the argument for taking one rather than a
+// convenience. The previous attempt observed an absent cgroup directory AFTER the run and recorded
+// CgroupPlacementNotObserved, which was honest -- but the same absence is produced by successful
+// cleanup and by placement never happening, and those differ by whether the machine had resource
+// containment at all. A model that assumed the jailer's cgroup flag implied placement would have
+// carried a containment property the machine did not have.
+//
+// THE LIKELY MECHANISM, stated as unverified: the jailer creates and joins a cgroup when it is
+// given cgroup LIMITS to apply, and this invocation passed --cgroup-version 2 without any --cgroup
+// key=value. So the version was selected and no cgroup was requested. That reading is not tested
+// here and the next slice owes the discriminating run.
+type CgroupContainmentFinding
+  = AttemptPlacedInOwnCgroup { path: NonEmptyStr }
+  | AttemptRanInRootCgroup { observed: NonEmptyStr, consequence: NonEmptyStr }
+  | CgroupPlacementUnread { detail: String }
+
+data census_cgroup_finding: CgroupContainmentFinding = AttemptRanInRootCgroup {
+  observed: "0::/",
+  consequence: "no cpu or memory bound applied to the attempt; the jailer's containment on this run was chroot, mount namespace and privilege drop only",
+}
+
+// ── the deadline watcher, seen at last ──────────────────────────────────────────────────────────
+
+// IT EXISTS AND IT IS BUSYBOX. pid 1651, command busybox, uid 0, parented to init -- the watcher
+// BusyBox timeout forks and which outlives its exec. Two things follow. It belongs in the declared
+// surface, which runner_host_surface now carries as AttemptDeadlineWatcher. And it is why the
+// earlier receipt's cleanup claim had to be narrowed: a post-run census that sees busybox processes
+// cannot tell console helpers from a surviving watcher by name.
+type WatcherObservation {
+  pid: Int
+  command_name: NonEmptyStr
+  uid: Int
+  parent_pid: Int
+}
+
+data census_deadline_watcher: WatcherObservation = WatcherObservation {
+  pid: 1651,
+  command_name: "busybox",
+  uid: 0,
+  parent_pid: 1,
+}
+
+// ── the live population ─────────────────────────────────────────────────────────────────────────
+
+// THE QUALIFICATION ROSTER IS NOT YET AN EXACT DESCRIPTION OF THIS MACHINE, and the census says so
+// plainly: two interactive busybox shells were running that the declared surface does not name.
+// They are this image's console loop, deliberate and undeclared -- which is exactly the state the
+// closed-world invariant forbids. They must be declared as part of the qualification profile or
+// removed before any run claims an exact-population match.
+data census_live_population: List<NonEmptyStr> = [
+  "pid 1 init -- HostSupervisor",
+  "pid 1649 firecracker uid 1000 -- AttemptExecution in its FirecrackerRunning phase",
+  "pid 1651 busybox uid 0 -- AttemptDeadlineWatcher",
+  "pid 2399 busybox uid 0 -- UNDECLARED console shell",
+  "pid 2400 busybox uid 0 -- UNDECLARED console shell",
+]
+
+data census_population_verdict: NonEmptyStr = "the observed population is NOT an exact match for the declared qualification surface: two console shells exist that no process class names"
+
+// ── the descriptors, which are what a running VM looks like ─────────────────────────────────────
+
+data census_vm_descriptors: List<NonEmptyStr> = [
+  "/dev/kvm -- the jailed device node, opened after the privilege drop",
+  "anon_inode:kvm-vm",
+  "anon_inode:kvm-vcpu:0",
+  "anon_inode:kvm-arm-vgic-v3",
+  "anon_inode:kvm-arm-vgic-its",
+  "/rootfs.squashfs -- the guest root, by its in-jail name",
+]
+
+// ── standing ────────────────────────────────────────────────────────────────────────────────────
+
+data census_closed: List<NonEmptyStr> = [
+  "one process identity passed through the jailer into Firecracker, confirmed by pid equality across both phases",
+  "the full privilege standing: five capability sets, no_new_privs and seccomp mode",
+  "exact namespace relationships by inode, distinct for mount and shared for the other six",
+  "live cgroup placement -- and it is the root cgroup, so there was no resource containment",
+  "the deadline watcher's identity",
+  "that the declared qualification surface does not yet match the machine",
+]
+
+data census_open: List<NonEmptyStr> = [
+  "a post-cleanup snapshot joined to this one by identity rather than by name",
+  "cgroup.procs membership read from the cgroup side, which this run did not take",
+  "mount identities of the root before and after switch_root",
+  "whether passing --cgroup limits produces placement, which is the discriminating run this finding owes",
+  "guest userspace, networking, and a real job",
+]

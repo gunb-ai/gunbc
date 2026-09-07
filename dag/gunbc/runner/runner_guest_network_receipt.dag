@@ -1,0 +1,121 @@
+module gunbc.runner.runner_guest_network_receipt
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+
+// GUEST USERSPACE, AND A HOST THAT CAN REACH IT. Attempt slice6b-net-05165ea5 on the Mt. Collins
+// unit, 2026-09-07. The guest mounted its squashfs root, ran /sbin/init, brought systemd 255.4 up on
+// arm64, and answered three of three pings from the host over a point-to-point TAP.
+data guest_network_attempt: NonEmptyStr = "slice6b-net-05165ea5"
+data guest_network_evidence: NonEmptyStr = "artifacts/bmc/mtcollins1-guest-network-userspace.log"
+data guest_network_evidence_sha256: NonEmptyStr = "7e3daec01709ffad7790d77f477ffee3379a3b7c1abb0cb53f9592c9330af8a2"
+data guest_network_evidence_byte_count: Int = 11836
+
+// ── guest userspace ─────────────────────────────────────────────────────────────────────────────
+
+type GuestUserspaceObservation {
+  root_mount: NonEmptyStr
+  init_started: NonEmptyStr
+  init_system: NonEmptyStr
+  guest_architecture: NonEmptyStr
+  guest_hostname: NonEmptyStr
+}
+
+data guest_userspace: GuestUserspaceObservation = GuestUserspaceObservation {
+  root_mount: "VFS: Mounted root (squashfs filesystem) readonly on device 254:0",
+  init_started: "Run /sbin/init as init process",
+  init_system: "systemd 255.4-1ubuntu8.5 running in system mode",
+  guest_architecture: "arm64",
+  guest_hostname: "ubuntu-fc-uvm",
+}
+
+// ── the host reaches it ─────────────────────────────────────────────────────────────────────────
+
+// A PING IS A WEAKER FACT THAN IT LOOKS AND IS RECORDED AT ITS OWN GRAIN. A guest kernel that
+// processed ip= and brought eth0 up answers ARP and ICMP from the KERNEL, so a reply establishes the
+// tap, the link and the guest network stack -- not that any userspace service is listening. What
+// establishes userspace here is the guest log, separately.
+//
+// THE ARP ENTRY IS THE STRONGER HALF: the host resolved 172.16.0.2 to the exact guest_mac the
+// configuration assigned, so the reply came from the intended interface rather than from anything
+// else on a segment that has room for nobody else.
+type GuestReachability {
+  host_address: NonEmptyStr
+  guest_address: NonEmptyStr
+  prefix: NonEmptyStr
+  transmitted: Int
+  received: Int
+  arp_state: NonEmptyStr
+  resolved_mac: NonEmptyStr
+}
+
+data guest_reachability: GuestReachability = GuestReachability {
+  host_address: "172.16.0.1",
+  guest_address: "172.16.0.2",
+  prefix: "/30 -- two usable addresses, host and guest, with no room for a third party on the segment",
+  transmitted: 3,
+  received: 3,
+  arp_state: "REACHABLE",
+  resolved_mac: "06:00:ac:10:00:02",
+}
+
+// THE TAP IS ATTEMPT-SCOPED AND GOES WITH THE ATTEMPT. It is created before the jail because
+// Firecracker opens an EXISTING host device by name rather than creating one, and it is torn down
+// at retirement -- observed absent afterwards rather than assumed gone.
+data guest_tap_retired: NonEmptyStr = "the attempt's tap device was absent from the host after retirement, read rather than assumed"
+
+// ── a claim four earlier receipts carried, now corrected ────────────────────────────────────────
+
+// THE "NOT ESTABLISHED" WAS RIGHT; THE REASON ATTACHED TO IT WAS INVENTED. Earlier receipts listed
+// guest userspace as unobserved, which was accurate -- and two of them went further and said the
+// guest was "killed at the deadline while still early in boot". That was never measured. It was
+// inferred from rc=137 plus a `head -25` of the guest log, and the tail was simply never read.
+//
+// WHAT THE FULL LOG SHOWS is that the guest was reaching userspace and running systemd, so rc=137
+// means the deadline fired on a HEALTHY guest rather than on a stalled one. Those are different
+// facts about the same exit code, and the earlier phrasing asserted the wrong one.
+//
+// THE CORRECTION IS NARROW ON PURPOSE. The earlier receipts are not rewritten to claim success they
+// did not observe -- their attempts genuinely did not read the tail. What is removed from them is
+// the unmeasured clause about WHERE the guest was killed.
+data corrected_claim: NonEmptyStr = "earlier receipts said the guest was killed early in boot; that was inferred from rc=137 and a truncated log read, and the full log shows the guest reaching systemd"
+
+// ── three defects this slice cost, all self-inflicted ───────────────────────────────────────────
+
+// PUBLISHING OVER THE PATH THE CONTROLLER IS SERVING. Two boots failed with "Boot option loading
+// failed" after a 302 MiB image was copied OVER the exact file the controller had mounted over NFS.
+// The on-disk digest matched what was built, so the file was intact and the controller's cached view
+// was not. Publishing under a fresh name fixed it on the next boot.
+//
+// THIS LANE ALREADY HAD THE RULE AND I WENT AROUND IT. gunbc.machine_intake_boot_image_fetch
+// publishes by atomic rename precisely so a reader never observes a path mid-write; a convenience
+// `cp` in a build script reintroduced the hazard that design exists to remove. Content-addressed
+// names would have made it structurally impossible rather than merely avoidable.
+data defect_publish_over_live_path: NonEmptyStr = "copying a new image over the path the controller was serving produced two firmware load failures with a matching on-disk digest; a fresh name fixed it, and atomic rename or content-addressed naming would have prevented it"
+
+// DEFINITIONS PLACED AFTER THEIR USE. $TAP and $GUEST_MAC were assigned below the heredoc that
+// writes vm.json, so both expanded EMPTY and Firecracker refused a blank guest_mac outright. The
+// refusal was loud, exact and named the field and column, which is the only reason it cost one run.
+data defect_use_before_definition: NonEmptyStr = "the network variables were defined after the configuration heredoc that consumed them; Firecracker refused the blank MAC by name and column"
+
+// A NAME TRUNCATED RATHER THAN BUILT SHORT. Deriving the interface name from the full attempt id and
+// cutting to the 15-character limit produced a trailing dash -- functional, and indistinguishable
+// from corruption in a diagnostic. It is now composed short.
+data defect_truncated_interface_name: NonEmptyStr = "the tap name was cut to the 15-character limit and ended in a dash; it worked and read like corruption"
+
+// ── standing ────────────────────────────────────────────────────────────────────────────────────
+
+data guest_network_closed: List<NonEmptyStr> = [
+  "the guest mounts its squashfs root read-only and runs /sbin/init",
+  "systemd 255.4 reaches system mode on arm64 inside the guest",
+  "an attempt-scoped host TAP carries traffic to the guest, three of three pings, ARP resolved to the configured guest MAC",
+  "the tap is absent from the host after retirement",
+  "cgroup placement remained bidirectional across a run that now includes networking",
+]
+
+data guest_network_open: List<NonEmptyStr> = [
+  "any guest service listening on a port -- ICMP is answered by the guest kernel and establishes no service",
+  "egress policy: the guest has a route to the host and nothing filters it, which is not the default-deny the isolation profile requires",
+  "the guest's own process population, which is arbitrary by design and bounded only by its envelope",
+  "a JIT-registered Actions runner, which is the next thing the guest has to carry",
+  "whether the deadline is the right lifetime at all once a real job decides when it is finished",
+]

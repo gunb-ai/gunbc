@@ -92,11 +92,16 @@ data node_outlives_medium: NonEmptyStr = "sr0 remained in the host's block-devic
 // its own and was not asked to -- a guest that must cooperate to be stopped is exactly what a
 // runner host cannot rely on, so the host ending it unilaterally is the property under test.
 //
-// WHAT IT ALSO MEANS, stated so the same line is not read as two good things at once: the guest did
-// NOT complete its boot. It reached its kernel and was still running when the deadline arrived, so
-// root mounting and guest userspace remain unobserved exactly as they were after the previous
-// probe. The deadline working and the guest finishing are different facts and only the first is
-// established here.
+// WHAT IT ALSO MEANS, stated so the same line is not read as two good things at once: the guest was
+// still running when the deadline arrived, so it did not finish on its own and root mounting and
+// guest userspace remain unobserved by THIS attempt. The deadline working and the guest finishing
+// are different facts and only the first is established here.
+//
+// AN EARLIER REVISION SAID "the guest did NOT complete its boot", which went beyond unobserved into
+// a claim about what the guest was doing -- inferred from rc=137 and a head-only read of the guest
+// log. A later run reading the full log found the guest mounting its root and reaching systemd, so
+// the deadline was firing on a healthy guest. The unobserved standing here is right; that added
+// sentence was not, and is withdrawn rather than restated.
 type AttemptTermination {
   launcher_exit_code: Int
   terminated_by: NonEmptyStr
@@ -121,7 +126,7 @@ data attempt_census_form: NonEmptyStr = "the process population was enumerated b
 // ── what this run still does not establish ──────────────────────────────────────────────────────
 
 data independence_not_established: List<NonEmptyStr> = [
-  "that the guest mounted its root filesystem or reached userspace -- it was killed at the deadline while still early in boot",
+  "that the guest mounted its root filesystem or reached userspace -- NOT observed by this attempt, which read only the head of the guest log. An earlier revision added that it was killed WHILE STILL EARLY IN BOOT; that was inferred rather than measured, and a later run reading the full log found the guest reaching systemd. The unobserved standing is correct; the reason attached to it was not.",
   "any production containment: the jailer was in the image and NOT in the launch path, as the qualification profile permits",
   "any networking, on the host or in the guest",
   "that a SECOND attempt can run after the first, which is what a runner actually does",

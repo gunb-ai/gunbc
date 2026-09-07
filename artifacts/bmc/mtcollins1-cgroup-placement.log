@@ -1,0 +1,229 @@
+=== attempt slice5-cgroup: placement written with the parent's pid (the defect) ===
+nmounted=yes
+/init: line 146: can't create /sys/fs/cgroup/gunbc/attempt-slice5-cgroup-ae62a97c/cpu.max: Permission denied
+cgroup-leaf=/sys/fs/cgroup/gunbc/attempt-slice5-cgroup-ae62a97c
+cgroup-memory-max=1073741824
+cgroup-cpu-max=
+cgroup-pids-max=64
+guest-boot-begin attempt=slice5-cgroup-ae62a97c via=jailer
+launcher-pid=1669
+firecracker-pid=1669 after 0s
+=== LIVE CENSUS BEGIN ===
+--- identity and lineage ---
+live-comm=firecracker
+live-exe=/firecracker
+live-root=/
+live-ppid=PPid:	1
+launcher-still-present=yes
+--- privilege: the axes the last receipt could not read ---
+Uid:	1000	1000	1000	1000
+Gid:	1000	1000	1000	1000
+Groups:	 
+CapInh:	0000000000000000
+CapPrm:	0000000000000000
+CapEff:	0000000000000000
+CapBnd:	000001ffffffffff
+CapAmb:	0000000000000000
+NoNewPrivs:	1
+Seccomp:	2
+--- cgroup membership, while alive, BOTH directions ---
+live-cgroup=0::/
+live-cgroup-procs=1 2369 2370 2371 
+placement-forward=NO process-names-attempt-cgroup
+placement-reverse=NO attempt-cgroup-lists-process
+placement-verdict=NOT-ESTABLISHED
+live-memory-current=11796480
+live-memory-max=1073741824
+--- namespace inodes, host vs jailed ---
+ns-mnt host=mnt:[4026531841] jailed=mnt:[4026533570] verdict=DIFFERENT
+ns-pid host=pid:[4026531836] jailed=pid:[4026531836] verdict=SHARED
+ns-net host=net:[4026531840] jailed=net:[4026531840] verdict=SHARED
+ns-user host=user:[4026531837] jailed=user:[4026531837] verdict=SHARED
+ns-ipc host=ipc:[4026531839] jailed=ipc:[4026531839] verdict=SHARED
+ns-uts host=uts:[4026531838] jailed=uts:[4026531838] verdict=SHARED
+ns-cgroup host=cgroup:[4026531835] jailed=cgroup:[4026531835] verdict=SHARED
+--- open files ---
+fd 0 -> /dev/null
+fd 1 -> /run/guest.log
+fd 10 -> /dev/kvm
+fd 11 -> anon_inode:kvm-vm
+fd 12 -> anon_inode:[eventfd]
+fd 13 -> anon_inode:[eventfd]
+fd 14 -> anon_inode:kvm-vcpu:0
+fd 15 -> anon_inode:kvm-arm-vgic-v3
+fd 16 -> anon_inode:kvm-arm-vgic-its
+fd 17 -> anon_inode:[eventfd]
+fd 18 -> anon_inode:[eventfd]
+fd 19 -> anon_inode:[eventfd]
+fd 2 -> /run/guest.log
+fd 20 -> anon_inode:[eventfd]
+fd 21 -> anon_inode:[eventfd]
+fd 22 -> anon_inode:kvm-vcpu:0
+fd 3 -> anon_inode:[eventpoll]
+fd 4 -> anon_inode:[timerfd]
+fd 6 -> /rootfs.squashfs
+fd 7 -> anon_inode:[timerfd]
+fd 8 -> anon_inode:[eventfd]
+fd 9 -> anon_inode:[eventfd]
+--- mounts visible to the jailed process ---
+tmpfs / tmpfs rw,nosuid,relatime,size=4194304k 0 0
+--- host listening sockets during the attempt ---
+tcp-entries=1
+tcp6-entries=1
+udp-entries=1
+unix-sockets=1
+--- host process population during the attempt ---
+PID   PPID  USER     COMMAND
+    1     0 0        init
+ 1669     1 1000     firecracker
+ 1714     1 0        busybox
+ 2443     1 0        busybox
+ 2444     1 0        busybox
+=== LIVE CENSUS END ===
+Killed
+guest-boot-end rc=137
+--- guest evidence ---
+2026-09-06T23:14:56.321726920 [slice5-cgroup-ae62a97c:main] Running Firecracker v1.16.1
+2026-09-06T23:14:56.333750960 [slice5-cgroup-ae62a97c:main] Successfully started microvm that was configured from one single json
+[    0.000000] Booting Linux on physical CPU 0x0000000000 [0x413fd0c1]
+[    0.000000] smccc: KVM: hypervisor services detected (0x00000000 0x00000000 0x00000000 0x00000003)
+--- containment observations, AFTER the attempt ---
+post-cgroup-procs=1 2472 2473 2474 
+post-cgroup-empty=NO
+post-cgroup-removed=NO
+post-jail-chroot=dev firecracker firecracker.pid rootfs.squashfs run sys vm.json vmlinux 
+--- process census after attempt ---
+PID   PPID  USER     COMMAND
+    1     0 0        init
+ 2483     1 0        busybox
+ 2484     1 0        busybox
+surviving-firecracker=0
+surviving-jailer=0
+jail-removed=yes
+marker-end=gunbc-runner-host-boot
+===================================================
+
+
+
+BusyBox v1.36.1 (Ubuntu 1:1.36.1-6ubuntu3.1) built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+sh: can't access tty; job control turned off
+~ # 
+Session terminated, killing shell... ...killed.
+
+
+=== attempt slice5b-cgroup: placement established bidirectionally ===
+up-root-controllers=cpuset cpu io memory hugetlb pids
+cgroup-root-subtree=cpu memory pids
+cgroup-gunbc-subtree=cpu memory pids
+cgroup-leaf-controllers=cpu memory pids
+cgroup-memory-max=1073741824
+cgroup-cpu-max=
+cgroup-pids-max=64
+guest-boot-begin attempt=slice5b-cgroup-77e659df via=jailer
+launcher-pid=1694
+firecracker-pid=1694 after 0s
+=== LIVE CENSUS BEGIN ===
+--- identity and lineage ---
+live-comm=firecracker
+live-exe=/firecracker
+live-root=/
+live-ppid=PPid:	1
+launcher-still-present=yes
+--- privilege: the axes the last receipt could not read ---
+Uid:	1000	1000	1000	1000
+Gid:	1000	1000	1000	1000
+Groups:	 
+CapInh:	0000000000000000
+CapPrm:	0000000000000000
+CapEff:	0000000000000000
+CapBnd:	000001ffffffffff
+CapAmb:	0000000000000000
+NoNewPrivs:	1
+Seccomp:	2
+--- cgroup membership, while alive, BOTH directions ---
+live-cgroup=0::/gunbc/attempt-slice5b-cgroup-77e659df
+live-cgroup-procs=1694 1729 
+placement-forward=yes process-names-attempt-cgroup
+placement-reverse=yes attempt-cgroup-lists-process
+placement-verdict=BIDIRECTIONAL
+live-memory-current=88010752
+live-memory-max=1073741824
+--- namespace inodes, host vs jailed ---
+ns-mnt host=mnt:[4026531841] jailed=mnt:[4026533570] verdict=DIFFERENT
+ns-pid host=pid:[4026531836] jailed=pid:[4026531836] verdict=SHARED
+ns-net host=net:[4026531840] jailed=net:[4026531840] verdict=SHARED
+ns-user host=user:[4026531837] jailed=user:[4026531837] verdict=SHARED
+ns-ipc host=ipc:[4026531839] jailed=ipc:[4026531839] verdict=SHARED
+ns-uts host=uts:[4026531838] jailed=uts:[4026531838] verdict=SHARED
+ns-cgroup host=cgroup:[4026531835] jailed=cgroup:[4026531835] verdict=SHARED
+--- open files ---
+fd 0 -> /dev/null
+fd 1 -> /run/guest.log
+fd 10 -> /dev/kvm
+fd 11 -> anon_inode:kvm-vm
+fd 12 -> anon_inode:[eventfd]
+fd 13 -> anon_inode:[eventfd]
+fd 14 -> anon_inode:kvm-vcpu:0
+fd 15 -> anon_inode:kvm-arm-vgic-v3
+fd 16 -> anon_inode:kvm-arm-vgic-its
+fd 17 -> anon_inode:[eventfd]
+fd 18 -> anon_inode:[eventfd]
+fd 19 -> anon_inode:[eventfd]
+fd 2 -> /run/guest.log
+fd 20 -> anon_inode:[eventfd]
+fd 21 -> anon_inode:[eventfd]
+fd 22 -> anon_inode:kvm-vcpu:0
+fd 3 -> anon_inode:[eventpoll]
+fd 4 -> anon_inode:[timerfd]
+fd 6 -> /rootfs.squashfs
+fd 7 -> anon_inode:[timerfd]
+fd 8 -> anon_inode:[eventfd]
+fd 9 -> anon_inode:[eventfd]
+--- mounts visible to the jailed process ---
+tmpfs / tmpfs rw,nosuid,relatime,size=4194304k 0 0
+--- host listening sockets during the attempt ---
+tcp-entries=1
+tcp6-entries=1
+udp-entries=1
+unix-sockets=1
+--- host process population during the attempt ---
+PID   PPID  USER     COMMAND
+    1     0 0        init
+ 1694     1 1000     firecracker
+ 1729     1 0        busybox
+ 2495     1 0        busybox
+ 2496     1 0        busybox
+=== LIVE CENSUS END ===
+Killed
+guest-boot-end rc=137
+--- guest evidence ---
+2026-09-06T23:24:40.261580880 [slice5b-cgroup-77e659df:main] Running Firecracker v1.16.1
+2026-09-06T23:24:40.277066560 [slice5b-cgroup-77e659df:main] Successfully started microvm that was configured from one single json
+[    0.000000] Booting Linux on physical CPU 0x0000000000 [0x413fd0c1]
+[    0.000000] smccc: KVM: hypervisor services detected (0x00000000 0x00000000 0x00000000 0x00000003)
+--- containment observations, AFTER the attempt ---
+post-cgroup-procs=
+post-cgroup-empty=yes
+post-cgroup-removed=yes
+post-jail-chroot=dev firecracker firecracker.pid rootfs.squashfs run sys vm.json vmlinux 
+--- process census after attempt ---
+PID   PPID  USER     COMMAND
+    1     0 0        init
+ 2536     1 0        busybox
+ 2537     1 0        busybox
+surviving-firecracker=0
+surviving-jailer=0
+jail-removed=yes
+marker-end=gunbc-runner-host-boot
+===================================================
+
+
+
+BusyBox v1.36.1 (Ubuntu 1:1.36.1-6ubuntu3.1) built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+sh: can't access tty; job control turned off
+~ # 
+Session terminated, killing shell... ...killed.
