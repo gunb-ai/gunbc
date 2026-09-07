@@ -1,0 +1,21 @@
+module gunbc.guarantee_stall.self_host_hand_authorized_driver_source_stall
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation }
+
+// DECLARED 2026-09-06. The seed-unavailable transport's Rust driver (slbu_driver_main_source)
+// is HAND-AUTHORED as a string literal — medium-as-string per DESIGN §3. Unlike the
+// hand-authored Cargo.toml there is no emitter-produced test driver to drift from today,
+// but the terminal architecture is the same: the emitter produces behavioral drivers from
+// the modeled source. The ceiling is structurally guaranteed: the emitter produces a
+// behavioral witness driver for a modeled subject from the modeled source.
+data self_host_hand_authorized_driver_source_stall: GuaranteeStall = GuaranteeStall {
+  subject: "hand-authored Rust test driver in the seed-unavailable transport — medium-as-string behavioral harness for dag/std/logic.dag",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding { grounding: "the emitter produces a behavioral witness driver for a modeled subject from the modeled source" },
+  population: BoundedPopulation { members: [
+    "dag/gunbc/instruments/self_host_logic_seed_unavailable_transport.dag — the transport hosting the hand-authored driver (slbu_driver_main_source)",
+  ] },
+  next_rung_trigger: "The emitter produces a behavioral witness driver for a modeled subject from the modeled source, SUFFICIENT FOR the hand-authored Rust string to be replaced by a reference to the emitted driver.",
+}
