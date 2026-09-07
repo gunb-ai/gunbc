@@ -53,8 +53,8 @@ fn apply_decision() -> UpsertDecision<String> {
 // proof that the legs ran. Here it is a String because these witnesses are about the generic truth table, and the
 // point being fixed is that the Apply route now demands a REPORTED evidence value at all rather than a Bool
 // any caller could write.
-fn reported_application() -> Application<String> {
-  Applied { evidence: "actuator receipt" }
+fn reported_application() -> Application {
+  Applied
 }
 
 // THE DISCRIMINATING RED. The application is REPORTED as applied with evidence, and the carrier still

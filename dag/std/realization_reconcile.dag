@@ -147,19 +147,41 @@ type ReconciledEffect<P, E> sole_constructor {
 // derives neither from the other, and an earlier revision of this line said "rather than from
 // anything asserted", which claimed an independence std does not have.
 
-type Application<A>
+// A LIFECYCLE DISCRIMINATOR AND NOTHING MORE, and the honest description matters because an earlier
+// revision carried a payload here. Applied used to be Applied { evidence: A }, justified as making it
+// impossible to "get a CONVERGED receipt merely by writing a Bool". That justification did not
+// survive review: NO FOLD READ THE PAYLOAD. All three matches below discarded it, ReconciledEffect
+// stores only applied: Bool, and ConvergedEffect's evidence field is the GROUNDING evidence from
+// Grounding<E>, not this one -- so the value never reached any sink, and Applied { evidence: "" } was
+// exactly as writable as applied: true. The type parameter bought a rename of the Boolean, which is
+// DESIGN 3c's dangling declaration: a data row no fold reads.
+//
+// So it is dropped rather than carried further. Carrying it into ReconciledEffect would have invented
+// a consumer no production caller feeds -- ensure_reconcile only forwards it and
+// roadmap_dispatch_environment passes NotApplied -- which moves the dangling declaration up a level
+// instead of removing it. What genuinely earns its keep is the REFUSAL TABLE below: Noop-with-an-
+// application and Refuse-with-an-application are real lifecycle contradictions that a Bool in a
+// separate field could not express as one argument. This arm names which lifecycle branch the caller
+// reports; it does not make the report harder to fabricate than a Bool, and does not claim to.
+type Application
   = NotApplied
-  | Applied { evidence: A }
+  | Applied
 
-// Refuse and an unapplied Apply are NOT delegated to the grounding predicate. Passing them through
-// reconcile_grounded would let a caller that refused, then observed some unrelated satisfying state,
-// mint Converged — the readback would ground and nothing would record that the effect never ran. So
-// each is answered from the decision alone, and only a decided-and-applied Apply, or a Noop, is
-// allowed to reach the observation.
+// Refuse, and an Apply reported as not applied, are NOT delegated to the grounding predicate. Passing
+// them through reconcile_grounded would let a caller that refused and then reported a satisfying read
+// mint Converged — the read would ground and nothing would record the contradiction. So each is
+// answered from the decision alone, and only an Apply reported as applied, or a Noop, reaches the
+// read report.
+//
+// THE REFUSAL REASONS BELOW SAY "an application was REPORTED", not "an effect was applied anyway".
+// They are runtime strings, so they are receipts, and std knows only which arm the caller passed --
+// it never observes an effect. An earlier revision of all three asserted effect history, which is the
+// same defect as the roadmap receipt this PR corrected: a stale comment misleads a maintainer, a
+// stale receipt misleads whoever acts on the refusal.
 
-fn reconcile_effect<P, A, R, E>(
+fn reconcile_effect<P, R, E>(
   decision: UpsertDecision<P>,
-  application: Application<A>,
+  application: Application,
   show_read: ShowEffectiveRead<R>,
   grounding: Grounding<E>,
 ) -> ReconciledEffect<P, E> {
@@ -172,12 +194,12 @@ fn reconcile_effect<P, A, R, E>(
             applied: false,
             outcome: NotConverged { reason: why as String, applied: false },
           }
-        Applied { evidence: _ } =>
+        Applied =>
           ReconciledEffect {
             decision: decision,
             applied: true,
             outcome: NotConverged {
-              reason: "reconcile_effect: the decision refused and an effect was applied anyway",
+              reason: "reconcile_effect: the decision refused and an application was reported",
               applied: true,
             },
           }
@@ -190,12 +212,12 @@ fn reconcile_effect<P, A, R, E>(
             applied: false,
             outcome: reconcile_grounded(apply_effect: false, show_read: show_read, grounding: grounding),
           }
-        Applied { evidence: _ } =>
+        Applied =>
           ReconciledEffect {
             decision: decision,
             applied: true,
             outcome: NotConverged {
-              reason: "reconcile_effect: Noop decided and an effect was applied anyway",
+              reason: "reconcile_effect: Noop decided and an application was reported",
               applied: true,
             },
           }
@@ -207,11 +229,11 @@ fn reconcile_effect<P, A, R, E>(
             decision: decision,
             applied: false,
             outcome: NotConverged {
-              reason: "reconcile_effect: Apply decided but the effect was not applied",
+              reason: "reconcile_effect: Apply decided but the application was reported as not applied",
               applied: false,
             },
           }
-        Applied { evidence: _ } =>
+        Applied =>
           ReconciledEffect {
             decision: decision,
             applied: true,
