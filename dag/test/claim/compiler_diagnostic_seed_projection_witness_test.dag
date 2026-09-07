@@ -42,7 +42,7 @@ fn well_formed_plant() -> List<SeedGrowthChangeDisposition> {
         field: WholeDeclaration
       },
       dag_authority: DeclarationRef {
-        module_path: "v1.compiler.core" as NonEmptyStr,
+        module_path: "v1.std.core" as NonEmptyStr,
         decl_name: "CompilerDiagnostic" as NonEmptyStr,
         field: WholeDeclaration
       },
@@ -71,14 +71,14 @@ test fn a_modeled_capability_row_is_refused() -> Bool {
         field: WholeDeclaration
       },
       dag_authority: DeclarationRef {
-        module_path: "v1.compiler.core" as NonEmptyStr,
+        module_path: "v1.std.core" as NonEmptyStr,
         decl_name: "CompilerDiagnostic" as NonEmptyStr,
         field: WholeDeclaration
       },
       capability_origin: ModeledCapability {
         origin: CapabilityPresentOnBase {
           authority: DeclarationRef {
-            module_path: "v1.compiler.core" as NonEmptyStr,
+            module_path: "v1.std.core" as NonEmptyStr,
             decl_name: "CompilerDiagnostic" as NonEmptyStr,
             field: WholeDeclaration
           }
