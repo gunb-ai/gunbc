@@ -598,16 +598,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_wildcard_total,
   },
   FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/instruments/ci_gates.dag::exit_ok" },
-    reason: nfr_reason_mint_era,
-    dissolution: nfr_dissolve_wildcard_total,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/instruments/generated_artifact_gate.dag::exit_ok" },
-    reason: nfr_reason_mint_era,
-    dissolution: nfr_dissolve_wildcard_total,
-  },
-  FrontierRow {
     subject: PathSubject { path: "src/v2/compiler/01_tokenize.dag::lex_try_rules_prefer_longer" },
     reason: nfr_reason_mint_era,
     dissolution: nfr_dissolve_wildcard_total,

@@ -1,0 +1,146 @@
+module test.claim.repository_bootstrap_wet_witness_test
+
+import std.types { String, Bool, Int, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.output_policy { OutcomeIsData }
+import gunbc.retained_shell_script { retained_runtime }
+import gunbc.live_deploy.repository_convergence { repository_converge_wet }
+import extdeps.shell
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// EXECUTION EVIDENCE FOR THE FRESH-HOST BOOTSTRAP, and it is the only kind that can close
+// gunbc.guarantee_stall.deployed_repository_empty_root_bootstrap_stall. That stall's next-rung
+// trigger asks for HEAD, index and tracked worktree read back as one revision; every step of the
+// transition can exit zero without that being true, so nothing but a real run answers it. Hermetic
+// execution must refuse this file, and mocking the git transport to let it run hermetically would
+// pass it against a fabricated exit status -- the precise fabricated-plausible-output failure the
+// witness exists to catch.
+//
+// THE FIXTURE AUTHORS NO ANSWER. It builds a source repository with ordinary git commands and
+// leaves the target as a directory that exists and holds nothing. Every fact the assertions read --
+// whether the pre-state faulted, whether the root was empty, what HEAD resolves to afterwards, what
+// the index and tracked worktree hold -- is produced by repository_converge_wet's own observation
+// chain, not by this witness.
+//
+// Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry
+// dag/test/claim/repository_bootstrap_wet_witness_test.dag --functions <comma-joined>.
+type BootstrapScratch {
+  root: String
+  repo: String
+  source: String
+  candidate: String
+}
+
+fn line_at(raw: String, index: Int) -> String {
+  fold(
+    split(s: raw, delimiter: "\n"),
+    init: LineScan { at: 0, found: "" },
+    f: (acc, l) => LineScan { at: acc.at + 1, found: if acc.at == index { trim(s: l) } else { acc.found } },
+  ).found
+}
+
+type LineScan {
+  at: Int
+  found: String
+}
+
+// `populated` decides the discriminating half: an empty target directory is the bootstrap subject,
+// and a target holding a stray file is NOT -- it is the rsync-era partial state whose repair is not
+// `git init`, and it must still refuse with the pre-state cause it always refused with.
+fn bootstrap_scratch(populated: Bool) -> BootstrapScratch? {
+  let flag = if populated { "1" } else { "0" }
+  let result = shell.Exec.Run(
+    script: retained_runtime(
+      body: join([
+        "set -eu",
+        "root=$(mktemp -d)",
+        "source=$root/source",
+        "repo=$root/repo",
+        "git init -q $source",
+        "git -C $source config user.email witness@example.invalid",
+        "git -C $source config user.name witness",
+        "printf candidate-bytes > $source/tracked",
+        "git -C $source add tracked",
+        "git -C $source commit -qm candidate",
+        "candidate=$(git -C $source rev-parse HEAD)",
+        "mkdir -p $repo",
+        concat("set -- ", flag),
+        "if [ $1 = 1 ]; then printf stray > $repo/stray-file; fi",
+        "printf '%s\\n%s\\n%s\\n%s\\n' $root $repo $source $candidate",
+      ], "\n"),
+      reason: "fresh-host repository bootstrap scratch fixture" as NonEmptyStr,
+    ),
+    expect: OutcomeIsData,
+  )
+  if result.success {
+    Present { value: BootstrapScratch {
+      root: line_at(raw: result.stdout, index: 0),
+      repo: line_at(raw: result.stdout, index: 1),
+      source: line_at(raw: result.stdout, index: 2),
+      candidate: line_at(raw: result.stdout, index: 3),
+    } }
+  } else { none }
+}
+
+fn run_bootstrap(s: BootstrapScratch) -> ProcessExit {
+  repository_converge_wet(
+    repo: s.repo,
+    remote: s.source,
+    base_ref: "refs/remotes/origin/main",
+    candidate: s.candidate,
+  )
+}
+
+fn probe_scratch(s: BootstrapScratch, body: String) -> Bool {
+  shell.Exec.Run(
+    script: retained_runtime(body: body, reason: "fresh-host bootstrap readback probe" as NonEmptyStr),
+    expect: OutcomeIsData,
+  ).success
+}
+
+fn remove_scratch(s: BootstrapScratch) -> Bool {
+  probe_scratch(s: s, body: join(["set -eu", concat("rm -rf ", s.root)], "\n"))
+}
+
+// THE READBACK IS THE CLAIM. Exit success alone would only say the transition believed itself; these
+// three facts are what the stall names, checked from outside the transition: HEAD at the candidate,
+// an index that reports no difference against it, and the tracked file holding the candidate's own
+// bytes rather than an empty checkout.
+test fn an_empty_root_is_bootstrapped_to_the_candidate_and_reads_back_as_that_revision() -> Bool {
+  match bootstrap_scratch(populated: false) {
+    Absent => false
+    Present { value: s } => {
+      let outcome = run_bootstrap(s: s)
+      let read_back = probe_scratch(s: s, body: join([
+        "set -eu",
+        concat("test \"$(git -C ", concat(s.repo, concat(" rev-parse HEAD)\" = ", s.candidate))),
+        concat("git -C ", concat(s.repo, " diff --quiet HEAD --")),
+        concat("test \"$(cat ", concat(s.repo, "/tracked)\" = candidate-bytes")),
+      ], "\n"))
+      let cleaned = remove_scratch(s: s)
+      match outcome { ExitSuccess => read_back && cleaned  ExitFailure { reason: _ } => false }
+    }
+  }
+}
+
+// THE DISCRIMINATOR, and without it the arm above would pass just as well if the bootstrap had
+// simply replaced the pre-state refusal. A directory holding a stray file is not empty, so it is
+// not a bootstrap subject, and the transition must still refuse -- leaving the stray file untouched,
+// which is what proves nothing was initialized over somebody else's bytes.
+test fn a_root_holding_content_without_a_repository_still_refuses_and_is_not_initialized() -> Bool {
+  match bootstrap_scratch(populated: true) {
+    Absent => false
+    Present { value: s } => {
+      let outcome = run_bootstrap(s: s)
+      let untouched = probe_scratch(s: s, body: join([
+        "set -eu",
+        concat("test \"$(cat ", concat(s.repo, "/stray-file)\" = stray")),
+        concat("test ! -e ", concat(s.repo, "/.git")),
+      ], "\n"))
+      let cleaned = remove_scratch(s: s)
+      match outcome { ExitFailure { reason: _ } => untouched && cleaned  ExitSuccess => false }
+    }
+  }
+}

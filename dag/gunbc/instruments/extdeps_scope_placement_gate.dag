@@ -251,7 +251,7 @@ func run_extdeps_scope_placement_gate_body() -> ProcessExit {
 }
 
 // The loudness half (gunbc#7644 diagnosis): the floor witness collapses this gate's ProcessExit to
-// Bool via tools.ci_gates.exit_ok, so ten consecutive main runs reported the bare string 'returned
+// Bool via std.process.exit_ok, so ten consecutive main runs reported the bare string 'returned
 // Bool(false)' and named neither the refusing arm nor the offending path — the located diagnostic
 // scope_placement_gate_verdict already builds was discarded one frame above it. This projects the
 // SAME verdict (one authority, never a second decision path) into the claim_executor
