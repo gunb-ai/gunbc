@@ -2707,7 +2707,7 @@ mod tests {
 
     #[test]
     fn filter_in_branch_condition_refuses_and_does_not_publish_the_module() {
-        let (named, module_published, positive_published, positive_named) =
+        let (named, module_published, positive_published, positive_named, free_named, free_published, free_has_fn) =
             std::thread::Builder::new()
                 .stack_size(16 * 1024 * 1024)
                 .spawn(|| {
@@ -2753,11 +2753,36 @@ mod tests {
                         )
                     });
                     let positive_published = positive.files.iter().any(|f| f.path.contains("fx_any_guard"));
+                    let free_call = emit_one(
+                        "module fx.filter_call_guard\nimport std.types { List, Bool, Int }\nfn f(xs: List<Int>) -> Int {\n  if (filter(xs, x => x > 0) |> count) > 0 {\n    1\n  } else {\n    0\n  }\n}\n",
+                    );
+                    let free_named = free_call.diagnostics.iter().any(|d| {
+                        matches!(
+                            &*d.diagnostic,
+                            crate::v1_std_core::CompilerDiagnostic::EmissionConstructUnprojectable {
+                                construct,
+                                ..
+                            } if matches!(
+                                construct,
+                                crate::v1_std_core::UnprojectableConstruct::FilterInBranchCondition
+                            )
+                        ) && crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())
+                    });
+                    let free_published = free_call
+                        .files
+                        .iter()
+                        .any(|f| f.path.contains("fx_filter_call_guard"));
+                    let free_has_fn = free_call.files.iter().any(|f| {
+                        f.path.contains("fx_filter_call_guard") && f.content.contains("fn f")
+                    });
                     (
                         named,
                         module_published,
                         positive_published,
                         positive_named,
+                        free_named,
+                        free_published,
+                        free_has_fn,
                     )
                 })
                 .expect("spawn projection-refusal thread")
@@ -2774,6 +2799,14 @@ mod tests {
         assert!(
             positive_published && !positive_named,
             "an already-supported guarded any-lambda must still emit its module"
+        );
+        assert!(
+            free_named,
+            "free-call algebra filter in a branch condition must refuse with EmissionConstructUnprojectable"
+        );
+        assert!(
+            !free_published && !free_has_fn,
+            "the refused free-call module must be absent from EmitResult.files"
         );
     }
 

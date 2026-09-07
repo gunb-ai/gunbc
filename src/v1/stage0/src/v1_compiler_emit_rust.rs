@@ -10521,6 +10521,21 @@ pub fn is_algebra_filter_method(
     }
 }
 
+pub fn is_algebra_filter_declaration_call(cs: Option<Rc<CallSemantics>>) -> bool {
+    match (*call_semantics_target(cs.clone())).clone() {
+        CallTargetIdentity::SourceDeclarationCall {
+            owner_module_path: owner,
+            decl_name: decl,
+            ..
+        } => {
+            ((decl.clone() == "filter".to_string())
+                && ((owner.clone() == "v2.std.algebra".to_string())
+                    || (owner.clone() == "std.algebra".to_string())))
+        }
+        _ => false,
+    }
+}
+
 pub fn collect_filter_method_calls(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -10532,6 +10547,15 @@ pub fn collect_filter_method_calls(
                 ..
             } => {
                 if is_algebra_filter_method(method_semantics.clone(), source_indices.clone()) {
+                    Rc::new(vec![n.clone()])
+                } else {
+                    Rc::new(vec![])
+                }
+            }
+            ExprData::ExprCall {
+                call_semantics: cs, ..
+            } => {
+                if is_algebra_filter_declaration_call(cs.clone()) {
                     Rc::new(vec![n.clone()])
                 } else {
                     Rc::new(vec![])
