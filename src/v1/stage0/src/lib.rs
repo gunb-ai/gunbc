@@ -796,7 +796,6 @@ pub mod v1_tests_claim_checkpoint_identity_keying_witness_test;
     suspicious_double_ref_op,
     clippy::all
 )]
-pub mod v1_tests_claim_emission_provenance_extent_test;
 #[allow(
     unused_imports,
     unused_variables,
