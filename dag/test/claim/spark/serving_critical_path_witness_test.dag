@@ -12,8 +12,10 @@ import gunbc.spark.serving_critical_path {
   EffectiveSchedulerConfigStanding, EffectiveSchedulerConfigRead, EffectiveSchedulerConfigUnread,
   ConcurrencyWitness, co_tenant_present,
   PrefillScalingSample, PrefillScalingExperiment, spark_group_a_prefill_scaling_experiment,
-  SampleStanding, ProbeWorkIsolated, NoForeignCachedBookingObserved, ForeignCachedBookingObserved,
-  sample_standing, probe_isolation_admissible, admitted_scaling_samples,
+  SampleStanding, ProbeAloneAtObservedConcurrencyGrain, NoForeignCachedBookingObserved,
+  ForeignCachedBookingObserved, sample_standing, probe_alone_at_observed_grain, admitted_scaling_samples,
+  ExperimentLaunchBinding, ExperimentLaunchBound, ExperimentLaunchUnbound,
+  ExperimentJoinability, JoinableByLaunch, NotJoinable, experiment_joinability,
   AffineFit, PrefillScalingStanding, SharedEngineAffineDescription, ScalingUnderObserved,
   prefill_scaling_standing, predicted_micros, abs_int, affine_worst_residual_micros,
   StepAwareFitCandidate, spark_group_a_step_aware_alternative,
@@ -82,10 +84,12 @@ test fn co_tenancy_is_read_from_the_field_rather_than_assumed() -> Bool {
 // not for their concurrency, which matched admitted windows exactly.
 test fn admission_earns_the_weak_standing_and_isolation_is_a_population_of_one() -> Bool {
   let all = spark_group_a_prefill_scaling_experiment.ordered_samples
-  length(filter(all, s => probe_isolation_admissible(s: s))) == 1
+  length(filter(all, s => probe_alone_at_observed_grain(s: s))) == 1
     && length(admitted_scaling_samples()) == 10
-    && fold(admitted_scaling_samples(), init: true, f: (acc, s) =>
-         acc && (match sample_standing(s: s) { NoForeignCachedBookingObserved => true  _ => false }))
+    && length(filter(admitted_scaling_samples(), s =>
+         match sample_standing(s: s) { NoForeignCachedBookingObserved => true  _ => false })) == 9
+    && length(filter(admitted_scaling_samples(), s =>
+         match sample_standing(s: s) { ProbeAloneAtObservedConcurrencyGrain => true  _ => false })) == 1
     && length(filter(all, s => match sample_standing(s: s) { ForeignCachedBookingObserved { cached_tokens: c } => c > 100000  _ => false })) == 2
 }
 
@@ -98,11 +102,26 @@ test fn the_experiment_binds_its_subject_and_refuses_the_unread_config() -> Bool
      EffectiveSchedulerConfigRead { max_num_batched_tokens: _, source: _ } => false
    })
     && length(spark_group_a_prefill_scaling_experiment.ordered_samples) == 12
-    && string_contains(s: spark_group_a_prefill_scaling_experiment.launch as String, pattern: "192.168.1.225")
+    && (match spark_group_a_prefill_scaling_experiment.launch {
+          ExperimentLaunchUnbound { observed_invocation: i, missing: _ } => string_contains(s: i as String, pattern: "192.168.1.225")
+          ExperimentLaunchBound { launch: _ } => false
+        })
     && (match first(spark_group_a_prefill_scaling_experiment.ordered_samples) {
           Absent => false
           Present { value: f } => f.sequence == 1 && f.computed_tokens == 1491
         })
+}
+
+// AND THE UNBOUND LAUNCH MAKES THE EXPERIMENT UNJOINABLE, which is what stops the binding being
+// decorative. Because the sweep never captured the unit and base-image digests, no VllmServingLaunch
+// exists for it, so nothing may compare these samples against a measurement from another launch by
+// identity. A prose description of the head would have permitted exactly that comparison while
+// looking like provenance.
+test fn the_unbound_launch_refuses_to_join_this_experiment_to_anything() -> Bool {
+  match experiment_joinability(e: spark_group_a_prefill_scaling_experiment) {
+    JoinableByLaunch { launch: _ } => false
+    NotJoinable { because: b } => string_contains(s: b as String, pattern: "may not be joined by launch identity")
+  }
 }
 
 // THE FIT IS DERIVED, NOT WRITTEN DOWN. This is the discriminator against the module it replaced,

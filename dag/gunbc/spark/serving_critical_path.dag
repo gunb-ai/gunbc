@@ -6,6 +6,7 @@ import v2.std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import gunbc.spark.vllm_serving_launch { VllmServingLaunch }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "docs.nvidia.com/dgx/dgx-spark/hardware.html" }
@@ -108,9 +109,20 @@ fn power_below_ceiling_excludes_saturation() -> ClaimConstruction {
 // WHAT THE SAMPLES ARE BOUND TO MATTERS AS MUCH AS THEIR VALUES. A bare global list of rows is not a
 // subject: a row taken from another launch, another runtime image, another scheduler budget or the
 // other engine group could join it and silently move the fit. So the rows hang off one experiment
-// carrying the launch, the provenance standing, the acquisition procedure and -- critically -- the
-// standing of the EFFECTIVE scheduler configuration, which was never read back from the running
-// engine and therefore is not known.
+// carrying the acquisition procedure, the launch binding and -- critically -- the standing of the
+// EFFECTIVE scheduler configuration, which was never read back from the running engine.
+//
+// THE LAUNCH BINDING IS A STANDING, NOT A STRING. An earlier version described the launch in prose,
+// which names it without joining to it: gunbc.spark.vllm_serving_launch exists precisely so that two
+// observations can be compared by identity rather than by co-location. But this sweep re-read only
+// the systemd invocation; it never captured the unit and base-image digests a VllmServingLaunch
+// requires. Fabricating them to satisfy the type would be worse than not binding, so the unbound arm
+// carries what WAS observed and names what was not -- and a future capture constructs the bound arm
+// without this type changing.
+type ExperimentLaunchBinding
+  = ExperimentLaunchBound { launch: VllmServingLaunch }
+  | ExperimentLaunchUnbound { observed_invocation: NonEmptyStr, missing: NonEmptyStr }
+
 type EffectiveSchedulerConfigStanding
   = EffectiveSchedulerConfigRead { max_num_batched_tokens: Nat, source: NonEmptyStr }
   | EffectiveSchedulerConfigUnread { because: NonEmptyStr }
@@ -147,35 +159,65 @@ type PrefillScalingSample {
 // a future probe with legitimate cache reuse of its own would be rejected as foreign.
 //
 // So the standing an admitted sample earns is NoForeignCachedBookingObserved, and the fit built from
-// those samples is a SHARED-ENGINE DESCRIPTIVE FIT. ProbeWorkIsolated is a separate standing that
-// nothing in this population attains, and it is what an isolated fit would require.
+// those samples is a SHARED-ENGINE DESCRIPTIVE FIT.
+//
+// THE STRONGEST STANDING IS NAMED FOR ITS GRAIN, because that is exactly how far it reaches. Running
+// and waiting were polled every 300ms; a co-tenant that arrived and departed between two polls leaves
+// no trace. So a window where the probe was the only request SEEN is ProbeAloneAtObservedConcurrency-
+// Grain -- not "isolated", which would claim the gauge resolves what it does not. Calling it isolation
+// is the same over-read as calling a nominal budget an observed one.
 type SampleStanding
-  = ProbeWorkIsolated
+  = ProbeAloneAtObservedConcurrencyGrain
   | NoForeignCachedBookingObserved
   | ForeignCachedBookingObserved { cached_tokens: Nat }
 
+// ONE FUNCTION DECIDES THE STANDING. An earlier version returned only the two weaker arms here and
+// decided the strongest one through a separate Boolean predicate, so a variant existed that nothing
+// could produce and one fact had two representations that could disagree.
 fn sample_standing(s: PrefillScalingSample) -> SampleStanding {
   if s.cached_tokens > 0 {
     ForeignCachedBookingObserved { cached_tokens: s.cached_tokens }
   } else {
-    NoForeignCachedBookingObserved
+    if s.concurrency.max_running == 1 && s.concurrency.max_waiting == 0 {
+      ProbeAloneAtObservedConcurrencyGrain
+    } else {
+      NoForeignCachedBookingObserved
+    }
   }
 }
 
-// PROBE ISOLATION IS DECIDABLE FROM WHAT WAS RECORDED: the probe alone running, nothing waiting, and
-// no foreign booking. Exactly ONE of the twelve windows satisfies it, the 1551-token one. That is not
-// enough to fit anything -- a single point determines neither a slope nor an intercept -- so the fit
-// stays a shared-engine description, and the isolated population is a sample of one rather than
-// empty. The rerun's job is to make that population large enough to fit.
-fn probe_isolation_admissible(s: PrefillScalingSample) -> Bool {
-  s.cached_tokens == 0 && s.concurrency.max_running == 1 && s.concurrency.max_waiting == 0
+// Exactly ONE of the twelve windows reaches that standing, the 1551-token one. A single point
+// determines neither a slope nor an intercept, so the fit stays a shared-engine description and the
+// probe-alone population is a sample of one rather than empty. The rerun's job is to make that
+// population large enough to fit -- and, separately, to poll finely enough that the grain qualifier
+// can be dropped.
+fn probe_alone_at_observed_grain(s: PrefillScalingSample) -> Bool {
+  match sample_standing(s: s) {
+    ProbeAloneAtObservedConcurrencyGrain => true
+    NoForeignCachedBookingObserved => false
+    ForeignCachedBookingObserved { cached_tokens: _ } => false
+  }
 }
 
 type PrefillScalingExperiment {
-  launch: NonEmptyStr
+  launch: ExperimentLaunchBinding
   acquisition: NonEmptyStr
   scheduler_config: EffectiveSchedulerConfigStanding
   ordered_samples: List<PrefillScalingSample>
+}
+
+// A FIT MAY ONLY BE JOINED TO OTHER EVIDENCE THROUGH A BOUND LAUNCH. This is the consequence that
+// makes the binding load-bearing rather than decorative: today it refuses, so nothing may quietly
+// compare these samples against a measurement from another launch.
+type ExperimentJoinability
+  = JoinableByLaunch { launch: VllmServingLaunch }
+  | NotJoinable { because: NonEmptyStr }
+
+fn experiment_joinability(e: PrefillScalingExperiment) -> ExperimentJoinability {
+  match e.launch {
+    ExperimentLaunchBound { launch: l } => JoinableByLaunch { launch: l }
+    ExperimentLaunchUnbound { observed_invocation: _, missing: m } => NotJoinable { because: m }
+  }
 }
 
 // The sequence field records EXECUTION order, which is not the order the rows are written in. The
@@ -183,7 +225,10 @@ type PrefillScalingExperiment {
 // interleaving is a claim in prose that the model cannot distinguish from a sorted run on a drifting
 // machine.
 data spark_group_a_prefill_scaling_experiment: PrefillScalingExperiment = PrefillScalingExperiment {
-  launch: "group A head 192.168.1.225, systemd invocation re-read before and after the sweep and unchanged" as NonEmptyStr,
+  launch: ExperimentLaunchUnbound {
+    observed_invocation: "group A head 192.168.1.225, systemd invocation re-read before and after the sweep and unchanged" as NonEmptyStr,
+    missing: "the unit digest and the unit-pinned base image digest were not captured during this sweep, so no VllmServingLaunch can be constructed and these samples may not be joined by launch identity to any other observation" as NonEmptyStr,
+  },
   acquisition: "one chat completion per window with a 32-character random nonce and random six-letter words so nothing is served from cache, max_tokens 1; computed and cached token deltas read from the served counters either side, running and waiting polled every 300ms throughout" as NonEmptyStr,
   scheduler_config: EffectiveSchedulerConfigUnread {
     because: "max_num_batched_tokens was never read back from the running engine; 2048 is the value the fallback would select, which is a nominal expectation and not an observation, and extdeps.vllm.engine_args already rules that an omitted argument determines no effective value" as NonEmptyStr
@@ -231,7 +276,7 @@ fn admitted_scaling_samples() -> List<PrefillScalingSample> {
     match sample_standing(s: s) {
       ForeignCachedBookingObserved { cached_tokens: _ } => false
       NoForeignCachedBookingObserved => true
-      ProbeWorkIsolated => true
+      ProbeAloneAtObservedConcurrencyGrain => true
     })
 }
 
@@ -294,8 +339,9 @@ fn affine_worst_residual_micros(fit: AffineFit) -> Int {
 // and the samples themselves refute it.
 //
 // A THREE-TERM FIT OVER THE SAME TEN ROWS, adding a step count, lands at roughly 54ms fixed per
-// request, 1.003us per token and 126ms PER STEP -- with a worst residual near 42ms, less than half
-// the affine fit's. So the same data admits a per-step term LARGER than the claimed upper bound while
+// request, 1.003ms per token (1,003 microseconds) and 126ms PER STEP -- with a worst residual near
+// 42ms, less than half the affine fit's. So the same data admits a per-step term LARGER than the
+// claimed upper bound while
 // describing the measurements better. A model's residual error does not bound a term that model
 // omitted; the omitted term is part of what produces the residual.
 //
