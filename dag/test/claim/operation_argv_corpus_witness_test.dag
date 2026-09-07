@@ -34,7 +34,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // Pins below are the executing floor (non-vacuous lower bound, residue count, unexplained == 0),
 // not a restated census total. The expression_residue pin is ArgvRowExpressionResidue only.
 // Materialization also refuses composed argv (calls and coproduct helpers) on operations that
-// pin does not name; git.Plumbing.ReadTreeIntoIndex is the exemplar. Do not read the residue
+// this pin does not name; git.Plumbing.ReadTreeIntoIndex is the exemplar. Do not read the residue
 // pin as the set of operations whose argv is too composed to compare.
 // A second full-corpus rematerialization dedicated to argv-list identity does not fit the
 // required-floor claim CPU deadline (changed-witness interrupted_before_verdict). The tally
