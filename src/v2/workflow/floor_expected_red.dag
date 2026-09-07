@@ -1003,18 +1003,20 @@ fn floor_expected_red_chunk_interpreter_first_optional_divergence() -> List<Stri
 // dag add slice and holds only on `Accepted`, with the emitted node equal to
 // `dag_emitted_add_fn_node()` and no diagnostic carried.
 //
-// A RECEIPT THAT NOW NAMES ITS PRODUCER. At main 3a8344b5c, a throwaway probe module returning
-// each stage's verdict as a Symbol answered `infer_accepted` for `infer(dag_add_emitted_root)`
-// and `infer_grounding_not_derived` for `generate_translate_self_emit_candidate` over that same
-// root and `dag_add_target_model`. Infer ACCEPTS; the composition refuses. The measurement stays
-// because it is a dated receipt about a fixed tree, true of that tree forever. The
-// reproducibility gap this note named as its own next-rung trigger is now CLOSED:
-// `v2.compiler.self_host.candidate_generation_stage_verdicts` `candidate_generation_stage_verdicts`
-// returns the per-stage verdicts for one root and target, and
-// `v2.test.execution.self_host_candidate_generation_stage_verdicts` binds it to this slice --
-// `add_slice_stage_verdicts` the pure entry, `add_slice_stage_verdicts_entry` the runnable
-// `gunbc run --function` form -- so this paragraph names a producer instead of a commit, as
-// DESIGN's name-the-instrument-never-transcribe-its-output ruling requires.
+// A RECEIPT, AND EXPLICITLY NOT AN INSTRUMENT -- stated because DESIGN's
+// name-the-instrument-never-transcribe-its-output ruling reaches this paragraph, and half of it
+// bites here. At main 3a8344b5c, a probe module returning each stage's verdict as a Symbol
+// answered `infer_accepted` for `infer(dag_add_emitted_root)` and `infer_grounding_not_derived`
+// for `generate_translate_self_emit_candidate` over that same root and `dag_add_target_model`.
+// Infer ACCEPTS; the composition refuses.
+//
+// WHAT THE RULING DOES AND DOES NOT REACH HERE. Its subject is a live claim transcribed as a
+// standing figure, which rots because the thing it describes moves. This one names a fixed tree,
+// so it stays true of that tree forever -- the dated-receipt half the ruling preserves. What it
+// DOES reach is reproducibility: the probe was a throwaway module and no `.dag` entry point
+// re-derives this, so a reader cannot re-run it. That gap is this note's own next-rung trigger: a
+// `.dag` entry returning the per-stage verdicts for one root would let this paragraph name a
+// producer instead of a commit.
 //
 // IT IS NOT DELETED IN FAVOUR OF THE STRUCTURAL ACCOUNT BELOW, because that account cannot
 // establish it. Reading the gate tells you translate CAN refuse an underived grounding; it cannot
