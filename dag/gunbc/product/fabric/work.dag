@@ -63,17 +63,59 @@ type OutputObligationId = NonEmptyStr where brand("OutputObligationId")
 
 // Declared roster on the Work. Empty is a legitimate declaration (a job that owes
 // nothing), never an unsupplied one — that distinction belongs to resolution below.
+// One roster of typed obligations — not two lists. Kind is part of identity
+// material, so the same id as an output artifact versus a terminal result is a
+// different owed subject (required-build used to frame those groups separately
+// in OutputContractRef; concatenating ids dropped the boundary).
+type OutputObligationKind
+  = OutputArtifactObligation {}
+  | TerminalResultObligation {}
+
+type OutputObligation {
+  id: OutputObligationId
+  kind: OutputObligationKind
+}
+
 type DeclaredOutputObligations {
-  required: List<OutputObligationId>
+  required: List<OutputObligation>
 }
 
 fn output_obligation_id(raw: NonEmptyStr) -> OutputObligationId {
   raw as OutputObligationId
 }
 
+fn output_obligation_kind_material(kind: OutputObligationKind) -> NonEmptyStr {
+  match kind {
+    OutputArtifactObligation {} => "artifact"
+    TerminalResultObligation {} => "terminal"
+  }
+}
+
+fn output_obligation_ids(declared: DeclaredOutputObligations) -> List<OutputObligationId> {
+  map(declared.required, ob => ob.id)
+}
+
 fn declared_output_obligations(ids: List<NonEmptyStr>) -> DeclaredOutputObligations {
   DeclaredOutputObligations {
-    required: map(ids, id => output_obligation_id(raw: id)),
+    required: map(ids, id => OutputObligation {
+      id: output_obligation_id(raw: id),
+      kind: OutputArtifactObligation {},
+    }),
+  }
+}
+
+fn declared_output_obligations_from_manifests(
+  artifacts: List<NonEmptyStr>,
+  terminals: List<NonEmptyStr>,
+) -> DeclaredOutputObligations {
+  DeclaredOutputObligations {
+    required: map(artifacts, id => OutputObligation {
+      id: output_obligation_id(raw: id),
+      kind: OutputArtifactObligation {},
+    }) + map(terminals, id => OutputObligation {
+      id: output_obligation_id(raw: id),
+      kind: TerminalResultObligation {},
+    }),
   }
 }
 
@@ -316,7 +358,13 @@ fn output_obligations_material(declared: DeclaredOutputObligations) -> NonEmptyS
   fold(
     declared.required,
     init: concat("output-obligations:", concat(to_string(declared.required.count()), ":")),
-    f: (acc, id) => concat(acc, "\u{1e}", id),
+    f: (acc, ob) => concat(
+      acc,
+      "\u{1e}",
+      ob.id,
+      "\u{1f}",
+      output_obligation_kind_material(kind: ob.kind),
+    ),
   )
 }
 
@@ -360,7 +408,7 @@ fn resolve_output_obligations(
         revision: output_obligations_revision(declared: contract.output_obligations),
         judgment: judgment,
         work_key: work_key,
-        required: contract.output_obligations.required,
+        required: output_obligation_ids(declared: contract.output_obligations),
       }
     }
   }

@@ -11,6 +11,7 @@ import product.fabric.work {
   WorkContract, WorkStep, ReceiptSatisfiable, ExecutionRequirements,
   Shape, HardRequirements, ControlPlaneCapacity, derive_work_key,
   declared_output_obligations, empty_output_obligations,
+  declared_output_obligations_from_manifests, output_obligation_ids,
   resolve_output_obligations, OutputObligationsResolved, OutputObligationsUnreadable,
   OutputObligationsResolution, ObligationsJudgedAtJobStart, ObligationsJudgedAtAdmissionGate,
   WorkKeyDoesNotMatchContract,
@@ -102,7 +103,7 @@ test fn resolved_roster_carries_declared_obligation_ids() -> Bool {
     OutputObligationsUnreadable { contract: _, cause: _ } => false
     OutputObligationsResolved { value: r } =>
       (r.required.count() == 2)
-        && (r.required == declared_output_obligations(ids: ["artifact-a", "terminal-b"]).required)
+        && (r.required == output_obligation_ids(declared: declared_output_obligations(ids: ["artifact-a", "terminal-b"])))
   }
 }
 
@@ -112,6 +113,40 @@ test fn changing_obligations_changes_work_key_without_renaming_the_contract() ->
   (a.output_contract == b.output_contract)
     && (derive_work_key(contract: a, requirements: fixture_requirements())
       != derive_work_key(contract: b, requirements: fixture_requirements()))
+}
+
+// Concatenating artifact and terminal ids (the first required-build encoding after
+// the OutputContractRef cut) made ["a"]+["b"] and ["a","b"]+[] the same WorkKey.
+test fn artifact_versus_terminal_kind_is_work_key_identity() -> Bool {
+  let shared = WorkContract {
+    program: "gunbc.probe.output-contract",
+    steps: [WorkStep { step_id: "probe", resumability: ReceiptSatisfiable }],
+    source: "source-1",
+    inputs: "inputs-1",
+    runtime_closure: "runtime-1",
+    effect_contract: "effects-1",
+    output_contract: "gunbc.probe.outputs",
+    output_obligations: declared_output_obligations_from_manifests(
+      artifacts: ["a"],
+      terminals: ["b"],
+    ),
+  }
+  let collapsed = WorkContract {
+    program: "gunbc.probe.output-contract",
+    steps: [WorkStep { step_id: "probe", resumability: ReceiptSatisfiable }],
+    source: "source-1",
+    inputs: "inputs-1",
+    runtime_closure: "runtime-1",
+    effect_contract: "effects-1",
+    output_contract: "gunbc.probe.outputs",
+    output_obligations: declared_output_obligations_from_manifests(
+      artifacts: ["a", "b"],
+      terminals: [],
+    ),
+  }
+  (shared.output_contract == collapsed.output_contract)
+    && (derive_work_key(contract: shared, requirements: fixture_requirements())
+      != derive_work_key(contract: collapsed, requirements: fixture_requirements()))
 }
 
 test fn resolution_revision_tracks_the_declared_roster() -> Bool {

@@ -16,6 +16,7 @@ import product.fabric.work {
   CapabilityManifestRef, TrustDomainRef,
   ProgramRef, SourceManifestRef, ArtifactManifestRef, EffectContractRef, OutputContractRef,
   declared_output_obligations,
+  declared_output_obligations_from_manifests,
   work_for,
 }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
@@ -188,8 +189,9 @@ fn required_build_contract_from_materials(
     runtime_closure: concat("gunbc.required-witnesses-build.runtime:", concat(framed_string(value: toolchain), framed_string(value: executable))),
     effect_contract: "gunbc.required-witnesses-build.effects.checkout-read-cache-and-permitted-credentials-only",
     output_contract: "gunbc.required-witnesses-build.outputs",
-    output_obligations: declared_output_obligations(
-      ids: output_manifest + terminal_result_manifest,
+    output_obligations: declared_output_obligations_from_manifests(
+      artifacts: output_manifest,
+      terminals: terminal_result_manifest,
     ),
   }
 }
