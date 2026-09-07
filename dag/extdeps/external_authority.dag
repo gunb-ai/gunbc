@@ -9,6 +9,28 @@ type ExternalAuthority {
   uri: Uri
 }
 
+// CITED VERSUS TYPED-UNCITED IS ONE STANDING, not a per-domain coproduct. product.node_power_envelope
+// RateCeilingEvidence and std.decision ObjectiveTerm.ground are the same warrant kind:
+// either the figure points at ExternalAuthority, or it carries uncitedness as a read_obligation
+// naming what would ground it. Relocated here so a second CeilingCitedToAuthority cannot be minted.
+type CitedFigureStanding
+  = CeilingCitedToAuthority { authority: ExternalAuthority }
+  | CeilingTranscribedUncited { read_obligation: NonEmptyStr }
+
+fn cited_figure_is_cited(standing: CitedFigureStanding) -> Bool {
+  match standing {
+    CeilingCitedToAuthority { authority: _ } => true
+    CeilingTranscribedUncited { read_obligation: _ } => false
+  }
+}
+
+fn cited_figure_read_obligation(standing: CitedFigureStanding) -> NonEmptyStr? {
+  match standing {
+    CeilingCitedToAuthority { authority: _ } => Absent
+    CeilingTranscribedUncited { read_obligation: o } => Present { value: o }
+  }
+}
+
 data external_model_scope_law: String = "DESIGN §3 'External upstream decomposition' (operator verdicts on gunbc#7556 and gunbc#7571): 'one concept, one authority' unifies a shared interface or formal shape; it does not merge independently governed entities that inhabit that shape. Each independently versioned upstream product, implementation, engine, vendor, or specification has its own extdeps module authority, declared as one ExternalModelScope per module: ONE subject, one-or-more citations. A subject can have several citations; a module cannot silently have several independently governed subjects. A generic hub may define or re-export agnostic shapes but may not enumerate concrete products, dispatch among their authorities, carry product-specific version rows, or store consumer coverage state. Observations produced by this repository are receipts in the observing product/workflow layer (downstream), never 'Unobserved' properties authored inside an upstream module."
 
 data external_subject_symbolic_identity_note: String = "Subject identity is SYMBOLIC, never a name string (operator verdict on gunbc#7571, 2026-08-01, closing the string-spelling fork an earlier revision opened: 'Chromium' / 'chromium' / 'The Chromium Projects' were distinct subjects, and a scope restated a legal name its own module already declared). ExternalSubjectRef carries a DeclarationRef to the subject's one declaration — e.g. extdeps.vendor.microsoft's scope points at its existing 'microsoft' Vendor declaration rather than repeating 'Microsoft Corporation'. The same §3 cite-the-symbol rule that moved FactCitation.fact off prose applies to every identity this carrier holds."

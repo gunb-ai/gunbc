@@ -3,11 +3,13 @@ module test.claim.decision_completeness_witness
 import std.types { Bool, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import extdeps.external_authority { ExternalAuthority, CeilingCitedToAuthority, CeilingTranscribedUncited }
+import extdeps.uri { Uri, Https }
 import std.pareto {
   HigherIsBetter,
   DominanceVerdict, Incomparable, DominanceUndecided, Dominates, Dominated, Equivalent,
 }
-import std.realization_selection {
+import std.decision {
   DecisionVariable,
   ContextParameter,
   DecisionConstraint,
@@ -39,9 +41,6 @@ import std.realization_selection {
   SettledPolicyAccepted,
   SettledPolicyRejectedDeferred,
   SettledPolicyRejectedRefused,
-  standing_is_settled,
-  standing_is_deferred,
-  standing_is_refused,
   required_sensitivity_cells,
   sensitivity_closure,
   SensitivityClosureComplete,
@@ -49,18 +48,47 @@ import std.realization_selection {
   SensitivityClosureForeign,
   SensitivityClosureRepeatedObserved,
   SensitivityClosureRepeatedExpected,
-  variable_population_closure,
-  VariablePopulationComplete,
-  VariablePopulationMissing,
-  VariablePopulationRepeatedExpected,
-  VariablePopulationForeign,
-  VariablePopulationRepeatedObserved,
   candidate_comparison_standing,
   CandidatesIncomparableTradeoff,
   CandidatesUndecidedOnEvidence,
   CandidatesComparable,
   CandidateComparisonRefused,
   variable_irrelevance_is_derived,
+  PhysicalModelEstablished,
+  CausalModelEstablished,
+  FleetObservedCoupling,
+  term_set_join,
+  TermSetsJoinComplete,
+  ObjectiveUnderModeled,
+  ObjectiveDeclaresUnwarrantedTerms,
+  ObjectiveUnderModeledCause,
+  PhysicalModelPopulation,
+  CausalModelPopulation,
+  DecisionStanding,
+}
+
+fn standing_settled(s: DecisionStanding) -> Bool {
+  match accept_settled_policy(standing: s) {
+    SettledPolicyAccepted { policy: _ } => true
+    SettledPolicyRejectedDeferred { obligations: _, reopen_trigger: _ } => false
+    SettledPolicyRejectedRefused { cause: _ } => false
+  }
+}
+
+fn standing_deferred(s: DecisionStanding) -> Bool {
+  match accept_settled_policy(standing: s) {
+    SettledPolicyRejectedDeferred { obligations: _, reopen_trigger: _ } => true
+    SettledPolicyAccepted { policy: _ } => false
+    SettledPolicyRejectedRefused { cause: _ } => false
+  }
+}
+
+fn standing_refused(s: DecisionStanding) -> Bool {
+  match accept_settled_policy(standing: s) {
+    SettledPolicyRejectedRefused { cause: _ } => true
+    SettledPolicyAccepted { policy: _ } => false
+    SettledPolicyRejectedDeferred { obligations: _, reopen_trigger: _ } => false
+  }
 }
 
 // SYNTHETIC CLOSED SUBJECT — positive control and discriminating reds. Required populations are
@@ -83,8 +111,19 @@ data id_order_auth: DeclarationRef = decl_ref(module_path: "test.claim.decision_
 
 data var_a: DecisionVariable = DecisionVariable { identity: id_var_a }
 data var_b: DecisionVariable = DecisionVariable { identity: id_var_b }
-data term_power: ObjectiveTerm = ObjectiveTerm { identity: id_term_power }
-data term_throughput: ObjectiveTerm = ObjectiveTerm { identity: id_term_throughput }
+
+data fixture_physical_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "fixture.invalid/physical-model/completeness" },
+}
+
+data term_power: ObjectiveTerm = ObjectiveTerm {
+  identity: id_term_power,
+  ground: CeilingCitedToAuthority { authority: fixture_physical_authority },
+}
+data term_throughput: ObjectiveTerm = ObjectiveTerm {
+  identity: id_term_throughput,
+  ground: CeilingCitedToAuthority { authority: fixture_physical_authority },
+}
 data constraint_budget: DecisionConstraint = DecisionConstraint { identity: id_constraint }
 data param_workload: ContextParameter = ContextParameter { identity: id_param }
 data region_r: DecisionRegion = DecisionRegion { identity: id_region }
@@ -103,11 +142,30 @@ data choice_domain: ChoiceDomain = ChoiceDomain {
 data subject: DecisionSubject = DecisionSubject {
   identity: id_subject,
   question: "synthetic decision completeness control" as NonEmptyStr,
-  variables: [var_a, var_b],
   parameters: [param_workload],
   constraints: [constraint_budget],
   objective: objective_capacity,
   choice_domain: choice_domain,
+}
+
+data fixture_physical: PhysicalModelPopulation = PhysicalModelEstablished {
+  terms: [id_term_throughput, id_term_power],
+}
+
+data id_coupling_receipt: DeclarationRef = decl_ref(
+  module_path: "test.claim.decision_completeness_witness",
+  decl_name: "id_coupling_receipt",
+)
+
+data id_term_fan: DeclarationRef = decl_ref(module_path: "test.claim.decision_completeness_witness", decl_name: "term_fan")
+
+data fixture_causal: CausalModelPopulation = CausalModelEstablished {
+  couplings: [
+    FleetObservedCoupling { receipt: id_coupling_receipt, term: id_term_throughput, variable: id_var_a, subject: id_subject },
+    FleetObservedCoupling { receipt: id_coupling_receipt, term: id_term_throughput, variable: id_var_b, subject: id_subject },
+    FleetObservedCoupling { receipt: id_coupling_receipt, term: id_term_power, variable: id_var_a, subject: id_subject },
+    FleetObservedCoupling { receipt: id_coupling_receipt, term: id_term_power, variable: id_var_b, subject: id_subject },
+  ],
 }
 
 // Required cells come from the subject authorities (2 terms × 2 variables), not from dispositions.
@@ -126,28 +184,28 @@ fn closed_sensitivities() -> List<ObjectiveTermSensitivity> {
       term: id_term_power,
       variable: id_var_a,
       region: region_r,
-      evidence: "fixture: power invariant along var_a over region_r" as NonEmptyStr,
+      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
     },
     VariesAlong {
       term: id_term_power,
       variable: id_var_b,
       region: region_r,
       relation: MonotoneDecreasing,
-      evidence: "fixture: power decreases as var_b rises" as NonEmptyStr,
+      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
     },
     VariesAlong {
       term: id_term_throughput,
       variable: id_var_a,
       region: region_r,
       relation: MonotoneDecreasing,
-      evidence: "fixture: throughput moves with var_a" as NonEmptyStr,
+      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
     },
     VariesAlong {
       term: id_term_throughput,
       variable: id_var_b,
       region: region_r,
       relation: MonotoneDecreasing,
-      evidence: "fixture: throughput moves with var_b" as NonEmptyStr,
+      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
     },
   ]
 }
@@ -178,6 +236,8 @@ fn settled_assessment() -> DecisionAssessment {
     parameters: closed_parameters(),
     selected_candidate: Present { value: id_candidate },
     term_drops: [],
+    physical_model: fixture_physical,
+    causal_model: fixture_causal,
   }
 }
 
@@ -221,6 +281,8 @@ test fn consumer_accepts_settled_and_rejects_deferred() -> Bool {
     parameters: closed_parameters(),
     selected_candidate: Present { value: id_candidate },
     term_drops: [],
+    physical_model: fixture_physical,
+    causal_model: fixture_causal,
   }
   let deferred = mint_settled_policy(assessment: deferred_assessment)
   match accept_settled_policy(standing: settled) {
@@ -235,47 +297,37 @@ test fn consumer_accepts_settled_and_rejects_deferred() -> Bool {
   }
 }
 
-// Omit powered_chassis_count analogue (var_b) from the subject variables while choice domain still
-// requires it — variable population join refuses; settlement impossible.
-test fn omitting_choice_domain_variable_refuses_closure() -> Bool {
-  let truncated = DecisionSubject {
+// Shrink the choice-domain authority: leftover sensitivity cells for the dropped variable are foreign.
+test fn shrinking_choice_domain_makes_extra_cells_foreign() -> Bool {
+  let truncated_domain: ChoiceDomain = ChoiceDomain {
+    identity: id_domain,
+    variables: [var_a],
+  }
+  let truncated: DecisionSubject = DecisionSubject {
     identity: id_subject,
     question: "truncated variables" as NonEmptyStr,
-    variables: [var_a],
     parameters: [param_workload],
     constraints: [constraint_budget],
     objective: objective_capacity,
-    choice_domain: choice_domain,
+    choice_domain: truncated_domain,
   }
-  match variable_population_closure(subject: truncated) {
-    VariablePopulationMissing { identities: ids } =>
-      any(ids, id => declaration_ref_eq(a: id, b: id_var_b))
-        && standing_is_refused(standing: mint_settled_policy(assessment: DecisionAssessment {
+  match sensitivity_closure(subject: truncated, rows: closed_sensitivities()) {
+    SensitivityClosureForeign { cells: cells } =>
+      any(cells, c => declaration_ref_eq(a: c.variable, b: id_var_b))
+        && standing_refused(s: mint_settled_policy(assessment: DecisionAssessment {
           subject: truncated,
-          sensitivities: [
-            InvariantAlong {
-              term: id_term_power,
-              variable: id_var_a,
-              region: region_r,
-              evidence: "x" as NonEmptyStr,
-            },
-            VariesAlong {
-              term: id_term_throughput,
-              variable: id_var_a,
-              region: region_r,
-              relation: MonotoneDecreasing,
-              evidence: "x" as NonEmptyStr,
-            },
-          ],
+          sensitivities: closed_sensitivities(),
           constraints: closed_constraints(),
           parameters: closed_parameters(),
           selected_candidate: Present { value: id_candidate },
           term_drops: [],
+          physical_model: fixture_physical,
+          causal_model: fixture_causal,
         }))
-    VariablePopulationComplete => false
-    VariablePopulationRepeatedExpected { identities: _ } => false
-    VariablePopulationForeign { identities: _ } => false
-    VariablePopulationRepeatedObserved { identities: _ } => false
+    SensitivityClosureComplete => false
+    SensitivityClosureMissing { cells: _ } => false
+    SensitivityClosureRepeatedObserved { cells: _ } => false
+    SensitivityClosureRepeatedExpected { cells: _ } => false
   }
 }
 
@@ -287,26 +339,28 @@ test fn omitting_objective_term_cell_makes_sensitivity_closure_missing() -> Bool
       variable: id_var_a,
       region: region_r,
       relation: MonotoneDecreasing,
-      evidence: "x" as NonEmptyStr,
+      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
     },
     VariesAlong {
       term: id_term_throughput,
       variable: id_var_b,
       region: region_r,
       relation: MonotoneDecreasing,
-      evidence: "x" as NonEmptyStr,
+      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
     },
   ]
   match sensitivity_closure(subject: subject, rows: without_power_cells) {
     SensitivityClosureMissing { cells: cells } =>
       any(cells, c => declaration_ref_eq(a: c.term, b: id_term_power))
-        && standing_is_refused(standing: mint_settled_policy(assessment: DecisionAssessment {
+        && standing_refused(s: mint_settled_policy(assessment: DecisionAssessment {
           subject: subject,
           sensitivities: without_power_cells,
           constraints: closed_constraints(),
           parameters: closed_parameters(),
           selected_candidate: Present { value: id_candidate },
           term_drops: [],
+    physical_model: fixture_physical,
+    causal_model: fixture_causal,
         }))
     SensitivityClosureComplete => false
     SensitivityClosureForeign { cells: _ } => false
@@ -322,21 +376,21 @@ test fn omitting_one_required_sensitivity_cell_blocks_settlement() -> Bool {
       term: id_term_power,
       variable: id_var_a,
       region: region_r,
-      evidence: "x" as NonEmptyStr,
+      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
     },
     VariesAlong {
       term: id_term_throughput,
       variable: id_var_a,
       region: region_r,
       relation: MonotoneDecreasing,
-      evidence: "x" as NonEmptyStr,
+      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
     },
     VariesAlong {
       term: id_term_throughput,
       variable: id_var_b,
       region: region_r,
       relation: MonotoneDecreasing,
-      evidence: "x" as NonEmptyStr,
+      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
     },
   ]
   match sensitivity_closure(subject: subject, rows: missing_one) {
@@ -344,13 +398,15 @@ test fn omitting_one_required_sensitivity_cell_blocks_settlement() -> Bool {
       any(cells, c =>
         declaration_ref_eq(a: c.term, b: id_term_power) && declaration_ref_eq(a: c.variable, b: id_var_b)
       )
-        && !standing_is_settled(standing: mint_settled_policy(assessment: DecisionAssessment {
+        && !standing_settled(s: mint_settled_policy(assessment: DecisionAssessment {
           subject: subject,
           sensitivities: missing_one,
           constraints: closed_constraints(),
           parameters: closed_parameters(),
           selected_candidate: Present { value: id_candidate },
           term_drops: [],
+    physical_model: fixture_physical,
+    causal_model: fixture_causal,
         }))
     SensitivityClosureComplete => false
     SensitivityClosureForeign { cells: _ } => false
@@ -365,7 +421,7 @@ test fn two_answers_for_one_cell_refuse_as_repeated_observed() -> Bool {
       term: id_term_power,
       variable: id_var_a,
       region: region_r,
-      evidence: "second answer" as NonEmptyStr,
+      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
     },
   ])
   match sensitivity_closure(subject: subject, rows: dup) {
@@ -373,13 +429,15 @@ test fn two_answers_for_one_cell_refuse_as_repeated_observed() -> Bool {
       any(cells, c =>
         declaration_ref_eq(a: c.term, b: id_term_power) && declaration_ref_eq(a: c.variable, b: id_var_a)
       )
-        && standing_is_refused(standing: mint_settled_policy(assessment: DecisionAssessment {
+        && standing_refused(s: mint_settled_policy(assessment: DecisionAssessment {
           subject: subject,
           sensitivities: dup,
           constraints: closed_constraints(),
           parameters: closed_parameters(),
           selected_candidate: Present { value: id_candidate },
           term_drops: [],
+    physical_model: fixture_physical,
+    causal_model: fixture_causal,
         }))
     SensitivityClosureComplete => false
     SensitivityClosureMissing { cells: _ } => false
@@ -399,13 +457,15 @@ test fn foreign_term_or_variable_refuses_rather_than_ignored() -> Bool {
   match sensitivity_closure(subject: subject, rows: foreign) {
     SensitivityClosureForeign { cells: cells } =>
       any(cells, c => declaration_ref_eq(a: c.term, b: id_foreign_term))
-        && standing_is_refused(standing: mint_settled_policy(assessment: DecisionAssessment {
+        && standing_refused(s: mint_settled_policy(assessment: DecisionAssessment {
           subject: subject,
           sensitivities: foreign,
           constraints: closed_constraints(),
           parameters: closed_parameters(),
           selected_candidate: Present { value: id_candidate },
           term_drops: [],
+    physical_model: fixture_physical,
+    causal_model: fixture_causal,
         }))
     SensitivityClosureComplete => false
     SensitivityClosureMissing { cells: _ } => false
@@ -443,9 +503,11 @@ test fn overlapping_regions_yield_deferred_never_settled() -> Bool {
     parameters: closed_parameters(),
     selected_candidate: Present { value: id_candidate },
     term_drops: [],
+    physical_model: fixture_physical,
+    causal_model: fixture_causal,
   }
-  standing_is_deferred(standing: mint_settled_policy(assessment: pending))
-    && !standing_is_settled(standing: mint_settled_policy(assessment: pending))
+  standing_deferred(s: mint_settled_policy(assessment: pending))
+    && !standing_settled(s: mint_settled_policy(assessment: pending))
 }
 
 test fn scalar_method_without_order_preservation_refuses() -> Bool {
@@ -455,7 +517,7 @@ test fn scalar_method_without_order_preservation_refuses() -> Bool {
   }) {
     TermDropRefused { cause: c } =>
       string_contains(s: c as String, pattern: "order-preservation")
-        && standing_is_refused(standing: mint_settled_policy(assessment: DecisionAssessment {
+        && standing_refused(s: mint_settled_policy(assessment: DecisionAssessment {
           subject: subject,
           sensitivities: closed_sensitivities(),
           constraints: closed_constraints(),
@@ -467,6 +529,8 @@ test fn scalar_method_without_order_preservation_refuses() -> Bool {
               obligation: "cannot drop platform power from a ratio objective without order-preservation authority" as NonEmptyStr,
             },
           ],
+          physical_model: fixture_physical,
+          causal_model: fixture_causal,
         }))
     TermDropAdmitted { authority: _ } => false
   }
@@ -517,32 +581,68 @@ test fn variable_irrelevance_is_derived_never_authored() -> Bool {
       term: id_term_power,
       variable: id_var_a,
       region: region_r,
-      evidence: "fixture: power invariant along var_a" as NonEmptyStr,
+      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
     },
     InvariantAlong {
       term: id_term_throughput,
       variable: id_var_a,
       region: region_r,
-      evidence: "fixture: throughput invariant along var_a" as NonEmptyStr,
+      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
     },
     VariesAlong {
       term: id_term_power,
       variable: id_var_b,
       region: region_r,
       relation: MonotoneDecreasing,
-      evidence: "fixture: power moves with var_b" as NonEmptyStr,
+      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
     },
     VariesAlong {
       term: id_term_throughput,
       variable: id_var_b,
       region: region_r,
       relation: MonotoneDecreasing,
-      evidence: "fixture: throughput moves with var_b" as NonEmptyStr,
+      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
     },
   ]
   variable_irrelevance_is_derived(subject: subject, variable: id_var_a, rows: all_invariant_for_a)
     && !variable_irrelevance_is_derived(subject: subject, variable: id_var_b, rows: all_invariant_for_a)
     && !variable_irrelevance_is_derived(subject: subject, variable: id_var_a, rows: closed_sensitivities())
+}
+
+test fn fan_power_missing_from_throughput_per_wall_watt_is_objective_under_modeling() -> Bool {
+  let physical = [id_term_throughput, id_term_power, id_term_fan]
+  match term_set_join(terms: physical, objective: objective_capacity, subject: id_subject) {
+    ObjectiveUnderModeled { subject: s, missing_from_objective: missing } =>
+      declaration_ref_eq(a: s, b: id_subject)
+        && any(missing, id => declaration_ref_eq(a: id, b: id_term_fan))
+        && !any(missing, id => declaration_ref_eq(a: id, b: id_term_power))
+    TermSetsJoinComplete => false
+    ObjectiveDeclaresUnwarrantedTerms { subject: _, extras: _ } => false
+  }
+}
+
+test fn objective_under_modeling_refuses_settlement() -> Bool {
+  match mint_settled_policy(assessment: DecisionAssessment {
+    subject: subject,
+    sensitivities: closed_sensitivities(),
+    constraints: closed_constraints(),
+    parameters: closed_parameters(),
+    selected_candidate: Present { value: id_candidate },
+    term_drops: [],
+    physical_model: PhysicalModelEstablished {
+      terms: [id_term_throughput, id_term_power, id_term_fan],
+    },
+    causal_model: fixture_causal,
+  }) {
+    DecisionRefused { cause: c } =>
+      match c {
+        ObjectiveUnderModeledCause { missing_from_objective: missing } =>
+          any(missing, id => declaration_ref_eq(a: id, b: id_term_fan))
+        _ => false
+      }
+    Settled { policy: _ } => false
+    Deferred { obligations: _, reopen_trigger: _ } => false
+  }
 }
 
 test fn required_population_oracle_is_not_the_disposition_list() -> Bool {
@@ -565,6 +665,60 @@ test fn required_population_oracle_is_not_the_disposition_list() -> Bool {
     }
 }
 
+test fn invariant_along_with_uncited_coupling_must_not_mint_settled() -> Bool {
+  let uncited = [
+    InvariantAlong {
+      term: id_term_power,
+      variable: id_var_a,
+      region: region_r,
+      coupling: CeilingTranscribedUncited {
+        read_obligation: "uncited invariance is not a warrant; absence of a coupling edge is not proven invariance" as NonEmptyStr,
+      },
+    },
+    VariesAlong {
+      term: id_term_power,
+      variable: id_var_b,
+      region: region_r,
+      relation: MonotoneDecreasing,
+      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
+    },
+    VariesAlong {
+      term: id_term_throughput,
+      variable: id_var_a,
+      region: region_r,
+      relation: MonotoneDecreasing,
+      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
+    },
+    VariesAlong {
+      term: id_term_throughput,
+      variable: id_var_b,
+      region: region_r,
+      relation: MonotoneDecreasing,
+      coupling: CeilingCitedToAuthority { authority: fixture_physical_authority },
+    },
+  ]
+  standing_deferred(s: mint_settled_policy(assessment: DecisionAssessment {
+    subject: subject,
+    sensitivities: uncited,
+    constraints: closed_constraints(),
+    parameters: closed_parameters(),
+    selected_candidate: Present { value: id_candidate },
+    term_drops: [],
+    physical_model: fixture_physical,
+    causal_model: fixture_causal,
+  }))
+    && !standing_settled(s: mint_settled_policy(assessment: DecisionAssessment {
+      subject: subject,
+      sensitivities: uncited,
+      constraints: closed_constraints(),
+      parameters: closed_parameters(),
+      selected_candidate: Present { value: id_candidate },
+      term_drops: [],
+      physical_model: fixture_physical,
+      causal_model: fixture_causal,
+    }))
+}
+
 fn decision_completeness_witness_main() -> ProcessExit {
   if !required_cells_are_the_cartesian_product_of_term_and_variable_authorities() {
     ExitFailure { code: 1, reason: "fail: required_cells" as NonEmptyStr }
@@ -572,8 +726,8 @@ fn decision_completeness_witness_main() -> ProcessExit {
     ExitFailure { code: 1, reason: "fail: positive_control_settled" as NonEmptyStr }
   } else if !consumer_accepts_settled_and_rejects_deferred() {
     ExitFailure { code: 1, reason: "fail: consumer_wall" as NonEmptyStr }
-  } else if !omitting_choice_domain_variable_refuses_closure() {
-    ExitFailure { code: 1, reason: "fail: omit_choice_domain_variable" as NonEmptyStr }
+  } else if !shrinking_choice_domain_makes_extra_cells_foreign() {
+    ExitFailure { code: 1, reason: "fail: shrink_choice_domain" as NonEmptyStr }
   } else if !omitting_objective_term_cell_makes_sensitivity_closure_missing() {
     ExitFailure { code: 1, reason: "fail: omit_objective_term" as NonEmptyStr }
   } else if !omitting_one_required_sensitivity_cell_blocks_settlement() {
@@ -592,8 +746,14 @@ fn decision_completeness_witness_main() -> ProcessExit {
     ExitFailure { code: 1, reason: "fail: incomparable_vs_undecided" as NonEmptyStr }
   } else if !variable_irrelevance_is_derived_never_authored() {
     ExitFailure { code: 1, reason: "fail: variable_irrelevance" as NonEmptyStr }
+  } else if !fan_power_missing_from_throughput_per_wall_watt_is_objective_under_modeling() {
+    ExitFailure { code: 1, reason: "fail: fan_under_modeling_join" as NonEmptyStr }
+  } else if !objective_under_modeling_refuses_settlement() {
+    ExitFailure { code: 1, reason: "fail: fan_under_modeling_refuses" as NonEmptyStr }
   } else if !required_population_oracle_is_not_the_disposition_list() {
     ExitFailure { code: 1, reason: "fail: oracle_not_disposition_list" as NonEmptyStr }
+  } else if !invariant_along_with_uncited_coupling_must_not_mint_settled() {
+    ExitFailure { code: 1, reason: "fail: uncited_invariant_not_settled" as NonEmptyStr }
   } else {
     ExitSuccess
   }

@@ -25,7 +25,13 @@ import std.measure {
   watt,
   watt_count,
 }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority {
+  ExternalAuthority,
+  CitedFigureStanding,
+  CeilingCitedToAuthority,
+  CeilingTranscribedUncited,
+  cited_figure_is_cited,
+}
 import extdeps.cpu.types { CpuModelCatalogRow }
 import extdeps.memory.types {
   DramModuleCatalogRow,
@@ -82,9 +88,7 @@ type MemoryElectricalContext {
 // So the figures are carried where consumed, with their uncitedness TYPED rather than invisible: a
 // consumer can ask whether the ceiling it used is grounded, and the read obligation names what
 // would ground it. A declared boundary fact, not a silent constant.
-type RateCeilingEvidence
-  = CeilingCitedToAuthority { authority: ExternalAuthority }
-  | CeilingTranscribedUncited { read_obligation: NonEmptyStr }
+type RateCeilingEvidence = CitedFigureStanding
 
 type TwoDpcRateCeiling {
   min_rank_count: Nat
@@ -97,10 +101,7 @@ type TwoDpcRateCeilingTable {
 }
 
 fn ceiling_is_cited(evidence: RateCeilingEvidence) -> Bool {
-  match evidence {
-    CeilingCitedToAuthority { authority: _ } => true
-    CeilingTranscribedUncited { read_obligation: _ } => false
-  }
+  cited_figure_is_cited(standing: evidence)
 }
 
 // The ceilings held today, all uncited. One declaration so the population is countable and a later

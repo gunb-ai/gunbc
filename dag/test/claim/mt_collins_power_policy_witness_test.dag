@@ -9,6 +9,7 @@ import product.mt_collins_power_policy {
   mt_collins_power_policy_cannot_settle,
   mt_collins_power_policy_acceptance_rejects_deferred,
   mt_collins_required_cell_count,
+  mt_collins_fan_power_under_modeling,
   available_chassis_count,
   obligation_memory_population_unread,
   obligation_bmc_power_cap_sweep,
@@ -19,7 +20,7 @@ import product.mt_collins_power_policy {
   var_socket_power_cap,
   var_powered_chassis_count,
 }
-import std.realization_selection {
+import std.decision {
   Deferred,
   Settled,
   DecisionRefused,
@@ -73,6 +74,7 @@ fn mt_collins_power_policy_witness_main() -> ProcessExit {
       && mt_collins_joins_memory_unread_and_bmc_sweep_obligations()
       && mt_collins_objective_is_one_structural_measure()
       && mt_collins_required_cells_cover_both_variables_and_both_terms()
+      && mt_collins_fan_power_under_modeling()
   if all_pass {
     ExitSuccess
   } else {
