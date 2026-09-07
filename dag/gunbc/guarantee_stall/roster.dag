@@ -51,6 +51,13 @@ import gunbc.namespace_wave_admission { namespace_wave_admission_occurrence_grai
 import gunbc.runner_service_activation { runner_activation_reachability_stall, runner_activation_safety_stall }
 import gunbc.declaration_index_seed_growth { declaration_index_fixture_exemption_classification_stall }
 import gunbc.guarantee_stall.floor_cost_basis_boundedness_stall { floor_cost_basis_boundedness_stall }
+import gunbc.guarantee_stall.complexity_incomplete_assessment_stall { complexity_incomplete_assessment_stall }
+import gunbc.guarantee_stall.grounding_extract_closed_set_stall { grounding_extract_closed_set_stall }
+import gunbc.guarantee_stall.grounding_ledger_residue_uninhabited_stall { grounding_ledger_residue_uninhabited_stall }
+import gunbc.guarantee_stall.unit_modeling_carrier_totality_stall { unit_modeling_carrier_totality_stall }
+import gunbc.guarantee_stall.testgen_anchor_generator_totality_stall { testgen_anchor_generator_totality_stall }
+import gunbc.guarantee_stall.synthesis_established_bound_patch_stall { synthesis_established_bound_patch_stall }
+import gunbc.guarantee_stall.fn_index_depth_agreement_floor_enrollment_stall { fn_index_depth_agreement_floor_enrollment_stall }
 
 // THE COHORT PROVENANCE NOTES BELOW WERE AUTHORED WHEN EVERY ROW SAT IN ONE FILE, and they are
 // carried here verbatim rather than split across the row modules they describe. Their membership
@@ -197,6 +204,13 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   declaration_index_fixture_exemption_classification_stall,
   floor_cost_basis_boundedness_stall,
   axis_list_re_enumerates_its_variant_type_stall,
+  complexity_incomplete_assessment_stall,
+  grounding_extract_closed_set_stall,
+  grounding_ledger_residue_uninhabited_stall,
+  unit_modeling_carrier_totality_stall,
+  testgen_anchor_generator_totality_stall,
+  synthesis_established_bound_patch_stall,
+  fn_index_depth_agreement_floor_enrollment_stall,
 ]
 
 // THE FOUR SUBJECTS RESTORED TO THE ROSTER, PINNED BY IDENTITY SO THEIR LOSS REFUSES.
