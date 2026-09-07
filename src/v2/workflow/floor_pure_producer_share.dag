@@ -574,3 +574,92 @@ fn share_roster_refusal_collisions(
     }
   }))
 }
+
+// ── PENDING CANDIDATES: PROPOSED, NOT YET MEASURED ───────────────────────────────────────
+//
+// WHY A THIRD SHAPE RATHER THAN A ROW IN ONE OF THE TWO THAT EXIST. This file could express a
+// producer it ADMITS and a producer it has measured and REFUSED, and nothing in between. A
+// candidate that has been proposed but not yet measured fits neither: putting it in an admitted
+// roster enrols it, which is the thing the measurement is supposed to decide, and putting it in
+// `floor_cross_claim_refused_candidates` requires a `ShareRefusalVerdict`, so the row would
+// assert a measured outcome that nobody measured. That second move is the one worth naming: it
+// is DESIGN section 4b(1) rung inflation at the roster grain -- a verdict field filled in from a
+// plan rather than from an executed present-vs-absent pair -- and it would be read by the
+// overlap wall through `refused_row_carriers_transfer` as a measured cost travelling to other
+// producers' consumers, which is a fabricated subject.
+//
+// SO A PENDING ROW CARRIES NO VERDICT FIELD AT ALL, and that absence is the design rather than
+// an omission: there is no place in this type to write an outcome, so the unmeasured state
+// cannot be spelled as a measured one (DESIGN section 5 -- correctness by construction, not a
+// check that the verdict was earned).
+//
+// WHAT A PENDING ROW MUST CARRY INSTEAD: why it was proposed, naming the instrument that
+// re-derives the recompute cost rather than transcribing what it printed (DESIGN section 6, and
+// the same rule the refused rows above already follow); the measurement that would DECIDE it;
+// and what would REFUSE it, so a negative result has a stated shape before it is run and cannot
+// be quietly reinterpreted as "not yet conclusive".
+//
+// HOW A PENDING ROW LEAVES, and there is no fourth exit: its deciding measurement runs, and the
+// row moves to an admitted roster or to `floor_cross_claim_refused_candidates` with the verdict
+// that measurement produced. A pending row that has been standing without its measurement being
+// scheduled is a proposal nobody is deciding, and this roster would rather show that than hide it
+// in an annotation.
+type PendingShareCandidate {
+  producer: String
+  proposed_because: String
+  deciding_measurement: String
+  refuses_if: String
+}
+
+data floor_cross_claim_pending_candidates: List<PendingShareCandidate> = [
+  PendingShareCandidate {
+    producer: "v2.std.decl_index.decl_facts",
+    proposed_because: "A whole-corpus declaration index is re-derived per claim rather than served: nothing is shared between calls or between claims in one process, and the cost lands on whichever claim touches it first. Instrument: claim_batch --source-root dag --source-root src/v2 --entry <witness> --functions <csv>, read on the per-claim [witness] wall receipt with two or more claims in ONE dispatch -- the first pays and its siblings reaching the same index measure near zero. Read those figures as GROSS: claim_batch does not run required_floor_runner's shared-fill netting, so they price the recompute and say nothing about what the floor would charge.",
+    deciding_measurement: "Present-vs-absent on this row alone, off ONE main commit, on branches rather than pull requests (the header states why a PR pair measures two different trees), normalised on claims in no consumer module of any enrolled key, over required_floor_claim_cost.tsv and the run's own [floor-shared-fill] ledger -- the same discipline every admitted and every refused row above was decided by.",
+    refuses_if: "Serving costs at or above recomputing over this producer's own consumers (MeasuredServeAboveRecompute), or the present and absent arms do not separate over them (NoMeasuredEffectOverItsConsumers). Two shapes make refusal a live possibility rather than a formality here: the value is a whole-corpus row list, so reification and structural argument verification are paid per serving frame against a byte-bounded store, and an over-budget producer recomputes exactly as if never enrolled; and this producer takes pool_roots, so it is claim-shaped and would enter the claim-forced list, where the fill still happens inside the fold on first touch."
+  },
+  PendingShareCandidate {
+    producer: "v2.lens.module_graph.module_declaration_facts_live",
+    proposed_because: "Proposed with decl_facts and not separately: the two are demanded together at every site that resolves a declaration reference, so a measurement enrolling one and not the other prices half a join. Same instrument and same gross-figure caveat as the row above.",
+    deciding_measurement: "The same present-vs-absent discipline, measured with decl_facts rather than beside it -- the header's rust_target_model_staging row is the receipt for why: a candidate measured clean beside a wider row inherited that row's regression the moment the wider row was withdrawn, so an arm must vary exactly the rows it claims to decide.",
+    refuses_if: "The same two verdicts, over its own consumers. Additionally refused if the pair turns out to be one demand rather than two -- if no consumer reaches this producer without also reaching decl_facts, the single-authority repair is one producer for the joined fact, and enrolling two identities for it would be the fork this roster's SupersededBySingleAuthorityRepair arm already refuses once."
+  }
+]
+
+// The pending population as names, folded exactly like `refused_share_producers` and for the same
+// reason: the wall below needs identities, and a second spelling of this fold would be the kind of
+// duplicate this file exists to price.
+fn pending_share_producers(pending: List<PendingShareCandidate>) -> List<String> {
+  reverse(fold(pending, init: [], f: fn(acc, row) { concat([row.producer], acc) }))
+}
+
+// THE WALL: AN IDENTITY MAY NOT BE PENDING AND ALREADY DECIDED AT THE SAME TIME.
+//
+// The two collisions this refuses are different mistakes and both are live. A producer that
+// stands in an admitted roster AND in the pending list has already been enrolled while a row
+// still says its enrolment is an open question -- the roster then answers one question two ways,
+// which is the section 3 fork, and the more dangerous direction because the enrolment is the arm
+// that executes. A producer that stands in the refused roster AND in the pending list is a
+// re-proposal of something this file already measured and turned down, which is exactly what
+// `share_roster_refusal_collisions` refuses for the admitted rosters; a pending row is a proposal
+// too, so it needs the same refusal or the refused roster is bypassable by proposing instead of
+// enrolling.
+//
+// TAKES ITS POPULATIONS AS ARGUMENTS, for the reason the sibling fold above states and not by
+// imitation: over the live rosters this is green today and could be reddened only by editing the
+// corpus it guards, which DESIGN section 4b calls a decoration. As a function of three lists the
+// forbidden state is writable in a fixture, and the live tree is the positive control.
+fn share_roster_pending_collisions(
+  pending: List<PendingShareCandidate>,
+  admitted: List<String>,
+  refused: List<RefusedShareCandidate>
+) -> List<String> {
+  let decided = concat(admitted, refused_share_producers(refused: refused))
+  reverse(fold(pending_share_producers(pending: pending), init: [], f: fn(acc, name) {
+    if any(xs: decided, predicate: fn(d) { d == name }) {
+      concat([name], acc)
+    } else {
+      acc
+    }
+  }))
+}
