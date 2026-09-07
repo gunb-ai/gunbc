@@ -168,10 +168,12 @@ data cssl_harness_realized_closure: RealizedEmitterClosure = RealizedEmitterClos
   ]
 }
 
-// V2EmitterInterpreted closure for Lane B direct rust door: v2.compiler.emit (serialize_target
-// composed with translate) plus v2.compiler.self_host.candidate_generation
+// V2EmitterInterpreted closure for the GENERIC interpreted emit route: v2.compiler.emit
+// (serialize_target composed with translate) plus v2.compiler.self_host.candidate_generation
 // (mint_provenanced_rust_artifact entry), without v1.compiler.emit_rust. Landed as first customer
-// in session bright-bear-372.
+// in session bright-bear-372. The direct rust door's run closure is
+// realized_closure_for_v2_direct_rust_door_emit_run below — the door's production composition
+// routes through v2.compiler.emit_produced, not v2.compiler.emit.
 
 data v2_interpreted_emitter_closure: RealizedEmitterClosure = RealizedEmitterClosure {
   emitter_module_paths: [
@@ -202,17 +204,21 @@ fn v2_interpreted_emitter_closure_seed_free_holds() -> Bool {
   !seed_emit_rust_reachable(closure: v2_interpreted_emitter_closure)
 }
 
+// The door run's route: candidate_generation's module composition emits the inferred module's
+// produced declaration through v2.compiler.emit_produced, whose bodied-arrow serialization lives in
+// v2.compiler.translate. v2.compiler.emit is NOT on this route — it remains on the generic
+// emit_module / fixture-lane routes carried by v2_interpreted_emitter_closure.
 fn realized_closure_for_v2_direct_rust_door_emit_run() -> RealizedEmitterClosure {
   RealizedEmitterClosure {
     emitter_module_paths: [
       "v2.compiler.self_host.candidate_generation",
-      v2_emit_interpreted_qualified_module,
+      "v2.compiler.emit_produced",
       "v2.compiler.translate"
     ]
   }
 }
 
-// Post-emit-run closure authority for Lane B direct rust door: mint_provenanced_rust_artifact calls this ONLY after generate_rust_emission_candidate (the serialize_target run) succeeds — never as a caller-supplied parameter. Paths name modules on the v2 interpreted emit route excluding v1.compiler.emit_rust.
+// Post-emit-run closure authority for Lane B direct rust door: mint_provenanced_rust_artifact calls this ONLY after generate_rust_module_emission_candidate (the produced-decl emission run) succeeds — never as a caller-supplied parameter. Paths name modules on the v2 interpreted emit route excluding v1.compiler.emit_rust.
 fn v2_interpreted_emitter_closure_authority() -> RealizedEmitterClosure {
   realized_closure_for_v2_direct_rust_door_emit_run()
 }

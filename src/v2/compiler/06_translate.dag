@@ -21,12 +21,14 @@ import v2.std.compilers.target_model {
   TargetValueExpression,
   TargetValueExpressionProjection,
   bodied_arrow_scaffold_from_grammar_relation_row,
+  canonical_operation_from_wire_node,
   target_bodied_arrow_compose_statement_tokens,
   target_project_arrow_body_to_value_expression,
   target_project_transform_primitive_apply_in_arrow_scope,
   target_project_transform_callable_apply_in_arrow_scope,
-  target_transform_surface_op_atom,
+  target_transform_operator_child,
   target_value_expr_arrow_has_value_expression_body,
+  target_value_expr_diagnostic,
   target_value_expression_projection_from_target,
   target_value_expression_tokens_from_target
 }
@@ -953,14 +955,21 @@ fn serialize_concrete_syntax_tokens_to_source_string(
   )
 }
 
-fn translate_project_transform_in_arrow_scope(
+// The transform operator position is a TWO-REPRESENTATION boundary: resolution canonicalizes a
+// surface operator atom into its canonical-operation wire node (resolve_surface_operator_atom), so
+// a production tree carries the wire, while fixture trees that bypass resolution still carry the
+// surface token atom. The decode tries the wire first; only a wire miss falls to the surface-token
+// table, and only a surface-table miss routes to callable apply. The arms are disjoint (a wire
+// node's identity is a CanonicalOperation discriminant with named fields; a surface token is a
+// dag_token_* atom; anything else is shape-invalid), so the dispatch adds no fallback widening.
+fn translate_project_transform_surface_or_callable_in_arrow_scope(
   arrow: Node,
   body: Node,
+  operator_child: Node,
   target: TargetModel
 ) -> Outcome<TargetValueExpression> {
-  bind_outcome(
-    o: target_transform_surface_op_atom(node: body),
-    f: fn(op_sym) {
+  match operator_child.kind {
+    TypeNode { connective: Atom { identity: op_sym } } =>
       match dag_surface_operator_canonicalization_member(surface_token: op_sym) {
         Accepted { value: canonical_op, diagnostics: _ } =>
           target_project_transform_primitive_apply_in_arrow_scope(
@@ -979,6 +988,41 @@ fn translate_project_transform_in_arrow_scope(
             handle_transform: fn(a, b, t) {
               translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
             }
+          )
+      }
+    _ =>
+      outcome_rejected(
+        d: target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_transform_shape_invalid,
+          node: operator_child
+        )
+      )
+  }
+}
+
+fn translate_project_transform_in_arrow_scope(
+  arrow: Node,
+  body: Node,
+  target: TargetModel
+) -> Outcome<TargetValueExpression> {
+  bind_outcome(
+    o: target_transform_operator_child(node: body),
+    f: fn(operator_child) {
+      match canonical_operation_from_wire_node(wire: operator_child) {
+        Accepted { value: canonical_op, diagnostics: _ } =>
+          target_project_transform_primitive_apply_in_arrow_scope(
+            arrow: arrow,
+            body: body,
+            canonical_op: canonical_op,
+            target: target
+          )
+
+        Rejected { diagnostics: _ } =>
+          translate_project_transform_surface_or_callable_in_arrow_scope(
+            arrow: arrow,
+            body: body,
+            operator_child: operator_child,
+            target: target
           )
       }
     }
