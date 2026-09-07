@@ -13,7 +13,7 @@ data guarded_filter_branch_dropped_by_emitter: RecurringFailureMode = RecurringF
 
     "DISTINGUISHING FACTS: the cheap tell is a caller in .dag whose callee has zero occurrences in the committed stage0 mirror. A self-consistent missing path is indistinguishable from a correct one by any green/red signal on the truncated artifact. ",
 
-    "SPECIMEN: filter-in-a-branch-condition. Census of src/v1/*.dag: 46 ordinary lambdas in a guard (any/all/map/fold) emit; filter-in-a-branch-condition occurred zero times on main and once on the #10625 candidate. Population one argues neither way for the wall: it is the sole site of THIS shape, not the only shape that can silently truncate. ",
+    "SPECIMEN: FilterInBranchCondition. Discovery census of src/v1/*.dag found the shape zero times on main and once on the #10625 candidate; that census named the discovery site, not the wall's population. The wall's boundary is every module emit_rust_selected renders. The same surface is live elsewhere on main (gunbc.occurrence_identity_acceptance_closure duplicate_receipts / duplicate_deferrals, gunbc.auth.secret_rotation). Those sites now take GateBlocking EmissionConstructUnprojectable rather than a truncated file — that is the repair, not over-refusal. Population-one of the discovery census argues neither way for the wall: it is the sole src/v1 site of THIS shape, not the only shape that can silently truncate, and not the wall's denominator. ",
 
     "RECOGNITION RULE: if emission produced a file, every source construct contributing to that file received a total projection. A diagnostic beside a truncated file is the same hazard with better logging. ",
 

@@ -922,7 +922,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TransportEmissionNotModeled {
             service, operation, ..
         } => format!("{service}.{operation}"),
-        CompilerDiagnostic::EmissionConstructUnprojectable { construct, .. } => construct.clone(),
+        CompilerDiagnostic::EmissionConstructUnprojectable { construct, .. } => {
+            crate::v1_std_core::unprojectable_construct_identity(construct.clone())
+        }
         // The NAME is the config FIELD, not the referenced spelling: the burn-down this
         // histogram feeds is the list of service-config fields still awaiting the reference
         // judgment, and keying on the referenced name would spread one unjudged field across

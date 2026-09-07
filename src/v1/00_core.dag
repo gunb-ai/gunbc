@@ -308,6 +308,24 @@ type TextFile {
 // would see from the code they were editing. A distinct constructor is therefore not a naming
 // preference: it is what makes the standing prohibition on adding bare variants to synthesis output
 // hold BY CONSTRUCTION rather than by a byte-diff that can only report 'not on this subject today'.
+// Closed set of source constructs stage0 rust emission cannot project. A String here would
+// nickname the same membership in the mint site, the native probe, and the histogram key, so a
+// typo would silently split the census. Adding a shape is adding a variant.
+type UnprojectableConstruct
+  = FilterInBranchCondition
+
+fn unprojectable_construct_identity(c: UnprojectableConstruct) -> String {
+  match c {
+    FilterInBranchCondition => "FilterInBranchCondition"
+  }
+}
+
+fn unprojectable_construct_prose(c: UnprojectableConstruct) -> String {
+  match c {
+    FilterInBranchCondition => "filter in branch condition"
+  }
+}
+
 type CompilerDiagnostic
   = UnresolvedImport   { module_path: String, importing_module: String, span: SourceSpan }
   | MissingExport      { name: String, module_path: String, importing_module: String, span: SourceSpan }
@@ -384,7 +402,7 @@ type CompilerDiagnostic
       missing_realization_fact: String,
       span: SourceSpan
     }
-  | EmissionConstructUnprojectable { construct: String, span: SourceSpan }
+  | EmissionConstructUnprojectable { construct: UnprojectableConstruct, span: SourceSpan }
 
 
 // SEVERITY AND GATE DISPOSITION ARE TWO FACTS ABOUT A DIAGNOSTIC, NOT ONE.
@@ -698,7 +716,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     TransportEmissionNotModeled { transport_kind: kind, service: svc, operation: op, declaring_module: m, target: tgt, missing_realization_fact: missing, span: _ } =>
       concat("'", kind, "' transport emission is not modeled: operation '", svc, ".", op, "' declared in '", m, "' cannot be emitted for target '", tgt, "' -- ", missing, ". Bind a realization handler for the '", kind, "' transport (DESIGN §3: interface shape and transport are two facts); do not add a per-target renderer")
     EmissionConstructUnprojectable { construct: c, span: _ } =>
-      concat("emission refused: unprojectable construct '", c, "' — every source construct contributing to a published file must receive a total projection; this construct has none, so the module must not be published")
+      concat("emission refused: unprojectable construct '", unprojectable_construct_prose(c: c), "' — every source construct contributing to a published file must receive a total projection; this construct has none, so the module must not be published")
   }
 }
 

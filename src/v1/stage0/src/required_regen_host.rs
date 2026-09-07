@@ -2734,7 +2734,10 @@ mod tests {
                             crate::v1_std_core::CompilerDiagnostic::EmissionConstructUnprojectable {
                                 construct,
                                 ..
-                            } if construct == "filter in branch condition"
+                            } if matches!(
+                                construct.as_ref(),
+                                crate::v1_std_core::UnprojectableConstruct::FilterInBranchCondition
+                            )
                         ) && crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())
                     });
                     let module_published = negative.files.iter().any(|f| {

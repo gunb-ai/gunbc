@@ -10493,7 +10493,9 @@ pub fn collect_filter_in_guard_refusals(
         {
             __result.push(crate::v1_std_core::make_error_node(
                 Rc::new(CompilerDiagnostic::EmissionConstructUnprojectable {
-                    construct: "filter in branch condition".to_string(),
+                    construct: Rc::new(
+                        crate::v1_std_core::UnprojectableConstruct::FilterInBranchCondition,
+                    ),
                     span: call.span.clone(),
                 }),
                 module_name.clone(),
