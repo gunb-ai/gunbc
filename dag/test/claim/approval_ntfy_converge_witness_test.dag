@@ -12,6 +12,7 @@ import gunbc.auth.approval_ntfy_converge {
 import gunbc.executor_privileged_operation {
   EnsureSystemAccount, EnsureOwnedDirectory, SystemdDaemonReload,
   executor_privileged_operation_precondition, executor_privileged_operation_converge_command,
+  OperationPrecondition, NoPrecondition, AccountExistsCheck,
 }
 import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path }
 import gunbc.auth.approval_ntfy_deployment { approval_ntfy_account_command }
@@ -25,7 +26,9 @@ test fn witness_ensure_account_carries_its_precondition() -> Bool {
     login: "gunbc-ntfy",
     shell: fleet_posix_nologin_shell_path,
   })
-  string_contains(s: cmd, pattern: "id -u gunbc-ntfy") && string_contains(s: cmd, pattern: " || ")
+  string_contains(s: cmd, pattern: "gunbc-ntfy")
+    && string_contains(s: cmd, pattern: "id")
+    && string_contains(s: cmd, pattern: ">/dev/null 2>&1 || ")
 }
 
 // POSITIVE CONTROL: an operation that is ALREADY idempotent must not acquire a guard, or the
@@ -39,8 +42,20 @@ test fn witness_directory_ensure_needs_no_precondition() -> Bool {
   match executor_privileged_operation_precondition(op: EnsureOwnedDirectory {
     path: "/var/lib/gunbc-ntfy", owner: "gunbc-ntfy", group: "gunbc-ntfy", mode: "0750",
   }) {
-    Present { value: _ } => false
-    Absent => true
+    NoPrecondition => true
+    AccountExistsCheck { login: _ } => false
+  }
+}
+
+// THE ACCOUNT CHECK NAMES THE LOGIN IT CHECKS, so the precondition cannot drift from the operation
+// it guards -- a guard that tested a different account than the one being created would short
+// circuit on the wrong fact and read as converged.
+test fn witness_account_precondition_names_the_same_login() -> Bool {
+  match executor_privileged_operation_precondition(op: EnsureSystemAccount {
+    login: "gunbc-ntfy", shell: fleet_posix_nologin_shell_path,
+  }) {
+    AccountExistsCheck { login } => (login as String) == "gunbc-ntfy"
+    NoPrecondition => false
   }
 }
 
@@ -107,5 +122,6 @@ test fn witness_intervention_command_equals_the_converged_member_command() -> Bo
 
 // AND IT CARRIES THE PRECONDITION, so the equality above is not two copies of the WRONG form.
 test fn witness_intervention_command_is_the_guarded_form() -> Bool {
-  string_contains(s: approval_ntfy_account_command(), pattern: "id -u gunbc-ntfy")
+  string_contains(s: approval_ntfy_account_command(), pattern: ">/dev/null 2>&1 || ")
+    && string_contains(s: approval_ntfy_account_command(), pattern: "gunbc-ntfy")
 }

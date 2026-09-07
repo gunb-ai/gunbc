@@ -9,7 +9,7 @@ import gunbc.executor_privileged_operation {
 }
 import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path }
 import gunbc.auth.approval_ntfy_deployment {
-  approval_ntfy_principal_name, approval_ntfy_state_root, approval_ntfy_config_path,
+  approval_ntfy_principal_name, approval_ntfy_state_root, approval_ntfy_config_dir,
   approval_ntfy_unit_name,
 }
 
@@ -63,7 +63,7 @@ type NtfyConvergedMember
 // a lab twin's retract removed a production artifact store; the same hazard applies here and the
 // answer is the same category.
 fn ntfy_member_ownership(m: NtfyConvergedMember) -> Ownership? {
-  Ensured
+  Present { value: Ensured }
 }
 
 fn ntfy_member_key(m: NtfyConvergedMember) -> NonEmptyStr {
@@ -85,8 +85,17 @@ fn ntfy_member_value_eq(a: NtfyConvergedMember, b: NtfyConvergedMember) -> Bool 
   (ntfy_member_key(m: a) as String) == (ntfy_member_key(m: b) as String)
 }
 
-data ntfy_attachment_cache_dir: NonEmptyStr = "/var/lib/gunbc-ntfy/attachments"
-data ntfy_config_dir: NonEmptyStr = "/etc/gunbc-ntfy"
+// DERIVED, NOT RE-MINTED. These previously spelled "/var/lib/gunbc-ntfy/attachments" and
+// "/etc/gunbc-ntfy" as literals while importing the declarations that own both roots -- two sources
+// for one path, so renaming the state root would have left this roster ensuring directories the
+// server does not use. It is the same nicknaming this PR removed from the base URL, in a file that
+// already had the authorities in scope.
+data ntfy_attachments_dir_name: NonEmptyStr = "attachments"
+
+fn ntfy_attachment_cache_dir() -> NonEmptyStr {
+  join([approval_ntfy_state_root as String, "/", ntfy_attachments_dir_name as String], "") as NonEmptyStr
+}
+
 data ntfy_state_dir_mode: NonEmptyStr = "0750"
 
 // THE DESIRED SET, derived from the deployment's own declarations rather than restated. The order
@@ -97,8 +106,8 @@ fn approval_ntfy_desired_members() -> List<NtfyConvergedMember> {
   [
     NtfyServiceAccount,
     NtfyStateDirectory { path: approval_ntfy_state_root },
-    NtfyStateDirectory { path: ntfy_attachment_cache_dir },
-    NtfyConfigDirectory { path: ntfy_config_dir },
+    NtfyStateDirectory { path: ntfy_attachment_cache_dir() },
+    NtfyConfigDirectory { path: approval_ntfy_config_dir },
     NtfyUnitDaemonReloaded,
     NtfyUnitEnabled,
     NtfyUnitStarted,

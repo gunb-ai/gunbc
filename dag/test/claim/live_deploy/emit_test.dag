@@ -943,6 +943,12 @@ fn preamble_step_command(step: PipelineStep) -> String {
   }
 }
 
+// THE GUARD IS ASSERTED BY SHAPE, NOT BY ITS QUOTING. This previously pinned the exact string
+// "id -u gunbc-publication >/dev/null 2>&1 || ", which encoded the hand-spelled unquoted
+// authorship this caller used to carry. The precondition now renders through the same quoting
+// authority as the operation it guards (gunbc.executor_privileged_operation), so the login arrives
+// single-quoted -- equivalent shell, one fewer place that decides quoting. What the witness owes is
+// that the check runs and short-circuits the useradd, which is what it now asserts.
 test fn the_preamble_ensures_the_publication_principal_as_a_nologin_system_account() -> Bool {
   let spec = deployment_spec_srv1()
   let ensure = deploy_publication_principal_ensure_command(spec: spec)
@@ -950,7 +956,9 @@ test fn the_preamble_ensures_the_publication_principal_as_a_nologin_system_accou
     DeployAccessReady { access } => deploy_apply_preamble_steps(access: access, spec: spec)
     DeployAccessJobPrincipalRefused { refusal: _ } => []
   }
-  string_contains(s: ensure, pattern: "id -u gunbc-publication >/dev/null 2>&1 || ")
+  string_contains(s: ensure, pattern: "gunbc-publication")
+    && string_contains(s: ensure, pattern: ">/dev/null 2>&1 || ")
+    && string_contains(s: ensure, pattern: "id")
     && string_contains(s: ensure, pattern: "useradd")
     && string_contains(s: ensure, pattern: "--system")
     && string_contains(s: ensure, pattern: "--no-create-home")

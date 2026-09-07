@@ -4,6 +4,7 @@ import std.logic { Bool }
 import std.types { String, Int }
 import extdeps.ntfy.ntfy {
   NtfyPublishOutcome, NtfyPublished, NtfyPublishRefused, NtfyPublishUnreached,
+  NtfyPublishUndecodable,
   ntfy_publish_outcome_of, ntfy_publish_succeeded,
 }
 import extdeps.transports.rest {
@@ -23,6 +24,7 @@ test fn witness_ok_becomes_published() -> Bool {
     NtfyPublished { message_id } => message_id as String == "abc123"
     NtfyPublishRefused { status: _, detail: _ } => false
     NtfyPublishUnreached { cause: _ } => false
+    NtfyPublishUndecodable { status: _, cause: _ } => false
   }
 }
 
@@ -36,6 +38,7 @@ test fn witness_unauthorized_becomes_refusal_carrying_its_status() -> Bool {
     NtfyPublishRefused { status, detail } => status == 401 && detail != ""
     NtfyPublished { message_id: _ } => false
     NtfyPublishUnreached { cause: _ } => false
+    NtfyPublishUndecodable { status: _, cause: _ } => false
   }
 }
 
@@ -50,6 +53,7 @@ test fn witness_forbidden_becomes_refusal_carrying_its_status() -> Bool {
     NtfyPublishRefused { status, detail } => status == 403
     NtfyPublished { message_id: _ } => false
     NtfyPublishUnreached { cause: _ } => false
+    NtfyPublishUndecodable { status: _, cause: _ } => false
   }
 }
 
@@ -66,6 +70,7 @@ test fn witness_transport_refusal_is_a_distinct_unreached_outcome() -> Bool {
   ) {
     NtfyPublishUnreached { cause } => cause == "connection refused"
     NtfyPublishRefused { status: _, detail: _ } => false
+    NtfyPublishUndecodable { status: _, cause: _ } => false
     NtfyPublished { message_id: _ } => false
   }
 }
@@ -79,18 +84,20 @@ test fn witness_status_refusal_is_not_reported_as_unreached() -> Bool {
   ) {
     NtfyPublishRefused { status, detail: _ } => status == 403
     NtfyPublishUnreached { cause: _ } => false
+    NtfyPublishUndecodable { status: _, cause: _ } => false
     NtfyPublished { message_id: _ } => false
   }
 }
 
-test fn witness_undecodable_body_is_a_refusal_not_a_publish() -> Bool {
+test fn witness_undecodable_body_is_its_own_outcome_not_a_refusal() -> Bool {
   match ntfy_publish_outcome_of(
     rest: RestBodyUndecodable { status: 200, cause: "not json" },
     message_id: "",
   ) {
-    NtfyPublishRefused { status, detail } => status == 200
-    NtfyPublished { message_id: _ } => false
+    NtfyPublishUndecodable { status, cause } => status == 200 && cause == "not json"
+    NtfyPublishRefused { status: _, detail: _ } => false
     NtfyPublishUnreached { cause: _ } => false
+    NtfyPublished { message_id: _ } => false
   }
 }
 
@@ -102,4 +109,15 @@ test fn witness_succeeded_separates_ok_from_a_200_that_did_not_decode() -> Bool 
     && !ntfy_publish_succeeded(
       o: ntfy_publish_outcome_of(rest: RestBodyUndecodable { status: 200, cause: "not json" }, message_id: "id"),
     )
+}
+
+// THE THREE FAILURE OUTCOMES ARE MUTUALLY DISTINCT, which is the property both splits were for:
+// refused / unreached / undecodable answer three different questions and must never collapse.
+test fn witness_the_three_failure_outcomes_are_distinct() -> Bool {
+  let refused = ntfy_publish_outcome_of(rest: RestStatusRefused { status: 401, body: "{}" }, message_id: "")
+  let unreached = ntfy_publish_outcome_of(rest: RestTransportRefused { cause: "no route" }, message_id: "")
+  let undecodable = ntfy_publish_outcome_of(rest: RestBodyUndecodable { status: 200, cause: "bad" }, message_id: "")
+  match refused { NtfyPublishRefused { status: _, detail: _ } => true  NtfyPublished { message_id: _ } => false  NtfyPublishUnreached { cause: _ } => false  NtfyPublishUndecodable { status: _, cause: _ } => false }
+    && match unreached { NtfyPublishUnreached { cause: _ } => true  NtfyPublished { message_id: _ } => false  NtfyPublishRefused { status: _, detail: _ } => false  NtfyPublishUndecodable { status: _, cause: _ } => false }
+    && match undecodable { NtfyPublishUndecodable { status: _, cause: _ } => true  NtfyPublished { message_id: _ } => false  NtfyPublishRefused { status: _, detail: _ } => false  NtfyPublishUnreached { cause: _ } => false }
 }

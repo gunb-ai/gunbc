@@ -281,34 +281,66 @@ data executor_privileged_operation_shell_scaffold: Disposition = Scaffold {
 // the operation READ as idempotent while the guarantee lived in the neighbour. MEASURED on srv1:
 // re-running the projected argv returned rc=9 for the account and rc=0 for all six others.
 //
-// The guard therefore moves here, where it is one authority instead of a thing each caller must
-// remember. The match is EXHAUSTIVE ON PURPOSE with no wildcard arm: a new operation must decide
-// whether it needs a precondition, rather than defaulting to "none" and inheriting this same
-// silent non-idempotence.
-fn executor_privileged_operation_precondition(op: ExecutorPrivilegedOperation) -> String? {
+// EXACTLY ONE OPERATION NEEDS A PRECONDITION, and that was established by measurement rather than
+// assumed. An earlier revision also guarded EnsureSupplementaryGroupMembership with an
+// `id -nG | tr | grep -qx` pipeline -- a hand-authored program smuggled into a string, solving a
+// problem that does not exist: `usermod -aG` appending a group the user already has exits 0
+// (measured on srv1, twice). Deleting that arm removed the pipeline rather than modeling it, which
+// is the better outcome for a check that was never needed.
+type OperationPrecondition
+  = NoPrecondition
+  | AccountExistsCheck { login: NonEmptyStr }
+
+// THE MATCH IS EXHAUSTIVE WITH NO WILDCARD ARM, so a new operation must decide whether it needs a
+// precondition rather than defaulting to "none" and inheriting the same silent non-idempotence
+// this type exists to end.
+fn executor_privileged_operation_precondition(op: ExecutorPrivilegedOperation) -> OperationPrecondition {
   match op {
-    EnsureSystemAccount { login: l, shell: _ } =>
-      Present { value: join(["id -u ", l as String, " >/dev/null 2>&1"], "") }
-    EnsureSupplementaryGroupMembership { login: l, group: g } =>
-      Present { value: join(["id -nG ", l as String, " 2>/dev/null | tr ' ' '\\n' | grep -qx ", g as String], "") }
-    EnsureOwnedDirectory { path: _, owner: _, group: _, mode: _ } => none
-    RemoveDirectoryTree { path: _ } => none
-    SystemdDaemonReload => none
-    SystemdEnableUnit { unit: _ } => none
-    SystemdStartUnit { unit: _ } => none
-    SystemdSetUnitProperty { unit: _, assignment: _ } => none
-    InstallFile { source: _, destination: _, owner: _, group: _, mode: _ } => none
-    SystemdReloadUnit { unit: _ } => none
+    EnsureSystemAccount { login: l, shell: _ } => AccountExistsCheck { login: l }
+    EnsureSupplementaryGroupMembership { login: _, group: _ } => NoPrecondition
+    EnsureOwnedDirectory { path: _, owner: _, group: _, mode: _ } => NoPrecondition
+    RemoveDirectoryTree { path: _ } => NoPrecondition
+    SystemdDaemonReload => NoPrecondition
+    SystemdEnableUnit { unit: _ } => NoPrecondition
+    SystemdStartUnit { unit: _ } => NoPrecondition
+    SystemdSetUnitProperty { unit: _, assignment: _ } => NoPrecondition
+    InstallFile { source: _, destination: _, owner: _, group: _, mode: _ } => NoPrecondition
+    SystemdReloadUnit { unit: _ } => NoPrecondition
   }
 }
 
-// THE COMMAND A CONVERGENCE RUNS: the operation, preceded by its precondition when it has one, so
-// applying a desired member twice is a no-op rather than a failure.
+// THE CHECK IS AN ARGV, quoted by the SAME authority that quotes the operation itself rather than
+// interpolated raw. The prior revision spelled `"id -u " + login` with the login unquoted, which
+// is a second authorship of this module's own calling convention -- the §3 fork its annotation
+// below already records having made once.
+fn operation_precondition_argv(p: OperationPrecondition) -> List<NonEmptyStr> {
+  match p {
+    NoPrecondition => []
+    AccountExistsCheck { login: l } => ["id" as NonEmptyStr, "-u" as NonEmptyStr, l]
+  }
+}
+
+// RESIDUE, NAMED: the redirection and the `||` join below are shell CONTROL FLOW authored as text,
+// which is the no-smuggled-programs boundary -- a join belongs in extdeps/languages rows, not in a
+// string literal here. It is one shape rather than a family, and it is the same shape live_deploy
+// already carries as modeled orchestration intent: If-Not-ExitZero(check) then Do(operation), per
+// gunbc.live_deploy.emit's dependency-ensure note.
+//
+// dissolve-on: this renderer is DELETED, not edited, when the precondition is carried as that
+// If-Not-ExitZero orchestration intent through v2.compiler.emit_orchestration orch_emit_pipeline --
+// the path live_deploy's apply already uses -- so the join is emitted from grammar rows and no
+// operator-facing string is assembled by concatenation here. Until then this is the one place the
+// shape is written, so consolidating it later is one deletion rather than a census.
 fn executor_privileged_operation_converge_command(op: ExecutorPrivilegedOperation) -> String {
-  match executor_privileged_operation_precondition(op: op) {
-    Present { value: guard } =>
-      join([guard, " || ", executor_privileged_operation_shell_command(op: op)], "")
-    Absent => executor_privileged_operation_shell_command(op: op)
+  let check = operation_precondition_argv(p: executor_privileged_operation_precondition(op: op))
+  if list_length(items: check) == 0 {
+    executor_privileged_operation_shell_command(op: op)
+  } else {
+    join([
+      join(map(check, w => posix_single_quote(spelling: w as String)), " "),
+      " >/dev/null 2>&1 || ",
+      executor_privileged_operation_shell_command(op: op),
+    ], "")
   }
 }
 

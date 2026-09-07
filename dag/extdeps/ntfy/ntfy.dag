@@ -87,6 +87,13 @@ type NtfyMessage {
   cache: NtfyCachePolicy
 }
 
+// A BODY WE COULD NOT READ IS NOT A REFUSAL EITHER, and folding it into NtfyPublishRefused was the
+// same collapse one arm over -- caught only after the transport arm had been split for exactly this
+// reason. A 200 whose body did not decode became "refused with status 200": a plausible-looking
+// answer for something the server never said. The server ACCEPTED; we failed to read the reply, and
+// the remedies diverge completely (a parse defect or a retry, versus a credential or policy fix).
+// It keeps its status, because a status genuinely arrived, and it is not a refusal.
+//
 // A TRANSPORT REFUSAL HAS NO STATUS, AND MUST NOT BE GIVEN ONE. An earlier revision folded
 // RestTransportRefused into NtfyPublishRefused { status: 0 }, which reintroduced exactly the
 // fabrication extdeps.transports.rest exists to prevent -- its own annotation says "no response
@@ -98,6 +105,7 @@ type NtfyPublishOutcome
   = NtfyPublished { message_id: NonEmptyStr }
   | NtfyPublishRefused { status: Int, detail: String }
   | NtfyPublishUnreached { cause: String }
+  | NtfyPublishUndecodable { status: Int, cause: String }
 
 // THE OPERATION DECLARES `outcome: RestOutcome`, AND WITHOUT IT THIS TYPE IS UNREACHABLE. The rest
 // transport raises an untyped TypeError on any status >= 400 UNLESS the operation opts in to an
@@ -116,7 +124,7 @@ fn ntfy_publish_outcome_of(rest: RestOutcome, message_id: String) -> NtfyPublish
     RestOk => NtfyPublished { message_id: message_id as NonEmptyStr }
     RestStatusRefused { status, body } => NtfyPublishRefused { status: status, detail: body }
     RestTransportRefused { cause } => NtfyPublishUnreached { cause: cause as String }
-    RestBodyUndecodable { status, cause } => NtfyPublishRefused { status: status, detail: cause as String }
+    RestBodyUndecodable { status, cause } => NtfyPublishUndecodable { status: status, cause: cause as String }
   }
 }
 
@@ -125,6 +133,7 @@ fn ntfy_publish_succeeded(o: NtfyPublishOutcome) -> Bool {
     NtfyPublished { message_id: _ } => true
     NtfyPublishRefused { status: _, detail: _ } => false
     NtfyPublishUnreached { cause: _ } => false
+    NtfyPublishUndecodable { status: _, cause: _ } => false
   }
 }
 

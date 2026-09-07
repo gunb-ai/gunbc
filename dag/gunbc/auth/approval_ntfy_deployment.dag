@@ -26,7 +26,12 @@ import gunbc.fleet_intent_network { fleet_intent_network, operator_host_srv1 }
 // the dispatched sessions are not, and the approval loop needs precisely that property.
 data approval_ntfy_principal_name: NonEmptyStr = "gunbc-ntfy"
 data approval_ntfy_state_root: NonEmptyStr = "/var/lib/gunbc-ntfy"
-data approval_ntfy_config_path: NonEmptyStr = "/etc/gunbc-ntfy/server.yml"
+// THE DIRECTORY IS THE AUTHORITY AND THE FILE PATH DERIVES FROM IT, not the other way round: a
+// dirname would be a second computation over the same fact, and the converge roster needs the
+// directory to ensure ownership on it.
+data approval_ntfy_config_dir: NonEmptyStr = "/etc/gunbc-ntfy"
+data approval_ntfy_config_file_name: NonEmptyStr = "server.yml"
+data approval_ntfy_config_path: NonEmptyStr = join([approval_ntfy_config_dir as String, "/", approval_ntfy_config_file_name as String], "") as NonEmptyStr
 data approval_ntfy_unit_name: NonEmptyStr = "gunbc-ntfy.service"
 
 // LOOPBACK, AND THAT IS THE SECURITY BOUNDARY RATHER THAN A DEFAULT. The server binds 127.0.0.1
