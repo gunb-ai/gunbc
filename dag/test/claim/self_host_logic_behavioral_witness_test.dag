@@ -2,20 +2,22 @@ module test.claim.self_host_logic_behavioral_witness
 
 import tools.self_host_logic_behavioral_transport { slb_behavioral_receipt_holds }
 
-// Wet self-host behavioral receipt probe for Wave 1 Gate 4 (weak self-host behavioral receipt):
-// tools.self_host_logic_behavioral_transport emits dag/std/logic.dag via the real gunbc binary,
-// compiles the emitted Rust against the v1-compiler seed crate, and runs the resulting witness
-// binary (plain + --inject-fault) to prove emit -> compile -> run -> equals-seed behavioral
-// equivalence by execution. Live host effects (cargo build, process execution), so it is CLASSIFIED
-// onto the falsifier Wet follow-on batch (falsifier_self_host_wet_entries) rather than per-PR
-// hermetic discovery or bin_witness_wet. THE JUSTIFYING HALF OF THAT SENTENCE IS PAST TENSE
-// (corrected 2026-09-01): the falsifier WAS the proven template lane for Wave 2 self-host receipts,
-// and that was the reason this receipt could leave per-PR without leaving coverage. falsifier.yml
-// was deleted at 611fd02770 (#8283, 2026-08-15), std.witness_admission
-// witness_cadence_has_scheduled_route answers FalsifierSelfHostWet false, and no replacement
-// executor exists -- so the destination this receipt was classified onto executes nothing, and the
-// classification now removes it from per-PR coverage without adding any. Censused as
-// PremiseInvalidated in gunbc.deleted_cadence_reference_census.
+// Control (a) -- planted-mutation behavioral receipt for dag/std/logic.dag:
+// tools.self_host_logic_behavioral_transport emits dag/std/logic.dag via the real
+// gunbc binary, compiles the emitted Rust against the v1-compiler seed crate, and runs
+// the resulting witness binary (plain + --inject-fault) to prove emit -> compile -> run
+// -> equals-seed behavioral equivalence by execution. The --inject-fault arm proves the
+// comparison discriminates (DESIGN section 5): the emitted classical_not receives a
+// deliberately mismatched input, the comparison fails, and FaultCaught is reported.
+//
+// Rehomed from FalsifierSelfHostWet (dead cadence, falsifier.yml deleted at #8283) to
+// LocalRepoWetLane per operator ruling. The DeclaredCadenceUnrealized standing for the
+// FalsifierSelfHostWet cadence is preserved in the exclusion row reason as evidence of
+// the routing gap. Executes on the required floor local-repo wet lane.
+//
+// THIS IS NOT A SUBSTITUTE FOR CONTROL (b). Control (a) tests whether the comparison
+// discriminates; control (b) tests whether the candidate depends on the seed. Neither
+// establishes the other, and a green (a) does not cover a missing (b).
 
 test fn self_host_logic_behavioral_receipt_holds() -> Bool {
   slb_behavioral_receipt_holds()
