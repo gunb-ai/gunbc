@@ -392,14 +392,51 @@ thread_local! {
     /// `DeclFactRaw` population (the walk sorts its output, so the key may be canonicalized),
     /// same marshaled rows; different ownership of the shared construction cost.
     ///
-    /// Outside the floor there is no prepared authority to bound the memo's lifetime, so the
-    /// cell is `None` and every call walks — the existing behaviour, unchanged.
+    /// Outside the floor the cell is `None` unless an entry point registers it for a subject of
+    /// its own; `claim_batch` does, for its invocation. A caller that registers nothing walks on
+    /// every call — the original behaviour, unchanged.
+    ///
+    /// DO NOT PROPOSE WARMING THIS CENSUS AS A CROSS-CLAIM SHARED VALUE. It was tried and it is
+    /// closed by execution, not by argument. Two required-floor runs differing by exactly one
+    /// roster line — 34088506991 with the producer ABSENT, 34088508298 with it PRESENT — answered:
+    /// the PRESENT arm returned `PureProducerShareWarmNotStored` for the zero-arg population
+    /// producer `v2.lens.common.outside_modeled_guarantee_join` then carried. That declaration no
+    /// longer exists -- the keyed read left it with no consumer and this change deleted it -- and
+    /// the receipt is deliberately kept, because the finding is about the VALUE (a whole
+    /// witness-layer declaration population, minted to answer one keyed question) and not about
+    /// the declaration that happened to build it. The producer
+    /// resolved AND EVALUATED; the cross-claim store then refused the VALUE as
+    /// `ByteBudgetExceeded`. The arms are verified to have varied (unrelated producers report
+    /// `disposition=Stored` in both, and the refusal appears three times in PRESENT and zero times
+    /// in ABSENT), so this is not a wiring failure.
+    ///
+    /// The reading that follows is the reason the keyed reads exist: a value too large to be a
+    /// shared value is a value that should not have been built to answer one question. Sharing it
+    /// harder is the wrong lever, and raising the store's byte budget to admit it would destroy the
+    /// signal that produced this sentence.
     static FLOOR_DECL_FACTS_MEMO: RefCell<
         Option<StdDeclParseMemoMap<Vec<String>, Rc<Vec<DeclFactRaw>>>>,
     > = RefCell::new(None);
 }
 
-pub fn register_floor_decl_parse_memo() {
+/// Open the declaration-census memo for one prepared subject, and close it with
+/// `clear_decl_census_memo`.
+///
+/// THE NAME LOST ITS `floor_` PREFIX WHEN IT ACQUIRED A SECOND REGISTRANT, and the rename is the
+/// point rather than tidying: the memo is not a floor mechanism, it is the census provider whose
+/// retention has to span the demands that share it (DESIGN §2 — one computation identity joined to
+/// a provider whose scope reaches the demands' least common ancestor). The floor was simply the
+/// first caller that had a bounded subject to hang it on. Keeping `floor_` in the name while
+/// `claim_batch` registered it too would be a §3 nickname: one concept answering to a name that
+/// says it belongs to one of its callers.
+///
+/// WHY A SECOND REGISTRANT EXISTS AT ALL. Keyed reads (`decl_facts_at`) ask about one qualified
+/// name, so a fold over N citations makes N demands of one census. Under a registration those are
+/// one walk and N lookups; with the cell closed, `decl_facts_for_roots_shared` returns early and
+/// each demand walks the corpus again — the keyed read would then be strictly worse than the
+/// population read it replaces, which hoisted its one walk into a `data` row by hand. The provider
+/// has to reach the ancestor or the keyed read is not a repair.
+pub fn register_decl_census_memo() {
     FLOOR_DECL_PARSE_MEMO.with(|cell| {
         *cell.borrow_mut() = Some(StdDeclParseMemoMap::new());
     });
@@ -408,7 +445,7 @@ pub fn register_floor_decl_parse_memo() {
     });
 }
 
-pub fn clear_floor_decl_parse_memo() {
+pub fn clear_decl_census_memo() {
     FLOOR_DECL_PARSE_MEMO.with(|cell| *cell.borrow_mut() = None);
     FLOOR_DECL_FACTS_MEMO.with(|cell| *cell.borrow_mut() = None);
 }
@@ -2013,6 +2050,50 @@ pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResu
     eval_decl_facts_rows(ctx, &facts)
 }
 
+/// The KEYED read of the same declaration census `decl_facts` publishes: the rows whose
+/// `qualified_name` is exactly `qualified_name`, and nothing else.
+///
+/// One law, two directions — this is `decl_facts` composed with the exact-equality filter the
+/// substrate already authored (`v2.std.decl_facts_skeleton` `decl_facts_matching_qualified_name`),
+/// moved to the side of the seam where the population still exists as raw rows. It is not a second
+/// census: both reads answer from `decl_facts_for_roots_shared`, so a row this returns is the row
+/// `decl_facts` would have returned, byte for byte.
+///
+/// WHY IT EXISTS. A keyed question — does this citation name a declaration — had to mint the whole
+/// population to ask it: every row's `node` marshalled into interpreter `Value`s, then folded away
+/// in the interpreter. The marshal is the cost, and it is paid per ASK, so N citations cost N
+/// corpus marshals. Filtering before the marshal makes the keyed question cost one.
+///
+/// Multiplicity is PRESERVED, not collapsed to a first hit: two rows under one logical qualified
+/// name is what `DeclarationRefAmbiguous` is derived from, and a keyed read that returned the first
+/// would silently resolve an ambiguous citation.
+pub fn eval_decl_facts_at(
+    ctx: &InterpContext,
+    pool_roots: &[String],
+    qualified_name: &str,
+) -> InterpResult<Value> {
+    // Same line-stop as `eval_decl_facts`, and for the same reason: a root that contributes
+    // nothing is invisible in a keyed answer too — an empty result is exactly what a genuine miss
+    // looks like — so the refusal must fire against the DECLARED roots, before the read.
+    let pool_root_defects_found = pool_root_defects(pool_roots);
+    if !pool_root_defects_found.is_empty() {
+        return Err(
+            crate::v1_interpreter::InterpError::PoolRootContributesNothing {
+                caller: "decl_facts_at",
+                declared: pool_roots.len(),
+                defects: pool_root_defects_found,
+            },
+        );
+    }
+    let facts = decl_facts_for_roots_shared(pool_roots);
+    let matching: Vec<DeclFactRaw> = facts
+        .iter()
+        .filter(|f| f.qualified_name == qualified_name)
+        .cloned()
+        .collect();
+    eval_decl_facts_rows(ctx, &matching)
+}
+
 fn eval_decl_facts_rows(ctx: &InterpContext, facts: &[DeclFactRaw]) -> InterpResult<Value> {
     let mut rows = Vec::with_capacity(facts.len());
     for fact in facts {
@@ -2319,15 +2400,15 @@ mod decl_facts_shared_memo_tests {
             names(&cold_duplicated),
             "the walk visits every supplied root, so [r, r] is a different population from [r]"
         );
-        clear_floor_decl_parse_memo();
+        clear_decl_census_memo();
         let unregistered = decl_facts_for_roots_shared(&roots);
         assert_eq!(names(&cold), names(&unregistered));
-        register_floor_decl_parse_memo();
+        register_decl_census_memo();
         let first = decl_facts_for_roots_shared(&roots);
         let second = decl_facts_for_roots_shared(&reordered);
         let shared_singleton = decl_facts_for_roots_shared(&singleton);
         let shared_duplicated = decl_facts_for_roots_shared(&duplicated);
-        clear_floor_decl_parse_memo();
+        clear_decl_census_memo();
         assert!(
             Rc::ptr_eq(&first, &second),
             "a reordering of the same root multiset must read the same walk"

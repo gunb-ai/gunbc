@@ -38924,7 +38924,7 @@ impl Drop for FloorPreparedAuthorityGuard {
 /// Install prepared source bytes. Only `register_floor_prepared_authority_guard` calls this so
 /// Drop always clears the thread-locals and compile memo.
 fn register_floor_prepared_authority(inventory: Vec<PreparedSourceView>) {
-    crate::coproduct_reflection::register_floor_decl_parse_memo();
+    crate::coproduct_reflection::register_decl_census_memo();
     let inventory_digest = floor_inventory_content_digest(&inventory);
     FLOOR_PREPARED_AUTHORITY.with(|cell| {
         *cell.borrow_mut() = Some(FloorPreparedAuthority {
@@ -38939,7 +38939,7 @@ fn register_floor_prepared_authority(inventory: Vec<PreparedSourceView>) {
 pub fn clear_floor_prepared_authority() {
     FLOOR_PREPARED_AUTHORITY.with(|cell| *cell.borrow_mut() = None);
     FLOOR_LANGUAGES_RECORDS.with(|cell| *cell.borrow_mut() = None);
-    crate::coproduct_reflection::clear_floor_decl_parse_memo();
+    crate::coproduct_reflection::clear_decl_census_memo();
     crate::v1_interpreter::clear_cross_claim_pure_memos();
 }
 
@@ -42081,9 +42081,10 @@ pub use partition_crate_boundary_host::{
 /// through one surface, the way the regen and partition-crate paths do.
 pub use generated_artifact_boundary_host::{
     artifact_disposition, artifact_disposition_name, boundary_divergent, boundary_is_clean,
-    generated_artifact_body_for_path, generated_artifact_ctx, run_generated_artifact_boundary,
-    AdjudicatedArtifact, ArtifactDisposition, GeneratedArtifactBoundaryOutcome,
-    GeneratedArtifactPathBody, UnadjudicatedArtifact, GENERATED_ARTIFACT_PRODUCING_COMMAND,
+    generated_artifact_body_for_path, generated_artifact_ctx, run_docs_projection_agreement,
+    run_generated_artifact_boundary, AdjudicatedArtifact, ArtifactDisposition,
+    DocsProjectionAgreement, GeneratedArtifactBoundaryOutcome, GeneratedArtifactPathBody,
+    UnadjudicatedArtifact, GENERATED_ARTIFACT_PRODUCING_COMMAND,
 };
 
 /// The emitted-closure compile phase: one entry's closure emitted, written as a crate, and
