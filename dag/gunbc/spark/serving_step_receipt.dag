@@ -1,0 +1,172 @@
+module gunbc.spark.serving_step_receipt
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import gunbc.spark.serving_launch_instrumentation { LaunchInstrumentation, AttributionInstrument, FirstPartyStepObserver }
+
+// ── THE FACT NO SERVED METRIC CAN CARRY ───────────────────────────────────────────────────────
+//
+// Every wrong conclusion in the prefill investigation came from deriving a per-request quantity from
+// an engine-wide counter. gunbc.recurring_failure_mode.cumulative_metric_read_as_per_event states the
+// two walls that follow: an aggregate delta is attributable only under a complete boundary, and even
+// then dividing by an event count yields a population MEAN rather than any event's size.
+//
+// Both walls have the same escape, and it is the only one: per-event accounting emitted by the
+// producer. The engine knows exactly how many tokens it scheduled for each request in each step. It
+// simply never says so, because no Prometheus series is shaped to carry a per-request-per-step fact.
+//
+// This module is the shape of what a first-party observer would emit. It is deliberately authored
+// BEFORE the observer, because the observer's whole value is conforming to this and a wrapper written
+// first would define its own vocabulary and become the authority by accident.
+//
+// WHAT THE OBSERVER MUST NOT DO is decide anything. It wraps the scheduler, returns upstream's answer
+// unchanged, and records what upstream decided. A wrapper that returns a different allocation is a
+// different change with a different risk, and mixing the two would make a scheduling defect
+// indistinguishable from an observation defect.
+type RequestPhase
+  = Prefill
+  | Decode
+  | PrefillAndDecodeInSameStep
+
+// ONE REQUEST'S SHARE OF ONE STEP. This is the atom the served metrics cannot express: the scheduler
+// allocates per request per step, and every aggregate downstream is a fold over these.
+type RequestStepAllocation {
+  request_id: NonEmptyStr
+  phase: RequestPhase
+  computed_tokens: Nat
+  cached_tokens: Nat
+}
+
+// ONE STEP. The allocation list IS the step's scheduled population, so the per-step total is derived
+// rather than reported -- a reported total that disagreed with its parts would be a second authority
+// for the same quantity.
+type ServingStepReceipt {
+  step_sequence: Nat
+  started_micros: Nat
+  elapsed_micros: Nat
+  allocations: List<RequestStepAllocation>
+  running_after: Nat
+  waiting_after: Nat
+}
+
+fn step_computed_tokens(r: ServingStepReceipt) -> Nat {
+  fold(r.allocations, init: 0, f: (acc, a) => acc + a.computed_tokens)
+}
+
+fn step_request_count(r: ServingStepReceipt) -> Nat {
+  length(r.allocations)
+}
+
+// ── A GAP IS A REFUSAL, NOT A SMALLER POPULATION ──────────────────────────────────────────────
+//
+// The observer must never block the engine, so its sink is bounded and can drop. A dropped receipt is
+// invisible in the surviving population -- the remaining receipts look like a complete run -- which is
+// precisely the shape that lets a fold produce a confident wrong answer.
+//
+// So a gap is recorded as a first-class fact and the population carries it. Serving continues through
+// a gap, because performance observation is not a serving-correctness requirement; CALIBRATION does
+// not, because a fold over a population with an unrecorded hole is the absorbing fallback this
+// programme exists to refuse.
+type ObservationGap {
+  first_missing_sequence: Nat
+  missing_count: Nat
+  because: NonEmptyStr
+}
+
+type StepReceiptPopulation {
+  launch: LaunchInstrumentation
+  receipts: List<ServingStepReceipt>
+  gaps: List<ObservationGap>
+}
+
+type PopulationCompleteness
+  = ContiguousAndComplete { steps: Nat }
+  | HasObservationGaps { gaps: Nat, first_missing: Nat }
+
+fn population_completeness(p: StepReceiptPopulation) -> PopulationCompleteness {
+  match first(p.gaps) {
+    Absent => ContiguousAndComplete { steps: length(p.receipts) }
+    Present { value: g } => HasObservationGaps { gaps: length(p.gaps), first_missing: g.first_missing_sequence }
+  }
+}
+
+// THE WALL. A population with a hole may be read, browsed and reported; it may not be folded into a
+// calibration. This is the one rule that makes the observer worth building rather than a second
+// source of confident wrong numbers.
+type CalibrationAdmission
+  = AdmittedToCalibration { steps: Nat }
+  | RefusedForObservationGap { because: NonEmptyStr }
+  | RefusedForUninstrumentedLaunch { because: NonEmptyStr }
+
+fn population_admits_calibration(p: StepReceiptPopulation) -> CalibrationAdmission {
+  match first(p.launch.bound_instruments) {
+    Absent =>
+      RefusedForUninstrumentedLaunch { because: "this population claims receipts from a launch that bound no observer, so its provenance is unaccounted" as NonEmptyStr }
+    Present { value: _ } =>
+      match population_completeness(p: p) {
+        HasObservationGaps { gaps: n, first_missing: f } =>
+          RefusedForObservationGap { because: "the receipt population has a recorded hole, and a fold over it would report a complete-looking answer over an incomplete population" as NonEmptyStr }
+        ContiguousAndComplete { steps: s } => AdmittedToCalibration { steps: s }
+      }
+  }
+}
+
+// ── WHAT THE RECEIPT ANSWERS THAT THE COUNTER COULD NOT ───────────────────────────────────────
+//
+// The effective batch budget is currently a BEHAVIOURAL FLOOR, obtained by making the engine idle so
+// that an engine-wide counter would mean something per request. That trick works only on an idle
+// engine, which is the one condition production is never in. A receipt population answers the same
+// question directly and under load, because each step reports the population it actually scheduled.
+type BudgetEvidence
+  = LargestScheduledStep { computed_tokens: Nat, at_step: Nat }
+  | NoStepObserved { because: NonEmptyStr }
+
+fn largest_scheduled_step(p: StepReceiptPopulation) -> BudgetEvidence {
+  match population_admits_calibration(p: p) {
+    RefusedForObservationGap { because: b } => NoStepObserved { because: b }
+    RefusedForUninstrumentedLaunch { because: b } => NoStepObserved { because: b }
+    AdmittedToCalibration { steps: _ } =>
+      fold(p.receipts, init: NoStepObserved { because: "the admitted population contains no steps" as NonEmptyStr }, f: (best, r) => {
+        let t = step_computed_tokens(r: r)
+        match best {
+          NoStepObserved { because: _ } => LargestScheduledStep { computed_tokens: t, at_step: r.step_sequence }
+          LargestScheduledStep { computed_tokens: bt, at_step: bs } =>
+            if t > bt { LargestScheduledStep { computed_tokens: t, at_step: r.step_sequence } }
+            else { LargestScheduledStep { computed_tokens: bt, at_step: bs } }
+        }
+      })
+  }
+}
+
+// AND IT SEPARATES SELF-COST FROM CO-TENANCY WITHOUT NEEDING AN IDLE ENGINE. A step carrying one
+// request is that request's step; a step carrying several is shared, and the receipt says which
+// without anyone having to arrange exclusivity. That is the difference between measuring production
+// and measuring a laboratory.
+type StepExclusivity
+  = StepServedOneRequest { request_id: NonEmptyStr }
+  | StepServedSeveral { request_count: Nat }
+  | StepServedNothing
+
+fn step_exclusivity(r: ServingStepReceipt) -> StepExclusivity {
+  match first(r.allocations) {
+    Absent => StepServedNothing
+    Present { value: a } =>
+      if length(r.allocations) == 1 { StepServedOneRequest { request_id: a.request_id } }
+      else { StepServedSeveral { request_count: length(r.allocations) } }
+  }
+}
+
+// ── THIS CONTRACT HAS NO PRODUCER YET, AND SAYS SO ────────────────────────────────────────────
+//
+// No receipt population exists: producing one needs an observer bound to a launch at start, which is
+// the change this contract is authored to constrain. The frontier is declared rather than left
+// implicit so that a reader can tell an unbuilt producer from a forgotten one, and so the trigger is
+// a capability rather than an artifact.
+type ProducerStanding
+  = ProducerBound { instrument: AttributionInstrument }
+  | ProducerUnbuilt { trigger: NonEmptyStr }
+
+data spark_step_receipt_producer: ProducerStanding = ProducerUnbuilt {
+  trigger: "a first-party scheduler-wrapping observer, installed in the runtime image and named in a launch that starts with it bound, emitting one receipt per engine step with per-request allocations and recording a typed gap whenever its sink drops -- sufficient to answer the effective budget and the exclusivity of any step under production load, which no served metric can" as NonEmptyStr,
+}

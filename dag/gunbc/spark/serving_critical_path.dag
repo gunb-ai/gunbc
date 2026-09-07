@@ -7,6 +7,11 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch }
+import gunbc.spark.serving_launch_instrumentation {
+  LaunchInstrumentation, spark_group_a_pair_head_instrumentation,
+  AttributionAvailability, AttributableBy, NotAttributableOnThisLaunch,
+  launch_attribution_availability,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "docs.nvidia.com/dgx/dgx-spark/hardware.html" }
@@ -538,6 +543,28 @@ data spark_group_a_cold_prefill_partition: CriticalPathPartition = PartitionInco
     HigherConcurrencyCoTenantParameterisation,
     ChunkedRegimeMeasurement,
   ],
+}
+
+// ── WHY THE MISSING EVIDENCE IS MISSING, WHICH IS NOT THE SAME AS UNDONE ──────────────────────
+//
+// Four of the six missing requirements need kernel-level or per-rank attribution, and none of them is
+// waiting on effort or access. gunbc.spark.serving_launch_instrumentation measured that every
+// instrument capable of producing them binds at process start, and that this launch bound none -- so
+// on THIS launch they are not obtainable at all, and the remedy is a differently-configured launch.
+//
+// The distinction matters because "not yet measured" invites another attempt with the same tools,
+// which is what the last attempt was. Naming it unobtainable points at the launch profile instead.
+type MissingEvidenceDisposition
+  = ObtainableOnThisLaunch { by: NonEmptyStr }
+  | RequiresADifferentLaunch { because: NonEmptyStr, remedy: NonEmptyStr }
+
+fn attribution_disposition() -> MissingEvidenceDisposition {
+  match launch_attribution_availability(l: spark_group_a_pair_head_instrumentation) {
+    AttributableBy { instrument: _ } =>
+      ObtainableOnThisLaunch { by: "an attribution instrument is bound to the serving launch" as NonEmptyStr }
+    NotAttributableOnThisLaunch { because: b, remedy: r } =>
+      RequiresADifferentLaunch { because: b, remedy: r }
+  }
 }
 
 fn partition_may_calibrate(p: CriticalPathPartition) -> Bool {

@@ -1,0 +1,152 @@
+module test.claim.spark.serving_step_receipt_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import gunbc.spark.serving_launch_instrumentation {
+  LaunchInstrumentation, AttributionInstrument, FirstPartyStepObserver,
+  spark_group_a_pair_head_instrumentation,
+}
+import gunbc.spark.serving_step_receipt {
+  RequestPhase, Prefill, Decode, PrefillAndDecodeInSameStep,
+  RequestStepAllocation, ServingStepReceipt, step_computed_tokens, step_request_count,
+  ObservationGap, StepReceiptPopulation,
+  PopulationCompleteness, ContiguousAndComplete, HasObservationGaps, population_completeness,
+  CalibrationAdmission, AdmittedToCalibration, RefusedForObservationGap, RefusedForUninstrumentedLaunch,
+  population_admits_calibration,
+  BudgetEvidence, LargestScheduledStep, NoStepObserved, largest_scheduled_step,
+  StepExclusivity, StepServedOneRequest, StepServedSeveral, StepServedNothing, step_exclusivity,
+  ProducerStanding, ProducerBound, ProducerUnbuilt, spark_step_receipt_producer,
+}
+
+fn observed_launch() -> LaunchInstrumentation {
+  LaunchInstrumentation {
+    bound_instruments: [FirstPartyStepObserver],
+    observed_by: "fixture launch with a step observer bound at start" as NonEmptyStr,
+    revision: spark_group_a_pair_head_instrumentation.revision,
+  }
+}
+
+fn one_request_step(seq: Nat, tokens: Nat) -> ServingStepReceipt {
+  ServingStepReceipt {
+    step_sequence: seq,
+    started_micros: 0,
+    elapsed_micros: 2000000,
+    allocations: [RequestStepAllocation { request_id: "req-a" as NonEmptyStr, phase: Prefill, computed_tokens: tokens, cached_tokens: 0 }],
+    running_after: 1,
+    waiting_after: 0,
+  }
+}
+
+fn shared_step(seq: Nat) -> ServingStepReceipt {
+  ServingStepReceipt {
+    step_sequence: seq,
+    started_micros: 0,
+    elapsed_micros: 2000000,
+    allocations: [
+      RequestStepAllocation { request_id: "req-a" as NonEmptyStr, phase: Prefill, computed_tokens: 2000, cached_tokens: 0 },
+      RequestStepAllocation { request_id: "req-b" as NonEmptyStr, phase: Decode, computed_tokens: 1, cached_tokens: 0 },
+    ],
+    running_after: 2,
+    waiting_after: 0,
+  }
+}
+
+// THE PER-STEP TOTAL IS DERIVED FROM THE ALLOCATIONS, never reported alongside them. A reported total
+// would be a second authority for one quantity, and the two could disagree.
+test fn the_step_total_is_a_fold_over_its_allocations() -> Bool {
+  step_computed_tokens(r: shared_step(seq: 1)) == 2001
+    && step_request_count(r: shared_step(seq: 1)) == 2
+    && step_computed_tokens(r: one_request_step(seq: 1, tokens: 4096)) == 4096
+}
+
+// A GAP REFUSES CALIBRATION. This is the wall the whole contract exists for: a dropped receipt is
+// invisible in the surviving population, so a fold over it would report a complete-looking answer
+// over an incomplete population -- exactly the absorbing fallback this programme refuses.
+test fn an_observation_gap_refuses_calibration_rather_than_shrinking_the_population() -> Bool {
+  let holed = StepReceiptPopulation {
+    launch: observed_launch(),
+    receipts: [one_request_step(seq: 1, tokens: 1000), one_request_step(seq: 3, tokens: 1000)],
+    gaps: [ObservationGap { first_missing_sequence: 2, missing_count: 1, because: "sink full" as NonEmptyStr }],
+  }
+  (match population_completeness(p: holed) {
+     HasObservationGaps { gaps: n, first_missing: f } => n == 1 && f == 2
+     ContiguousAndComplete { steps: _ } => false
+   })
+    && (match population_admits_calibration(p: holed) {
+          RefusedForObservationGap { because: b } => string_contains(s: b as String, pattern: "complete-looking answer")
+          _ => false
+        })
+}
+
+// AND A POPULATION FROM AN UNINSTRUMENTED LAUNCH REFUSES FOR A DIFFERENT REASON, which is why the two
+// refusals are separate arms: one is a hole in the evidence, the other is evidence with no provenance.
+test fn receipts_claiming_an_uninstrumented_launch_refuse_separately() -> Bool {
+  match population_admits_calibration(p: StepReceiptPopulation {
+    launch: spark_group_a_pair_head_instrumentation,
+    receipts: [one_request_step(seq: 1, tokens: 1000)],
+    gaps: [],
+  }) {
+    RefusedForUninstrumentedLaunch { because: b } => string_contains(s: b as String, pattern: "provenance is unaccounted")
+    _ => false
+  }
+}
+
+// A COMPLETE POPULATION ON AN INSTRUMENTED LAUNCH IS ADMITTED. The positive control -- without it the
+// two refusals above would be permanently green and carry no information.
+test fn a_complete_population_on_an_instrumented_launch_is_admitted() -> Bool {
+  match population_admits_calibration(p: StepReceiptPopulation {
+    launch: observed_launch(),
+    receipts: [one_request_step(seq: 1, tokens: 1000), one_request_step(seq: 2, tokens: 2000)],
+    gaps: [],
+  }) {
+    AdmittedToCalibration { steps: s } => s == 2
+    _ => false
+  }
+}
+
+// THE BUDGET BECOMES ANSWERABLE UNDER LOAD. Today it is a behavioural floor obtained by making the
+// engine idle, which is the one condition production is never in. A receipt population answers it
+// directly, and refuses through the same admission wall when the population is holed.
+test fn the_budget_is_read_from_receipts_and_inherits_the_refusal() -> Bool {
+  (match largest_scheduled_step(p: StepReceiptPopulation {
+     launch: observed_launch(),
+     receipts: [one_request_step(seq: 1, tokens: 1000), one_request_step(seq: 2, tokens: 8192), one_request_step(seq: 3, tokens: 4096)],
+     gaps: [],
+   }) {
+     LargestScheduledStep { computed_tokens: t, at_step: s } => t == 8192 && s == 2
+     NoStepObserved { because: _ } => false
+   })
+    && (match largest_scheduled_step(p: StepReceiptPopulation {
+          launch: observed_launch(),
+          receipts: [one_request_step(seq: 1, tokens: 8192)],
+          gaps: [ObservationGap { first_missing_sequence: 2, missing_count: 4, because: "sink full" as NonEmptyStr }],
+        }) {
+          NoStepObserved { because: b } => string_contains(s: b as String, pattern: "complete-looking answer")
+          LargestScheduledStep { computed_tokens: _, at_step: _ } => false
+        })
+}
+
+// EXCLUSIVITY BECOMES A PROPERTY OF EACH STEP rather than something arranged by emptying the engine.
+// This is what lets self-cost be separated from co-tenancy in production instead of a laboratory.
+test fn exclusivity_is_read_per_step_rather_than_arranged() -> Bool {
+  (match step_exclusivity(r: one_request_step(seq: 1, tokens: 1000)) {
+     StepServedOneRequest { request_id: r } => (r as String) == "req-a"
+     _ => false
+   })
+    && (match step_exclusivity(r: shared_step(seq: 2)) {
+          StepServedSeveral { request_count: n } => n == 2
+          _ => false
+        })
+}
+
+// THE CONTRACT DECLARES ITS OWN FRONTIER, and the trigger names a CAPABILITY rather than an artifact
+// -- what the observer must be SUFFICIENT FOR, not merely that one exists.
+test fn the_producer_is_declared_unbuilt_with_a_capability_trigger() -> Bool {
+  match spark_step_receipt_producer {
+    ProducerBound { instrument: _ } => false
+    ProducerUnbuilt { trigger: t } =>
+      string_contains(s: t as String, pattern: "sufficient to answer")
+        && string_contains(s: t as String, pattern: "recording a typed gap")
+  }
+}
