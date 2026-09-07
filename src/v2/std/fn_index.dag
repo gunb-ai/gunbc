@@ -284,12 +284,13 @@ fn callee_text_from_call(node: Node) -> String? {
   }
 }
 
-// EXTRACTED DURING TRAVERSAL, NOT FILTERED OUT OF A MATERIALIZED SUBTREE, AND DEDUPED ONCE.
+// EXTRACTED DURING TRAVERSAL, NOT FILTERED OUT OF A MATERIALIZED SUBTREE.
 //
 // THE DEMAND IS "THE CALLEES IN THIS NODE", so nothing larger than that is produced to answer it --
-// DESIGN 2, minimize the demand graph before materializing its answers. Deduplication is keyed
-// rather than done by scanning what has been accumulated so far, so a declaration with k distinct
-// callees does not pay k^2 string comparisons inside the traversal.
+// DESIGN 2, minimize the demand graph before materializing its answers. What this function no
+// longer does is build a list of EVERY node in the declaration's subtree and then keep the few that
+// are calls; what it still does, and the paragraph below says why, is scan its own accumulator on
+// every hit to deduplicate.
 //
 // THE ACCUMULATOR IS BUILT REVERSED AND TURNED ONCE, and that is the whole reason
 // callee_texts_in_subtree_reversed exists as its own function rather than being inlined. fold_node's
