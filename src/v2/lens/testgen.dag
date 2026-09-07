@@ -2157,8 +2157,7 @@ fn bootstrap_claim_generator_for_manual_anchor(
   }
 }
 
+// Next-rung: gunbc.guarantee_stall.testgen_anchor_generator_totality_stall.
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
-
-// Next-rung: gunbc.guarantee_stall.testgen_anchor_generator_totality_stall.

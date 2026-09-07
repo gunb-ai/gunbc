@@ -12,7 +12,8 @@ import gunbc.live_deploy.member_identity {
   ObservedMember, MemberObserved, MemberAbsentOnHost, MemberUnobservable,
   MemberDecision, AlreadyConverged, Create, Replace, MemberRefused,
   MemberRefusalCause, RepositoryBootstrapUnavailable, ObservationIsOfAnotherMember, DecisionFiledUnderAnotherMember,
-  decide_member, derive_effects, ReleaseMemberDecisions, ReleaseTarget,
+  decide_member, decide_release_members, release_member_roster, derive_member_plan, ReleaseTarget,
+  converged_member_eq, DirectoryRoot,
   EffectDerivation, EffectsDerived, EffectsRefused, effect_labels,
 }
 
@@ -32,49 +33,49 @@ fn desired_file() -> MemberIdentity { UnitFileAt { file: UnitFileIdentity { unit
 fn desired_manager() -> MemberIdentity { UnitManagerAt { standing: ManagerLoadedCurrent } }
 fn desired_process() -> MemberIdentity { ProcessAt { process: ProcessRunningRelease { revision: rev_a() } } }
 
-fn converged_observations() -> ReleaseMemberDecisions {
-  decisions(
-    observed_bin: MemberObserved { identity: desired_bin() },
-    observed_tree: MemberObserved { identity: desired_tree() },
-    observed_file: MemberObserved { identity: desired_file() },
-    observed_manager: MemberObserved { identity: desired_manager() },
-    observed_process: MemberObserved { identity: desired_process() },
+// THE FIXTURE MAPS THE ROSTER, like the production path it stands in for. The previous form named
+// every member on the left of an assignment and, worse, `one_drift` rewrote all five slots per case
+// so that varying ONE member cost five lines of unchanged plumbing -- five more per member added.
+// Here the drifted member is substituted inside the observation function and the roster does the
+// rest, which is the same shape gunbc.live_deploy.member_observe release_member_decisions uses.
+fn desired_for(m: ConvergedMember) -> MemberIdentity {
+  match m {
+    Executable => desired_bin()
+    TreePublication => desired_tree()
+    UnitFile => desired_file()
+    UnitManager => desired_manager()
+    ServiceProcess => desired_process()
+    DirectoryRoot { path: _ } => desired_bin()
+  }
+}
+
+fn converged_observation_for(m: ConvergedMember) -> ObservedMember {
+  MemberObserved { identity: desired_for(m: m) }
+}
+
+fn plan_with(observed: fn(ConvergedMember) -> ObservedMember) -> EffectDerivation {
+  derive_member_plan(
+    roster: release_member_roster(),
+    desired: m => desired_for(m: m),
+    observed: observed,
+    target: release_target(),
   )
 }
 
-fn decisions(
-  observed_bin: ObservedMember,
-  observed_tree: ObservedMember,
-  observed_file: ObservedMember,
-  observed_manager: ObservedMember,
-  observed_process: ObservedMember,
-) -> ReleaseMemberDecisions {
-  ReleaseMemberDecisions {
-    executable: decide_member(member: Executable, desired: desired_bin(), observed: observed_bin),
-    tree: decide_member(member: TreePublication, desired: desired_tree(), observed: observed_tree),
-    unit_file: decide_member(member: UnitFile, desired: desired_file(), observed: observed_file),
-    unit_manager: decide_member(member: UnitManager, desired: desired_manager(), observed: observed_manager),
-    process: decide_member(member: ServiceProcess, desired: desired_process(), observed: observed_process),
-  }
+fn converged_observations() -> EffectDerivation {
+  plan_with(observed: m => converged_observation_for(m: m))
 }
 
 fn labels_of(d: EffectDerivation) -> List<String> {
   match d { EffectsDerived { plan } => effect_labels(plan: plan)  EffectsRefused { refusals: _ } => ["REFUSED"] }
 }
 
-fn labels(d: ReleaseMemberDecisions) -> List<String> {
-  labels_of(d: derive_effects(decisions: d, target: release_target()))
+fn labels(d: EffectDerivation) -> List<String> {
+  labels_of(d: d)
 }
 
-fn one_drift(member: ConvergedMember, observed: ObservedMember) -> ReleaseMemberDecisions {
-  let c = converged_observations()
-  match member {
-    Executable => ReleaseMemberDecisions { executable: decide_member(member: Executable, desired: desired_bin(), observed: observed), tree: c.tree, unit_file: c.unit_file, unit_manager: c.unit_manager, process: c.process }
-    TreePublication => ReleaseMemberDecisions { executable: c.executable, tree: decide_member(member: TreePublication, desired: desired_tree(), observed: observed), unit_file: c.unit_file, unit_manager: c.unit_manager, process: c.process }
-    UnitFile => ReleaseMemberDecisions { executable: c.executable, tree: c.tree, unit_file: decide_member(member: UnitFile, desired: desired_file(), observed: observed), unit_manager: c.unit_manager, process: c.process }
-    UnitManager => ReleaseMemberDecisions { executable: c.executable, tree: c.tree, unit_file: c.unit_file, unit_manager: decide_member(member: UnitManager, desired: desired_manager(), observed: observed), process: c.process }
-    ServiceProcess => ReleaseMemberDecisions { executable: c.executable, tree: c.tree, unit_file: c.unit_file, unit_manager: c.unit_manager, process: decide_member(member: ServiceProcess, desired: desired_process(), observed: observed) }
-  }
+fn one_drift(member: ConvergedMember, observed: ObservedMember) -> EffectDerivation {
+  plan_with(observed: m => if converged_member_eq(a: m, b: member) { observed } else { converged_observation_for(m: m) })
 }
 
 // FIXTURE 1: ALREADY CONVERGED -> ZERO MUTATIONS. The host holds exactly the desired identities, so
@@ -139,7 +140,7 @@ test fn a_dirty_projection_at_the_desired_revision_republishes_the_tree() -> Boo
 test fn absence_creates_and_unobservability_refuses() -> Bool {
   labels(d: one_drift(member: Executable, observed: MemberAbsentOnHost { member: Executable }))
     == ["install-executable sha256:1111111111111111111111111111111111111111111111111111111111111111", "restart gunbc-roadmap.service"]
-    && (match derive_effects(decisions: one_drift(member: Executable, observed: MemberUnobservable { member: Executable, cause: "sha256sum refused" }), target: release_target()) {
+    && (match one_drift(member: Executable, observed: MemberUnobservable { member: Executable, cause: "sha256sum refused" }) {
       EffectsRefused { refusals } => count(refusals) == 1
       EffectsDerived { plan: _ } => false
     })
@@ -151,7 +152,7 @@ test fn absence_creates_and_unobservability_refuses() -> Bool {
 // refuses -- a recoverable absence turned into a permanent one. Until a bootstrap transition exists
 // the deploy says so and installs nothing.
 test fn an_absent_repository_refuses_with_the_bootstrap_cause() -> Bool {
-  match derive_effects(decisions: one_drift(member: TreePublication, observed: MemberAbsentOnHost { member: TreePublication }), target: release_target()) {
+  match one_drift(member: TreePublication, observed: MemberAbsentOnHost { member: TreePublication }) {
     EffectsDerived { plan: _ } => false
     EffectsRefused { refusals } => count(refusals) == 1 && any(refusals, d => match d {
       MemberRefused { member: TreePublication, cause: RepositoryBootstrapUnavailable } => true
@@ -169,37 +170,33 @@ test fn an_observation_of_another_member_is_refused() -> Bool {
   }
 }
 
-// A DECISION FILED IN THE WRONG SLOT IS REFUSED BY THE DERIVATION. The record gives one slot per
-// member, so a member cannot be missing; what it cannot type-check is that a slot holds a decision
-// ABOUT its member, and that is checked here rather than assumed.
-test fn a_decision_in_the_wrong_slot_refuses_the_plan() -> Bool {
-  let c = converged_observations()
-  let swapped = ReleaseMemberDecisions {
-    executable: c.tree,
-    tree: c.executable,
-    unit_file: c.unit_file,
-    unit_manager: c.unit_manager,
-    process: c.process,
-  }
-  match derive_effects(decisions: swapped, target: release_target()) {
-    EffectsDerived { plan: _ } => false
-    EffectsRefused { refusals } => count(refusals) == 2 && any(refusals, d => match d {
-      MemberRefused { member: Executable, cause: DecisionFiledUnderAnotherMember { found: TreePublication } } => true
-      _ => false
-    })
-  }
-}
+// RETIRED WITH THE SLOTS IT POLICED: a_decision_in_the_wrong_slot_refuses_the_plan.
+//
+// It asserted that derive_effects refuses a decision filed under a member other than its slot's --
+// a real check while ReleaseMemberDecisions had five named slots whose types could not say which
+// member each held. There are no slots now, and no decision list crosses the plan boundary at all:
+// derive_member_plan takes the roster and the two functions, so a decision is about the member it
+// was mapped from and there is nothing for it to be filed under.
+//
+// THE WITNESS IS DELETED RATHER THAN KEPT AS A REGRESSION CONTROL, which is the opposite of what a
+// climb usually calls for (DESIGN section 4b: a climb deletes the production machinery and KEEPS the
+// discriminating red). The rule turns on whether the red stays authorable, and here it does not --
+// not in the corpus and not in a fixture either, because expressing it requires handing the
+// derivation a decision list, which is precisely the call that no longer exists. A witness whose red
+// cannot be produced is permanently green by construction and would be cited as coverage it does not
+// provide. What replaced it is not another check: it is that the state has no spelling.
 
 // A FULL DRIFT DERIVES EVERY MUTATION ONCE, IN THE DEPLOYMENT'S ORDER, and the reload appears once
 // even though both the file and the manager changed.
 test fn a_fully_drifted_host_derives_each_mutation_once_in_order() -> Bool {
-  let d = decisions(
-    observed_bin: MemberObserved { identity: ExecutableIdentity { digest: bin_b() } },
-    observed_tree: MemberObserved { identity: TreeIdentity { tree: TreePublicationIdentity { revision: rev_b(), tracked_projection_clean: true } } },
-    observed_file: MemberObserved { identity: UnitFileAt { file: UnitFileIdentity { unit: unit_name(), document: unit_b() } } },
-    observed_manager: MemberObserved { identity: UnitManagerAt { standing: ManagerNeedsReload } },
-    observed_process: MemberObserved { identity: ProcessAt { process: ProcessNotRunning { active: Inactive } } },
-  )
+  let d = plan_with(observed: m => match m {
+    Executable => MemberObserved { identity: ExecutableIdentity { digest: bin_b() } }
+    TreePublication => MemberObserved { identity: TreeIdentity { tree: TreePublicationIdentity { revision: rev_b(), tracked_projection_clean: true } } }
+    UnitFile => MemberObserved { identity: UnitFileAt { file: UnitFileIdentity { unit: unit_name(), document: unit_b() } } }
+    UnitManager => MemberObserved { identity: UnitManagerAt { standing: ManagerNeedsReload } }
+    ServiceProcess => MemberObserved { identity: ProcessAt { process: ProcessNotRunning { active: Inactive } } }
+    DirectoryRoot { path: _ } => converged_observation_for(m: m)
+  })
   labels(d: d) == [
     "install-executable sha256:1111111111111111111111111111111111111111111111111111111111111111",
     "publish-tree aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
