@@ -13,6 +13,8 @@ module gunbc.live_deploy.repository_convergence
 // fixed here, not an excuse for having declared them.
 
 import std.types { String, Bool, Int, List, FilePath }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.repository { gunbc_repository }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.git.object_store { GitObjectId, git_object_id_eq, git_object_id_wire_hex }
@@ -168,6 +170,10 @@ type RepositoryConvergenceOutcome
   | ConvergenceBaseRefUpdateRefused { base_ref: String, exit_code: Int, stderr: String }
   | ConvergenceObjectImportRefused { candidate: String, exit_code: Int, stderr: String }
   | ConvergenceWorktreeTransitionRefused { candidate: String, exit_code: Int, stderr: String }
+  | ConvergenceBootstrapInitRefused { repo: String, stderr: String }
+  | ConvergenceBootstrapObjectImportRefused { candidate: String, exit_code: Int, stderr: String }
+  | ConvergenceBootstrapBaseRefRefused { base_ref: String, candidate: String, exit_code: Int, stderr: String }
+  | ConvergenceBootstrapCheckoutRefused { branch: String, candidate: String, exit_code: Int, stderr: String }
 
 // COMPARED AS OBJECT IDS, NOT AS TEXT. `GitObjectId` is a coproduct over hash families
 // (`GitSha1ObjectId | GitSha256ObjectId`), not a branded string, so there is no meaningful cast to
@@ -713,6 +719,10 @@ fn repository_convergence_converged(outcome: RepositoryConvergenceOutcome) -> Bo
     ConvergenceCompleted { candidate: _, refs_preserved: _, worktrees_preserved: _ } => true
     ConvergenceAlreadyAtCandidate { candidate: _ } => true
     ConvergenceRepairedAtCandidate { candidate: _ } => true
+    ConvergenceBootstrapInitRefused { repo: _, stderr: _ } => false
+    ConvergenceBootstrapObjectImportRefused { candidate: _, exit_code: _, stderr: _ } => false
+    ConvergenceBootstrapBaseRefRefused { base_ref: _, candidate: _, exit_code: _, stderr: _ } => false
+    ConvergenceBootstrapCheckoutRefused { branch: _, candidate: _, exit_code: _, stderr: _ } => false
     ConvergencePreStateUnobservable { detail: _ } => false
     ConvergencePostStateUnobservable { detail: _ } => false
     ConvergenceBaseRefMoved { expected: _, observed: _ } => false
@@ -761,6 +771,14 @@ fn repository_convergence_detail(outcome: RepositoryConvergenceOutcome) -> Strin
       join(["converged to ", c, " preserving ", to_string(r), " ref(s) and ", to_string(w), " worktree(s)"], "")
     ConvergenceAlreadyAtCandidate { candidate: c } =>
       join(["already at ", c, "; no transition performed"], "")
+    ConvergenceBootstrapInitRefused { repo: r, stderr: e } =>
+      join(["the empty repository root ", r, " could not be initialized: ", e], "")
+    ConvergenceBootstrapObjectImportRefused { candidate: c, exit_code: x, stderr: e } =>
+      join(["bootstrap could not import ", c, " from the runner checkout (exit ", to_string(x), "): ", e], "")
+    ConvergenceBootstrapBaseRefRefused { base_ref: b, candidate: c, exit_code: x, stderr: e } =>
+      join(["bootstrap could not create ", b, " at ", c, " -- the ref was expected not to exist, so a refusal here means the root was not the empty one this arm observed (exit ", to_string(x), "): ", e], "")
+    ConvergenceBootstrapCheckoutRefused { branch: b, candidate: c, exit_code: x, stderr: e } =>
+      join(["bootstrap could not check out branch ", b, " at ", c, " -- `checkout -b` refuses an existing branch, so a refusal here means the root was not empty (exit ", to_string(x), "): ", e], "")
     ConvergenceRepairedAtCandidate { candidate: c } =>
       join(["repaired the base ref, index, or tracked worktree content while HEAD was already at ", c], "")
     ConvergencePreStateUnobservable { detail: d } =>
@@ -973,6 +991,136 @@ fn base_ref_update_refusal_cause(
 // holds the intended state -- the deployed tree this replaces was assembled entirely from commands
 // that succeeded. Only the readback answers that, so the verdict is always computed from a fresh
 // observation rather than inferred from exit codes.
+// AN EMPTY ROOT AND AN UNOBSERVABLE REPOSITORY ARE DIFFERENT STATES WITH OPPOSITE REMEDIES.
+//
+// ConvergencePreStateUnobservable fires for both today, and that conflation is what makes a fresh
+// host undeployable (gunbc.guarantee_stall.deployed_repository_empty_root_bootstrap_stall). A
+// repository whose refs cannot be read is BROKEN and the remedy is a person; a root with nothing in
+// it is UNBORN and the remedy is to create the repository. Reading the second as the first turns a
+// recoverable absence into a permanent refusal.
+//
+// THE DISTINCTION IS OBSERVED, NOT SUPPLIED. The deploy that ordered this transition established the
+// tree's absence by listing its parent, but this process must not take a caller's word about host
+// state it can read for itself -- the operand would be a second account of a fact git and the
+// filesystem already hold. Listing the root answers it directly.
+//
+// WHY EMPTINESS RATHER THAN "IS THERE A .git". A directory holding files but no repository is NOT a
+// bootstrap subject: it is the rsync-era partial state, the one whose bytes are already wrong and
+// whose repair is not `git init`. Only a root with nothing in it can be brought to one revision
+// without deciding what to do about content nobody modelled.
+type RepositoryRootEmptiness
+  = RepositoryRootEmpty
+  | RepositoryRootNotEmpty { first_entry: String }
+  | RepositoryRootEmptinessUnobservable { detail: String }
+
+fn repository_root_emptiness_of(success: Bool, entries: String, error: String) -> RepositoryRootEmptiness {
+  if !success {
+    RepositoryRootEmptinessUnobservable { detail: error }
+  } else {
+    let present = filter(xs: split(s: entries, delimiter: "\n"), f: e => trim(s: e) != "")
+    fold(
+      present,
+      init: RepositoryRootEmpty,
+      f: (acc, e) => match acc {
+        RepositoryRootEmpty => RepositoryRootNotEmpty { first_entry: trim(s: e) }
+        _ => acc
+      },
+    )
+  }
+}
+
+fn observe_repository_root_emptiness(repo: String) -> RepositoryRootEmptiness {
+  let listing = Filesystem.List(path: repo)
+  repository_root_emptiness_of(success: listing.success, entries: listing.entries, error: listing.error)
+}
+
+// THE BRANCH THE BOOTSTRAP CHECKS OUT IS THE REPOSITORY'S OWN DEFAULT, read from the single authority
+// for which repository this project is (gunbc.repository gunbc_repository). Spelling "main" here
+// would be the sixth nickname that authority's own header refuses.
+fn repository_bootstrap_branch() -> String {
+  gunbc_repository.default_branch as String
+}
+
+// BOOTSTRAP ESTABLISHES OBSERVABILITY; THE VERDICT AUTHORITY STILL DECIDES.
+//
+// The steps are the same three the ordinary transition performs -- import objects, advance the base
+// ref, move the worktree -- with `git init` ahead of them and one difference in each: the base ref
+// is written with an EMPTY expected-old, which is git's "this ref must not exist", and the worktree
+// moves by `checkout -b`, which REFUSES a branch that already exists. Both are fail-closed readings
+// of the same claim this arm is making, that nothing was here before. If either is wrong the
+// bootstrap refuses rather than overwriting somebody's repository.
+//
+// THE READBACK IS NOT A SECOND OPINION, IT IS THE ONLY ONE. Every step above can exit zero and still
+// leave a repository that is not at the candidate, which is exactly how the rsync-era tree was
+// assembled. So the verdict comes from a fresh observation through repository_convergence_verdict --
+// the same authority the ordinary path uses, not a bootstrap-specific notion of success. `before`
+// and `after` are the same observation deliberately: an empty root had no refs or worktrees to
+// preserve, so the preservation comparison is vacuous rather than skipped.
+func repository_bootstrap_wet(
+  repo: String,
+  remote: String,
+  base_ref: String,
+  candidate: String,
+) -> ProcessExit {
+  let inited = git.Core.InitInRepo(repo: repo as FilePath)
+  if !inited.success {
+    convergence_exit(outcome: ConvergenceBootstrapInitRefused { repo: repo, stderr: inited.stderr })
+  } else {
+    let fetched = git.Core.FetchForcedRefInRepo(repo: repo as FilePath, remote: remote, refspec: candidate)
+    if fetched.exit_code != 0 {
+      convergence_exit(outcome: ConvergenceBootstrapObjectImportRefused {
+        candidate: candidate,
+        exit_code: fetched.exit_code,
+        stderr: fetched.stderr,
+      })
+    } else {
+      let based = git.Core.UpdateRefCompareAndSwapInRepo(
+        repo: repo as FilePath,
+        ref: base_ref,
+        new_value: candidate,
+        expected_old: "",
+      )
+      if based.exit_code != 0 {
+        convergence_exit(outcome: ConvergenceBootstrapBaseRefRefused {
+          base_ref: base_ref,
+          candidate: candidate,
+          exit_code: based.exit_code,
+          stderr: based.stderr,
+        })
+      } else {
+        let branch = repository_bootstrap_branch()
+        let checked = git.Core.CheckoutNewBranchAtInRepo(
+          repo: repo as FilePath,
+          branch: branch,
+          start_point: candidate as GitRef,
+        )
+        if checked.exit_code != 0 {
+          convergence_exit(outcome: ConvergenceBootstrapCheckoutRefused {
+            branch: branch,
+            candidate: candidate,
+            exit_code: checked.exit_code,
+            stderr: checked.stderr,
+          })
+        } else {
+          let after = observe_repository_state(repo: repo, candidate: candidate)
+          convergence_exit(outcome: repository_convergence_verdict(
+            before: after,
+            after: after,
+            candidate: candidate,
+            base_ref: base_ref,
+          ))
+        }
+      }
+    }
+  }
+}
+
+// THE PRE-STATE FAULT IS NOT RELAXED; ONE OF ITS CAUSES IS ROUTED. A repository that cannot be
+// observed still refuses with the identical typed cause it always did -- both non-empty and
+// unobservable roots return `fault` unchanged. What changed is that an EMPTY root, which the old
+// arm also called unobservable, now reaches the bootstrap that can make it observable. The stall
+// this closes rules out relaxing the refusal, and this does not: it separates two states the
+// refusal had collapsed.
 func repository_converge_wet(
   repo: String,
   remote: String,
@@ -981,7 +1129,16 @@ func repository_converge_wet(
 ) -> ProcessExit {
   let before = observe_repository_state(repo: repo, candidate: candidate)
   match repository_prestate_fault(state: before) {
-    Present { value: fault } => convergence_exit(outcome: fault)
+    Present { value: fault } => match observe_repository_root_emptiness(repo: repo) {
+      RepositoryRootEmpty => repository_bootstrap_wet(
+        repo: repo,
+        remote: remote,
+        base_ref: base_ref,
+        candidate: candidate,
+      )
+      RepositoryRootNotEmpty { first_entry: _ } => convergence_exit(outcome: fault)
+      RepositoryRootEmptinessUnobservable { detail: _ } => convergence_exit(outcome: fault)
+    }
     Absent => match convergence_refs_of(observation: before.refs) {
       Absent => convergence_exit(outcome: ConvergencePreStateUnobservable { detail: convergence_ref_observation_detail(observation: before.refs) })
       Present { value: refs_before } => {
