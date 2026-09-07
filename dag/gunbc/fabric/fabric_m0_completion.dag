@@ -2,6 +2,7 @@ module gunbc.fabric_m0_completion
 
 import std.types { List, NonEmptyStr, Bool }
 import std.content_hash { Sha256Digest, content_hash_eq_cryptographic }
+import std.scoped_authorization { AttemptIdentity }
 
 // The fabric-M0 durable-completion authority: the single function that may call a job successful.
 // It is modeled before any cache exists because a cache accelerates a completion contract and
@@ -18,11 +19,16 @@ import std.content_hash { Sha256Digest, content_hash_eq_cryptographic }
 // validated: there is no constructor here that accepts a structural fingerprint as an integrity
 // digest, so the confusion has no representation instead of a check that could be skipped.
 
+// THE ATTEMPT IS NOT THIS MODULE'S CONCEPT TO NAME. An earlier revision minted
+// AttemptId here for the executor of a job. std.scoped_authorization already declares
+// AttemptIdentity for exactly that entity -- the consumer identity a grant is issued to,
+// where a grant for attempt A refuses attempt B -- and gunbc.auth.approval_broker uses that
+// same type for who executes a work claim. One concept under two names is the section 3
+// nicknaming violation, and it was introduced by coining before DFS-ing the concept DAG.
+// Dissolved rather than carried, because a second spelling outlives the mistake.
 type RequiredArtifactId = NonEmptyStr where brand("RequiredArtifactId")
 
 type RequiredReceiptId = NonEmptyStr where brand("RequiredReceiptId")
-
-type AttemptId = NonEmptyStr where brand("AttemptId")
 
 // The obligation roster, whose declared-but-empty and never-read arms are DIFFERENT CONSTRUCTORS.
 //
@@ -53,13 +59,13 @@ type OriginReadback
 
 type CommittedArtifact {
   id: RequiredArtifactId
-  attempt: AttemptId
+  attempt: AttemptIdentity
   recorded_digest: Sha256Digest
 }
 
 type CommittedReceipt {
   id: RequiredReceiptId
-  attempt: AttemptId
+  attempt: AttemptIdentity
   recorded_digest: Sha256Digest
 }
 
@@ -183,11 +189,11 @@ fn readback_verdict_for(observations: List<OriginObservation>, subject: NonEmpty
 // see it -- and evidence dropped at selection cannot be recovered by preserving everything after it.
 // An unconstrained list whose first element wins establishes neither a unique admitted observation
 // nor an authoritative choice among a history, so this refuses and names the count.
-fn committed_artifacts_for(committed: List<CommittedArtifact>, wanted: RequiredArtifactId, attempt: AttemptId) -> List<CommittedArtifact> {
+fn committed_artifacts_for(committed: List<CommittedArtifact>, wanted: RequiredArtifactId, attempt: AttemptIdentity) -> List<CommittedArtifact> {
   committed |> filter(c => (c.id == wanted) && (c.attempt == attempt))
 }
 
-fn committed_receipts_for(committed: List<CommittedReceipt>, wanted: RequiredReceiptId, attempt: AttemptId) -> List<CommittedReceipt> {
+fn committed_receipts_for(committed: List<CommittedReceipt>, wanted: RequiredReceiptId, attempt: AttemptIdentity) -> List<CommittedReceipt> {
   committed |> filter(c => (c.id == wanted) && (c.attempt == attempt))
 }
 
@@ -196,7 +202,7 @@ fn required_artifact_verdict(
   observations: List<OriginObservation>,
   members: List<ManifestMember>,
   wanted: RequiredArtifactId,
-  attempt: AttemptId
+  attempt: AttemptIdentity
 ) -> ObligationVerdict {
   let rows = committed_artifacts_for(committed: committed, wanted: wanted, attempt: attempt)
   if rows.count() == 0 {
@@ -220,7 +226,7 @@ fn required_receipt_verdict(
   observations: List<OriginObservation>,
   members: List<ManifestMember>,
   wanted: RequiredReceiptId,
-  attempt: AttemptId
+  attempt: AttemptIdentity
 ) -> ObligationVerdict {
   let rows = committed_receipts_for(committed: committed, wanted: wanted, attempt: attempt)
   if rows.count() == 0 {
@@ -270,12 +276,12 @@ fn manifest_membership_verdict(members: List<ManifestMember>, subject: NonEmptyS
 }
 
 type CommitManifest {
-  attempt: AttemptId
+  attempt: AttemptIdentity
   manifest_digest: Sha256Digest
   members: List<ManifestMember>
 }
 
-fn manifest_verdict(manifest: CommitManifest, observations: List<OriginObservation>, attempt: AttemptId) -> ObligationVerdict {
+fn manifest_verdict(manifest: CommitManifest, observations: List<OriginObservation>, attempt: AttemptIdentity) -> ObligationVerdict {
   if (manifest.attempt == attempt) == false {
     ObligationUnsatisfied { subject: "commit-manifest", cause: "manifest is bound to a different attempt" }
   } else {
@@ -289,7 +295,7 @@ fn artifact_roster_verdicts(
   committed: List<CommittedArtifact>,
   observations: List<OriginObservation>,
   members: List<ManifestMember>,
-  attempt: AttemptId
+  attempt: AttemptIdentity
 ) -> List<ObligationVerdict> {
   match artifacts {
     ArtifactObligationsUnreadable { cause: c } =>
@@ -304,7 +310,7 @@ fn receipt_roster_verdicts(
   committed: List<CommittedReceipt>,
   observations: List<OriginObservation>,
   members: List<ManifestMember>,
-  attempt: AttemptId
+  attempt: AttemptIdentity
 ) -> List<ObligationVerdict> {
   match receipts {
     ReceiptObligationsUnreadable { cause: c } =>
@@ -315,7 +321,7 @@ fn receipt_roster_verdicts(
 }
 
 fn storage_assessment(
-  attempt: AttemptId,
+  attempt: AttemptIdentity,
   artifacts: ArtifactObligations,
   receipts: ReceiptObligations,
   committed_artifacts: List<CommittedArtifact>,
@@ -350,11 +356,11 @@ fn verdicts_meet(verdicts: List<ObligationVerdict>) -> ObligationVerdict {
 }
 
 type JobPublication
-  = PublishSuccess { attempt: AttemptId, manifest_digest: Sha256Digest }
-  | PublishComputationFailed { attempt: AttemptId, cause: NonEmptyStr, unresolved: List<ObligationVerdict> }
-  | PublishFinalizationFailed { attempt: AttemptId, subject: NonEmptyStr, cause: NonEmptyStr, unresolved: List<ObligationVerdict> }
-  | PublishPendingReconciliation { attempt: AttemptId, subject: NonEmptyStr, cause: NonEmptyStr, unresolved: List<ObligationVerdict> }
-  | PublishObligationsUnreadable { attempt: AttemptId, subject: NonEmptyStr, cause: NonEmptyStr, unresolved: List<ObligationVerdict> }
+  = PublishSuccess { attempt: AttemptIdentity, manifest_digest: Sha256Digest }
+  | PublishComputationFailed { attempt: AttemptIdentity, cause: NonEmptyStr, unresolved: List<ObligationVerdict> }
+  | PublishFinalizationFailed { attempt: AttemptIdentity, subject: NonEmptyStr, cause: NonEmptyStr, unresolved: List<ObligationVerdict> }
+  | PublishPendingReconciliation { attempt: AttemptIdentity, subject: NonEmptyStr, cause: NonEmptyStr, unresolved: List<ObligationVerdict> }
+  | PublishObligationsUnreadable { attempt: AttemptIdentity, subject: NonEmptyStr, cause: NonEmptyStr, unresolved: List<ObligationVerdict> }
 
 // THE SUCCESS AUTHORITY. Total over five outcomes.
 //
@@ -369,7 +375,7 @@ type JobPublication
 //
 // Success remains the last arm and is reachable only from a wholly satisfied assessment.
 fn admit_job_publication(
-  attempt: AttemptId,
+  attempt: AttemptIdentity,
   computation: ComputationOutcome,
   artifacts: ArtifactObligations,
   receipts: ReceiptObligations,

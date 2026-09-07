@@ -2,6 +2,7 @@ module gunbc.fabric_m0_commit
 
 import std.types { List, NonEmptyStr }
 import std.content_hash { Sha256Digest }
+import std.scoped_authorization { AttemptIdentity }
 import std.durable_compare_and_set {
   CasOutcome,
   CasCommitted,
@@ -9,7 +10,6 @@ import std.durable_compare_and_set {
   CasStoreRefused,
 }
 import gunbc.fabric_m0_completion {
-  AttemptId,
   ArtifactObligations,
   ReceiptObligations,
   ComputationOutcome,
@@ -69,7 +69,7 @@ type CommitTransportOutcome
 // origin without touching this module.
 type CommitNamespace = NonEmptyStr where brand("CommitNamespace")
 
-fn commit_slot_key(namespace: CommitNamespace, attempt: AttemptId) -> NonEmptyStr {
+fn commit_slot_key(namespace: CommitNamespace, attempt: AttemptIdentity) -> NonEmptyStr {
   namespace + "/" + attempt
 }
 
@@ -139,7 +139,7 @@ type ManifestReadbackObservation
 // there. Reporting that as absence fails a job whose result is committed and readable. A CONFLICTING
 // occupant is still caught, one layer up: the readback digest is compared against the recorded
 // manifest digest, so a foreign manifest at our slot reports a content mismatch rather than success.
-fn manifest_readback(namespace: CommitNamespace, attempt: AttemptId, transport: CommitTransportOutcome, observed: ManifestReadbackObservation) -> OriginReadback {
+fn manifest_readback(namespace: CommitNamespace, attempt: AttemptIdentity, transport: CommitTransportOutcome, observed: ManifestReadbackObservation) -> OriginReadback {
   let expected = commit_slot_key(namespace: namespace, attempt: attempt)
   let actual = transport_slot(transport: transport)
   if (expected == actual) == false {
@@ -167,7 +167,7 @@ fn manifest_readback_for_slot(transport: CommitTransportOutcome, observed: Manif
 }
 
 // The manifest states WHAT WAS OWED; it no longer carries a read result.
-fn commit_manifest(attempt: AttemptId, manifest_digest: Sha256Digest, members: List<ManifestMember>) -> CommitManifest {
+fn commit_manifest(attempt: AttemptIdentity, manifest_digest: Sha256Digest, members: List<ManifestMember>) -> CommitManifest {
   CommitManifest {
     attempt: attempt,
     manifest_digest: manifest_digest,
@@ -186,7 +186,7 @@ fn commit_manifest(attempt: AttemptId, manifest_digest: Sha256Digest, members: L
 // down and a hand-supplied observation could disagree with it.
 fn manifest_observation(
   namespace: CommitNamespace,
-  attempt: AttemptId,
+  attempt: AttemptIdentity,
   transport: CommitTransportOutcome,
   observed: ManifestReadbackObservation
 ) -> OriginObservation {
@@ -199,7 +199,7 @@ fn manifest_observation(
 // The consumer: one call from a real commit attempt to a published outcome.
 fn publish_after_commit(
   namespace: CommitNamespace,
-  attempt: AttemptId,
+  attempt: AttemptIdentity,
   computation: ComputationOutcome,
   artifacts: ArtifactObligations,
   receipts: ReceiptObligations,

@@ -2,9 +2,9 @@ module test.claim.fabric_m0_commit_witness
 
 import std.types { Bool, List, NonEmptyStr }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.scoped_authorization { AttemptIdentity }
 import std.durable_compare_and_set { CasStoreRefused, CasUnreadableReadRefused, CasPreconditionFailed, ExpectSlotAbsent, CasReadableAbsent }
 import gunbc.fabric_m0_completion {
-  AttemptId,
   RequiredArtifactId,
   RequiredReceiptId,
   ArtifactObligationsDeclared,
@@ -41,8 +41,8 @@ fn digest_a() -> Sha256Digest {
   Sha256Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as Sha256DigestHex }
 }
 
-fn the_attempt() -> AttemptId {
-  "attempt-1" as AttemptId
+fn the_attempt() -> AttemptIdentity {
+  "attempt-1" as AttemptIdentity
 }
 
 fn members() -> List<ManifestMember> {

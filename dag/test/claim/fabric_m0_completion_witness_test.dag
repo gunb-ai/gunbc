@@ -2,8 +2,8 @@ module test.claim.fabric_m0_completion_witness
 
 import std.types { Bool, List, String }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.scoped_authorization { AttemptIdentity }
 import gunbc.fabric_m0_completion {
-  AttemptId,
   RequiredArtifactId,
   RequiredReceiptId,
   ArtifactObligations,
@@ -47,12 +47,12 @@ fn digest_b() -> Sha256Digest {
   Sha256Digest { hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as Sha256DigestHex }
 }
 
-fn the_attempt() -> AttemptId {
-  "attempt-1" as AttemptId
+fn the_attempt() -> AttemptIdentity {
+  "attempt-1" as AttemptIdentity
 }
 
-fn other_attempt() -> AttemptId {
-  "attempt-2" as AttemptId
+fn other_attempt() -> AttemptIdentity {
+  "attempt-2" as AttemptIdentity
 }
 
 fn full_membership() -> List<ManifestMember> {
