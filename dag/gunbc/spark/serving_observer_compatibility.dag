@@ -7,12 +7,14 @@ import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
 import extdeps.vllm.scheduler_extension {
   VllmSchedulerSelection, SelectedByQualname, SelectedByTypeObject, SelectedByUpstreamDefault,
   VllmAsyncSchedulingRequest, AsyncSchedulingOn, AsyncSchedulingOff, AsyncSchedulingUnset,
+  ResolvedAsyncScheduling, AsyncResolvedOn, AsyncResolvedOff, resolve_async_scheduling,
   VllmSchedulerOutputField, NumScheduledTokens, TotalNumScheduledTokens, ScheduledNewReqs, ScheduledCachedReqs,
   scheduler_output_field_attribute, scheduler_output_fields_read,
   SchedulerSurfaceBinding, SurfaceBound, SurfaceRefusedForMissingField, SurfaceRefusedForRevisionDrift,
   surface_binding_for_revision, vllm_default_scheduler_qualname,
   vllm_scheduler_request_counts_method
 }
+import extdeps.vllm.engine_args { VllmDistributedExecutorBackend, ExecutorMp, ExecutorRay, ExecutorExternalLauncher }
 import gunbc.spark.serving_step_receipt {
   ServingStepReceipt, RequestStepAllocation, RequestPhase, Prefill, Decode, PrefillAndDecodeInSameStep
 }
@@ -147,18 +149,23 @@ data request_phase_derivation: PhaseDerivation = PhaseDerivedFromAllocation {
 // deleting counts_device_reservation -- on the ground that a required field or arm with no consumer
 // is a fact the model asserts and never verifies. An arm here for, say, an unsupported tensor-parallel
 // degree would be exactly that: this module has no measurement that makes any degree unsupported.
+// THE EXECUTOR BACKEND IS PART OF THE PROFILE BECAUSE IT DECIDES THE DELEGATE. It was absent while
+// this type read an unset async flag as "off", which made the profile look complete while carrying
+// no way to answer the question it was actually deciding.
 type ObserverProfile sole_constructor {
   revision: VllmSourceRevision
   selection: VllmSchedulerSelection
   async_scheduling: VllmAsyncSchedulingRequest
+  executor: VllmDistributedExecutorBackend
 }
 
 fn observer_profile(
   revision: VllmSourceRevision,
   selection: VllmSchedulerSelection,
   async_scheduling: VllmAsyncSchedulingRequest,
+  executor: VllmDistributedExecutorBackend,
 ) -> ObserverProfile {
-  ObserverProfile { revision: revision, selection: selection, async_scheduling: async_scheduling }
+  ObserverProfile { revision: revision, selection: selection, async_scheduling: async_scheduling, executor: executor }
 }
 
 type ObserverProfileRefusal
@@ -193,18 +200,16 @@ fn observer_profile_admits(p: ObserverProfile) -> ObserverProfileAdmission {
             }
           }
         SelectedByUpstreamDefault =>
-          match p.async_scheduling {
-            AsyncSchedulingOn =>
+          match resolve_async_scheduling(request: p.async_scheduling, backend: p.executor) {
+            AsyncResolvedOn { because: r } =>
               ObserverProfileRefused {
                 cause: ProfileAsyncSchedulingUnmodelled {
-                  delegate: vllm_default_scheduler_qualname(async_scheduling: AsyncSchedulingOn),
-                  because: "AsyncScheduler advances num_computed_tokens against num_output_placeholders for tokens not yet returned, so the prefix a receipt would record is optimistic by an amount this manifest has not established; admitting it would produce receipts whose cached_tokens means something different from every other receipt in the same population, and a fold over the mixture would be silently wrong" as NonEmptyStr
+                  delegate: vllm_default_scheduler_qualname(resolved: AsyncResolvedOn { because: r }),
+                  because: join(["AsyncScheduler advances num_computed_tokens against num_output_placeholders for tokens not yet returned, so the prefix a receipt would record is optimistic by an amount this manifest has not established -- and this launch reaches it because ", r as String], "") as NonEmptyStr
                 }
               }
-            AsyncSchedulingOff =>
-              ObserverProfileAdmitted { delegate: vllm_default_scheduler_qualname(async_scheduling: AsyncSchedulingOff), fields: n }
-            AsyncSchedulingUnset =>
-              ObserverProfileAdmitted { delegate: vllm_default_scheduler_qualname(async_scheduling: AsyncSchedulingUnset), fields: n }
+            AsyncResolvedOff { because: r } =>
+              ObserverProfileAdmitted { delegate: vllm_default_scheduler_qualname(resolved: AsyncResolvedOff { because: r }), fields: n }
           }
       }
   }

@@ -6,6 +6,9 @@ import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision, vllm_sour
 import extdeps.vllm.scheduler_extension {
   VllmSchedulerSelection, SelectedByQualname, SelectedByTypeObject, SelectedByUpstreamDefault,
   VllmAsyncSchedulingRequest, AsyncSchedulingOn, AsyncSchedulingOff, AsyncSchedulingUnset,
+  ResolvedAsyncScheduling, AsyncResolvedOn, AsyncResolvedOff, resolve_async_scheduling,
+  VllmExecutorAsyncSupport, ExecutorSupportsAsyncScheduling, ExecutorDoesNotSupportAsyncScheduling,
+  executor_async_scheduling_support,
   vllm_default_scheduler_qualname,
   SchedulerSelectionTiming, SelectableWhileRunning, SelectableOnlyAtEngineConstruction,
   scheduler_selection_timing, vllm_scheduler_extension_point,
@@ -14,6 +17,7 @@ import extdeps.vllm.scheduler_extension {
   UpstreamStabilityPosture, UpstreamPublicInterface, UpstreamDisclaimsCompatibility,
   vllm_scheduler_interface_posture,
 }
+import extdeps.vllm.engine_args { VllmDistributedExecutorBackend, ExecutorMp, ExecutorRay, ExecutorExternalLauncher }
 import gunbc.spark.serving_observer_compatibility {
   ReceiptReadSite, ReadFromSchedulerOutput, ReadFromLiveRequest,
   ReadSiteAdmission, ReadSiteAdmitted, ReadSiteRefused, read_site_admits,
@@ -48,15 +52,44 @@ test fn the_live_request_read_site_is_refused_and_the_output_site_is_admitted() 
 // A wrapper that hardcodes Scheduler silently converts an async-scheduled engine to a synchronous one
 // while reporting a behaviour-preserving observation. The two arms must name DIFFERENT classes; if a
 // future edit collapsed them this goes red rather than shipping that conversion.
-test fn the_default_delegate_differs_under_async_scheduling() -> Bool {
-  vllm_default_scheduler_qualname(async_scheduling: AsyncSchedulingOn) as String
+test fn the_delegate_follows_the_resolved_value_not_the_requested_flag() -> Bool {
+  vllm_default_scheduler_qualname(resolved: AsyncResolvedOn { because: "x" as NonEmptyStr }) as String
     == "vllm.v1.core.sched.async_scheduler.AsyncScheduler"
-  && vllm_default_scheduler_qualname(async_scheduling: AsyncSchedulingOff) as String
+  && vllm_default_scheduler_qualname(resolved: AsyncResolvedOff { because: "x" as NonEmptyStr }) as String
     == "vllm.v1.core.sched.scheduler.Scheduler"
-  && vllm_default_scheduler_qualname(async_scheduling: AsyncSchedulingUnset) as String
-    == "vllm.v1.core.sched.scheduler.Scheduler"
-  && (vllm_default_scheduler_qualname(async_scheduling: AsyncSchedulingOn) as String
-      != vllm_default_scheduler_qualname(async_scheduling: AsyncSchedulingOff) as String)
+}
+
+// THE DISCRIMINATOR THE LIVE ENGINE REVEALED. One unset flag, two executors, two delegates. This is
+// the pair that was unrepresentable while AsyncSchedulingUnset mapped straight to Scheduler, and it
+// is the exact transition replacing Ray with a first-party rank protocol would perform.
+test fn an_unset_async_flag_resolves_differently_per_executor_backend() -> Bool {
+  (match resolve_async_scheduling(request: AsyncSchedulingUnset, backend: ExecutorRay) {
+    AsyncResolvedOff { because: b } => string_contains(s: b as String, pattern: "cannot support it")
+    AsyncResolvedOn { because: _ } => false
+  })
+  && (match resolve_async_scheduling(request: AsyncSchedulingUnset, backend: ExecutorMp) {
+    AsyncResolvedOn { because: b } => string_contains(s: b as String, pattern: "unless an incompatible option applies")
+    AsyncResolvedOff { because: _ } => false
+  })
+  && (vllm_default_scheduler_qualname(resolved: resolve_async_scheduling(request: AsyncSchedulingUnset, backend: ExecutorRay)) as String
+      != vllm_default_scheduler_qualname(resolved: resolve_async_scheduling(request: AsyncSchedulingUnset, backend: ExecutorMp)) as String)
+}
+
+// WHICH EXECUTORS SUPPORT IT, read from the running installation rather than assumed. Ray is the
+// only one of the three that does not, and it is the one this deployment uses.
+test fn only_the_ray_backend_lacks_async_scheduling_support() -> Bool {
+  (match executor_async_scheduling_support(backend: ExecutorRay) {
+    ExecutorDoesNotSupportAsyncScheduling { because: b } => string_contains(s: b as String, pattern: "abstract.py")
+    ExecutorSupportsAsyncScheduling { by: _ } => false
+  })
+  && (match executor_async_scheduling_support(backend: ExecutorMp) {
+    ExecutorSupportsAsyncScheduling { by: _ } => true
+    ExecutorDoesNotSupportAsyncScheduling { because: _ } => false
+  })
+  && (match executor_async_scheduling_support(backend: ExecutorExternalLauncher) {
+    ExecutorSupportsAsyncScheduling { by: _ } => true
+    ExecutorDoesNotSupportAsyncScheduling { because: _ } => false
+  })
 }
 
 // -- PROFILE ADMISSION REFUSES WHAT IT CANNOT ESTABLISH ----------------------------------------
@@ -68,6 +101,7 @@ test fn the_pinned_default_synchronous_profile_is_admitted() -> Bool {
     revision: vllm_source_revision_read,
     selection: SelectedByUpstreamDefault,
     async_scheduling: AsyncSchedulingOff,
+    executor: ExecutorRay,
   )) {
     ObserverProfileAdmitted { delegate: d, fields: n } =>
       d as String == "vllm.v1.core.sched.scheduler.Scheduler"
@@ -83,6 +117,7 @@ test fn a_drifted_revision_is_refused_by_naming_what_was_observed() -> Bool {
       full_revision: "0000000000000000000000000000000000000000" as NonEmptyStr),
     selection: SelectedByUpstreamDefault,
     async_scheduling: AsyncSchedulingOff,
+    executor: ExecutorRay,
   )) {
     ObserverProfileRefused { cause: ProfileRevisionDrift { observed: o, because: _ } } =>
       o as String == "0000000000000000000000000000000000000000"
@@ -96,6 +131,7 @@ test fn a_launch_that_already_substitutes_a_scheduler_is_refused() -> Bool {
     revision: vllm_source_revision_read,
     selection: SelectedByQualname { qualname: "acme.sched.CustomScheduler" as NonEmptyStr },
     async_scheduling: AsyncSchedulingOff,
+    executor: ExecutorRay,
   )) {
     ObserverProfileRefused { cause: ProfileAlreadyHasForeignScheduler { qualname: q, because: _ } } =>
       q as String == "acme.sched.CustomScheduler"
@@ -112,6 +148,7 @@ test fn async_scheduling_is_refused_until_its_placeholder_semantics_are_modelled
     revision: vllm_source_revision_read,
     selection: SelectedByUpstreamDefault,
     async_scheduling: AsyncSchedulingOn,
+    executor: ExecutorRay,
   )) {
     ObserverProfileRefused { cause: ProfileAsyncSchedulingUnmodelled { delegate: d, because: b } } =>
       d as String == "vllm.v1.core.sched.async_scheduler.AsyncScheduler"

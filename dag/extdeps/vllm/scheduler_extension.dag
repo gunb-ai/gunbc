@@ -6,6 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
+import extdeps.vllm.engine_args { VllmDistributedExecutorBackend, ExecutorMp, ExecutorRay, ExecutorExternalLauncher }
 
 // VLLM'S SUPPORTED SCHEDULER EXTENSION POINT, AND THE OUTPUT FIELDS A WRAPPER MAY READ.
 //
@@ -87,11 +88,69 @@ type VllmSchedulerSelection
 // the wrapper were used on both.
 type VllmAsyncSchedulingRequest = AsyncSchedulingOn | AsyncSchedulingOff | AsyncSchedulingUnset
 
-fn vllm_default_scheduler_qualname(async_scheduling: VllmAsyncSchedulingRequest) -> NonEmptyStr {
-  match async_scheduling {
-    AsyncSchedulingOn => "vllm.v1.core.sched.async_scheduler.AsyncScheduler" as NonEmptyStr
-    AsyncSchedulingOff => "vllm.v1.core.sched.scheduler.Scheduler" as NonEmptyStr
-    AsyncSchedulingUnset => "vllm.v1.core.sched.scheduler.Scheduler" as NonEmptyStr
+// UNSET DOES NOT MEAN OFF. IT MEANS "ON UNLESS SOMETHING INCOMPATIBLE", AND THE EXECUTOR DECIDES.
+//
+// This module previously mapped AsyncSchedulingUnset straight to Scheduler, which read the absent
+// flag as a disabled feature. That is not what the pinned source does. VllmConfig post-init takes an
+// `elif self.scheduler_config.async_scheduling is None` branch whose own comment reads "Enable async
+// scheduling unless there is an incompatible option", and the final else sets it TRUE.
+//
+// One of the four disabling conditions is `not executor_supports_async_sched`, so which class an
+// unset flag resolves to is a property OF THE DISTRIBUTED EXECUTOR BACKEND, not of the flag. Read
+// from the running installation on the group A head: Executor.supports_async_scheduling defaults to
+// False in v1/executor/abstract.py, MultiprocExecutor and UniProcExecutor override it to True, and
+// NEITHER ray_executor.py NOR ray_executor_v2.py overrides it at all.
+//
+// WHY THE CORRECTION MATTERS MORE THAN THE ANSWER. On this deployment the two errors cancel: the
+// backend is ray, so async resolves off and the delegate is Scheduler either way. Move the same
+// launch to the mp backend -- which is what replacing Ray with a first-party rank protocol means --
+// and an unset flag silently becomes async ON, the delegate becomes AsyncScheduler, and a wrapper
+// built on the old mapping would convert the engine while reporting that it preserved it.
+type VllmExecutorAsyncSupport
+  = ExecutorSupportsAsyncScheduling { by: NonEmptyStr }
+  | ExecutorDoesNotSupportAsyncScheduling { because: NonEmptyStr }
+
+fn executor_async_scheduling_support(backend: VllmDistributedExecutorBackend) -> VllmExecutorAsyncSupport {
+  match backend {
+    ExecutorMp =>
+      ExecutorSupportsAsyncScheduling { by: "vllm.v1.executor.multiproc_executor.MultiprocExecutor overrides supports_async_scheduling to return True" as NonEmptyStr }
+    ExecutorExternalLauncher =>
+      ExecutorSupportsAsyncScheduling { by: "vllm.v1.executor.uniproc_executor.ExecutorWithExternalLauncher extends UniProcExecutor, which overrides supports_async_scheduling to return True" as NonEmptyStr }
+    ExecutorRay =>
+      ExecutorDoesNotSupportAsyncScheduling { because: "neither ray_executor.py nor ray_executor_v2.py declares supports_async_scheduling, so the ray executors inherit Executor.supports_async_scheduling from v1/executor/abstract.py, which returns False" as NonEmptyStr }
+  }
+}
+
+// The value the engine actually ends up with, which is what selects the delegate.
+type ResolvedAsyncScheduling
+  = AsyncResolvedOn { because: NonEmptyStr }
+  | AsyncResolvedOff { because: NonEmptyStr }
+
+fn resolve_async_scheduling(
+  request: VllmAsyncSchedulingRequest,
+  backend: VllmDistributedExecutorBackend,
+) -> ResolvedAsyncScheduling {
+  match request {
+    AsyncSchedulingOff =>
+      AsyncResolvedOff { because: "the launch passed the flag off explicitly" as NonEmptyStr }
+    AsyncSchedulingOn =>
+      AsyncResolvedOn { because: "the launch enabled async scheduling explicitly, which post-init hard-fails rather than downgrades when the executor cannot support it" as NonEmptyStr }
+    AsyncSchedulingUnset =>
+      match executor_async_scheduling_support(backend: backend) {
+        ExecutorSupportsAsyncScheduling { by: b } =>
+          AsyncResolvedOn { because: join(["the flag is unset, and post-init enables async scheduling unless an incompatible option applies -- ", b as String], "") as NonEmptyStr }
+        ExecutorDoesNotSupportAsyncScheduling { because: b } =>
+          AsyncResolvedOff { because: join(["the flag is unset and post-init would have enabled async scheduling, but the executor cannot support it -- ", b as String], "") as NonEmptyStr }
+      }
+  }
+}
+
+// THE DELEGATE IS A FUNCTION OF THE RESOLVED VALUE, never of the requested one. Taking the request
+// here is what produced the defect this type now prevents.
+fn vllm_default_scheduler_qualname(resolved: ResolvedAsyncScheduling) -> NonEmptyStr {
+  match resolved {
+    AsyncResolvedOn { because: _ } => "vllm.v1.core.sched.async_scheduler.AsyncScheduler" as NonEmptyStr
+    AsyncResolvedOff { because: _ } => "vllm.v1.core.sched.scheduler.Scheduler" as NonEmptyStr
   }
 }
 
