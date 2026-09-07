@@ -287,30 +287,33 @@ fn callee_text_from_call(node: Node) -> String? {
 
 // EXTRACTED DURING TRAVERSAL, NOT FILTERED OUT OF A MATERIALIZED SUBTREE, AND DEDUPED ONCE.
 //
-// THIS BODY USED TO PAY TWICE FOR ONE ANSWER, and both halves were measured. It called
-// node_subtree_nodes to build a list of EVERY node in the declaration's subtree -- itself a
-// quadratic concat, since that fold appends each child's whole result to the accumulator -- and then
-// folded over that list keeping the few that are calls. The demand is "the callees in this node";
-// the answer was produced by materializing something much larger and filtering it, which is what
-// DESIGN 2 means by minimizing the demand graph before materializing its answers. Second, the fold
-// scanned its own accumulator with `contains` on EVERY hit to deduplicate, so a declaration with k
-// distinct callees paid O(k^2) string comparisons inside the O(subtree) traversal.
+// THE DEMAND IS "THE CALLEES IN THIS NODE", so nothing larger than that is produced to answer it --
+// DESIGN 2, minimize the demand graph before materializing its answers. Deduplication is keyed
+// rather than done by scanning what has been accumulated so far, so a declaration with k distinct
+// callees does not pay k^2 string comparisons inside the traversal.
 //
-// Measured at the grain that blocks -- the required floor's file-grain claim -- those two halves
-// cost about the same as each other and together about a third of the whole claim. Neither
-// dominated, which is why neither was found by looking for a single payer.
+// THE ACCUMULATOR IS BUILT REVERSED AND TURNED ONCE, and that is the whole reason
+// callee_texts_in_subtree_reversed exists as its own function rather than being inlined. fold_node's
+// step receives a child's ALREADY-FOLDED result, so the only way to combine is a concat, and a
+// concat costs its LEFT argument. Appending the child onto the accumulator therefore copies
+// everything gathered so far on every edge; appending the accumulator onto the child copies only
+// that child's subtree. Each sub arrives reversed, so the reversed concatenations compose into
+// exact reverse preorder and one list_reverse at the top restores preorder. The named split is what
+// keeps the reversal from being invisible to a reader of either half.
 //
-// NOW: one fold_node that emits only callee texts as it descends, and ONE dedup pass afterwards
-// keyed by a map rather than by rescanning the output. FIRST-OCCURRENCE ORDER IS PRESERVED
-// EXACTLY, which is not incidental -- the walk seeds its worklist from this list, so a different
-// order would reorder `reached` and change what every caller observes. A reordering here would be a
-// semantics change wearing a performance change's clothes.
+// FIRST-OCCURRENCE ORDER IS PRESERVED EXACTLY, which is not incidental: the walk seeds its worklist
+// from this list, so a different order would reorder `reached` and change what every caller
+// observes. A reordering here would be a semantics change wearing a performance change's clothes.
+//
+// The cost figures that motivated this shape are not transcribed here. They are re-derived by the
+// arms named in gunbc.rung_drop.determinism_transitive_reachability, which cites the instrument that
+// produces them.
 type CalleeDedupState {
   seen: Map<String, Bool>
   out: List<String>
 }
 
-fn callee_texts_in_subtree(node: Node) -> List<String> {
+fn callee_texts_in_subtree_reversed(node: Node) -> List<String> {
   fold_node(
     n: node,
     algebra: NodeFold {
@@ -320,9 +323,13 @@ fn callee_texts_in_subtree(node: Node) -> List<String> {
           Absent => empty_fn_arrow_string_list
         }
       },
-      step: fn(acc, _edge, sub) { list_append(left: acc, right: sub) }
+      step: fn(acc, _edge, sub) { list_append(left: sub, right: acc) }
     }
   )
+}
+
+fn callee_texts_in_subtree(node: Node) -> List<String> {
+  list_reverse(xs: callee_texts_in_subtree_reversed(node: node))
 }
 
 fn callee_dedup_step(state: CalleeDedupState, text: String) -> CalleeDedupState {
@@ -352,25 +359,22 @@ fn callees_from_node(node: Node, terminal_callee_symbols: List<String>) -> List<
 
 // THE WALK'S PER-STEP BOOKKEEPING, MADE LINEAR. THREE SITES, ONE DEFECT.
 //
-// Every step of this loop used to rebuild something proportional to the WHOLE input:
-// `decl_in_list` scanned all of `reached` to ask whether one seed was already there;
-// `list_snoc_item` copied all of `reached` to add one element; and `list_append(rest, callee_decls)`
-// copied the entire remaining worklist even when `callee_decls` was EMPTY -- which is every step at
-// file grain, where the closure is empty and no callee resolves. That is the same shape three
-// times, and DESIGN 2's bare-minimum-cost rule fixes it regardless of the realized n, because n is
-// not a time-stable fact: the same walk runs at directory grain over a far larger seed set.
-//
-// MEASURED AT THE GRAIN THAT BLOCKS, these three together were about a quarter of the required
-// floor's claim -- and the walk was paying them while following NO EDGES AT ALL.
+// NOTHING PROPORTIONAL TO THE WHOLE INPUT IS REBUILT PER STEP. Membership is a map lookup rather
+// than a scan of everything reached so far; the accumulator is prepended to and turned once rather
+// than copied per addition; and the worklist is left alone when there is nothing to add to it,
+// which at file grain is every step, because the closure is empty and no callee resolves. That is
+// one shape at three sites, and DESIGN 2's bare-minimum-cost rule fixes it regardless of the
+// realized n -- n is not a time-stable fact here, since the same walk runs at directory grain over
+// a far larger seed set.
 //
 // WHAT IS PRESERVED, DELIBERATELY AND EXACTLY: the ORDER and MULTIPLICITY of `reached`. The
-// membership test moves to a map keyed by qualified_name -- the same key `fn_arrow_decl_eq` already
-// compared, so it decides identically -- and the accumulator is built by prepending and reversed
-// once at the end, which reproduces snoc order element for element. The worklist still APPENDS
-// callee declarations after the remaining seeds rather than prepending them, because prepending
-// would turn a breadth-first drain into a depth-first one and reorder the result. A cheaper
-// traversal order was available and is not taken: this function's output order is observed by its
-// callers, so changing it would be a semantics change wearing a performance change's clothes.
+// membership map is keyed by qualified_name -- the same key `fn_arrow_decl_eq` already compared, so
+// it decides identically -- and prepend-then-reverse reproduces snoc order element for element. The
+// worklist still APPENDS callee declarations after the remaining seeds rather than prepending them,
+// because prepending would turn a breadth-first drain into a depth-first one and reorder the
+// result. A cheaper traversal order was available and is not taken: this function's output order is
+// observed by its callers, so changing it would be a semantics change wearing a performance
+// change's clothes.
 fn call_reachable_decls_go(
   seeds: List<FnArrowDecl>,
   terminal_callee_symbols: List<String>,
