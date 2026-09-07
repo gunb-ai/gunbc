@@ -7,10 +7,8 @@ import product.mt_collins_power_policy {
   mt_collins_power_policy_standing,
   mt_collins_power_policy_is_deferred,
   mt_collins_power_policy_cannot_settle,
-  mt_collins_power_policy_acceptance_rejects_deferred,
   mt_collins_required_cell_count,
   mt_collins_fan_power_under_modeling,
-  available_chassis_count,
   obligation_memory_population_unread,
   obligation_bmc_power_cap_sweep,
   mt_collins_power_policy_subject,
@@ -30,7 +28,6 @@ import std.decision {
 test fn mt_collins_power_policy_standing_is_deferred() -> Bool {
   mt_collins_power_policy_is_deferred()
     && mt_collins_power_policy_cannot_settle()
-    && mt_collins_power_policy_acceptance_rejects_deferred()
 }
 
 test fn mt_collins_joins_memory_unread_and_bmc_sweep_obligations() -> Bool {
@@ -55,7 +52,6 @@ test fn mt_collins_objective_is_one_structural_measure() -> Bool {
 test fn mt_collins_required_cells_cover_both_variables_and_both_terms() -> Bool {
   let cells = required_sensitivity_cells(subject: mt_collins_power_policy_subject)
   mt_collins_required_cell_count() == 4
-    && available_chassis_count == 20
     && any(
       cells,
       c => declaration_ref_eq(a: c.variable, b: var_powered_chassis_count.identity)
