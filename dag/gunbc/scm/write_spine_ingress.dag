@@ -1,0 +1,138 @@
+module gunbc.scm.write_spine_ingress
+
+// THE ONE PLACE THE WRITE SPINE TOUCHES A WORKSPACE.
+//
+// `gunbc.scm.write_spine` holds the two authoring folds and performs no host effect at all. This
+// module is the single ingress that turns a real file into the bytes those folds consume, and it is
+// separate for a structural reason rather than a tidiness one: with the read here, the commit verb
+// has no filesystem operation in scope, so "commit the staged bytes and not the current worktree" is
+// a property of what `commit_staged` CAN reach rather than a rule it is asked to obey.
+//
+// THE OBSERVATION IS THE JOINED ONE, NOT A BARE READ. `filesystem_file_observation` joins a listing
+// and a read and keeps five outcomes apart -- absent, read, indeterminate, disagreeing, and an
+// inadmissible subject. A bare `Filesystem.Read` collapses the first three into one failure channel,
+// so "the file is not there" and "I could not tell whether it is there" would stage the same nothing.
+// `gunbc.scm.init` already made that decision for its own subject; this module reuses the decision
+// rather than making a second one.
+//
+// REGULAR TEXT ONLY, AND EXPLICITLY ONE PATH. There is no directory walk here. A recursive corpus
+// acquisition needs a modeled traversal with its own refusals -- symlinks, cycles, unreadable
+// subtrees, binary content -- and inventing one inside an ingress would be exactly the "second path
+// beside an existing modeled route" tell. One named file per invocation is the whole surface.
+
+import std.types { String, NonEmptyStr }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemFileObservation,
+  FilesystemFileAbsent,
+  FilesystemFileRead,
+  FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree,
+  FilesystemFileSubjectRefused,
+  FilesystemEntryName,
+  FilesystemEntryNameAdmitted,
+  FilesystemEntryNameRefused,
+  admit_filesystem_entry_name,
+  filesystem_entry_name_text,
+  filesystem_listing_observation,
+  filesystem_read_outcome,
+  filesystem_file_observation,
+  filesystem_established_absence_path,
+}
+import gunbc.scm.repository_envelope { RepositoryEnvelope }
+import gunbc.scm.write_spine { StageIngress, StageCandidateRefused, stage_source_at_path }
+
+// WHAT THE INGRESS CAN ANSWER THAT THE FOLD CANNOT.
+//
+// The staging outcome is carried through unchanged rather than re-spelled, because the fold owns
+// those verdicts; what is added here are the four ways an OBSERVATION can fail to produce bytes, and
+// they stay four. "The file is not there", "I could not look", "it moved while I was looking", and
+// "that is not a name a directory can have" send an author to four different places, and a single
+// `AddFileUnavailable` would send all of them to the first.
+type WorkspaceAdd
+  = WorkspaceAdded(StageIngress)
+  | WorkspaceSubjectNotAnEntry { name: String, cause: String }
+  | WorkspacePathNotAddressable { path: String }
+  | WorkspaceFileAbsent { path: String }
+  | WorkspaceFileIndeterminate { cause: String }
+  | WorkspaceFileMoved { path: String, cause: String }
+  | WorkspaceSubjectRefused { directory: String, name: String, cause: String }
+
+// THE MANIFEST PATH IS REFUSED WHEN EMPTY RATHER THAN CAST PAST. `NonEmptyStr` is a refinement, and
+// the cast operator asserts rather than checks -- so an empty manifest path would enter the object
+// table as a well-typed lie about what a path is. The check is here, once, at the only boundary where
+// an unchecked String becomes one.
+//
+// WIDENING TRIGGER, naming the capability: a path type whose CONSTRUCTION refuses an empty segment
+// and a parent-directory segment. `gunbc.scm.object_store.CorpusManifestEntry` already carries that
+// same trigger over the same field. When it lands, this arm and that one dissolve together, because
+// the state stops being writable rather than stopping being reachable.
+func add_workspace_file(
+  repository: RepositoryEnvelope,
+  directory: String,
+  name: String,
+  manifest_path: String,
+) -> WorkspaceAdd {
+  if manifest_path == "" {
+    WorkspacePathNotAddressable { path: manifest_path }
+  } else {
+    match admit_filesystem_entry_name(name: name) {
+      FilesystemEntryNameRefused { name: n, cause: c } =>
+        WorkspaceSubjectNotAnEntry { name: n, cause: c }
+      FilesystemEntryNameAdmitted(component) =>
+        stage_observed_file(
+          repository: repository,
+          observation: observe_workspace_file(directory: directory, component: component),
+          manifest_path: manifest_path as NonEmptyStr,
+        )
+    }
+  }
+}
+
+// THE READ AND THE LISTING ARE BOTH PERFORMED, UNCONDITIONALLY, AND THEN JOINED. Neither is allowed to
+// gate the other: a listing that decided whether to read would make the read's answer depend on the
+// listing's instant, and the join exists precisely because those are two instants.
+func observe_workspace_file(
+  directory: String,
+  component: FilesystemEntryName,
+) -> FilesystemFileObservation {
+  let entry = filesystem_entry_name_text(component: component)
+  let path = join([directory, "/", entry], "")
+  let listed = Filesystem.List(path: directory)
+  let read = Filesystem.Read(path: path)
+  filesystem_file_observation(
+    listing: filesystem_listing_observation(
+      directory: directory,
+      success: listed.success,
+      entries: listed.entries,
+      error: listed.error,
+    ),
+    name: entry,
+    path: path,
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+  )
+}
+
+// ONLY THE READ ARM CARRIES BYTES, AND ONLY IT MAY STAGE. This is a total match, and that totality is
+// the wall: there is no default arm through which an unobserved file could reach the object table
+// with an empty string standing in for its content.
+fn stage_observed_file(
+  repository: RepositoryEnvelope,
+  observation: FilesystemFileObservation,
+  manifest_path: NonEmptyStr,
+) -> WorkspaceAdd {
+  match observation {
+    FilesystemFileRead { path: _, content: content } =>
+      WorkspaceAdded(
+        stage_source_at_path(repository: repository, path: manifest_path, text: content)
+      )
+    FilesystemFileAbsent(established) =>
+      WorkspaceFileAbsent { path: filesystem_established_absence_path(absence: established) }
+    FilesystemFileIndeterminate { cause: c } =>
+      WorkspaceFileIndeterminate { cause: c }
+    FilesystemFileObservationsDisagree { path: p, cause: c } =>
+      WorkspaceFileMoved { path: p, cause: c }
+    FilesystemFileSubjectRefused { directory: d, name: n, cause: c } =>
+      WorkspaceSubjectRefused { directory: d, name: n, cause: c }
+  }
+}

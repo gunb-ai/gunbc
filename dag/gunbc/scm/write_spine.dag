@@ -1,0 +1,215 @@
+module gunbc.scm.write_spine
+
+// THE TWO AUTHORING VERBS -- STAGE ONE SOURCE AT ONE PATH, AND FREEZE WHAT IS STAGED.
+//
+// WHAT THIS MODULE IS NOT ALLOWED TO DO, and it is the whole reason it is separate from an ingress.
+// Neither verb here performs a host effect. `add` reads a file and `commit` does not, and the second
+// half of that sentence is a correctness property rather than an efficiency one: a commit that
+// re-read the worktree would freeze the bytes present at the instant of the COMMIT, not the bytes the
+// author staged and then inspected. Every intervening edit would be swept in silently and the author
+// would be told their reviewed snapshot was committed. That is the fabricated-plausible-output
+// failure DESIGN section 5 forbids, and the only structural defence against it is that the commit
+// verb has no filesystem operation to reach for -- so the read lives in the ingress and the freeze
+// lives here, and the staged manifest is the only channel between them.
+//
+// STAGING IS A SNAPSHOT EDIT, NOT A PATCH. `gunbc.scm.staging.effective_candidate` already carries
+// the whole of that reasoning and the data-loss defect that produced it: an absent stage inherits the
+// checked-out commit's full corpus rather than answering with the empty one. This module consumes
+// that decision and does not re-derive it, so an `add` of one path can never delete the paths nobody
+// touched.
+
+import std.types { String, NonEmptyStr, Int, List }
+import gunbc.scm.object_store {
+  ObjectId,
+  AuthoredSourceObjectRef, authored_source_target_of,
+  CorpusManifestObjectRef, CorpusManifestEntry,
+  SourceStoreOutcome, SourceStored, SourceLocatorCollision, store_authored_source,
+  CorpusManifestStoreOutcome, CorpusManifestStored, CorpusManifestDuplicatePath,
+  CorpusManifestLocatorCollision, store_corpus_manifest,
+}
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope, RepositoryCommitRef,
+  mint_commit_from_stored_manifest,
+  BrandedRootMinted, BrandedRootAllocatorInvalid, BrandedRootParentMissing,
+  BrandedRootIntegrationSourceMissing,
+}
+import gunbc.scm.integration { CommitIntegration, NoSquashIntegration }
+import gunbc.scm.staging {
+  StagingRefusal, EffectiveCandidate,
+  CandidateFromStage, CandidateInheritedFromBase, CandidateEmptyCorpus, CandidateRefused,
+  effective_candidate,
+}
+
+// THE STAGING OUTCOME. Each refusal names a different owner and a different repair, which is why the
+// two collision arms are not folded together: a source-locator collision says the object table
+// already holds a DIFFERENT file under this file's identity, and a manifest-locator collision says
+// the same about the snapshot. The duplicate-path arm cannot arise from this verb's own construction
+// -- it replaces rather than appends -- but it is preserved because `store_corpus_manifest` is the
+// authority for that decision and swallowing its answer here would mean this module had quietly
+// decided a question it does not own.
+type StageIngress
+  = Staged {
+      repository: RepositoryEnvelope,
+      manifest: CorpusManifestObjectRef,
+      source: AuthoredSourceObjectRef
+    }
+  | StageCandidateRefused { cause: StagingRefusal }
+  | StageSourceLocatorCollision { identity: ObjectId }
+  | StageDuplicatePath { path: NonEmptyStr }
+  | StageManifestLocatorCollision { identity: ObjectId }
+
+// THE ENTRIES THE CANDIDATE BINDS, WITH THE ONE PATH REMOVED, IN ONE PASS.
+//
+// This is a filter and not a search-then-splice: a replace expressed as "find the index, then rebuild
+// around it" walks the list twice and has an absent case that has to be handled a second time. Here
+// the absent case IS the general case -- a path nobody has staged simply survives the filter -- so
+// append-after-filter is one rule covering both first-add and re-add.
+fn entries_without_path(entries: List<CorpusManifestEntry>, path: NonEmptyStr) -> List<CorpusManifestEntry> {
+  fold(entries, init: [], f: fn(acc, entry) {
+    if entry.path == path { acc } else { concat(acc, [entry]) }
+  })
+}
+
+// THE CANDIDATE'S ENTRIES, OR THE REFUSAL THAT MEANS THERE ARE NONE TO SPEAK OF. The empty-corpus arm
+// answers with an empty list and the refused arm does NOT, which is the distinction staging spent a
+// data-loss incident establishing: no history is an empty corpus, an unreadable base is not.
+type CandidateEntries
+  = CandidateEntriesAre { entries: List<CorpusManifestEntry> }
+  | CandidateEntriesRefused { cause: StagingRefusal }
+
+fn candidate_entries(repository: RepositoryEnvelope) -> CandidateEntries {
+  match effective_candidate(repository: repository) {
+    CandidateRefused { cause: c } => CandidateEntriesRefused { cause: c }
+    CandidateEmptyCorpus => CandidateEntriesAre { entries: [] }
+    CandidateFromStage { manifest: _, entries: e } => CandidateEntriesAre { entries: e }
+    CandidateInheritedFromBase { manifest: _, entries: e } => CandidateEntriesAre { entries: e }
+  }
+}
+
+// `add`, WITH THE BYTES ALREADY IN HAND.
+//
+// The text is a parameter rather than a path this function reads, so the identity of what gets staged
+// is fixed by the caller's observation and cannot drift between the observation and the store. The
+// ingress that performs the observation is `gunbc.scm.write_spine_ingress`; it is separate because
+// this fold must remain runnable where no filesystem exists.
+fn stage_source_at_path(
+  repository: RepositoryEnvelope,
+  path: NonEmptyStr,
+  text: String,
+) -> StageIngress {
+  match candidate_entries(repository: repository) {
+    CandidateEntriesRefused { cause: c } => StageCandidateRefused { cause: c }
+    CandidateEntriesAre { entries: inherited } =>
+      match store_authored_source(store: repository.store, text: text) {
+        SourceLocatorCollision { identity: id, existing: _, incoming: _ } =>
+          StageSourceLocatorCollision { identity: id }
+        SourceStored { store: with_source, source: source } => {
+          let next_entries = concat(
+            entries_without_path(entries: inherited, path: path),
+            [CorpusManifestEntry {
+              path: path,
+              source: authored_source_target_of(reference: source),
+            }],
+          )
+          match store_corpus_manifest(store: with_source, entries: next_entries) {
+            CorpusManifestDuplicatePath { path: p } => StageDuplicatePath { path: p }
+            CorpusManifestLocatorCollision { identity: id, existing: _, incoming: _ } =>
+              StageManifestLocatorCollision { identity: id }
+            CorpusManifestStored { store: with_manifest, manifest: manifest } =>
+              Staged {
+                repository: RepositoryEnvelope {
+                  store: with_manifest,
+                  commits: repository.commits,
+                  commit_allocator: repository.commit_allocator,
+                  checked_out: repository.checked_out,
+                  staged: Present { value: manifest },
+                },
+                manifest: manifest,
+                source: source,
+              }
+          }
+        }
+      }
+  }
+}
+
+// `commit`.
+//
+// THE ROOT IS THE MANIFEST THE CANDIDATE ALREADY NAMES, TAKEN AS A BRAND RATHER THAN AS A LOCATOR.
+// `effective_candidate` hands back the reference the STORE produced for the record it actually found,
+// so this verb never re-resolves and never has an opportunity to name a manifest the store does not
+// hold. That is why the refusal surface below has no root-missing or wrong-kind arm: those states are
+// not reachable from a branded root, and minting an arm for them would be a fabricated cause.
+//
+// COMMITTING WITH NOTHING STAGED IS A REFUSAL, NOT A NO-OP AND NOT AN EMPTY COMMIT. A repository with
+// no checkout and no stage has no snapshot to freeze; answering with the empty corpus would commit a
+// deletion of everything the author never asked for, which is the same widening the staging module
+// refuses one level down.
+type StagedCommit
+  = StagedCommitMinted { repository: RepositoryEnvelope, reference: RepositoryCommitRef }
+  | StagedCommitCandidateRefused { cause: StagingRefusal }
+  | StagedCommitNothingToFreeze
+  | StagedCommitAllocatorInvalid { next_ordinal: Int }
+  | StagedCommitParentMissing { parent: RepositoryCommitRef }
+  | StagedCommitIntegrationSourceMissing { source: RepositoryCommitRef }
+
+// THE COMMIT ADVANCES THE CHECKOUT AND CONSUMES THE STAGE IN ONE MOTION, and neither half is
+// optional. Leaving the checkout behind would make the next `add` inherit from the OLD snapshot, so
+// the commit just made would be invisible to the corpus that follows it. Leaving the stage in place
+// would make the next commit -- with nothing further added -- freeze the same manifest again under a
+// new identity, an empty change reported as a change.
+fn advance_to_commit(repository: RepositoryEnvelope, reference: RepositoryCommitRef) -> RepositoryEnvelope {
+  RepositoryEnvelope {
+    store: repository.store,
+    commits: repository.commits,
+    commit_allocator: repository.commit_allocator,
+    checked_out: Present { value: reference },
+    staged: none,
+  }
+}
+
+fn commit_staged(repository: RepositoryEnvelope, message: String) -> StagedCommit {
+  match effective_candidate(repository: repository) {
+    CandidateRefused { cause: c } => StagedCommitCandidateRefused { cause: c }
+    CandidateEmptyCorpus => StagedCommitNothingToFreeze
+    CandidateFromStage { manifest: root, entries: _ } =>
+      freeze_root(repository: repository, root: root, message: message)
+    CandidateInheritedFromBase { manifest: root, entries: _ } =>
+      freeze_root(repository: repository, root: root, message: message)
+  }
+}
+
+// THE INTEGRATION-SOURCE ARM IS UNREACHABLE FROM HERE AND IS STILL CARRIED HONESTLY. This verb passes
+// `NoSquashIntegration`, so the mint cannot answer with a missing integration source -- but the arm is
+// re-reported as itself rather than folded into the parent-missing arm, because a cause invented to
+// close a match is exactly the fabrication this stack keeps paying for. It is not deleted either: the
+// mint owns that decision, and a caller reading this outcome must be able to tell the two apart if the
+// mint's surface ever widens.
+//
+// THE INTEGRATION IS `NoSquashIntegration` BY CONSTRUCTION HERE, not by default. An ordinary commit
+// consumed no source commit, and `gunbc.scm.squash_merge` is the sole verb that may claim one -- so
+// this function takes no integration parameter through which a caller could assert a provenance it
+// did not perform.
+fn freeze_root(
+  repository: RepositoryEnvelope,
+  root: CorpusManifestObjectRef,
+  message: String,
+) -> StagedCommit {
+  match mint_commit_from_stored_manifest(
+    repository: repository,
+    root: root,
+    message: message,
+    parent: repository.checked_out,
+    integration: NoSquashIntegration,
+  ) {
+    BrandedRootAllocatorInvalid { next_ordinal: n } => StagedCommitAllocatorInvalid { next_ordinal: n }
+    BrandedRootParentMissing { parent: p } => StagedCommitParentMissing { parent: p }
+    BrandedRootIntegrationSourceMissing { source: s } =>
+      StagedCommitIntegrationSourceMissing { source: s }
+    BrandedRootMinted { repository: minted, reference: reference } =>
+      StagedCommitMinted {
+        repository: advance_to_commit(repository: minted, reference: reference),
+        reference: reference,
+      }
+  }
+}

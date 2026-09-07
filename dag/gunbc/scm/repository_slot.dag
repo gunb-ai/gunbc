@@ -1,0 +1,251 @@
+module gunbc.scm.repository_slot
+
+// PUBLISHING A REPOSITORY DOCUMENT AT AN EXACT GENERATION, AND READING ONE BACK INDEPENDENTLY.
+//
+// THIS MODULE ADDS NO PUBLICATION MECHANISM. `std.durable_compare_and_set` already models the
+// conditional write as a SHAPE rather than a transport, and `gunbc.durable_cas_file_store` is
+// already its filesystem realization. Writing a second conditional-write authority here -- an
+// observe-then-write with an expected-value check of its own -- would be one concept with two
+// authorities (DESIGN section 3), and the weaker of the two, because the store's exclusion is
+// performed by the operating system on the write and a re-observation cannot be.
+//
+// WHY `save_repository` IS NOT THE BOUNDARY FOR A LIVE WORKSPACE. Its own annotation is honest about
+// what it decided: "save_repository writes unconditionally, which is correct for its subject:
+// persisting a repository that already exists must replace the bytes that are there." That is right
+// for INITIALIZATION, whose hazard is creating over an existing file, and `Filesystem.WriteCreateNew`
+// closes it. It is wrong for a workspace that mutates: an unconditional `Filesystem.Write` truncates,
+// so an interrupted publication leaves a PREFIX, and two writers produce last-writer-wins with no
+// refusal for the loser. The decision was correct for its subject and does not extend to this one.
+//
+// WHAT THE CAS REALIZATION GIVES US, BY CONSTRUCTION RATHER THAN BY PROTOCOL. A slot at generation N
+// is the file <root>/<key>.<N>, WRITTEN ONCE AND NEVER REWRITTEN. So:
+//
+//   ExpectSlotAbsent          -> create-new <key>.1
+//   ExpectSlotGeneration{N}   -> create-new <key>.<N+1>
+//
+// and create-new is O_EXCL. Three consequences this module depends on and does not re-derive:
+// the loser of a race is refused BY THE OPERATING SYSTEM rather than by a lock the caller holds; the
+// store reads the key ITSELF, so a caller cannot supply an observation taken from another slot; and
+// -- ONLY UNDER `DefaultAccessCreateOnly`, which is why this module binds it explicitly -- a
+// generation name never holds a partial document.
+//
+// THAT THIRD PROPERTY WAS NOT TRUE WHEN THIS MODULE WAS FIRST WRITTEN, AND THIS ANNOTATION CLAIMED IT
+// ANYWAY. The store published every generation with `Filesystem.WriteOwnerOnly`, whose realization
+// opens the generation name itself and writes into it directly, so a failed write left a READABLE
+// PREFIX at <key>.<N+1>; the probe then read it, promoted it to head, and hashed the prefix, and
+// nothing anywhere refused. Reopening yielded neither the old document nor the new one. External
+// review found the claim before the code shipped. The repair is in the store, not here: publication
+// access is now a required binding, `DefaultAccessCreateOnly` routes through `Filesystem.WriteCreateNew`
+// -- staged, synchronized, then hard-linked into the generation name -- and this module selects it.
+// The owner-only binding retains the hazard under a declared drop, rostered at its own call sites.
+//
+// THE THREE OUTCOMES STAY THREE. Published, refused-because-superseded, and store-unreadable have
+// different remedies and different owners: retry from the new head, look at what the other writer
+// wrote, and investigate the store. Folding "I could not tell" into "someone beat me" is the
+// absorbing fallback DESIGN section 5 names -- it would report a damaged store as an ordinary lost
+// race and send an operator to the wrong place.
+
+import std.types { String, NonEmptyStr }
+import std.content_hash { content_hash_of_value }
+import std.durable_compare_and_set {
+  CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
+  CasGeneration, CasSlotVersion, CasReadableSlot, CasReadableAbsent, CasReadablePresent,
+  CasUnreadableSlot,
+  CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
+  CasSlotObservation, CasObservedReadable, CasObservedUnreadable,
+  cas_attempt,
+}
+import gunbc.durable_cas_file_store {
+  DefaultAccessCreateOnly,
+  CasAttemptAdmission, CasAttemptAdmitted,
+  CasAttemptKeyNotSlotAddressable, CasAttemptDigestMismatch, CasAttemptDigestIncomparable,
+  admit_cas_attempt, file_compare_and_set, observe_cas_slot_state,
+}
+import extdeps.languages.json.emit { serialize_json }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, JsonDocumentGap,
+}
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope,
+  RepositoryEncodeRefusal, RepositoryEncoded, RepositoryEncodeRefused, encode_repository_checked,
+  RepositoryDecodeRefusal, RepositoryDecoded, RepositoryDecodeRefused, decode_repository,
+}
+
+// THE PUBLICATION OUTCOME. Every arm names WHO must act, which is why none of them are merged:
+//
+//   Published            nobody. Carries the generation the next publication must expect.
+//   Superseded           this writer, and it can act: the observed head is carried, so the caller
+//                        can re-derive against what actually won rather than re-reading and racing
+//                        again from a fresh guess.
+//   StoreUnreadable      an operator. The slot could not be read at all; NOTHING is known about
+//                        whether anyone won.
+//   EncodeRefused        the author of the repository value. It never reached the store.
+//   KeyNotAddressable    the caller. A key that would escape the store root or carry a separator is
+//                        refused at the mint rather than resolved into a path first.
+//   DigestDisagreed      an internal defect: this module computes the digest from the very value it
+//                        proposes, so the two can only disagree if that derivation is broken. It is
+//                        surfaced rather than swallowed because a silent wrong digest is exactly
+//                        what the store's admission exists to catch.
+// THE SLOT IS ONE VALUE, NOT A ROOT AND A KEY TRAVELLING TOGETHER BY CONVENTION. `file_compare_and_set`
+// binds its own read and write to one `root + attempt.key`, so it cannot be fooled -- but the wider
+// read-modify-write does not run inside that call, and two loose parameters let a caller load from one
+// store and publish to another whose generation happens to agree.
+type RepositorySlot {
+  root: NonEmptyStr
+  key: NonEmptyStr
+}
+
+// AND THE EXPECTATION IS NOT A PARAMETER OF THE MUTATION PATH AT ALL. `sole_constructor` means only
+// `read_repository_slot` below can mint this, so the slot, the generation, and the envelope in it are
+// always the ones ONE observation produced. Publication derives all three from this single value:
+// there is no argument through which a caller could pair an envelope it read at generation 7 of slot A
+// with an expectation of generation 7 of slot B. That is the construction the earlier signature was
+// missing, and validation could not have supplied it -- nothing downstream can tell two agreeing
+// generations apart after the fact.
+type LoadedRepositoryGeneration sole_constructor {
+  slot: RepositorySlot
+  generation: CasGeneration
+  envelope: RepositoryEnvelope
+}
+
+type RepositoryPublication
+  = RepositoryPublished { generation: CasGeneration }
+  | RepositoryPublicationSuperseded { expected: CasExpectation, observed: CasReadableSlot<NonEmptyStr> }
+  | RepositoryPublicationStoreUnreadable { cause: CasUnreadableSlot }
+  | RepositoryPublicationEncodeRefused { cause: RepositoryEncodeRefusal }
+  | RepositoryPublicationKeyNotAddressable { key: NonEmptyStr }
+  | RepositoryPublicationDigestDisagreed
+
+// THE EXPECTATION IS A PARAMETER, NOT AN OBSERVATION THIS FUNCTION TAKES. A publisher that read the
+// current generation here and then proposed against it would reintroduce the observe-then-write gap
+// the store exists to close: between the read and the write, another writer can commit, and this
+// call would then overwrite it while believing it was conditional. The caller states what it BELIEVES
+// the world to be -- absent, or generation N it actually read and reasoned from -- and the store
+// decides whether that belief still holds.
+// CREATING A SLOT AND ADVANCING ONE ARE TWO ENTRY POINTS, because they are authorized by two different
+// facts. A create is authorized by nothing -- it claims an unheld name, and the store refuses if the
+// name is held. An advance is authorized by an observation, and the only way to hold one is to have
+// made it, which `LoadedRepositoryGeneration` is.
+fn publish_new_repository(slot: RepositorySlot, repo: RepositoryEnvelope) -> RepositoryPublication {
+  publish_repository(slot: slot, expected: ExpectSlotAbsent, repo: repo)
+}
+
+// TWO WRITERS AGAINST ONE GENERATION IS TWO CALLS WITH THE SAME `loaded`. The first consumes the
+// generation and the second is refused by the store with the observed head -- which is the property
+// under test, and it is DETERMINISTIC rather than timing-dependent, because what makes the loser lose
+// is that its expectation names a generation that has since been consumed, not that it arrived second.
+fn republish_repository(
+  loaded: LoadedRepositoryGeneration,
+  repo: RepositoryEnvelope,
+) -> RepositoryPublication {
+  publish_repository(
+    slot: loaded.slot,
+    expected: ExpectSlotGeneration { generation: loaded.generation },
+    repo: repo,
+  )
+}
+
+// THE SHARED BODY, AND WHAT ITS VISIBILITY DOES AND DOES NOT SEAL. `.dag` has no module privacy, so
+// this entry is reachable and a caller could hand it an expectation it invented. What the two entries
+// above buy is therefore not unreachability -- it is that the ROUTE WHICH CARRIES AN OBSERVATION cannot
+// carry a mismatched one, because `LoadedRepositoryGeneration` is sole-constructed by the reader. A
+// hand-built expectation is still refused by the store when it is wrong; what construction removes is
+// the case where it is accidentally RIGHT about the wrong slot.
+fn publish_repository(
+  slot: RepositorySlot,
+  expected: CasExpectation,
+  repo: RepositoryEnvelope,
+) -> RepositoryPublication {
+  match encode_repository_checked(repo: repo) {
+    RepositoryEncodeRefused { cause: cause } =>
+      RepositoryPublicationEncodeRefused { cause: cause }
+    RepositoryEncoded { value: v } =>
+      publish_repository_document(
+        slot: slot,
+        expected: expected,
+        document: serialize_json(v: v) as NonEmptyStr,
+      )
+  }
+}
+
+fn publish_repository_document(
+  slot: RepositorySlot,
+  expected: CasExpectation,
+  document: NonEmptyStr,
+) -> RepositoryPublication {
+  match admit_cas_attempt(
+    attempt: cas_attempt(
+      key: slot.key,
+      expected: expected,
+      proposed: document,
+      proposed_content: content_hash_of_value(value: document),
+    )
+  ) {
+    CasAttemptKeyNotSlotAddressable { key: k } => RepositoryPublicationKeyNotAddressable { key: k }
+    CasAttemptDigestMismatch { claimed: _, actual: _ } => RepositoryPublicationDigestDisagreed
+    CasAttemptDigestIncomparable { claimed: _, actual: _ } => RepositoryPublicationDigestDisagreed
+    CasAttemptAdmitted { verified: verified } =>
+      match file_compare_and_set(root: slot.root, publication: DefaultAccessCreateOnly, verified: verified) {
+        CasCommitted { committed: committed } =>
+          RepositoryPublished { generation: committed.generation }
+        CasPreconditionFailed { expected: e, observed: o } =>
+          RepositoryPublicationSuperseded { expected: e, observed: o }
+        CasStoreRefused { cause: c } => RepositoryPublicationStoreUnreadable { cause: c }
+      }
+  }
+}
+
+// READBACK IS A SEPARATE OBSERVATION OF THE STORE, NOT THE VALUE THIS PROCESS PUBLISHED.
+//
+// The point of reading back is to establish that the store now holds the document, so a readback
+// that returned the caller's own in-memory envelope would establish nothing at all -- it would be
+// the specification-without-execution trap wearing a verification's clothes. This goes to the slot,
+// takes whatever bytes are there, and decodes them through the ordinary decoder, so a document that
+// was written truncated, or written by somebody else, is seen as what it is.
+//
+// AN ABSENT SLOT IS NOT AN EMPTY REPOSITORY, for the reason `gunbc.scm.repository_load` gives at
+// length about a missing file: rendering "I observed nothing" as the verdict "there is nothing here"
+// would let a `log` print an empty history for a repository whose key was slightly wrong.
+type RepositorySlotRead
+  = RepositorySlotAbsent
+  | RepositorySlotHead(LoadedRepositoryGeneration)
+  | RepositorySlotStoreUnreadable { cause: CasUnreadableSlot }
+  | RepositorySlotDocumentUnparseable { generation: CasGeneration, gap: JsonDocumentGap }
+  | RepositorySlotDocumentRefused { generation: CasGeneration, cause: RepositoryDecodeRefusal }
+
+fn read_repository_slot(slot: RepositorySlot) -> RepositorySlotRead {
+  match observe_cas_slot_state(root: slot.root, key: slot.key) {
+    CasObservedUnreadable { cause: c } => RepositorySlotStoreUnreadable { cause: c }
+    CasObservedReadable { readable: readable } =>
+      match readable {
+        CasReadableAbsent => RepositorySlotAbsent
+        CasReadablePresent { version: version } =>
+          decode_slot_document(slot: slot, generation: version.generation, document: version.value)
+      }
+  }
+}
+
+// THE PARSE AND SCHEMA FAILURES STAY APART, and both carry the generation. A caller told only "the
+// document is bad" cannot tell whether the bytes are not JSON -- which points at the writer or a
+// truncation -- or are JSON that is not a repository, which points at the schema. Those are the two
+// remedies `repository_load` already refuses to collapse, and reading from a slot rather than a path
+// does not change which fact is which.
+fn decode_slot_document(
+  slot: RepositorySlot,
+  generation: CasGeneration,
+  document: NonEmptyStr,
+) -> RepositorySlotRead {
+  match parse_json_document(s: document as String) {
+    JsonDocumentUnreadable { gap: gap } =>
+      RepositorySlotDocumentUnparseable { generation: generation, gap: gap }
+    JsonDocumentParsed { value: v } =>
+      match decode_repository(v: v) {
+        RepositoryDecoded { envelope: envelope } =>
+          RepositorySlotHead(
+            LoadedRepositoryGeneration { slot: slot, generation: generation, envelope: envelope }
+          )
+        RepositoryDecodeRefused { cause: cause } =>
+          RepositorySlotDocumentRefused { generation: generation, cause: cause }
+      }
+  }
+}

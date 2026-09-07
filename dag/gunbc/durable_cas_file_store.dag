@@ -269,17 +269,85 @@ fn observe_cas_slot_state(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotObserva
   }
 }
 
+// ACCESS MODE AND CONDITIONAL PUBLICATION ARE TWO FACTS, AND THIS STORE HELD THEM AS ONE.
+//
+// Every generation was published with `Filesystem.WriteOwnerOnly`, so one operation decided both
+// "publish this generation exclusively" and "these bytes are readable only by their owner". A caller
+// could not select the second without inheriting the first, which is the interface/realization/policy
+// fusion DESIGN section 3 names: confidentiality is a POLICY fact about a particular store's contents,
+// and it was being decided by the store's write verb.
+//
+// SO THE BINDING IS A PARAMETER, AND IT IS REQUIRED RATHER THAN DEFAULTED. A default would have let
+// the SCM slot inherit owner-only silently, exactly the way it inherited it before, and the point of
+// separating the facts is that the choice becomes visible at each call site.
+//
+// THE TWO BINDINGS ARE NOT EQUALLY SAFE, AND SAYING SO IS THE WHOLE VALUE OF NAMING THEM.
+//
+//   DefaultAccessCreateOnly   Filesystem.WriteCreateNew. Its realization stages the bytes in a
+//                             sibling file created O_EXCL, writes them all, synchronizes that inode,
+//                             and only then hard-links it into the generation's name -- and a
+//                             hard_link FAILS IF THE TARGET EXISTS, so exclusion is preserved. The
+//                             generation name therefore never exists holding a partial document: the
+//                             file is complete or it is absent.
+//
+//   OwnerOnlyCreateOnly       Filesystem.WriteOwnerOnly. Its realization opens the GENERATION NAME
+//                             ITSELF with create_new + mode 0600 and writes into it directly. O_EXCL
+//                             still decides who acquires the name, so the winner-selection property is
+//                             intact -- but an interrupted or failed write_all leaves that name
+//                             holding a READABLE PREFIX. The probe below then reads it successfully,
+//                             promotes it to head, and computes a content hash from the prefix, so
+//                             the truncation is internally consistent and nothing refuses. A reader
+//                             sees neither the complete old document nor the complete new one.
+//
+// DECLARED RUNG DROP (DESIGN section 4b(3)) FOR THE OWNER-ONLY BINDING.
+//   previous rung   n/a -- the class was undeclared, and applied to every consumer of this store
+//                   including ones that never asked for owner-only bytes.
+//   temporary rung  mitigatable: the hazard is named, the population is closed and enumerated, and a
+//                   caller that does not need confidentiality can now select the atomic binding.
+//   reason          there is no modeled filesystem operation that is create-only, failure-atomic AND
+//                   owner-only at creation. `WriteCreateNew` publishes by hard-link and cannot carry a
+//                   mode; `WriteOwnerOnly` carries the mode and cannot stage.
+//   population      the call sites that bind OwnerOnlyCreateOnly, and only those.
+//   restoration     A FILESYSTEM OPERATION THAT PUBLISHES A NEW PATH FAILURE-ATOMICALLY AT A CALLER-
+//   trigger         SPECIFIED MODE -- staged, synchronized, then linked into place under that mode.
+//                   That is the capability, not an artifact: when it exists, this coproduct collapses
+//                   because both bindings become the same publication with a mode argument, and the
+//                   drop is retired by that collapse and by nothing else.
+type CasGenerationPublication
+  = DefaultAccessCreateOnly
+  | OwnerOnlyCreateOnly
+
 // The exclusive create. Reached only once the observation has already satisfied
 // the expectation, so this decides WHO WINS among eligible writers and nothing
 // else. Losing here is a lost race, not a bad precondition -- another writer
 // took the same target between our observation and our write -- so the slot is
 // re-observed to report what actually beat us rather than guessing.
-fn cas_commit_at(root: NonEmptyStr, attempt: CasAttempt<NonEmptyStr>, target: CasGeneration) -> CasOutcome<NonEmptyStr> {
-  let write = Filesystem.WriteOwnerOnly(
+// THE PUBLICATION ANSWERS A Bool AND NOT THE HOST RECORD, because that is all a commit decision needs
+// and the two verbs' records are not the same fact. What follows a failed publication here is a
+// re-observation of the slot, never the host's error text -- the store reports what actually beat this
+// writer rather than transcribing why one syscall said no.
+fn cas_generation_published(
+  publication: CasGenerationPublication,
+  path: String,
+  content: String,
+) -> Bool {
+  match publication {
+    DefaultAccessCreateOnly => Filesystem.WriteCreateNew(path: path, content: content).success
+    OwnerOnlyCreateOnly => Filesystem.WriteOwnerOnly(path: path, content: content).success
+  }
+}
+
+fn cas_commit_at(
+  root: NonEmptyStr,
+  publication: CasGenerationPublication,
+  attempt: CasAttempt<NonEmptyStr>,
+  target: CasGeneration,
+) -> CasOutcome<NonEmptyStr> {
+  if cas_generation_published(
+    publication: publication,
     path: cas_file_slot_path(root: root, key: attempt.key, generation: target),
     content: attempt.proposed as String,
-  )
-  if write.success {
+  ) {
     CasCommitted {
       committed: CasSlotVersion { generation: target, content: attempt.proposed_content, value: attempt.proposed }
     }
@@ -298,7 +366,11 @@ fn cas_commit_at(root: NonEmptyStr, attempt: CasAttempt<NonEmptyStr>, target: Ca
 // EXPECTATION. That is the whole correction: an expectation is a claim about the
 // store, and deriving the write target from the claim rather than from the store
 // is what let an attempt expecting generation 7 commit against an empty slot.
-fn file_compare_and_set(root: NonEmptyStr, verified: VerifiedCasAttempt) -> CasOutcome<NonEmptyStr> {
+fn file_compare_and_set(
+  root: NonEmptyStr,
+  publication: CasGenerationPublication,
+  verified: VerifiedCasAttempt,
+) -> CasOutcome<NonEmptyStr> {
   let attempt = verified.attempt
   let probe = cas_observe_slot(root: root, key: attempt.key)
   match probe {
@@ -310,7 +382,7 @@ fn file_compare_and_set(root: NonEmptyStr, verified: VerifiedCasAttempt) -> CasO
       }
     ProbedAbsent =>
       match attempt.expected {
-        ExpectSlotAbsent => cas_commit_at(root: root, attempt: attempt, target: cas_generation_first())
+        ExpectSlotAbsent => cas_commit_at(root: root, publication: publication, attempt: attempt, target: cas_generation_first())
         ExpectSlotGeneration { generation: _ } =>
           CasPreconditionFailed { expected: attempt.expected, observed: CasReadableAbsent }
       }
@@ -320,7 +392,7 @@ fn file_compare_and_set(root: NonEmptyStr, verified: VerifiedCasAttempt) -> CasO
           CasPreconditionFailed { expected: attempt.expected, observed: cas_probe_as_readable(probe: probe) }
         ExpectSlotGeneration { generation: g } =>
           if cas_generation_count(g: g) == cas_generation_count(g: h) {
-            cas_commit_at(root: root, attempt: attempt, target: cas_generation_next(g: h))
+            cas_commit_at(root: root, publication: publication, attempt: attempt, target: cas_generation_next(g: h))
           } else {
             CasPreconditionFailed { expected: attempt.expected, observed: cas_probe_as_readable(probe: probe) }
           }
