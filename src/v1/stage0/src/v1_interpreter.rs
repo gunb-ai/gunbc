@@ -2488,6 +2488,71 @@ mod cross_claim_demand_census_tests {
     }
 }
 
+// THE DISCRIMINATING RED FOR THE AUTHORED-PATH MODULE INDEX.
+//
+// `data_initializer_identity::typed_module_for_path` answered "which TypedModule owns this
+// module path?" with a linear scan over `ctx.modules` that re-sliced each module's authored name
+// out of its source span. `decl_facts` asks it once per DataItem row, so one whole-corpus
+// declaration inventory cost declarations x modules source-text slices -- a cost shape, not a
+// large constant, and DESIGN section 6 fixes those regardless of the realized n.
+//
+// A test that merely asserts the lookup ANSWERS is not a red for that: the scan answered too.
+// What separates an index from a scan is that the corpus is walked ONCE however many times it is
+// asked, so this reads the fill counter. Restoring the scan removes the accessor named here -- a
+// compile error in `cargo clippy --all-targets`, which IS a required lane
+// (`gunbc.repo_self_build` `repo_self_clippy_command`) -- and weakening the index to refill per
+// lookup fails the assertion.
+//
+// Rung honesty: the assertion executes under `cargo test`, which no CI step runs as of the
+// 2026-09-04 runner-capacity ruling (declared drop `gunbc.rung_drop`
+// `rust_unit_tests_off_the_merge_path`). The required-path evidence for the repair is the cost
+// gate on `v2.test.claim.construction_justification.outside_modeled_guarantee_witness_test`
+// reaching a verdict inside its budget; this is the authorable red at the fixture boundary, and
+// it is what attributes a future regression to this lookup rather than to whatever change
+// happens to be in flight when a witness goes slow.
+#[cfg(test)]
+mod typed_module_index_tests {
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+
+    use super::{ExecutionMode, InterpContext};
+
+    fn ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    #[test]
+    fn module_lookup_walks_the_corpus_once_however_many_times_it_is_asked() {
+        let ctx = ctx();
+        assert_eq!(
+            ctx.typed_module_by_path_fill_count(),
+            0,
+            "the index is filled on first ask, never at construction"
+        );
+
+        for i in 0..64 {
+            let _ = ctx.typed_module_for_authored_path(&format!("v2.lens.absent_{i}"));
+        }
+
+        assert_eq!(
+            ctx.typed_module_by_path_fill_count(),
+            1,
+            "64 lookups walked the corpus more than once -- the per-lookup scan is back, and one \
+             decl_facts marshal is again a product of the declaration and module populations"
+        );
+    }
+}
+
 #[cfg(test)]
 mod cross_claim_memo_tests {
     use crate::v1_rt::RcStr;
@@ -4190,6 +4255,25 @@ pub struct InterpContext {
     pub execution_mode: ExecutionMode,
     pub fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
     data_cache: std::cell::RefCell<HashMap<usize, Value>>,
+    // Module lookup BY AUTHORED PATH, built once per ctx. `ctx.modules` is a vector, so the only
+    // way to answer "which TypedModule is `v2.lens.cost`?" was a linear scan that re-sliced every
+    // module's name out of its source span (authored_name_at). One `decl_facts` marshal asks that
+    // question once per DataItem row, so the whole-corpus inventory was a PRODUCT of the two
+    // populations -- a cost-shape defect (DESIGN section 6, bare minimum cost), not a large
+    // constant. Same discipline as param_name_cache above: derived from ctx-owned Rc handles,
+    // filled lazily on first ask, dies with the ctx.
+    typed_module_by_path:
+        std::cell::RefCell<Option<Rc<std::collections::HashMap<String, Rc<TypedModule>>>>>,
+    // How many times the index above was BUILT. The property that matters is not that a lookup
+    // answers -- a per-lookup scan answers too -- but that the corpus is walked ONCE however many
+    // times it is asked. Counting the fills is what makes that property observable to a test, so
+    // reintroducing the scan fails an assertion instead of surfacing as a slow witness nobody
+    // attributes to it.
+    typed_module_by_path_fills: std::cell::Cell<u64>,
+    // The same repair one layer down, for the two type-declaration lookups `decl_facts` reaches
+    // per DataItem row. See `data_initializer_identity::TypeDeclIndex` for what they cost before.
+    type_decl_index:
+        std::cell::RefCell<Option<Rc<crate::data_initializer_identity::TypeDeclIndex>>>,
     // Parameter-name derivation is invariant per fn_node but was re-sliced from source spans
     // per call (authored_name_at). Memoized per fn_node pointer. The pointer alone is unsound:
     // the ctx does not own fn_nodes (borrowed `Rc<Node>`s droppable while the ctx lives), so a
@@ -4314,6 +4398,55 @@ pub fn selected_module_path(
 }
 
 impl InterpContext {
+    /// The authored-path -> `TypedModule` index behind [`InterpContext::typed_module_by_path`].
+    /// First declarer wins, which is the answer the linear `find` this replaced returned.
+    pub fn typed_module_for_authored_path(&self, module_path: &str) -> Option<Rc<TypedModule>> {
+        let index = {
+            let cached = self.typed_module_by_path.borrow().clone();
+            match cached {
+                Some(index) => index,
+                None => {
+                    self.typed_module_by_path_fills
+                        .set(self.typed_module_by_path_fills.get() + 1);
+                    let si = self.source_indices.clone();
+                    let mut built: std::collections::HashMap<String, Rc<TypedModule>> =
+                        std::collections::HashMap::with_capacity(self.modules.len());
+                    for tm in self.modules.iter() {
+                        let name =
+                            crate::v1_std_core::authored_name_at(si.clone(), tm.module.clone());
+                        built.entry(name).or_insert_with(|| tm.clone());
+                    }
+                    let built = Rc::new(built);
+                    *self.typed_module_by_path.borrow_mut() = Some(Rc::clone(&built));
+                    built
+                }
+            }
+        };
+        index.get(module_path).cloned()
+    }
+
+    /// Corpus walks performed by [`InterpContext::typed_module_for_authored_path`] on this ctx.
+    /// Reading it is how a test tells an index apart from a scan.
+    pub fn typed_module_by_path_fill_count(&self) -> u64 {
+        self.typed_module_by_path_fills.get()
+    }
+
+    /// The type-declaration lookup index, built once per ctx on first ask.
+    pub fn type_decl_index(&self) -> Rc<crate::data_initializer_identity::TypeDeclIndex> {
+        let cached = self.type_decl_index.borrow().clone();
+        match cached {
+            Some(index) => index,
+            None => {
+                let built = Rc::new(crate::data_initializer_identity::build_type_decl_index(
+                    &self.modules,
+                    &self.source_indices,
+                ));
+                *self.type_decl_index.borrow_mut() = Some(Rc::clone(&built));
+                built
+            }
+        }
+    }
+
     pub fn sym(&self, s: &str) -> Symbol {
         self.symbols.borrow_mut().intern(s)
     }
@@ -4546,6 +4679,9 @@ impl InterpContext {
             execution_mode,
             fixture_store,
             data_cache: std::cell::RefCell::new(HashMap::new()),
+            typed_module_by_path: std::cell::RefCell::new(None),
+            typed_module_by_path_fills: std::cell::Cell::new(0),
+            type_decl_index: std::cell::RefCell::new(None),
             param_name_cache: std::cell::RefCell::new(HashMap::new()),
             param_name_cache_keepalive: std::cell::RefCell::new(Vec::new()),
             var_sym_cache: std::cell::RefCell::new(HashMap::new()),
@@ -5488,10 +5624,14 @@ fn in_flight_cross_claim_fill(raw_cpu_nanos: u128) -> Option<(String, u128)> {
 /// path, so thread CPU rises at least as much as fill over any interval. The saturating
 /// subtraction covers only sampling skew between the two reads.
 ///
-/// WHAT THIS DOES NOT REACH: the WALL deadline (`witness_wall_deadline`) is still armed on a raw
-/// `Instant` and still charges a fill to whichever claim paid it. Every interruption in the
-/// repaired population was on the CPU clock — 44 of 44 `Cpu` on run 33185280160 — so the wall
-/// half is a real, currently unexercised residue, not a fix silently omitted.
+/// THE WALL DEADLINE NETS THE SAME FILL, BY ITS OWN BASELINE RATHER THAN THIS CLOCK.
+/// `arm_wall_deadline` captures `shared_artifact_fill_wall_nanos()` at arm time and
+/// `wall_deadline_marginal_nanos` subtracts the fill accrued since, so both enforced figures
+/// exclude the fill and neither is a function of which claim happened to pay it. Until
+/// gunbc#10748 the wall half was armed on a raw `Instant`, and this comment said so beside a
+/// receipt for why that residue was unexercised; the residue was exercised, repaired, and the
+/// sentence stayed. It is replaced rather than annotated because a reader diagnosing a wall
+/// refusal needs the mechanism that runs, not the one that used to.
 pub fn budgeted_cpu_nanos() -> u128 {
     thread_cpu_nanos().saturating_sub(shared_artifact_fill_cpu_nanos())
 }

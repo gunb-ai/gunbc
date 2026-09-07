@@ -1,7 +1,7 @@
 module gunbc.guarantee_stall.self_host_spelling_search_stall
 
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
-import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
 
 // DECLARED 2026-09-05. The seed-linkage check in
 // self_host_logic_seed_unavailable_transport uses a PER-SUBJECT SPELLING SEARCH
@@ -23,5 +23,5 @@ data self_host_spelling_search_stall: GuaranteeStall = GuaranteeStall {
     "dag/std/logic.dag — the subject module checked by the v1_compiler:: spelling search",
     "dag/gunbc/instruments/self_host_logic_seed_unavailable_transport.dag — the transport hosting the check",
   ] },
-  next_rung_trigger: "The emitted crate's runtime fragments are DERIVED FROM THE MODELED SOURCE rather than copied from the seed's runtime module, SUFFICIENT FOR the emitted crate to have no reason to reference the seed crate namespace, at which point the substring check is a no-op and can be deleted rather than carried through subsequent refactors.",
+  next_rung_trigger: climbs_when(capability: "The emitted crate's runtime fragments are DERIVED FROM THE MODELED SOURCE rather than copied from the seed's runtime module, SUFFICIENT FOR the emitted crate to have no reason to reference the seed crate namespace, at which point the substring check is a no-op and can be deleted rather than carried through subsequent refactors."),
 }
