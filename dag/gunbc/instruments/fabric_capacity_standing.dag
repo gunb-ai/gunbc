@@ -67,11 +67,21 @@ data capacity_probe_identity_file: String = "/home/briansrls/.ssh/fleet-automati
 // The two launch figures are taken from the LAST matching line rather than the first: the log
 // accumulates across restarts, and the engine serving now is the one that printed last.
 //
-// NO BRACE APPEARS IN THIS SCRIPT, and that is a constraint of the reader rather than of shell. The
-// heads-only pass that indexes modules counts braces without knowing it is inside a string literal,
-// so a `--format` template or a shell function body ends the enclosing declaration early and the
-// module refuses to parse. Every field is therefore assigned, defaulted and printed in three plain
-// commands, and the two docker templates are replaced by `-q` and a sed capture.
+// NO BRACE APPEARS IN THIS SCRIPT, AND THE REASON RECORDED HERE FOR THAT WAS FALSE.
+//
+// This block used to state that the heads-only pass indexing modules counts braces without knowing
+// it is inside a string literal, so a `--format` template ended the enclosing declaration early and
+// the module refused to parse. That is not what the reader does. `heads_skip_block_tokens` walks
+// TOKENS and matches on `is_lbrace_shape(t.shape)`; a brace inside a string literal belongs to a
+// String token whose shape is not LBrace, so it is never counted. The corpus agrees by execution:
+// 691 .dag files carry a brace inside a string literal, `std/types.dag` among them -- a module
+// every closure imports and the heads census therefore always parses.
+//
+// The shape of the script is left as it is rather than restored to `--format` templates, because
+// whether this probe survives at all is an open question and rewriting its shell would be the wrong
+// investment while that is undecided. What is corrected is the CLAIM: no author should route around
+// a language-layer deficit that does not exist, and DESIGN 4c forbids an annotation standing as
+// evidence for a machine fact -- which is exactly what this one did, wrongly, for four commits.
 fn emit_field(command: String) -> String {
   join(["v=$(", command, " 2>/dev/null); [ -n \"$v\" ] || v=-; printf '%s\\n' \"$v\"\n"], "")
 }

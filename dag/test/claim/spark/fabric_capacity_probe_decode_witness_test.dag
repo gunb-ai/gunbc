@@ -1,0 +1,100 @@
+module test.claim.spark.fabric_capacity_probe_decode_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision, vllm_source_revision_read }
+import gunbc.instruments.fabric_capacity_standing {
+  CapacityProbeRead, ProbeFields, ProbeUnreadable, decode_probe,
+  PoolRead, PoolObserved, PoolUnobserved, pool_from_fields,
+}
+
+// THE FIRST WITNESS THIS INSTRUMENT HAS HAD, and its absence is why two fail-open arms survived
+// four commits. The module's only entry is an actuator that probes live hosts over ssh, so nothing
+// could go red without a fleet; decode_probe and pool_from_fields are ordinary total functions over
+// captured text, so the discriminating REDs are authorable here as fixtures and are enrolled.
+
+data probe_good_lines: List<String> = [
+  "abc123",
+  "1111111111111111111111111111111111111111111111111111111111111111",
+  "2222222222222222222222222222222222222222222222222222222222222222",
+  "1757280000",
+  "163840",
+  "1042",
+  "10240",
+  "16",
+  "131072",
+  "3",
+  "7",
+]
+
+fn probe_stdout(lines: List<String>) -> String {
+  join(lines, "\n")
+}
+
+fn replace_at(lines: List<String>, n: Nat, v: String) -> List<String> {
+  concat(lines.take(n: n), concat([v], lines.skip(n: n + 1)))
+}
+
+// POSITIVE CONTROL. Eleven parseable fields decode, and the two occupancy figures arrive as the
+// numbers the far side sent rather than as a default.
+test fn eleven_readable_fields_decode_with_the_occupancy_the_host_reported() -> Bool {
+  match decode_probe(stdout: probe_stdout(lines: probe_good_lines)) {
+    ProbeUnreadable { detail: _ } => false
+    ProbeFields { fields: f } => f.running == 3 && f.waiting == 7 && f.max_model_len == 131072
+  }
+}
+
+// THE DISCRIMINATING RED FOR THE OCCUPANCY ARMS. These two went `Absent => 0` before, so an engine
+// whose metrics could not be read reported as idle -- and running/waiting feed the admission
+// posture. Each field is refused independently and the refusal names which one.
+test fn an_unreadable_running_count_refuses_instead_of_reading_as_an_idle_engine() -> Bool {
+  match decode_probe(stdout: probe_stdout(lines: replace_at(lines: probe_good_lines, n: 9, v: "-"))) {
+    ProbeFields { fields: _ } => false
+    ProbeUnreadable { detail: d } => string_contains(s: d, pattern: "num_requests_running")
+  }
+}
+
+test fn an_unreadable_waiting_count_refuses_instead_of_reading_as_an_idle_engine() -> Bool {
+  match decode_probe(stdout: probe_stdout(lines: replace_at(lines: probe_good_lines, n: 10, v: "-"))) {
+    ProbeFields { fields: _ } => false
+    ProbeUnreadable { detail: d } => string_contains(s: d, pattern: "num_requests_waiting")
+  }
+}
+
+// THE DISCRIMINATING RED FOR THE REVISION. pool_from_fields used to stamp vllm_source_revision_read
+// into the reading it built, which made admit_kv_layout's refusal on observed_at_revision -- the
+// wall that decides `admitting` -- permanently green. With no observed revision it must refuse.
+test fn a_pool_built_without_an_observed_revision_refuses_rather_than_stamping_the_model() -> Bool {
+  match decode_probe(stdout: probe_stdout(lines: probe_good_lines)) {
+    ProbeUnreadable { detail: _ } => false
+    ProbeFields { fields: f } =>
+      match pool_from_fields(f: f, observed_revision: none) {
+        PoolObserved { pool: _ } => false
+        PoolUnobserved { detail: d } => string_contains(s: d, pattern: "does not capture the vLLM source revision")
+      }
+  }
+}
+
+// AND THE POSITIVE CONTROL FOR THE SAME ARM: given a revision, the pool is built from it. This is
+// the conjunct that keeps the refusal above from being satisfiable by a function that always
+// refuses.
+test fn a_pool_built_with_an_observed_revision_is_admitted() -> Bool {
+  match decode_probe(stdout: probe_stdout(lines: probe_good_lines)) {
+    ProbeUnreadable { detail: _ } => false
+    ProbeFields { fields: f } =>
+      match pool_from_fields(f: f, observed_revision: Present { value: vllm_source_revision_read }) {
+        PoolUnobserved { detail: _ } => false
+        PoolObserved { pool: _ } => true
+      }
+  }
+}
+
+// A SHORT CAPTURE IS NOT A PARTIAL READ. The script emits exactly eleven lines; anything else means
+// the far side did not run it, and the arity refusal precedes every field decode.
+test fn a_capture_that_is_not_eleven_lines_refuses_before_decoding_any_field() -> Bool {
+  match decode_probe(stdout: "abc123\n1757280000") {
+    ProbeFields { fields: _ } => false
+    ProbeUnreadable { detail: d } => string_contains(s: d, pattern: "not the 11 the script emits")
+  }
+}
