@@ -1,0 +1,5 @@
+module uab.foreign_three
+
+type NotSq { unrelated: Int }
+
+fn three_marker() -> Int { 3 }
