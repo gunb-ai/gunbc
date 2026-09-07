@@ -113,11 +113,22 @@ fn cost_account_measured<S>(time: Measure<Time, S, Nat>) -> CostAccount<S> {
   }
 }
 
-fn cost_account_time_count<S>(account: CostAccount<S>) -> Nat? {
-  match account.time {
-    CostTimeMeasured { value: t } => Present { value: measure_count(m: t) }
-    CostTimePredicted { value: t } => Present { value: measure_count(m: t) }
+// THE ONE ELIMINATOR FOR THE TIME AXIS. review 61736 is right that two modules matching this
+// coproduct to answer "the established value, or nothing" is two authorities for one projection of
+// a carrier this change introduces, and that the second author would have re-minted it. It lives
+// beside the type; cost_account_time_count and std.cache_interface both consume it.
+fn cost_time_axis_established<S>(axis: CostTimeAxis<S>) -> Measure<Time, S, Nat>? {
+  match axis {
+    CostTimeMeasured { value: t } => Present { value: t }
+    CostTimePredicted { value: t } => Present { value: t }
     CostTimeUnestablished => none
+  }
+}
+
+fn cost_account_time_count<S>(account: CostAccount<S>) -> Nat? {
+  match cost_time_axis_established(axis: account.time) {
+    Present { value: t } => Present { value: measure_count(m: t) }
+    Absent => none
   }
 }
 

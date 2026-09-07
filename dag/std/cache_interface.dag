@@ -17,9 +17,7 @@ import std.pareto {
 import std.realization_schedule {
   CostAccount,
   CostTimeAxis,
-  CostTimeMeasured,
-  CostTimePredicted,
-  CostTimeUnestablished,
+  cost_time_axis_established,
 }
 import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDigest, resolved_graph_artifact_kind, parse_table_artifact_kind }
 
@@ -400,15 +398,10 @@ fn cache_reach_candidate_recompute() -> CacheReachCandidate {
 // unestablished recompute time does not make the comparison conservative -- it makes it unanswerable.
 // Both consumers already had an honest arm for that: the probe returns none, and the justification
 // predicate returns false, which refuses the cache rather than admitting one whose benefit is
-// unmeasured. A PREDICTED time is accepted here, because section 2's rule is about the comparison
-// being grounded, not about which established basis grounds it.
-fn recompute_time_or_absent(recompute: CostAccount<Nano>) -> Nanosecond? {
-  match recompute.time {
-    CostTimeMeasured { value: t } => Present { value: t }
-    CostTimePredicted { value: t } => Present { value: t }
-    CostTimeUnestablished => none
-  }
-}
+// unmeasured. A PREDICTED time is accepted, because section 2's rule is about the comparison being
+// grounded, not about which established basis grounds it -- and that judgement is exactly what
+// std.realization_schedule cost_time_axis_established already encodes, so this module consumes that
+// eliminator rather than re-matching the coproduct's storage shape beside it.
 
 fn cache_reach_candidate_probe(
   id: CacheInterfaceId,
@@ -418,7 +411,7 @@ fn cache_reach_candidate_probe(
   match cache_facts_for_id(id: id, catalog: catalog) {
     Absent => none
     Present { value: facts } =>
-      match recompute_time_or_absent(recompute: recompute) {
+      match cost_time_axis_established(axis: recompute.time) {
         Absent => none
         Present { value: saved } =>
           let fetch = read_latency_cost(facts: facts)
@@ -466,7 +459,7 @@ fn cache_layer_cost_justified(
   match cache_facts_for_id(id: id, catalog: catalog) {
     Absent => false
     Present { value: facts } =>
-      match recompute_time_or_absent(recompute: recompute) {
+      match cost_time_axis_established(axis: recompute.time) {
         Absent => false
         Present { value: saved } =>
           nanosecond_count(n: saved) >= nanosecond_count(n: read_latency_cost(facts: facts))

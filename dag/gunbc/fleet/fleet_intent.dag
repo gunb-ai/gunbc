@@ -44,7 +44,10 @@ import std.realization_schedule {
   CostAccount, CostAxis, CostAxisMeasured, CostAxisPredicted, CostAxisUnestablished,
   CostTimeAxis, CostTimeMeasured, CostTimePredicted, CostTimeUnestablished,
 }
-import std.realization_measurement { cost_account_measured_from_time_and_space, space_measure_seq }
+import std.realization_measurement {
+  cost_account_measured_from_time_and_space, space_measure_seq,
+  cost_axis_add_time, cost_axis_peak_space,
+}
 import std.nat { Nat }
 import std.float { Float }
 
@@ -203,49 +206,6 @@ fn performance_receipt_host_single_sample(
 //     deferred: the total carries the WEAKEST established basis among its terms, because a claim is
 //     only as good as the softest fact it rests on. What C5 still owns is the richer
 //     Derived / PredictedFromCalibration vocabulary, not this meet.
-fn cost_axis_add_time(
-  acc: CostTimeAxis<Nano>,
-  term: CostTimeAxis<Nano>,
-) -> CostTimeAxis<Nano> {
-  match acc {
-    CostTimeUnestablished => CostTimeUnestablished
-    CostTimeMeasured { value: a } =>
-      match term {
-        CostTimeUnestablished => CostTimeUnestablished
-        CostTimeMeasured { value: t } =>
-          CostTimeMeasured { value: nanosecond(count: nanosecond_count(n: a) + measure_count(m: t)) }
-        CostTimePredicted { value: t } =>
-          CostTimePredicted { value: nanosecond(count: nanosecond_count(n: a) + measure_count(m: t)) }
-      }
-    CostTimePredicted { value: a } =>
-      match term {
-        CostTimeUnestablished => CostTimeUnestablished
-        CostTimeMeasured { value: t } =>
-          CostTimePredicted { value: nanosecond(count: nanosecond_count(n: a) + measure_count(m: t)) }
-        CostTimePredicted { value: t } =>
-          CostTimePredicted { value: nanosecond(count: nanosecond_count(n: a) + measure_count(m: t)) }
-      }
-  }
-}
-
-fn cost_axis_peak_space(acc: CostAxis<ByteSize>, term: CostAxis<ByteSize>) -> CostAxis<ByteSize> {
-  match acc {
-    CostAxisUnestablished => CostAxisUnestablished
-    CostAxisMeasured { value: a } =>
-      match term {
-        CostAxisUnestablished => CostAxisUnestablished
-        CostAxisMeasured { value: t } => CostAxisMeasured { value: space_measure_seq(a: a, b: t) }
-        CostAxisPredicted { value: t } => CostAxisPredicted { value: space_measure_seq(a: a, b: t) }
-      }
-    CostAxisPredicted { value: a } =>
-      match term {
-        CostAxisUnestablished => CostAxisUnestablished
-        CostAxisMeasured { value: t } => CostAxisPredicted { value: space_measure_seq(a: a, b: t) }
-        CostAxisPredicted { value: t } => CostAxisPredicted { value: space_measure_seq(a: a, b: t) }
-      }
-  }
-}
-
 fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> CostTimeAxis<Nano> {
   if receipts.length() == 0 {
     CostTimeUnestablished

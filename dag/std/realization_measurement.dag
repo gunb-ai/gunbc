@@ -6,6 +6,10 @@ import std.nat { Nat, nat_max }
 import std.measure {
   Measure,
   Time,
+  Nano,
+  Nanosecond,
+  nanosecond,
+  nanosecond_count,
   time_measure,
   measure_count,
   measure_scale_fraction_ceil,
@@ -24,6 +28,7 @@ import std.realization_schedule {
   CostTimeMeasured,
   CostTimePredicted,
   CostTimeUnestablished,
+  cost_time_axis_established,
 
   cost_account_measured,
   cost_account_time_count,
@@ -73,6 +78,56 @@ fn space_measure_par(a: ByteSize, b: ByteSize) -> ByteSize {
 
 fn space_measure_list_seq(spaces: List<ByteSize>) -> ByteSize {
   fold(spaces, init: byte_size(count: 0), f: (acc, s) => space_measure_seq(a: acc, b: s))
+}
+
+// THE BASIS MEET OVER AN AXIS, HOMED WITH THE CARRIER RATHER THAN WITH ITS FIRST CONSUMER.
+// review 61736: these were authored in a fleet product module because that is where the first
+// rollup needed them, but they are the semantic core of the axis -- a total is only as established
+// as its weakest term -- and DESIGN section 3 puts a fact in its LAYER, not in the file that first
+// wanted it. Left there, the next consumer that needs to add two axes re-mints the meet. They sit
+// here rather than in realization_schedule because the space meet consumes space_measure_seq,
+// which this module owns, and realization_schedule is upstream of it.
+fn cost_axis_add_time(
+  acc: CostTimeAxis<Nano>,
+  term: CostTimeAxis<Nano>,
+) -> CostTimeAxis<Nano> {
+  match acc {
+    CostTimeUnestablished => CostTimeUnestablished
+    CostTimeMeasured { value: a } =>
+      match term {
+        CostTimeUnestablished => CostTimeUnestablished
+        CostTimeMeasured { value: t } =>
+          CostTimeMeasured { value: nanosecond(count: nanosecond_count(n: a) + measure_count(m: t)) }
+        CostTimePredicted { value: t } =>
+          CostTimePredicted { value: nanosecond(count: nanosecond_count(n: a) + measure_count(m: t)) }
+      }
+    CostTimePredicted { value: a } =>
+      match term {
+        CostTimeUnestablished => CostTimeUnestablished
+        CostTimeMeasured { value: t } =>
+          CostTimePredicted { value: nanosecond(count: nanosecond_count(n: a) + measure_count(m: t)) }
+        CostTimePredicted { value: t } =>
+          CostTimePredicted { value: nanosecond(count: nanosecond_count(n: a) + measure_count(m: t)) }
+      }
+  }
+}
+
+fn cost_axis_peak_space(acc: CostAxis<ByteSize>, term: CostAxis<ByteSize>) -> CostAxis<ByteSize> {
+  match acc {
+    CostAxisUnestablished => CostAxisUnestablished
+    CostAxisMeasured { value: a } =>
+      match term {
+        CostAxisUnestablished => CostAxisUnestablished
+        CostAxisMeasured { value: t } => CostAxisMeasured { value: space_measure_seq(a: a, b: t) }
+        CostAxisPredicted { value: t } => CostAxisPredicted { value: space_measure_seq(a: a, b: t) }
+      }
+    CostAxisPredicted { value: a } =>
+      match term {
+        CostAxisUnestablished => CostAxisUnestablished
+        CostAxisMeasured { value: t } => CostAxisPredicted { value: space_measure_seq(a: a, b: t) }
+        CostAxisPredicted { value: t } => CostAxisPredicted { value: space_measure_seq(a: a, b: t) }
+      }
+  }
 }
 
 fn cost_account_measured_from_time<S>(time: Measure<Time, S, Nat>) -> CostAccount<S> {

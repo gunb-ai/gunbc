@@ -17,6 +17,7 @@ import std.realization_schedule {
 }
 import std.realization_measurement {
   RealizationMeasureEffect,
+  cost_axis_add_time,
   witness_measured_rollup_differs_from_predicted_zero,
   witness_concurrent_memory_peak_per_share_divides,
 }
@@ -27,7 +28,6 @@ import gunbc.fleet_intent {
   performance_receipt_host_single_sample,
   cost_account_from_performance_receipts,
   performance_receipts_total_time,
-  cost_axis_add_time,
 }
 import std.measure { ByteSize, byte_size, byte_size_count, Nanosecond, nanosecond, nanosecond_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
