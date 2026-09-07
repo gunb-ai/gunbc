@@ -269,6 +269,7 @@ fn builtin_kernel_seed_diagnostics() -> List<ErrorNode> {
 // One word "declared" covering all four would be the rung inflation the ladder names.
 data builtin_function_registry: Map<String, BuiltinSignature> = {
   "count": derived_signature(names: ["xs"], method: "count", returns: int_type),
+  "hmac_sha256_verify_hex": BuiltinSignature { params: [BuiltinParam { name: "key_hex", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "message", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "tag_hex", ty: NamedTemplate { name: "String" } }], returns: bool_type },
   "string_length": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }], returns: int_type },
   "code_point": BuiltinSignature { params: [BuiltinParam { name: "c", ty: NamedTemplate { name: "String" } }], returns: int_type },
   "to_int": derived_signature(names: ["s"], method: "to_int", returns: int_type),

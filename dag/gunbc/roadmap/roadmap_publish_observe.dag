@@ -16,7 +16,7 @@ import gunbc.roadmap_publish {
   RefAdvertisementRefused, AdvertisedLineUnparsed, AdvertisedRefProjectsEmptyBranch,
   PullRequestObservation, PullRequestsRead, PullRequestsUnreadable,
   PullRequestReadFailure,
-  PullRequestCredentialUnavailable, PullRequestStatusRefused,
+  PullRequestQuotaWithheld, PullRequestCredentialUnavailable, PullRequestStatusRefused,
   PullRequestTransportRefused, PullRequestBodyUndecodable,
   PublicationOutcome,
   RoadmapPublicationSubject,
@@ -25,6 +25,10 @@ import gunbc.roadmap_publish {
 }
 import extdeps.github.github { Repository, github_https_clone_url }
 import extdeps.github.pulls { PullRequestState, Open }
+import extdeps.github.rate_limits { github_core_rate_limit }
+import extdeps.tools.hostname
+import std.algebra { trim }
+import gunbc.fabric_quota { QuotaLease, QuotaLeased, QuotaFull, QuotaLeaseRefused, fabric_quota_lease, QuotaSettle, QuotaSettled, QuotaSettleRefused, fabric_quota_settle }
 import extdeps.transports.rest {
   RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
 }
@@ -248,12 +252,21 @@ fn observe_pull_requests(
         },
       }
     CredentialSourceConfigured { source } => {
+      let host = os.Hostname.ReadShort()
+      let lease = fabric_quota_lease(short_hostname: if host.success { trim(s: host.value) } else { "" }, limit: github_core_rate_limit, amount: 1, actor: "belt:publish-observe" as NonEmptyStr, term_seconds: 120)
+      match lease {
+        QuotaFull { wire: w } => PullRequestsUnreadable { cause: PullRequestQuotaWithheld { repository: repo.full_name, detail: w } }
+        QuotaLeaseRefused { detail: d } => PullRequestsUnreadable { cause: PullRequestQuotaWithheld { repository: repo.full_name, detail: d } }
+        QuotaLeased { grant: _, partition: _, layout: _ } => {
       let result = github.Pulls.List(
         auth_token: source,
         owner: repo.owner,
         repo: repo.name,
         state: Open,
       )
+      match fabric_quota_settle(lease: lease, actual: 1) {
+        QuotaSettleRefused { detail: d } => PullRequestsUnreadable { cause: PullRequestQuotaWithheld { repository: repo.full_name, detail: join(["listed, but the settlement refused: ", d], "") } }
+        QuotaSettled { partition: _, actual: _ } =>
       match result.outcome {
         RestOk => PullRequestsRead { pulls: result.pulls }
         RestStatusRefused { status, body } =>
@@ -279,6 +292,9 @@ fn observe_pull_requests(
               cause: cause,
             },
           }
+      }
+      }
+        }
       }
     }
   }

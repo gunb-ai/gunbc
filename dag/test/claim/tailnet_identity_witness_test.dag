@@ -1,0 +1,87 @@
+module test.claim.tailnet_identity_witness_test
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+import extdeps.tailscale.identity {
+  TailnetIdentity, TailnetUser, TailnetIdentityAbsent,
+  IdentityMatch, IdentityMatches, IdentityMismatch, IdentityMissing,
+  tailnet_identity_of, tailnet_identity_is_present, match_tailnet_identity,
+  identity_match_ok, identity_match_reason,
+}
+import std.types { NonEmptyStr }
+import std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data operator_login: NonEmptyStr = "briansrls@github" as NonEmptyStr
+
+// ── Absent is not anonymous ──────────────────────────────────────────────────────────────────
+// THE DISCRIMINATING RED FOR THE WHOLE LAYER. An empty header is what a DIRECT connection
+// produces, what a misconfigured proxy produces, and what a stripped header produces. All three
+// are deployment faults and none of them is a person. If absence resolved to a caller -- an
+// anonymous user, a default operator, a permissive "unknown" -- then bypassing the proxy would be
+// the way to authenticate rather than the way to fail, which is the check reporting success to
+// exactly the party it exists to stop.
+test fn an_absent_identity_header_does_not_resolve_to_a_caller() -> Bool {
+  match tailnet_identity_of(header_value: "") {
+    TailnetIdentityAbsent => true
+    TailnetUser { login: _ } => false
+  }
+}
+
+test fn an_absent_identity_never_matches_the_operator() -> Bool {
+  match match_tailnet_identity(presented: tailnet_identity_of(header_value: ""), expected: operator_login) {
+    IdentityMissing { expected: e } => e == operator_login
+    IdentityMatches { login: _ } => false
+    IdentityMismatch { presented: _, expected: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL. The operator's own identity must match, or every test here would pass in a
+// module that refused everyone and the door would be closed to its owner too.
+test fn the_operators_identity_matches() -> Bool {
+  identity_match_ok(
+    m: match_tailnet_identity(
+      presented: tailnet_identity_of(header_value: operator_login as String),
+      expected: operator_login,
+    )
+  )
+}
+
+// ── The comparison does not widen ────────────────────────────────────────────────────────────
+// A NORMALIZING COMPARISON IN AN AUTHENTICATION CHECK IS THE SAME DEFECT AS A WIDENING FAILURE
+// ARM. Case folding, domain stripping and trimming each let an identity that is not the operator's
+// answer for it, and each looks like a convenience. Tailscale logins are stable identifiers rather
+// than display names, so there is nothing legitimate to normalize away.
+test fn a_different_tailnet_user_does_not_match() -> Bool {
+  match match_tailnet_identity(
+    presented: tailnet_identity_of(header_value: "someone-else@github"),
+    expected: operator_login,
+  ) {
+    IdentityMismatch { presented: p, expected: e } =>
+      p == "someone-else@github" && e == operator_login
+    IdentityMatches { login: _ } => false
+    IdentityMissing { expected: _ } => false
+  }
+}
+
+test fn the_comparison_is_exact_and_does_not_fold_or_strip() -> Bool {
+  !identity_match_ok(m: match_tailnet_identity(presented: tailnet_identity_of(header_value: "BRIANSRLS@github"), expected: operator_login))
+    && !identity_match_ok(m: match_tailnet_identity(presented: tailnet_identity_of(header_value: "briansrls"), expected: operator_login))
+    && !identity_match_ok(m: match_tailnet_identity(presented: tailnet_identity_of(header_value: "briansrls@github "), expected: operator_login))
+    && !identity_match_ok(m: match_tailnet_identity(presented: tailnet_identity_of(header_value: "briansrls@github.evil"), expected: operator_login))
+    && !identity_match_ok(m: match_tailnet_identity(presented: tailnet_identity_of(header_value: "xbriansrls@github"), expected: operator_login))
+}
+
+// The refusal must say WHY, and the missing case must say what the reader has to go check --
+// "no identity" and "the wrong person" send an operator to two different places.
+test fn the_missing_identity_refusal_names_the_deployment_cause() -> Bool {
+  string_contains(
+    s: identity_match_reason(m: match_tailnet_identity(presented: TailnetIdentityAbsent, expected: operator_login)),
+    pattern: "did not arrive through the tailscale proxy",
+  )
+}
+
+test fn a_present_identity_reports_present() -> Bool {
+  tailnet_identity_is_present(i: tailnet_identity_of(header_value: operator_login as String))
+    && !tailnet_identity_is_present(i: tailnet_identity_of(header_value: ""))
+}

@@ -494,18 +494,28 @@ test fn witness_acquire_empty_property_output_refuses_rather_than_reading() -> B
 // changed between them the observer received a contradiction its own acquisition layer had
 // manufactured, reported as host drift that never happened. This row reads both projections out of
 // ONE carrier and asserts they describe the same observation.
+// BOTH FIXTURES CARRY A REFUSED READING, AND THAT IS THE ONLY COHERENT CHOICE HERE RATHER THAN THE
+// ONE THAT COMPILES. Each sets boundary to the empty list, and production derives that list from
+// the reading via fabric_cell_boundary_address_entries -- so a BoundaryValuesRead beside an empty
+// boundary would be a state fabric_cell_acquire_slot cannot produce. This row exists to assert two
+// projections of ONE carrier agree; seeding it with a self-contradictory carrier would test
+// agreement between views of something that never occurs.
 test fn witness_acquire_one_acquisition_projects_consistently() -> Bool {
   let listed = FabricCellSlotAcquisition {
     slot: witness_slot(),
     cell_root: DirectoryListed { entries: ["attempts"] },
     attempt_root: DirectoryListed { entries: [] },
     boundary: [],
+    boundary_reading: BoundaryReadRefused { cause: "cell boundary slice is absent" },
   }
   let absent = FabricCellSlotAcquisition {
     slot: witness_slot(),
     cell_root: DirectoryNotPresent,
     attempt_root: DirectoryNotPresent,
     boundary: [],
+    boundary_reading: BoundaryReadRefused {
+      cause: "the cell root is not present, so its slice carries no boundary to read",
+    },
   }
   probe_is_enumerated_as(p: fabric_cell_acquisition_namespace_entry(acquisition: listed).probe, entries: ["attempts"])
     && list_length(items: fabric_cell_acquisition_address_entries(acquisition: listed)) == 2

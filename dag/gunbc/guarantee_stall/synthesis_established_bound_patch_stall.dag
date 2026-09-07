@@ -1,0 +1,13 @@
+module gunbc.guarantee_stall.synthesis_established_bound_patch_stall
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+
+data synthesis_established_bound_patch_stall: GuaranteeStall = GuaranteeStall {
+  subject: "v2.lens.synthesis Established-bound versus declared-technique comparison is WallAfterGrounding; it can still return an AdvisoryLens empty list instead of a cheaper Node or typed catalog-refusal",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: ["v2.lens.synthesis"] },
+  next_rung_trigger: climbs_when(capability: "every Established bound yielding a cheaper Node or a typed catalog-refusal that no rewrite applies — sufficient for the technique-comparison subject to be a wall; Rice any-cheaper-equivalent stays OutsideModeledGuarantee")
+}

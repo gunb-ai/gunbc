@@ -252,6 +252,25 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
             static CACHED: Rc<HashMap<String, Rc<BuiltinSignature>>> = {
                 let mut __m = HashMap::new();
                 __m.insert("count".to_string(), derived_signature(Rc::new(vec!["xs".to_string()]), "count".to_string(), int_type()));
+                __m.insert("hmac_sha256_verify_hex".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "key_hex".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "message".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "tag_hex".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    })]),
+        returns: bool_type(),
+    }));
                 __m.insert("string_length".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "s".to_string(),

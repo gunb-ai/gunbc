@@ -14,6 +14,7 @@ import gunbc.worker_lifecycle {
   WorkerProcessEvidence, WorkerProcessRunning, WorkerProcessExited, WorkerProcessAbsent, WorkerProcessUnobserved,
 }
 import gunbc.roadmap.roadmap_review_criteria { ReviewCriterion, review_criterion_brief_text }
+import gunbc.design_argument { ReviewAnswerAlgebra, YesIsADefect, ConformanceThreeValued }
 
 // THE REVIEW VERDICT, AS THE REVIEWER WRITES IT AND THE BELT READS IT. Three words because three
 // remedies: approved admits publication; changes requested carries located reasons and feeds the next
@@ -381,8 +382,33 @@ fn review_brief(
     "Acceptance command: ", acceptance_command, "\n",
     "Change under review: git diff ", base_sha, "..", head_sha, " (the worktree is at ", head_sha, ")\n",
     "What the belt's own run of the acceptance command said about this head: ", verification_detail, "\n",
-    "Answer the criterion and only the criterion: approve means the answer to its question is no; request_changes means yes, with each reason naming the path and the tell.\n",
+    review_answer_instruction(a: criterion.answer),
   ], "")
+}
+
+// THE CONFORMANCE ANSWER, MAPPED TO THE VERDICT WORDS (DESIGN section 3b). Three answers, two verdict
+// words: a divergence whose reason the change states is ADMITTED and carries the reason as the
+// summary, so only the unstated divergence requests changes. This mapping is the one place the
+// three-valued question meets the two-word verdict; the reviewer's instruction below is rendered
+// from it rather than written beside it.
+type ConformanceAnswer
+  = Conforms { summary: String }
+  | DivergesStated { reason: String }
+  | DivergesUnstated { reasons: List<ReviewReason> }
+
+fn conformance_answer_verdict(a: ConformanceAnswer) -> HeadVerdict {
+  match a {
+    Conforms { summary } => ReviewApproved { summary: summary }
+    DivergesStated { reason } => ReviewApproved { summary: join(["diverges, reason stated: ", reason], "") }
+    DivergesUnstated { reasons } => ReviewChangesRequested { reasons: reasons }
+  }
+}
+
+fn review_answer_instruction(a: ReviewAnswerAlgebra) -> String {
+  match a {
+    YesIsADefect => "Answer the criterion and only the criterion: approve means the answer to its question is no; request_changes means yes, with each reason naming the path and the tell.\n"
+    ConformanceThreeValued => "Answer the criterion and only the criterion, in one of three ways: the change conforms to the named homes (approve, summary saying which home it inhabits); it diverges and states its reason in the change itself (approve, summary quoting that reason); it diverges and states no reason (request_changes, each reason naming the path, the tell, and the home it should have inhabited).\n"
+  }
 }
 
 // WHERE TO WRITE THE VERDICT IS THE ACTUATION'S FACT, appended by the realization that mints the path,

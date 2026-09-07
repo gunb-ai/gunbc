@@ -1,0 +1,21 @@
+module extdeps.ebay.rate_limits
+
+import std.types { NonEmptyStr, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.api_rate_limit { UpstreamRateLimit, RateLimitPeriod, PerMinute, PerDay }
+
+// eBay's published call limits for the scopes the corpus consumes: the OAuth token endpoint at
+// 1,000 per minute and the Sell Inventory API at 2,000,000 per day per application.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developer.ebay.com/develop/get-started/api-call-limits"
+  }
+}
+
+data ebay_oauth_rate_limit: UpstreamRateLimit = UpstreamRateLimit { upstream: "ebay" as NonEmptyStr, scope: "oauth" as NonEmptyStr, requests: 1000, period: PerMinute }
+data ebay_sell_inventory_rate_limit: UpstreamRateLimit = UpstreamRateLimit { upstream: "ebay" as NonEmptyStr, scope: "sell_inventory" as NonEmptyStr, requests: 2000000, period: PerDay }
+
+data ebay_rate_limits: List<UpstreamRateLimit> = [ebay_oauth_rate_limit, ebay_sell_inventory_rate_limit]

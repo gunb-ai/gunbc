@@ -3,8 +3,10 @@ module v2.test.lens_complexity.nested
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.complexity {
   ComplexityBound,
+  ComplexityAssessment,
   composite_complexity_variables,
   complexity_lens,
+  established_complexity,
   multidimensional_polynomial_complexity,
   single_complexity_variable
 }
@@ -101,7 +103,7 @@ fn nested_actual_cost() -> Witness<SymbolicCost> {
   cost_lens(n: nested_input)
 }
 
-fn nested_actual_complexity() -> ComplexityBound {
+fn nested_actual_complexity() -> ComplexityAssessment {
   complexity_lens(n: nested_input)
 }
 
@@ -113,5 +115,5 @@ test fn nested_cost_projection_holds() -> Bool {
 }
 
 test fn nested_complexity_projection_holds() -> Bool {
-  nested_actual_complexity() == nested_claim.expected_complexity
+  nested_actual_complexity() == established_complexity(bound: nested_claim.expected_complexity)
 }

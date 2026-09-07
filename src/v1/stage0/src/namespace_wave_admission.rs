@@ -1560,48 +1560,143 @@ pub struct TransitionAdmission {
 /// the carrier in `product.cable_leg_observation`, base and head bind each spelling identically,
 /// and all four report CONSUMED, coming due on this roster's next touch. Adjudicate that deletion
 /// by joining each row against main's tree on its own tuple, not by trusting this sentence.
-const LEG_OBSERVATION_REHOME_LABEL: &str =
-    "gunbc#10671 transceiver layer split: the cable-leg observation carrier moves from the \
-     SFF-8636 byte-meaning module extdeps.transceiver.sff_8636 to product.cable_leg_observation";
+
+/// THE SCM REPOSITORY BUILDER MOVES TO A SHARED FIXTURE (2026-09-06, gunbc#10676). No ordinal is
+/// claimed, for the reason the entries above give.
+///
+/// `test.claim.scm_merge_base_witness` authored a repository builder -- `MbBuild` with its two arms
+/// `MbBuilt` and `MbSetupFailed`, and the six operations `mb_start`, `mb_stage`, `mb_commit`,
+/// `mb_at`, `mb_head`, `mb_root_of` -- to construct scenes through the real store and mint rather
+/// than by forging rows. The squash-merge verb's witness needs that construction VERBATIM. Copying
+/// it would put one construction rule in two files, and the drift would be INVISIBLE: each copy
+/// would keep passing its own claims while the two fixtures quietly stopped describing the same
+/// repository (DESIGN.md §2). So the builder is rehomed to `test.fixture.scm_repository_builder`,
+/// which is where this repository already puts fixtures shared across claims, and both witnesses
+/// import it.
+///
+/// NINE BINDINGS IN ONE MODULE resolve to the new declarer, which is `TargetChanged` and is not
+/// auto-admitted: seven inside `mb_scene` and two inside
+/// `scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on`. Every spelling is identical
+/// on both sides; only the declaring module differs, which is the membership motion this roster
+/// exists to adjudicate.
+///
+/// ONE CHANGE CLASS, AND NOTHING IS REQUALIFIED. No spelling changes, no behaviour changes, and the
+/// evidence that the move is behaviour-preserving is executed rather than asserted: all twelve
+/// `scm_merge_base_witness` claims pass unchanged against the shared fixture. That is the positive
+/// control for a rehome -- a builder that had silently changed would show up as a claim that
+/// stopped discriminating, not as a compile error.
+///
+/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10676 merges. Main then declares
+/// the builder in `test.fixture.scm_repository_builder`, base and head bind each spelling
+/// identically, and all nine report CONSUMED, coming due on this roster's next touch. Adjudicate
+/// that deletion by joining each row against main's tree on its own
+/// (module, in_declaration, spelling, target) tuple, not by trusting this sentence.
+/// THE gunbc#10671 ROWS DISSOLVED HERE (2026-09-06), BY THEIR OWN TRIGGER AND ON THE ROSTER TOUCH
+/// THEY NAMED. gunbc#10671 merged, so the four cable-leg rows reported CONSUMED and came due on the
+/// next roster-touching change, which is this one.
+///
+/// ADJUDICATED BY THE JOIN THOSE ROWS DEMANDED RATHER THAN BY THEIR OWN SENTENCE, in all three
+/// directions the join has. On main, `product.cable_leg_observation` DECLARES `SecondaryNotObserved`
+/// as an arm of its compliance coproduct; `extdeps.transceiver.sff_8636` does NOT declare it -- its
+/// only remaining occurrence of the spelling is prose recording that an earlier head authored it,
+/// which is exactly the trap a grep-count would have fallen into and a declaration check does not;
+/// and both consumers, `test.claim.cable_leg_coding_witness` and
+/// `test.claim.cable_order_admission_witness`, import the spelling from the new declarer. So base and
+/// head bind it identically, no run can produce those four deltas, and CONSUMED is the correct
+/// reading rather than an author error.
+const SCM_REPOSITORY_BUILDER_REHOME_LABEL: &str =
+    "gunbc#10676 scm fixture extraction: the repository builder moves from \
+     test.claim.scm_merge_base_witness to test.fixture.scm_repository_builder, so the merge_base \
+     and squash_merge witnesses read one construction rule instead of two copies";
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: LEG_OBSERVATION_REHOME_LABEL,
+        label: SCM_REPOSITORY_BUILDER_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.cable_leg_coding_witness",
-            in_declaration: "delivered_fs_leg",
-            spelling: "SecondaryNotObserved",
-            target: "product.cable_leg_observation",
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "mb_scene",
+            spelling: "MbBuilt",
+            target: "test.fixture.scm_repository_builder",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: LEG_OBSERVATION_REHOME_LABEL,
+        label: SCM_REPOSITORY_BUILDER_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.cable_leg_coding_witness",
-            in_declaration: "leg_with_unmodelled_code",
-            spelling: "SecondaryNotObserved",
-            target: "product.cable_leg_observation",
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "mb_scene",
+            spelling: "MbSetupFailed",
+            target: "test.fixture.scm_repository_builder",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: LEG_OBSERVATION_REHOME_LABEL,
+        label: SCM_REPOSITORY_BUILDER_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.cable_order_admission_witness",
-            in_declaration: "correctly_coded_leg",
-            spelling: "SecondaryNotObserved",
-            target: "product.cable_leg_observation",
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "mb_scene",
+            spelling: "mb_start",
+            target: "test.fixture.scm_repository_builder",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: LEG_OBSERVATION_REHOME_LABEL,
+        label: SCM_REPOSITORY_BUILDER_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.cable_order_admission_witness",
-            in_declaration: "delivered_leg",
-            spelling: "SecondaryNotObserved",
-            target: "product.cable_leg_observation",
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "mb_scene",
+            spelling: "mb_stage",
+            target: "test.fixture.scm_repository_builder",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_REPOSITORY_BUILDER_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "mb_scene",
+            spelling: "mb_commit",
+            target: "test.fixture.scm_repository_builder",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_REPOSITORY_BUILDER_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "mb_scene",
+            spelling: "mb_at",
+            target: "test.fixture.scm_repository_builder",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_REPOSITORY_BUILDER_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "mb_scene",
+            spelling: "mb_head",
+            target: "test.fixture.scm_repository_builder",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_REPOSITORY_BUILDER_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on",
+            spelling: "MbBuilt",
+            target: "test.fixture.scm_repository_builder",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_REPOSITORY_BUILDER_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on",
+            spelling: "mb_root_of",
+            target: "test.fixture.scm_repository_builder",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },

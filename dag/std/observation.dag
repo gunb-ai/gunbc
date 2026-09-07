@@ -2,6 +2,7 @@ module std.observation
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.nat { Nat }
+import v2.std.algebra { fold_list }
 import std.measure { ClockBasis, CpuClock, WallClock, clock_basis_eq, clock_basis_label }
 import std.measure { ObservationInstant, ClockDomain, clock_domain_eq }
 import std.measure {
