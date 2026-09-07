@@ -1,0 +1,274 @@
+module gunbc.test.claim.runner.runner_microvm_launch_plan_witness_test
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.systemd.unit_file { SystemdExitType, ExitTypeMain, ExitTypeCgroup, SystemdKillMode, KillModeControlGroup, KillModeProcess }
+import extdeps.github.effect { GitHubOrganizationRef }
+import extdeps.github.actions_jit_runner { JitRunnerGroupId, JitRunnerLabel }
+import gunbc.auth.github_apps { GitHubAppControlPlaneState }
+import gunbc.auth.github_credential { GitHubCredentialAuthority }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fleet_intent_network { operator_host_srv2 }
+import gunbc.runner_unit { RunnerUnitLifecycleIntent }
+import gunbc.runner_microvm { RealizationReserve, ReserveDeclared, ReserveUnmodeled, gunbc_runner_microvm_realization_reserve, gunbc_runner_microvm_declared_size, RunnerMicroVmNetworking, GuestNetworkAbsent, VmmProcessTopology, VmmIsMainProcess, VmmUnderLifecycleController }
+import gunbc.runner_microvm_attempt {
+  MicroVmCellBinding, VmUnboundCellNotOwned,
+  MicroVmAttemptResult, MicroVmAttemptAccepted, MicroVmAttemptRefused,
+  microvm_attempt, bind_owned_attempt,
+}
+// THE CREDENTIAL FIXTURES ARE IMPORTED, NOT REBUILT. test.claim.github_app_registry already owns
+// the one construction of an observed App control plane and its authority; a second copy here would
+// be two answers to "what does this installation hold", and they would drift the first time either
+// moves. Precedent: test.parsecheck imports a witness module for the same reason.
+import test.claim.github_app_registry { app_credential, observed_grant, runner_grant, full_workflow_grant }
+import std.measure { byte_size, mebibyte_count }
+import gunbc.runner_microvm_launch_plan {
+  MicroVmLaunchPlan, LaunchAdmitted, LaunchRefusedCell, LaunchRefusedConfig,
+  LaunchRefusedAdmission, LaunchRefusedCredential,
+  plan_microvm_launch_of_binding,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data launch_test_slot: RunnerSlotIdentity = RunnerSlotIdentity {
+  host: operator_host_srv2,
+  slot_index: 4,
+}
+
+data launch_org: GitHubOrganizationRef = GitHubOrganizationRef { login: "gunb-ai" }
+
+// A CGROUP-REACHING INTENT CANNOT ORPHAN ITS VMM; a main-exit, process-kill intent can. The pair is
+// what lets the admission arm be exercised in both directions rather than only the failing one.
+data cannot_orphan_intent: RunnerUnitLifecycleIntent = RunnerUnitLifecycleIntent {
+  exit_type: ExitTypeCgroup,
+  kill_mode: KillModeControlGroup,
+}
+
+data orphanable_intent: RunnerUnitLifecycleIntent = RunnerUnitLifecycleIntent {
+  exit_type: ExitTypeMain,
+  kill_mode: KillModeProcess,
+}
+
+fn launch_net() -> RunnerMicroVmNetworking {
+  GuestNetworkAbsent {
+    cause: "this witness judges plan ordering, not egress; the network arm is exercised by the network witness",
+  }
+}
+
+// THE REFUSED ARM IS NOT AN UNREACHABLE ARM DRESSED AS ONE -- a refused attempt genuinely has no
+// attempt to bind, and its cause deliberately does NOT say "not owned", so a fixture that stopped
+// being an acceptable segment reddens the positive control instead of silently satisfying the
+// negative ones.
+fn launch_binding(owned: Bool) -> MicroVmCellBinding {
+  match microvm_attempt(slot: launch_test_slot, attempt_id: "launch-1") {
+    MicroVmAttemptAccepted { attempt: a } => bind_owned_attempt(attempt: a, owned: owned)
+    MicroVmAttemptRefused { refusal: _ } =>
+      VmUnboundCellNotOwned {
+        cause: "the witness fixture's attempt id was refused, so this binding is not the subject under test",
+      }
+  }
+}
+
+// A DECLARED RESERVE THE WITNESS OWNS. Production's reserve is ReserveUnmodeled and every launch
+// therefore refuses -- see the production-refuses control below, which is the claim about today.
+// These fixtures supply a reserve so the ORDERING can be exercised at all; without one the mint
+// stage is unreachable and every assertion about it would be vacuous.
+data witness_reserve: RealizationReserve = ReserveDeclared { bytes: byte_size(268435456) }
+
+fn planned(
+  owned: Bool,
+  topology: VmmProcessTopology,
+  intent: RunnerUnitLifecycleIntent,
+  listener_is_main_process: Bool
+) -> MicroVmLaunchPlan {
+  plan_microvm_launch_of_binding(
+    binding: launch_binding(owned: owned),
+    reserve: witness_reserve,
+    kernel_path: "/var/lib/gunbc-runner/guest/vmlinux",
+    net: launch_net(),
+    topology: topology,
+    intent: intent,
+    listener_is_main_process: listener_is_main_process,
+    authority: launch_authority(),
+    control_plane: launch_control_plane(),
+    organization: launch_org,
+    runner_group_id: JitRunnerGroupId { value: 1 },
+    labels: [JitRunnerLabel { value: "self-hosted" }],
+  )
+}
+
+
+fn launch_authority() -> GitHubCredentialAuthority {
+  app_credential
+}
+
+fn launch_control_plane() -> GitHubAppControlPlaneState {
+  observed_grant(perms: runner_grant)
+}
+
+// A CELL THAT IS NOT OWNED REFUSES BEFORE ANYTHING ELSE IS CONSULTED, with a credential and a
+// topology that would both otherwise admit. Only the cell can produce this refusal.
+test fn an_unowned_cell_refuses_before_the_mint_is_reached() -> Bool {
+  match planned(owned: false, topology: VmmIsMainProcess, intent: cannot_orphan_intent, listener_is_main_process: true) {
+    LaunchRefusedCell { cause: c } => string_contains(s: c, pattern: "not owned")
+    _ => false
+  }
+}
+
+// AN ORPHANABLE TOPOLOGY REFUSES AT ADMISSION -- and the cell here is owned and the credential
+// sufficient, so admission is the only stage that can refuse. This is the arm that proves the mint
+// is NOT reached on a refused launch: were the mint ordered before admission, this input would have
+// already created a runner identity at GitHub for a VM that never starts.
+test fn an_orphanable_topology_refuses_at_admission_not_at_the_mint() -> Bool {
+  match planned(
+    owned: true,
+    topology: VmmUnderLifecycleController,
+    intent: orphanable_intent,
+    listener_is_main_process: false
+  ) {
+    LaunchRefusedAdmission { reason: r } => string_contains(s: r, pattern: "orphan")
+    _ => false
+  }
+}
+
+// A CREDENTIAL MISSING organization self-hosted-runners write REFUSES, with an owned cell and an
+// admitting topology, so only the credential join can produce it.
+test fn a_credential_without_the_runner_permission_refuses_the_launch() -> Bool {
+  match plan_microvm_launch_of_binding(
+    binding: launch_binding(owned: true),
+    reserve: witness_reserve,
+    kernel_path: "/var/lib/gunbc-runner/guest/vmlinux",
+    net: launch_net(),
+    topology: VmmIsMainProcess,
+    intent: cannot_orphan_intent,
+    listener_is_main_process: true,
+    authority: launch_authority(),
+    control_plane: observed_grant(perms: full_workflow_grant),
+    organization: launch_org,
+    runner_group_id: JitRunnerGroupId { value: 1 },
+    labels: [JitRunnerLabel { value: "self-hosted" }],
+  ) {
+    LaunchRefusedCredential { organization: org, unsatisfied: u } =>
+      (org as String) == "gunb-ai" && count(u) > 0
+    _ => false
+  }
+}
+
+// POSITIVE CONTROL. Without it every refusal above is satisfied by a planner that refuses
+// unconditionally, and the ordering claim would be vacuous. It also pins that the admitted arm
+// carries the mint request -- the value that only exists once nothing else can refuse.
+test fn an_owned_cell_with_a_sufficient_credential_admits_and_carries_the_mint() -> Bool {
+  match planned(owned: true, topology: VmmIsMainProcess, intent: cannot_orphan_intent, listener_is_main_process: true) {
+    LaunchAdmitted {
+      attempt: _,
+      config: _,
+      unit_name: unit,
+      slice_property: _,
+      rootfs_path: _,
+      jit_drive_path: drive,
+      mint_endpoint_path: path,
+      mint_request: req,
+    } =>
+      path == "/orgs/gunb-ai/actions/runners/generate-jitconfig"
+        && string_contains(s: drive, pattern: "/jit.img")
+        && (req.name.value as String) == (unit as String)
+    _ => false
+  }
+}
+
+
+// PRODUCTION ADMITS A GUEST, AND THIS IS THE CONTROL THAT PINS THE QUANTITY IT IS ADMITTED AGAINST.
+//
+// This control was written when gunbc.runner_microvm gunbc_runner_microvm_realization_reserve
+// answered ReserveUnmodeled, and it asserted that every launch refused at MemoryFitUnresolved. It
+// said in its own text that it would turn RED the day the reserve became declared, and that the
+// launch path would then have to be re-read rather than silently starting to pass a guest through.
+// That day was #10657, which set the allowance aside and made the reserve ReserveDeclared. The
+// prediction was the point: the control refused to let the transition happen quietly, and this is
+// the re-reading it demanded rather than a repair of a broken assertion.
+//
+// What replaces it is the same question asked of the live path. The fit is now decidable, so the
+// honest control is no longer THAT production refuses but WHICH quantities it admits against: a
+// declared reserve, a sized guest, and a cell large enough to hold both. Asserting only that the
+// plan is admitted would be satisfied by a planner that ignored the envelope entirely, so the
+// guest it admits is pinned to the DECLARED size rather than any default, and the refusal control
+// below is what keeps the admission from being satisfied by a fit judgment that answers yes to
+// everything. The arithmetic itself is deliberately NOT re-derived here: guest_memory_fits already
+// carries it, and a witness that recomputed the comparison would be a second representation of the
+// same constraint -- satisfiable by editing this file while the production path still lied.
+test fn production_admits_a_guest_against_the_declared_reserve() -> Bool {
+  match plan_microvm_launch_of_binding(
+    binding: launch_binding(owned: true),
+    reserve: gunbc_runner_microvm_realization_reserve(),
+    kernel_path: "/var/lib/gunbc-runner/guest/vmlinux",
+    net: launch_net(),
+    topology: VmmIsMainProcess,
+    intent: cannot_orphan_intent,
+    listener_is_main_process: true,
+    authority: launch_authority(),
+    control_plane: launch_control_plane(),
+    organization: launch_org,
+    runner_group_id: JitRunnerGroupId { value: 1 },
+    labels: [JitRunnerLabel { value: "self-hosted" }],
+  ) {
+    LaunchAdmitted {
+      attempt: _,
+      config: config,
+      unit_name: _,
+      slice_property: _,
+      rootfs_path: _,
+      jit_drive_path: _,
+      mint_endpoint_path: _,
+      mint_request: _,
+    } =>
+      config.machine_config.mem_size_mib == mebibyte_count(m: gunbc_runner_microvm_declared_size.memory)
+    _ => false
+  }
+}
+
+// THE REFUSAL CONTROL FOR THE SAME AXIS, without which the admission above is satisfied by a fit
+// judgment that answers yes to everything. A reserve larger than the cell cannot leave room for any
+// guest, so this is the one case where the arithmetic must refuse no matter how small the guest is.
+test fn a_reserve_larger_than_the_cell_admits_no_guest() -> Bool {
+  match plan_microvm_launch_of_binding(
+    binding: launch_binding(owned: true),
+    reserve: ReserveDeclared { bytes: byte_size(1099511627776) },
+    kernel_path: "/var/lib/gunbc-runner/guest/vmlinux",
+    net: launch_net(),
+    topology: VmmIsMainProcess,
+    intent: cannot_orphan_intent,
+    listener_is_main_process: true,
+    authority: launch_authority(),
+    control_plane: launch_control_plane(),
+    organization: launch_org,
+    runner_group_id: JitRunnerGroupId { value: 1 },
+    labels: [JitRunnerLabel { value: "self-hosted" }],
+  ) {
+    LaunchRefusedAdmission { reason: r } => string_contains(s: r, pattern: "would not fit")
+    _ => false
+  }
+}
+
+// THE UNMODELED RESERVE STILL REFUSES, and this stays enrolled after the climb rather than
+// retiring with the row above it. DESIGN 4b(4) keeps a class's discriminating RED executing once
+// its wall lands, and an unresolved fit is exactly the state the launch path must never pass a
+// guest through -- whether or not production is the caller that reaches it today.
+test fn an_unmodeled_reserve_still_refuses_the_launch() -> Bool {
+  match plan_microvm_launch_of_binding(
+    binding: launch_binding(owned: true),
+    reserve: ReserveUnmodeled { cause: "the witness holds the unresolved case open after production declared its own" },
+    kernel_path: "/var/lib/gunbc-runner/guest/vmlinux",
+    net: launch_net(),
+    topology: VmmIsMainProcess,
+    intent: cannot_orphan_intent,
+    listener_is_main_process: true,
+    authority: launch_authority(),
+    control_plane: launch_control_plane(),
+    organization: launch_org,
+    runner_group_id: JitRunnerGroupId { value: 1 },
+    labels: [JitRunnerLabel { value: "self-hosted" }],
+  ) {
+    LaunchRefusedAdmission { reason: r } => string_contains(s: r, pattern: "cannot be judged")
+    _ => false
+  }
+}
