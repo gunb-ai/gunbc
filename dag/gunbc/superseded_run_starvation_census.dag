@@ -66,6 +66,7 @@ type RefreshedPair {
   failed_jobs: Int
   queued_jobs: Int
   terminal_laggard_started_at: Timestamp?
+  terminal_laggard_completed_at: Timestamp?
   prior_jobs_completed_at: Timestamp?
 }
 
@@ -384,6 +385,10 @@ fn refresh_pair(
       Present { value: j } => j.started_at
       Absent => none
     },
+    terminal_laggard_completed_at: match last_job {
+      Present { value: j } => j.completed_at
+      Absent => none
+    },
     prior_jobs_completed_at: prior_completion,
   }
 }
@@ -535,7 +540,7 @@ fn pair_to_cancellation_row(pair: SupersededRunPair, rp: RefreshedPair) -> Cance
       terminal_laggard_started_at: rp.terminal_laggard_started_at,
     ),
     group_hold_after_jobs: group_hold_after_jobs_seconds(
-      last_job_completed_at: rp.terminal_laggard_started_at,
+      last_job_completed_at: rp.terminal_laggard_completed_at,
       dead_updated_at: rp.dead_updated_at,
       dead_status: rp.dead_status,
     ),
@@ -543,31 +548,43 @@ fn pair_to_cancellation_row(pair: SupersededRunPair, rp: RefreshedPair) -> Cance
 }
 
 // ── START STANDINGS AGGREGATION ────────────────────────────────────────────
-fn count_start_standing(rows: List<RefreshedPair>, target: String) -> Int {
+fn count_start_standing_arm(rows: List<RefreshedPair>, target: DeadHeadStartStanding) -> Int {
   match rows {
     Empty {} => 0
     Cons { head: rp, tail: rest } =>
       (if start_standing_matches(rp: rp, target: target) { 1 } else { 0 })
-      + count_start_standing(rows: rest, target: target)
+      + count_start_standing_arm(rows: rest, target: target)
   }
 }
 
-fn start_standing_matches(rp: RefreshedPair, target: String) -> Bool {
+fn start_standing_matches(rp: RefreshedPair, target: DeadHeadStartStanding) -> Bool {
   let standing = dead_head_start_standing(
     dead_first_job_started_at: rp.dead_first_job_started_at,
     live_first_job_created_at: rp.live_first_job_created_at,
   )
   match standing {
-    DeadHeadReachedInProgressFirst => target == "DeadHeadReachedInProgressFirst"
-    LiveHeadRegisteredJobFirst => target == "LiveHeadRegisteredJobFirst"
-    NeitherRunRegisteredAJob => target == "NeitherRunRegisteredAJob"
+    DeadHeadReachedInProgressFirst => match target {
+      DeadHeadReachedInProgressFirst => true
+      LiveHeadRegisteredJobFirst => false
+      NeitherRunRegisteredAJob => false
+    }
+    LiveHeadRegisteredJobFirst => match target {
+      DeadHeadReachedInProgressFirst => false
+      LiveHeadRegisteredJobFirst => true
+      NeitherRunRegisteredAJob => false
+    }
+    NeitherRunRegisteredAJob => match target {
+      DeadHeadReachedInProgressFirst => false
+      LiveHeadRegisteredJobFirst => false
+      NeitherRunRegisteredAJob => true
+    }
   }
 }
 
 fn collect_start_standings(rows: List<RefreshedPair>) -> List<StartStandingRow> {
-  let dead_count = count_start_standing(rows: rows, target: "DeadHeadReachedInProgressFirst")
-  let live_count = count_start_standing(rows: rows, target: "LiveHeadRegisteredJobFirst")
-  let neither_count = count_start_standing(rows: rows, target: "NeitherRunRegisteredAJob")
+  let dead_count = count_start_standing_arm(rows: rows, target: DeadHeadReachedInProgressFirst)
+  let live_count = count_start_standing_arm(rows: rows, target: LiveHeadRegisteredJobFirst)
+  let neither_count = count_start_standing_arm(rows: rows, target: NeitherRunRegisteredAJob)
   let result: List<StartStandingRow> = []
   let result = if dead_count > 0 {
     result |> concat([StartStandingRow { standing: DeadHeadReachedInProgressFirst, count: dead_count }])
@@ -581,21 +598,32 @@ fn collect_start_standings(rows: List<RefreshedPair>) -> List<StartStandingRow> 
   result
 }
 
+fn find_refreshed(refreshed: List<RefreshedPair>, pair: SupersededRunPair) -> RefreshedPair? {
+  match refreshed {
+    Empty {} => none
+    Cons { head: rp, tail: rest } =>
+      if rp.pair.superseded_run == pair.superseded_run && rp.pair.live_head_run == pair.live_head_run {
+        Present { value: rp }
+      } else {
+        find_refreshed(refreshed: rest, pair: pair)
+      }
+  }
+}
+
 fn collect_cancellation_rows(pairs: List<SupersededRunPair>, refreshed: List<RefreshedPair>) -> List<CancellationRow> {
   match pairs {
     Empty {} => []
-    Cons { head: pair, tail: rest_pairs } =>
-      match refreshed {
-        Empty {} => []
-        Cons { head: rp, tail: rest_refreshed } =>
-          if pair.superseded_run == rp.pair.superseded_run {
-            let row = pair_to_cancellation_row(pair: pair, rp: rp)
-            let rest = collect_cancellation_rows(pairs: rest_pairs, refreshed: rest_refreshed)
-            if row.cancelled_jobs > 0 { [row] |> concat(rest) } else { rest }
-          } else {
-            collect_cancellation_rows(pairs: rest_pairs, refreshed: rest_refreshed)
-          }
+    Cons { head: pair, tail: rest_pairs } => {
+      let matched = find_refreshed(refreshed: refreshed, pair: pair)
+      let rows_for_pair = match matched {
+        Present { value: rp } =>
+          if rp.cancelled_jobs > 0 {
+            [pair_to_cancellation_row(pair: pair, rp: rp)]
+          } else { [] }
+        Absent => []
       }
+      rows_for_pair |> concat(collect_cancellation_rows(pairs: rest_pairs, refreshed: refreshed))
+    }
   }
 }
 
