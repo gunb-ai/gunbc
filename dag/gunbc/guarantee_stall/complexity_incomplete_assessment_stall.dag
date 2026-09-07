@@ -1,11 +1,11 @@
 module gunbc.guarantee_stall.complexity_incomplete_assessment_stall
 
-import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyGuaranteed }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
 
 data complexity_incomplete_assessment_stall: GuaranteeStall = GuaranteeStall {
   subject: "v2.lens.complexity ComplexityAssessment Incomplete: a cost fold Violates cannot enter complexity_bound_dominates, so unknown cost is fail-closed today but not yet a wall that every Accepted node has a known SymbolicCost",
-  current: MechanicallyPreventable,
+  current: Mitigatable,
   ceiling: StructurallyGuaranteed,
   blocker: ClimbableButUnbuilt,
   population: BoundedPopulation { members: ["v2.lens.complexity"] },
