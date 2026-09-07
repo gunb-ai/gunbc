@@ -7391,7 +7391,9 @@ pub fn compile_entry_emission(
 ///
 /// It owns source-root indexing and precedence, subject source-set construction, census-only
 /// fill, memory admission, resolution and compilation, blocking/advisory classification,
-/// silent-pick capture, and the completion/refusal disposition. A caller decodes argv, realizes
+/// and the completion/refusal disposition. It formerly also owned silent-pick capture; that
+/// capture and the gate it fed were deleted as permanently green, and the sentence is
+/// corrected here because this is a public contract every modern compile goes through. A caller decodes argv, realizes
 /// the returned files, renders diagnostics and picks an exit code -- those are boundary
 /// concerns, not a second pipeline.
 pub fn compile_emission(request: &CompileRequest) -> CompileRun {
