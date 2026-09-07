@@ -1,0 +1,119 @@
+module gunbc.fabric_quota
+
+import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
+import std.nat { Nat, nat_range_inclusive }
+import std.measure { Measure, Count, One }
+import extdeps.api_rate_limit { UpstreamRateLimit, upstream_rate_limit_key }
+import product.capacity.quota { quota_partition, quota_root_pool }
+import product.capacity.event_chain { PartitionId, HeadExpectation, HeadAbsent, HeadAt, ChainEvent }
+import product.capacity.pool_events { PoolEvent, PoolSettled, SeatRequest }
+import product.capacity.lease { LeasePolicy, LeaseGrant, FencedResource }
+import gunbc.fabric_event_log_host { HostEventLogLayout, HostLayoutResolved, HostLayoutRefused, event_log_layout_for_host, now_epoch_seconds }
+import gunbc.fabric_event_log {
+  EventLogLayout,
+  HeadObservation, HeadObserved, HeadObservationRefused, event_log_observe_head,
+  EventAppend, EventAppended, EventAppendStale, EventAppendRefused, event_log_append,
+  SeatAcquisition, SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, fabric_seat_acquire, seat_acquisition_wire,
+}
+
+// A CALLER LEASES UPSTREAM QUOTA BEFORE IT SPENDS IT. The lease holds the calls it is about to
+// make against the upstream's pool on the fleet-wide partition for that scope; the settlement
+// after the calls records how many were actually made, at or below the lease, and the remainder
+// returns. A caller that cannot lease does not call: the refusal is typed and happens before the
+// upstream would have answered 429 (operator ruling 2026-09-06). The term is declared per lease --
+// the caller says how long its calls take -- and the release law is the fenced one, because an
+// upstream request that already went out cannot be un-sent by a stale holder: the only thing
+// expiry frees is the unspent remainder.
+
+type QuotaLease
+  = QuotaLeased { grant: LeaseGrant, partition: PartitionId, layout: EventLogLayout }
+  | QuotaFull { wire: String }
+  | QuotaLeaseRefused { detail: String }
+
+fn quota_policy(term_seconds: Nat) -> LeasePolicy {
+  LeasePolicy { maximum_duration_seconds: term_seconds, release_law: FencedResource }
+}
+
+fn fabric_quota_lease(short_hostname: String, limit: UpstreamRateLimit, amount: Nat, actor: NonEmptyStr, term_seconds: Nat) -> QuotaLease {
+  match event_log_layout_for_host(short_hostname: short_hostname) {
+    HostLayoutRefused { detail: d } => QuotaLeaseRefused { detail: d }
+    HostLayoutResolved { layout: layout, executor: _ } =>
+      match now_epoch_seconds() {
+        Absent => QuotaLeaseRefused { detail: "the clock could not be read as epoch seconds" }
+        Present { value: now } => {
+          let partition = quota_partition(limit: limit)
+          match fabric_seat_acquire(
+            layout: layout, partition: partition, root: quota_root_pool(limit: limit), actor: actor,
+            request: SeatRequest { reference: join([actor as String, "@", to_string(now)], "") as NonEmptyStr, amount: amount, at: now, term_seconds: term_seconds },
+            policy: quota_policy(term_seconds: term_seconds), attempts: 3, budget: 4096,
+          ) {
+            SeatGranted { grant: g, generation: _, attempts_used: _ } => QuotaLeased { grant: g, partition: partition, layout: layout }
+            SeatFull { wire: w, attempts_used: _ } => QuotaFull { wire: join([upstream_rate_limit_key(l: limit) as String, ": ", w], "") }
+            other => QuotaLeaseRefused { detail: seat_acquisition_wire(a: other) }
+          }
+        }
+      }
+  }
+}
+
+type QuotaSettle
+  = QuotaSettled { partition: PartitionId, actual: Nat }
+  | QuotaSettleRefused { detail: String }
+
+type SettleFold {
+  done: QuotaSettle?
+}
+
+fn settle_attempt(lease: QuotaLease, actual: Nat, now: EpochSecs) -> QuotaSettle? {
+  match lease {
+    QuotaFull { wire: w } => Present { value: QuotaSettleRefused { detail: join(["nothing to settle: ", w], "") } }
+    QuotaLeaseRefused { detail: d } => Present { value: QuotaSettleRefused { detail: join(["nothing to settle: ", d], "") } }
+    QuotaLeased { grant: g, partition: p, layout: layout } =>
+      match event_log_observe_head(layout: layout, partition: p) {
+        HeadObservationRefused { step: s, reason: why } => Present { value: QuotaSettleRefused { detail: join([s, ": ", why], "") } }
+        HeadObserved { head: head } => {
+          let event = ChainEvent {
+            partition: p,
+            parent: match head { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
+            recorded_at: now,
+            actor: g.reference,
+            payload: PoolSettled { reference: g.reference, actual: actual },
+          }
+          match event_log_append(layout: layout, partition: p, event: event, expected: head) {
+            EventAppended { id: _ } => Present { value: QuotaSettled { partition: p, actual: actual } }
+            EventAppendStale { expected: _, observed: _ } => none
+            EventAppendRefused { step: s, reason: why } => Present { value: QuotaSettleRefused { detail: join([s, ": ", why], "") } }
+          }
+        }
+      }
+  }
+}
+
+fn fabric_quota_settle(lease: QuotaLease, actual: Nat) -> QuotaSettle {
+  match now_epoch_seconds() {
+    Absent => QuotaSettleRefused { detail: "the clock could not be read as epoch seconds" }
+    Present { value: now } => {
+      let st = fold(nat_range_inclusive(lo: 1, hi: 3), init: SettleFold { done: none }, f: (acc, _i) =>
+        match acc.done { Present { value: _ } => acc  Absent => SettleFold { done: settle_attempt(lease: lease, actual: actual, now: now) } })
+      match st.done {
+        Present { value: r } => r
+        Absent => QuotaSettleRefused { detail: "settlement contended three times" }
+      }
+    }
+  }
+}
+
+fn quota_lease_wire(l: QuotaLease) -> String {
+  match l {
+    QuotaLeased { grant: g, partition: p, layout: _ } => join(["leased ", g.reference as String, " on ", p as String, " fence=", g.fence.grant as String, "@", to_string(g.fence.generation), " expires_at=", to_string(g.expires_at)], "")
+    QuotaFull { wire: w } => join(["full ", w], "")
+    QuotaLeaseRefused { detail: d } => join(["refused ", d], "")
+  }
+}
+
+fn quota_settle_wire(s: QuotaSettle) -> String {
+  match s {
+    QuotaSettled { partition: p, actual: a } => join(["settled ", to_string(a), " on ", p as String], "")
+    QuotaSettleRefused { detail: d } => join(["settle refused ", d], "")
+  }
+}

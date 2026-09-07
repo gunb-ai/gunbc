@@ -1,0 +1,336 @@
+module gunbc.instruments.fabric_capacity_standing
+
+import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
+import v2.std.optional { Present, Absent }
+import std.nat { Nat }
+import std.algebra { trim }
+import std.measure { TokenCount, token_count }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex, sha256_hex_digest, Fnv1a64, content_hash_atom }
+import extdeps.ssh.session
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { host_lan_address }
+import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
+import gunbc.spark.pair_serving_desired { spark_pair_serving_groups, spark_pair_serving_head }
+import gunbc.spark.managed_access_apply { spark_managed_login }
+import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
+import extdeps.vllm.server { vllm_source_revision_read }
+import extdeps.vllm.log_lines { vllm_startup_reading, GpuKvCacheSize }
+import extdeps.vllm.kv_cache { VllmObservedKvPool, VllmKvPoolAdmission, KvPoolAdmitted, KvPoolRefused, vllm_observed_kv_pool_from_reading }
+import extdeps.vllm.kv_layout { ResolvedKvLayout, resolved_kv_layout, VllmReportedCapacity, vllm_reported_capacity }
+import gunbc.spark.vllm_kv_layout_observe {
+  VllmKvLayoutReceipt, KvLayoutObserved, KvLayoutUnreadable, KvLayoutInconsistent, admit_kv_layout, receipt_wire,
+}
+import gunbc.spark.pair_serving_capacity_floor {
+  spark_pair_serving_minimum_cold_sessions,
+  CapacityFloorStanding, MeetsFloor, BelowFloor, FloorUnestablished, capacity_floor_standing,
+  AdmissionPosture, Admitting, Withdrawn, admission_posture,
+}
+
+// ── WHAT THIS DEPLOYMENT'S CAPACITY ACTUALLY IS, ASKED OF THE LIVE ENGINES ────────────────────
+//
+// Every capacity claim in this repository has so far been green by typecheck. This asks the fleet.
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/fabric_capacity_standing.dag --function fabric_capacity_standing
+//
+// WHAT IT IS FOR. The expected answer today is that capacity is UNESTABLISHED on every group,
+// because the engine emits no per-group cache metadata and the receipt therefore cannot reproduce
+// its own printed arithmetic. That is the point rather than a disappointment: knowing mechanically
+// that we cannot establish capacity is worth more than reading a dashboard number that says 99% and
+// means something else. The instrument earns its keep the day the answer changes without anyone
+// intending it to.
+//
+// ONE ROUND TRIP PER GROUP, and the far side does the text handling. The head curls its OWN metrics
+// endpoint, greps its own launch log and normalises everything into fixed-position lines, so this
+// module parses integers at known offsets instead of carrying a Prometheus parser and a log parser
+// it would then have to keep in step with two upstream formats. A field the far side cannot produce
+// is a literal "-", which fails to parse here and refuses -- it never arrives as a zero.
+
+data capacity_probe_unit: String = "gunbc-spark-pair-head"
+data capacity_probe_container: String = "gunbc-spark-pair"
+data capacity_probe_log: String = "/var/log/gunbc/spark-pair-head.log"
+data capacity_probe_identity_file: String = "/home/briansrls/.ssh/fleet-automation"
+// THE PRINCIPAL IS THE DECLARED ONE, READ FROM ITS AUTHORITY.
+//
+// This said "briansrls" — a human login that happens to exist on the group A head and not on the
+// group B head, so the first run of this instrument reported group B as unreachable and I wrote it
+// up as a fleet key-distribution gap. It was not. gunbc.spark.managed_access_apply already declares
+// gunbc-automation as the convergence principal, managed_access_apply provisions it, and both heads
+// answer to it on the fleet key. The gap was in this file: a second spelling of "who automation is",
+// which read as evidence about the fleet.
+//
+// So it is not spelled here at all. A probe that names its own principal can disagree with the one
+// convergence uses, and the disagreement looks exactly like a broken host.
+
+// TWELVE LINES, FIXED ORDER, "-" FOR ANYTHING THIS HOST CANNOT ANSWER.
+//
+// The two launch figures are taken from the LAST matching line rather than the first: the log
+// accumulates across restarts, and the engine serving now is the one that printed last.
+//
+// NO BRACE APPEARS IN THIS SCRIPT, and that is a constraint of the reader rather than of shell. The
+// heads-only pass that indexes modules counts braces without knowing it is inside a string literal,
+// so a `--format` template or a shell function body ends the enclosing declaration early and the
+// module refuses to parse. Every field is therefore assigned, defaulted and printed in three plain
+// commands, and the two docker templates are replaced by `-q` and a sed capture.
+fn emit_field(command: String) -> String {
+  join(["v=$(", command, " 2>/dev/null); [ -n \"$v\" ] || v=-; printf '%s\\n' \"$v\"\n"], "")
+}
+
+fn capacity_probe_script() -> String {
+  join(concat([
+    join(["set -u\nu=", capacity_probe_unit, "\nlog=", capacity_probe_log, "\nc=", capacity_probe_container, "\n"], ""),
+    "m=$(curl -s --max-time 8 http://127.0.0.1:30000/metrics)\n",
+  ], map([
+    "systemctl show $u -p InvocationID --value",
+    "systemctl cat $u | sha256sum | cut -d' ' -f1",
+    "docker ps -q --filter name=$c | head -1",
+    "docker inspect $c | sed -n 's/.*\"Image\": \"sha256:\\([0-9a-f]*\\)\".*/\\1/p' | head -1",
+    "date -d \"$(systemctl show $u -p ExecMainStartTimestamp --value)\" +%s",
+    "grep -a 'GPU KV cache size' \"$log\" | tail -1 | sed 's/.*size: //; s/ tokens.*//; s/,//g'",
+    "grep -a 'Maximum concurrency' \"$log\" | tail -1 | sed 's/.*request: //; s/x.*//; s/[.]//'",
+    "printf '%s' \"$m\" | grep -o 'num_gpu_blocks=\"[0-9]*\"' | head -1 | tr -dc '0-9'",
+    "printf '%s' \"$m\" | grep -o 'block_size=\"[0-9]*\"' | head -1 | tr -dc '0-9'",
+    "curl -s --max-time 8 http://127.0.0.1:30000/v1/models | grep -o 'max_model_len\":[0-9]*' | tr -dc '0-9'",
+    "printf '%s' \"$m\" | grep '^vllm:num_requests_running' | head -1 | sed 's/.*. //; s/[.].*//'",
+    "printf '%s' \"$m\" | grep '^vllm:num_requests_waiting.engine' | head -1 | sed 's/.*. //; s/[.].*//'",
+  ], c => emit_field(command: c))), "")
+}
+
+type CapacityProbeFields {
+  invocation: String
+  unit_sha: String
+  container: String
+  image_sha: String
+  started_at: Int
+  pool_tokens: Int
+  concurrency_hundredths: Int
+  allocator_blocks: Int
+  block_size: Int
+  max_model_len: Int
+  running: Int
+  waiting: Int
+}
+
+type CapacityProbeRead
+  = ProbeFields { fields: CapacityProbeFields }
+  | ProbeUnreadable { detail: String }
+
+fn field_at(lines: List<String>, n: Nat) -> String {
+  trim(s: lines.skip(n: n).first())
+}
+
+fn int_at(lines: List<String>, n: Nat) -> Int? {
+  parse_int(s: field_at(lines: lines, n: n))
+}
+
+fn decode_probe(stdout: String) -> CapacityProbeRead {
+  let lines = split(s: trim(s: stdout), delimiter: "\n")
+  if list_length(items: lines) < 12 {
+    ProbeUnreadable { detail: join(["the probe returned ", to_string(list_length(items: lines)), " lines, not the 12 the script emits"], "") }
+  } else {
+    match int_at(lines: lines, n: 4) {
+      Absent => ProbeUnreadable { detail: "the unit start instant did not parse as epoch seconds" }
+      Present { value: started } =>
+        match int_at(lines: lines, n: 5) {
+          Absent => ProbeUnreadable { detail: "the engine's GPU KV cache size line was not found in the launch log" }
+          Present { value: pool } =>
+            match int_at(lines: lines, n: 6) {
+              Absent => ProbeUnreadable { detail: "the engine's maximum concurrency line was not found in the launch log" }
+              Present { value: conc } =>
+                match int_at(lines: lines, n: 7) {
+                  Absent => ProbeUnreadable { detail: "num_gpu_blocks was not present in the engine's cache-config metric" }
+                  Present { value: blocks } =>
+                    match int_at(lines: lines, n: 8) {
+                      Absent => ProbeUnreadable { detail: "block_size was not present in the engine's cache-config metric" }
+                      Present { value: bs } =>
+                        match int_at(lines: lines, n: 9) {
+                          Absent => ProbeUnreadable { detail: "max_model_len was not readable from /v1/models" }
+                          Present { value: ctx } =>
+                            ProbeFields { fields: CapacityProbeFields {
+                              invocation: field_at(lines: lines, n: 0),
+                              unit_sha: field_at(lines: lines, n: 1),
+                              container: field_at(lines: lines, n: 2),
+                              image_sha: field_at(lines: lines, n: 3),
+                              started_at: started,
+                              pool_tokens: pool,
+                              concurrency_hundredths: conc,
+                              allocator_blocks: blocks,
+                              block_size: bs,
+                              max_model_len: ctx,
+                              running: match int_at(lines: lines, n: 10) { Present { value: r } => r  Absent => 0 },
+                              waiting: match int_at(lines: lines, n: 11) { Present { value: w } => w  Absent => 0 },
+                            } }
+                        }
+                    }
+                }
+            }
+        }
+    }
+  }
+}
+
+// ── THE LAUNCH IDENTITY, WHICH REFUSES RATHER THAN SUBSTITUTING ───────────────────────────────
+//
+// A digest that does not parse as 64 lower-hex is not a digest, and an incarnation assembled around
+// a placeholder would join to anything. There is no fallback arm here on purpose.
+type LaunchRead
+  = LaunchIdentified { launch: VllmServingLaunch }
+  | LaunchUnidentified { detail: String }
+
+fn launch_from_fields(group: FabricGroup, head: HostIdentity, f: CapacityProbeFields) -> LaunchRead {
+  match sha256_hex_digest(hex: f.image_sha) {
+    Absent => LaunchUnidentified { detail: join(["the container image digest did not read as a sha256: ", f.image_sha], "") }
+    Present { value: image } =>
+      match sha256_hex_digest(hex: f.unit_sha) {
+        Absent => LaunchUnidentified { detail: join(["the unit text digest did not read as a sha256: ", f.unit_sha], "") }
+        Present { value: unit } =>
+          if f.invocation == "-" || f.container == "-" {
+            LaunchUnidentified { detail: "the systemd invocation or the container id was unavailable, so this launch cannot be named" }
+          } else {
+            LaunchIdentified { launch: vllm_serving_launch(
+              group: group,
+              head: head,
+              systemd_invocation: f.invocation as NonEmptyStr,
+              container_id: f.container as NonEmptyStr,
+              executable_digest: Sha256Hash(image),
+              unit_digest: Sha256Hash(unit),
+              started_at: f.started_at,
+            ) }
+          }
+      }
+  }
+}
+
+fn pool_from_fields(f: CapacityProbeFields) -> VllmObservedKvPool? {
+  match vllm_observed_kv_pool_from_reading(
+    tokens: token_count(count: f.pool_tokens),
+    reading: vllm_startup_reading(
+      line: GpuKvCacheSize,
+      captured_text: join(["GPU KV cache size: ", to_string(f.pool_tokens), " tokens"], "") as NonEmptyStr,
+      observed_at_revision: vllm_source_revision_read,
+    ),
+  ) {
+    KvPoolAdmitted { pool: p } => Present { value: p }
+    KvPoolRefused { cause: _ } => none
+  }
+}
+
+// GROUPS ARE EMPTY, AND THAT IS THE OBSERVATION. The engine's metadata does not carry layer count
+// or page size, so there is nothing to put here and the receipt will refuse for exactly that
+// reason. Filling it with a guess is the one move that would make this instrument lie.
+fn layout_from_fields(f: CapacityProbeFields) -> ResolvedKvLayout {
+  resolved_kv_layout(
+    allocator_blocks: f.allocator_blocks,
+    scheduler_block_size: token_count(count: f.block_size),
+    hash_block_size: token_count(count: f.block_size),
+    max_model_len: token_count(count: f.max_model_len),
+    max_num_batched_tokens: token_count(count: 0),
+    groups: [],
+  )
+}
+
+fn standing_wire(s: CapacityFloorStanding) -> String {
+  match s {
+    MeetsFloor { required_blocks: r, available_blocks: a } =>
+      join(["meets floor (", to_string(r), " required of ", to_string(a), " blocks)"], "")
+    BelowFloor { required_blocks: r, available_blocks: a } =>
+      join(["BELOW FLOOR (", to_string(r), " required, ", to_string(a), " available)"], "")
+    FloorUnestablished { cause: c } => join(["UNESTABLISHED: ", c as String], "")
+  }
+}
+
+fn posture_wire(p: AdmissionPosture) -> String {
+  match p {
+    Admitting { available_blocks: a } => join(["admitting (", to_string(a), " blocks)"], "")
+    Withdrawn { cause: c } => join(["WITHDRAWN: ", c as String], "")
+  }
+}
+
+// ONE PROBE PER GROUP, AND THE VERDICT TRAVELS WITH THE TEXT.
+//
+// The first cut returned a String and decided admittance by searching it for "posture: admitting".
+// That was wrong twice over: it re-ran group_report to ask the question, so every group was probed
+// over ssh TWICE per invocation — a duplicated side effect, visible in the run as two identical
+// remote executions — and it recovered a decision from prose that the fold already knew. The
+// standing carries both, so the effect happens once and the verdict is read rather than parsed.
+type GroupStanding {
+  text: String
+  admitting: Bool
+}
+
+fn refused_standing(text: String) -> GroupStanding {
+  GroupStanding { text: text, admitting: false }
+}
+
+fn group_report(group: FabricGroup) -> GroupStanding {
+  let name = fabric_group_wire(g: group) as String
+  let head = spark_pair_serving_head(group: group)
+  match host_lan_address(host: head) {
+    Absent => refused_standing(text: join([name, ": no LAN endpoint row for its head, so it was not probed"], ""))
+    Present { value: address } => {
+      let result = ssh.Session.ExecPortableWordsWithStdin(
+        client_args: [
+          "-i", capacity_probe_identity_file,
+          "-o", "BatchMode=yes",
+          "-o", "ConnectTimeout=10",
+          join([spark_managed_login, "@", address as String], ""),
+          "bash", "-s",
+        ],
+        stdin_payload: capacity_probe_script(),
+      )
+      if !result.success {
+        refused_standing(text: join([name, ": the probe did not run on ", address as String, ": ", trim(s: result.stderr)], ""))
+      } else {
+        match decode_probe(stdout: result.stdout) {
+          ProbeUnreadable { detail: d } => refused_standing(text: join([name, ": ", d], ""))
+          ProbeFields { fields: f } =>
+            match launch_from_fields(group: group, head: head, f: f) {
+              LaunchUnidentified { detail: d } => refused_standing(text: join([name, ": the launch could not be identified, so nothing is joined to it -- ", d], ""))
+              LaunchIdentified { launch: launch } =>
+                match pool_from_fields(f: f) {
+                  Absent => refused_standing(text: join([name, ": the captured KV-cache-size reading was refused by its own carrier"], ""))
+                  Present { value: pool } => {
+                    let receipt = admit_kv_layout(
+                      incarnation: launch,
+                      layout: layout_from_fields(f: f),
+                      reported: vllm_reported_capacity(pool: pool, max_concurrency_hundredths: f.concurrency_hundredths),
+                      source_capture_digest: Fnv1a64(content_hash_atom(value: result.stdout as NonEmptyStr)),
+                    )
+                    let floor = capacity_floor_standing(receipt: receipt, floor: spark_pair_serving_minimum_cold_sessions)
+                    let posture = admission_posture(standing: floor)
+                    GroupStanding {
+                      admitting: match posture { Admitting { available_blocks: _ } => true  Withdrawn { cause: _ } => false },
+                      text: join([
+                      name, " @ ", address as String, " invocation=", f.invocation, "\n",
+                      "    engine: ", to_string(f.running), " running, ", to_string(f.waiting), " waiting; inventory ",
+                      to_string(f.allocator_blocks), " blocks of ", to_string(f.block_size), "; printed pool ",
+                      to_string(f.pool_tokens), " tokens at ", to_string(f.concurrency_hundredths), " hundredths\n",
+                      "    receipt: ", receipt_wire(r: receipt), "\n",
+                      "    floor:   ", standing_wire(s: floor), "\n",
+                      "    posture: ", posture_wire(p: posture),
+                    ], ""),
+                    }
+                  }
+                }
+            }
+        }
+      }
+    }
+  }
+}
+
+
+// THE EXIT CODE IS THE VERDICT. Today this exits non-zero on both groups, and the reason carries
+// the full report: the engine publishes no per-group cache metadata, so the receipt cannot reproduce
+// its own printed arithmetic and no capacity is established. That is a true statement about the
+// deployment produced by executing against it, which is the thing none of the surrounding model
+// could claim on its own.
+fn fabric_capacity_standing() -> ProcessExit {
+  let standings = map(spark_pair_serving_groups, g => group_report(group: g))
+  if all(standings, st => st.admitting) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: join(concat(["fabric capacity standing"], map(standings, st => st.text)), "\n"))
+  }
+}

@@ -11,7 +11,7 @@ import extdeps.languages.json.parse {
 import product.capacity.pool {
   Pool, PoolOutcome, PoolAdvanced, PoolRefused, PoolRefusal, LedgerRefusal,
   PoolReading, PoolRead, PoolReadingRefused,
-  pool_acquire, pool_settle, pool_release, lapse_pass, observe_upstream_remaining, pool_reading_at, pool_refusal_wire,
+  pool_acquire, pool_settle, pool_release, lapse_pass, observe_upstream_remaining, pool_reading_at, pool_refusal_wire, pool_reanchor,
 }
 import extdeps.accounting.encumbrance { EncumbranceRefusal, ExceedsAppropriation }
 import product.capacity.event_chain {
@@ -38,6 +38,7 @@ type PoolEvent
   | PoolReleased { reference: NonEmptyStr, reason: NonEmptyStr }
   | PoolLapsed
   | PoolUpstreamObserved { remaining: Nat, term_seconds: Nat }
+  | PoolResetObserved { reset_at: EpochSecs }
 
 fn pool_event_kind_word(e: PoolEvent) -> String {
   match e {
@@ -46,6 +47,7 @@ fn pool_event_kind_word(e: PoolEvent) -> String {
     PoolReleased { reference: _, reason: _ } => "released"
     PoolLapsed => "lapsed"
     PoolUpstreamObserved { remaining: _, term_seconds: _ } => "upstream-observed"
+    PoolResetObserved { reset_at: _ } => "reset-observed"
   }
 }
 
@@ -69,6 +71,7 @@ fn pool_event_kind_members(e: PoolEvent) -> List<JsonKeyValue> {
       json_kv(key: "remaining", value: json_int(n: n)),
       json_kv(key: "term_seconds", value: json_int(n: t)),
     ]
+    PoolResetObserved { reset_at: r } => [json_kv(key: "reset_at", value: json_int(n: r))]
   }
 }
 
@@ -153,6 +156,11 @@ fn pool_event_kind_decode(doc: JsonValue, word: String) -> PoolEvent? {
     }
   } else if word == "lapsed" {
     Present { value: PoolLapsed }
+  } else if word == "reset-observed" {
+    match member_nat(doc: doc, key: "reset_at") {
+      Absent => none
+      Present { value: r } => Present { value: PoolResetObserved { reset_at: r } }
+    }
   } else if word == "upstream-observed" {
     match member_nat(doc: doc, key: "remaining") {
       Absent => none
@@ -218,6 +226,7 @@ fn pool_apply_event<Q, S>(pool: Pool<Q, S>, env: ChainEnvelope<PoolEvent>) -> Po
     PoolReleased { reference: r, reason: why } => pool_release(pool: pool, reference: r, reason: why, at: at)
     PoolLapsed => PoolAdvanced { pool: lapse_pass(pool: pool, at: at).pool }
     PoolUpstreamObserved { remaining: n, term_seconds: t } => observe_upstream_remaining(pool: pool, remaining: Measure { count: n }, at: at, term_seconds: t)
+    PoolResetObserved { reset_at: r } => PoolAdvanced { pool: pool_reanchor(pool: pool, reset_at: r) }
   }
 }
 

@@ -1,0 +1,194 @@
+module test.claim.spark.pair_serving_capacity_floor_witness
+
+import std.types { Bool, String, Int, NonEmptyStr, List }
+import v2.std.optional { Present, Absent }
+import std.nat { Nat }
+import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
+import std.measure { TokenCount, token_count }
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
+import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
+import extdeps.vllm.log_lines { vllm_startup_reading, GpuKvCacheSize }
+import extdeps.vllm.kv_cache { VllmObservedKvPool, KvPoolAdmitted, KvPoolRefused, vllm_observed_kv_pool_from_reading }
+import extdeps.vllm.kv_layout {
+  KvBlockSize, KvLayerCount, KvGroupLayout, FullAttention, ResolvedKvLayout, resolved_kv_layout,
+  VllmReportedCapacity, vllm_reported_capacity,
+}
+import gunbc.spark.vllm_kv_layout_observe { VllmKvLayoutReceipt, KvLayoutObserved, KvLayoutInconsistent, admit_kv_layout }
+import gunbc.harness.harness_seat { harness_seat_operator_policy_seats }
+import gunbc.spark.pair_serving_capacity_floor {
+  MinimumColdSessions, spark_pair_serving_minimum_cold_sessions,
+  CapacityFloorStanding, MeetsFloor, BelowFloor, FloorUnestablished, capacity_floor_standing,
+  AdmissionPosture, Admitting, Withdrawn, admission_posture,
+  DrainStanding, Quiesced, GrantsOutstanding, DrainUnobserved,
+  RestartPreconditionGap, EngineStillAdmitting, GrantsStillHeld, QuiescenceUnobserved,
+  RetryAllowanceExhausted, UnifiedMemoryPlanUnmodelled, restart_precondition_wire,
+  RestartAdmission, RestartAdmitted, RestartRefused, RetryAllowance, restart_admission,
+  ReAdmission, ReAdmitted, ReAdmissionRefused, re_admit,
+}
+
+fn w_digest(hex: String) -> ContentHash {
+  Sha256Hash(Sha256Digest { hex: hex as Sha256DigestHex })
+}
+
+data w_hex: String = "1111111111111111111111111111111111111111111111111111111111111111"
+
+fn w_inc(invocation: String) -> VllmServingLaunch {
+  vllm_serving_launch(
+    group: FabricGroupA,
+    head: spark_pair_serving_head(group: FabricGroupA),
+    systemd_invocation: invocation as NonEmptyStr,
+    container_id: "gunbc-spark-pair" as NonEmptyStr,
+    executable_digest: w_digest(hex: w_hex),
+    unit_digest: w_digest(hex: w_hex),
+    started_at: 1788000000,
+  )
+}
+
+fn w_pool(tokens: Int) -> VllmObservedKvPool {
+  match vllm_observed_kv_pool_from_reading(
+    tokens: token_count(count: tokens),
+    reading: vllm_startup_reading(line: GpuKvCacheSize, captured_text: "GPU KV cache size: n tokens" as NonEmptyStr, observed_at_revision: vllm_source_revision_read),
+  ) {
+    KvPoolAdmitted { pool: p } => p
+    KvPoolRefused { cause: _ } => w_pool(tokens: tokens)
+  }
+}
+
+fn w_full(layers: KvLayerCount) -> KvGroupLayout {
+  KvGroupLayout { kind: FullAttention, layer_count: layers, block_size: 16 }
+}
+
+// A receipt whose groups reproduce its printed lines: one full-attention layer at block 16 costs
+// 65,536 blocks for a full-context request, so an inventory of `blocks` against a pool line of
+// blocks*16 tokens inverts to exactly that. The inventory is the knob this witness turns.
+fn w_receipt(invocation: String, blocks: Nat) -> VllmKvLayoutReceipt {
+  admit_kv_layout(
+    incarnation: w_inc(invocation: invocation),
+    layout: resolved_kv_layout(
+      allocator_blocks: blocks,
+      scheduler_block_size: token_count(count: 16),
+      hash_block_size: token_count(count: 16),
+      max_model_len: token_count(count: 1048576),
+      max_num_batched_tokens: token_count(count: 8192),
+      groups: [w_full(layers: 1)],
+    ),
+    reported: vllm_reported_capacity(pool: w_pool(tokens: blocks * 16), max_concurrency_hundredths: (blocks * 16 * 100) / 1048576),
+    source_capture_digest: w_digest(hex: w_hex),
+  )
+}
+
+// THE FLOOR IS ONE DECLARATION AND THE BLOCKS ARE DERIVED FROM IT. Three sessions at a 500,000-token
+// budget cost ceil(500000/16) = 31,250 blocks each, so the floor needs 93,750. An engine with 93,750
+// meets it and one with 93,749 does not — and neither number is written down anywhere.
+test fn the_block_requirement_is_derived_from_the_declared_session_floor() -> Bool {
+  spark_pair_serving_minimum_cold_sessions.sessions == harness_seat_operator_policy_seats
+    && (match capacity_floor_standing(receipt: w_receipt(invocation: "inv-a", blocks: 93750), floor: spark_pair_serving_minimum_cold_sessions) {
+          MeetsFloor { required_blocks: r, available_blocks: a } => r == 93750 && a == 93750
+          _ => false
+        })
+    && (match capacity_floor_standing(receipt: w_receipt(invocation: "inv-a", blocks: 93749), floor: spark_pair_serving_minimum_cold_sessions) {
+          BelowFloor { required_blocks: r, available_blocks: a } => r == 93750 && a == 93749
+          _ => false
+        })
+}
+
+// THE FLOOR MOVES WITH THE DECLARATION, which is the control on the row above: if the requirement
+// were a second literal rather than a derivation, halving the budget would leave it unchanged.
+test fn halving_the_declared_budget_halves_the_requirement() -> Bool {
+  let half = MinimumColdSessions { maximum_sequence_tokens: token_count(count: 250000), sessions: 3 }
+  match capacity_floor_standing(receipt: w_receipt(invocation: "inv-a", blocks: 93749), floor: half) {
+    MeetsFloor { required_blocks: r, available_blocks: _ } => r == 46875
+    _ => false
+  }
+}
+
+// AN UNESTABLISHED CAPACITY WITHDRAWS RATHER THAN ASSUMING ADEQUACY. This is today's real state for
+// every engine in the fleet: no group metadata, so the receipt is inconsistent, so the floor is
+// unestablished, so the engine stops taking new work. Silence is not a pass.
+test fn an_unestablished_capacity_withdraws_the_engine() -> Bool {
+  let inconsistent = admit_kv_layout(
+    incarnation: w_inc(invocation: "inv-a"),
+    layout: resolved_kv_layout(
+      allocator_blocks: 54475,
+      scheduler_block_size: token_count(count: 16),
+      hash_block_size: token_count(count: 16),
+      max_model_len: token_count(count: 1048576),
+      max_num_batched_tokens: token_count(count: 8192),
+      groups: [],
+    ),
+    reported: vllm_reported_capacity(pool: w_pool(tokens: 11767856), max_concurrency_hundredths: 1122),
+    source_capture_digest: w_digest(hex: w_hex),
+  )
+  (match capacity_floor_standing(receipt: inconsistent, floor: spark_pair_serving_minimum_cold_sessions) {
+     FloorUnestablished { cause: _ } => true
+     _ => false
+   })
+    && (match admission_posture(standing: capacity_floor_standing(receipt: inconsistent, floor: spark_pair_serving_minimum_cold_sessions)) {
+          Withdrawn { cause: c } => string_contains(s: c as String, pattern: "rather than assumed adequate")
+          Admitting { available_blocks: _ } => false
+        })
+}
+
+// THE DISCRIMINATING ROW: A BUSY ENGINE BELOW FLOOR IS WITHDRAWN AND NOT RESTARTED. This is the loop
+// the ruling exists to prevent — free memory on a unified-memory host is a moving target, so
+// "below floor therefore restart" bounces an engine with requests in flight and can come up smaller.
+// Withdrawal is instant and reversible; the restart waits behind its own preconditions, and the
+// refusal names the FIRST unmet one so an operator learns what to change.
+test fn a_busy_engine_below_floor_is_withdrawn_but_not_restarted() -> Bool {
+  let below = capacity_floor_standing(receipt: w_receipt(invocation: "inv-a", blocks: 40000), floor: spark_pair_serving_minimum_cold_sessions)
+  let posture = admission_posture(standing: below)
+  let allowance = RetryAllowance { attempts_used: 0, allowance: 3 }
+  (match posture { Withdrawn { cause: _ } => true  Admitting { available_blocks: _ } => false })
+    && (match restart_admission(posture: posture, drain: GrantsOutstanding { count: 2 }, retries: allowance) {
+          RestartRefused { gap: GrantsStillHeld { count: n } } => n == 2
+          _ => false
+        })
+    && (match restart_admission(posture: posture, drain: DrainUnobserved { cause: "the seat partition head was unreadable" as NonEmptyStr }, retries: allowance) {
+          RestartRefused { gap: QuiescenceUnobserved { cause: _ } } => true
+          _ => false
+        })
+}
+
+// AN ENGINE STILL TAKING WORK IS NEVER RESTARTED, whatever else is true: withdrawal precedes drain,
+// and drain precedes restart.
+test fn an_admitting_engine_is_never_restarted() -> Bool {
+  let meets = capacity_floor_standing(receipt: w_receipt(invocation: "inv-a", blocks: 93750), floor: spark_pair_serving_minimum_cold_sessions)
+  match restart_admission(posture: admission_posture(standing: meets), drain: Quiesced, retries: RetryAllowance { attempts_used: 0, allowance: 3 }) {
+    RestartRefused { gap: EngineStillAdmitting } => true
+    _ => false
+  }
+}
+
+// AND WITH EVERY DECIDABLE PRECONDITION MET, THE RESTART STILL REFUSES — naming the unified-memory
+// plan. That gap is the honest one: on a GB10 the pool is a residual of a supply shared with the OS,
+// the weights, the CUDA and NCCL contexts and this deployment's own Ray object store, and restarting
+// without a plan over it is what produced 23.6 GiB once and 54.01 GiB later from one unit text.
+// Admitting a restart here would be promising an outcome nothing modelled can predict.
+test fn a_drained_withdrawn_engine_still_refuses_restart_naming_the_missing_memory_plan() -> Bool {
+  let below = capacity_floor_standing(receipt: w_receipt(invocation: "inv-a", blocks: 40000), floor: spark_pair_serving_minimum_cold_sessions)
+  let posture = admission_posture(standing: below)
+  (match restart_admission(posture: posture, drain: Quiesced, retries: RetryAllowance { attempts_used: 0, allowance: 3 }) {
+     RestartRefused { gap: UnifiedMemoryPlanUnmodelled } => true
+     _ => false
+   })
+    && (match restart_admission(posture: posture, drain: Quiesced, retries: RetryAllowance { attempts_used: 3, allowance: 3 }) {
+          RestartRefused { gap: RetryAllowanceExhausted { used: u, allowance: a } } => u == 3 && a == 3
+          _ => false
+        })
+    && string_contains(s: restart_precondition_wire(g: UnifiedMemoryPlanUnmodelled), pattern: "23.6 GiB")
+}
+
+// RE-ADMISSION IS EARNED BY A FRESH RECEIPT. A restart that completed proves a process started; on
+// this hardware it proves nothing about the pool it came up with. A new incarnation that came up
+// still short is refused, and one that meets the floor is admitted under its OWN identity.
+test fn re_admission_is_decided_by_the_new_receipt_not_by_the_restart_having_happened() -> Bool {
+  (match re_admit(fresh: w_receipt(invocation: "inv-b", blocks: 40000), floor: spark_pair_serving_minimum_cold_sessions) {
+     ReAdmissionRefused { cause: c } => string_contains(s: c as String, pattern: "still below the floor")
+     ReAdmitted { incarnation: _, available_blocks: _ } => false
+   })
+    && (match re_admit(fresh: w_receipt(invocation: "inv-b", blocks: 93750), floor: spark_pair_serving_minimum_cold_sessions) {
+          ReAdmitted { incarnation: _, available_blocks: a } => a == 93750
+          ReAdmissionRefused { cause: _ } => false
+        })
+}
