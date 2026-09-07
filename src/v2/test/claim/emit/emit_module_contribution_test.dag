@@ -22,6 +22,7 @@ import std.decl_ref { decl_ref, declaration_ref_eq }
 import std.emission_provenance {
   EmissionAuthoredFragment,
   EmissionContribution,
+  EmissionAppendOperation,
   EmissionSourceComposition,
   EmissionUnobservedFragment,
   EmissionOriginsObserved,
@@ -171,18 +172,31 @@ fn emc_arm_of(contribution: EmissionContribution) -> String {
   }
 }
 
+// Ported to the operation-only fold: the algebra is asked only for its LOCAL contribution and
+// returns an append operation, so the census increments through composed operations rather than
+// folding materialized child results. One monomorphic apply helper gives the boundary call a
+// declared type, the same shape std.emission_provenance uses for its own boundaries.
+fn emc_apply_count(operation: EmissionAppendOperation<Int>, state: Int) -> Int {
+  operation.apply(state)
+}
+
+fn emc_arm_counter(contribution: EmissionContribution, arm: String) -> EmissionAppendOperation<Int> {
+  EmissionAppendOperation {
+    apply: fn(seen) {
+      if emc_arm_of(contribution: contribution) == arm { seen + 1 } else { seen }
+    }
+  }
+}
+
 fn emc_arm_count(n: Int, arm: String) -> Int {
   match emc_contribution(n: n) {
     Accepted { value: contribution, diagnostics: _ } =>
-      emission_contribution_fold(
-        contribution: contribution,
-        read: fn(node, children) {
-          fold_list(
-            xs: children,
-            empty: if emc_arm_of(contribution: node) == arm { 1 } else { 0 },
-            cons: fn(acc, child) { acc + child }
-          )
-        }
+      emc_apply_count(
+        operation: emission_contribution_fold(
+          contribution: contribution,
+          read: fn(node) { emc_arm_counter(contribution: node, arm: arm) }
+        ),
+        state: 0
       )
     Rejected { diagnostics: _ } => 0 - 1
   }
@@ -278,3 +292,4 @@ test fn emc_origins_locate_the_unobserved_producer_holds() -> Bool {
     && (emc_origins_observed_count(n: 1) == 3)
     && (emc_origins_observed_count(n: 2) == 5)
 }
+
