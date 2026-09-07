@@ -63,7 +63,8 @@ import gunbc.serving.turn_admission {
   ServingCoTenancy, GroupIdle, GroupServingInteractiveTurn, CoTenancyUnread, serving_co_tenancy,
   ServingSeatOccupancy, NoSeatHeld, SeatsHeldForTurns, SeatOccupancyUnread,
   ServingGroupAdmission, AdmissibleForColdPrefill, InadmissibleActiveInteractiveTurn, AdmissibilityUnread,
-  serving_group_admission, serving_admission_detail, serving_admission_is_admissible, serving_admission_is_retryable,
+  serving_group_admission, serving_admission_detail,
+  AdmissibleForColdPrefill, InadmissibleActiveInteractiveTurn, AdmissibilityUnread,
   serving_dispatch_inputs, serving_isolation_profile, spark_serving_trust_domain, serving_delay_valuation,
 }
 import gunbc.serving.turn_demand { serving_turn_requirements }
@@ -308,6 +309,14 @@ fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, address: S
   }
 }
 
+// AN UNREAD GROUP IS PENDING AND AN OCCUPIED ONE IS PENDING; NEITHER IS A REFUSAL OF THE DEMAND, and
+// the difference is carried by branching on the admission arms here rather than by asking a pair of
+// Bool predicates about them. The remedies differ in kind: an occupied group will free itself, so a
+// retry is the whole remedy, while an unread group frees nobody and the remedy is to go and measure.
+// Two predicates matched the same coproduct twice to rebuild one decision, and a fourth arm -- the
+// warm arm this module already promises -- would have defaulted silently to "not admissible, not
+// retryable" in both. One exhaustive match refuses to compile instead.
+//
 // ADMISSION HAPPENS BEFORE THE OFFER IS BOUND, WHICH IS THE POINT OF THE CUT. An occupied group is
 // not a worse candidate; it is not a candidate. The earlier design bound it, priced its co-tenancy
 // on the opportunity axis and let the ranking decide -- which places the arriving prefill beside a
@@ -323,10 +332,13 @@ fn harness_add_candidate(acc: HarnessCandidates, group: FabricGroup, address: St
         seats: harness_seat_occupancy(group: group, layout: layout, now: now),
         receipt: "gunbc.harness.metrics-probe" as ObservationReceiptRef,
       )
-      if !serving_admission_is_admissible(admission: admission) {
-        harness_no_candidate(acc: acc, note: serving_admission_detail(group: group, admission: admission), retryable: serving_admission_is_retryable(admission: admission))
-      } else {
-        harness_bind_candidate(acc: acc, group: group, address: address, launch: launch, now: now)
+      match admission {
+        AdmissibleForColdPrefill { receipt: _ } =>
+          harness_bind_candidate(acc: acc, group: group, address: address, launch: launch, now: now)
+        InadmissibleActiveInteractiveTurn { occupied_by: _, basis: _ } =>
+          harness_no_candidate(acc: acc, note: serving_admission_detail(group: group, admission: admission), retryable: true)
+        AdmissibilityUnread { obligation: _ } =>
+          harness_no_candidate(acc: acc, note: serving_admission_detail(group: group, admission: admission), retryable: false)
       }
     }
   }

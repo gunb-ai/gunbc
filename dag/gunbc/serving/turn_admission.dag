@@ -157,26 +157,6 @@ fn serving_admission_detail(group: FabricGroup, admission: ServingGroupAdmission
   }
 }
 
-fn serving_admission_is_admissible(admission: ServingGroupAdmission) -> Bool {
-  match admission {
-    AdmissibleForColdPrefill { receipt: _ } => true
-    InadmissibleActiveInteractiveTurn { occupied_by: _, basis: _ } => false
-    AdmissibilityUnread { obligation: _ } => false
-  }
-}
-
-// AN UNREAD GROUP IS PENDING AND AN OCCUPIED ONE IS PENDING; NEITHER IS A REFUSAL OF THE DEMAND.
-// The distinction reaches the caller because the remedies differ in kind: an occupied group will
-// free itself and a retry is the whole remedy, while an unread group frees nobody and the remedy is
-// to go and measure. Fusing them into one "no" would make the second look like patience.
-fn serving_admission_is_retryable(admission: ServingGroupAdmission) -> Bool {
-  match admission {
-    AdmissibleForColdPrefill { receipt: _ } => false
-    InadmissibleActiveInteractiveTurn { occupied_by: _, basis: _ } => true
-    AdmissibilityUnread { obligation: _ } => false
-  }
-}
-
 // ── WHAT AN ADMITTED CANDIDATE COSTS, WHICH IS THE PART THIS CUT DELIBERATELY DOES NOT MODEL ──
 //
 // Every quantitative axis below is zero or absent, and that is the point of the cut rather than an

@@ -423,7 +423,7 @@ fn harness_worker_cli(
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, work: _, layout: _ } => {
+    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, layout: _ } => {
       let outcome = harness_run_turn(
         config: harness_worker_config(
           worktree: worktree as FilePath,
@@ -505,7 +505,7 @@ fn harness_reviewer_cli(
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, work: _, layout: _ } => {
+    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, layout: _ } => {
       let outcome = harness_run_turn(
         config: harness_reviewer_config(
           worktree: worktree as FilePath,
@@ -574,7 +574,7 @@ fn harness_auditor_cli(
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, work: _, layout: _ } => {
+    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, layout: _ } => {
       let outcome = harness_run_turn(
         config: harness_auditor_config(
           worktree: worktree as FilePath,
