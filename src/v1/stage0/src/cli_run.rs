@@ -3067,8 +3067,8 @@ pub struct MultiModuleFixtureSource {
 /// **Registry mirror, not emit join (below ceiling — order and membership):** nothing refuses if
 /// `emit_func_params` / `emit_func_def` and this projection disagree. **Next-rung trigger:**
 /// derive from the same source `emit_func_params` reads (or from its emit result). **Why
-/// unbuilt:** emit_rust seed regeneration + #10688 surface. External admission for this stall:
-/// merry-bear-25 accepted "nothing refuses" as this instrument's ceiling for the PR done bar.
+/// unbuilt:** emit_rust seed regeneration + #10688 surface. Stall admission must resolve outside
+/// the diff (DESIGN §5).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EmittedRustFnSignature {
     pub owner_module: String,
