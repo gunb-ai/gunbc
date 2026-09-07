@@ -85,7 +85,7 @@ data non_verdict_disposition_surfaces_as_refusal: RecurringFailureMode = Recurri
 
     "RECOGNITION RULE: ask what the gate reports when it could not measure, and compare it with what it reports when it measured and found the subject wrong. ",
 
-    "If those two are the same value, the gate's refusals do not name a subject, and the tell is behavioural: people begin rerunning it rather than reading it.)",
+    "If those two are the same value, the gate's refusals do not name a subject, and the tell is behavioural: people begin rerunning it rather than reading it. ",
 
     "A SECOND, INDEPENDENT DISPOSITION PAIR ON THE SAME BOUNDARY, and it is worth appending here rather than minting a class because it is the same mechanism at a different pair -- two pairs on one boundary is much better evidence than one. ",
 
