@@ -225,6 +225,21 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
 // whose refusal was NoMeasuredEffectOverItsConsumers. A null about a different producer is
 // evidence neither of a cost here nor of its absence, so the state was UNMEASURED, not fine.
 //
+// HOW TO ACTUALLY RUN A PAIR, CORRECTED BY EXECUTION (2026-09-07). The paragraph below names the
+// right hazard and a remedy that does not execute, and the difference matters because this is the
+// carrier a reader consults to learn how to measure a candidate. THE HAZARD IS REAL: CI builds
+// refs/pull/N/MERGE, so a PR pair measures two different trees the moment main moves between the
+// two pushes. THE REMEDY AS WRITTEN DOES NOT RUN: `.github/workflows/witnesses.yml` triggers on
+// workflow_dispatch, merge_group, push to branches [main], and pull_request against main -- a
+// PUSHED SIDE BRANCH TRIGGERS NOTHING, so a reader following "dispatched on branches" literally
+// gets no runs at all and the likeliest conclusion they draw is that these rows are unmeasurable.
+// THE REMEDY THAT WORKS is workflow_dispatch on a branch ref pinned to an exact sha: the floor
+// then runs against THAT TREE rather than a merge ref, so main moving underneath cannot touch
+// either arm, which is strictly stronger than the one-base discipline the hazard asks for.
+// Receipt that dispatch executes: runs 34088506991 (absent, 9788d35369023cb6aaac300fb060b88e0202f301)
+// and 34088508298 (present, a94e14bab571ddcdccc4e4e5ef8bd8be3173890a), the pair measuring
+// `witness_layer_decl_index` for warm enrolment.
+//
 // TWO PRESENT-VS-ABSENT PAIRS, dispatched on branches rather than as pull requests because CI
 // builds refs/pull/N/MERGE and a PR pair measures two different trees the moment main moves:
 // 33701546412/33701544509 and 33705546522/33705544280, each present/absent off one main commit
