@@ -10504,6 +10504,23 @@ pub fn collect_filter_in_guard_refusals(
     })
 }
 
+pub fn is_algebra_filter_method(
+    method_semantics: Option<Rc<MethodSemantics>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if (method_semantics.clone() != std::option::Option::None) {
+        match (*method_semantics.clone().unwrap()).clone() {
+            MethodSemantics::AlgebraMethodSemantics { method_def, .. } => {
+                (crate::v1_std_core::authored_name_at(source_indices.clone(), method_def.clone())
+                    == "filter".to_string())
+            }
+            _ => false,
+        }
+    } else {
+        false
+    }
+}
+
 pub fn collect_filter_method_calls(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -10511,12 +10528,10 @@ pub fn collect_filter_method_calls(
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let self_hit = match (*n.expr_data.clone()).clone() {
             ExprData::ExprMethodCall {
-                method_semantics: _,
+                method_semantics: method_semantics,
                 ..
             } => {
-                if (crate::v1_std_core::expr_method_name_at(n.clone(), source_indices.clone())
-                    == "filter".to_string())
-                {
+                if is_algebra_filter_method(method_semantics, source_indices.clone()) {
                     Rc::new(vec![n.clone()])
                 } else {
                     Rc::new(vec![])
