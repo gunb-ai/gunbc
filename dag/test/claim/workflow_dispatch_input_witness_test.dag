@@ -174,13 +174,17 @@ test fn fleet_converge_workflow_has_no_heal_revalidation_paste_through() -> Bool
   !string_contains(s: expected_fleet_converge_yml_content(), pattern: "expected_healed_sha")
 }
 
+// ONE EMISSION, READ TWICE. Both conjuncts ask about the same rendered workflow, so emitting it
+// once and binding it is not a cache but the removal of an authored duplicate (DESIGN section 2):
+// the two demands share this frame as their least common ancestor, so the first value is carried.
 test fn fleet_converge_apply_step_binds_plan_hash_to_env_not_shell_literal() -> Bool {
+  let yml = expected_fleet_converge_yml_content()
   string_contains(
-    s: expected_fleet_converge_yml_content(),
+    s: yml,
     pattern: "EXPECTED_HASH: $\{\{ github.event.inputs.plan_artifact_hash \}\}",
   )
     && !string_contains(
-      s: expected_fleet_converge_yml_content(),
+      s: yml,
       pattern: "EXPECTED=\"$\{\{ github.event.inputs.plan_artifact_hash \}\}\"",
     )
     && string_contains(s: gunbc_ci_fleet_converge_apply_invoke(), pattern: "$\{EXPECTED_HASH:-\}")
@@ -208,7 +212,20 @@ test fn fleet_converge_org_actions_mode_binds_secret_and_modeled_entry_holds() -
     && string_contains(s: invoke, pattern: "OrgAdminInstallationTokenRefused")
     && string_contains(s: invoke, pattern: "OrgAdminAppKeyUnreadable")
     && !string_contains(s: invoke, pattern: "curl -sSf -H @\"$HDR_FILE\" \"https://secretmanager")
-    && !string_contains(s: expected_fleet_converge_yml_content(), pattern: "secrets.GUNBC_ORG_ADMIN_TOKEN")
+}
+
+// THE ABSENT REPOSITORY SECRET IS A FACT ABOUT THE WHOLE WORKFLOW, not about the org-actions invoke,
+// and it sat as a last conjunct of the witness above until this change. Two subjects in one witness
+// is the defect; that it also made the witness emit the entire workflow to answer a question the
+// other seven conjuncts do not need is the cost of the defect rather than a separate one.
+//
+// THE COST WAS MEASURED, NOT SUPPOSED. That witness is enrolled cost debt, normally withheld; adding
+// a job to the workflow grew the emission enough that when this branch's edit forced it to execute
+// for a verdict it was interrupted at cpu_at_least=501ms against the 500ms line, so it produced no
+// verdict at all. Splitting on the subject boundary is the repair the roster was asking for, and
+// widening the line to fit a witness answering two questions would have been the wrong direction.
+test fn the_fleet_converge_workflow_carries_no_org_admin_repository_secret() -> Bool {
+  !string_contains(s: expected_fleet_converge_yml_content(), pattern: "secrets.GUNBC_ORG_ADMIN_TOKEN")
 }
 
 
