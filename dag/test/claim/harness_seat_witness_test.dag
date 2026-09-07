@@ -1,0 +1,84 @@
+module test.claim.harness_seat_witness
+
+import std.types { Bool, String, Int, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { second_count }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
+import gunbc.spark.pair_serving_desired {
+  spark_pair_serving_unit, SparkPairServingUnit, SparkPairServingUnitReady, SparkPairServingUnitRefused,
+}
+import gunbc.spark.serving_engine { ServingEngine, VllmServing, OllamaServing }
+import product.capacity.pool { Pool }
+import product.capacity.lease { QuiescenceRequired, FencedResource }
+import gunbc.harness.harness_seat {
+  harness_seat_partition,
+  HarnessSeatCapacity, SeatCapacityByOperatorPolicy, AdmissionCapacityUnestablished,
+  harness_seat_capacity, harness_seat_operator_policy_seats,
+}
+import gunbc.harness.harness_cli { harness_seat_policy, harness_request_deadline, harness_seat_release_allowance_seconds }
+
+fn w_ceiling(group: FabricGroup) -> Int {
+  match harness_seat_capacity(group: group) {
+    SeatCapacityByOperatorPolicy { pool: p, seats: _ } => p.ledger.appropriation.ceiling.count
+    AdmissionCapacityUnestablished { group: _, cause: _ } => -1
+  }
+}
+
+// The engine's OWN scheduler count limit, read straight off the desired unit. This witness needs it
+// only to prove the seat ceiling is NOT it.
+fn w_engine_max_num_seqs(group: FabricGroup) -> Int {
+  match spark_pair_serving_unit(group: group) {
+    SparkPairServingUnitRefused { group: _, cause: _ } => -1
+    SparkPairServingUnitReady { group: _, engine: e, head: _, workers: _ } =>
+      match e {
+        VllmServing { args: a } => a.max_num_seqs
+        OllamaServing { profile: _ } => -1
+      }
+  }
+}
+
+test fn each_group_has_its_own_partition() -> Bool {
+  (harness_seat_partition(group: FabricGroupA) as String) == "group-group-a-seats"
+    && (harness_seat_partition(group: FabricGroupB) as String) == "group-group-b-seats"
+}
+
+// THE DISCRIMINATING ROW: THE SEAT CEILING IS NOT THE ENGINE'S SEQUENCE LIMIT.
+//
+// This is the control on the fail-open this module used to carry. The ceiling came from
+// `max_num_seqs`, so the fabric claimed thirty-two seats per group on the strength of a scheduler
+// count that says nothing about KV residency -- and gunbc.spark.pair_serving_desired states in the
+// same corpus that no law from pool tokens to admitted sequences is modelled.
+//
+// The two numbers are asserted DIFFERENT rather than the ceiling merely asserted equal to three: an
+// equality against the policy constant alone would stay green if someone re-derived the ceiling from
+// the engine and happened to set max_num_seqs to three. Requiring them to disagree makes any
+// re-derivation red while the engine keeps its own limit.
+test fn the_seat_ceiling_is_operator_policy_and_never_the_engines_sequence_limit() -> Bool {
+  w_engine_max_num_seqs(group: FabricGroupA) == 32
+    && w_engine_max_num_seqs(group: FabricGroupB) == 32
+    && harness_seat_operator_policy_seats == 3
+    && w_ceiling(group: FabricGroupA) == harness_seat_operator_policy_seats
+    && w_ceiling(group: FabricGroupB) == harness_seat_operator_policy_seats
+    && w_ceiling(group: FabricGroupA) != w_engine_max_num_seqs(group: FabricGroupA)
+    && w_ceiling(group: FabricGroupB) != w_engine_max_num_seqs(group: FabricGroupB)
+}
+
+// The interim arm SAYS operator policy in its own constructor, so no consumer can read a derived
+// capacity out of it, and the unestablished arm exists and is reachable by name.
+test fn the_interim_capacity_names_itself_operator_policy_and_the_refusal_arm_exists() -> Bool {
+  (match harness_seat_capacity(group: FabricGroupA) {
+     SeatCapacityByOperatorPolicy { pool: _, seats: n } => n == harness_seat_operator_policy_seats
+     AdmissionCapacityUnestablished { group: _, cause: _ } => false
+   })
+    && (match AdmissionCapacityUnestablished { group: FabricGroupA, cause: "probe" as NonEmptyStr } {
+          AdmissionCapacityUnestablished { group: _, cause: c } => (c as String) == "probe"
+          SeatCapacityByOperatorPolicy { pool: _, seats: _ } => false
+        })
+}
+
+// THE SEAT DEADLINE IS THE DECLARED REQUEST DEADLINE PLUS THE RELEASE ALLOWANCE, and the release
+// law is quiescence-required, because the engine cannot fence a superseded holder.
+test fn the_seat_policy_is_declared_from_the_request_deadline_and_requires_quiescence() -> Bool {
+  harness_seat_policy.maximum_duration_seconds == second_count(s: harness_request_deadline) + harness_seat_release_allowance_seconds
+    && (match harness_seat_policy.release_law { QuiescenceRequired => true  FencedResource => false })
+}

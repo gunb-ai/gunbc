@@ -59,8 +59,6 @@ data user_authorization_endpoint: NonEmptyStr = "https://auth.ebay.com/oauth2/au
 service ebay.OAuth {
   config {
     endpoint: production_api_base
-
-    rate_limit: { requests: 1000, per: minute, scope: oauth }
   }
 
   operation MintApplicationToken {

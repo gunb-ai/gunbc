@@ -1,0 +1,34 @@
+module gunbc.recurring_failure_mode.excluded_witness_outlives_the_subject_it_names
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data excluded_witness_outlives_the_subject_it_names: RecurringFailureMode = RecurringFailureMode {
+  identity: "excluded_witness_outlives_the_subject_it_names" as NonEmptyStr,
+
+  receipts: [
+    "**an excluded witness outlives the subject it names, and reads as coverage of a subject it can no longer see** (INVALID STATE: a witness compiles, is committed, and is kept off every executing cadence by a declared exclusion or freeze; the SUBJECT it names is then moved or deleted by a correct edit elsewhere; and because nothing executes the witness, nothing observes that it now names nothing. The roster still lists it, the exclusion row still explains why it is offline, and both statements are true -- while the assertion itself has become false and unfalsifiable at the same moment. ",
+
+    "HARM: it is cited as coverage, which is the decoration case DESIGN section 4b names, with the aggravating property that its offline standing is DOCUMENTED and therefore looks deliberate rather than neglected. A reader auditing what guards a class finds the witness, finds the exclusion row with its dissolution trigger, and concludes the coverage exists and is merely deferred. What actually exists is a row naming a path the tree does not contain. Every ordinary signal is compatible with it and none is malfunctioning: it compiles, the floor does not report it because the floor never admits it, and the exclusion roster counts it as an excluded member rather than as a broken one. ",
+
+    "THE SPECIMEN (2026-09-06, complexity-lens lane, live on main at the time of filing): v2.test.claim.complexity.accumulator_copy_roster_gate roster_glob_discovery_zero_suspects_within_ratchet names src/v2/workflow/glob_discovery_law.dag. That file moved to src/v2/test/workflow/ in the #9637 directory reorganisation and the row was not repointed. The entry is frozen in gunbc.witness_deferral_freeze AND discovery-excluded by the gunbc.ci_layer_roots pattern claim/complexity/accumulator_copy_roster_gate, so nothing has executed it since. Before the typed-read repair the row would have ABORTED the process on the missing path; after it, the row would return FALSE. Neither has ever been observed, because the witness does not run. ",
+
+    "AND THE COST GATE MAKES THE FALSE ROW CHEAPER TO LEAVE THAN TO FIX, WHICH IS THE HALF WORTH RECORDING. The repair is a one-line repoint. But the required floor admits a CHANGED witness regardless of any exclusion -- correctly, since an exclusion a witness could opt into on the commit that touches it would be an escape hatch -- and this entry's witnesses cost several times the per-witness CPU line v2.workflow.required_floor required_floor_claim_cpu_safety_limit_ms declares. So editing the row to make it true ADMITS it, and it is then preempted and BLOCKS the lane; leaving it false costs nothing. The lane that found this repointed the row, measured the block, and reverted the repair -- which is the correct local decision and the reason the class persists. A cost gate that prices repair above neglect converts a fixable staleness into a standing one. ",
+
+    "WHY IT IS NOT THE ROWS BESIDE IT, checked at identity grain over gunbc.recurring_failure_mode.roster. ",
+
+    "It is not `witness_that_fails_to_compile_is_absent_rather_than_red`: there the file cannot compile, so it is ABSENT from every roster and the misread is that nobody notices its absence. Here the witness compiles, is PRESENT in the rosters, and its offline standing is declared -- the misread is that a documented exclusion is taken for deferred coverage rather than for no coverage. The repair differs accordingly: that class is closed by compiling every claim-root file, which this witness passes. ",
+
+    "It is not `stale_claim_survives_its_own_correct_edit`: that class is PROSE that was true when written and became false through a correct edit elsewhere. This is an EXECUTABLE assertion in the same situation, and the difference is not academic -- a prose claim has no mechanism that could ever have caught it, while this one has a mechanism that is deliberately switched off. The staleness is therefore not merely undetected, it is undetectABLE while the exclusion stands, and the exclusion is the thing presented as the reason it is safe. ",
+
+    "RUNG FOUND AT 1, mitigatable: the harm is bounded only by the fact that an excluded witness makes no false GREEN claim in any run -- it makes no claim at all -- so what is misled is a reader, not a gate. Calling it higher would be inflation; nothing counts these rows or checks their subjects. ",
+
+    "CEILING 4, structurally impossible, and the reason it is that high rather than a validator is that the bad state is a DANGLING REFERENCE and nothing else. A witness names its subject by a path string today, which is the positional naming DESIGN section 3 already refuses for citations: any edit above or around the file silently invalidates it. If a subject were named by a symbol the containment tree resolves, a moved file could not leave a witness naming nothing -- the reference would fail to resolve and the entry would refuse at compile, whether or not anything ever executes it. ",
+
+    "NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: witness subjects are named by a resolvable reference rather than by a path literal, so that a subject that moves breaks the naming rather than the meaning. SUFFICIENT FOR the excluded population specifically -- an executing witness already fails loudly when its subject moves, so a trigger satisfied only for witnesses that run restores nothing here; the whole population at risk is the one nothing runs. A roster-completeness check that merely verified every named path EXISTS would reach rung 2 and is worth having as the interim step, but it must not be reported as the ceiling: it leaves the path literal writable and re-checks it from outside rather than making the dangling state unconstructible. ",
+
+    "RECOGNITION RULE: for any witness that does not execute, ask whether its SUBJECT still exists, and ask what it would return today. If the answer to the second question is unknown to everyone including its author, the row is not deferred coverage; it is an unfalsifiable assertion with a documented reason for being unfalsifiable.)",
+  ],
+
+  evidence: [],
+}

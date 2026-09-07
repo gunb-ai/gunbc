@@ -2,9 +2,13 @@ module v2.test.complexity_gate.subject_complexity_budget_roster
 
 import v2.lens.complexity {
   ComplexityBound,
+  ComplexityAssessment,
+  Established,
+  Incomplete,
   ConstantComplexity,
   linear_complexity,
-  unknown_complexity
+  incomplete_complexity,
+  established_complexity
 }
 import v2.lens.cost { SizeVariable }
 import v2.std.cardinality { loop_bound_measure, loop_bound_witness_for_node }
@@ -27,27 +31,29 @@ import v2.test.complexity_gate.table_fixture_loop_subject_producer {
 
 type LensSubjectComplexityBudgetRow {
   subject_producer: fn() -> Outcome<Node>
-  declared_budget: fn(Node) -> ComplexityBound
+  declared_budget: fn(Node) -> ComplexityAssessment
 }
 
 fn complexity_declared_budget_for_row(
   row: LensSubjectComplexityBudgetRow,
   body: Node
-) -> ComplexityBound {
+) -> ComplexityAssessment {
   row.declared_budget(body: body)
 }
 
-fn complexity_declared_budget_constant(_body: Node) -> ComplexityBound {
-  ConstantComplexity
+fn complexity_declared_budget_constant(_body: Node) -> ComplexityAssessment {
+  established_complexity(bound: ConstantComplexity)
 }
 
-fn complexity_declared_budget_loop_linear(body: Node) -> ComplexityBound {
+fn complexity_declared_budget_loop_linear(body: Node) -> ComplexityAssessment {
   match loop_bound_witness_for_node(n: body) {
     Holds { value: bound } =>
-      linear_complexity(
-        size_var: SizeVariable { source: loop_bound_measure(bound: bound) }
+      established_complexity(
+        bound: linear_complexity(
+          size_var: SizeVariable { source: loop_bound_measure(bound: bound) }
+        )
       )
-    Violates { diagnostic: _ } => unknown_complexity()
+    Violates { diagnostic: _ } => incomplete_complexity()
   }
 }
 

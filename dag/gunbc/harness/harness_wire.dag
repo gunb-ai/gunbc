@@ -375,23 +375,6 @@ fn harness_engine_replica_roster() -> HarnessReplicaRoster {
   }
 }
 
-// THE PICK OVER A ROSTER, so an attempt binds to a replica chosen from the ones OBSERVED SERVING
-// (gunbc.harness.harness_backend harness_serving_backend_url) rather than from the declared set. A
-// declared replica that is down is a typed, counted decline there; here it is simply not in the
-// roster handed in, so the seed spreads attempts over the machines that can take them. Callers hand
-// in a non-empty roster (the serving arm carries at least one address by construction).
-fn harness_replica_pick(seed: String, replicas: List<String>) -> String {
-  let want = fold(chars(s: seed), init: 0, f: (acc, cp) => acc + cp) % list_length(items: replicas)
-  let picked = fold(replicas, init: ReplicaPick { at: 0, chosen: "" }, f: (acc, a) =>
-    ReplicaPick { at: acc.at + 1, chosen: if acc.at == want { a } else { acc.chosen } })
-  picked.chosen
-}
-
-type ReplicaPick {
-  at: Int
-  chosen: String
-}
-
 fn harness_backend_url_for_address(shape: HarnessWireShape, address: String) -> String {
   harness_backend_url_on_port(address: address, port: harness_engine_port, shape: shape)
 }

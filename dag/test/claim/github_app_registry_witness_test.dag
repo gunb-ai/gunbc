@@ -7,6 +7,18 @@ import gunbc.ci_heal_credential {
   live_heal_push_binding_resolution,
 }
 import gunbc.repository { gunbc_repository }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fleet_intent_network { operator_host_srv2 }
+import gunbc.runner_microvm_attempt {
+  MicroVmCellBinding, VmUnboundCellNotOwned,
+  MicroVmAttemptResult, MicroVmAttemptAccepted, MicroVmAttemptRefused,
+  microvm_attempt, bind_owned_attempt, runner_microvm_attempt_unit_name,
+}
+import extdeps.github.actions_jit_runner { JitRunnerGroupId, JitRunnerLabel }
+import gunbc.runner_jit_mint {
+  JitMintPlan, JitMintAuthorized, JitMintRefusedCellNotOwned, JitMintRefusedCredential,
+  plan_jit_mint,
+}
 import extdeps.uri { Uri, uri_https }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -565,6 +577,16 @@ test fn witness_effect_permissions_are_derived_not_authored() -> Bool {
          empty: false,
          cons: fn(found, p) { found || permission_axis_wire_name(axis: p.name) == "organization_self_hosted_runners" }
        )
+    && count(github_effect_required_permissions(
+         effect: GenerateOrganizationJitConfig { organization: GitHubOrganizationRef { login: "gunb-ai" } }
+       )) == 1
+    && fold_list(
+         xs: github_effect_required_permissions(
+           effect: GenerateOrganizationJitConfig { organization: GitHubOrganizationRef { login: "gunb-ai" } }
+         ),
+         empty: false,
+         cons: fn(found, p) { found || permission_axis_wire_name(axis: p.name) == "organization_self_hosted_runners" }
+       )
 }
 
 test fn witness_workflow_path_rule_is_prefix_not_substring() -> Bool {
@@ -887,5 +909,89 @@ test fn witness_producer_binding_is_per_app_not_module_wide() -> Bool {
       OperatorOwner => false
     }
     MachineOwner => false
+  }
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// JIT MINT PLANNING. These witnesses live here rather than beside extdeps.github.actions_jit_runner
+// because the discrimination they exist for is a CREDENTIAL one, and every fixture that can state a
+// credential's observed grant already lives in this module. Rebuilding a control plane next door
+// would be a second authority for what an installation holds (DESIGN §3), and it would drift.
+
+data org_runners_write_perm: GitHubAppPermission = perm(
+  axis: OrganizationSelfHostedRunnersAxis, access: AppAccessWrite
+)
+
+data runner_grant: List<GitHubAppPermission> = concat(full_workflow_grant, [org_runners_write_perm])
+
+data gunbai_org_ref: GitHubOrganizationRef = GitHubOrganizationRef { login: "gunb-ai" }
+
+data jit_test_slot: RunnerSlotIdentity = RunnerSlotIdentity {
+  host: operator_host_srv2,
+  slot_index: 2,
+}
+
+// THE REFUSED ARM IS NOT AN UNREACHABLE ARM DRESSED AS ONE. A refused attempt genuinely has no
+// attempt to bind, so it answers with the binding's own refusal, carrying a cause that does NOT say
+// "not owned". If this fixture's id ever stopped being an acceptable segment, the positive control
+// goes RED rather than the fixture quietly becoming a refusal the negative arms would still accept.
+fn jit_binding(owned: Bool) -> MicroVmCellBinding {
+  match microvm_attempt(slot: jit_test_slot, attempt_id: "w-11") {
+    MicroVmAttemptAccepted { attempt: a } => bind_owned_attempt(attempt: a, owned: owned)
+    MicroVmAttemptRefused { refusal: _ } =>
+      VmUnboundCellNotOwned {
+        cause: "the witness fixture's attempt id was refused, so this binding is not the subject under test",
+      }
+  }
+}
+
+fn planned(owned: Bool, perms: List<GitHubAppPermission>) -> JitMintPlan {
+  plan_jit_mint(
+    binding: jit_binding(owned: owned),
+    authority: app_credential,
+    control_plane: observed_grant(perms: perms),
+    organization: gunbai_org_ref,
+    runner_group_id: JitRunnerGroupId { value: 1 },
+    labels: [JitRunnerLabel { value: "self-hosted" }],
+  )
+}
+
+// OWNERSHIP IS CHECKED BEFORE THE CREDENTIAL, and this is the arm that proves the order rather than
+// asserting it in prose. The credential here is FULLY sufficient, so a planner that checked the
+// credential first -- or that checked only the credential -- would answer Authorized and mint a live
+// runner identity for a cell this host does not own. The refusal must come from the cell.
+test fn witness_jit_mint_refuses_an_unowned_cell_even_with_a_sufficient_credential() -> Bool {
+  match planned(owned: false, perms: runner_grant) {
+    JitMintRefusedCellNotOwned { cause: c } => string_contains(s: c, pattern: "not owned")
+    _ => false
+  }
+}
+
+// A CREDENTIAL WITHOUT organization self-hosted-runners write MUST REFUSE, and the cell here is
+// owned, so the only thing that can produce the refusal is the permission join.
+test fn witness_jit_mint_refuses_a_credential_missing_the_runner_permission() -> Bool {
+  match planned(owned: true, perms: full_workflow_grant) {
+    JitMintRefusedCredential { organization: org, unsatisfied: u } =>
+      (org as String) == "gunb-ai" && count(u) > 0
+    _ => false
+  }
+}
+
+// POSITIVE CONTROL. Without it both refusals above are satisfied by a planner that refuses
+// unconditionally. It also pins the two facts the mint's caller consumes: the drive destination is
+// the ATTEMPT's own path, and the runner name is the unit name rather than a second identifier.
+test fn witness_jit_mint_authorizes_an_owned_cell_with_the_runner_permission() -> Bool {
+  match planned(owned: true, perms: runner_grant) {
+    JitMintAuthorized {
+      attempt: a,
+      endpoint_path: path,
+      request: req,
+      drive_destination: dest,
+    } =>
+      path == "/orgs/gunb-ai/actions/runners/generate-jitconfig"
+        && (req.name.value as String) == (runner_microvm_attempt_unit_name(attempt: a) as String)
+        && string_contains(s: dest, pattern: "/jit.img")
+    _ => false
   }
 }

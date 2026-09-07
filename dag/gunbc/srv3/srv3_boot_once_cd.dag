@@ -28,9 +28,12 @@ import gunbc.srv3_bmc_credential_resolve {
 }
 import gunbc.auth.access_token_source { access_token_upsert_required_reason }
 import gunbc.bmc_onboarding { srv3_onboarding_plan }
+import gunbc.auth.netrc_binding {
+  NetrcBindingPlaced, NetrcBindingRefused, NetrcBindingRefusedResidueRemains, place_netrc_binding,
+}
+import gunbc.durable_cas_file_store { admit_cas_attempt, file_compare_and_set }
 import gunbc.tools.bmc_onboard {
   bmc_onboard_netrc_path,
-  netrc_content,
   boot_override_body,
   reset_body
 }
@@ -214,6 +217,16 @@ fn srv3_process_exit_render(exit: ProcessExit) -> String {
   }
 }
 
+// THE NETRC RESIDUE FACT IS NOT FLATTENED IN THIS FUNCTION. Both refusal arms of the placement used
+// to answer the same `false`, so the operator got one sentence for two situations with different
+// next actions: a plain failure can be retried, a residue failure means a file that may hold this
+// BMC's credential is still on disk and must be cleaned before any retry. No locator is carried at
+// all -- what crosses is the fact, not the path.
+//
+// THIS NOTE SITS HERE, ABOVE THE DECLARATION, BECAUSE THAT IS THE ONLY GRAIN 4C MODELS. It was
+// first written inside the match and the floor lane refused it, four lines at once -- the fourth
+// time this session I have put an annotation inside a declaration body. A match arm is a
+// declaration body; so is a service body. The rule has no in-body form to reach for.
 func srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessExit
   uses net: std.resources.Network
 {
@@ -235,12 +248,24 @@ func srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessE
       return exit_failure(reason: concat("boot-once-cd: ", reason as String))
   }
 
-  let netrc_write = Filesystem.Write(
-    path: bmc_onboard_netrc_path,
-    content: netrc_content(host: host, account: account, password: password)
+  let netrc_placement = place_netrc_binding(
+    path: bmc_onboard_netrc_path as FilePath,
+    machine: host as NonEmptyStr,
+    login: account as NonEmptyStr,
+    password: password as Secret
   )
-  if netrc_write.success == false {
-    return exit_failure(reason: concat("boot-once-cd: netrc stage failed: ", netrc_write.error))
+  match netrc_placement {
+    NetrcBindingRefused { cause: _ } =>
+      return exit_failure(
+        reason: "boot-once-cd: netrc stage failed: the owner-only credential file could not be created"
+      )
+    NetrcBindingRefusedResidueRemains { cause: cause } =>
+      return exit_failure(
+        reason: concat(
+          "boot-once-cd: netrc stage failed AND credential material may remain on disk, requiring cleanup before retry: ",
+          cause as String)
+      )
+    NetrcBindingPlaced { binding: _ } => Unit
   }
 
   match srv3_boot_cd_override_mode_refusal(mode: srv3_boot_cd_mode) {

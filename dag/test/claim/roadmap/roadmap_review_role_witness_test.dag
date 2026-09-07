@@ -2,13 +2,16 @@ module test.claim.roadmap.roadmap_review_role_witness_test
 
 import std.types { Bool, String, List, NonEmptyStr }
 import gunbc.roadmap.roadmap_review_role {
+  review_verdict_instruction,
   HeadVerdict, ReviewApproved, ReviewChangesRequested, ReviewCannotJudge,
   ReviewVerdictDecode, ReviewVerdictDecoded, ReviewVerdictUndecodable,
   ReviewReceiptSource, ReviewReceiptAbsent, ReviewReceiptPresent, ReviewReceiptUnreadable,
   CriterionReviewEvidence, review_reconcile, review_all_approved,
   review_verdict_decode, review_verdict_key, review_verdict_detail, review_brief,
+  ConformanceAnswer, Conforms, DivergesStated, DivergesUnstated, conformance_answer_verdict, review_answer_instruction, ReviewReason,
 }
-import gunbc.roadmap.roadmap_review_criteria { review_criteria, review_criteria_grounded_in_the_argument, review_criterion_by_key }
+import gunbc.roadmap.roadmap_review_criteria { review_criteria, review_criteria_grounded_in_the_argument, review_criterion_by_key, review_criteria_homes_match_their_algebra }
+import gunbc.design_argument { YesIsADefect, ConformanceThreeValued, conformance_domains }
 import gunbc.roadmap_workflow_stage { WorkflowSegmentComplete, WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentActive, WorkflowSegmentPending }
 import gunbc.worker_lifecycle { WorkerProcessAbsent, WorkerProcessRunning, WorkerProcessExited }
 
@@ -53,17 +56,17 @@ test fn malformed_verdicts_are_undecodable() -> Bool {
 // design; changes-requested fails the head naming its criterion, a cannot-judge blocks, a running
 // reviewer is active, an unstarted one is pending, and only all-approved completes.
 test fn the_reconciliation_orders_changes_over_blocks_over_running_over_pending_over_approved() -> Bool {
-  let a = present(key: "grounding", text: approve_text(summary: "fits"))
+  let a = present(key: "closed-grounded-substrate", text: approve_text(summary: "fits"))
   let b = present(key: "fail-closed", text: changes_text(path: "dag/x.dag", reason: "an arm widens"))
   let c = present(key: "single-authority", text: "{\"schema\":\"roadmap-review-verdict/v1\",\"verdict\":\"cannot_judge\",\"reason\":\"the check refused to start\"}")
-  let running = CriterionReviewEvidence { criterion_key: "redundancy", source: ReviewReceiptAbsent, process: WorkerProcessRunning { command: "gunbc" as NonEmptyStr } }
+  let running = CriterionReviewEvidence { criterion_key: "minimize-redundancy", source: ReviewReceiptAbsent, process: WorkerProcessRunning { command: "gunbc" as NonEmptyStr } }
   let waiting = CriterionReviewEvidence { criterion_key: "how-to-work", source: ReviewReceiptAbsent, process: WorkerProcessAbsent }
   let mixed = review_reconcile(evidence: [a, b, c, running, waiting])
   let blocked = review_reconcile(evidence: [a, c, running])
   let active = review_reconcile(evidence: [a, running, waiting])
   let pending = review_reconcile(evidence: [a, waiting])
   let green = review_reconcile(evidence: [a, present(key: "fail-closed", text: approve_text(summary: "no arm widens"))])
-  (match mixed.state { WorkflowSegmentFailed => true  _ => false }) && string_contains(s: mixed.detail, pattern: "fail-closed: changes requested") && !string_contains(s: mixed.detail, pattern: "grounding: approved")
+  (match mixed.state { WorkflowSegmentFailed => true  _ => false }) && string_contains(s: mixed.detail, pattern: "fail-closed: changes requested") && !string_contains(s: mixed.detail, pattern: "closed-grounded: approved")
     && (match blocked.state { WorkflowSegmentRefused => true  _ => false }) && string_contains(s: blocked.detail, pattern: "single-authority: cannot judge")
     && (match active.state { WorkflowSegmentActive => true  _ => false })
     && (match pending.state { WorkflowSegmentPending => true  _ => false })
@@ -80,15 +83,50 @@ test fn every_review_criterion_is_grounded_in_the_design_argument() -> Bool {
     && (match review_criterion_by_key(key: "single-authority") { Present { value: _ } => true  Absent => false })
 }
 
-test fn the_brief_carries_the_criterion_the_diff_range_the_check_and_the_verdict_path() -> Bool {
+test fn the_brief_carries_the_criterion_the_diff_range_and_the_check_and_the_verdict_instruction_is_separate() -> Bool {
   match review_criterion_by_key(key: "fail-closed") {
     Absent => false
     Present { value: c } => {
-      let b = review_brief(criterion: c, node_id: "n1", headline: "H", boundary: "B", out_of_scope: "O", red_control: "R", acceptance_command: "gunbc run x", base_sha: "aaa", head_sha: "bbb", verification_detail: "passed", verdict_path: "/v.json")
+      let b = review_brief(criterion: c, node_id: "n1", headline: "H", boundary: "B", out_of_scope: "O", red_control: "R", acceptance_command: "gunbc run x", base_sha: "aaa", head_sha: "bbb", verification_detail: "passed")
       string_contains(s: b, pattern: "git diff aaa..bbb")
         && string_contains(s: b, pattern: "Criterion (fail-closed, grounded on DESIGN proposition s5.fail-closed)")
         && string_contains(s: b, pattern: "Acceptance command: gunbc run x")
-        && string_contains(s: b, pattern: "Write your verdict to /v.json")
+        && !string_contains(s: b, pattern: "Write your verdict")
+        && string_contains(s: review_verdict_instruction(verdict_path: "/v.json"), pattern: "Write your verdict to /v.json")
     }
   }
+}
+
+// THE CONFORMANCE ANSWER IS THREE-VALUED AND ONLY THE UNSTATED DIVERGENCE REQUESTS CHANGES (DESIGN
+// section 3b). The stated divergence is admitted and keeps its reason; the instruction rendered for a
+// conformance criterion says all three, while the yes/no instruction says neither.
+test fn a_stated_divergence_is_admitted_and_an_unstated_one_requests_changes() -> Bool {
+  let stated = conformance_answer_verdict(a: DivergesStated { reason: "the lease home cannot express a sub-second deadline" })
+  let unstated = conformance_answer_verdict(a: DivergesUnstated { reasons: [ReviewReason { path: "dag/x.dag", reason: "a sleep where a HeldLease was available" }] })
+  let conforms = conformance_answer_verdict(a: Conforms { summary: "inhabits std.temporal_effect HeldLease" })
+  review_verdict_key(v: stated) == "approved" && string_contains(s: review_verdict_detail(v: stated), pattern: "reason stated: the lease home")
+    && review_verdict_key(v: unstated) == "changes_requested"
+    && review_verdict_key(v: conforms) == "approved"
+    && string_contains(s: review_answer_instruction(a: ConformanceThreeValued), pattern: "one of three ways")
+    && !string_contains(s: review_answer_instruction(a: YesIsADefect), pattern: "one of three ways")
+}
+
+// EVERY CONFORMANCE DOMAIN IS A REVIEWER WITH ITS HOMES IN THE BRIEF; no yes/no criterion carries a
+// home, and the discriminating half is the negation: the fail-closed brief names no home at all.
+test fn every_conformance_domain_is_a_criterion_whose_brief_names_its_homes() -> Bool {
+  review_criteria_homes_match_their_algebra()
+    && count(conformance_domains) == 4
+    && all(conformance_domains, d => match review_criterion_by_key(key: d.key) {
+      Absent => false
+      Present { value: c } => {
+        let b = review_brief(criterion: c, node_id: "n1", headline: "H", boundary: "B", out_of_scope: "O", red_control: "R", acceptance_command: "gunbc run x", base_sha: "aaa", head_sha: "bbb", verification_detail: "passed")
+        string_contains(s: b, pattern: "Home authorities the change must inhabit")
+          && string_contains(s: b, pattern: "one of three ways")
+          && all(d.homes, h => string_contains(s: b, pattern: join([h.module_path as String, " ", h.decl_name as String], "")))
+      }
+    })
+    && (match review_criterion_by_key(key: "fail-closed") {
+      Absent => false
+      Present { value: c } => !string_contains(s: review_brief(criterion: c, node_id: "n1", headline: "H", boundary: "B", out_of_scope: "O", red_control: "R", acceptance_command: "x", base_sha: "a", head_sha: "b", verification_detail: "p"), pattern: "Home authorities")
+    })
 }

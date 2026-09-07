@@ -372,6 +372,10 @@ data excl_local_repo_wet_dissolve: DissolutionCondition = unbound_dissolution(de
 
 data excl_install_media_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands and assertions are re-checked under a fixed mock; then the fns re-enroll as ordinary hermetic discovery rows and this row deletes (install_media_real_execution_wet_note)")
 
+data excl_self_host_logic_seed_unavailable_reason: String = "CONTROL (b) seed-unavailable behavioral receipt for dag/std/logic.dag: emit with gunbc, compile emitted Rust with standard infrastructure dependencies (im, serde, etc. -- required by v1_rt.rs which the emitter includes unconditionally) but WITHOUT the seed crate v1-compiler, run the witness binary. The transport checks the emitted subject module for v1_compiler:: tokens via per-subject spelling search (seed crate namespace); a match refuses the receipt (per-subject validator, not construction; the structural proof is the absent v1-compiler dependency in the manifest). Excluded from hermetic discovery because shell.Mktemp.Dir, Filesystem.Write, cargo.Build.BuildManifest, and gunbc.WitnessBin.Run have no mock_response. Executed by the required floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule)."
+
+data excl_self_host_logic_seed_unavailable_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for the transport operations; then the fn re-enrolls as an ordinary hermetic discovery row, drops off local_repo_wet_schedule, and this row deletes")
+
 data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   WitnessExclusionRow {
     pattern: "lifecycle_survivor_corpus_census_test.dag",
@@ -619,9 +623,9 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: excl_bin_wet_dissolve},
   WitnessExclusionRow {
     pattern: "self_host_logic_behavioral_witness_test.dag",
-    classification: FalsifierSelfHostWet,
-    reason: "REHOME fulfilled 2026-08-06 (Lane D), and the cadence flag it cited is since deleted (2026-08-26, dashboard node adhoc-a660c665-d46; wet_receipt_enrollment falsifier_self_host_wet_cadence_flag_deleted_note -- it was a second, disagreeing authority for scheduled-route existence, not a fact that merely went stale): dag/test/claim/self_host_logic_behavioral_witness_test.dag::self_host_logic_behavioral_receipt_holds enrolled on falsifier_self_host_wet_template_entries; path policy keeps the wet receipt out of per-PR hermetic discovery. CADENCE STANDING (2026-08-19, dashboard node adhoc-1eb1a9f9-ad9): falsifier batch 2 no longer executes anything — falsifier.yml was deleted at 611fd02770/#8283 (2026-08-15); see falsifier_substrate_long_lane_note.",
-    dissolution: excl_behavioral_receipt_dissolve},
+    classification: LocalRepoWetLane,
+    reason: "CONTROL (a) planted-mutation behavioral receipt for dag/std/logic.dag (rehomed from FalsifierSelfHostWet per operator ruling bright-ram-778): emit dag/std/logic.dag with gunbc, compile emitted Rust WITH the seed crate (v1-compiler path dependency) and run the comparison driver + --inject-fault to prove the comparison discriminates. Executed by the required floor local-repo wet lane. Formerly on FalsifierSelfHostWet which had no scheduled route (falsifier.yml deleted at #8283); the DeclaredCadenceUnrealized standing for that cadence is preserved as evidence of the gap.",
+    dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
     pattern: "namespace_import_closure_witness_test.dag",
     classification: FalsifierSelfHostWet,
@@ -632,6 +636,16 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: FalsifierSelfHostWet,
     reason: "R1 real-crate bijection wet receipt (gunbc#7825): cargo-integration witness (git clone, gunbc run main_wet, cold cargo build in clone) enrolled on falsifier_self_host_wet_template_entries; must not enter per-PR hermetic discovery. CADENCE STANDING (2026-08-19, dashboard node adhoc-1eb1a9f9-ad9): falsifier batch 2 no longer executes anything — falsifier.yml was deleted at 611fd02770/#8283 (2026-08-15); see falsifier_substrate_long_lane_note.",
     dissolution: excl_behavioral_receipt_dissolve},
+  WitnessExclusionRow {
+    pattern: "self_host_logic_seed_unavailable_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_self_host_logic_seed_unavailable_reason,
+    dissolution: excl_self_host_logic_seed_unavailable_dissolve},
+  WitnessExclusionRow {
+    pattern: "self_host_logic_seed_unavailable_check_fixture_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_self_host_logic_seed_unavailable_reason,
+    dissolution: excl_self_host_logic_seed_unavailable_dissolve},
   WitnessExclusionRow {
     pattern: "self_host_03_resolve_behavioral_witness_test.dag",
     classification: OfflineLocalRecipe,
@@ -875,6 +889,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: excl_install_media_dissolve},
   WitnessExclusionRow {
     pattern: "provenance_calibration_report_real_execution_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "eval_model_probe_test.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},

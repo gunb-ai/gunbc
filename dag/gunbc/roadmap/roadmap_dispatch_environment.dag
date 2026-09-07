@@ -8,7 +8,7 @@ import std.upsert_decision {
   Refuse,
   upsert_decision_label,
 }
-import std.realization_reconcile { reconciliation_converged }
+import std.realization_reconcile { ReconciledEffect, reconciled_effect_converged }
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.ensure {
   EnsureObservation,
@@ -17,8 +17,7 @@ import gunbc.ensure {
   EnsureInaccessible,
   EnsurePlan,
   EnsurePlanUnavailable,
-  ensure_decide,
-  ensure_readback,
+  ensure_reconcile,
 }
 import gunbc.roadmap_execution_contract {
   ExecutionCapability,
@@ -93,30 +92,6 @@ fn no_capability_plan(reason: String) -> EnsurePlan<String> {
   EnsurePlanUnavailable { reason: reason }
 }
 
-fn capability_ensure_decision(
-  realization: CapabilityRealization,
-  observation: EnsureObservation<String>,
-  identity_matches: Bool,
-) -> UpsertDecision<String> {
-  ensure_decide(
-    policy: realization.ensure_policy,
-    observation: observation,
-    observation_satisfies: identity_matches,
-    mismatch_reason: join([
-      execution_capability_label(capability: realization.capability),
-      " identity probe did not match ",
-      realization.identity_contains as String,
-    ], ""),
-    plan: no_capability_plan(
-      reason: join([
-        "no capability-specific provisioner is modeled for ",
-        execution_capability_label(capability: realization.capability),
-        "; generic Ensure cannot choose an installer",
-      ], ""),
-    ),
-  )
-}
-
 fn ensure_observation_evidence(observation: EnsureObservation<String>) -> String {
   match observation {
     EnsureObserved { evidence } => evidence
@@ -125,60 +100,85 @@ fn ensure_observation_evidence(observation: EnsureObservation<String>) -> String
   }
 }
 
+// One receipt, one derivation. Each of the three arms below used to decide `grounded` for itself:
+// the Noop arm from the readback, and the Apply and Refuse arms from a hand-written `false`. Two of
+// the three were literals standing where a derivation belongs, so the arms could disagree with the
+// lifecycle silently and a fourth arm would arrive with no obligation to derive anything at all.
+// ensure_reconcile now answers it once, from the post-apply observation, and the match survives only
+// to choose the human-readable reason — which is genuinely per-arm.
+//
+// Behaviour is unchanged by construction rather than by inspection: reconcile_effect refuses a
+// Refuse, refuses an Apply that did not apply (applied is false here because no capability-specific
+// provisioner is modeled), and grounds a Noop exactly when the readback grounds.
+//
+// The observation is passed as BOTH before and after, and that is a real limitation rather than an
+// oversight: this site holds one observation per capability, so the readback is independent per
+// capability but is not a second read of the host. Making it one is a change to what this module
+// OBSERVES, not to how it reconciles, so it is deliberately not folded in here.
+
+fn capability_mismatch_reason(realization: CapabilityRealization) -> String {
+  join([
+    execution_capability_label(capability: realization.capability),
+    " identity probe did not match ",
+    realization.identity_contains as String,
+  ], "")
+}
+
+fn capability_readback_reason(realization: CapabilityRealization) -> String {
+  join([
+    execution_capability_label(capability: realization.capability),
+    " identity readback did not ground the requirement",
+  ], "")
+}
+
+fn capability_receipt_reason(
+  decision: UpsertDecision<String>,
+  grounded: Bool,
+) -> String {
+  match decision {
+    Noop =>
+      if grounded {
+        ""
+      } else {
+        "independent Ensure readback did not ground the capability"
+      }
+    Apply { plan: _ } =>
+      "capability-specific apply is required before admission; no effect ran in the decision layer"
+    Refuse { reason: reason } => reason as String
+  }
+}
+
 fn capability_ensure_receipt(
   realization: CapabilityRealization,
   observation: EnsureObservation<String>,
   identity_matches: Bool,
 ) -> CapabilityEnsureReceipt {
-  let decision = capability_ensure_decision(
-    realization: realization,
-    observation: observation,
-    identity_matches: identity_matches,
-  )
-  let readback = ensure_readback(
+  let reconciled = ensure_reconcile(
+    policy: realization.ensure_policy,
+    before: observation,
+    before_satisfies: identity_matches,
+    mismatch_reason: capability_mismatch_reason(realization: realization),
+    plan: no_capability_plan(
+      reason: join([
+        "no capability-specific provisioner is modeled for ",
+        execution_capability_label(capability: realization.capability),
+        "; generic Ensure cannot choose an installer",
+      ], ""),
+    ),
     applied: false,
-    observation: observation,
-    observation_satisfies: identity_matches,
-    mismatch_reason: join([
-      execution_capability_label(capability: realization.capability),
-      " identity readback did not ground the requirement",
-    ], ""),
+    after: observation,
+    after_satisfies: identity_matches,
+    after_mismatch_reason: capability_readback_reason(realization: realization),
   )
-  match decision {
-    Noop =>
-      CapabilityEnsureReceipt {
-        capability: realization.capability,
-        capability_label: execution_capability_label(capability: realization.capability),
-        executable: realization.executable as String,
-        decision: decision,
-        grounded: reconciliation_converged(r: readback),
-        evidence: ensure_observation_evidence(observation: observation),
-        reason: if reconciliation_converged(r: readback) {
-          ""
-        } else {
-          "independent Ensure readback did not ground the capability"
-        },
-      }
-    Apply { plan: _ } =>
-      CapabilityEnsureReceipt {
-        capability: realization.capability,
-        capability_label: execution_capability_label(capability: realization.capability),
-        executable: realization.executable as String,
-        decision: decision,
-        grounded: false,
-        evidence: ensure_observation_evidence(observation: observation),
-        reason: "capability-specific apply is required before admission; no effect ran in the decision layer",
-      }
-    Refuse { reason } =>
-      CapabilityEnsureReceipt {
-        capability: realization.capability,
-        capability_label: execution_capability_label(capability: realization.capability),
-        executable: realization.executable as String,
-        decision: decision,
-        grounded: false,
-        evidence: ensure_observation_evidence(observation: observation),
-        reason: reason as String,
-      }
+  let grounded = reconciled_effect_converged(r: reconciled)
+  CapabilityEnsureReceipt {
+    capability: realization.capability,
+    capability_label: execution_capability_label(capability: realization.capability),
+    executable: realization.executable as String,
+    decision: reconciled.decision,
+    grounded: grounded,
+    evidence: ensure_observation_evidence(observation: observation),
+    reason: capability_receipt_reason(decision: reconciled.decision, grounded: grounded),
   }
 }
 

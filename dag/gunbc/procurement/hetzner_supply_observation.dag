@@ -1,0 +1,94 @@
+module gunbc.procurement.hetzner_supply_observation
+
+import extdeps.cloud.hetzner {
+  HetznerCloudListedRow, hetzner_cloud_listed_catalog,
+  cax11_listed, cax21_listed, cax31_listed, cax41_listed,
+  cx23_listed, cx33_listed, cx43_listed, cx53_listed,
+}
+import extdeps.toolchain.types { architecture_is_aarch64 }
+import std.types { Bool, Int, List, NonEmptyStr }
+
+// WHAT THIS MODULE IS AND WHY IT IS NOT IN extdeps. Everything here is a reading THIS REPOSITORY
+// took of a signed-in console on a particular account on a particular day. DESIGN section 3 is
+// explicit that observations produced by this repository are receipts in the observing layer and
+// never facts owned by the observed upstream - so orderability lives here, with an edge to the
+// vendor row, while extdeps.cloud.hetzner keeps only what the vendor itself publishes.
+//
+// The distinction is load-bearing rather than tidy. Availability as read here is a property of the
+// PURCHASING INTERFACE this account was shown, and a quota, an account-tier gate, a provisioning
+// freeze or a migration would each present identically to exhausted capacity. Authored upstream,
+// every downstream consumer would inherit one account's evidence as vendor-owned standing; authored
+// here, a consumer must join it deliberately and can see whose reading it is.
+
+// WHETHER THE THING CAN BE BOUGHT, which is a different question from what it costs and the one
+// that decides whether a rate bounds anything at all. A count is carried where a count was seen,
+// because "four units left" and "cannot be selected" are different strengths of evidence and
+// collapsing them into a boolean would discard the stronger one.
+type HetznerCloudAvailability
+  = UnitsAvailable { count: Int, observation: NonEmptyStr }
+  | NotOrderable { observation: NonEmptyStr }
+
+fn availability_is_orderable(a: HetznerCloudAvailability) -> Bool {
+  match a {
+    UnitsAvailable { count, observation } => count > 0,
+    NotOrderable { observation } => false,
+  }
+}
+
+data hetzner_cax_line_unavailable: HetznerCloudAvailability = NotOrderable {
+  observation: "Operator, 2026-09-06: no CAX instance of any size could be ordered in Helsinki or Nuremberg. Read together with the 2026-09-05 observation that the arm COST OPTIMIZED tier rendered greyed out, and with the dedicated-server listing carrying no arm product at all, this is the same architecture unpurchasable across every surface this vendor offers, in two regions, on consecutive days. WHAT IS STILL NOT ESTABLISHED: this remains ONE account's view; a provisioning freeze, an account-tier gate, a quota, or a migration would each present identically to exhausted capacity, and none has been excluded.",
+}
+
+data hetzner_cx_larger_sizes_unavailable: HetznerCloudAvailability = NotOrderable {
+  observation: "Operator, 2026-09-06: of the CX line only cx23 could be ordered in either region.",
+}
+
+data hetzner_cx23_scarce: HetznerCloudAvailability = UnitsAvailable {
+  count: 4,
+  observation: "Operator, 2026-09-06: EXACTLY FOUR cx23 units available across Helsinki and Nuremberg - the operator's reading is that this is effectively zero and the remainder is permanently reserved. WHETHER THE FOUR ARE PER REGION OR SHARED ACROSS BOTH WAS NOT RECORDED, so the count is a lower bound on nothing and an upper bound of four per region. THIS IS THE MOST INFORMATIVE SUPPLY EVIDENCE THIS REPOSITORY HOLDS about this vendor and the reason it is carried as a count rather than a flag - but it is evidence about the PURCHASING INTERFACE this account was shown, not directly about physical inventory, and the difference is not pedantic. A per-account or per-project QUOTA renders an exact remaining count just as readily as exhausted stock does, and so does a soft cap applied to new or unverified accounts. So the honest reading is that four units is what this account may currently order, which bounds what THIS buyer can purchase and does not by itself establish what the vendor has. It is still a stronger fact than a greyed control, because a greyed control carries no quantity at all. WHAT WOULD DISCRIMINATE: the same reading from a second, differently-provisioned account, or the vendor's own capacity or quota documentation.",
+}
+
+// THE JOIN. One row per vendor product we actually tried to order, carrying OUR reading beside a
+// reference to THEIR row. The edge points at the vendor model; the vendor model does not point back.
+type HetznerSupplyObservation {
+  server: HetznerCloudListedRow
+  availability: HetznerCloudAvailability
+}
+
+fn hetzner_supply_observations() -> List<HetznerSupplyObservation> {
+  [
+    HetznerSupplyObservation { server: cax11_listed, availability: hetzner_cax_line_unavailable },
+    HetznerSupplyObservation { server: cax21_listed, availability: hetzner_cax_line_unavailable },
+    HetznerSupplyObservation { server: cax31_listed, availability: hetzner_cax_line_unavailable },
+    HetznerSupplyObservation { server: cax41_listed, availability: hetzner_cax_line_unavailable },
+    HetznerSupplyObservation { server: cx23_listed, availability: hetzner_cx23_scarce },
+    HetznerSupplyObservation { server: cx33_listed, availability: hetzner_cx_larger_sizes_unavailable },
+    HetznerSupplyObservation { server: cx43_listed, availability: hetzner_cx_larger_sizes_unavailable },
+    HetznerSupplyObservation { server: cx53_listed, availability: hetzner_cx_larger_sizes_unavailable },
+  ]
+}
+
+// EVERY VENDOR ROW WAS LOOKED AT. If the vendor catalog grows a row and nobody reads its console,
+// this reds - an unobserved product must become a coverage obligation here rather than a silent
+// absence, which is precisely what authoring an Unobserved arm upstream would have hidden.
+fn hetzner_supply_coverage_is_complete() -> Bool {
+  count(hetzner_supply_observations()) == count(hetzner_cloud_listed_catalog())
+}
+
+fn hetzner_orderable_observations() -> List<HetznerSupplyObservation> {
+  filter(hetzner_supply_observations(), o => availability_is_orderable(a: o.availability))
+}
+
+// A PUBLISHED PRICE BOUNDS NOTHING UNLESS THE THING CAN BE BOUGHT, so admissibility as a cost
+// floor is decided by the observation and not by the catalog row.
+fn admissible_as_purchasable_floor(o: HetznerSupplyObservation) -> Bool {
+  availability_is_orderable(a: o.availability)
+}
+
+fn hetzner_arm_rows_orderable() -> Bool {
+  any(
+    hetzner_supply_observations(),
+    o => architecture_is_aarch64(a: o.server.cpu_architecture)
+      && availability_is_orderable(a: o.availability),
+  )
+}

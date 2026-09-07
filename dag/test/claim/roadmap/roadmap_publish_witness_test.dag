@@ -9,7 +9,7 @@ import gunbc.roadmap_publish {
   RemoteBranchObservation, RemoteBranchesRead, RemoteBranchesUnreadable,
   RemoteBranchReadFailure, RefAdvertisementRefused,
   PullRequestReadFailure, render_pull_request_read_failure,
-  PullRequestCredentialUnavailable, PullRequestStatusRefused,
+  PullRequestCredentialUnavailable, PullRequestQuotaWithheld, PullRequestStatusRefused,
   PullRequestTransportRefused, PullRequestBodyUndecodable,
   PublicationOutcome,
   PublicationBound, PublicationHeadDiverged, PublicationBindingAmbiguous,
@@ -1012,6 +1012,7 @@ fn pull_request_failure_key(cause: PullRequestReadFailure) -> String {
     PullRequestStatusRefused { repository: _, status: _, body: _ } => "status"
     PullRequestTransportRefused { repository: _, cause: _ } => "transport"
     PullRequestBodyUndecodable { repository: _, status: _, cause: _ } => "body"
+    PullRequestQuotaWithheld { repository: _, detail: _ } => "quota"
   }
 }
 
@@ -1037,16 +1038,23 @@ fn fixture_pull_request_failures() -> List<PullRequestReadFailure> {
       status: 200,
       cause: "response body was not valid utf-8" as NonEmptyStr,
     },
+    PullRequestQuotaWithheld {
+      repository: fixture_repository_name(),
+      detail: "github-core: pool-full",
+    },
   ]
 }
 
-test fn four_pull_request_read_failures_stay_four_distinct_causes() -> Bool {
+// The fifth cause is the one that happens BEFORE any request: the github core quota lease on the
+// fabric event log refused, so the listing was withheld rather than sent into a 429.
+test fn five_pull_request_read_failures_stay_five_distinct_causes() -> Bool {
   let keys = map(fixture_pull_request_failures(), c => pull_request_failure_key(cause: c))
-  count(keys) == 4
+  count(keys) == 5
     && count(filter(keys, k => k == "credential")) == 1
     && count(filter(keys, k => k == "status")) == 1
     && count(filter(keys, k => k == "transport")) == 1
     && count(filter(keys, k => k == "body")) == 1
+    && count(filter(keys, k => k == "quota")) == 1
 }
 
 // THE RENDERER NAMES github.Pulls.List THROUGH ITS OperationRef, following the discipline

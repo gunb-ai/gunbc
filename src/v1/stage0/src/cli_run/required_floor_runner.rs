@@ -2856,6 +2856,18 @@ pub fn floor_prepared_subject_exclusions() -> Vec<String> {
         // is not observable hermetically. Enrolling it would assert the mock rather than the
         // behaviour -- specification without execution.
         "test/manual/command_runner_local_argv_receipt_test.dag".to_string(),
+        // A ROW HERE MAY NOT NAME A MODULE ANYTHING IMPORTS. An exclusion is not "skip this
+        // witness": prepare_repository_closure drops the path from the prepared graph, so an
+        // importer cannot resolve and the whole subject refuses. That constraint is enforced --
+        // `assemble_prepared_subject_closure` refuses with cause=ExclusionOrphansImporter, naming
+        // the row beside each importer -- rather than asked for here.
+        //
+        // A row may also not be the way a CHANGED witness gets out of running. The floor admits a
+        // changed witness regardless of any exclusion (cause=ChangedWitnessOutsidePreparedSubject),
+        // which is what stops this list being an escape hatch a witness can opt into on the commit
+        // that introduces it. A corpus-priced assertion therefore is not authored as a witness at
+        // all; v2.lens.complexity_accumulator_copy.corpus_census is the worked example, and it
+        // carries its own next-rung trigger.
     ]
 }
 

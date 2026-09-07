@@ -4,7 +4,7 @@ import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
 import extdeps.deepseek.deepseek_v4 { DeepseekV4ReasoningMode, DeepseekV4ThinkMax }
 import gunbc.harness.harness_throughput { harness_round_budget_steps }
 import gunbc.harness.harness_wire { HarnessWireShape, OpenAiChatCompletionsShape }
-import std.measure { TokenCount, token_count, token_count_value, Second, second }
+import std.measure { TokenCount, token_count, token_count_value, Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.harness.harness_tool { HarnessToolEnvironment }
 import gunbc.harness.harness_turn {
@@ -23,6 +23,12 @@ import gunbc.harness.harness_goal_audit_guidance { harness_auditor_guidance_at, 
 import gunbc.roadmap.roadmap_review_role { review_verdict_shape_text }
 import gunbc.harness.harness_wire { harness_engine_model, harness_engine_context_window }
 import gunbc.harness.harness_backend { HarnessBackendUrl, BackendUrlBound, BackendUrlRefused, harness_serving_backend_url }
+import gunbc.harness.harness_seat {
+  HarnessSeatBinding, HarnessSeatBound, HarnessSeatRefused, harness_bind_seat,
+  HarnessSeatRelease, HarnessSeatReleased, HarnessSeatReleaseRefused, harness_release_seat, harness_seat_release_wire,
+}
+import product.capacity.lease { LeasePolicy, QuiescenceRequired }
+import extdeps.tools.hostname
 
 // THE FIRST WET ENTRY FOR THE DEDICATED HARNESS. It exists to make DCH-2 provable by execution
 // rather than by typecheck -- DESIGN section 5's specification-without-execution trap names exactly
@@ -141,6 +147,32 @@ data harness_request_deadline: Second = second(
     + harness_request_prefill_allowance_seconds,
 )
 
+// THE SEAT'S DEADLINE IS DECLARED POLICY: the request deadline the turn already binds itself to,
+// plus the allowance for writing the release event. It is never derived from an observed decode
+// rate (operator ruling 2026-09-06). Under vLLM a superseded holder cannot be fenced at the engine,
+// so the release law is quiescence-required: an expired seat whose turn was never seen to end
+// stays held rather than being handed to a second turn.
+data harness_seat_release_allowance_seconds: Int = 60
+data harness_seat_policy: LeasePolicy = LeasePolicy {
+  maximum_duration_seconds: second_count(s: harness_request_deadline) + harness_seat_release_allowance_seconds,
+  release_law: QuiescenceRequired,
+}
+
+fn harness_executor_short_hostname() -> String {
+  let r = os.Hostname.ReadShort()
+  if r.success { r.value } else { "" }
+}
+
+// A TURN EXITS ON ITS OUTCOME ONLY IF ITS SEAT CAME BACK. A release that failed leaves the seat held
+// on the partition until quiescence is established, which is a line stop, not a footnote on a green.
+fn harness_turn_exit_released(outcome: HarnessTurnOutcome, seat: HarnessSeatRelease) -> ProcessExit {
+  match seat {
+    HarnessSeatReleased { partition: _ } => harness_turn_exit(outcome: outcome)
+    HarnessSeatReleaseRefused { detail: d } =>
+      ExitFailure { code: 1, reason: join([harness_outcome_label(outcome: outcome), "; seat ", harness_seat_release_wire(r: seat)], "") }
+  }
+}
+
 data harness_default_system_prompt: String = harness_guidance_prose(rows: harness_probe_guidance())
 
 fn harness_macbook_environment() -> HarnessToolEnvironment {
@@ -224,7 +256,7 @@ fn harness_backend_refusal_exit(detail: String) -> ProcessExit {
 }
 
 fn harness_probe_cli() -> ProcessExit {
-  match harness_serving_backend_url(shape: harness_default_wire_shape, seed: "") {
+  match harness_serving_backend_url(shape: harness_default_wire_shape) {
     BackendUrlRefused { detail } => harness_backend_refusal_exit(detail: detail)
     BackendUrlBound { url, declined_count: _ } => harness_turn_exit(outcome: harness_probe_outcome(backend_url: url))
   }
@@ -312,10 +344,11 @@ fn harness_worker_cli(
   repo_root: String,
   gunbc_program: String,
 ) -> ProcessExit {
-  match harness_serving_backend_url(shape: harness_default_wire_shape, seed: worktree) {
-    BackendUrlRefused { detail } => harness_backend_refusal_exit(detail: detail)
-    BackendUrlBound { url, declined_count: _ } =>
-      harness_turn_exit(outcome: harness_run_turn(
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["worker:", worktree], "") as NonEmptyStr, policy: harness_seat_policy)
+  match binding {
+    HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
+    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, layout: _ } => {
+      let outcome = harness_run_turn(
         config: harness_worker_config(
           worktree: worktree as FilePath,
           timeout_program: timeout_program as FilePath,
@@ -327,7 +360,10 @@ fn harness_worker_cli(
         ),
         prompt: brief,
         step_budget: harness_worker_step_budget,
-      ))
+      )
+      let seat_release = harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr)
+      harness_turn_exit_released(outcome: outcome, seat: seat_release)
+    }
   }
 }
 
@@ -384,10 +420,11 @@ fn harness_reviewer_cli(
   events_path: String,
   verdict_path: String,
 ) -> ProcessExit {
-  match harness_serving_backend_url(shape: harness_default_wire_shape, seed: verdict_path) {
-    BackendUrlRefused { detail } => harness_backend_refusal_exit(detail: detail)
-    BackendUrlBound { url, declined_count: _ } =>
-      harness_turn_exit(outcome: harness_run_turn(
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["reviewer:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy)
+  match binding {
+    HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
+    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, layout: _ } => {
+      let outcome = harness_run_turn(
         config: harness_reviewer_config(
           worktree: worktree as FilePath,
           timeout_program: timeout_program as FilePath,
@@ -398,7 +435,10 @@ fn harness_reviewer_cli(
         ),
         prompt: brief,
         step_budget: harness_reviewer_step_budget,
-      ))
+      )
+      let seat_release = harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr)
+      harness_turn_exit_released(outcome: outcome, seat: seat_release)
+    }
   }
 }
 
@@ -442,10 +482,11 @@ fn harness_auditor_cli(
   events_path: String,
   verdict_path: String,
 ) -> ProcessExit {
-  match harness_serving_backend_url(shape: harness_default_wire_shape, seed: verdict_path) {
-    BackendUrlRefused { detail } => harness_backend_refusal_exit(detail: detail)
-    BackendUrlBound { url, declined_count: _ } =>
-      harness_turn_exit(outcome: harness_run_turn(
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["auditor:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy)
+  match binding {
+    HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
+    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, layout: _ } => {
+      let outcome = harness_run_turn(
         config: harness_auditor_config(
           worktree: worktree as FilePath,
           timeout_program: timeout_program as FilePath,
@@ -456,12 +497,15 @@ fn harness_auditor_cli(
         ),
         prompt: brief,
         step_budget: harness_reviewer_step_budget,
-      ))
+      )
+      let seat_release = harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr)
+      harness_turn_exit_released(outcome: outcome, seat: seat_release)
+    }
   }
 }
 
 fn harness_probe_report() -> String {
-  match harness_serving_backend_url(shape: harness_default_wire_shape, seed: "") {
+  match harness_serving_backend_url(shape: harness_default_wire_shape) {
     BackendUrlRefused { detail } => join(["harness probe refused before the turn: ", detail, "\n"], "")
     BackendUrlBound { url, declined_count: _ } => {
       let outcome = harness_probe_outcome(backend_url: url)
