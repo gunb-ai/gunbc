@@ -43,9 +43,60 @@ type ArtifactManifestRef = NonEmptyStr where brand("ArtifactManifestRef")
 
 type EffectContractRef = NonEmptyStr where brand("EffectContractRef")
 
+// OPAQUE CONTRACT IDENTITY ONLY. A prior meaning fork let this brand carry either a
+// plain name or a content-serialised obligation roster (framed outputs stuffed into
+// the same NonEmptyStr). Both inhabited one type, so no consumer could tell which it
+// held — DESIGN section 3. The opaque name survives; obligations live on
+// DeclaredOutputObligations and reach a gate only through resolve_output_obligations.
 type OutputContractRef = NonEmptyStr where brand("OutputContractRef")
 
 type SourceManifestRef = NonEmptyStr where brand("SourceManifestRef")
+
+// Stable subject identity for one owed output. Commit manifests and committed rows
+// key by this id; inventing a fresh spelling at the gate is how one job discharged
+// another's obligations.
+type OutputObligationId = NonEmptyStr where brand("OutputObligationId")
+
+// Declared roster on the Work. Empty is a legitimate declaration (a job that owes
+// nothing), never an unsupplied one — that distinction belongs to resolution below.
+type DeclaredOutputObligations {
+  required: List<OutputObligationId>
+}
+
+fn output_obligation_id(raw: NonEmptyStr) -> OutputObligationId {
+  raw as OutputObligationId
+}
+
+fn declared_output_obligations(ids: List<NonEmptyStr>) -> DeclaredOutputObligations {
+  DeclaredOutputObligations {
+    required: map(ids, id => output_obligation_id(raw: id)),
+  }
+}
+
+fn empty_output_obligations() -> DeclaredOutputObligations {
+  DeclaredOutputObligations { required: [] }
+}
+
+// Revision of a declared roster. Carried on the resolution result so two readers
+// cannot silently disagree about whether they judged the start-of-job roster or a
+// later one: the sealed result names which revision it holds. Policy of WHEN to
+// resolve (job start vs gate time) is the caller's; the answer is in the result.
+type OutputObligationsRevision = ContentHash
+
+// Sealed: the only mint is resolve_output_obligations in this module. A caller that
+// needs a terminal-success-eligible roster must resolve; constructing the resolved
+// arm by hand is unwritable (sole_constructor), which is the discriminating wall
+// for the empty-roster-without-authority defect.
+type ResolvedOutputObligations sole_constructor {
+  contract: OutputContractRef
+  revision: OutputObligationsRevision
+  work_key: WorkKey
+  required: List<OutputObligationId>
+}
+
+type OutputObligationsResolution
+  = OutputObligationsResolved { value: ResolvedOutputObligations }
+  | OutputObligationsUnreadable { contract: OutputContractRef, cause: NonEmptyStr }
 
 // Resumability is a property of what a step DECLARES, never of the fabric. A step
 // whose effects are undeclared cannot be resumed by any mechanism, so the tier is
@@ -85,7 +136,12 @@ type WorkContract {
   inputs: ArtifactManifestRef
   runtime_closure: ArtifactManifestRef
   effect_contract: EffectContractRef
+  // Opaque identity of the output contract — never the obligation roster.
   output_contract: OutputContractRef
+  // Structured obligations the work owes. Identity material includes this field,
+  // so changing what is owed changes the work key without stuffing the roster into
+  // the contract name.
+  output_obligations: DeclaredOutputObligations
 }
 
 // Scheduling facts that do not change the promised answer live BESIDE the
@@ -216,6 +272,36 @@ type Work<P> {
 // discipline. Requirements are included because a Work that needs a different
 // architecture or trust domain does not promise the same answer.
 
+fn output_obligations_material(declared: DeclaredOutputObligations) -> NonEmptyStr {
+  fold(
+    declared.required,
+    init: concat("output-obligations:", concat(to_string(declared.required.count()), ":")),
+    f: (acc, id) => concat(acc, "\u{1e}", id),
+  )
+}
+
+fn output_obligations_revision(declared: DeclaredOutputObligations) -> OutputObligationsRevision {
+  content_hash_of_value(value: output_obligations_material(declared: declared))
+}
+
+// The only route to a terminal-success-eligible roster. Empty required is a
+// Resolved value produced here, never an arm a gate caller can invent without
+// having resolved. work_key binds the roster to one work identity so a foreign
+// job's commitments cannot discharge it.
+fn resolve_output_obligations(
+  contract: WorkContract,
+  work_key: WorkKey,
+) -> OutputObligationsResolution {
+  OutputObligationsResolved {
+    value: ResolvedOutputObligations {
+      contract: contract.output_contract,
+      revision: output_obligations_revision(declared: contract.output_obligations),
+      work_key: work_key,
+      required: contract.output_obligations.required,
+    }
+  }
+}
+
 fn work_identity_material(contract: WorkContract, requirements: ExecutionRequirements) -> NonEmptyStr {
   concat(
     contract.program, "\u{1f}",
@@ -225,6 +311,7 @@ fn work_identity_material(contract: WorkContract, requirements: ExecutionRequire
     contract.runtime_closure, "\u{1f}",
     contract.effect_contract, "\u{1f}",
     contract.output_contract, "\u{1f}",
+    output_obligations_material(declared: contract.output_obligations), "\u{1f}",
     capacity_class_wire(c: requirements.capacity_class), "\u{1f}",
     requirements.capabilities, "\u{1f}",
     requirements.trust_domain, "\u{1f}",

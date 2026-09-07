@@ -8,6 +8,7 @@ import product.fabric.work {
   CapacityClass, ControlPlaneCapacity, CustomerExecutableCapacity,
   ExecutionRequirements, Shape, HardRequirements,
   capacity_class_eq, capacity_class_wire, work_identity_material, WorkContract, WorkStep,
+  declared_output_obligations,
 }
 import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { IsolationProfile }
@@ -46,6 +47,7 @@ fn cc_contract() -> WorkContract {
     runtime_closure: "gunbc.runtime.closure-1",
     effect_contract: "gunbc.effect.contract-1",
     output_contract: "gunbc.output.contract-1",
+    output_obligations: declared_output_obligations(ids: ["gunbc.output.contract-1"]),
   }
 }
 
