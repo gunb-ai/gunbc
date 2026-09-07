@@ -1,0 +1,183 @@
+module test.claim.reconciled_effect_witness
+
+import std.types { String, Bool, NonEmptyStr }
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import std.realization_reconcile {
+  ReconciledEffect,
+  ShowEffectiveRead,
+  ReadObserved,
+  ReadAbsent,
+  Grounding,
+  Grounds,
+  DoesNotGround,
+  reconcile_effect,
+  reconciled_effect_converged,
+  ConvergedEffect,
+  ReconciledOutcome,
+  EffectConverged,
+  EffectNotConverged,
+  classify_reconciled,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Every witness below drives the REAL runner rather than asserting over a hand-built carrier, which
+// is not a stylistic choice: ReconciledEffect is sole_constructor, so a hand-built carrier is not
+// authorable here at all. That is the wall doing the work the witness would otherwise have to be
+// trusted to respect — the same shape the guarantee-probe corpus enrolls as a compile-time RED.
+
+fn grounding_read() -> ShowEffectiveRead<String> {
+  ReadObserved { value: "observed" }
+}
+
+fn grounds() -> Grounding<String> {
+  Grounds { evidence: "observed" }
+}
+
+fn does_not_ground() -> Grounding<String> {
+  DoesNotGround { reason: "post-apply observation does not satisfy the desired relation" }
+}
+
+fn apply_decision() -> UpsertDecision<String> {
+  Apply { plan: "the plan" }
+}
+
+// THE DISCRIMINATING RED. The effect ran and reported success, and the carrier still refuses to call
+// that convergence, because convergence is derived from the post-apply observation and from nothing
+// the caller asserts. If this greens, the receipt means "something was attempted" rather than "the
+// desired relation now holds", which is the entire distinction the carrier exists to carry.
+
+test fn an_applied_effect_whose_readback_does_not_ground_is_not_converged() -> Bool {
+  !reconciled_effect_converged(
+    r: reconcile_effect(
+      decision: apply_decision(),
+      applied: true,
+      show_read: grounding_read(),
+      grounding: does_not_ground(),
+    )
+  )
+}
+
+// The positive control on that detector. Without it a runner that returned NotConverged
+// unconditionally would satisfy the RED above and establish nothing.
+
+test fn an_applied_effect_whose_readback_grounds_is_converged() -> Bool {
+  reconciled_effect_converged(
+    r: reconcile_effect(
+      decision: apply_decision(),
+      applied: true,
+      show_read: grounding_read(),
+      grounding: grounds(),
+    )
+  )
+}
+
+// The laundering arm: a caller that REFUSED, then observed some state that happens to satisfy the
+// desired relation, must not mint a converged receipt. The observation is real and the grounding is
+// genuine — what is absent is the decision to act, so passing this through the grounding predicate
+// would report convergence for an effect the policy declined to run.
+
+test fn a_refused_decision_cannot_be_laundered_into_convergence_by_a_grounding_readback() -> Bool {
+  !reconciled_effect_converged(
+    r: reconcile_effect(
+      decision: Refuse { reason: "policy is observe-only" as NonEmptyStr },
+      applied: true,
+      show_read: grounding_read(),
+      grounding: grounds(),
+    )
+  )
+}
+
+// Decided to act and did not act. The readback grounds because the desired relation may already have
+// held for an unrelated reason; that does not discharge an Apply that never ran.
+
+test fn an_apply_that_was_never_applied_is_not_converged() -> Bool {
+  !reconciled_effect_converged(
+    r: reconcile_effect(
+      decision: apply_decision(),
+      applied: false,
+      show_read: grounding_read(),
+      grounding: grounds(),
+    )
+  )
+}
+
+// Noop is the arm where nothing was applied and convergence is still the correct verdict: the
+// observation already satisfied the desired relation. It is the reason `applied` alone can never be
+// the convergence test in either direction.
+
+test fn a_noop_over_a_grounding_observation_is_converged() -> Bool {
+  reconciled_effect_converged(
+    r: reconcile_effect(
+      decision: Noop,
+      applied: false,
+      show_read: grounding_read(),
+      grounding: grounds(),
+    )
+  )
+}
+
+test fn a_noop_whose_observation_is_absent_is_not_converged() -> Bool {
+  !reconciled_effect_converged(
+    r: reconcile_effect(
+      decision: Noop,
+      applied: false,
+      show_read: ReadAbsent { reason: "target absent" },
+      grounding: does_not_ground(),
+    )
+  )
+}
+
+// The decision survives onto the receipt unchanged. A carrier that recorded convergence while losing
+// which decision produced it would make an audit unable to distinguish a Noop from an Apply.
+
+test fn the_receipt_carries_the_decision_that_produced_it() -> Bool {
+  match reconcile_effect(
+    decision: apply_decision(),
+    applied: true,
+    show_read: grounding_read(),
+    grounding: grounds(),
+  ).decision {
+    Apply { plan: p } => p == "the plan"
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+}
+
+// The classified split is what a SINK consumes. These two witnesses are not a restatement of the
+// convergence witnesses above: those establish that the runner derives the right verdict, these
+// establish that the verdict controls which carrier exists. A sink parameterised on ConvergedEffect
+// is unreachable from the refusing arm, and that is the property the witnesses fix in place.
+
+test fn a_refusing_reconciliation_classifies_to_the_non_converged_arm() -> Bool {
+  match classify_reconciled(
+    r: reconcile_effect(
+      decision: apply_decision(),
+      applied: true,
+      show_read: grounding_read(),
+      grounding: does_not_ground(),
+    )
+  ) {
+    EffectNotConverged { reason: _, attempt: _ } => true
+    EffectConverged { converged: _ } => false
+  }
+}
+
+// The positive control, and it also asserts the evidence survives onto the success carrier: a
+// converged receipt that dropped its observation could not tell a domain consumer WHAT converged,
+// which is the join that keeps evidence about one subject from standing for another.
+
+test fn a_converged_reconciliation_classifies_to_a_success_carrier_holding_its_evidence() -> Bool {
+  match classify_reconciled(
+    r: reconcile_effect(
+      decision: apply_decision(),
+      applied: true,
+      show_read: grounding_read(),
+      grounding: grounds(),
+    )
+  ) {
+    EffectConverged { converged: c } => c.evidence == "observed"
+    EffectNotConverged { reason: _, attempt: _ } => false
+  }
+}

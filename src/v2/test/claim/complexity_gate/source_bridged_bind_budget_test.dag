@@ -3,6 +3,7 @@ module v2.test.complexity_gate.source_bridged_bind_budget
 import v2.lens.complexity {
   ConstantComplexity,
   complexity_bound_dominates,
+  complexity_assessment_dominates,
   complexity_lens,
   linear_complexity
 }
@@ -39,9 +40,9 @@ fn table_fixture_bind_tightened_budget_fails_dominance(
     a: ConstantComplexity,
     b: linear_complexity(size_var: SizeVariable { source: body })
   )
-  && complexity_bound_dominates(
-    a: complexity_declared_budget_for_row(row: row, body: body),
-    b: computed
+  && complexity_assessment_dominates(
+    declared: complexity_declared_budget_for_row(row: row, body: body),
+    computed: computed
   )
 }
 

@@ -555,6 +555,7 @@ fn required_gate_prefixes() -> List<String> {
     "test.claim.typed_module_cache_capacity_witness",
     "test.claim.whole_corpus_compile_admission_witness",
     "test.claim.memory_stall_refusal_witness",
+    "test.claim.docs_projection_gate_test",
   ]
 }
 
@@ -593,6 +594,11 @@ fn required_gate_prefixes() -> List<String> {
 // the budget beside its own page cache. The failure it closes is the 2026-08-30 default-VM
 // treadmill: four whole-closure runs holding 2-4.5 hours with no diagnostic and no exit.
 // Same exact-module-name rule as below, for the same reason.
+//
+// test.claim.docs_projection_gate_test is the same family: two cheap ProcessExit fixtures over
+// injected bytes, so a stale docs/*.md projection has a floor-discovered RED that does not
+// resolve gunbc.generated_artifact_emit. Exact module name, not `test.claim.docs_`, so it
+// cannot sweep a later wet regen helper into the static gate.
 //
 // THE LAST THREE ROWS BEFORE IT, ADDED 2026-08-30, AND WHY THEY BELONG UNDER THE RULING ABOVE
 // RATHER THAN BESIDE IT.
