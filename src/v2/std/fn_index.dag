@@ -352,7 +352,7 @@ fn callee_texts_in_subtree(node: Node) -> List<String> {
 }
 
 fn callees_from_node(node: Node, terminal_callee_symbols: List<String>) -> List<String> {
-  let out_reversed = fold_list(
+  fold_list(
     xs: callee_texts_in_subtree(node: node),
     empty: empty_fn_arrow_string_list,
     cons: fn(acc, text) {
@@ -362,12 +362,11 @@ fn callees_from_node(node: Node, terminal_callee_symbols: List<String>) -> List<
         if contains(xs: acc, item: text, eq: fn_index_string_eq) {
           acc
         } else {
-          Cons { head: text, tail: acc }
+          list_snoc_item(xs: acc, item: text)
         }
       }
     }
   )
-  list_reverse(xs: out_reversed)
 }
 
 // THE WALK'S PER-STEP BOOKKEEPING, MADE LINEAR. THREE SITES, ONE DEFECT.
