@@ -1,0 +1,62 @@
+module test.claim.approval_ntfy_deployment_witness_test
+
+import std.logic { Bool }
+import std.types { Int }
+import std.human_intervention {
+  ProvisioningHumanBurden, HumanIntervention, FleetOnce, DeviceOnce, EveryProvision,
+  BreakGlassOnly, human_intervention_count_at, human_burden_break_glass_count,
+}
+import gunbc.auth.approval_ntfy_deployment {
+  approval_ntfy_human_burden, approval_ntfy_listen_address, approval_ntfy_upstream_base_url,
+}
+
+// THE LOAD-BEARING CLAIM: the notification path costs a person NOTHING per run. A design that
+// needed a human step on every approval would defeat its own purpose -- the operator is the thing
+// being economized -- and this is the assertion that goes red if a future row is added at the
+// wrong frequency. The other counts are pinned beside it so that adding a step is a visible
+// change to a number rather than a silent drift in what enrollment costs.
+fn witness_no_per_run_human_cost() -> Bool {
+  human_intervention_count_at(burden: approval_ntfy_human_burden(), frequency: EveryProvision) == 0
+}
+
+fn witness_fleet_once_rows_are_the_four_server_side_steps() -> Bool {
+  human_intervention_count_at(burden: approval_ntfy_human_burden(), frequency: FleetOnce) == 4
+}
+
+fn witness_device_once_row_is_the_phone() -> Bool {
+  human_intervention_count_at(burden: approval_ntfy_human_burden(), frequency: DeviceOnce) == 1
+}
+
+fn witness_break_glass_row_is_the_relay_withdrawal() -> Bool {
+  human_burden_break_glass_count(burden: approval_ntfy_human_burden()) == 1
+}
+
+// THE FOUR COUNTS ABOVE CONTROL EACH OTHER, which is what keeps witness_no_per_run_human_cost from
+// being a check that passes because the counter is broken. The roster holds six rows; a counter
+// that ignored its frequency argument would answer 6 to all four and fail three of them, and one
+// that always answered 0 would fail the other three. Only a counter that genuinely partitions by
+// frequency satisfies 4 + 1 + 1 + 0 over a six-row roster -- so the zero is load-bearing rather
+// than vacuous. This witness pins the total that makes that argument hold.
+//
+// The neighbouring property -- that a BreakGlassOnly row does not enter routine burden at all --
+// belongs to std.human_intervention's own comparison function and is tested there, not restated
+// here over our roster (DESIGN §2: the same check in two places is one authority forked).
+fn witness_roster_total_is_the_partitioned_sum() -> Bool {
+  let b = approval_ntfy_human_burden()
+  human_intervention_count_at(burden: b, frequency: FleetOnce)
+    + human_intervention_count_at(burden: b, frequency: DeviceOnce)
+    + human_intervention_count_at(burden: b, frequency: BreakGlassOnly)
+    + human_intervention_count_at(burden: b, frequency: EveryProvision)
+    == 6
+}
+
+// THE LOOPBACK BIND IS THE SECURITY BOUNDARY, so it is asserted rather than left to a comment.
+// If this address ever widens, the tailnet identity header on the neighbouring approval route
+// stops being trustworthy -- anything on the host could reach the backend and forge it.
+fn witness_server_binds_loopback_only() -> Bool {
+  approval_ntfy_listen_address == "127.0.0.1"
+}
+
+fn witness_upstream_relay_is_declared() -> Bool {
+  approval_ntfy_upstream_base_url == "https://ntfy.sh"
+}
