@@ -142,7 +142,10 @@ type ReconciledEffect<P, E> sole_constructor {
 // example: RemoteFileConverged is sole_constructor, carries the EXACT WRITE so it names the bytes it
 // is evidence for, and is reachable only through a mint admitted to the func that ran the four
 // steps. What std still does is refuse the contradictory lifecycles below, and derive grounding from
-// the post-apply observation rather than from anything asserted.
+// the post-apply observation rather than from the decision or the application arm. Both the read and
+// the grounding are themselves caller-constructed arguments routed through a truth table; this module
+// derives neither from the other, and an earlier revision of this line said "rather than from
+// anything asserted", which claimed an independence std does not have.
 
 type Application<A>
   = NotApplied
@@ -227,17 +230,21 @@ fn reconciled_effect_converged<P, E>(r: ReconciledEffect<P, E>) -> Bool {
 // parameter. A sink that accepts one still has to ask whether it converged and remember to branch —
 // validation standing exactly where construction was available (DESIGN 5). ConvergedEffect closes
 // that: it is sole_constructor and the ONLY mint is the Converged arm of classify_reconciled, so a
-// sink whose parameter is a ConvergedEffect cannot be handed a refusal at all. The invalid state has
-// no constructor rather than being checked for, which is the difference between rung 3 and rung 4
-// for the class "a refusal was accepted as success".
+// sink whose parameter is a ConvergedEffect cannot be handed a refusal at all. For the ACCEPTED
+// OUTSIDE-CONSUMER path that is the difference between rung 3 and rung 4 on the class "a refusal was
+// accepted as success" -- and the scoping matters, because inside THIS module the mint is ordinary
+// source and a wrong ConvergedEffect is authorable here exactly as gunbc.typed_remote_file_write now
+// records for its own carrier. "The invalid state has no constructor", unscoped, was the same
+// overclaim this PR retracted there, left standing here.
 //
 // The evidence is carried rather than dropped because a converged receipt whose observation is
 // discarded cannot answer WHAT it converged to — which is the join a domain consumer needs to
 // establish that this evidence is about its subject and not a neighbouring one.
 //
 // AND IT IS A GROUNDED REPORT, NOT A PERFORMANCE PROOF. ConvergedEffect says: this decision was
-// classified, an application was reported with evidence, and an INDEPENDENT observation grounded the
-// desired relation. It does NOT say the decided plan is the one that ran — std has no way to witness
+// classified, an application was REPORTED with evidence, and a REPORTED effective read was classified
+// as grounding the desired relation. Not "an INDEPENDENT observation" -- std receives a ReadObserved
+// and a Grounds and has no independence evidence about either. It does NOT say the decided plan is the one that ran — std has no way to witness
 // that without a law supplied by the same caller it would be checking. A sink that needs performance
 // proof must demand its DOMAIN's sealed carrier, not this one.
 

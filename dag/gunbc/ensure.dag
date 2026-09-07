@@ -128,7 +128,10 @@ fn ensure_readback<E>(
 // predicates remain caller-supplied, so a caller that observes nothing and asserts everything still
 // gets a report — what changed is that it can no longer get a CONVERGED one merely by writing a
 // Bool. What it produces is a REPORT: the decision was classified, an application was reported with
-// evidence, and an independent observation grounded or failed to ground the desired relation. It is
+// evidence, and a REPORTED observation grounded or failed to ground the desired relation -- reported,
+// not independent: this paragraph's own first sentence says the values and predicates are caller-
+// supplied, and an earlier revision contradicted it two lines later by calling the observation
+// independent. It is
 // NOT proof the decided plan is the one that ran — std cannot witness that without a law from the
 // same caller it would be checking, so the plan-to-evidence binding belongs to the domain and is
 // discharged by a domain carrier the effect authority alone can mint.

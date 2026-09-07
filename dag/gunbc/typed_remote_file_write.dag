@@ -161,8 +161,14 @@ fn remote_file_mode_octal(mode: RemoteFileMode) -> String {
 // reported success standing in for convergence, which is the exact class this PR exists to retract,
 // and it would have been the third instance of it in one change.
 //
-// So the carrier narrows to what independent observation actually grounds: these exact bytes at this
-// exact path. The chmod still runs and a failure there still refuses at step "mode"; what is gone is
+// So the carrier narrows to what observation actually grounds: these exact bytes at this exact path
+// ON THIS EXACT TARGET. The target was a second subject-binding loss of the same shape as the digest,
+// found one level up: converge_typed_remote_file receives an SshTarget carrying endpoint AND
+// principal, runs all four legs against it, and it then fell out of scope before the mint. Two
+// executions against different hosts or different principals produced observationally identical
+// success values, and no enclosing carrier repaired it -- run_remote_operation returns
+// RemoteFileExecution { outcome } and retains no target. A receipt that cannot say WHERE the bytes
+// landed is evidence whose subject is only half named. The chmod still runs and a failure there still refuses at step "mode"; what is gone is
 // the CLAIM that the destination carries the requested mode.
 //
 // This is not a 4b(3) declared drop: nothing is being lowered, because mode convergence was never
@@ -172,6 +178,7 @@ fn remote_file_mode_octal(mode: RemoteFileMode) -> String {
 // when the observed octal and the requested mode agree, with the three ordinary controls (expected
 // mode converges, wrong observed mode refuses, unavailable observation refuses separately).
 type RemoteFileConverged sole_constructor {
+  target: SshTarget
   write: TypedRemoteFileWrite
 }
 
@@ -279,6 +286,7 @@ fn classify_typed_remote_file_comparison(
 // classifier a literal success exit from outside the module and receives a report, not authority.
 
 fn remote_file_converged_from_report(
+  target: SshTarget,
   write: TypedRemoteFileWrite,
   report: RemoteFileComparisonReport,
 ) -> TypedRemoteFileConvergence
@@ -288,7 +296,7 @@ fn remote_file_converged_from_report(
   = match report {
       ComparisonIdentical =>
         TypedRemoteFileConverged {
-          converged: RemoteFileConverged { write: write },
+          converged: RemoteFileConverged { target: target, write: write },
         }
       ComparisonDiffers { reason: why } =>
         TypedRemoteFileConvergenceRefused { step: "compare", reason: why }
@@ -504,6 +512,7 @@ func converge_typed_remote_file(
                       }
                     Present { value: back } =>
                       remote_file_converged_from_report(
+                        target: target,
                         write: write,
                         report: classify_typed_remote_file_comparison(
                           write: write,

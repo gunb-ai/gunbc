@@ -241,11 +241,14 @@ test fn the_difference_and_the_error_do_not_render_the_same_reason() -> Bool {
 // exec, so a witness can drive stage -> chmod -> rename -> far-side cmp and RECEIVE the carrier
 // instead of minting one. The mint's admit_callers is back to exactly one production caller.
 //
-// It also reads the SUBJECT back out of the receipt, so it is the executed evidence for the field
-// that replaced content_digest: a receipt naming a path or content other than the one requested fails
-// here. Mode is deliberately NOT asserted -- the carrier no longer claims it, because nothing reads
-// the destination's mode back.
-test fn the_converge_route_yields_a_receipt_naming_the_exact_write() -> Bool {
+// It also reads the SUBJECT back out of the receipt, so it is the executed evidence for the fields
+// that replaced content_digest: a receipt naming a path, content, ENDPOINT or PRINCIPAL other than
+// the one requested fails here. The target half matters for the same reason the content half does --
+// the four legs run against a host and a principal, so a receipt omitting them cannot say WHERE the
+// bytes landed, and two executions against different hosts were previously indistinguishable. Mode is
+// deliberately NOT asserted: the carrier no longer claims it, because nothing reads the destination's
+// mode back.
+test fn the_converge_route_yields_a_receipt_naming_the_exact_write_and_target() -> Bool {
   match subject_write() {
     Present { value: w } =>
       match fleet_ssh_execution_context_hermetic_witness_fixture() {
@@ -259,6 +262,8 @@ test fn the_converge_route_yields_a_receipt_naming_the_exact_write() -> Bool {
             TypedRemoteFileConverged { converged: c } =>
               ((c.write.path as String) == (subject_path as String))
                 && (c.write.content == subject_content)
+                && ((c.target.endpoint as String) == (witness_converge_ssh_target.endpoint as String))
+                && ((c.target.principal as String) == (witness_converge_ssh_target.principal as String))
             TypedRemoteFileConvergenceRefused { step: _, reason: _ } => false
           }
         Absent => false
