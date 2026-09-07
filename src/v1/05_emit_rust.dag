@@ -5209,13 +5209,13 @@ fn module_projection_refusals(items: List<Node>, module_name: String, source_ind
   items |> flat_map(item => collect_unprojectable_construct_refusals(n: item, module_name: module_name, source_indices: source_indices))
 }
 
+// Skip the condition child of ExprIf: collect_filter_in_guard_refusals already walked that
+// tree. Recursing into it would mint a second diagnostic for a nested if in the same guard.
 fn collect_unprojectable_construct_refusals(n: Node, module_name: String, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
   let here = match n.expr_data {
     ExprIf => collect_filter_in_guard_refusals(n: if_condition(texpr: n), module_name: module_name, source_indices: source_indices)
     _ => []
   }
-  // Skip the condition child of ExprIf: collect_filter_in_guard_refusals already walked that
-  // tree. Recursing into it would mint a second diagnostic for a nested if in the same guard.
   let from_children = match n.expr_data {
     ExprIf => concat(
       collect_unprojectable_construct_refusals(n: if_then_branch(texpr: n), module_name: module_name, source_indices: source_indices),
