@@ -148,14 +148,19 @@ type SandboxOffer {
   standing: NonEmptyStr
 }
 
-// THE MT. COLLINS OFFER, AT WHAT IT HAS ACTUALLY EARNED. Everything here is backed by a receipt in
-// this lane except default-deny egress, which is not merely unproven but observed ABSENT: the only
-// run that gave a guest any egress path did so with a bridge onto the physical segment.
+// THE MT. COLLINS OFFER, AT WHAT IT HAS ACTUALLY EARNED. Every guarantee listed as evidenced names
+// a receipt in this lane; the one listed as withheld does not, and that asymmetry is the file's
+// entire job.
 //
-// WITHHOLDING IT MAKES THE MODEL REFUSE ALL UNTRUSTED WORK TODAY, and that is the correct answer
-// rather than an inconvenience. The mechanism that would make such work safe is the slice being
-// built; admitting the work before it exists is precisely the ordering this module was written to
-// prevent.
+// DEFAULT-DENY EGRESS WAS WITHHELD AND HAS NOW BEEN EARNED, which is what this shape is FOR. It was
+// withheld while the only run that gave a guest any egress did so with a bridge onto the physical
+// segment -- not merely unproven but observed absent -- and it moved only when a run produced four
+// denials and two grants each carrying both the guest's outcome and its own rule counter. That is
+// the whole discipline: the list changes when a receipt changes it, and never in the other order.
+//
+// THE WITHHOLDING DID ITS WORK IN THE MEANTIME. While the guarantee was absent this offer refused
+// every untrusted class, and that refusal was correct rather than inconvenient -- the alternative
+// was admitting untrusted work onto a host whose guest could reach the BMC that controls it.
 data mtcollins_dedicated_kernel_offer: SandboxOffer = SandboxOffer {
   provider_class: DedicatedKernelSandboxProvider,
   evidenced: [
@@ -164,9 +169,10 @@ data mtcollins_dedicated_kernel_offer: SandboxOffer = SandboxOffer {
     PrivateUserNamespace,
     AttemptScopedSecrets,
     DedicatedKernel,
+    DefaultDenyEgress,
   ],
-  withheld: [PrivateNetworkNamespace, DefaultDenyEgress],
-  standing: "the guest shares the host network namespace (--netns was never passed) and its only observed egress path was a bridge onto the physical segment; both are withheld until a filtered-egress receipt exists",
+  withheld: [PrivateNetworkNamespace],
+  standing: "DefaultDenyEgress moved from withheld to evidenced on build filtered-egress-4: gunbc.runner.runner_filtered_egress_receipt records four denials and two grants each proven by BOTH the guest's outcome and its own rule counter, with the default-drop never firing. PrivateNetworkNamespace stays withheld and is a different fact -- the VMM still shares the host network namespace, which no amount of forward filtering supplies",
 }
 
 fn offer_profile(o: SandboxOffer) -> IsolationProfile {

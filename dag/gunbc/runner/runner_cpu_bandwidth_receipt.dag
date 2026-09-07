@@ -1,0 +1,52 @@
+module gunbc.runner.runner_cpu_bandwidth_receipt
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+
+// cpu.max NOW EXISTS ON THE ATTEMPT CGROUP, and that is a smaller claim than it sounds.
+// It gets its own module rather than a paragraph in the egress receipt because it rode the SAME
+// kernel rebuild: one build served two purposes, and a reader who found this fact inside a
+// filtered-egress receipt would reasonably conclude the egress run had established it. It did not.
+
+data receipt_subject_build: NonEmptyStr = "filtered-egress-4"
+
+// ── the failure this closes ────────────────────────────────────────────────────────────────────
+
+// THE WRITE PREVIOUSLY FAILED WITH EPERM AND THE FIRST TWO READINGS OF THAT WERE BOTH WRONG.
+// gunbc.runner.runner_guest_egress_attempt records the sequence: an empty read, then a narrowing to
+// an errno at a path, and only then the cause -- read out of the built kernel config rather than
+// guessed from the errno.
+//
+// # CONFIG_CFS_BANDWIDTH is not set
+//
+// CFS bandwidth provisioning is what creates cpu.max on a non-root cgroup and it defaults off, so
+// the file did not exist, the shell redirect was attempting to CREATE an arbitrary file inside
+// cgroupfs, and the kernel answered EPERM. The cpu controller appearing in cgroup.controllers was
+// consistent throughout and misleading throughout: WEIGHT control is not BANDWIDTH control.
+data cause_established: NonEmptyStr = "CONFIG_CFS_BANDWIDTH was unset, so cpu.max did not exist and cgroupfs refused its creation; the cpu controller being delegated established weight control only"
+
+// ── what the run shows ─────────────────────────────────────────────────────────────────────────
+
+type CpuBoundStanding
+  = CpuBoundInterfacePresent { value: NonEmptyStr, what_this_does_not_show: NonEmptyStr }
+  | CpuBoundEnforcementObserved { evidence: NonEmptyStr }
+  | CpuBoundAbsent { errno: NonEmptyStr }
+
+// A FILE THAT ACCEPTS A WRITE AND READS THE VALUE BACK IS AN INTERFACE, NOT A BOUND. Every previous
+// receipt in this lane that stopped at a successful read was later found to have proven less than
+// it claimed, and the cgroup-placement bug was exactly that shape: the forward read agreed with the
+// intent while the reverse read named init sitting in the leaf.
+data cpu_bound_standing: CpuBoundStanding = CpuBoundInterfacePresent {
+  value: "200000 100000 -- two CPUs' worth of runtime per 100ms period, read back from the attempt leaf",
+  what_this_does_not_show: "that a process exceeding it is actually throttled. No load was applied, so cpu.stat's throttled_usec and nr_throttled were never going to move, and nothing here distinguishes an enforced bound from a stored number",
+}
+
+// THE NEXT RUNG IS ONE CONTROLLED LOAD, and it is named so this does not sit at the interface tier
+// by default. A guest spinning more CPU than its quota, with cpu.stat's throttling counters read
+// before and after, is the whole of what is missing -- the same instrument the egress path already
+// uses, where a rule's counter rather than a client's disappointment is what carries the verdict.
+data next_rung_trigger: NonEmptyStr = "a guest running a controlled CPU load above quota, with nr_throttled and throttled_usec advancing in the attempt leaf's cpu.stat"
+
+// AND THE MEMORY BOUND IS IN THE SAME STATE, which is worth saying beside this rather than leaving
+// implicit. memory.max reads 1073741824 and memory.current was observed at 88 MiB on an earlier
+// run: the limit is set, the accounting is live, and no run has yet driven a guest into it.
+data memory_bound_standing: NonEmptyStr = "memory.max is set and memory.current tracks real usage, but no run has driven an attempt to the limit, so reclaim and kill behaviour at the boundary are unobserved"
