@@ -152,8 +152,8 @@ test fn a_synthetic_conformance_domain_produces_exactly_one_design_block() -> Bo
   let md = serialize_markdown_source(doc: doc)
   string_contains(s: md, pattern: "**synthetic test domain**")
     && string_contains(s: md, pattern: "this domain exists only to prove")
-    && string_contains(s: md, pattern: "`test.synthetic SyntheticHome`")
-    && string_contains(s: md, pattern: "`test.synthetic SecondHome`")
+    && string_contains(s: md, pattern: "`test.synthetic::SyntheticHome`")
+    && string_contains(s: md, pattern: "`test.synthetic::SecondHome`")
 }
 
 // THE PRODUCTION DOMAINS ARE ALSO PROJECTED, SO ADDING A DOMAIN CREATES BOTH A DESIGN BLOCK AND A
@@ -216,7 +216,7 @@ test fn conformance_label_and_narrative_do_not_affect_plan_revision() -> Bool {
       let id = review_criterion_identity_text(c: c)
       string_contains(s: id, pattern: "conformance-extdeps")
         && string_contains(s: id, pattern: "conformance-three-valued")
-        && string_contains(s: id, pattern: "extdeps.external_authority ExternalModelScope")
+        && string_contains(s: id, pattern: "extdeps.external_authority::ExternalModelScope")
     }
     Absent => false
   }
