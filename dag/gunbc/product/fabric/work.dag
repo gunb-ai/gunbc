@@ -126,7 +126,7 @@ type ResolvedOutputObligations sole_constructor {
 // roster. Extend the coproduct when a new readable refusal exists — never invent an
 // Unreadable by hand outside this module's resolve.
 type OutputObligationsUnreadableCause
-  = WorkKeyDoesNotMatchContract
+  = WorkKeyDoesNotMatchContract {}
 
 type OutputObligationsResolution
   = OutputObligationsResolved { value: ResolvedOutputObligations }
@@ -340,7 +340,7 @@ fn resolve_output_obligations(
   if work_key != expected {
     OutputObligationsUnreadable {
       contract: contract.output_contract,
-      cause: WorkKeyDoesNotMatchContract,
+      cause: WorkKeyDoesNotMatchContract {},
     }
   } else {
     OutputObligationsResolved {
