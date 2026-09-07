@@ -85,9 +85,11 @@ type MultiModuleCompileFixture {
 
 // THE STRUCTURED PROJECTION WITNESSES ASSERT OVER. Per emitted Rust function: source identity
 // (owning module + declaration name) and the PARAMETER NAME LIST the Rust emitter binds —
-// authored params, then resource-use names, then service-var names, intended to match
-// emit_func_params. The type name says Rust because compile_fixture is Rust-target only; a
-// target-agnostic name over that reader would be the DESIGN section 3 meaning fork.
+// authored params, then resource-use names, then service-var names, each name spelling the
+// same transform emit_func_params applies (emit_ident for authored and resource arms;
+// service_var_name for services), intended to match emit_func_params. The type name says Rust
+// because compile_fixture is Rust-target only; a target-agnostic name over that reader would be
+// the DESIGN section 3 meaning fork.
 //
 // NAMES ONLY — PERMANENT CEILING, NO NEXT-RUNG TRIGGER. Parameter TYPES and return types are
 // absent on purpose: asserting over emitted type spellings turns a control into a change detector

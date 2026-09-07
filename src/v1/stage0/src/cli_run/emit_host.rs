@@ -314,10 +314,11 @@ pub fn compile_dag_multi_module_fixture(
             Some(g) => g.modules.len() as i64,
             None => 0,
         };
-        // Project BEFORE emit consumes the resolved graph: the ordered parameter list is exactly
-        // the emit-binding (authored + resource uses + service vars) that the Rust emitter writes
-        // into each function signature. Keyed by source identity so a witness never encodes
-        // module_to_filename mangling.
+        // Project BEFORE emit consumes the resolved graph. Name list = emit_func_params' per-arm
+        // transforms (emit_ident on authored + resource names, service_var_name on services) in
+        // that arm order. Keyed by source identity so a witness never encodes module_to_filename
+        // mangling. Order of the three arms remains a declared below-ceiling convention until
+        // derived from the same source emit_func_params reads.
         let emitted_rust_functions = project_emitted_rust_fn_signatures(resolved.as_ref());
         let result = v1_compiler_compile::emit_resolved_for_target(
             resolved,
@@ -355,18 +356,24 @@ pub fn compile_dag_multi_module_fixture(
 }
 
 /// Emit-binding projection for the Rust target: one row per `FnItem` / `FuncItem` in the resolved
-/// registry. `ordered_parameter_names` walks ItemInfo as authored params → resource-use names →
-/// `service_var_name` per service — the same concatenation order `emit_func_params` uses today.
-/// Not a text parse of emitted bytes.
+/// registry. `ordered_parameter_names` applies the same name transforms `emit_func_params` uses for
+/// each arm — `emit_ident(..., Rust)` on authored params and resource-use names, then
+/// `service_var_name` per service — and concatenates them in that order. Not a text parse of
+/// emitted bytes.
 ///
-/// Below ceiling: nothing joins this walk to `emit_func_params`. If the emitter reorders while
-/// ItemInfo stays shaped the same way, this projection keeps reporting the old convention and no
-/// arm refuses. Next-rung trigger: derive the name list from the same source `emit_func_params`
-/// reads. Why unbuilt: that shared source lives in the emit_rust seed (regeneration + #10688
-/// surface). Membership is the durable consumer surface until the trigger holds.
+/// Below ceiling on ORDER only: nothing joins this walk to `emit_func_params`' three-way concat.
+/// If the emitter reorders while ItemInfo stays shaped the same way, this projection keeps
+/// reporting the old convention and no arm refuses. Next-rung trigger: derive the name list from
+/// the same source `emit_func_params` reads. Why unbuilt: that shared source lives in the
+/// emit_rust seed (regeneration + #10688 surface). Membership is the durable consumer surface
+/// until the trigger holds. Name SPELLING fidelity (`emit_ident` / `service_var_name`) is not
+/// part of that stall — it is required now so a membership assert cannot silently miss a
+/// reserved-word or camelCase param the emitter actually bound.
 fn project_emitted_rust_fn_signatures(
     resolved: &v1_compiler_compile::ResolvedPipelineResult,
 ) -> Vec<crate::cli_run::EmittedRustFnSignature> {
+    use crate::v1_compiler_artifact::RenderTarget;
+    use crate::v1_compiler_emit::emit_ident;
     use crate::v1_compiler_infer_items::ItemKind;
     use crate::v1_std_core::param_node_name_at;
     let Some(graph) = resolved.graph.as_ref() else {
@@ -379,10 +386,13 @@ fn project_emitted_rust_fn_signatures(
             ItemKind::FnItem | ItemKind::FuncItem => {
                 let mut ordered: Vec<String> = Vec::new();
                 for p in info.params.iter() {
-                    ordered.push(param_node_name_at(p.clone(), source_indices.clone()));
+                    ordered.push(emit_ident(
+                        param_node_name_at(p.clone(), source_indices.clone()),
+                        RenderTarget::Rust,
+                    ));
                 }
                 for r in info.resource_names.iter() {
-                    ordered.push(r.clone());
+                    ordered.push(emit_ident(r.clone(), RenderTarget::Rust));
                 }
                 for sn in info.service_names.iter() {
                     ordered.push(crate::v1_compiler_emit_core_support::service_var_name(
