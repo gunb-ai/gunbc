@@ -4,7 +4,7 @@ import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
 import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
 
 data emission_append_operation_contract_stall: GuaranteeStall = GuaranteeStall {
-  subject: "contribution algebras cannot materialize descendant results at each composition because the fold supplies only local append operations, rather than materialized child results; arbitrary callback cost is outside this bounded subject",
+  subject: "the SHIPPED emission_contribution_fold (recursive walk, algebra of builders, one materialize at the public boundary) is the terminal shape for the executing consumer v2.compiler.emit_module emit_module_contribution; it is not a stand-in for a different contract. A stronger fold that composes generic EmissionAppendOperation values and supplies no materialized children was attempted on session/warm-ant-80-operation-preservation c86bba3fe3 and refused to typecheck (append on Coproduct(FreeMonoid)). That shape is unbuilt language capability, not a replacement this module owes and did not ship. Arbitrary callback cost is outside this bounded subject.",
   current: Mitigatable,
   ceiling: StructurallyImpossible,
   blocker: AwaitsOneGrounding {

@@ -1,16 +1,17 @@
 module test.manual.emission_provenance_specimen_red
 
-// DISCRIMINATING RED: `emission_combined_read_preserves_content_order_and_origin_multiplicity`
-// is an unmarked `fn`, not a `test` decl. The required floor folds every prepared `.dag`
-// source, including `dag/test/manual`, through floor_discovery_fold_source, so a `test`
-// marker here is FloorDiscoveryRefused (TestMarkedDecl). The compiler defect at
-// gunbc.recurring_failure_mode.match_bound_element_type_mask makes the
-// element type arrive as Empty when a FreeMonoid<DeclarationRef> bound
-// by a match-arm pattern is consumed inside a lambda, so this body does not
-// compile and cannot be an enrolled floor row until gunbc#10625 lands.
-//
-// When that repair lands, mark this function `test` and move the file into
-// dag/test/claim as an executing required-floor witness.
+// READING (review 62166 finding 3 — pick one, both were blocking if left unstated):
+// the floor DOES fold this file. `run_required_floor` consults
+// `floor_prepared_subject_exclusions` (named paths, not the `test/manual/` directory).
+// A `test` marker here was FloorDiscoveryRefused (TestMarkedDecl) — that is why this
+// file is an unmarked `fn`. That spelling is not an escape hatch around a compile red
+// on the claim path: discovery classifies decls; unmarked fns are not enrolled claims
+// and are not the floor's executing population. Empirically, after the marker was
+// removed the floor red was `test.claim.emission_provenance_test`, not this body.
+// `witness_discovery_scan_dirs` / `WitnessExclusionRow { pattern: "test/manual/" }`
+// do not govern the floor; they are a different instrument. This body remains a
+// compile-RED specimen for gunbc.recurring_failure_mode.match_bound_element_type_mask
+// until gunbc#10625; then mark `test` and move into dag/test/claim.
 
 import std.content_hash { as_content_hash_structural, content_hash_atom }
 import std.decl_ref { decl_ref, declaration_ref_eq, declaration_ref_display_key }
