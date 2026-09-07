@@ -7,15 +7,8 @@ module v1.tests.claim.emission_provenance_extent_test
 // not discharge the missing executing CI consumer. The next-rung capability is the shared
 // prepared subject spanning those roots named by that authority.
 //
-// THE EMITTER CONSUMER GAP (review 61642, finding 1): std.emission_provenance defines
-// EmissionContribution and its fold, but no real emitter constructs these values from real
-// output text. The four contribution arms are exercised only through hand-built test
-// fixtures (emission_provenance_test.dag). The consumer capability required is an emitter
-// path (src/v1 compiler emit, or the operation-callback layer named by the stall row)
-// that constructs EmissionAuthoredFragment / EmissionSourceComposition / etc. from real
-// contributed text and metadata. Until that consumer exists, the module is substrate
-// without a final consumer. This PR ships the substrate; landing the consumer is deferred
-// to the emitter lane that this module was authored to serve.
+// The subscriber module's consumer gap is tracked at
+// gunbc.guarantee_stall.emission_provenance_missing_consumer.
 
 import std.types { String, NonEmptyStr }
 import std.content_hash { ContentHash, ContentHashEqual, ContentHashDifferent, content_hash_of_value, compare_content_hash }

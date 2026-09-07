@@ -13,6 +13,7 @@ import std.types { List, Bool }
 import v2.std.algebra { fold_list }
 import gunbc.guarantee_stall { GuaranteeStall }
 import gunbc.guarantee_stall.emission_append_operation_contract_stall { emission_append_operation_contract_stall }
+import gunbc.guarantee_stall.emission_provenance_missing_consumer { emission_provenance_missing_consumer }
 import gunbc.guarantee_stall.pre_resolve_entry_closure_module_identity_stall { pre_resolve_entry_closure_module_identity_stall }
 import gunbc.guarantee_stall.merge_admission_terminal_verdict_stall { merge_admission_terminal_verdict_stall }
 import gunbc.guarantee_stall.generated_artifact_registry_membership_stall { generated_artifact_registry_membership_stall }
@@ -213,6 +214,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   testgen_anchor_generator_totality_stall,
   synthesis_established_bound_patch_stall,
   fn_index_depth_agreement_floor_enrollment_stall,
+  emission_provenance_missing_consumer,
 ]
 
 // THE FOUR SUBJECTS RESTORED TO THE ROSTER, PINNED BY IDENTITY SO THEIR LOSS REFUSES.
