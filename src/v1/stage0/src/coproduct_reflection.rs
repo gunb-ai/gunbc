@@ -399,7 +399,24 @@ thread_local! {
     > = RefCell::new(None);
 }
 
-pub fn register_floor_decl_parse_memo() {
+/// Open the declaration-census memo for one prepared subject, and close it with
+/// `clear_decl_census_memo`.
+///
+/// THE NAME LOST ITS `floor_` PREFIX WHEN IT ACQUIRED A SECOND REGISTRANT, and the rename is the
+/// point rather than tidying: the memo is not a floor mechanism, it is the census provider whose
+/// retention has to span the demands that share it (DESIGN §2 — one computation identity joined to
+/// a provider whose scope reaches the demands' least common ancestor). The floor was simply the
+/// first caller that had a bounded subject to hang it on. Keeping `floor_` in the name while
+/// `claim_batch` registered it too would be a §3 nickname: one concept answering to a name that
+/// says it belongs to one of its callers.
+///
+/// WHY A SECOND REGISTRANT EXISTS AT ALL. Keyed reads (`decl_facts_at`) ask about one qualified
+/// name, so a fold over N citations makes N demands of one census. Under a registration those are
+/// one walk and N lookups; with the cell closed, `decl_facts_for_roots_shared` returns early and
+/// each demand walks the corpus again — the keyed read would then be strictly worse than the
+/// population read it replaces, which hoisted its one walk into a `data` row by hand. The provider
+/// has to reach the ancestor or the keyed read is not a repair.
+pub fn register_decl_census_memo() {
     FLOOR_DECL_PARSE_MEMO.with(|cell| {
         *cell.borrow_mut() = Some(StdDeclParseMemoMap::new());
     });
@@ -408,7 +425,7 @@ pub fn register_floor_decl_parse_memo() {
     });
 }
 
-pub fn clear_floor_decl_parse_memo() {
+pub fn clear_decl_census_memo() {
     FLOOR_DECL_PARSE_MEMO.with(|cell| *cell.borrow_mut() = None);
     FLOOR_DECL_FACTS_MEMO.with(|cell| *cell.borrow_mut() = None);
 }
@@ -2363,15 +2380,15 @@ mod decl_facts_shared_memo_tests {
             names(&cold_duplicated),
             "the walk visits every supplied root, so [r, r] is a different population from [r]"
         );
-        clear_floor_decl_parse_memo();
+        clear_decl_census_memo();
         let unregistered = decl_facts_for_roots_shared(&roots);
         assert_eq!(names(&cold), names(&unregistered));
-        register_floor_decl_parse_memo();
+        register_decl_census_memo();
         let first = decl_facts_for_roots_shared(&roots);
         let second = decl_facts_for_roots_shared(&reordered);
         let shared_singleton = decl_facts_for_roots_shared(&singleton);
         let shared_duplicated = decl_facts_for_roots_shared(&duplicated);
-        clear_floor_decl_parse_memo();
+        clear_decl_census_memo();
         assert!(
             Rc::ptr_eq(&first, &second),
             "a reordering of the same root multiset must read the same walk"
