@@ -1,6 +1,10 @@
 module test.claim.live_deploy.deploy_release_fixture
 
-import std.types { CommitSha, String }
+import std.types { CommitSha, String, NonEmptyStr }
+import extdeps.crypto.hash { Digest, sha256_digest }
+import gunbc.live_deploy.spec { DeploymentSpec }
+import gunbc.live_deploy.member_identity { ReleaseEffectPlan, ReleaseTarget, full_install_plan }
+import gunbc.live_deploy.member_observe { deployment_member_roster }
 
 // ONE FIXTURE REVISION FOR EVERY DEPLOY WITNESS, DECLARED HERE AND NOWHERE ELSE. The launch
 // revision is now an input to the emitted unit, the readiness comparison, and the apply fold, so
@@ -19,6 +23,22 @@ import std.types { CommitSha, String }
 // deploy.
 
 data deploy_witness_release_revision: CommitSha = "0123456789abcdef0123456789abcdef01234567"
+
+// THE FULL-INSTALL PLAN THE EMIT WITNESSES HAND THE EMITTER, so the script they pin is the complete
+// installation of an empty host. A converged host derives a smaller plan; that is member_identity's
+// witness, not this fixture's.
+data deploy_witness_executable_digest: Digest = sha256_digest(hex: "5555555555555555555555555555555555555555555555555555555555555555" as NonEmptyStr)
+
+fn deploy_witness_release_target(spec: DeploymentSpec) -> ReleaseTarget {
+  ReleaseTarget { revision: deploy_witness_release_revision, executable: deploy_witness_executable_digest, unit: spec.service.unit_name }
+}
+
+fn deploy_witness_full_install_plan(spec: DeploymentSpec) -> ReleaseEffectPlan {
+  full_install_plan(
+    roster: deployment_member_roster(spec: spec),
+    target: deploy_witness_release_target(spec: spec),
+  )
+}
 
 data deploy_witness_other_release_revision: CommitSha = "89abcdef0123456789abcdef0123456789abcdef"
 
