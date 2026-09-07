@@ -241,101 +241,142 @@ data constructor_binding_channel_fixtures: List<FixtureModule> = [
     file_name: "user.dag",
     module_source: "module zqxbeta.user\n\ntype ZqxAnswer = ZqxYes | ZqxNo\n\nfn zqx_probe_pick() -> ZqxAnswer {\n    let probe = ZqxProbeRed\n    match probe {\n        ZqxProbeRed => ZqxYes\n        ZqxProbeBlue => ZqxNo\n    }\n}\n\nfn zqx_rival_pick() -> ZqxAnswer {\n    let rival = ZqxRivalGreen\n    match rival {\n        ZqxRivalGreen => ZqxYes\n        ZqxProbeRed => ZqxNo\n    }\n}\n",
   },
+]
+
+// THE case6-case10 FIXTURE MODULES ARE COMMITTED FILES, NOT STRINGS, AND THE DIFFERENCE IS THE
+// POINT (review 61858). A `module_source` blob is a SECOND REPRESENTATION of a fixture whose home
+// is `fixtures/` -- nothing compiles it, nothing can compile it, and it drifts from the thing it
+// transcribes with no mechanism that would notice. The roster above is the old form and is left
+// alone rather than churned: its five cases were measured on a different tree by a different
+// lane, and rewriting them here would restate a measurement this change did not take. It is the
+// form to migrate, not the form to extend.
+//
+// So these seventeen are real modules under `fixtures/constructor_binding_channel_indirect/`,
+// and this roster names them by PATH. Re-deriving case6 through case10 is now a command over
+// committed bytes rather than a transcription exercise:
+//
+//   gunbc compile --source-root fixtures/constructor_binding_channel_indirect \
+//                 --entry fixtures/constructor_binding_channel_indirect/uab/<entry>.dag
+//
+// WHAT THIS DOES AND DOES NOT BUY, said plainly so the row is not read as coverage: the fixture
+// is committed and compilable, and NOTHING RUNS IT. That is a strictly better state than a string
+// blob -- a reader can execute it, and it cannot silently disagree with itself -- but it is not
+// an executing consumer, and the rung below stays where it is until one exists.
+type FixtureModuleFile {
+  case_name: String
+  path: String
+  role: String
+}
+
+data constructor_binding_channel_indirect_fixture_files: List<FixtureModuleFile> = [
   {
     case_name: "case6, case7, case8, case9, case10",
-    file_name: "declaring.dag",
-    module_source: "module uab.declaring\n\ntype Shape\n  = Circ { r: Int }\n  | Sq { s: Int }\n\nfn pick(c: Bool) -> Shape {\n  if c { Circ { r: 1 } } else { Sq { s: 2 } }\n}\n",
+    path: "fixtures/constructor_binding_channel_indirect/uab/declaring.dag",
+    role: "THE SUBJECT. Declares both arms of its own coproduct and returns one per if-branch. Byte-identical across every case; that invariance is the instrument",
   },
   {
     case_name: "case6, case7, case8, case10",
-    file_name: "foreign_one.dag",
-    module_source: "module uab.foreign_one\n\ntype Sq { totally_different_field: Int }\n\nfn one_marker() -> Int { 1 }\n",
+    path: "fixtures/constructor_binding_channel_indirect/uab/foreign_one.dag",
+    role: "a foreign STANDALONE type spelled the same as the subject's arm, with a DIFFERENT field name so a wrong bind cannot typecheck by coincidence",
   },
   {
     case_name: "case7",
-    file_name: "foreign_two.dag",
-    module_source: "module uab.foreign_two\n\ntype Sq { yet_another_field: Int }\n\nfn two_marker() -> Int { 2 }\n",
+    path: "fixtures/constructor_binding_channel_indirect/uab/foreign_two.dag",
+    role: "the SECOND standalone competitor, and the only difference between case6 and case7",
   },
   {
     case_name: "case8",
-    file_name: "foreign_three.dag",
-    module_source: "module uab.foreign_three\n\ntype NotSq { unrelated: Int }\n\nfn three_marker() -> Int { 3 }\n",
+    path: "fixtures/constructor_binding_channel_indirect/uab/foreign_three.dag",
+    role: "a foreign module that does NOT compete for the spelling -- the control that holds closure size constant against case7",
   },
   {
     case_name: "case9, case10",
-    file_name: "cop_one.dag",
-    module_source: "module uab.cop_one\n\ntype Boxone\n  = Sq { f_one: Int }\n  | Otherone { z: Int }\n\nfn one_cop_marker() -> Int { 7 }\n",
+    path: "fixtures/constructor_binding_channel_indirect/uab/cop_one.dag",
+    role: "a foreign COPRODUCT owning an arm of the contested spelling, which is the population case9 shows does not perturb",
   },
   {
-    case_name: "case9 (the two-owner arm of it)",
-    file_name: "cop_two.dag",
-    module_source: "module uab.cop_two\n\ntype Boxtwo\n  = Sq { f_two: Int }\n  | Othertwo { z: Int }\n\nfn two_cop_marker() -> Int { 7 }\n",
+    case_name: "case9",
+    path: "fixtures/constructor_binding_channel_indirect/uab/cop_two.dag",
+    role: "a second such coproduct, for the two-arm-owner arm of case9",
   },
   {
-    case_name: "every case -- THE CARRIER IS WHAT MAKES THE REACH INDIRECT",
-    file_name: "carrier_one.dag",
-    module_source: "module uab.carrier_one\n\nimport uab.foreign_one { one_marker }\n\nfn carry_one() -> Int { one_marker() }\n",
+    case_name: "case6, case7, case8, case10",
+    path: "fixtures/constructor_binding_channel_indirect/uab/carrier_one.dag",
+    role: "THE CARRIER IS THE GEOMETRY. It imports the foreign owner so the entry reaches it INDIRECTLY, which is why no single file presents two owners to insert_variant_owner_checked and the per-file wall of case5 never applies",
   },
   {
     case_name: "case7",
-    file_name: "carrier_two.dag",
-    module_source: "module uab.carrier_two\n\nimport uab.foreign_two { two_marker }\n\nfn carry_two() -> Int { two_marker() }\n",
+    path: "fixtures/constructor_binding_channel_indirect/uab/carrier_two.dag",
+    role: "the same, for the second standalone competitor",
   },
   {
     case_name: "case8",
-    file_name: "carrier_three.dag",
-    module_source: "module uab.carrier_three\n\nimport uab.foreign_three { three_marker }\n\nfn carry_three() -> Int { three_marker() }\n",
+    path: "fixtures/constructor_binding_channel_indirect/uab/carrier_three.dag",
+    role: "the same, for the non-competing module",
   },
   {
     case_name: "case9, case10",
-    file_name: "ccar_one.dag",
-    module_source: "module uab.ccar_one\n\nimport uab.cop_one { one_cop_marker }\n\nfn ccarry_one() -> Int { one_cop_marker() }\n",
+    path: "fixtures/constructor_binding_channel_indirect/uab/ccar_one.dag",
+    role: "the same, for the foreign coproduct",
   },
   {
-    case_name: "case9 (the two-owner arm of it)",
-    file_name: "ccar_two.dag",
-    module_source: "module uab.ccar_two\n\nimport uab.cop_two { two_cop_marker }\n\nfn ccarry_two() -> Int { two_cop_marker() }\n",
+    case_name: "case9",
+    path: "fixtures/constructor_binding_channel_indirect/uab/ccar_two.dag",
+    role: "the same, for the second foreign coproduct",
   },
   {
-    case_name: "case6 -- THE ENTRY, and the entry is the whole variable",
-    file_name: "entry_a.dag",
-    module_source: "module uab.entry_a\n\nimport uab.declaring { Shape, pick }\nimport uab.carrier_one { carry_one }\n\nfn use_a(c: Bool) -> Shape { pick(c: c) }\nfn touch_a() -> Int { carry_one() }\n",
+    case_name: "case6",
+    path: "fixtures/constructor_binding_channel_indirect/uab/entry_a.dag",
+    role: "THE ENTRY IS THE VARIABLE. Subject plus one standalone competitor: REFUSES at the subject, which neither declares nor imports the competitor",
   },
   {
     case_name: "case7",
-    file_name: "entry_b.dag",
-    module_source: "module uab.entry_b\n\nimport uab.declaring { Shape, pick }\nimport uab.carrier_one { carry_one }\nimport uab.carrier_two { carry_two }\n\nfn use_b(c: Bool) -> Shape { pick(c: c) }\nfn touch_b() -> Int { carry_one() + carry_two() }\n",
+    path: "fixtures/constructor_binding_channel_indirect/uab/entry_b.dag",
+    role: "subject plus BOTH standalone competitors: CLEAN, and the bind is correct. The non-monotonicity",
   },
   {
     case_name: "case8",
-    file_name: "entry_d.dag",
-    module_source: "module uab.entry_d\n\nimport uab.declaring { Shape, pick }\nimport uab.carrier_one { carry_one }\nimport uab.carrier_three { carry_three }\n\nfn use_d(c: Bool) -> Shape { pick(c: c) }\nfn touch_d() -> Int { carry_one() + carry_three() }\n",
+    path: "fixtures/constructor_binding_channel_indirect/uab/entry_d.dag",
+    role: "subject, one competitor, one non-competitor: same closure size as case7 and still REFUSES, so the variable is competitor count on the spelling and not closure size",
   },
   {
-    case_name: "case9 (one foreign arm owner)",
-    file_name: "entry_e.dag",
-    module_source: "module uab.entry_e\n\nimport uab.declaring { Shape, pick }\nimport uab.ccar_one { ccarry_one }\n\nfn use_e(c: Bool) -> Shape { pick(c: c) }\nfn touch_e() -> Int { ccarry_one() }\n",
+    case_name: "case9",
+    path: "fixtures/constructor_binding_channel_indirect/uab/entry_e.dag",
+    role: "subject plus ONE foreign arm owner: CLEAN",
   },
   {
-    case_name: "case9 (two foreign arm owners)",
-    file_name: "entry_f.dag",
-    module_source: "module uab.entry_f\n\nimport uab.declaring { Shape, pick }\nimport uab.ccar_one { ccarry_one }\nimport uab.ccar_two { ccarry_two }\n\nfn use_f(c: Bool) -> Shape { pick(c: c) }\nfn touch_f() -> Int { ccarry_one() + ccarry_two() }\n",
+    case_name: "case9",
+    path: "fixtures/constructor_binding_channel_indirect/uab/entry_f.dag",
+    role: "subject plus TWO foreign arm owners: CLEAN. An arm is not a competitor",
   },
   {
     case_name: "case10",
-    file_name: "entry_g.dag",
-    module_source: "module uab.entry_g\n\nimport uab.declaring { Shape, pick }\nimport uab.carrier_one { carry_one }\nimport uab.ccar_one { ccarry_one }\n\nfn use_g(c: Bool) -> Shape { pick(c: c) }\nfn touch_g() -> Int { carry_one() + ccarry_one() }\n",
+    path: "fixtures/constructor_binding_channel_indirect/uab/entry_g.dag",
+    role: "one standalone competitor AND one arm competitor: REFUSES, so an arm does not even count toward the ambiguity that would have repaired case6",
   },
 ]
 
 // WHAT THIS CARRIER DOES NOT DO, stated so a reader does not take it for coverage. Nothing here
-// executes on any run: the subject is a MULTI-MODULE closure, and the one in-repo compile surface a
-// witness can reach (compile_dag_rust_emit_check) takes a single source string, which is the same
-// ceiling gunbc.ci_layer_roots records for the emitter's ambiguous-variant-owner witness. So the
-// rung this class sits at is MITIGATABLE -- the measurement above was taken once and is re-measured
-// by nothing -- and its next-rung trigger is a compile surface that admits a closure of several
-// named .dag sources as one subject, at which point case1 and case4 become an enrollable
-// discriminating pair and case5 a permanent regression control.
+// executes on any run: the subject is a MULTI-MODULE closure, and nothing in this repository
+// builds these cases into a witness. The rung this class sits at is MITIGATABLE -- both
+// measurements were taken once and are re-measured by nothing.
+//
+// THE TRIGGER THIS PARAGRAPH USED TO NAME WAS ALREADY SATISFIED WHEN IT WAS WRITTEN, and that is
+// worth more than the correction (review 61858). It said the trigger was "a compile surface that
+// admits a closure of several named .dag sources as one subject", on the strength of
+// compile_dag_rust_emit_check taking a single source string. But `tools.multi_module_compile_fixture`,
+// over the host `compile_dag_multi_module_fixture`, takes exactly that closure of several named
+// sources -- it is what gunbc#10740 consumes for the neighbouring class. A trigger naming a
+// capability that already exists CANNOT FIRE, so the class never ranks for climbing and the stall
+// is untracked while looking tracked, which is precisely what DESIGN 4b(2) forbids. The tell was
+// available here without leaving the file: a trigger written as a capability should be checkable
+// by one grep for that capability, and nobody ran it.
+//
+// THE REAL TRIGGER IS ENROLLMENT, not a missing surface: a `test.claim` module that builds the
+// seventeen committed fixture modules below into that fixture surface, asserts the case6-versus-case7
+// flip, and is admitted to `v2.workflow.required_floor` `required_gate_prefixes` -- the roster row
+// without which a witness module is discovered and never run. At that point case6 and case7 become
+// the enrollable discriminating pair and case8 the control that keeps it honest.
 // A CONTROL WHOSE SUBJECT CANNOT CONTAIN THE CHANGE IS NOT A CONTROL, and this is written down
 // because the next person will reach for the instrument it names as evidence, exactly as this lane
 // did. `claim_executor --required-regen` re-emits the v1 seed and compares bytes, and a
@@ -356,7 +397,7 @@ data regen_cannot_see_v2_corpus_emission_change: DeclarationRef = decl_ref(
   decl_name: "reference_derived_use_lines_note",
 )
 
-data constructor_binding_channel_evidence_standing: String = "TWO measurements, separately located because they were taken on different trees by different lanes and a single sentence covering both would misdate one of them. case1 through case5: once at 9917d4a9b3 on a BuildBuddy runner. case6 through case10: once at 413be13f38a in a session worktree, on a locally built gunbc, through `gunbc compile --source-root <dir> --entry <dir>/uab/<entry>.dag` over the seventeen fixture modules recorded below -- and case7 is the one that materially changed what this carrier claims, so it is the row a re-derivation should start from. NEITHER measurement is enrolled and NEITHER is re-measured. Rung: mitigatable. Next-rung trigger: a multi-source compile fixture surface, unchanged -- the new geometries do not climb the rung, they widen what the single measurement covers."
+data constructor_binding_channel_evidence_standing: String = "TWO measurements, separately located because they were taken on different trees by different lanes and a single sentence covering both would misdate one of them. case1 through case5: once at 9917d4a9b3 on a BuildBuddy runner. case6 through case10: once at 413be13f38a in a session worktree, on a locally built gunbc, through `gunbc compile --source-root <dir> --entry <dir>/uab/<entry>.dag` over the seventeen fixture modules recorded below -- and case7 is the one that materially changed what this carrier claims, so it is the row a re-derivation should start from. NEITHER measurement is enrolled and NEITHER is re-measured. Rung: mitigatable. NEXT-RUNG TRIGGER, CORRECTED (review 61858): it used to read `a multi-source compile fixture surface`, and that surface EXISTS -- `tools.multi_module_compile_fixture` over the host `compile_dag_multi_module_fixture`, which takes a caller-authored source vector as one subject and is what gunbc#10740 consumes for the neighbouring class. Naming an existing capability as the blocker is an untracked stall wearing a trigger's clothes (DESIGN 4b(2)): it can never fire, so the class can never rank for climbing. THE REAL TRIGGER IS ENROLLMENT: a `test.claim` module that builds these seventeen committed fixture modules into that fixture surface and asserts the case6-versus-case7 flip, admitted to `v2.workflow.required_floor` `required_gate_prefixes` -- which is the row without which the witness would never run. Until that exists the rung stays MITIGATABLE and the reason is unbuilt work, not an absent capability."
 
 // THE TWO REPAIRS THIS ESTABLISHES AND DELIBERATELY DOES NOT MAKE. Both sit in v1's infer stage,
 // which DESIGN names as load-bearing, and both are the namespace lane's to sequence: they change
