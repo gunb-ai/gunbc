@@ -3,7 +3,7 @@ module test.claim.emission_provenance_test
 import std.content_hash { as_content_hash_structural, content_hash_atom }
 import std.decl_ref { decl_ref, declaration_ref_eq }
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, String }
 import std.emission_provenance {
   EmissionDeclarationMember,
   EmissionDeclarationPreserved, EmissionDeclarationRemoved, EmissionDeclarationAdded,
@@ -127,6 +127,44 @@ test fn emission_nested_contributor_survives_flattening() -> Bool {
         && (origins |> any(origin => declaration_ref_eq(a: origin, b: leaf)))
     _ => false
   }
+}
+
+// Combined product read through emission_contribution_read. Assertions use count and
+// FreeSemigroup head access, not a lambda over a match-bound FreeMonoid — that is the
+// compile-time mask retained at test.manual.emission_provenance_specimen_red
+// emission_combined_read_preserves_content_order_and_origin_multiplicity.
+test fn emission_combined_read_matches_standalone_layers_on_all_three_arms() -> Bool {
+  let wrapper = decl_ref(module_path: "fixture.runtime", decl_name: "wrapper")
+  let leaf = decl_ref(module_path: "fixture.upstream", decl_name: "canonical_block")
+  let unknown = decl_ref(module_path: "fixture.runtime", decl_name: "untraced")
+  let contribution = EmissionSourceComposition {
+    origin: wrapper,
+    parts: [
+      EmissionAuthoredFragment { origin: leaf, source: "A" },
+      EmissionUnobservedFragment {
+        producer: unknown,
+        cause: "producer returned flattened text" as NonEmptyStr,
+        source: "B"
+      }
+    ]
+  }
+  let result = emission_contribution_read(contribution: contribution)
+  result.source == emission_contribution_source(contribution: contribution)
+    && result.source == "AB"
+    && match result.origins {
+      EmissionOriginsIncomplete { observed, missing } =>
+        (observed |> count == 2)
+          && declaration_ref_eq(a: missing.head.producer, b: unknown)
+          && missing.head.cause == ("producer returned flattened text" as NonEmptyStr)
+          && (missing.tail |> count == 0)
+          && match emission_contribution_origins(contribution: contribution) {
+            EmissionOriginsIncomplete { observed: origin_observed, missing: origin_missing } =>
+              (origin_observed |> count == 2)
+                && declaration_ref_eq(a: origin_missing.head.producer, b: unknown)
+            _ => false
+          }
+      _ => false
+    }
 }
 
 test fn emission_nested_unobserved_producer_remains_named() -> Bool {

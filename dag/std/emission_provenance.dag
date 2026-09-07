@@ -98,40 +98,62 @@ fn emission_compare_declaration_pair(
   }
 }
 
-fn emission_declaration_correspondence(
-  before: FreeMonoid<EmissionDeclarationMember>,
-  after: FreeMonoid<EmissionDeclarationMember>
-) -> FreeMonoid<EmissionDeclarationCorrespondence> {
-  let left = emission_members_by_address(members: before, address: fn(member) { member.address })
-  let right = emission_members_by_address(members: after, address: fn(member) { member.address })
+fn emission_correspondence<K, V, R>(
+  before: FreeMonoid<V>,
+  after: FreeMonoid<V>,
+  address: fn(V) -> K,
+  on_pair: fn(V, V) -> R,
+  on_removed: fn(V) -> R,
+  on_added: fn(V) -> R,
+  on_ambiguous: fn(K, FreeMonoid<V>, FreeMonoid<V>) -> R
+) -> FreeMonoid<R> {
+  let left = emission_members_by_address(members: before, address: address)
+  let right = emission_members_by_address(members: after, address: address)
   let left_rows = left |> map_values |> map(bucket => {
-    let address = bucket.head.address
+    let key = address(bucket.head)
     let previous = concat([bucket.head], bucket.tail)
-    let following = match map_get(right, address) {
+    let following = match map_get(right, key) {
       Present { value: values } => concat([values.head], values.tail)
       Absent => []
     }
     match previous {
       Cons { head: first, tail: Empty } =>
         match following {
-          Empty => EmissionDeclarationRemoved { before: first }
-          Cons { head: next, tail: Empty } => emission_compare_declaration_pair(before: first, after: next)
-          _ => EmissionDeclarationAddressAmbiguous { address: address, before: previous, after: following }
+          Empty => on_removed(first)
+          Cons { head: next, tail: Empty } => on_pair(first, next)
+          _ => on_ambiguous(key, previous, following)
         }
-      _ => EmissionDeclarationAddressAmbiguous { address: address, before: previous, after: following }
+      _ => on_ambiguous(key, previous, following)
     }
   })
   let right_rows = right |> map_values |> flat_map(bucket =>
-    match map_get(left, bucket.head.address) {
+    match map_get(left, address(bucket.head)) {
       Present { value: _ } => []
       Absent =>
         match bucket.tail {
-          Empty => [EmissionDeclarationAdded { after: bucket.head }]
-          _ => [EmissionDeclarationAddressAmbiguous { address: bucket.head.address, before: [], after: concat([bucket.head], bucket.tail) }]
+          Empty => [on_added(bucket.head)]
+          _ => [on_ambiguous(address(bucket.head), [], concat([bucket.head], bucket.tail))]
         }
     }
   )
   concat(left_rows, right_rows)
+}
+
+fn emission_declaration_correspondence(
+  before: FreeMonoid<EmissionDeclarationMember>,
+  after: FreeMonoid<EmissionDeclarationMember>
+) -> FreeMonoid<EmissionDeclarationCorrespondence> {
+  emission_correspondence(
+    before: before,
+    after: after,
+    address: fn(member) { member.address },
+    on_pair: fn(first, next) { emission_compare_declaration_pair(before: first, after: next) },
+    on_removed: fn(first) { EmissionDeclarationRemoved { before: first } },
+    on_added: fn(head) { EmissionDeclarationAdded { after: head } },
+    on_ambiguous: fn(key, previous, following) {
+      EmissionDeclarationAddressAmbiguous { address: key, before: previous, after: following }
+    }
+  )
 }
 
 type EmissionModuleCorrespondence
@@ -167,38 +189,17 @@ fn emission_module_correspondence(
   before: FreeMonoid<EmissionModuleMember>,
   after: FreeMonoid<EmissionModuleMember>
 ) -> FreeMonoid<EmissionModuleCorrespondence> {
-  let left = emission_members_by_address(members: before, address: fn(member) { member.module_name })
-  let right = emission_members_by_address(members: after, address: fn(member) { member.module_name })
-  let left_rows = left |> map_values |> map(bucket => {
-    let address = bucket.head.module_name
-    let previous = concat([bucket.head], bucket.tail)
-    let following = match map_get(right, address) {
-      Present { value: values } => concat([values.head], values.tail)
-      Absent => []
-    }
-    match previous {
-      Cons { head: first, tail: Empty } =>
-        match following {
-          Empty => EmissionModuleRemoved { before: first }
-          Cons { head: next, tail: Empty } => emission_compare_module_pair(before: first, after: next)
-          _ => EmissionModuleAddressAmbiguous { module_name: address, before: previous, after: following }
-        }
-      _ => EmissionModuleAddressAmbiguous { module_name: address, before: previous, after: following }
-    }
-  })
-  let right_rows = right |> map_values |> flat_map(bucket =>
-    match map_get(left, bucket.head.module_name) {
-      Present { value: _ } => []
-      Absent =>
-        match bucket.tail {
-          Empty => [EmissionModuleAdded { after: bucket.head }]
-          _ => [EmissionModuleAddressAmbiguous {
-            module_name: bucket.head.module_name, before: [], after: concat([bucket.head], bucket.tail)
-          }]
-        }
+  emission_correspondence(
+    before: before,
+    after: after,
+    address: fn(member) { member.module_name },
+    on_pair: fn(first, next) { emission_compare_module_pair(before: first, after: next) },
+    on_removed: fn(first) { EmissionModuleRemoved { before: first } },
+    on_added: fn(head) { EmissionModuleAdded { after: head } },
+    on_ambiguous: fn(key, previous, following) {
+      EmissionModuleAddressAmbiguous { module_name: key, before: previous, after: following }
     }
   )
-  concat(left_rows, right_rows)
 }
 
 fn emission_resolution_correspondence(
