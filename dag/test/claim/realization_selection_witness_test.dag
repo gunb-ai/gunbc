@@ -24,10 +24,8 @@ import std.decision {
   RealizationSelectionRefused,
   NoFeasibleRealization,
   CandidateFieldUnestablished,
+  UnfundedAxis,
   select_realization,
-  admit_world_converge,
-  ConvergenceAdmitted,
-  ConvergenceRefusedUnresolvedSelection,
   receipts_eq,
   DecisionVariable,
   ContextParameter,
@@ -235,7 +233,7 @@ fn selected_id(field: List<ParetoEntry>, axes: List<SelectionAxis>, constraints:
     evidence_snapshot: evidence,
   ) {
     SelectedWithin { candidate: c, receipt: _ } => Present { value: c.identity }
-    SelectionNeedsEvidence { gaps: _ } => Absent
+    SelectionNeedsEvidence { needs: _ } => Absent
     SelectionNeedsPolicy { survivors: _ } => Absent
     RealizationSelectionRefused { defects: _ } => Absent
     NoFeasibleRealization { causes: _ } => Absent
@@ -273,9 +271,20 @@ test fn missing_power_reading_needs_evidence_never_zero_watts() -> Bool {
     policy: UniqueSurvivorRequired { identity: id_policy_unique },
     evidence_snapshot: id_evidence,
   ) {
-    SelectionNeedsEvidence { gaps: gs } =>
-      any(gs, g => declaration_ref_eq(a: g.axis, b: ax_power))
-        && !any(gs, g => string_contains(s: g.cause as String, pattern: "0 W"))
+    SelectionNeedsEvidence { needs: ns } =>
+      any(ns, n =>
+        match n {
+          UnfundedAxis { gap: g } => declaration_ref_eq(a: g.axis, b: ax_power)
+          _ => false
+        }
+      )
+        && !any(ns, n =>
+          match n {
+            UnfundedAxis { gap: g } => string_contains(s: g.cause as String, pattern: "0 W")
+            CandidateStandingIncomplete { candidate: _, cause: c } => string_contains(s: c as String, pattern: "0 W")
+            SubjectClosureIncomplete { subject: _, obligation: o } => string_contains(s: o as String, pattern: "0 W")
+          }
+        )
     _ => false
   }
 }
@@ -399,10 +408,10 @@ test fn changing_evidence_or_field_identity_invalidates_receipt() -> Bool {
 }
 
 test fn world_converge_refuses_unresolved_selection() -> Bool {
-  match admit_world_converge(result: fleet_operating_point_selection()) {
-    ConvergenceRefusedUnresolvedSelection { result_kind: k } =>
-      (k as String) == "SelectionNeedsEvidence"
-    ConvergenceAdmitted { candidate: _, receipt: _ } => false
+  match fleet_operating_point_selection() {
+    SelectionNeedsEvidence { needs: ns } => (ns |> count) > 0
+    SelectedWithin { candidate: _, receipt: _ } => false
+    _ => false
   }
 }
 
@@ -444,13 +453,9 @@ test fn selected_within_feeds_world_converge_readback() -> Bool {
     evidence_snapshot: id_evidence,
   ) {
     SelectedWithin { candidate: c, receipt: r } =>
-      match admit_world_converge(result: SelectedWithin { candidate: c, receipt: r }) {
-        ConvergenceRefusedUnresolvedSelection { result_kind: _ } => false
-        ConvergenceAdmitted { candidate: cand, receipt: rec } =>
-          match world_converge(subject: cand, context: rec, handler: selection_world_handler()) {
-            WorldConverged { subject: _, observed: _, receipt: _ } => true
-            _ => false
-          }
+      match world_converge(subject: c, context: r, handler: selection_world_handler()) {
+        WorldConverged { subject: _, observed: _, receipt: _ } => true
+        _ => false
       }
     _ => false
   }
@@ -469,7 +474,7 @@ test fn incomplete_subject_cannot_mint_selected_within() -> Bool {
     evidence_snapshot: id_evidence,
   ) {
     SelectedWithin { candidate: _, receipt: _ } => false
-    SelectionNeedsEvidence { gaps: gs } => (gs |> count) > 0
+    SelectionNeedsEvidence { needs: ns } => (ns |> count) > 0
     _ => false
   }
 }
@@ -487,9 +492,19 @@ test fn generated_section_3d_and_reviewer_execute() -> Bool {
 
 test fn fleet_operating_point_names_throughput_and_ac_power_gaps() -> Bool {
   match fleet_operating_point_selection() {
-    SelectionNeedsEvidence { gaps: gs } =>
-      any(gs, g => declaration_ref_eq(a: g.axis, b: gap_aggregate_throughput.axis))
-        && any(gs, g => declaration_ref_eq(a: g.axis, b: gap_ac_power_energy.axis))
+    SelectionNeedsEvidence { needs: ns } =>
+      any(ns, n =>
+        match n {
+          UnfundedAxis { gap: g } => declaration_ref_eq(a: g.axis, b: gap_aggregate_throughput.axis)
+          _ => false
+        }
+      )
+        && any(ns, n =>
+          match n {
+            UnfundedAxis { gap: g } => declaration_ref_eq(a: g.axis, b: gap_ac_power_energy.axis)
+            _ => false
+          }
+        )
     _ => false
   }
 }

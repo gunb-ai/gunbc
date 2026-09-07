@@ -720,12 +720,6 @@ fn variable_irrelevance_is_derived(
   }
 }
 
-// ONE explicitly chosen measure identity, referenced rather than restated: a dual-role quantity
-// (power cap vs wall power) is one functional named twice, not two invented measures.
-type MeasuredFunctional {
-  identity: DeclarationRef
-}
-
 type CandidateFieldStanding
   = CandidateFieldEstablished { identities: List<DeclarationRef> }
   | CandidateFieldUnestablishedStanding { causes: List<NonEmptyStr> }
@@ -752,13 +746,24 @@ type SelectionReceipt {
   selected_identity: DeclarationRef
 }
 
+// AxisGap.axis is an axis identity (std.pareto). Candidate standing and subject-closure
+// obligations are different scopes; stuffing those identities into AxisGap.axis is a meaning fork.
+type SelectionEvidenceNeed
+  = UnfundedAxis { gap: AxisGap }
+  | CandidateStandingIncomplete { candidate: DeclarationRef, cause: NonEmptyStr }
+  | SubjectClosureIncomplete { subject: DeclarationRef, obligation: NonEmptyStr }
+
 type RealizationSelectionResult<C>
   = SelectedWithin { candidate: C, receipt: SelectionReceipt }
   | CandidateFieldUnestablished { causes: List<NonEmptyStr> }
   | NoFeasibleRealization { causes: List<NonEmptyStr> }
-  | SelectionNeedsEvidence { gaps: List<AxisGap> }
+  | SelectionNeedsEvidence { needs: List<SelectionEvidenceNeed> }
   | SelectionNeedsPolicy { survivors: List<DeclarationRef> }
   | RealizationSelectionRefused { defects: List<NonEmptyStr> }
+
+fn as_unfunded_axis_needs(gaps: List<AxisGap>) -> List<SelectionEvidenceNeed> {
+  map(gaps, g => UnfundedAxis { gap: g })
+}
 
 fn candidate_identities(field: List<ParetoEntry>) -> List<DeclarationRef> {
   map(field, e => e.identity)
@@ -917,7 +922,7 @@ fn pareto_survivor_identities(field: List<ParetoEntry>, axes: List<SelectionAxis
   fold(field, init: SelectionNeedsPolicy { survivors: [] }, f: (acc, entry) =>
     match acc {
       RealizationSelectionRefused { defects: ds } => RealizationSelectionRefused { defects: ds }
-      SelectionNeedsEvidence { gaps: gs } => SelectionNeedsEvidence { gaps: gs }
+      SelectionNeedsEvidence { needs: ns } => SelectionNeedsEvidence { needs: ns }
       CandidateFieldUnestablished { causes: cs } => CandidateFieldUnestablished { causes: cs }
       NoFeasibleRealization { causes: cs } => NoFeasibleRealization { causes: cs }
       SelectedWithin { candidate: c, receipt: r } => SelectedWithin { candidate: c, receipt: r }
@@ -927,9 +932,13 @@ fn pareto_survivor_identities(field: List<ParetoEntry>, axes: List<SelectionAxis
             SelectionNeedsPolicy { survivors: concat(sv, [entry.identity]) }
           DominatedBy { dominators: _ } => SelectionNeedsPolicy { survivors: sv }
           NotComputable { missing: m } =>
-            SelectionNeedsEvidence { gaps: [AxisGap { axis: entry.identity, cause: m }] }
+            SelectionNeedsEvidence {
+              needs: [CandidateStandingIncomplete { candidate: entry.identity, cause: m }],
+            }
           PendingEvidence { undecided: u } =>
-            SelectionNeedsEvidence { gaps: [AxisGap { axis: entry.identity, cause: u }] }
+            SelectionNeedsEvidence {
+              needs: [CandidateStandingIncomplete { candidate: entry.identity, cause: u }],
+            }
           SelectionRefused { cause: c } =>
             RealizationSelectionRefused { defects: [c] }
         }
@@ -1053,7 +1062,10 @@ fn bind_selected_within_to_subject_closure(
         DecisionClosureSettledReady => SelectedWithin { candidate: c, receipt: r }
         DecisionClosureDeferred { obligations: o, reopen_trigger: _ } =>
           SelectionNeedsEvidence {
-            gaps: map(o, ob => AxisGap { axis: assessment.subject.identity, cause: ob }),
+            needs: map(o, ob => SubjectClosureIncomplete {
+              subject: assessment.subject.identity,
+              obligation: ob,
+            }),
           }
         DecisionClosureRefused { cause: _ } =>
           RealizationSelectionRefused {
@@ -1062,7 +1074,7 @@ fn bind_selected_within_to_subject_closure(
       }
     CandidateFieldUnestablished { causes: cs } => CandidateFieldUnestablished { causes: cs }
     NoFeasibleRealization { causes: cs } => NoFeasibleRealization { causes: cs }
-    SelectionNeedsEvidence { gaps: gs } => SelectionNeedsEvidence { gaps: gs }
+    SelectionNeedsEvidence { needs: ns } => SelectionNeedsEvidence { needs: ns }
     SelectionNeedsPolicy { survivors: sv } => SelectionNeedsPolicy { survivors: sv }
     RealizationSelectionRefused { defects: ds } => RealizationSelectionRefused { defects: ds }
   }
@@ -1083,14 +1095,15 @@ fn select_realization(
     CandidateFieldUnestablishedStanding { causes: cs } => CandidateFieldUnestablished { causes: cs }
     CandidateFieldEstablished { identities: _ } =>
       match scan_feasibility(field: field, axes: axes, constraints: constraints) {
-        FeasibilityNeedsEvidence { gaps: gs } => SelectionNeedsEvidence { gaps: gs }
+        FeasibilityNeedsEvidence { gaps: gs } =>
+          SelectionNeedsEvidence { needs: as_unfunded_axis_needs(gaps: gs) }
         FeasibilityRefused { defects: ds } => RealizationSelectionRefused { defects: ds }
         FeasibilityReady { remaining: rem } =>
           if (rem |> count) == 0 {
             NoFeasibleRealization { causes: ["every candidate violates a hard constraint" as NonEmptyStr] }
           } else {
             match pareto_survivor_identities(field: rem, axes: axes) {
-              SelectionNeedsEvidence { gaps: gs } => SelectionNeedsEvidence { gaps: gs }
+              SelectionNeedsEvidence { needs: ns } => SelectionNeedsEvidence { needs: ns }
               RealizationSelectionRefused { defects: ds } => RealizationSelectionRefused { defects: ds }
               CandidateFieldUnestablished { causes: cs } => CandidateFieldUnestablished { causes: cs }
               NoFeasibleRealization { causes: cs } => NoFeasibleRealization { causes: cs }
@@ -1114,22 +1127,3 @@ fn select_realization(
   bind_selected_within_to_subject_closure(assessment: assessment, pick: pick)
 }
 
-type ConvergenceAdmission
-  = ConvergenceAdmitted { candidate: ParetoEntry, receipt: SelectionReceipt }
-  | ConvergenceRefusedUnresolvedSelection { result_kind: NonEmptyStr }
-
-fn admit_world_converge(result: RealizationSelectionResult<ParetoEntry>) -> ConvergenceAdmission {
-  match result {
-    SelectedWithin { candidate: c, receipt: r } => ConvergenceAdmitted { candidate: c, receipt: r }
-    CandidateFieldUnestablished { causes: _ } =>
-      ConvergenceRefusedUnresolvedSelection { result_kind: "CandidateFieldUnestablished" as NonEmptyStr }
-    NoFeasibleRealization { causes: _ } =>
-      ConvergenceRefusedUnresolvedSelection { result_kind: "NoFeasibleRealization" as NonEmptyStr }
-    SelectionNeedsEvidence { gaps: _ } =>
-      ConvergenceRefusedUnresolvedSelection { result_kind: "SelectionNeedsEvidence" as NonEmptyStr }
-    SelectionNeedsPolicy { survivors: _ } =>
-      ConvergenceRefusedUnresolvedSelection { result_kind: "SelectionNeedsPolicy" as NonEmptyStr }
-    RealizationSelectionRefused { defects: _ } =>
-      ConvergenceRefusedUnresolvedSelection { result_kind: "SelectionRefused" as NonEmptyStr }
-  }
-}
