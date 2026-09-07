@@ -192,7 +192,7 @@ fn violation_count(source: String, wanted: String) -> Int {
   }
 }
 
-data forged_resolved_roster_source: String = "module probe_forged_resolved_output_obligations\nimport product.fabric.work { ResolvedOutputObligations, OutputContractRef, OutputObligationId, ObligationsJudgedAtJobStart }\nimport product.fabric.identity { WorkKey }\nimport std.content_hash { content_hash_of_value }\nfn forged() -> ResolvedOutputObligations {\n  ResolvedOutputObligations {\n    contract: \"forged\" as OutputContractRef,\n    revision: content_hash_of_value(value: \"x\"),\n    judgment: ObligationsJudgedAtJobStart,\n    work_key: \"k\" as WorkKey,\n    required: [],\n  }\n}\n"
+data forged_resolved_roster_source: String = "module probe_forged_resolved_output_obligations\nimport product.fabric.work { ResolvedOutputObligations, OutputContractRef, OutputObligationId, OutputObligationsRevision, ObligationsJudgedAtJobStart }\nimport product.fabric.identity { WorkKey }\nimport std.content_hash { content_hash_of_value }\nfn forged() -> ResolvedOutputObligations {\n  ResolvedOutputObligations {\n    contract: \"forged\" as OutputContractRef,\n    revision: content_hash_of_value(value: \"x\") as OutputObligationsRevision,\n    judgment: ObligationsJudgedAtJobStart,\n    work_key: \"k\" as WorkKey,\n    required: [],\n  }\n}\n"
 
 test fn forged_resolved_roster_is_sole_constructor_refused() -> Bool {
   violation_count(source: forged_resolved_roster_source, wanted: "SoleConstructorViolation") >= 1
