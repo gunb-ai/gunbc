@@ -18,6 +18,7 @@ import product.fabric.work {
 import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.supply {
+  EqualCostOfferTieBreak, StableRosterOrder, DemandKeyedRendezvous,
   SupplierOffer, OfferQuote, QuotedPerSecond, QuotedPerHour, ObservedSupply,
   GrantDuration, ExactGrantDuration, UnobservedGrantDuration,
 }
@@ -31,7 +32,7 @@ import product.fabric.selection {
   OpportunityCostObservation, NoFeasibleAlternativeUse, AlternativeUseDisplaced, AlternativeUseUnread,
   OfferCandidacy, OfferPriced, OfferNotPriceable, OfferUnavailableForGrant,
   OfferCannotHoldAnUnboundedGrant,
-  SupplySelection, OfferSelected, NoAdmissibleOffer,
+  SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved,
   SelectionCost, selection_total, selection_liability,
   CostBasis, ExactCost, ProjectedCost, CommitmentFloorCost,
   CommitmentHorizon, CoveredByCommitment, BilledBeyondCommitment,
@@ -215,6 +216,13 @@ fn t_no_delay_valuation() -> MoneyPerSecond {
   MoneyRate { amount: money_amount_micro(count: 0), currency: Usd }
 }
 
+// A TYPED HELPER RATHER THAN A BARE LITERAL AT THE CALL SITE, following this file's own convention
+// two lines up: MoneyPerSecond is MoneyRate at a phantom rate, and a record literal in argument
+// position has no other way to fix it.
+fn t_five_micros_per_second() -> MoneyPerSecond {
+  MoneyRate { amount: money_amount_micro(count: 5), currency: Usd }
+}
+
 fn t_select(candidates: List<CandidateOffer<NonEmptyStr>>) -> SupplySelection<NonEmptyStr> {
   t_select_for(candidates: candidates, duration: t_ninety_seconds())
 }
@@ -230,28 +238,33 @@ fn t_select_for(
     maximum_buy_order: money_amount_micro(count: 1000000),
     budget_currency: Usd,
     delay_valuation: t_no_delay_valuation(),
+    tie: StableRosterOrder,
+    demand_key: "test.demand" as NonEmptyStr,
   )
 }
 
 fn selected_key(s: SupplySelection<NonEmptyStr>) -> NonEmptyStr {
   match s {
-    OfferSelected { offer: o, cost: _, basis: _, horizon: _, considered: _ } => (o.id.key as NonEmptyStr)
+    OfferSelected { offer: o, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => (o.id.key as NonEmptyStr)
     NoAdmissibleOffer { considered: _ } => "none"
+    EqualCostTieUnresolved { digest: _, considered: _ } => "tie-unresolved"
   }
 }
 
 fn selected_total(s: SupplySelection<NonEmptyStr>) -> Nat {
   match s {
-    OfferSelected { offer: _, cost: c, basis: _, horizon: _, considered: _ } =>
+    OfferSelected { offer: _, cost: c, basis: _, horizon: _, considered: _, tie_policy: _ } =>
       money_amount_micro_count(m: selection_total(c: c))
     NoAdmissibleOffer { considered: _ } => 0
+    EqualCostTieUnresolved { digest: _, considered: _ } => 0
   }
 }
 
 fn considered_of(s: SupplySelection<NonEmptyStr>) -> List<OfferCandidacy<NonEmptyStr>> {
   match s {
-    OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: cs } => cs
+    OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: cs, tie_policy: _ } => cs
     NoAdmissibleOffer { considered: cs } => cs
+    EqualCostTieUnresolved { digest: _, considered: cs } => cs
   }
 }
 
@@ -446,7 +459,8 @@ test fn nothing_admissible_returns_every_typed_cause_and_selects_nothing() -> Bo
     ))
   match selection {
     NoAdmissibleOffer { considered: cs } => cs.length() == 1
-    OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _ } => false
+    EqualCostTieUnresolved { digest: _, considered: _ } => false
+    OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => false
   }
 }
 
@@ -490,13 +504,16 @@ test fn valued_delay_enters_the_ranking_and_not_the_reservation() -> Bool {
     duration: t_ninety_seconds(),
     maximum_buy_order: money_amount_micro(count: 1000000),
     budget_currency: Usd,
-    delay_valuation: MoneyRate { amount: money_amount_micro(count: 5), currency: Usd },
+    delay_valuation: t_five_micros_per_second(),
+    tie: StableRosterOrder,
+    demand_key: "test.demand" as NonEmptyStr,
   )
   match selection {
-    OfferSelected { offer: _, cost: c, basis: _, horizon: _, considered: _ } =>
+    OfferSelected { offer: _, cost: c, basis: _, horizon: _, considered: _, tie_policy: _ } =>
       money_amount_micro_count(m: selection_liability(c: c)) == 9000
         && money_amount_micro_count(m: selection_total(c: c)) == 9300
     NoAdmissibleOffer { considered: _ } => false
+    EqualCostTieUnresolved { digest: _, considered: _ } => false
   }
 }
 
@@ -531,8 +548,9 @@ fn t_rented_with_remainder(remaining: Second) -> List<CandidateOffer<NonEmptyStr
 
 fn horizon_of(s: SupplySelection<NonEmptyStr>) -> List<CommitmentHorizon> {
   match s {
-    OfferSelected { offer: _, cost: _, basis: _, horizon: h, considered: _ } => [h]
+    OfferSelected { offer: _, cost: _, basis: _, horizon: h, considered: _, tie_policy: _ } => [h]
     NoAdmissibleOffer { considered: _ } => []
+    EqualCostTieUnresolved { digest: _, considered: _ } => []
   }
 }
 
@@ -565,8 +583,9 @@ fn billed_beyond_commitment(hs: List<CommitmentHorizon>) -> Bool {
 
 fn basis_of(s: SupplySelection<NonEmptyStr>) -> List<CostBasis> {
   match s {
-    OfferSelected { offer: _, cost: _, basis: b, horizon: _, considered: _ } => [b]
+    OfferSelected { offer: _, cost: _, basis: b, horizon: _, considered: _, tie_policy: _ } => [b]
     NoAdmissibleOffer { considered: _ } => []
+    EqualCostTieUnresolved { digest: _, considered: _ } => []
   }
 }
 
@@ -711,7 +730,8 @@ test fn a_finite_window_refuses_an_unbounded_job_rather_than_comparing() -> Bool
   )
   match selection {
     NoAdmissibleOffer { considered: cs } => unbounded_refusals(cs: cs) == 1
-    OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _ } => false
+    EqualCostTieUnresolved { digest: _, considered: _ } => false
+    OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => false
   }
 }
 

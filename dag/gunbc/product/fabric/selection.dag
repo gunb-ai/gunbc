@@ -11,6 +11,7 @@ import std.nat { Nat, nat_min }
 import product.fabric.identity { FabricIdentity, OfferKey, fabric_identity_eq }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.work { ExecutionRequirements }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural }
 import product.fabric.supply {
   SupplierOffer, OfferQuote, QuotedFlatPerGrant, QuotedPerSecond, QuotedPerMinute, QuotedPerHour,
   OfferFungibility, Fungible, TrustDomainMismatch, CapabilitiesNotOffered,
@@ -967,8 +968,10 @@ type SupplySelection<P>
       basis: CostBasis,
       horizon: CommitmentHorizon,
       considered: List<OfferCandidacy<P>>,
+      tie_policy: EqualCostOfferTieBreak,
     }
   | NoAdmissibleOffer { considered: List<OfferCandidacy<P>> }
+  | EqualCostTieUnresolved { digest: Fnv1a64StructuralDigestHex, considered: List<OfferCandidacy<P>> }
 
 // The incumbent travels as ONE value rather than as four parallel optionals that could
 // disagree about which offer they describe. Four fields each separately absent has states in
@@ -980,9 +983,14 @@ type PricedCandidate<P> {
   horizon: CommitmentHorizon
 }
 
+// THE COLLISION IS STICKY AND IS CARRIED BESIDE THE BEST, not folded into it. A tie the policy could
+// not resolve must survive to the outcome: dropping it and continuing would hand back a winner chosen
+// by the order the collision happened to occur in, which is the roster-order policy sneaking back at
+// the one moment nobody would look.
 type SelectionRanking<P> {
   best: PricedCandidate<P>?
   considered: List<OfferCandidacy<P>>
+  collision: Fnv1a64StructuralDigestHex?
 }
 
 // THE COMPARATOR RANKS ON selection_total, AND UNDER CommitmentFloorCost THAT AMOUNT IS A
@@ -1019,42 +1027,120 @@ fn rank_candidate<P>(
   acc: SelectionRanking<P>,
   candidacy: OfferCandidacy<P>,
   candidate: CandidateOffer<P>,
+  tie: EqualCostOfferTieBreak,
+  demand_key: NonEmptyStr,
 ) -> SelectionRanking<P> {
   let considered = concat(acc.considered, [candidacy])
-  match candidacy {
-    OfferPriced { offer: _, cost: c, basis: b, horizon: h } =>
-      SelectionRanking {
-        best: better_of(
-          incumbent: acc.best,
-          challenger: PricedCandidate { candidate: candidate, cost: c, basis: b, horizon: h },
-        ),
-        considered: considered,
+  match acc.collision {
+    Present { value: d } => SelectionRanking { best: acc.best, considered: considered, collision: Present { value: d } }
+    Absent =>
+      match candidacy {
+        OfferPriced { offer: _, cost: c, basis: b, horizon: h } =>
+          match better_of(
+            incumbent: acc.best,
+            challenger: PricedCandidate { candidate: candidate, cost: c, basis: b, horizon: h },
+            tie: tie,
+            demand_key: demand_key,
+          ) {
+            RankingCollided { digest: d } =>
+              SelectionRanking { best: acc.best, considered: considered, collision: Present { value: d } }
+            RankingAdvanced { best: nb } =>
+              SelectionRanking { best: nb, considered: considered, collision: none }
+          }
+        OfferNotFungible { offer: _, fungibility: _ } => carry_ranking(acc: acc, considered: considered)
+        OfferUnavailableForGrant { offer: _, needed: _, available: _ } => carry_ranking(acc: acc, considered: considered)
+        OfferCannotHoldAnUnboundedGrant { offer: _, available: _ } => carry_ranking(acc: acc, considered: considered)
+        OfferNotPriceable { offer: _, unpriced: _ } => carry_ranking(acc: acc, considered: considered)
+        OfferWrongCurrency { offer: _, mismatch: _ } => carry_ranking(acc: acc, considered: considered)
+        OfferUnaffordable { offer: _, affordability: _ } => carry_ranking(acc: acc, considered: considered)
+        OfferLiabilityOverBuyOrder { offer: _, liability: _, maximum: _ } => carry_ranking(acc: acc, considered: considered)
       }
-    OfferNotFungible { offer: _, fungibility: _ } => carry_ranking(acc: acc, considered: considered)
-    OfferUnavailableForGrant { offer: _, needed: _, available: _ } => carry_ranking(acc: acc, considered: considered)
-    OfferCannotHoldAnUnboundedGrant { offer: _, available: _ } => carry_ranking(acc: acc, considered: considered)
-    OfferNotPriceable { offer: _, unpriced: _ } => carry_ranking(acc: acc, considered: considered)
-    OfferWrongCurrency { offer: _, mismatch: _ } => carry_ranking(acc: acc, considered: considered)
-    OfferUnaffordable { offer: _, affordability: _ } => carry_ranking(acc: acc, considered: considered)
-    OfferLiabilityOverBuyOrder { offer: _, liability: _, maximum: _ } => carry_ranking(acc: acc, considered: considered)
   }
 }
 
-fn better_of<P>(incumbent: PricedCandidate<P>?, challenger: PricedCandidate<P>) -> PricedCandidate<P>? {
-  match incumbent {
-    Absent => Present { value: challenger }
-    Present { value: held } =>
-      if money_amount_micro_count(m: selection_total(c: challenger.cost))
-        < money_amount_micro_count(m: selection_total(c: held.cost)) {
-        Present { value: challenger }
+// ── THE EQUAL-COST ARM, MADE EXPLICIT ─────────────────────────────────────────────────────────
+//
+// This comparator replaced the held candidate only on strict less-than, and the ranking fold walks
+// the candidate population in the order it was handed. So roster order already decided every tie --
+// an implicit policy, invisible in the outcome, and wrong for a fleet of identical owned offers where
+// sequential demands would all take the first one and accrete incumbency there while the second sat
+// free. supply.dag's EqualCostOfferTieBreak names the choice; this is where it acts.
+//
+// THE SPREAD KEY IS THE DEMAND'S STABLE IDENTITY, hashed with the EXACT offer identity. It must
+// survive a retry of the same placement -- a value minted per attempt would spread one demand across
+// offers on successive tries, which is worse than concentrating it. And it must be derived here
+// rather than supplied, because a caller that can hand in a rank can steer the answer, which is the
+// host-picking this authority exists to prevent.
+fn rendezvous_digest(demand_key: NonEmptyStr, offer_key: NonEmptyStr) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    left: content_hash_atom(value: demand_key),
+    right: content_hash_atom(value: offer_key),
+  )
+}
+
+// A COLLISION REFUSES RATHER THAN FALLING BACK. Returning the roster-first candidate when two digests
+// match would reinstate the very policy this arm replaces, in the one case nobody would notice.
+type EqualCostOutcome<P>
+  = TieResolved { winner: PricedCandidate<P> }
+  | TieUnresolvedCollision { digest: Fnv1a64StructuralDigestHex }
+
+fn break_equal_cost<P>(
+  held: PricedCandidate<P>,
+  challenger: PricedCandidate<P>,
+  tie: EqualCostOfferTieBreak,
+  demand_key: NonEmptyStr,
+) -> EqualCostOutcome<P> {
+  match tie {
+    StableRosterOrder => TieResolved { winner: held }
+    DemandKeyedRendezvous => {
+      let held_digest = rendezvous_digest(demand_key: demand_key, offer_key: held.candidate.offer.id.key)
+      let challenger_digest = rendezvous_digest(demand_key: demand_key, offer_key: challenger.candidate.offer.id.key)
+      if held_digest.digest == challenger_digest.digest {
+        TieUnresolvedCollision { digest: held_digest.digest }
       } else {
-        Present { value: held }
+        if challenger_digest.digest > held_digest.digest {
+          TieResolved { winner: challenger }
+        } else {
+          TieResolved { winner: held }
+        }
       }
+    }
+  }
+}
+
+type RankingStep<P>
+  = RankingAdvanced { best: PricedCandidate<P>? }
+  | RankingCollided { digest: Fnv1a64StructuralDigestHex }
+
+fn better_of<P>(
+  incumbent: PricedCandidate<P>?,
+  challenger: PricedCandidate<P>,
+  tie: EqualCostOfferTieBreak,
+  demand_key: NonEmptyStr,
+) -> RankingStep<P> {
+  match incumbent {
+    Absent => RankingAdvanced { best: Present { value: challenger } }
+    Present { value: held } => {
+      let challenger_total = money_amount_micro_count(m: selection_total(c: challenger.cost))
+      let held_total = money_amount_micro_count(m: selection_total(c: held.cost))
+      if challenger_total < held_total {
+        RankingAdvanced { best: Present { value: challenger } }
+      } else {
+        if held_total < challenger_total {
+          RankingAdvanced { best: Present { value: held } }
+        } else {
+          match break_equal_cost(held: held, challenger: challenger, tie: tie, demand_key: demand_key) {
+            TieUnresolvedCollision { digest: d } => RankingCollided { digest: d }
+            TieResolved { winner: w } => RankingAdvanced { best: Present { value: w } }
+          }
+        }
+      }
+    }
   }
 }
 
 fn carry_ranking<P>(acc: SelectionRanking<P>, considered: List<OfferCandidacy<P>>) -> SelectionRanking<P> {
-  SelectionRanking { best: acc.best, considered: considered }
+  SelectionRanking { best: acc.best, considered: considered, collision: acc.collision }
 }
 
 // THE SELECTOR. Cheapest fungible with delay valuation, which is the one instantiation
@@ -1073,10 +1159,12 @@ fn select_supply<P>(
   maximum_buy_order: MoneyAmountMicro,
   budget_currency: CurrencyCode,
   delay_valuation: MoneyPerSecond,
+  tie: EqualCostOfferTieBreak,
+  demand_key: NonEmptyStr,
 ) -> SupplySelection<P> {
   let ranked = fold(
     candidates,
-    init: SelectionRanking { best: none, considered: [] },
+    init: SelectionRanking { best: none, considered: [], collision: none },
     f: (acc, candidate) =>
       rank_candidate(
         acc: acc,
@@ -1089,8 +1177,13 @@ fn select_supply<P>(
           delay_valuation: delay_valuation,
         ),
         candidate: candidate,
+        tie: tie,
+        demand_key: demand_key,
       ),
   )
+  match ranked.collision {
+    Present { value: d } => EqualCostTieUnresolved { digest: d, considered: ranked.considered }
+    Absent =>
   match ranked.best {
     Absent => NoAdmissibleOffer { considered: ranked.considered }
     Present { value: winner } =>
@@ -1100,6 +1193,8 @@ fn select_supply<P>(
         basis: winner.basis,
         horizon: winner.horizon,
         considered: ranked.considered,
+        tie_policy: tie,
       }
+  }
   }
 }
