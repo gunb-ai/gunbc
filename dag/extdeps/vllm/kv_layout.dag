@@ -223,13 +223,18 @@ type PrintedLinesAgreement
   | PrintedLinesDisagree { implied_hundredths: Nat, reported_hundredths: Nat }
   | PrintedLinesUncheckable { cause: NonEmptyStr }
 
+// THE IMPLIED CONCURRENCY IS ROUNDED, NOT TRUNCATED, because the engine PRINTS a rounded figure.
+// Truncating disagreed by one hundredth with any launch whose true concurrency rounds up: group A
+// (11,767,856 tokens) truncates and rounds alike and passed, while group B (11,952,124) implied 1139
+// against a printed 1140 and was reported as garbled startup lines. The defect was mine, and running
+// the instrument against the SECOND engine is what exposed it -- the first masked it by coincidence.
 fn printed_lines_agree(layout: ResolvedKvLayout, reported: VllmReportedCapacity) -> PrintedLinesAgreement {
   let context = token_count_value(t: layout.max_model_len)
   let pool_tokens = token_count_value(t: reported.pool.tokens)
   if context == 0 {
     PrintedLinesUncheckable { cause: "the context cap is zero, so the concurrency the pool line encodes cannot be recovered" as NonEmptyStr }
   } else {
-    let implied = (pool_tokens * 100) / context
+    let implied = ((pool_tokens * 100) + (context / 2)) / context
     if implied == reported.max_concurrency_hundredths {
       PrintedLinesAgree
     } else {

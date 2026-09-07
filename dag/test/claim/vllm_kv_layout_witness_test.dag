@@ -31,6 +31,7 @@ fn w_pool() -> VllmObservedKvPool {
     reading: vllm_startup_reading(
       line: GpuKvCacheSize,
       captured_text: "[kv_cache_utils.py:1733] GPU KV cache size: 11,767,856 tokens" as NonEmptyStr,
+      observed_at_revision: vllm_source_revision_read,
     ),
   ) {
     KvPoolAdmitted { pool: p } => p

@@ -48,7 +48,6 @@ import gunbc.spark.pair_serving_capacity_floor {
 // is a literal "-", which fails to parse here and refuses -- it never arrives as a zero.
 
 data capacity_probe_unit: String = "gunbc-spark-pair-head"
-data capacity_probe_container: String = "gunbc-spark-pair"
 data capacity_probe_log: String = "/var/log/gunbc/spark-pair-head.log"
 data capacity_probe_identity_file: String = "/home/briansrls/.ssh/fleet-automation"
 // THE PRINCIPAL IS THE DECLARED ONE, READ FROM ITS AUTHORITY.
@@ -63,7 +62,7 @@ data capacity_probe_identity_file: String = "/home/briansrls/.ssh/fleet-automati
 // So it is not spelled here at all. A probe that names its own principal can disagree with the one
 // convergence uses, and the disagreement looks exactly like a broken host.
 
-// TWELVE LINES, FIXED ORDER, "-" FOR ANYTHING THIS HOST CANNOT ANSWER.
+// ELEVEN LINES, FIXED ORDER, "-" FOR ANYTHING THIS HOST CANNOT ANSWER.
 //
 // The two launch figures are taken from the LAST matching line rather than the first: the log
 // accumulates across restarts, and the engine serving now is the one that printed last.
@@ -79,13 +78,12 @@ fn emit_field(command: String) -> String {
 
 fn capacity_probe_script() -> String {
   join(concat([
-    join(["set -u\nu=", capacity_probe_unit, "\nlog=", capacity_probe_log, "\nc=", capacity_probe_container, "\n"], ""),
+    join(["set -u\nu=", capacity_probe_unit, "\nlog=", capacity_probe_log, "\n"], ""),
     "m=$(curl -s --max-time 8 http://127.0.0.1:30000/metrics)\n",
   ], map([
     "systemctl show $u -p InvocationID --value",
     "systemctl cat $u | sha256sum | cut -d' ' -f1",
-    "docker ps -q --filter name=$c | head -1",
-    "docker inspect $c | sed -n 's/.*\"Image\": \"sha256:\\([0-9a-f]*\\)\".*/\\1/p' | head -1",
+    "systemctl cat $u | grep -oE 'sha256:[0-9a-f]{64}' | head -1 | cut -d: -f2",
     "date -d \"$(systemctl show $u -p ExecMainStartTimestamp --value)\" +%s",
     "grep -a 'GPU KV cache size' \"$log\" | tail -1 | sed 's/.*size: //; s/ tokens.*//; s/,//g'",
     "grep -a 'Maximum concurrency' \"$log\" | tail -1 | sed 's/.*request: //; s/x.*//; s/[.]//'",
@@ -100,7 +98,6 @@ fn capacity_probe_script() -> String {
 type CapacityProbeFields {
   invocation: String
   unit_sha: String
-  container: String
   image_sha: String
   started_at: Int
   pool_tokens: Int
@@ -126,40 +123,39 @@ fn int_at(lines: List<String>, n: Nat) -> Int? {
 
 fn decode_probe(stdout: String) -> CapacityProbeRead {
   let lines = split(s: trim(s: stdout), delimiter: "\n")
-  if list_length(items: lines) < 12 {
-    ProbeUnreadable { detail: join(["the probe returned ", to_string(list_length(items: lines)), " lines, not the 12 the script emits"], "") }
+  if list_length(items: lines) < 11 {
+    ProbeUnreadable { detail: join(["the probe returned ", to_string(list_length(items: lines)), " lines, not the 11 the script emits"], "") }
   } else {
-    match int_at(lines: lines, n: 4) {
+    match int_at(lines: lines, n: 3) {
       Absent => ProbeUnreadable { detail: "the unit start instant did not parse as epoch seconds" }
       Present { value: started } =>
-        match int_at(lines: lines, n: 5) {
+        match int_at(lines: lines, n: 4) {
           Absent => ProbeUnreadable { detail: "the engine's GPU KV cache size line was not found in the launch log" }
           Present { value: pool } =>
-            match int_at(lines: lines, n: 6) {
+            match int_at(lines: lines, n: 5) {
               Absent => ProbeUnreadable { detail: "the engine's maximum concurrency line was not found in the launch log" }
               Present { value: conc } =>
-                match int_at(lines: lines, n: 7) {
+                match int_at(lines: lines, n: 6) {
                   Absent => ProbeUnreadable { detail: "num_gpu_blocks was not present in the engine's cache-config metric" }
                   Present { value: blocks } =>
-                    match int_at(lines: lines, n: 8) {
+                    match int_at(lines: lines, n: 7) {
                       Absent => ProbeUnreadable { detail: "block_size was not present in the engine's cache-config metric" }
                       Present { value: bs } =>
-                        match int_at(lines: lines, n: 9) {
+                        match int_at(lines: lines, n: 8) {
                           Absent => ProbeUnreadable { detail: "max_model_len was not readable from /v1/models" }
                           Present { value: ctx } =>
                             ProbeFields { fields: CapacityProbeFields {
                               invocation: field_at(lines: lines, n: 0),
                               unit_sha: field_at(lines: lines, n: 1),
-                              container: field_at(lines: lines, n: 2),
-                              image_sha: field_at(lines: lines, n: 3),
+                              image_sha: field_at(lines: lines, n: 2),
                               started_at: started,
                               pool_tokens: pool,
                               concurrency_hundredths: conc,
                               allocator_blocks: blocks,
                               block_size: bs,
                               max_model_len: ctx,
-                              running: match int_at(lines: lines, n: 10) { Present { value: r } => r  Absent => 0 },
-                              waiting: match int_at(lines: lines, n: 11) { Present { value: w } => w  Absent => 0 },
+                              running: match int_at(lines: lines, n: 9) { Present { value: r } => r  Absent => 0 },
+                              waiting: match int_at(lines: lines, n: 10) { Present { value: w } => w  Absent => 0 },
                             } }
                         }
                     }
@@ -180,20 +176,19 @@ type LaunchRead
 
 fn launch_from_fields(group: FabricGroup, head: HostIdentity, f: CapacityProbeFields) -> LaunchRead {
   match sha256_hex_digest(hex: f.image_sha) {
-    Absent => LaunchUnidentified { detail: join(["the container image digest did not read as a sha256: ", f.image_sha], "") }
+    Absent => LaunchUnidentified { detail: join(["the unit-pinned image digest did not read as a sha256: ", f.image_sha], "") }
     Present { value: image } =>
       match sha256_hex_digest(hex: f.unit_sha) {
         Absent => LaunchUnidentified { detail: join(["the unit text digest did not read as a sha256: ", f.unit_sha], "") }
         Present { value: unit } =>
-          if f.invocation == "-" || f.container == "-" {
-            LaunchUnidentified { detail: "the systemd invocation or the container id was unavailable, so this launch cannot be named" }
+          if f.invocation == "-" {
+            LaunchUnidentified { detail: "the systemd invocation was unavailable, so this launch cannot be named" }
           } else {
             LaunchIdentified { launch: vllm_serving_launch(
               group: group,
               head: head,
               systemd_invocation: f.invocation as NonEmptyStr,
-              container_id: f.container as NonEmptyStr,
-              executable_digest: Sha256Hash(image),
+              unit_pinned_image_digest: Sha256Hash(image),
               unit_digest: Sha256Hash(unit),
               started_at: f.started_at,
             ) }

@@ -30,8 +30,7 @@ fn w_launch(invocation: String, container: String, exe: String, started: EpochSe
     group: FabricGroupA,
     head: spark_pair_serving_head(group: FabricGroupA),
     systemd_invocation: invocation as NonEmptyStr,
-    container_id: container as NonEmptyStr,
-    executable_digest: w_sha256(hex: exe),
+    unit_pinned_image_digest: w_sha256(hex: exe),
     unit_digest: w_sha256(hex: w_unit),
     started_at: started,
   )
@@ -65,13 +64,12 @@ test fn one_invocation_with_a_disagreeing_field_is_a_contradiction_not_turnover(
     group: FabricGroupB,
     head: spark_pair_serving_head(group: FabricGroupA),
     systemd_invocation: "inv-16-36" as NonEmptyStr,
-    container_id: "gunbc-spark-pair" as NonEmptyStr,
-    executable_digest: w_sha256(hex: w_exe_a),
+    unit_pinned_image_digest: w_sha256(hex: w_exe_a),
     unit_digest: w_sha256(hex: w_unit),
     started_at: 1788000000,
   )
   (match same_launch(a: w_first(), b: rebuilt) {
-     LaunchContradiction { invocation: i, field: f } => (i as String) == "inv-16-36" && (f as String) == "executable_digest"
+     LaunchContradiction { invocation: i, field: f } => (i as String) == "inv-16-36" && (f as String) == "unit_pinned_image_digest"
      _ => false
    })
     && (match same_launch(a: w_first(), b: moved) {
@@ -91,14 +89,13 @@ test fn cross_family_digests_refuse_as_incomparable_rather_than_reading_as_a_reb
     group: FabricGroupA,
     head: spark_pair_serving_head(group: FabricGroupA),
     systemd_invocation: "inv-16-36" as NonEmptyStr,
-    container_id: "gunbc-spark-pair" as NonEmptyStr,
-    executable_digest: w_sha1(hex: "4444444444444444444444444444444444444444"),
+    unit_pinned_image_digest: w_sha1(hex: "4444444444444444444444444444444444444444"),
     unit_digest: w_sha256(hex: w_unit),
     started_at: 1788000000,
   )
   match same_launch(a: w_first(), b: other_family) {
     LaunchContradiction { invocation: _, field: f } =>
-      string_contains(s: f as String, pattern: "executable_digest")
+      string_contains(s: f as String, pattern: "unit_pinned_image_digest")
         && string_contains(s: f as String, pattern: "incomparable")
     _ => false
   }

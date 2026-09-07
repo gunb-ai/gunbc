@@ -29,8 +29,7 @@ fn w_inc(invocation: String) -> VllmServingLaunch {
     group: FabricGroupA,
     head: spark_pair_serving_head(group: FabricGroupA),
     systemd_invocation: invocation as NonEmptyStr,
-    container_id: "gunbc-spark-pair" as NonEmptyStr,
-    executable_digest: w_digest(hex: w_exe),
+    unit_pinned_image_digest: w_digest(hex: w_exe),
     unit_digest: w_digest(hex: w_unit),
     started_at: 1788000000,
   )
