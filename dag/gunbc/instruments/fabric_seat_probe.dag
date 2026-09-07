@@ -1,29 +1,30 @@
 module gunbc.instruments.fabric_seat_probe
 
-import std.types { String, Bool, Int, NonEmptyStr, List, FilePath, EpochSecs }
+import std.types { String, Bool, Int, NonEmptyStr, FilePath }
 import std.nat { Nat }
 import std.algebra { trim }
-import std.measure { Measure, Count, One }
+import std.measure { Measure }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io
 import extdeps.tools.hostname
 import extdeps.tools.sleep
-import product.capacity.pool { Pool, NoReplenishment, pool_of }
-import product.capacity.event_chain { PartitionId, HeadExpectation, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted }
-import product.capacity.pool_events { SeatRequest, PoolFold, PoolFolded, PoolFoldRefused, pool_fold, SeatProposal, SeatProposed, SeatRefused, propose_acquire }
+import product.capacity.pool { NoReplenishment, pool_of }
+import product.capacity.event_chain { PartitionId, ChainWalked, ChainIncomplete, ChainBudgetExhausted }
+import product.capacity.pool_events {
+  SeatRequest, PoolFolded, PoolFoldRefused, pool_fold, SeatProposed, SeatRefused, propose_acquire,
+}
 import product.capacity.lease { LeasePolicy, QuiescenceRequired }
 import gunbc.harness.harness_wire { OpenAiChatCompletionsShape }
 import gunbc.harness.harness_seat {
-  HarnessSeatBinding, HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, harness_bind_seat,
-  HarnessSeatRelease, HarnessSeatReleased, HarnessSeatReleaseRefused, harness_release_seat, harness_seat_release_wire,
-  harness_now_epoch,
+  HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, harness_bind_seat, HarnessSeatReleased,
+  HarnessSeatReleaseRefused, harness_release_seat, harness_seat_release_wire, harness_now_epoch,
 }
 import gunbc.harness.harness_cli { harness_seat_policy }
 import gunbc.fabric_event_log {
-  EventLogRemote, RemoteLocalPath, RemoteOverFleetSsh, EventLogLayout, event_log_layout,
-  SeatAcquisition, SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, fabric_seat_acquire, seat_acquisition_wire,
-  PartitionRead, PartitionReadOk, PartitionReadRefused, event_log_read_partition,
-  EventAppend, EventAppended, EventAppendStale, EventAppendRefused, event_log_append,
+  EventLogRemote, RemoteLocalPath, RemoteOverFleetSsh, event_log_layout, SeatGranted, SeatFull,
+  SeatContended, SeatAcquireRefused, fabric_seat_acquire, seat_acquisition_wire, PartitionReadOk,
+  PartitionReadRefused, event_log_read_partition, EventAppended, EventAppendStale, EventAppendRefused,
+  event_log_append,
 }
 
 // TWO LIVE RECEIPTS FOR THE SEAT TRANSACTION ON THE PLACED EVENT LOG.

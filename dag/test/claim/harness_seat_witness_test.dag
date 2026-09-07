@@ -1,21 +1,20 @@
 module test.claim.harness_seat_witness
 
 import std.types { Bool, String, Int, NonEmptyStr }
-import std.nat { Nat }
 import std.measure { second_count }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
 import gunbc.spark.pair_serving_desired {
-  spark_pair_serving_unit, SparkPairServingUnit, SparkPairServingUnitReady, SparkPairServingUnitRefused,
+  spark_pair_serving_unit, SparkPairServingUnitReady, SparkPairServingUnitRefused,
 }
-import gunbc.spark.serving_engine { ServingEngine, VllmServing, OllamaServing }
-import product.capacity.pool { Pool }
+import gunbc.spark.serving_engine { VllmServing, OllamaServing }
 import product.capacity.lease { QuiescenceRequired, FencedResource }
 import gunbc.harness.harness_seat {
-  harness_seat_partition,
-  HarnessSeatCapacity, SeatCeilingByQualityPolicy, AdmissionCeilingUnestablished,
+  harness_seat_partition, SeatCeilingByQualityPolicy, AdmissionCeilingUnestablished,
   harness_seat_capacity, harness_interactive_quality_seats, harness_seat_reference,
 }
-import gunbc.harness.harness_cli { harness_seat_policy, harness_request_deadline, harness_seat_release_allowance_seconds }
+import gunbc.harness.harness_cli {
+  harness_seat_policy, harness_request_deadline, harness_seat_release_allowance_seconds,
+}
 
 fn w_ceiling(group: FabricGroup) -> Int {
   match harness_seat_capacity(group: group) {

@@ -1,26 +1,20 @@
 module test.claim.serving.turn_admission_witness
 
-import std.types { Bool, String, NonEmptyStr, List }
-import std.nat { Nat }
+import std.types { Bool, String, NonEmptyStr }
 import v2.std.optional { Present, Absent }
 import product.fabric.demand { ObservationReceiptRef }
-import product.fabric.selection {
-  AvailabilityObservation, AvailableIndefinitely, AvailabilityUnobserved,
-  TransitionCostObservation, NoTransitionRequired, TransitionCostMeasured, TransitionCostUnread,
-  OpportunityCostObservation, NoFeasibleAlternativeUse, AlternativeUseDisplaced, AlternativeUseUnread,
-}
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire }
+import product.fabric.selection { AvailableIndefinitely, NoTransitionRequired, NoFeasibleAlternativeUse }
+import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
 import gunbc.spark.vllm_endpoint_process_launch {
-  VllmEndpointProcessLaunch, vllm_endpoint_process_launch, vllm_endpoint_process_launch_key, vllm_endpoint_process_launch_is,
-  VllmEndpointProcessLaunchObservation, LaunchObserved, LaunchUnobserved,
+  vllm_endpoint_process_launch, vllm_endpoint_process_launch_key, vllm_endpoint_process_launch_is,
+  LaunchObserved, LaunchUnobserved,
 }
 import gunbc.serving.turn_admission {
-  ServingQueueReading, QueueDepthRead, QueueDepthUnread,
-  ServingCoTenancy, GroupIdle, GroupServingInteractiveTurn, CoTenancyUnread, serving_co_tenancy,
-  ServingSeatOccupancy, NoSeatHeld, SeatsHeldForTurns, SeatOccupancyUnread,
-  ServingGroupAdmission, AdmissibleForColdPrefill, InadmissibleActiveInteractiveTurn, AdmissibilityUnread,
-  serving_group_admission, serving_admission_detail,
-  serving_availability, serving_transition_cost, serving_opportunity_cost,
+  ServingQueueReading, QueueDepthRead, QueueDepthUnread, GroupIdle, serving_co_tenancy,
+  ServingSeatOccupancy, NoSeatHeld, SeatsHeldForTurns, SeatOccupancyUnread, ServingGroupAdmission,
+  AdmissibleForColdPrefill, InadmissibleActiveInteractiveTurn, AdmissibilityUnread,
+  serving_group_admission, serving_admission_detail, serving_availability, serving_transition_cost,
+  serving_opportunity_cost,
 }
 import gunbc.harness.harness_backend {
   harness_gauge_count, harness_queue_from_body, harness_launch_from_body,

@@ -1,12 +1,12 @@
 module test.claim.serving.router_realization_witness
 
-import std.types { Bool, String, NonEmptyStr, List }
+import std.types { Bool, String }
 import gunbc.serving.router_realization {
-  RealizationPermission, PermittedInRealization, ForbiddenInRealization,
-  RouterCapability, NormaliseRequestToDemand, AskPlacementAuthority, ProjectEndpointFromGrant,
-  ProxyBytes, ReleaseSeatOnCompletion, ComputeOwnLoadScore, SelectHostDirectly,
-  MaintainAuthoritativeBindingLedger, FabricatePlacementWhenUnreadable,
-  router_capability_permission, router_capabilities, router_realization_contract,
+  PermittedInRealization, ForbiddenInRealization, RouterCapability, NormaliseRequestToDemand,
+  AskPlacementAuthority, ProjectEndpointFromGrant, ProxyBytes, ReleaseSeatOnCompletion,
+  ComputeOwnLoadScore, SelectHostDirectly, MaintainAuthoritativeBindingLedger,
+  FabricatePlacementWhenUnreadable, router_capability_permission, router_capabilities,
+  router_realization_contract,
 }
 
 fn is_permitted(c: RouterCapability) -> Bool {

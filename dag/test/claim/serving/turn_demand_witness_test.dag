@@ -1,23 +1,20 @@
 module test.claim.serving.turn_demand_witness
 
-import std.types { Bool, String, NonEmptyStr, List }
+import std.types { Bool, String, NonEmptyStr }
 import v2.std.optional { Present, Absent }
 import product.fabric.work {
-  SourceManifestRef, ArtifactManifestRef, EffectContractRef, OutputContractRef,
-  ExecutionRequirements, ControlPlaneCapacity, Shape, HardRequirements,
-  CapabilityManifestRef, TrustDomainRef, ResumabilityTier, OpaqueEffects, ReceiptSatisfiable, IdempotentUnderKey,
-  OutputObligation, OutputObligationKind, OutputArtifactObligation, TerminalResultObligation,
+  SourceManifestRef, ArtifactManifestRef, EffectContractRef, OutputContractRef, ExecutionRequirements,
+  ControlPlaneCapacity, Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef, OpaqueEffects,
+  OutputArtifactObligation, TerminalResultObligation,
 }
 import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { IsolationProfile }
-import product.fabric.demand { ObservationReceiptRef, SatisfactionRequirement }
+import product.fabric.demand { ObservationReceiptRef }
 import std.measure { hardware_thread_count }
 import gunbc.serving.turn_demand {
-  ServingTurnRequest, ServingTurnSource, TurnSourceManifest, TurnSourceUnestablished,
-  serving_turn_source_unestablished, serving_turn_steps, serving_turn_output_obligations,
-  ServingTurnContract, TurnContractBound, TurnContractUnestablished, serving_turn_contract,
-  ServingTurnWork, TurnWorkBound, TurnWorkUnestablished, serving_turn_work,
-  serving_turn_requirements, serving_turn_satisfaction,
+  ServingTurnRequest, ServingTurnSource, TurnSourceManifest, serving_turn_source_unestablished,
+  serving_turn_steps, serving_turn_output_obligations, TurnWorkBound, TurnWorkUnestablished,
+  serving_turn_work, serving_turn_requirements, serving_turn_satisfaction,
 }
 
 fn probe_requirements() -> ExecutionRequirements {

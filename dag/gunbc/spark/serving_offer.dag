@@ -1,18 +1,19 @@
 module gunbc.spark.serving_offer
 
-import std.types { Bool, String, NonEmptyStr, List, Int, Timestamp }
+import std.types { String, NonEmptyStr, List, Int, Timestamp }
 import std.nat { Nat }
-import v2.std.optional { Present, Absent }
-import product.fabric.identity { FabricIdentity, OfferKey }
+import product.fabric.identity { FabricIdentity }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef }
 import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { IsolationProfile }
-import product.fabric.supply { SupplierOffer, OfferQuote, QuotedPerSecond, OfferEvidence, ObservedSupply }
-import std.measure { ByteSize, Second, second, MoneyRate, MoneyPerSecond, MoneyAmountMicro, money_amount_micro, HardwareThreadCount, hardware_thread_count }
+import product.fabric.supply { SupplierOffer, OfferQuote, QuotedPerSecond, ObservedSupply }
+import std.measure { Second, second, MoneyRate, money_amount_micro, hardware_thread_count }
 import extdeps.currency.currency { Usd }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire }
-import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key }
+import gunbc.spark.fabric_switch_observed { fabric_group_wire }
+import gunbc.spark.vllm_endpoint_process_launch {
+  VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key,
+}
 
 // ── THE SPARKS BECOME SUPPLY, WHICH IS WHAT PUTS SERVING ON THE FABRIC ────────────────────────
 //

@@ -9,12 +9,9 @@ import product.fabric.selection {
   CandidateOffer, SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved,
   select_supply,
 }
-import product.fabric.supply { EqualCostOfferTieBreak, StableRosterOrder, DemandKeyedRendezvous }
+import product.fabric.supply { StableRosterOrder }
 import gunbc.fabric_witness_run {
-  floor_execution_requirements,
-  floor_grant_duration,
-  floor_buy_terms,
-  floor_admission_terms,
+  floor_execution_requirements, floor_grant_duration, floor_buy_terms, floor_admission_terms,
   floor_satisfaction_requirement,
 }
 

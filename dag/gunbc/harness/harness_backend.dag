@@ -2,28 +2,26 @@ module gunbc.harness.harness_backend
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
-import std.checked_arithmetic { CheckedNat, CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
+import std.checked_arithmetic { CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
 import std.algebra { trim }
 import v2.std.optional { Present, Absent }
 import product.fabric.demand { ObservationReceiptRef }
 import extdeps.vllm.metrics { VllmServingMetric, NumRequestsWaiting, NumRequestsRunning, vllm_metric_name }
-import extdeps.prometheus.client { PrometheusProcessSeries, ProcessStartTimeSeconds, prometheus_process_series_name }
-import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
+import extdeps.prometheus.client { ProcessStartTimeSeconds, prometheus_process_series_name }
+import gunbc.spark.fabric_switch_observed { FabricGroup }
 import gunbc.spark.vllm_endpoint_process_launch {
-  VllmEndpointProcessLaunch, vllm_endpoint_process_launch,
-  VllmEndpointProcessLaunchObservation, LaunchObserved, LaunchUnobserved,
+  vllm_endpoint_process_launch, VllmEndpointProcessLaunchObservation, LaunchObserved, LaunchUnobserved,
 }
 import gunbc.serving.turn_admission { ServingQueueReading, QueueDepthRead, QueueDepthUnread }
 import extdeps.http.client
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonArray }
 import extdeps.languages.json.parse {
-  JsonDocumentParse, JsonDocumentParsed, JsonDocumentUnreadable,
-  JsonMemberFound, parse_json_document, json_object_unique_member, json_document_gap_text,
+  JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, parse_json_document,
+  json_object_unique_member, json_document_gap_text,
 }
 import gunbc.harness.harness_wire {
-  harness_engine_replica_roster, HarnessReplicaRoster, HarnessReplicasResolved, HarnessReplicasUnresolved,
-  harness_engine_port, harness_engine_model,
-  HarnessWireShape, harness_backend_url_for_address,
+  harness_engine_replica_roster, HarnessReplicasResolved, HarnessReplicasUnresolved,
+  harness_engine_port, harness_engine_model, HarnessWireShape, harness_backend_url_for_address,
 }
 
 // THE HARNESS REPORTS ITS OWN STANDING, WHICH IS THE POINT RATHER THAN A CONVENIENCE.

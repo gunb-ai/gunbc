@@ -1,22 +1,17 @@
 module gunbc.serving.turn_admission
 
-import std.types { Bool, String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { Second, second, MoneyAmountMicro, money_amount_micro, MoneyOnce, MoneyRate, MoneyPerSecond }
+import std.measure { second, money_amount_micro, MoneyOnce, MoneyRate, MoneyPerSecond }
 import extdeps.currency.currency { Usd }
-import v2.std.optional { Present, Absent }
 import product.fabric.identity { FabricIdentity, OfferKey }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.selection {
-  AvailabilityObservation, AvailableForInterval, AvailableIndefinitely, AvailabilityUnobserved,
-  CommitmentState,
-  StartCostObservation, StartCostMeasured, StartCostUnread,
-  TransitionCostObservation, NoTransitionRequired, TransitionCostMeasured, TransitionCostUnread,
-  OperatingCostObservation, OperatingCostMeasured, OperatingCostBorneBySupplier, OperatingCostUnread,
-  OpportunityCostObservation, NoFeasibleAlternativeUse, AlternativeUseDisplaced, AlternativeUseUnread,
-  DispatchInputs,
+  AvailabilityObservation, AvailableIndefinitely, CommitmentState, StartCostObservation,
+  StartCostMeasured, TransitionCostObservation, NoTransitionRequired, OperatingCostObservation,
+  OperatingCostBorneBySupplier, OpportunityCostObservation, NoFeasibleAlternativeUse, DispatchInputs,
 }
-import product.fabric.isolation { IsolationProfile, IsolationGuarantee }
+import product.fabric.isolation { IsolationProfile }
 import product.fabric.work { TrustDomainRef }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
 

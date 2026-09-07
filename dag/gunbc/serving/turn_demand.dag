@@ -1,17 +1,13 @@
 module gunbc.serving.turn_demand
 
-import std.types { Bool, String, NonEmptyStr, List, Timestamp }
-import std.nat { Nat }
-import std.measure { MoneyAmountMicro, money_amount_micro }
+import std.types { NonEmptyStr, List, Timestamp }
+import std.measure { money_amount_micro }
 import extdeps.currency.currency { Usd }
-import v2.std.optional { Present, Absent }
-import product.fabric.identity { FabricIdentity, WorkKey, DemandKey }
+import product.fabric.identity { FabricIdentity, WorkKey }
 import product.fabric.work {
-  Work, WorkContract, WorkStep, ResumabilityTier, ReceiptSatisfiable, IdempotentUnderKey, OpaqueEffects,
-  ProgramRef, SourceManifestRef, ArtifactManifestRef, EffectContractRef, OutputContractRef,
-  DeclaredOutputObligations, declared_terminal_obligations,
-  ExecutionRequirements, CapacityClass, Shape, CapabilityManifestRef, TrustDomainRef,
-  work_for,
+  Work, WorkContract, WorkStep, OpaqueEffects, ProgramRef, SourceManifestRef, ArtifactManifestRef,
+  EffectContractRef, OutputContractRef, DeclaredOutputObligations, declared_terminal_obligations,
+  ExecutionRequirements, CapacityClass, Shape, CapabilityManifestRef, TrustDomainRef, work_for,
 }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.demand {

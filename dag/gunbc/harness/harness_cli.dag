@@ -1,6 +1,6 @@
 module gunbc.harness.harness_cli
 
-import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
+import std.types { String, Int, FilePath, NonEmptyStr }
 import extdeps.deepseek.deepseek_v4 { DeepseekV4ReasoningMode, DeepseekV4ThinkMax }
 import gunbc.harness.harness_throughput { harness_round_budget_steps }
 import gunbc.harness.harness_wire { HarnessWireShape, OpenAiChatCompletionsShape }
@@ -8,13 +8,13 @@ import std.measure { TokenCount, token_count, token_count_value, Second, second,
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.harness.harness_tool { HarnessToolEnvironment }
 import gunbc.harness.harness_turn {
-  HarnessTurnConfig, HarnessTurnOutcome,
-  TurnProviderStopped, TurnCompletedByArtifact, TurnStepBudgetExhausted, TurnTransportRefused,
-  HarnessTurnCompletion, CompletesOnProviderStop, CompletesWhenEntryPresent,
-  TurnResponseUnreadable, TurnRequestUnwritable,
-  harness_run_turn, harness_outcome_label, harness_outcome_detail,
+  HarnessTurnConfig, HarnessTurnOutcome, TurnProviderStopped, TurnCompletedByArtifact,
+  CompletesOnProviderStop, CompletesWhenEntryPresent, harness_run_turn, harness_outcome_label,
+  harness_outcome_detail,
 }
-import gunbc.harness.harness_guidance { harness_worker_guidance_at, harness_guidance_prose, harness_worker_guidance, harness_probe_guidance }
+import gunbc.harness.harness_guidance {
+  harness_worker_guidance_at, harness_guidance_prose, harness_probe_guidance,
+}
 import gunbc.compute.test_run {
   test_process_command, test_process_receipt_path, test_process_pattern_placeholder,
   compile_process_command, compile_process_receipt_path, compile_process_entry_placeholder,
@@ -23,11 +23,11 @@ import gunbc.harness.harness_review_guidance { harness_reviewer_guidance_at, rev
 import gunbc.harness.harness_goal_audit_guidance { harness_auditor_guidance_at, audit_guidance_prose }
 import gunbc.roadmap.roadmap_review_role { review_verdict_shape_text }
 import gunbc.harness.harness_wire { harness_engine_model, harness_engine_context_window }
-import gunbc.harness.harness_backend { HarnessBackendUrl, BackendUrlBound, BackendUrlRefused, harness_serving_backend_url }
+import gunbc.harness.harness_backend { BackendUrlBound, BackendUrlRefused, harness_serving_backend_url }
 import gunbc.harness.harness_seat {
   HarnessSeatBinding, HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, harness_bind_seat,
-  HarnessSeatRelease, HarnessSeatReleased, HarnessSeatReleaseRefused, harness_release_seat, harness_seat_release_wire,
-  harness_release_reference,
+  HarnessSeatRelease, HarnessSeatReleased, HarnessSeatReleaseRefused, harness_release_seat,
+  harness_seat_release_wire, harness_release_reference,
 }
 import product.capacity.lease { LeasePolicy, QuiescenceRequired }
 import extdeps.tools.hostname

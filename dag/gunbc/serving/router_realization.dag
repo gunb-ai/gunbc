@@ -1,6 +1,6 @@
 module gunbc.serving.router_realization
 
-import std.types { Bool, String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List }
 
 // ── WHAT THE ROUTER MAY DO ONCE THE FABRIC DECIDES PLACEMENT ──────────────────────────────────
 //
