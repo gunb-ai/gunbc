@@ -6,7 +6,7 @@ import std.content_hash { ContentHash }
 import std.access { AccessDecision, access_policy_refusal }
 import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
 import product.fabric.provider_route {
-  ProviderRouteRef, CompliancePostureRevision, ProviderRouteFacts,
+  ProviderRoute, provider_route_eq, CompliancePostureRevision, ProviderRouteFacts,
   first_unresolved_obligation, downstream_obligation,
 }
 
@@ -102,7 +102,7 @@ fn disposition_evidence(d: DispositionStanding) -> List<DeclarationRef> {
 // The sanction is per posture revision by construction: a row admits a scope on a route UNDER a
 // stated posture, so re-posturing does not silently re-admit anything.
 type RouteScopeSanction {
-  route: ProviderRouteRef
+  route: ProviderRoute
   posture: CompliancePostureRevision
   customer_profile: DeclarationRef
   data_handling_profile: DeclarationRef
@@ -155,7 +155,7 @@ type ProviderUsePermit<P> sole_constructor {
   demand: FabricIdentity<P, DemandKey>
   work: FabricIdentity<P, WorkKey>
   offer: FabricIdentity<P, OfferKey>
-  route: ProviderRouteRef
+  route: ProviderRoute
   posture: CompliancePostureRevision
   evidence: ProviderUseEvidence
 }
@@ -172,8 +172,8 @@ type ProviderUsePermit<P> sole_constructor {
 // posture revision that carries its permitted-jurisdiction population, at which point a located
 // path in a non-permitted jurisdiction becomes authorable and both arms land with their reds.
 type ProviderUseRefusal
-  = ProviderRouteUnclassified { route: ProviderRouteRef }
-  | ProviderRouteFactsIncomplete { route: ProviderRouteRef, obligation: DeclarationRef }
+  = ProviderRouteUnclassified { route: ProviderRoute }
+  | ProviderRouteFactsIncomplete { route: ProviderRoute, obligation: DeclarationRef }
   | DownstreamProviderUnassessed { obligation: DeclarationRef }
   | PostureRevisionStale { evaluated: List<ContentHash>, active: ContentHash }
   | CustomerScopeUnsupported { cause: DeclarationRef }
@@ -235,16 +235,17 @@ fn deny<P>(cause: ProviderUseRefusal) -> ProviderUseAdmission<P> {
 // remedy, which under DESIGN section 5 is a fabricated diagnosis rather than a located one.
 fn sanctions_for_route_and_customer<P>(
   roster: List<RouteScopeSanction>,
-  route: ProviderRouteRef,
+  route: ProviderRoute,
   scope: ProviderUseScope<P>,
 ) -> List<RouteScopeSanction> {
   filter(roster, s =>
-    s.route == route && declaration_ref_eq(a: s.customer_profile, b: scope.customer_profile))
+    provider_route_eq(a: s.route, b: route)
+      && declaration_ref_eq(a: s.customer_profile, b: scope.customer_profile))
 }
 
 fn sanctions_for_route<P>(
   roster: List<RouteScopeSanction>,
-  route: ProviderRouteRef,
+  route: ProviderRoute,
   scope: ProviderUseScope<P>,
 ) -> List<RouteScopeSanction> {
   filter(
@@ -253,8 +254,8 @@ fn sanctions_for_route<P>(
   )
 }
 
-fn route_is_classified(roster: List<RouteScopeSanction>, route: ProviderRouteRef) -> Bool {
-  count(filter(roster, s => s.route == route)) > 0
+fn route_is_classified(roster: List<RouteScopeSanction>, route: ProviderRoute) -> Bool {
+  count(filter(roster, s => provider_route_eq(a: s.route, b: route))) > 0
 }
 
 // Posture staleness compares two revisions minted by our own posture pipeline, so they are the

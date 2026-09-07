@@ -5,7 +5,7 @@ import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.content_hash { ContentHash, as_content_hash_structural, content_hash_atom }
 import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
 import product.fabric.provider_route {
-  ProviderRouteRef, CompliancePostureRevision, ProviderRouteFacts,
+  ProviderRoute, CompliancePostureRevision, ProviderRouteFacts,
   ProviderDataPathClosure, ProviderPathStanding,
   ProviderPathLocated, ProviderPathAbsent, ProviderPathUnread,
   DownstreamProviderPopulation, NoDownstreamProviders, DownstreamProvidersUnread,
@@ -53,6 +53,17 @@ fn posture(seed: String) -> CompliancePostureRevision {
   CompliancePostureRevision {
     authority: ref_of(name: "posture-authority"),
     revision: hash_of(seed: seed),
+  }
+}
+
+// A route is three cited declarations. The two routes below share a provider and a service and
+// differ ONLY in the region, which is what makes the two-regions red a statement about the route
+// rather than about the company.
+fn route_of(region: String) -> ProviderRoute {
+  ProviderRoute {
+    provider: ref_of(name: "acme"),
+    service: ref_of(name: "cx"),
+    region: ref_of(name: region),
   }
 }
 
@@ -104,14 +115,12 @@ fn closure_telemetry_unread(where_it_is: String) -> ProviderDataPathClosure {
 }
 
 fn route_facts(
-  route: ProviderRouteRef,
+  route: ProviderRoute,
   paths: ProviderDataPathClosure,
   downstream: DownstreamProviderPopulation,
 ) -> ProviderRouteFacts {
   ProviderRouteFacts {
     route: route,
-    provider: ref_of(name: "provider"),
-    service: ref_of(name: "service"),
     contract_terms: ref_of(name: "contract-terms"),
     data_paths: paths,
     downstream: downstream,
@@ -165,7 +174,7 @@ fn offer_id() -> FabricIdentity<NonEmptyStr, OfferKey> {
 fn roster() -> List<RouteScopeSanction> {
   [
     RouteScopeSanction {
-      route: "acme/cx/region-one" as ProviderRouteRef,
+      route: route_of(region: "region-one"),
       posture: posture(seed: "posture-r1"),
       customer_profile: ref_of(name: "us-business-pilot"),
       data_handling_profile: ref_of(name: "ordinary-build-source"),
@@ -175,7 +184,7 @@ fn roster() -> List<RouteScopeSanction> {
 }
 
 fn decide(
-  route: ProviderRouteRef,
+  route: ProviderRoute,
   paths: ProviderDataPathClosure,
   downstream: DownstreamProviderPopulation,
   active: CompliancePostureRevision,
@@ -261,7 +270,7 @@ fn denied_tagged(a: ProviderUseAdmission<NonEmptyStr>, tag: String) -> Bool {
 // which would be a wall carrying no information.
 test fn w_admits_the_sanctioned_route() -> Bool {
   admitted(a: decide(
-    route: "acme/cx/region-one" as ProviderRouteRef,
+    route: route_of(region: "region-one"),
     paths: closure_all_located(where_it_is: "jurisdiction-one"),
     downstream: no_downstream(),
     active: posture(seed: "posture-r1"),
@@ -273,7 +282,7 @@ test fn w_admits_the_sanctioned_route() -> Bool {
 // perfect: every path located, downstream assessed, posture current, agreement bound.
 test fn w_unclassified_route_refuses() -> Bool {
   denied_tagged(a: decide(
-    route: "acme/cx/region-two" as ProviderRouteRef,
+    route: route_of(region: "region-two"),
     paths: closure_all_located(where_it_is: "jurisdiction-two"),
     downstream: no_downstream(),
     active: posture(seed: "posture-r1"),
@@ -285,13 +294,13 @@ test fn w_unclassified_route_refuses() -> Bool {
 // about a ROUTE and never about a company.
 test fn w_same_provider_two_regions_differ() -> Bool {
   admitted(a: decide(
-    route: "acme/cx/region-one" as ProviderRouteRef,
+    route: route_of(region: "region-one"),
     paths: closure_all_located(where_it_is: "jurisdiction-one"),
     downstream: no_downstream(),
     active: posture(seed: "posture-r1"),
     scope: scope_ordinary(),
   )) && denied_tagged(a: decide(
-    route: "acme/cx/region-two" as ProviderRouteRef,
+    route: route_of(region: "region-two"),
     paths: closure_all_located(where_it_is: "jurisdiction-two"),
     downstream: no_downstream(),
     active: posture(seed: "posture-r1"),
@@ -304,7 +313,7 @@ test fn w_same_provider_two_regions_differ() -> Bool {
 test fn w_unread_telemetry_names_its_obligation() -> Bool {
   denied_with(
     a: decide(
-      route: "acme/cx/region-one" as ProviderRouteRef,
+      route: route_of(region: "region-one"),
       paths: closure_telemetry_unread(where_it_is: "jurisdiction-one"),
       downstream: no_downstream(),
       active: posture(seed: "posture-r1"),
@@ -320,7 +329,7 @@ test fn w_unread_telemetry_names_its_obligation() -> Bool {
 test fn w_unread_downstream_names_its_obligation() -> Bool {
   denied_with(
     a: decide(
-      route: "acme/cx/region-one" as ProviderRouteRef,
+      route: route_of(region: "region-one"),
       paths: closure_all_located(where_it_is: "jurisdiction-one"),
       downstream: DownstreamProvidersUnread { obligation: subprocessor_obligation() },
       active: posture(seed: "posture-r1"),
@@ -335,7 +344,7 @@ test fn w_unread_downstream_names_its_obligation() -> Bool {
 // scope and agreement are identical to the positive control; only the active revision moves.
 test fn w_stale_posture_refuses() -> Bool {
   denied_tagged(a: decide(
-    route: "acme/cx/region-one" as ProviderRouteRef,
+    route: route_of(region: "region-one"),
     paths: closure_all_located(where_it_is: "jurisdiction-one"),
     downstream: no_downstream(),
     active: posture(seed: "posture-r2"),
@@ -351,7 +360,7 @@ test fn w_stale_posture_refuses() -> Bool {
 test fn w_regulated_data_class_refuses_with_data_handling_cause() -> Bool {
   denied_with(
     a: decide(
-      route: "acme/cx/region-one" as ProviderRouteRef,
+      route: route_of(region: "region-one"),
       paths: closure_all_located(where_it_is: "jurisdiction-one"),
       downstream: no_downstream(),
       active: posture(seed: "posture-r1"),
@@ -373,7 +382,7 @@ test fn w_regulated_data_class_refuses_with_data_handling_cause() -> Bool {
 test fn w_unsanctioned_customer_refuses_with_customer_cause() -> Bool {
   denied_with(
     a: decide(
-      route: "acme/cx/region-one" as ProviderRouteRef,
+      route: route_of(region: "region-one"),
       paths: closure_all_located(where_it_is: "jurisdiction-one"),
       downstream: no_downstream(),
       active: posture(seed: "posture-r1"),
@@ -399,7 +408,7 @@ test fn w_unsanctioned_customer_refuses_with_customer_cause() -> Bool {
 test fn w_unresolved_sanctions_refuses() -> Bool {
   denied_with(
     a: decide(
-      route: "acme/cx/region-one" as ProviderRouteRef,
+      route: route_of(region: "region-one"),
       paths: closure_all_located(where_it_is: "jurisdiction-one"),
       downstream: no_downstream(),
       active: posture(seed: "posture-r1"),
@@ -418,7 +427,7 @@ test fn w_unresolved_sanctions_refuses() -> Bool {
 test fn w_refused_export_refuses() -> Bool {
   denied_with(
     a: decide(
-      route: "acme/cx/region-one" as ProviderRouteRef,
+      route: route_of(region: "region-one"),
       paths: closure_all_located(where_it_is: "jurisdiction-one"),
       downstream: no_downstream(),
       active: posture(seed: "posture-r1"),
@@ -437,7 +446,7 @@ test fn w_refused_export_refuses() -> Bool {
 test fn w_unresolved_prohibited_use_refuses() -> Bool {
   denied_with(
     a: decide(
-      route: "acme/cx/region-one" as ProviderRouteRef,
+      route: route_of(region: "region-one"),
       paths: closure_all_located(where_it_is: "jurisdiction-one"),
       downstream: no_downstream(),
       active: posture(seed: "posture-r1"),
@@ -458,7 +467,7 @@ test fn w_unresolved_prohibited_use_refuses() -> Bool {
 test fn w_wrong_agreement_refuses() -> Bool {
   denied_with(
     a: decide(
-      route: "acme/cx/region-one" as ProviderRouteRef,
+      route: route_of(region: "region-one"),
       paths: closure_all_located(where_it_is: "jurisdiction-one"),
       downstream: no_downstream(),
       active: posture(seed: "posture-r1"),
@@ -498,7 +507,7 @@ test fn w_closure_extractors_discriminate() -> Bool {
 // than an empty audit trail.
 test fn w_permit_records_its_clearances() -> Bool {
   match decide(
-    route: "acme/cx/region-one" as ProviderRouteRef,
+    route: route_of(region: "region-one"),
     paths: closure_all_located(where_it_is: "jurisdiction-one"),
     downstream: no_downstream(),
     active: posture(seed: "posture-r1"),
