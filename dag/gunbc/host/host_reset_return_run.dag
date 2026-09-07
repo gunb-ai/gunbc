@@ -17,6 +17,8 @@ import extdeps.ssh.session
 import extdeps.tools.hostname
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
+import extdeps.github.actions_environment { github_run_id_variable_name }
+import gunbc.actions_run_binding { ActionsVariableAbsent, ActionsVariablePresent, actions_variable_read }
 import product.placement_supply { HostIdentity }
 import gunbc.host_reset_return {
   AttemptReceiptMinted,
@@ -42,6 +44,9 @@ import gunbc.host_reset_return {
   ResetAttemptMint,
   ResetCommandAcknowledgement,
   ResetIssuanceRoute,
+  ResetIssuanceRouteRead,
+  RouteEstablished,
+  RouteUnidentified,
   ResetNotAttempted,
   ResetRefusedByController,
   ResetReturnRefused,
@@ -511,6 +516,17 @@ func host_reset_return_wet() -> ProcessExit
     )
   }
   let observer = observer_raw as NonEmptyStr
+  let route = match host_reset_return_converge_route_read() {
+    RouteUnidentified { variable: v, detail: d } =>
+      return exit_failure(
+        reason: join(
+          ["host reset-return: the issuing run is unidentified (", v as String, ": ", d as String,
+           "), so a receipt minted here could not name the run that drove the machine. This mode's whole claim is that the reset was unattended and went through converge, and a receipt no reader can trace back to its run does not establish that. Refusing before any controller write rather than recording the gap afterwards"],
+          "",
+        )
+      )
+    RouteEstablished { route: r } => r
+  }
   let assignment = reset_dispatch_pairings(
     subject_roster: reset_subject_roster(),
     peer_roster: reset_observer_peer_roster(),
@@ -536,7 +552,7 @@ func host_reset_return_wet() -> ProcessExit
                 candidate: candidate,
                 observer: observer,
                 attempt: host_reset_return_attempt_label(observer: observer, subject: subject),
-                route: host_reset_return_converge_route,
+                route: route,
                 password_file: password_file_raw as NonEmptyStr,
               )
             ),
@@ -551,15 +567,37 @@ func host_reset_return_wet() -> ProcessExit
 // reset job, so IssuedThroughConverge is a statement about where the code runs and not a claim the
 // caller supplies -- there is no parameter here through which a hand invocation could describe itself
 // as converge-driven, and the verdict refuses the out-of-band arm outright.
-// THE RUN ID IS NOT READ HERE, AND THE FIELD SAYS SO RATHER THAN CARRYING A PLAUSIBLE-LOOKING
-// PLACEHOLDER. An interpolation-shaped literal would render as a real-looking identifier in a receipt
-// while naming no run at all, which is the fabricated-plausible-output shape this whole module is
-// built against. The workflow run that carries this attempt is recoverable from the uploaded
-// artifact's own run, and binding it into the receipt is a separate obligation with its own consumer.
-data host_reset_return_converge_route: ResetIssuanceRoute = IssuedThroughConverge {
-  workflow: "fleet-converge",
-  mode: "host_reset_return",
-  run_id: "unbound: the run identifier is not read by this entry; the uploading run is the binding",
+//
+// THE RUN ID IS READ, AND A SENTENCE IN THAT FIELD WAS THE DEFECT REVIEW 61998 FOUND. It carried
+// "unbound: the run identifier is not read by this entry ...", so every real receipt this mode would
+// ever mint carried prose in a field whose type says it names the run that issued a power cycle --
+// section 4c's misplaced data, in the one field a reader needs to go find the evidence. The
+// annotation defending it argued only against an INTERPOLATION-SHAPED LITERAL, which was never the
+// choice on offer: extdeps.github.actions_environment github_run_id_variable_name already models the
+// reading, gunbc.actions_run_binding actions_variable_read already performs it with an absent-versus-
+// empty distinction, and this step already proves the env route works because it hands the observer
+// label over the same way.
+//
+// AN UNIDENTIFIED RUN REFUSES RATHER THAN ISSUING. The alternative -- an optional field -- would let
+// the reset proceed and mint a receipt that cannot say which run drove the machine, and "unattended,
+// through converge" is precisely the claim this carrier exists to establish. A receipt nobody can
+// trace back to its run does not establish it, so the honest arm is to refuse before the controller
+// write rather than to record the gap afterwards.
+func host_reset_return_converge_route_read() -> ResetIssuanceRouteRead
+  uses net: std.resources.Network
+{
+  match actions_variable_read(name: github_run_id_variable_name) {
+    ActionsVariableAbsent { variable: v, detail: d } =>
+      RouteUnidentified { variable: v as NonEmptyStr, detail: d as NonEmptyStr }
+    ActionsVariablePresent { value: run_id } =>
+      RouteEstablished {
+        route: IssuedThroughConverge {
+          workflow: "fleet-converge",
+          mode: "host_reset_return",
+          run_id: run_id as NonEmptyStr,
+        },
+      }
+  }
 }
 
 fn host_reset_return_attempt_label(observer: NonEmptyStr, subject: NonEmptyStr) -> NonEmptyStr {

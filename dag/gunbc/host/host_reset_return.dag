@@ -358,6 +358,17 @@ type ResetIssuanceRoute
   = IssuedThroughConverge { workflow: NonEmptyStr, mode: NonEmptyStr, run_id: NonEmptyStr }
   | IssuedByHandOutOfBand { what: NonEmptyStr }
 
+// READING THE ROUTE IS ITS OWN OUTCOME, because run_id is mandatory and there is no honest value for
+// it when the run cannot be identified. A receipt's run_id is how a reader gets from the artifact back
+// to the run that drove the machine, so an optional or sentinel-carrying field would let a power cycle
+// proceed and mint a receipt that cannot support the one claim this carrier exists to make -- that the
+// reset was unattended and went through converge. The unidentified arm therefore refuses BEFORE
+// issuance rather than recording a gap after it, which is the same ordering the observer-identity and
+// pairing walls take, and for the same reason.
+type ResetIssuanceRouteRead
+  = RouteEstablished { route: ResetIssuanceRoute }
+  | RouteUnidentified { variable: NonEmptyStr, detail: NonEmptyStr }
+
 // WHAT THE CONTROLLER SAID, AND ONLY THAT. This type is deliberately incapable of saying anything
 // about the host: it carries the controller's response and the instant the command was issued, and
 // a reader wanting to know whether the machine went anywhere must consult the observation instead.
