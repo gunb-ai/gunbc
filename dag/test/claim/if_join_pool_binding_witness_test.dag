@@ -1,0 +1,104 @@
+module test.claim.if_join_pool_binding_witness_test
+
+import extdeps.filesystem.filesystem_io
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  FixtureSource,
+  fixture_source,
+  compile_fixture
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE EXECUTING CONSUMER FOR fixtures.if_join_pool_binding.
+//
+// gunbc.recurring_failure_mode binding_chosen_by_pool_membership_rather_than_by_the_declared_rule
+// committed its isolating synthetic rather than describing it. This file is the routing, and it
+// adds no new specimen: the bytes it compiles are read from those four files, so the fixture stays
+// the single authority for the specimen and this row is its consumer (DESIGN section 3, section 3c).
+//
+// WHAT IT WITNESSES IS THE INVARIANT, NOT A MESSAGE. The row names it IRRELEVANT-SCOPE EXTENSION
+// INVARIANCE: for source S with resolved closure C, an environment E1 derived from C and an E2
+// that is E1 plus declarations UNREACHABLE from S must typecheck S the same. Both manifests below
+// supply the SAME BYTES of declaring_module -- one read, handed to both -- and differ only in
+// whether colliding_module is a member.
+//
+// WHY THE MANIFEST INSTRUMENT AND NOT THE CLI COMMAND THE ROW QUOTES. Both are real; only one
+// executes on the merge path. tools.multi_module_compile_fixture compiles a caller-authored source
+// vector with NO module index and NO corpus roots, so the pool is EXACTLY the manifest.
+//
+// THIS PR LANDS THE PRODUCT-CHANNEL REPAIR with this consumer. The collided manifest used to refuse
+// at the if-join; that refusal was the harm, not a contract. After the str_bindings-only local
+// carve-out, declaring_module compiles clean under BOTH manifests. A later revert of that swap
+// makes the with-collision arm red again. Remaining channels of the class stay open.
+
+data if_join_declaring_path: String = "fixtures/if_join_pool_binding/declaring_module.dag"
+data if_join_colliding_path: String = "fixtures/if_join_pool_binding/colliding_module.dag"
+data if_join_with_collision_path: String = "fixtures/if_join_pool_binding/closure_with_collision.dag"
+data if_join_without_collision_path: String = "fixtures/if_join_pool_binding/closure_without_collision.dag"
+
+fn if_join_text(path: String) -> String {
+  filesystem_read(path: path).content
+}
+
+fn if_join_source(path: String) -> FixtureSource {
+  fixture_source(path: path, content: if_join_text(path: path))
+}
+
+fn if_join_with_collision_outcome() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      if_join_source(path: if_join_declaring_path),
+      if_join_source(path: if_join_colliding_path),
+      if_join_source(path: if_join_with_collision_path)
+    ],
+    entry: if_join_with_collision_path
+  })
+}
+
+fn if_join_without_collision_outcome() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      if_join_source(path: if_join_declaring_path),
+      if_join_source(path: if_join_without_collision_path)
+    ],
+    entry: if_join_without_collision_path
+  })
+}
+
+fn if_join_completed_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(rows) == 0 && count(files) > 0 && n > 0,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+test fn the_fixture_modules_are_readable() -> Bool {
+  string_length(s: if_join_text(path: if_join_declaring_path)) > 0
+    && string_length(s: if_join_text(path: if_join_colliding_path)) > 0
+    && string_length(s: if_join_text(path: if_join_with_collision_path)) > 0
+    && string_length(s: if_join_text(path: if_join_without_collision_path)) > 0
+    && string_contains(s: if_join_text(path: if_join_declaring_path), pattern: "type PoolSpecimenShape")
+    && string_contains(s: if_join_text(path: if_join_colliding_path), pattern: "type PoolSpecimenSquare")
+}
+
+test fn the_declaring_module_compiles_clean_with_the_unrelated_pool_member() -> Bool {
+  if_join_completed_clean(o: if_join_with_collision_outcome())
+}
+
+test fn the_same_declaring_module_compiles_clean_without_the_pool_member() -> Bool {
+  if_join_completed_clean(o: if_join_without_collision_outcome())
+}
+
+test fn the_verdict_does_not_flip_on_pool_membership_alone() -> Bool {
+  if_join_completed_clean(o: if_join_with_collision_outcome())
+    && if_join_completed_clean(o: if_join_without_collision_outcome())
+}
