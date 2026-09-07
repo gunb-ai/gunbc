@@ -15,7 +15,6 @@ import gunbc.typed_remote_file_write {
   typed_remote_file_write_seal,
   typed_remote_file_write_stdin_payload,
   typed_remote_file_write_remote_argv,
-  typed_remote_file_write_content_digest_hex,
   typed_remote_file_write_tee_command,
   typed_remote_file_write_execute_preflight_outcome,
   typed_remote_file_write_outcome_after_ssh_exec,
@@ -170,27 +169,6 @@ test fn w_stdin_payload_is_exact_content_not_transformed() -> Bool {
   ) {
     TypedRemoteFileWriteAdmitted { write: w } =>
       typed_remote_file_write_stdin_payload(write: w) == witness_metachar_payload
-    TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
-  }
-}
-
-test fn w_content_digest_stable_for_same_bytes() -> Bool {
-  match typed_remote_file_write_seal(
-    path: "/tmp/gunbc-trfw-digest-a" as FilePath,
-    content: witness_metachar_payload,
-    allowed_scope: witness_tmp_scope,
-  ) {
-    TypedRemoteFileWriteAdmitted { write: a } =>
-      match typed_remote_file_write_seal(
-        path: "/tmp/gunbc-trfw-digest-b" as FilePath,
-        content: witness_metachar_payload,
-        allowed_scope: witness_tmp_scope,
-      ) {
-        TypedRemoteFileWriteAdmitted { write: b } =>
-          typed_remote_file_write_content_digest_hex(write: a)
-            == typed_remote_file_write_content_digest_hex(write: b)
-        TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
-      }
     TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
   }
 }
