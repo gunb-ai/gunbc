@@ -907,10 +907,12 @@ test fn the_digest_keys_on_the_exact_offer_identity() -> Bool {
     acc || ((selected_key(s: t_select_tie(candidates: renamed, tie: DemandKeyedRendezvous, demand_key: d)) as String) == "offer-group-b@second-launch"))
 }
 
-// A COLLISION REFUSES RATHER THAN FALLING BACK. Two candidates carrying the SAME offer identity
-// produce the same digest, and the honest answer is that the policy could not choose -- returning
-// the roster-first one would reinstate the policy this arm replaces, in the one case nobody would
-// notice.
+// A COLLISION REFUSES RATHER THAN FALLING BACK, and this fixture is honest about which collision it
+// produces: two candidates carrying the SAME offer identity, which is duplicate identity rather than
+// two distinct identities whose digests happen to agree. A 64-bit digest collision between distinct
+// keys is not authorable in a fixture, and the arm treats both the same way -- the policy cannot
+// choose, so it refuses. Returning the roster-first one would reinstate the policy this arm replaces,
+// in the one case nobody would notice.
 test fn an_unresolvable_tie_refuses_instead_of_taking_the_first() -> Bool {
   let twinned = concat(t_twin_candidate(key: "offer-group-a"), t_twin_candidate(key: "offer-group-a"))
   match t_select_tie(candidates: twinned, tie: DemandKeyedRendezvous, demand_key: "d") {
@@ -920,8 +922,8 @@ test fn an_unresolvable_tie_refuses_instead_of_taking_the_first() -> Bool {
   }
 }
 
-// AND THE COLLISION IS STICKY. A later candidate must not overwrite it: dropping the collision and
-// continuing would hand back a winner chosen by the order the collision happened to occur in.
+// AND THE COLLISION SURVIVES A LATER EQUAL-COST CANDIDATE. Dropping it there would hand back a winner
+// chosen by the order the collision happened to occur in -- the tie is still unresolved at that cost.
 test fn a_collision_survives_a_later_candidate() -> Bool {
   let twinned = concat(concat(t_twin_candidate(key: "offer-group-a"), t_twin_candidate(key: "offer-group-a")), t_twin_candidate(key: "offer-group-b"))
   match t_select_tie(candidates: twinned, tie: DemandKeyedRendezvous, demand_key: "d") {
@@ -944,4 +946,47 @@ test fn the_outcome_carries_the_policy_that_decided_it() -> Bool {
             match p { StableRosterOrder => true  DemandKeyedRendezvous => false }
           _ => false
         })
+}
+
+// ── A TIE AMONG DEARER OFFERS DOES NOT SUPPRESS A CHEAPER ONE ─────────────────────────────────
+//
+// THE ORDER DEPENDENCE THIS CONTROL EXISTS FOR, which the first shape of the fold had (review
+// 62155). A collision used to stop the ranking: every later candidate was recorded and none was
+// ranked, so [dear, dear-colliding, cheap] refused while [cheap, dear, dear-colliding] selected the
+// cheap one -- the outcome depending on roster order under the policy that exists to remove roster
+// order from the outcome. A tie is only ever a tie at the current minimum.
+fn t_dear_candidate(key: OfferKey) -> List<CandidateOffer<NonEmptyStr>> {
+  t_bound(
+    offer: t_twin_offer(key: key),
+    inputs: t_inputs(
+      key: key,
+      availability: AvailableIndefinitely { delay: second(count: 60), receipt: "gunbc.observation.availability-2" },
+      commitment: PayAsYouGo,
+      operating: OperatingCostBorneBySupplier,
+      opportunity: t_idle(),
+    ),
+  )
+}
+
+fn t_select_five_micros(candidates: List<CandidateOffer<NonEmptyStr>>) -> SupplySelection<NonEmptyStr> {
+  select_supply(
+    requirements: t_requirements(),
+    candidates: candidates,
+    duration: t_ninety_seconds(),
+    maximum_buy_order: money_amount_micro(count: 1000000),
+    budget_currency: Usd,
+    delay_valuation: t_five_micros_per_second(),
+    tie: DemandKeyedRendezvous,
+    demand_key: "test.demand",
+  )
+}
+
+test fn a_cheaper_candidate_after_a_collision_still_wins_in_either_order() -> Bool {
+  let dear = concat(t_dear_candidate(key: "offer-dear"), t_dear_candidate(key: "offer-dear"))
+  let cheap = t_twin_candidate(key: "offer-cheap")
+  let dear_total = selected_total(s: t_select_five_micros(candidates: t_dear_candidate(key: "offer-dear")))
+  let cheap_total = selected_total(s: t_select_five_micros(candidates: cheap))
+  (cheap_total < dear_total)
+    && ((selected_key(s: t_select_five_micros(candidates: concat(dear, cheap))) as String) == "offer-cheap")
+    && ((selected_key(s: t_select_five_micros(candidates: concat(cheap, dear))) as String) == "offer-cheap")
 }

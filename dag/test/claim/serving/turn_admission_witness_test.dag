@@ -11,12 +11,13 @@ import product.fabric.selection {
 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire }
 import gunbc.spark.vllm_serving_launch {
-  VllmServingLaunch, vllm_serving_launch, vllm_serving_launch_key, vllm_serving_launch_is,
-  VllmServingLaunchObservation, LaunchObserved, LaunchUnobserved,
+  VllmEndpointProcessLaunch, vllm_serving_launch, vllm_endpoint_process_launch_key, vllm_endpoint_process_launch_is,
+  VllmEndpointProcessLaunchObservation, LaunchObserved, LaunchUnobserved,
 }
 import gunbc.serving.turn_admission {
   ServingQueueReading, QueueDepthRead, QueueDepthUnread,
   ServingCoTenancy, GroupIdle, GroupServingInteractiveTurn, CoTenancyUnread, serving_co_tenancy,
+  ServingSeatOccupancy, NoSeatHeld, SeatsHeldForTurns, SeatOccupancyUnread,
   ServingGroupAdmission, AdmissibleForColdPrefill, InadmissibleActiveInteractiveTurn, AdmissibilityUnread,
   serving_group_admission, serving_admission_detail, serving_admission_is_admissible, serving_admission_is_retryable,
   serving_availability, serving_transition_cost, serving_opportunity_cost,
@@ -28,7 +29,11 @@ import gunbc.harness.harness_backend {
 data probe_receipt: ObservationReceiptRef = "test.claim.serving.turn_admission_witness" as ObservationReceiptRef
 
 fn admission_of(reading: ServingQueueReading) -> ServingGroupAdmission {
-  serving_group_admission(tenancy: serving_co_tenancy(reading: reading), receipt: probe_receipt)
+  serving_group_admission(tenancy: serving_co_tenancy(reading: reading), seats: NoSeatHeld, receipt: probe_receipt)
+}
+
+fn admission_with_seats(reading: ServingQueueReading, seats: ServingSeatOccupancy) -> ServingGroupAdmission {
+  serving_group_admission(tenancy: serving_co_tenancy(reading: reading), seats: seats, receipt: probe_receipt)
 }
 
 fn metrics_body(waiting: String, running: String, start: String) -> String {
@@ -167,13 +172,13 @@ test fn an_admitted_candidate_carries_no_priced_estimate() -> Bool {
 // are two, which is what lets a seat taken against one engine fail to authorize a request against
 // the engine that replaced it.
 test fn a_restarted_engine_is_a_different_offer_subject() -> Bool {
-  let first = vllm_serving_launch(group: FabricGroupA, endpoint: "192.168.1.232" as NonEmptyStr, process_start_field: "1757200000.5" as NonEmptyStr)
-  let second = vllm_serving_launch(group: FabricGroupA, endpoint: "192.168.1.232" as NonEmptyStr, process_start_field: "1757209999.25" as NonEmptyStr)
-  let other_group = vllm_serving_launch(group: FabricGroupB, endpoint: "192.168.1.233" as NonEmptyStr, process_start_field: "1757200000.5" as NonEmptyStr)
-  !vllm_serving_launch_is(launch: first, other: second)
-    && !vllm_serving_launch_is(launch: first, other: other_group)
-    && vllm_serving_launch_is(launch: first, other: first)
-    && ((vllm_serving_launch_key(launch: first) as String) != (vllm_serving_launch_key(launch: second) as String))
+  let first = vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "192.168.1.232" as NonEmptyStr, process_start_field: "1757200000.5" as NonEmptyStr)
+  let second = vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "192.168.1.232" as NonEmptyStr, process_start_field: "1757209999.25" as NonEmptyStr)
+  let other_group = vllm_endpoint_process_launch(group: FabricGroupB, endpoint: "192.168.1.233" as NonEmptyStr, process_start_field: "1757200000.5" as NonEmptyStr)
+  !vllm_endpoint_process_launch_is(launch: first, other: second)
+    && !vllm_endpoint_process_launch_is(launch: first, other: other_group)
+    && vllm_endpoint_process_launch_is(launch: first, other: first)
+    && ((vllm_endpoint_process_launch_key(launch: first) as String) != (vllm_endpoint_process_launch_key(launch: second) as String))
 }
 
 // AND A LAUNCH THAT CANNOT BE NAMED IS NOT OFFERED, because the alternative is an offer keyed on the
@@ -191,4 +196,38 @@ test fn an_unnameable_launch_is_not_offered() -> Bool {
           LaunchObserved { launch: l, receipt: _ } => (l.process_start_field as String) == "1757200000.5"
           LaunchUnobserved { group: _, obligation: _ } => false
         })
+}
+
+// ── A GRANTED SEAT IS OCCUPANCY THE GAUGES CANNOT YET SEE ─────────────────────────────────────
+//
+// THE DISCRIMINATING CASE, AND IT IS THE ONE THAT SHIPPED WRONG. The engine's gauges count what it
+// has been HANDED. A placement whose seat was granted a moment ago, whose caller has not sent its
+// request yet, reads zero on both gauges -- so a rule decided from the gauges alone admits a second
+// cold prefill onto a group already committed to one, which is the overlap the rule exists to
+// prevent. The seat ledger sees it, because a seat is taken before a request is sent.
+//
+// This control goes red on exactly the reading that shipped: gauges idle, one seat held, admitted.
+test fn a_held_seat_is_occupancy_even_when_the_gauges_read_zero() -> Bool {
+  let a = admission_with_seats(reading: QueueDepthRead { waiting: 0, running: 0 }, seats: SeatsHeldForTurns { held: 1 })
+  (match a { InadmissibleActiveInteractiveTurn { occupied_by: n, basis: _ } => n == 1  _ => false })
+    && !serving_admission_is_admissible(admission: a)
+    && serving_admission_is_retryable(admission: a)
+}
+
+// AND AN UNREADABLE LEDGER IS NOT AN EMPTY ONE, which is the same rule the gauges already obey: a
+// pool that could not be read frees nobody by being waited for, so it is an obligation rather than a
+// retry.
+test fn an_unread_seat_ledger_never_admits() -> Bool {
+  let a = admission_with_seats(reading: QueueDepthRead { waiting: 0, running: 0 }, seats: SeatOccupancyUnread { obligation: "the partition chain could not be walked" as NonEmptyStr })
+  (match a { AdmissibilityUnread { obligation: o } => string_contains(s: o as String, pattern: "partition chain")  _ => false })
+    && !serving_admission_is_admissible(admission: a)
+    && !serving_admission_is_retryable(admission: a)
+}
+
+// BOTH CLOCKS CLEAR IS THE ONLY ADMITTING STATE, and the positive control says so rather than
+// leaving the two refusals above to imply it.
+test fn a_group_idle_on_both_readings_is_the_only_admitted_state() -> Bool {
+  serving_admission_is_admissible(admission: admission_with_seats(reading: QueueDepthRead { waiting: 0, running: 0 }, seats: NoSeatHeld))
+    && !serving_admission_is_admissible(admission: admission_with_seats(reading: QueueDepthRead { waiting: 0, running: 2 }, seats: NoSeatHeld))
+    && !serving_admission_is_admissible(admission: admission_with_seats(reading: QueueDepthRead { waiting: 0, running: 0 }, seats: SeatsHeldForTurns { held: 3 }))
 }

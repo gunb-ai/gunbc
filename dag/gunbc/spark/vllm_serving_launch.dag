@@ -4,7 +4,7 @@ import std.types { Bool, String, NonEmptyStr }
 import product.fabric.demand { ObservationReceiptRef }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
 
-// ── ONE LAUNCH IS ONE SUBJECT, AND THE GROUP IS NOT IT ─────────────────────────────────────────
+// ── ONE ENDPOINT PROCESS IS ONE SUBJECT, AND THE GROUP IS NOT IT ──────────────────────────────
 //
 // WHY THIS EXISTS. Every capacity, queue, readiness and routing observation this repository takes
 // about a serving engine has been joined on the GROUP -- FabricGroupA, FabricGroupB. A group is a
@@ -28,42 +28,51 @@ import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
 // them; that is exactly the discrimination an offer key needs, and it costs one unprivileged GET of
 // an endpoint the placement path already reads.
 //
-// WHAT IT IS NOT. It is not provenance: an unchanged start time says the same process is answering
-// and says nothing about the image it was created from, the weights it loaded, or the flags it was
-// launched with. Those are privileged runtime facts, and a receipt carrying them is a separate
-// observation ABOUT this launch -- never a prerequisite for constructing the identity, because
-// making the identity depend on a privileged read is what leaves the ordinary observer with no
-// identity at all and sends it back to joining on the group.
+// WHAT IT IS NOT, AND THE NAME SAYS SO. It identifies the process that EXPORTS the metrics endpoint.
+// vLLM V1 runs an API server, an engine core and per-rank workers as separate processes, so an
+// unchanged export start time does not establish the same engine core, the same four-rank population,
+// or the same loaded model realization: an inner engine or worker replacement can leave the exporter
+// untouched (review 62155). It is therefore named for the process it observes, and the facts allowed
+// to join through it are limited to what an endpoint-process lifetime supports -- the queue and
+// readiness readings taken from that same endpoint, and the offer identity that carries them.
+//
+// It is not provenance either: an unchanged start time says nothing about the image the process was
+// created from, the weights it loaded, or the flags it was launched with. Those are privileged
+// runtime facts, and a receipt carrying them is a separate observation ABOUT this process -- never a
+// prerequisite for constructing this identity, because making the identity depend on a privileged
+// read is what leaves the ordinary observer with no identity at all and sends it back to joining on
+// the group. Joining this subject to the engine-core and rank incarnations is the obligation that
+// closes the gap, and it belongs to the lane that can take a privileged reading.
 //
 // THE VALUE IS CARRIED AS THE EXPORTED FIELD, BYTE FOR BYTE, AND IS NOT PARSED INTO A TIME. Nothing
 // here does arithmetic on it, orders it, or renders it to a human; the only operation is equality
 // between two readings of one endpoint, and the exporter emits a stable rendering. Parsing it into
 // integral seconds would buy nothing and would lose the discrimination between two launches inside
 // one second.
-type VllmServingLaunch sole_constructor {
+type VllmEndpointProcessLaunch sole_constructor {
   group: FabricGroup
   endpoint: NonEmptyStr
   process_start_field: NonEmptyStr
 }
 
-fn vllm_serving_launch(group: FabricGroup, endpoint: NonEmptyStr, process_start_field: NonEmptyStr) -> VllmServingLaunch {
-  VllmServingLaunch { group: group, endpoint: endpoint, process_start_field: process_start_field }
+fn vllm_endpoint_process_launch(group: FabricGroup, endpoint: NonEmptyStr, process_start_field: NonEmptyStr) -> VllmEndpointProcessLaunch {
+  VllmEndpointProcessLaunch { group: group, endpoint: endpoint, process_start_field: process_start_field }
 }
 
 // THE OFFER KEY. It is the group wire and the launch discriminator, in one string, because an offer
 // key is one opaque name and every consumer that recovers a group from it does so by asking this
 // module rather than by taking a prefix.
-fn vllm_serving_launch_key(launch: VllmServingLaunch) -> NonEmptyStr {
+fn vllm_endpoint_process_launch_key(launch: VllmEndpointProcessLaunch) -> NonEmptyStr {
   join([fabric_group_wire(g: launch.group) as String, "@", launch.process_start_field as String], "") as NonEmptyStr
 }
 
-fn vllm_serving_launch_is(launch: VllmServingLaunch, other: VllmServingLaunch) -> Bool {
-  (vllm_serving_launch_key(launch: launch) as String) == (vllm_serving_launch_key(launch: other) as String)
+fn vllm_endpoint_process_launch_is(launch: VllmEndpointProcessLaunch, other: VllmEndpointProcessLaunch) -> Bool {
+  (vllm_endpoint_process_launch_key(launch: launch) as String) == (vllm_endpoint_process_launch_key(launch: other) as String)
 }
 
 // AN UNREADABLE LAUNCH IS NOT A LAUNCH, AND THAT IS THE WHOLE POINT OF THE COPRODUCT. A group whose
 // incarnation could not be read cannot be offered: the alternative is an offer keyed on the group,
 // which is the identity this module exists to replace.
-type VllmServingLaunchObservation
-  = LaunchObserved { launch: VllmServingLaunch, receipt: ObservationReceiptRef }
+type VllmEndpointProcessLaunchObservation
+  = LaunchObserved { launch: VllmEndpointProcessLaunch, receipt: ObservationReceiptRef }
   | LaunchUnobserved { group: FabricGroup, obligation: NonEmptyStr }

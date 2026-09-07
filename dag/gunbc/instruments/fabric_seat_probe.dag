@@ -15,7 +15,6 @@ import product.capacity.lease { LeasePolicy, QuiescenceRequired }
 import gunbc.harness.harness_wire { OpenAiChatCompletionsShape }
 import gunbc.harness.harness_seat {
   HarnessSeatBinding, HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, harness_bind_seat,
-  ServingTurnWork, harness_turn_work_standing,
   HarnessSeatRelease, HarnessSeatReleased, HarnessSeatReleaseRefused, harness_release_seat, harness_seat_release_wire,
   harness_now_epoch,
 }
@@ -52,10 +51,9 @@ fn fabric_seat_probe(receipt: NonEmptyStr) -> ProcessExit {
   match binding {
     HarnessSeatRefused { detail: d } => exit_failure(reason: join(["seat probe: bind refused: ", d], ""))
     HarnessSeatPending { detail: d } => exit_failure(reason: join(["seat probe: placement pending: ", d], ""))
-    HarnessSeatBound { url: u, grant: g, partition: p, group_wire: gw, launch: launch, work: work, layout: _ } => {
+    HarnessSeatBound { url: u, grant: g, partition: p, group_wire: gw, launch: launch, layout: _ } => {
       let line = join([
         "host=", short, " group=", gw, " launch=", launch.process_start_field as String,
-        " ", harness_turn_work_standing(w: work),
         " partition=", p as String, " url=", u,
         " reference=", g.reference as String, " fence=", g.fence.grant as String, "@", to_string(g.fence.generation),
         " granted_at=", to_string(g.granted_at), " expires_at=", to_string(g.expires_at), "\n",

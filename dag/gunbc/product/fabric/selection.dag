@@ -984,14 +984,27 @@ type PricedCandidate<P> {
   horizon: CommitmentHorizon
 }
 
-// THE COLLISION IS STICKY AND IS CARRIED BESIDE THE BEST, not folded into it. A tie the policy could
-// not resolve must survive to the outcome: dropping it and continuing would hand back a winner chosen
-// by the order the collision happened to occur in, which is the roster-order policy sneaking back at
-// the one moment nobody would look.
+// THE COLLISION IS CARRIED BESIDE THE BEST, not folded into it. A tie the policy could not resolve
+// must survive to the outcome: dropping it and continuing would hand back a winner chosen by the
+// order the collision happened to occur in, which is the roster-order policy sneaking back at the one
+// moment nobody would look.
+//
+// AND IT IS CARRIED WITH THE COST IT HAPPENED AT, which is the repair of a real order dependence in
+// the first shape of this fold (review 62155). That shape made the collision GLOBALLY sticky: once
+// two candidates tied unresolvably, every later candidate was recorded and none was ranked. So a
+// population of [A:10, B:10-colliding, C:1] refused, while [C:1, A:10, B:10] selected C -- the
+// outcome depending on roster order under the policy that exists to remove roster-order dependence.
+// A tie is only ever a tie AT THE CURRENT MINIMUM, so a strictly cheaper candidate arriving later is
+// not tied with anything and clears it.
+type SelectionCollision {
+  digest: Fnv1a64StructuralDigestHex
+  total: Nat
+}
+
 type SelectionRanking<P> {
   best: PricedCandidate<P>?
   considered: List<OfferCandidacy<P>>
-  collision: Fnv1a64StructuralDigestHex?
+  collision: SelectionCollision?
 }
 
 // THE COMPARATOR RANKS ON selection_total, AND UNDER CommitmentFloorCost THAT AMOUNT IS A
@@ -1032,29 +1045,49 @@ fn rank_candidate<P>(
   demand_key: NonEmptyStr,
 ) -> SelectionRanking<P> {
   let considered = concat(acc.considered, [candidacy])
-  match acc.collision {
-    Present { value: d } => SelectionRanking { best: acc.best, considered: considered, collision: Present { value: d } }
-    Absent =>
-      match candidacy {
-        OfferPriced { offer: _, cost: c, basis: b, horizon: h } =>
-          match better_of(
-            incumbent: acc.best,
-            challenger: PricedCandidate { candidate: candidate, cost: c, basis: b, horizon: h },
-            tie: tie,
-            demand_key: demand_key,
-          ) {
-            RankingCollided { digest: d } =>
-              SelectionRanking { best: acc.best, considered: considered, collision: Present { value: d } }
-            RankingAdvanced { best: nb } =>
-              SelectionRanking { best: nb, considered: considered, collision: none }
+  match candidacy {
+    OfferPriced { offer: _, cost: c, basis: b, horizon: h } =>
+      match better_of(
+        incumbent: acc.best,
+        challenger: PricedCandidate { candidate: candidate, cost: c, basis: b, horizon: h },
+        tie: tie,
+        demand_key: demand_key,
+      ) {
+        RankingCollided { digest: d } =>
+          SelectionRanking {
+            best: acc.best,
+            considered: considered,
+            collision: Present { value: SelectionCollision { digest: d, total: money_amount_micro_count(m: selection_total(c: c)) } },
           }
-        OfferNotFungible { offer: _, fungibility: _ } => carry_ranking(acc: acc, considered: considered)
-        OfferUnavailableForGrant { offer: _, needed: _, available: _ } => carry_ranking(acc: acc, considered: considered)
-        OfferCannotHoldAnUnboundedGrant { offer: _, available: _ } => carry_ranking(acc: acc, considered: considered)
-        OfferNotPriceable { offer: _, unpriced: _ } => carry_ranking(acc: acc, considered: considered)
-        OfferWrongCurrency { offer: _, mismatch: _ } => carry_ranking(acc: acc, considered: considered)
-        OfferUnaffordable { offer: _, affordability: _ } => carry_ranking(acc: acc, considered: considered)
-        OfferLiabilityOverBuyOrder { offer: _, liability: _, maximum: _ } => carry_ranking(acc: acc, considered: considered)
+        RankingAdvanced { best: nb } =>
+          SelectionRanking {
+            best: nb,
+            considered: considered,
+            collision: surviving_collision(collision: acc.collision, best: nb),
+          }
+      }
+    OfferNotFungible { offer: _, fungibility: _ } => carry_ranking(acc: acc, considered: considered)
+    OfferUnavailableForGrant { offer: _, needed: _, available: _ } => carry_ranking(acc: acc, considered: considered)
+    OfferCannotHoldAnUnboundedGrant { offer: _, available: _ } => carry_ranking(acc: acc, considered: considered)
+    OfferNotPriceable { offer: _, unpriced: _ } => carry_ranking(acc: acc, considered: considered)
+    OfferWrongCurrency { offer: _, mismatch: _ } => carry_ranking(acc: acc, considered: considered)
+    OfferUnaffordable { offer: _, affordability: _ } => carry_ranking(acc: acc, considered: considered)
+    OfferLiabilityOverBuyOrder { offer: _, liability: _, maximum: _ } => carry_ranking(acc: acc, considered: considered)
+  }
+}
+
+// A STANDING COLLISION SURVIVES EVERYTHING EXCEPT A STRICTLY CHEAPER BEST. Equal-cost movement does
+// not clear it -- the tie is still unresolved at that cost, and the candidate now held may be the one
+// the policy could not choose. Only a candidate that beats the collided cost outright makes the tie
+// irrelevant, because it would have won against both of them.
+fn surviving_collision<P>(collision: SelectionCollision?, best: PricedCandidate<P>?) -> SelectionCollision? {
+  match collision {
+    Absent => none
+    Present { value: c } =>
+      match best {
+        Absent => Present { value: c }
+        Present { value: b } =>
+          if money_amount_micro_count(m: selection_total(c: b.cost)) < c.total { none } else { Present { value: c } }
       }
   }
 }
@@ -1183,7 +1216,7 @@ fn select_supply<P>(
       ),
   )
   match ranked.collision {
-    Present { value: d } => EqualCostTieUnresolved { digest: d, considered: ranked.considered }
+    Present { value: c } => EqualCostTieUnresolved { digest: c.digest, considered: ranked.considered }
     Absent =>
   match ranked.best {
     Absent => NoAdmissibleOffer { considered: ranked.considered }

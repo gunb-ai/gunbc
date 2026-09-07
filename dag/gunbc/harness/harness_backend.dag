@@ -2,6 +2,7 @@ module gunbc.harness.harness_backend
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
+import std.checked_arithmetic { CheckedNat, CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
 import std.algebra { trim }
 import v2.std.optional { Present, Absent }
 import product.fabric.demand { ObservationReceiptRef }
@@ -9,8 +10,8 @@ import extdeps.vllm.metrics { VllmServingMetric, NumRequestsWaiting, NumRequests
 import extdeps.prometheus.client { PrometheusProcessSeries, ProcessStartTimeSeconds, prometheus_process_series_name }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
 import gunbc.spark.vllm_serving_launch {
-  VllmServingLaunch, vllm_serving_launch,
-  VllmServingLaunchObservation, LaunchObserved, LaunchUnobserved,
+  VllmEndpointProcessLaunch, vllm_serving_launch,
+  VllmEndpointProcessLaunchObservation, LaunchObserved, LaunchUnobserved,
 }
 import gunbc.serving.turn_admission { ServingQueueReading, QueueDepthRead, QueueDepthUnread }
 import extdeps.http.client
@@ -252,14 +253,23 @@ fn harness_metrics_url(address: String) -> String {
 // PROCESS COLLECTOR'S, so the two shapes are matched separately rather than by one loose pattern.
 // The application gauges are found by their name followed by a brace, which is what stops a series
 // whose name merely has ours as a prefix from answering for it.
+// AN AMBIGUOUS SERIES IS UNREAD, NOT THE FIRST ONE. Taking the first line that matches is a silent
+// pick: a body serving two models exports one gauge per label set, and the first is whichever the
+// exporter happened to render first. The reading here is a fleet-level count for ONE engine, so more
+// than one matching line means the body is not the body this reader models -- and that is an
+// obligation to model the label set, never a licence to choose (review 62155).
 fn harness_metric_line_value(body: String, prefix: String) -> String? {
   let lines = split(s: body, delimiter: "\n")
   let matching = filter(lines, l => starts_with(s: trim(s: l), prefix: prefix))
-  match first(matching) {
-    Absent => none
-    Present { value: line } => {
-      let parts = split(s: trim(s: line), delimiter: " ")
-      if length(parts) < 2 { none } else { last(parts) }
+  if length(matching) != 1 {
+    none
+  } else {
+    match first(matching) {
+      Absent => none
+      Present { value: line } => {
+        let parts = split(s: trim(s: line), delimiter: " ")
+        if length(parts) < 2 { none } else { last(parts) }
+      }
     }
   }
 }
@@ -287,10 +297,21 @@ fn harness_fraction_is_zero(text: String) -> Bool {
   }
 }
 
+fn harness_gauge_nat(n: Int) -> Nat? {
+  if n < 0 {
+    none
+  } else {
+    match checked_int_magnitude(a: n) {
+      CheckedNatOverflow { cause: _ } => none
+      CheckedNatReady { value: v } => Present { value: v }
+    }
+  }
+}
+
 fn harness_gauge_count(text: String) -> Nat? {
   let t = trim(s: text)
   match parse_int(s: t) {
-    Present { value: n } => if n < 0 { none } else { Present { value: n as Nat } }
+    Present { value: n } => harness_gauge_nat(n: n)
     Absent => {
       let parts = split(s: t, delimiter: ".")
       if length(parts) != 2 {
@@ -307,7 +328,7 @@ fn harness_gauge_count(text: String) -> Nat? {
                 } else {
                   match parse_int(s: whole) {
                     Absent => none
-                    Present { value: n } => if n < 0 { none } else { Present { value: n as Nat } }
+                    Present { value: n } => harness_gauge_nat(n: n)
                   }
                 }
             }
@@ -343,13 +364,13 @@ fn harness_queue_from_body(body: String) -> ServingQueueReading {
 // THE LAUNCH DISCRIMINATOR IS CARRIED AS THE EXPORTED FIELD, BYTE FOR BYTE. Nothing here parses it
 // into a time: the only operation on it is equality between two readings of one endpoint, and
 // parsing would lose the discrimination between two launches inside one second while buying nothing.
-fn harness_launch_from_body(group: FabricGroup, address: String, body: String) -> VllmServingLaunchObservation {
+fn harness_launch_from_body(group: FabricGroup, address: String, body: String) -> VllmEndpointProcessLaunchObservation {
   match harness_metric_line_value(body: body, prefix: join([prometheus_process_series_name(s: ProcessStartTimeSeconds) as String, " "], "")) {
     Absent =>
       LaunchUnobserved { group: group, obligation: "the served metrics carried no process start-time series, so which launch answered cannot be named and the group cannot be offered" as NonEmptyStr }
     Present { value: field } =>
       LaunchObserved {
-        launch: vllm_serving_launch(group: group, endpoint: address as NonEmptyStr, process_start_field: trim(s: field) as NonEmptyStr),
+        launch: vllm_endpoint_process_launch(group: group, endpoint: address as NonEmptyStr, process_start_field: trim(s: field) as NonEmptyStr),
         receipt: "gunbc.harness.metrics-probe" as ObservationReceiptRef,
       }
   }
@@ -357,7 +378,7 @@ fn harness_launch_from_body(group: FabricGroup, address: String, body: String) -
 
 type HarnessEngineReading {
   queue: ServingQueueReading
-  launch: VllmServingLaunchObservation
+  launch: VllmEndpointProcessLaunchObservation
 }
 
 fn harness_observe_engine(group: FabricGroup, address: String) -> HarnessEngineReading {

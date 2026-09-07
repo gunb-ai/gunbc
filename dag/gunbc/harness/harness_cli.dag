@@ -27,7 +27,7 @@ import gunbc.harness.harness_backend { HarnessBackendUrl, BackendUrlBound, Backe
 import gunbc.harness.harness_seat {
   HarnessSeatBinding, HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, harness_bind_seat,
   HarnessSeatRelease, HarnessSeatReleased, HarnessSeatReleaseRefused, harness_release_seat, harness_seat_release_wire,
-  harness_release_reference, harness_turn_work_standing,
+  harness_release_reference,
 }
 import product.capacity.lease { LeasePolicy, QuiescenceRequired }
 import extdeps.tools.hostname
@@ -284,21 +284,38 @@ fn harness_placement_pending_exit(detail: String) -> ProcessExit {
 // engine the seat was taken against; a caller that ignores it and picks its own host has left the
 // boundary, which is the capability router_realization forbids by name.
 fn harness_place_cli(actor: String, receipt: String) -> ProcessExit {
-  match harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: actor as NonEmptyStr, policy: harness_seat_policy) {
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: actor as NonEmptyStr, policy: harness_seat_policy)
+  match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant, partition: _, group_wire, launch, work, layout: _ } => {
+    HarnessSeatBound { url, grant, partition: _, group_wire, launch, layout: _ } => {
       let line = join([
         "url=", url,
         " group=", group_wire,
-        " launch=", launch.process_start_field as String,
+        " endpoint_process=", launch.process_start_field as String,
         " reference=", grant.reference as String,
-        " expires_at=", to_string(grant.expires_at),
-        " ", harness_turn_work_standing(w: work), "\n",
+        " expires_at=", to_string(grant.expires_at), "\n",
       ], "")
       let w = Filesystem.Write(path: receipt, content: line)
-      if w.success { ExitSuccess } else { ExitFailure { code: 1, reason: join(["harness placement receipt write failed: ", w.error], "") } }
+      if w.success {
+        ExitSuccess
+      } else {
+        harness_place_receipt_failed(binding: binding, cause: w.error)
+      }
     }
+  }
+}
+
+// A RECEIPT THAT COULD NOT BE WRITTEN LEAKS THE SEAT UNLESS THE SEAT IS GIVEN BACK. The grant is
+// already taken when the write is attempted, and the caller that would have released it never
+// learns its reference -- so the seat sits held until quiescence and the group takes nothing for a
+// full lease. The release happens here, and its own outcome travels in the failure text, because a
+// release that also failed is a different operational state from one that worked (review 62155).
+fn harness_place_receipt_failed(binding: HarnessSeatBinding, cause: String) -> ProcessExit {
+  let released = harness_release_seat(binding: binding, reason: "the placement receipt could not be written" as NonEmptyStr)
+  ExitFailure {
+    code: 1,
+    reason: join(["harness placement receipt write failed: ", cause, "; ", harness_seat_release_wire(r: released)], ""),
   }
 }
 

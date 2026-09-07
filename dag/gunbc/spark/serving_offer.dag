@@ -12,7 +12,7 @@ import product.fabric.supply { SupplierOffer, OfferQuote, QuotedPerSecond, Offer
 import std.measure { ByteSize, Second, second, MoneyRate, MoneyPerSecond, MoneyAmountMicro, money_amount_micro, HardwareThreadCount, hardware_thread_count }
 import extdeps.currency.currency { Usd }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire }
-import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch_key }
+import gunbc.spark.vllm_serving_launch { VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key }
 
 // ── THE SPARKS BECOME SUPPLY, WHICH IS WHAT PUTS SERVING ON THE FABRIC ────────────────────────
 //
@@ -41,8 +41,8 @@ import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch_
 // survived, and a previous launch's evidence prices or authorizes its successor. A restart must
 // create a new offer subject, and keying on the launch is what makes that structural rather than a
 // rule someone remembers.
-fn spark_serving_offer_key(launch: VllmServingLaunch) -> NonEmptyStr {
-  vllm_serving_launch_key(launch: launch)
+fn spark_serving_offer_key(launch: VllmEndpointProcessLaunch) -> NonEmptyStr {
+  vllm_endpoint_process_launch_key(launch: launch)
 }
 
 // ── WHAT WE SANCTION THE GROUP FOR ────────────────────────────────────────────────────────────
@@ -91,7 +91,7 @@ fn spark_serving_unexpressed() -> List<SparkServingUnexpressed> {
 // proof of a shared concept, and a generic minted now would be a bare alias.
 type SparkOfferProjection<P> {
   offer: SupplierOffer<P>
-  launch: VllmServingLaunch
+  launch: VllmEndpointProcessLaunch
   unexpressed: List<SparkServingUnexpressed>
 }
 
@@ -135,7 +135,7 @@ fn spark_serving_shape() -> Shape {
 fn bind_spark_serving_offer<P>(
   principal: P,
   executor: P,
-  launch: VllmServingLaunch,
+  launch: VllmEndpointProcessLaunch,
   model: NonEmptyStr,
   trust_domain: TrustDomainRef,
   isolation: IsolationProfile,
