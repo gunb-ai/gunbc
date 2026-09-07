@@ -99,26 +99,37 @@ fn power_below_ceiling_excludes_saturation() -> ClaimConstruction {
   }
 }
 
-// ── HOW PREFILL COST GROWS, SAMPLED RATHER THAN AVERAGED ──────────────────────────────────────
+// ── HOW PREFILL COST GROWS ACROSS TEN WINDOWS ON A SHARED ENGINE ──────────────────────────────
 //
 // The earlier cost model here was two handwritten numbers, 250ms fixed and 950 tok/s marginal, fitted
 // by hand to six points. It is replaced by the samples themselves, because a handwritten rate cannot
 // be falsified by adding a measurement and a derived one can.
 //
-// Each sample carries what the earlier fit guessed at: the COMPUTED token population, taken from the
-// local_compute prompt-token source delta so cache hits are excluded from the work term; the CACHED
-// population, which is what exposes another request's work landing inside the window; the engine
-// ITERATION delta; and concurrency sampled THROUGHOUT the request rather than only before it.
-//
-// Sizes straddle the 2048-token scheduler budget deliberately. A fixed per-step cost then appears as
-// a step in wall time between 1927 and 2052 computed tokens and needs no inference from averages --
-// which is the whole reason the previous run could not separate a per-step term from a per-token one.
+// WHAT THE SAMPLES ARE BOUND TO MATTERS AS MUCH AS THEIR VALUES. A bare global list of rows is not a
+// subject: a row taken from another launch, another runtime image, another scheduler budget or the
+// other engine group could join it and silently move the fit. So the rows hang off one experiment
+// carrying the launch, the provenance standing, the acquisition procedure and -- critically -- the
+// standing of the EFFECTIVE scheduler configuration, which was never read back from the running
+// engine and therefore is not known.
+type EffectiveSchedulerConfigStanding
+  = EffectiveSchedulerConfigRead { max_num_batched_tokens: Nat, source: NonEmptyStr }
+  | EffectiveSchedulerConfigUnread { because: NonEmptyStr }
+
 type ConcurrencyWitness {
   max_running: Nat
   max_waiting: Nat
 }
 
+// max_running COUNTS THE PROBE ITSELF. A window with max_running of 1 therefore had NO co-tenant, and
+// an earlier version of this module read that field as though 1 meant one other request -- which made
+// the claim that a co-tenant was present throughout the sweep false for the 1551-token window and
+// unproven everywhere it was asserted from the field alone. The predicate below is the reading.
+fn co_tenant_present(c: ConcurrencyWitness) -> Bool {
+  c.max_running > 1 || c.max_waiting > 0
+}
+
 type PrefillScalingSample {
+  sequence: Nat
   computed_tokens: Nat
   cached_tokens: Nat
   iteration_delta: Nat
@@ -126,64 +137,101 @@ type PrefillScalingSample {
   concurrency: ConcurrencyWitness
 }
 
-// A SAMPLE IS ADMISSIBLE TO THE ISOLATED FIT ONLY IF NOTHING ELSE'S WORK LANDED IN ITS WINDOW.
-// Concurrency count is NOT that test, and assuming it was is what produced the 290s outlier's first
-// misreading: an 8191-token sample ran with a co-tenant present and sits on the curve, while a
-// 4840-token sample at the same co-tenant count took 290.96s. What actually disqualifies a sample is
-// another request's tokens being ACCOUNTED inside the window, which the cached-token delta shows
-// directly -- a quarter of a million cached tokens cannot belong to a 1,024-token probe.
-type SampleAdmission
-  = AdmittedToIsolatedFit
-  | ExcludedFromIsolatedFit { cause: NonEmptyStr }
+// ── WHAT ADMISSION ACTUALLY ESTABLISHES, WHICH IS MUCH LESS THAN ISOLATION ────────────────────
+//
+// A zero cached-token delta establishes exactly one thing: no foreign prefix booking was accounted in
+// this window. It does NOT establish that the probe ran alone. A co-tenant can contribute uncached
+// prefill tokens that contaminate the computed-token delta, decode work that costs wall time while
+// booking nothing, or scheduler and collective interference; and a request that stays active without
+// completing a booking leaves no trace here at all. In the other direction the rule is too strict:
+// a future probe with legitimate cache reuse of its own would be rejected as foreign.
+//
+// So the standing an admitted sample earns is NoForeignCachedBookingObserved, and the fit built from
+// those samples is a SHARED-ENGINE DESCRIPTIVE FIT. ProbeWorkIsolated is a separate standing that
+// nothing in this population attains, and it is what an isolated fit would require.
+type SampleStanding
+  = ProbeWorkIsolated
+  | NoForeignCachedBookingObserved
+  | ForeignCachedBookingObserved { cached_tokens: Nat }
 
-fn sample_admission(s: PrefillScalingSample) -> SampleAdmission {
+fn sample_standing(s: PrefillScalingSample) -> SampleStanding {
   if s.cached_tokens > 0 {
-    ExcludedFromIsolatedFit { cause: "another request's cache hits were accounted inside this measurement window, so the computed-token term is not this request's alone" as NonEmptyStr }
+    ForeignCachedBookingObserved { cached_tokens: s.cached_tokens }
   } else {
-    AdmittedToIsolatedFit
+    NoForeignCachedBookingObserved
   }
 }
 
-data spark_group_a_prefill_scaling_samples: List<PrefillScalingSample> = [
-  PrefillScalingSample { computed_tokens: 516, cached_tokens: 0, iteration_delta: 4, wall_micros: 700000, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
-  PrefillScalingSample { computed_tokens: 518, cached_tokens: 0, iteration_delta: 5, wall_micros: 730000, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
-  PrefillScalingSample { computed_tokens: 1551, cached_tokens: 0, iteration_delta: 4, wall_micros: 1740000, concurrency: ConcurrencyWitness { max_running: 1, max_waiting: 0 } },
-  PrefillScalingSample { computed_tokens: 1927, cached_tokens: 0, iteration_delta: 4, wall_micros: 2120000, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
-  PrefillScalingSample { computed_tokens: 2052, cached_tokens: 0, iteration_delta: 6, wall_micros: 2340000, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
-  PrefillScalingSample { computed_tokens: 2062, cached_tokens: 0, iteration_delta: 6, wall_micros: 2370000, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
-  PrefillScalingSample { computed_tokens: 3885, cached_tokens: 0, iteration_delta: 5, wall_micros: 4160000, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
-  PrefillScalingSample { computed_tokens: 4117, cached_tokens: 0, iteration_delta: 6, wall_micros: 4550000, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
-  PrefillScalingSample { computed_tokens: 4119, cached_tokens: 0, iteration_delta: 7, wall_micros: 4580000, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
-  PrefillScalingSample { computed_tokens: 8191, cached_tokens: 0, iteration_delta: 9, wall_micros: 8790000, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
-  PrefillScalingSample { computed_tokens: 1491, cached_tokens: 249344, iteration_delta: 7, wall_micros: 1320000, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
-  PrefillScalingSample { computed_tokens: 2769, cached_tokens: 249600, iteration_delta: 4, wall_micros: 3250000, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
-]
+// PROBE ISOLATION IS DECIDABLE FROM WHAT WAS RECORDED: the probe alone running, nothing waiting, and
+// no foreign booking. Exactly ONE of the twelve windows satisfies it, the 1551-token one. That is not
+// enough to fit anything -- a single point determines neither a slope nor an intercept -- so the fit
+// stays a shared-engine description, and the isolated population is a sample of one rather than
+// empty. The rerun's job is to make that population large enough to fit.
+fn probe_isolation_admissible(s: PrefillScalingSample) -> Bool {
+  s.cached_tokens == 0 && s.concurrency.max_running == 1 && s.concurrency.max_waiting == 0
+}
 
-// THE 290-SECOND POINT IS RETAINED RATHER THAN DELETED. It is inadmissible to an isolated fit and it
-// is the only direct evidence of co-tenant delay's MAGNITUDE, so dropping it would discard the one
-// observation that shows what a co-tenant can cost. It is carried as its own kind of fact.
-type ScalingSampleExcludedFromIsolatedFit {
+type PrefillScalingExperiment {
+  launch: NonEmptyStr
+  acquisition: NonEmptyStr
+  scheduler_config: EffectiveSchedulerConfigStanding
+  ordered_samples: List<PrefillScalingSample>
+}
+
+// The sequence field records EXECUTION order, which is not the order the rows are written in. The
+// sweep interleaved sizes so that drift and warm-up could not align with size; without the field that
+// interleaving is a claim in prose that the model cannot distinguish from a sorted run on a drifting
+// machine.
+data spark_group_a_prefill_scaling_experiment: PrefillScalingExperiment = PrefillScalingExperiment {
+  launch: "group A head 192.168.1.225, systemd invocation re-read before and after the sweep and unchanged" as NonEmptyStr,
+  acquisition: "one chat completion per window with a 32-character random nonce and random six-letter words so nothing is served from cache, max_tokens 1; computed and cached token deltas read from the served counters either side, running and waiting polled every 300ms throughout" as NonEmptyStr,
+  scheduler_config: EffectiveSchedulerConfigUnread {
+    because: "max_num_batched_tokens was never read back from the running engine; 2048 is the value the fallback would select, which is a nominal expectation and not an observation, and extdeps.vllm.engine_args already rules that an omitted argument determines no effective value" as NonEmptyStr
+  },
+  ordered_samples: [
+    PrefillScalingSample { sequence: 1, computed_tokens: 1491, cached_tokens: 249344, iteration_delta: 7, wall_micros: 1320000, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 2, computed_tokens: 2062, cached_tokens: 0, iteration_delta: 6, wall_micros: 2370000, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 3, computed_tokens: 516, cached_tokens: 0, iteration_delta: 4, wall_micros: 700000, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 4, computed_tokens: 4117, cached_tokens: 0, iteration_delta: 6, wall_micros: 4550000, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 5, computed_tokens: 1551, cached_tokens: 0, iteration_delta: 4, wall_micros: 1740000, concurrency: ConcurrencyWitness { max_running: 1, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 6, computed_tokens: 2769, cached_tokens: 249600, iteration_delta: 4, wall_micros: 3250000, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 7, computed_tokens: 8191, cached_tokens: 0, iteration_delta: 9, wall_micros: 8790000, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 8, computed_tokens: 1927, cached_tokens: 0, iteration_delta: 4, wall_micros: 2120000, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 9, computed_tokens: 4119, cached_tokens: 0, iteration_delta: 7, wall_micros: 4580000, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 10, computed_tokens: 3885, cached_tokens: 0, iteration_delta: 5, wall_micros: 4160000, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 11, computed_tokens: 2052, cached_tokens: 0, iteration_delta: 6, wall_micros: 2340000, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+    PrefillScalingSample { sequence: 12, computed_tokens: 518, cached_tokens: 0, iteration_delta: 5, wall_micros: 730000, concurrency: ConcurrencyWitness { max_running: 2, max_waiting: 0 } },
+  ],
+}
+
+// THE 290-SECOND POINT IS RETAINED RATHER THAN DELETED. It is inadmissible to any fit and it is the
+// only direct evidence of how large a delay accompanied a co-tenant, so dropping it would discard the
+// one observation that shows what that can look like. It is NOT a causal estimate of co-tenant cost:
+// one event beside one co-tenant does not attribute the delay to the co-tenant.
+type ScalingSampleExcludedFromFit {
   computed_tokens: Nat
   wall_micros: Nat
   cause: NonEmptyStr
 }
 
-data spark_group_a_co_tenant_outlier: ScalingSampleExcludedFromIsolatedFit = ScalingSampleExcludedFromIsolatedFit {
+data spark_group_a_co_tenant_outlier: ScalingSampleExcludedFromFit = ScalingSampleExcludedFromFit {
   computed_tokens: 4840,
   wall_micros: 290960000,
-  cause: "a co-tenant was running; 290.96s against a fitted 5.3s, roughly 55x, while a larger 8191-token sample at the same co-tenant count sat on the curve" as NonEmptyStr,
+  cause: "a co-tenant was running; 290.96s against a described 5.3s, roughly 55x, while a larger 8191-token window at the same co-tenant count sat on the curve -- so this is an extreme event observed beside a co-tenant, not a measured co-tenant cost" as NonEmptyStr,
 }
 
-// ── THE FIT IS DERIVED FROM THE SAMPLES ───────────────────────────────────────────────────────
+// ── THE DESCRIPTIVE FIT IS DERIVED FROM THE SAMPLES ───────────────────────────────────────────
 //
 // Ordinary least squares over the admitted samples, in microseconds so integers carry it. Nobody can
 // edit the marginal rate here: it is a projection of the sample population, and adding a measurement
-// that disagrees moves it.
+// that disagrees moves it. What it describes is ten windows on a shared engine under this workload
+// family -- not isolated request cost.
 fn admitted_scaling_samples() -> List<PrefillScalingSample> {
-  filter(spark_group_a_prefill_scaling_samples, s =>
-    match sample_admission(s: s) {
-      AdmittedToIsolatedFit => true
-      ExcludedFromIsolatedFit { cause: _ } => false
+  filter(spark_group_a_prefill_scaling_experiment.ordered_samples, s =>
+    match sample_standing(s: s) {
+      ForeignCachedBookingObserved { cached_tokens: _ } => false
+      NoForeignCachedBookingObserved => true
+      ProbeWorkIsolated => true
     })
 }
 
@@ -194,7 +242,7 @@ type AffineFit {
 }
 
 type PrefillScalingStanding
-  = AffineWithinObservedRange { fit: AffineFit }
+  = SharedEngineAffineDescription { fit: AffineFit }
   | ScalingUnderObserved { cause: NonEmptyStr }
 
 fn prefill_scaling_standing() -> PrefillScalingStanding {
@@ -212,7 +260,7 @@ fn prefill_scaling_standing() -> PrefillScalingStanding {
       ScalingUnderObserved { cause: "every admitted sample carries the same token count, so no slope is determined" as NonEmptyStr }
     } else {
       let slope_milli = (((n * sxy) - (sx * sy)) * 1000) / denom
-      AffineWithinObservedRange {
+      SharedEngineAffineDescription {
         fit: AffineFit {
           intercept_micros: (sy - ((slope_milli * sx) / 1000)) / n,
           micros_per_thousand_tokens: slope_milli,
@@ -227,25 +275,107 @@ fn predicted_micros(fit: AffineFit, tokens: Nat) -> Int {
   fit.intercept_micros + ((fit.micros_per_thousand_tokens * tokens) / 1000)
 }
 
-// ── WHAT THE BOUNDARY CROSSING SETTLED, AND HOW LOOSELY ───────────────────────────────────────
-//
-// 1927 computed tokens is one scheduler step at a 2048-token budget and 2052 is two. The measured gap
-// is 0.22s for 125 extra tokens; at the fitted slope those tokens alone account for about 0.13s,
-// leaving roughly 0.088s attributable to the extra step. The worst residual across the whole fit is
-// about 0.095s, so the per-step fixed cost is BOUNDED ABOVE by the noise and is not distinguishable
-// from zero.
-//
-// That bound is the honest form, and both nearby phrasings are wrong. Saying there is no per-step
-// cost claims a resolution the measurement does not have; saying the per-step cost is 88ms reads
-// noise as signal. The consequence for the budget question below is a RANGE, which is why the shape
-// of this carrier matters rather than just its number.
-type PerStepFixedCost
-  = PerStepCostBoundedAbove { upper_micros: Nat, distinguishable_from_zero: Bool }
-  | PerStepCostUnmeasured { cause: NonEmptyStr }
+fn abs_int(x: Int) -> Int {
+  if x < 0 { 0 - x } else { x }
+}
 
-data spark_group_a_per_step_fixed_cost: PerStepFixedCost = PerStepCostBoundedAbove {
-  upper_micros: 95000,
-  distinguishable_from_zero: false,
+fn affine_worst_residual_micros(fit: AffineFit) -> Int {
+  fold(admitted_scaling_samples(), init: 0, f: (worst, s) => {
+    let e = abs_int(x: predicted_micros(fit: fit, tokens: s.computed_tokens) - s.wall_micros)
+    if e > worst { e } else { worst }
+  })
+}
+
+// ── WHY THE PER-STEP TERM IS NOT BOUNDED, AND THE COUNTEREXAMPLE THAT SETTLES IT ──────────────
+//
+// An earlier version of this module declared the per-step fixed cost bounded above by 95ms and not
+// distinguishable from zero, reasoning that crossing 1927 to 2052 computed tokens cost about 88ms of
+// unexplained time while the affine fit's worst residual was about 95ms. That reasoning is invalid,
+// and the samples themselves refute it.
+//
+// A THREE-TERM FIT OVER THE SAME TEN ROWS, adding a step count, lands at roughly 54ms fixed per
+// request, 1.003us per token and 126ms PER STEP -- with a worst residual near 42ms, less than half
+// the affine fit's. So the same data admits a per-step term LARGER than the claimed upper bound while
+// describing the measurements better. A model's residual error does not bound a term that model
+// omitted; the omitted term is part of what produces the residual.
+//
+// The alternative's coefficients are declared rather than derived because it is a COUNTEREXAMPLE, not
+// an authority: its job is to be worse-or-better than the affine fit on the same rows, and the
+// comparison is computed. If the affine fit ever became the better description, the check goes red.
+type StepAwareFitCandidate {
+  intercept_micros: Int
+  micros_per_thousand_tokens: Int
+  micros_per_step: Int
+  nominal_budget_tokens: Nat
+}
+
+data spark_group_a_step_aware_alternative: StepAwareFitCandidate = StepAwareFitCandidate {
+  intercept_micros: 54300,
+  micros_per_thousand_tokens: 1002544,
+  micros_per_step: 126300,
+  nominal_budget_tokens: 2048,
+}
+
+fn nominal_steps(tokens: Nat, budget: Nat) -> Nat {
+  let b = if budget == 0 { budget + 1 } else { budget }
+  ((tokens + b) - 1) / b
+}
+
+fn step_aware_predicted_micros(c: StepAwareFitCandidate, tokens: Nat) -> Int {
+  c.intercept_micros
+    + ((c.micros_per_thousand_tokens * tokens) / 1000)
+    + (c.micros_per_step * nominal_steps(tokens: tokens, budget: c.nominal_budget_tokens))
+}
+
+fn step_aware_worst_residual_micros(c: StepAwareFitCandidate) -> Int {
+  fold(admitted_scaling_samples(), init: 0, f: (worst, s) => {
+    let e = abs_int(x: step_aware_predicted_micros(c: c, tokens: s.computed_tokens) - s.wall_micros)
+    if e > worst { e } else { worst }
+  })
+}
+
+// THE STANDING THAT SURVIVES. The excess exists and was measured; what it means does not follow from
+// these observations, and the confounders are named rather than waved at.
+type PerStepCostStanding
+  = PerStepCostBounded { upper_micros: Nat }
+  | NominalBoundaryEffectUnidentified { observed_excess_micros: Nat, confounded_by: List<NonEmptyStr> }
+
+data spark_group_a_per_step_cost_standing: PerStepCostStanding = NominalBoundaryEffectUnidentified {
+  observed_excess_micros: 88000,
+  confounded_by: [
+    "the per-request scheduler step count was never observed; engine-wide iteration deltas of 4 and 6 across the two windows are not per-request step allocations, and on a shared engine a decoder consumes part of the budget so even a sub-budget probe can span more than one step" as NonEmptyStr,
+    "the effective max_num_batched_tokens was never read back, so 2048 is a nominal threshold rather than an observed boundary" as NonEmptyStr,
+    "a three-term fit over the same rows admits a 126ms per-step term with a smaller worst residual, so the affine residual does not bound the omitted term" as NonEmptyStr,
+    "nine of the ten admitted windows had a co-tenant running, so window-to-window variation is not attributable to the probe alone" as NonEmptyStr,
+  ],
+}
+
+// ── THE BUDGET COUNTERFACTUAL IS WITHDRAWN, NOT WEAKENED ──────────────────────────────────────
+//
+// This module previously derived a budget trade from the fit and the withdrawn per-step bound. It was
+// wrong three ways beyond its inputs. It counted steps as prompt/budget + 1, which overcounts exact
+// multiples. Its zero-per-step-cost lower bound billed steps x budget rather than the actual prompt,
+// so it charged for padding in the final partial step -- and consequently moved by 0.54s between a
+// 512 and a 2048 budget while assuming per-step cost was zero, contradicting the very assumption the
+// lower bound encodes. And an unmeasured per-step cost collapsed to 0, turning missing evidence into
+// a free operation, which is the absorbing fallback this program exists to refuse.
+//
+// The deeper defect is that it existed at all while the partition may not calibrate. The refusal was
+// ornamental: a prediction path took a raw fit and answered anyway. It is withdrawn, and what it
+// would need is carried instead. The marginal rate is also not established as INVARIANT across chunk
+// shapes -- kernel and collective efficiency can both change with chunk size -- so a per-budget
+// counterfactual needs per-budget measurements, not an extrapolation of one slope.
+type BudgetTradeStanding
+  = BudgetTradeUnestablished { missing: List<NonEmptyStr> }
+
+data spark_group_a_budget_trade: BudgetTradeStanding = BudgetTradeUnestablished {
+  missing: [
+    "the effective scheduler configuration, read back from the running engine" as NonEmptyStr,
+    "per-request scheduler step allocation, rather than an engine-wide iteration delta" as NonEmptyStr,
+    "samples with probe work isolated or per-request attributed" as NonEmptyStr,
+    "marginal cost measured at each candidate budget, since invariance across chunk shapes is not established" as NonEmptyStr,
+    "a per-step cost standing, which is currently unidentified rather than bounded" as NonEmptyStr,
+  ],
 }
 
 // ── MECHANISM STANDINGS, AT THE GRAIN THE EVIDENCE ACTUALLY DECIDES ───────────────────────────
@@ -254,10 +384,12 @@ data spark_group_a_per_step_fixed_cost: PerStepFixedCost = PerStepCostBoundedAbo
 // scales with tokens. That was too strong, and the error is worth naming: a collective's payload is
 // an activation buffer whose size grows with the scheduled token population, so a token-proportional
 // critical path is exactly what per-token collective work ALSO looks like. Proportionality separates
-// nothing; it only excludes a token-INDEPENDENT per-step delay.
+// nothing.
 //
-// So the lump is split. Only the token-independent member is weakened, and it is weakened by the
-// boundary crossing above rather than by the scaling argument.
+// What it does NOT do, either, is weaken the token-independent term. That was the second version's
+// error: it read an affine fit's residual as a bound on the term the affine fit omitted. With the
+// counterexample above standing, every mechanism here is either unobserved at this grain or
+// unresolved, and one is observed.
 type CriticalPathMechanism
   = GrossRankStraggler
   | HostDispatchGaps
@@ -272,7 +404,6 @@ type CriticalPathMechanism
 
 type MechanismStanding
   = NotObservedAtThisGrain { by: NonEmptyStr }
-  | WeakenedWithinMeasuredRange { by: NonEmptyStr }
   | Observed { by: NonEmptyStr }
   | Unresolved { needs: NonEmptyStr }
 
@@ -285,7 +416,7 @@ fn cold_prefill_mechanism_standing(m: CriticalPathMechanism) -> MechanismStandin
     BulkInterconnectBandwidth =>
       NotObservedAtThisGrain { by: "7.8 Gb/s sustained on a 50 Gb/s link, and about 9.8 Gb/s within a step; bulk saturation is not present, which does not speak to latency" as NonEmptyStr }
     TokenIndependentStepLatency =>
-      WeakenedWithinMeasuredRange { by: "crossing the 2048-token scheduler boundary from 1927 to 2052 computed tokens costs at most about 0.09s of extra fixed time, inside the fit's worst residual; a token-independent per-step delay cannot be the dominant term over the 516 to 8191 computed-token range measured" as NonEmptyStr }
+      Unresolved { needs: "per-request step allocation and the effective scheduler budget; the 88ms excess across a nominal boundary is not attributable to a step transition that was never observed, and a three-term fit over the same rows admits a 126ms per-step term while describing them better" as NonEmptyStr }
     TokenProportionalCompute =>
       Unresolved { needs: "compute-kernel span attribution; token proportionality alone does not distinguish model compute from collective payload, and package power does not either" as NonEmptyStr }
     TokenProportionalCollectivePayload =>
@@ -297,43 +428,7 @@ fn cold_prefill_mechanism_standing(m: CriticalPathMechanism) -> MechanismStandin
     PowerOrThermalThrottle =>
       Unresolved { needs: "throttle-reason and temperature observations, neither of which this trace captured" as NonEmptyStr }
     CoTenantDelay =>
-      Observed { by: "a 4840-token request measured 290.96s against a fitted 5.3s while a co-tenant ran, and a larger 8191-token sample at the same co-tenant count sat on the curve -- so request count alone does not predict the delay and its magnitude is not yet parameterised" as NonEmptyStr }
-  }
-}
-
-// ── THE BUDGET TRADE, DERIVED, AND HONEST ABOUT ITS WIDTH ─────────────────────────────────────
-//
-// A co-tenant's inter-token latency is the step duration, so a smaller batch budget shortens the
-// stall a co-tenant sees. What it costs in total prefill time depends on the per-step fixed term --
-// which is only bounded, not measured. So the total is returned as an interval whose lower bound
-// assumes no per-step cost and whose upper bound assumes the full 95ms, and a recommendation that
-// needs those two bounds to disagree is a recommendation this evidence cannot yet support.
-type BudgetTrade {
-  budget_tokens: Nat
-  step_micros: Int
-  total_prefill_micros_low: Int
-  total_prefill_micros_high: Int
-}
-
-fn per_step_upper_micros(c: PerStepFixedCost) -> Nat {
-  match c {
-    PerStepCostBoundedAbove { upper_micros: u, distinguishable_from_zero: _ } => u
-    PerStepCostUnmeasured { cause: _ } => 0
-  }
-}
-
-fn budget_trade(fit: AffineFit, cost: PerStepFixedCost, prompt_tokens: Nat, budget_tokens: Nat) -> BudgetTrade? {
-  if budget_tokens == 0 {
-    none
-  } else {
-    let steps = (prompt_tokens / budget_tokens) + 1
-    let token_micros = (fit.micros_per_thousand_tokens * budget_tokens) / 1000
-    Present { value: BudgetTrade {
-      budget_tokens: budget_tokens,
-      step_micros: token_micros,
-      total_prefill_micros_low: steps * token_micros,
-      total_prefill_micros_high: steps * (token_micros + per_step_upper_micros(c: cost)),
-    } }
+      Observed { by: "a decode-alone window compared against decode running beside a prefill is the controlled comparison that showed the delay; the 290.96s outlier is a consistent extreme event but attributes nothing on its own, and its magnitude is not parameterised" as NonEmptyStr }
   }
 }
 
@@ -343,24 +438,23 @@ type PartitionRequirement
   | PerRankCriticalPathTiming
   | OccupancyOrAchievedThroughput
   | ThrottleAndMemoryStallEvidence
-  | IdleEngineScalingRerun
+  | EffectiveSchedulerConfigReadback
+  | PerRequestStepAllocation
+  | IsolatedOrAttributedScalingSamples
 
 type CriticalPathPartition
   = PartitionIncomplete { missing: List<PartitionRequirement> }
   | PartitionEstablished { critical: CriticalPathMechanism, evidence: NonEmptyStr }
 
-// IdleEngineScalingRerun IS NOT A FORMALITY. Every admitted sample above was taken with a maximum of
-// one or two requests running, so a co-tenant was present throughout the sweep and the fit describes
-// a shared engine rather than an isolated one. The fit is tight and the residuals are small, which is
-// why it is usable at all -- but its intercept and its slope both stand to move on a genuinely idle
-// engine, and the difference is not estimable from these samples.
 data spark_group_a_cold_prefill_partition: CriticalPathPartition = PartitionIncomplete {
   missing: [
     ComputeVersusCollectiveKernelSpans,
     PerRankCriticalPathTiming,
     OccupancyOrAchievedThroughput,
     ThrottleAndMemoryStallEvidence,
-    IdleEngineScalingRerun,
+    EffectiveSchedulerConfigReadback,
+    PerRequestStepAllocation,
+    IsolatedOrAttributedScalingSamples,
   ],
 }
 
@@ -371,10 +465,27 @@ fn partition_may_calibrate(p: CriticalPathPartition) -> Bool {
   }
 }
 
-// The one question that started this is nonetheless answerable, and it survives the split. Bulk
-// bandwidth is unsaturated at every grain measured, so a 100G or 200G breakout cannot return the
-// missing time. That holds whichever mechanism binds, because none of the unresolved ones is bulk
-// transfer -- a faster link raises a ceiling nothing is reaching.
-fn faster_link_addresses_partition(p: CriticalPathPartition) -> Bool {
-  false
+// ── THE LINK QUESTION, DERIVED FROM THE PARTITION RATHER THAN ANSWERED ────────────────────────
+//
+// This was previously a function that ignored its argument and returned false, so "a faster link
+// cannot help" was written as the answer rather than read from the evidence -- it would have kept
+// saying no even for a partition established on bulk bandwidth. What the trace supports is narrower
+// and is now what the function says: bulk saturation was not observed, so no link purchase is
+// justified by it, and a partition that did establish bulk bandwidth would change the verdict.
+type LinkUpgradeStanding
+  = LinkUpgradeJustified { by: NonEmptyStr }
+  | LinkUpgradeUnsupportedByCurrentEvidence { by: NonEmptyStr }
+
+fn link_upgrade_standing(p: CriticalPathPartition) -> LinkUpgradeStanding {
+  match p {
+    PartitionEstablished { critical: c, evidence: e } =>
+      match c {
+        BulkInterconnectBandwidth => LinkUpgradeJustified { by: e }
+        _ => LinkUpgradeUnsupportedByCurrentEvidence { by: "the established critical path is not bulk transfer, so link speed is not the lever" as NonEmptyStr }
+      }
+    PartitionIncomplete { missing: _ } =>
+      LinkUpgradeUnsupportedByCurrentEvidence {
+        by: "bulk saturation was not observed at any grain measured -- 7.8 Gb/s sustained and about 9.8 Gb/s within a step, on a 50 Gb/s link -- so a 100G or 200G breakout is not justified by this trace; that is weaker than a proof of no benefit under every eventual partition" as NonEmptyStr
+      }
+  }
 }

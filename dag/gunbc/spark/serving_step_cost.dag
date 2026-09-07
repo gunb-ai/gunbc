@@ -5,25 +5,29 @@ import std.nat { Nat }
 import v2.std.optional { Present, Absent }
 import std.measure { TokenCount, token_count, token_count_value }
 
-// ── WHAT ONE ENGINE STEP COSTS ON THIS REALIZATION, AND THE ONE THING IT PREDICTS ─────────────
+// ── WHAT ONE COLD PREFILL RUN COST, AND WHAT THAT DOES NOT ESTABLISH ─────────────────────────
 //
-// THE MEASUREMENT THAT CLOSED A WEEK OF WRONG ANSWERS. A cold prefill on the idle group A head,
-// polled every 200ms so that each completed engine iteration is bracketed several times over:
+// A cold prefill on the group A head, polled every 200ms so that each completed engine iteration is
+// bracketed several times over:
 //
-//     158,764 computed tokens, 83 steps, 185.5s wall
-//     inter-step interval  min 0.94s   median 2.30s   max 2.68s
+//     158,764 computed tokens, 83 engine iterations, 185.5s wall
+//     inter-iteration interval  min 0.94s   median 2.30s   max 2.68s
 //     99% of wall time sits in gaps longer than one second
 //
-// Two facts fall out and neither was available from any single metric.
+// AN EARLIER VERSION OF THIS SECTION DREW TWO CONCLUSIONS FROM THAT, AND BOTH ARE WITHDRAWN.
 //
-// FIRST, THE SCHEDULER BUDGET IS ALREADY AT ITS FLOOR. 158,764 / 83 is ~1,913 computed tokens per
-// step, which is the 2048 fallback default -- so GB10 reports under the 70 GiB threshold that would
-// have selected 8192, and every proposal to "add --max-num-batched-tokens" was proposing a value the
-// engine had already chosen, or a larger one that would make the stall WORSE. That thread is closed
-// by measurement rather than by argument.
+// It read 158,764 / 83 as ~1,913 computed tokens per step, matched that to the 2048 fallback, and
+// declared the scheduler budget observed and already at its floor. The engine was never asked what
+// its effective max_num_batched_tokens was, and extdeps.vllm.engine_args rules that an omitted
+// argument determines no effective value -- so 2048 remains a NOMINAL expectation. An engine-wide
+// iteration count is also not a per-request step allocation: other requests consume the same budget.
 //
-// SECOND, A STEP TAKES 2.3 SECONDS TO COMPUTE 2,048 TOKENS. That is the whole problem, and it is not
-// a scheduling problem. Every co-tenant behaviour people have been chasing is downstream of it.
+// It then said a step takes 2.3 seconds to compute 2,048 tokens, and that this is not a scheduling
+// problem. That paired a RUN-WIDE AVERAGE token count with a MEDIAN interval, two numbers never
+// observed together, which the next section already identifies as a fabricated observation. Neither
+// number describes any step that was measured.
+//
+// What the run establishes is the aggregate below and nothing finer.
 //
 // WHY THE STEP GRAIN HAD TO BE POLLED RATHER THAN READ. No served metric carries per-step computed
 // tokens -- extdeps.vllm.metrics states that as a refusal, and this measurement confirmed it the
