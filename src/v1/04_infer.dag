@@ -3325,25 +3325,27 @@ fn declared_type_position_label(position: DeclaredTypePosition, subject: String)
 // formal, 3870 of those a plain String at a NonEmptyStr formal. That is not four thousand
 // defects, so the refusal was withdrawn and the pair is declined instead.
 //
-// WHAT THE DECLINE IS AND IS NOT, because the first account of it was wrong and the check that
-// refuted it is cheap. It is NOT that introduction is uncarried: an EXPLICIT CAST IS ALREADY
-// VISIBLE HERE. dag/test/fixture/compile_phase_frontier_receipt_fixture calls
-// sha256_digest(hex: "..." as NonEmptyStr) at a refinement formal and produces no diagnostic from
-// this relation at all, while the sites that do decline are bare literals -- "feedFwdOffsetCoeff",
-// 168, "declaration-worker" -- handed straight to a refinement formal with no cast. So the
-// discriminating fact exists and the seam already reads one of its two forms.
+// WHAT THE DECLINE IS, AND TWO WRONG ACCOUNTS OF IT THAT MEASUREMENT KILLED. It is NOT that
+// introduction is uncarried: an EXPLICIT CAST IS ALREADY VISIBLE HERE --
+// takes_non_empty(s: "x" as NonEmptyStr) produces nothing from this relation, while bare literals
+// decline. And it is NOT that the predicate goes unchecked: a three-way fixture pair settles it.
+//   takes_non_empty(s: "")  -> REFUSED, `type mismatch: expected Product(NonEmptyStr), got
+//                              Primitive(String)`, from the where-refinement predicate machinery
+//   takes_non_empty(s: "x") -> admitted by that same machinery, no mismatch
+//   both                    -> this relation declines with UndecidableRefinementIntroduction
 //
-// The remaining form is LITERAL ELABORATION at the declared boundary, which std.literal_elaboration
-// owns and this relation does not consult -- the same shape the numeric note above records, where
-// the class was never undecidable, it was unconsulted. Refusing on a fact one is declining to look
-// up would fabricate a verdict in the direction DESIGN section 5 forbids as firmly as fabricating
-// a success, so the pair is reported UndecidableRefinementIntroduction: located, per-reason and
-// countable, so the deficit ranks instead of vanishing.
-// NEXT-RUNG TRIGGER: the elaboration verdict for a literal at its destination refinement reaching
-// this seam on the produced node, at which point this arm refuses an unelaborated base value at a
-// refinement formal instead of declining it. The trigger is not speculative: an empty string
-// literal handed to a NonEmptyStr formal compiles with no diagnostic from anything in the tree,
-// so the predicate is genuinely unchecked at introduction today.
+// So the introduction question IS ALREADY DECIDED, by an authority this relation does not consult.
+// That is the same shape the numeric note above records: the class was never undecidable, it was
+// UNCONSULTED. Refusing here would fabricate a verdict in the direction DESIGN section 5 forbids
+// as firmly as fabricating a success, and admitting here would assert a proof this relation did
+// not perform; so the pair is reported UndecidableRefinementIntroduction -- located, per-reason,
+// countable -- and the deficit ranks instead of vanishing.
+//
+// NEXT-RUNG TRIGGER, and it is CHEAPER than the one first written here: this relation consulting
+// the where-refinement predicate verdict that already decides the pair, rather than a new
+// elaboration fact reaching the seam. An earlier draft of this annotation claimed the predicate
+// was unchecked at introduction, on a probe that reported no diagnostic for an empty literal; the
+// fixture pair above refutes that, and the claim is withdrawn rather than defended.
 //
 // THE SIBLING ARM DECLINES TOO, AND THAT IS A SECTION 3 ANSWER RATHER THAN A GAP. Two refinements
 // that share a base without either being the other's ancestor look like the horizontal case brands

@@ -21,7 +21,11 @@ data lookup_miss_read_as_positive_classification: RecurringFailureMode = Recurri
 
     "RUNG FOUND AT: below the ladder -- silent wrongness, since an unrelated constructor was ACCEPTED at a declared position with no diagnostic in either direction. CEILING: 3 (structurally guaranteed), because generic ownership is a DECLARED fact -- `parse_optional_type_params` mints one parameter per name in the angle-bracket clause whose name and type-expression name are both that name, and that encoding is the only carrier the clause has. ",
 
-    "REPAIR AND ITS OWN LIMIT: consult the roster and delete the miss from both sites together, since they were one classification authority written twice. A leaf that is not on the roster and resolves nowhere is UNRESOLVED, a different fact, reported `UndecidableFormalUnresolved`. NEXT-RUNG TRIGGER for the residue: an owner-generic carrier on a synthesized or member declaration that borrows an enclosing owner's generic without restating it, which its own roster cannot name.)",
+    "REPAIR: consult the roster and delete the miss from both sites together, since they were one classification authority written twice. ",
+
+    "THE RESIDUE'S DISPOSITION IS AN UNEXERCISED BOUNDARY AND IS RECORDED AS ONE. The repair's author predicted that a leaf which is neither on the roster nor resolvable would be reported `UndecidableFormalUnresolved`, a different fact from genericity. THE CORPUS DID NOT DEMONSTRATE IT: measured across the repair, that population moved by ZERO -- 6 sites before, 6 after, not one of them new. So the boundary is stated here as ASSERTED AND UNEXERCISED rather than as behaviour, because a row is the durable artifact and a disposition nothing executed is exactly the specification-without-execution DESIGN section 5 names. It becomes a fact when a specimen lands on it, not before. ",
+
+    "NEXT-RUNG TRIGGER for that residue: an owner-generic carrier on a synthesized or member declaration that borrows an enclosing owner's generic without restating it, which its own roster cannot name.)",
   ],
 
   evidence: [],

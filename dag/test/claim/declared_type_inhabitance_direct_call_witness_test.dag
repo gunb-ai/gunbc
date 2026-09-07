@@ -374,3 +374,56 @@ data nominal_opaque_not_grounded_source: String = "module probe_nominal_opaque_n
 test fn w_a_nominal_opaque_alias_does_not_ground_through_the_refinement_chain() -> Bool {
   violation_count(source: nominal_opaque_not_grounded_source, wanted: "DeclaredTypeInhabitanceUndecided") == 0
 }
+
+// THE ROSTER SURVIVED, AND THIS IS THE HALF A DIAGNOSTIC-COUNT DROP CANNOT PROVE. Deleting the
+// absence classification lowers the generic-formal population; so does deleting generic
+// classification altogether. These two arms are the paired mutations that separate them, and
+// neither subsumes the other. Both go through the GLOBAL-BARE CENSUS route -- the callee is named
+// without an import, so it resolves through the corpus census and reaches
+// census_declaration_bound_formals, which is the producer this repair changed.
+//
+// POSITIVE: a genuine angle-bracket generic is STILL classified generic. v2.std.optional declares
+// fn optional_present<T>(value: T), the parser mints its clause as a param spelled T: T, and
+// borrowed_generic_param_names carries it, so the leaf reaches the substitution basis stamped a
+// type variable and the seam declines UndecidableGenericFormal. DISCRIMINATING MUTATION: feed
+// census_declaration_bound_formals an empty roster and the leaf is unstamped, resolves nowhere,
+// and the site produces NO diagnostic at all -- this arm goes red on zero.
+data generic_via_global_bare_source: String = "module probe_generic_via_global_bare\nimport std.types { Int }\nfn probe() -> Int {\n  match optional_present(value: 1) {\n    Present { value: v } => v\n    Absent => 0\n  }\n}\n"
+
+test fn w_a_declared_generic_clause_is_still_classified_generic_through_the_census() -> Bool {
+  violation_count(source: generic_via_global_bare_source, wanted: "DeclaredTypeInhabitanceUndecided") == 1
+}
+
+// NEGATIVE: a CONCRETE declared leaf is no longer classified generic. std.content_hash declares
+// fn sha256_digest_wire_form(digest: Sha256Digest) -> NonEmptyStr; Sha256Digest is an ordinary
+// declared type and nothing about it is generic. Before this repair the census declaration
+// environment carried no bindings at all, so the local-only lookup missed it and it was enrolled
+// as one of that declaration's generic parameters and stamped TypeVariable { id: "Sha256Digest" },
+// and the seam declined. DISCRIMINATING MUTATION: restore the deleted local-miss classification in
+// either declaration_unbound_leaf_names or declaration_substitution_basis and this arm goes red on
+// one UndecidableGenericFormal.
+data concrete_via_global_bare_source: String = "module probe_concrete_via_global_bare\nimport std.content_hash { Sha256Digest }\nimport std.types { NonEmptyStr, Int }\nfn probe(d: Sha256Digest) -> NonEmptyStr { sha256_digest_wire_form(digest: d) }\n"
+
+test fn w_a_concrete_declared_leaf_is_not_classified_generic_through_the_census() -> Bool {
+  violation_count(source: concrete_via_global_bare_source, wanted: "DeclaredTypeInhabitanceUndecided") == 0
+}
+
+// THE REFINEMENT DECLINE IS THE INTRODUCTION QUESTION, NOT EVERY REFINEMENT PAIR. A reviewer's
+// natural suspicion is that refinement_inhabitance simply made refinement pairs undecidable; these
+// two arms refuse that reading by pairing a bare literal against a cast one at the SAME formal.
+// The bare literal declines and the cast one does not, so the relation is discriminating on the
+// carried introduction rather than on the refinement relation.
+//
+// AND THE PREDICATE IS ALREADY ENFORCED, which is why the decline is redundant ignorance rather
+// than an exposed hole: takes_non_empty(s: "") is REFUSED by the where-refinement machinery with
+// `type mismatch: expected Product(NonEmptyStr), got Primitive(String)`, while
+// takes_non_empty(s: "x") is admitted by it. Measured live before enrolment. That is what fixes
+// this relation's next-rung trigger at CONSULTING the existing verdict.
+data bare_literal_at_refinement_source: String = "module probe_bare_literal_at_refinement\nimport std.types { NonEmptyStr, Int }\nfn takes_non_empty(s: NonEmptyStr) -> Int { 1 }\nfn probe() -> Int { takes_non_empty(s: \"x\") }\n"
+
+data cast_literal_at_refinement_source: String = "module probe_cast_literal_at_refinement\nimport std.types { NonEmptyStr, Int }\nfn takes_non_empty(s: NonEmptyStr) -> Int { 1 }\nfn probe() -> Int { takes_non_empty(s: \"x\" as NonEmptyStr) }\n"
+
+test fn w_a_bare_literal_at_a_refinement_formal_declines_and_a_cast_one_does_not() -> Bool {
+  violation_count(source: bare_literal_at_refinement_source, wanted: "DeclaredTypeInhabitanceUndecided") == 1
+    && violation_count(source: cast_literal_at_refinement_source, wanted: "DeclaredTypeInhabitanceUndecided") == 0
+}
