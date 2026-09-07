@@ -41,11 +41,11 @@ import std.measure { hertz, ByteSize, byte_size, byte_size_count, Bandwidth, Har
 import std.os.types { OperatingSystemSurface, Linux, Posix, PosixProcess }
 import std.types { List, NonEmptyStr, Bool, Int, String }
 import std.realization_schedule {
-  CostAccount, CostAxis, CostAxisMeasured, CostAxisPredicted, CostAxisUnestablished,
-  CostTimeAxis, CostTimeMeasured, CostTimePredicted, CostTimeUnestablished,
+  CostAccount, CostAxis, CostAxisMeasured, CostAxisUnestablished,
+  CostTimeAxis, CostTimeMeasured, CostTimeUnestablished,
 }
 import std.realization_measurement {
-  cost_account_measured_from_time_and_space, space_measure_seq,
+  cost_account_measured_from_time_and_space,
   cost_axis_add_time, cost_axis_peak_space,
 }
 import std.nat { Nat }
