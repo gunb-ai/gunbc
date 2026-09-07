@@ -59,6 +59,70 @@ data lifecycle_separations: List<NonEmptyStr> = [
   "reaping a local materialization says nothing about the durable object",
 ]
 
+// ── custody and use are two axes, and this module first conflated them ─────────────────────────
+
+// OWNERSHIP ANSWERS WHO MAY DESTROY. USE ANSWERS WHO CURRENTLY HOLDS IT. An earlier revision of this
+// module ran them together under "retention", which reads fine until the two disagree -- and they
+// disagree in both directions:
+//
+//   an ENSURED object may still require release. Ending a BMC attachment, a mount, a session or a
+//   registration is ending a USE; it is not permission to destroy what someone else supplies.
+//
+//   an OWNED object may have no live use and still be retained, because its owner is a durable
+//   scope -- an artifact store, a retention root, a deployment generation -- rather than the
+//   function that happened to create it.
+//
+// COLLAPSING THEM PRODUCES TWO OPPOSITE FAILURES: deleting a shared object because this consumer
+// finished with it, and keeping every local copy forever because some receipt names its content.
+// This lane has now been within one edit of BOTH.
+type ArtifactCustody
+  = OwnedByThisScope { owes_terminal_disposition: NonEmptyStr }
+  | EnsuredByAnother { provider: NonEmptyStr, consumer_may_not_destroy: Bool }
+
+type ArtifactUse {
+  holder: NonEmptyStr
+  scope: NonEmptyStr
+  ends_when: NonEmptyStr
+}
+
+// THE ISO CHAIN, WITH CUSTODY AND USE SEPARATED AT EACH LINK. Reading down this list, every arrow
+// changes exactly one of the two -- which is what makes the release order derivable rather than
+// remembered.
+data iso_chain_custody: List<NonEmptyStr> = [
+  "durable object: OWNED by artifact retention; a committed receipt is a RETENTION ROOT on it, not a use of anything local",
+  "local materialization under /srv/bmc: OWNED by the presentation-cache scope",
+  "BMC redirection to that file: a USE held by one boot attempt, over a materialization the attempt does not own",
+  "the host reading the medium: a second, shorter USE that ends when the image is RAM-resident",
+  "guest artifacts in the attempt tmpfs: OWNED by the attempt, discharged by observed container teardown",
+]
+
+// RELEASE IS THE REVERSE OF ACQUIRE, AND THE SUPERVISOR ALREADY RUNS IT IN THAT ORDER. It was
+// arrived at by fixing failures rather than by deriving it, which is why the ordering defects showed
+// up one at a time -- absence checked before the unmount that produces it, the medium unmounted by
+// the first of two attempts, the capture closed before the cleanup it was meant to record.
+data release_order: List<NonEmptyStr> = [
+  "the host stops depending on the medium (media independence, already observed on this fleet)",
+  "detach the BMC presentation and observe the redirection configuration is empty",
+  "delete the local materialization and read its absence back",
+  "retain or collect the durable object according to its roots, which the local reap does not decide",
+]
+
+// ── two demonstrations this lane has already produced ──────────────────────────────────────────
+
+// THE PRINCIPLE IS NOT UNTESTED HERE, WHICH IS WORTH SAYING BEFORE IT IS GENERALISED. Two consumers
+// already behave this way, and both were built before the rule was stated -- which is the ordinary
+// way a rule earns its place rather than being asserted and then illustrated.
+data existing_consumers: List<NonEmptyStr> = [
+  "the presentation reaper REFUSED to delete an image while the BMC held a use over it, and reaped it after the lease was released -- both arms against real state, neither arm inferred",
+  "the supervisor's attempt scope creates a tap, a cgroup, a jail, a credential drive and a workspace, and proves each absent at retirement; the second attempt then proves the host is at baseline BEFORE claiming anything",
+]
+
+// AND THE PART NEITHER DEMONSTRATES: a release that FAILS or is ambiguous. Every observed release so
+// far succeeded, so the arm where a handle survives its scope has never run. A scope that cannot
+// mint a clean close while an owned instance is unresolved is the check; nothing here has exercised
+// it, and an unexercised arm is the one this lane has learned least to trust.
+data unexercised_arm: NonEmptyStr = "no release has yet failed or returned ambiguously, so the outstanding-handle path is written nowhere and proven nowhere; a DELETE returning success has never disagreed with an absence read-back"
+
 // ── retention roots ────────────────────────────────────────────────────────────────────────────
 
 // A GARBAGE COLLECTOR DERIVES ITS ROOTS FROM MODELED STATE RATHER THAN FROM AN AUTHOR'S SENSE OF
