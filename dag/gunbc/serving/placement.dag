@@ -1,0 +1,279 @@
+module gunbc.serving.placement
+
+import std.types { Bool, String, NonEmptyStr, List, EpochSecs }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire }
+
+// ── ONE PLACEMENT AUTHORITY, BECAUSE THERE ARE CURRENTLY TWO ──────────────────────────────────
+//
+// Two things already decide where a serving turn runs, and they do not agree.
+//
+// gunbc.harness.harness_seat acquires a SEAT: it folds the serving groups, observes each replica,
+// reads a capacity pool, and acquires a lease by compare-and-set on the fabric event log, taking the
+// endpoint from the granted seat. That is the fabric-owned path and it is the right one.
+//
+// The ctrl router independently reads engine load, picks an endpoint by fewest running requests,
+// keeps its own persistent conversation-binding file, and -- when every replica is queued or its
+// metrics are unreadable -- falls back to a rendezvous hash because "the request has to go
+// somewhere". No seat is acquired on that path at all.
+//
+// So a turn placed by the router holds nothing the seat pool knows about, and the ceiling the
+// harness enforces is invisible to the traffic that most needs it. This module is the single
+// authority both must consume: the harness stops owning its group-selection fold, and the router
+// stops owning chooseLanding.
+//
+// WHAT THIS MODULE IS NOT. It is not a scheduler beside product.fabric, and it does not price
+// anything. Work, Demand, SupplierOffer, selection and grants are fabric concepts and stay there;
+// this is the serving-specific POLICY over those carriers, in the sense DESIGN section 3 means when
+// it says the dispatch that selects a realization is itself realization.
+
+// ── THE SUBJECTS, AT THE GRAINS THAT ACTUALLY DIFFER ──────────────────────────────────────────
+//
+// An earlier sketch of this work proposed that a model plus a prompt prefix IS the work identity.
+// It is not, and the correction matters: a prefix is a REUSABLE SUBCOMPUTATION, while the work is
+// the exact inference turn -- model and runtime semantics, the full request, sampling and grammar
+// semantics, and the declared result. Two turns in one conversation share a prefix and are different
+// work. Collapsing them would make a cache fact into an identity fact.
+type PromptPrefixIdentity = NonEmptyStr where brand("PromptPrefixIdentity")
+
+// AND A STICKY BINDING IS AN INCUMBENT PLACEMENT, NOT PROVEN COVERAGE. The router's binding file
+// records where a conversation last ran. That is evidence about where warmth is LIKELY; it is not
+// proof the KV entry survived, because eviction is silent and nothing reports per-prefix residency.
+type ConversationIncumbent
+  = NoIncumbent
+  | IncumbentPlacement { group: FabricGroup }
+
+// SO RESIDENCY IS OBSERVED OR IT IS UNOBSERVED -- never estimated. Eviction makes residency
+// ephemeral, which is a reason to say "unobserved", not a licence to invent a probability nobody
+// measured. A distribution would be a smuggled heuristic exactly where DESIGN section 5 forbids one.
+type PrefixMaterializationStanding
+  = PrefixHitObserved { prefix: PromptPrefixIdentity }
+  | PrefixMissObserved { prefix: PromptPrefixIdentity }
+  | PrefixStandingUnobserved { because: NonEmptyStr }
+
+data serving_prefix_standing_today: PrefixMaterializationStanding = PrefixStandingUnobserved {
+  because: "no served metric reports whether a specific prompt prefix is still resident, and no first-party step observer is bound to any current launch, so per-prefix residency is unobserved rather than absent" as NonEmptyStr,
+}
+
+// ── CAPACITY AND INTERACTIVE QUALITY ARE TWO CEILINGS ─────────────────────────────────────────
+//
+// gunbc.harness.harness_seat carries an operator-policy ceiling of three seats per group, chosen
+// against observed concurrency. That number is not wrong and is not overwritten here: it answers how
+// many requests the group may ADMIT.
+//
+// Interactive quality is a different question with a different answer. A controlled comparison
+// measured a decode alongside a running cold prefill at 63.5s against 3.8s alone -- roughly 16.7x --
+// so admitting a second cold-risk request beside an interactive stream is a product decision about
+// experience, not about whether the KV pool has room. Conflating them would make a quality policy
+// look like a capacity claim, which is the shape that makes a number impossible to argue with later.
+//
+// The effective ceiling is the minimum, and both inputs stay visible.
+type QualityCeiling {
+  interactive_seats: Nat
+  because: NonEmptyStr
+}
+
+data serving_interactive_quality_ceiling: QualityCeiling = QualityCeiling {
+  interactive_seats: 1,
+  because: "a controlled decode-alone versus decode-beside-prefill comparison measured 3.8s against 63.5s, so one concurrent cold-risk request is the observed harm; the canary starts at one active turn per group because that DELETES the measured overlap rather than estimating a safe degree of it from telemetry that cannot see per-request allocation" as NonEmptyStr,
+}
+
+type AdmissionCeiling {
+  admitted_capacity: Nat
+  interactive_quality: Nat
+  effective: Nat
+}
+
+fn effective_admission_ceiling(admitted_capacity: Nat, quality: QualityCeiling) -> AdmissionCeiling {
+  AdmissionCeiling {
+    admitted_capacity: admitted_capacity,
+    interactive_quality: quality.interactive_seats,
+    effective: if quality.interactive_seats < admitted_capacity { quality.interactive_seats } else { admitted_capacity },
+  }
+}
+
+// ── WHAT A GROUP MUST ESTABLISH TO RECEIVE A FRESH CONVERSATION ───────────────────────────────
+//
+// Each condition is a separate arm because each has a different remedy, and because a fresh
+// conversation and an incumbent one are held to different bars: an incumbent stays put even while
+// its group is busy, because moving it pays a cold prefill that the busy group would not.
+// EACH FACT IS OBSERVED OR IT IS UNOBSERVED, AND Bool CANNOT SAY THE SECOND. A first shape of this
+// type used Bool fields, which forces a caller that cannot read a fact to choose between fabricating
+// a true and refusing everything -- and the harness genuinely cannot read queue depth today. Both
+// answers are wrong for the same reason the prefix standing above is not a probability: a missing
+// reading is a third state, and collapsing it into either Bool is the estimate this module refuses
+// to make. So every axis carries its own unobserved arm, and unobserved never admits.
+type ModelServiceObservation
+  = ModelServedObserved
+  | ModelAbsentObserved
+  | ModelServiceUnobserved { because: NonEmptyStr }
+
+type QueueObservation
+  = QueueEmptyObserved
+  | QueueOccupiedObserved { waiting: Nat }
+  | QueueUnobserved { because: NonEmptyStr }
+
+type QualitySeatObservation
+  = QualitySeatAvailableObserved
+  | QualitySeatHeldObserved
+  | QualitySeatUnobserved { because: NonEmptyStr }
+
+type GroupEvidence {
+  model: ModelServiceObservation
+  queue: QueueObservation
+  quality_seat: QualitySeatObservation
+}
+
+type GroupAdmissibility
+  = GroupAdmissible
+  | GroupNotAdmissible { because: NonEmptyStr }
+
+fn group_admissibility(e: GroupEvidence) -> GroupAdmissibility {
+  match e.model {
+    ModelAbsentObserved => GroupNotAdmissible { because: "the group does not serve the requested model" as NonEmptyStr }
+    ModelServiceUnobserved { because: b } =>
+      GroupNotAdmissible { because: join(["whether the group serves this model is unobserved: ", b as String, " -- and an unreadable probe is not evidence of a serving engine"], "") as NonEmptyStr }
+    ModelServedObserved =>
+      match e.queue {
+        QueueOccupiedObserved { waiting: _ } =>
+          GroupNotAdmissible { because: "the group has queued work, so a fresh conversation would wait behind it" as NonEmptyStr }
+        QueueUnobserved { because: b } =>
+          GroupNotAdmissible { because: join(["queue depth is unobserved: ", b as String, " -- an unread queue is not an empty one"], "") as NonEmptyStr }
+        QueueEmptyObserved =>
+          match e.quality_seat {
+            QualitySeatHeldObserved =>
+              GroupNotAdmissible { because: "the group holds its interactive-quality seat, so admitting another active turn would reproduce the measured co-tenant degradation" as NonEmptyStr }
+            QualitySeatUnobserved { because: b } =>
+              GroupNotAdmissible { because: join(["the interactive-quality seat standing is unobserved: ", b as String], "") as NonEmptyStr }
+            QualitySeatAvailableObserved => GroupAdmissible
+          }
+      }
+  }
+}
+
+// THE INCUMBENT'S BAR IS THE SEAT ALONE, and it is read from the same observation so an unobserved
+// seat cannot silently admit it either.
+fn incumbent_seat_free(e: GroupEvidence) -> Bool {
+  match e.quality_seat {
+    QualitySeatAvailableObserved => true
+    QualitySeatHeldObserved => false
+    QualitySeatUnobserved { because: _ } => false
+  }
+}
+
+// ── THE OUTCOME, WITH PENDING AS A FIRST-CLASS ANSWER ─────────────────────────────────────────
+//
+// THE ARM THAT MUST NOT EXIST is the router's current one: every replica queued or unreadable, so
+// hash and send it anyway. That is the failure arm widening into precisely the condition the policy
+// exists to prevent -- DESIGN section 5's absorbing fallback, in the one place it does the most
+// damage, because the fabricated placement lands a cold prefill on a stream that was already
+// suffering. Nothing here may return a group that established nothing.
+//
+// Pending and Refused are separate because their remedies are: pending resolves by waiting for a
+// seat, refused resolves only by changing something about the request or the fleet.
+type ServingPlacement
+  = PlacementGranted { group: FabricGroup, held_incumbency: Bool }
+  | PlacementPending { considered: List<NonEmptyStr> }
+  | PlacementRefused { cause: NonEmptyStr }
+
+type GroupCandidate {
+  group: FabricGroup
+  evidence: GroupEvidence
+}
+
+fn candidate_note(c: GroupCandidate) -> NonEmptyStr {
+  match group_admissibility(e: c.evidence) {
+    GroupAdmissible => join([fabric_group_wire(g: c.group) as String, ": admissible"], "") as NonEmptyStr
+    GroupNotAdmissible { because: b } => join([fabric_group_wire(g: c.group) as String, ": ", b as String], "") as NonEmptyStr
+  }
+}
+
+fn candidate_is_admissible(c: GroupCandidate) -> Bool {
+  match group_admissibility(e: c.evidence) {
+    GroupAdmissible => true
+    GroupNotAdmissible { because: _ } => false
+  }
+}
+
+fn group_eq(a: FabricGroup, b: FabricGroup) -> Bool {
+  (fabric_group_wire(g: a) as String) == (fabric_group_wire(g: b) as String)
+}
+
+// AN INCUMBENT IS NOT RE-SELECTED, IT IS HONOURED. The incumbent's group is not required to be
+// admissible, because the bar that matters for it is the quality seat alone: it already holds the
+// warm prefix, so moving it to an idle group pays a cold prefill the busy group would not. What it
+// still may not do is share -- if the seat is held, the demand stays PENDING on that group rather
+// than migrating, and a rebind is a separate explicit decision about paying rematerialization.
+fn incumbent_placement(group: FabricGroup, candidates: List<GroupCandidate>) -> ServingPlacement {
+  let mine = filter(candidates, c => group_eq(a: c.group, b: group))
+  match first(mine) {
+    Absent =>
+      PlacementRefused { cause: join(["the incumbent group ", fabric_group_wire(g: group) as String, " is not among the serving groups offered, so its binding cannot be honoured and a rebind is a separate decision"], "") as NonEmptyStr }
+    Present { value: c } =>
+      if incumbent_seat_free(e: c.evidence) {
+        PlacementGranted { group: group, held_incumbency: true }
+      } else {
+        PlacementPending {
+          considered: [join([fabric_group_wire(g: group) as String, ": incumbent group holds its interactive-quality seat; waiting rather than migrating, because moving pays a cold prefill this group would not"], "") as NonEmptyStr],
+        }
+      }
+  }
+}
+
+fn fresh_placement(candidates: List<GroupCandidate>) -> ServingPlacement {
+  let admissible = filter(candidates, c => candidate_is_admissible(c))
+  match first(admissible) {
+    Absent => PlacementPending { considered: map(candidates, c => candidate_note(c: c)) }
+    Present { value: c } => PlacementGranted { group: c.group, held_incumbency: false }
+  }
+}
+
+fn place_serving_turn(incumbent: ConversationIncumbent, candidates: List<GroupCandidate>) -> ServingPlacement {
+  match first(candidates) {
+    Absent => PlacementRefused { cause: "no serving group was offered for this model" as NonEmptyStr }
+    Present { value: _ } =>
+      match incumbent {
+        IncumbentPlacement { group: g } => incumbent_placement(group: g, candidates: candidates)
+        NoIncumbent => fresh_placement(candidates: candidates)
+      }
+  }
+}
+
+// ── WHAT THE ROUTER MAY NOT DO, STATED SO A REVIEWER CAN CHECK IT ─────────────────────────────
+//
+// The realization's whole job is: normalize the request into a demand, ask this authority, receive a
+// granted group or a pending/refused result, project the endpoint from the grant, proxy, release.
+// Each forbidden capability below is something the current router actually does today.
+type RouterCapability
+  = NormaliseRequestToDemand
+  | AskPlacementAuthority
+  | ProjectEndpointFromGrant
+  | ProxyBytes
+  | ReleaseSeatOnCompletion
+  | ComputeOwnLoadScore
+  | SelectHostDirectly
+  | MaintainAuthoritativeBindingLedger
+  | FabricatePlacementWhenUnreadable
+
+type RealizationPermission
+  = PermittedInRealization
+  | ForbiddenInRealization { because: NonEmptyStr }
+
+fn router_capability_permission(c: RouterCapability) -> RealizationPermission {
+  match c {
+    NormaliseRequestToDemand => PermittedInRealization
+    AskPlacementAuthority => PermittedInRealization
+    ProjectEndpointFromGrant => PermittedInRealization
+    ProxyBytes => PermittedInRealization
+    ReleaseSeatOnCompletion => PermittedInRealization
+    ComputeOwnLoadScore =>
+      ForbiddenInRealization { because: "ranking replicas is the placement policy's decision; a second scoring function beside it is the fork this module exists to remove" as NonEmptyStr }
+    SelectHostDirectly =>
+      ForbiddenInRealization { because: "picking a host instead of requesting one through the work contract and provider is the divergence DESIGN section 3b names for the fabric domain" as NonEmptyStr }
+    MaintainAuthoritativeBindingLedger =>
+      ForbiddenInRealization { because: "the fabric grant history is authoritative for where a conversation is placed; a router-local file may cache that answer, and an absent or corrupt cache must reconstruct from history rather than reshuffle the fleet" as NonEmptyStr }
+    FabricatePlacementWhenUnreadable =>
+      ForbiddenInRealization { because: "returning some endpoint because the request has to go somewhere is the absorbing fallback: it lands a cold prefill on a stream already suffering, in exactly the condition the policy exists to prevent" as NonEmptyStr }
+  }
+}

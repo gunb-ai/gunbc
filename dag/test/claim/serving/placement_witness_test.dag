@@ -1,0 +1,211 @@
+module test.claim.serving.placement_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire }
+import gunbc.serving.placement {
+  PromptPrefixIdentity,
+  ConversationIncumbent, NoIncumbent, IncumbentPlacement,
+  PrefixMaterializationStanding, PrefixHitObserved, PrefixMissObserved, PrefixStandingUnobserved,
+  serving_prefix_standing_today,
+  QualityCeiling, serving_interactive_quality_ceiling,
+  AdmissionCeiling, effective_admission_ceiling,
+  ModelServiceObservation, ModelServedObserved, ModelAbsentObserved, ModelServiceUnobserved,
+  QueueObservation, QueueEmptyObserved, QueueOccupiedObserved, QueueUnobserved,
+  QualitySeatObservation, QualitySeatAvailableObserved, QualitySeatHeldObserved, QualitySeatUnobserved,
+  GroupEvidence, GroupAdmissibility, GroupAdmissible, GroupNotAdmissible, group_admissibility,
+  incumbent_seat_free,
+  ServingPlacement, PlacementGranted, PlacementPending, PlacementRefused,
+  GroupCandidate, candidate_note, candidate_is_admissible, group_eq,
+  incumbent_placement, fresh_placement, place_serving_turn,
+  RouterCapability, NormaliseRequestToDemand, AskPlacementAuthority, ProjectEndpointFromGrant,
+  ProxyBytes, ReleaseSeatOnCompletion, ComputeOwnLoadScore, SelectHostDirectly,
+  MaintainAuthoritativeBindingLedger, FabricatePlacementWhenUnreadable,
+  RealizationPermission, PermittedInRealization, ForbiddenInRealization, router_capability_permission,
+}
+
+fn evidence(m: ModelServiceObservation, q: QueueObservation, s: QualitySeatObservation) -> GroupEvidence {
+  GroupEvidence { model: m, queue: q, quality_seat: s }
+}
+
+fn open_group(g: FabricGroup) -> GroupCandidate {
+  GroupCandidate { group: g, evidence: evidence(m: ModelServedObserved, q: QueueEmptyObserved, s: QualitySeatAvailableObserved) }
+}
+
+fn seated_group(g: FabricGroup) -> GroupCandidate {
+  GroupCandidate { group: g, evidence: evidence(m: ModelServedObserved, q: QueueEmptyObserved, s: QualitySeatHeldObserved) }
+}
+
+fn unreadable_group(g: FabricGroup) -> GroupCandidate {
+  GroupCandidate { group: g, evidence: evidence(m: ModelServiceUnobserved { because: "metrics port did not answer" as NonEmptyStr }, q: QueueEmptyObserved, s: QualitySeatAvailableObserved) }
+}
+
+fn queued_group(g: FabricGroup) -> GroupCandidate {
+  GroupCandidate { group: g, evidence: evidence(m: ModelServedObserved, q: QueueOccupiedObserved { waiting: 4 }, s: QualitySeatAvailableObserved) }
+}
+
+fn queue_unread_group(g: FabricGroup) -> GroupCandidate {
+  GroupCandidate { group: g, evidence: evidence(m: ModelServedObserved, q: QueueUnobserved { because: "this consumer does not read queue depth" as NonEmptyStr }, s: QualitySeatAvailableObserved) }
+}
+
+// CAPACITY AND INTERACTIVE QUALITY ARE TWO CEILINGS AND THE EFFECTIVE ONE IS THE MINIMUM. The
+// harness's three operator-policy seats are not overwritten -- they answer how many requests the
+// group may ADMIT. One interactive seat is a product decision about experience, and both stay
+// visible so a quality policy can never be read as a capacity claim.
+test fn quality_and_capacity_ceilings_stay_separate() -> Bool {
+  let c = effective_admission_ceiling(admitted_capacity: 3, quality: serving_interactive_quality_ceiling)
+  c.admitted_capacity == 3
+    && c.interactive_quality == 1
+    && c.effective == 1
+    && string_contains(s: serving_interactive_quality_ceiling.because as String, pattern: "3.8s against 63.5s")
+    && effective_admission_ceiling(admitted_capacity: 0, quality: serving_interactive_quality_ceiling).effective == 0
+}
+
+// AN UNREADABLE PROBE IS NOT AN IDLE ENGINE. This is the discriminating case against the router's
+// current fallback: when nothing can be read, the answer is pending, never a guessed placement.
+test fn unreadable_admission_evidence_never_admits() -> Bool {
+  (match group_admissibility(e: unreadable_group(g: FabricGroupA).evidence) {
+     GroupNotAdmissible { because: b } => string_contains(s: b as String, pattern: "not evidence of a serving engine")
+     GroupAdmissible => false
+   })
+    && (match fresh_placement(candidates: [unreadable_group(g: FabricGroupA), unreadable_group(g: FabricGroupB)]) {
+          PlacementPending { considered: notes } => length(notes) == 2
+          _ => false
+        })
+}
+
+// A QUEUED GROUP DOES NOT TAKE A FRESH CONVERSATION, and neither does one holding its quality seat.
+// Each refusal is its own arm because each has a different remedy.
+test fn queued_and_seated_groups_refuse_fresh_conversations() -> Bool {
+  (match group_admissibility(e: queued_group(g: FabricGroupA).evidence) {
+     GroupNotAdmissible { because: b } => string_contains(s: b as String, pattern: "would wait behind it")
+     GroupAdmissible => false
+   })
+    && (match group_admissibility(e: seated_group(g: FabricGroupA).evidence) {
+          GroupNotAdmissible { because: b } => string_contains(s: b as String, pattern: "co-tenant degradation")
+          GroupAdmissible => false
+        })
+}
+
+// WHEN NOTHING IS ADMISSIBLE THE DEMAND STAYS PENDING, carrying why each candidate was refused. This
+// is the arm the router currently does not have: it hashes and sends anyway because the request has
+// to go somewhere, which lands a cold prefill on a stream already suffering.
+test fn no_admissible_group_stays_pending_and_never_fabricates() -> Bool {
+  match place_serving_turn(incumbent: NoIncumbent, candidates: [seated_group(g: FabricGroupA), queued_group(g: FabricGroupB)]) {
+    PlacementPending { considered: notes } =>
+      length(notes) == 2
+        && fold(notes, init: false, f: (acc, n) => acc || string_contains(s: n as String, pattern: "co-tenant degradation"))
+        && fold(notes, init: false, f: (acc, n) => acc || string_contains(s: n as String, pattern: "wait behind it"))
+    _ => false
+  }
+}
+
+// A FRESH CONVERSATION TAKES THE FREE GROUP when one group is serving and the other is open.
+test fn a_fresh_conversation_takes_the_free_group() -> Bool {
+  match place_serving_turn(incumbent: NoIncumbent, candidates: [seated_group(g: FabricGroupA), open_group(g: FabricGroupB)]) {
+    PlacementGranted { group: g, held_incumbency: h } => group_eq(a: g, b: FabricGroupB) && !h
+    _ => false
+  }
+}
+
+// AN INCUMBENT IS HONOURED RATHER THAN RE-SELECTED, even while the other group is idle. Moving pays
+// a cold prefill the busy group would not, so affinity survives an idle alternative -- which is the
+// warm-prefix benefit the sticky binding was always reaching for.
+test fn an_incumbent_is_not_migrated_to_an_idle_group() -> Bool {
+  match place_serving_turn(
+    incumbent: IncumbentPlacement { group: FabricGroupA },
+    candidates: [open_group(g: FabricGroupA), open_group(g: FabricGroupB)]) {
+    PlacementGranted { group: g, held_incumbency: h } => group_eq(a: g, b: FabricGroupA) && h
+    _ => false
+  }
+}
+
+// AND AN INCUMBENT WHOSE GROUP HOLDS ITS SEAT WAITS RATHER THAN MIGRATING. Pending on the incumbent
+// group is the honest answer: a rebind is a separate, explicit decision to pay rematerialization,
+// not something a placement call makes silently because another group looked free.
+test fn an_incumbent_waits_rather_than_rebinding_silently() -> Bool {
+  match place_serving_turn(
+    incumbent: IncumbentPlacement { group: FabricGroupA },
+    candidates: [seated_group(g: FabricGroupA), open_group(g: FabricGroupB)]) {
+    PlacementPending { considered: notes } =>
+      length(notes) == 1
+        && fold(notes, init: false, f: (acc, n) => acc || string_contains(s: n as String, pattern: "waiting rather than migrating"))
+    _ => false
+  }
+}
+
+// AN INCUMBENT ON A GROUP THAT IS NO LONGER OFFERED IS REFUSED, not silently rebound. Refused and
+// pending are different because their remedies are: waiting cannot fix a group that is gone.
+test fn an_incumbent_on_a_withdrawn_group_is_refused_not_rebound() -> Bool {
+  match place_serving_turn(
+    incumbent: IncumbentPlacement { group: FabricGroupA },
+    candidates: [open_group(g: FabricGroupB)]) {
+    PlacementRefused { cause: c } => string_contains(s: c as String, pattern: "rebind is a separate decision")
+    _ => false
+  }
+}
+
+// PER-PREFIX RESIDENCY IS UNOBSERVED, NOT ESTIMATED. Eviction is silent and nothing reports it, so
+// the standing says so rather than carrying a probability nobody measured.
+test fn prefix_residency_is_unobserved_rather_than_probabilistic() -> Bool {
+  match serving_prefix_standing_today {
+    PrefixStandingUnobserved { because: b } => string_contains(s: b as String, pattern: "unobserved rather than absent")
+    _ => false
+  }
+}
+
+// THE REALIZATION'S FORBIDDEN CAPABILITIES ARE ENUMERATED, and each names why. Every forbidden one
+// is something the router does today, which is what makes this a migration and not a description.
+test fn the_router_may_not_select_a_host_or_fabricate_a_placement() -> Bool {
+  fold([NormaliseRequestToDemand, AskPlacementAuthority, ProjectEndpointFromGrant, ProxyBytes, ReleaseSeatOnCompletion], init: true, f: (acc, c) =>
+    acc && (match router_capability_permission(c: c) { PermittedInRealization => true  ForbiddenInRealization { because: _ } => false }))
+    && fold([ComputeOwnLoadScore, SelectHostDirectly, MaintainAuthoritativeBindingLedger, FabricatePlacementWhenUnreadable], init: true, f: (acc, c) =>
+         acc && (match router_capability_permission(c: c) { ForbiddenInRealization { because: _ } => true  PermittedInRealization => false }))
+    && (match router_capability_permission(c: FabricatePlacementWhenUnreadable) {
+          ForbiddenInRealization { because: b } => string_contains(s: b as String, pattern: "absorbing fallback")
+          PermittedInRealization => false
+        })
+    && (match router_capability_permission(c: SelectHostDirectly) {
+          ForbiddenInRealization { because: b } => string_contains(s: b as String, pattern: "DESIGN section 3b")
+          PermittedInRealization => false
+        })
+}
+
+// AN UNREAD AXIS NEVER ADMITS, AND Bool COULD NOT HAVE SAID SO. A first shape of GroupEvidence used
+// Bool fields, so a consumer that cannot read queue depth -- which is every consumer today, the
+// harness included -- had to pass either a fabricated true or a false that refuses everything.
+// This is the discriminating case for the third state: an unread queue is refused, and its cause
+// says it was unread rather than occupied, so the remedy is instrumentation and not waiting.
+test fn an_unread_axis_is_refused_and_says_it_was_unread() -> Bool {
+  (match group_admissibility(e: queue_unread_group(g: FabricGroupA).evidence) {
+     GroupNotAdmissible { because: b } =>
+       string_contains(s: b as String, pattern: "an unread queue is not an empty one")
+         && string_contains(s: b as String, pattern: "does not read queue depth")
+     GroupAdmissible => false
+   })
+    && (match group_admissibility(e: GroupEvidence {
+          model: ModelServedObserved,
+          queue: QueueEmptyObserved,
+          quality_seat: QualitySeatUnobserved { because: "seat pool not consulted" as NonEmptyStr },
+        }) {
+          GroupNotAdmissible { because: b } => string_contains(s: b as String, pattern: "seat standing is unobserved")
+          GroupAdmissible => false
+        })
+    && !incumbent_seat_free(e: GroupEvidence {
+         model: ModelServedObserved,
+         queue: QueueEmptyObserved,
+         quality_seat: QualitySeatUnobserved { because: "seat pool not consulted" as NonEmptyStr },
+       })
+    && incumbent_seat_free(e: open_group(g: FabricGroupA).evidence)
+}
+
+// AND A CONSUMER THAT READS NOTHING PLACES NOTHING. The harness reads no queue today, so if every
+// axis were allowed to default the policy would admit on ignorance -- the failure this module was
+// extracted to remove from the router.
+test fn a_consumer_that_reads_nothing_gets_pending_not_a_group() -> Bool {
+  match place_serving_turn(incumbent: NoIncumbent, candidates: [queue_unread_group(g: FabricGroupA), queue_unread_group(g: FabricGroupB)]) {
+    PlacementPending { considered: notes } => length(notes) == 2
+    _ => false
+  }
+}
