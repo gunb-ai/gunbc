@@ -34,9 +34,9 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // vector with NO module index and NO corpus roots, so the pool is EXACTLY the manifest.
 //
 // THIS PR LANDS THE PRODUCT-CHANNEL REPAIR with this consumer. The collided manifest used to refuse
-// at the if-join; that refusal was the harm, not a contract. After the str_bindings-only local
-// carve-out, declaring_module compiles clean under BOTH manifests. A later revert of that swap
-// makes the with-collision arm red again. Remaining channels of the class stay open.
+// at the if-join; that refusal was the harm, not a contract. After on-chain widening (locals and
+// imports, not the pool), declaring_module compiles clean under BOTH manifests. A later revert
+// of that carve-out makes the with-collision arm red again. Remaining channels of the class stay open.
 
 data if_join_declaring_path: String = "fixtures/if_join_pool_binding/declaring_module.dag"
 data if_join_colliding_path: String = "fixtures/if_join_pool_binding/colliding_module.dag"
