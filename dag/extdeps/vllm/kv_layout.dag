@@ -380,19 +380,6 @@ type UsageReading
   = UsageRead { usage: AllocatorUsage }
   | FreeCountImpossible { free_blocks: Nat, allocator_blocks: Nat }
 
-fn allocator_usage(layout: ResolvedKvLayout, free_blocks: Nat) -> UsageReading {
-  if free_blocks > layout.allocator_blocks {
-    FreeCountImpossible { free_blocks: free_blocks, allocator_blocks: layout.allocator_blocks }
-  } else {
-    UsageRead {
-      usage: AllocatorUsage {
-        referenced_or_retained_blocks: layout.allocator_blocks - free_blocks,
-        allocator_blocks: layout.allocator_blocks,
-      },
-    }
-  }
-}
-
 // There is deliberately NO function from AllocatorUsage to a request count or a token count. The
 // numerator mixes live references with evictable retention, and nothing here can separate them.
 //
@@ -408,3 +395,15 @@ fn allocator_usage(layout: ResolvedKvLayout, free_blocks: Nat) -> UsageReading {
 // at resolve. A function that exists and answers `false` invites the caller to ask, then hands back
 // an answer that reads as a measurement. The absence is the wall; the predicate was validation
 // standing where construction was already in place.
+fn allocator_usage(layout: ResolvedKvLayout, free_blocks: Nat) -> UsageReading {
+  if free_blocks > layout.allocator_blocks {
+    FreeCountImpossible { free_blocks: free_blocks, allocator_blocks: layout.allocator_blocks }
+  } else {
+    UsageRead {
+      usage: AllocatorUsage {
+        referenced_or_retained_blocks: layout.allocator_blocks - free_blocks,
+        allocator_blocks: layout.allocator_blocks,
+      },
+    }
+  }
+}
