@@ -10,7 +10,11 @@ import v2.workflow.floor_pure_producer_share {
   floor_cross_claim_admitted_producers,
   refused_share_producers,
   share_roster_refusal_collisions,
-  refused_row_carriers_transfer
+  refused_row_carriers_transfer,
+  PendingShareCandidate,
+  floor_cross_claim_pending_candidates,
+  pending_share_producers,
+  share_roster_pending_collisions
 }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
@@ -137,4 +141,77 @@ test fn a_superseded_row_does_not_transfer_to_other_producers() -> Bool {
   refused_row_carriers_transfer(
     verdict: SupersededBySingleAuthorityRepair { repaired_by: "an authored fixture" }
   ) == false
+}
+
+// ── THE PENDING WALL ──────────────────────────────────────────────────────────────────────
+//
+// A pending row is a proposal, so it is refused by the same two populations a re-proposal in an
+// admitted roster is: already enrolled, or already measured and turned down. The probes below are
+// the fixture arm -- the forbidden state is perfectly writable as source handed to the harness,
+// which is what makes the live control worth reading.
+
+fn probe_pending_row(producer: String) -> PendingShareCandidate {
+  PendingShareCandidate {
+    producer: producer,
+    proposed_because: "authored fixture; no instrument",
+    deciding_measurement: "authored fixture; no run",
+    refuses_if: "authored fixture; no verdict"
+  }
+}
+
+// RED: proposing something already ENROLLED. This is the direction that matters most, because the
+// enrolment is the arm that executes while the pending row says the question is still open.
+test fn a_pending_row_for_an_already_admitted_identity_collides_and_is_named() -> Bool {
+  let collisions = share_roster_pending_collisions(
+    pending: [
+      probe_pending_row(producer: "v2.probe.languages.bash.probe_fold_lex"),
+      probe_pending_row(producer: "v2.probe.index.probe_decl_facts")
+    ],
+    admitted: ["v2.probe.languages.bash.probe_fold_lex"],
+    refused: []
+  )
+  (length(xs: collisions) == 1)
+    && any(xs: collisions, predicate: fn(c) { c == "v2.probe.languages.bash.probe_fold_lex" })
+}
+
+// RED: proposing something already MEASURED AND REFUSED. Without this arm the refused roster is
+// bypassable by proposing a row instead of enrolling it, and the measurement that turned it down
+// would be re-run rather than read.
+test fn a_pending_row_for_a_refused_identity_collides_and_is_named() -> Bool {
+  let collisions = share_roster_pending_collisions(
+    pending: [probe_pending_row(producer: "v2.probe.languages.rust.probe_core_edges")],
+    admitted: ["v2.probe.languages.bash.probe_fold_lex"],
+    refused: probe_refused
+  )
+  (length(xs: collisions) == 1)
+    && any(xs: collisions, predicate: fn(c) { c == "v2.probe.languages.rust.probe_core_edges" })
+}
+
+// GREEN CONTROL beside those two REDs: a pending row naming an identity neither roster has
+// decided reports nothing. Without this a fold returning its whole input would pass both probes.
+test fn a_pending_row_for_an_undecided_identity_reports_no_collision() -> Bool {
+  length(xs: share_roster_pending_collisions(
+    pending: [probe_pending_row(producer: "v2.probe.index.probe_decl_facts")],
+    admitted: ["v2.probe.languages.bash.probe_fold_lex"],
+    refused: probe_refused
+  )) == 0
+}
+
+// THE LIVE POSITIVE CONTROL. Today's pending candidates are decided by neither roster, and this
+// reds if anyone enrols or refuses one of them without retiring its pending row in the same
+// motion -- which is the only way a pending row is supposed to leave.
+test fn the_live_pending_candidates_are_decided_by_neither_roster() -> Bool {
+  length(xs: share_roster_pending_collisions(
+    pending: floor_cross_claim_pending_candidates,
+    admitted: floor_cross_claim_admitted_producers(),
+    refused: floor_cross_claim_refused_candidates
+  )) == 0
+}
+
+// THE PENDING ROSTER IS NOT EMPTY, asserted separately for the reason its sibling above states:
+// the live control is satisfied by an empty pending list, so on its own it cannot tell "nothing is
+// double-decided" from "nothing is proposed". Non-emptiness rather than a count, so measuring and
+// retiring a candidate does not red a tree-copied oracle.
+test fn the_pending_roster_carries_identities() -> Bool {
+  length(xs: pending_share_producers(pending: floor_cross_claim_pending_candidates)) > 0
 }

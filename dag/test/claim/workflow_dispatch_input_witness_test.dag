@@ -4,6 +4,9 @@ import extdeps.github.actions {
   WorkflowDispatch, DispatchInput, InputString, InputChoice
 }
 import gunbc.fleet_converge_workflow {
+  FleetConvergeWorkflowMode, fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire,
+  fleet_converge_mode_step_if, fleet_converge_mode_scope,
+  FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, DashboardDeploy,
   fleet_converge_spark_bootstrap_step_if, fleet_converge_mode_options,
   fleet_converge_workflow, expected_fleet_converge_yml,
   FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused,
@@ -202,4 +205,50 @@ test fn fleet_converge_org_actions_mode_binds_secret_and_modeled_entry_holds() -
     && string_contains(s: invoke, pattern: "OrgAdminAppKeyUnreadable")
     && !string_contains(s: invoke, pattern: "curl -sSf -H @\"$HDR_FILE\" \"https://secretmanager")
     && !string_contains(s: expected_fleet_converge_yml_content(), pattern: "secrets.GUNBC_ORG_ADMIN_TOKEN")
+}
+
+
+// THE VOCABULARY IS THE ONLY SPELLING AUTHORITY, and these are the facts that make that a claim
+// rather than a hope.
+//
+// COUNT AND DISTINCTNESS TOGETHER. Fifteen members is not enough on its own: two members returning
+// the same wire string would still be fifteen, and the dispatch menu would silently offer one option
+// twice while one mode became unselectable. Counting the DISTINCT wire values is what refuses that.
+test fn the_mode_vocabulary_has_fifteen_members_with_fifteen_distinct_wire_values() -> Bool {
+  let wires = map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m))
+  count(fleet_converge_workflow_modes) == 15
+    && count(wires) == 15
+    && unique(xs: wires, eq: (a, b) => a == b)
+}
+
+// EVERY DISPATCH OPTION IS A WIRE VALUE, tying the menu GitHub renders to the vocabulary rather than
+// to a hand-kept list that merely happens to agree with it today.
+test fn every_dispatch_option_is_a_wire_value_of_the_vocabulary() -> Bool {
+  let wires = map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m))
+  count(fleet_converge_mode_options) == 15
+    && all(fleet_converge_mode_options, o => any(wires, w => w == o))
+}
+
+// THE STEP CONDITION IS DERIVED, not spelled beside the option. The discriminating half is the
+// second conjunct: a projection that returned a constant, or ignored its argument, would satisfy the
+// first and fail this.
+test fn a_step_condition_is_the_wire_value_of_the_mode_it_selects() -> Bool {
+  fleet_converge_mode_step_if(mode: DashboardDeploy) == "github.event.inputs.mode == 'dashboard_deploy'"
+    && fleet_converge_mode_step_if(mode: FullHostPlan) != fleet_converge_mode_step_if(mode: DashboardDeploy)
+}
+
+// DASHBOARD DEPLOYMENT IS EXPLICITLY OUTSIDE THE SCOPE PROJECTION, and this witness exists so that
+// changing it is a deliberate act with a red here rather than a quiet consequence of adding a member
+// to FleetConvergeScope. The three modes that DO name a scope are asserted beside it, so a projection
+// that answered `none` for everything cannot pass.
+test fn dashboard_deploy_names_no_fleet_scope_while_the_plan_modes_do() -> Bool {
+  let deploy_absent = match fleet_converge_mode_scope(mode: DashboardDeploy) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let plans_present = all(
+    [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan],
+    m => match fleet_converge_mode_scope(mode: m) { Present { value: _ } => true  Absent => false },
+  )
+  deploy_absent && plans_present
 }
