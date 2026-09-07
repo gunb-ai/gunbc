@@ -5,7 +5,7 @@ import std.types { String, Int, List, NonEmptyStr }
 import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.auth.approval_ntfy_converge {
   NtfyConvergedMember, NtfyServiceAccount, NtfyStateDirectory, NtfyConfigDirectory,
-  NtfyUnitInstalled, NtfyUnitEnabled, NtfyUnitStarted,
+  NtfyUnitDaemonReloaded, NtfyUnitEnabled, NtfyUnitStarted,
   approval_ntfy_desired_members, ntfy_member_key, ntfy_member_ownership,
   approval_ntfy_converge_commands,
 }
@@ -14,6 +14,7 @@ import gunbc.executor_privileged_operation {
   executor_privileged_operation_precondition, executor_privileged_operation_converge_command,
 }
 import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path }
+import gunbc.auth.approval_ntfy_deployment { approval_ntfy_account_command }
 
 // THE DEFECT THIS FAMILY WAS BUILT OVER, pinned so it cannot come back. `useradd` exits 9 when the
 // account exists, so an unguarded EnsureSystemAccount fails on every convergence after the first.
@@ -82,10 +83,29 @@ test fn witness_account_is_the_first_member() -> Bool {
       NtfyServiceAccount => true
       NtfyStateDirectory { path: _ } => false
       NtfyConfigDirectory { path: _ } => false
-      NtfyUnitInstalled => false
+      NtfyUnitDaemonReloaded => false
       NtfyUnitEnabled => false
       NtfyUnitStarted => false
     }
     Absent => false
   }
+}
+
+
+// THE HAND-RUN COMMAND AND THE CONVERGED MEMBER ARE ONE AUTHORITY, tested rather than claimed. The
+// module annotation asserted this while the two sides called DIFFERENT renderers -- the
+// intervention the unguarded one, the member the guarded one -- so the operator's copy-paste would
+// have exited 9 on a host that already had the account. A prose claim could not catch that; this
+// can, because it fails the moment the two diverge again.
+test fn witness_intervention_command_equals_the_converged_member_command() -> Bool {
+  let converged = executor_privileged_operation_converge_command(op: EnsureSystemAccount {
+    login: "gunbc-ntfy",
+    shell: fleet_posix_nologin_shell_path,
+  })
+  approval_ntfy_account_command() == converged
+}
+
+// AND IT CARRIES THE PRECONDITION, so the equality above is not two copies of the WRONG form.
+test fn witness_intervention_command_is_the_guarded_form() -> Bool {
+  string_contains(s: approval_ntfy_account_command(), pattern: "id -u gunbc-ntfy")
 }

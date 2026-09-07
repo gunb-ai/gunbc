@@ -3,7 +3,7 @@ module gunbc.auth.approval_ntfy_converge
 import std.types { NonEmptyStr, String, List, Int, Bool }
 import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.executor_privileged_operation {
-  ExecutorPrivilegedOperation, EnsureSystemAccount, EnsureOwnedDirectory, InstallFile,
+  ExecutorPrivilegedOperation, EnsureSystemAccount, EnsureOwnedDirectory,
   SystemdDaemonReload, SystemdEnableUnit, SystemdStartUnit,
   executor_privileged_operation_argv, executor_privileged_operation_converge_command,
 }
@@ -19,24 +19,39 @@ import gunbc.auth.approval_ntfy_deployment {
 // migration script (out-of-band actuation)" -- and the operator ruled it directly: fleet
 // convergence must be honored on srv1 rather than worked around.
 //
-// The gap was never the operations. gunbc.executor_privileged_operation ALREADY renders every step
-// this deployment needs: EnsureSystemAccount, EnsureOwnedDirectory, InstallFile, and the three
-// systemd verbs. What was missing was a declaration of what the host SHOULD contain, so nothing
-// could reconcile the host against it. These rows are that declaration.
+// The gap was never the ACCOUNT and DIRECTORY operations. gunbc.executor_privileged_operation
+// already renders those, and what was missing was a declaration of what the host should contain so
+// something could reconcile against it. These rows are that declaration for the members it names.
 //
-// WHAT THIS DOES NOT YET DO, stated because the difference decides whether the interventions may
-// retire: it declares the DESIRED side and projects each member to the operation that realizes it.
-// It does not OBSERVE the host, so it cannot yet answer whether a member is already converged, and
-// an installer that exits zero over a member that is still absent would go unnoticed. That
-// post-apply readback is the lifecycle carrier merry-ibex-741 is landing in
-// std.realization_reconcile (ReconciledEffect / ConvergedEffect), and this family is written to
-// plug into it rather than to grow a second answer for "did the plan converge".
+// THIS SET CANNOT CONVERGE A FRESH HOST, and the boundary is exactly where file CONTENT begins.
+// Two facts this deployment needs are files whose bytes nothing here models -- the server config at
+// approval_ntfy_config_path and the systemd unit -- and one is a third-party binary, which is the
+// EnsureDependency concern of the acquisition gap analysis. InstallFile copies a source that must
+// already exist on the host; with no modeled content there is no source, so the honest position is
+// that those members are ABSENT from this roster rather than represented by something adjacent.
+//
+// An earlier revision did exactly the dishonest thing: it carried a member named
+// `NtfyUnitInstalled` that rendered only `systemctl daemon-reload`. The name claimed an obligation
+// the projection did not discharge, so enable and start appeared to converge while succeeding only
+// because a human had already placed the unit file -- a plausible convergence that realizes
+// something other than the fact it names (§5), on a host where the difference is invisible because
+// the file happens to be there. The member is now named for what it does.
+//
+// SO WHAT THIS ROSTER IS: the members that make an ALREADY-INSTALLED host converge to the declared
+// account, ownership, permissions and unit state, idempotently. That is strictly less than "srv1's
+// state is rendered by the model", and the difference is the two file members and the binary.
+//
+// It also does not OBSERVE the host, so it cannot answer whether a member is already converged --
+// an installer exiting zero over an absent member would go unnoticed. That readback is the
+// lifecycle carrier merry-ibex-741 is landing in std.realization_reconcile (ReconciledEffect /
+// ConvergedEffect), and this family is shaped to plug into it rather than grow a second answer for
+// "did the plan converge".
 
 type NtfyConvergedMember
   = NtfyServiceAccount
   | NtfyStateDirectory { path: NonEmptyStr }
   | NtfyConfigDirectory { path: NonEmptyStr }
-  | NtfyUnitInstalled
+  | NtfyUnitDaemonReloaded
   | NtfyUnitEnabled
   | NtfyUnitStarted
 
@@ -56,7 +71,7 @@ fn ntfy_member_key(m: NtfyConvergedMember) -> NonEmptyStr {
     NtfyServiceAccount => "account"
     NtfyStateDirectory { path: p } => p
     NtfyConfigDirectory { path: p } => p
-    NtfyUnitInstalled => "unit-installed"
+    NtfyUnitDaemonReloaded => "unit-daemon-reloaded"
     NtfyUnitEnabled => "unit-enabled"
     NtfyUnitStarted => "unit-started"
   }
@@ -84,7 +99,7 @@ fn approval_ntfy_desired_members() -> List<NtfyConvergedMember> {
     NtfyStateDirectory { path: approval_ntfy_state_root },
     NtfyStateDirectory { path: ntfy_attachment_cache_dir },
     NtfyConfigDirectory { path: ntfy_config_dir },
-    NtfyUnitInstalled,
+    NtfyUnitDaemonReloaded,
     NtfyUnitEnabled,
     NtfyUnitStarted,
   ]
@@ -122,7 +137,7 @@ fn ntfy_member_operations(m: NtfyConvergedMember) -> List<ExecutorPrivilegedOper
         mode: ntfy_state_dir_mode,
       },
     ]
-    NtfyUnitInstalled => [SystemdDaemonReload]
+    NtfyUnitDaemonReloaded => [SystemdDaemonReload]
     NtfyUnitEnabled => [SystemdEnableUnit { unit: approval_ntfy_unit_name }]
     NtfyUnitStarted => [SystemdStartUnit { unit: approval_ntfy_unit_name }]
   }

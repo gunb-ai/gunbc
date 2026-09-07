@@ -14,7 +14,7 @@ import extdeps.uri { Uri, Https }
 import std.types { Secret }
 import v2.std.network { POST }
 import gunbc.executor_privileged_operation {
-  ExecutorPrivilegedOperation, EnsureSystemAccount, executor_privileged_operation_shell_command,
+  ExecutorPrivilegedOperation, EnsureSystemAccount, executor_privileged_operation_converge_command,
 }
 import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path }
 import gunbc.fleet_intent_network { fleet_intent_network, operator_host_srv1 }
@@ -89,19 +89,27 @@ fn approval_ntfy_intervention(
 // is rendered today only by the live_deploy member that creates gunbc-publication, and no member
 // renders one for this principal yet. So the account is a human step for now, and it says so.
 //
-// dissolve-on, stated as a CAPABILITY rather than an artifact (§4b(3): a trigger naming less than
-// the capability it restores is satisfied while the capability stays dead). This row retires when
-// convergence CREATES AND VERIFIES this principal on srv1 with no human in the path -- a member
-// that renders EnsureSystemAccount for FleetAccountNotificationService AND whose post-apply
-// readback establishes the account exists. A member that emits the argv is not sufficient: an
-// installer that exits zero over an account that is still absent is precisely the state the
-// reconcile carrier exists to refuse.
-// THE ARGV IS RENDERED, NOT TRANSCRIBED. Writing the useradd line by hand beside the declared
-// login is the §6 tell "a hand-authored projection the model should generate": a rename of
-// approval_ntfy_principal_name would leave the operator following a stale command while every
-// modeled consumer moved. This calls the same renderer the converged member will call, so the
-// hand-run command and the eventual converged one are one authority by construction rather than
-// by anyone remembering to keep them equal.
+// THE MEMBER NOW EXISTS; THE READBACK DOES NOT. gunbc.auth.approval_ntfy_converge
+// NtfyServiceAccount renders EnsureSystemAccount for this principal, so the earlier wording here --
+// "no converged member renders it for this principal yet" -- became false the moment that family
+// landed, and two answers to "is the account modeled for convergence" is a §3 meaning fork inside
+// one change.
+//
+// What keeps this a human step is narrower and worth stating exactly: nothing OBSERVES the host, so
+// applying the member cannot establish that the account exists afterwards. An operation exiting
+// zero over an absent account is indistinguishable from success.
+//
+// dissolve-on, as a CAPABILITY rather than an artifact (§4b(3)): this row retires when a
+// convergence both applies this member AND establishes by post-apply readback that the principal
+// is present -- the ConvergedEffect half of std.realization_reconcile. A member that emits the
+// argv, which now exists, is explicitly NOT sufficient.
+// THE ARGV IS RENDERED, NOT TRANSCRIBED, AND IT IS THE SAME RENDERER THE CONVERGED MEMBER USES.
+// An earlier revision called executor_privileged_operation_shell_command here while
+// gunbc.auth.approval_ntfy_converge called executor_privileged_operation_converge_command, so this
+// annotation's claim that the two were "one authority by construction" was FALSE: the hand-run
+// form lacked the `id -u ... ||` precondition and would exit 9 on a host that already had the
+// account. Both now call the converge renderer, which is what makes the claim true rather than
+// aspirational.
 fn approval_ntfy_account_operation() -> ExecutorPrivilegedOperation {
   EnsureSystemAccount {
     login: approval_ntfy_principal_name,
@@ -110,7 +118,7 @@ fn approval_ntfy_account_operation() -> ExecutorPrivilegedOperation {
 }
 
 fn approval_ntfy_account_command() -> String {
-  executor_privileged_operation_shell_command(op: approval_ntfy_account_operation())
+  executor_privileged_operation_converge_command(op: approval_ntfy_account_operation())
 }
 
 fn approval_ntfy_account_intervention() -> HumanIntervention {
@@ -121,11 +129,12 @@ fn approval_ntfy_account_intervention() -> HumanIntervention {
     instruction: join([
       "On srv1, run: ",
       approval_ntfy_account_command(),
-      " -- this string is RENDERED BY the operation that converges the account, not transcribed",
-      " beside it, so it cannot go stale against the declared login or shell. It is run by hand",
-      " only because no converged member renders it for this principal yet: the shape is modeled,",
-      " the actuation is not. TEMPORARY: retires only when convergence both creates this account",
-      " and verifies it by readback, never merely because a member emits the argv.",
+      " -- this is the SAME command gunbc.auth.approval_ntfy_converge NtfyServiceAccount renders,",
+      " from the same authority, so it cannot go stale against the declared login or shell and it",
+      " carries the precondition that makes re-running it a no-op. The member exists; what does not",
+      " exist is any observation of the host, so applying it cannot establish that the account is",
+      " present afterwards. TEMPORARY: retires when a convergence both applies this member and",
+      " confirms the principal by post-apply readback -- never merely because the member renders.",
     ], "") as NonEmptyStr,
   )
 }
