@@ -9,6 +9,10 @@ import std.human_intervention {
 }
 import gunbc.auth.approval_notification { approval_ntfy_topic }
 import extdeps.ntfy.ntfy { NtfyTopic }
+import gunbc.executor_privileged_operation {
+  ExecutorPrivilegedOperation, EnsureSystemAccount, executor_privileged_operation_shell_command,
+}
+import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path }
 
 // ── The self-hosted notification server on srv1 ──────────────────────────────────────────────
 // It follows gunbc-publication exactly: its own system account, its own state directory owned by
@@ -87,12 +91,37 @@ fn approval_ntfy_intervention(
 // readback establishes the account exists. A member that emits the argv is not sufficient: an
 // installer that exits zero over an account that is still absent is precisely the state the
 // reconcile carrier exists to refuse.
+// THE ARGV IS RENDERED, NOT TRANSCRIBED. Writing the useradd line by hand beside the declared
+// login is the §6 tell "a hand-authored projection the model should generate": a rename of
+// approval_ntfy_principal_name would leave the operator following a stale command while every
+// modeled consumer moved. This calls the same renderer the converged member will call, so the
+// hand-run command and the eventual converged one are one authority by construction rather than
+// by anyone remembering to keep them equal.
+fn approval_ntfy_account_operation() -> ExecutorPrivilegedOperation {
+  EnsureSystemAccount {
+    login: approval_ntfy_principal_name,
+    shell: fleet_posix_nologin_shell_path,
+  }
+}
+
+fn approval_ntfy_account_command() -> String {
+  executor_privileged_operation_shell_command(op: approval_ntfy_account_operation())
+}
+
 fn approval_ntfy_account_intervention() -> HumanIntervention {
   approval_ntfy_intervention(
     identity: "approval-ntfy-account",
     frequency: FleetOnce,
     subject: "gunbc-ntfy system account",
-    instruction: "On srv1: `sudo /usr/sbin/useradd --system --no-create-home --shell /usr/sbin/nologin gunbc-ntfy`. This is the exact argv gunbc.executor_privileged_operation EnsureSystemAccount renders, run by hand only because no converged member renders it for this principal yet -- the shape is modeled, the actuation is not. TEMPORARY: retires only when convergence both creates this account and verifies it by readback, never merely because a member emits the argv.",
+    instruction: join([
+      "On srv1, run: ",
+      approval_ntfy_account_command(),
+      " -- this string is RENDERED BY the operation that converges the account, not transcribed",
+      " beside it, so it cannot go stale against the declared login or shell. It is run by hand",
+      " only because no converged member renders it for this principal yet: the shape is modeled,",
+      " the actuation is not. TEMPORARY: retires only when convergence both creates this account",
+      " and verifies it by readback, never merely because a member emits the argv.",
+    ], "") as NonEmptyStr,
   )
 }
 
@@ -170,7 +199,15 @@ fn approval_ntfy_phone_subscription_intervention() -> HumanIntervention {
     identity: "approval-ntfy-phone-subscription",
     frequency: DeviceOnce,
     subject: "operator iPhone ntfy subscription",
-    instruction: "Install the ntfy iOS app, add the self-hosted server as a custom server, sign in as the operator user, and subscribe to the approvals topic. Tailscale must be up on the phone: the app fetches each message body from srv1 over the tailnet, and the approval link opens there too. DeviceOnce rather than FleetOnce because a replacement phone pays it again.",
+    instruction: join([
+      "Install the ntfy iOS app, add the self-hosted server as a custom server, sign in as the",
+      " operator user, and subscribe to topic '",
+      approval_ntfy_topic as String,
+      "'. Subscribing to any other topic receives nothing, silently -- which is why the topic is",
+      " joined from its declaration here rather than spelled in prose. Tailscale must be up on the",
+      " phone: the app fetches each message body from srv1 over the tailnet, and the approval link",
+      " opens there too. DeviceOnce rather than FleetOnce because a replacement phone pays it again.",
+    ], "") as NonEmptyStr,
   )
 }
 

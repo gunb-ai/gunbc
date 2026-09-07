@@ -106,9 +106,9 @@ type NtfyPublishOutcome
 fn ntfy_publish_outcome_of(rest: RestOutcome, message_id: String) -> NtfyPublishOutcome {
   match rest {
     RestOk => NtfyPublished { message_id: message_id as NonEmptyStr }
-    RestStatusRefused { status, body } => NtfyPublishRefused { status: status as Int, detail: body }
+    RestStatusRefused { status, body } => NtfyPublishRefused { status: status, detail: body }
     RestTransportRefused { cause } => NtfyPublishRefused { status: 0, detail: cause as String }
-    RestBodyUndecodable { status, cause } => NtfyPublishRefused { status: status as Int, detail: cause as String }
+    RestBodyUndecodable { status, cause } => NtfyPublishRefused { status: status, detail: cause as String }
   }
 }
 
@@ -125,9 +125,33 @@ fn ntfy_publish_succeeded(o: NtfyPublishOutcome) -> Bool {
 // may treat a publish receipt as consent, as read-receipt, or as a reason to advance a deadline.
 data publish_is_not_consent_note: NonEmptyStr = "NtfyPublished establishes server acceptance only. It is not delivery, not a read receipt, and never approval. A notification retry re-asks the SAME question under the same request identity and must not reset the request's expiry, because a re-notification is not a new request and an operator who ignores three reminders has not consented three times."
 
+// WHICH SERVER IS A DEPLOYMENT FACT, AND IT IS HOMED HERE UNDER PROTEST. §3's
+// interface/realization/policy split puts the operation shape in extdeps and the address in the
+// workflow that owns the deployment, so this row is a layer inversion and is declared as one
+// rather than left to look natural.
+//
+// It is here because the language cannot currently express the correct form. The interpreter
+// resolves `endpoint:` by evaluating its value node in the operation's PARAMETER environment
+// (v1_interpreter find_service_config_string), so `endpoint: server_base_url` bound to an
+// operation input would work at runtime -- but the RESOLVER does not model config identifiers as
+// parameter-bound and refuses with `undefined variable 'server_base_url'` at compile, which blocks
+// `gunbc run` as well. MEASURED, not assumed: both the compile and the run were attempted in that
+// form and refused identically.
+//
+// What this row is NOT is the previous state. The config previously pinned the literal
+// "https://ntfy.sh", which made the public service the silent destination for anything that did
+// not say otherwise -- for a topic carrying approval capabilities, the worst available default.
+// A named row for the one deployment that exists is weaker than a parameter and stronger than a
+// literal nobody had to think about.
+//
+// dissolve-on: the resolver binds config identifiers to operation parameters, at which point
+// `server_base_url` becomes an operation input, this row is DELETED rather than edited, and the
+// endpoint returns to the caller that owns the deployment. The trigger names that resolver
+// capability and not any artifact that merely contributes to it.
+data ntfy_deployment_base_url: NonEmptyStr = "https://srv1.tailecbe08.ts.net:8443"
 service ntfy.Publish {
   config {
-    endpoint: "https://ntfy.sh"
+    endpoint: ntfy_deployment_base_url
     auth: Bearer
     auth_input: access_token
   }
