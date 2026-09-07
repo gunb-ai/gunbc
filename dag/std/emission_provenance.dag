@@ -229,13 +229,50 @@ type EmissionOriginRead
       missing: FreeSemigroup<EmissionOriginGap>
     }
 
-type EmissionOriginBuilder {
-  append_origins: fn(EmissionOriginRead) -> EmissionOriginRead
+type EmissionContributionRead {
+  source: String
+  origins: EmissionOriginRead
 }
 
-fn emission_origin_builders_compose(left: EmissionOriginBuilder, right: EmissionOriginBuilder) -> EmissionOriginBuilder {
-  EmissionOriginBuilder {
-    append_origins: fn(observation) { right.append_origins(left.append_origins(observation)) }
+// The fold composes append operations, never materialized child results. A node algebra is
+// asked only for its local contribution; it cannot combine descendant result values supplied
+// by this API. Arbitrary callback internals are not thereby proved to have bounded cost.
+type EmissionAppendOperation<R> {
+  apply: fn(R) -> R
+}
+
+fn emission_append_operations_compose<R>(left: EmissionAppendOperation<R>, right: EmissionAppendOperation<R>) -> EmissionAppendOperation<R> {
+  EmissionAppendOperation { apply: fn(state) { right.apply(left.apply(state)) } }
+}
+
+fn emission_contribution_fold_parts<R>(
+  parts: FreeMonoid<EmissionContribution>,
+  acc: EmissionAppendOperation<R>,
+  read: fn(EmissionContribution) -> EmissionAppendOperation<R>
+) -> EmissionAppendOperation<R> {
+  match parts {
+    Empty => acc
+    Cons { head: part, tail: rest } =>
+      emission_contribution_fold_parts(
+        parts: rest,
+        acc: emission_append_operations_compose(
+          left: acc,
+          right: emission_contribution_fold(contribution: part, read: read)
+        ),
+        read: read
+      )
+  }
+}
+
+fn emission_contribution_fold<R>(
+  contribution: EmissionContribution,
+  read: fn(EmissionContribution) -> EmissionAppendOperation<R>
+) -> EmissionAppendOperation<R> {
+  let local = read(contribution)
+  match contribution {
+    EmissionSourceComposition { origin: _, parts } =>
+      emission_contribution_fold_parts(parts: parts, acc: local, read: read)
+    _ => local
   }
 }
 
@@ -258,109 +295,89 @@ fn emission_origin_append_missing(observation: EmissionOriginRead, gap: Emission
   }
 }
 
-fn emission_origin_observed_builder(origin: DeclarationRef) -> EmissionOriginBuilder {
-  EmissionOriginBuilder { append_origins: fn(observation) { emission_origin_append_observed(observation: observation, origin: origin) } }
-}
-
-fn emission_origin_missing_builder(producer: DeclarationRef, cause: NonEmptyStr) -> EmissionOriginBuilder {
-  EmissionOriginBuilder { append_origins: fn(observation) {
-    emission_origin_append_missing(observation: observation, gap: EmissionOriginGap { producer: producer, cause: cause })
-  } }
-}
-
-type EmissionContributionRead {
-  source: String
+type EmissionContributionFragments {
+  source: FreeMonoid<String>
   origins: EmissionOriginRead
 }
 
-// The result algebra selects what is materialized. The only recursive contribution walk lives
-// here; an origins-only algebra never reads or concatenates fragment source text.
-fn emission_contribution_fold<R>(
-  contribution: EmissionContribution,
-  read: fn(EmissionContribution, FreeMonoid<R>) -> R
-) -> R {
-  let children = match contribution {
-    EmissionSourceComposition { origin: _, parts } =>
-      parts |> map(part => emission_contribution_fold(contribution: part, read: read))
-    _ => []
-  }
-  read(contribution, children)
+fn emission_source_identity(fragments: FreeMonoid<String>) -> FreeMonoid<String> { fragments }
+
+fn emission_source_fragment(source: String) -> EmissionAppendOperation<FreeMonoid<String>> {
+  EmissionAppendOperation { apply: fn(fragments) { fragments.append(source) } }
 }
 
-type EmissionSourceBuilder {
-  append_fragments: fn(FreeMonoid<String>) -> FreeMonoid<String>
-}
-
-type EmissionContributionBuild {
-  source: EmissionSourceBuilder
-  origins: EmissionOriginBuilder
-}
-
-fn emission_source_builder_identity(fragments: FreeMonoid<String>) -> FreeMonoid<String> { fragments }
-
-fn emission_source_builders_compose(left: EmissionSourceBuilder, right: EmissionSourceBuilder) -> EmissionSourceBuilder {
-  EmissionSourceBuilder {
-    append_fragments: fn(fragments) { right.append_fragments(left.append_fragments(fragments)) }
-  }
-}
-
-fn emission_source_fragment(source: String) -> EmissionSourceBuilder {
-  EmissionSourceBuilder { append_fragments: fn(fragments) { fragments.append(source) } }
-}
-
-// Composition builds append operations, never descendant text. The single materialization
-// boundary below invokes those operations and joins their ordered fragments once.
-fn emission_source_read_layer(contribution: EmissionContribution, children: FreeMonoid<EmissionSourceBuilder>) -> EmissionSourceBuilder {
+fn emission_source_read_layer(contribution: EmissionContribution) -> EmissionAppendOperation<FreeMonoid<String>> {
   match contribution {
     EmissionAuthoredFragment { origin: _, source } => emission_source_fragment(source: source)
-    EmissionSourceComposition { origin: _, parts: _ } => children |> fold(
-      init: EmissionSourceBuilder { append_fragments: emission_source_builder_identity },
-      f: emission_source_builders_compose
-    )
+    EmissionSourceComposition { origin: _, parts: _ } => EmissionAppendOperation { apply: emission_source_identity }
     EmissionUnobservedFragment { producer: _, cause: _, source } => emission_source_fragment(source: source)
   }
 }
 
-// Each node contributes one append operation. Composition combines operations without
-// enumerating descendant origin lists; only the public boundary runs the resulting builder.
-fn emission_origin_read_layer(contribution: EmissionContribution, children: FreeMonoid<EmissionOriginBuilder>) -> EmissionOriginBuilder {
+fn emission_origin_observed_operation(origin: DeclarationRef) -> EmissionAppendOperation<EmissionOriginRead> {
+  EmissionAppendOperation { apply: fn(observation) { emission_origin_append_observed(observation: observation, origin: origin) } }
+}
+
+fn emission_origin_missing_operation(producer: DeclarationRef, cause: NonEmptyStr) -> EmissionAppendOperation<EmissionOriginRead> {
+  EmissionAppendOperation { apply: fn(observation) {
+    emission_origin_append_missing(observation: observation, gap: EmissionOriginGap { producer: producer, cause: cause })
+  } }
+}
+
+fn emission_origin_read_layer(contribution: EmissionContribution) -> EmissionAppendOperation<EmissionOriginRead> {
   match contribution {
-    EmissionAuthoredFragment { origin, source: _ } => emission_origin_observed_builder(origin: origin)
-    EmissionSourceComposition { origin, parts: _ } =>
-      children |> fold(init: emission_origin_observed_builder(origin: origin), f: emission_origin_builders_compose)
-    EmissionUnobservedFragment { producer, cause, source: _ } => emission_origin_missing_builder(producer: producer, cause: cause)
+    EmissionAuthoredFragment { origin, source: _ } => emission_origin_observed_operation(origin: origin)
+    EmissionSourceComposition { origin, parts: _ } => emission_origin_observed_operation(origin: origin)
+    EmissionUnobservedFragment { producer, cause, source: _ } => emission_origin_missing_operation(producer: producer, cause: cause)
   }
 }
 
-fn emission_origin_materialize(builder: EmissionOriginBuilder) -> EmissionOriginRead {
-  builder.append_origins(EmissionOriginsObserved { origins: [] })
+fn emission_combined_read_layer(contribution: EmissionContribution) -> EmissionAppendOperation<EmissionContributionFragments> {
+  let source = emission_source_read_layer(contribution: contribution)
+  let origins = emission_origin_read_layer(contribution: contribution)
+  EmissionAppendOperation { apply: fn(state) { EmissionContributionFragments {
+    source: source.apply(state.source), origins: origins.apply(state.origins)
+  } } }
 }
 
-// Product algebra: reuse the same source and origin layer meanings over the paired child results.
-// It has no independent variant interpretation that could diverge from either standalone reader.
-fn emission_combined_read_layer(contribution: EmissionContribution, children: FreeMonoid<EmissionContributionBuild>) -> EmissionContributionBuild {
-  EmissionContributionBuild {
-    source: emission_source_read_layer(contribution: contribution, children: children |> map(child => child.source)),
-    origins: emission_origin_read_layer(contribution: contribution, children: children |> map(child => child.origins))
-  }
+fn emission_apply_fragments(
+  operation: EmissionAppendOperation<EmissionContributionFragments>,
+  state: EmissionContributionFragments
+) -> EmissionContributionFragments {
+  operation.apply(state)
+}
+
+fn emission_apply_source_fragments(
+  operation: EmissionAppendOperation<FreeMonoid<String>>,
+  state: FreeMonoid<String>
+) -> FreeMonoid<String> {
+  operation.apply(state)
+}
+
+fn emission_apply_origin_read(
+  operation: EmissionAppendOperation<EmissionOriginRead>,
+  state: EmissionOriginRead
+) -> EmissionOriginRead {
+  operation.apply(state)
 }
 
 fn emission_contribution_read(contribution: EmissionContribution) -> EmissionContributionRead {
-  let built = emission_contribution_fold(contribution: contribution, read: emission_combined_read_layer)
-  EmissionContributionRead { source: emission_source_materialize(builder: built.source), origins: emission_origin_materialize(builder: built.origins) }
+  let operation = emission_contribution_fold(contribution: contribution, read: emission_combined_read_layer)
+  let fragments = emission_apply_fragments(
+    operation: operation,
+    state: EmissionContributionFragments { source: [], origins: EmissionOriginsObserved { origins: [] } }
+  )
+  EmissionContributionRead { source: fragments.source |> join(separator: ""), origins: fragments.origins }
 }
 
 fn emission_contribution_source(contribution: EmissionContribution) -> String {
-  emission_source_materialize(builder: emission_contribution_fold(contribution: contribution, read: emission_source_read_layer))
+  let operation = emission_contribution_fold(contribution: contribution, read: emission_source_read_layer)
+  emission_apply_source_fragments(operation: operation, state: []) |> join(separator: "")
 }
 
-fn emission_source_materialize(builder: EmissionSourceBuilder) -> String {
-  builder.append_fragments([]) |> join(separator: "")
-}
-
-// This result algebra retains incomplete coverage without materializing the unrequested source.
 fn emission_contribution_origins(contribution: EmissionContribution) -> EmissionOriginRead {
-  emission_origin_materialize(builder: emission_contribution_fold(contribution: contribution, read: emission_origin_read_layer))
+  let operation = emission_contribution_fold(contribution: contribution, read: emission_origin_read_layer)
+  emission_apply_origin_read(operation: operation, state: EmissionOriginsObserved { origins: [] })
 }
 
 fn emission_contribution_unobserved(contribution: EmissionContribution) -> FreeMonoid<DeclarationRef> {
