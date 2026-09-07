@@ -1027,18 +1027,22 @@ pub fn str_bindings_from_bindings(
     )
 }
 
-pub fn lookup_binding_by_name_local(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
+pub fn lookup_binding_on_chain(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
     match v1_rt::map_get(&env.str_bindings.clone(), name.clone()) {
         Some(binding) => Some(binding.clone()),
         std::option::Option::None => {
-            match v1_rt::map_get(&env.ancestry_str_bindings.clone(), name.clone()) {
-                Some(binding) => Some(binding.clone()),
-                std::option::Option::None => {
-                    match crate::v1_std_core::intern_find(env.intern_table.clone(), name.clone()) {
-                        Some(id) => v1_rt::map_get(&env.bindings.clone(), id.clone()),
-                        std::option::Option::None => std::option::Option::None,
-                    }
-                }
+            v1_rt::map_get(&env.ancestry_str_bindings.clone(), name.clone())
+        }
+    }
+}
+
+pub fn lookup_binding_by_name_local(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
+    match lookup_binding_on_chain(env.clone(), name.clone()) {
+        Some(binding) => Some(binding.clone()),
+        std::option::Option::None => {
+            match crate::v1_std_core::intern_find(env.intern_table.clone(), name.clone()) {
+                Some(id) => v1_rt::map_get(&env.bindings.clone(), id.clone()),
+                std::option::Option::None => std::option::Option::None,
             }
         }
     }
@@ -1824,28 +1828,27 @@ pub fn type_ref_module_path_is_containment_prefix(ancestor: String, descendant: 
 }
 
 pub fn type_ref_measure_binding_authority(env: Rc<TypeEnv>, name: String) -> bool {
-    if (v1_rt::map_has(&env.str_bindings.clone(), name.clone())
-        || v1_rt::map_has(&env.ancestry_str_bindings.clone(), name.clone()))
-    {
-        true
-    } else {
-        if v1_rt::contains(name.clone(), ".".to_string()) {
-            {
-                let prefix = qualified_all_but_last(name.clone());
-                if type_ref_module_path_is_containment_prefix(
-                    prefix.clone(),
-                    env.module_path.clone(),
-                ) {
-                    match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
-                        Some(_) => true,
-                        std::option::Option::None => false,
+    match lookup_binding_on_chain(env.clone(), name.clone()) {
+        Some(_) => true,
+        std::option::Option::None => {
+            if v1_rt::contains(name.clone(), ".".to_string()) {
+                {
+                    let prefix = qualified_all_but_last(name.clone());
+                    if type_ref_module_path_is_containment_prefix(
+                        prefix.clone(),
+                        env.module_path.clone(),
+                    ) {
+                        match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
+                            Some(_) => true,
+                            std::option::Option::None => false,
+                        }
+                    } else {
+                        false
                     }
-                } else {
-                    false
                 }
+            } else {
+                false
             }
-        } else {
-            false
         }
     }
 }
