@@ -4,7 +4,7 @@ import std.types { NonEmptyStr, String }
 import std.resources { Network }
 import extdeps.shell
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import gunbc.fleet_asset_identity { printer_01 }
+import gunbc.fleet_asset_identity { PhysicalAssetIdentity, printer_01, printer_02 }
 import gunbc.auth.access_token_source { AccessTokenSource, OperatorSuppliedToken }
 import gunbc.auth.gcp_secret_access {
   SuppliedTokenResolution, SuppliedTokenReady, SuppliedTokenUnavailable, read_supplied_access_token,
@@ -61,7 +61,44 @@ import extdeps.cloud.gcp.secret_ref { secret_ref_secret_resource }
 // geometry to a printer is a physical, hour-long, filament-spending error.
 data wet_run_payload_env: NonEmptyStr = "PRINT_N_WET_PAYLOAD"
 
+// THE PRINTER IS NAMED BY THE INVOKER FOR THE SAME REASON THE PAYLOAD IS. This actuator carried
+// printer_01 as a literal, which is the same machine-fact-wearing-a-module's-name defect the payload
+// path above already fixed: a second printer exists, the module cannot reach it, and the literal
+// reads as a modelled decision rather than as the accident it was.
+//
+// THE UNKNOWN ARM REFUSES RATHER THAN DEFAULTING, and that is the whole reason this is a match and
+// not a lookup with a fallback. Defaulting an unrecognized name to printer_01 would send a payload
+// to a machine the invoker did not name -- delivering the wrong geometry to a printer is a physical,
+// hour-long, filament-spending error, exactly as the payload annotation says.
+data wet_run_printer_env: NonEmptyStr = "PRINT_N_WET_PRINTER"
+
+type WetRunPrinterSelection
+  = WetRunPrinterSelected { printer: PhysicalAssetIdentity }
+  | WetRunPrinterUnrecognized { supplied: String }
+
+fn select_wet_run_printer(supplied: String) -> WetRunPrinterSelection {
+  if supplied == (printer_01 as String) {
+    WetRunPrinterSelected { printer: printer_01 }
+  } else if supplied == (printer_02 as String) {
+    WetRunPrinterSelected { printer: printer_02 }
+  } else {
+    WetRunPrinterUnrecognized { supplied: supplied }
+  }
+}
+
 func run() -> ProcessExit uses net: Network {
+  let requested_printer = shell.Env.Get(name: wet_run_printer_env)
+  match requested_printer.value {
+    Absent =>
+      exit_failure(reason: concat(concat(
+        "NO PRINTER: set ", wet_run_printer_env as String),
+        " to a declared printer identity; this actuator will not guess a machine"))
+    Present { value: printer_name } =>
+  match select_wet_run_printer(supplied: printer_name) {
+    WetRunPrinterUnrecognized { supplied: supplied } =>
+      exit_failure(reason: concat(
+        "UNRECOGNIZED PRINTER: no declared asset identity matches ", supplied))
+    WetRunPrinterSelected { printer: target } =>
   let supplied = shell.Env.Get(name: wet_run_payload_env)
   match supplied.value {
     Absent =>
@@ -87,7 +124,7 @@ func run() -> ProcessExit uses net: Network {
           }
         SuppliedTokenReady { token: operator_token } =>
       match deliver_project_to_printer(
-        printer: printer_01,
+        printer: target,
         payload: identified,
         token_source: OperatorSuppliedToken { token: operator_token }
       ) {
@@ -115,6 +152,8 @@ func run() -> ProcessExit uses net: Network {
           ExitSuccess
       }
       }
+  }
+  }
   }
   }
 }
