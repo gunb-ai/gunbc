@@ -492,13 +492,14 @@ fn collect_convention_grade_obligations(
   )
 }
 
+// ConstraintViolated is refused by first_constraint_violation as ConstraintViolatedCause.
+// This collector only gathers Deferred obligations; putting a violation here would mint Deferred
+// instead of a loud refusal.
 fn collect_constraint_obligations(rows: List<ConstraintDisposition>) -> List<NonEmptyStr> {
   flat_map(rows, row =>
     match row {
       ConstraintUnestablished { constraint: _, obligation: o } => [o]
       ConstraintSatisfied { constraint: _, evidence: _ } => []
-      // Violations are not obligations: first_constraint_violation refuses them as
-      // ConstraintViolatedCause. Putting them here would convert a loud refusal into Deferred.
       ConstraintViolated { constraint: _, evidence: _ } => []
     }
   )
