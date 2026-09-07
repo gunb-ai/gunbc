@@ -235,7 +235,7 @@ test fn a_refusal_followed_by_an_application_does_not_converge() -> Bool {
 // honest move; keeping green tests over a guarantee std no longer makes would be the inflation this
 // module already retracted once. The binding now lives where it can be sealed -- see
 // gunbc.typed_remote_file_write remote_file_converged_from_report, admitted to the func that ran the
-// effect, whose evidence carries the content digest so it names the bytes it is evidence for.
+// effect, whose evidence carries the exact write so it names the bytes it is evidence for.
 
 // And the seal on the success carrier survives the reshape: a violating lifecycle classifies to the
 // non-converged arm, so a sink parameterised on ConvergedEffect is unreachable from it.

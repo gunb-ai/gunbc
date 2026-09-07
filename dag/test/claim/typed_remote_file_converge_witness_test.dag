@@ -17,6 +17,10 @@ import gunbc.typed_remote_file_write {
   typed_remote_file_rename_argv,
   typed_remote_file_compare_argv,
   classify_typed_remote_file_comparison,
+  remote_file_converged_from_report,
+  TypedRemoteFileConvergence,
+  TypedRemoteFileConverged,
+  TypedRemoteFileConvergenceRefused,
   RemoteFileComparisonReport,
   ComparisonIdentical,
   ComparisonDiffers,
@@ -215,4 +219,33 @@ test fn the_difference_and_the_error_do_not_render_the_same_reason() -> Bool {
   differ != errored
     && string_contains(differ, "are not the declared content")
     && !string_contains(errored, "are not the declared content")
+}
+
+// THE POSITIVE CONTROL FOR THE CONVERGED ARM. Round 3 of this PR deleted the one that existed
+// (a_destination_cmp_calls_identical_converges) because it reached the converged arm THROUGH the
+// classifier, which was the bypass being closed -- but deleting it left the converged arm with no
+// executed claim anywhere in the corpus while the module went on asserting the arm had landed. 4b(4)
+// forecloses that trade: a climb dissolves lower-rung production machinery, never the evidence.
+//
+// This control is stronger than the one it restores. The old one asserted only that exit 0 reached
+// the converged arm. This one also reads the SUBJECT back out of the receipt, so it is the executed
+// evidence for the field that replaced content_digest: a receipt naming a path or content other than
+// the one handed to the mint fails here. The witness is admitted by name in the mint's admit_callers
+// list, so the seal is unchanged for every other caller -- and because this module is not the mint's
+// module, the admission it exercises is CROSS-module.
+test fn a_report_of_identical_mints_a_receipt_naming_the_exact_write() -> Bool {
+  match subject_write() {
+    Present { value: w } =>
+      match remote_file_converged_from_report(
+        write: w,
+        mode: RemoteFileModeOwnerReadWrite,
+        report: ComparisonIdentical,
+      ) {
+        TypedRemoteFileConverged { converged: c } =>
+          ((c.write.path as String) == (subject_path as String))
+            && (c.write.content == subject_content)
+        TypedRemoteFileConvergenceRefused { step: _, reason: _ } => false
+      }
+    Absent => false
+  }
 }

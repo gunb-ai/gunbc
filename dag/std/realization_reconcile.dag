@@ -135,8 +135,8 @@ type ReconciledEffect<P, E> sole_constructor {
 // So std stops claiming it. Application carries evidence and no plan; there is no comparator; the
 // plan-to-evidence binding is the DOMAIN's obligation, discharged by a domain carrier that is minted
 // only by the authority that performed the effect. gunbc.typed_remote_file_write is the worked
-// example: RemoteFileConverged is sole_constructor, carries the content digest so it names the bytes
-// it is evidence for, and is reachable only through a mint admitted to the func that ran the four
+// example: RemoteFileConverged is sole_constructor, carries the EXACT WRITE so it names the bytes it
+// is evidence for, and is reachable only through a mint admitted to the func that ran the four
 // steps. What std still does is refuse the contradictory lifecycles below, and derive grounding from
 // the post-apply observation rather than from anything asserted.
 

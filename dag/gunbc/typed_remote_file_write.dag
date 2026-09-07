@@ -130,13 +130,19 @@ fn remote_file_mode_octal(mode: RemoteFileMode) -> String {
 // without duplicating its definition. A typed fingerprint may return later as a lookup projection;
 // it cannot stand in for the exact write in a carrier claiming evidence about these exact bytes.
 //
-// NO WITNESS EXERCISES THIS FIELD, and that is a consequence of the seal rather than a gap. The mint
-// is admit_callers-sealed to converge_typed_remote_file, so no test module can hold a
-// RemoteFileConverged to read its subject back. The property does not need an executing witness: the
-// carrier's only subject field IS the write handed to the mint, passed through unchanged, so a
-// receipt naming a subject other than the one compared has no constructor. That is construction, not
-// validation -- unlike the digest form it replaces, which was a lossy FUNCTION of the subject and so
-// could disagree with it while remaining perfectly constructible.
+// THE POSITIVE CONTROL IS ENROLLED, and an earlier revision of this annotation argued it did not need
+// to be. That argument was wrong and is retracted. It said the seal made a witness impossible and the
+// pass-through made one unnecessary -- but 4b(4) is explicit that a climb dissolves the redundant
+// lower-rung PRODUCTION machinery and never the evidence: the discriminating RED and the positive
+// control both stay enrolled, precisely so the higher rung is known to still be real. Deleting the
+// converged arm's only executed claim while KEEPING the sentence that the arm had landed is a silent
+// rung regression, which is the exact failure this PR exists to correct, committed a second time one
+// section below the retraction of the first.
+//
+// A seal is not a reason to have no positive control; it is a reason for the control to be NAMED.
+// admit_callers is a closed list, so admitting one witness by name costs nothing structurally -- every
+// unadmitted caller still refuses -- and it buys back the executed evidence. It also happens to close
+// the same-module coverage gap disclosed below, since the admitted witness lives in another module.
 
 type RemoteFileConverged sole_constructor {
   write: TypedRemoteFileWrite
@@ -253,6 +259,10 @@ fn remote_file_converged_from_report(
 ) -> TypedRemoteFileConvergence
   admit_callers: [
     decl_ref(module_path: "gunbc.typed_remote_file_write", decl_name: "converge_typed_remote_file"),
+    decl_ref(
+      module_path: "test.claim.typed_remote_file_converge_witness_test",
+      decl_name: "a_report_of_identical_mints_a_receipt_naming_the_exact_write",
+    ),
   ]
   = match report {
       ComparisonIdentical =>
