@@ -6372,6 +6372,26 @@ pub fn emit_rust_selected(
             }
             __result
         });
+        let unpublished_module_paths = Rc::new({
+            let mut __result = Vec::new();
+            for e in module_emissions.iter().cloned() {
+                if ((Rc::new({
+                    let mut __result = Vec::new();
+                    for r in e.import_refusals.clone().iter().cloned() {
+                        if crate::v1_std_core::is_error_diagnostic(r.diagnostic.clone()) {
+                            __result.push(r);
+                        }
+                    }
+                    __result
+                })
+                .len() as i64)
+                    > 0)
+                {
+                    __result.push(e.file.clone().path.clone());
+                }
+            }
+            __result
+        });
         let module_files = Rc::new({
             let mut __result = Vec::new();
             for e in published_module_emissions.iter().cloned() {
@@ -6388,11 +6408,33 @@ pub fn emit_rust_selected(
         });
         let module_paths = Rc::new({
             let mut __result = Vec::new();
-            for tm in typed.modules.clone().iter().cloned() {
-                __result.push(rust_module_emit_path(crate::v1_std_core::authored_name_at(
-                    tm.type_env.clone().source_indices.clone(),
-                    tm.module.clone(),
-                )));
+            for path in Rc::new({
+                let mut __result = Vec::new();
+                for tm in typed.modules.clone().iter().cloned() {
+                    __result.push(rust_module_emit_path(crate::v1_std_core::authored_name_at(
+                        tm.type_env.clone().source_indices.clone(),
+                        tm.module.clone(),
+                    )));
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                if ((Rc::new({
+                    let mut __result = Vec::new();
+                    for p in unpublished_module_paths.iter().cloned() {
+                        if (p.clone() == path.clone()) {
+                            __result.push(p);
+                        }
+                    }
+                    __result
+                })
+                .len() as i64)
+                    == 0)
+                {
+                    __result.push(path);
+                }
             }
             __result
         });
@@ -6411,7 +6453,7 @@ pub fn emit_rust_selected(
             .iter()
             .cloned()
             {
-                if ((Rc::new({
+                if (((Rc::new({
                     let mut __result = Vec::new();
                     for p in test_projections.iter().cloned() {
                         if (p.module_name.clone() == name.clone()) {
@@ -6422,6 +6464,17 @@ pub fn emit_rust_selected(
                 })
                 .len() as i64)
                     > 0)
+                    && ((Rc::new({
+                        let mut __result = Vec::new();
+                        for p in unpublished_module_paths.iter().cloned() {
+                            if (p.clone() == rust_module_emit_path(name.clone())) {
+                                __result.push(p);
+                            }
+                        }
+                        __result
+                    })
+                    .len() as i64)
+                        == 0))
                 {
                     __result.push(name);
                 }

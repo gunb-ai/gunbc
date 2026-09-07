@@ -3152,9 +3152,12 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
 // rather than a different answer:
 //
 //   * the crate's module list (lib.rs) and the emitted-population manifest are computed from
-//     `module_paths`, one path per module in `typed.modules` whether or not it was rendered.
-//     Their inputs are `List<String>`, so no rendered byte can reach them -- content
-//     independence is the parameter type rather than a claim about the body.
+//     `module_paths`: one path per module in `typed.modules` that this emit did not withhold.
+//     A module the selection declined to render still appears (scoped emit is a subset, not a
+//     different crate shape). A module this emit rendered and then refused with an error
+//     diagnostic does not -- otherwise the manifest would declare a file `files` does not
+//     carry, which is two answers for one population. Paths are still `List<String>`, so no
+//     rendered byte can reach them.
 //   * the two closure-stub decisions are asked of the RESOLVED GRAPH (see
 //     `closure_references_module_filename`), never of emitted text, so a module the selection
 //     declined to render still counts toward whether the crate needs a stub.
@@ -3205,13 +3208,20 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
     |> map(tm => emit_module_full_with_dispositions(typed_module: tm, ctx: ctx, typed_modules: typed.modules))
   let published_module_emissions = module_emissions |> filter(e =>
     (e.import_refusals |> filter(r => is_error_diagnostic(d: r.diagnostic)) |> count) == 0)
+  let unpublished_module_paths = module_emissions
+    |> filter(e => (e.import_refusals |> filter(r => is_error_diagnostic(d: r.diagnostic)) |> count) > 0)
+    |> map(e => e.file.path)
   let module_files = published_module_emissions |> map(e => e.file)
   let import_refusals = module_emissions |> flat_map(e => e.import_refusals)
-  let module_paths = typed.modules |> map(tm => rust_module_emit_path(
-    module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)))
+  let module_paths = typed.modules
+    |> map(tm => rust_module_emit_path(
+      module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)))
+    |> filter(path => (unpublished_module_paths |> filter(p => p == path) |> count) == 0)
   let test_module_names = typed.modules
     |> map(tm => authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))
-    |> filter(name => (test_projections |> filter(p => p.module_name == name)) |> count > 0)
+    |> filter(name =>
+      ((test_projections |> filter(p => p.module_name == name)) |> count > 0)
+      && ((unpublished_module_paths |> filter(p => p == rust_module_emit_path(module_name: name)) |> count) == 0))
   let test_file_paths = test_module_names |> map(name => rust_test_file_path(module_name: name))
   let test_files = test_module_names
     |> filter(name => rust_module_render_selection_renders(selection: selection, module_name: name))
