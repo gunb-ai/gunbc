@@ -20,6 +20,10 @@ import std.realization_schedule {
   CostAxisMeasured,
   CostAxisPredicted,
   CostAxisUnestablished,
+  CostTimeAxis,
+  CostTimeMeasured,
+  CostTimePredicted,
+  CostTimeUnestablished,
 
   cost_account_measured,
   cost_account_time_count,
@@ -77,7 +81,7 @@ fn cost_account_measured_from_time<S>(time: Measure<Time, S, Nat>) -> CostAccoun
 
 fn cost_account_measured_from_time_and_space<S>(time: Measure<Time, S, Nat>, space: ByteSize) -> CostAccount<S> {
   CostAccount {
-    time: CostAxisMeasured { value: time }
+    time: CostTimeMeasured { value: time }
     space: CostAxisMeasured { value: space }
     power: CostAxisUnestablished
   }

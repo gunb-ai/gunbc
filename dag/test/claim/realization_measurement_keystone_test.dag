@@ -7,6 +7,10 @@ import std.realization_schedule {
   CostAxisMeasured,
   CostAxisPredicted,
   CostAxisUnestablished,
+  CostTimeAxis,
+  CostTimeMeasured,
+  CostTimePredicted,
+  CostTimeUnestablished,
   cost_account_measured,
   cost_account_predicted_zero,
   cost_account_time_count,
@@ -23,6 +27,7 @@ import gunbc.fleet_intent {
   performance_receipt_host_single_sample,
   cost_account_from_performance_receipts,
   performance_receipts_total_time,
+  cost_axis_add_time,
 }
 import std.measure { ByteSize, byte_size, byte_size_count, Nanosecond, nanosecond, nanosecond_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -42,9 +47,9 @@ data sample_measure_effect: RealizationMeasureEffect = ObserveElapsedAtSubject {
 
 fn witness_predicted_zero_is_predicted_basis() -> Bool {
   match cost_account_predicted_zero().time {
-    CostAxisPredicted { value: _ } => true
-    CostAxisMeasured { value: _ } => false
-    CostAxisUnestablished => false
+    CostTimePredicted { value: _ } => true
+    CostTimeMeasured { value: _ } => false
+    CostTimeUnestablished => false
   }
 }
 
@@ -56,17 +61,18 @@ fn witness_measured_receipt_rollup_uses_lens() -> Bool {
   )
   let total = cost_account_from_performance_receipts(receipts: [receipt])
   match performance_receipts_total_time(receipts: [receipt]) {
-    Absent => false
-    Present { value: observed_time } => {
+    CostTimeUnestablished => false
+    CostTimePredicted { value: _ } => false
+    CostTimeMeasured { value: observed_time } => {
       let observed = nanosecond_count(n: observed_time)
       match total.time {
-        CostAxisMeasured { value: _ } =>
+        CostTimeMeasured { value: _ } =>
           match cost_account_time_count(account: total) {
             Present { value: rolled } => rolled == observed
             Absent => false
           }
-        CostAxisPredicted { value: _ } => false
-        CostAxisUnestablished => false
+        CostTimePredicted { value: _ } => false
+        CostTimeUnestablished => false
       }
     }
   }
@@ -142,12 +148,78 @@ test fn the_measured_axis_still_carries_its_value() -> Bool {
 // the refusal has to be exercised from a fixture or it would be unreachable and decorative.
 test fn unestablished_time_refuses_a_shard_balance_slot() -> Bool {
   let unestablished = CostAccount {
-    time: CostAxisUnestablished,
+    time: CostTimeUnestablished,
     space: CostAxisUnestablished,
     power: CostAxisUnestablished,
   }
   match shard_balance_slot_for_cost(cost: unestablished, baseline: cost_account_predicted_zero()) {
     Absent => true
     Present { value: _ } => false
+  }
+}
+
+// review 61676: the rollup's own absence cases. An EMPTY roster is not a measurement of zero, and
+// a total containing a predicted term is not a measurement -- the first revision of the rollup
+// answered both with a measured number, which is the same fabricated-plausible-output class this
+// change closes for cost_account_measured.
+test fn an_empty_receipt_roster_totals_to_nothing_established() -> Bool {
+  let account = cost_account_from_performance_receipts(receipts: [])
+  let time_unestablished = match account.time {
+    CostTimeUnestablished => true
+    CostTimeMeasured { value: _ } => false
+    CostTimePredicted { value: _ } => false
+  }
+  let space_unestablished = match account.space {
+    CostAxisUnestablished => true
+    CostAxisMeasured { value: _ } => false
+    CostAxisPredicted { value: _ } => false
+  }
+  time_unestablished && space_unestablished
+}
+
+// POSITIVE CONTROL for the witness above: a NON-empty roster of measured receipts still totals to a
+// measured account, so the empty case is discriminated rather than the rollup refusing universally.
+test fn a_measured_receipt_roster_still_totals_to_a_measured_account() -> Bool {
+  let receipt = performance_receipt_host_single_sample(
+    work_shape: sample_work_shape,
+    wall_time: sample_wall_time,
+    space: sample_space_a,
+  )
+  match cost_account_from_performance_receipts(receipts: [receipt]).time {
+    CostTimeMeasured { value: _ } => true
+    CostTimePredicted { value: _ } => false
+    CostTimeUnestablished => false
+  }
+}
+
+// A total is only as established as its softest term: one predicted term makes the whole sum
+// predicted rather than measured.
+test fn one_predicted_term_makes_the_total_predicted() -> Bool {
+  let measured = CostTimeMeasured { value: nanosecond(count: 10) }
+  let predicted = CostTimePredicted { value: nanosecond(count: 5) }
+  let mixed = cost_axis_add_time(acc: measured, term: predicted)
+  let both_measured = cost_axis_add_time(acc: measured, term: measured)
+  let mixed_is_predicted = match mixed {
+    CostTimePredicted { value: v } => nanosecond_count(n: v) == 15
+    CostTimeMeasured { value: _ } => false
+    CostTimeUnestablished => false
+  }
+  let control_is_measured = match both_measured {
+    CostTimeMeasured { value: v } => nanosecond_count(n: v) == 20
+    CostTimePredicted { value: _ } => false
+    CostTimeUnestablished => false
+  }
+  mixed_is_predicted && control_is_measured
+}
+
+// And an unestablished term poisons the total rather than contributing zero.
+test fn one_unestablished_term_makes_the_total_unestablished() -> Bool {
+  match cost_axis_add_time(
+    acc: CostTimeMeasured { value: nanosecond(count: 10) },
+    term: CostTimeUnestablished,
+  ) {
+    CostTimeUnestablished => true
+    CostTimeMeasured { value: _ } => false
+    CostTimePredicted { value: _ } => false
   }
 }

@@ -22,7 +22,8 @@ import std.content_hash {
 }
 import std.algebra { Empty, Cons }
 import std.process_termination { ProcessTermination, ProcessExited, ProcessSignaled, ProcessTerminationUnobserved }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.witness_admission { WitnessConsumerCadence }
 
 // EPISTEMIC BASIS IS PER AXIS, NOT PER ACCOUNT. One CostBasis over the whole account could not
@@ -49,8 +50,47 @@ type CostAxis<M>
   | CostAxisPredicted { value: M }
   | CostAxisUnestablished
 
+// WHY THE TIME AXIS IS ITS OWN CARRIER RATHER THAN CostAxis<Measure<Time, S, Nat>>, AND WHAT
+// RETIRES THE FORK. This is one concept carried twice -- a section 2 horizontal-redundancy
+// violation -- admitted deliberately by operator verdict on 2026-09-07 after the alternatives were
+// priced. Erasing the scale from the stored value reintroduces the untagged-figure defect this
+// same file's clock note exists to forbid; blocking on the seed fix is a separate lane with no
+// diagnosis yet. The duplication is real debt and is declared as a Scaffold below rather than left
+// as prose, so it is enumerable by whatever reads dispositions instead of surviving as a comment
+// nobody joins.
+//
+// THE CAPABILITY THAT RETIRES IT, stated as a capability rather than as an artifact, because a
+// trigger naming less than the capability is satisfied while the capability stays dead: a .dag
+// type declaration may carry a field whose type is a GENERIC APPLICATION WHOSE ARGUMENT MENTIONS
+// THE DECLARING TYPE'S OWN PARAMETER, and a match on that field inside a function generic in that
+// parameter must resolve the variants ON THE FLOOR PATH, not merely on the interpreter path. Both
+// halves are load-bearing. The interpreter already accepts this shape, which is exactly why the
+// fork was not caught locally: gunbc run typechecks an entry closure where S is bound concretely,
+// while the floor resolves each function generically and reports every arm as "variant not found
+// in type 'CostAxis'", located at the field declaration.
+//
+// RETIREMENT IS PROVEN BY EXECUTION, not by inspection of the resolver: delete CostTimeAxis, point
+// CostAccount.time back at CostAxis<Measure<Time, S, Nat>>, and the required-witnesses-floor lane
+// goes green. If that deletion is not green, the capability has not landed however the resolver
+// reads. The seed function the work touches is v1.compiler.infer_patterns
+// expand_scrut_type_for_variant_lookup, named as a starting point and NOT as the trigger.
+
+type CostTimeAxis<S>
+  = CostTimeMeasured { value: Measure<Time, S, Nat> }
+  | CostTimePredicted { value: Measure<Time, S, Nat> }
+  | CostTimeUnestablished
+
+data cost_time_axis_fork_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.realization_schedule",
+    decl_name: "CostTimeAxis",
+    field: WholeDeclaration
+  }
+}
+
 type CostAccount<S> {
-  time: CostAxis<Measure<Time, S, Nat>>
+  time: CostTimeAxis<S>
   space: CostAxis<ByteSize>
   power: CostAxis<Watt>
 }
@@ -59,7 +99,7 @@ type CostAccount<S> {
 // identity element folds start from, and it asserts zero rather than confessing ignorance.
 fn cost_account_predicted_zero<S>() -> CostAccount<S> {
   CostAccount {
-    time: CostAxisPredicted { value: time_measure(count: 0) }
+    time: CostTimePredicted { value: time_measure(count: 0) }
     space: CostAxisPredicted { value: byte_size(count: 0) }
     power: CostAxisPredicted { value: watt(count: 0) }
   }
@@ -67,7 +107,7 @@ fn cost_account_predicted_zero<S>() -> CostAccount<S> {
 
 fn cost_account_measured<S>(time: Measure<Time, S, Nat>) -> CostAccount<S> {
   CostAccount {
-    time: CostAxisMeasured { value: time }
+    time: CostTimeMeasured { value: time }
     space: CostAxisUnestablished
     power: CostAxisUnestablished
   }
@@ -75,9 +115,9 @@ fn cost_account_measured<S>(time: Measure<Time, S, Nat>) -> CostAccount<S> {
 
 fn cost_account_time_count<S>(account: CostAccount<S>) -> Nat? {
   match account.time {
-    CostAxisMeasured { value: t } => Present { value: measure_count(m: t) }
-    CostAxisPredicted { value: t } => Present { value: measure_count(m: t) }
-    CostAxisUnestablished => none
+    CostTimeMeasured { value: t } => Present { value: measure_count(m: t) }
+    CostTimePredicted { value: t } => Present { value: measure_count(m: t) }
+    CostTimeUnestablished => none
   }
 }
 

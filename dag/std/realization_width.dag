@@ -22,10 +22,10 @@ import std.realization_schedule {
   RealizationPlan,
   RealizationObjective,
   CostAccount,
-  CostAxis,
-  CostAxisMeasured,
-  CostAxisPredicted,
-  CostAxisUnestablished,
+  CostTimeAxis,
+  CostTimeMeasured,
+  CostTimePredicted,
+  CostTimeUnestablished,
   schedule_eq,
   cost_account_measured,
   cost_account_predicted_zero,
@@ -217,9 +217,9 @@ fn witness_budget_ignoring_fold_fails(
 // inventing a balance from an axis nobody measured.
 fn shard_balance_slot_for_cost(cost: CostAccount<Nano>, baseline: CostAccount<Nano>) -> Int? {
   match cost.time {
-    CostAxisMeasured { value: _ } => cost_account_time_count(account: cost)
-    CostAxisPredicted { value: _ } => cost_account_time_count(account: baseline)
-    CostAxisUnestablished => none
+    CostTimeMeasured { value: _ } => cost_account_time_count(account: cost)
+    CostTimePredicted { value: _ } => cost_account_time_count(account: baseline)
+    CostTimeUnestablished => none
   }
 }
 

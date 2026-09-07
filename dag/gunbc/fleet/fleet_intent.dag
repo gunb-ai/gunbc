@@ -37,11 +37,12 @@ import extdeps.boards.types { ServerBaseboard }
 import gunbc.bmc_intent { BmcControlPlaneIntent, fleet_bmc_valid_state }
 import extdeps.bmc.endpoint { BmcEndpoint, Redfish }
 import std.credentials { CredentialFlow, Stored }
-import std.measure { hertz, ByteSize, byte_size, byte_size_count, Bandwidth, HardwareThreadCount, hardware_thread_count_value, Nano, measure_count, Nanosecond, nanosecond }
+import std.measure { hertz, ByteSize, byte_size, byte_size_count, Bandwidth, HardwareThreadCount, hardware_thread_count_value, Nano, measure_count, Nanosecond, nanosecond, nanosecond_count }
 import std.os.types { OperatingSystemSurface, Linux, Posix, PosixProcess }
 import std.types { List, NonEmptyStr, Bool, Int, String }
 import std.realization_schedule {
   CostAccount, CostAxis, CostAxisMeasured, CostAxisPredicted, CostAxisUnestablished,
+  CostTimeAxis, CostTimeMeasured, CostTimePredicted, CostTimeUnestablished,
 }
 import std.realization_measurement { cost_account_measured_from_time_and_space, space_measure_seq }
 import std.nat { Nat }
@@ -190,59 +191,94 @@ fn performance_receipt_host_single_sample(
   }
 }
 
-// A TOTAL OVER RECEIPTS IS ONLY AS ESTABLISHED AS ITS WEAKEST TERM. One receipt whose time was
-// never measured makes the sum unknown, not smaller: adding zero for it would report a total that
-// is confidently wrong and indistinguishable from a genuinely faster run. Both established arms
-// are summed here, which leaves open the separate C5 question of what basis a total mixing
-// measured and predicted terms carries; the arm this settles is that an unestablished term
-// refuses the whole total.
-fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> Nanosecond? {
-  match fold(
-    receipts,
-    init: Present { value: 0 },
-    f: (acc, receipt) =>
-      match acc {
-        Absent => none
-        Present { value: sofar } =>
-          match receipt.cost.time {
-            CostAxisMeasured { value: t } => Present { value: sofar + measure_count(m: t) }
-            CostAxisPredicted { value: t } => Present { value: sofar + measure_count(m: t) }
-            CostAxisUnestablished => none
-          }
+// A TOTAL OVER RECEIPTS IS ONLY AS ESTABLISHED AS ITS WEAKEST TERM, AND THE TOTAL'S BASIS SAYS SO.
+// Three cases, each of which was previously answered with a measured number:
+//   - one receipt whose axis was never measured makes the sum UNKNOWN, not smaller; adding zero
+//     for it reports a total that is confidently wrong and indistinguishable from a faster run;
+//   - NO receipts at all is not a measurement of zero, it is the absence of any measurement, so an
+//     empty roster yields CostAxisUnestablished rather than a measured zero;
+//   - a sum containing a PREDICTED term is not a measurement. review 61676 is right that the first
+//     revision of this function decided that case silently by stamping every established total
+//     Measured, which is the same class this change exists to close. It is decided here instead of
+//     deferred: the total carries the WEAKEST established basis among its terms, because a claim is
+//     only as good as the softest fact it rests on. What C5 still owns is the richer
+//     Derived / PredictedFromCalibration vocabulary, not this meet.
+fn cost_axis_add_time(
+  acc: CostTimeAxis<Nano>,
+  term: CostTimeAxis<Nano>,
+) -> CostTimeAxis<Nano> {
+  match acc {
+    CostTimeUnestablished => CostTimeUnestablished
+    CostTimeMeasured { value: a } =>
+      match term {
+        CostTimeUnestablished => CostTimeUnestablished
+        CostTimeMeasured { value: t } =>
+          CostTimeMeasured { value: nanosecond(count: nanosecond_count(n: a) + measure_count(m: t)) }
+        CostTimePredicted { value: t } =>
+          CostTimePredicted { value: nanosecond(count: nanosecond_count(n: a) + measure_count(m: t)) }
       }
-  ) {
-    Present { value: total } => Present { value: nanosecond(count: total) }
-    Absent => none
+    CostTimePredicted { value: a } =>
+      match term {
+        CostTimeUnestablished => CostTimeUnestablished
+        CostTimeMeasured { value: t } =>
+          CostTimePredicted { value: nanosecond(count: nanosecond_count(n: a) + measure_count(m: t)) }
+        CostTimePredicted { value: t } =>
+          CostTimePredicted { value: nanosecond(count: nanosecond_count(n: a) + measure_count(m: t)) }
+      }
   }
 }
 
-fn performance_receipts_peak_space(receipts: List<PerformanceReceipt>) -> ByteSize? {
-  fold(
-    receipts,
-    init: Present { value: byte_size(count: 0) },
-    f: (acc, receipt) =>
-      match acc {
-        Absent => none
-        Present { value: sofar } =>
-          match receipt.cost.space {
-            CostAxisMeasured { value: sp } => Present { value: space_measure_seq(a: sofar, b: sp) }
-            CostAxisPredicted { value: sp } => Present { value: space_measure_seq(a: sofar, b: sp) }
-            CostAxisUnestablished => none
-          }
+fn cost_axis_peak_space(acc: CostAxis<ByteSize>, term: CostAxis<ByteSize>) -> CostAxis<ByteSize> {
+  match acc {
+    CostAxisUnestablished => CostAxisUnestablished
+    CostAxisMeasured { value: a } =>
+      match term {
+        CostAxisUnestablished => CostAxisUnestablished
+        CostAxisMeasured { value: t } => CostAxisMeasured { value: space_measure_seq(a: a, b: t) }
+        CostAxisPredicted { value: t } => CostAxisPredicted { value: space_measure_seq(a: a, b: t) }
       }
-  )
+    CostAxisPredicted { value: a } =>
+      match term {
+        CostAxisUnestablished => CostAxisUnestablished
+        CostAxisMeasured { value: t } => CostAxisPredicted { value: space_measure_seq(a: a, b: t) }
+        CostAxisPredicted { value: t } => CostAxisPredicted { value: space_measure_seq(a: a, b: t) }
+      }
+  }
 }
 
+fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> CostTimeAxis<Nano> {
+  if receipts.length() == 0 {
+    CostTimeUnestablished
+  } else {
+    fold(
+      receipts,
+      init: CostTimeMeasured { value: nanosecond(count: 0) },
+      f: (acc, receipt) => cost_axis_add_time(acc: acc, term: receipt.cost.time)
+    )
+  }
+}
+
+fn performance_receipts_peak_space(receipts: List<PerformanceReceipt>) -> CostAxis<ByteSize> {
+  if receipts.length() == 0 {
+    CostAxisUnestablished
+  } else {
+    fold(
+      receipts,
+      init: CostAxisMeasured { value: byte_size(count: 0) },
+      f: (acc, receipt) => cost_axis_peak_space(acc: acc, term: receipt.cost.space)
+    )
+  }
+}
+
+// The rollup no longer RESTAMPS anything: each axis carries out of the fold with the basis the
+// fold derived, so there is no place left where an established-ness claim is minted rather than
+// propagated.
 fn cost_account_from_performance_receipts(receipts: List<PerformanceReceipt>) -> CostAccount<Nano> {
-  let time_axis = match performance_receipts_total_time(receipts: receipts) {
-    Present { value: t } => CostAxisMeasured { value: t }
-    Absent => CostAxisUnestablished
+  CostAccount {
+    time: performance_receipts_total_time(receipts: receipts),
+    space: performance_receipts_peak_space(receipts: receipts),
+    power: CostAxisUnestablished,
   }
-  let space_axis = match performance_receipts_peak_space(receipts: receipts) {
-    Present { value: sp } => CostAxisMeasured { value: sp }
-    Absent => CostAxisUnestablished
-  }
-  CostAccount { time: time_axis, space: space_axis, power: CostAxisUnestablished }
 }
 
 data fleet_intent_cpu: CpuFacts = CpuFacts {
