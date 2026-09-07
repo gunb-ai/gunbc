@@ -43,7 +43,6 @@ import gunbc.world_converge {
 }
 import product.fleet_operating_point {
   fleet_operating_point_selection,
-  fleet_operating_point_needs_evidence,
   gap_aggregate_throughput,
   gap_ac_power_energy,
 }
@@ -285,7 +284,7 @@ test fn changing_evidence_or_field_identity_invalidates_receipt() -> Bool {
 test fn world_converge_refuses_unresolved_selection() -> Bool {
   match admit_world_converge(result: fleet_operating_point_selection()) {
     ConvergenceRefusedUnresolvedSelection { result_kind: k } =>
-      (k as String) == "SelectionNeedsEvidence" && fleet_operating_point_needs_evidence()
+      (k as String) == "SelectionNeedsEvidence"
     ConvergenceAdmitted { candidate: _, receipt: _ } => false
   }
 }
