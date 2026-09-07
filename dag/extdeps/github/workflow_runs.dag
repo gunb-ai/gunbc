@@ -97,6 +97,7 @@ type WorkflowJobRun {
   name: String
   status: String
   conclusion: String?
+  created_at: Timestamp?
   started_at: Timestamp?
   completed_at: Timestamp?
 }

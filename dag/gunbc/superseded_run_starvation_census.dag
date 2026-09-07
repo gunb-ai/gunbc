@@ -1,34 +1,7 @@
 module gunbc.superseded_run_starvation_census
 
-import std.types { Bool, Int, NonEmptyStr, String, Timestamp }
-import std.measure { Second }
-import extdeps.github.workflow_runs {
-  github.WorkflowRuns,
-  WorkflowRun,
-  WorkflowRunList,
-  WorkflowRunPullRequest,
-  WorkflowJobRunList,
-  WorkflowJobRun,
-  WorkflowRunStatus,
-  WorkflowRunConclusion,
-  Queued,
-  InProgress,
-  Completed,
-  Waiting,
-  Requested,
-  Pending,
-  Success,
-  Failure,
-  Cancelled,
-  Neutral,
-  Skipped,
-  TimedOut,
-  ActionRequired,
-  StartupFailure,
-  workflow_run_status_wire_label,
-  workflow_run_conclusion_wire_label,
-}
-import extdeps.clock { Clock }
+import std.types { Bool, Int, Nat, NonEmptyStr, String, Timestamp }
+import std.measure { Second, second, second_count }
 
 type SupersededRunPair {
   pull_request: Int
@@ -116,8 +89,17 @@ type CensusWindow {
   observed_at: Timestamp
 }
 
+// The run collection result is either a complete set or a typed refusal
+// when the page limit is exceeded.
+type RunCollectionOutcome
+  = CollectionComplete { runs: List<WorkflowRun> }
+  | PageLimitExceeded { collected: List<WorkflowRun>, reached_page: Int, max_pages: Int }
+
+// The census result carries the outcome as a sum type so the consumer
+// can distinguish a full census from a truncated one.
 type CensusResult {
   window: CensusWindow
+  collection_outcome: RunCollectionOutcome
   left_boundary_obligations: List<CensusBoundaryObligation>
   pair_count: Int
   start_standings: List<StartStandingRow>
@@ -137,9 +119,13 @@ fn collect_runs_in_window(
   page: Int,
   max_pages: Int,
   accumulated: List<WorkflowRun>
-) -> List<WorkflowRun> {
+) -> RunCollectionOutcome {
   if page > max_pages {
-    accumulated
+    PageLimitExceeded {
+      collected: accumulated,
+      reached_page: page,
+      max_pages: max_pages,
+    }
   } else {
     let response = github.WorkflowRuns.ListWorkflowRuns(
       auth_token: auth_token,
@@ -156,7 +142,7 @@ fn collect_runs_in_window(
       Cons { head: _, tail: _ } => false
     }
     if page_empty {
-      accumulated
+      CollectionComplete { runs: accumulated }
     } else {
       let all_runs = accumulated |> concat(page_runs)
       collect_runs_in_window(
@@ -171,6 +157,13 @@ fn collect_runs_in_window(
         accumulated: all_runs,
       )
     }
+  }
+}
+
+fn runs_from_outcome(outcome: RunCollectionOutcome) -> List<WorkflowRun> {
+  match outcome {
+    CollectionComplete { runs: r } => r
+    PageLimitExceeded { collected: r, reached_page: _, max_pages: _ } => r
   }
 }
 
@@ -205,8 +198,6 @@ fn filter_pr_runs(runs: List<WorkflowRun>) -> List<PrRun> {
       }
   }
 }
-
-fn pr_run_created_key(pr: PrRun) -> String { pr.run.created_at }
 
 fn pair_for_dead_run(pr: Int, dead: WorkflowRun, remaining: List<WorkflowRun>, from: Timestamp, through: Timestamp) -> List<SupersededRunPair> {
   let live_candidate = first_run_with_different_head(head_sha: dead.head_sha, runs: remaining)
@@ -303,12 +294,31 @@ fn extract_boundary_obligations(groups: List<PrGroup>, from: Timestamp) -> List<
 
 // ── PHASE 3: Per-pair refresh ─────────────────────────────────────────────
 
+// Compute elapsed seconds between two ISO-8601 timestamps by converting each
+// to Unix epoch seconds, subtracting, and wrapping in Second.
+fn timestamp_diff_seconds(end: Timestamp, start: Timestamp) -> Second? {
+  let end_clock = Clock.TimestampToUnixSecs(timestamp: end)
+  let start_clock = Clock.TimestampToUnixSecs(timestamp: start)
+  match parse_int(s: end_clock.unix_secs) {
+    Present { value: end_s } =>
+      match parse_int(s: start_clock.unix_secs) {
+        Present { value: start_s } =>
+          if end_s >= start_s {
+            let diff_nat: Nat = (end_s - start_s) as Nat
+            Present { value: second(count: diff_nat) }
+          } else { none }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
 fn dead_time_under_hold_seconds(prior_jobs_completed_at: Timestamp?, terminal_laggard_started_at: Timestamp?) -> Second? {
   match prior_jobs_completed_at {
-    Present { value: _ } =>
+    Present { value: prior } =>
       match terminal_laggard_started_at {
-        Present { value: _ } =>
-          Present { value: 0 }
+        Present { value: laggard } =>
+          timestamp_diff_seconds(end: laggard, start: prior)
         Absent => none
       }
     Absent => none
@@ -318,7 +328,8 @@ fn dead_time_under_hold_seconds(prior_jobs_completed_at: Timestamp?, terminal_la
 fn group_hold_after_jobs_seconds(last_job_completed_at: Timestamp?, dead_updated_at: Timestamp, dead_status: String) -> Second? {
   if dead_status == workflow_run_status_wire_label(status: Completed) {
     match last_job_completed_at {
-      Present { value: _ } => Present { value: 0 }
+      Present { value: completed_at } =>
+        timestamp_diff_seconds(end: dead_updated_at, start: completed_at)
       Absent => none
     }
   } else { none }
@@ -396,7 +407,19 @@ fn earliest_started_at(jobs: List<WorkflowJobRun>) -> Timestamp? {
 }
 
 fn earliest_created_at(jobs: List<WorkflowJobRun>) -> Timestamp? {
-  earliest_started_at(jobs: jobs)
+  match jobs {
+    Empty {} => none
+    Cons { head: j, tail: rest } =>
+      match j.created_at {
+        Present { value: t } =>
+          match earliest_created_at(jobs: rest) {
+            Present { value: existing } =>
+              if t < existing { Present { value: t } } else { Present { value: existing } }
+            Absent => Present { value: t }
+          }
+        Absent => earliest_created_at(jobs: rest)
+      }
+  }
 }
 
 fn last_completed_job(jobs: List<WorkflowJobRun>) -> WorkflowJobRun? {
@@ -594,7 +617,7 @@ func superseded_run_starvation_census(
 ) -> CensusResult {
   let discovery_lookback = Clock.TimestampOffsetDays(timestamp: from, offset_days: -1)
   let discovery_range = concat(discovery_lookback.result, "..", through)
-  let all_runs = collect_runs_in_window(
+  let outcome = collect_runs_in_window(
     auth_token: auth_token,
     owner: owner,
     repo: repo,
@@ -605,6 +628,7 @@ func superseded_run_starvation_census(
     max_pages: max_run_pages,
     accumulated: [],
   )
+  let all_runs = runs_from_outcome(outcome: outcome)
   let pr_runs = filter_pr_runs(runs: all_runs)
   let groups = group_pr_runs(pr_runs: pr_runs)
   let pairs = extract_pairs_from_groups(groups: groups, from: from, through: through)
@@ -614,6 +638,7 @@ func superseded_run_starvation_census(
   let cancellation_rows = collect_cancellation_rows(pairs: pairs, refreshed: refreshed)
   CensusResult {
     window: CensusWindow { from: from, through: through, observed_at: observed_at },
+    collection_outcome: outcome,
     left_boundary_obligations: boundary_obligations,
     pair_count: count_pairs(pairs: pairs),
     start_standings: start_standings,
@@ -626,14 +651,9 @@ fn extract_pairs_from_groups(groups: List<PrGroup>, from: Timestamp, through: Ti
   match groups {
     Empty {} => []
     Cons { head: g, tail: rest } =>
-      extract_pairs_from_group(pr: g.pr, runs: g.runs, from: from, through: through)
+      pairs_from_sorted_group(pr: g.pr, runs: sort_by(g.runs, fn(r) { r.created_at }), from: from, through: through)
       |> concat(extract_pairs_from_groups(groups: rest, from: from, through: through))
   }
-}
-
-fn extract_pairs_from_group(pr: Int, runs: List<WorkflowRun>, from: Timestamp, through: Timestamp) -> List<SupersededRunPair> {
-  let sorted = sort_by(runs, fn(r) { r.created_at })
-  pairs_from_sorted_group(pr: pr, sorted: sorted, from: from, through: through)
 }
 
 fn refresh_pairs(

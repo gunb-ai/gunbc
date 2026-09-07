@@ -1,7 +1,6 @@
 module test.claim.superseded_run_starvation_census_witness
 
 import std.types { Bool, Int, String, Timestamp }
-import std.measure { Second }
 import gunbc.superseded_run_starvation_census {
   dead_head_start_standing,
   DeadHeadReachedInProgressFirst,
@@ -16,6 +15,7 @@ import gunbc.superseded_run_starvation_census {
   count_jobs_with_status,
   filter_completed_jobs,
   earliest_started_at,
+  earliest_created_at,
   latest_completed_before,
 }
 import extdeps.github.workflow_runs {
@@ -217,6 +217,7 @@ data job_cancelled: WorkflowJobRun = WorkflowJobRun {
   name: "test-job",
   status: "completed",
   conclusion: Present { value: "cancelled" },
+  created_at: Present { value: "2026-09-01T00:01:00Z" },
   started_at: Present { value: "2026-09-01T00:10:00Z" },
   completed_at: Present { value: "2026-09-01T00:20:00Z" },
 }
@@ -227,6 +228,7 @@ data job_failed: WorkflowJobRun = WorkflowJobRun {
   name: "build-job",
   status: "completed",
   conclusion: Present { value: "failure" },
+  created_at: Present { value: "2026-09-01T00:00:00Z" },
   started_at: Present { value: "2026-09-01T00:00:00Z" },
   completed_at: Present { value: "2026-09-01T00:15:00Z" },
 }
@@ -237,6 +239,7 @@ data job_success: WorkflowJobRun = WorkflowJobRun {
   name: "lint-job",
   status: "completed",
   conclusion: Present { value: "success" },
+  created_at: Present { value: "2026-09-01T00:02:00Z" },
   started_at: Present { value: "2026-09-01T00:05:00Z" },
   completed_at: Present { value: "2026-09-01T00:10:00Z" },
 }
@@ -247,6 +250,7 @@ data job_queued: WorkflowJobRun = WorkflowJobRun {
   name: "deploy-job",
   status: "queued",
   conclusion: none,
+  created_at: Present { value: "2026-09-01T00:03:00Z" },
   started_at: none,
   completed_at: none,
 }
@@ -257,6 +261,7 @@ data job_in_progress: WorkflowJobRun = WorkflowJobRun {
   name: "test-in-progress",
   status: "in_progress",
   conclusion: none,
+  created_at: Present { value: "2026-09-01T00:04:00Z" },
   started_at: Present { value: "2026-09-01T00:30:00Z" },
   completed_at: none,
 }
@@ -306,5 +311,39 @@ test fn earliest_started_at_skips_jobs_without_started_at() -> Bool {
   match earliest_started_at(jobs: [job_queued, job_success]) {
     Present { value: ts } => ts == "2026-09-01T00:05:00Z"
     Absent => false
+  }
+}
+
+// ── earliest_created_at tests ─────────────────────────────────────────────
+
+test fn earliest_created_at_finds_min_timestamp() -> Bool {
+  match earliest_created_at(jobs: [job_success, job_cancelled, job_failed]) {
+    Present { value: ts } => ts == "2026-09-01T00:00:00Z"
+    Absent => false
+  }
+}
+
+test fn earliest_created_at_returns_none_when_no_jobs() -> Bool {
+  match earliest_created_at(jobs: []) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn earliest_created_at_returns_none_when_no_created_at() -> Bool {
+  // Jobs without created_at field (not set by the API for in-flight jobs)
+  data job_no_created: WorkflowJobRun = WorkflowJobRun {
+    id: 200,
+    run_id: 1,
+    name: "no-created",
+    status: "in_progress",
+    conclusion: none,
+    created_at: none,
+    started_at: none,
+    completed_at: none,
+  }
+  match earliest_created_at(jobs: [job_no_created]) {
+    Present { value: _ } => false
+    Absent => true
   }
 }
