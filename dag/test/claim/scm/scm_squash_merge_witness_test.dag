@@ -40,7 +40,6 @@ import gunbc.scm.squash_merge {
   SquashMergeAllocatorInvalid,
   SquashMergeMintParentMissing,
   SquashMergeMintIntegrationSourceMissing,
-  SquashMergeMintRootUnresolvable,
   MergeSideName, MergeBaseCommit, MergeSourceCommit, MergeTargetCommit,
   squash_merge,
 }
@@ -185,7 +184,6 @@ test fn scm_sm_a_merge_carries_both_sides_paths() -> Bool {
             SquashMergeAllocatorInvalid => false
             SquashMergeMintParentMissing { parent: _ } => false
             SquashMergeMintIntegrationSourceMissing { source: _ } => false
-            SquashMergeMintRootUnresolvable { root: _ } => false
           }
       }
   }
@@ -235,7 +233,6 @@ test fn scm_sm_the_result_parents_the_target_and_records_the_source_consumed() -
             SquashMergeAllocatorInvalid => false
             SquashMergeMintParentMissing { parent: _ } => false
             SquashMergeMintIntegrationSourceMissing { source: _ } => false
-            SquashMergeMintRootUnresolvable { root: _ } => false
           }
       }
   }
@@ -285,7 +282,6 @@ test fn scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_rece
                 SquashMergeAllocatorInvalid => false
                 SquashMergeMintParentMissing { parent: _ } => false
                 SquashMergeMintIntegrationSourceMissing { source: _ } => false
-                SquashMergeMintRootUnresolvable { root: _ } => false
               }
             SquashMergeConflicted { conflicts: _ } => false
             SquashMergeBaseRefused { refusal: _ } => false
@@ -298,7 +294,6 @@ test fn scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_rece
             SquashMergeAllocatorInvalid => false
             SquashMergeMintParentMissing { parent: _ } => false
             SquashMergeMintIntegrationSourceMissing { source: _ } => false
-            SquashMergeMintRootUnresolvable { root: _ } => false
           }
       }
   }
@@ -361,7 +356,6 @@ test fn scm_sm_a_conflicting_path_mints_no_commit() -> Bool {
                     SquashMergeAllocatorInvalid => false
                     SquashMergeMintParentMissing { parent: _ } => false
                     SquashMergeMintIntegrationSourceMissing { source: _ } => false
-                    SquashMergeMintRootUnresolvable { root: _ } => false
                   }
               }
           }

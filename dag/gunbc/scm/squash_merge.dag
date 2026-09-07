@@ -27,7 +27,7 @@ import gunbc.scm.object_store {
   ObjectId,
   CorpusManifestRecord,
   CorpusManifestEntry,
-  CorpusManifestTarget,
+
   CorpusManifestObjectRef,
   store_corpus_manifest,
   CorpusManifestStored,
@@ -59,16 +59,13 @@ import gunbc.scm.manifest_merge {
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
   RepositoryCommit,
-  RepositoryCommitMint,
-  RepositoryCommitMinted,
-  RepositoryCommitMintAllocatorInvalid,
-  RepositoryCommitMintRootMissing,
-  RepositoryCommitMintRootIsAuthoredSource,
-  RepositoryCommitMintRootIsSemanticNode,
-  RepositoryCommitMintParentMissing,
-  RepositoryCommitMintIntegrationSourceMissing,
+  BrandedRootMint,
+  BrandedRootMinted,
+  BrandedRootAllocatorInvalid,
+  BrandedRootParentMissing,
+  BrandedRootIntegrationSourceMissing,
   commit_at_reference,
-  mint_repository_commit,
+  mint_commit_from_stored_manifest,
 }
 
 // WHICH SIDE'S ROOT FAILED TO RESOLVE IS PART OF THE FACT, NOT CONTEXT FOR A LOG LINE. Three commits
@@ -104,6 +101,20 @@ type MergeSideName
 //   SquashMergeAllocatorInvalid     a corrupt envelope.
 //   SquashMergeMintParentMissing    a vanished target.
 //   SquashMergeMintIntegration...   a vanished source.
+//
+// THERE IS NO ROOT-RESOLUTION ARM ON THIS ROUTE, AND THAT IS THE POINT. An earlier head carried one,
+// folding the generic mint's three root refusals into a single SquashMergeMintRootUnresolvable on the
+// reasoning that they all meant "the store did not keep what it just accepted". That reasoning was
+// wrong twice. It fabricated a public cause no execution can produce; and it reasoned about THIS
+// caller's context inside a translator that cannot see it -- handed a mint result, nothing tells you
+// it came from the store one line earlier. Keeping the three arms distinct instead would have been
+// honest about the cause and still dishonest about the DOMAIN, leaving three states in this type that
+// no run of `squash_merge` can reach.
+//
+// The question is removed rather than answered: `store_corpus_manifest` hands back a
+// CorpusManifestObjectRef for an object that store demonstrably contains, and
+// `mint_commit_from_stored_manifest` consumes that brand instead of re-resolving a locator. Root
+// refusal is unrepresentable here because there is nothing left to resolve (DESIGN section 4b rung 4).
 type SquashMergeOutcome
   = SquashMerged { repository: RepositoryEnvelope, reference: RepositoryCommitRef }
 
@@ -123,7 +134,6 @@ type SquashMergeOutcome
   | SquashMergeAllocatorInvalid
   | SquashMergeMintParentMissing { parent: RepositoryCommitRef }
   | SquashMergeMintIntegrationSourceMissing { source: RepositoryCommitRef }
-  | SquashMergeMintRootUnresolvable { root: ObjectId }
 
 // READING ONE SIDE'S MANIFEST IS ONE FUNCTION, USED THREE TIMES. Writing the resolution inline per
 // side would put one rule in three places and let the copies drift, which is the redundancy DESIGN
@@ -159,24 +169,18 @@ fn read_side_manifest(
   }
 }
 
-// THE MINT'S REFUSALS ARE TRANSLATED ONE-TO-ONE AND NEVER MERGED. The three root arms collapse to a
-// single SquashMergeMintRootUnresolvable deliberately and this is the one place a distinction is
-// dropped: the root handed to the mint was minted BY THIS FUNCTION from the store one line earlier,
-// so all three mean the same thing here -- the store did not keep what it just accepted. That is one
-// fact about one store, not three populations a caller could act on differently.
-fn carry_mint(mint: RepositoryCommitMint) -> SquashMergeOutcome {
+// THE MINT'S REFUSALS ARE CARRIED ONE-TO-ONE, AND NOW THERE ARE ONLY THREE TO CARRY. Nothing is
+// translated, widened or merged here; the branded route's outcome type and this one have the same
+// shape because they describe the same three ways a commit can fail to be minted once its root is
+// settled.
+fn carry_mint(mint: BrandedRootMint) -> SquashMergeOutcome {
   match mint {
-    RepositoryCommitMinted { repository: r, reference: c } =>
+    BrandedRootMinted { repository: r, reference: c } =>
       SquashMerged { repository: r, reference: c }
-    RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => SquashMergeAllocatorInvalid
-    RepositoryCommitMintParentMissing { parent: p } => SquashMergeMintParentMissing { parent: p }
-    RepositoryCommitMintIntegrationSourceMissing { source: s } =>
+    BrandedRootAllocatorInvalid { next_ordinal: _ } => SquashMergeAllocatorInvalid
+    BrandedRootParentMissing { parent: p } => SquashMergeMintParentMissing { parent: p }
+    BrandedRootIntegrationSourceMissing { source: s } =>
       SquashMergeMintIntegrationSourceMissing { source: s }
-    RepositoryCommitMintRootMissing { root: r } => SquashMergeMintRootUnresolvable { root: r }
-    RepositoryCommitMintRootIsAuthoredSource { root: r } =>
-      SquashMergeMintRootUnresolvable { root: r }
-    RepositoryCommitMintRootIsSemanticNode { root: r } =>
-      SquashMergeMintRootUnresolvable { root: r }
   }
 }
 
@@ -204,7 +208,7 @@ fn commit_merged_manifest(
       SquashMergeResultLocatorCollision { identity: i }
     CorpusManifestStored { store: stored, manifest: reference } =>
       carry_mint(
-        mint: mint_repository_commit(
+        mint: mint_commit_from_stored_manifest(
           repository: RepositoryEnvelope {
             store: stored,
             commits: repository.commits,
@@ -212,7 +216,7 @@ fn commit_merged_manifest(
             checked_out: repository.checked_out,
             staged: repository.staged,
           },
-          root: CorpusManifestTarget { locator: reference.locator },
+          root: reference,
           message: message,
           parent: Present { value: target },
           integration: SquashIntegrated { source: source },
