@@ -231,7 +231,7 @@ in both, and the same context ceiling of 131,072 — lowered from the production
 against a ~99.8 GiB budget and the production ceiling is untested there.
 
     quantity                  TP=4         TP=2      TP=2 against TP=4
-    marginal per token      1.053 us     0.786 us     25.4% cheaper
+    marginal per token      1.053 ms     0.786 ms     25.4% cheaper
     prefill throughput       949 tok/s   1272 tok/s     34% higher
     decode alone             30.2 ms      40.5 ms       34% WORSE
     co-tenant stall         2146 ms      1629 ms        24% shorter

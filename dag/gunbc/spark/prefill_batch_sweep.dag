@@ -158,10 +158,17 @@ type FittedExecutionLaw sole_constructor {
   producer: NonEmptyStr
 }
 
+// THE UNITS ARE MICROS PER THOUSAND TOKENS AND THE FIELD ONCE CARRIED 966, WHICH IS 0.966
+// MICROSECONDS PER TOKEN AND WOULD BE A MILLION TOKENS PER SECOND. The corrected 966100 is
+// 0.9661 MILLIseconds per token. The error survived authoring because both spellings look like
+// a plausible small integer beside a field name that does not say which, and it is caught here
+// by a derivation rather than by care: predicted_step_micros at budget 2048 comes out at
+// 2,168,472 against the independently MEASURED co-tenant stall of 2,168,200 micros, which is
+// agreement to 0.013%. A wrong-by-1000 value misses that by three orders of magnitude.
 data spark_group_a_execution_law: FittedExecutionLaw = FittedExecutionLaw {
   request_fixed_micros: 105800,
   per_step_micros: 189900,
-  micros_per_thousand_tokens: 966,
+  micros_per_thousand_tokens: 966100,
   sample_count: 20,
   worst_residual_micros: 201800,
   rms_residual_micros: 82200,
