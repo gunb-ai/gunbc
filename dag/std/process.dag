@@ -14,3 +14,14 @@ type ProcessExit
 fn exit_failure(reason: String) -> ProcessExit {
   ExitFailure { code: exit_code_general_error, reason: reason }
 }
+
+// Claim-surface inhabitance of ExitSuccess. Sequencers match ProcessExit; they do not ask this for a Bool.
+// This and tools.emit_host_gate emit_host_verdict_narration_scaffold are two consequences of one gap:
+// the claim surface is Bool-typed. That gap's capability is stated at tools.emit_host_gate
+// emit_host_verdict_narration_dissolution_trigger, and retires both; this predicate is not separately rostered.
+fn exit_ok(e: ProcessExit) -> Bool {
+  match e {
+    ExitSuccess => true
+    ExitFailure { code, reason } => false
+  }
+}

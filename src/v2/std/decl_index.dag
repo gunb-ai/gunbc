@@ -19,6 +19,16 @@ fn decl_facts(pool_roots: List<String>) -> List<DeclFact> {
   decl_facts(pool_roots: pool_roots)
 }
 
+// THE KEYED READ. `decl_facts` answers "what does the corpus declare"; this answers "what does the
+// corpus declare under THIS qualified name", which is the question nearly every citation consumer
+// actually asks. Both project one census, so a row here is a row there — the filter runs on the
+// host side of the seam, before any of it becomes interpreter values, which is where the cost was.
+// Zero rows means no such declaration; more than one is a real ambiguity and is CARRIED, because
+// the resolver derives `DeclarationRefAmbiguous` from exactly that multiplicity.
+fn decl_facts_at(pool_roots: List<String>, qualified_name: String) -> List<DeclFact> {
+  decl_facts_at(pool_roots: pool_roots, qualified_name: qualified_name)
+}
+
 fn export_signature_facts(pool_roots: List<String>) -> List<DeclFact> {
   export_signature_facts(pool_roots: pool_roots)
 }
