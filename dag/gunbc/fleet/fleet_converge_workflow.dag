@@ -98,6 +98,7 @@ import gunbc.host_reset_return {
   reset_dispatch_observer_labels,
   reset_dispatch_pairings,
   host_reset_return_receipt_path,
+  host_reset_observer_label_env,
 }
 import gunbc.host_reset_subject_roster { reset_observer_peer_roster, reset_subject_roster }
 import gunbc.live_deploy.apply_receipt { rlm_plan_run_id_env_name, rlm_apply_run_id_env_name, rlm_plan_artifact_hash_env_name }
@@ -206,7 +207,14 @@ fn fleet_converge_host_reset_return_step() -> Step {
     id: Present { value: "host_reset_return" },
     run: gunbc_ci_host_reset_return_invoke(),
     shell: none,
-    env: none,
+    // THE OBSERVER LABEL IS HANDED TO THE PROCESS, and this env row is the only route it has:
+    // gunbc_run_command carries no --arg, so a converge step passes a value to an entry through the
+    // environment or not at all. Carrying it matters because the entry must NOT re-derive its own
+    // label from its hostname -- that would make the label and the machine one reading and disarm
+    // the corroboration between them, which is what review 61761 found.
+    env: Present {
+      value: [kv(key: host_reset_observer_label_env as String, value: yaml_string(s: "${{ github.event.inputs.reset_observer }}"))]
+    },
     working_directory: none,
     if_condition: Present { value: fleet_converge_host_reset_return_step_if },
     continue_on_error: none,

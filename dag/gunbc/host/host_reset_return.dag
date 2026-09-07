@@ -752,6 +752,28 @@ fn second_attempt_property(
   }
 }
 
+// ── how the observer label reaches the process ─────────────────────────────────────────────────
+
+// THE DISPATCH LABEL IS CARRIED, NOT RE-DERIVED, AND THAT IS WHAT KEEPS TWO INSTRUMENTS SEPARATE.
+// Review 61761 found the collapse: the entry keyed itself on `hostname -s`, so the label that decided
+// WHERE the job ran and the name the machine ANSWERS TO were the same reading. A runner labelled srv1
+// but living on the subject chassis, or a host that never converged and reports "ubuntu", then simply
+// failed the assignment lookup as "not an assigned observer" and never reached the identity check at
+// all -- so ObserverIsTheSubjectMachine and ObserverHostnameNotConverged were reachable only from
+// fixtures, while this module claimed them as the wall protecting the hardware. That is
+// specification-without-execution on the production route, and citing the wall while the acceptance
+// path cannot express its red is rung inflation.
+//
+// So the label arrives as its own input and the hostname stays purely corroborating: runs-on placed
+// the job by label, the label names the subject through the assignment, and the machine's own name is
+// the independent second reading that must agree. Neither can produce the other's evidence, which is
+// the whole point and was not true before.
+//
+// IT ARRIVES BY ENV FOR THE SAME REASON THE CREDENTIAL PATH DOES: gunbc_run_command carries no --arg,
+// so a converge step hands a value to an entry through the environment or not at all. One row names
+// the variable, the step sets it from the dispatch input, and the entry reads it.
+data host_reset_observer_label_env: NonEmptyStr = "GUNBC_HOST_RESET_OBSERVER"
+
 // ── where the attempt transcript is written ────────────────────────────────────────────────────
 
 // ONE ROW, READ BY THE WRITER AND BY THE STEP THAT PRINTS IT, and it lives in this module rather than

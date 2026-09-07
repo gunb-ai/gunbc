@@ -770,9 +770,11 @@ data gunbc_ci_runner_microvm_host_converge_target: GunbcRunStepTarget = GunbcRun
   function: "runner_microvm_host_converge_wet",
 }
 
-// THE OBSERVER SIDE OF ONE RESET ATTEMPT. It takes the credential path as its single String argument
-// and learns its subject from the machine it is running on -- there is no parameter through which a
-// dispatch could name one, which is what keeps a reset job from being pointed at its own host.
+// THE OBSERVER SIDE OF ONE RESET ATTEMPT. It takes no arguments: the dispatch names the OBSERVER and
+// the step hands that label over by environment, the credential arrives as a path by the same route,
+// and the subject is derived from the label through the modeled assignment. There is no input of any
+// kind through which a caller could name a subject, which is what keeps a reset job from being
+// pointed at its own host.
 data gunbc_ci_host_reset_return_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/host/host_reset_return_run.dag",
   function: "host_reset_return_wet",

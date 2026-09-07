@@ -32,6 +32,7 @@ import gunbc.host_reset_return {
   ObserverHostnameNotConverged,
   observer_identity_permits_issuance,
   host_reset_return_receipt_path,
+  host_reset_observer_label_env,
   ObserverSelfIdentityUnreadable,
   ResetObserverSelection,
   IssuedThroughConverge,
@@ -434,11 +435,15 @@ func host_reset_return_issue_and_watch(
 
 // ── the entry the converge workflow invokes ────────────────────────────────────────────────────
 
-// ZERO ARGUMENTS, AND THE SUBJECT IS NOT ONE OF THEM. This entry learns what it is watching from the machine
-// it is running on: it reads its own short hostname, looks that observer up in the dispatch
-// assignment, and takes the subject the assignment gives it. There is no parameter through which a
-// caller could name a subject, so no dispatch, no operator and no later edit can point this run at
-// the machine it is running on.
+// ZERO ARGUMENTS, AND THE SUBJECT IS NOT AN INPUT. The dispatch names the OBSERVER; this entry reads
+// that label, looks it up in the assignment, and takes the subject the assignment gives it. There is
+// no parameter, environment row or dispatch field through which anyone can name a subject, so no
+// operator and no later edit can point this run at a chosen machine.
+//
+// AND IT DOES NOT DERIVE THE LABEL FROM ITS OWN HOSTNAME, which an earlier version did. That made the
+// label and the machine one reading and quietly disarmed the corroboration between them: a runner
+// labelled as a peer but living on the subject chassis failed the assignment lookup as "not an
+// assigned observer" and never reached the identity check the hardware depends on.
 // THE CREDENTIAL PATH COMES FROM ONE ROW THAT THE WRITER AND THE READER BOTH CONSULT, which is the
 // shape gunbc.spark.grant_privileged_operation spark_grant_credential_path_env already establishes for
 // exactly this problem: the converge prelude materializes a 0600 file under RUNNER_TEMP and exports
@@ -469,11 +474,21 @@ func host_reset_return_wet() -> ProcessExit
       )
     )
   }
-  let observed_name = os.Hostname.ReadShort()
-  if observed_name.success == false {
-    return exit_failure(reason: "host reset-return: the observer could not read its own hostname, so it cannot learn which host it was assigned to watch")
+  let label = shell.Env.Get(name: host_reset_observer_label_env).value
+  let observer_raw = match label {
+    Absent => ""
+    Present { value: raw } => trim(s: raw)
   }
-  let observer = trim(s: observed_name.value) as NonEmptyStr
+  if observer_raw == "" {
+    return exit_failure(
+      reason: join(
+        ["host reset-return: no ", host_reset_observer_label_env as String,
+         " in the environment, so this run does not know which observer the dispatch placed it as. It deliberately does NOT fall back to its own hostname: that would make the label and the machine one reading, and the corroboration between them is the only thing standing between a mislabelled runner and a host resetting itself"],
+        "",
+      )
+    )
+  }
+  let observer = observer_raw as NonEmptyStr
   let assignment = reset_dispatch_pairings(
     subject_roster: reset_subject_roster(),
     peer_roster: reset_observer_peer_roster(),
