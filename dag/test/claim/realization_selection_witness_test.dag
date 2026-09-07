@@ -69,17 +69,17 @@ import gunbc.design_argument { design_propositions }
 import extdeps.external_authority { ExternalAuthority, CeilingCitedToAuthority }
 import extdeps.uri { Uri, Https }
 
-data id_a: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "cand_a")
-data id_b: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "cand_b")
-data id_subject: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "subject")
-data id_field: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "field")
-data id_field2: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "field_alt")
-data id_constraints: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "constraints")
-data id_evidence: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "evidence")
-data id_evidence2: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "evidence_alt")
-data id_policy_unique: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "policy_unique")
-data id_policy_a: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "policy_a")
-data id_policy_b: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "policy_b")
+data id_a: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_a")
+data id_b: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_b")
+data id_subject: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_subject")
+data id_field: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_field")
+data id_field2: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_field2")
+data id_constraints: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_constraints")
+data id_evidence: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_evidence")
+data id_evidence2: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_evidence2")
+data id_policy_unique: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_policy_unique")
+data id_policy_a: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_policy_a")
+data id_policy_b: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_policy_b")
 data ax_tput: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "ax_tput")
 data ax_power: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "ax_power")
 
@@ -90,7 +90,7 @@ data id_param_cell: DeclarationRef = decl_ref(module_path: "test.claim.realizati
 data id_region: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "region_sel")
 data id_domain: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "domain_sel")
 data id_objective: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "objective_sel")
-data id_coupling: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "coupling_sel")
+data id_coupling: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_coupling")
 
 data fixture_physical_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "fixture.invalid/selection-witness/physical" },
