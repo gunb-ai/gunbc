@@ -9,7 +9,7 @@ data empty_capture_read_as_clean_result: RecurringFailureMode = RecurringFailure
   receipts: [
     "**an empty capture read as a clean result** (an instrument refuses on one stream while the reader keeps the other, so the capture is EMPTY and the empty capture is consumed as a finding of nothing. ",
 
-    "It is a specialization of `blank is not evidence` narrowed to a mechanism that recurs: the refusal is well-formed and honest, it simply travels on a channel nobody kept. ",
+    "It is a specialization of [[absent_reads_identically_to_never_looked]] -- cited here until 2026-09-07 by the nickname `blank is not evidence`, which is the DESIGN section 3 defect this ledger polices and, measured, a DELETED EDGE: the family audit identity join over the nine members could not see this citation at all, so the one boundary the family had read as zero -- narrowed to a mechanism that recurs: the refusal is well-formed and honest, it simply travels on a channel nobody kept. ",
 
     "SPECIMEN, 2026-09-02, reading a failing CI job during gunbc PR 9984: `gh run view --job <id> --log > f` writes ZERO BYTES and puts `run is still in progress; logs will be available when it is complete` on stderr, so the redirect captures nothing while the job is already recorded as completed failure. ",
 

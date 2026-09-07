@@ -148,7 +148,7 @@ import gunbc.ci_deploy_access {
   deploy_access_sudo_probe_effect,
 }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep }
-import gunbc.live_deploy.member_identity { EffectPlan }
+import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
 import gunbc.live_deploy.emit {
   live_deploy_apply_script_for,
   live_deploy_retract_script_for,
@@ -404,7 +404,7 @@ type ResolvedHostEffectCell =
   | EffectivePrincipalReadOnHost { node: ComputeHost, read: EffectivePosixPrincipalRead }
   | SudoNopasswdExecuteProbeOnHost { node: ComputeHost, probe: SudoNopasswdExecuteProbeShape }
   | SudoNopasswdGrantListProbeOnHost { node: ComputeHost, probe: SudoNopasswdGrantListProbeShape }
-  | LiveDeployApplyOnHost { node: ComputeHost, spec: DeploymentSpec, candidate: CandidateRelease, plan: EffectPlan }
+  | LiveDeployApplyOnHost { node: ComputeHost, spec: DeploymentSpec, candidate: CandidateRelease, plan: ReleaseEffectPlan }
   | LiveDeployRetractOnHost { node: ComputeHost, spec: DeploymentSpec }
   | LiveDeployEnsureDependencyOnHost { node: ComputeHost, dep: DeploymentDependencyStep }
   | LiveDeployDigestReadbackOnHost { node: ComputeHost, port: Int }
@@ -3786,7 +3786,7 @@ fn live_deploy_apply_candidate_locus_refusal(transport: HostEffectTransport) -> 
 fn realize_live_deploy_apply_on_host(
   spec: DeploymentSpec,
   candidate: CandidateRelease,
-  plan: EffectPlan,
+  plan: ReleaseEffectPlan,
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
@@ -3796,11 +3796,7 @@ fn realize_live_deploy_apply_on_host(
   } else {
     realize_shell_on_host(
       script: retained_srvn(
-        body: live_deploy_apply_script_for(
-          spec: spec,
-          revision: RevisionBoundAtEmission { revision: candidate.revision },
-          plan: plan,
-        ),
+        body: live_deploy_apply_script_for(spec: spec, plan: plan),
         reason: "live_deploy apply (unit install + start)",
       ),
       transport: transport,

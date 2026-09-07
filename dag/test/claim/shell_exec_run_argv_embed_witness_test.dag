@@ -29,7 +29,7 @@ fn src_has(path: String, needle: String) -> Bool {
 // host_exec_arg_max_strlen authority).
 
 test fn witness_apply_script_stays_under_argv_embed_budget() -> Bool {
-  let script_len = length(live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }, plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1())))
+  let script_len = length(live_deploy_apply_script_for(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1())))
   let budget = byte_size_count(b: host_exec_arg_max_strlen)
   script_len > 0 && script_len < budget
 }
@@ -39,7 +39,7 @@ test fn witness_shell_exec_run_uses_stdin_transport() -> Bool {
 }
 
 test fn witness_apply_script_requires_bash_receiver() -> Bool {
-  string_contains(s: live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }, plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1())), pattern: "pipefail")
+  string_contains(s: live_deploy_apply_script_for(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1())), pattern: "pipefail")
 }
 
 test fn witness_shell_exec_run_uses_bash_receiver() -> Bool {

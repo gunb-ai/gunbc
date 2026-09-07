@@ -154,6 +154,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // SP SP TAB (`<mode> <type> <object>\t<path>`), which is what makes a path containing a newline, a
 // quote or a tab-free space unambiguous -- git's own -z contract, not a convention this repository
 // invents.
+// git.Inspect.ReadTreeIntoIndex IS NOT readonly, AND THE THREE NEIGHBOURS AROUND IT ARE. read-tree
+// WRITES the index file GIT_INDEX_FILE names; the repository's own index is untouched, which is why
+// StatusAgainstIndex and IgnoredAgainstIndex stay readonly, but the scratch index is a file the
+// operation creates on the host and a consumer owns its lifetime -- a unique path (extdeps.shell
+// shell.Mktemp) and a removal after the reads. Declaring the write readonly was the state this
+// module was in when review found a consumer using one fixed path under /tmp per revision, shared by
+// every observer of that release and never removed (PR #10696).
 service git.Inspect {
   operation Toplevel {
     input {}
@@ -225,7 +232,6 @@ service git.Inspect {
       success: Bool from "exit_success"
       stderr: String from "stderr"
     }
-    readonly
     transport shell { argv: ["env", "GIT_INDEX_FILE={index_path}", "git", "-C", "{repository_path}", "read-tree", "--no-sparse-checkout", "{revision_hex}"] }
     exit {
       0 => Unit

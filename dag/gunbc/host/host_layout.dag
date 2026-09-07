@@ -330,6 +330,26 @@ fn publication_answer_dir(instance_root: String) -> String {
   join([publication_spool_root(instance_root: instance_root), "/answers"], "")
 }
 
+// A THIRD DIRECTORY BECAUSE A REQUEST THE HELPER CANNOT DECODE IS NEITHER PENDING NOR ANSWERED.
+//
+// Decoding is a pure function of the request's bytes, so a document that refuses once refuses on
+// every later run: it is a TERMINAL judgment about that document, not a transient one. Left in
+// `requests/` it is a poison pill -- the helper stops the line on it, correctly, and then stops the
+// line on the SAME document forever, at one full run's cost per tick, while every request queued
+// behind it waits. That is the absorbing arm read from the refusing side: the deficit's frequency is
+// unbounded rather than counted, and no analysis can ever restart the line.
+//
+// The quarantine is not an answer and must not be reachable as one. An undecodable request has no
+// decoded subject, so the helper cannot derive an answer address for it (see the helper's own
+// header: the answer address comes from the subject, never from the caller), and writing one at the
+// caller's entry name is exactly the forgery the request/answer permission split makes unwritable.
+// So the bytes move sideways into a directory only the publication principal holds, where they stay
+// readable for the analysis the stopped line demands. The requester is not told anything, which is
+// correct: its question was never understood, and its own gate re-asks while the question is open.
+fn publication_refused_dir(instance_root: String) -> String {
+  join([publication_spool_root(instance_root: instance_root), "/requests-refused"], "")
+}
+
 // srv1 observation (2026-08-13, parent eager-koi-458): directory already briansrls-owned;
 // EACCES was a root-owned STALE FILE from the pre-b1 unit user, not the directory.
 // Publication authority is atomic rename in gunbc.fleet_converge_cli — NOT live_deploy

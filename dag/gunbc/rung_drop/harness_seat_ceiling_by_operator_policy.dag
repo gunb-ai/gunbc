@@ -1,0 +1,70 @@
+module gunbc.rung_drop.harness_seat_ceiling_by_operator_policy
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// ============================================================================================
+// THE DECLARED RUNG DROP for the harness seat ceiling (DESIGN 4b(3)).
+// ============================================================================================
+//
+// WHY THIS IS A SEPARATE ROW FROM spark_serving_fleet_global_configuration. That row's subject is
+// the ENGINE's admission count -- one measurement of max-num-seqs applied to every realization --
+// and its restoration is a per-realization runner-memory observation plus the removal of automatic
+// inheritance. This row's subject is the FABRIC's seat capacity, which is a different quantity with
+// a different restoration: a resolved-layout receipt bound to a live engine incarnation. The two
+// rows would not retire together, and the earlier row's own reasoning for staying single -- that a
+// shared restoration discharges both -- is precisely what does not hold across them.
+//
+// WHAT THE DROP IS. gunbc.harness.harness_seat sized its seat pool from the desired engine's
+// `max_num_seqs`, so the fabric claimed thirty-two seats per serving group. That is the engine's
+// scheduler count limit and says nothing about KV residency, and the same corpus already stated at
+// gunbc.spark.pair_serving_desired spark_pair_serving_seq_capacity that NO LAW FROM POOL TOKENS TO
+// ADMITTED SEQUENCES IS MODELLED. The wall was therefore fail-open by roughly an order of magnitude
+// in the direction that reads as capacity.
+//
+// WHY THE REPLACEMENT IS A POLICY CONSTANT AND NOT A DERIVATION. The two arithmetics available are
+// both refused. `num_gpu_blocks * block_size` is refused by construction at
+// extdeps.vllm.kv_cache vllm_pool_reconstruction_is_authoritative, because under MLA with the
+// DeepSeek fp8 layout it reports a small fraction of the logged pool -- it has now been computed
+// wrong three times in this repository. And the engine's own "Nx concurrency" line is a
+// full-context-equivalent projection, not a seat count for requests shorter than full context by an
+// unmodelled margin. kv_cache_usage_perc is not available either: it counts retained prefix-cache
+// blocks, reading 96.5% at zero requests running (gunbc.spark.pair_serving_observed) and reproduced
+// live at 53% with zero running on the group B head on 2026-09-06.
+//
+// So the interim ceiling is a number the operator chose against observed concurrency, and it says
+// so in its own constructor name -- SeatCapacityByOperatorPolicy -- so that no consumer, witness or
+// receipt can read it as derived. The honest alternative arm, AdmissionCapacityUnestablished, is
+// reachable and is what a non-vLLM or refused group produces.
+//
+// THE TRIGGER NAMES THE CAPABILITY, NOT AN ARTIFACT. A layout observation alone is insufficient: a
+// receipt not bound to the CURRENTLY ACTIVE engine incarnation would let a binding taken against one
+// launch authorize a request against another, and the 2026-09-05 history on the group A head shows
+// one rendered unit producing launches with 23.6, 21.29 and 54.01 GiB of KV. The capability is that
+// a seat lease is granted only against a resolved layout read back from the incarnation that will
+// serve it, with the request's block cost computed from the whole group layout.
+//
+// DECLARED 2026-09-06 under the operator's M5 ruling: remove max_num_seqs as the denominator now,
+// and do not replace it with a derived figure until that receipt exists.
+
+data harness_seat_ceiling_by_operator_policy: RungDrop = RungDrop {
+  identity: "harness_seat_ceiling_by_operator_policy" as NonEmptyStr,
+
+  subject: "the harness seat pool ceiling per serving group: an operator-chosen count standing where a derivation from the engine's resolved KV layout belongs",
+
+  declared: "2026-09-06",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: [
+    "gunbc.harness.harness_seat harness_seat_operator_policy_seats (the interim count 3, chosen by the operator on 2026-09-06 against the concurrency observed running on the group A head; it replaces the engine's max_num_seqs, which was fail-open at 32, and it derives from nothing)",
+    "gunbc.harness.harness_seat harness_seat_capacity (the SeatCapacityByOperatorPolicy arm, which is the only arm that currently yields a pool for a serving group)",
+    ],
+    restoration_trigger: "a seat lease is granted only against a resolved KV layout read back from the engine incarnation that will serve the request: the layout receipt names allocator inventory, per-group block sizes, windows and the engine's own startup projections, it is bound to a live incarnation identity so a restart invalidates every prior grant, and the amount leased is the block cost of the admitted sequence envelope computed from the whole group layout rather than any single field. A layout observation that is not incarnation-bound does not discharge this row, because an unbound receipt lets a grant taken against one launch authorize a request against another",
+  }
+}

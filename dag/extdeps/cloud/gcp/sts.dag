@@ -43,8 +43,6 @@ data access_token_type: String = "urn:ietf:params:oauth:token-type:access_token"
 service gcp.STS {
   config {
     endpoint: "https://sts.googleapis.com"
-
-    rate_limit: { requests: 1000, per: minute, scope: sts }
   }
 
   operation Exchange {
