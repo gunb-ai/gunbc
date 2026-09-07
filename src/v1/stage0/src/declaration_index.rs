@@ -2049,6 +2049,41 @@ pub fn citation_debt_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// `planted_control_findings_against` fixtures, not in this constant.
 const PLANTED_CONTROL_CITATIONS: &[(&str, &str, &str, &str, &str)] = &[];
 
+/// Spent-roster join: citations that USED to refuse and now resolve.
+///
+/// Three contracts share this traversal — debt rows that must shrink, planted controls that
+/// must keep refusing, next-rung trigger citations whose resolve is the stamp firing — and
+/// they share nothing else. Kind and message are parameters; copying the fold would mint a
+/// fourth authority for the same question (§2).
+fn resolved_roster_findings(
+    index: &DeclarationIndex,
+    roster: &[(&str, &str, &str, &str, &str)],
+    kind: DeclarationIntegrityKind,
+    message: impl Fn(&str, &str, &str, &str, &str) -> String,
+) -> Vec<DeclarationIntegrityFinding> {
+    let still_refusing = refusing_sites(index);
+    roster
+        .iter()
+        .filter(|row| !still_refusing.contains(&site_owned(row)))
+        .map(
+            |(citer, in_decl, module, decl, field)| DeclarationIntegrityFinding {
+                kind: kind.clone(),
+                rel_path: "src/v1/stage0/src/declaration_index.rs".to_string(),
+                offset: None,
+                message: message(citer, in_decl, module, decl, field),
+            },
+        )
+        .collect()
+}
+
+fn citation_field_suffix(field: &str) -> String {
+    if field.is_empty() {
+        String::new()
+    } else {
+        format!(" field `{field}`")
+    }
+}
+
 /// A control that has STOPPED refusing has lost its discriminating power, and that is a red in
 /// its own right — the inverse of a spent debt row, and the reason these are a separate roster.
 pub fn planted_control_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegrityFinding> {
@@ -2059,26 +2094,19 @@ pub fn planted_control_findings_against(
     index: &DeclarationIndex,
     roster: &[(&str, &str, &str, &str, &str)],
 ) -> Vec<DeclarationIntegrityFinding> {
-    let still_refusing = refusing_sites(index);
-    roster
-        .iter()
-        .filter(|row| !still_refusing.contains(&site_owned(row)))
-        .map(|(citer, in_decl, module, decl, field)| DeclarationIntegrityFinding {
-            kind: DeclarationIntegrityKind::PlantedControlNoLongerRefuses,
-            rel_path: "src/v1/stage0/src/declaration_index.rs".to_string(),
-            offset: None,
-            message: format!(
+    resolved_roster_findings(
+        index,
+        roster,
+        DeclarationIntegrityKind::PlantedControlNoLongerRefuses,
+        |citer, in_decl, module, decl, field| {
+            format!(
                 "PLANTED_CONTROL_CITATIONS lists `{citer}` `{in_decl}` citing `{module}` `{decl}`{} as a \
                  control that must NOT resolve, and it no longer refuses — the control has \
                  lost its discriminating power and the mechanism it proves is now unevidenced",
-                if field.is_empty() {
-                    String::new()
-                } else {
-                    format!(" field `{field}`")
-                }
-            ),
-        })
-        .collect()
+                citation_field_suffix(field)
+            )
+        },
+    )
 }
 
 /// PRODUCTION NEXT-RUNG TRIGGER CITATIONS, 2026-09-07. Three `OutsideModeledGuarantee` stamps
@@ -2126,27 +2154,20 @@ pub fn next_rung_trigger_citation_findings_against(
     index: &DeclarationIndex,
     roster: &[(&str, &str, &str, &str, &str)],
 ) -> Vec<DeclarationIntegrityFinding> {
-    let still_refusing = refusing_sites(index);
-    roster
-        .iter()
-        .filter(|row| !still_refusing.contains(&site_owned(row)))
-        .map(|(citer, in_decl, module, decl, field)| DeclarationIntegrityFinding {
-            kind: DeclarationIntegrityKind::NextRungTriggerCitationResolved,
-            rel_path: "src/v1/stage0/src/declaration_index.rs".to_string(),
-            offset: None,
-            message: format!(
+    resolved_roster_findings(
+        index,
+        roster,
+        DeclarationIntegrityKind::NextRungTriggerCitationResolved,
+        |citer, in_decl, module, decl, field| {
+            format!(
                 "NEXT_RUNG_TRIGGER_CITATIONS lists `{citer}` `{in_decl}` citing `{module}` `{decl}`{} as \
                  an OutsideModeledGuarantee required_capability that must not exist yet, and it \
                  now resolves — the stamp's climb has fired; delete this row and take the stamp \
                  off OutsideModeledGuarantee",
-                if field.is_empty() {
-                    String::new()
-                } else {
-                    format!(" field `{field}`")
-                }
-            ),
-        })
-        .collect()
+                citation_field_suffix(field)
+            )
+        },
+    )
 }
 
 /// The debt join, over an EXPLICIT roster.
@@ -2172,26 +2193,19 @@ pub fn citation_debt_findings_named(
     roster: &[(&str, &str, &str, &str, &str)],
     roster_name: &str,
 ) -> Vec<DeclarationIntegrityFinding> {
-    let live = refusing_sites(index);
-    roster
-        .iter()
-        .filter(|row| !live.contains(&site_owned(row)))
-        .map(|(citer, in_decl, module, decl, field)| DeclarationIntegrityFinding {
-            kind: DeclarationIntegrityKind::CitationDebtRowStale,
-            rel_path: "src/v1/stage0/src/declaration_index.rs".to_string(),
-            offset: None,
-            message: format!(
+    resolved_roster_findings(
+        index,
+        roster,
+        DeclarationIntegrityKind::CitationDebtRowStale,
+        |citer, in_decl, module, decl, field| {
+            format!(
                 "{roster_name} still lists `{citer}` `{in_decl}` citing `{module}` `{decl}`{} — that \
                  citation no longer refuses, so the row is spent and must be deleted; the \
                  roster only shrinks",
-                if field.is_empty() {
-                    String::new()
-                } else {
-                    format!(" field `{field}`")
-                }
-            ),
-        })
-        .collect()
+                citation_field_suffix(field)
+            )
+        },
+    )
 }
 
 /// (2) The cited-symbol wall — §3's cite-the-symbol rule, executing.
