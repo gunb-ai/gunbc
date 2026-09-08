@@ -2218,7 +2218,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_WWVQ07RC0HF55DPM2CXNKWY8RR",
       id: "fleet-state-frontier",
       owner: "fleet",
-      path: "docs/plans/host-converge-inventory.md",
+      path: "dag/gunbc/host/host_converge.dag",
       t: fields(
         headline: "Write down which parts of our machines we actually manage",
         boundary: "Every file, service, credential, and device is either derived by us, owned by us, or someone else's with an agreed contract. Anything unclassified refuses.",

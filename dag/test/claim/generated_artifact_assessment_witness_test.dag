@@ -1,6 +1,6 @@
 module test.claim.generated_artifact_assessment
 
-import gunbc.generated_artifact { GeneratedArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, RoadmapArtifact, GitignoreArtifact, GitattributesArtifact, GithooksPrePushArtifact, GeneratedArtifactMergeDriverArtifact, WitnessFloorYamlArtifact, Stage0CrateLayoutGeneratedRsArtifact, ConcurrentDivergenceRepair, AuthorRegeneratesBeforeMerge, HealRegeneratesAfterProvisionalMerge, concurrent_divergence_repair, heal_regenerated_after_provisional_merge_paths, artifact_path, artifact_directory, artifact_name }
+import gunbc.generated_artifact { GeneratedArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, RoadmapArtifact, GitignoreArtifact, GitattributesArtifact, GithooksPrePushArtifact, GeneratedArtifactMergeDriverArtifact, WitnessFloorYamlArtifact, Stage0CrateLayoutGeneratedRsArtifact, SeedRetentionFrontierGeneratedRsArtifact, ConcurrentDivergenceRepair, AuthorRegeneratesBeforeMerge, HealRegeneratesAfterProvisionalMerge, concurrent_divergence_repair, heal_regenerated_after_provisional_merge_paths, artifact_path, artifact_directory, artifact_name }
 import gunbc.generated_artifact_assessment {
   GeneratedArtifactObservation,
   GeneratedArtifactObserved,
@@ -324,6 +324,7 @@ test fn artifact_path_is_byte_identical_after_the_location_split() -> Bool {
     && (artifact_path(a: GithooksPrePushArtifact) == ".githooks/pre-push")
     && (artifact_path(a: GeneratedArtifactMergeDriverArtifact) == ".githooks/generated-artifact-merge")
     && (artifact_path(a: Stage0CrateLayoutGeneratedRsArtifact) == "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs")
+    && (artifact_path(a: SeedRetentionFrontierGeneratedRsArtifact) == "src/v1/stage0/src/bootstrap_seed_retention_frontier_generated.rs")
 }
 
 // THE ROOT IS A LISTABLE DIRECTORY, NOT AN ABSENT ONE. A consumer that lists the directory to
