@@ -704,6 +704,7 @@ fn census_declaration_bound_formals(type_env: TypeEnv, owner_module_path: String
 //
 // Only the OWNER is taken from the census. The node stays the local binding, so this changes which
 // module the callee is identified as, and changes nothing about how the call is typed.
+//
 fn declaring_module_for_local_binding(type_env: TypeEnv, name: String) -> String {
   match borrowed_census_decl(type_env: type_env, name: name) {
     BorrowedCensusDeclFound { declaration: bd } => bd.owner_module_path

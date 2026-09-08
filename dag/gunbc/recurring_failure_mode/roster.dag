@@ -192,6 +192,7 @@ import gunbc.recurring_failure_mode.capability_arrives_outside_the_converged_pat
 import gunbc.recurring_failure_mode.declared_refusal_unreachable_from_its_own_constructor { declared_refusal_unreachable_from_its_own_constructor }
 import gunbc.recurring_failure_mode.enforcement_gate_positioned_after_the_effect_it_guards { enforcement_gate_positioned_after_the_effect_it_guards }
 import gunbc.recurring_failure_mode.decision_surface_truncation { decision_surface_truncation }
+import gunbc.recurring_failure_mode.shared_symbol_projection_is_not_injective { shared_symbol_projection_is_not_injective }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry,
@@ -374,4 +375,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   enforcement_gate_positioned_after_the_effect_it_guards,
   constant_verdict_gate_stops_discriminating,
   decision_surface_truncation,
+  shared_symbol_projection_is_not_injective,
 ]

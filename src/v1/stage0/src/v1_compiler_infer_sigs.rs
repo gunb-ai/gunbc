@@ -114,7 +114,7 @@ pub fn flatten_parent_envs(
                 seen: v1_rt::rc_empty_map::<String, bool>(),
                 out: Rc::new(vec![]),
             }),
-            |acc: _, p: Rc<ResolvedFuncEnv>| {
+            |acc: Rc<FlattenAccum>, p: Rc<ResolvedFuncEnv>| {
                 if crate::v1_compiler_infer_types::emit_map_has(acc.seen.clone(), p.name.clone()) {
                     acc.clone()
                 } else {
@@ -325,28 +325,27 @@ pub fn parent_closure_callable_candidates(
     env: Rc<ResolvedFuncEnv>,
     name: String,
 ) -> Rc<Vec<Rc<CallableCandidate>>> {
-    env.parents
-        .clone()
-        .iter()
-        .cloned()
-        .fold(
-            Rc::new(vec![]),
-            |acc: _, p: Rc<ResolvedFuncEnv>| match v1_rt::map_get(&p.local.clone(), name.clone()) {
-                Some(sig) => v1_rt::concat(
-                    acc.clone(),
-                    Rc::new(vec![Rc::new(CallableCandidate {
-                        identity: Rc::new(CallableIdentity::DeclaredCallable {
-                            identity: Rc::new(DeclaredCallableIdentity {
-                                owner_module_path: p.name.clone(),
-                                decl_name: name.clone(),
-                            }),
+    env.parents.clone().iter().cloned().fold(
+        Rc::new(vec![]),
+        |acc: Rc<Vec<Rc<CallableCandidate>>>, p: Rc<ResolvedFuncEnv>| match v1_rt::map_get(
+            &p.local.clone(),
+            name.clone(),
+        ) {
+            Some(sig) => v1_rt::concat(
+                acc.clone(),
+                Rc::new(vec![Rc::new(CallableCandidate {
+                    identity: Rc::new(CallableIdentity::DeclaredCallable {
+                        identity: Rc::new(DeclaredCallableIdentity {
+                            owner_module_path: p.name.clone(),
+                            decl_name: name.clone(),
                         }),
-                        sig: sig.clone(),
-                    })]),
-                ),
-                std::option::Option::None => acc.clone(),
-            },
-        )
+                    }),
+                    sig: sig.clone(),
+                })]),
+            ),
+            std::option::Option::None => acc.clone(),
+        },
+    )
 }
 
 pub fn decide_callable_candidates(candidates: Rc<Vec<Rc<CallableCandidate>>>) -> Rc<FuncSigLookup> {
@@ -405,7 +404,10 @@ pub fn lookup_resolved_sig_with_telemetry(
                 match_count: 0,
                 first_parent: std::option::Option::None,
             }),
-            |acc: _, p: Rc<ResolvedFuncEnv>| match v1_rt::map_get(&p.local.clone(), name.clone()) {
+            |acc: Rc<ParentSigScan>, p: Rc<ResolvedFuncEnv>| match v1_rt::map_get(
+                &p.local.clone(),
+                name.clone(),
+            ) {
                 Some(sig) => Rc::new(ParentSigScan {
                     sig: if (acc.sig.clone() != std::option::Option::None) {
                         acc.sig.clone()
@@ -465,15 +467,17 @@ pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Rc<FuncSig
                     } else {
                         env.parents.clone().iter().cloned().fold(
                             none_resolved_sig_with_owner(),
-                            |acc: _, p: Rc<ResolvedFuncEnv>| match acc.clone() {
-                                Some(found) => Some(found.clone()),
-                                std::option::Option::None => {
-                                    match v1_rt::map_get(&p.local.clone(), name.clone()) {
-                                        Some(sig) => Some(Rc::new(ResolvedSigWithOwner {
-                                            sig: sig.clone(),
-                                            owner_module_path: p.name.clone(),
-                                        })),
-                                        std::option::Option::None => std::option::Option::None,
+                            |acc: Option<Rc<ResolvedSigWithOwner>>, p: Rc<ResolvedFuncEnv>| {
+                                match acc.clone() {
+                                    Some(found) => Some(found.clone()),
+                                    std::option::Option::None => {
+                                        match v1_rt::map_get(&p.local.clone(), name.clone()) {
+                                            Some(sig) => Some(Rc::new(ResolvedSigWithOwner {
+                                                sig: sig.clone(),
+                                                owner_module_path: p.name.clone(),
+                                            })),
+                                            std::option::Option::None => std::option::Option::None,
+                                        }
                                     }
                                 }
                             },
@@ -628,7 +632,9 @@ pub fn func_reaches_self(
 pub fn build_name_set(names: Rc<Vec<String>>) -> Rc<HashMap<String, bool>> {
     names.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, bool>(),
-        |acc: _, name: String| v1_rt::rc_map_insert(acc, name.clone(), true),
+        |acc: Rc<HashMap<String, bool>>, name: String| {
+            v1_rt::rc_map_insert(acc, name.clone(), true)
+        },
     )
 }
 
@@ -651,17 +657,20 @@ pub fn merge_remaining_declared(
     Rc::new(v1_rt::map_values(&declared_sigs))
         .iter()
         .cloned()
-        .fold(resolved.clone(), |acc: _, dsig: Rc<DeclaredFuncSig>| {
-            if (dsig.inferred.clone() != std::option::Option::None) {
-                v1_rt::rc_map_insert(
-                    acc.clone(),
-                    dsig.name.clone(),
-                    declared_to_resolved(dsig.clone()),
-                )
-            } else {
-                acc.clone()
-            }
-        })
+        .fold(
+            resolved.clone(),
+            |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, dsig: Rc<DeclaredFuncSig>| {
+                if (dsig.inferred.clone() != std::option::Option::None) {
+                    v1_rt::rc_map_insert(
+                        acc.clone(),
+                        dsig.name.clone(),
+                        declared_to_resolved(dsig.clone()),
+                    )
+                } else {
+                    acc.clone()
+                }
+            },
+        )
 }
 
 pub fn topo_resolve_loop(
@@ -681,17 +690,21 @@ pub fn topo_resolve_loop(
                 let all_resolved = Rc::new(v1_rt::map_values(&declared_sigs))
                     .iter()
                     .cloned()
-                    .fold(resolved.clone(), |acc: _, dsig: Rc<DeclaredFuncSig>| {
-                        if (dsig.inferred.clone() != std::option::Option::None) {
-                            v1_rt::rc_map_insert(
-                                acc.clone(),
-                                dsig.name.clone(),
-                                declared_to_resolved(dsig.clone()),
-                            )
-                        } else {
-                            acc.clone()
-                        }
-                    });
+                    .fold(
+                        resolved.clone(),
+                        |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+                         dsig: Rc<DeclaredFuncSig>| {
+                            if (dsig.inferred.clone() != std::option::Option::None) {
+                                v1_rt::rc_map_insert(
+                                    acc.clone(),
+                                    dsig.name.clone(),
+                                    declared_to_resolved(dsig.clone()),
+                                )
+                            } else {
+                                acc.clone()
+                            }
+                        },
+                    );
                 return Rc::new(ResolveFuncSigsResult {
                     func_env: Rc::new(ResolvedFuncEnv {
                         name: module_name.clone(),
@@ -762,8 +775,10 @@ pub fn topo_resolve_loop(
                         signatures: resolved.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
-                    |acc: _, fn_name: String| match v1_rt::map_get(&declared_sigs, fn_name.clone())
-                    {
+                    |acc: Rc<SigsAccum>, fn_name: String| match v1_rt::map_get(
+                        &declared_sigs,
+                        fn_name.clone(),
+                    ) {
                         Some(dsig) => {
                             if (dsig.inferred.clone() != std::option::Option::None) {
                                 Rc::new(SigsAccum {
@@ -799,7 +814,8 @@ pub fn topo_resolve_loop(
                     .cloned()
                     .fold(
                         cycle_accum.signatures.clone(),
-                        |acc: _, dsig: Rc<DeclaredFuncSig>| {
+                        |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+                         dsig: Rc<DeclaredFuncSig>| {
                             if (dsig.inferred.clone() != std::option::Option::None) {
                                 v1_rt::rc_map_insert(
                                     acc.clone(),
@@ -829,7 +845,10 @@ pub fn topo_resolve_loop(
                 signatures: resolved.clone(),
                 diagnostics: diagnostics.clone(),
             }),
-            |acc: _, fn_name: String| match v1_rt::map_get(&declared_sigs, fn_name.clone()) {
+            |acc: Rc<SigsAccum>, fn_name: String| match v1_rt::map_get(
+                &declared_sigs,
+                fn_name.clone(),
+            ) {
                 Some(dsig) => {
                     if (dsig.inferred.clone() != std::option::Option::None) {
                         Rc::new(SigsAccum {

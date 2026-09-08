@@ -5002,7 +5002,7 @@ pub fn resolve_local_coproduct_wire_policy(
 pub fn build_data_item_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<String, Rc<Node>>> {
     modules.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<Node>>(),
-        |acc: Rc<HashMap<String, Rc<Node>>>, tm: _| {
+        |acc: Rc<HashMap<String, Rc<Node>>>, tm: Rc<TypedModule>| {
             let module_name = crate::v1_std_core::authored_name_at(
                 tm.type_env.clone().source_indices.clone(),
                 tm.module.clone(),
@@ -5764,7 +5764,7 @@ pub fn build_shared_types(
             .cloned()
             .fold(
                 v1_rt::rc_empty_set::<String>(),
-                |acc: Rc<BTreeSet<String>>, summary: _| {
+                |acc: Rc<BTreeSet<String>>, summary: Rc<TypeSummary>| {
                     maybe_mark_shared_type(
                         acc,
                         summary.clone(),
@@ -5812,32 +5812,31 @@ pub struct OwnershipBuildResult {
 
 pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<OwnershipBuildResult> {
     {
-        let callable_set =
-            modules
+        let callable_set = modules.iter().cloned().fold(
+            v1_rt::rc_empty_set::<_>(),
+            |acc: _, m: Rc<TypedModule>| {
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for item in m.items.clone().iter().cloned() {
+                        if (item.body.clone() != std::option::Option::None) {
+                            __result.push(item);
+                        }
+                    }
+                    __result
+                })
                 .iter()
                 .cloned()
-                .fold(v1_rt::rc_empty_set::<_>(), |acc: _, m: _| {
-                    Rc::new({
-                        let mut __result = Vec::new();
-                        for item in m.items.clone().iter().cloned() {
-                            if (item.body.clone() != std::option::Option::None) {
-                                __result.push(item);
-                            }
-                        }
-                        __result
-                    })
-                    .iter()
-                    .cloned()
-                    .fold(acc, |inner: _, item: Rc<Node>| {
-                        v1_rt::rc_set_union(
-                            inner,
-                            crate::v1_compiler_ownership::collect_callable_refs(
-                                item.body.clone().clone().unwrap(),
-                                m.type_env.clone().source_indices.clone(),
-                            ),
-                        )
-                    })
-                });
+                .fold(acc, |inner: _, item: Rc<Node>| {
+                    v1_rt::rc_set_union(
+                        inner,
+                        crate::v1_compiler_ownership::collect_callable_refs(
+                            item.body.clone().clone().unwrap(),
+                            m.type_env.clone().source_indices.clone(),
+                        ),
+                    )
+                })
+            },
+        );
         let proofs = Rc::new({
             let mut __result = Vec::new();
             for m in modules.iter().cloned() {
@@ -5908,7 +5907,7 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
                 ownership_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
                 read_only_params_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
             }),
-            |acc: Rc<OwnershipBuildResult>, entry: _| {
+            |acc: Rc<OwnershipBuildResult>, entry: Rc<OwnershipProofEntry>| {
                 let acc = v1_rt::take_owned(acc);
                 {
                     let read_only = if v1_rt::set_contains(
@@ -6040,7 +6039,7 @@ pub fn merged_module_source_indices(
 ) -> Rc<HashMap<String, Rc<NewlineIndex>>> {
     modules.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-        |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, m: _| {
+        |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, m: Rc<TypedModule>| {
             v1_rt::rc_map_merge(acc, m.type_env.clone().source_indices.clone())
         },
     )
@@ -6154,7 +6153,7 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
         });
         let svc_module_map = typed.modules.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, String>(),
-            |acc: Rc<HashMap<String, String>>, tm: _| {
+            |acc: Rc<HashMap<String, String>>, tm: Rc<TypedModule>| {
                 let svc_items = Rc::new({
                     let mut __result = Vec::new();
                     for item in tm.items.clone().iter().cloned() {
@@ -7187,7 +7186,7 @@ pub fn build_module_export_sets(
 ) -> Rc<HashMap<String, Rc<HashMap<String, bool>>>> {
     modules.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
-        |acc: _, tm: _| {
+        |acc: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, tm: Rc<TypedModule>| {
             let m_name = crate::v1_std_core::authored_name_at(
                 tm.type_env.clone().source_indices.clone(),
                 tm.module.clone(),
@@ -10605,7 +10604,7 @@ pub fn build_module_index(
     {
         let by_name = modules.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
-            |acc: _, tm: _| {
+            |acc: Rc<HashMap<String, Rc<TypedModule>>>, tm: Rc<TypedModule>| {
                 let nm = crate::v1_std_core::authored_name_at(
                     tm.type_env.clone().source_indices.clone(),
                     tm.module.clone(),
@@ -10620,7 +10619,7 @@ pub fn build_module_index(
         );
         let by_filename = modules.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<Vec<Rc<TypedModule>>>>(),
-            |acc: _, tm: _| {
+            |acc: Rc<HashMap<String, Rc<Vec<Rc<TypedModule>>>>>, tm: Rc<TypedModule>| {
                 let fname = crate::v1_compiler_emit_core_support::module_to_filename(
                     crate::v1_std_core::authored_name_at(
                         tm.type_env.clone().source_indices.clone(),
@@ -13644,7 +13643,7 @@ pub fn rust_pub_use_braced_equal_prior_covered(line: String, lines: Rc<Vec<Strin
                         found_current: false,
                         covered: false,
                     },
-                    |inner: _, other: String| {
+                    |inner: BracedImportCoverAccum, other: String| {
                         if (inner.found_current.clone() || inner.covered.clone()) {
                             inner.clone()
                         } else {
@@ -18866,17 +18865,17 @@ pub fn emit_func_def(
         let body_scope =
             crate::v1_compiler_infer::build_params_scope(scope.clone(), params.clone());
         let si = scope.type_env.clone().source_indices.clone();
-        let body_scope = uses
-            .iter()
-            .cloned()
-            .fold(body_scope.clone(), |s: _, u: Rc<Node>| {
-                crate::v1_compiler_infer::extend_scope(
-                    s,
-                    crate::v1_std_core::resource_use_name_at(u.clone(), si.clone()),
-                    crate::v1_std_core::resource_use_resource(u.clone()),
-                    Rc::new(SubValueRelation::SubValueUnknown),
-                )
-            });
+        let body_scope =
+            uses.iter()
+                .cloned()
+                .fold(body_scope.clone(), |s: Rc<InferScope>, u: Rc<Node>| {
+                    crate::v1_compiler_infer::extend_scope(
+                        s,
+                        crate::v1_std_core::resource_use_name_at(u.clone(), si.clone()),
+                        crate::v1_std_core::resource_use_resource(u.clone()),
+                        Rc::new(SubValueRelation::SubValueUnknown),
+                    )
+                });
         let body_str = emit_func_body(
             body.clone(),
             registry.clone(),
@@ -25016,7 +25015,7 @@ pub fn lambda_scope_from_children(
     )
     .iter()
     .cloned()
-    .fold(scope.clone(), |acc: _, pair: (i64, String)| {
+    .fold(scope.clone(), |acc: Rc<InferScope>, pair: (i64, String)| {
         let idx = pair.0.clone();
         let param_name = pair.1.clone();
         let param_type = match param_nodes
@@ -28240,7 +28239,7 @@ pub fn emit_typed_match_arm_strs(
                         seen: Rc::new(vec![]),
                         out: Rc::new(vec![]),
                     }),
-                    |acc: Rc<RcGroupedArmAcc>, e: _| {
+                    |acc: Rc<RcGroupedArmAcc>, e: Rc<RcGroupedArmEntry>| {
                         let representative = if e.plan.clone().groupable.clone() {
                             rc_group_representative(entries.clone(), e.plan.clone().variant.clone())
                         } else {
@@ -34333,7 +34332,7 @@ pub fn emit_wire_struct_path_chain(
                 node: Some(wire_node.clone()),
                 ok: true,
             }),
-            |acc: _, seg: String| {
+            |acc: Rc<WirePathProjection>, seg: String| {
                 advance_wire_path_projection(
                     acc,
                     seg.clone(),
@@ -36916,10 +36915,9 @@ pub fn record_data_decl(
 }
 
 pub fn build_data_decl_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<DataDeclIndex> {
-    modules
-        .iter()
-        .cloned()
-        .fold(empty_data_decl_index(), |acc: _, tm: _| {
+    modules.iter().cloned().fold(
+        empty_data_decl_index(),
+        |acc: Rc<DataDeclIndex>, tm: Rc<TypedModule>| {
             let si = tm.type_env.clone().source_indices.clone();
             let module_path = crate::v1_std_core::authored_name_at(si.clone(), tm.module.clone());
             let seeded = Rc::new(DataDeclIndex {
@@ -36935,11 +36933,9 @@ pub fn build_data_decl_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<DataDeclIn
                     si.clone(),
                 ),
             });
-            tm.items
-                .clone()
-                .iter()
-                .cloned()
-                .fold(seeded.clone(), |inner: _, i: Rc<Node>| {
+            tm.items.clone().iter().cloned().fold(
+                seeded.clone(),
+                |inner: Rc<DataDeclIndex>, i: Rc<Node>| {
                     if (crate::v1_compiler_infer_items::item_kind(i.clone()) != ItemKind::DataItem)
                     {
                         inner.clone()
@@ -36954,8 +36950,10 @@ pub fn build_data_decl_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<DataDeclIn
                             std::option::Option::None => inner.clone(),
                         }
                     }
-                })
-        })
+                },
+            )
+        },
+    )
 }
 
 pub fn data_decl_in_module(
@@ -37059,17 +37057,20 @@ pub fn data_decl_reexporting_modules(
                 })
                 .iter()
                 .cloned()
-                .fold(empty_data_decl_reach(), |acc: _, e: _| {
-                    merge_data_decl_reach(
-                        acc,
-                        data_decl_reexporting_modules(
-                            index.clone(),
-                            e.module_path.clone(),
-                            name.clone(),
-                            (depth.clone() + 1),
-                        ),
-                    )
-                }),
+                .fold(
+                    empty_data_decl_reach(),
+                    |acc: Rc<DataDeclReach>, e: Rc<DataImportEdge>| {
+                        merge_data_decl_reach(
+                            acc,
+                            data_decl_reexporting_modules(
+                                index.clone(),
+                                e.module_path.clone(),
+                                name.clone(),
+                                (depth.clone() + 1),
+                            ),
+                        )
+                    },
+                ),
             }
         }
     })
@@ -37100,17 +37101,20 @@ pub fn data_decl_visible_modules(
             })
             .iter()
             .cloned()
-            .fold(empty_data_decl_reach(), |acc: _, e: _| {
-                merge_data_decl_reach(
-                    acc,
-                    data_decl_reexporting_modules(
-                        index.clone(),
-                        e.module_path.clone(),
-                        name.clone(),
-                        1,
-                    ),
-                )
-            });
+            .fold(
+                empty_data_decl_reach(),
+                |acc: Rc<DataDeclReach>, e: Rc<DataImportEdge>| {
+                    merge_data_decl_reach(
+                        acc,
+                        data_decl_reexporting_modules(
+                            index.clone(),
+                            e.module_path.clone(),
+                            name.clone(),
+                            1,
+                        ),
+                    )
+                },
+            );
             Rc::new(DataDeclReach {
                 modules: crate::v1_compiler_emit_core_support::unique_strings(
                     reached.modules.clone(),

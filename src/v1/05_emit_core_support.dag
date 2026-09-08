@@ -181,27 +181,24 @@ fn sanitize_service_name(name: String) -> String {
   pascal_parts |> join(separator: "")
 }
 
-// THE PROJECTION IS NOT INJECTIVE, SO THE ALLOCATION REFUSES WHERE IT COLLIDES.
+// THE PROJECTION IS NOT INJECTIVE, AND NOTHING HERE REFUSES ON THE COLLISION YET.
 //
 // sanitize_service_name splits the authored name on "." and joins the capitalized segments with
 // nothing, so the segment boundary is erased: `collision.Probe` and `CollisionProbe` are two
-// distinct service identities that project to one symbol. All three targets share this projection,
-// so the collision is a fact about the shared allocation rather than about any one emitter, and the
-// refusal lives here beside module_filename_collision_diagnostics, which guards the same grain in
-// the same shape. Executed red: two services so named in one module emitted two `pub struct
-// CollisionProbe` definitions and bound one parameter for both, with zero blocking diagnostics.
-// service_var_name is the second channel, since to_snake of one symbol is one symbol.
+// distinct service identities that project to one symbol. Observed, not argued: two services so
+// named in one module emitted two `pub struct CollisionProbe` definitions and bound one parameter
+// for both, with zero blocking diagnostics. service_var_name is the second channel, since to_snake
+// of one symbol is one symbol. All three targets share this projection, so the collision is a fact
+// about the shared allocation rather than about any one emitter.
 //
-// This wall is not a scaffold waiting on the injective allocation. It stays after that lands, as the
-// control that says the allocation is still injective; its next-rung trigger is an allocation whose
-// distinct service identities cannot share a symbol by construction, at which point this refusal
-// becomes permanently green rather than being deleted.
-
-
-type ServiceSymbolOwners {
-  owners: Map<String, String>
-  diagnostics: List<ErrorNode>
-}
+// THE WALL IS NOT IN THIS BRANCH AND THIS COMMENT IS NOT ONE. The refusal would need its own
+// CompilerDiagnostic variant, and that coproduct's seed projection is the receipt row this same PR
+// declares FROZEN -- so landing it here would have one commit declare a freeze and breach it. The
+// class is recorded at gunbc.recurring_failure_mode.shared_symbol_projection_is_not_injective
+// rather than in this comment, because no Accepted program can read a comment (DESIGN.md 4c) and a
+// deferral that lives only in prose is an unstated divergence (3b). Its retiring trigger is a
+// CAPABILITY and not a merge: a typed CompilerDiagnostic receipt carrier existing, so a new
+// diagnostic variant no longer edits a frozen hand-maintained figure.
 
 fn capitalize_first(s: String) -> String {
   let chars_list = s |> chars
