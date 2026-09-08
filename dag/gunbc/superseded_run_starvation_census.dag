@@ -116,14 +116,10 @@ type CensusWindow {
   observed_at: Timestamp
 }
 
-// The run collection result is either a complete set or a typed refusal
-// when the page limit is exceeded.
 type RunCollectionOutcome
   = CollectionComplete { runs: List<WorkflowRun> }
   | PageLimitExceeded { collected: List<WorkflowRun>, reached_page: Int, max_pages: Int }
 
-// The census result is either a full census or a typed refusal when the
-// page limit was exceeded.
 type CensusResult
   = CensusComplete {
       window: CensusWindow
@@ -140,9 +136,6 @@ type CensusResult
       max_pages: Int
     }
 
-// declared residue: dissolves into std.page_fold when a production consumer
-// of that module makes the fold driver live — then the census's page-loop
-// becomes a page_fold_run over a WorkflowRuns page transport.
 fn collect_runs_in_window(
   auth_token: String,
   owner: String,
@@ -175,7 +168,7 @@ fn collect_runs_in_window(
       Cons { head: _, tail: _ } => {
         let all_runs = accumulated |> concat(response.result.workflow_runs)
         collect_runs_in_window(
-        auth_token: auth_token,
+          auth_token: auth_token,
         owner: owner,
         repo: repo,
         workflow_name: workflow_name,
@@ -312,11 +305,6 @@ fn extract_boundary_obligations(groups: List<PrGroup>, from: Timestamp) -> List<
   }
 }
 
-// Compute elapsed seconds between two ISO-8601 timestamps by converting each
-// to Unix epoch seconds, subtracting, and wrapping in Second.
-// Duration measurement result that distinguishes a failed clock read from
-// genuinely absent inputs. A clock refusal is a typed, located diagnostic
-// — not the reassuring `none`.
 type DurationResult
   = DurationComputed { seconds: Second }
   | DurationClockRefused { end_raw: String, start_raw: String }
