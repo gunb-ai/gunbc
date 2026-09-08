@@ -1450,6 +1450,14 @@ fn validate_compared_populations(
     }
     // A committed basename the emitter no longer produces is CommittedMirrorNoLongerEmitted
     // unless the seed-retention frontier already names it: then it is retained, not lost.
+    //
+    // RUNG, HONESTLY: this skip is the authority for that exclusion. HAND_MAINTAINED_STAGE0_FILES
+    // currently agrees with it for std_logic.rs by coincidence (#10712 listed the file as
+    // hand-maintained), so committed_generated_basenames never presents std_logic.rs to this loop
+    // on main or at 0a811fc -- the class is not reachable on the merge path. Discrimination is
+    // the off-path #[test] pair below (rust_unit_tests_off_the_merge_path). Do not author a
+    // reaching fixture to make the live walk present a retained file; that would manufacture a
+    // subject. The nonempty frontier witness is not evidence for this join.
     let seed_retained: BTreeSet<&str> = seed_retained_top_level_src.iter().copied().collect();
     let mut committed_not_emitted = Vec::new();
     for name in committed {
@@ -2921,10 +2929,12 @@ mod tests {
         );
     }
 
-    // REACHABILITY: these plant `std_logic.rs` in the committed-not-emitted slot of
-    // `validate_compared_populations` itself. A no-drift round never enters that arm
-    // (#10795). The live projected roster is the join surface; `generated_stage0_filenames`
-    // is not consulted (it would also drop required_regen_host.rs and hide this class).
+    // OFF-PATH DISCRIMINATION, not merge-path reachability. These plant `std_logic.rs` in the
+    // committed-not-emitted slot of `validate_compared_populations` itself because the live walk
+    // never does: HAND_MAINTAINED_STAGE0_FILES already subtracts it (and layout-only hosts). A
+    // no-drift round never enters the arm anyway (#10795). The tests sit under
+    // rust_unit_tests_off_the_merge_path. The live projected roster is the join surface;
+    // `generated_stage0_filenames` is not consulted (it would also drop required_regen_host.rs).
     #[test]
     fn live_frontier_projection_is_not_the_crate_layout_filename_union() {
         assert!(

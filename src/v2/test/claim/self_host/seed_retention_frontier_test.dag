@@ -148,6 +148,11 @@ test fn witness_declared_and_undeclared_populations_are_both_nonempty() -> Bool 
     && (length(xs: seed_retention_frontier_roster) > 0)
 }
 
+// NOT EVIDENCE FOR THE JOIN. Length > 0 proves the projection emitted at least one basename.
+// It does not prove required_regen_host skipped a committed-not-emitted member by frontier
+// membership: that class is unreachable on the merge path while HAND_MAINTAINED absorbs
+// std_logic.rs first. Discrimination is the off-path #[test] pair, not this witness.
+
 test fn witness_top_level_src_basenames_are_nonempty() -> Bool {
   length(xs: seed_retention_frontier_top_level_src_basenames()) > 0
 }
