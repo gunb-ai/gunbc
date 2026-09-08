@@ -1,7 +1,7 @@
 module gunbc.spark.vllm_kv_layout_observe
 
 import std.types { Bool, String, NonEmptyStr, List }
-import std.content_hash { ContentHash }
+import std.content_hash { ContentHash, serialize_content_hash }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.measure {
   TokenCount, token_count_value, Percent, percent_count,
@@ -10,6 +10,7 @@ import std.measure {
 import gunbc.spark.vllm_serving_launch {
   VllmServingLaunch, LaunchJoin, SameLaunch, DifferentLaunch, LaunchContradiction,
   same_launch, join_is_admissible, launch_join_wire, launch_wire,
+  DigestAgreement, DigestsAgree, DigestsDiffer, DigestsIncomparable, digests_agree,
 }
 import extdeps.vllm.kv_layout {
   ResolvedKvLayout, VllmReportedCapacity,
@@ -156,11 +157,47 @@ fn seating_authority_for(
 
 fn receipt_wire(r: VllmKvLayoutReceipt) -> String {
   match r {
-    KvLayoutObserved { incarnation: i, layout: _, reported: _, blocks_per_max_request: b, source_capture_digest: _ } =>
-      join(["observed ", launch_wire(i: i), ": ", to_string(allocator_block_count_value(c: b)), " blocks per full-context request"], "")
+    KvLayoutObserved { incarnation: i, layout: _, reported: _, blocks_per_max_request: b, source_capture_digest: d } =>
+      join(["observed ", launch_wire(i: i), ": ", to_string(allocator_block_count_value(c: b)), " blocks per full-context request, capture ", serialize_content_hash(hash: d) as String], "")
     KvLayoutUnreadable { incarnation: i, cause: c } =>
       join(["unreadable ", launch_wire(i: i), ": ", c as String], "")
     KvLayoutInconsistent { incarnation: i, cause: c } =>
       join(["inconsistent ", launch_wire(i: i), ": ", c as String], "")
+  }
+}
+
+// TWO RECEIPTS ARE THE SAME EVIDENCE ONLY WHEN THEY NAME ONE LAUNCH AND THE SAME CAPTURE BYTES.
+// The digest is not decoration: a number authored beside a claim about where it came from is not
+// the same as a number traceable to bytes someone can re-read. A later fold that keeps one Observed
+// receipt per launch must refuse to collapse two captures of that launch into one row.
+type CaptureJoin
+  = SameCapture
+  | DifferentCapture
+  | CaptureIncomparable { cause: NonEmptyStr }
+  | CaptureNotEstablished { cause: NonEmptyStr }
+
+data same_capture_live_join_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: gunbc.instruments.fabric_capacity_standing group_report (or the pair-serving apply that replaces a live receipt) joins a newly admitted Observed receipt to the previously kept one through same_capture before treating them as one evidence. SUFFICIENT FOR: two captures of one launch cannot silently overwrite each other." as NonEmptyStr)
+
+fn same_capture(a: VllmKvLayoutReceipt, b: VllmKvLayoutReceipt) -> CaptureJoin {
+  match a {
+    KvLayoutObserved { incarnation: ia, layout: _, reported: _, blocks_per_max_request: _, source_capture_digest: da } =>
+      match b {
+        KvLayoutObserved { incarnation: ib, layout: _, reported: _, blocks_per_max_request: _, source_capture_digest: db } =>
+          match same_launch(a: ia, b: ib) {
+            SameLaunch =>
+              match digests_agree(left: da, right: db) {
+                DigestsAgree => SameCapture
+                DigestsDiffer => DifferentCapture
+                DigestsIncomparable =>
+                  CaptureIncomparable { cause: "the capture digest families are incomparable, so the two observers cannot be joined at all" as NonEmptyStr }
+              }
+            DifferentLaunch { left: _, right: _ } =>
+              CaptureNotEstablished { cause: "the receipts describe different launches, so their captures are not one evidence" as NonEmptyStr }
+            LaunchContradiction { invocation: _, field: _ } =>
+              CaptureNotEstablished { cause: "the receipts contradict each other about one launch, so their captures are not one evidence" as NonEmptyStr }
+          }
+        _ => CaptureNotEstablished { cause: "the other receipt is not an observed layout, so there is no capture to join" as NonEmptyStr }
+      }
+    _ => CaptureNotEstablished { cause: "this receipt is not an observed layout, so there is no capture to join" as NonEmptyStr }
   }
 }

@@ -24,6 +24,7 @@ import gunbc.spark.vllm_kv_layout_observe {
   VllmKvLayoutReceipt, KvLayoutObserved, KvLayoutUnreadable, KvLayoutInconsistent, admit_kv_layout,
   SeatingAuthority, SeatingAuthorized, SeatingRefused, seating_authority_for,
   receipt_wire,
+  CaptureJoin, SameCapture, DifferentCapture, CaptureIncomparable, CaptureNotEstablished, same_capture,
 }
 
 fn w_digest(hex: String) -> ContentHash {
@@ -33,6 +34,7 @@ fn w_digest(hex: String) -> ContentHash {
 data w_exe: String = "1111111111111111111111111111111111111111111111111111111111111111"
 data w_unit: String = "3333333333333333333333333333333333333333333333333333333333333333"
 data w_capture: String = "5555555555555555555555555555555555555555555555555555555555555555"
+data w_capture_other: String = "6666666666666666666666666666666666666666666666666666666666666666"
 
 fn w_foreign_revision() -> VllmSourceRevision {
   vllm_source_revision(
@@ -96,6 +98,16 @@ fn w_admit(
   pool: VllmObservedKvPool,
   hundredths: Nat,
 ) -> VllmKvLayoutReceipt? {
+  w_admit_capture(invocation: invocation, layout: layout, pool: pool, hundredths: hundredths, digest: w_digest(hex: w_capture))
+}
+
+fn w_admit_capture(
+  invocation: String,
+  layout: ResolvedKvLayout,
+  pool: VllmObservedKvPool,
+  hundredths: Nat,
+  digest: ContentHash,
+) -> VllmKvLayoutReceipt? {
   match w_reported(pool: pool, hundredths: hundredths) {
     Absent => none
     Present { value: reported } =>
@@ -104,7 +116,7 @@ fn w_admit(
           incarnation: w_launch_id(invocation: invocation),
           layout: layout,
           reported: reported,
-          source_capture_digest: w_digest(hex: w_capture),
+          source_capture_digest: digest,
         )
       }
   }
@@ -187,6 +199,7 @@ test fn a_layout_whose_groups_reproduce_the_printed_cost_is_observed() -> Bool {
             KvLayoutObserved { incarnation: _, layout: _, reported: _, blocks_per_max_request: b, source_capture_digest: _ } =>
               allocator_block_count_value(c: b) == 65536
                 && string_contains(s: receipt_wire(r: r), pattern: "observed")
+                && string_contains(s: receipt_wire(r: r), pattern: "5555555555555555555555555555555555555555555555555555555555555555")
             _ => false
           }
       }
@@ -281,6 +294,34 @@ test fn a_layout_from_another_revision_refuses_instead_of_being_compared() -> Bo
             KvLayoutInconsistent { incarnation: _, cause: c } =>
               string_contains(s: c as String, pattern: "not valid across revisions")
             _ => false
+          }
+      }
+  }
+}
+
+test fn two_observed_receipts_of_one_launch_join_on_their_capture_digest() -> Bool {
+  match w_admitted_pool(tokens: 1048576, revision: vllm_source_revision_read) {
+    Absent => false
+    Present { value: p } =>
+      match w_reproducing_receipt(invocation: "inv-20-43", pool: p) {
+        Absent => false
+        Present { value: first } =>
+          match w_admit_capture(
+            invocation: "inv-20-43",
+            layout: w_layout_with(blocks: 65536, groups: [w_full(layers: 1, block: 16)], revision: vllm_source_revision_read),
+            pool: p,
+            hundredths: 100,
+            digest: w_digest(hex: w_capture_other),
+          ) {
+            Absent => false
+            Present { value: other } =>
+              match w_admit(invocation: "inv-20-43", layout: w_layout(groups: []), pool: p, hundredths: 1122) {
+                Absent => false
+                Present { value: unread } =>
+                  (match same_capture(a: first, b: first) { SameCapture => true  _ => false })
+                    && (match same_capture(a: first, b: other) { DifferentCapture => true  _ => false })
+                    && (match same_capture(a: unread, b: first) { CaptureNotEstablished { cause: c } => string_contains(s: c as String, pattern: "not an observed layout")  _ => false })
+              }
           }
       }
   }
