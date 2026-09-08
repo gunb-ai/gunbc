@@ -1639,14 +1639,6 @@ pub struct TransitionAdmission {
 ///
 /// THE LABEL CONST WENT WITH THEM. With both rows deleted its only remaining use was gone, and the
 /// required build runs `-D warnings`, so a dead const would turn this lane red at the far end.
-/// THE gunbc#10688 CALL-TARGET ROWS DISSOLVED HERE (2026-09-08), BY THEIR OWN TRIGGER AND ON THE
-/// ROSTER TOUCH THEY NAMED. Their entry said they came due on this roster's next touch, and adding
-/// the row below is it. ADJUDICATED BY THE JOIN THEY DEMANDED RATHER THAN BY THEIR OWN SENTENCE:
-/// the required run reported both as `already satisfied at the base -- consumed by its own merge`,
-/// which IS that (module, in_declaration, spelling, target) join executed against main rather than
-/// a reading of the trigger paragraph. Their label constant goes with them, since a label is text
-/// shared by the rows citing it and dissolves with the last one.
-///
 /// SEVENTH TRANSITION (2026-09-08, gunbc#10813). A new recurring-failure-mode class,
 /// `cumulative_metric_read_as_per_event`, is added as its own file under
 /// `dag/gunbc/recurring_failure_mode/`, and the roster's `recurring_failure_mode_roster` names it.
@@ -1687,7 +1679,6 @@ pub struct TransitionAdmission {
 /// edge, which auto-admits as a name the module authors. A future class that DOES produce one is
 /// therefore news rather than routine, which is the property an admission roster has to have to
 /// mean anything.
-
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
@@ -2585,7 +2576,6 @@ pub fn diff_sides(name_status_z: &str) -> (Vec<String>, Vec<String>) {
 /// The head sweep refuses on diagnostics, so refusing here keeps both sides on ONE instrument.
 /// History is not this PR's to repair — but "I cannot see the baseline" is a refusal to state,
 /// not a fact to assume.
-
 pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRecord>, String> {
     let fill = crate::v1_compiler_compile::parse_census_fill_sources(std::rc::Rc::new(
         vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
