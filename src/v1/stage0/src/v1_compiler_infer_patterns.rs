@@ -32,8 +32,8 @@ use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
     arm_pattern, authored_name_at, error_type, field_binding_name_at, field_binding_pattern,
     find_child_named, generic_param_name_at, is_compiler_error, kernel_span, make_error_node,
-    match_pattern_is_irrefutable, no_span, none_type, qualified_last_segment,
-    with_optional_cardinality,
+    match_pattern_is_irrefutable, no_span, none_type, preserve_outer_optional_cardinality,
+    qualified_last_segment, with_optional_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, InferredNode, MatchPattern,
@@ -479,6 +479,23 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
     }
 }
 
+pub fn pattern_subject_preserving_outer_optional(
+    outer: Rc<Node>,
+    inner: Rc<PatternSubject>,
+) -> Rc<PatternSubject> {
+    match (*inner.clone()).clone() {
+        PatternSubject::PatternResolved { node: resolved, .. } => {
+            Rc::new(PatternSubject::PatternResolved {
+                node: crate::v1_std_core::preserve_outer_optional_cardinality(
+                    outer.clone(),
+                    resolved.clone(),
+                ),
+            })
+        }
+        _ => inner.clone(),
+    }
+}
+
 pub fn pattern_subject_from_node(n: Rc<Node>) -> Rc<PatternSubject> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let is_error = if (n.inferred.clone() != std::option::Option::None) {
@@ -489,17 +506,16 @@ pub fn pattern_subject_from_node(n: Rc<Node>) -> Rc<PatternSubject> {
         if is_error.clone() {
             Rc::new(PatternSubject::PatternLookupBlocked)
         } else {
-            if ((n.connective.clone() == Connective::NoConnective)
+            if (((n.connective.clone() == Connective::NoConnective)
                 && ((n.children.clone().len() as i64) > 0))
+                && (n.inferred.clone() != std::option::Option::None))
             {
                 match n.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::Resolved { node: target, .. }) => {
-                        match (*pattern_subject_from_node(target.clone())).clone() {
-                            PatternSubject::PatternLookupBlocked => {
-                                Rc::new(PatternSubject::PatternLookupBlocked)
-                            }
-                            _ => Rc::new(PatternSubject::PatternResolved { node: n.clone() }),
-                        }
+                        pattern_subject_preserving_outer_optional(
+                            n.clone(),
+                            pattern_subject_from_node(target.clone()),
+                        )
                     }
                     _ => Rc::new(PatternSubject::PatternResolved { node: n.clone() }),
                 }

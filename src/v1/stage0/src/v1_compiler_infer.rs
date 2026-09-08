@@ -228,15 +228,14 @@ use crate::v1_std_core::CallTargetIdentity::{
 };
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    AlgebraApplicationEvidenceUnavailable, AmbiguousReference, BareNoneNotAdmittedByFieldType,
-    CallArgumentDuplicate, CallArgumentNameUnknown, CallNamedArgOnFunctionValue,
-    CallPositionalDeficit, CallPositionalSurplus, ConstructorCallAdmissionRefused,
-    EqualityMemberUnjudgeable, EqualityOnFunctionMember, FieldNotFound,
-    FrontierOccurrenceBudgetExceeded, InternalError, MethodExistenceFrontierAdmitted,
-    MethodExistenceUndecided, MethodNotFound, MissingField, OptionalCastNotEliminated,
-    ReceiverTypeUnestablished, ServiceConfigReferenceJudgmentDeferred, SoleConstructorViolation,
-    TypeArgumentArityMismatch, TypeMismatch, UnlistedVariantValueUse, UnresolvedType,
-    VariantCollision,
+    AmbiguousReference, BareNoneNotAdmittedByFieldType, CallArgumentDuplicate,
+    CallArgumentNameUnknown, CallNamedArgOnFunctionValue, CallPositionalDeficit,
+    CallPositionalSurplus, ConstructorCallAdmissionRefused, EqualityMemberUnjudgeable,
+    EqualityOnFunctionMember, FieldNotFound, FrontierOccurrenceBudgetExceeded, InternalError,
+    MethodExistenceFrontierAdmitted, MethodExistenceUndecided, MethodNotFound, MissingField,
+    OptionalCastNotEliminated, ReceiverTypeUnestablished, ServiceConfigReferenceJudgmentDeferred,
+    SoleConstructorViolation, TypeArgumentArityMismatch, TypeMismatch, UnlistedVariantValueUse,
+    UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -281,19 +280,19 @@ pub use crate::v1_std_core::{
     has_inferred, if_condition, if_else_branch, if_then_branch, import_is_all,
     import_specific_names_at, index_base, index_expr, int_type, intern, intern_str,
     is_child_accessor_in_model, is_compiler_error, is_container_type, is_error_diagnostic,
-    is_interpreter_blocking_diagnostic, is_property_contraction, is_tree_size_reducing,
-    lambda_body, lambda_param_names_at, let_binding_name_at, let_body, let_value,
-    local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
-    make_expr_node, make_field_binding_node, make_field_init_node, make_interp_part_node,
-    make_named_expr_node, make_param_node, make_text_part_node, make_transport_node, map_children,
-    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
-    module_items, module_node, no_span, node_name_span, none_type, param_node_default_value,
-    param_node_name_at, param_node_type_expr, preserve_outer_optional_cardinality,
-    qualified_last_segment, record_lit_expr_optional, record_lit_named_field_value_optional,
-    record_lit_type_name_at, resolved_node_is_kernel_identity_for_name, resource_use_name_at,
-    resource_use_resource, return_value, service_config_field_for_property_name, slice_base,
-    slice_end, slice_start, string_type, type_name_compatible, type_reference_provenance,
-    unaryop_operand, unit_type, with_optional_cardinality, with_required_cardinality,
+    is_property_contraction, is_tree_size_reducing, lambda_body, lambda_param_names_at,
+    let_binding_name_at, let_body, let_value, local_transport_node, make_arg_node, make_arm_node,
+    make_error_node, make_expr_error_node, make_expr_node, make_field_binding_node,
+    make_field_init_node, make_interp_part_node, make_named_expr_node, make_param_node,
+    make_text_part_node, make_transport_node, map_children, match_arm_nodes, match_scrutinee,
+    method_arg_nodes, method_receiver, module_imports, module_items, module_node, no_span,
+    node_name_span, none_type, param_node_default_value, param_node_name_at, param_node_type_expr,
+    preserve_outer_optional_cardinality, qualified_last_segment, record_lit_expr_optional,
+    record_lit_named_field_value_optional, record_lit_type_name_at,
+    resolved_node_is_kernel_identity_for_name, resource_use_name_at, resource_use_resource,
+    return_value, service_config_field_for_property_name, slice_base, slice_end, slice_start,
+    string_type, type_name_compatible, type_reference_provenance, unaryop_operand, unit_type,
+    with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     divergent_type, expr_is_any_literal, expr_literal_symbol_optional, module_path_segments,
@@ -989,24 +988,17 @@ pub fn variant_reference_inferred_node(
     match expected.clone() {
         Some(exp) => {
             if ((exp.return_cardinality.clone() == Cardinality::Required)
-                && (owner_name.clone() != "".to_string()))
+                && (crate::v1_std_core::authored_name_at(
+                    scope.type_env.clone().source_indices.clone(),
+                    exp.clone(),
+                ) == owner_name.clone()))
             {
                 match expected_variant_owner_instantiation(
                     expected.clone(),
                     name.clone(),
                     scope.clone(),
                 ) {
-                    Some(exp_enum) => {
-                        if (crate::v1_std_core::authored_name_at(
-                            scope.type_env.clone().source_indices.clone(),
-                            exp_enum.clone(),
-                        ) == owner_name.clone())
-                        {
-                            exp.clone()
-                        } else {
-                            fallback
-                        }
-                    }
+                    Some(_) => exp.clone(),
                     std::option::Option::None => fallback,
                 }
             } else {
@@ -1114,34 +1106,6 @@ pub fn infer_var_binding_kind(scope: Rc<InferScope>, name: String) -> Rc<VarBind
             std::option::Option::None => Rc::new(VarBindingKind::FunctionValueBinding),
         },
     }
-}
-
-pub fn relocated_algebra_evidence_diags(
-    diags: Rc<Vec<Rc<ErrorNode>>>,
-    span: Rc<SourceSpan>,
-    module_name: String,
-) -> Rc<Vec<Rc<ErrorNode>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for d in diags.iter().cloned() {
-            __result.push(match (*d.diagnostic.clone()).clone() {
-                CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable {
-                    receiver_type: rt,
-                    argument_index: ai,
-                    ..
-                } => crate::v1_std_core::make_error_node(
-                    Rc::new(CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable {
-                        receiver_type: rt.clone(),
-                        argument_index: ai.clone(),
-                        span: span.clone(),
-                    }),
-                    module_name.clone(),
-                ),
-                _ => d.clone(),
-            });
-        }
-        __result
-    })
 }
 
 pub fn inference_error(
@@ -6988,7 +6952,7 @@ pub fn function_value_call_named_arg_diags(
     type_env: Rc<TypeEnv>,
     module_name: String,
     body_locals: Rc<HashMap<String, bool>>,
-    callable_type: Option<Rc<Node>>,
+    locals: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     match v1_rt::map_get(&body_locals, func_name.clone()) {
         std::option::Option::None => Rc::new(vec![]),
@@ -7017,9 +6981,9 @@ pub fn function_value_call_named_arg_diags(
                 }
                 __result
             });
-            let arity_diags = match callable_type.clone() {
-                Some(callable) => {
-                    let param_count = (callable.params.clone().len() as i64);
+            let arity_diags = match v1_rt::map_get(&locals, func_name.clone()) {
+                Some(binding) => {
+                    let param_count = (binding.resolved.clone().params.clone().len() as i64);
                     if (param_count.clone() > 0) {
                         {
                             let supplied = (typed_args.clone().len() as i64);
@@ -10217,83 +10181,21 @@ Rc::new(InferResult {
                                 }
                                 __result
                             });
-                            let local_call_view = if (sig.clone() != std::option::Option::None) {
-                                std::option::Option::None
-                            } else {
-                                match v1_rt::map_get(&scope.locals.clone(), func_name.clone()) {
-                                    Some(binding) => Some(
-                                        if (((binding.resolved.clone().params.clone().len()
-                                            as i64)
-                                            > 0)
-                                            || !v1_rt::map_has(
-                                                &scope.body_locals.clone(),
-                                                func_name.clone(),
-                                            ))
-                                        {
-                                            Rc::new(NodeResolveResult {
-                                                resolved: binding.resolved.clone(),
-                                                diagnostics: Rc::new(vec![]),
-                                            })
-                                        } else {
-                                            expand_type_for_field_access(
-                                                binding.resolved.clone(),
-                                                scope.type_env.clone(),
-                                                scope.module_name.clone(),
-                                            )
-                                        },
-                                    ),
-                                    std::option::Option::None => std::option::Option::None,
-                                }
-                            };
-                            let local_call_diags = match local_call_view.clone() {
-                                Some(view) => view.diagnostics.clone(),
-                                std::option::Option::None => Rc::new(vec![]),
-                            };
-                            let local_call_refused = {
-                                let mut __found = false;
-                                for d in local_call_diags.iter().cloned() {
-                                    if crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())
-                                    {
-                                        __found = true;
-                                        break;
-                                    }
-                                }
-                                __found
-                            };
-                            let callable_local = if local_call_refused.clone() {
-                                std::option::Option::None
-                            } else {
-                                match local_call_view.clone() {
-                                    Some(view) => {
-                                        if ((view.resolved.clone().params.clone().len() as i64) > 0)
-                                        {
-                                            Some(view.resolved.clone())
-                                        } else {
-                                            std::option::Option::None
-                                        }
-                                    }
-                                    std::option::Option::None => std::option::Option::None,
-                                }
-                            };
                             let arg_diags = v1_rt::concat(
-                                v1_rt::concat(
-                                    Rc::new({
-                                        let mut __result = Vec::new();
-                                        for air in arg_infer_results.iter().cloned() {
-                                            __result
-                                                .extend((*air.diagnostics.clone()).iter().cloned());
-                                        }
-                                        __result
-                                    }),
-                                    local_call_diags.clone(),
-                                ),
+                                Rc::new({
+                                    let mut __result = Vec::new();
+                                    for air in arg_infer_results.iter().cloned() {
+                                        __result.extend((*air.diagnostics.clone()).iter().cloned());
+                                    }
+                                    __result
+                                }),
                                 function_value_call_named_arg_diags(
                                     func_name.clone(),
                                     typed_args.clone(),
                                     scope.type_env.clone(),
                                     scope.module_name.clone(),
                                     scope.body_locals.clone(),
-                                    callable_local.clone(),
+                                    scope.locals.clone(),
                                 ),
                             );
                             let formal_authority_diags = if declared_formal_authority_failed.clone()
@@ -10610,15 +10512,11 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                                     ),
                                                 ),
                                                 diagnostics: v1_rt::concat(
-                                                    arg_diags.clone(),
-                                                    relocated_algebra_evidence_diags(
-                                                        v1_rt::concat(
-                                                            method_resolution.diagnostics.clone(),
-                                                            template_subst_diags.clone(),
-                                                        ),
-                                                        span.clone(),
-                                                        scope.module_name.clone(),
+                                                    v1_rt::concat(
+                                                        arg_diags.clone(),
+                                                        method_resolution.diagnostics.clone(),
                                                     ),
+                                                    template_subst_diags.clone(),
                                                 ),
                                             })
                                         }
@@ -10893,14 +10791,7 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
     span: span.clone(),
 }), scope.module_name.clone())])
                                                     } else {
-                                                        {
-                                                            let method_blocking_diags = relocated_algebra_evidence_diags(Rc::new({ let mut __result = Vec::new(); for d in method_resolution.diagnostics.clone().iter().cloned() { if crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result }), span.clone(), scope.module_name.clone());
-if ((method_blocking_diags.clone().len() as i64) > 0) {
-                                                                method_blocking_diags.clone()
-                                                            } else {
-                                                                Rc::new(vec![inference_error(v1_rt::concat(v1_rt::concat("function '".to_string(), func_name.clone()), "' not found in scope".to_string()), span.clone(), scope.module_name.clone())])
-                                                            }
-}
+                                                        Rc::new(vec![inference_error(v1_rt::concat(v1_rt::concat("function '".to_string(), func_name.clone()), "' not found in scope".to_string()), span.clone(), scope.module_name.clone())])
                                                     }
 },
 },
@@ -11163,19 +11054,11 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                         diagnostics: v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(recv_diags.clone(), mc_arg_diags.clone()),
-                                relocated_algebra_evidence_diags(
-                                    pipe_fb.kernel_diags.clone(),
-                                    span.clone(),
-                                    scope.module_name.clone(),
-                                ),
+                                pipe_fb.kernel_diags.clone(),
                             ),
-                            relocated_algebra_evidence_diags(
-                                v1_rt::concat(
-                                    method_resolution.diagnostics.clone(),
-                                    mc_template_diags.clone(),
-                                ),
-                                span.clone(),
-                                scope.module_name.clone(),
+                            v1_rt::concat(
+                                method_resolution.diagnostics.clone(),
+                                mc_template_diags.clone(),
                             ),
                         ),
                     })
