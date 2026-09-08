@@ -81,11 +81,9 @@ data run_with_pull_request: WorkflowRun = WorkflowRun {
   conclusion: none,
   workflow_id: 10,
   run_number: 1,
-  event: "pull_request",
   html_url: "https://github.com/owner/repo/actions/runs/1",
   created_at: "2026-09-01T00:00:00Z",
   updated_at: "2026-09-01T01:00:00Z",
-  run_started_at: none,
   pull_requests: [WorkflowRunPullRequest { number: 42 }],
 }
 
@@ -98,11 +96,9 @@ data run_without_pull_request: WorkflowRun = WorkflowRun {
   conclusion: none,
   workflow_id: 10,
   run_number: 2,
-  event: "push",
   html_url: "https://github.com/owner/repo/actions/runs/2",
   created_at: "2026-09-01T00:00:00Z",
   updated_at: "2026-09-01T01:00:00Z",
-  run_started_at: none,
   pull_requests: [],
 }
 
@@ -129,11 +125,9 @@ data run_sha_abc: WorkflowRun = WorkflowRun {
   conclusion: none,
   workflow_id: 10,
   run_number: 3,
-  event: "pull_request",
   html_url: "https://github.com/owner/repo/actions/runs/3",
   created_at: "2026-09-01T00:00:00Z",
   updated_at: "2026-09-01T01:00:00Z",
-  run_started_at: none,
   pull_requests: [WorkflowRunPullRequest { number: 42 }],
 }
 
@@ -146,11 +140,9 @@ data run_sha_def: WorkflowRun = WorkflowRun {
   conclusion: none,
   workflow_id: 10,
   run_number: 4,
-  event: "pull_request",
   html_url: "https://github.com/owner/repo/actions/runs/4",
   created_at: "2026-09-01T01:00:00Z",
   updated_at: "2026-09-01T02:00:00Z",
-  run_started_at: none,
   pull_requests: [WorkflowRunPullRequest { number: 42 }],
 }
 

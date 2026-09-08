@@ -29,6 +29,26 @@ import extdeps.github.workflow_runs {
   StartupFailure,
 }
 import extdeps.clock { Clock }
+import extdeps.github.pagination {
+  github_first_page_cursor,
+  github_listing_subject,
+}
+import std.page_fold {
+  page_fold_begin,
+  page_fold_observe,
+  page_fold_pump,
+  PageBound,
+  PageCursor,
+  OffsetPage,
+  PageFoldSubject,
+  PageContinuation,
+  ContinuationClosed,
+  ContinuationNext,
+  PageObservation,
+  PageFoldOutcome,
+  PagesClosed,
+  PagesRefused,
+}
 
 // One census identity is an ordered pair, never a run selected because it hurt. The observing
 // instrument discovers every pair in a declared time window by PR identity and head transition.
@@ -180,74 +200,60 @@ fn collect_runs_in_window(
       max_pages: max_run_pages,
     }
   } else {
-    collect_window_pages(
-      auth_token: auth_token,
-      owner: owner,
-      repo: repo,
-      workflow_name: workflow_name,
-      event: event,
-      created_range: created_range,
-      next_page: 2,
-      last_expected_page: data_pages + 1,
-      max_run_pages: max_run_pages,
-      accumulated: first.result.workflow_runs,
+    let subject = github_listing_subject(
+      operation: "gunbc.superseded_run_starvation_census"
     )
-  }
-}
-
-// Declared frontier: the recursive page-fetch loop in collect_window_pages (and its wrapper
-// collect_runs_in_window) dissolves into std.page_fold.page_fold_live when a production consumer
-// becomes a page_fold_run over a WorkflowRuns page transport — that is, when any other module
-// fetches paginated workflow runs and the common pagination driver has more than zero consumers.
-fn collect_window_pages(
-  auth_token: String,
-  owner: String,
-  repo: String,
-  workflow_name: String,
-  event: String,
-  created_range: String,
-  next_page: Int,
-  last_expected_page: Int,
-  max_run_pages: Int,
-  accumulated: List<WorkflowRun>
-) -> RunCollectionOutcome {
-  if next_page > last_expected_page {
-    PageLimitExceeded {
-      collected: accumulated,
-      reached_page: next_page,
-      max_pages: max_run_pages,
-    }
-  } else {
-    let response = github.WorkflowRuns.ListWorkflowRuns(
-      auth_token: auth_token,
-      owner: owner,
-      repo: repo,
-      workflow_name: workflow_name,
-      event: event,
-      created_range: created_range,
-      per_page: max_per_page,
-      page: next_page,
-    )
-    match response.result.workflow_runs {
-      Empty {} => CollectionComplete { runs: accumulated }
-      Cons { head: _, tail: _ } => {
-        let all_runs = accumulated |> concat(response.result.workflow_runs)
-        collect_window_pages(
-          auth_token: auth_token,
-          owner: owner,
-          repo: repo,
-          workflow_name: workflow_name,
-          event: event,
-          created_range: created_range,
-          next_page: next_page + 1,
-          last_expected_page: last_expected_page,
-          max_run_pages: max_run_pages,
-          accumulated: all_runs,
+    let fetch = fn(c: PageCursor) -> PageObservation<WorkflowRun> {
+      let page_num = match c {
+        OffsetPage { page: n } => n
+        _ => 1
+      }
+      let response = github.WorkflowRuns.ListWorkflowRuns(
+        auth_token: auth_token,
+        owner: owner,
+        repo: repo,
+        workflow_name: workflow_name,
+        event: event,
+        created_range: created_range,
+        per_page: max_per_page,
+        page: page_num,
       )
+      let continuation = match response.result.workflow_runs {
+        Empty {} => ContinuationClosed
+        Cons { head: _, tail: _ } =>
+          ContinuationNext { cursor: OffsetPage { page: page_num + 1 } }
+      }
+      PageObservation { items: response.result.workflow_runs, continuation: continuation }
+    }
+    let first_obs = PageObservation {
+      items: first.result.workflow_runs,
+      continuation: match first.result.workflow_runs {
+        Empty {} => ContinuationClosed
+        Cons { head: _, tail: _ } =>
+          ContinuationNext { cursor: OffsetPage { page: 2 } }
+      }
+    }
+    let state = page_fold_begin(
+      subject: subject,
+      bound: PageBound { max_pages: 1000 },
+      first: github_first_page_cursor,
+    )
+    let observed = page_fold_observe(state: state, page: first_obs)
+    match page_fold_pump(state: observed, fetch: fetch) {
+      PagesClosed { subject: _, pages_read: _, items: runs } =>
+        CollectionComplete { runs: runs }
+      PagesRefused { refusal: _ } =>
+        // Refusals from std.page_fold indicate a protocol error that the fetch
+        // function should prevent (CursorDidNotAdvance, ContinuationShapeChanged,
+        // etc.) or the safety bound at 1000 pages — neither should occur with this
+        // fetch function and the pre-checked data_pages bound.
+        PageLimitExceeded {
+          collected: first.result.workflow_runs,
+          reached_page: data_pages + 1,
+          max_pages: max_run_pages,
+        }
     }
   }
-}
-
 }
 
 fn pr_number_for_run(run: WorkflowRun) -> Int? {
