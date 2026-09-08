@@ -6,6 +6,7 @@ import std.measure { TokenCount, token_count, token_count_value }
 import product.placement_supply { HostIdentity }
 import extdeps.zhipu.glm_5_3_flash {
   glm_5_3_flash_vllm_kv_cache_dtype_wire, glm_5_3_flash_vllm_reasoning_parser,
+  glm_5_3_flash_vllm_tool_call_parser,
 }
 import gunbc.fleet_intent_network { operator_host_srv9 }
 import gunbc.spark.serving_arm {
@@ -262,9 +263,17 @@ fn glm_canary_host_path(arm: GlmCanaryArm) -> NonEmptyStr {
 // GLM while the image stayed DeepSeek.
 //
 // EVERY FLAG COMES FROM THE ARM OR ITS ROWS. Nothing here is a literal that could drift from the
-// carrier the operator reads: the quantization from the checkpoint row, the tool parser from the
-// runtime row, the KV dtype and reasoning parser from the model authority, the window and bounds from
-// the arm's own decision fields.
+// carrier the operator reads: the quantization from the checkpoint row, and the KV dtype and both
+// parser names from the model authority, with the window and bounds from the arm's own decision
+// fields.
+//
+// THE PARSER NAMES ARE MODEL FACTS AND THEIR AVAILABILITY IS A RUNTIME FACT, which is why they are not
+// read off the runtime row. `glm45` and `glm47` are what upstream's recipe prescribes FOR THIS MODEL;
+// whether a given engine build SHIPS those parsers is a different question, and it is the one
+// gunbc.spark.serving_arm answers -- the DeepSeek image carries the glm47 tool parser and no GLM
+// reasoning parser at all. Naming the parser from the runtime row would have made a build's inventory
+// answer for the model's prescription. The runtime row is still consulted, and its EXISTENCE is the
+// guard: a runtime with no row renders no launch line.
 //
 // THE ORDER IS THE RUNNING CANARY'S ORDER, AND THAT IS DELIBERATE RATHER THAN INCIDENTAL. Read back
 // from the live container 2026-09-08, the engine's argv places --max-num-batched-tokens between
@@ -284,7 +293,7 @@ fn glm_canary_serve_argv(arm: GlmCanaryArm) -> List<String>? {
     Present { value: crow } =>
       match serving_runtime_row(r: arm.runtime) {
         Absent => none
-        Present { value: rrow } => Present { value: concat(
+        Present { value: _ } => Present { value: concat(
           concat(
             [
               "serve", "/model",
@@ -300,7 +309,7 @@ fn glm_canary_serve_argv(arm: GlmCanaryArm) -> List<String>? {
           concat(
             [
               "--reasoning-parser", glm_5_3_flash_vllm_reasoning_parser as String,
-              "--tool-call-parser", rrow.hub_tool_call_parser as String,
+              "--tool-call-parser", glm_5_3_flash_vllm_tool_call_parser as String,
               "--enable-auto-tool-choice",
               "--no-enable-flashinfer-autotune",
               "--host", "0.0.0.0",

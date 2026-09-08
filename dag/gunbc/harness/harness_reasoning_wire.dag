@@ -3,6 +3,10 @@ module gunbc.harness.harness_reasoning_wire
 import std.types { String, Bool, List, NonEmptyStr }
 import std.measure { TokenCount }
 import extdeps.languages.json.emit { JsonKeyValue, JsonBool, json_kv, json_string, json_object }
+import gunbc.spark.serving_arm {
+  ReasoningResponseProjection, ParsedReasoningField, InlineReasoning,
+  gitcommit90_sm121_exl3_row, gunbc_sparkrun_ds4_row,
+}
 import extdeps.deepseek.deepseek_v4 {
   deepseek_v4_vllm_thinking_kwarg, deepseek_v4_vllm_reasoning_effort_kwarg,
   deepseek_v4_thinking_end_token, deepseek_v4_chat_reasoning_field,
@@ -12,7 +16,6 @@ import extdeps.deepseek.deepseek_v4 {
 import extdeps.zhipu.glm_5_3_flash {
   glm_5_3_flash_model_id, glm_5_3_flash_reasoning_effort_kwarg, glm_5_3_flash_clear_thinking_kwarg,
   glm_5_3_flash_thinking_end_token, glm_5_3_flash_chat_reasoning_field, glm_5_3_flash_context_length,
-  glm_5_3_flash_chat_reasoning_field_vllm_alias,
   GlmEffortHigh, GlmEffortMax, glm_5_3_flash_reasoning_effort_wire,
   glm_5_3_flash_vllm_tool_call_parser,
 }
@@ -177,17 +180,56 @@ fn harness_unit_tool_call_parser(unit: HarnessServingUnit) -> NonEmptyStr {
 // Both models use the DeepSeek-originated reasoning_content on the chat-completions shape; vLLM
 // additionally exposes "reasoning". The alias is empty where a unit has none, so a consumer folds a
 // list rather than branching on a sentinel.
+// THE FIELD NAME COMES FROM THE RUNTIME THAT EMITS IT, AND THIS SEAM ASKED TWO MODEL AUTHORITIES FOR
+// IT INSTEAD. Which member carries the split reasoning is decided by the ENGINE BUILD -- by whether it
+// was launched with a reasoning parser and by what that parser names its output -- so it is a runtime
+// fact in exactly the sense this module's own header describes, and gunbc.spark.serving_arm already
+// owns it as ReasoningResponseProjection on the runtime row, measured inside each pinned image.
+//
+// THE GLM ARM PREVIOUSLY CITED DEEPSEEK'S ALIAS ROW, which is one model authority answering for
+// another model's wire, green only because the two values coincide. The repair attempted first was to
+// give GLM its own alias row in extdeps.zhipu -- which is the SAME defect relocated, because the
+// annotation over ReasoningResponseProjection had already established that the model authority's name
+// is not this unit's primary. A third spelling of a fact the runtime row measured would have been the
+// fork this branch exists to remove, introduced by the commit removing it.
+//
+// SO BOTH ANSWERS ARE DERIVED FROM THE PROJECTION. A parsed unit's primary is the member the engine
+// actually emits; an inline unit has no member at all, and the harness must split client-side on the
+// end token, so the list is empty rather than carrying a name that will never appear. The model
+// authorities keep their rows -- `reasoning_content` IS what Zhipu's and DeepSeek's own APIs return --
+// and they are simply not what this fleet's engines emit.
+fn harness_unit_reasoning_projection(unit: HarnessServingUnit) -> ReasoningResponseProjection {
+  match unit {
+    DeepseekV4FlashOnVllm => gunbc_sparkrun_ds4_row.reasoning_projection
+    Glm53FlashOnVllm => gitcommit90_sm121_exl3_row.reasoning_projection
+  }
+}
+
 fn harness_unit_reasoning_field(unit: HarnessServingUnit) -> NonEmptyStr {
+  match harness_unit_reasoning_projection(unit: unit) {
+    ParsedReasoningField { field: f } => f
+    InlineReasoning { end_token: _ } => harness_unit_model_reasoning_field(unit: unit)
+  }
+}
+
+// WHAT AN INLINE UNIT ANSWERS, AND WHY IT IS THE MODEL'S NAME RATHER THAN A REFUSAL. Nothing on the
+// wire carries reasoning for such a unit, so any name is unused by the decoder; naming the model's own
+// field keeps the answer meaningful if that unit is later relaunched WITH a parser, and keeps this
+// function total without inventing a sentinel the caller would have to branch on.
+fn harness_unit_model_reasoning_field(unit: HarnessServingUnit) -> NonEmptyStr {
   match unit {
     DeepseekV4FlashOnVllm => deepseek_v4_chat_reasoning_field
     Glm53FlashOnVllm => glm_5_3_flash_chat_reasoning_field
   }
 }
 
+// THE ALIASES ARE THE OTHER NAMES A READER SHOULD TRY, and for a parsed unit that is the model
+// authority's own spelling -- the one the vendor's hosted API returns, which a future engine build
+// may well switch to. For an inline unit there is no member to alias.
 fn harness_unit_reasoning_field_aliases(unit: HarnessServingUnit) -> List<NonEmptyStr> {
-  match unit {
-    DeepseekV4FlashOnVllm => [deepseek_v4_chat_reasoning_field_vllm_alias]
-    Glm53FlashOnVllm => [glm_5_3_flash_chat_reasoning_field_vllm_alias]
+  match harness_unit_reasoning_projection(unit: unit) {
+    ParsedReasoningField { field: _ } => [harness_unit_model_reasoning_field(unit: unit)]
+    InlineReasoning { end_token: _ } => [] as List<NonEmptyStr>
   }
 }
 
