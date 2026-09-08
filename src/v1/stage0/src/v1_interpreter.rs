@@ -4644,9 +4644,23 @@ impl InterpContext {
             .into_iter()
             .filter_map(|(name, count)| (count > 1).then_some(name))
             .collect();
+        // The graph registry is keyed on declaration identity (owner module path plus declared
+        // name). The interpreter resolves BARE names -- that is what a bare call or data reference
+        // in source is -- so it takes a leaf-keyed projection rather than the identity map. The
+        // projection reproduces exactly the map this field used to receive, since the graph
+        // registry itself was leaf-keyed with last-write-wins; the difference is that the
+        // ambiguity now lives in one derived index instead of in the authority every consumer
+        // shares.
+        let bare_item_registry: Rc<HashMap<String, Rc<ItemInfo>>> = Rc::new(
+            graph
+                .item_registry
+                .iter()
+                .map(|(_identity, info)| (info.name.clone(), info.clone()))
+                .collect(),
+        );
         Rc::new(PreparedScopeIndexes {
             modules: graph.modules.clone(),
-            item_registry: graph.item_registry.clone(),
+            item_registry: bare_item_registry,
             source_indices,
             emit_graph_info: graph.emit_graph_info.clone(),
             fn_nodes,
@@ -12082,6 +12096,7 @@ fn multi_module_compile_fixture_value(
         crate::cli_run::MultiModuleCompileFixtureOutcome::CompileCompleted {
             module_count,
             emitted_files,
+            resolved_rust_functions,
             diagnostics,
             source_digest,
             compiler_digest,
@@ -12092,6 +12107,30 @@ fn multi_module_compile_fixture_value(
                 (
                     ctx.sym("emitted_files"),
                     list_value(emitted_files.into_iter().map(str_value).collect::<Vec<_>>()),
+                ),
+                (
+                    ctx.sym("resolved_rust_functions"),
+                    list_value(
+                        resolved_rust_functions
+                            .into_iter()
+                            .map(|sig| Value::Record {
+                                type_name: ctx.sym("ResolvedRustFnSignature"),
+                                fields: Rc::new(sorted_fields(vec![
+                                    (ctx.sym("owner_module"), str_value(sig.owner_module)),
+                                    (ctx.sym("declaration_name"), str_value(sig.declaration_name)),
+                                    (
+                                        ctx.sym("ordered_parameter_names"),
+                                        list_value(
+                                            sig.ordered_parameter_names
+                                                .into_iter()
+                                                .map(str_value)
+                                                .collect::<Vec<_>>(),
+                                        ),
+                                    ),
+                                ])),
+                            })
+                            .collect::<Vec<_>>(),
+                    ),
                 ),
                 (ctx.sym("diagnostics"), rows(diagnostics)),
                 (ctx.sym("source_digest"), str_value(source_digest)),
@@ -12150,6 +12189,7 @@ fn reference_occurrence_binding_census_value(
             crate::cli_run::UnlistedImportBindingSource::ListedImport => "ListedImport",
             crate::cli_run::UnlistedImportBindingSource::PoolCoincidence => "PoolCoincidence",
             crate::cli_run::UnlistedImportBindingSource::DefinerResolvable => "DefinerResolvable",
+            crate::cli_run::UnlistedImportBindingSource::AmbiguousLeaf => "AmbiguousLeaf",
         }),
         fields: Rc::new(vec![]),
     };
@@ -12309,6 +12349,7 @@ fn unlisted_import_binding_source_value(
         crate::cli_run::UnlistedImportBindingSource::ListedImport => "ListedImport",
         crate::cli_run::UnlistedImportBindingSource::PoolCoincidence => "PoolCoincidence",
         crate::cli_run::UnlistedImportBindingSource::DefinerResolvable => "DefinerResolvable",
+        crate::cli_run::UnlistedImportBindingSource::AmbiguousLeaf => "AmbiguousLeaf",
     };
     Value::Variant {
         type_name: ctx.sym("UnlistedImportBindingSource"),

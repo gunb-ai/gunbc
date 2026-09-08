@@ -44,6 +44,11 @@ pub use crate::v1_compiler_infer_env::{
 pub use crate::v1_compiler_infer_env::{
     GlobalBareCandidate, GlobalBareLookupState, TypeBinding, TypeEnv,
 };
+pub use crate::v1_compiler_infer_items::item_kind;
+pub use crate::v1_compiler_infer_items::ItemKind;
+use crate::v1_compiler_infer_items::ItemKind::{
+    DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
+};
 pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
 pub use crate::v1_compiler_infer_resolve::{fn_type_param_names, peel_nominal_alias_identity};
 pub use crate::v1_compiler_infer_service::check_service_method_call_node;
@@ -65,15 +70,15 @@ pub use crate::v1_compiler_infer_sigs::{
     ResolvedFuncSig,
 };
 pub use crate::v1_compiler_infer_types::{
-    child_type_node, emit_map_has, enrich_kernel_type, instantiate_algebra_type,
-    is_declared_container_alias_spelling, kernel_profile_lookup, method_receiver_element_node,
-    node_is_keyed_collection, node_is_set_collection, nominal_type_ref, normalize_access_type_node,
-    reground_alias_carrier_identity,
+    child_type_node, emit_map_has, enrich_kernel_type, instantiate_algebra_field,
+    instantiate_algebra_type, is_declared_container_alias_spelling, kernel_profile_lookup,
+    method_receiver_element_node, node_is_keyed_collection, node_is_set_collection,
+    nominal_type_ref, normalize_access_type_node, reground_alias_carrier_identity,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallTargetIdentity::{
-    CallableTargetUndetermined, RuntimePrimitiveCall, SourceDeclarationCall,
+    CallableTargetUndetermined, LocallyBoundCall, RuntimePrimitiveCall, SourceDeclarationCall,
 };
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
@@ -85,9 +90,10 @@ use crate::v1_std_core::MethodSemantics::{
 };
 pub use crate::v1_std_core::ResolvedFormal;
 pub use crate::v1_std_core::{
-    authored_name_at, error_type, find_child_named, has_child_named, param_node_name_at,
-    param_node_type_expr, preserve_outer_optional_cardinality, qualified_last_segment,
-    with_optional_cardinality, with_required_cardinality,
+    authored_name_at, error_type, find_child_named, has_child_named,
+    is_interpreter_blocking_diagnostic, param_node_name_at, param_node_type_expr,
+    preserve_outer_optional_cardinality, qualified_last_segment, with_optional_cardinality,
+    with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     CallTargetIdentity, Cardinality, Connective, DeclaredCallableIdentity, ErrorNode,
@@ -248,11 +254,34 @@ pub fn resolved_declaration_call_target(
     }
 }
 
+pub fn census_declaration_identity(
+    type_env: Rc<TypeEnv>,
+    func_name: String,
+) -> Option<Rc<BorrowedCensusDecl>> {
+    match (*borrowed_census_decl(type_env.clone(), func_name.clone())).clone() {
+        BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
+            declaration: bd, ..
+        } => match crate::v1_compiler_infer_items::item_kind(bd.node.clone()) {
+            ItemKind::TypeItem => std::option::Option::None,
+            ItemKind::ServiceItem => std::option::Option::None,
+            ItemKind::DataItem => std::option::Option::None,
+            _ => Some(bd.clone()),
+        },
+        BorrowedCensusDeclLookup::BorrowedCensusDeclAmbiguous { candidates: _, .. } => {
+            std::option::Option::None
+        }
+        BorrowedCensusDeclLookup::BorrowedCensusDeclNotFound => std::option::Option::None,
+    }
+}
+
 pub fn resolved_plain_call_target_for_outcome(
     outcome: Rc<CallTargetOutcome>,
 ) -> Rc<CallTargetIdentity> {
     match (*outcome.clone()).clone() {
         CallTargetOutcome::DeclaredCallableResolved { declared: d, .. } => {
+            resolved_declaration_call_target(d.clone())
+        }
+        CallTargetOutcome::DeclaredCallableIdentityResolved { declared: d, .. } => {
             resolved_declaration_call_target(d.clone())
         }
         CallTargetOutcome::BuiltinCallableResolved {
@@ -261,8 +290,8 @@ pub fn resolved_plain_call_target_for_outcome(
             primitive_name: n.clone(),
             projected_from: std::option::Option::None,
         }),
-        CallTargetOutcome::LocallyBoundCallee { .. } => {
-            Rc::new(CallTargetIdentity::CallableTargetUndetermined)
+        CallTargetOutcome::LocallyBoundCallee { name: n, .. } => {
+            Rc::new(CallTargetIdentity::LocallyBoundCall { name: n.clone() })
         }
         CallTargetOutcome::CallableUnresolved { name: _, .. } => {
             Rc::new(CallTargetIdentity::CallableTargetUndetermined)
@@ -273,31 +302,6 @@ pub fn resolved_plain_call_target_for_outcome(
         CallTargetOutcome::LocallyBoundBindingMissing { name: _, .. } => {
             Rc::new(CallTargetIdentity::CallableTargetUndetermined)
         }
-    }
-}
-
-pub fn resolved_plain_call_target(
-    func_name: String,
-    sig_lookup: Rc<FuncSigLookup>,
-) -> Rc<CallTargetIdentity> {
-    match (*sig_lookup.clone()).clone() {
-        FuncSigLookup::FuncSigResolved { declared, .. } => {
-            resolved_declaration_call_target(declared.clone())
-        }
-        FuncSigLookup::FuncSigUnresolved => builtin_call_target_or_undetermined(func_name.clone()),
-        FuncSigLookup::FuncSigAmbiguous { candidates: _, .. } => {
-            Rc::new(CallTargetIdentity::CallableTargetUndetermined)
-        }
-    }
-}
-
-pub fn builtin_call_target_or_undetermined(func_name: String) -> Rc<CallTargetIdentity> {
-    match crate::v1_compiler_infer_method::infer_builtin_call_type(func_name.clone()) {
-        Some(_) => Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
-            primitive_name: func_name.clone(),
-            projected_from: std::option::Option::None,
-        }),
-        std::option::Option::None => Rc::new(CallTargetIdentity::CallableTargetUndetermined),
     }
 }
 
@@ -684,40 +688,6 @@ pub fn borrowed_census_callable_candidate(
     }
 }
 
-pub fn declaration_unbound_leaf_names(n: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Vec<String>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let name = crate::v1_std_core::authored_name_at(env.source_indices.clone(), n.clone());
-        let here = if ((((((n.connective.clone() == Connective::NoConnective)
-            && ((n.children.clone().len() as i64) == 0))
-            && (name.clone() != "".to_string()))
-            && !v1_rt::contains(name.clone(), ".".to_string()))
-            && !crate::std_types::is_kernel_type(name.clone()))
-            && (crate::v1_compiler_infer_env::lookup_binding_by_name_local(
-                env.clone(),
-                name.clone(),
-            ) == std::option::Option::None))
-        {
-            Rc::new(vec![name.clone()])
-        } else {
-            Rc::new(vec![])
-        };
-        v1_rt::concat(
-            here.clone(),
-            Rc::new({
-                let mut __result = Vec::new();
-                for ch in n.children.clone().iter().cloned() {
-                    __result.extend(
-                        (*declaration_unbound_leaf_names(ch.clone(), env.clone()))
-                            .iter()
-                            .cloned(),
-                    );
-                }
-                __result
-            }),
-        )
-    })
-}
-
 pub fn census_declaration_bound_formals(
     type_env: Rc<TypeEnv>,
     owner_module_path: String,
@@ -734,35 +704,9 @@ pub fn census_declaration_bound_formals(
             tp_names.clone(),
             type_env.source_indices.clone(),
         );
-        let return_type = match node.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved {
-                node: resolved_return,
-                ..
-            }) => resolved_return.clone(),
-            _ => match node.type_annotation.clone() {
-                Some(annotated_return) => annotated_return.clone(),
-                std::option::Option::None => error_type(),
-            },
-        };
-        let declaration_generic_names = v1_rt::concat(
-            tp_names.clone(),
-            v1_rt::concat(
-                declaration_unbound_leaf_names(return_type.clone(), declaration_env.clone()),
-                Rc::new({
-                    let mut __result = Vec::new();
-                    for p in node.params.clone().iter().cloned() {
-                        __result.extend(
-                            (*declaration_unbound_leaf_names(
-                                crate::v1_std_core::param_node_type_expr(p.clone()),
-                                declaration_env.clone(),
-                            ))
-                            .iter()
-                            .cloned(),
-                        );
-                    }
-                    __result
-                }),
-            ),
+        let declaration_generic_names = crate::v1_compiler_infer_env::borrowed_generic_param_names(
+            node.params.clone(),
+            type_env.source_indices.clone(),
         );
         Rc::new({
             let mut __result = Vec::new();
@@ -813,13 +757,28 @@ pub fn census_declaration_bound_formals(
                             crate::v1_compiler_infer_env::declaration_substitution_basis(
                                 declared_type.clone(),
                                 declaration_env.clone(),
-                                declaration_generic_names.clone(),
+                                v1_rt::concat(
+                                    tp_names.clone(),
+                                    Rc::new(v1_rt::map_keys(&declaration_generic_names)),
+                                ),
                             ),
                     })
                 });
             }
             __result
         })
+    }
+}
+
+pub fn declaring_module_for_local_binding(type_env: Rc<TypeEnv>, name: String) -> String {
+    match (*borrowed_census_decl(type_env.clone(), name.clone())).clone() {
+        BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
+            declaration: bd, ..
+        } => bd.owner_module_path.clone(),
+        BorrowedCensusDeclLookup::BorrowedCensusDeclAmbiguous { candidates: _, .. } => {
+            type_env.module_path.clone()
+        }
+        BorrowedCensusDeclLookup::BorrowedCensusDeclNotFound => type_env.module_path.clone(),
     }
 }
 
@@ -836,7 +795,10 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                 ) {
                     Some(binding) => Rc::new(BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
                         declaration: Rc::new(BorrowedCensusDecl {
-                            owner_module_path: type_env.module_path.clone(),
+                            owner_module_path: declaring_module_for_local_binding(
+                                type_env.clone(),
+                                name.clone(),
+                            ),
                             node: binding.resolved.clone(),
                         }),
                     }),
@@ -1546,15 +1508,59 @@ pub fn lookup_structural_method(
             }
         } else {
             {
+                let receiver_name = crate::v1_std_core::authored_name_at(
+                    source_indices.clone(),
+                    receiver_type.clone(),
+                );
                 let enriched = crate::v1_compiler_infer_types::enrich_kernel_type(
-                    crate::v1_std_core::authored_name_at(
-                        source_indices.clone(),
-                        receiver_type.clone(),
-                    ),
+                    receiver_name.clone(),
                     receiver_type.clone(),
                     source_indices.clone(),
                 );
-                if ((enriched.ty.clone().connective.clone() == Connective::Conj)
+                let profile =
+                    crate::v1_compiler_infer_types::kernel_profile_lookup(receiver_name.clone());
+                let template_match = match profile.clone() {
+                    Some(p) => {
+                        let templates =
+                            crate::std_algebra::algebra_templates_for_profile(p.clone());
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for t in templates.iter().cloned() {
+                                if (t.name.clone() == method_name.clone()) {
+                                    __result.push(t);
+                                }
+                            }
+                            __result
+                        })
+                        .first()
+                        .cloned()
+                    }
+                    std::option::Option::None => std::option::Option::None,
+                };
+                let method_diagnostics = match template_match.clone() {
+                    Some(t) => {
+                        let field_type = crate::v1_compiler_infer_types::instantiate_algebra_field(
+                            t.clone(),
+                            receiver_type.clone(),
+                            source_indices.clone(),
+                        );
+                        field_type.diagnostics.clone()
+                    }
+                    std::option::Option::None => Rc::new(vec![]),
+                };
+                let blocking_method_diagnostics = Rc::new({
+                    let mut __result = Vec::new();
+                    for d in method_diagnostics.iter().cloned() {
+                        if crate::v1_std_core::is_interpreter_blocking_diagnostic(
+                            d.diagnostic.clone(),
+                        ) {
+                            __result.push(d);
+                        }
+                    }
+                    __result
+                });
+                if ((((blocking_method_diagnostics.clone().len() as i64) == 0)
+                    && (enriched.ty.clone().connective.clone() == Connective::Conj))
                     && ((enriched.ty.clone().children.clone().len() as i64) > 0))
                 {
                     {
@@ -1565,32 +1571,6 @@ pub fn lookup_structural_method(
                         );
                         match base_result.clone() {
                             Some(mfr) => {
-                                let profile = crate::v1_compiler_infer_types::kernel_profile_lookup(
-                                    crate::v1_std_core::authored_name_at(
-                                        source_indices.clone(),
-                                        receiver_type.clone(),
-                                    ),
-                                );
-                                let template_match = match profile.clone() {
-                                    Some(p) => {
-                                        let templates =
-                                            crate::std_algebra::algebra_templates_for_profile(
-                                                p.clone(),
-                                            );
-                                        Rc::new({
-                                            let mut __result = Vec::new();
-                                            for t in templates.iter().cloned() {
-                                                if (t.name.clone() == method_name.clone()) {
-                                                    __result.push(t);
-                                                }
-                                            }
-                                            __result
-                                        })
-                                        .first()
-                                        .cloned()
-                                    }
-                                    std::option::Option::None => std::option::Option::None,
-                                };
                                 let resolution = match template_match.clone() {
                                     Some(t) => Some(Rc::new(MethodFieldResult {
                                         field_node: mfr.field_node.clone(),
@@ -1603,19 +1583,19 @@ pub fn lookup_structural_method(
                                 };
                                 Rc::new(StructuralMethodLookup {
                                     resolution: resolution.clone(),
-                                    kernel_diagnostics: enriched.diagnostics.clone(),
+                                    kernel_diagnostics: method_diagnostics.clone(),
                                 })
                             }
                             std::option::Option::None => Rc::new(StructuralMethodLookup {
                                 resolution: std::option::Option::None,
-                                kernel_diagnostics: enriched.diagnostics.clone(),
+                                kernel_diagnostics: method_diagnostics.clone(),
                             }),
                         }
                     }
                 } else {
                     Rc::new(StructuralMethodLookup {
                         resolution: std::option::Option::None,
-                        kernel_diagnostics: enriched.diagnostics.clone(),
+                        kernel_diagnostics: method_diagnostics.clone(),
                     })
                 }
             }

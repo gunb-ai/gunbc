@@ -8,14 +8,13 @@ import std.upsert_decision {
   Refuse,
 }
 import std.realization_reconcile {
-  Reconciliation,
   ReadObserved,
   ReadAbsent,
   Grounds,
   DoesNotGround,
-  reconcile_grounded,
   ReconciledEffect,
   reconcile_effect,
+  Application,
 }
 
 type EnsurePolicy
@@ -36,7 +35,7 @@ type EnsurePlan<P>
 // optional typed convergence plan. ensure_decide projects those facts onto the existing
 // std.upsert_decision authority: satisfied -> Noop; known absent/drift + authorized plan -> Apply;
 // observe-only, no-plan, and inaccessible -> Refuse. Effects remain capability-specific adapters.
-// ensure_readback then projects the independent post-apply observation through
+// the caller-supplied effective read is classified through
 // std.realization_reconcile, so an Apply receipt cannot claim convergence without grounded
 // readback. Fine grain means one requirement/observation/receipt per semantic capability; it does
 // not mean one ensure function per executable.
@@ -80,45 +79,33 @@ fn ensure_decide<P, E>(
   }
 }
 
-fn ensure_readback<E>(
-  applied: Bool,
-  observation: EnsureObservation<E>,
-  observation_satisfies: Bool,
-  mismatch_reason: String,
-) -> Reconciliation<Bool, E> {
-  match observation {
-    EnsureObserved { evidence } =>
-      reconcile_grounded(
-        apply_effect: applied,
-        show_read: ReadObserved { value: evidence },
-        grounding: if observation_satisfies {
-          Grounds { evidence: evidence }
-        } else {
-          DoesNotGround { reason: mismatch_reason }
-        },
-      )
-    EnsureAbsent { reason } =>
-      reconcile_grounded(
-        apply_effect: applied,
-        show_read: ReadAbsent { reason: reason },
-        grounding: DoesNotGround { reason: reason },
-      )
-    EnsureInaccessible { reason } =>
-      reconcile_grounded(
-        apply_effect: applied,
-        show_read: ReadAbsent { reason: reason },
-        grounding: DoesNotGround { reason: reason },
-      )
-  }
-}
-
 // The whole lifecycle as ONE call, so that assembling it is no longer the caller's job to remember.
-// ensure_decide and ensure_readback remain exported because domains that already own the sequence
-// call them directly; what this adds is the single route whose OUTPUT is a sealed receipt, so a sink
-// can demand ReconciledEffect and thereby demand that classify, policy, apply and independent
-// readback all ran. The post-observation is a SECOND observation supplied by the caller — the same
-// observation value passed twice is a caller defect this function cannot see, and is what the
-// independent-readback witnesses in gunbc.readback_independence exist to catch.
+// ensure_decide remains exported because domains that already own the sequence call it directly.
+// What this adds is the single route whose OUTPUT is a sealed receipt, so a sink can demand
+// ReconciledEffect and thereby demand that the decision inputs, the application arm, the
+// effective-read report and the grounding report were all SUPPLIED AND CLASSIFIED.
+//
+// WHAT THIS DOES NOT ESTABLISH. It assembles a report in one call; it does not EXECUTE the lifecycle.
+// `before`, `after` and both satisfaction predicates are caller-supplied, so a caller that observes
+// nothing and asserts everything still gets a report. The post-observation is a SECOND observation
+// supplied by the caller -- the same observation value passed twice is a caller defect this function
+// cannot see, and is what the witnesses in gunbc.readback_independence exist to catch. None of these
+// inputs is INDEPENDENT in any sense this module can check: independence is not a property a report
+// carries, so it cannot itself be reported.
+//
+// TWO THINGS IT IS TEMPTING TO CLAIM HERE, and neither holds. That a sink demanding ReconciledEffect
+// thereby demands the lifecycle "all ran": it does not, and the paragraph above is the authority.
+// And that a caller can no longer get a CONVERGED receipt "merely by writing a Bool": picking the
+// Applied arm is exactly as cheap as writing true, and an evidence payload on that arm would not
+// change it, because no fold reads one. Both describe a rename as a guarantee.
+//
+// What the carrier actually buys is the REFUSAL TABLE in std.realization_reconcile:
+// Noop-with-an-application and Refuse-with-an-application are lifecycle contradictions that refuse.
+// That is a real property and it is the only one claimed here.
+//
+// It is NOT proof the decided plan is the one that ran — std cannot witness that without a law from
+// the same caller it would be checking, so the plan-to-evidence binding belongs to the domain and is
+// discharged by a domain carrier the effect authority alone can mint.
 
 fn ensure_reconcile<P, E>(
   policy: EnsurePolicy,
@@ -126,7 +113,7 @@ fn ensure_reconcile<P, E>(
   before_satisfies: Bool,
   mismatch_reason: String,
   plan: EnsurePlan<P>,
-  applied: Bool,
+  application: Application,
   after: EnsureObservation<E>,
   after_satisfies: Bool,
   after_mismatch_reason: String,
@@ -141,7 +128,7 @@ fn ensure_reconcile<P, E>(
           mismatch_reason: mismatch_reason,
           plan: plan,
         ),
-        applied: applied,
+        application: application,
         show_read: ReadObserved { value: evidence },
         grounding: if after_satisfies {
           Grounds { evidence: evidence }
@@ -158,7 +145,7 @@ fn ensure_reconcile<P, E>(
           mismatch_reason: mismatch_reason,
           plan: plan,
         ),
-        applied: applied,
+        application: application,
         show_read: ReadAbsent { reason: reason },
         grounding: DoesNotGround { reason: reason },
       )
@@ -171,7 +158,7 @@ fn ensure_reconcile<P, E>(
           mismatch_reason: mismatch_reason,
           plan: plan,
         ),
-        applied: applied,
+        application: application,
         show_read: ReadAbsent { reason: reason },
         grounding: DoesNotGround { reason: reason },
       )

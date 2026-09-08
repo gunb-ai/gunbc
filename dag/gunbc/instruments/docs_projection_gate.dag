@@ -25,8 +25,9 @@ fn write_docs_projection(path: String, content: String) -> ProcessExit {
 // gunbc.generated_artifact_emit pulls every generator (plans, workflows, CAD, stage0 mirrors).
 // This entry still imports gunbc.generated_artifact for artifact_path only — the location
 // authority — not generated_artifact_emit. claim_executor --required-regen never owns these
-// files: is_compared_generated_basename is ends_with .rs. That ownership gap is the motive;
-// this entry returns ProcessExit over the two ledger paths.
+// files: is_compared_generated_basename is ends_with .rs. That ownership gap is the motive.
+// regen writes both ledger paths locally. main agrees only the committed rung-drop ledger:
+// agreeing DesignFailureModesArtifact would be permanently green (NotCommitted).
 func regen() -> ProcessExit {
   let first = write_docs_projection(
     path: artifact_path(a: DesignFailureModesArtifact),
@@ -52,16 +53,13 @@ fn agree_one(path: String, expected: String) -> ProcessExit {
   }
 }
 
+// A NotCommitted ledger has no committed bytes to agree. This gate does not call agree for
+// DesignFailureModesArtifact: that would be permanently green. Regen still writes a local copy.
+// Requiring a checkout of docs/design-failure-modes.md would restore the 1.19MB merge surface.
+
 func main() -> ProcessExit {
-  let first = agree_one(
-    path: artifact_path(a: DesignFailureModesArtifact),
-    expected: expected_design_failure_modes_md()
+  agree_one(
+    path: artifact_path(a: DesignRungDropsArtifact),
+    expected: expected_design_rung_drops_md()
   )
-  match first {
-    ExitSuccess => agree_one(
-      path: artifact_path(a: DesignRungDropsArtifact),
-      expected: expected_design_rung_drops_md()
-    )
-    ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
-  }
 }
