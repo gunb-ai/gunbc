@@ -26,9 +26,6 @@ import extdeps.github.workflow_runs {
   TimedOut,
   ActionRequired,
   StartupFailure,
-  workflow_run_status_wire_label,
-  workflow_run_conclusion_wire_label,
-}
 import extdeps.clock { Clock }
 
 type SupersededRunPair {
@@ -82,8 +79,8 @@ type CancelledRunJobStanding {
 
 type RefreshedPair {
   pair: SupersededRunPair
-  dead_status: String
-  dead_conclusion: String?
+  dead_status: WorkflowRunStatus
+  dead_conclusion: WorkflowRunConclusion?
   dead_updated_at: Timestamp
   dead_job_count: Int
   live_job_count: Int
@@ -172,16 +169,11 @@ fn collect_runs_in_window(
       created_range: created_range,
       page: page,
     )
-    let page_runs = response.result.workflow_runs
-    let page_empty = match page_runs {
-      Empty {} => true
-      Cons { head: _, tail: _ } => false
-    }
-    if page_empty {
-      CollectionComplete { runs: accumulated }
-    } else {
-      let all_runs = accumulated |> concat(page_runs)
-      collect_runs_in_window(
+    match response.result.workflow_runs {
+      Empty {} => CollectionComplete { runs: accumulated }
+      Cons { head: _, tail: _ } => {
+        let all_runs = accumulated |> concat(response.result.workflow_runs)
+        collect_runs_in_window(
         auth_token: auth_token,
         owner: owner,
         repo: repo,
@@ -364,14 +356,16 @@ fn dead_time_under_hold_seconds(prior_jobs_completed_at: Timestamp?, terminal_la
   }
 }
 
-fn group_hold_after_jobs_seconds(last_job_completed_at: Timestamp?, dead_updated_at: Timestamp, dead_status: String) -> DurationResult {
-  if dead_status == workflow_run_status_wire_label(status: Completed) {
-    match last_job_completed_at {
-      Present { value: completed_at } =>
-        timestamp_diff_seconds(end: dead_updated_at, start: completed_at)
-      Absent => DurationInsufficientData
-    }
-  } else { DurationInsufficientData }
+fn group_hold_after_jobs_seconds(last_job_completed_at: Timestamp?, dead_updated_at: Timestamp, dead_status: WorkflowRunStatus) -> DurationResult {
+  match dead_status {
+    Completed =>
+      match last_job_completed_at {
+        Present { value: completed_at } =>
+          timestamp_diff_seconds(end: dead_updated_at, start: completed_at)
+        Absent => DurationInsufficientData
+      }
+    _ => DurationInsufficientData
+  }
 }
 
 fn refresh_pair(
@@ -400,19 +394,14 @@ fn refresh_pair(
     run_id: pair.live_head_run as String,
   )
   let dead_run = dead_run_detail.run
-  let dead_status_label = workflow_run_status_wire_label(status: dead_run.status)
-  let dead_conclusion_opt = match dead_run.conclusion {
-    Present { value: c } => Present { value: workflow_run_conclusion_wire_label(conclusion: c) }
-    Absent => none
-  }
   let dead_started = earliest_started_at(jobs: dead_jobs.result.jobs)
   let live_created = earliest_created_at(jobs: live_jobs.result.jobs)
   let last_job = last_completed_job(jobs: dead_jobs.result.jobs)
   let prior_completion = prior_jobs_completed_at(last_job: last_job, all_jobs: dead_jobs.result.jobs)
   RefreshedPair {
     pair: pair,
-    dead_status: dead_status_label,
-    dead_conclusion: dead_conclusion_opt,
+    dead_status: dead_run.status,
+    dead_conclusion: dead_run.conclusion,
     dead_updated_at: dead_run.updated_at,
     dead_job_count: count_jobs(jobs: dead_jobs.result.jobs),
     live_job_count: count_jobs(jobs: live_jobs.result.jobs),
