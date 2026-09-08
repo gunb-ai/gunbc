@@ -599,6 +599,9 @@ fn internal_expr_error_node(message: String, span: SourceSpan) -> Node {
 // str_bindings hit) and resolving a larger entry over the same bytes (shared intern /
 // census / overlay can miss). It is not the three refuted bind stories (foreign unit
 // arm as competitor, Unique/Ambiguous owner-count, global_bare Conj insert).
+// A HIT of lookup_type_by_name must still win: substituting the locals node there
+// left Int fields as NoConnective leaves (span in the consumer) and emitted
+// OperandIdentityUnavailableAt for `+` in std.import. Locals fill only the miss.
 fn local_coproduct_owner_from_locals(scope: InferScope, name: String) -> Node? {
   match map_get(scope.locals, name) {
     Present { value: binding } =>
@@ -8572,17 +8575,12 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
   } else {
     let type_lookup = lookup_type_by_name(env: scope.type_env, name: type_name.value)
     let owner_from_locals = local_coproduct_owner_from_locals(scope: scope, name: type_name.value)
-    let local_variant_parent = match owner_from_locals {
-      Present { value: owner } =>
-        Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: owner) }
+    let local_variant_parent = match lookup_variant_parent_enum(scope: scope, name: type_name.value) {
+      Present { value: p } => Present { value: p }
       Absent =>
-        match lookup_variant_parent_enum(scope: scope, name: type_name.value) {
-          Present { value: p } => Present { value: p }
-          Absent =>
-            match variant_owner_node(scope: scope, name: type_name.value) {
-              Present { value: owner } => Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: owner) }
-              Absent => record_lit_parent_enum_from_expected(type_name: type_name.value, expected: expected, scope: scope)
-            }
+        match variant_owner_node(scope: scope, name: type_name.value) {
+          Present { value: owner } => Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: owner) }
+          Absent => record_lit_parent_enum_from_expected(type_name: type_name.value, expected: expected, scope: scope)
         }
     }
     let effective_lookup = match type_lookup {
@@ -8608,21 +8606,19 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
         binding_declares_name(binding: name_binding, name: type_name.value, source_indices: scope.type_env.source_indices)
       Absent => false
     }
-    let raw_resolved = match owner_from_locals {
-      Present { value: owner } =>
-        let parent_name = authored_name_at(source_indices: scope.type_env.source_indices, node: owner)
-        if parent_name == "Optional" || type_name_declares_own_type { variant_lookup_resolved } else { owner }
-      Absent =>
-        match local_variant_parent {
-          Present { value: parent_name } =>
-            if parent_name == "Optional" || type_name_declares_own_type { variant_lookup_resolved } else {
-              match lookup_type_by_name(env: scope.type_env, name: parent_name) {
-                Present { value: parent_decl } => parent_decl
+    let raw_resolved = match local_variant_parent {
+      Present { value: parent_name } =>
+        if parent_name == "Optional" || type_name_declares_own_type { variant_lookup_resolved } else {
+          match lookup_type_by_name(env: scope.type_env, name: parent_name) {
+            Present { value: parent_decl } => parent_decl
+            Absent =>
+              match owner_from_locals {
+                Present { value: owner } => owner
                 Absent => variant_lookup_resolved
               }
-            }
-          Absent => variant_lookup_resolved
+          }
         }
+      Absent => variant_lookup_resolved
     }
     let expected_optional_parent = Present { value: "Optional" }
     let is_present_ctor = type_name.value == "Present" && local_variant_parent == expected_optional_parent
