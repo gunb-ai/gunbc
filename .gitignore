@@ -74,6 +74,10 @@ __pycache__/
 # regenerable from committed source — symlink to target/release created by codegen
 /bin/
 
+# --- Derived failure-mode roster [owner: gunbc.recurring_failure_mode] ---
+# regenerable from committed source — membership list derived from sibling row files before compile; not a second authored authority
+/dag/gunbc/recurring_failure_mode/roster.dag
+
 # --- Generator stamp files [owner: gunbc.generated_artifact] ---
 # regenerable from committed source — producer-centric generator stamps
 .*-stamp
@@ -162,6 +166,7 @@ src/v2/test/claim/manual/sg2_scratch_probe.dag
 
 # --- Generated artifacts (gitignored-by-default, derived from generated_artifact_registry) ---
 # Regenerable; not committed. Whitelist: ci.yml, .gitignore, .md docs (ROADMAP.md, DESIGN.md, docs/plans/).
+/docs/design-failure-modes.md
 /.github/fleet-runner-deploy.manifest
 /manufacturing/hole_diameter_ladder_r1.py
 /provisioning/srv3/user-data
