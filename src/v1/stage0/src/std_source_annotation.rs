@@ -178,7 +178,7 @@ pub fn advance_line_prefix_indent_only(previous: bool, code_points: Rc<Vec<i64>>
     code_points
         .iter()
         .cloned()
-        .fold(previous.clone(), |acc: _, cp: i64| {
+        .fold(previous.clone(), |acc: bool, cp: i64| {
             if code_point_is_line_feed(cp.clone()) {
                 true
             } else {
@@ -265,12 +265,10 @@ pub fn module_root_pick_step(
 pub fn module_root_subject(
     subjects: Rc<Vec<Rc<AnnotationSubject>>>,
 ) -> Option<Rc<AnnotationSubject>> {
-    subjects
-        .iter()
-        .cloned()
-        .fold(std::option::Option::None, |acc: _, row: _| {
-            module_root_pick_step(acc.clone(), row.clone())
-        })
+    subjects.iter().cloned().fold(
+        std::option::Option::None,
+        |acc: _, row: Rc<AnnotationSubject>| module_root_pick_step(acc.clone(), row.clone()),
+    )
 }
 
 pub fn earliest_member_start_after(
@@ -281,7 +279,7 @@ pub fn earliest_member_start_after(
     subjects
         .iter()
         .cloned()
-        .fold(fallback.clone(), |best: i64, row: _| {
+        .fold(fallback.clone(), |best: i64, row: Rc<AnnotationSubject>| {
             if ((row.span.clone().start.clone() > after.clone())
                 && (row.span.clone().start.clone() < best.clone()))
             {
@@ -342,7 +340,7 @@ pub fn annotation_subject_pick(
                 contained: false,
                 following: std::option::Option::None,
             }),
-            |acc: _, subject: _| {
+            |acc: Rc<AnnotationSubjectPick>, subject: Rc<AnnotationSubject>| {
                 if ((origin.start.clone() >= subject.span.clone().start.clone())
                     && (origin.end.clone() <= subject.span.clone().end.clone()))
                 {
@@ -401,7 +399,12 @@ pub fn keyed_annotation_rows_agree(
                 rest: right.clone(),
                 agreed: true,
             }),
-            |acc: _, row: Rc<KeyedAnnotationRow>| match acc.rest.clone().first().cloned() {
+            |acc: Rc<KeyedAnnotationRowWalk>, row: Rc<KeyedAnnotationRow>| match acc
+                .rest
+                .clone()
+                .first()
+                .cloned()
+            {
                 std::option::Option::None => Rc::new(KeyedAnnotationRowWalk {
                     rest: Rc::new(vec![]),
                     agreed: false,
@@ -597,7 +600,9 @@ pub fn attach_annotations(
                 pending: std::option::Option::None,
                 pending_adjacent: false,
             }),
-            |acc: _, capture: _| annotation_attach_step(acc, capture.clone(), subjects.clone()),
+            |acc: Rc<AnnotationAttachAcc>, capture: Rc<NormalizedAnnotationCapture>| {
+                annotation_attach_step(acc, capture.clone(), subjects.clone())
+            },
         );
         Rc::new(AnnotationAttachmentResult {
             graph: Rc::new(SourceAnnotationGraph {

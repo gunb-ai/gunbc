@@ -8,7 +8,6 @@ import std.effects {
 }
 import std.realization_schedule {
   RealizationPlan,
-  RealizationObjective,
   Runnable,
   RunnableSingleClaim,
   RunnableDiscoveryBatch,
