@@ -46,7 +46,10 @@ type JitAdmissionAxisStanding
   = AxisRequired { checker: JitAdmissionChecker }
   | AxisDeferred { trigger: NonEmptyStr }
   | AxisDissolvedInto { into: JitAdmissionAxis }
-  | AxisDissolvedIntoUpstreamMint { conflict_status: Int, reason: NonEmptyStr }
+  | AxisDissolvedIntoUpstreamMint {
+      conflict_status: Int
+      reason: NonEmptyStr
+    }
 
 fn gunbai_ci_installation_token_url() -> String {
   github_app_installation_access_token_url(
@@ -62,10 +65,7 @@ fn jit_admission_axis_standing(axis: JitAdmissionAxis) -> JitAdmissionAxisStandi
   match axis {
     SignatureAxis => AxisRequired { checker: HostEnvelopeNonemptyAndFresh }
     ExpiryAxis => AxisRequired { checker: HostEnvelopeNonemptyAndFresh }
-    ReplayAxis => AxisDissolvedIntoUpstreamMint {
-      conflict_status: jit_config_conflict_status,
-      reason: "generate-jitconfig creates one runner identity; a second mint of the same name conflicts, and the blob is not a reusable secret",
-    }
+    ReplayAxis => AxisDissolvedIntoUpstreamMint { conflict_status: jit_config_conflict_status, reason: "generate-jitconfig creates one runner identity; a second mint of the same name conflicts, and the blob is not a reusable secret" }
     UnitBindingAxis => AxisDissolvedInto { into: AttemptBindingAxis }
     BootBindingAxis => AxisDissolvedInto { into: AttemptBindingAxis }
     AttemptBindingAxis => AxisRequired { checker: GitHubMintRequestName }
@@ -113,7 +113,10 @@ fn axis_mint_observability(axis: JitAdmissionAxis) -> AxisMintObservability {
 
 type MintSurfaceLiveCensus
   = LiveCensusUnmet { question: MintSurfaceCoverageQuestion }
-  | LiveCensusDischarged { question: MintSurfaceCoverageQuestion, receipt: NonEmptyStr }
+  | LiveCensusDischarged {
+      question: MintSurfaceCoverageQuestion
+      receipt: NonEmptyStr
+    }
 
 data generate_jitconfig_201_expires_at_coverage: MintSurfaceLiveCensus = LiveCensusUnmet {
   question: GenerateJitconfig201ExpiresAtPresence,
