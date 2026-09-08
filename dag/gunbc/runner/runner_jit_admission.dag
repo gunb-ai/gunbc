@@ -85,6 +85,16 @@ fn jit_admission_axis_is_deferred(axis: JitAdmissionAxis) -> Bool {
   axis_standing_is_deferred(standing: jit_admission_axis_standing(axis: axis))
 }
 
+fn attempt_binding_is_required_on_mint_name() -> Bool {
+  match jit_admission_axis_standing(axis: AttemptBindingAxis) {
+    AxisRequired { checker: GitHubMintRequestField { field: JitMintName } } => true
+    AxisRequired { checker: _ } => false
+    AxisDeferred { trigger: _ } => false
+    AxisDissolvedInto { into: _ } => false
+    AxisDissolvedIntoUpstreamMint { reason: _ } => false
+  }
+}
+
 // WHAT EACH AXIS NEEDS FROM THE MINT SURFACE, so a live read is a field grant, not "read the mint".
 // Cited from the six-axis table in the displacement analysis (gunbc#10823): binding axes cannot be
 // checked by parsing the opaque blob; they are mint-side obligations if they are obligations at all.
@@ -219,10 +229,6 @@ fn axis_awaits_live_census(axis: JitAdmissionAxis) -> Bool {
 type MintSurfaceLiveCensus
   = LiveCensusUnmet { question: MintSurfaceCoverageQuestion }
   | LiveCensusDischarged { question: MintSurfaceCoverageQuestion, receipt: NonEmptyStr }
-
-fn mint_surface_live_census(question: MintSurfaceCoverageQuestion) -> MintSurfaceLiveCensus {
-  LiveCensusUnmet { question: question }
-}
 
 fn mint_surface_live_census_is_unmet(census: MintSurfaceLiveCensus) -> Bool {
   match census {

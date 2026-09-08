@@ -33,8 +33,17 @@ import gunbc.runner_microvm_host_ready {
 import gunbc.command_runner {
   ProcessObservation, run_shell_command_observe, run_shell_commands, LocalExec,
 }
+import gunbc.runner.runner_host_image_placeability {
+  HostImagePlaceability, PlaceabilityRefused, ExecutedFromCheckoutOrNetworkMount,
+}
 
 data runner_microvm_boot_probe_disposition: Disposition = SingleAuthority
+
+// A GREEN GUEST BOOT PROBE IS NOT HOST-IMAGE PLACEABILITY. It runs a copied guest rootfs from a
+// checkout-built artifact, not a gunbc binary carried in the host image on tmpfs at host boot.
+fn guest_boot_probe_host_image_placeability() -> HostImagePlaceability {
+  PlaceabilityRefused { cause: ExecutedFromCheckoutOrNetworkMount }
+}
 
 // THE BOOT IS THE MEASUREMENT THE GUEST IMAGE MODULE PROMISED, AND IT IS THE ONLY THING THAT CAN
 // SETTLE IT. gunbc.runner_guest_image builds a root filesystem WITHOUT ROOT, and states in full what

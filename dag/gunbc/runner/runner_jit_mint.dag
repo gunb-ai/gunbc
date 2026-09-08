@@ -7,6 +7,7 @@ import extdeps.github.actions_jit_runner {
   JitRunnerConfigRequest, JitRunnerName, JitRunnerGroupId, JitRunnerLabel, JitWorkFolder,
   org_generate_jitconfig_path,
 }
+import gunbc.runner.runner_jit_admission { attempt_binding_is_required_on_mint_name }
 import gunbc.auth.github_apps { GitHubAppControlPlaneState }
 import gunbc.auth.github_credential {
   GitHubCredentialAuthority, CredentialCapability, credential_authorizes, unsatisfied_capabilities,
@@ -42,6 +43,7 @@ type JitMintPlan
       organization: NonEmptyStr
       unsatisfied: List<CredentialCapability>
     }
+  | JitMintRefusedAttemptUnbound { cause: String }
 
 // THE RUNNER NAME IS THE UNIT NAME, not a fresh identifier minted beside it. A second naming scheme
 // for one attempt is a nickname (DESIGN §3), and it is the expensive kind: an orphaned GitHub runner
@@ -91,15 +93,21 @@ fn plan_jit_mint(
            control_plane: control_plane,
            effect: GenerateOrganizationJitConfig { organization: organization }
          ) {
-        JitMintAuthorized {
-          attempt: attempt,
-          endpoint_path: org_generate_jitconfig_path(org_login: organization.login),
-          request: jit_config_request_for(
+        if attempt_binding_is_required_on_mint_name() {
+          JitMintAuthorized {
             attempt: attempt,
-            runner_group_id: runner_group_id,
-            labels: labels,
-          ),
-          drive_destination: drive,
+            endpoint_path: org_generate_jitconfig_path(org_login: organization.login),
+            request: jit_config_request_for(
+              attempt: attempt,
+              runner_group_id: runner_group_id,
+              labels: labels,
+            ),
+            drive_destination: drive,
+          }
+        } else {
+          JitMintRefusedAttemptUnbound {
+            cause: "attempt-binding is not required on the mint name, so a planned credential would not be the attempt's identity",
+          }
         }
       } else {
         JitMintRefusedCredential {

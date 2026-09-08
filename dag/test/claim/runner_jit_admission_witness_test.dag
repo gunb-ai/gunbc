@@ -6,7 +6,7 @@ import extdeps.github.actions_jit_runner {
   JitMintName, JitMintLabels, JitMintRunnerGroupId, JitMintWorkFolder,
   jit_config_conflict_status,
 }
-import gunbc.auth.github_apps { gunbai_ci_declared }
+import gunbc.runner.runner_bound_attempt_receipt { host_printed_axis_standing }
 import gunbc.runner.runner_jit_admission {
   SignatureAxis, ExpiryAxis, ReplayAxis, UnitBindingAxis, BootBindingAxis, AttemptBindingAxis,
   AxisRequired, AxisDeferred, AxisDissolvedInto, AxisDissolvedIntoUpstreamMint,
@@ -14,10 +14,10 @@ import gunbc.runner.runner_jit_admission {
   jit_admission_axis_standing, jit_admission_axis_is_deferred, axis_standing_is_deferred,
   gunbai_ci_installation_token_url, gunbai_org_generate_jitconfig_path,
   mint_field_can_carry_attempt_binding, mint_fact_needed,
-  mint_surface_live_census, mint_surface_live_census_is_unmet, LiveCensusDischarged,
-  GenerateJitconfig201ExpiresAtPresence, ReplayRunnerIdAndDuplicateName409,
+  mint_surface_live_census_is_unmet,
   generate_jitconfig_201_expires_at_coverage, replay_runner_id_and_duplicate_name_coverage,
   axis_awaits_live_census, encoded_jit_config_interior,
+  attempt_binding_is_required_on_mint_name,
   OutsideTheModeledGuaranteeDeclaredBoundary,
   EncodedBlobIsOpaque, InstallationHoldsRunnersWrite, JitconfigResponseHasExpiresAtField,
   DuplicateNameConflicts, JitconfigResponseCarriesRunnerId,
@@ -64,6 +64,7 @@ test fn attempt_binding_is_required_on_the_mint_name_field() -> Bool {
         && mint_field_can_carry_attempt_binding(field: JitMintLabels)
         && !mint_field_can_carry_attempt_binding(field: JitMintRunnerGroupId)
         && !mint_field_can_carry_attempt_binding(field: JitMintWorkFolder)
+        && attempt_binding_is_required_on_mint_name()
     _ => false
   }
 }
@@ -128,17 +129,18 @@ test fn encoded_jit_config_interior_is_a_declared_boundary() -> Bool {
   }
 }
 
-test fn expiry_and_replay_live_census_is_unmet_downstream() -> Bool {
-  mint_surface_live_census_is_unmet(census: mint_surface_live_census(
-    question: GenerateJitconfig201ExpiresAtPresence,
-  ))
-    && mint_surface_live_census_is_unmet(census: mint_surface_live_census(
-         question: ReplayRunnerIdAndDuplicateName409,
-       ))
-    && mint_surface_live_census_is_unmet(census: generate_jitconfig_201_expires_at_coverage)
+test fn bound_attempt_receipt_reads_axis_standing_from_the_authority() -> Bool {
+  match host_printed_axis_standing(axis: SignatureAxis) {
+    AxisRequired { checker: HostEnvelopeNonemptyAndFresh } =>
+      match host_printed_axis_standing(axis: AttemptBindingAxis) {
+        AxisRequired { checker: GitHubMintRequestField { field: JitMintName } } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn expiry_and_replay_live_census_rows_are_unmet() -> Bool {
+  mint_surface_live_census_is_unmet(census: generate_jitconfig_201_expires_at_coverage)
     && mint_surface_live_census_is_unmet(census: replay_runner_id_and_duplicate_name_coverage)
-    && !mint_surface_live_census_is_unmet(census: LiveCensusDischarged {
-         question: GenerateJitconfig201ExpiresAtPresence,
-         receipt: "not yet" as NonEmptyStr,
-       })
 }

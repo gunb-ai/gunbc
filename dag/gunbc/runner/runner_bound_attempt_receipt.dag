@@ -1,6 +1,11 @@
 module gunbc.runner.runner_bound_attempt_receipt
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import gunbc.runner.runner_jit_admission {
+  JitAdmissionAxis, SignatureAxis, ExpiryAxis, ReplayAxis,
+  UnitBindingAxis, BootBindingAxis, AttemptBindingAxis,
+  jit_admission_axis_standing, JitAdmissionAxisStanding,
+}
 
 // ONE ATTEMPT, OBSERVED FROM BOTH SIDES, JOINED BY ASSIGNMENT RATHER THAN BY A SHARED STRING.
 //
@@ -67,17 +72,20 @@ data jit_admission_evidence: AdmissionEvidence = AdmissionEvidence {
   positive_control: "runner-canary-8: jitconfig-bytes=4076, jit-admission=yes, and the attempt ran to a successful job",
 }
 
-// THE ADMISSION NAMES WHAT IT DID NOT CHECK, and the run prints that line in both arms:
-// signature, unit binding, boot binding, attempt binding, expiry, replay. A refusal that implied a
-// stronger check than it performed would be the more dangerous half of a fail-closed arm.
-data jit_admission_unchecked: List<NonEmptyStr> = [
-  "signature -- the response is not authenticated, so a peer on the segment could have served it",
-  "unit binding -- nothing ties the envelope to this physical machine",
-  "boot binding -- nothing ties it to this boot of that machine",
-  "attempt binding -- nothing ties it to this VM attempt",
-  "expiry -- freshness is left to the endpoint's own JIT lifetime",
-  "replay -- redemption is atomic at GitHub, but this host cannot detect a second consumer",
+// THE HOST PRINTED THESE SIX NAMES AS UNCHECKED. Standing for each axis lives in
+// gunbc.runner.runner_jit_admission — this receipt does not restate dispositions as prose.
+data host_printed_admission_axes: List<JitAdmissionAxis> = [
+  SignatureAxis,
+  UnitBindingAxis,
+  BootBindingAxis,
+  AttemptBindingAxis,
+  ExpiryAxis,
+  ReplayAxis,
 ]
+
+fn host_printed_axis_standing(axis: JitAdmissionAxis) -> JitAdmissionAxisStanding {
+  jit_admission_axis_standing(axis: axis)
+}
 
 // AND ONE RESIDUAL IN THE ORDERING. The refusal precedes every LAUNCH, which is the safety property,
 // but the jail tmpfs and the guest artifact copy still happen before it -- the fetch sits later in
@@ -127,7 +135,7 @@ data harness_refusal_arm_standing: NonEmptyStr = "the ambiguous-reading refusal 
 // ── still open ─────────────────────────────────────────────────────────────────────────────────
 
 data still_open: List<NonEmptyStr> = [
-  "an authenticated, attempt-bound JIT envelope -- the six unchecked fields above",
+  "host init still prints these axes as unchecked; standing is gunbc.runner.runner_jit_admission, not this receipt",
   "actions/checkout, a JavaScript action, and a toolchain step over the filtered egress path",
   "two attempts on ONE host boot, with absence of every previous attempt's resources proven BEFORE the second starts",
   "metered vCPU-seconds against a declared interval, recorded separately from the capacity-held interval",

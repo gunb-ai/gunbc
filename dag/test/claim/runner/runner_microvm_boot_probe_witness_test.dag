@@ -17,6 +17,11 @@ import gunbc.runner_microvm_boot_probe {
   boot_probe_verdict, boot_probe_admitted,
   runner_microvm_boot_probe_rootfs, runner_microvm_boot_probe_networking,
   runner_microvm_boot_probe_bounded_command,
+  guest_boot_probe_host_image_placeability,
+}
+import gunbc.runner.runner_host_image_placeability {
+  PlaceabilityRefused, ExecutedFromCheckoutOrNetworkMount,
+  placeability_question_closed, placeability_answers_the_host_image,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -81,6 +86,15 @@ test fn a_failed_vmm_and_a_silent_guest_are_distinguishable_and_both_keep_the_co
 test fn the_probe_boots_a_copy_rather_than_the_built_image() -> Bool {
   runner_microvm_boot_probe_rootfs(root: "/r")
     != "/r/images/ubuntu-24.04-aarch64-runner-2.336.0.ext4"
+}
+
+test fn a_green_guest_boot_probe_does_not_close_host_image_placeability() -> Bool {
+  match guest_boot_probe_host_image_placeability() {
+    PlaceabilityRefused { cause: ExecutedFromCheckoutOrNetworkMount } =>
+      !placeability_question_closed(outcome: guest_boot_probe_host_image_placeability())
+        && !placeability_answers_the_host_image(outcome: guest_boot_probe_host_image_placeability())
+    _ => false
+  }
 }
 
 // THE CONFIG DOCUMENT IS UPSTREAM'S SPELLING, hyphenated at the top level and underscored inside.

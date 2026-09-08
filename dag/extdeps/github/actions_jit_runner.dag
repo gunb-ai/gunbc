@@ -89,13 +89,6 @@ type JitMintAdmittedRequestField
   | JitMintLabels
   | JitMintWorkFolder
 
-data jit_mint_admitted_request_fields: List<JitMintAdmittedRequestField> = [
-  JitMintName,
-  JitMintRunnerGroupId,
-  JitMintLabels,
-  JitMintWorkFolder,
-]
-
 data jit_config_created_status: Int = 201
 
 data jit_config_not_found_status: Int = 404
@@ -118,6 +111,18 @@ fn jit_config_mint_outcome(status: Int, encoded: String, runner_id: Int, error_b
       }
     }
   } else {
-    JitConfigMintRefused { status: status, reason: error_body }
+    if status == jit_config_not_found_status {
+      JitConfigMintRefused { status: status, reason: error_body }
+    } else {
+      if status == jit_config_conflict_status {
+        JitConfigMintRefused { status: status, reason: error_body }
+      } else {
+        if status == jit_config_validation_failed_status {
+          JitConfigMintRefused { status: status, reason: error_body }
+        } else {
+          JitConfigMintRefused { status: status, reason: error_body }
+        }
+      }
+    }
   }
 }

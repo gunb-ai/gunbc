@@ -5,6 +5,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions_jit_runner {
   JitConfigMintOutcome, JitConfigMinted, JitConfigMintRefused,
   jit_config_mint_outcome, org_generate_jitconfig_path,
+  jit_config_not_found_status, jit_config_conflict_status, jit_config_validation_failed_status,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -32,7 +33,13 @@ test fn a_non_created_status_is_a_refusal() -> Bool {
     status: 403, encoded: "", runner_id: 0, error_body: "Resource not accessible by integration"
   ))
     && minted_is_refusal(o: jit_config_mint_outcome(
-         status: 422, encoded: "ignored-because-the-status-refused", runner_id: 0, error_body: "already exists"
+         status: jit_config_not_found_status, encoded: "", runner_id: 0, error_body: "not found"
+       ))
+    && minted_is_refusal(o: jit_config_mint_outcome(
+         status: jit_config_conflict_status, encoded: "", runner_id: 0, error_body: "already exists"
+       ))
+    && minted_is_refusal(o: jit_config_mint_outcome(
+         status: jit_config_validation_failed_status, encoded: "ignored-because-the-status-refused", runner_id: 0, error_body: "validation failed"
        ))
 }
 
