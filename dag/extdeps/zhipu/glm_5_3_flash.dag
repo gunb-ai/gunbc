@@ -109,6 +109,23 @@ data glm_5_3_flash_tool_use_retains_prior_reasoning_by_default: Bool = true
 data glm_5_3_flash_thinking_start_token: NonEmptyStr = "<think>" as NonEmptyStr
 data glm_5_3_flash_thinking_end_token: NonEmptyStr = "</think>" as NonEmptyStr
 data glm_5_3_flash_chat_reasoning_field: NonEmptyStr = "reasoning_content" as NonEmptyStr
+// THE vLLM ALIAS, MEASURED ON THE RUNNING CANARY 2026-09-08 RATHER THAN ASSUMED FROM THE FAMILY. Asked
+// a question that forces deliberation, this engine returns the split reasoning under the key
+// `reasoning` -- 539 characters of it -- and returns NO `reasoning_content` key at all. The message
+// object's full key set is role, content, refusal, annotations, audio, function_call, reasoning.
+//
+// THIS ROW EXISTS BECAUSE THE FACT WAS PREVIOUSLY BORROWED. The harness seam listed GLM's alias as
+// `deepseek_v4_chat_reasoning_field_vllm_alias` -- DeepSeek's authority answering for GLM's wire --
+// and it worked only because the two values coincide. That is the authority substitution DESIGN names:
+// nothing asserted was false, and the arrow between the two models was never claimed by either. A
+// vLLM release that renamed one family's field would have silently moved the other's.
+//
+// AND THE COINCIDENCE HID A REAL HAZARD RATHER THAN BEING HARMLESS. Four consecutive measurements read
+// `reasoning_content` off this engine and got nothing, which was read as "the server does not surface
+// reasoning" and nearly landed as a claim that it does not parse at all. The server parses, returns
+// the reasoning, and names the key differently -- so a consumer reading only the canonical name sees a
+// well-formed response with an empty field and no error anywhere.
+data glm_5_3_flash_chat_reasoning_field_vllm_alias: NonEmptyStr = "reasoning" as NonEmptyStr
 
 // WHAT THE vLLM RECIPE PRESCRIBES.
 //

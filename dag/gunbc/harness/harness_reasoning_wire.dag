@@ -12,6 +12,7 @@ import extdeps.deepseek.deepseek_v4 {
 import extdeps.zhipu.glm_5_3_flash {
   glm_5_3_flash_model_id, glm_5_3_flash_reasoning_effort_kwarg, glm_5_3_flash_clear_thinking_kwarg,
   glm_5_3_flash_thinking_end_token, glm_5_3_flash_chat_reasoning_field, glm_5_3_flash_context_length,
+  glm_5_3_flash_chat_reasoning_field_vllm_alias,
   GlmEffortHigh, GlmEffortMax, glm_5_3_flash_reasoning_effort_wire,
   glm_5_3_flash_vllm_tool_call_parser,
 }
@@ -186,7 +187,7 @@ fn harness_unit_reasoning_field(unit: HarnessServingUnit) -> NonEmptyStr {
 fn harness_unit_reasoning_field_aliases(unit: HarnessServingUnit) -> List<NonEmptyStr> {
   match unit {
     DeepseekV4FlashOnVllm => [deepseek_v4_chat_reasoning_field_vllm_alias]
-    Glm53FlashOnVllm => [deepseek_v4_chat_reasoning_field_vllm_alias]
+    Glm53FlashOnVllm => [glm_5_3_flash_chat_reasoning_field_vllm_alias]
   }
 }
 
@@ -221,19 +222,27 @@ fn harness_unit_reasoning_field_aliases(unit: HarnessServingUnit) -> List<NonEmp
 // server DOES split reasoning, and the row said it did not. That is the same fault the checkpoint's
 // attention row carried: a fact established about one artifact, asserted about another.
 //
-// THE EVIDENCE IS A COMPLETION, NOT A FILE LISTING, which matters because the previous row was
-// inferred from `ls` over a parser directory. Asked a review question with a 1500-token cap, the
-// canary answered with finish_reason `length`, 1500 completion tokens, and BOTH `content` AND
-// `reasoning_content` null. Only a server that is parsing produces that: it buffered a reasoning block
-// whose end token never arrived inside the cap, so it had no completed reasoning to place in one field
-// and no speech for the other. A server emitting one inline block would have returned the 1500 tokens
-// as content.
+// THE EVIDENCE IS A PARSED COMPLETION, NOT A FILE LISTING, which matters because the previous row was
+// inferred from `ls` over a parser directory. Asked a question that forces deliberation, the canary
+// returns the reasoning SPLIT OUT under its own key -- 539 characters of it -- with the answer alone
+// in `content`. The server is parsing, and this row now says so.
 //
-// AND THAT NULL-BOTH OUTCOME IS A REAL HAZARD THIS SEAM MUST NOT HIDE. A truncated thinking block
-// yields a well-formed 200 response carrying no text anywhere, which a consumer checking only for an
-// HTTP error reads as an empty answer rather than as a truncation. It is named here rather than
-// modelled because the honest fix is the token budget, not a decoder arm -- and because the seam's
-// job is to say which field to read, not to invent content when neither is populated.
+// FOUR EARLIER MEASUREMENTS SAID THE OPPOSITE AND EVERY ONE OF THEM WAS READING THE WRONG KEY. This
+// engine returns `reasoning`; it returns no `reasoning_content` at all. Reading the canonical name got
+// zero four times running, which was very nearly recorded here as "the server does not surface
+// reasoning" -- a conclusion drawn from an absent field rather than from an observed one. The alias is
+// now a measured row on the model's own authority
+// (extdeps.zhipu.glm_5_3_flash glm_5_3_flash_chat_reasoning_field_vllm_alias) instead of being
+// borrowed from DeepSeek's, which is what let the mistake stand: the borrowed value was correct, so
+// nothing failed, and the seam looked settled while the fact underneath it was unowned.
+//
+// THE HAZARD THIS SEAM MUST NOT HIDE is what a TRUNCATED thinking block does. Capped at 1500 tokens
+// the same question returned finish_reason `length` with BOTH fields null -- the reasoning block's end
+// token never arrived, so there was no completed reasoning for one field and no speech for the other.
+// That is a well-formed 200 carrying no text anywhere, which a consumer checking only for an HTTP
+// error reads as an empty answer instead of as a truncation. It is named rather than modelled because
+// the honest fix is the token budget, and the seam's job is to say WHICH FIELD to read, not to invent
+// content when neither is populated.
 fn harness_unit_server_parses_reasoning(unit: HarnessServingUnit) -> Bool {
   match unit {
     DeepseekV4FlashOnVllm => false

@@ -68,6 +68,27 @@ fn serving_topology_aggregate_pool_gib(t: ServingTopology) -> Nat {
 // checkpoint's bytes are somewhere specific on a host; pretending every checkpoint lives in the same
 // layout is what made a modelled run report an ABSENT snapshot while 80 GiB of exactly that revision
 // sat on the same disk serving a live engine.
+//
+// REVIEW PROPOSED MOVING IT ONTO THE ARM'S SNAPSHOT BINDING, AND IT IS DECLINED HERE WITH A REASON
+// RATHER THAN APPLIED OR IGNORED. The proposal's premise is sound -- where bytes land is a deployment
+// choice, and deployment choices are the arm's. What it does not price is that keying placement by ARM
+// makes a specific bad state WRITABLE: two arms naming one checkpoint could place it differently, and
+// nothing in the type would refuse them.
+//
+// THAT STATE IS NOT MERELY UNTIDY, IT BREAKS A MECHANISM THAT DEPENDS ON ITS ABSENCE. Rail replication
+// (gunbc.spark.model_snapshot_acquisition model_snapshot_rail_source) fetches a snapshot from a peer
+// into the SAME path it resolves locally, and it is entitled to do that only because placement is a
+// function of the checkpoint and not of the host or the arm. Arm-keyed placement would make peer and
+// local paths diverge for one revision, which rsync cannot detect -- it would copy into a directory
+// that is correct for neither arm. The fleet would also hold two copies of eighty gigabytes with no
+// row saying it meant to.
+//
+// SO THE CURRENT SHAPE IS THE CONSTRUCTION AND THE PROPOSAL IS THE VALIDATION, which is the ordering
+// DESIGN section 5 asks for: keyed by checkpoint, divergent placement for one revision has no
+// spelling; keyed by arm, it is writable and would need a check to catch it afterwards. If a future
+// arm genuinely needs one checkpoint in two locations -- a staging copy beside a serving copy -- that
+// is a second checkpoint row with its own identity and provenance, not a placement field that has
+// quietly stopped being a function of the thing it names.
 type ServingCheckpointRow {
   checkpoint: ServingCheckpoint
   repo: HubRepoId

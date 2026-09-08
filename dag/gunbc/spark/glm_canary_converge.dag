@@ -4,11 +4,15 @@ import std.types { String, Bool, List, NonEmptyStr, Secret }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value }
 import product.placement_supply { HostIdentity }
+import extdeps.zhipu.glm_5_3_flash {
+  glm_5_3_flash_vllm_kv_cache_dtype_wire, glm_5_3_flash_vllm_reasoning_parser,
+}
 import gunbc.fleet_intent_network { operator_host_srv9 }
 import gunbc.spark.serving_arm {
   ServingCheckpoint, ServingRuntime, ServingTopology,
   Glm53Exl3_205, Gitcommit90Sm121Exl3, SingleSparkTp1,
   ServingCheckpointRow, ServingRuntimeRow, ReasoningResponseProjection, ParsedReasoningField,
+  serving_topology_rank_count,
   ServingArmVerdict, ServingArmAdmitted, ServingArmRefused,
   serving_arm_admits, serving_checkpoint_row, serving_runtime_row,
 }
@@ -244,6 +248,92 @@ fn glm_canary_host_path(arm: GlmCanaryArm) -> NonEmptyStr {
         LocalDirectoryPlacement { host_path: p } => p
         HubCachePlacement { cache_root: root } => root
       }
+  }
+}
+
+// ── THE CANARY'S OWN LAUNCH LINE ───────────────────────────────────────────────────────────────
+//
+// THE CANARY RENDERS ITS OWN ARGV RATHER THAN BENDING THE PRODUCTION ONE, and that is the serving-arm
+// decomposition doing its job rather than a convenience. gunbc.spark.pair_serving_realization renders
+// a serve line for a DIFFERENT ARM: the DeepSeek checkpoint, on the DeepSeek image, at tensor-parallel
+// four, with no quantization flag and no reasoning parser. Widening it with conditionals until it
+// could also emit this arm would put two realizations in one renderer and let a change for one
+// silently alter the other -- which is exactly what happened when a served-model name was pointed at
+// GLM while the image stayed DeepSeek.
+//
+// EVERY FLAG COMES FROM THE ARM OR ITS ROWS. Nothing here is a literal that could drift from the
+// carrier the operator reads: the quantization from the checkpoint row, the tool parser from the
+// runtime row, the KV dtype and reasoning parser from the model authority, the window and bounds from
+// the arm's own decision fields.
+//
+// THE ORDER IS THE RUNNING CANARY'S ORDER, AND THAT IS DELIBERATE RATHER THAN INCIDENTAL. Read back
+// from the live container 2026-09-08, the engine's argv places --max-num-batched-tokens between
+// --max-num-seqs and --reasoning-parser, and this renderer emits it there. vLLM does not care, so
+// nothing about the SERVER depends on it -- but a receipt that compares rendered argv against the
+// argv actually running can then compare sequences rather than sets, and a set comparison cannot tell
+// a flag that moved from a flag that changed value. Matching the order is what makes the comparison
+// able to fail for the right reason.
+//
+// WHAT THIS RENDERER IS FOR IS AGREEMENT BEFORE ACTUATION. The canary was launched by hand and has
+// served sixteen hours; the model's job is first to REPRODUCE that line, not to replace it. Only once
+// rendered and running agree is a convergence that restarts the engine an operation with a known
+// outcome rather than a twelve-minute experiment on a healthy server.
+fn glm_canary_serve_argv(arm: GlmCanaryArm) -> List<String>? {
+  match serving_checkpoint_row(c: arm.checkpoint) {
+    Absent => none
+    Present { value: crow } =>
+      match serving_runtime_row(r: arm.runtime) {
+        Absent => none
+        Present { value: rrow } => Present { value: concat(
+          concat(
+            [
+              "serve", "/model",
+              "--served-model-name", arm.served_model_alias as String,
+              "--quantization", crow.quantization_wire as String,
+              "--tensor-parallel-size", to_string(serving_topology_rank_count(t: arm.topology)),
+              "--kv-cache-dtype", glm_5_3_flash_vllm_kv_cache_dtype_wire as String,
+              "--max-model-len", to_string(token_count_value(t: arm.max_model_len)),
+              "--max-num-seqs", to_string(glm_canary_seq_bound(b: arm.max_num_seqs)),
+            ],
+            glm_canary_batched_token_argv(p: arm.max_num_batched_tokens),
+          ),
+          concat(
+            [
+              "--reasoning-parser", glm_5_3_flash_vllm_reasoning_parser as String,
+              "--tool-call-parser", rrow.hub_tool_call_parser as String,
+              "--enable-auto-tool-choice",
+              "--no-enable-flashinfer-autotune",
+              "--host", "0.0.0.0",
+              "--port", to_string(arm.port),
+            ],
+            glm_canary_speculation_argv(p: arm.speculation),
+          )) }
+      }
+  }
+}
+
+fn glm_canary_seq_bound(b: SeqBound) -> Nat {
+  match b {
+    ExperimentalOperatorBound { count: n, basis: _ } => n
+    MeasuredFromLaunchLine { count: n, basis: _ } => n
+  }
+}
+
+// AN ENGINE DEFAULT EMITS NOTHING, so "the engine chose it" and "we chose the engine's value" stay
+// distinguishable on the wire as well as in the carrier.
+fn glm_canary_batched_token_argv(p: BatchedTokenPolicy) -> List<String> {
+  match p {
+    EngineDefault => []
+    ExplicitBatchedTokenLimit { tokens: t, basis: _ } =>
+      ["--max-num-batched-tokens", to_string(token_count_value(t: t))]
+  }
+}
+
+fn glm_canary_speculation_argv(p: SpeculationPolicy) -> List<String> {
+  match p {
+    SpeculationDisabled { basis: _ } => []
+    SpeculationMtp { draft_tokens: n, basis: _ } =>
+      ["--speculative-config", join(["{\"method\":\"mtp\",\"num_speculative_tokens\":", to_string(n), "}"], "")]
   }
 }
 
