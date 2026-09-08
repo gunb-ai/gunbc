@@ -42,7 +42,8 @@ import product.fabric.selection {
 import product.fabric.demand { ObservationReceiptRef }
 import extdeps.currency.currency { Usd }
 import gunbc.spark.vllm_endpoint_process_launch {
-  VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key, LaunchObserved, LaunchUnobserved,
+  VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key, vllm_endpoint_process_launch_is,
+  LaunchObserved, LaunchUnobserved,
 }
 import gunbc.spark.serving_offer {
   SparkOfferBound, SparkOfferBindingRefused, SparkServingReadiness, ServingObserved, ServingUnobserved,
