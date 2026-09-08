@@ -201,6 +201,10 @@ pub enum CallTargetOutcome {
         sig: Rc<ResolvedFuncSig>,
         declared: Rc<DeclaredCallableIdentity>,
     },
+    DeclaredCallableIdentityResolved {
+        declared: Rc<DeclaredCallableIdentity>,
+        borrowed_declaration: Rc<Node>,
+    },
     BuiltinCallableResolved {
         primitive_name: String,
     },
@@ -223,6 +227,7 @@ pub fn call_target_is_locally_bound(outcome: Rc<CallTargetOutcome>) -> bool {
     match (*outcome.clone()).clone() {
         CallTargetOutcome::LocallyBoundCallee { .. } => true,
         CallTargetOutcome::DeclaredCallableResolved { .. } => false,
+        CallTargetOutcome::DeclaredCallableIdentityResolved { .. } => false,
         CallTargetOutcome::BuiltinCallableResolved {
             primitive_name: _, ..
         } => false,
@@ -236,6 +241,7 @@ pub fn call_target_local_binding(outcome: Rc<CallTargetOutcome>) -> Option<Rc<Ty
     match (*outcome.clone()).clone() {
         CallTargetOutcome::LocallyBoundCallee { binding: b, .. } => Some(b.clone()),
         CallTargetOutcome::DeclaredCallableResolved { .. } => std::option::Option::None,
+        CallTargetOutcome::DeclaredCallableIdentityResolved { .. } => std::option::Option::None,
         CallTargetOutcome::BuiltinCallableResolved {
             primitive_name: _, ..
         } => std::option::Option::None,
@@ -248,6 +254,7 @@ pub fn call_target_local_binding(outcome: Rc<CallTargetOutcome>) -> Option<Rc<Ty
 pub fn call_target_declared_sig(outcome: Rc<CallTargetOutcome>) -> Option<Rc<ResolvedFuncSig>> {
     match (*outcome.clone()).clone() {
         CallTargetOutcome::DeclaredCallableResolved { sig: s, .. } => Some(s.clone()),
+        CallTargetOutcome::DeclaredCallableIdentityResolved { .. } => std::option::Option::None,
         CallTargetOutcome::BuiltinCallableResolved {
             primitive_name: _, ..
         } => std::option::Option::None,
