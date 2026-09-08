@@ -2,14 +2,11 @@ module test.claim.repo_ruleset_goal_assessment_witness
 
 import std.types { String, Bool, NonEmptyStr }
 import std.goal_assessment {
-  ObservationRefused,
-  ObservationEstablished,
   GoalSatisfied,
   GoalDiverged,
   GoalIndeterminate,
 }
 import v2.std.algebra { non_empty_to_list }
-import gunbc.repository { gunbc_repository }
 import extdeps.github.rulesets {
   BypassRosterObserved,
   BypassRosterUnavailable,
@@ -18,7 +15,6 @@ import extdeps.github.rulesets {
   BranchTarget,
   MergeQueueRule,
   ThisReaderCannotBypass,
-  NoRequiredStatusChecksRule,
   NoMergeQueueRule,
   BypassActorRosterObservation,
 }
@@ -27,8 +23,6 @@ import gunbc.repo_ruleset {
   RulesetObserved,
   RulesetUnreadable,
   RulesetReadTransportRefused,
-  RepositoryRulesetConvergenceSubject,
-  RulesetBypassRosterUnobservable,
   default_branch_ref_alias,
   desired_ruleset_rule_types,
   desired_ruleset_rules,
@@ -38,10 +32,6 @@ import gunbc.repo_ruleset {
   render_divergences,
   render_unknowns,
   ruleset_assess,
-}
-
-fn fixture_subject() -> RepositoryRulesetConvergenceSubject {
-  RepositoryRulesetConvergenceSubject { repository: gunbc_repository, ruleset_id: 4242 }
 }
 
 // The observation is fixed on every field the claims below do not vary, so a verdict can never be

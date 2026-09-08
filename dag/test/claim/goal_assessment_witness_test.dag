@@ -1,10 +1,10 @@
 module test.claim.goal_assessment_witness
 
-import std.types { String, Bool, List }
+import std.types { String, Bool }
 import std.goal_assessment {
   ObservationAttempt, ObservationEstablished, ObservationRefused,
   GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate,
-  GoalInspection, GoalInspected, GoalObservationRefused,
+  GoalInspected, GoalObservationRefused,
   inspect_goal,
   assess_by_deviations,
   assess_by_deviations_and_unknowns,

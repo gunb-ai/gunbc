@@ -1,6 +1,6 @@
 module std.goal_assessment
 
-import std.types { Bool, List }
+import std.types { List }
 import std.algebra { FreeMonoid, Empty, Cons, FreeSemigroup }
 
 // THE ONE SUBJECT-AGNOSTIC SHAPE FOR "IS THE WORLD AS IT WAS DECLARED TO BE".
