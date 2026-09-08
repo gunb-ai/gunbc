@@ -44,6 +44,26 @@ data exact_duplicate_match_arm_not_refused: RecurringFailureMode = RecurringFail
     "NEXT TRIGGER, NAMED AS THE CAPABILITY: **a match-arm usefulness judgment in the compiler frontend that REFUSES a second arm whose constructor head is already covered, locating both the duplicate and the arm that covers it** -- with a discriminating RED (two identical constructor patterns, different bodies, refused at the second arm), an accepted positive control (two distinct constructor patterns, accepted), and a retention control establishing that adding a variant to the coproduct does not weaken the duplicate judgment. ",
 
     "A diagnostic that names the duplicate without refusing it does not discharge this: a warning on an accepted program is the tier DESIGN section 6 calls an inert lens, and this class is silent precisely because nothing stops the line.)",
+
+    "**RECURRENCE, FOUR DAYS LATER, SAME AUTHOR, FOUND THE SAME WAY -- BY A REVIEWER READING THE ARM LIST** (gunbc#10723, review 61771, 2026-09-07). ",
+
+    "`unrealized_actuator_steps_refuse_rather_than_reporting_absent` in `test.claim.nbd_proxy_virtual_media_install` carried `ActuatorStepRefused { cause: ActuatorStepActuatorHostUnsatisfiable }` TWICE in each of two of its three match blocks -- copy residue from pasting the new arm, at a different indentation from the arm it duplicated. ",
+
+    "The witness ran GREEN with the duplicates present, which is the whole point: the recurrence is not evidence that the earlier filing was wrong, it is evidence that a filed class with a named trigger and no built wall keeps producing specimens. ",
+
+    "WHAT THIS RECURRENCE ADDS IS THE ASYMMETRY MEASURED IN BOTH DIRECTIONS ON ONE FILE, rather than inferred across two incidents. ",
+
+    "The row above states that exhaustiveness refuses a MISSING arm while saying nothing about a DUPLICATE one, citing the earlier specimen's other PR for the refusing half. ",
+
+    "Here both halves were executed against the same tree minutes apart: deleting the arm refuses at resolve with `non-exhaustive match: missing variant(s) ActuatorStepRefused { cause: ActuatorStepActuatorHostUnsatisfiable }`, and duplicating it is accepted in silence. ",
+
+    "One direction is a hard wall, the other is not looked at, and the compiler already walks the tree that would decide it. ",
+
+    "A SECOND-ORDER RECEIPT FROM THE SAME REPAIR, worth carrying because the remedy nearly caused the defect it was removing: the fix was a `sed` keyed on the duplicates' column-4 indentation, and the FIRST block's legitimate arm sits at column 4 too, so the edit deleted three arms where two were duplicates. ",
+
+    "That was caught by re-reading the region, and the control run afterwards would in fact have caught it as well -- the missing arm refuses -- which is the one direction this class does have a wall in. ",
+
+    "RECOGNITION RULE, ADDED: an edit that removes a duplicated arm is keyed on the accident (whitespace, order, position) rather than on the identity, so it can only be verified by re-reading the arms it left behind, never by the green run that follows.",
   ],
 
   evidence: [],

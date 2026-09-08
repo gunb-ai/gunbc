@@ -1,0 +1,177 @@
+module gunbc.runner.runner_qualification_receipt
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+
+// THIS RECEIPT WAS PUBLISHED WITH A FALSE JOIN AND IS REWRITTEN RATHER THAN QUIETLY CORRECTED.
+//
+// Its first revision claimed that host capture X was the host-side evidence for actions run
+// 34090864879, a job that SUCCEEDED. The capture is a boot that fetched no credential, refused to
+// start a runner, and panicked. Two different boots of the same image, joined on a string they both
+// happened to carry.
+//
+// THE WRONG ARTIFACT SURVIVED THE MISTAKE AND IT IS THE MORE VALUABLE ONE. What that capture records
+// is a fail-open: with a zero-byte credential the host created the JIT drive, created the workspace,
+// and launched Firecracker anyway. That defect would not have appeared in the receipt this file was
+// meant to be.
+
+data receipt_subject_run: NonEmptyStr = "actions run 34090864879, conclusion success, dispatched with attempt=runner-canary-6"
+data receipt_subject_build: NonEmptyStr = "runner-canary-6"
+
+// ── the join that was false, and why the identifier could not have worked ──────────────────────
+
+// "runner-canary-6" IS A BUILD LABEL, NOT AN ATTEMPT IDENTITY. Every power cycle of that image
+// prints it, and the harness cycled up to four times looking for a boot it could observe. The
+// concrete host attempt is runner-canary-6-83b96b35; the workflow input echoed only the build.
+//
+// ONE-SHOT CREDENTIAL DELIVERY MAKES THIS DECIDABLE AND THE RECEIPT STILL GOT IT WRONG. Exactly one
+// boot of that build could ever have redeemed the credential, so a label shared by all of them can
+// never name the one that did.
+//
+// AND THE WORKFLOW'S runs-on IS STILL [self-hosted, mtcollins], so the dispatch input is an assertion
+// echoed by whatever runner takes the job rather than an assignment to one registration. An
+// attempt-unique label on both the JIT registration and runs-on is what would make the binding real.
+type AttemptJoin
+  = JoinedByAttemptUniqueLabel { label: NonEmptyStr }
+  | JoinedByEchoedBuildLabel { why_insufficient: NonEmptyStr }
+  | JoinedByTimestamp
+
+data qualification_join_standing: AttemptJoin = JoinedByEchoedBuildLabel {
+  why_insufficient: "the build label is printed by every boot of the image and the job's runs-on matches any mtcollins runner, so the input records what the operator intended rather than which registration served the job",
+}
+
+// ── the host evidence for the successful run does not exist ────────────────────────────────────
+
+// AN EARLIER CYCLE ENDED WITH "SOL session closed by BMC", AND THE HARNESS SCORED THAT AS A FAILED
+// BOOT. A dropped CONSOLE is not a failed BOOT. That boot continued, fetched the one-shot credential,
+// registered, and ran the job to success at 06:37:54 -- unobserved, because the only instrument had
+// been disconnected by the BMC rather than by anything the host did.
+//
+// SO THE HARNESS POWER-CYCLED A MACHINE THAT WAS RUNNING A LIVE CI JOB. That is the operational
+// defect behind the mislabelled file, and it is more serious than the label: an observer that cannot
+// distinguish "I stopped watching" from "it stopped working" will keep destroying the runs it is
+// meant to record.
+//
+// NO DIGEST RECOVERS WHAT WAS NEVER CAPTURED. The successful run's host evidence is gone, and this
+// receipt claims none.
+type HostEvidenceStanding
+  = HostEvidenceCaptured { artifact: NonEmptyStr }
+  | HostEvidenceLost { cause: NonEmptyStr, recoverable: Bool }
+
+data qualification_host_evidence: HostEvidenceStanding = HostEvidenceLost {
+  cause: "the console session for the boot that ran the job was closed by the BMC, and the harness then power-cycled that host believing it had failed to boot",
+  recoverable: false,
+}
+
+// ── what the GitHub side does establish on its own ─────────────────────────────────────────────
+
+// THESE ARE GUEST-SIDE FACTS AND THE JOB LOG IS A COMPETENT WITNESS TO THEM. They do not depend on
+// any host capture, which is why they survive the loss above.
+data job_side_facts: List<NonEmptyStr> = [
+  "Runner name: mtcollins-1, Machine name: gunbc-mtcollins-1",
+  "runner-version: 2.337.0, read from the guest's own Runner.Listener rather than from a service banner -- the release gunbc_runner_guest_image now pins",
+  "the attempt workspace mounted with 3827 MB free, and the job wrote 16 MiB, read the size back and deleted it",
+  "the BMC was unreachable from inside the job",
+]
+
+// AND THE HOST-SIDE HALF OF EACH IS MISSING FOR THIS RUN. The counters that corroborated the BMC
+// denial in gunbc.runner.runner_first_job_receipt have no counterpart here, because the capture that
+// would carry them is the one that was lost.
+data job_side_facts_uncorroborated: NonEmptyStr = "every row above is guest-side only for this run; the host-side corroboration exists for run 34086151842 and not for this one"
+
+// ── the fail-open the wrong capture revealed ───────────────────────────────────────────────────
+
+// THE HOST OBSERVED A ZERO-BYTE CREDENTIAL AND STARTED A VIRTUAL MACHINE ANYWAY. It created the JIT
+// drive from an empty file, formatted a workspace, and launched Firecracker; the refusal happened
+// inside the guest, after the VM existed. A missing credential is a condition the host can decide
+// before spending anything, and it decided nothing.
+//
+// THE ARM MUST REFUSE BEFORE THE LAUNCH, NOT INSIDE THE GUEST. Every terminal case below owes ZERO
+// Firecracker launches, because a VM started on an inadmissible envelope has already spent the
+// resources the refusal exists to protect and has already widened the surface.
+type JitEnvelopeAdmission
+  = JitEnvelopeAdmitted { payload_digest: NonEmptyStr }
+  | JitEnvelopeRefusedBeforeLaunch { cause: NonEmptyStr }
+  | JitEnvelopeUncheckedAndLaunched { observed: NonEmptyStr }
+
+data jit_admission_as_observed: JitEnvelopeAdmission = JitEnvelopeUncheckedAndLaunched {
+  observed: "jitconfig-bytes=0 and the host proceeded to build the drive, format the workspace and launch the VMM; the guest refused afterwards",
+}
+
+data jit_refusal_cases_owing_zero_launches: List<NonEmptyStr> = [
+  "no payload fetched",
+  "empty payload",
+  "payload outside declared size bounds",
+  "malformed envelope",
+  "envelope bound to a different physical unit",
+  "envelope bound to a different host boot",
+  "envelope bound to a different VM attempt",
+  "expired envelope",
+  "signature verification failure",
+  "replayed envelope",
+]
+
+// ── four outcomes that are not one outcome ─────────────────────────────────────────────────────
+
+// FIRECRACKER EXITED 0 ON THE BOOT WHERE NOTHING RAN. The guest refused its credential, exited as
+// PID 1, panicked, and the VMM reaped it and reported success -- because the VMM's contract is about
+// the machine it ran, not about the work inside it.
+//
+// SO A CLEAN VMM EXIT MUST NEVER COLLAPSE INTO AN ATTEMPT SUCCEEDING. These are four separate
+// readings and this lane has already conflated the outer ones once.
+data distinct_outcomes: List<NonEmptyStr> = [
+  "the VMM ran and exited cleanly",
+  "the guest reached userspace",
+  "the runner registered and listened",
+  "a GitHub job ran and reported",
+]
+
+// ── the retirement observation, which IS sound and belongs to the failed boot ──────────────────
+
+// THIS EVIDENCE IS REAL AND ITS SUBJECT IS THE CREDENTIAL-LESS BOOT. Retirement after a guest that
+// refused is a weaker test than retirement after a job that ran -- there is less to clean up -- so
+// it is recorded against the attempt that produced it rather than borrowed by the successful one.
+data retirement_observed_on_failed_boot: List<NonEmptyStr> = [
+  "jail-removed=yes",
+  "post-jit-device-present=no",
+  "post-workspace-present=no",
+  "post-jailbase-entries=0 and post-jailbase-mounted=0",
+  "post-cgroup-empty=yes then post-cgroup-removed=yes",
+  "post-tap-present=no, post-ruleset-present=no, post-nft-process=0",
+  "surviving-firecracker=0, surviving-jailer=0",
+]
+
+data retirement_after_real_work_unproven: NonEmptyStr = "retirement is observed after a boot whose guest refused immediately; retirement after a boot that actually ran a job, wrote a workspace and held a registration is not observed by this receipt"
+
+// ── three instrument defects, and the one that matters most ────────────────────────────────────
+
+data instrument_defects_found: List<NonEmptyStr> = [
+  "the harness cannot distinguish a console the BMC dropped from a host that failed to boot, and its response to the ambiguity is a power cycle -- so its failure mode is destroying the run it is observing",
+  "the absence checks ran before the unmount that produces the absence, so they were permanently YES and briefly read as a credential leak",
+  "the capture's terminal condition matched a line printed before cleanup, so a retirement receipt ended three lines short of its own evidence",
+  "wc -c reported 0 bytes for a sparse 4 GiB image that mke2fs had formatted and a guest mounted with 3827 MB free",
+]
+
+// THE FIRST ONE IS NOT A LOGGING BUG. An observer whose ambiguous reading triggers a destructive
+// action is the absorbing-fallback shape: it cannot tell two states apart, so it picks the arm that
+// makes the ambiguity go away, and the cost lands on whatever was actually running.
+data harness_defect_class: NonEmptyStr = "a dropped console and a failed boot are different states; treating them alike and power-cycling is a destructive action taken on an unresolved reading"
+
+// ── the extraction claim, tempered ─────────────────────────────────────────────────────────────
+
+// THE COMMITTED EXTRACTS CARRY THE FULL CAPTURE'S DIGEST AND CUT LINE, AND AN EARLIER REVISION
+// CALLED THAT "checkable". It is not: the full bytes are not committed, so a reader can verify an
+// extract against its own digest but cannot re-cut it from a source they do not have. The digest
+// identifies the source; it does not make the extraction reproducible.
+data extraction_standing: NonEmptyStr = "the extract is content-addressed and the unavailable source capture is identified by digest; independent re-derivation of the cut would require publishing the full capture"
+
+// ── standing ───────────────────────────────────────────────────────────────────────────────────
+
+data qualification_standing: List<NonEmptyStr> = [
+  "OPEN: exact job-to-host-attempt binding -- needs an attempt-unique runner label on both the JIT registration and runs-on",
+  "OPEN: pre-launch refusal of an inadmissible JIT envelope, with zero Firecracker launches on every terminal case",
+  "OPEN: an authenticated, attempt-bound JIT envelope; neither requester nor responder is authenticated today",
+  "OPEN: a harness that distinguishes a lost console from a failed boot and never power-cycles on the ambiguity",
+  "OPEN: runtime artifact mismatch prevention -- boot_probe_verdict is still unwired",
+  "OPEN: two attempts on one host boot, checkout, a JS action, a toolchain step, metered vCPU-seconds",
+  "CLOSED for this run, guest-side only: the pinned runner version and a writable attempt workspace",
+]
