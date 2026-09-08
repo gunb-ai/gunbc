@@ -6,8 +6,10 @@ import std.measure { token_count, percent, Millisecond, millisecond }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.memory.types { UnifiedShared }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
+import v2.std.optional { Present, Absent }
 import extdeps.vllm.engine_args {
   VllmEngineArgs, vllm_memory_utilization, KvFp8DsMla, ExecutorRay,
+  VllmPrefillSchedulingPolicy, ChunkedPrefillRequested, ChunkedPrefillNotRequested,
 }
 import gunbc.spark.serving_engine {
   ServingEngine, VllmServing,
@@ -100,9 +102,37 @@ fn spark_pair_serving_head(group: FabricGroup) -> HostIdentity {
   }
 }
 
+// PINNED RATHER THAN INHERITED (operator decision, 2026-09-08). 2048 is what this fleet was
+// already getting, but it was getting it from an absorbing fallback: on a GB10 the NVML
+// device-memory probe refuses, vLLM's `except` writes zero, and a 121.7 GiB machine takes the
+// small-device branch. Requesting it explicitly changes no behaviour -- an explicit 2048 was
+// measured to be a no-op -- and makes the value a decision rather than an accident that moves
+// the moment the probe, the driver or the image changes. extdeps.vllm.batch_defaults carries
+// the resolution and its cause.
+//
+// WHY 2048 AND NOT THE 8192 UPSTREAM WOULD HAVE PICKED. Measured on this fleet at a 16.4k cold
+// prefill: 8192 buys 6.5% prefill throughput and costs 3.8x the co-tenant stall (2,168ms ->
+// 8,225ms) and 26% of the KV pool (11.77M -> 8.70M tokens). The throughput gain is pure
+// per-step amortisation and cannot exceed ~7.5% because the per-token cost is flat from 512 to
+// 16,384. The KV loss is the sharper cost: it reduces how many conversations keep a warm
+// prefix, and a conversation that falls out recomputes its whole context.
+//
+// CHUNKED PREFILL IS REQUESTED ALONGSIDE IT, because the budget is only meaningful under
+// chunking: pinning the budget while inheriting the chunking mode pins half a policy, and a
+// future default change would make the pinned number mean something else entirely. This is
+// also a no-op today -- the engine already resolves enable_chunked_prefill=True.
+//
+// THIS ROW IS THE OUTGOING PROFILE'S. The measurements behind it are DeepSeek-V4-Flash on one
+// vLLM revision; a different model or image must re-measure rather than inherit the number,
+// and must re-establish that the NVML path still resolves the same way.
 fn spark_pair_serving_engine_args(tensor_parallel: Nat, max_num_seqs: Nat) -> VllmEngineArgs {
   VllmEngineArgs {
-    prefill_scheduling: none,
+    prefill_scheduling: Present {
+      value: VllmPrefillSchedulingPolicy {
+        max_num_batched_tokens: token_count(count: 2048),
+        chunked_prefill: ChunkedPrefillRequested,
+      },
+    },
     tensor_parallel_size: tensor_parallel,
     gpu_memory_utilization: vllm_memory_utilization(fraction: percent(count: 82)),
     max_model_len: token_count(count: 1048576),
