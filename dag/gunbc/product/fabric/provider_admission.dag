@@ -26,20 +26,28 @@ import product.fabric.provider_route {
 // missing legal or data-handling authority. Compliance is not depleted by use, so it is not a
 // budget, and it does not belong anywhere in a selection cost.
 //
-// CONSUMPTION FRONTIER - DECLARED HERE ON THE CARRIER RATHER THAN IN A COMMIT MESSAGE, because a
-// commit message is the most perishable ledger there is and DESIGN section 3c is answered by the
-// tree, not by a PR body. As of this change the ONLY consumer of ProviderUsePermit is this
-// module's witness. That is a declared frontier and not a dangling model, and its two halves are:
-//   NAMED CONSUMER - product.fabric.selection's CandidateOffer, which gains a permit slot so that
-//   an offer without an admitted permit cannot be CONSTRUCTED as a candidate, and
-//   product.fabric.grant_issue's issue_grant, which carries the permit onto the execution grant.
-//   TRIGGER - the same change that adds a route reference to SupplierOffer, since without one an
-//   offer cannot name the route this decision is about and the permit has nothing to bind to.
-// Until that lands, this module gates nothing in production and must not be cited as though it
-// did. Four of the reds this subject owes - cheapest unadmitted never wins, a zero-cost demand
-// still refuses without a permit, money cannot override a denial, a permit cannot override an
-// exhausted budget - are unauthorable until then, because none of them can be expressed without a
-// selection that takes a permit.
+// WHO CONSUMES A PERMIT, AND AT WHICH RUNG (DESIGN section 3c, and section 4b(1) rung honesty).
+// This replaced a declared frontier rather than outliving it: the frontier's trigger has fired, and
+// a discharged declaration left standing is cited as a known gap while the gap is closed.
+//
+// SELECTION - STRUCTURAL. product.fabric.selection's CandidateOffer carries the permit and is
+// sole_constructor, bind_candidate is its only constructor and refuses without an admitted permit,
+// and selection ranks CandidateOffers. So "an unadmitted offer won the ranking" has no constructor:
+// rung 4, not a check.
+//
+// ISSUANCE - CHECKED, AND SAID PLAINLY BECAUSE THE TWO ARE NOT THE SAME RUNG.
+// product.fabric.grant_issue's issue_grant takes the permit as a PARAMETER and compares it against
+// the offer, route, work and demand it was handed. That is validation, rung 2-to-3, and it is
+// deliberate: taking a CandidateOffer there would satisfy a residual capability that module has
+// declared open, which section 4b(3) names as the way a trigger gets retired while the capability
+// stays dead. Reporting this module's class as structural on the strength of the selection path
+// alone would be rung inflation, since a class's rung is the MINIMUM across its in-scope paths.
+//
+// NOT YET CONSUMED, and named so it is not read as covered: the permit is not recorded on
+// ExecutionGrant, so a grant gates on admission without carrying evidence of it and an auditor
+// reading a grant alone cannot re-derive which posture revision admitted it. TRIGGER: ExecutionGrant
+// gaining a permit field SUFFICIENT FOR a grant to name its own admitting posture revision and route
+// without consulting the candidate that produced it.
 
 // STATED DIVERGENCE FROM std.scoped_authorization (DESIGN section 3b). That module already models
 // a permit-shaped answer - AuthorizationDecision<Subject> is Permitted { grant } | Refused { cause }

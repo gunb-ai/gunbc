@@ -80,6 +80,16 @@ import extdeps.accounting.encumbrance {
 // the cross-principal refusal. Two tenants who chose the same work key are two identities, and
 // nothing in this module can compare the key half alone.
 
+// A PERMIT IS ABOUT A USE, NOT A ROUTE, SO IT IS BOUND TO THE WORK AND THE DEMAND TOO.
+// product.fabric.provider_admission admits a route FOR a customer profile and a data-handling
+// profile, and both are properties of the WORK. A permit checked only against the offer and the
+// route would therefore authorise work B under the scope that was admitted for work A: the
+// customer and data class actually executing would not be the ones anybody admitted, which is
+// precisely the fabricated authority this module exists to refuse. It was also a section 3c defect
+// in the plainest form - permit.work and permit.demand were carried on the permit and read by
+// nothing, so the two fields recording WHAT was admitted could disagree with what ran and no
+// executed path could tell.
+//
 // THE THREE PERMIT ARMS ARE THREE REMEDIES, NOT ONE. PermitNamesAnotherOffer and
 // PermitNamesAnotherRoute are WIRING faults - a real permit carried onto the wrong subject - and
 // the fix is at the call site. ProviderUseNotAdmitted is the absence of any admitted permit at all,
@@ -111,6 +121,14 @@ type GrantIssueRefusal<P, Q, S>
     }
   | PermitNamesAnotherRoute { offer: FabricIdentity<P, OfferKey> }
   | ProviderUseNotAdmitted { offer: FabricIdentity<P, OfferKey> }
+  | PermitNamesAnotherWork {
+      permit_work: FabricIdentity<P, WorkKey>,
+      subject_work: FabricIdentity<P, WorkKey>,
+    }
+  | PermitNamesAnotherDemand {
+      permit_demand: FabricIdentity<P, DemandKey>,
+      subject_demand: FabricIdentity<P, DemandKey>,
+    }
 
 // BOTH LEDGERS ADMIT OR NEITHER COMMITMENT IS VISIBLE.
 //
@@ -402,6 +420,14 @@ fn issue_grant<P, Q, S>(
     }
   } else if !provider_route_eq(a: offer.route, b: permit.route) {
     GrantRefused { refusal: PermitNamesAnotherRoute { offer: offer.id } }
+  } else if !fabric_identity_eq(left: work.id, right: permit.work) {
+    GrantRefused {
+      refusal: PermitNamesAnotherWork { permit_work: permit.work, subject_work: work.id },
+    }
+  } else if !fabric_identity_eq(left: demand, right: permit.demand) {
+    GrantRefused {
+      refusal: PermitNamesAnotherDemand { permit_demand: permit.demand, subject_demand: demand },
+    }
   } else {
     let fungibility = offer_fungibility_for(requirements: work.requirements, offer: offer)
     match fungibility {
