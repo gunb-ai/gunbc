@@ -1451,7 +1451,7 @@ fn validate_compared_populations(
     // A committed basename the emitter no longer produces is CommittedMirrorNoLongerEmitted
     // unless the seed-retention frontier already names it: then it is retained, not lost.
     //
-    // RUNG, HONESTLY: this skip is the authority for that exclusion. HAND_MAINTAINED_STAGE0_FILES
+    // RUNG, HONESTLY: this skip excludes a presented retained basename. HAND_MAINTAINED_STAGE0_FILES
     // currently agrees with it for std_logic.rs by coincidence (#10712 listed the file as
     // hand-maintained), so committed_generated_basenames never presents std_logic.rs to this loop
     // on main or at 0a811fc -- the class is not reachable on the merge path. Discrimination is
