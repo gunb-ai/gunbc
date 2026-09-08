@@ -611,24 +611,19 @@ fn local_coproduct_owner_from_locals(scope: InferScope, name: String) -> Node? {
 }
 
 fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
-  match local_coproduct_owner_from_locals(scope: scope, name: name) {
-    Present { value: owner } =>
-      Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: owner) }
-    Absent =>
-      match map_get(scope.locals, name) {
-        Present { value: binding } =>
-          match lookup_type_for(env: scope.type_env, node: binding.resolved) {
-            Present { value: parent } =>
-              let is_coproduct = parent.connective == Disj
-              if is_coproduct {
-                if has_child_named(n: parent, name: name, source_indices: scope.type_env.source_indices) {
-                  Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: parent) }
-                } else { none }
-              } else { none }
-            Absent => none
-          }
+  match map_get(scope.locals, name) {
+    Present { value: binding } =>
+      match lookup_type_for(env: scope.type_env, node: binding.resolved) {
+        Present { value: parent } =>
+          let is_coproduct = parent.connective == Disj
+          if is_coproduct {
+            if has_child_named(n: parent, name: name, source_indices: scope.type_env.source_indices) {
+              Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: binding.resolved) }
+            } else { none }
+          } else { none }
         Absent => none
       }
+    Absent => none
   }
 }
 
@@ -699,23 +694,19 @@ fn variant_owner_node(scope: InferScope, name: String) -> Node? {
       Absent => none
     }
   } else {
-  match local_coproduct_owner_from_locals(scope: scope, name: name) {
-    Present { value: owner } => Present { value: owner }
-    Absent =>
-      match map_get(scope.locals, name) {
-        Present { value: binding } =>
-          match lookup_type_for(env: scope.type_env, node: binding.resolved) {
-            Present { value: owner } =>
-              let owner_is_coproduct = owner.connective == Disj
-              if owner_is_coproduct {
-                if has_child_named(n: owner, name: name, source_indices: scope.type_env.source_indices) {
-                  Present { value: owner }
-                } else { none }
-              } else { none }
-            Absent => none
-          }
+  match map_get(scope.locals, name) {
+    Present { value: binding } =>
+      match lookup_type_for(env: scope.type_env, node: binding.resolved) {
+        Present { value: owner } =>
+          let owner_is_coproduct = owner.connective == Disj
+          if owner_is_coproduct {
+            if has_child_named(n: owner, name: name, source_indices: scope.type_env.source_indices) {
+              Present { value: owner }
+            } else { none }
+          } else { none }
         Absent => none
       }
+    Absent => none
   }
   }
 }

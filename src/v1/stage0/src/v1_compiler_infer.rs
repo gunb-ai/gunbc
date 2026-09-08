@@ -943,39 +943,33 @@ pub fn local_coproduct_owner_from_locals(scope: Rc<InferScope>, name: String) ->
 }
 
 pub fn lookup_variant_parent_enum(scope: Rc<InferScope>, name: String) -> Option<String> {
-    match local_coproduct_owner_from_locals(scope.clone(), name.clone()) {
-        Some(owner) => Some(crate::v1_std_core::authored_name_at(
-            scope.type_env.clone().source_indices.clone(),
-            owner.clone(),
-        )),
-        std::option::Option::None => match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
-            Some(binding) => match crate::v1_compiler_infer_env::lookup_type_for(
-                scope.type_env.clone(),
-                binding.resolved.clone(),
-            ) {
-                Some(parent) => {
-                    let is_coproduct = (parent.connective.clone() == Connective::Disj);
-                    if is_coproduct.clone() {
-                        if crate::v1_std_core::has_child_named(
-                            parent.clone(),
-                            name.clone(),
+    match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
+        Some(binding) => match crate::v1_compiler_infer_env::lookup_type_for(
+            scope.type_env.clone(),
+            binding.resolved.clone(),
+        ) {
+            Some(parent) => {
+                let is_coproduct = (parent.connective.clone() == Connective::Disj);
+                if is_coproduct.clone() {
+                    if crate::v1_std_core::has_child_named(
+                        parent.clone(),
+                        name.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ) {
+                        Some(crate::v1_std_core::authored_name_at(
                             scope.type_env.clone().source_indices.clone(),
-                        ) {
-                            Some(crate::v1_std_core::authored_name_at(
-                                scope.type_env.clone().source_indices.clone(),
-                                parent.clone(),
-                            ))
-                        } else {
-                            std::option::Option::None
-                        }
+                            binding.resolved.clone(),
+                        ))
                     } else {
                         std::option::Option::None
                     }
+                } else {
+                    std::option::Option::None
                 }
-                std::option::Option::None => std::option::Option::None,
-            },
+            }
             std::option::Option::None => std::option::Option::None,
         },
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -1056,35 +1050,30 @@ pub fn variant_owner_node(scope: Rc<InferScope>, name: String) -> Option<Rc<Node
             std::option::Option::None => std::option::Option::None,
         }
     } else {
-        match local_coproduct_owner_from_locals(scope.clone(), name.clone()) {
-            Some(owner) => Some(owner.clone()),
-            std::option::Option::None => {
-                match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
-                    Some(binding) => match crate::v1_compiler_infer_env::lookup_type_for(
-                        scope.type_env.clone(),
-                        binding.resolved.clone(),
-                    ) {
-                        Some(owner) => {
-                            let owner_is_coproduct = (owner.connective.clone() == Connective::Disj);
-                            if owner_is_coproduct.clone() {
-                                if crate::v1_std_core::has_child_named(
-                                    owner.clone(),
-                                    name.clone(),
-                                    scope.type_env.clone().source_indices.clone(),
-                                ) {
-                                    Some(owner.clone())
-                                } else {
-                                    std::option::Option::None
-                                }
-                            } else {
-                                std::option::Option::None
-                            }
+        match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
+            Some(binding) => match crate::v1_compiler_infer_env::lookup_type_for(
+                scope.type_env.clone(),
+                binding.resolved.clone(),
+            ) {
+                Some(owner) => {
+                    let owner_is_coproduct = (owner.connective.clone() == Connective::Disj);
+                    if owner_is_coproduct.clone() {
+                        if crate::v1_std_core::has_child_named(
+                            owner.clone(),
+                            name.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                        ) {
+                            Some(owner.clone())
+                        } else {
+                            std::option::Option::None
                         }
-                        std::option::Option::None => std::option::Option::None,
-                    },
-                    std::option::Option::None => std::option::Option::None,
+                    } else {
+                        std::option::Option::None
+                    }
                 }
-            }
+                std::option::Option::None => std::option::Option::None,
+            },
+            std::option::Option::None => std::option::Option::None,
         }
     }
 }
