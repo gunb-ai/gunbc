@@ -19,6 +19,7 @@ import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo }
 import gunbc.spark.model_snapshot_acquisition {
   ModelSnapshotDesired, ModelSnapshotPinned, ModelSnapshotUnpinned, glm_5_3_flash_snapshot,
+  SnapshotPlacement, HubCachePlacement, spark_hub_cache_root,
 }
 
 fn w_first() -> SparkPairRealization? { first(spark_pair_realizations()) }
@@ -30,11 +31,17 @@ fn w_first() -> SparkPairRealization? { first(spark_pair_realizations()) }
 // unit is a fact about the renderer, not about today's fleet state, so it is asserted against a
 // fixture that supplies both missing facts explicitly. That separation is the point: one test says
 // the live roster refuses, the others say what the renderer produces when it does not.
+// THE FIXTURE DECLARES ITS PLACEMENT BECAUSE THE SNAPSHOT NOW HAS ONE, and a fixture that omitted it
+// would not compile -- which is the type doing its job. The Hub-cache placement is the right one here:
+// this fixture stands for the DeepSeek-shaped pair route, whose weights genuinely live in the Hub cache
+// layout (measured on the serving head, `models--deepseek-ai--DeepSeek-V4-Flash/snapshots/<rev>`), and
+// the local-directory placement belongs to the canary arm instead.
 data w_fixture_snapshot: ModelSnapshotDesired = ModelSnapshotPinned {
   identity: "fixture-model" as NonEmptyStr,
   repo: HubRepoId { kind: HubModelRepo, path: "zai-org/GLM-5.3-Flash" as NonEmptyStr },
   revision: "fixture0000000000000000000000000000000000" as NonEmptyStr,
   revision_provenance: "controlled fixture: this witness asserts renderer shape, never a resolved revision" as NonEmptyStr,
+  placement: HubCachePlacement { cache_root: spark_hub_cache_root },
 }
 
 fn w_fixture_unit() -> SparkPairServingUnit {
