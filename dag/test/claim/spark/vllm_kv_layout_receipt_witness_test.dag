@@ -148,11 +148,12 @@ fn w_full(layers: Nat, block: Nat) -> KvGroupLayout {
   KvGroupLayout { kind: FullAttention, layer_count: attention_layer_count(count: layers), block_size: token_count(count: block) }
 }
 
-// TODAY'S REAL EVIDENCE LANDS INCONSISTENT, WHICH IS THE POINT. The group A head's own two startup
+// TODAY'S REAL EVIDENCE LANDS UNREADABLE, WHICH IS THE POINT. The group A head's own two startup
 // lines are mutually consistent, its inventory is real, and the receipt still refuses to be
 // observed -- because the engine emits no group metadata, so the one non-circular check has no
-// second opinion to compare against. An absent second opinion is not agreement.
-test fn a_real_capture_with_no_group_metadata_is_inconsistent_not_observed() -> Bool {
+// second opinion to compare against. An absent second opinion is not agreement, and it is not
+// established disagreement (KvLayoutInconsistent) either.
+test fn a_real_capture_with_no_group_metadata_is_unreadable_not_observed() -> Bool {
   match w_admitted_pool(tokens: 11767856, revision: vllm_source_revision_read) {
     Absent => false
     Present { value: p } =>
@@ -160,7 +161,7 @@ test fn a_real_capture_with_no_group_metadata_is_inconsistent_not_observed() -> 
         Absent => false
         Present { value: r } =>
           match r {
-            KvLayoutInconsistent { launch: _, cause: c } =>
+            KvLayoutUnreadable { launch: _, cause: c } =>
               string_contains(s: c as String, pattern: "cannot be checked")
                 && string_contains(s: c as String, pattern: "unobserved")
             _ => false
@@ -171,7 +172,7 @@ test fn a_real_capture_with_no_group_metadata_is_inconsistent_not_observed() -> 
 
 // AND IT AUTHORIZES NOTHING. The refusal is not cosmetic: a receipt that is not observed cannot seat
 // a request even against the very engine it describes.
-test fn an_inconsistent_receipt_seats_nothing() -> Bool {
+test fn an_unreadable_receipt_seats_nothing() -> Bool {
   match w_admitted_pool(tokens: 11767856, revision: vllm_source_revision_read) {
     Absent => false
     Present { value: p } =>
@@ -274,7 +275,7 @@ test fn a_reading_from_another_revision_refuses_instead_of_being_compared() -> B
         Absent => false
         Present { value: r } =>
           match r {
-            KvLayoutInconsistent { launch: _, cause: c } =>
+            KvLayoutUnreadable { launch: _, cause: c } =>
               string_contains(s: c as String, pattern: "not valid across revisions")
             _ => false
           }
@@ -298,7 +299,7 @@ test fn a_layout_from_another_revision_refuses_instead_of_being_compared() -> Bo
         Absent => false
         Present { value: r } =>
           match r {
-            KvLayoutInconsistent { launch: _, cause: c } =>
+            KvLayoutUnreadable { launch: _, cause: c } =>
               string_contains(s: c as String, pattern: "not valid across revisions")
             _ => false
           }
@@ -321,7 +322,7 @@ test fn a_reading_from_a_fork_at_the_modelled_hash_refuses_instead_of_being_comp
         Absent => false
         Present { value: r } =>
           match r {
-            KvLayoutInconsistent { launch: _, cause: c } =>
+            KvLayoutUnreadable { launch: _, cause: c } =>
               string_contains(s: c as String, pattern: "vllm-fork")
             _ => false
           }
