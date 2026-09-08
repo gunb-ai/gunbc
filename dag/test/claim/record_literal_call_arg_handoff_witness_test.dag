@@ -18,12 +18,18 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // path refused for that shape. Pair 1 (nominal-at-literal): Box at Node param — diagnostics_witness
 // record_literal_field_walls carries it on the production compile path. Pair 2 (resolved-type
 // legacy): warm-fox Cons/FreeMonoid<Node> at inline sole_constructor NormalizedTree in
-// compile_dag_diagnostic_census — the shape main's legacy path refused before the skip. On the
-// current base v2.compiler.normalized_tree is still type NormalizedTree = Node, so the same call on
-// the production compile path stays green because it is Node-at-Node, not because the check is
-// complete; when gunbc#8256 lands the sealed carrier (type NormalizedTree sole_constructor { root:
-// Node }), that call becomes a genuine nominal mismatch and warm-fox measured it compile-clean on
-// the production path — open BL-1 typecheck residue, not enrolled as correct behavior here.
+// compile_dag_diagnostic_census — the shape main's legacy path refused before the skip.
+//
+// BL-1 TYPECHECK RESIDUE — CLOSED. This file used to wait on gunbc#8256 because
+// v2.compiler.normalized_tree NormalizedTree was still an alias for Node, so a production-path
+// call of this shape was Node-at-Node rather than a mismatch. That wait fired: BL-1 sealed the
+// carrier as type NormalizedTree sole_constructor { root: Node } (gunbc#8256). The remaining
+// hole was that even a genuine FreeMonoid<Node> at FreeMonoid<NormalizedTree> compiled clean;
+// PositionGenericTypeArgument now constructs the element obligation and
+// declared_type_inhabitance decides it, so record_literal_container_element_mismatch_at_call_arg_still_refuses
+// asserts DeclaredTypeNotInhabited at "generic type argument". The witness is not deleted
+// (DESIGN 4b(4)): it is the permanent regression control. The temporary expected-red admission
+// was the retired floor_expected_red chunk_23 row.
 
 fn w_nominal_record_at_call_arg_red() -> Bool {
   compile_dag_rust_emit_check(
