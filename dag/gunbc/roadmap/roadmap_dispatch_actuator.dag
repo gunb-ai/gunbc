@@ -74,6 +74,7 @@ import extdeps.tmux {
   parse_tmux_attempt_panes_output,
 }
 import extdeps.llm.cli {
+  ProviderModelSelection,
   shape_claude_invoke_argv,
   claude_cli_program,
   codex_cli_program,
@@ -112,6 +113,7 @@ import gunbc.dispatch_selection {
   resolve_dispatch_selection,
   provider_inventory_for_instance,
   resolved_process_fingerprint,
+  resolved_model_selection,
   dispatch_claude_process_fingerprint,
   dispatch_cursor_process_fingerprint,
   srv1_live_dashboard_instance,
@@ -1616,6 +1618,7 @@ fn git_worktree_add_detached_argv_for_instance(
 
 fn claude_spawn_argv(
   effort: ReasoningEffort,
+  model: ProviderModelSelection,
   session_uuid: String,
   node_id: RoadmapNodeId,
   brief: String,
@@ -1624,6 +1627,7 @@ fn claude_spawn_argv(
     session_id: session_uuid,
     node_id: node_id,
     effort: effort,
+    model: model,
     settings_json: claude_skip_permission_settings_json,
     append_system_prompt: brief,
     start_prompt: dispatch_claude_start_prompt,
@@ -1633,6 +1637,7 @@ fn claude_spawn_argv(
 
 fn codex_spawn_argv(
   effort: ReasoningEffort,
+  model: ProviderModelSelection,
   worktree_path: String,
   brief: String,
 ) -> List<String> {
@@ -1641,6 +1646,7 @@ fn codex_spawn_argv(
     cwd: worktree_path,
     prompt: join([brief, "\n\n", dispatch_codex_start_prompt], ""),
     reasoning_effort: effort,
+    model: model,
     spec: dispatch_codex_exec_spec,
   )
 }
@@ -1662,6 +1668,7 @@ fn codex_spawn_program_for_instance(instance: HostDashboardInstance) -> String {
 fn codex_spawn_argv_for_instance(
   instance: HostDashboardInstance,
   effort: ReasoningEffort,
+  model: ProviderModelSelection,
   worktree_path: String,
   brief: String,
 ) -> List<String> {
@@ -1675,6 +1682,7 @@ fn codex_spawn_argv_for_instance(
     cwd: worktree_path,
     prompt: join([brief, "\n\n", dispatch_codex_start_prompt], ""),
     reasoning_effort: effort,
+    model: model,
     spec: dispatch_codex_exec_spec,
   )
 }
@@ -1738,6 +1746,7 @@ data gunbc_harness_worker_function: String = "harness_worker_cli"
 fn dispatch_provider_inner_argv(
   provider: DispatchCliProvider,
   effort: ReasoningEffort,
+  model: ProviderModelSelection,
   session_uuid: String,
   node_id: RoadmapNodeId,
   worktree_path: String,
@@ -1750,6 +1759,7 @@ fn dispatch_provider_inner_argv(
           [env_path_resolved_program as String, "CLAUDE_CODE_NO_FLICKER=1"],
           claude_spawn_argv(
             effort: effort,
+            model: model,
             session_uuid: session_uuid,
             node_id: node_id,
             brief: brief,
@@ -1760,6 +1770,7 @@ fn dispatch_provider_inner_argv(
       DispatchProviderInnerArgvReady {
         argv: codex_spawn_argv(
           effort: effort,
+          model: model,
           worktree_path: worktree_path,
           brief: brief,
         ),
@@ -1775,6 +1786,7 @@ fn dispatch_provider_inner_argv_for_instance(
   instance: HostDashboardInstance,
   provider: DispatchCliProvider,
   effort: ReasoningEffort,
+  model: ProviderModelSelection,
   session_uuid: String,
   node_id: RoadmapNodeId,
   attempt_key: String,
@@ -1794,6 +1806,7 @@ fn dispatch_provider_inner_argv_for_instance(
           ],
           claude_spawn_argv(
             effort: effort,
+            model: model,
             session_uuid: session_uuid,
             node_id: node_id,
             brief: brief,
@@ -1818,6 +1831,7 @@ fn dispatch_provider_inner_argv_for_instance(
               cwd: worktree_path,
               prompt: join([brief, "\n\n", dispatch_codex_start_prompt], ""),
               reasoning_effort: effort,
+              model: model,
               spec: dispatch_codex_exec_spec,
             ),
           }
@@ -2457,6 +2471,7 @@ fn dispatch_spawn_commands_for_inventory(
     DispatchSelectionResolved { receipt } => {
       let provider = provider_kind_to_dispatch_cli(kind: receipt.provider_kind)
       let effort = receipt.applied_effort
+      let model = resolved_model_selection(resolved: receipt.resolved_selection)
       match provider {
         CursorDispatchProvider =>
           DispatchSpawnRefused {
@@ -2471,6 +2486,7 @@ fn dispatch_spawn_commands_for_inventory(
             attempt_key: attempt_key,
             provider: provider,
             effort: effort,
+            model: model,
             origin: FreshFromBase,
           )
       }
@@ -2507,6 +2523,7 @@ fn dispatch_spawn_commands_for_resolved_instance(
   attempt_key: String,
   provider: DispatchCliProvider,
   effort: ReasoningEffort,
+  model: ProviderModelSelection,
   origin: AttemptOrigin,
 ) -> DispatchSpawnPlan {
   let fields = dispatch_brief_fields_for_environment(
@@ -2528,6 +2545,7 @@ fn dispatch_spawn_commands_for_resolved_instance(
     instance: instance,
     provider: provider,
     effort: effort,
+    model: model,
     session_uuid: session_uuid,
     node_id: node.node,
     attempt_key: attempt_key,
