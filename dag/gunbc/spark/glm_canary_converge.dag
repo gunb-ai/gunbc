@@ -379,7 +379,26 @@ fn glm_canary_receipt_body(at: String, executor: String, path: SparkReachPath, v
     " runtime=", glm_canary_runtime_wire(arm: glm_canary_arm),
     " host=", glm_canary_arm.host as String, "\n",
     "  verdict: ", glm_canary_convergence_text(v: verdict), "\n",
+    "  serve: ", glm_canary_serve_argv_text(arm: glm_canary_arm), "\n",
   ], "")
+}
+
+// THE RENDERED LAUNCH LINE IS PRINTED ON EVERY RECEIPT, WHICH IS WHAT MAKES IT A CONSUMED DECLARATION
+// RATHER THAN A WELL-SHAPED ORNAMENT. `glm_canary_serve_argv` was added with NO caller: it type-checked,
+// it read correctly, and no execution reached it -- which is precisely the dangling modelling DESIGN
+// section 3c names, and it is worth recording that it was introduced in the same session that quoted
+// that section at other people's code.
+//
+// AND IT IS THE COMPARISON THAT MATTERS, NOT THE DECORATION. The canary was launched by hand and has
+// served for hours; the receipt now carries what the MODEL would launch, beside the arm it launched
+// from, so a reader can hold it against `docker inspect` on the running container and see whether the
+// two agree BEFORE anyone authorises a restart. That is the cheapest possible form of the check, and
+// it costs one line per run.
+fn glm_canary_serve_argv_text(arm: GlmCanaryArm) -> String {
+  match glm_canary_serve_argv(arm: arm) {
+    Absent => "REFUSED: no checkpoint or runtime row for this arm, so no launch line exists"
+    Present { value: argv } => join(argv, " ")
+  }
 }
 
 fn glm_canary_checkpoint_wire(arm: GlmCanaryArm) -> String {
