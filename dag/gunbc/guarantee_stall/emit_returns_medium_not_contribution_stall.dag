@@ -1,0 +1,20 @@
+module gunbc.guarantee_stall.emit_returns_medium_not_contribution_stall
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+
+data emit_returns_medium_not_contribution_stall: GuaranteeStall = GuaranteeStall {
+  subject: "v2.compiler.emit_module emit_module_contribution constructs EmissionContribution from the real emitter path, but v2.compiler.emit returns Medium<String> and reports no contribution structure, so the origins of each declaration's emitted text are unobserved at that seam. Every module and family contribution therefore reads EmissionOriginsIncomplete naming v2.compiler.emit, once per declaration. The bytes are observed and retained; only their origins are not.",
+  current: Mitigatable,
+  ceiling: StructurallyImpossible,
+  blocker: AwaitsOneGrounding {
+    grounding: "v2.compiler.emit returns an EmissionContribution rather than Medium<String>, so emit_module_decl_contribution can compose that contribution as a nested part instead of wrapping its bytes in EmissionUnobservedFragment."
+  },
+  population: BoundedPopulation { members: [
+    "v2.compiler.emit_module.emit_module_emit_unobserved_fragment",
+    "v2.compiler.emit_module.emit_module_decl_contribution",
+    "v2.compiler.emit_module.emit_module_contribution",
+    "v2.compiler.emit_module.emit_family_contribution"
+  ] },
+  next_rung_trigger: climbs_when(capability: "v2.compiler.emit returns an EmissionContribution rather than Medium<String>, SUFFICIENT FOR emit_module_decl_contribution to compose that contribution as a nested part instead of wrapping its bytes in EmissionUnobservedFragment -- at which point v2.test.emit.emit_module_contribution's arm census flips (unobserved 0, composition depth +1) and stays enrolled as the regression control rather than retiring. A change that merely reduces the NUMBER of unobserved fragments, or that observes origins for some other producer while emit still reports none, does not fire it.")
+}

@@ -126,7 +126,7 @@ import v1.compiler.infer_env {
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, census_declaration_type_env, declaration_substitution_basis, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, binding_declares_name, type_reference_declaration_ref, type_reference_declaration, declaration_provenance_of_ref,
+  lookup_binding_by_name, lookup_binding_on_chain, binding_declares_name, type_reference_declaration_ref, type_reference_declaration, declaration_provenance_of_ref,
   listed_import_required_bare_call_blocked,
   effective_visible_binding, unit_variant_index_shadow_insert,
   build_unit_variant_index, UnitVariantContribution
@@ -3269,12 +3269,15 @@ type InhabitanceUndecidableReason
   | UndecidableOptionalCarrier
   | UndecidableFormalUnresolved
   | UndecidableProducedIdentityErased
+  | UndecidableRefinementIntroduction
+  | UndecidableRefinementPeerChains
 
 type InhabitanceRefusalReason
   = RefusedPayloadAtParent
   | RefusedKernelAtStructured
   | RefusedDistinctProductConstructor
   | RefusedDistinctAppliedTypeArgument
+
 
 type InhabitanceVerdict
   = Inhabits
@@ -3297,6 +3300,191 @@ fn declared_type_position_label(position: DeclaredTypePosition, subject: String)
     PositionDirectCallArgument =>
       if subject == "" { "direct call argument" }
       else { concat("direct call argument for parameter '", subject, "'") }
+  }
+}
+
+// REFINEMENT INHABITANCE, DECIDED FROM THE CHAIN AND IN BOTH DIRECTIONS BY ONE AUTHORITY.
+//
+// std.types declares refinements in layers -- NonEmptyStr = String where non_empty,
+// PathSegment = NonEmptyStr where brand("PathSegment"), Char = Int where unicode_scalar,
+// brand("Char") -- so a refinement pair is not two unrelated names, it is two positions on one
+// chain, and which position each side occupies is the whole verdict. std states the direction it
+// cares about on the RenderedTerminalText declaration: a raw stdout pipe cannot inhabit the brand,
+// so feeding one to a parser that requires it is a type error. That is NARROWING refused. It says
+// nothing against widening, and the PathSegment note reasons about a branded NonEmptyStr as
+// though it simply is one.
+//
+// ONE RELATION, EVERY DIRECTION, DELIBERATELY. Deciding widening in one predicate and the other
+// directions in another lets them drift apart, and only one would carry a test. All three arms
+// are read off where_refinement_chain rather than off any particular pair, so a brand over Int
+// decides the same way a brand over NonEmptyStr does and a two-level chain decides the same way a
+// one-level chain does.
+//
+// THE NARROWING DIRECTION DECLINES, AND BOTH HALVES OF THAT ARE MEASURED, NOT REASONED.
+// std's brand prose refuses narrowing, and the first build of this relation refused it here --
+// which turned 10 corpus refusals into 4928, every one of them a base value at a refinement
+// formal, 3870 of those a plain String at a NonEmptyStr formal. That is not four thousand
+// defects, so the refusal was withdrawn and the pair is declined instead.
+//
+// WHAT THE DECLINE IS, AND TWO WRONG ACCOUNTS OF IT THAT MEASUREMENT KILLED. It is NOT that
+// introduction is uncarried: an EXPLICIT CAST IS ALREADY VISIBLE HERE --
+// takes_non_empty(s: "x" as NonEmptyStr) produces nothing from this relation, while bare literals
+// decline. And it is NOT that the predicate goes unchecked: a three-way fixture pair settles it.
+//   takes_non_empty(s: "")  -> REFUSED, `type mismatch: expected Product(NonEmptyStr), got
+//                              Primitive(String)`, from the where-refinement predicate machinery
+//   takes_non_empty(s: "x") -> admitted by that same machinery, no mismatch
+//   both                    -> this relation declines with UndecidableRefinementIntroduction
+//
+// So the introduction question IS ALREADY DECIDED, by an authority this relation does not consult.
+// That is the same shape the numeric note above records: the class was never undecidable, it was
+// UNCONSULTED. Refusing here would fabricate a verdict in the direction DESIGN section 5 forbids
+// as firmly as fabricating a success, and admitting here would assert a proof this relation did
+// not perform; so the pair is reported UndecidableRefinementIntroduction -- located, per-reason,
+// countable -- and the deficit ranks instead of vanishing.
+//
+// THE PEER ARM CARRIES ITS OWN NAME AND ITS OWN REASON, BECAUSE IT IS A DIFFERENT FACT AND ONE
+// NAME MAY NOT HOLD TWO -- and the CONSTRUCTOR was renamed with the reason, since calling them
+// sibling BRANDS encoded the same conflation one level up: the measured population is not brands.
+// Narrowing is introduction: the produced type sits at or above the declared refinement on
+// its own chain. Peers MEET on a shared link with neither nesting inside the other, and the
+// measured population makes the difference concrete -- declared NonEmptyStr <- produced FilePath,
+// GcpProjectId, Sha512DigestHex are peer predicates over one base, not introductions and not
+// conflicting brands. Filing them under a reason whose text says they are introductions is the
+// meaning fork DESIGN section 3 names, and it would defeat the very property this note claims:
+// a mixed bucket is not located, per-reason or countable. It would also mis-aim the trigger
+// below -- consulting the introduction verdict would discharge the trigger while leaving a sibling
+// residue behind under a name asserting it had been handled. Review finding, cursor/auto on
+// review 62043, upheld by tidy-lynx-804, 2026-09-07.
+//
+// NEXT-RUNG TRIGGER, and it is CHEAPER than the one first written here: this relation consulting
+// the where-refinement predicate verdict that already decides the pair, rather than a new
+// elaboration fact reaching the seam. An earlier draft of this annotation claimed the predicate
+// was unchecked at introduction, on a probe that reported no diagnostic for an empty literal; the
+// fixture pair above refutes that, and the claim is withdrawn rather than defended.
+//
+// THE SIBLING ARM DECLINES TOO, AND THAT IS A SECTION 3 ANSWER RATHER THAN A GAP. Two refinements
+// that share a base without either being the other's ancestor look like the horizontal case brands
+// exist to refuse -- but DISTINCT BRAND DECLARATIONS ARE ALREADY WALLED, by
+// where_refinement_brand_nominal_verdict through where_refinement_mismatch_diags, which compares
+// brand DECLARATION SITES rather than spellings and refuses BrandNominalDistinctDeclarations.
+// Refusing here as well would be a second authority for one judgment. It would also be wrong at
+// this grain, and that was measured rather than reasoned: refusing every sibling pair turned up
+// FilePath at a NonEmptyStr formal, GcpProjectId at a NonEmptyStr formal, Sha512DigestHex at a
+// NonEmptyStr formal -- peer predicate refinements over the same base, carrying no conflicting
+// brand at all, whose chains fail to nest only because each is declared over String directly. A
+// sibling relation is not a brand conflict, and only the brand authority can tell them apart.
+//
+// WHY IT IS REACHABLE ONLY NOW. Every site this relation answers had its declared side rewritten
+// into a generic formal before any arm ran, so the refinement question was never put. Measured on
+// the corpus at the moment that stamp was removed: HostIdentity flowing into a NonEmptyStr formal
+// -- widening to its own declared base, correct code -- refused as a distinct product
+// constructor. This is the arm that state was hiding, not a widening of scope.
+// THE CHAIN IS COMPARED AT RESOLVED DECLARATION IDENTITY, AND IT IS UNAVAILABLE ON ANY MISS.
+// Three corrections live here, each from a review and each falsifying something an earlier form of
+// this function asserted about itself.
+//
+// FIRST, it compared qualified_last_segment -- a module-STRIPPED last segment -- so two homonymous
+// refinements would have compared EQUAL and widening would have admitted a pair that does not
+// inhabit. This file already suffered that class: a second HostIdentity was minted beside
+// product.placement_supply's and did not surface as a duplicate declaration. Only one survives
+// because the incident was CLEANED UP, not avoided.
+//
+// SECOND, it keyed on where_refinement_brand_declaration_site applied to the node in hand, and
+// ident_span IS NOT DECLARATION PROVENANCE: default_ident_span sets it from the node's OWN
+// name_span at construction, so on a link that did not resolve the key was a REFERENCE-site key.
+// That is wrong in BOTH directions at once -- two distinct declarations referenced from one file
+// key EQUAL, one declaration referenced from two files keys UNEQUAL -- and a key that can both
+// merge distinct things and split identical ones is not an identity at all. There is no tightening
+// that repairs a non-identity, so the fallback is gone rather than sharpened: every link is
+// resolved through lookup_type_for, the NODE-AWARE authority that matches node.ident first, and the
+// site is taken from the resolved DECLARATION.
+//
+// THIRD, the entry point took authored_name_at and then looked the type up BY NAME, so a node that
+// already carried identity was rebound by spelling at the head of a relation whose whole subject is
+// spelling collision. It resolves through lookup_type_for too.
+//
+// AND THE COMPLETENESS CHECK NOW MEASURES RESOLUTION RATHER THAN NAMING. The count equality below
+// used to compare ident_span PRESENCE, which every named node has, so it proved the links were
+// NAMED and could not fail for the reason it existed. It now compares RESOLVED links, and any miss
+// discards the whole chain: the pair is simply not this relation's subject.
+//
+// WHY DISCARD RATHER THAN COMPACT, since the earlier form dropped unidentified links and claimed
+// that was conservative. IT IS NOT, and the counterexample is the HEAD: drop the declared side's
+// head and its BASE is promoted to head, so the produced chain contains it, the widening arm fires,
+// and a value is admitted at a strictly narrower declared refinement it was never shown to inhabit.
+// Compaction is not the conservative direction; it is the widening one, one link up.
+//
+// ONE PRINCIPLE, THREE POSITIONS, AND IT IS WORTH STATING ONCE RATHER THAN PATCHING THREE TIMES:
+// ABSENCE OF IDENTITY IS NOT REPAIRABLE BY DEGRADING WHAT YOU COMPARE. Every arm above reached for
+// a weaker comparison when the precise one was unavailable -- lowering the GRAIN to a spelling,
+// shortening the CHAIN past a link it could not identify, substituting a REFERENCE for a
+// declaration -- and each was assessed as conservative in general while reversing direction at some
+// particular position. A failure arm refuses; it does not widen, and it does not compare something
+// else instead. Reviews 62130 and 62172, and GitHub review 5135375330, 2026-09-07.
+
+fn refinement_chain_link_identity(link: Node, type_env: TypeEnv) -> String? {
+  match lookup_type_for(env: type_env, node: link) {
+    Present { value: declaration } =>
+      where_refinement_brand_declaration_site(
+        ty: declaration, source_indices: type_env.source_indices)
+    Absent => Absent
+  }
+}
+
+fn refinement_chain_link_identities(links: List<Node>, type_env: TypeEnv) -> List<String> {
+  let identified = links
+    |> map(link => refinement_chain_link_identity(link: link, type_env: type_env))
+    |> filter(site => site != none)
+    |> map(site => match site { Present { value: id } => id  Absent => "" })
+    |> filter(id => id != "")
+  if (identified |> count) == (links |> count) {
+    identified
+  } else {
+    []
+  }
+}
+
+fn refinement_chain_names(n: Node, scope: InferScope) -> List<String> {
+  match lookup_type_for(env: scope.type_env, node: n) {
+    Present { value: declaration } =>
+      refinement_chain_link_identities(
+        links: where_refinement_chain(ty: declaration, type_env: scope.type_env),
+        type_env: scope.type_env)
+    Absent => []
+  }
+}
+
+type RefinementInhabitance
+  = RefinementWidensToDeclaredBase
+  | RefinementNarrowsToDeclaredBrand
+  | RefinementPeerChains
+
+// ABSENT MEANS "NOT THIS RELATION'S SUBJECT", NEVER "COMPATIBLE". Every guard hands the pair back
+// to the arms below rather than admitting it, so this can only convert a silence into a decision
+// for a pair whose two chains are both established and actually meet.
+fn refinement_inhabitance(declared: Node, produced: Node, scope: InferScope) -> RefinementInhabitance? {
+  let declared_chain = refinement_chain_names(n: declared, scope: scope)
+  let produced_chain = refinement_chain_names(n: produced, scope: scope)
+  match declared_chain |> first {
+    Absent => none
+    Present { value: declared_head } =>
+      match produced_chain |> first {
+        Absent => none
+        Present { value: produced_head } =>
+          if declared_head == produced_head {
+            none
+          } else if (declared_chain |> count) <= 1 && (produced_chain |> count) <= 1 {
+            none
+          } else if produced_chain |> any(link => link == declared_head) {
+            Present { value: RefinementWidensToDeclaredBase }
+          } else if declared_chain |> any(link => link == produced_head) {
+            Present { value: RefinementNarrowsToDeclaredBrand }
+          } else if declared_chain |> any(d => produced_chain |> any(p => p == d)) {
+            Present { value: RefinementPeerChains }
+          } else {
+            none
+          }
+      }
   }
 }
 
@@ -3332,16 +3520,26 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
     InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
   } else if coproduct_at_record_declared_type(declared: declared, produced: produced, scope: scope) {
     InhabitanceRefused { reason: RefusedKernelAtStructured }
-  } else if kernel_value_declared_type_mismatch(
-      formal: declared, actual: produced,
-      type_env: scope.type_env, source_indices: source_indices) {
-    InhabitanceRefused { reason: RefusedKernelAtStructured }
-  } else if coproduct_payload_where_parent_required(formal: declared, actual: produced, scope: scope) {
-    InhabitanceRefused { reason: RefusedPayloadAtParent }
   } else {
-    match nominal_product_inhabitance_refusal(declared: declared, produced: produced, scope: scope) {
-      Present { value: r } => InhabitanceRefused { reason: r }
-      Absent => Inhabits
+    match refinement_inhabitance(declared: declared, produced: produced, scope: scope) {
+      Present { value: RefinementWidensToDeclaredBase } => Inhabits
+      Present { value: RefinementNarrowsToDeclaredBrand } =>
+        InhabitanceUndecidable { reason: UndecidableRefinementIntroduction }
+      Present { value: RefinementPeerChains } =>
+        InhabitanceUndecidable { reason: UndecidableRefinementPeerChains }
+      Absent =>
+        if kernel_value_declared_type_mismatch(
+            formal: declared, actual: produced,
+            type_env: scope.type_env, source_indices: source_indices) {
+          InhabitanceRefused { reason: RefusedKernelAtStructured }
+        } else if coproduct_payload_where_parent_required(formal: declared, actual: produced, scope: scope) {
+          InhabitanceRefused { reason: RefusedPayloadAtParent }
+        } else {
+          match nominal_product_inhabitance_refusal(declared: declared, produced: produced, scope: scope) {
+            Present { value: r } => InhabitanceRefused { reason: r }
+            Absent => Inhabits
+          }
+        }
     }
   }
 }
@@ -3545,6 +3743,26 @@ fn nominal_product_head_name(n: Node, scope: InferScope) -> String {
   }
 }
 
+// A WHERE-REFINEMENT IS NOT A NOMINAL PRODUCT, and the Conj test alone cannot tell them apart.
+// `type NonEmptyStr = String where non_empty` and `type HostIdentity = NonEmptyStr where
+// brand("HostIdentity")` both carry connective Conj with one child, which is the shape a
+// one-field record also has -- so the bare Conj-with-children test admitted them to the
+// nominal-product arm, where two distinct refinement names disagree and the pair refuses.
+// Measured on the corpus: HostIdentity flowing into a NonEmptyStr formal, which is WIDENING TO
+// ITS OWN DECLARED BASE and is correct code, refused as RefusedDistinctProductConstructor.
+//
+// WHY THE EXCLUSION IS THE HONEST FIX RATHER THAN A WIDENING. This arm's own contract is
+// "concrete named products and their transparent aliases", and it names the shapes it does not
+// handle rather than implying coverage. A where-refinement is a fourth such shape: deciding it
+// needs the refinement CHAIN and its direction -- widening to a base admits, narrowing to a
+// brand must not -- which is a different judgment with a different authority
+// (where_refinement_chain), not a case of this one. Refusing it here would fabricate a verdict
+// from a name comparison that carries no direction at all. It reaches this arm only because the
+// declared side used to be stamped a generic formal and declined before any arm ran.
+//
+// NEXT-RUNG TRIGGER: a refinement-inhabitance relation that consumes where_refinement_chain and
+// decides the two directions separately, at which point brand narrowing becomes a refusal here
+// rather than an abstention.
 fn nominal_product_head_name_if_declared_product(name: String, scope: InferScope) -> String {
   let representative = transparent_alias_representative(
     index: scope.type_env.symbol_index, name: name)
@@ -3735,6 +3953,8 @@ fn inhabitance_undecidable_reason_label(reason: InhabitanceUndecidableReason) ->
     UndecidableOptionalCarrier => "optional carrier: the language's own cardinality carrier, where a T standing in an Optional<T> position is the declared spelling rather than a payload escape"
     UndecidableFormalUnresolved => "formal unresolved: the declared type did not resolve to a declaration, so there is nothing to judge inhabitance against"
     UndecidableProducedIdentityErased => "produced identity erased: the produced value's type identity is not recoverable at this seam"
+    UndecidableRefinementPeerChains => "refinement peer chains: the declared and produced refinements MEET on a shared link with neither nesting inside the other -- PEER PREDICATES over one base, measured as FilePath, GcpProjectId and Sha512DigestHex at NonEmptyStr, which are not brands at all -- so this is neither an introduction nor a brand conflict, and neither this seam nor the brand wall decides the pair"
+    UndecidableRefinementIntroduction => "refinement introduction: the produced value sits at or above the declared refinement on its own chain and carries no cast to it, so whether it was INTRODUCED at that refinement is the literal-elaboration verdict for its destination, which this seam does not consult"
   }
 }
 
@@ -7960,7 +8180,7 @@ fn sole_constructor_construction_diags(
 
 data zero_field_variant_tag_reference_frontier_note: String = "P0 field-wall frontier (operator Ruling 1a, 2026-07-15): a ZERO-field literal of a coproduct VARIANT (field_inits empty AND variant_owner_node != none) is sanctioned as a TAG REFERENCE, not a construction — the `discriminant(v: PrefixToken {})` idiom (16+ sites in src/v2/std/compilers/target_model.dag) names a variant to obtain its stable tag identity without materializing a value. Presence checking is skipped for exactly this shape; PARTIAL literals (any field present) stay red, and zero-field literals of NON-variant records (variant_owner_node == none) stay red — so the audit F1 probes (CacheProvider/CostAccount partial literals) are unaffected. This is a decidable structural exemption (not an absorbing fallback: it refuses precisely, never widens on failure). DISSOLVE-ON: a first-class variant-tag carrier that types the discriminant argument position, at which point the exemption is deleted and the sites migrate to the carrier."
 
-data presence_check_census_gate_note: String = "Field-presence enforcement (P0 wall, #6663) stands down when the literal's bare type name is AMBIGUOUS in the corpus-wide census (global_bare, order-independent): with two same-named decls in the closure, every name-keyed template lookup below resolves by overlay-wins import order (a LEDGERED binding fork, see guarded_cache_union_note), so enforcing would GUESS which decl the author meant and red correct literals against the wrong layer's fields (2026-07-16 main-red: v2 nested Monoid/BooleanAlgebra/OrderedRing literals checked against dag/std flat shapes). Skipping on ambiguity is the pre-wall behavior for exactly those names; enforcement stays live for census-unique names (~98 percent of the corpus) AND for names this module DECLARES LOCALLY. The local carve-out is the one census-ambiguous case that still enforces, and it is read from TypeEnv.str_bindings ONLY: build_type_env sets str_bindings = local_str_bindings (this module's own declarations; the direct-import overlay lands in ancestry_str_bindings), and lookup_binding_by_name_local consults str_bindings FIRST, so a locally-declared name resolves to the local decl deterministically and order-independently - the precedence note's 'locals > kernel > direct-selected > transitive union' with no fork to guess (direct_import_export_precedence_note). The gate must NOT reach lookup_type_by_name here: that walks on into ancestry_str_bindings, i.e. the import-order overlay, which makes the WALL ITSELF order-dependent - the same source text refusing under one import order and passing under the other (reproduced 2026-07-20, target/probe-presencewall ARM SET A: probe.c1 'import a then b' passes while probe.c2 'import b then a' reds on one identical literal), which is exactly the GUESS this gate exists to refuse. Dissolve-on: containment SymbolIndex (namespace lane) makes the expected type scope-resolved; then this gate is dead code and the wall goes total. Ratchet (PR #6709 review, accepted): before the wall goes total, stand-downs become counted out-of-band ledger rows (binding_forks channel shape — LEDGERED, never diagnostics; a red refusal would re-red correct literals), landing with the SymbolIndex work that dissolves this gate."
+data presence_check_census_gate_note: String = "Field-presence enforcement (P0 wall, #6663) stands down when the literal's bare type name is AMBIGUOUS in the corpus-wide census (global_bare, order-independent): with two same-named decls in the closure, every name-keyed template lookup below resolves by overlay-wins import order (a LEDGERED binding fork, see guarded_cache_union_note), so enforcing would GUESS which decl the author meant and red correct literals against the wrong layer's fields (2026-07-16 main-red: v2 nested Monoid/BooleanAlgebra/OrderedRing literals checked against dag/std flat shapes). Skipping on ambiguity is the pre-wall behavior for exactly those names; enforcement stays live for census-unique names (~98 percent of the corpus) AND for names this module DECLARES LOCALLY. The local carve-out is the one census-ambiguous case that still enforces, and it is read from TypeEnv.str_bindings ONLY: build_type_env sets str_bindings = local_str_bindings (this module's own declarations; the direct-import overlay lands in ancestry_str_bindings), and this gate reads map_get(env.str_bindings) ONLY -- lookup_binding_by_name_local falls through to intern_table after ancestry, which is exactly the walk this presence carve-out forbids. type_name_declares_own_type is a different question (record-literal widening): it consumes v1.compiler.infer_env lookup_binding_on_chain, so an imported product is not widened to a pool coproduct arm of the same spelling, while an unimported pool product still does not count as declaring the type. A locally-declared name therefore resolves to the local decl deterministically and order-independently - the precedence note's 'locals > kernel > direct-selected > transitive union' with no fork to guess (direct_import_export_precedence_note). The gate must NOT reach lookup_type_by_name OR lookup_binding_by_name_local here: that walks on into ancestry_str_bindings, i.e. the import-order overlay, which makes the WALL ITSELF order-dependent - the same source text refusing under one import order and passing under the other (reproduced 2026-07-20, target/probe-presencewall ARM SET A: probe.c1 'import a then b' passes while probe.c2 'import b then a' reds on one identical literal), which is exactly the GUESS this gate exists to refuse. Dissolve-on: containment SymbolIndex (namespace lane) makes the expected type scope-resolved; then this gate is dead code and the wall goes total. Ratchet (PR #6709 review, accepted): before the wall goes total, stand-downs become counted out-of-band ledger rows (binding_forks channel shape — LEDGERED, never diagnostics; a red refusal would re-red correct literals), landing with the SymbolIndex work that dissolves this gate."
 
 fn map_literal_expected_keyed_node(type_name: String?, expected: Node?, scope: InferScope) -> Node? {
   match type_name {
@@ -8341,7 +8561,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       Present { value: tn } => tn
       Absent => error_type
     }
-    let type_name_declares_own_type = match lookup_binding_by_name(env: scope.type_env, name: type_name.value) {
+    let type_name_declares_own_type = match lookup_binding_on_chain(env: scope.type_env, name: type_name.value) {
       Present { value: name_binding } =>
         binding_declares_name(binding: name_binding, name: type_name.value, source_indices: scope.type_env.source_indices)
       Absent => false
