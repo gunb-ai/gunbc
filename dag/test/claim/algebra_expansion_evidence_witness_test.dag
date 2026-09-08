@@ -1,0 +1,46 @@
+module test.claim.algebra_expansion_evidence_witness_test
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { any_class_count_for }
+
+// THE EXECUTING EVIDENCE for gunbc.guarantee_stall.algebra_expansion_positional_argument_stall.
+// It replaces two witnesses this branch first wrote under src/v1/tests/claim/, which call the
+// compiler's own .dag functions directly and therefore resolve only against a source root the
+// floor does not use: gunbc.ci.ci_layer_roots already records that entries there "have NO
+// executing consumer", and the floor prints "floor changed-witness selections outside
+// discovery: 4 identity(ies) declined" naming exactly those four. A witness that asserts
+// correctly and is discovered nowhere is DESIGN section 3c's declaration with no consumer, and
+// it is worse than absent because three reviews cited it as this change's executed evidence.
+//
+// The subject is asked through the same source-string surface the sibling probes use, so it
+// runs on the roots ordinary discovery walks.
+//
+// WHY THE ORACLE IS any_class_count_for AND NOT THE BLOCKING ONE. The diagnostic is carried at
+// SeverityNonError, so it never enters the blocking projection: an assertion written through
+// blocking_subject_count_for would read 0 here and green by vacancy no matter what the
+// compiler did. The severity is the stall row's subject, so the oracle must be able to see a
+// diagnostic that does not block.
+
+data expansion_receiver_source: String = "module test.claim.expansion_receiver_probe\nimport std.types { Bool }\nimport std.algebra { Cons, Empty }\nimport v2.std.node { Symbol }\nfn has(xs: List<Symbol>, s: Symbol) -> Bool { match xs { Empty => false  Cons { head: h, tail: t } => if h == s { true } else { has(xs: t, s: s) } } }\nfn probe(hits: List<Symbol>, accepted: List<Symbol>) -> Bool { match hits { Empty => false  Cons { head: first_hit, tail: rest_hits } => fold(Cons { head: first_hit, tail: rest_hits }, init: true, f: fn(acc, a) { acc && has(xs: accepted, s: a) }) } }\n"
+
+data nominal_receiver_source: String = "module test.claim.nominal_receiver_probe\nimport std.types { Bool }\nimport std.algebra { Cons, Empty }\nimport v2.std.node { Symbol }\nfn has(xs: List<Symbol>, s: Symbol) -> Bool { match xs { Empty => false  Cons { head: h, tail: t } => if h == s { true } else { has(xs: t, s: s) } } }\nfn probe(hits: List<Symbol>, accepted: List<Symbol>) -> Bool { fold(hits, init: true, f: fn(acc, a) { acc && has(xs: accepted, s: a) }) }\n"
+
+// DISCRIMINATING RED-DIRECTION CELL, written in the OBSERVATION direction: the receiver is an
+// inline Cons built from match binders, whose inferred type is the un-applied FreeMonoid
+// coproduct, so the algebra type argument is read off a POSITION that holds a variant. The
+// diagnostic must be raised. It goes red if the diagnostic stops being raised, which is the
+// regression this stall exists to prevent -- including the regression of narrowing the wall's
+// predicate to dodge this shape.
+test fn expansion_receiver_raises_the_evidence_diagnostic() -> Bool {
+  any_class_count_for(source: expansion_receiver_source, wanted_class: "AlgebraApplicationEvidenceUnavailable") >= 1
+}
+
+// ACCEPTED POSITIVE CONTROL, enrolled beside the red per DESIGN 4b(4). Same fold, same lambda,
+// same helper -- the ONLY variable is that the receiver is the declared List<Symbol> parameter
+// rather than a literal rebuilt from its binders, so the nominal application survives and
+// there is nothing to recover positionally. A zero here means the diagnostic is specific to
+// the expansion rather than firing on every fold, which is what makes the cell above mean
+// "this construct" instead of "this compiler".
+test fn nominal_receiver_raises_no_evidence_diagnostic() -> Bool {
+  any_class_count_for(source: nominal_receiver_source, wanted_class: "AlgebraApplicationEvidenceUnavailable") == 0
+}

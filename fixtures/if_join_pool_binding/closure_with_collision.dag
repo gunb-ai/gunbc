@@ -1,18 +1,20 @@
 module fixtures.if_join_pool_binding.closure_with_collision
 
-// THE RED ARM. Entry here puts BOTH modules in one closure and the compile REFUSES at
-// `declaring_module`'s if-expression:
+// THE COLLIDED MANIFEST, NOW A REGRESSION CONTROL. Entry here puts BOTH modules in one closure.
+// Before the product-channel repair this compile REFUSED at `declaring_module`'s if-expression:
 //
 //   if branches resolve to incompatible types:
 //     Coproduct(PoolSpecimenShape) vs Product(PoolSpecimenSquare)
 //
-// The refusal names `declaring_module`, which neither declares nor imports the competing type --
-// an innocent site. Note this module need not import the colliding SPELLING at all; importing any
-// other member of `colliding_module` is enough, because pool MEMBERSHIP is the variable.
+// That refusal named `declaring_module`, which neither declares nor imports the competing type.
+// After the repair both this entry and `closure_without_collision` must compile clean; a revert
+// of the on-chain widening carve-out makes this arm red again. Note this module need not import
+// the colliding SPELLING at all; importing any other member of `colliding_module` is enough,
+// because pool MEMBERSHIP is the variable.
 import fixtures.if_join_pool_binding.declaring_module { PoolSpecimenShape, pick_shape }
 import fixtures.if_join_pool_binding.colliding_module { PoolSpecimenSquare }
 
-fn refusing_use(c: Bool) -> PoolSpecimenShape {
+fn collided_use(c: Bool) -> PoolSpecimenShape {
   pick_shape(c: c)
 }
 

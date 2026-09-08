@@ -1,0 +1,1124 @@
+gunbc runner host serial capture -- Mt. Collins, checkout + JS action, 2026-09-07
+
+build checkout-2. The first canary carrying a credential worth stealing, run only after the
+envelope path was authenticated in both directions.
+
+  actions run 34166021289, SUCCESS
+  checkout: git 2.43.0, HEAD dca4b4f2c84a5ce7d1369b8875edd90e6e849a02, 5832 tracked files
+  JS action: node v24.19.0, arm64, linux
+  filter under real CI load: 4952 established packets, 23.8 MB forwarded,
+                             46 DNS queries, 21 TLS connections,
+                             forward-default-drop = 0
+
+ATTEMPT 2 HAD NO JOB DISPATCHED and burned its full deadline listening -- 1780 vCPU-seconds
+against attempt 1's 176. That is a real metering reading rather than an anomaly: an admitted
+attempt with nothing to run costs the whole deadline.
+
+  full capture sha256 : b543fc3db0cef5cb59aae385c07584847a9b5b10c1d7bdd169763c15d820d3b0
+  full capture bytes  : 275087
+  extract begins at   : line 3517
+
+The full source bytes are not committed. The digest IDENTIFIES the source; it does not let a
+reader who lacks it re-derive this cut.
+
+The modeled reading is gunbc.runner.runner_checkout_receipt.
+
+----------------------------------------------------------------------
+
+================ GUNBC-RUNNER-HOST ================
+marker=gunbc-runner-host-boot
+image-build=checkout-2
+kernel=6.12.108  machine=aarch64
+kvm=present
+cgroup2-mount=ok
+acpi-tpm2-table=absent
+tpm-devices=
+tpm-driver-lines=0
+root-fstype=tmpfs
+[   17.518348] /dev/sr0: Can't lookup blockdev
+[   17.571803] scsi 0:0:0:0: CD-ROM            AMI      Virtual CDROM0   1.00 PQ: 0 ANSI: 2
+[   17.585038] sr 0:0:0:0: Power-on or device reset occurred
+[   17.591548] sr 0:0:0:0: [sr0] scsi-1 drive
+[   17.596228] cdrom: Uniform CD-ROM driver Revision: 3.20
+media-mount=yes after 1s
+media-guest-kernel-verify=ok
+media-guest-rootfs-verify=ok
+staged-guest-kernel-verify=ok
+staged-guest-rootfs-verify=ok
+staged-openssl=OpenSSL 3.0.13 30 Jan 2024 (Library: OpenSSL 3.0.13 30 Jan 2024)
+cp-pubkey-sha256=98087d2c9f8f95ac2226bf9db76680d2d1747d07818f0572b009704653003f03
+boot-id=e50fab6e-b7e1-4977-8691-79653b9c6327
+unit-id=28:c1:3c:8a:d6:4a
+AWAITING-BOOT-SECRET
+boot-secret-bytes=48
+media-unmounted=yes
+media-still-mounted=0
+[   30.466591] 8021q: adding VLAN 0 to HW filter on device eth0
+uplink-addr=inet 192.168.1.230/24
+uplink-route=default via 192.168.1.1 dev eth0 
+ip-forward=1
+ipv6-disabled=1
+bridge-present=no
+baseline-taps=0
+baseline-nft-tables=0
+baseline-cgroups=0
+baseline-jailbase=0
+
+=== ATTEMPT 1 BEGIN attempt=checkout-2-a1-da8808db slot=1 ===
+attempt-1-prior-resources=0
+request-auth-bytes=64
+[   34.032330] igb 0002:02:00.0 eth0: igb: eth0 NIC Link is Up 1000 Mbps Full Duplex, Flow Control: RX/TX
+envelope-bytes=7906
+envelope-signature=verified
+envelope-unit=28:c1:3c:8a:d6:4a envelope-boot=e50fab6e-b7e1-4977-8691-79653b9c6327 envelope-attempt=1
+envelope-label=mtc-t1-7b4931
+jitconfig-bytes=4076
+jit-admission=yes
+jit-admission-unchecked=requester-authentication unit-attestation cross-boot-replay-at-the-server
+jail-chroot=/run/jail/firecracker/checkout-2-a1-da8808db/root
+jailed-guest-kernel-verify=ok
+jailed-guest-rootfs-verify=ok
+kvm-owner=1000:1000 600
+nft-install-rc=0
+--- installed ruleset ---
+table inet gunbc_host {
+	chain input {
+		type filter hook input priority filter; policy drop;
+		iif "lo" counter packets 0 bytes 0 accept
+		ct state established,related counter packets 0 bytes 0 accept
+		counter packets 0 bytes 0 comment "input-default-drop"
+	}
+
+	chain forward {
+		type filter hook forward priority filter; policy drop;
+		ct state established,related counter packets 0 bytes 0 accept
+		ip saddr 172.30.1.2 ip daddr 192.168.1.228 counter packets 0 bytes 0 drop comment "guest-to-bmc"
+		ip saddr 172.30.1.2 ip daddr 172.30.0.0/16 counter packets 0 bytes 0 drop comment "guest-to-peer-attempt"
+		ip saddr 172.30.1.2 ip daddr 10.0.0.0/8 counter packets 0 bytes 0 drop comment "guest-to-private-10"
+		ip saddr 172.30.1.2 ip daddr 172.16.0.0/12 counter packets 0 bytes 0 drop comment "guest-to-private-172"
+		ip saddr 172.30.1.2 ip daddr 192.168.0.0/16 counter packets 0 bytes 0 drop comment "guest-to-lan"
+		ip saddr 172.30.1.2 ip daddr 169.254.0.0/16 counter packets 0 bytes 0 drop comment "guest-to-link-local"
+		ip saddr 172.30.1.2 ip daddr 224.0.0.0/4 counter packets 0 bytes 0 drop comment "guest-to-multicast"
+		ip saddr 172.30.1.2 ip daddr 1.1.1.1 udp dport 53 counter packets 0 bytes 0 accept comment "guest-dns"
+		ip saddr 172.30.1.2 tcp dport 443 counter packets 0 bytes 0 accept comment "guest-tls"
+		counter packets 0 bytes 0 comment "forward-default-drop"
+	}
+
+	chain postrouting {
+		type nat hook postrouting priority srcnat; policy accept;
+		ip saddr 172.30.1.2 oif "eth0" counter packets 0 bytes 0 masquerade comment "guest-snat"
+	}
+}
+--- end ruleset ---
+tap-device=gunbc-tap1
+tap-state=6: gunbc-tap1: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc pfifo_fast qlen 1000
+tap-addr=inet 172.30.1.1/30
+jit-device-bytes=32768
+jit-device-owner=1000:1000 400
+Filesystem label=
+OS type: Linux
+Block size=4096 (log=2)
+Fragment size=4096 (log=2)
+262144 inodes, 1048576 blocks
+52428 blocks (5%) reserved for the super user
+First data block=0
+Maximum filesystem blocks=4194304
+32 block groups
+32768 blocks per group, 32768 fragments per group
+8192 inodes per group
+Superblock backups stored on blocks:
+	32768, 98304, 163840, 229376, 294912, 819200, 884736
+workspace-mkfs-rc=0
+workspace-bytes=4294967296
+workspace-blocks=131752
+workspace-owner=1000:1000 600
+cgroup-leaf=/sys/fs/cgroup/gunbc/attempt-checkout-2-a1-da8808db
+cgroup-root-controllers=cpuset cpu io memory hugetlb pids
+cgroup-root-subtree=cpu memory pids
+cgroup-gunbc-subtree=cpu memory pids
+cgroup-leaf-controllers=cpu memory pids
+cgroup-memory-max=17179869184
+cgroup-cpu-max=200000 100000
+cgroup-pids-max=4096
+attempt-1-vm-start-uptime=31
+guest-boot-begin attempt=checkout-2-a1-da8808db via=jailer
+launcher-pid=1812
+firecracker-pid=1812 after 0s
+=== LIVE CENSUS BEGIN ===
+--- identity and lineage ---
+live-comm=firecracker
+live-exe=/firecracker
+live-root=/
+live-ppid=PPid:	1
+launcher-still-present=yes
+--- privilege: the axes the last receipt could not read ---
+Uid:	1000	1000	1000	1000
+Gid:	1000	1000	1000	1000
+Groups:	 
+CapInh:	0000000000000000
+CapPrm:	0000000000000000
+CapEff:	0000000000000000
+CapBnd:	000001ffffffffff
+CapAmb:	0000000000000000
+NoNewPrivs:	1
+Seccomp:	2
+--- cgroup membership, while alive, BOTH directions ---
+live-cgroup=0::/gunbc/attempt-checkout-2-a1-da8808db
+live-cgroup-procs=1812 1876 
+placement-forward=yes process-names-attempt-cgroup
+placement-reverse=yes attempt-cgroup-lists-process
+placement-verdict=BIDIRECTIONAL
+live-memory-current=358051840
+live-memory-max=17179869184
+--- namespace inodes, host vs jailed ---
+ns-mnt host=mnt:[4026531841] jailed=mnt:[4026533652] verdict=DIFFERENT
+ns-pid host=pid:[4026531836] jailed=pid:[4026531836] verdict=SHARED
+ns-net host=net:[4026531840] jailed=net:[4026531840] verdict=SHARED
+ns-user host=user:[4026531837] jailed=user:[4026531837] verdict=SHARED
+ns-ipc host=ipc:[4026531839] jailed=ipc:[4026531839] verdict=SHARED
+ns-uts host=uts:[4026531838] jailed=uts:[4026531838] verdict=SHARED
+ns-cgroup host=cgroup:[4026531835] jailed=cgroup:[4026531835] verdict=SHARED
+--- open files ---
+fd 0 -> /dev/null
+fd 1 -> /run/guest.log
+fd 10 -> /jit.bin
+fd 11 -> anon_inode:[timerfd]
+fd 12 -> anon_inode:[eventfd]
+fd 13 -> anon_inode:[eventfd]
+fd 14 -> /work.img
+fd 15 -> anon_inode:[timerfd]
+fd 16 -> anon_inode:[eventfd]
+fd 17 -> anon_inode:[eventfd]
+fd 18 -> anon_inode:[timerfd]
+fd 19 -> anon_inode:[timerfd]
+fd 2 -> /run/guest.log
+fd 20 -> /dev/net/tun
+fd 21 -> anon_inode:[eventfd]
+fd 22 -> anon_inode:[eventfd]
+fd 23 -> anon_inode:[eventfd]
+fd 24 -> /dev/kvm
+fd 25 -> anon_inode:kvm-vm
+fd 26 -> anon_inode:[eventfd]
+fd 27 -> anon_inode:[eventfd]
+fd 28 -> anon_inode:kvm-vcpu:0
+fd 29 -> anon_inode:[eventfd]
+fd 3 -> anon_inode:[eventpoll]
+fd 30 -> anon_inode:kvm-vcpu:1
+fd 31 -> anon_inode:[eventfd]
+fd 32 -> anon_inode:kvm-vcpu:2
+fd 33 -> anon_inode:[eventfd]
+fd 34 -> anon_inode:kvm-vcpu:3
+fd 35 -> anon_inode:kvm-arm-vgic-v3
+fd 36 -> anon_inode:kvm-arm-vgic-its
+fd 37 -> anon_inode:[eventfd]
+fd 38 -> anon_inode:[eventfd]
+fd 39 -> anon_inode:[eventfd]
+fd 4 -> anon_inode:[timerfd]
+fd 40 -> anon_inode:[eventfd]
+fd 41 -> anon_inode:[eventfd]
+fd 42 -> anon_inode:[eventfd]
+fd 43 -> anon_inode:[eventfd]
+fd 44 -> anon_inode:[eventfd]
+fd 45 -> anon_inode:kvm-vcpu:0
+fd 46 -> anon_inode:kvm-vcpu:1
+fd 47 -> anon_inode:kvm-vcpu:2
+fd 48 -> anon_inode:kvm-vcpu:3
+fd 6 -> /rootfs.squashfs
+fd 7 -> anon_inode:[timerfd]
+fd 8 -> anon_inode:[eventfd]
+fd 9 -> anon_inode:[eventfd]
+--- mounts visible to the jailed process ---
+tmpfs / tmpfs rw,nosuid,relatime,size=16777216k 0 0
+--- host egress, while the guest runs ---
+2 packets transmitted, 2 packets received, 0% packet loss
+round-trip min/avg/max = 0.590/1.255/1.920 ms
+--- guest presence on the point-to-point link ---
+guest-neighbours=
+--- per-rule counters after the guest probes ---
+	chain input { # handle 1
+		iif "lo" counter packets 0 bytes 0 accept # handle 4
+		ct state established,related counter packets 2 bytes 168 accept # handle 5
+		counter packets 7 bytes 2414 comment "input-default-drop" # handle 6
+	chain forward { # handle 2
+		ct state established,related counter packets 4952 bytes 23832563 accept # handle 7
+		ip saddr 172.30.1.2 ip daddr 192.168.1.228 counter packets 3 bytes 180 drop comment "guest-to-bmc" # handle 8
+		ip saddr 172.30.1.2 ip daddr 172.30.0.0/16 counter packets 0 bytes 0 drop comment "guest-to-peer-attempt" # handle 9
+		ip saddr 172.30.1.2 ip daddr 10.0.0.0/8 counter packets 0 bytes 0 drop comment "guest-to-private-10" # handle 10
+		ip saddr 172.30.1.2 ip daddr 172.16.0.0/12 counter packets 0 bytes 0 drop comment "guest-to-private-172" # handle 11
+		ip saddr 172.30.1.2 ip daddr 192.168.0.0/16 counter packets 0 bytes 0 drop comment "guest-to-lan" # handle 12
+		ip saddr 172.30.1.2 ip daddr 169.254.0.0/16 counter packets 0 bytes 0 drop comment "guest-to-link-local" # handle 13
+		ip saddr 172.30.1.2 ip daddr 224.0.0.0/4 counter packets 0 bytes 0 drop comment "guest-to-multicast" # handle 14
+		ip saddr 172.30.1.2 ip daddr 1.1.1.1 udp dport 53 counter packets 46 bytes 3880 accept comment "guest-dns" # handle 15
+		ip saddr 172.30.1.2 tcp dport 443 counter packets 21 bytes 1260 accept comment "guest-tls" # handle 16
+		counter packets 0 bytes 0 comment "forward-default-drop" # handle 17
+	chain postrouting { # handle 3
+		ip saddr 172.30.1.2 oif "eth0" counter packets 44 bytes 3200 masquerade comment "guest-snat" # handle 18
+--- conntrack and forwarding state ---
+conntrack-count=13
+conntrack-count-alt=0
+conntrack-max=262144
+tap-rx-tx=1539/3496
+eth0-rx-tx=17070/1594
+--- host listening sockets during the attempt ---
+tcp-entries=1
+tcp6-entries=1
+udp-entries=1
+unix-sockets=1
+--- host process population during the attempt ---
+PID   PPID  USER     COMMAND
+    1     0 0        init
+ 1876     1 0        busybox
+ 2718     1 0        busybox
+ 2719     1 0        busybox
+=== LIVE CENSUS END ===
+guest-boot-end rc=0
+attempt-1-vm-seconds=44
+attempt-1-vcpus=4
+attempt-1-vcpu-seconds=176
+--- guest log: everything ---
+2026-09-07T22:18:17.526373240 [checkout-2-a1-da8808db:main] Running Firecracker v1.16.1
+2026-09-07T22:18:17.541209240 [checkout-2-a1-da8808db:main] Artificially kick devices
+2026-09-07T22:18:17.541258920 [checkout-2-a1-da8808db:fc_vcpu 0] Received a VcpuEvent::Resume message with immediate_exit enabled. immediate_exit was disabled before proceeding
+2026-09-07T22:18:17.541951480 [checkout-2-a1-da8808db:fc_vcpu 2] Received a VcpuEvent::Resume message with immediate_exit enabled. immediate_exit was disabled before proceeding
+2026-09-07T22:18:17.541974360 [checkout-2-a1-da8808db:fc_vcpu 3] Received a VcpuEvent::Resume message with immediate_exit enabled. immediate_exit was disabled before proceeding
+2026-09-07T22:18:17.541998640 [checkout-2-a1-da8808db:fc_vcpu 1] Received a VcpuEvent::Resume message with immediate_exit enabled. immediate_exit was disabled before proceeding
+2026-09-07T22:18:17.542098160 [checkout-2-a1-da8808db:main] Successfully started microvm that was configured from one single json
+[    0.000000] Booting Linux on physical CPU 0x0000000000 [0x413fd0c1]
+[    0.000000] Linux version 6.1.128 (root@66c6e034ee5a) (gcc (Ubuntu 11.4.0-1ubuntu1~22.04) 11.4.0, GNU ld (GNU Binutils for Ubuntu) 2.38) #1 SMP Mon Mar 10 14:03:21 UTC 2025
+[    0.000000] random: crng init done
+[    0.000000] Machine model: linux,dummy-virt
+[    0.000000] earlycon: uart0 at MMIO 0x0000000040002000 (options '')
+[    0.000000] printk: bootconsole [uart0] enabled
+[    0.000000] efi: UEFI not found.
+[    0.000000] NUMA: No NUMA configuration found
+[    0.000000] NUMA: Faking a node at [mem 0x0000000080200000-0x000000017fffffff]
+[    0.000000] NUMA: NODE_DATA [mem 0x17f6cd600-0x17f6eefff]
+[    0.000000] Zone ranges:
+[    0.000000]   DMA      [mem 0x0000000080200000-0x00000000ffffffff]
+[    0.000000]   DMA32    empty
+[    0.000000]   Normal   [mem 0x0000000100000000-0x000000017fffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000080200000-0x000000017fffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000080200000-0x000000017fffffff]
+[    0.000000] On node 0, zone DMA: 512 pages in unavailable ranges
+[    0.000000] psci: probing for conduit method from DT.
+[    0.000000] psci: PSCIv1.1 detected in firmware.
+[    0.000000] psci: Using standard PSCI v0.2 function IDs
+[    0.000000] psci: Trusted OS migration not required
+[    0.000000] psci: SMC Calling Convention v1.1
+[    0.000000] smccc: KVM: hypervisor services detected (0x00000000 0x00000000 0x00000000 0x00000003)
+[    0.000000] percpu: Embedded 17 pages/cpu s39464 r0 d30168 u69632
+[    0.000000] Detected PIPT I-cache on CPU0
+[    0.000000] CPU features: detected: GIC system register CPU interface
+[    0.000000] CPU features: detected: Hardware dirty bit management
+[    0.000000] CPU features: detected: Spectre-v4
+[    0.000000] CPU features: detected: Spectre-BHB
+[    0.000000] CPU features: detected: ARM erratum 1418040
+[    0.000000] alternatives: applying boot alternatives
+[    0.000000] Fallback order for Node 0: 0 
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 1031688
+[    0.000000] Policy zone: Normal
+[    0.000000] Kernel command line: console=ttyS0 reboot=k panic=1 pci=off root=/dev/vda ro ip=172.30.1.2::172.30.1.1:255.255.255.252::eth0:off init=/gunbc-runner-init.sh pci=off root=/dev/vda ro earlycon=uart,mmio,0x40002000
+[    0.000000] Unknown kernel command line parameters "pci=off", will be passed to user space.
+[    0.000000] Dentry cache hash table entries: 524288 (order: 10, 4194304 bytes, linear)
+[    0.000000] Inode-cache hash table entries: 262144 (order: 9, 2097152 bytes, linear)
+[    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
+[    0.000000] software IO TLB: area num 4.
+[    0.000000] software IO TLB: mapped [mem 0x00000000fbfff000-0x00000000fffff000] (64MB)
+[    0.000000] Memory: 4027680K/4192256K available (10624K kernel code, 982K rwdata, 1992K rodata, 2176K init, 946K bss, 164576K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=4, Nodes=1
+[    0.000000] rcu: Hierarchical RCU implementation.
+[    0.000000] rcu: 	RCU restricting CPUs from NR_CPUS=64 to nr_cpu_ids=4.
+[    0.000000] 	Tracing variant of Tasks RCU enabled.
+[    0.000000] rcu: RCU calculated value of scheduler-enlistment delay is 10 jiffies.
+[    0.000000] rcu: Adjusting geometry for rcu_fanout_leaf=16, nr_cpu_ids=4
+[    0.000000] NR_IRQS: 64, nr_irqs: 64, preallocated irqs: 0
+[    0.000000] GICv3: 96 SPIs implemented
+[    0.000000] GICv3: 0 Extended SPIs implemented
+[    0.000000] Root IRQ handler: gic_handle_irq
+[    0.000000] GICv3: GICv3 features: 16 PPIs, DirectLPI
+[    0.000000] GICv3: CPU0: found redistributor 0 region 0:0x000000003ff70000
+[    0.000000] ITS [mem 0x3ff50000-0x3ff6ffff]
+[    0.000000] ITS@0x000000003ff50000: allocated 8192 Devices @100040000 (indirect, esz 8, psz 64K, shr 1)
+[    0.000000] ITS@0x000000003ff50000: allocated 8192 Interrupt Collections @100050000 (flat, esz 8, psz 64K, shr 1)
+[    0.000000] GICv3: using LPI property table @0x0000000100060000
+[    0.000000] GICv3: CPU0: using allocated LPI pending table @0x0000000100070000
+[    0.000000] rcu: srcu_init: Setting srcu_struct sizes based on contention.
+[    0.000000] arch_timer: Enabling local workaround for ARM erratum 1418040
+[    0.000000] arch_timer: cp15 timer(s) running at 25.00MHz (virt).
+[    0.000000] clocksource: arch_sys_counter: mask: 0xffffffffffffff max_cycles: 0x5c40939b5, max_idle_ns: 440795202646 ns
+[    0.000000] sched_clock: 56 bits at 25MHz, resolution 40ns, wraps every 4398046511100ns
+[    0.000488] arm-pv: using stolen time PV
+[    0.000853] Console: colour dummy device 80x25
+[    0.001112] Calibrating delay loop (skipped), value calculated using timer frequency.. 50.00 BogoMIPS (lpj=250000)
+[    0.001666] pid_max: default: 32768 minimum: 301
+[    0.001933] LSM: Security Framework initializing
+[    0.002190] SELinux:  Initializing.
+[    0.002377] SELinux: CONFIG_SECURITY_SELINUX_CHECKREQPROT_VALUE is non-zero.  This is deprecated and will be rejected in a future kernel release.
+[    0.003073] SELinux: https://github.com/SELinuxProject/selinux-kernel/wiki/DEPRECATE-checkreqprot
+[    0.003580] Mount-cache hash table entries: 8192 (order: 4, 65536 bytes, linear)
+[    0.003979] Mountpoint-cache hash table entries: 8192 (order: 4, 65536 bytes, linear)
+[    0.004708] cblist_init_generic: Setting adjustable number of callback queues.
+[    0.005108] cblist_init_generic: Setting shift to 2 and lim to 1.
+[    0.005472] rcu: Hierarchical SRCU implementation.
+[    0.005729] rcu: 	Max phase no-delay instances is 1000.
+[    0.006042] Platform MSI: msic domain created
+[    0.006280] EFI services will not be available.
+[    0.006683] smp: Bringing up secondary CPUs ...
+[    0.030094] Detected PIPT I-cache on CPU1
+[    0.030261] GICv3: CPU1: found redistributor 1 region 0:0x000000003ff90000
+[    0.030328] GICv3: CPU1: using allocated LPI pending table @0x0000000100080000
+[    0.030367] arch_timer: Enabling local workaround for ARM erratum 1418040
+[    0.030410] CPU1: Booted secondary processor 0x0000000001 [0x413fd0c1]
+[    0.036283] Detected PIPT I-cache on CPU2
+[    0.036352] GICv3: CPU2: found redistributor 2 region 0:0x000000003ffb0000
+[    0.036392] GICv3: CPU2: using allocated LPI pending table @0x0000000100090000
+[    0.036413] arch_timer: Enabling local workaround for ARM erratum 1418040
+[    0.036433] CPU2: Booted secondary processor 0x0000000002 [0x413fd0c1]
+[    0.041021] Detected PIPT I-cache on CPU3
+[    0.041088] GICv3: CPU3: found redistributor 3 region 0:0x000000003ffd0000
+[    0.041124] GICv3: CPU3: using allocated LPI pending table @0x00000001000a0000
+[    0.041141] arch_timer: Enabling local workaround for ARM erratum 1418040
+[    0.041162] CPU3: Booted secondary processor 0x0000000003 [0x413fd0c1]
+[    0.041670] smp: Brought up 1 node, 4 CPUs
+[    0.049566] SMP: Total of 4 processors activated.
+[    0.049990] CPU features: detected: 32-bit EL0 Support
+[    0.050405] CPU features: detected: Data cache clean to the PoU not required for I/D coherence
+[    0.051089] CPU features: detected: Common not Private translations
+[    0.051583] CPU features: detected: CRC32 instructions
+[    0.051985] CPU features: detected: RCpc load-acquire (LDAPR)
+[    0.052434] CPU features: detected: LSE atomic instructions
+[    0.052876] CPU features: detected: Privileged Access Never
+[    0.053311] CPU features: detected: RAS Extension Support
+[    0.053733] CPU features: detected: Speculative Store Bypassing Safe (SSBS)
+[    0.054623] CPU: All CPU(s) started at EL1
+[    0.054949] alternatives: applying system-wide alternatives
+[    0.058157] devtmpfs: initialized
+[    0.059163] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.059944] futex hash table entries: 1024 (order: 4, 65536 bytes, linear)
+[    0.060689] DMI not present or invalid.
+[    0.061091] NET: Registered PF_NETLINK/PF_ROUTE protocol family
+[    0.061957] DMA: preallocated 512 KiB GFP_KERNEL pool for atomic allocations
+[    0.062648] DMA: preallocated 512 KiB GFP_KERNEL|GFP_DMA pool for atomic allocations
+[    0.063272] DMA: preallocated 512 KiB GFP_KERNEL|GFP_DMA32 pool for atomic allocations
+[    0.063898] audit: initializing netlink subsys (disabled)
+[    0.064386] audit: type=2000 audit(0.060:1): state=initialized audit_enabled=0 res=1
+[    0.064430] thermal_sys: Registered thermal governor 'fair_share'
+[    0.065016] thermal_sys: Registered thermal governor 'step_wise'
+[    0.065494] thermal_sys: Registered thermal governor 'user_space'
+[    0.065971] cpuidle: using governor menu
+[    0.066768] hw-breakpoint: found 6 breakpoint and 4 watchpoint registers.
+[    0.067584] ASID allocator initialised with 65536 entries
+[    0.069529] HugeTLB: registered 1.00 GiB page size, pre-allocated 0 pages
+[    0.070069] HugeTLB: 0 KiB vmemmap can be freed for a 1.00 GiB page
+[    0.070553] HugeTLB: registered 32.0 MiB page size, pre-allocated 0 pages
+[    0.071188] HugeTLB: 0 KiB vmemmap can be freed for a 32.0 MiB page
+[    0.071681] HugeTLB: registered 2.00 MiB page size, pre-allocated 0 pages
+[    0.072207] HugeTLB: 0 KiB vmemmap can be freed for a 2.00 MiB page
+[    0.072703] HugeTLB: registered 64.0 KiB page size, pre-allocated 0 pages
+[    0.073228] HugeTLB: 0 KiB vmemmap can be freed for a 64.0 KiB page
+[    0.074425] ACPI: Interpreter disabled.
+[    0.075227] iommu: Default domain type: Translated 
+[    0.075586] iommu: DMA domain TLB invalidation policy: strict mode 
+[    0.076103] SCSI subsystem initialized
+[    0.076392] pps_core: LinuxPPS API ver. 1 registered
+[    0.076777] pps_core: Software ver. 5.3.6 - Copyright 2005-2007 Rodolfo Giometti <giometti@linux.it>
+[    0.077651] PTP clock support registered
+[    0.078041] NetLabel: Initializing
+[    0.078282] NetLabel:  domain hash size = 128
+[    0.078586] NetLabel:  protocols = UNLABELED CIPSOv4 CALIPSO
+[    0.078992] NetLabel:  unlabeled traffic allowed by default
+[    0.079585] clocksource: Switched to clocksource arch_sys_counter
+[    0.080081] VFS: Disk quotas dquot_6.6.0
+[    0.080367] VFS: Dquot-cache hash table entries: 512 (order 0, 4096 bytes)
+[    0.080939] pnp: PnP ACPI: disabled
+[    0.084515] NET: Registered PF_INET protocol family
+[    0.085030] IP idents hash table entries: 65536 (order: 7, 524288 bytes, linear)
+[    0.086375] tcp_listen_portaddr_hash hash table entries: 2048 (order: 3, 32768 bytes, linear)
+[    0.087001] Table-perturb hash table entries: 65536 (order: 6, 262144 bytes, linear)
+[    0.087565] TCP established hash table entries: 32768 (order: 6, 262144 bytes, linear)
+[    0.088238] TCP bind hash table entries: 32768 (order: 8, 1048576 bytes, linear)
+[    0.089414] TCP: Hash tables configured (established 32768 bind 32768)
+[    0.090008] MPTCP token hash table entries: 4096 (order: 4, 98304 bytes, linear)
+[    0.090559] UDP hash table entries: 2048 (order: 4, 65536 bytes, linear)
+[    0.091072] UDP-Lite hash table entries: 2048 (order: 4, 65536 bytes, linear)
+[    0.091655] NET: Registered PF_UNIX/PF_LOCAL protocol family
+[    0.092276] RPC: Registered named UNIX socket transport module.
+[    0.092853] RPC: Registered udp transport module.
+[    0.093178] RPC: Registered tcp transport module.
+[    0.093499] RPC: Registered tcp NFSv4.1 backchannel transport module.
+[    0.093939] NET: Registered PF_XDP protocol family
+[    0.094771] Initialise system trusted keyrings
+[    0.095170] workingset: timestamp_bits=36 max_order=20 bucket_order=0
+[    0.096974] zbud: loaded
+[    0.097913] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.098496] NFS: Registering the id_resolver key type
+[    0.098840] Key type id_resolver registered
+[    0.099115] Key type id_legacy registered
+[    0.099394] nfs4filelayout_init: NFSv4 File Layout Driver Registering...
+[    0.100075] SGI XFS with ACLs, security attributes, quota, no debug enabled
+[    0.121192] Key type asymmetric registered
+[    0.121449] Asymmetric key parser 'x509' registered
+[    0.121753] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 250)
+[    0.122262] io scheduler mq-deadline registered
+[    0.122539] io scheduler kyber registered
+[    0.122803] io scheduler bfq registered
+[    0.123679] Serial: 8250/16550 driver, 1 ports, IRQ sharing disabled
+[    0.124378] printk: console [ttyS0] disabled
+[    0.124683] 40002000.uart: ttyS0 at MMIO 0x40002000 (irq = 13, base_baud = 1500000) is a 16550A
+[    0.125453] printk: console [ttyS0] enabled
+[    0.125453] printk: console [ttyS0] enabled
+[    0.125951] printk: bootconsole [uart0] disabled
+[    0.125951] printk: bootconsole [uart0] disabled
+[    0.128340] loop: module loaded
+[    0.128593] virtio_blk virtio0: 1/0/0 default/read/poll queues
+[    0.129173] virtio_blk virtio0: [vda] 379512 512-byte logical blocks (194 MB/185 MiB)
+[    0.130005] virtio_blk virtio1: 1/0/0 default/read/poll queues
+[    0.130441] virtio_blk virtio1: [vdb] 64 512-byte logical blocks (32.8 kB/32.0 KiB)
+[    0.131188] virtio_blk virtio2: 1/0/0 default/read/poll queues
+[    0.131621] virtio_blk virtio2: [vdc] 8388608 512-byte logical blocks (4.29 GB/4.00 GiB)
+[    0.132484] Loading iSCSI transport class v2.0-870.
+[    0.133102] iscsi: registered transport (tcp)
+[    0.133942] rtc-pl031 40001000.rtc: registered as rtc0
+[    0.134258] rtc-pl031 40001000.rtc: setting system clock to 2026-09-07T22:18:17 UTC (1788819497)
+[    0.134932] hid: raw HID events driver (C) Jiri Kosina
+[    0.135564] Initializing XFRM netlink socket
+[    0.135907] NET: Registered PF_INET6 protocol family
+[    0.136458] Segment Routing with IPv6
+[    0.136866] In-situ OAM (IOAM) with IPv6
+[    0.137857] bpfilter: Loaded bpfilter_umh pid 62
+[    0.139715] NET: Registered PF_PACKET protocol family
+[    0.140017] Bridge firewalling registered
+[    0.140318] Key type dns_resolver registered
+[    0.140749] NET: Registered PF_VSOCK protocol family
+[    0.141152] registered taskstats version 1
+[    0.141475] Loading compiled-in X.509 certificates
+[    0.141983] zswap: loaded using pool lzo/zbud
+[    0.142474] Key type .fscrypt registered
+[    0.142703] Key type fscrypt-provisioning registered
+[    0.143199] Key type encrypted registered
+[    0.169853] IP-Config: Complete:
+[    0.170151]      device=eth0, hwaddr=02:00:00:00:00:01, ipaddr=172.30.1.2, mask=255.255.255.252, gw=172.30.1.1
+[    0.170847]      host=172.30.1.2, domain=, nis-domain=(none)
+[    0.171213]      bootserver=255.255.255.255, rootserver=255.255.255.255, rootpath=
+[    0.171252] clk: Disabling unused clocks
+[    0.173236] VFS: Mounted root (squashfs filesystem) readonly on device 254:0.
+[    0.173732] devtmpfs: mounted
+[    0.174151] Freeing unused kernel memory: 2176K
+[    0.174452] Run /gunbc-runner-init.sh as init process
+=== GUNBC-RUNNER-GUEST ===
+guest-uname=6.1.128
+guest-dev-entries=102
+guest-addr=inet 172.30.1.2/30
+guest-route=default via 172.30.1.1 dev eth0 ;172.30.1.0/30 dev eth0 proto kernel scope link src 172.30.1.2 ;
+guest-resolver=nameserver 1.1.1.1 
+jitconfig-bytes=4076
+runner-copy=446MB
+runner-present=yes
+[    2.544241] EXT4-fs (vdc): mounting ext2 file system using the ext4 subsystem
+[    2.546316] EXT4-fs (vdc): mounted filesystem without journal. Quota mode: none.
+workspace-mounted=yes
+workspace-free=3827MB
+workspace-fs=ext2
+guest-path=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+guest-bash=/usr/bin/bash
+--- runner starting ---
+
+√ Connected to GitHub
+
+Current runner version: '2.337.0'
+2026-09-07 22:18:22Z: Listening for Jobs
+2026-09-07 22:18:23Z: Running job: canary
+2026-09-07 22:18:40Z: Job canary completed with result: Succeeded
+√ Removed .credentials
+√ Removed .runner
+Runner listener exit with 0 return code, stop the service, no retry needed.
+Exiting runner...
+runner-exit=0
+=== GUNBC-RUNNER-GUEST END ===
+[   42.866431] Kernel panic - not syncing: Attempted to kill init! exitcode=0x00000000
+[   42.867207] CPU: 0 PID: 1 Comm: gunbc-runner-in Not tainted 6.1.128 #1
+[   42.867822] Hardware name: linux,dummy-virt (DT)
+[   42.868265] Call trace:
+[   42.868510]  dump_backtrace.part.0+0xdc/0xf0
+[   42.869023]  show_stack+0x18/0x30
+[   42.869354]  dump_stack_lvl+0x68/0x84
+[   42.869747]  dump_stack+0x18/0x34
+[   42.870124]  panic+0x120/0x2f0
+[   42.870476]  do_exit+0x384/0x38c
+[   42.870842]  do_group_exit+0x34/0xa0
+[   42.871241]  __arm64_sys_exit_group+0x18/0x20
+[   42.871723]  invoke_syscall+0x48/0x120
+[   42.872142]  el0_svc_common.constprop.0+0x44/0xf4
+[   42.872675]  do_el0_svc+0x34/0x8c
+[   42.873053]  el0_svc+0x2c/0x84
+[   42.873401]  el0t_64_sync_handler+0xbc/0x140
+[   42.873876] SMP: stopping secondary CPUs
+[   42.874380] Kernel Offset: disabled
+[   42.874772] CPU features: 0x000000,02070084,6600720b
+[   42.875314] Memory Limit: none
+[   42.875662] Rebooting in 1 seconds..
+2026-09-07T22:19:02.017536200 [checkout-2-a1-da8808db:fc_vcpu 0] Received KVM_SYSTEM_EVENT: type: 2, event: [0]
+2026-09-07T22:19:02.017717720 [checkout-2-a1-da8808db:main] Vmm is stopping.
+2026-09-07T22:19:02.017807440 [checkout-2-a1-da8808db:main] Killing vCPU threads
+2026-09-07T22:19:02.092016640 [checkout-2-a1-da8808db:main] Firecracker exiting successfully. exit_code=0
+--- guest log end ---
+--- containment observations, AFTER the attempt ---
+post-cgroup-procs=
+post-cgroup-empty=yes
+post-tap-present=no
+post-ruleset-present=no
+post-nft-process=0
+post-cgroup-removed=yes
+post-jail-chroot=dev firecracker firecracker.pid jit.bin rootfs.squashfs run sys vm.json vmlinux work.img 
+--- process census after attempt ---
+PID   PPID  USER     COMMAND
+    1     0 0        init
+ 2748     1 0        busybox
+ 2749     1 0        busybox
+surviving-firecracker=0
+surviving-jailer=0
+jail-removed=yes
+post-jit-device-present=no
+post-workspace-present=no
+post-jailbase-entries=0
+post-jailbase-mounted=0
+attempt-1-held-seconds=54
+=== ATTEMPT 1 END ===
+
+=== ATTEMPT 2 BEGIN attempt=checkout-2-a2-adc2e632 slot=2 ===
+attempt-2-prior-resources=0
+request-auth-bytes=64
+envelope-bytes=7906
+envelope-signature=verified
+envelope-unit=28:c1:3c:8a:d6:4a envelope-boot=e50fab6e-b7e1-4977-8691-79653b9c6327 envelope-attempt=2
+envelope-label=mtc-t2-eedf27
+jitconfig-bytes=4076
+jit-admission=yes
+jit-admission-unchecked=requester-authentication unit-attestation cross-boot-replay-at-the-server
+jail-chroot=/run/jail/firecracker/checkout-2-a2-adc2e632/root
+jailed-guest-kernel-verify=ok
+jailed-guest-rootfs-verify=ok
+kvm-owner=1000:1000 600
+nft-install-rc=0
+--- installed ruleset ---
+table inet gunbc_host {
+	chain input {
+		type filter hook input priority filter; policy drop;
+		iif "lo" counter packets 0 bytes 0 accept
+		ct state established,related counter packets 0 bytes 0 accept
+		counter packets 0 bytes 0 comment "input-default-drop"
+	}
+
+	chain forward {
+		type filter hook forward priority filter; policy drop;
+		ct state established,related counter packets 0 bytes 0 accept
+		ip saddr 172.30.2.2 ip daddr 192.168.1.228 counter packets 0 bytes 0 drop comment "guest-to-bmc"
+		ip saddr 172.30.2.2 ip daddr 172.30.0.0/16 counter packets 0 bytes 0 drop comment "guest-to-peer-attempt"
+		ip saddr 172.30.2.2 ip daddr 10.0.0.0/8 counter packets 0 bytes 0 drop comment "guest-to-private-10"
+		ip saddr 172.30.2.2 ip daddr 172.16.0.0/12 counter packets 0 bytes 0 drop comment "guest-to-private-172"
+		ip saddr 172.30.2.2 ip daddr 192.168.0.0/16 counter packets 0 bytes 0 drop comment "guest-to-lan"
+		ip saddr 172.30.2.2 ip daddr 169.254.0.0/16 counter packets 0 bytes 0 drop comment "guest-to-link-local"
+		ip saddr 172.30.2.2 ip daddr 224.0.0.0/4 counter packets 0 bytes 0 drop comment "guest-to-multicast"
+		ip saddr 172.30.2.2 ip daddr 1.1.1.1 udp dport 53 counter packets 0 bytes 0 accept comment "guest-dns"
+		ip saddr 172.30.2.2 tcp dport 443 counter packets 0 bytes 0 accept comment "guest-tls"
+		counter packets 0 bytes 0 comment "forward-default-drop"
+	}
+
+	chain postrouting {
+		type nat hook postrouting priority srcnat; policy accept;
+		ip saddr 172.30.2.2 oif "eth0" counter packets 0 bytes 0 masquerade comment "guest-snat"
+	}
+}
+--- end ruleset ---
+tap-device=gunbc-tap2
+tap-state=7: gunbc-tap2: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc pfifo_fast qlen 1000
+tap-addr=inet 172.30.2.1/30
+jit-device-bytes=32768
+jit-device-owner=1000:1000 400
+Filesystem label=
+OS type: Linux
+Block size=4096 (log=2)
+Fragment size=4096 (log=2)
+262144 inodes, 1048576 blocks
+52428 blocks (5%) reserved for the super user
+First data block=0
+Maximum filesystem blocks=4194304
+32 block groups
+32768 blocks per group, 32768 fragments per group
+8192 inodes per group
+Superblock backups stored on blocks:
+	32768, 98304, 163840, 229376, 294912, 819200, 884736
+workspace-mkfs-rc=0
+workspace-bytes=4294967296
+workspace-blocks=131752
+workspace-owner=1000:1000 600
+cgroup-leaf=/sys/fs/cgroup/gunbc/attempt-checkout-2-a2-adc2e632
+cgroup-root-controllers=cpuset cpu io memory hugetlb pids
+cgroup-root-subtree=cpu memory pids
+cgroup-gunbc-subtree=cpu memory pids
+cgroup-leaf-controllers=cpu memory pids
+cgroup-memory-max=17179869184
+cgroup-cpu-max=200000 100000
+cgroup-pids-max=4096
+attempt-2-vm-start-uptime=81
+guest-boot-begin attempt=checkout-2-a2-adc2e632 via=jailer
+launcher-pid=2871
+firecracker-pid=2871 after 0s
+=== LIVE CENSUS BEGIN ===
+--- identity and lineage ---
+live-comm=firecracker
+live-exe=/firecracker
+live-root=/
+live-ppid=PPid:	1
+launcher-still-present=yes
+--- privilege: the axes the last receipt could not read ---
+Uid:	1000	1000	1000	1000
+Gid:	1000	1000	1000	1000
+Groups:	 
+CapInh:	0000000000000000
+CapPrm:	0000000000000000
+CapEff:	0000000000000000
+CapBnd:	000001ffffffffff
+CapAmb:	0000000000000000
+NoNewPrivs:	1
+Seccomp:	2
+--- cgroup membership, while alive, BOTH directions ---
+live-cgroup=0::/gunbc/attempt-checkout-2-a2-adc2e632
+live-cgroup-procs=2871 2901 
+placement-forward=yes process-names-attempt-cgroup
+placement-reverse=yes attempt-cgroup-lists-process
+placement-verdict=BIDIRECTIONAL
+live-memory-current=452096000
+live-memory-max=17179869184
+--- namespace inodes, host vs jailed ---
+ns-mnt host=mnt:[4026531841] jailed=mnt:[4026533652] verdict=DIFFERENT
+ns-pid host=pid:[4026531836] jailed=pid:[4026531836] verdict=SHARED
+ns-net host=net:[4026531840] jailed=net:[4026531840] verdict=SHARED
+ns-user host=user:[4026531837] jailed=user:[4026531837] verdict=SHARED
+ns-ipc host=ipc:[4026531839] jailed=ipc:[4026531839] verdict=SHARED
+ns-uts host=uts:[4026531838] jailed=uts:[4026531838] verdict=SHARED
+ns-cgroup host=cgroup:[4026531835] jailed=cgroup:[4026531835] verdict=SHARED
+--- open files ---
+fd 0 -> /dev/null
+fd 1 -> /run/guest.log
+fd 10 -> /jit.bin
+fd 11 -> anon_inode:[timerfd]
+fd 12 -> anon_inode:[eventfd]
+fd 13 -> anon_inode:[eventfd]
+fd 14 -> /work.img
+fd 15 -> anon_inode:[timerfd]
+fd 16 -> anon_inode:[eventfd]
+fd 17 -> anon_inode:[eventfd]
+fd 18 -> anon_inode:[timerfd]
+fd 19 -> anon_inode:[timerfd]
+fd 2 -> /run/guest.log
+fd 20 -> /dev/net/tun
+fd 21 -> anon_inode:[eventfd]
+fd 22 -> anon_inode:[eventfd]
+fd 23 -> anon_inode:[eventfd]
+fd 24 -> /dev/kvm
+fd 25 -> anon_inode:kvm-vm
+fd 26 -> anon_inode:[eventfd]
+fd 27 -> anon_inode:[eventfd]
+fd 28 -> anon_inode:kvm-vcpu:0
+fd 29 -> anon_inode:[eventfd]
+fd 3 -> anon_inode:[eventpoll]
+fd 30 -> anon_inode:kvm-vcpu:1
+fd 31 -> anon_inode:[eventfd]
+fd 32 -> anon_inode:kvm-vcpu:2
+fd 33 -> anon_inode:[eventfd]
+fd 34 -> anon_inode:kvm-vcpu:3
+fd 35 -> anon_inode:kvm-arm-vgic-v3
+fd 36 -> anon_inode:kvm-arm-vgic-its
+fd 37 -> anon_inode:[eventfd]
+fd 38 -> anon_inode:[eventfd]
+fd 39 -> anon_inode:[eventfd]
+fd 4 -> anon_inode:[timerfd]
+fd 40 -> anon_inode:[eventfd]
+fd 41 -> anon_inode:[eventfd]
+fd 42 -> anon_inode:[eventfd]
+fd 43 -> anon_inode:[eventfd]
+fd 44 -> anon_inode:[eventfd]
+fd 45 -> anon_inode:kvm-vcpu:0
+fd 46 -> anon_inode:kvm-vcpu:1
+fd 47 -> anon_inode:kvm-vcpu:2
+fd 48 -> anon_inode:kvm-vcpu:3
+fd 6 -> /rootfs.squashfs
+fd 7 -> anon_inode:[timerfd]
+fd 8 -> anon_inode:[eventfd]
+fd 9 -> anon_inode:[eventfd]
+--- mounts visible to the jailed process ---
+tmpfs / tmpfs rw,nosuid,relatime,size=16777216k 0 0
+--- host egress, while the guest runs ---
+2 packets transmitted, 2 packets received, 0% packet loss
+round-trip min/avg/max = 0.529/0.597/0.666 ms
+--- guest presence on the point-to-point link ---
+guest-neighbours=
+--- per-rule counters after the guest probes ---
+	chain input { # handle 1
+		iif "lo" counter packets 0 bytes 0 accept # handle 4
+		ct state established,related counter packets 2 bytes 168 accept # handle 5
+		counter packets 19 bytes 6108 comment "input-default-drop" # handle 6
+	chain forward { # handle 2
+		ct state established,related counter packets 233 bytes 217153 accept # handle 7
+		ip saddr 172.30.2.2 ip daddr 192.168.1.228 counter packets 0 bytes 0 drop comment "guest-to-bmc" # handle 8
+		ip saddr 172.30.2.2 ip daddr 172.30.0.0/16 counter packets 0 bytes 0 drop comment "guest-to-peer-attempt" # handle 9
+		ip saddr 172.30.2.2 ip daddr 10.0.0.0/8 counter packets 0 bytes 0 drop comment "guest-to-private-10" # handle 10
+		ip saddr 172.30.2.2 ip daddr 172.16.0.0/12 counter packets 0 bytes 0 drop comment "guest-to-private-172" # handle 11
+		ip saddr 172.30.2.2 ip daddr 192.168.0.0/16 counter packets 0 bytes 0 drop comment "guest-to-lan" # handle 12
+		ip saddr 172.30.2.2 ip daddr 169.254.0.0/16 counter packets 0 bytes 0 drop comment "guest-to-link-local" # handle 13
+		ip saddr 172.30.2.2 ip daddr 224.0.0.0/4 counter packets 0 bytes 0 drop comment "guest-to-multicast" # handle 14
+		ip saddr 172.30.2.2 ip daddr 1.1.1.1 udp dport 53 counter packets 10 bytes 916 accept comment "guest-dns" # handle 15
+		ip saddr 172.30.2.2 tcp dport 443 counter packets 5 bytes 300 accept comment "guest-tls" # handle 16
+		counter packets 0 bytes 0 comment "forward-default-drop" # handle 17
+	chain postrouting { # handle 3
+		ip saddr 172.30.2.2 oif "eth0" counter packets 10 bytes 758 masquerade comment "guest-snat" # handle 18
+--- conntrack and forwarding state ---
+conntrack-count=5
+conntrack-count-alt=0
+conntrack-max=262144
+tap-rx-tx=137/118
+eth0-rx-tx=17493/1749
+--- host listening sockets during the attempt ---
+tcp-entries=1
+tcp6-entries=1
+udp-entries=1
+unix-sockets=1
+--- host process population during the attempt ---
+PID   PPID  USER     COMMAND
+    1     0 0        init
+ 2871     1 1000     firecracker
+ 2901     1 0        busybox
+ 3919     1 0        busybox
+ 3920     1 0        busybox
+=== LIVE CENSUS END ===
+guest-boot-end rc=0
+attempt-2-vm-seconds=445
+attempt-2-vcpus=4
+attempt-2-vcpu-seconds=1780
+--- guest log: everything ---
+2026-09-07T22:19:07.995183200 [checkout-2-a2-adc2e632:main] Running Firecracker v1.16.1
+2026-09-07T22:19:08.008904080 [checkout-2-a2-adc2e632:main] Artificially kick devices
+2026-09-07T22:19:08.008971800 [checkout-2-a2-adc2e632:fc_vcpu 1] Received a VcpuEvent::Resume message with immediate_exit enabled. immediate_exit was disabled before proceeding
+2026-09-07T22:19:08.009040440 [checkout-2-a2-adc2e632:fc_vcpu 3] Received a VcpuEvent::Resume message with immediate_exit enabled. immediate_exit was disabled before proceeding
+2026-09-07T22:19:08.009380000 [checkout-2-a2-adc2e632:fc_vcpu 2] Received a VcpuEvent::Resume message with immediate_exit enabled. immediate_exit was disabled before proceeding
+2026-09-07T22:19:08.009428080 [checkout-2-a2-adc2e632:fc_vcpu 0] Received a VcpuEvent::Resume message with immediate_exit enabled. immediate_exit was disabled before proceeding
+2026-09-07T22:19:08.009461200 [checkout-2-a2-adc2e632:main] Successfully started microvm that was configured from one single json
+[    0.000000] Booting Linux on physical CPU 0x0000000000 [0x413fd0c1]
+[    0.000000] Linux version 6.1.128 (root@66c6e034ee5a) (gcc (Ubuntu 11.4.0-1ubuntu1~22.04) 11.4.0, GNU ld (GNU Binutils for Ubuntu) 2.38) #1 SMP Mon Mar 10 14:03:21 UTC 2025
+[    0.000000] random: crng init done
+[    0.000000] Machine model: linux,dummy-virt
+[    0.000000] earlycon: uart0 at MMIO 0x0000000040002000 (options '')
+[    0.000000] printk: bootconsole [uart0] enabled
+[    0.000000] efi: UEFI not found.
+[    0.000000] NUMA: No NUMA configuration found
+[    0.000000] NUMA: Faking a node at [mem 0x0000000080200000-0x000000017fffffff]
+[    0.000000] NUMA: NODE_DATA [mem 0x17f6cd600-0x17f6eefff]
+[    0.000000] Zone ranges:
+[    0.000000]   DMA      [mem 0x0000000080200000-0x00000000ffffffff]
+[    0.000000]   DMA32    empty
+[    0.000000]   Normal   [mem 0x0000000100000000-0x000000017fffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000080200000-0x000000017fffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000080200000-0x000000017fffffff]
+[    0.000000] On node 0, zone DMA: 512 pages in unavailable ranges
+[    0.000000] psci: probing for conduit method from DT.
+[    0.000000] psci: PSCIv1.1 detected in firmware.
+[    0.000000] psci: Using standard PSCI v0.2 function IDs
+[    0.000000] psci: Trusted OS migration not required
+[    0.000000] psci: SMC Calling Convention v1.1
+[    0.000000] smccc: KVM: hypervisor services detected (0x00000000 0x00000000 0x00000000 0x00000003)
+[    0.000000] percpu: Embedded 17 pages/cpu s39464 r0 d30168 u69632
+[    0.000000] Detected PIPT I-cache on CPU0
+[    0.000000] CPU features: detected: GIC system register CPU interface
+[    0.000000] CPU features: detected: Hardware dirty bit management
+[    0.000000] CPU features: detected: Spectre-v4
+[    0.000000] CPU features: detected: Spectre-BHB
+[    0.000000] CPU features: detected: ARM erratum 1418040
+[    0.000000] alternatives: applying boot alternatives
+[    0.000000] Fallback order for Node 0: 0 
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 1031688
+[    0.000000] Policy zone: Normal
+[    0.000000] Kernel command line: console=ttyS0 reboot=k panic=1 pci=off root=/dev/vda ro ip=172.30.2.2::172.30.2.1:255.255.255.252::eth0:off init=/gunbc-runner-init.sh pci=off root=/dev/vda ro earlycon=uart,mmio,0x40002000
+[    0.000000] Unknown kernel command line parameters "pci=off", will be passed to user space.
+[    0.000000] Dentry cache hash table entries: 524288 (order: 10, 4194304 bytes, linear)
+[    0.000000] Inode-cache hash table entries: 262144 (order: 9, 2097152 bytes, linear)
+[    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
+[    0.000000] software IO TLB: area num 4.
+[    0.000000] software IO TLB: mapped [mem 0x00000000fbfff000-0x00000000fffff000] (64MB)
+[    0.000000] Memory: 4027680K/4192256K available (10624K kernel code, 982K rwdata, 1992K rodata, 2176K init, 946K bss, 164576K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=4, Nodes=1
+[    0.000000] rcu: Hierarchical RCU implementation.
+[    0.000000] rcu: 	RCU restricting CPUs from NR_CPUS=64 to nr_cpu_ids=4.
+[    0.000000] 	Tracing variant of Tasks RCU enabled.
+[    0.000000] rcu: RCU calculated value of scheduler-enlistment delay is 10 jiffies.
+[    0.000000] rcu: Adjusting geometry for rcu_fanout_leaf=16, nr_cpu_ids=4
+[    0.000000] NR_IRQS: 64, nr_irqs: 64, preallocated irqs: 0
+[    0.000000] GICv3: 96 SPIs implemented
+[    0.000000] GICv3: 0 Extended SPIs implemented
+[    0.000000] Root IRQ handler: gic_handle_irq
+[    0.000000] GICv3: GICv3 features: 16 PPIs, DirectLPI
+[    0.000000] GICv3: CPU0: found redistributor 0 region 0:0x000000003ff70000
+[    0.000000] ITS [mem 0x3ff50000-0x3ff6ffff]
+[    0.000000] ITS@0x000000003ff50000: allocated 8192 Devices @100040000 (indirect, esz 8, psz 64K, shr 1)
+[    0.000000] ITS@0x000000003ff50000: allocated 8192 Interrupt Collections @100050000 (flat, esz 8, psz 64K, shr 1)
+[    0.000000] GICv3: using LPI property table @0x0000000100060000
+[    0.000000] GICv3: CPU0: using allocated LPI pending table @0x0000000100070000
+[    0.000000] rcu: srcu_init: Setting srcu_struct sizes based on contention.
+[    0.000000] arch_timer: Enabling local workaround for ARM erratum 1418040
+[    0.000000] arch_timer: cp15 timer(s) running at 25.00MHz (virt).
+[    0.000000] clocksource: arch_sys_counter: mask: 0xffffffffffffff max_cycles: 0x5c40939b5, max_idle_ns: 440795202646 ns
+[    0.000000] sched_clock: 56 bits at 25MHz, resolution 40ns, wraps every 4398046511100ns
+[    0.000487] arm-pv: using stolen time PV
+[    0.000852] Console: colour dummy device 80x25
+[    0.001106] Calibrating delay loop (skipped), value calculated using timer frequency.. 50.00 BogoMIPS (lpj=250000)
+[    0.001650] pid_max: default: 32768 minimum: 301
+[    0.001913] LSM: Security Framework initializing
+[    0.002166] SELinux:  Initializing.
+[    0.002349] SELinux: CONFIG_SECURITY_SELINUX_CHECKREQPROT_VALUE is non-zero.  This is deprecated and will be rejected in a future kernel release.
+[    0.003032] SELinux: https://github.com/SELinuxProject/selinux-kernel/wiki/DEPRECATE-checkreqprot
+[    0.003530] Mount-cache hash table entries: 8192 (order: 4, 65536 bytes, linear)
+[    0.003922] Mountpoint-cache hash table entries: 8192 (order: 4, 65536 bytes, linear)
+[    0.004638] cblist_init_generic: Setting adjustable number of callback queues.
+[    0.005032] cblist_init_generic: Setting shift to 2 and lim to 1.
+[    0.005392] rcu: Hierarchical SRCU implementation.
+[    0.005648] rcu: 	Max phase no-delay instances is 1000.
+[    0.005957] Platform MSI: msic domain created
+[    0.006190] EFI services will not be available.
+[    0.006586] smp: Bringing up secondary CPUs ...
+[    0.011134] Detected PIPT I-cache on CPU1
+[    0.011196] GICv3: CPU1: found redistributor 1 region 0:0x000000003ff90000
+[    0.011231] GICv3: CPU1: using allocated LPI pending table @0x0000000100080000
+[    0.011250] arch_timer: Enabling local workaround for ARM erratum 1418040
+[    0.011269] CPU1: Booted secondary processor 0x0000000001 [0x413fd0c1]
+[    0.014957] Detected PIPT I-cache on CPU2
+[    0.015008] GICv3: CPU2: found redistributor 2 region 0:0x000000003ffb0000
+[    0.015028] GICv3: CPU2: using allocated LPI pending table @0x0000000100090000
+[    0.015041] arch_timer: Enabling local workaround for ARM erratum 1418040
+[    0.015055] CPU2: Booted secondary processor 0x0000000002 [0x413fd0c1]
+[    0.038615] Detected PIPT I-cache on CPU3
+[    0.038785] GICv3: CPU3: found redistributor 3 region 0:0x000000003ffd0000
+[    0.038838] GICv3: CPU3: using allocated LPI pending table @0x00000001000a0000
+[    0.038874] arch_timer: Enabling local workaround for ARM erratum 1418040
+[    0.038915] CPU3: Booted secondary processor 0x0000000003 [0x413fd0c1]
+[    0.039162] smp: Brought up 1 node, 4 CPUs
+[    0.044595] SMP: Total of 4 processors activated.
+[    0.044854] CPU features: detected: 32-bit EL0 Support
+[    0.045141] CPU features: detected: Data cache clean to the PoU not required for I/D coherence
+[    0.045654] CPU features: detected: Common not Private translations
+[    0.045992] CPU features: detected: CRC32 instructions
+[    0.046272] CPU features: detected: RCpc load-acquire (LDAPR)
+[    0.046582] CPU features: detected: LSE atomic instructions
+[    0.046883] CPU features: detected: Privileged Access Never
+[    0.047184] CPU features: detected: RAS Extension Support
+[    0.047477] CPU features: detected: Speculative Store Bypassing Safe (SSBS)
+[    0.048168] CPU: All CPU(s) started at EL1
+[    0.048398] alternatives: applying system-wide alternatives
+[    0.051345] devtmpfs: initialized
+[    0.052140] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.052696] futex hash table entries: 1024 (order: 4, 65536 bytes, linear)
+[    0.053125] DMI not present or invalid.
+[    0.053406] NET: Registered PF_NETLINK/PF_ROUTE protocol family
+[    0.054195] DMA: preallocated 512 KiB GFP_KERNEL pool for atomic allocations
+[    0.054701] DMA: preallocated 512 KiB GFP_KERNEL|GFP_DMA pool for atomic allocations
+[    0.055139] DMA: preallocated 512 KiB GFP_KERNEL|GFP_DMA32 pool for atomic allocations
+[    0.055577] audit: initializing netlink subsys (disabled)
+[    0.055985] audit: type=2000 audit(0.050:1): state=initialized audit_enabled=0 res=1
+[    0.056001] thermal_sys: Registered thermal governor 'fair_share'
+[    0.056765] thermal_sys: Registered thermal governor 'step_wise'
+[    0.057110] thermal_sys: Registered thermal governor 'user_space'
+[    0.057446] cpuidle: using governor menu
+[    0.058005] hw-breakpoint: found 6 breakpoint and 4 watchpoint registers.
+[    0.058691] ASID allocator initialised with 65536 entries
+[    0.061171] HugeTLB: registered 1.00 GiB page size, pre-allocated 0 pages
+[    0.061658] HugeTLB: 0 KiB vmemmap can be freed for a 1.00 GiB page
+[    0.062100] HugeTLB: registered 32.0 MiB page size, pre-allocated 0 pages
+[    0.062574] HugeTLB: 0 KiB vmemmap can be freed for a 32.0 MiB page
+[    0.063010] HugeTLB: registered 2.00 MiB page size, pre-allocated 0 pages
+[    0.063483] HugeTLB: 0 KiB vmemmap can be freed for a 2.00 MiB page
+[    0.063917] HugeTLB: registered 64.0 KiB page size, pre-allocated 0 pages
+[    0.064621] HugeTLB: 0 KiB vmemmap can be freed for a 64.0 KiB page
+[    0.065682] ACPI: Interpreter disabled.
+[    0.065974] iommu: Default domain type: Translated 
+[    0.066315] iommu: DMA domain TLB invalidation policy: strict mode 
+[    0.066815] SCSI subsystem initialized
+[    0.067098] pps_core: LinuxPPS API ver. 1 registered
+[    0.067452] pps_core: Software ver. 5.3.6 - Copyright 2005-2007 Rodolfo Giometti <giometti@linux.it>
+[    0.068103] PTP clock support registered
+[    0.068650] NetLabel: Initializing
+[    0.068885] NetLabel:  domain hash size = 128
+[    0.069179] NetLabel:  protocols = UNLABELED CIPSOv4 CALIPSO
+[    0.069572] NetLabel:  unlabeled traffic allowed by default
+[    0.070104] clocksource: Switched to clocksource arch_sys_counter
+[    0.070587] VFS: Disk quotas dquot_6.6.0
+[    0.070940] VFS: Dquot-cache hash table entries: 512 (order 0, 4096 bytes)
+[    0.071456] pnp: PnP ACPI: disabled
+[    0.073434] NET: Registered PF_INET protocol family
+[    0.073898] IP idents hash table entries: 65536 (order: 7, 524288 bytes, linear)
+[    0.075150] tcp_listen_portaddr_hash hash table entries: 2048 (order: 3, 32768 bytes, linear)
+[    0.075725] Table-perturb hash table entries: 65536 (order: 6, 262144 bytes, linear)
+[    0.076233] TCP established hash table entries: 32768 (order: 6, 262144 bytes, linear)
+[    0.076983] TCP bind hash table entries: 32768 (order: 8, 1048576 bytes, linear)
+[    0.077856] TCP: Hash tables configured (established 32768 bind 32768)
+[    0.078306] MPTCP token hash table entries: 4096 (order: 4, 98304 bytes, linear)
+[    0.078786] UDP hash table entries: 2048 (order: 4, 65536 bytes, linear)
+[    0.079235] UDP-Lite hash table entries: 2048 (order: 4, 65536 bytes, linear)
+[    0.079744] NET: Registered PF_UNIX/PF_LOCAL protocol family
+[    0.080864] RPC: Registered named UNIX socket transport module.
+[    0.081232] RPC: Registered udp transport module.
+[    0.081515] RPC: Registered tcp transport module.
+[    0.081798] RPC: Registered tcp NFSv4.1 backchannel transport module.
+[    0.082186] NET: Registered PF_XDP protocol family
+[    0.082900] Initialise system trusted keyrings
+[    0.083327] workingset: timestamp_bits=36 max_order=20 bucket_order=0
+[    0.084856] zbud: loaded
+[    0.085355] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.085935] NFS: Registering the id_resolver key type
+[    0.086250] Key type id_resolver registered
+[    0.086502] Key type id_legacy registered
+[    0.086761] nfs4filelayout_init: NFSv4 File Layout Driver Registering...
+[    0.087224] SGI XFS with ACLs, security attributes, quota, no debug enabled
+[    0.106176] Key type asymmetric registered
+[    0.106413] Asymmetric key parser 'x509' registered
+[    0.106694] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 250)
+[    0.107261] io scheduler mq-deadline registered
+[    0.107516] io scheduler kyber registered
+[    0.107757] io scheduler bfq registered
+[    0.108872] Serial: 8250/16550 driver, 1 ports, IRQ sharing disabled
+[    0.109360] printk: console [ttyS0] disabled
+[    0.109600] 40002000.uart: ttyS0 at MMIO 0x40002000 (irq = 13, base_baud = 1500000) is a 16550A
+[    0.110091] printk: console [ttyS0] enabled
+[    0.110091] printk: console [ttyS0] enabled
+[    0.110613] printk: bootconsole [uart0] disabled
+[    0.110613] printk: bootconsole [uart0] disabled
+[    0.112768] loop: module loaded
+[    0.112996] virtio_blk virtio0: 1/0/0 default/read/poll queues
+[    0.113405] virtio_blk virtio0: [vda] 379512 512-byte logical blocks (194 MB/185 MiB)
+[    0.114127] virtio_blk virtio1: 1/0/0 default/read/poll queues
+[    0.114534] virtio_blk virtio1: [vdb] 64 512-byte logical blocks (32.8 kB/32.0 KiB)
+[    0.115208] virtio_blk virtio2: 1/0/0 default/read/poll queues
+[    0.115613] virtio_blk virtio2: [vdc] 8388608 512-byte logical blocks (4.29 GB/4.00 GiB)
+[    0.116519] Loading iSCSI transport class v2.0-870.
+[    0.117010] iscsi: registered transport (tcp)
+[    0.117746] rtc-pl031 40001000.rtc: registered as rtc0
+[    0.118042] rtc-pl031 40001000.rtc: setting system clock to 2026-09-07T22:19:08 UTC (1788819548)
+[    0.118716] hid: raw HID events driver (C) Jiri Kosina
+[    0.119315] Initializing XFRM netlink socket
+[    0.119642] NET: Registered PF_INET6 protocol family
+[    0.120329] Segment Routing with IPv6
+[    0.120550] In-situ OAM (IOAM) with IPv6
+[    0.121573] bpfilter: Loaded bpfilter_umh pid 63
+[    0.123591] NET: Registered PF_PACKET protocol family
+[    0.123916] Bridge firewalling registered
+[    0.124428] Key type dns_resolver registered
+[    0.124728] NET: Registered PF_VSOCK protocol family
+[    0.125088] registered taskstats version 1
+[    0.125407] Loading compiled-in X.509 certificates
+[    0.125982] zswap: loaded using pool lzo/zbud
+[    0.126580] Key type .fscrypt registered
+[    0.126800] Key type fscrypt-provisioning registered
+[    0.127611] Key type encrypted registered
+[    0.160150] IP-Config: Complete:
+[    0.160652]      device=eth0, hwaddr=02:00:00:00:00:02, ipaddr=172.30.2.2, mask=255.255.255.252, gw=172.30.2.1
+[    0.162081]      host=172.30.2.2, domain=, nis-domain=(none)
+[    0.162908]      bootserver=255.255.255.255, rootserver=255.255.255.255, rootpath=
+[    0.162996] clk: Disabling unused clocks
+[    0.166290] VFS: Mounted root (squashfs filesystem) readonly on device 254:0.
+[    0.167271] devtmpfs: mounted
+[    0.167993] Freeing unused kernel memory: 2176K
+[    0.168551] Run /gunbc-runner-init.sh as init process
+=== GUNBC-RUNNER-GUEST ===
+guest-uname=6.1.128
+guest-dev-entries=102
+guest-addr=inet 172.30.2.2/30
+guest-route=default via 172.30.2.1 dev eth0 ;172.30.2.0/30 dev eth0 proto kernel scope link src 172.30.2.2 ;
+guest-resolver=nameserver 1.1.1.1 
+jitconfig-bytes=4076
+runner-copy=446MB
+runner-present=yes
+[    2.631102] EXT4-fs (vdc): mounting ext2 file system using the ext4 subsystem
+[    2.632896] EXT4-fs (vdc): mounted filesystem without journal. Quota mode: none.
+workspace-mounted=yes
+workspace-free=3827MB
+workspace-fs=ext2
+guest-path=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+guest-bash=/usr/bin/bash
+--- runner starting ---
+
+√ Connected to GitHub
+
+Current runner version: '2.337.0'
+2026-09-07 22:19:13Z: Listening for Jobs
+runner-exit=124
+=== GUNBC-RUNNER-GUEST END ===
+[  442.661902] Kernel panic - not syncing: Attempted to kill init! exitcode=0x00000000
+[  442.662646] CPU: 2 PID: 1 Comm: gunbc-runner-in Not tainted 6.1.128 #1
+[  442.663253] Hardware name: linux,dummy-virt (DT)
+[  442.663690] Call trace:
+[  442.663933]  dump_backtrace.part.0+0xdc/0xf0
+[  442.664429]  show_stack+0x18/0x30
+[  442.664756]  dump_stack_lvl+0x68/0x84
+[  442.665113]  dump_stack+0x18/0x34
+[  442.665438]  panic+0x120/0x2f0
+[  442.665741]  do_exit+0x384/0x38c
+[  442.666057]  do_group_exit+0x34/0xa0
+[  442.666402]  __arm64_sys_exit_group+0x18/0x20
+[  442.666818]  invoke_syscall+0x48/0x120
+[  442.667181]  el0_svc_common.constprop.0+0x44/0xf4
+[  442.667629]  do_el0_svc+0x34/0x8c
+[  442.667954]  el0_svc+0x2c/0x84
+[  442.668254]  el0t_64_sync_handler+0xbc/0x140
+[  442.668674] SMP: stopping secondary CPUs
+[  442.669367] Kernel Offset: disabled
+[  442.669707] CPU features: 0x000000,02070084,6600720b
+[  442.670192] Memory Limit: none
+[  442.670540] Rebooting in 1 seconds..
+2026-09-07T22:26:32.153188320 [checkout-2-a2-adc2e632:fc_vcpu 2] Received KVM_SYSTEM_EVENT: type: 2, event: [0]
+2026-09-07T22:26:32.153262960 [checkout-2-a2-adc2e632:main] Vmm is stopping.
+2026-09-07T22:26:32.153296600 [checkout-2-a2-adc2e632:main] Killing vCPU threads
+2026-09-07T22:26:32.202302600 [checkout-2-a2-adc2e632:main] Firecracker exiting successfully. exit_code=0
+--- guest log end ---
+--- containment observations, AFTER the attempt ---
+post-cgroup-procs=
+post-cgroup-empty=yes
+post-tap-present=no
+post-ruleset-present=no
+post-nft-process=0
+post-cgroup-removed=yes
+post-jail-chroot=dev firecracker firecracker.pid jit.bin rootfs.squashfs run sys vm.json vmlinux work.img 
+--- process census after attempt ---
+PID   PPID  USER     COMMAND
+    1     0 0        init
+ 3964     1 0        busybox
+ 3965     1 0        busybox
+surviving-firecracker=0
+surviving-jailer=0
+jail-removed=yes
+post-jit-device-present=no
+post-workspace-present=no
+post-jailbase-entries=0
+post-jailbase-mounted=0
+attempt-2-held-seconds=450
+=== ATTEMPT 2 END ===
+
+=== SUPERVISOR: after both attempts ===
+final-taps=0
+final-nft-tables=0
+final-cgroups=0
+final-jailbase=0
+final-firecracker=0
+marker-end=gunbc-runner-host-boot
+===================================================
+
+
+
+BusyBox v1.36.1 (Ubuntu 1:1.36.1-6ubuntu3.1) built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+sh: can't access tty; job control turned off
+~ # 
+~ # 
+Script done on 2026-09-07 22:26:38+00:00 [COMMAND_EXIT_CODE="0"]
