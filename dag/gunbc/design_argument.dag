@@ -249,12 +249,12 @@ data design_section_2_to_7_rows: List<DesignRow> = [
   DesignRow {
     proposition: Proposition {
       id: "s3d.selection-precedes-convergence",
-      statement: "selection precedes convergence: Pareto assessment (std.pareto) computes the frontier and realization selection (std.decision) is the policy-bound choose-one, consuming Pareto without redeclarating its algebra; world_converge and ensure do not enumerate candidates or choose policy",
+      statement: "selection precedes convergence: Pareto assessment (std.pareto) computes the frontier and realization selection (std.decision) is the policy-bound choose-one, consuming Pareto without redeclarating its algebra; goal assessment and ensure do not enumerate candidates or choose policy",
       premises: ["s3.single-authority", "s5.fail-closed", "s1.minimal-safe-efficient"]
     },
     review: ReviewableOnChange { parts: [yes_no_review(
       part: "selection-precedes-convergence",
-      question: "Does the change choose or converge a realization while the candidate field, constraints, funded-axis evidence or policy are unresolved; redeclare Pareto dominance/orientation/interval/gap vocabulary; treat a Pareto front as a winner; mint SelectedWithin over an incomplete closure; or widen world_converge/ensure into candidate generation or policy choice?",
+      question: "Does the change choose or converge a realization while the candidate field, constraints, funded-axis evidence or policy are unresolved; redeclare Pareto dominance/orientation/interval/gap vocabulary; treat a Pareto front as a winner; mint SelectedWithin over an incomplete closure; or widen goal assessment (std.goal_assessment) / ensure into candidate generation or policy choice?",
       tells: [
         "a convergence or ensure path that enumerates candidates or selects a realization",
         "a second dominance, orientation, interval or evidence-gap algebra beside std.pareto",
