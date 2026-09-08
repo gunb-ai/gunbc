@@ -7,7 +7,7 @@ import gunbc.harness.harness_goal_audit_guidance {
 }
 import gunbc.roadmap.roadmap_goal_audit_role { goal_audit_brief }
 
-fn rows() -> List<AuditGroundedPremise> { harness_auditor_guidance_at(verdict_path: "/state/audit/abc.json", verdict_shape: "SHAPE-TOKEN") }
+fn rows() -> List<AuditGroundedPremise> { harness_auditor_guidance_at(worktree: "/state/worktrees/attempt-1", verdict_path: "/state/audit/abc.json", verdict_shape: "SHAPE-TOKEN") }
 
 test fn the_auditor_prompt_is_independent_of_the_brief_and_asks_whether_the_check_proves_the_goal() -> Bool {
   let prose = audit_guidance_prose(rows: rows())
