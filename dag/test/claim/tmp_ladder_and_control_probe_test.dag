@@ -1,0 +1,45 @@
+module test.claim.tmp_ladder_and_control_probe_test
+
+import std.types { Bool, Int, List }
+import std.algebra { Cons, Empty }
+
+fn probe_source() -> List<Int> {
+  [1, 2, 3]
+}
+
+test fn arm_c_literal_receiver() -> Bool {
+  fold([1, 2, 3], init: 0, f: fn(acc, x) { acc + x }) == 6
+}
+
+test fn arm_g_call_result_receiver() -> Bool {
+  fold(probe_source(), init: 0, f: fn(acc, x) { acc + x }) == 6
+}
+
+test fn arm_e_cons_receiver() -> Bool {
+  fold(Cons { head: 1, tail: [2, 3] }, init: 0, f: fn(acc, x) { acc + x }) == 6
+}
+
+test fn arm_i_empty_receiver() -> Bool {
+  fold(Empty, init: 0, f: fn(acc, x) { acc + x }) == 0
+}
+
+type ApplicationUnary<T> = fn(T) -> T
+
+type ApplicationHolder {
+  invoke: ApplicationUnary<Int>
+}
+
+type HeldCallback = HolderPresent { holder: ApplicationHolder } | HolderAbsent
+
+fn application_increment(value: Int) -> Int { value + 1 }
+
+fn declared_held_callback() -> HeldCallback {
+  HolderPresent { holder: ApplicationHolder { invoke: application_increment } }
+}
+
+test fn control_field_access_on_match_bound_payload() -> Bool {
+  match declared_held_callback() {
+    HolderPresent { holder } => holder.invoke(41) == 42
+    HolderAbsent => false
+  }
+}

@@ -1,0 +1,32 @@
+module test.claim.tmp_bare_call_binding_probe_test
+
+import std.types { Bool, Int }
+
+type AliasUnary<T> = fn(T) -> T
+
+type PlainCallback = PlainPresent { step: fn(Int) -> Int } | PlainAbsent
+type AliasCallback = AliasPresent { step: AliasUnary<Int> } | AliasAbsent
+
+fn application_increment(value: Int) -> Int { value + 1 }
+
+fn declared_plain_callback() -> PlainCallback {
+  PlainPresent { step: application_increment }
+}
+
+fn declared_alias_callback() -> AliasCallback {
+  AliasPresent { step: application_increment }
+}
+
+test fn q1_bare_call_of_match_binding_inline_fn() -> Bool {
+  match declared_plain_callback() {
+    PlainPresent { step } => step(41) == 42
+    PlainAbsent => false
+  }
+}
+
+test fn q2_bare_call_of_match_binding_alias_fn() -> Bool {
+  match declared_alias_callback() {
+    AliasPresent { step } => step(41) == 42
+    AliasAbsent => false
+  }
+}

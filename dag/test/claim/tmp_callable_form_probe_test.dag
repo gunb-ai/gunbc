@@ -1,0 +1,44 @@
+module test.claim.tmp_callable_form_probe_test
+
+import std.types { Bool, Int }
+
+type ApplicationUnary<T> = fn(T) -> T
+
+type ApplicationHolder {
+  invoke: ApplicationUnary<Int>
+}
+
+type PlainHolder {
+  step: fn(Int) -> Int
+}
+
+type HeldCallback = HolderPresent { holder: ApplicationHolder } | HolderAbsent
+
+fn application_increment(value: Int) -> Int { value + 1 }
+
+fn declared_holder() -> ApplicationHolder {
+  ApplicationHolder { invoke: application_increment }
+}
+
+fn declared_plain_holder() -> PlainHolder {
+  PlainHolder { step: application_increment }
+}
+
+fn declared_held_callback() -> HeldCallback {
+  HolderPresent { holder: declared_holder() }
+}
+
+test fn p1_field_call_no_match_alias_typed() -> Bool {
+  declared_holder().invoke(41) == 42
+}
+
+test fn p2_field_call_no_match_inline_fn_typed() -> Bool {
+  declared_plain_holder().step(41) == 42
+}
+
+test fn p3_field_call_after_match_binding() -> Bool {
+  match declared_held_callback() {
+    HolderPresent { holder } => holder.invoke(41) == 42
+    HolderAbsent => false
+  }
+}

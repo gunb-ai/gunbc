@@ -756,6 +756,22 @@ fn infer_var_binding_kind(scope: InferScope, name: String) -> VarBindingKind {
   }
 }
 
+// THE CAUSE IS THE TYPE'S, THE LOCATION IS THE CALL'S. algebra_child_or_placeholder mints
+// AlgebraApplicationEvidenceUnavailable spanned at the CARRIER DECLARATION, which is the only
+// span it has -- it is reasoning about a type, not about a call site. Emitted unchanged, that
+// sends the author to dag/std/algebra.dag for a defect in their own module. DESIGN 5's "typed,
+// located" means located where the author can act, so every path that forwards these diagnostics
+// re-spans them to the call while preserving the receiver_type and argument_index the original
+// carried: one authority for the cause, one for the location, and no second diagnostic minted.
+
+fn relocated_algebra_evidence_diags(diags: List<ErrorNode>, span: SourceSpan, module_name: String) -> List<ErrorNode> {
+  diags |> map(d => match d.diagnostic {
+    AlgebraApplicationEvidenceUnavailable { receiver_type: rt, argument_index: ai, span: _ } =>
+      make_error_node(diagnostic: AlgebraApplicationEvidenceUnavailable { receiver_type: rt, argument_index: ai, span: span }, module_name: module_name)
+    _ => d
+  })
+}
+
 fn inference_error(message: String, span: SourceSpan, module_name: String) -> ErrorNode {
   make_error_node(diagnostic: InternalError { message: message, span: span }, module_name: module_name)
 }
@@ -6781,7 +6797,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               span: span,
               name_span: node_name_span(n: texpr)
             ),
-            diagnostics: concat(concat(arg_diags, method_resolution.diagnostics), template_subst_diags)
+            diagnostics: concat(arg_diags, relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, template_subst_diags), span: span, module_name: scope.module_name))
           }
         } else if !callee_is_body_binding && func_name == "empty_map" {
           let bare_m = bare_map_node()
@@ -6996,11 +7012,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                     if (call_ambiguity_cands |> count) > 0 {
                       [make_error_node(diagnostic: AmbiguousReference { name: func_name, candidates: call_ambiguity_cands, span: span }, module_name: scope.module_name)]
                     } else {
-                      let method_blocking_diags = method_resolution.diagnostics |> filter(d => is_interpreter_blocking_diagnostic(d.diagnostic)) |> map(d => match d.diagnostic {
-                        AlgebraApplicationEvidenceUnavailable { receiver_type: rt, argument_index: ai, span: _ } =>
-                          make_error_node(diagnostic: AlgebraApplicationEvidenceUnavailable { receiver_type: rt, argument_index: ai, span: span }, module_name: scope.module_name)
-                        _ => d
-                      })
+                      let method_blocking_diags = relocated_algebra_evidence_diags(diags: method_resolution.diagnostics |> filter(d => is_interpreter_blocking_diagnostic(d.diagnostic)), span: span, module_name: scope.module_name)
                       if method_blocking_diags |> count > 0 {
                         method_blocking_diags
                       } else {
@@ -7132,7 +7144,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       )
       InferResult {
         typed: mc_texpr,
-        diagnostics: concat(concat(concat(recv_diags, mc_arg_diags), pipe_fb.kernel_diags), concat(method_resolution.diagnostics, mc_template_diags))
+        diagnostics: concat(concat(concat(recv_diags, mc_arg_diags), relocated_algebra_evidence_diags(diags: pipe_fb.kernel_diags, span: span, module_name: scope.module_name)), relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, mc_template_diags), span: span, module_name: scope.module_name))
       }
       }
 

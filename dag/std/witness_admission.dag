@@ -201,7 +201,7 @@ type WitnessExecutionBudget
 
 data witness_expected_verdict_split_note: String = "ExpectWitnessRed SPLIT IN TWO (operator ruling, 2026-08-06). One arm meaning 'this witness is red' let a batch bless an ARBITRARY corpus resolve failure as agreement: with no per-witness outcomes on that path, the executor asked only whether every entry was expected-red and, if so, reported any resolution or evaluation failure as the quarantine holding. That contradicts the rule the same change had just established — agreement means the assertion RAN and returned false — and it is the widest possible reading of a narrow legacy fact.
 
-Some legacy rows genuinely do expect a stop BEFORE any verdict exists: a witness that cannot resolve at all has no assertion to run. The specimen this sentence formerly named — the logic_ground_truth trio, which sat on the imported-bare-variant-constructor resolver gap — was DELETED 2026-08-16 by operator ruling during the floor cut, together with its three admission rows; the ExpectTypedPreVerdictRefusal arm was therefore UNINHABITED BY ANY LIVE ROW from that deletion until 2026-09-07, exercised only by the synthetic fixture in exact_witness_admission_witness_test; it carries one live row again since the MatchPatternBindingAbsentFromLambdaScope arm was minted for the callable specimen cited by gunbc.guarantee_stall.lambda_pattern_parameter_binding_stall. Those declare ExpectTypedPreVerdictRefusal and name the phase and cause. Everything else declares ExpectAssertionFalse, and for those a resolve failure proves neither the red nor the quarantine — it is an infrastructure fact about the run.
+Some legacy rows genuinely do expect a stop BEFORE any verdict exists: a witness that cannot resolve at all has no assertion to run. The specimen this sentence formerly named — the logic_ground_truth trio, which sat on the imported-bare-variant-constructor resolver gap — was DELETED 2026-08-16 by operator ruling during the floor cut, together with its three admission rows; the ExpectTypedPreVerdictRefusal arm is therefore currently UNINHABITED BY ANY LIVE ROW and is exercised only by the synthetic fixture in exact_witness_admission_witness_test. Those declare ExpectTypedPreVerdictRefusal and name the phase and cause. Everything else declares ExpectAssertionFalse, and for those a resolve failure proves neither the red nor the quarantine — it is an infrastructure fact about the run.
 
 THE MATCH IS NOT EXACT YET, and that is a bounded compatibility arm rather than a claim. run_claim formats the typed InterpError into a String before ClaimOutcome exists, so the observed cause cannot be compared against the declared one without parsing that prose — which is the mechanism this whole lane exists to remove. So today the declaration GATES the inversion (a row that did not declare a pre-verdict refusal can never reach it) without VERIFYING the cause matches. Dissolve-on: the typed error survives the seam (gunbc.witness_row_cost witness_cost_timed_out_seed_deferral_note, the witness-realization lane), at which point the declared PreVerdictPhase and PreVerdictCause are matched against the observed refusal and a mismatch refuses."
 
@@ -211,7 +211,7 @@ type PreVerdictPhase
 
 // A CLOSED VOCABULARY OF DOCUMENTED CAUSES, not a free-text field: a declared expectation whose
 // cause is prose cannot be matched against an observation, which is the whole reason this axis
-// exists. Every arm names a class this repository has diagnosed and owns.
+// exists. Both arms name a class this repository has diagnosed and owns.
 // UnboundImportedVariantConstructor is a resolver gap owned by the namespace-only-resolution lane —
 // an imported bare variant constructor in expression position does not bind, while
 // patterns-via-scrutinee do. Its only live specimen (the logic_ground_truth trio) was deleted
@@ -225,33 +225,9 @@ type PreVerdictPhase
 // set of causes we can name, and a cause we have diagnosed but cannot spell is a cause that gets
 // spelled as prose the next time it appears.
 
-// MatchPatternBindingAbsentFromLambdaScope, the third arm (added 2026-09-07, dashboard node
-// adhoc-8110b19b-837, operator decision on the escalation from gunbc#10625): a binding introduced
-// by a match pattern is not in scope inside a lambda body written in that arm, so applying it
-// refuses at resolve with 'function not found in scope' -- a scope-construction gap in the
-// resolver, not a namespace or pool-membership one, which is why neither existing arm names it.
-// It is distinguished from UnboundImportedVariantConstructor (the missing binding is IMPORTED, and
-// the failure is that an import does not bind a bare constructor in expression position) and from
-// UnresolvedModuleOutsideClosure (the missing name lives in ANOTHER MODULE, and whether it resolves
-// depends on what else the assembled closure dragged in). Here the binder, the use, and the module
-// are all one file: the pattern binds, the lambda body does not see it. Its live specimen is the
-// callable arm cited by gunbc.guarantee_stall.lambda_pattern_parameter_binding_stall, and it is
-// the only PreVerdictCause arm with a row citing it today.
-//
-// RUNG HONESTY ABOUT THIS CLOSURE: it is DOCUMENTARY, NOT ENFORCED. Adding this arm broke
-// nothing, and that is not a property of the arm -- every match over WitnessExpectedVerdict in
-// the corpus binds the cause as a wildcard, ExpectTypedPreVerdictRefusal { phase: _, cause: _ },
-// so no consumer is forced to decide anything about a new cause. A closed coproduct whose
-// consumers all wildcard it buys the NAMEABILITY the paragraph above argues for and buys none of
-// the exhaustiveness pressure a closed type is usually reached for. Next-rung trigger: a consumer
-// that matches the cause arm-by-arm -- the observed-vs-declared comparison the split_note above
-// says is not built yet -- at which point adding an arm forces every such site to decide, and the
-// closure becomes a wall rather than a convention.
-
 type PreVerdictCause
   = UnboundImportedVariantConstructor
   | UnresolvedModuleOutsideClosure
-  | MatchPatternBindingAbsentFromLambdaScope
 
 type WitnessExpectedVerdict
   = ExpectWitnessHolds
