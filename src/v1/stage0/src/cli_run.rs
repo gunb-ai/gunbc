@@ -80,7 +80,7 @@ use crate::v1_std_core::{
     make_error_node, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
     module_items, no_span, param_node_name_at, param_node_type_expr, Cardinality,
     CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable,
-    MatchPattern, NewlineIndex, Node,
+    LeafOwner, MatchPattern, NewlineIndex, Node,
 };
 use serde::Serialize;
 
@@ -4887,6 +4887,10 @@ pub enum UnlistedImportBindingSource {
     ListedImport,
     PoolCoincidence,
     DefinerResolvable,
+    /// Two or more modules declare this bare leaf, so no single definer can be named.
+    /// It is NOT a binding source that was determined; it is the state of not being determinable,
+    /// and it is a variant rather than a `None` definer so a consumer cannot read it as "unresolved".
+    AmbiguousLeaf,
 }
 
 impl UnlistedImportBindingSource {
@@ -4895,6 +4899,7 @@ impl UnlistedImportBindingSource {
             Self::ListedImport => "listed-import",
             Self::PoolCoincidence => "pool-coincidence",
             Self::DefinerResolvable => "definer-resolvable",
+            Self::AmbiguousLeaf => "ambiguous-leaf",
         }
     }
 }
@@ -4917,17 +4922,70 @@ fn import_module_paths_for_typed_module(tm: &Rc<TypedModule>) -> HashSet<String>
         .collect()
 }
 
-fn definer_module_for_name(graph: &ResolvedGraph, name: &str) -> Option<String> {
+/// WHICH MODULE DEFINES A NAME, OR THE FACT THAT THE QUESTION HAS NO SINGLE ANSWER.
+///
+/// This used to answer a bare leaf with `.values().find(...)` -- the first matching row, silently,
+/// for exactly the question the `.dag` side refuses (`lookup_item_by_leaf` -> `ItemLeafAmbiguous`).
+/// An annotation saying "it is a guess either way" made the guess visible to a READER and not to a
+/// CONSUMER, which is the distinction DESIGN section 5 turns on.
+///
+/// IT DOES NOT SCAN. The first repair collected the distinct owning modules by walking
+/// `item_registry.values()`, which answered correctly and re-derived, per call, an index this
+/// compiler already builds: `leaf_owner_modules_from_registry` (v1.compiler.infer_items), carried
+/// on `ResolvedGraph.emit_graph_info.item_leaf_owner_modules`. That is DESIGN section 2
+/// re-invention -- net concepts must not grow by re-invention -- and a section 6 cost-shape defect
+/// besides, since `classify_unlisted_import_binding_source` and its callers put roughly four full
+/// registry passes behind every census row and the census is thousands of rows. Both are fixed by
+/// asking the modelled index, which is one map lookup and, being the same authority the emitted
+/// path reads, cannot disagree with it.
+///
+/// The index's value is the `LeafOwner` coproduct, so ambiguity arrives as an ARM this match has to
+/// write rather than as a sentinel this reader had to remember to test for -- the shape review 61778
+/// found here, and the same one `__DUPLICATE_ITEM_IDENTITY__` was retired for.
+enum DefinerLookup {
+    Definer(String),
+    /// Several modules declare the leaf. The symbol RESOLVES; its definer is not nameable.
+    AmbiguousLeaf,
+    Unresolved,
+}
+
+fn definer_lookup_for_name(graph: &ResolvedGraph, name: &str) -> DefinerLookup {
     if let Some(info) = graph.item_registry.get(name) {
-        return Some(info.module_name.clone());
+        return DefinerLookup::Definer(info.module_name.clone());
     }
-    if name.contains('.') {
-        let base = name.rsplit('.').next().unwrap_or(name);
-        if let Some(info) = graph.item_registry.get(base) {
-            return Some(info.module_name.clone());
-        }
+    // THE LEAF INDEX IS KEYED ON THE BARE LEAF, so a qualified spelling must be stripped before it
+    // is asked. The registry read above answers a qualified name only when the qualifier is exactly
+    // the owner module path, because its key is `owner.decl` -- so a reference qualified any other
+    // way (an alias, a re-export path, a partial containment prefix) reaches the index, and asking
+    // the index under the full spelling misses every time. Querying only the full spelling widened
+    // the unresolved bucket instead of refusing, and a census that reports a resolvable symbol as
+    // unresolved is the conflation this function's own name exists to keep apart.
+    let leaf = name.rsplit('.').next().unwrap_or(name);
+    match graph.emit_graph_info.item_leaf_owner_modules.get(leaf) {
+        None => DefinerLookup::Unresolved,
+        Some(owner) => match &**owner {
+            LeafOwner::LeafAmbiguous => DefinerLookup::AmbiguousLeaf,
+            LeafOwner::SingleOwner { module, .. } => DefinerLookup::Definer(module.clone()),
+        },
     }
-    None
+}
+
+fn definer_module_for_name(graph: &ResolvedGraph, name: &str) -> Option<String> {
+    match definer_lookup_for_name(graph, name) {
+        DefinerLookup::Definer(m) => Some(m),
+        DefinerLookup::AmbiguousLeaf => None,
+        DefinerLookup::Unresolved => None,
+    }
+}
+
+/// Whether the symbol resolves at all, which is a DIFFERENT question from whether its definer can
+/// be named. An ambiguous leaf answers yes here and `None` above, and conflating the two is how a
+/// census reports a resolvable symbol as unresolved.
+fn symbol_resolves_for_name(graph: &ResolvedGraph, name: &str) -> bool {
+    !matches!(
+        definer_lookup_for_name(graph, name),
+        DefinerLookup::Unresolved
+    )
 }
 
 /// Classify how a single `UnlistedImportUse` site obtained its binding.
@@ -4936,6 +4994,10 @@ pub fn classify_unlisted_import_binding_source(
     referencing_module: &str,
     referenced_name: &str,
 ) -> (UnlistedImportBindingSource, Option<String>) {
+    let lookup = definer_lookup_for_name(graph, referenced_name);
+    if matches!(lookup, DefinerLookup::AmbiguousLeaf) {
+        return (UnlistedImportBindingSource::AmbiguousLeaf, None);
+    }
     let definer = definer_module_for_name(graph, referenced_name);
     let tm = graph
         .modules
@@ -8061,7 +8123,7 @@ pub fn cross_module_binding_receipts_for_symbols(
         .iter()
         .map(|sym| {
             let definer = definer_module_for_name(graph, sym);
-            let binding_source = if definer.is_some() {
+            let binding_source = if symbol_resolves_for_name(graph, sym) {
                 Some(classify_unlisted_import_binding_source(graph, consumer_module, sym).0)
             } else {
                 None
@@ -13798,7 +13860,8 @@ pub struct ResolveStageNanos {
     pub assembly_diagnostics: u128,
     /// `item_registry` merge fold across the closure's typed modules.
     pub assembly_registry: u128,
-    /// `expand_transitive_services` (bounded 5-pass fixpoint over every bodied item).
+    /// `expand_transitive_services` (monotone fixpoint over every bodied item, under a bound
+    /// derived from the registry rather than a chosen pass count).
     pub assembly_services: u128,
     /// The three `rewire_*` passes (type-env parents, import-str identity, func-env parents).
     pub assembly_rewire: u128,
@@ -15157,8 +15220,37 @@ fn finish_resolved_graph_assembly(
     });
     resolve_stage_slot_add(|s| s.assembly_registry += registry_started.elapsed().as_nanos());
     let services_started = std::time::Instant::now();
-    let expanded_registry =
-        v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry, 5);
+    let effect_analysis =
+        v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry);
+    // ONE AUTHORITY FOR THE CAUSE-TO-DIAGNOSTIC MAPPING, called rather than mirrored by hand. This
+    // block used to hand-copy `typecheck_with_census_extra`'s five-arm `EffectIncompleteness` match,
+    // three of its message strings verbatim included -- two sources for one fact, which DESIGN §2
+    // calls the forked-logic trap and §3 an authority fork, and whose failure is silent: a message
+    // edited on one side, or a sixth arm added on one side and defaulted on the other, disagrees
+    // with nothing that would refuse. It now calls the generated mirror of the `.dag` declaration
+    // `v1.compiler.infer` `effect_incompleteness_diagnostics`, so the two paths cannot disagree and
+    // a new arm is a compile error on both. What stays mirrored here is only the SHAPE of the
+    // unwrap: the registry is reachable through the complete arm alone, and an incomplete summary
+    // carries its causes onto the graph's diagnostics rather than being unwrapped into something
+    // indistinguishable from a fixed point.
+    let (expanded_registry, incompleteness_diagnostics): (
+        Rc<im::HashMap<String, Rc<ItemInfo>>>,
+        Vec<Rc<ErrorNode>>,
+    ) = match effect_analysis.as_ref() {
+        crate::v1_compiler_infer_service::ServiceEffectAnalysis::EffectsComplete { registry } => {
+            (registry.clone(), Vec::new())
+        }
+        crate::v1_compiler_infer_service::ServiceEffectAnalysis::EffectsIncomplete {
+            partial,
+            causes,
+        } => (
+            partial.clone(),
+            v1_compiler_infer::effect_incompleteness_diagnostics(causes.clone())
+                .iter()
+                .cloned()
+                .collect(),
+        ),
+    };
     resolve_stage_slot_add(|s| s.assembly_services += services_started.elapsed().as_nanos());
     let diagnostics_started = std::time::Instant::now();
     let diagnostics: Rc<im::Vector<Rc<ErrorNode>>> = Rc::new({
@@ -15166,6 +15258,7 @@ fn finish_resolved_graph_assembly(
         for chunk in &diag_chunks {
             acc.extend(chunk.iter().cloned());
         }
+        acc.extend(incompleteness_diagnostics.iter().cloned());
         acc
     });
     let total_fork_count = same_tree_fork_count + cross_tree_fork_count;
@@ -15193,7 +15286,8 @@ fn finish_resolved_graph_assembly(
     resolve_stage_slot_add(|s| s.assembly_rewire_func_env += rewire3_started.elapsed().as_nanos());
     resolve_stage_slot_add(|s| s.assembly_rewire += rewire_started.elapsed().as_nanos());
     let emit_info_started = std::time::Instant::now();
-    let emit_graph_info = v1_compiler_infer::build_emit_graph_info(modules.clone());
+    let emit_graph_info =
+        v1_compiler_infer::build_emit_graph_info(modules.clone(), expanded_registry.clone());
     resolve_stage_slot_add(|s| s.assembly_emit_info += emit_info_started.elapsed().as_nanos());
     let graph_started = std::time::Instant::now();
     let graph = Rc::new(ResolvedGraph {
@@ -25814,6 +25908,75 @@ mod floor_skip_frontier_tests {
             .to_path_buf()
     }
 
+    // TEST DETECTOR ONLY. Roster derived here; production skip does not consult it.
+    // Matching is substring on comment-stripped lines because the census must
+    // read entries that may not resolve — the same textual model as
+    // `parse_entry_live_tree_disposition`. `v2.std.fn_index` `callees_from_node`
+    // needs a Node. v1 PURPOSE: evidence for the failure-mode row
+    // (`gunbc.v1_maintenance_standing` `v1_seed_standing`).
+
+    fn builtin_name_spells_a_live_checkout_sink(name: &str) -> bool {
+        name.starts_with("compile_dag_")
+            || name.ends_with("_facts_live")
+            || name == "filesystem_read"
+            || name == "filesystem_list"
+            || name == "decl_facts"
+            || name == "module_declaration_facts"
+            || name == "layer_import_facts"
+    }
+
+    fn direct_live_tree_sink_callees() -> Vec<String> {
+        let mut names: Vec<String> = crate::v1_compiler_infer_method::builtin_function_registry()
+            .iter()
+            .filter(|(k, _)| builtin_name_spells_a_live_checkout_sink(k))
+            .map(|(k, _)| k.clone())
+            .collect();
+        for extra in ["Filesystem.Read", "Filesystem.List"] {
+            if !names.iter().any(|n| n == extra) {
+                names.push(extra.to_string());
+            }
+        }
+        names.sort();
+        names.dedup();
+        names
+    }
+
+    fn detector_line_has_unquoted_callee(line: &str, callee: &str) -> bool {
+        let stripped = super::strip_line_comment(line);
+        let paren = format!("{callee}(");
+        let spaced = format!("{callee} (");
+        stripped.contains(&paren) || stripped.contains(&spaced)
+    }
+
+    fn detector_unquoted_live_callees(content: &str) -> Vec<String> {
+        direct_live_tree_sink_callees()
+            .into_iter()
+            .filter(|callee| {
+                content
+                    .lines()
+                    .any(|line| detector_line_has_unquoted_callee(line, callee))
+            })
+            .collect()
+    }
+
+    fn detector_sio_unquoted_live_hits(
+        files: &[(String, String)],
+    ) -> Result<Vec<(String, Vec<String>)>, String> {
+        let mut out = Vec::new();
+        for (rel, content) in files {
+            let reads_live = super::parse_entry_live_tree_disposition(rel, content)?;
+            if reads_live {
+                continue;
+            }
+            let sinks = detector_unquoted_live_callees(content);
+            if !sinks.is_empty() {
+                out.push((rel.clone(), sinks));
+            }
+        }
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        Ok(out)
+    }
+
     fn fixture_path() -> String {
         "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag".to_string()
     }
@@ -26132,6 +26295,159 @@ new file mode 100644
     }
 
     #[test]
+    fn quoted_census_callee_is_not_a_direct_live_sink() {
+        let source = "module m\n\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\ndata note: String = \"compile_dag_diagnostic_census(source)\"\n";
+        assert!(detector_unquoted_live_callees(source).is_empty());
+    }
+
+    #[test]
+    fn unquoted_census_callee_is_a_direct_live_sink() {
+        let source = "module m\n\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\nfn f(source: String) -> Int { compile_dag_diagnostic_census(source) }\n";
+        assert_eq!(
+            detector_unquoted_live_callees(source),
+            vec!["compile_dag_diagnostic_census".to_string()]
+        );
+    }
+
+    #[test]
+    fn direct_live_tree_sink_callees_is_derived_from_the_registry() {
+        let names = direct_live_tree_sink_callees();
+        assert!(
+            names.iter().any(|n| n == "compile_dag_diagnostic_census"),
+            "census builtin missing from derived roster: {names:?}"
+        );
+        assert!(builtin_name_spells_a_live_checkout_sink(
+            "compile_dag_diagnostic_census"
+        ));
+        assert!(
+            crate::v1_compiler_infer_method::builtin_function_registry()
+                .contains_key("compile_dag_diagnostic_census"),
+            "oracle is the registry, not a pasted list"
+        );
+    }
+
+    #[test]
+    fn detector_hits_planted_triple_is_an_identity_join() {
+        let files = vec![
+            (
+                "lying.dag".to_string(),
+                "module lying\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\nfn f(s: String) -> Int { compile_dag_diagnostic_census(s) }\n"
+                    .to_string(),
+            ),
+            (
+                "honest_sio.dag".to_string(),
+                "module honest_sio\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\nfn f() -> Bool { true }\n"
+                    .to_string(),
+            ),
+            (
+                "honest_live.dag".to_string(),
+                "module honest_live\ndata live_tree_disposition: LiveTreeDisposition = ReadsLiveTree\nfn f(s: String) -> Int { compile_dag_diagnostic_census(s) }\n"
+                    .to_string(),
+            ),
+        ];
+        let rows = detector_sio_unquoted_live_hits(&files).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, "lying.dag");
+        assert_eq!(rows[0].1, vec!["compile_dag_diagnostic_census"]);
+        assert!(
+            !rows
+                .iter()
+                .any(|(p, _)| p == "honest_sio.dag" || p == "honest_live.dag"),
+            "honest stamps must not be detector hits: {rows:?}"
+        );
+    }
+
+    #[test]
+    fn named_census_specimens_declare_reads_live_tree_and_call_a_sink() {
+        let ws = workspace_root();
+        let specimens = [
+            "dag/test/claim/fabric/fabric_output_contract_resolution_witness_test.dag",
+            "dag/test/claim/match_exhaustiveness_coproduct_witness_test.dag",
+            "dag/test/claim/direct_call_argument_type_witness_test.dag",
+            "dag/test/claim/declared_type_inhabitance_direct_call_witness_test.dag",
+            "dag/test/claim/declared_type_inhabitance_list_element_witness_test.dag",
+            "dag/test/claim/declared_type_expected_type_path_witness_test.dag",
+            "dag/test/claim/infer_record_lit_variant_field_witness_test.dag",
+        ];
+        let mut files = Vec::new();
+        for rel in specimens {
+            let content =
+                std::fs::read_to_string(ws.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
+            files.push((rel.to_string(), content));
+        }
+        let hits = detector_sio_unquoted_live_hits(&files).unwrap();
+        assert!(
+            hits.is_empty(),
+            "corrected specimens must leave the detector-hit set: {hits:?}"
+        );
+        for (rel, content) in &files {
+            assert!(
+                super::parse_entry_live_tree_disposition(rel, content).unwrap(),
+                "{rel} stamp was not corrected to ReadsLiveTree"
+            );
+            assert!(
+                !detector_unquoted_live_callees(content).is_empty(),
+                "{rel} lost its live sink"
+            );
+        }
+    }
+
+    #[test]
+    fn named_remaining_sio_direct_live_specimen_is_joined() {
+        let ws = workspace_root();
+        let rel = "dag/test/claim/citation_cause_subject_disjointness_witness_test.dag";
+        let content =
+            std::fs::read_to_string(ws.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
+        let files = vec![(rel.to_string(), content)];
+        let rows = detector_sio_unquoted_live_hits(&files).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, rel);
+        assert!(
+            rows[0]
+                .1
+                .iter()
+                .any(|n| n == "compile_dag_diagnostic_census"),
+            "reaching call missing: {:?}",
+            rows[0].1
+        );
+    }
+
+    #[test]
+    fn compile_dag_diagnostic_census_is_invisible_to_effect_reach_host_sinks() {
+        let source = "fn f(source: String) -> Int { compile_dag_diagnostic_census(source) }\n";
+        assert!(
+            !super::source_has_host_effect_sink(source),
+            "a census call must not be reclassified by effect_reach; otherwise a lying SIO stamp would not buy a predict-skip"
+        );
+    }
+
+    #[test]
+    fn adding_the_census_marker_would_still_lose_the_conjunction_on_the_remaining_specimen() {
+        let ws = workspace_root();
+        let rel = "dag/test/claim/citation_cause_subject_disjointness_witness_test.dag";
+        let content =
+            std::fs::read_to_string(ws.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
+        assert!(
+            !super::parse_entry_live_tree_disposition(rel, &content).unwrap(),
+            "{rel} must still be SubstrateInputsOnly for this check"
+        );
+        assert!(
+            detector_unquoted_live_callees(&content)
+                .iter()
+                .any(|n| n == "compile_dag_diagnostic_census"),
+            "specimen lost its census call"
+        );
+        assert!(
+            !super::source_has_host_effect_sink(&content),
+            "the mechanism: census is absent from EFFECT_REACH_HOST_SINK_MARKERS"
+        );
+        assert!(
+            !super::source_has_path_like_string_data(&content),
+            "even a roster patch would still lose ConjunctionOfIndependentExistentials: this entry compiles in-memory source strings, not a dag/ or src/ path literal"
+        );
+    }
+
+    #[test]
     fn import_closure_carrier_home_matches_submodules() {
         use std::collections::HashSet;
 
@@ -26199,6 +26515,27 @@ new file mode 100644
         assert!(
             lying.is_empty(),
             "lying SubstrateInputsOnly stamps must be re-stamped ReadsLiveTree before merge"
+        );
+    }
+
+    #[test]
+    #[ignore = "receipts-lane re-derivation of the TEST detector; not a wall. Required tests identity-join named specimens. Do not cite this print as a count oracle or as the stamp-to-body join."]
+    fn detector_sio_unquoted_live_hits_corpus_walk() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let files = super::corpus_dag_files();
+        let rows = detector_sio_unquoted_live_hits(&files).expect("disposition parse");
+        eprintln!(
+            "detector hits (SIO + unquoted spelling; fail-open; not a disagreement set): {}",
+            rows.len()
+        );
+        for (rel, sinks) in &rows {
+            eprintln!("  {rel}  ->  {sinks:?}");
+        }
+        let rel = "dag/test/claim/citation_cause_subject_disjointness_witness_test.dag";
+        assert!(
+            rows.iter().any(|(p, _)| p == rel),
+            "{rel} dropped out of the detector-hit set"
         );
     }
 
@@ -40006,7 +40343,14 @@ fn claim_scope_for_with_memos(
                 continue;
             };
             let authored = position < authored_region;
-            for (name, info) in module.item_registry.iter() {
+            // The registry's KEY is now the declaration's identity (owner module path plus
+            // declared name). This scope index is deliberately keyed by BARE leaf name and
+            // resolved by the precedence order above, so it takes the leaf from the VALUE rather
+            // than from the key -- the leaf is still exactly one field away, and taking it from
+            // `info` keeps this subsystem's bare-name-with-precedence semantics unchanged while
+            // the registry underneath it stops being ambiguous.
+            for (_identity, info) in module.item_registry.iter() {
+                let name = &info.name;
                 match winner_of.get(name) {
                     None => {
                         item_registry.insert(name.clone(), info.clone());
