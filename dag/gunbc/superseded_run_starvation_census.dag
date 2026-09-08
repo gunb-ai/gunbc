@@ -76,8 +76,8 @@ type CancelledRunJobStanding {
   cancelled_jobs: Int
   failed_jobs: Int
   queued_jobs: Int
-  dead_time_under_hold: Second?
-  group_hold_after_jobs: Second?
+  dead_time_under_hold: DurationResult?
+  group_hold_after_jobs: DurationResult?
 }
 
 type RefreshedPair {
@@ -108,8 +108,8 @@ type CancellationRow {
   cancelled_jobs: Int
   failed_jobs: Int
   queued_jobs: Int
-  dead_time_under_hold: Second?
-  group_hold_after_jobs: Second?
+  dead_time_under_hold: DurationResult?
+  group_hold_after_jobs: DurationResult?
 }
 
 type CensusWindow {
@@ -318,7 +318,15 @@ fn extract_boundary_obligations(groups: List<PrGroup>, from: Timestamp) -> List<
 
 // Compute elapsed seconds between two ISO-8601 timestamps by converting each
 // to Unix epoch seconds, subtracting, and wrapping in Second.
-fn timestamp_diff_seconds(end: Timestamp, start: Timestamp) -> Second? {
+// Duration measurement result that distinguishes a failed clock read from
+// genuinely absent inputs. A clock refusal is a typed, located diagnostic
+// — not the reassuring `none`.
+type DurationResult
+  = DurationComputed { seconds: Second }
+  | DurationClockRefused { end_raw: String, start_raw: String }
+  | DurationInsufficientData
+
+fn timestamp_diff_seconds(end: Timestamp, start: Timestamp) -> DurationResult {
   let end_clock = Clock.TimestampToUnixSecs(timestamp: end)
   let start_clock = Clock.TimestampToUnixSecs(timestamp: start)
   match parse_int(s: end_clock.unix_secs) {
@@ -327,34 +335,40 @@ fn timestamp_diff_seconds(end: Timestamp, start: Timestamp) -> Second? {
         Present { value: start_s } =>
           if end_s >= start_s {
             let diff_nat: Nat = (end_s - start_s) as Nat
-            Present { value: second(count: diff_nat) }
-          } else { none }
-        Absent => none
+            DurationComputed { seconds: second(count: diff_nat) }
+          } else { DurationInsufficientData }
+        Absent => DurationClockRefused {
+          end_raw: end_clock.unix_secs,
+          start_raw: start_clock.unix_secs,
+        }
       }
-    Absent => none
+    Absent => DurationClockRefused {
+      end_raw: end_clock.unix_secs,
+      start_raw: start_clock.unix_secs,
+    }
   }
 }
 
-fn dead_time_under_hold_seconds(prior_jobs_completed_at: Timestamp?, terminal_laggard_started_at: Timestamp?) -> Second? {
+fn dead_time_under_hold_seconds(prior_jobs_completed_at: Timestamp?, terminal_laggard_started_at: Timestamp?) -> DurationResult {
   match prior_jobs_completed_at {
     Present { value: prior } =>
       match terminal_laggard_started_at {
         Present { value: laggard } =>
           timestamp_diff_seconds(end: laggard, start: prior)
-        Absent => none
+        Absent => DurationInsufficientData
       }
-    Absent => none
+    Absent => DurationInsufficientData
   }
 }
 
-fn group_hold_after_jobs_seconds(last_job_completed_at: Timestamp?, dead_updated_at: Timestamp, dead_status: String) -> Second? {
+fn group_hold_after_jobs_seconds(last_job_completed_at: Timestamp?, dead_updated_at: Timestamp, dead_status: String) -> DurationResult {
   if dead_status == workflow_run_status_wire_label(status: Completed) {
     match last_job_completed_at {
       Present { value: completed_at } =>
         timestamp_diff_seconds(end: dead_updated_at, start: completed_at)
-      Absent => none
+      Absent => DurationInsufficientData
     }
-  } else { none }
+  } else { DurationInsufficientData }
 }
 
 fn refresh_pair(
@@ -637,15 +651,15 @@ fn pair_to_cancellation_row(pair: SupersededRunPair, rp: RefreshedPair) -> Cance
     cancelled_jobs: rp.cancelled_jobs,
     failed_jobs: rp.failed_jobs,
     queued_jobs: rp.queued_jobs,
-    dead_time_under_hold: dead_time_under_hold_seconds(
+    dead_time_under_hold: Present { value: dead_time_under_hold_seconds(
       prior_jobs_completed_at: rp.prior_jobs_completed_at,
       terminal_laggard_started_at: rp.terminal_laggard_started_at,
-    ),
-    group_hold_after_jobs: group_hold_after_jobs_seconds(
+    ) },
+    group_hold_after_jobs: Present { value: group_hold_after_jobs_seconds(
       last_job_completed_at: rp.terminal_laggard_completed_at,
       dead_updated_at: rp.dead_updated_at,
       dead_status: rp.dead_status,
-    ),
+    ) },
   }
 }
 
