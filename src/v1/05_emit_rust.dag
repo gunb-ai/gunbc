@@ -3161,7 +3161,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
 //   * the two closure-stub decisions are asked of the RESOLVED GRAPH (see
 //     `closure_references_module_filename`), never of emitted text, so a module the selection
 //     declined to render still counts toward whether the crate needs a stub.
-//   * `import_refusals` are observed only for rendered modules, and that is exact rather than
+//   * `module_refusals` are observed only for rendered modules, and that is exact rather than
 //     partial. `emit_resolved_for_target_selected` in `v1.compiler.compile` carries the
 //     argument: an emit with any error diagnostic returns NO files, so a committed tree is one
 //     whose whole closure emitted clean and the unrendered modules had nothing to say.
@@ -3207,12 +3207,12 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
       module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)))
     |> map(tm => emit_module_full_with_dispositions(typed_module: tm, ctx: ctx, typed_modules: typed.modules))
   let published_module_emissions = module_emissions |> filter(e =>
-    (e.import_refusals |> filter(r => is_error_diagnostic(d: r.diagnostic)) |> count) == 0)
+    (e.module_refusals |> filter(r => is_error_diagnostic(d: r.diagnostic)) |> count) == 0)
   let unpublished_module_paths = module_emissions
-    |> filter(e => (e.import_refusals |> filter(r => is_error_diagnostic(d: r.diagnostic)) |> count) > 0)
+    |> filter(e => (e.module_refusals |> filter(r => is_error_diagnostic(d: r.diagnostic)) |> count) > 0)
     |> map(e => e.file.path)
   let module_files = published_module_emissions |> map(e => e.file)
-  let import_refusals = module_emissions |> flat_map(e => e.import_refusals)
+  let module_refusals = module_emissions |> flat_map(e => e.module_refusals)
   let module_paths = typed.modules
     |> map(tm => rust_module_emit_path(
       module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)))
@@ -3276,7 +3276,7 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
   let population_manifest = emit_emitted_population_manifest(paths: emitted_paths)
   let emitted_files = concat([cargo, lib_file, main_file], all_mod_files, compiler_tests_file, test_files)
   let files = concat(emitted_files, [population_manifest])
-  EmitResult { files: files, diagnostics: import_refusals }
+  EmitResult { files: files, diagnostics: module_refusals }
 }
 
 // THE ONE PLACE A MODULE'S EMITTED FILENAME IS DECIDED, read by the renderer and by every
@@ -5038,14 +5038,16 @@ fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<Stri
   plan.lines
 }
 
-// One module's emission and the import decisions that produced it, returned together. The file is
-// what emit_rust writes; the rows are what the census counts. Nothing here changes what the file
+// One module's emission and the refusals that withhold publishing it, returned together. The file
+// is what emit_rust writes; the rows are what the census counts. Nothing here changes what the file
 // contains -- reference_rows is the plan's OTHER projection of a computation the emitter already
 // performed, so a reader can no longer get the bytes without the decisions behind them existing.
+// module_refusals is the publication-refusal channel: import-derived rows and unprojectable
+// constructs both land here; emit_rust_selected withholds the module when any of them is an error.
 type ModuleEmission {
   file: TextFile
   reference_rows: List<ReferenceDerivedCandidateRow>
-  import_refusals: List<ErrorNode>
+  module_refusals: List<ErrorNode>
 }
 
 fn emit_module_full_with_dispositions(typed_module: TypedModule, ctx: EmitRustContext, typed_modules: List<TypedModule>) -> ModuleEmission {
@@ -5201,7 +5203,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   ModuleEmission {
     file: TextFile { path: module_emit_path, content: content },
     reference_rows: reference_plan.rows,
-    import_refusals: concat(
+    module_refusals: concat(
       reference_derived_row_diagnostics(rows: reference_plan.rows, module_span: m.span),
       module_projection_refusals(
         items: typed_module.items,

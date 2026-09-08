@@ -6357,7 +6357,7 @@ pub fn emit_rust_selected(
             for e in module_emissions.iter().cloned() {
                 if ((Rc::new({
                     let mut __result = Vec::new();
-                    for r in e.import_refusals.clone().iter().cloned() {
+                    for r in e.module_refusals.clone().iter().cloned() {
                         if crate::v1_std_core::is_error_diagnostic(r.diagnostic.clone()) {
                             __result.push(r);
                         }
@@ -6379,7 +6379,7 @@ pub fn emit_rust_selected(
                 for e in module_emissions.iter().cloned() {
                     if ((Rc::new({
                         let mut __result = Vec::new();
-                        for r in e.import_refusals.clone().iter().cloned() {
+                        for r in e.module_refusals.clone().iter().cloned() {
                             if crate::v1_std_core::is_error_diagnostic(r.diagnostic.clone()) {
                                 __result.push(r);
                             }
@@ -6408,10 +6408,10 @@ pub fn emit_rust_selected(
             }
             __result
         });
-        let import_refusals = Rc::new({
+        let module_refusals = Rc::new({
             let mut __result = Vec::new();
             for e in module_emissions.iter().cloned() {
-                __result.extend((*e.import_refusals.clone()).iter().cloned());
+                __result.extend((*e.module_refusals.clone()).iter().cloned());
             }
             __result
         });
@@ -6673,7 +6673,7 @@ pub fn emit_rust_selected(
         );
         Rc::new(EmitResult {
             files: files.clone(),
-            diagnostics: import_refusals.clone(),
+            diagnostics: module_refusals.clone(),
         })
     }
 }
@@ -10010,7 +10010,7 @@ pub fn reference_derived_use_lines(
 pub struct ModuleEmission {
     pub file: Rc<TextFile>,
     pub reference_rows: Rc<Vec<Rc<ReferenceDerivedCandidateRow>>>,
-    pub import_refusals: Rc<Vec<Rc<ErrorNode>>>,
+    pub module_refusals: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn emit_module_full_with_dispositions(
@@ -10466,7 +10466,7 @@ pub fn emit_module_full(
                 content: content.clone(),
             }),
             reference_rows: reference_plan.rows.clone(),
-            import_refusals: v1_rt::concat(
+            module_refusals: v1_rt::concat(
                 reference_derived_row_diagnostics(reference_plan.rows.clone(), m.span.clone()),
                 module_projection_refusals(
                     typed_module.items.clone(),

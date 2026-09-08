@@ -2644,7 +2644,7 @@ mod tests {
         );
     }
 
-    /// THE PRECONDITION `import_refusals` EXACTNESS RESTS ON, PUT ON THE EXECUTED PATH.
+    /// THE PRECONDITION `module_refusals` EXACTNESS RESTS ON, PUT ON THE EXECUTED PATH.
     ///
     /// A scoped emission observes refusals only for the modules it rendered. That is exact rather
     /// than partial because an emit carrying an error diagnostic returns NO FILES -- so a
