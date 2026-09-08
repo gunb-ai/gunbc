@@ -194,6 +194,7 @@ import gunbc.recurring_failure_mode.guarded_filter_branch_dropped_by_emitter { g
 import gunbc.recurring_failure_mode.match_variant_lookup_does_not_peel_type_alias { match_variant_lookup_does_not_peel_type_alias }
 import gunbc.recurring_failure_mode.decision_surface_truncation { decision_surface_truncation }
 import gunbc.recurring_failure_mode.shared_symbol_projection_is_not_injective { shared_symbol_projection_is_not_injective }
+import gunbc.recurring_failure_mode.witness_module_absent_from_the_executed_set { witness_module_absent_from_the_executed_set }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry,
@@ -378,4 +379,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   constant_verdict_gate_stops_discriminating,
   decision_surface_truncation,
   shared_symbol_projection_is_not_injective,
+  witness_module_absent_from_the_executed_set,
 ]
