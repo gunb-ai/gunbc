@@ -109,23 +109,44 @@ fn shell_command_line(argv: List<String>) -> String {
 // `docker exec gunbc-spark-pair` -- the OLD PRODUCTION container, which on the canary host is the
 // DeepSeek unit rather than the runtime this arm names, and which may not run at all while weights
 // are being acquired. Acquisition happens BEFORE serving exists, so it carries its own executor.
+// THE CLI PATH BELONGS TO THE IMAGE THAT CONTAINS IT. A previous revision hardcoded
+// `/opt/env/bin/hf` for every containerised executor -- a path MEASURED INSIDE THE DEEPSEEK IMAGE and
+// then applied to the community runtime, where `hf` lives at /usr/local/bin/hf and the hardcoded path
+// does not exist at all. That is a fact from one runtime asserted about another, which is the precise
+// fault gunbc.spark.serving_arm was added to remove, committed here two hours after that module
+// landed. The path is now carried per executor.
 type SnapshotAcquisitionExecutor
   = HostCli
-  | ContainerizedCli { image: NonEmptyStr, host_path: NonEmptyStr, container_path: NonEmptyStr }
+  | ContainerizedCli {
+      image: NonEmptyStr
+      cli_path: NonEmptyStr
+      host_path: NonEmptyStr
+      container_path: NonEmptyStr
+    }
 
 // THE EXECUTOR DOES NOT ADD PRIVILEGE OF ITS OWN. Every remote leg already runs under `sudo -S`
 // (see spark_remote_run), so wrapping `sudo` here too would nest it -- and a second privilege
 // mechanism beside the first is the fork this module keeps refusing elsewhere.
+// THE SENTINEL RUNS INSIDE THE CONTAINER, AND AN EXECUTION PROVED THAT MATTERS. A previous revision
+// wrapped the sentinel around the WHOLE invocation -- `sh -c "docker run ... hf ... && echo OK || echo
+// FAILED"` -- so when DOCKER ITSELF failed to start the container, the `||` branch fired and emitted
+// the FAILED sentinel. A container that never started was therefore reported as a checkpoint whose
+// bytes are wrong, about a tree a live engine was serving correctly at that moment.
+//
+// THE SENTINEL PROVED THE WRONG THING. It established that the outer shell ran, which was never in
+// doubt; the question is whether THE INSTRUMENT ran. So the `sh -c` moves inside the container, in the
+// same process space as the CLI: if the container cannot start, no sentinel is emitted at all and the
+// reading is InstrumentDidNotRun. Provenance has to be produced by the thing whose execution is in
+// question -- wrapping it one layer out measures the wrapper.
 fn executor_wrap(executor: SnapshotAcquisitionExecutor, argv: List<String>) -> List<String> {
   match executor {
-    HostCli => argv
-    ContainerizedCli { image: img, host_path: hp, container_path: cp } =>
-      concat(
-        ["docker", "run", "--rm",
-         "-v", join([hp as String, ":", cp as String], ""),
-         "--entrypoint", "/opt/env/bin/hf", img as String],
-        argv.skip(n: 1),
-      )
+    HostCli => with_execution_sentinel(argv: argv)
+    ContainerizedCli { image: img, cli_path: cli, host_path: hp, container_path: cp } =>
+      ["docker", "run", "--rm",
+       "-v", join([hp as String, ":", cp as String], ""),
+       "--entrypoint", "sh", img as String,
+       "-c", sentinel_command_line(argv: concat([cli as String], argv.skip(n: 1))),
+      ]
   }
 }
 
@@ -152,12 +173,16 @@ fn executor_wrap(executor: SnapshotAcquisitionExecutor, argv: List<String>) -> L
 data verify_ok_sentinel: NonEmptyStr = "GUNBC-VERIFY-OK" as NonEmptyStr
 data verify_failed_sentinel: NonEmptyStr = "GUNBC-VERIFY-FAILED" as NonEmptyStr
 
-fn with_execution_sentinel(argv: List<String>) -> List<String> {
-  ["sh", "-c", join([
+fn sentinel_command_line(argv: List<String>) -> String {
+  join([
     shell_command_line(argv: argv),
     " && echo ", verify_ok_sentinel as String,
     " || echo ", verify_failed_sentinel as String,
-  ], "")]
+  ], "")
+}
+
+fn with_execution_sentinel(argv: List<String>) -> List<String> {
+  ["sh", "-c", sentinel_command_line(argv: argv)]
 }
 
 type InstrumentReading
@@ -211,7 +236,7 @@ fn spark_snapshot_observe(ctx: SparkMaterializeContext, verify: List<String>, su
 // UNRECOGNISED OUTPUT FALLS THROUGH TO MISMATCH, which is the conservative direction: a real mismatch
 // misreported as an instrument failure would leave bad bytes installed and called present.
 fn spark_snapshot_verify_observation(ctx: SparkMaterializeContext, verify: List<String>) -> AcquisitionObservation {
-  match spark_remote_run(ctx: ctx, argv: with_execution_sentinel(argv: executor_wrap(executor: ctx.executor, argv: verify))) {
+  match spark_remote_run(ctx: ctx, argv: executor_wrap(executor: ctx.executor, argv: verify)) {
     RemoteUnreachable { cause: c } => AcquisitionProbeFailed { reason: c as NonEmptyStr }
     RemoteRan { exit_code: _, stdout: out, stderr: err } =>
       match read_instrument(stdout: out) {
@@ -430,7 +455,7 @@ fn spark_snapshot_after_transfer(ctx: SparkMaterializeContext, verify: List<Stri
       } } }
     SupervisedExitFailed { status: _ } => AttemptUnreachable
     SupervisedExitClean => {
-        match spark_remote_run(ctx: ctx, argv: with_execution_sentinel(argv: executor_wrap(executor: ctx.executor, argv: verify))) {
+        match spark_remote_run(ctx: ctx, argv: executor_wrap(executor: ctx.executor, argv: verify)) {
           RemoteUnreachable { cause: c } =>
             AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
               identity: subject.identity, source: origin.identity, reason: c as NonEmptyStr,

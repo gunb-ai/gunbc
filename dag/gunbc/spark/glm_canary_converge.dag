@@ -223,11 +223,13 @@ fn glm_canary_acquisition_executor(arm: GlmCanaryArm) -> SnapshotAcquisitionExec
   match serving_runtime_row(r: arm.runtime) {
     Absent => ContainerizedCli {
       image: "(unmodelled runtime)" as NonEmptyStr,
+      cli_path: "/nonexistent" as NonEmptyStr,
       host_path: "/nonexistent" as NonEmptyStr,
       container_path: "/out" as NonEmptyStr,
     }
     Present { value: rrow } => ContainerizedCli {
       image: rrow.image_reference,
+      cli_path: rrow.hub_cli_path,
       host_path: glm_canary_host_path(arm: arm),
       container_path: "/out" as NonEmptyStr,
     }
