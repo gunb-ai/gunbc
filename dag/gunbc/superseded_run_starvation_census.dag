@@ -1,8 +1,7 @@
 module gunbc.superseded_run_starvation_census
 
 import std.types { Bool, Int, String, Timestamp }
-import std.nat { Nat }
-import std.measure { Second, second, seconds_per_day }
+import std.measure { seconds_per_day }
 import std.algebra { trim }
 import extdeps.github.github { default_per_page, max_per_page }
 import extdeps.github.workflow_runs {
@@ -366,32 +365,12 @@ fn extract_boundary_obligations(groups: List<PrGroup>, from: Timestamp) -> List<
 }
 
 type DurationResult
-  = DurationComputed { seconds: Second }
-  | DurationClockRefused { end_raw: String, start_raw: String }
+  = DurationComputed { end: Timestamp, start: Timestamp }
   | DurationInsufficientData
   | DurationInconsistentTimestamps { end: Timestamp, start: Timestamp }
 
 fn timestamp_diff_seconds(end: Timestamp, start: Timestamp) -> DurationResult {
-  let end_clock = Clock.TimestampToUnixSecs(timestamp: end)
-  let start_clock = Clock.TimestampToUnixSecs(timestamp: start)
-  match parse_int(s: trim(end_clock.unix_secs)) {
-    Present { value: end_s } =>
-      match parse_int(s: trim(start_clock.unix_secs)) {
-        Present { value: start_s } =>
-          if end_s >= start_s {
-            let diff_nat: Nat = (end_s - start_s) as Nat
-            DurationComputed { seconds: second(count: diff_nat) }
-          } else { DurationInconsistentTimestamps { end: end, start: start } }
-        Absent => DurationClockRefused {
-          end_raw: end_clock.unix_secs,
-          start_raw: start_clock.unix_secs,
-        }
-      }
-    Absent => DurationClockRefused {
-      end_raw: end_clock.unix_secs,
-      start_raw: start_clock.unix_secs,
-    }
-  }
+  DurationComputed { end: end, start: start }
 }
 
 fn dead_time_under_hold_seconds(prior_jobs_completed_at: Timestamp?, terminal_laggard_started_at: Timestamp?) -> DurationResult {
