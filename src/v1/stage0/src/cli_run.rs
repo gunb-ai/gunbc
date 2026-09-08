@@ -16521,6 +16521,14 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
         let before = dag_paths.len();
         let mut stack: Vec<std::path::PathBuf> = vec![root_dir.clone()];
         while let Some(dir) = stack.pop() {
+            // Derive gitignored `gunbc.recurring_failure_mode.roster` before this directory's
+            // listing, so the required-CI index contains the module the parse join reads.
+            derived_row_roster::ensure_if_row_dir(&dir).map_err(|e| {
+                vec![format!(
+                    "failed to derive recurring_failure_mode roster in {}: {e}",
+                    dir.display()
+                )]
+            })?;
             let read_dir = match std::fs::read_dir(&dir) {
                 Ok(d) => d,
                 Err(e) => return Err(vec![format!("read_dir {}: {e}", dir.display())]),

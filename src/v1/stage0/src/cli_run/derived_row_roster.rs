@@ -3,13 +3,16 @@
 //! Row files under `dag/gunbc/recurring_failure_mode/` are the authority. A hand-appended
 //! roster list is a second authoring of the same membership.
 //!
-//! THIS IS NOT CALLED FROM EVERY DIRECTORY WALK. It is invoked from four collect sites
+//! THIS IS NOT CALLED FROM EVERY DIRECTORY WALK. It is invoked from the collect sites
 //! (`collect_dag_files_result`, `collect_dag_files_tolerant`, `main.rs` `collect_dag_files`,
-//! `compiler_tests` `collect_dag_recursive`). Those writes are convenience so a clone compiles
-//! without a committed roster. They are not load-bearing for the absent case: three modules
-//! import `gunbc.recurring_failure_mode.roster` (`gunbc.design_ledgers`, `gunbc.ledger_row_coherence`,
-//! `test.claim.generated_artifact_merge_driver_real_execution_witness`), so a reader that never
-//! writes still hits a missing module and refuses at resolve.
+//! `compiler_tests` `collect_dag_recursive`) and from `run_dag_parse_sweep`, which is the
+//! required-CI parse phase. That last site is load-bearing: three modules import
+//! `gunbc.recurring_failure_mode.roster` (`gunbc.design_ledgers`, `gunbc.ledger_row_coherence`,
+//! `test.claim.generated_artifact_merge_driver_real_execution_witness`), and the parse join reads
+//! that module from the sweep index. A checkout with no committed roster must derive it before the
+//! sweep lists `.dag` files, or the join reports `RosterModuleAbsent` on the intended steady
+//! state. The collect sites are convenience for other compilers; they are not the merge-path
+//! writer.
 //! An empty list is a different state — a present `= []` — and only arises if the directory
 //! contains no sibling row files. A `read_dir` or dirent error refuses the collect; a `.dag`
 //! file whose stem is not utf-8 refuses rather than being dropped from the list. If a listed
