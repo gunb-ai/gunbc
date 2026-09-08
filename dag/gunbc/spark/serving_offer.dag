@@ -1,7 +1,6 @@
 module gunbc.spark.serving_offer
 
-import std.types { String, NonEmptyStr, List, Int, Timestamp }
-import std.nat { Nat }
+import std.types { String, NonEmptyStr, Int, Timestamp }
 import product.fabric.identity { FabricIdentity }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef }
@@ -56,44 +55,12 @@ fn spark_serving_capability(model: NonEmptyStr) -> CapabilityManifestRef {
   join(["gunbc.capabilities.spark-serving.", model as String], "") as CapabilityManifestRef
 }
 
-// ── WHAT Shape CANNOT SAY ABOUT A SERVING GROUP ───────────────────────────────────────────────
-//
-// ubicloud carries UnexpressedSupplyFact for the same reason and the precedent is followed rather
-// than re-argued: an offer whose shape omits a real property must SAY it omits it, because a silent
-// omission reads as an absent requirement rather than an unexpressed one.
-//
-// Shape is threads plus a resource envelope. A serving group's load-bearing properties are none of
-// those: what limits concurrency is an interactive-quality constraint, and what makes it one unit at
-// all is a tensor-parallel topology that cannot be subdivided. A demand for half a serving group is
-// not a smaller demand; it is meaningless.
-//
-// THE KV BUDGET IS NOT LISTED AS A NUMBER HERE. An earlier spelling carried a token count copied
-// from a launch log. A pool size is a fact about one launch, it changed three times in one day
-// across incarnations of one unit, and a constant in this module could not follow it. What is
-// unexpressed is that the axis EXISTS and Shape cannot carry it; the value belongs on a receipt
-// about a launch.
-type SparkServingUnexpressed
-  = KvBudgetNotExpressibleInShape
-  | TensorParallelUnitNotDivisible { ranks: Nat }
-  | InteractiveQualityIsAnAdmissionConstraintNotAShapeAxis
-  | IsolationNotObserved
-
-fn spark_serving_unexpressed() -> List<SparkServingUnexpressed> {
-  [
-    KvBudgetNotExpressibleInShape,
-    TensorParallelUnitNotDivisible { ranks: 4 },
-    InteractiveQualityIsAnAdmissionConstraintNotAShapeAxis,
-    IsolationNotObserved,
-  ]
-}
-
 // A PROJECTION BESIDE THE OFFER, NOT A SECOND KIND OF OFFER -- ubicloud's naming caution, applied.
 // These are named for the Spark rather than generically because two supplier bindings is not yet
 // proof of a shared concept, and a generic minted now would be a bare alias.
 type SparkOfferProjection<P> {
   offer: SupplierOffer<P>
   launch: VllmEndpointProcessLaunch
-  unexpressed: List<SparkServingUnexpressed>
 }
 
 // ── AN OWNED GROUP'S QUOTE IS ZERO, AND THAT IS A FACT RATHER THAN A PLACEHOLDER ──────────────
@@ -134,6 +101,17 @@ type SparkOfferBinding<P>
 // THE SHAPE IS DELIBERATELY UNSTATED RATHER THAN INVENTED. Every axis Shape offers would be a number
 // nobody measured for this group, and envelope.dag rules that an absent axis is a requirement nobody
 // expressed, not a requirement satisfied by everything.
+//
+// WHY NO SIDECAR LISTS WHAT IS MISSING. An earlier spelling carried a SparkServingUnexpressed list on
+// the projection, naming the KV budget, the tensor-parallel unit, interactive quality and isolation
+// as axes Shape cannot hold. Nothing read it. Review 62334 is right on both counts: its rank count
+// re-minted a fact gunbc.spark.pair_serving_desired already decides as length(hosts), and an unread
+// list of nullary variants is prose in a type's costume -- DESIGN 3c's dangling declaration, which is
+// red however well modelled. The two departures that carry a machine consequence are declared drops
+// that a projection reads (gunbc.rung_drop serving_cost_axes_asserted_unmeasured and
+// serving_offer_identity_is_the_exporter_process); the rest is the irreducible rationale above, which
+// is what an annotation is for. Interactive quality in particular is not a missing Shape axis at all:
+// this cut enforces it as ADMISSION, which is the whole point of the co-tenancy wall.
 fn spark_serving_shape() -> Shape {
   Shape { hard: HardRequirements { threads: hardware_thread_count(count: 0) }, envelope: unstated_envelope() }
 }
@@ -168,7 +146,6 @@ fn bind_spark_serving_offer<P>(
             evidence: ObservedSupply { observed_at: at, receipt: r },
           },
           launch: launch,
-          unexpressed: spark_serving_unexpressed(),
         },
       }
   }
