@@ -1,0 +1,89 @@
+module test.claim.spark_snapshot_verify_wrapper
+
+import std.logic { Bool }
+import std.types { String }
+import gunbc.spark.model_snapshot_materialize {
+  sentinel_command_line, read_instrument,
+  InstrumentReading, InstrumentDidNotRun, InstrumentVerified, InstrumentRejectedTheSubject,
+  verify_ok_sentinel, verify_failed_sentinel,
+}
+
+// THE WRAPPER MUST NOT NORMALISE A FAILURE INTO A SUCCESS, and these witnesses are the executing
+// evidence that it does not. They exist because it DID, on this branch, and the shape of the defect is
+// worth stating precisely: the wrapper read `cmd && echo OK || echo FAILED`, and because `echo`
+// succeeds in both branches the wrapper exited ZERO whatever the command did. The post-transfer path
+// then bound `stdout: _`, discarded the sentinel it had just been given, read that always-zero status,
+// and answered AcquisitionFetched for a verification that had refused the bytes.
+//
+// A FALSE SUCCESS IS THE ONE OUTCOME NOTHING DOWNSTREAM CAN CATCH. Every other defect corrected on this
+// branch failed toward refusal, which stops the line and gets investigated; this one is indistinguishable
+// from a real success at every consumer. Measured against the real hf CLI on the real host, same failing
+// command, the two wrapper shapes answered: OLD exit=0, NEW exit=1.
+//
+// WHAT IS ENROLLED HERE IS THE PURE HALF, and it is enrolled rather than retired because DESIGN section
+// 4b(4) says a climb deletes the lower-rung production machinery and KEEPS its discriminating evidence.
+// The wet half -- that `hf cache verify` against a missing directory really does exit non-zero -- is not
+// expressible hermetically and is not asserted here.
+
+// ── THE DECODER SEPARATES THREE STATES, AND THE MIDDLE ONE IS THE POINT ────────────────────────────
+//
+// "The instrument ran and passed", "the instrument ran and refused" and "the instrument never ran" are
+// three different facts with three different remedies. Collapsing the third into either of the others is
+// how an unreachable host or a failed container start came to read as a verdict about the bytes.
+
+test fn verify_ok_sentinel_reads_as_verified() -> Bool {
+  read_instrument(stdout: concat("Verified 24 file(s). All checksums match.\n", verify_ok_sentinel as String)) == InstrumentVerified
+}
+
+test fn verify_failed_sentinel_reads_as_rejected() -> Bool {
+  read_instrument(stdout: concat("Some files are missing.\n", verify_failed_sentinel as String)) == InstrumentRejectedTheSubject
+}
+
+// SILENCE IS NOT CONSENT. Output carrying neither sentinel means the wrapper never reached its own echo,
+// so nothing was learned; answering Verified here would be the fabricated plausible output DESIGN
+// section 5 forbids, and answering Rejected would blame bytes nothing examined.
+test fn absent_sentinel_reads_as_did_not_run() -> Bool {
+  read_instrument(stdout: "docker: Error response from daemon: permission denied\n") == InstrumentDidNotRun
+}
+
+test fn empty_output_reads_as_did_not_run() -> Bool {
+  read_instrument(stdout: "") == InstrumentDidNotRun
+}
+
+// ── THE WRAPPER PRESERVES THE COMMAND'S OWN EXIT STATUS ────────────────────────────────────────────
+//
+// THIS IS THE REGRESSION CONTROL FOR THE FALSE SUCCESS, and it is written against the rendered TEXT
+// because that text is what the far-side shell executes. It goes red the moment anyone restores the
+// `&&`/`||` form, which is the only way this defect can come back.
+
+test fn wrapper_exits_with_the_command_status() -> Bool {
+  sentinel_command_line(argv: ["true"]).contains("exit $rc")
+}
+
+test fn wrapper_captures_the_status_before_anything_overwrites_it() -> Bool {
+  sentinel_command_line(argv: ["true"]).contains("rc=$?")
+}
+
+// THE OLD SHAPE IS NAMED AND REFUSED. `&& echo` is the exact spelling that made every exit zero, so its
+// ABSENCE is the property under test -- not a stylistic preference but the difference between a caller
+// that can detect failure and one that cannot.
+test fn wrapper_does_not_use_the_status_destroying_form() -> Bool {
+  sentinel_command_line(argv: ["true"]).contains("&& echo") == false
+}
+
+// BOTH SENTINELS ARE STILL EMITTED, so the exit status and the sentinel agree by construction rather
+// than by a caller remembering to prefer one. A wrapper that preserved the status but stopped printing
+// would leave read_instrument permanently answering DidNotRun.
+test fn wrapper_still_emits_both_sentinels() -> Bool {
+  let line = sentinel_command_line(argv: ["true"])
+  line.contains(verify_ok_sentinel as String) && line.contains(verify_failed_sentinel as String)
+}
+
+// ── ARGV BOUNDARIES SURVIVE THE RENDER ─────────────────────────────────────────────────────────────
+//
+// An element containing a space must reach the far side as ONE word. This module has been bitten twice
+// by the opposite -- `--description=gunbc model snapshot materialize` became four shell words -- so the
+// quoting is evidence, not decoration.
+test fn wrapper_quotes_an_argument_containing_a_space() -> Bool {
+  sentinel_command_line(argv: ["hf", "--local-dir", "/home/briansrls/models/a b"]).contains("'/home/briansrls/models/a b'")
+}

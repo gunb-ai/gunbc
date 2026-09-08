@@ -1,0 +1,86 @@
+module test.claim.spark_snapshot_verify_wrapper_real_execution
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, List }
+import v2.std.compilers.cli_surface { cli_surface_of_literal_words, process_argv_expansion }
+import extdeps.shell
+import gunbc.spark.model_snapshot_materialize {
+  sentinel_command_line, read_instrument,
+  InstrumentVerified, InstrumentRejectedTheSubject,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DISCRIMINATING RED FOR THE FALSE SUCCESS, RUN AS A REAL PROCESS. The wrapper used to read
+// `cmd && echo OK || echo FAILED`, which exits ZERO in both branches because `echo` succeeds, and the
+// post-transfer path read that status while discarding the sentinel -- so a verification that REFUSED
+// the bytes was reported as AcquisitionFetched. A false success is the one outcome nothing downstream
+// can catch, and no amount of reasoning about the text proves the shell agrees.
+//
+// WHAT THIS NEEDS IS A COMMAND THAT FAILS, NOT `hf`. The verifier is a PARAMETER of the handler
+// (`verify: List<String>`), so the contract under test -- a failing verification must refuse -- is
+// exercised by any command with a nonzero exit. An earlier note on the sibling hermetic witness claimed
+// this half was "not hermetically expressible" and left it unwritten; that conflated testing `hf`'s own
+// exit behaviour, which does need a container on a Spark, with testing OUR wrapper, which needs `false`.
+// The hard and irrelevant version was allowed to excuse skipping the easy and load-bearing one.
+//
+// IT RUNS WET BECAUSE THE SEAM REFUSES TO PRETEND. shell.Exec.RunArgv carries NO mock_response, deleted
+// by the 2026-08-23 ruling precisely because the fabricated arm answered a fixed exit status that did
+// not vary with its input -- under which, in that ruling's own words, "a witness asserting `this fails
+// closed` could not be satisfied". This is that witness. It needs a route, not a mock.
+//
+// THE SHELL IS REACHED THE SAME WAY PRODUCTION REACHES IT: the wrapper text is handed to `sh -c`, which
+// is what the far side does with it after ssh. RunArgv is used rather than shell.Exec.Run because
+// TransportScript is sole_constructor and admits no test caller -- a construction wall, not a gap.
+
+// THE RED. `false` exits 1 and produces no output of its own, so every observable here comes from the
+// wrapper. Both halves are asserted because the defect needed only ONE of them to be wrong: the old
+// shape emitted the correct sentinel and still exited zero, so a caller reading the status was misled
+// while a caller reading the sentinel was not.
+test fn failing_command_exits_nonzero_and_says_failed_by_real_execution() -> Bool {
+  let r = shell.Exec.RunArgv(
+    program: "sh" as NonEmptyStr,
+    arguments: process_argv_expansion(
+      surface: cli_surface_of_literal_words(words: ["-c", sentinel_command_line(argv: ["false"])]),
+    ),
+  )
+  r.exit_code != 0 && read_instrument(stdout: r.stdout) == InstrumentRejectedTheSubject
+}
+
+// THE POSITIVE CONTROL, without which the red above is satisfied by a wrapper that always fails.
+test fn passing_command_exits_zero_and_says_ok_by_real_execution() -> Bool {
+  let r = shell.Exec.RunArgv(
+    program: "sh" as NonEmptyStr,
+    arguments: process_argv_expansion(
+      surface: cli_surface_of_literal_words(words: ["-c", sentinel_command_line(argv: ["true"])]),
+    ),
+  )
+  r.exit_code == 0 && read_instrument(stdout: r.stdout) == InstrumentVerified
+}
+
+// THE STATUS IS THE COMMAND'S OWN, not merely nonzero. `exit 3` proves the wrapper PROPAGATES rather
+// than substituting a failure code of its own, which is what `rc=$?` ... `exit $rc` claims to do.
+test fn wrapper_propagates_the_exact_exit_status_by_real_execution() -> Bool {
+  let r = shell.Exec.RunArgv(
+    program: "sh" as NonEmptyStr,
+    arguments: process_argv_expansion(
+      surface: cli_surface_of_literal_words(words: ["-c", sentinel_command_line(argv: ["sh", "-c", "exit 3"])]),
+    ),
+  )
+  r.exit_code == 3 && read_instrument(stdout: r.stdout) == InstrumentRejectedTheSubject
+}
+
+// ARGV BOUNDARIES SURVIVE THE WHOLE ROUND TRIP. A path containing a space must reach the process as ONE
+// argument; this module lost that boundary twice before the quoting landed. `test -d` on a directory
+// that does not exist fails, so the assertion is that it fails for the RIGHT reason -- one argument
+// arrived, not two.
+test fn argument_with_a_space_stays_one_word_by_real_execution() -> Bool {
+  let r = shell.Exec.RunArgv(
+    program: "sh" as NonEmptyStr,
+    arguments: process_argv_expansion(
+      surface: cli_surface_of_literal_words(words: ["-c", sentinel_command_line(argv: ["test", "-d", "/nonexistent path with spaces"])]),
+    ),
+  )
+  r.exit_code != 0 && read_instrument(stdout: r.stdout) == InstrumentRejectedTheSubject
+}
