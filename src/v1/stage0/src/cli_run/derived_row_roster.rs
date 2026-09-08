@@ -27,16 +27,28 @@ use std::io;
 use std::path::Path;
 
 pub const ROSTER_BASENAME: &str = "roster.dag";
-pub const ROW_DIR_NAME: &str = "recurring_failure_mode";
-pub const PARENT_DIR_NAME: &str = "gunbc";
+/// Modeled home of `gunbc.recurring_failure_mode` row files (module path as directories).
+pub const ROW_DIR_REL: &str = "gunbc/recurring_failure_mode";
 
 pub fn is_recurring_failure_mode_row_dir(dir: &Path) -> bool {
-    dir.file_name().and_then(|n| n.to_str()) == Some(ROW_DIR_NAME)
-        && dir
-            .parent()
-            .and_then(|p| p.file_name())
-            .and_then(|n| n.to_str())
-            == Some(PARENT_DIR_NAME)
+    dir.ends_with(Path::new(ROW_DIR_REL))
+}
+
+pub fn ensure_if_row_dir(dir: &Path) -> io::Result<()> {
+    if is_recurring_failure_mode_row_dir(dir) {
+        ensure_derived_recurring_failure_mode_roster(dir)
+    } else {
+        Ok(())
+    }
+}
+
+pub fn ensure_if_row_dir_or_panic(dir: &Path) {
+    if let Err(e) = ensure_if_row_dir(dir) {
+        panic!(
+            "failed to derive recurring_failure_mode roster in {:?}: {}",
+            dir, e
+        );
+    }
 }
 
 pub fn ensure_derived_recurring_failure_mode_roster(dir: &Path) -> io::Result<()> {
@@ -123,5 +135,19 @@ mod tests {
             "absence of members is a present module with an empty list, not a missing module"
         );
         assert!(body.contains("= [\n]\n"));
+    }
+
+    #[test]
+    fn row_dir_is_the_modeled_module_home_not_a_bare_folder_name() {
+        use std::path::Path;
+        assert!(super::is_recurring_failure_mode_row_dir(Path::new(
+            "dag/gunbc/recurring_failure_mode"
+        )));
+        assert!(super::is_recurring_failure_mode_row_dir(Path::new(
+            "gunbc/recurring_failure_mode"
+        )));
+        assert!(!super::is_recurring_failure_mode_row_dir(Path::new(
+            "recurring_failure_mode"
+        )));
     }
 }
