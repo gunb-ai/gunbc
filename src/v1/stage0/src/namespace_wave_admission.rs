@@ -2617,8 +2617,17 @@ pub fn run_required_wave_admission(
     let head_parsed: Vec<&String> = head_touched.iter().filter(|p| in_sweep_scope(p)).collect();
     let base_parsed: Vec<&String> = base_side.iter().filter(|p| in_sweep_scope(p)).collect();
 
+    // A DERIVED ARTIFACT IS NEVER IN THE DIFF, SO IT MUST NOT BE INHERITED FROM THE HEAD.
+    // The baseline is reconstructed by carrying every head record the diff did not touch and
+    // re-reading the rest from the base tree. `roster.dag` is gitignored and written on the read
+    // path, so the diff can never name it — and carrying it made the HEAD's roster stand as the
+    // BASE's. Its base side is not read from git either (the tree does not carry it); it is
+    // DERIVED from the base tree's row membership, below, by the same renderer the writer uses.
     let mut base_index = DeclarationIndex::default();
     for record in index_records(head_index) {
+        if crate::cli_run::derived_row_roster::is_derived_roster_path(&record.rel_path) {
+            continue;
+        }
         if !head_parsed.iter().any(|c| *c == &record.rel_path) {
             crate::cli_run::declaration_index::index_insert(&mut base_index, record.clone());
         }
@@ -2652,6 +2661,32 @@ pub fn run_required_wave_admission(
             Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
         };
         match base_records(rel, &content) {
+            Ok(records) => {
+                for record in records {
+                    crate::cli_run::declaration_index::index_insert(&mut base_index, record);
+                }
+            }
+            Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
+        }
+    }
+
+    // THE DERIVED ROSTER'S BASE SIDE, from the base tree's row membership. `base_paths` is the
+    // authoritative listing already in hand, so this asks the same question the writer asks of a
+    // directory. A base tree carrying no row files under that root has no roster module at all,
+    // and `roster_from_path_listing` answers `None` rather than fabricating a present empty list.
+    let base_path_refs: Vec<&str> = base_paths.iter().map(|p| p.as_str()).collect();
+    for record in index_records(head_index) {
+        let Some(root) = crate::cli_run::derived_row_roster::roster_root_prefix(&record.rel_path)
+        else {
+            continue;
+        };
+        let Some(content) = crate::cli_run::derived_row_roster::roster_from_path_listing(
+            base_path_refs.iter().copied(),
+            root,
+        ) else {
+            continue;
+        };
+        match base_records(&record.rel_path, &content) {
             Ok(records) => {
                 for record in records {
                     crate::cli_run::declaration_index::index_insert(&mut base_index, record);
