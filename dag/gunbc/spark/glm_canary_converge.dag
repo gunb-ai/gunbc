@@ -3,6 +3,7 @@ module gunbc.spark.glm_canary_converge
 import std.types { String, Bool, List, NonEmptyStr, Secret }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value }
+import std.algebra { trim }
 import product.placement_supply { HostIdentity }
 import extdeps.zhipu.glm_5_3_flash {
   glm_5_3_flash_vllm_kv_cache_dtype_wire, glm_5_3_flash_vllm_reasoning_parser,
@@ -25,6 +26,7 @@ import gunbc.spark.model_snapshot_materialize {
   SparkMaterializeContext, SparkMaterializeOutcome, SparkMaterialized, SparkMaterializeUnpinned,
   SnapshotAcquisitionExecutor, ContainerizedCli,
   spark_materialize_member,
+  SparkRemoteRun, RemoteRan, RemoteUnreachable, spark_remote_run,
 }
 import gunbc.artifact_acquisition {
   AcquisitionOutcome, AcquisitionAlreadyPresent, AcquisitionFetched, AcquisitionRefused,
@@ -83,6 +85,12 @@ type GlmCanaryArm {
   max_num_batched_tokens: BatchedTokenPolicy
   speculation: SpeculationPolicy
   port: Nat
+  // THE CONTAINER IS PART OF THE ARM BECAUSE THE ARM IS WHAT IS SERVED, and observing whether this
+  // arm is running means asking a NAMED unit rather than guessing. Measured on the fleet 2026-09-08:
+  // the canary's container is `glm-canary`, distinct from the served-model alias
+  // `glm-5.3-flash-exl3-canary`, which is what the OpenAI surface reports. Deriving one from the other
+  // would be a nickname (DESIGN section 3) and would break the moment either is renamed.
+  container_name: NonEmptyStr
 }
 
 // THE SEQUENCE BOUND IS DECLARED AS WHAT IT IS. The engine reported 9.71x maximum concurrency at
@@ -124,6 +132,7 @@ data glm_canary_arm: GlmCanaryArm = GlmCanaryArm {
     basis: "first boot removes a second execution variable: the goal is model/runtime/harness compatibility, not headline throughput. The runtime registers Glm5NextMTPModel, so MTP speculation is available once the base arm is established" as NonEmptyStr,
   },
   port: 30001,
+  container_name: "glm-canary" as NonEmptyStr,
 }
 
 // THE SNAPSHOT THE CANARY ARM ACQUIRES, derived from the arm's checkpoint row rather than spelled
@@ -147,7 +156,7 @@ fn glm_canary_snapshot(arm: GlmCanaryArm) -> ModelSnapshotDesired? {
 type GlmCanaryConvergence
   = CanaryArmRefused { cause: NonEmptyStr }
   | CanaryMaterializeRefused { cause: NonEmptyStr }
-  | CanaryMaterialized { outcome: AcquisitionOutcome, already_present: Bool }
+  | CanaryMaterialized { outcome: AcquisitionOutcome, already_present: Bool, serve: ServeAgreement }
 
 // THE PLACEMENT IS THE CANARY'S OWN, AND ADOPTING IT IS THE POINT. The first modelled run reported
 // this snapshot ABSENT and moved to fetch it, because the subject computed a Hub-cache path while the
@@ -173,7 +182,11 @@ fn glm_canary_converge(ctx: SparkMaterializeContext) -> GlmCanaryConvergence {
             SparkMaterializeUnpinned { host: _ } =>
               CanaryMaterializeRefused { cause: "the canary snapshot carries no pinned revision" as NonEmptyStr }
             SparkMaterialized { host: _, outcome: o } =>
-              CanaryMaterialized { outcome: o, already_present: glm_canary_outcome_already_present(o: o) }
+              CanaryMaterialized {
+                outcome: o,
+                already_present: glm_canary_outcome_already_present(o: o),
+                serve: glm_canary_observe_serve(ctx: ctx, arm: arm),
+              }
           }
       }
   }
@@ -346,6 +359,65 @@ fn glm_canary_speculation_argv(p: SpeculationPolicy) -> List<String> {
   }
 }
 
+// ── IS THE ARM ACTUALLY SERVING ────────────────────────────────────────────────────────────────
+//
+// CONVERGENCE USED TO MEAN "THE WEIGHTS ARE PRESENT", AND THAT WAS AN OVERCLAIM. glm_canary_converged
+// answered true whenever acquisition succeeded, so a receipt could say the canary had converged while
+// nothing was serving at all, or while something ELSE was serving from the same bytes. Acquisition is
+// a precondition of the arm, not the arm.
+//
+// THIS STAGE READS AND NEVER ACTS, deliberately. It asks the target what its container was launched
+// with and compares that to what this arm renders; it does not start, stop or replace anything. The
+// asymmetry is the point: agreement is a fact worth recording automatically, while DISAGREEMENT is a
+// decision about a running server -- twelve minutes of downtime on this arm -- and belongs to an
+// operator with the diff in front of them. A convergence that silently restarted an engine on finding
+// a flag it did not expect would be the absorbing fallback DESIGN section 5 forbids, at the worst
+// possible grain.
+//
+// SEQUENCE COMPARISON, NOT SET COMPARISON, and the renderer emits the running order for exactly this
+// reason: a set comparison cannot distinguish a flag that MOVED from a flag whose VALUE changed, and
+// those have different remedies.
+type ServeAgreement
+  = ServeAgreed
+  | ServeDiffers { running: String }
+  | ServeNotRunning { detail: String }
+  | ServeUnreadable { cause: String }
+
+fn glm_canary_observe_serve(ctx: SparkMaterializeContext, arm: GlmCanaryArm) -> ServeAgreement {
+  match glm_canary_serve_argv(arm: arm) {
+    Absent => ServeUnreadable { cause: "this arm renders no launch line, so there is nothing to compare the running container against" }
+    Present { value: argv } =>
+      match spark_remote_run(ctx: ctx, argv: [
+        "docker", "inspect", arm.container_name as String, "--format", "{{join .Args \" \"}}",
+      ]) {
+        RemoteUnreachable { cause: c } => ServeUnreadable { cause: c }
+        RemoteRan { exit_code: e, stdout: out, stderr: err } =>
+          if e != 0 {
+            ServeNotRunning { detail: join(["docker inspect exited ", to_string(e), " for container ", arm.container_name as String, ": ", err], "") }
+          } else {
+            glm_canary_compare_serve(rendered: join(argv, " "), running: trim(s: out))
+          }
+      }
+  }
+}
+
+fn glm_canary_compare_serve(rendered: String, running: String) -> ServeAgreement {
+  if rendered == running {
+    ServeAgreed
+  } else {
+    ServeDiffers { running: running }
+  }
+}
+
+fn serve_agreement_text(a: ServeAgreement) -> String {
+  match a {
+    ServeAgreed => "the running container was launched with exactly this arm's rendered line"
+    ServeDiffers { running: r } => join(["the running container DIFFERS from this arm; no action taken. running: ", r], "")
+    ServeNotRunning { detail: d } => join(["nothing is serving this arm: ", d], "")
+    ServeUnreadable { cause: c } => join(["the running launch line could not be read, so agreement is UNDETERMINED (this is not evidence of disagreement): ", c], "")
+  }
+}
+
 // ── THE OPERATOR-REACHABLE ENTRY ───────────────────────────────────────────────────────────────
 //
 // THIS IS THE PIECE WHOSE ABSENCE MADE EVERYTHING ABOVE UNREACHABLE. `glm_canary_converge` is an
@@ -380,6 +452,7 @@ fn glm_canary_receipt_body(at: String, executor: String, path: SparkReachPath, v
     " host=", glm_canary_arm.host as String, "\n",
     "  verdict: ", glm_canary_convergence_text(v: verdict), "\n",
     "  serve: ", glm_canary_serve_argv_text(arm: glm_canary_arm), "\n",
+    "  running: ", glm_canary_serve_agreement_text(v: verdict), "\n",
   ], "")
 }
 
@@ -394,6 +467,14 @@ fn glm_canary_receipt_body(at: String, executor: String, path: SparkReachPath, v
 // from, so a reader can hold it against `docker inspect` on the running container and see whether the
 // two agree BEFORE anyone authorises a restart. That is the cheapest possible form of the check, and
 // it costs one line per run.
+fn glm_canary_serve_agreement_text(v: GlmCanaryConvergence) -> String {
+  match v {
+    CanaryArmRefused { cause: _ } => "not observed: the arm was refused before any host was reached"
+    CanaryMaterializeRefused { cause: _ } => "not observed: acquisition refused before any host was reached"
+    CanaryMaterialized { outcome: _, already_present: _, serve: sv } => serve_agreement_text(a: sv)
+  }
+}
+
 fn glm_canary_serve_argv_text(arm: GlmCanaryArm) -> String {
   match glm_canary_serve_argv(arm: arm) {
     Absent => "REFUSED: no checkpoint or runtime row for this arm, so no launch line exists"
@@ -415,11 +496,24 @@ fn glm_canary_runtime_wire(arm: GlmCanaryArm) -> String {
   }
 }
 
+// CONVERGED MEANS BOTH HALVES: the bytes are present AND the engine running on this host is the one
+// this arm describes. Either alone is a precondition wearing the word, and the acquisition half alone
+// is what this predicate used to accept.
+fn serve_agreed(a: ServeAgreement) -> Bool {
+  match a {
+    ServeAgreed => true
+    ServeDiffers { running: _ } => false
+    ServeNotRunning { detail: _ } => false
+    ServeUnreadable { cause: _ } => false
+  }
+}
+
 fn glm_canary_converged(v: GlmCanaryConvergence) -> Bool {
   match v {
     CanaryArmRefused { cause: _ } => false
     CanaryMaterializeRefused { cause: _ } => false
-    CanaryMaterialized { outcome: o, already_present: _ } => acquisition_succeeded(outcome: o)
+    CanaryMaterialized { outcome: o, already_present: _, serve: sv } =>
+      acquisition_succeeded(outcome: o) && serve_agreed(a: sv)
   }
 }
 
