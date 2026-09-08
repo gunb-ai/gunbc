@@ -1,18 +1,13 @@
 module gunbc.serving.turn_demand
 
-import std.types { NonEmptyStr, List, Timestamp }
-import std.measure { money_amount_micro }
-import extdeps.currency.currency { Usd }
-import product.fabric.identity { FabricIdentity, WorkKey }
+import std.types { NonEmptyStr, List }
 import product.fabric.work {
   Work, WorkContract, WorkStep, OpaqueEffects, ProgramRef, SourceManifestRef, ArtifactManifestRef,
   EffectContractRef, OutputContractRef, DeclaredOutputObligations, declared_terminal_obligations,
   ExecutionRequirements, CapacityClass, Shape, CapabilityManifestRef, TrustDomainRef, work_for,
 }
 import product.fabric.isolation { IsolationProfile }
-import product.fabric.demand {
-  Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, BudgetAccountId, ObservationReceiptRef,
-}
+import product.fabric.demand { SatisfactionRequirement, ObservationReceiptRef }
 
 // ── A SERVING TURN IS PROVIDER-NEUTRAL WORK ───────────────────────────────────────────────────
 //
@@ -28,6 +23,14 @@ import product.fabric.demand {
 // model-plus-prompt-prefix WAS the identity; it is not. A prefix is a reusable SUBCOMPUTATION shared
 // by successive turns in one conversation; the turn is the whole request. Collapsing them would make
 // a cache fact into an identity fact, on a carrier shared with the CI binding.
+//
+// AND THIS MODULE STOPS AT THE WORK. It carried a Demand constructor and the buy terms reachable only
+// through it, and nothing submitted one: no production path called it and the witness never reached
+// it (review 62235). A Demand for a serving turn lands with the path that submits one -- the harness
+// asks the fabric for a group through select_supply today, not through the demand queue -- and until
+// that path exists, a constructor for it is a declaration nothing consumes. Its facts are not lost
+// with it: the owned-hardware buy terms were zero against gunbc.spark.serving_offer's zero quote, and
+// that pairing is stated where the quote is.
 
 // ── THE SOURCE MANIFEST IS THE ONE FIELD THAT CANNOT BE FILLED IN TODAY ───────────────────────
 //
@@ -143,20 +146,6 @@ fn serving_turn_work<P>(principal: P, request: ServingTurnRequest, requirements:
   }
 }
 
-// ── WHAT THE TURN IS WILLING TO PAY, WHICH FOR OWNED HARDWARE IS NOTHING ──────────────────────
-//
-// gunbc.spark.serving_offer quotes an owned group at zero because the cash is already sunk, and the
-// demand side has to agree or nothing clears: a reservation price below every offer refuses them all.
-// Zero against zero is the honest pair rather than two numbers chosen to meet.
-fn serving_turn_buy_terms(account: BudgetAccountId) -> BuyTerms {
-  BuyTerms {
-    budget_account: account,
-    currency: Usd,
-    reservation_price: money_amount_micro(count: 0),
-    maximum_buy_order: money_amount_micro(count: 0),
-  }
-}
-
 // ── STEP REUSE IS NOT THE WARM PREFIX, AND READING IT THAT WAY WAS A CATEGORY ERROR ───────────
 //
 // An earlier spelling set step_reuse_permitted from a "warm prefix is fine" flag. The two are not
@@ -173,24 +162,5 @@ fn serving_turn_satisfaction() -> SatisfactionRequirement {
     terminal_receipt_may_satisfy: false,
     new_attempt_required: true,
     step_reuse_permitted: false,
-  }
-}
-
-fn serving_turn_demand<P>(
-  principal: P,
-  work: FabricIdentity<P, WorkKey>,
-  demand_key: NonEmptyStr,
-  origin: ObservationReceiptRef,
-  submitted_at: Timestamp,
-  deadline: Timestamp?,
-  account: BudgetAccountId,
-) -> Demand<P> {
-  Demand {
-    id: FabricIdentity { principal: principal, key: demand_key },
-    work: work,
-    origin: origin,
-    submitted_at: submitted_at,
-    admission: AdmissionTerms { deadline: deadline, buy: serving_turn_buy_terms(account: account) },
-    satisfaction: serving_turn_satisfaction(),
   }
 }

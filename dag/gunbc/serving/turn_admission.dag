@@ -251,15 +251,16 @@ fn serving_dispatch_inputs<P>(
 // two admitted Spark groups tie exactly, and the tie policy decides. It is declared as a row rather
 // than written as a literal at the call site so that its status is visible, and its value is one
 // micro-dollar per second -- positive, so orderings resolve, and small enough that nobody reading a
-// total mistakes it for a priced claim. It becomes load-bearing the moment an offer with a non-zero
+// total mistakes it for a priced claim. The literal sits inside the modelled rate rather than in a
+// bare Nat row beside it: a second row named for the unit its neighbour already carries is one fact
+// written twice, and the domain-named scalar is the shape that invites a raw number to be passed
+// where a Measure belongs. It becomes load-bearing the moment an offer with a non-zero
 // quote joins the set, and at that point it must be restated by someone who can defend the number.
 // THE DISSOLUTION CONDITION: an offer with a non-zero quote enters the serving offer set. At that
 // point cash no longer ties, this rate decides how many seconds of waiting a dollar is worth, and
 // that is a judgement this placeholder does not make and must not be read as having made.
-data serving_delay_valuation_micros_per_second: Nat = 1
-
 data serving_delay_valuation: MoneyPerSecond = MoneyRate {
-  amount: money_amount_micro(count: serving_delay_valuation_micros_per_second),
+  amount: money_amount_micro(count: 1),
   currency: Usd,
 }
 

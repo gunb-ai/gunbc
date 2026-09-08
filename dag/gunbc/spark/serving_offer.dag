@@ -106,6 +106,11 @@ type SparkOfferProjection<P> {
 // So two admitted groups tie at zero and the ordering falls to the tie policy, which is the correct
 // answer for serving under this cut: the thing that distinguishes group A from group B is whether
 // either is occupied, and that question is settled at admission before any offer is priced.
+//
+// AND THE DEMAND SIDE HAS TO AGREE OR NOTHING CLEARS: a reservation price below every offer refuses
+// them all, so a serving demand's buy terms are zero against this zero. Zero against zero is the
+// honest pair rather than two numbers chosen to meet -- recorded here, beside the quote it has to
+// match, because the demand constructor that would have carried it consumed nothing and is gone.
 fn spark_serving_quote() -> OfferQuote {
   QuotedPerSecond(MoneyRate { amount: money_amount_micro(count: 0), currency: Usd })
 }
