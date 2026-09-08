@@ -118,7 +118,6 @@ type ResolvedKvLayout sole_constructor {
   scheduler_block_size: TokenCount
   hash_block_size: TokenCount
   max_model_len: TokenCount
-  max_num_batched_tokens: TokenCount
   groups: List<KvGroupLayout>
   established_at_revision: VllmSourceRevision
 }
@@ -128,7 +127,6 @@ fn resolved_kv_layout(
   scheduler_block_size: TokenCount,
   hash_block_size: TokenCount,
   max_model_len: TokenCount,
-  max_num_batched_tokens: TokenCount,
   groups: List<KvGroupLayout>,
   established_at_revision: VllmSourceRevision,
 ) -> ResolvedKvLayout {
@@ -137,7 +135,6 @@ fn resolved_kv_layout(
     scheduler_block_size: scheduler_block_size,
     hash_block_size: hash_block_size,
     max_model_len: max_model_len,
-    max_num_batched_tokens: max_num_batched_tokens,
     groups: groups,
     established_at_revision: established_at_revision,
   }

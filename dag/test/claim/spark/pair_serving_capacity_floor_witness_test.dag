@@ -1,0 +1,270 @@
+module test.claim.spark.pair_serving_capacity_floor_witness
+
+import std.types { Bool, String, Int, NonEmptyStr, List }
+import v2.std.optional { Present, Absent }
+import std.nat { Nat }
+import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
+import std.measure { TokenCount, token_count, concurrent_request_hundredths, AllocatorBlockCount, allocator_block_count, allocator_block_count_value, attention_layer_count }
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
+import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
+import extdeps.vllm.server { vllm_source_revision_read }
+import extdeps.vllm.log_lines { VllmStartupReading, vllm_startup_reading, GpuKvCacheSize, MaximumConcurrency }
+import extdeps.vllm.kv_cache { VllmObservedKvPool, VllmKvPoolAdmission, KvPoolAdmitted, KvPoolRefused, vllm_observed_kv_pool_from_reading }
+import extdeps.vllm.kv_layout {
+  KvGroupLayout, FullAttention, ResolvedKvLayout, resolved_kv_layout,
+  VllmReportedCapacity, ReportedCapacityAdmitted, ReportedCapacityRefused, vllm_reported_capacity,
+}
+import gunbc.spark.vllm_kv_layout_observe { VllmKvLayoutReceipt, KvLayoutObserved, KvLayoutInconsistent, admit_kv_layout }
+import gunbc.harness.harness_seat { harness_seat_operator_policy_seats }
+import gunbc.spark.pair_serving_capacity_floor {
+  MinimumColdSessions, spark_pair_serving_minimum_cold_sessions,
+  CapacityFloorStanding, MeetsFloor, BelowFloor, FloorUnestablished, capacity_floor_standing,
+  AdmissionPosture, Admitting, Withdrawn, admission_posture,
+  DrainStanding, Quiesced, GrantsOutstanding, DrainUnobserved,
+  RestartPreconditionGap, EngineStillAdmitting, GrantsStillHeld, QuiescenceUnobserved,
+  RetryAllowanceExhausted, UnifiedMemoryPlanUnmodelled, restart_precondition_wire,
+  RestartAdmission, RestartAdmitted, RestartRefused, RetryAllowance, restart_admission,
+  ReAdmission, ReAdmitted, ReAdmissionRefused, re_admit,
+}
+
+fn w_digest(hex: String) -> ContentHash {
+  Sha256Hash(Sha256Digest { hex: hex as Sha256DigestHex })
+}
+
+data w_hex: String = "1111111111111111111111111111111111111111111111111111111111111111"
+
+fn w_inc(invocation: String) -> VllmServingLaunch {
+  vllm_serving_launch(
+    group: FabricGroupA,
+    head: spark_pair_serving_head(group: FabricGroupA),
+    systemd_invocation: invocation as NonEmptyStr,
+    container_id: "gunbc-spark-pair" as NonEmptyStr,
+    executable_digest: w_digest(hex: w_hex),
+    unit_digest: w_digest(hex: w_hex),
+    started_at: 1788000000,
+  )
+}
+
+fn w_pool_admission(tokens: Int) -> VllmKvPoolAdmission {
+  vllm_observed_kv_pool_from_reading(
+    tokens: token_count(count: tokens),
+    reading: vllm_startup_reading(line: GpuKvCacheSize, captured_text: "GPU KV cache size: n tokens" as NonEmptyStr, observed_at_revision: vllm_source_revision_read),
+  )
+}
+
+fn w_pool(tokens: Int) -> VllmObservedKvPool? {
+  match w_pool_admission(tokens: tokens) {
+    KvPoolAdmitted { pool: p } => Present { value: p }
+    KvPoolRefused { cause: _ } => none
+  }
+}
+
+fn w_full(layers: Nat) -> KvGroupLayout {
+  KvGroupLayout { kind: FullAttention, layer_count: attention_layer_count(count: layers), block_size: token_count(count: 16) }
+}
+
+fn w_layout(blocks: Nat, groups: List<KvGroupLayout>) -> ResolvedKvLayout {
+  resolved_kv_layout(
+    allocator_blocks: allocator_block_count(count: blocks),
+    scheduler_block_size: token_count(count: 16),
+    hash_block_size: token_count(count: 16),
+    max_model_len: token_count(count: 1048576),
+    groups: groups,
+    established_at_revision: vllm_source_revision_read,
+  )
+}
+
+fn w_concurrency_reading() -> VllmStartupReading {
+  vllm_startup_reading(
+    line: MaximumConcurrency,
+    captured_text: "Maximum concurrency for 1,048,576 tokens per request: fixture" as NonEmptyStr,
+    observed_at_revision: vllm_source_revision_read,
+  )
+}
+
+fn w_reported(pool: VllmObservedKvPool, hundredths: Nat) -> VllmReportedCapacity? {
+  match vllm_reported_capacity(pool: pool, max_concurrency: concurrent_request_hundredths(count: hundredths), reading: w_concurrency_reading()) {
+    ReportedCapacityAdmitted { capacity: c } => Present { value: c }
+    ReportedCapacityRefused { cause: _ } => none
+  }
+}
+
+fn w_receipt_from(invocation: String, blocks: Nat, pool: VllmObservedKvPool) -> VllmKvLayoutReceipt? {
+  match w_reported(pool: pool, hundredths: (blocks * 16 * 100) / 1048576) {
+    Absent => none
+    Present { value: reported } =>
+      Present {
+        value: admit_kv_layout(
+          launch: w_inc(invocation: invocation),
+          layout: w_layout(blocks: blocks, groups: [w_full(layers: 1)]),
+          reported: reported,
+          source_capture_digest: w_digest(hex: w_hex),
+        )
+      }
+  }
+}
+
+test fn the_block_requirement_is_derived_from_the_declared_session_floor() -> Bool {
+  spark_pair_serving_minimum_cold_sessions.sessions == harness_seat_operator_policy_seats
+    && (match w_pool(tokens: 93750 * 16) {
+          Absent => false
+          Present { value: p } =>
+            match w_receipt_from(invocation: "inv-a", blocks: 93750, pool: p) {
+              Absent => false
+              Present { value: r } =>
+                match capacity_floor_standing(receipt: r, floor: spark_pair_serving_minimum_cold_sessions) {
+                  MeetsFloor { required_blocks: req, available_blocks: a } =>
+                    allocator_block_count_value(c: req) == 93750 && allocator_block_count_value(c: a) == 93750
+                  _ => false
+                }
+            }
+        })
+    && (match w_pool(tokens: 93749 * 16) {
+          Absent => false
+          Present { value: p } =>
+            match w_receipt_from(invocation: "inv-a", blocks: 93749, pool: p) {
+              Absent => false
+              Present { value: r } =>
+                match capacity_floor_standing(receipt: r, floor: spark_pair_serving_minimum_cold_sessions) {
+                  BelowFloor { required_blocks: req, available_blocks: a } =>
+                    allocator_block_count_value(c: req) == 93750 && allocator_block_count_value(c: a) == 93749
+                  _ => false
+                }
+            }
+        })
+}
+
+test fn halving_the_declared_budget_halves_the_requirement() -> Bool {
+  let half = MinimumColdSessions { maximum_sequence_tokens: token_count(count: 250000), sessions: 3 }
+  match w_pool(tokens: 93749 * 16) {
+    Absent => false
+    Present { value: p } =>
+      match w_receipt_from(invocation: "inv-a", blocks: 93749, pool: p) {
+        Absent => false
+        Present { value: r } =>
+          match capacity_floor_standing(receipt: r, floor: half) {
+            MeetsFloor { required_blocks: req, available_blocks: _ } => allocator_block_count_value(c: req) == 46875
+            _ => false
+          }
+      }
+  }
+}
+
+test fn an_unestablished_capacity_withdraws_the_engine() -> Bool {
+  match w_pool(tokens: 11767856) {
+    Absent => false
+    Present { value: p } =>
+      match w_reported(pool: p, hundredths: 1122) {
+        Absent => false
+        Present { value: reported } => {
+          let inconsistent = admit_kv_layout(
+            launch: w_inc(invocation: "inv-a"),
+            layout: w_layout(blocks: 54475, groups: []),
+            reported: reported,
+            source_capture_digest: w_digest(hex: w_hex),
+          )
+          (match capacity_floor_standing(receipt: inconsistent, floor: spark_pair_serving_minimum_cold_sessions) {
+             FloorUnestablished { cause: _ } => true
+             _ => false
+           })
+            && (match admission_posture(standing: capacity_floor_standing(receipt: inconsistent, floor: spark_pair_serving_minimum_cold_sessions)) {
+                  Withdrawn { cause: c } => string_contains(s: c as String, pattern: "rather than assumed adequate")
+                  Admitting { available_blocks: _ } => false
+                })
+        }
+      }
+  }
+}
+
+test fn a_busy_engine_below_floor_is_withdrawn_but_not_restarted() -> Bool {
+  match w_pool(tokens: 40000 * 16) {
+    Absent => false
+    Present { value: p } =>
+      match w_receipt_from(invocation: "inv-a", blocks: 40000, pool: p) {
+        Absent => false
+        Present { value: r } => {
+          let below = capacity_floor_standing(receipt: r, floor: spark_pair_serving_minimum_cold_sessions)
+          let posture = admission_posture(standing: below)
+          let allowance = RetryAllowance { attempts_used: 0, allowance: 3 }
+          (match posture { Withdrawn { cause: _ } => true  Admitting { available_blocks: _ } => false })
+            && (match restart_admission(posture: posture, drain: GrantsOutstanding { count: 2 }, retries: allowance) {
+                  RestartRefused { gap: GrantsStillHeld { count: n } } => n == 2
+                  _ => false
+                })
+            && (match restart_admission(posture: posture, drain: DrainUnobserved { cause: "the seat partition head was unreadable" as NonEmptyStr }, retries: allowance) {
+                  RestartRefused { gap: QuiescenceUnobserved { cause: _ } } => true
+                  _ => false
+                })
+        }
+      }
+  }
+}
+
+test fn an_admitting_engine_is_never_restarted() -> Bool {
+  match w_pool(tokens: 93750 * 16) {
+    Absent => false
+    Present { value: p } =>
+      match w_receipt_from(invocation: "inv-a", blocks: 93750, pool: p) {
+        Absent => false
+        Present { value: r } => {
+          let meets = capacity_floor_standing(receipt: r, floor: spark_pair_serving_minimum_cold_sessions)
+          match restart_admission(posture: admission_posture(standing: meets), drain: Quiesced, retries: RetryAllowance { attempts_used: 0, allowance: 3 }) {
+            RestartRefused { gap: EngineStillAdmitting } => true
+            _ => false
+          }
+        }
+      }
+  }
+}
+
+test fn a_drained_withdrawn_engine_still_refuses_restart_naming_the_missing_memory_plan() -> Bool {
+  match w_pool(tokens: 40000 * 16) {
+    Absent => false
+    Present { value: p } =>
+      match w_receipt_from(invocation: "inv-a", blocks: 40000, pool: p) {
+        Absent => false
+        Present { value: r } => {
+          let below = capacity_floor_standing(receipt: r, floor: spark_pair_serving_minimum_cold_sessions)
+          let posture = admission_posture(standing: below)
+          (match restart_admission(posture: posture, drain: Quiesced, retries: RetryAllowance { attempts_used: 0, allowance: 3 }) {
+             RestartRefused { gap: UnifiedMemoryPlanUnmodelled } => true
+             _ => false
+           })
+            && (match restart_admission(posture: posture, drain: Quiesced, retries: RetryAllowance { attempts_used: 3, allowance: 3 }) {
+                  RestartRefused { gap: RetryAllowanceExhausted { used: u, allowance: a } } => u == 3 && a == 3
+                  _ => false
+                })
+            && string_contains(s: restart_precondition_wire(g: UnifiedMemoryPlanUnmodelled), pattern: "23.6 GiB")
+        }
+      }
+  }
+}
+
+test fn re_admission_is_decided_by_the_new_receipt_not_by_the_restart_having_happened() -> Bool {
+  match w_pool(tokens: 40000 * 16) {
+    Absent => false
+    Present { value: short_pool } =>
+      match w_pool(tokens: 93750 * 16) {
+        Absent => false
+        Present { value: ok_pool } =>
+          match w_receipt_from(invocation: "inv-b", blocks: 40000, pool: short_pool) {
+            Absent => false
+            Present { value: short_r } =>
+              match w_receipt_from(invocation: "inv-b", blocks: 93750, pool: ok_pool) {
+                Absent => false
+                Present { value: ok_r } =>
+                  (match re_admit(fresh: short_r, floor: spark_pair_serving_minimum_cold_sessions) {
+                     ReAdmissionRefused { cause: c } => string_contains(s: c as String, pattern: "still below the floor")
+                     ReAdmitted { launch: _, available_blocks: _ } => false
+                   })
+                    && (match re_admit(fresh: ok_r, floor: spark_pair_serving_minimum_cold_sessions) {
+                          ReAdmitted { launch: _, available_blocks: a } => allocator_block_count_value(c: a) == 93750
+                          ReAdmissionRefused { cause: _ } => false
+                        })
+              }
+          }
+      }
+  }
+}
+
