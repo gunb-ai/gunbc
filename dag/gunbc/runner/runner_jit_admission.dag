@@ -1,11 +1,9 @@
 module gunbc.runner.runner_jit_admission
 
-import std.types { String, NonEmptyStr, Bool, Int }
+import std.types { String, NonEmptyStr, Bool, HttpStatus }
 import std.disposition { Disposition, SingleAuthority }
 import extdeps.github.actions_jit_runner {
   org_generate_jitconfig_path, jit_config_conflict_status,
-  JitConfigMintOutcome, JitConfigMinted, JitConfigMintRefused,
-  JitConfigMintNotFound, JitConfigMintConflict, JitConfigMintValidationFailed,
 }
 import extdeps.github.org_admin_auth { github_app_installation_access_token_url }
 import gunbc.auth.github_apps {
@@ -47,7 +45,7 @@ type JitAdmissionAxisStanding
   | AxisDeferred { trigger: NonEmptyStr }
   | AxisDissolvedInto { into: JitAdmissionAxis }
   | AxisDissolvedIntoUpstreamMint {
-      conflict_status: Int
+      conflict_status: HttpStatus
       reason: NonEmptyStr
     }
 
@@ -122,19 +120,4 @@ data generate_jitconfig_201_expires_at_coverage: MintSurfaceLiveCensus = LiveCen
 
 data replay_runner_id_and_duplicate_name_coverage: MintSurfaceLiveCensus = LiveCensusUnmet {
   question: ReplayRunnerIdAndDuplicateName409,
-}
-
-fn replay_signal_from_mint(outcome: JitConfigMintOutcome) -> Bool {
-  match outcome {
-    JitConfigMintConflict { reason: _ } =>
-      match axis_mint_observability(axis: ReplayAxis) {
-        MintObservableCoverage { question: ReplayRunnerIdAndDuplicateName409 } => true
-        MintObservableCoverage { question: GenerateJitconfig201ExpiresAtPresence } => false
-        MintUnobservableDeclaredBoundary => false
-      }
-    JitConfigMinted { config: _, runner_id: _ } => false
-    JitConfigMintRefused { status: _, reason: _ } => false
-    JitConfigMintNotFound { reason: _ } => false
-    JitConfigMintValidationFailed { reason: _ } => false
-  }
 }

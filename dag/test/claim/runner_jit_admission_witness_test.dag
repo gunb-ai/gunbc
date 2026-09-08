@@ -3,7 +3,7 @@ module gunbc.test.claim.runner_jit_admission_witness_test
 import std.types { String, Bool, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions_jit_runner {
-  jit_config_conflict_status, jit_config_mint_outcome,
+  jit_config_conflict_status,
 }
 import gunbc.auth.github_apps { gunbai_ci_declared }
 import gunbc.runner.runner_jit_admission {
@@ -13,7 +13,7 @@ import gunbc.runner.runner_jit_admission {
   jit_admission_axis_standing, attempt_binding_admits_mint_name,
   gunbai_ci_installation_token_url, gunbai_org_generate_jitconfig_path,
   generate_jitconfig_201_expires_at_coverage, replay_runner_id_and_duplicate_name_coverage,
-  encoded_jit_config_interior, axis_mint_observability, replay_signal_from_mint,
+  encoded_jit_config_interior, axis_mint_observability,
   OutsideTheModeledGuaranteeDeclaredBoundary,
   MintObservableCoverage, MintUnobservableDeclaredBoundary,
   GenerateJitconfig201ExpiresAtPresence, ReplayRunnerIdAndDuplicateName409,
@@ -108,16 +108,4 @@ test fn expiry_and_replay_live_census_rows_are_unmet() -> Bool {
       }
     LiveCensusDischarged { question: _, receipt: _ } => false
   }
-}
-
-test fn duplicate_name_409_is_the_replay_signal_and_422_is_not() -> Bool {
-  replay_signal_from_mint(outcome: jit_config_mint_outcome(
-    status: jit_config_conflict_status, encoded: "", runner_id: 0, error_body: "already exists"
-  ))
-    && !replay_signal_from_mint(outcome: jit_config_mint_outcome(
-         status: 422, encoded: "", runner_id: 0, error_body: "validation failed"
-       ))
-    && !replay_signal_from_mint(outcome: jit_config_mint_outcome(
-         status: 201, encoded: "eyJib2R5Ijoib3BhcXVlIn0=", runner_id: 1, error_body: ""
-       ))
 }

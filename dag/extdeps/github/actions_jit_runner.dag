@@ -1,6 +1,6 @@
 module extdeps.github.actions_jit_runner
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.types { String, NonEmptyStr, Bool, Int, List, HttpStatus }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -69,7 +69,7 @@ type EncodedJitConfig sole_constructor {
 
 type JitConfigMintOutcome
   = JitConfigMinted { config: EncodedJitConfig, runner_id: Int }
-  | JitConfigMintRefused { status: Int, reason: String }
+  | JitConfigMintRefused { status: HttpStatus, reason: String }
   | JitConfigMintNotFound { reason: String }
   | JitConfigMintConflict { reason: String }
   | JitConfigMintValidationFailed { reason: String }
@@ -89,15 +89,15 @@ fn jit_runner_label_wire(l: JitRunnerLabel) -> String {
 // config yet" would let a guest boot with an empty drive and sit waiting for work it can never be
 // assigned -- a VM burning its whole deadline looking healthy. The response schema carries runner
 // identity and encoded_jit_config, and does not carry an expiry.
-data jit_config_created_status: Int = 201
+data jit_config_created_status: HttpStatus = 201
 
-data jit_config_not_found_status: Int = 404
+data jit_config_not_found_status: HttpStatus = 404
 
-data jit_config_conflict_status: Int = 409
+data jit_config_conflict_status: HttpStatus = 409
 
-data jit_config_validation_failed_status: Int = 422
+data jit_config_validation_failed_status: HttpStatus = 422
 
-fn jit_config_mint_outcome(status: Int, encoded: String, runner_id: Int, error_body: String) -> JitConfigMintOutcome {
+fn jit_config_mint_outcome(status: HttpStatus, encoded: String, runner_id: Int, error_body: String) -> JitConfigMintOutcome {
   if status == jit_config_created_status {
     if encoded == "" {
       JitConfigMintRefused {
