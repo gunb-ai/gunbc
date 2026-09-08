@@ -9,6 +9,7 @@ import v2.extdeps.languages.rust { rust_target_model_staging }
 import v2.extdeps.languages.rust_test {
   rust_classical_not_ingested_target_model_staging,
   rust_family_member_run_args,
+  rust_field_access_target_model_staging,
   rust_logic_family_target_model_staging,
 }
 import extdeps.realization.emit_on_demand_host { native_cache_workspace_root }
@@ -34,6 +35,14 @@ import v2.test.execution.emit_on_demand_family_crate_witness {
   family_crate_fixture_inputs,
   family_crate_members,
   family_crate_native_key,
+}
+import v2.test.execution.emit_host_field_access_equals_eval {
+  emit_field_eval_producer_tree,
+}
+import v2.test.execution.emit_on_demand_field_access_family_witness {
+  field_access_family_cache_root_for,
+  field_access_family_fixture_inputs,
+  field_access_family_native_key_for,
 }
 import v2.std.diagnostic { Accepted, Rejected, Outcome, None }
 import v2.std.host_run { HostLogicalRun, HostRunStdout }
@@ -221,5 +230,56 @@ test fn emit_host_native_only_complement_holds() -> Bool {
 
 test fn emit_host_native_only_complement_wrong_octet_mismatch_detected_holds() -> Bool {
   complement_native_only_matches_expected(expected_octet: 1) == false
+}
+
+// FIELD-ACCESS-FAMILY ARM: the same native-only verdict shape for the emit_host_field_access
+// family — the fourth construct promoted off InterpreterRetained, after classical_not, add, and
+// complement. The family differences are facts of that family, not new machinery: the tree is
+// FIXTURE-PRODUCED (emit_field_eval_producer_tree, the family's equals_eval tree constructor — no
+// eval leg is reachable from this file despite the constructor's home module's name), and the run
+// shares the field_access family's one-build cache key (field_access_family_cache_root_for +
+// field_access_family_native_key_for, the same key emit_on_demand_field_access_native_one_build_holds
+// colds) — an uncached leg here would duplicate a full cargo build the family witness already
+// performs (DESIGN S2). The expected octet is 9, the byte the family witness's warm leg pins on
+// this same build. Program-side discrimination stays where the family already carries it: the
+// equals_eval pair and the family witness's wrong-fixture mismatch leg prove the native run's
+// actual byte participates in a verdict (the wrong-field alt tree flips the octet 9 -> 1). A
+// no-eval verdict has no oracle leg to break, so this arm's broken control breaks the EXPECTATION
+// side: octet 1 is the alt tree's byte and can never match the primary run, and the comparator
+// mocks above pin the comparator itself.
+fn field_access_native_only_matches_expected(expected_octet: Int) -> Bool {
+  match emit_field_eval_producer_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      match emit(tree: tree, target: rust_field_access_target_model_staging()) {
+        Accepted { value: emitted, diagnostics: _ } =>
+          match run_emit_host_cached(
+            workspace_dir: native_cache_workspace_root(
+              cache_root: field_access_family_cache_root_for(test_id: "native_one_build"),
+              key: field_access_family_native_key_for(tree: tree)
+            ),
+            target: rust_field_access_target_model_staging(),
+            source: emitted,
+            fixture_inputs: field_access_family_fixture_inputs()
+          ) {
+            Accepted { value: receipt, diagnostics: _ } =>
+              match receipt.logical_run {
+                Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
+                  native_only_stdout_matches(stdout: stdout, expected_octet: expected_octet)
+                _ => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_host_native_only_field_access_holds() -> Bool {
+  field_access_native_only_matches_expected(expected_octet: 9)
+}
+
+test fn emit_host_native_only_field_access_wrong_octet_mismatch_detected_holds() -> Bool {
+  field_access_native_only_matches_expected(expected_octet: 1) == false
 }
 

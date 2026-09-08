@@ -1,0 +1,74 @@
+module test.parity.probe
+
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import v2.compiler.compile { compile_dag_source_to_target_text }
+import v2.std.diagnostic { Outcome, Diagnostic, NonEmptyDiagnostics, None }
+import v2.test.execution.dag_add_emit_round_trip { dag_add_emit_receipt }
+import v2.compiler.translate { target_serialize_source_from_model }
+import v2.extdeps.languages.dag { dag_target_model, dag_fixture_emitted_add_fn }
+
+type ReasonCounts {
+  overlap: Int
+  module_not_found: Int
+  hollow_alias: Int
+  unbound_symbol: Int
+  other: Int
+}
+
+fn count_reason(c: ReasonCounts, d: Diagnostic) -> ReasonCounts {
+  if d.reason == ^parse_grammar_choice_overlap_residue {
+    ReasonCounts { overlap: c.overlap + 1, module_not_found: c.module_not_found, hollow_alias: c.hollow_alias, unbound_symbol: c.unbound_symbol, other: c.other }
+  } else if d.reason == ^resolve_module_not_found {
+    ReasonCounts { overlap: c.overlap, module_not_found: c.module_not_found + 1, hollow_alias: c.hollow_alias, unbound_symbol: c.unbound_symbol, other: c.other }
+  } else if d.reason == ^fact_density_hollow_alias_locus {
+    ReasonCounts { overlap: c.overlap, module_not_found: c.module_not_found, hollow_alias: c.hollow_alias + 1, unbound_symbol: c.unbound_symbol, other: c.other }
+  } else if d.reason == ^resolve_reason_unbound_symbol {
+    ReasonCounts { overlap: c.overlap, module_not_found: c.module_not_found, hollow_alias: c.hollow_alias, unbound_symbol: c.unbound_symbol + 1, other: c.other }
+  } else {
+    ReasonCounts { overlap: c.overlap, module_not_found: c.module_not_found, hollow_alias: c.hollow_alias, unbound_symbol: c.unbound_symbol, other: c.other + 1 }
+  }
+}
+
+fn zero_counts() -> ReasonCounts {
+  ReasonCounts { overlap: 0, module_not_found: 0, hollow_alias: 0, unbound_symbol: 0, other: 0 }
+}
+
+fn summarize(ds: NonEmptyDiagnostics) -> ReasonCounts {
+  fold(ds.tail, init: count_reason(c: zero_counts(), d: ds.head), f: fn(c, d) {
+    count_reason(c: c, d: d)
+  })
+}
+
+fn render_counts(c: ReasonCounts) -> String {
+  "overlap=" + to_string(c.overlap)
+    + " module_not_found=" + to_string(c.module_not_found)
+    + " hollow_alias=" + to_string(c.hollow_alias)
+    + " unbound_symbol=" + to_string(c.unbound_symbol)
+    + " other=" + to_string(c.other)
+}
+
+fn compile_probe(source_text: String) -> ProcessExit {
+  match compile_dag_source_to_target_text(source_text) {
+    Accepted { value, diagnostics } => ExitSuccess
+    Rejected { diagnostics } => {
+      let c = summarize(ds: diagnostics)
+      ExitFailure { code: 1, reason: render_counts(c: c) }
+    }
+  }
+}
+
+fn emit_source_probe(unused: String) -> ProcessExit {
+  match dag_add_emit_receipt {
+    Accepted { value, diagnostics } =>
+      match target_serialize_source_from_model(target: dag_target_model(), emitted: dag_fixture_emitted_add_fn) {
+        Accepted { value: authority, diagnostics: ad } =>
+          if (value.carried == authority.carried) && (diagnostics == None) && (ad == None) {
+            ExitFailure { code: 1, reason: "REPORT emit_bytes=[" + value.carried + "] authority_bytes=[" + authority.carried + "]" }
+          } else {
+            ExitFailure { code: 1, reason: "DIVERGE emit_bytes=[" + value.carried + "] authority_bytes=[" + authority.carried + "]" }
+          }
+        Rejected { diagnostics } => ExitFailure { code: 1, reason: "authority rejected" }
+      }
+    Rejected { diagnostics } => ExitFailure { code: 1, reason: "emit rejected" }
+  }
+}

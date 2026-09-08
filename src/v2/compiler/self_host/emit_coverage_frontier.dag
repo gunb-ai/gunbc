@@ -75,14 +75,15 @@ fn retained_via_eval_agreement(
   }
 }
 
-// Two roster rows were promoted InterpreterRetained -> SelfEmittedNative on 2026-09-07, each on a
-// native-only verdict arm (positive + wrong-octet broken control) landed in the already
+// Three roster rows were promoted InterpreterRetained -> SelfEmittedNative on 2026-09-07/08, each on
+// a native-only verdict arm (positive + wrong-octet broken control) landed in the already
 // file-grain-enrolled native-only verdict entry, so each backing citation is enrolled by
 // construction (coverage_row_backing_is_enrolled): the add family row (first element, backing
-// emit_host_native_only_add_holds) and the complement family row (backing
+// emit_host_native_only_add_holds), the complement family row (backing
 // emit_host_native_only_complement_holds, run through the logic family crate per the
-// witness_family_build_grain_ruling). Each family's equals_eval agreement pair stays enrolled as
-// its program-side discrimination leg.
+// witness_family_build_grain_ruling), and the field_access family row (backing
+// emit_host_native_only_field_access_holds, octet 9 pinned against the family one-build cache). Each
+// family's equals_eval agreement pair stays enrolled as its program-side discrimination leg.
 data emit_coverage_frontier_roster: List<EmitCoverageFrontierRow> = [
   EmitCoverageFrontierRow {
     subject: coverage_subject(
@@ -120,14 +121,18 @@ data emit_coverage_frontier_roster: List<EmitCoverageFrontierRow> = [
       backing_function: "emit_host_native_only_complement_holds"
     }
   },
-  retained_via_eval_agreement(
+  EmitCoverageFrontierRow {
     subject: coverage_subject(
       module_path: "v2.test.execution.emit_host_field_access_equals_eval",
       decl_name: "emit_field_eval_subgraph_node"
     ),
-    entry: "src/v2/test/claim/execution/emit_host_field_access_equals_eval_test.dag",
-    f: "emit_host_field_access_equals_eval_holds"
-  ),
+    witness_entry: "src/v2/test/claim/execution/emit_host_field_access_equals_eval_test.dag",
+    witness_function: "emit_host_field_access_equals_eval_holds",
+    disposition: SelfEmittedNative {
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_function: "emit_host_native_only_field_access_holds"
+    }
+  },
   retained_via_eval_agreement(
     subject: coverage_subject(
       module_path: "v2.extdeps.languages.rust_test",
