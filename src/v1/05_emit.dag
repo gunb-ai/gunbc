@@ -461,6 +461,22 @@ fn accumulate_json_field(acc: JsonFragmentsAccum, name: String, outcome: Emitter
 // the second native-parity divergence, on v2.std.logic bool_primitive_facts). The record arm
 // therefore spells the zero-field value `null`; non-empty records keep the map spelling their
 // braced struct expects.
+//
+// THE VARIANT BOUNDARY OF THAT ARM, made fail-closed the same day the arm learned `null`. A
+// record literal with parent_enum PRESENT is a variant construction, and its wire spelling is
+// the parent coproduct's declared VariantEncoding policy: the internal-tag default spells the
+// tag map (`{"_variant": "A"}`, measured against serde 2026-09-08 -- `null` and the bare string
+// are both rejected, and the field-carrying map without the tag is rejected), while
+// StringVariant, UntaggedVariant and TaggedVariant each spell differently. That policy is a
+// module-local fact of the parent's HOME module (resolve_local_coproduct_wire_policy scans that
+// module's items for the CoproductWireContract row), and this value path carries no cross-module
+// view of it -- so no spelling this arm could write is established. The arm therefore REFUSES
+// (the caller renders compile_error!, a build-time located refusal) rather than emitting a
+// measured-wrong spelling. The bare fieldless variant never reaches here at all: it is an
+// ExprVar, and data_value_has_cross_refs routes any ExprVar-bearing value to direct
+// construction. Trigger for spelling instead of refusing: a closure-wide wire-policy index
+// beside EmitGraphInfo.type_decl_items, at which point this arm reads the parent's policy and
+// spells accordingly.
 fn emit_data_value_json(value: Node, source_indices: Map<String, NewlineIndex>) -> EmitterOutcome {
   match value.expr_data {
     ExprLiteral { value: v } => match v {
@@ -480,22 +496,27 @@ fn emit_data_value_json(value: Node, source_indices: Map<String, NewlineIndex>) 
         FragmentsAccumulated { pieces: ps } => Emitted { json: concat("[", ps |> join(separator: ", "), "]") }
       }
     }
-    ExprRecordLit { parent_enum: _ } =>
-      if (value.children |> count) == 0 {
-        Emitted { json: "null" }
-      } else {
-      let accum = value.children |> fold(init: FragmentsAccumulated { pieces: [] }, f: (acc, fld) =>
-        accumulate_json_field(
-          acc: acc,
-          name: field_init_node_name_at(n: fld, source_indices: source_indices),
-          outcome: emit_data_value_json(value: field_init_node_value(n: fld), source_indices: source_indices)
-        )
-      )
-      match accum {
-        FragmentsRefused { reason: r } => Refused { reason: r }
-        FragmentsAccumulated { pieces: ps } => Emitted { json: concat("{", ps |> join(separator: ", "), "}") }
+    ExprRecordLit { parent_enum: pe } =>
+      match pe {
+        Present { value: parent } =>
+          Refused { reason: concat("variant record literal on the serde_json data path (parent coproduct: ", parent, "): the variant wire spelling is the parent's declared VariantEncoding policy, a module-local fact of the parent's home module this path does not carry; null and the untagged map are both measured to fail serde deserialization. Trigger for spelling instead of refusing: a closure-wide wire-policy index beside EmitGraphInfo.type_decl_items") }
+        Absent =>
+          if (value.children |> count) == 0 {
+            Emitted { json: "null" }
+          } else {
+          let accum = value.children |> fold(init: FragmentsAccumulated { pieces: [] }, f: (acc, fld) =>
+            accumulate_json_field(
+              acc: acc,
+              name: field_init_node_name_at(n: fld, source_indices: source_indices),
+              outcome: emit_data_value_json(value: field_init_node_value(n: fld), source_indices: source_indices)
+            )
+          )
+          match accum {
+            FragmentsRefused { reason: r } => Refused { reason: r }
+            FragmentsAccumulated { pieces: ps } => Emitted { json: concat("{", ps |> join(separator: ", "), "}") }
+          }
+        }
       }
-    }
     ExprVar { binding_kind: _ } => Emitted { json: concat("\"", escape_json_string(s: expr_var_name_at(texpr: value, source_indices: source_indices)), "\"") }
     ExprUnaryOp { op: Neg } => match emit_data_value_json(value: unaryop_operand(texpr: value), source_indices: source_indices) {
       Emitted { json: j } => Emitted { json: concat("-", j) }

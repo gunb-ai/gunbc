@@ -1007,148 +1007,82 @@ pub fn emit_data_value_json(
 ) -> Rc<EmitterOutcome> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*value.expr_data.clone()).clone() {
-            ExprData::ExprLiteral { value: v, .. } => match (*v.clone()).clone() {
-                LiteralValue::LitStr { value: s, .. } => Rc::new(EmitterOutcome::Emitted {
-                    json: v1_rt::concat(
-                        v1_rt::concat(
-                            "\"".to_string(),
-                            crate::v1_compiler_emit_core_support::escape_json_string(s.clone()),
-                        ),
-                        "\"".to_string(),
-                    ),
-                }),
-                LiteralValue::LitSymbol { value: s, .. } => Rc::new(EmitterOutcome::Emitted {
-                    json: v1_rt::concat(
-                        v1_rt::concat(
-                            "\"".to_string(),
-                            crate::v1_compiler_emit_core_support::escape_json_string(s.clone()),
-                        ),
-                        "\"".to_string(),
-                    ),
-                }),
-                LiteralValue::LitInt { value: i, .. } => Rc::new(EmitterOutcome::Emitted {
-                    json: crate::v1_compiler_emit_core_support::to_string(i.clone()),
-                }),
-                LiteralValue::LitFloat { value: f, .. } => {
-                    Rc::new(EmitterOutcome::Emitted { json: f.clone() })
-                }
-                LiteralValue::LitBool { value: b, .. } => Rc::new(EmitterOutcome::Emitted {
-                    json: if b.clone() {
-                        "true".to_string()
-                    } else {
-                        "false".to_string()
-                    },
-                }),
-                LiteralValue::LitNull => Rc::new(EmitterOutcome::Emitted {
-                    json: "null".to_string(),
-                }),
-            },
-            ExprData::ExprListLit => {
-                let accum = value.children.clone().iter().cloned().fold(
-                    Rc::new(JsonFragmentsAccum::FragmentsAccumulated {
-                        pieces: Rc::new(vec![]),
-                    }),
-                    |acc: Rc<JsonFragmentsAccum>, e: Rc<Node>| {
-                        accumulate_json_fragment(
-                            acc,
-                            emit_data_value_json(e.clone(), source_indices.clone()),
-                        )
-                    },
-                );
-                match (*accum.clone()).clone() {
-                    JsonFragmentsAccum::FragmentsRefused { reason: r, .. } => {
-                        Rc::new(EmitterOutcome::Refused { reason: r.clone() })
-                    }
-                    JsonFragmentsAccum::FragmentsAccumulated { pieces: ps, .. } => {
-                        Rc::new(EmitterOutcome::Emitted {
-                            json: v1_rt::concat(
-                                v1_rt::concat("[".to_string(), ps.clone().join(&", ".to_string())),
-                                "]".to_string(),
-                            ),
-                        })
-                    }
-                }
-            }
-            ExprData::ExprRecordLit { parent_enum: _, .. } => {
-                if ((value.children.clone().len() as i64) == 0) {
-                    Rc::new(EmitterOutcome::Emitted {
-                        json: "null".to_string(),
-                    })
-                } else {
-                    {
-                        let accum = value.children.clone().iter().cloned().fold(
-                            Rc::new(JsonFragmentsAccum::FragmentsAccumulated {
-                                pieces: Rc::new(vec![]),
-                            }),
-                            |acc: Rc<JsonFragmentsAccum>, fld: Rc<Node>| {
-                                accumulate_json_field(
-                                    acc,
-                                    crate::v1_std_core::field_init_node_name_at(
-                                        fld.clone(),
-                                        source_indices.clone(),
-                                    ),
-                                    emit_data_value_json(
-                                        crate::v1_std_core::field_init_node_value(fld.clone()),
-                                        source_indices.clone(),
-                                    ),
-                                )
-                            },
-                        );
-                        match (*accum.clone()).clone() {
-                            JsonFragmentsAccum::FragmentsRefused { reason: r, .. } => {
-                                Rc::new(EmitterOutcome::Refused { reason: r.clone() })
-                            }
-                            JsonFragmentsAccum::FragmentsAccumulated { pieces: ps, .. } => {
-                                Rc::new(EmitterOutcome::Emitted {
-                                    json: v1_rt::concat(
-                                        v1_rt::concat(
-                                            "{".to_string(),
-                                            ps.clone().join(&", ".to_string()),
-                                        ),
-                                        "}".to_string(),
-                                    ),
-                                })
-                            }
-                        }
-                    }
-                }
-            }
-            ExprData::ExprVar {
-                binding_kind: _, ..
-            } => Rc::new(EmitterOutcome::Emitted {
-                json: v1_rt::concat(
-                    v1_rt::concat(
-                        "\"".to_string(),
-                        crate::v1_compiler_emit_core_support::escape_json_string(
-                            crate::v1_std_core::expr_var_name_at(
-                                value.clone(),
-                                source_indices.clone(),
-                            ),
-                        ),
-                    ),
-                    "\"".to_string(),
-                ),
-            }),
-            ExprData::ExprUnaryOp {
-                op: UnaryOpKind::Neg,
-                ..
-            } => match (*emit_data_value_json(
-                crate::v1_std_core::unaryop_operand(value.clone()),
-                source_indices.clone(),
-            ))
-            .clone()
+    ExprData::ExprLiteral { value: v, .. } => match (*v.clone()).clone() {
+    LiteralValue::LitStr { value: s, .. } => Rc::new(EmitterOutcome::Emitted {
+    json: v1_rt::concat(v1_rt::concat("\"".to_string(), crate::v1_compiler_emit_core_support::escape_json_string(s.clone())), "\"".to_string()),
+}),
+    LiteralValue::LitSymbol { value: s, .. } => Rc::new(EmitterOutcome::Emitted {
+    json: v1_rt::concat(v1_rt::concat("\"".to_string(), crate::v1_compiler_emit_core_support::escape_json_string(s.clone())), "\"".to_string()),
+}),
+    LiteralValue::LitInt { value: i, .. } => Rc::new(EmitterOutcome::Emitted {
+    json: crate::v1_compiler_emit_core_support::to_string(i.clone()),
+}),
+    LiteralValue::LitFloat { value: f, .. } => Rc::new(EmitterOutcome::Emitted {
+    json: f.clone(),
+}),
+    LiteralValue::LitBool { value: b, .. } => Rc::new(EmitterOutcome::Emitted {
+    json: if b.clone() {
+            "true".to_string()
+        } else {
+            "false".to_string()
+        },
+}),
+    LiteralValue::LitNull => Rc::new(EmitterOutcome::Emitted {
+    json: "null".to_string(),
+}),
+},
+    ExprData::ExprListLit => {
+            let accum = value.children.clone().iter().cloned().fold(Rc::new(JsonFragmentsAccum::FragmentsAccumulated {
+    pieces: Rc::new(vec![]),
+}), |acc: Rc<JsonFragmentsAccum>, e: Rc<Node>| accumulate_json_fragment(acc, emit_data_value_json(e.clone(), source_indices.clone())));
+match (*accum.clone()).clone() {
+    JsonFragmentsAccum::FragmentsRefused { reason: r, .. } => Rc::new(EmitterOutcome::Refused {
+    reason: r.clone(),
+}),
+    JsonFragmentsAccum::FragmentsAccumulated { pieces: ps, .. } => Rc::new(EmitterOutcome::Emitted {
+    json: v1_rt::concat(v1_rt::concat("[".to_string(), ps.clone().join(&", ".to_string())), "]".to_string()),
+}),
+}
+},
+    ExprData::ExprRecordLit { parent_enum: pe, .. } => match pe.clone() {
+    Some(parent) => Rc::new(EmitterOutcome::Refused {
+    reason: v1_rt::concat(v1_rt::concat("variant record literal on the serde_json data path (parent coproduct: ".to_string(), parent.clone()), "): the variant wire spelling is the parent's declared VariantEncoding policy, a module-local fact of the parent's home module this path does not carry; null and the untagged map are both measured to fail serde deserialization. Trigger for spelling instead of refusing: a closure-wide wire-policy index beside EmitGraphInfo.type_decl_items".to_string()),
+}),
+    std::option::Option::None => if ((value.children.clone().len() as i64) == 0) {
+            Rc::new(EmitterOutcome::Emitted {
+    json: "null".to_string(),
+})
+        } else {
             {
-                EmitterOutcome::Emitted { json: j, .. } => Rc::new(EmitterOutcome::Emitted {
-                    json: v1_rt::concat("-".to_string(), j.clone()),
-                }),
-                EmitterOutcome::Refused { reason: r, .. } => {
-                    Rc::new(EmitterOutcome::Refused { reason: r.clone() })
-                }
-            },
-            _ => Rc::new(EmitterOutcome::Refused {
-                reason: "unsupported mock expression".to_string(),
-            }),
-        }
+                let accum = value.children.clone().iter().cloned().fold(Rc::new(JsonFragmentsAccum::FragmentsAccumulated {
+    pieces: Rc::new(vec![]),
+}), |acc: Rc<JsonFragmentsAccum>, fld: Rc<Node>| accumulate_json_field(acc, crate::v1_std_core::field_init_node_name_at(fld.clone(), source_indices.clone()), emit_data_value_json(crate::v1_std_core::field_init_node_value(fld.clone()), source_indices.clone())));
+match (*accum.clone()).clone() {
+    JsonFragmentsAccum::FragmentsRefused { reason: r, .. } => Rc::new(EmitterOutcome::Refused {
+    reason: r.clone(),
+}),
+    JsonFragmentsAccum::FragmentsAccumulated { pieces: ps, .. } => Rc::new(EmitterOutcome::Emitted {
+    json: v1_rt::concat(v1_rt::concat("{".to_string(), ps.clone().join(&", ".to_string())), "}".to_string()),
+}),
+}
+}
+        },
+},
+    ExprData::ExprVar { binding_kind: _, .. } => Rc::new(EmitterOutcome::Emitted {
+    json: v1_rt::concat(v1_rt::concat("\"".to_string(), crate::v1_compiler_emit_core_support::escape_json_string(crate::v1_std_core::expr_var_name_at(value.clone(), source_indices.clone()))), "\"".to_string()),
+}),
+    ExprData::ExprUnaryOp { op: UnaryOpKind::Neg, .. } => match (*emit_data_value_json(crate::v1_std_core::unaryop_operand(value.clone()), source_indices.clone())).clone() {
+    EmitterOutcome::Emitted { json: j, .. } => Rc::new(EmitterOutcome::Emitted {
+    json: v1_rt::concat("-".to_string(), j.clone()),
+}),
+    EmitterOutcome::Refused { reason: r, .. } => Rc::new(EmitterOutcome::Refused {
+    reason: r.clone(),
+}),
+},
+    _ => Rc::new(EmitterOutcome::Refused {
+    reason: "unsupported mock expression".to_string(),
+}),
+}
     })
 }
 
