@@ -1,0 +1,53 @@
+module gunbc.live_tree_stamp_detector_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust that names live-checkout sink SPELLINGS and the
+// test-only detector that joins those spellings to SubstrateInputsOnly stamps. Authored because
+// gunbc.seed_growth_admission seed_growth_forward_freeze_policy_note makes unenumerated hand growth
+// in src/v1 a stop-line, and because an annotation beside the functions is not that enumeration
+// (DESIGN section 4c). Requested by review 62244 on gunbc#10811.
+//
+// THE POPULATION BELOW IS DERIVED, NOT COUNTED. It is the ADDED HAND ITEMS list printed by
+// tools.seed_growth_change_population over origin/main...HEAD. Inline modules are scopes, not
+// leaves: item_declaration_ref_in folds enclosing_module into each member's module_path, so
+// naming floor_skip_frontier_tests would not cover the members. Tests are in: the policy names
+// exactly two exclusions and neither is the test tree (parse_refusal_location_seed_growth_note).
+//
+// WHAT THE CHANGE IS. Two host helpers derive callee spellings from
+// v1.compiler.method builtin_function_registry (plus Filesystem.Read / Filesystem.List, which
+// are not registry keys). A test-only substring scan joins those spellings to entries that
+// declare SubstrateInputsOnly. Production skip does not consult either helper or the scan.
+//
+// WHY IT IS RUST AND NOT .dag. The census must read witness files that may not RESOLVE. A Node
+// fold (v2.std.fn_index callees_from_node) does not reach those files; parse_entry_live_tree_disposition
+// is already a textual seed reader on the same line, so the detector inhabits that reader
+// (DESIGN section 3b: stated inhabitance, not that the fold was harder). The tests call those
+// host functions and the live registry, which a .dag witness under the required floor cannot.
+//
+// WHAT IS NOT NETTED. parse_entry_live_tree_disposition is ExistingSeedItemModified -- it keeps
+// its name and is not an addition. No deletions are netted against the additions below.
+data live_tree_stamp_detector_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "builtin_name_spells_a_live_checkout_sink", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "direct_live_tree_sink_callees", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.floor_skip_frontier_tests", decl_name: "detector_line_has_unquoted_callee", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.floor_skip_frontier_tests", decl_name: "detector_unquoted_live_callees", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.floor_skip_frontier_tests", decl_name: "detector_sio_unquoted_live_hits", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.floor_skip_frontier_tests", decl_name: "quoted_census_callee_is_not_a_direct_live_sink", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.floor_skip_frontier_tests", decl_name: "unquoted_census_callee_is_a_direct_live_sink", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.floor_skip_frontier_tests", decl_name: "direct_live_tree_sink_callees_is_derived_from_the_registry", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.floor_skip_frontier_tests", decl_name: "detector_hits_planted_triple_is_an_identity_join", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.floor_skip_frontier_tests", decl_name: "named_census_specimens_declare_reads_live_tree_and_call_a_sink", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.floor_skip_frontier_tests", decl_name: "named_remaining_sio_direct_live_specimen_is_joined", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.floor_skip_frontier_tests", decl_name: "compile_dag_diagnostic_census_is_invisible_to_effect_reach_host_sinks", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.floor_skip_frontier_tests", decl_name: "adding_the_census_marker_would_still_lose_the_conjunction_on_the_remaining_specimen", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.floor_skip_frontier_tests", decl_name: "detector_sio_unquoted_live_hits_corpus_walk", field: WholeDeclaration }
+  ],
+  reason: "WHY RUST IS STILL NEEDED: the subject is witness SOURCE TEXT that may not resolve, scanned the same way parse_entry_live_tree_disposition already scans stamps. The builtin roster that supplies spellings lives in the seed (v1.compiler.method builtin_function_registry). Neither fact is nameable from a dag-only witness that the required floor will execute.\n\nWHY IT IS ADMITTED AGAINST THE v1 FREEZE: gunbc.v1_maintenance_standing v1_seed_standing admits by PURPOSE -- the change serves the v2 self-host program by making the skip-eligible stamp lie an identity-joined, executing fact on the failure-mode row, rather than a count or a hand restamp. No language behavior, compatibility obligation, escape hatch, or public surface is added. Production skip still does not consult this detector.\n\nENUMERATED RATHER THAN COUNTED: the list above is what tools.seed_growth_change_population printed for this branch. Every item is a free function at module scope or inside the existing inline test module, so all are citable; nothing lands in seed_growth_uncitable_item_keys.\n\nDeclared even though no required CI phase invokes the join yet -- seed_growth_forward_freeze_policy_note's own stated rung. The annotation at the helpers is not this row.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete these declarations when v2.std.effect_reach call_reachability_live_read_classification is sufficient to construct LiveTreeDisposition from the call closure, so a hand spelling scan has no subject and skip no longer reads a stamp the body can contradict. A roster repair that only adds compile_dag_diagnostic_census to EFFECT_REACH_HOST_SINK_MARKERS does not fire this trigger -- that is the cheaper authoring that still loses the remaining SIO+census specimen. Tests that still discriminate the textual parser may remain only while parse_entry_live_tree_disposition remains the skip authority; they move with it, they do not outlive it.",
+  current_boundary: "Confined to v1_compiler.cli_run. builtin_name_spells_a_live_checkout_sink and direct_live_tree_sink_callees are pub(crate) and are reached only from the test module on this branch. Production skip, reads_live_tree_effective, and entry_qualifies_for_skip_without_resolve do not consult them. The scan is fail-open: a live-checkout name that fails the predicate is silent here."
+}
