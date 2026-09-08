@@ -74,6 +74,17 @@ import gunbc.auth.materialized_secret {
 // bytes, loader, quantisation, footprint, runtime registry, parser availability, response schema and
 // rank count -- which is precisely why gunbc.spark.serving_arm exists.
 
+// THE CONTAINER IS PART OF THE ARM BECAUSE THE ARM IS WHAT IS SERVED, and observing whether this arm
+// is running means asking a NAMED unit rather than guessing. Measured on the fleet 2026-09-08: the
+// canary's container is `glm-canary`, distinct from the served-model alias
+// `glm-5.3-flash-exl3-canary`, which is what the OpenAI surface reports. Deriving one from the other
+// would be a nickname (DESIGN section 3) and would break the moment either is renamed.
+//
+// THIS ANNOTATION SAT INSIDE THE FIELD LIST AND THE PARSER REFUSED THE WHOLE FILE. DESIGN section 4c
+// admits annotations only as standalone blocks attached to MODULE-SCOPE declarations; a comment among
+// fields is a body annotation and has no route in. The refusal named an offset three hundred lines
+// away, in a function this change never touched, because a heads-only parse loses its place and
+// reports where it finally gives up -- which is why the fix is at the definition and not there.
 type GlmCanaryArm {
   checkpoint: ServingCheckpoint
   runtime: ServingRuntime
@@ -85,11 +96,6 @@ type GlmCanaryArm {
   max_num_batched_tokens: BatchedTokenPolicy
   speculation: SpeculationPolicy
   port: Nat
-  // THE CONTAINER IS PART OF THE ARM BECAUSE THE ARM IS WHAT IS SERVED, and observing whether this
-  // arm is running means asking a NAMED unit rather than guessing. Measured on the fleet 2026-09-08:
-  // the canary's container is `glm-canary`, distinct from the served-model alias
-  // `glm-5.3-flash-exl3-canary`, which is what the OpenAI surface reports. Deriving one from the other
-  // would be a nickname (DESIGN section 3) and would break the moment either is renamed.
   container_name: NonEmptyStr
 }
 
