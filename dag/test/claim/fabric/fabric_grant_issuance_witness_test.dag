@@ -1,9 +1,7 @@
 module test.claim.fabric_grant_issuance_witness
 
-import test.claim.fabric.provider_use_fixture { fixture_admitted_for_offer, fixture_unadmitted_for_offer }
+import test.claim.fabric.provider_use_fixture { fixture_admitted_for_offer, fixture_unadmitted_for_offer, fixture_route }
 import product.fabric.provider_admission { ProviderUsePermit, ProviderUseAdmitted, ProviderUseDenied }
-import product.fabric.provider_route { ProviderRoute }
-import std.decl_ref { decl_ref }
 import std.types { NonEmptyStr, Bool, Int, List }
 import std.measure { Count, One, MoneyRate, money_amount_micro, money_amount_micro_count, hardware_thread_count, second }
 import std.nat { Nat }
@@ -136,7 +134,7 @@ data foreign_attempt: Attempt<NonEmptyStr> = Attempt {
 data admitted_offer: SupplierOffer<NonEmptyStr> = SupplierOffer {
   id: FabricIdentity { principal: "supplier", key: "offer-1" },
   executor: "srv3",
-  route: gi_route(),
+  route: fixture_route(),
   shape: fixture_shape,
   capabilities: "linux-x86_64-cargo",
   trust_domain: "gunbc-ci",
@@ -151,7 +149,7 @@ data admitted_offer: SupplierOffer<NonEmptyStr> = SupplierOffer {
 data foreign_domain_offer: SupplierOffer<NonEmptyStr> = SupplierOffer {
   id: FabricIdentity { principal: "supplier", key: "offer-2" },
   executor: "srv4",
-  route: gi_route(),
+  route: fixture_route(),
   shape: fixture_shape,
   capabilities: "linux-x86_64-cargo",
   trust_domain: "public-untrusted",
@@ -609,15 +607,6 @@ test fn the_recorded_liability_is_the_booked_liability() -> Bool {
   ))
 }
 
-// One fixture route for this witness. provider, service and region are CITED rather than spelled,
-// so an offer and a sanction agree by declaration identity and not by matching strings.
-fn gi_route() -> ProviderRoute {
-  ProviderRoute {
-    provider: decl_ref(module_path: "test.claim.fabric_grant_issuance_witness", decl_name: "gi_provider"),
-    service: decl_ref(module_path: "test.claim.fabric_grant_issuance_witness", decl_name: "gi_service"),
-    region: decl_ref(module_path: "test.claim.fabric_grant_issuance_witness", decl_name: "gi_region"),
-  }
-}
 
 // THE PROVIDER-USE WALL AT THE SECOND ENTRANCE. Selection cannot RANK an unadmitted offer because
 // the permit sits inside the sealed candidate; issuance is the other way in, and these rows are why

@@ -1952,6 +1952,15 @@ func fci1_live_release_with_receipt(root: NonEmptyStr, path: String) -> ProcessE
   } }
 }
 
+// The route components this probe cites, DECLARED so the citations resolve. They were cited and
+// undeclared, which the corpus citation gate refuses as CITED-DECLARATION-ABSENT - section 3's
+// point that a citation naming nothing is an unheckable second naming scheme. This probe declares
+// its own rather than importing the witnesses' fixture, because a production instrument reaching
+// into test.claim would be a layer inversion.
+data probe_provider: NonEmptyStr = "gunbc-owned-fleet"
+data probe_service: NonEmptyStr = "gunbc-fleet-cells"
+data probe_region: NonEmptyStr = "gunbc-fleet-site"
+
 // One fixture route for this witness. provider, service and region are CITED rather than spelled,
 // so an offer and a sanction agree by declaration identity and not by matching strings.
 fn probe_route() -> ProviderRoute {

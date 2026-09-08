@@ -32,6 +32,37 @@ import product.fabric.provider_admission {
 // test.claim.fabric.provider_admission_witness, which builds its own inputs precisely so that a
 // change to this convenience fixture cannot quietly weaken them.
 
+// THE ROUTE COMPONENTS ARE DECLARED HERE SO THE CITATIONS RESOLVE. An earlier revision had each
+// witness cite `<prefix>_provider`, `_service` and `_region` in its own module, and none of those
+// declarations existed - twenty-four CITED-DECLARATION-ABSENT findings from the corpus citation
+// gate. That is section 3 exactly: a citation that names nothing is a second naming scheme that
+// cannot be checked, and it is the precise failure the gate exists to catch. Declaring them once
+// here also removes the eight copies of the same helper, which were duplicated work in the first
+// place.
+data fixture_provider: NonEmptyStr = "acme-cloud"
+data fixture_service: NonEmptyStr = "acme-cx-runners"
+data fixture_region_one: NonEmptyStr = "acme-region-one"
+data fixture_region_two: NonEmptyStr = "acme-region-two"
+
+// The route every ranking fixture sits on, and its SIBLING REGION. The two share a provider and a
+// service and differ only in region, which is what makes a claim about a route a claim about a
+// route rather than about a company.
+fn fixture_route() -> ProviderRoute {
+  ProviderRoute {
+    provider: fx_ref(name: "fixture_provider"),
+    service: fx_ref(name: "fixture_service"),
+    region: fx_ref(name: "fixture_region_one"),
+  }
+}
+
+fn fixture_route_sibling_region() -> ProviderRoute {
+  ProviderRoute {
+    provider: fx_ref(name: "fixture_provider"),
+    service: fx_ref(name: "fixture_service"),
+    region: fx_ref(name: "fixture_region_two"),
+  }
+}
+
 fn fx_ref(name: String) -> DeclarationRef {
   decl_ref(module_path: "test.claim.fabric.provider_use_fixture", decl_name: name)
 }
