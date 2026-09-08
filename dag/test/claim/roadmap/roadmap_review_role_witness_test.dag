@@ -142,16 +142,16 @@ test fn a_synthetic_conformance_domain_produces_exactly_one_design_block() -> Bo
     label: "synthetic test domain",
     question: "Is this a test?",
     homes: ConformanceHomes {
-      first: decl_ref(module_path: "std.types", decl_name: "String"),
-      rest: [decl_ref(module_path: "std.types", decl_name: "Bool")],
+      first: decl_ref(module_path: "std.types", decl_name: "Bool"),
+      rest: [decl_ref(module_path: "std.types", decl_name: "Unit")],
     },
     tells: ["a synthetic tell that exists only in this test"],
     narrative: "this domain exists only to prove the renderer is a pure function of its input",
   }
   let expected = join([
     "- **synthetic test domain** — this domain exists only to prove the renderer is a pure function of its input.",
-    " Home authorities: `std.types::String",
-    "`, `std.types::Bool`.\n",
+    " Home authorities: `std.types::Bool",
+    "`, `std.types::Unit`.\n",
   ], "")
   let doc = MarkdownDocument { blocks: [ul(items: [conformance_domain_block(d: synthetic)])] }
   let md = serialize_markdown_source(doc: doc)
@@ -186,7 +186,7 @@ test fn label_and_narrative_change_projection_but_not_criterion_identity() -> Bo
     label: "label A",
     question: "Same question?",
     homes: ConformanceHomes {
-      first: decl_ref(module_path: "std.types", decl_name: "String"),
+      first: decl_ref(module_path: "std.types", decl_name: "Bool"),
       rest: [],
     },
     tells: ["same tell"],
@@ -197,7 +197,7 @@ test fn label_and_narrative_change_projection_but_not_criterion_identity() -> Bo
     label: "label B",
     question: "Same question?",
     homes: ConformanceHomes {
-      first: decl_ref(module_path: "std.types", decl_name: "String"),
+      first: decl_ref(module_path: "std.types", decl_name: "Bool"),
       rest: [],
     },
     tells: ["same tell"],
