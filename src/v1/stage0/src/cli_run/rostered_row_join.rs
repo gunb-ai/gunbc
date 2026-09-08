@@ -23,10 +23,11 @@
 //! walk already refuses, loudly, on an unparseable source, and this arm covers the remaining way a
 //! source can contribute nothing (an unclassified module binding), which was silent until here.
 //!
-//! WHAT IT DOES NOT DO. It does not remove the double authoring — after this check an author still
-//! writes the row and then writes the roster entry — so the invalid state stays writable and the
-//! class is MECHANICALLY PREVENTABLE, not structural. The ceiling is a roster FOLDED over the
-//! declared population, which needs declaration-value binding the substrate does not have.
+//! WHAT IT DOES NOT DO. It does not remove the double authoring for carriers whose roster is still
+//! hand-appended. For `RecurringFailureMode` the list is derived from files, and the join also
+//! identity-joins those files to roster members (`RowFileNotRostered` / `RosterMemberNotARowFile`)
+//! so a writer that shortens the list cannot stay green. The ceiling remains declaration-value
+//! binding.
 //!
 //! THE UNACCOUNTED-SOURCE ARM'S RED IS NOT EXERCISED TODAY, and that is stated rather than left
 //! for a reader to assume from a green. Measured on the live corpus, every `.dag` under the pool
