@@ -99,6 +99,67 @@ type RetailPlanRow {
   citation: NonEmptyStr
 }
 
+// WHAT A CABINET MAY DRAW, WHICH IS A THIRD THING BESIDE FACILITY CAPACITY AND A PRICED PLAN.
+//
+// The census already carried two power facts and neither answers the question a deployment asks.
+// A facility's marketed capacity - 80 MW at a carrier hotel, 25.6 MW at an enterprise campus - is
+// a fact about a BUILDING, and reading it as density is the same category error as reading a
+// substation's rating as a house's service. A RetailPlanRow's PowerAllocation is the right grain
+// but exists for only two operators in this metro, because almost nobody publishes retail power.
+//
+// Between them sits the fact operators DO publish: a marketed maximum per cabinet. It is the
+// cheapest available discriminator - it is on a public page, it needs no quote, and it separates
+// a 2.5 kW shared-rack product from a 35 kW cabinet before anyone spends a phone call.
+//
+// IT IS A CLAIM AND THE TYPE SAYS SO. A marketed maximum is not a quote, not currently available
+// capacity, and not a commitment: it states what the facility is engineered to support somewhere
+// within it, which is why the arms carry the marketing wording verbatim rather than a normalized
+// number alone. A candidate may be screened IN on this and may never be screened as PRICED on it.
+type CabinetDensityClaim
+  = DensityMarketedMax {
+      air_cooled_kw: Int
+      liquid_cooled_kw: Int
+      claim_wording: NonEmptyStr
+      citation: NonEmptyStr
+    }
+  | DensityMarketedAirOnly {
+      air_cooled_kw: Int
+      claim_wording: NonEmptyStr
+      citation: NonEmptyStr
+    }
+  | DensityUnread {
+      obligation: NonEmptyStr
+    }
+
+// The air figure is what an ordinary deployment can consume without a liquid loop, so it is the
+// one a screen reads; a liquid claim is carried because it bounds the facility's ambition, not
+// because this fleet can use it. An unread claim yields ZERO rather than a guess, and a consumer
+// must treat zero as "no evidence" rather than "no power" - which is why the predicate below
+// exists beside the accessor and no caller should compare the number without it.
+fn cabinet_density_air_kw(d: CabinetDensityClaim) -> Int {
+  match d {
+    DensityMarketedMax { air_cooled_kw, liquid_cooled_kw, claim_wording, citation } => air_cooled_kw,
+    DensityMarketedAirOnly { air_cooled_kw, claim_wording, citation } => air_cooled_kw,
+    DensityUnread { obligation } => 0,
+  }
+}
+
+fn cabinet_density_is_read(d: CabinetDensityClaim) -> Bool {
+  match d {
+    DensityMarketedMax { air_cooled_kw, liquid_cooled_kw, claim_wording, citation } => true,
+    DensityMarketedAirOnly { air_cooled_kw, claim_wording, citation } => true,
+    DensityUnread { obligation } => false,
+  }
+}
+
+// Whether the operator sells at a grain this fleet can buy. A campus marketing 25 MW that takes
+// only private-suite commitments is not a candidate for one cabinet, and that is a different
+// refusal from an unread density - so it is a different fact.
+type RetailGrainStanding
+  = SingleCabinetOffered { wording: NonEmptyStr, citation: NonEmptyStr }
+  | CageOrSuiteMinimum { wording: NonEmptyStr, citation: NonEmptyStr }
+  | RetailGrainUnread { obligation: NonEmptyStr }
+
 // Whether ordinary retail pricing is published at all. Most facility operators in this
 // market price by quote; that is a fact about the provider worth a typed arm, because a
 // consumer computing over prices must treat quote-only as absent-with-an-obligation and
