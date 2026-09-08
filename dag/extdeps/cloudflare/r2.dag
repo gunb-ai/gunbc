@@ -1,7 +1,9 @@
 module extdeps.cloudflare.r2
 
 import std.types { NonEmptyStr, String, List, Timestamp }
-import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation }
 import extdeps.uri { Uri, Https }
 import extdeps.cloudflare.account_api_tokens {
@@ -195,3 +197,27 @@ fn r2_object_read_create_request(
     expires_on: none
   }
 }
+
+data cloudflare_r2_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_s3_endpoint_url"),
+    reason: "S3 endpoint fold has no executing S3 caller in this change",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a gunbc declaration uses r2_s3_endpoint_url on an executing converge or gunbc-run entry that talks to R2 S3; a witness that the fold exists does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_account_resource_name"),
+    reason: "account IAM resource name has no executing consumer; object-read policy uses the bucket resource name",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a gunbc declaration consumes r2_account_resource_name in an executing token policy or S3 IAM grant; a witness that the fold exists does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_tokens_doc_as_of"),
+    reason: "as-of pin is unread outside the claim witness; ExternalAuthority has no as-of field",
+    dissolution: unbound_dissolution(
+      description: "dissolves when ExternalAuthority or FactCitation carries an as-of date and this pin inhabits that field, or a gunbc executing fold reads r2_tokens_doc_as_of as the cited document date"
+    )
+  )
+]

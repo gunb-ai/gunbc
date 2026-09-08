@@ -240,6 +240,34 @@ data cloudflare_account_api_tokens_frontier_rows: List<FrontierRow> = [
     dissolution: unbound_dissolution(
       description: "dissolves when a gunbc declaration invokes cloudflare.AccountTokens.ListPermissionGroupsRaw on an executing converge or gunbc-run entry; a witness that the operation exists does not fire this"
     )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.cloudflare.account_api_tokens", decl_name: "classify_cloudflare_credential_format"),
+    reason: "format classifier has no executing custody/scan caller in this change",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a gunbc declaration classifies a held Cloudflare credential via classify_cloudflare_credential_format on an executing converge or gunbc-run entry; a witness that the fold exists does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.cloudflare.account_api_tokens", decl_name: "parse_account_token_status"),
+    reason: "status parser has no executing Create-response fold in this change",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a gunbc declaration maps a Create or list status wire word through parse_account_token_status on an executing converge or gunbc-run entry; a witness that the fold exists does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.cloudflare.account_api_tokens", decl_name: "create_account_token_api_as_of"),
+    reason: "as-of pin has no reader; ExternalAuthority has no as-of field",
+    dissolution: unbound_dissolution(
+      description: "dissolves when ExternalAuthority or FactCitation carries an as-of date and this pin inhabits that field, or a gunbc executing fold reads create_account_token_api_as_of as the cited document date"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.cloudflare.account_api_tokens", decl_name: "account_owned_tokens_doc_as_of"),
+    reason: "as-of pin has no reader; ExternalAuthority has no as-of field",
+    dissolution: unbound_dissolution(
+      description: "dissolves when ExternalAuthority or FactCitation carries an as-of date and this pin inhabits that field, or a gunbc executing fold reads account_owned_tokens_doc_as_of as the cited document date"
+    )
   )
 ]
 

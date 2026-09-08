@@ -23,7 +23,8 @@ import extdeps.cloudflare.account_api_tokens {
   CreatedViaAccountTokensApi,
   AccountTokenApiMintAdmitted,
   AccountTokenApiMintRefusedHumanDashboardOnly,
-  account_api_tokens_write_permission_name
+  account_api_tokens_write_permission_name,
+  admit_account_token_api_mint
 }
 import extdeps.cloudflare.r2 {
   R2S3Endpoint,
@@ -33,6 +34,7 @@ import extdeps.cloudflare.r2 {
   r2_bucket_resource_name,
   r2_account_resource_name,
   r2_object_read_token_policy,
+  r2_object_read_create_request,
   r2_s3_access_pair_from_created_token,
   workers_r2_storage_bucket_item_read_permission_group_id,
   workers_r2_storage_bucket_item_read_permission_group_id_citation,
@@ -50,7 +52,6 @@ import gunbc.cloudflare.r2_token_mint {
   cloudflare_bootstrap_token_shape,
   cloudflare_r2_object_read_token_shape,
   admit_r2_object_read_api_mint,
-  admit_bootstrap_token_api_mint,
   cloudflare_r2_token_mint_frontier_rows,
   vendor_cloudflare_frontier_rows,
   cloudflare_account_token_bootstrap_intervention
@@ -169,11 +170,14 @@ test fn api_mint_admits_r2_object_shape_and_refuses_bootstrap_shape() -> Bool {
       s.acquisition == CreatedViaAccountTokensApi
     AccountTokenApiMintRefusedHumanDashboardOnly { shape: _ } => false
   }
-    && match admit_bootstrap_token_api_mint(
-      name: "r2-read",
-      account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
-      jurisdiction: R2JurisdictionDefault,
-      bucket_name: "my-bucket"
+    && match admit_account_token_api_mint(
+      shape: cloudflare_bootstrap_token_shape(),
+      request: r2_object_read_create_request(
+        name: "r2-read",
+        account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
+        jurisdiction: R2JurisdictionDefault,
+        bucket_name: "my-bucket"
+      )
     ) {
       AccountTokenApiMintRefusedHumanDashboardOnly { shape: s } =>
         s.acquisition == HumanDashboardAcquired
@@ -211,11 +215,6 @@ test fn r2_token_mint_frontier_subjects_are_the_admit_decls() -> Bool {
       row: row,
       ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "admit_r2_object_read_api_mint"),
     ))
-    && any(cloudflare_r2_token_mint_frontier_rows, row =>
-      frontier_row_names_decl(
-        row: row,
-        ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "admit_bootstrap_token_api_mint"),
-      ))
     && any(cloudflare_r2_token_mint_frontier_rows, row =>
       frontier_row_names_decl(
         row: row,

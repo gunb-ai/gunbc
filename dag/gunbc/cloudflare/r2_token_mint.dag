@@ -46,18 +46,12 @@ import extdeps.cloudflare.r2 {
 // module (org-admin SecretMaterial / spark SecretRef standing): a held Secret here would be a
 // second custody path.
 
-// Cluster: the three admit folds have no executing AccountTokens.Create in this change.
+// Cluster: admit_r2_object_read_api_mint, admit_account_token_api_mint, and r2_s3_pair_from_mint
+// have no executing AccountTokens.Create in this change.
 // Subjects are DeclarationRefs (std.roster_frontier); rationale is this annotation, not a String field.
 data cloudflare_r2_token_mint_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "admit_r2_object_read_api_mint"),
-    reason: "no executing AccountTokens.Create; witness is not a consumer",
-    dissolution: unbound_dissolution(
-      description: "dissolves when a gunbc declaration invokes cloudflare.AccountTokens.Create on an executing converge or gunbc-run entry, reading bootstrap custody through the existing secret-provision bracket and writing the derived R2 S3 pair the same way; a witness that the Create operation exists does not fire this",
-    ),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "admit_bootstrap_token_api_mint"),
     reason: "no executing AccountTokens.Create; witness is not a consumer",
     dissolution: unbound_dissolution(
       description: "dissolves when a gunbc declaration invokes cloudflare.AccountTokens.Create on an executing converge or gunbc-run entry, reading bootstrap custody through the existing secret-provision bracket and writing the derived R2 S3 pair the same way; a witness that the Create operation exists does not fire this",
@@ -187,23 +181,6 @@ fn admit_r2_object_read_api_mint(
 ) -> AccountTokenApiMintStanding {
   admit_account_token_api_mint(
     shape: cloudflare_r2_object_read_token_shape(),
-    request: r2_object_read_mint_request(
-      name: name,
-      account_id: account_id,
-      jurisdiction: jurisdiction,
-      bucket_name: bucket_name
-    )
-  )
-}
-
-fn admit_bootstrap_token_api_mint(
-  name: String,
-  account_id: String,
-  jurisdiction: R2Jurisdiction,
-  bucket_name: String
-) -> AccountTokenApiMintStanding {
-  admit_account_token_api_mint(
-    shape: cloudflare_bootstrap_token_shape(),
     request: r2_object_read_mint_request(
       name: name,
       account_id: account_id,
