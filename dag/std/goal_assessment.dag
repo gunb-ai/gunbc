@@ -89,6 +89,22 @@ type ObservationAttempt<Observed, ObserveRefusal>
 // this projection cannot express. An assessment that returns a verdict over an ill-formed question
 // set certifies exactness over a denominator nobody checked (std.observation_completeness carries
 // that argument in full for the join case).
+//
+// AND IT HAS NO CONSTRUCTOR TODAY, WHICH IS STATED HERE RATHER THAN LEFT TO BE DISCOVERED. Both
+// current bindings reach it never: gunbc.repo_ruleset instantiates AssessRefusal at
+// v2.std.cardinality Never because no state of that subject leaves its inputs incomparable, and
+// the realization-selection witness never mints it either. Under DESIGN section 3c that makes this
+// arm a DECLARED FRONTIER, admissible only with its trigger stated beside it, and the trigger is a
+// NAMED CONSUMER rather than a date: product.fan_tach_health already computes exactly this fact --
+// FanTachRefused over DuplicateExpectedHeader, DuplicateObservedHeader and HostIdentityMismatch,
+// each of them an ill-formed question set rather than an unhealthy fan -- and the arm is discharged
+// when that module is bound to this algebra.
+//
+// IT IS NOT DELETED IN THE MEANTIME, and the reason is section 5 rather than convenience: the
+// distinction between "the world differs" and "the question was malformed" is one this module
+// exists to keep, and a coproduct that cannot express the second forces the first binding with an
+// ill-formed input to file it as a divergence. The frontier is the honest state; an absent arm
+// would be a wrong one.
 // AND THERE IS DELIBERATELY NO `is_satisfied` PREDICATE OVER THIS CARRIER, which is the design
 // rather than an omission. A `Bool` here is a one-bit summary of four arms whose whole point is
 // that they are not orderable into two: the summary's false side silently merges "proved to
