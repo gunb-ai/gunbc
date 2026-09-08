@@ -47,7 +47,8 @@ import v1.std.core {
   map_children, arg_value, arg_name_at,
   has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required, CardOptional,
-  ErrorNode, make_error_node, is_error_diagnostic, diagnostic_to_span,
+  ErrorNode, make_error_node, is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_span,
+  AlgebraApplicationEvidenceUnavailable,
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
   InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse,
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
@@ -657,9 +658,14 @@ fn variant_reference_inferred_node(expected: Node?, name: String, owner_name: St
   match expected {
     Present { value: exp } =>
       if exp.return_cardinality == Required
-        && authored_name_at(source_indices: scope.type_env.source_indices, node: exp) == owner_name {
+        && owner_name != "" {
         match expected_variant_owner_instantiation(expected: expected, name: name, scope: scope) {
-          Present { value: _ } => exp
+          Present { value: exp_enum } =>
+            if authored_name_at(source_indices: scope.type_env.source_indices, node: exp_enum) == owner_name {
+              exp
+            } else {
+              fallback
+            }
           Absent => fallback
         }
       } else { fallback }
@@ -748,6 +754,22 @@ fn infer_var_binding_kind(scope: InferScope, name: String) -> VarBindingKind {
         Absent => FunctionValueBinding
       }
   }
+}
+
+// THE CAUSE IS THE TYPE'S, THE LOCATION IS THE CALL'S. algebra_child_or_placeholder mints
+// AlgebraApplicationEvidenceUnavailable spanned at the CARRIER DECLARATION, which is the only
+// span it has -- it is reasoning about a type, not about a call site. Emitted unchanged, that
+// sends the author to dag/std/algebra.dag for a defect in their own module. DESIGN 5's "typed,
+// located" means located where the author can act, so every path that forwards these diagnostics
+// re-spans them to the call while preserving the receiver_type and argument_index the original
+// carried: one authority for the cause, one for the location, and no second diagnostic minted.
+
+fn relocated_algebra_evidence_diags(diags: List<ErrorNode>, span: SourceSpan, module_name: String) -> List<ErrorNode> {
+  diags |> map(d => match d.diagnostic {
+    AlgebraApplicationEvidenceUnavailable { receiver_type: rt, argument_index: ai, span: _ } =>
+      make_error_node(diagnostic: AlgebraApplicationEvidenceUnavailable { receiver_type: rt, argument_index: ai, span: span }, module_name: module_name)
+    _ => d
+  })
 }
 
 fn inference_error(message: String, span: SourceSpan, module_name: String) -> ErrorNode {
@@ -4877,7 +4899,7 @@ fn function_value_call_named_arg_diags(
   type_env: TypeEnv,
   module_name: String,
   body_locals: Map<String, Bool>,
-  locals: Map<String, TypeBinding>
+  callable_type: Node?
 ) -> List<ErrorNode> {
   match map_get(body_locals, func_name) {
     Absent => []
@@ -4890,9 +4912,9 @@ fn function_value_call_named_arg_diags(
               module_name: module_name)]
           Absent => []
         })
-      let arity_diags = match map_get(locals, func_name) {
-        Present { value: binding } =>
-          let param_count = binding.resolved.params |> count
+      let arity_diags = match callable_type {
+        Present { value: callable } =>
+          let param_count = callable.params |> count
           if param_count > 0 {
             let supplied = typed_args |> count
             if supplied > param_count {
@@ -5508,6 +5530,25 @@ fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
     item_registry: scope.item_registry,
     caller_decl_name: scope.caller_decl_name,
     lambda_param_provenance: empty_map()
+  }
+}
+
+// A let annotation is the same nominal application resolve_param already
+// keeps for a declared parameter. Binding the inferred value instead substitutes
+// an expansion whose children are members, not type arguments, so later algebra
+// instantiation cannot recover ReceiverElement.
+fn annotated_let_declared_type(texpr: Node) -> Node? {
+  if texpr.type_annotation != none && is_type_expr_annotation(n: texpr.type_annotation.value) {
+    Present { value: texpr.type_annotation.value }
+  } else {
+    none
+  }
+}
+
+fn annotated_let_bound_type(declared: Node?, val_type: Node) -> Node {
+  match declared {
+    Present { value: d } => d
+    Absent => val_type
   }
 }
 
@@ -6584,15 +6625,35 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
 
       let call_subst = arg_call.subst
       let typed_args = arg_infer_results |> map(air => air.typed_arg)
+      let local_call_view = if sig != none { none } else { match map_get(scope.locals, func_name) {
+        Present { value: binding } => Present { value: if binding.resolved.params |> count > 0 || !map_has(scope.body_locals, func_name) {
+            NodeResolveResult { resolved: binding.resolved, diagnostics: [] }
+          } else {
+            expand_type_for_field_access(n: binding.resolved, env: scope.type_env, module_name: scope.module_name)
+          }
+        }
+        Absent => none
+      } }
+      let local_call_diags = match local_call_view {
+        Present { value: view } => view.diagnostics
+        Absent => []
+      }
+      let local_call_refused = local_call_diags |> any(d => is_error_diagnostic(d: d.diagnostic))
+      let callable_local = if local_call_refused { none } else {
+        match local_call_view {
+          Present { value: view } => if view.resolved.params |> count > 0 { Present { value: view.resolved } } else { none }
+          Absent => none
+        }
+      }
       let arg_diags = concat(
-        flat_map(arg_infer_results, air => air.diagnostics),
+        concat(flat_map(arg_infer_results, air => air.diagnostics), local_call_diags),
         function_value_call_named_arg_diags(
           func_name: func_name,
           typed_args: typed_args,
           type_env: scope.type_env,
           module_name: scope.module_name,
           body_locals: scope.body_locals,
-          locals: scope.locals
+          callable_type: callable_local
         )
       )
       let formal_authority_diags = if declared_formal_authority_failed {
@@ -6755,7 +6816,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               span: span,
               name_span: node_name_span(n: texpr)
             ),
-            diagnostics: concat(concat(arg_diags, method_resolution.diagnostics), template_subst_diags)
+            diagnostics: concat(arg_diags, relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, template_subst_diags), span: span, module_name: scope.module_name))
           }
         } else if !callee_is_body_binding && func_name == "empty_map" {
           let bare_m = bare_map_node()
@@ -6970,11 +7031,16 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                     if (call_ambiguity_cands |> count) > 0 {
                       [make_error_node(diagnostic: AmbiguousReference { name: func_name, candidates: call_ambiguity_cands, span: span }, module_name: scope.module_name)]
                     } else {
-                      [inference_error(
-                        message: concat("function '", func_name, "' not found in scope"),
-                        span: span,
-                        module_name: scope.module_name
-                      )]
+                      let method_blocking_diags = method_resolution.diagnostics |> filter(d => is_interpreter_blocking_diagnostic(d.diagnostic))
+                      if method_blocking_diags |> count > 0 {
+                        method_blocking_diags
+                      } else {
+                        [inference_error(
+                          message: concat("function '", func_name, "' not found in scope"),
+                          span: span,
+                          module_name: scope.module_name
+                        )]
+                      }
                     }
                 }
               }
@@ -7097,7 +7163,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       )
       InferResult {
         typed: mc_texpr,
-        diagnostics: concat(concat(concat(recv_diags, mc_arg_diags), pipe_fb.kernel_diags), concat(method_resolution.diagnostics, mc_template_diags))
+        diagnostics: concat(concat(concat(recv_diags, mc_arg_diags), relocated_algebra_evidence_diags(diags: pipe_fb.kernel_diags, span: span, module_name: scope.module_name)), relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, mc_template_diags), span: span, module_name: scope.module_name))
       }
       }
 
@@ -7311,32 +7377,32 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           }
         Absent => false
       }
-      let val_expected = if texpr.type_annotation != none && is_type_expr_annotation(n: texpr.type_annotation.value) {
-        Present { value: texpr.type_annotation.value }
-      } else if is_tail_return {
-        expected
-      } else {
-        none
+      let declared_let_type = annotated_let_declared_type(texpr: texpr)
+      let val_expected = match declared_let_type {
+        Present { value: declared } => Present { value: declared }
+        Absent => if is_tail_return { expected } else { none }
       }
       let val_result = infer_expr(texpr: val_expr, scope: scope, expected: val_expected)
       let val_typed = val_result.typed
       let val_type = resolved_type(n: val_typed)
-      let val_annotation_diags = if texpr.type_annotation != none && is_type_expr_annotation(n: texpr.type_annotation.value) {
-        declared_type_conformance_diags(
-          declared: texpr.type_annotation.value,
+      let val_annotation_diags = match declared_let_type {
+        Present { value: declared } => declared_type_conformance_diags(
+          declared: declared,
           produced: val_type,
           span: val_expr.span,
           scope: scope)
-      } else { [] }
+        Absent => []
+      }
       let val_diags = concat(val_result.diagnostics, val_annotation_diags)
+      let bound_type = annotated_let_bound_type(declared: declared_let_type, val_type: val_type)
       if body_expr == none {
-        let let_texpr = make_named_expr_node(occurrence_identity: texpr.occurrence_identity, name: let_name, expr_data: ExprLet, children: [val_typed], inferred: Present { value: Resolved { node: val_type } }, span: span, name_span: node_name_span(n: texpr))
+        let let_texpr = make_named_expr_node(occurrence_identity: texpr.occurrence_identity, name: let_name, expr_data: ExprLet, children: [val_typed], inferred: Present { value: Resolved { node: bound_type } }, span: span, name_span: node_name_span(n: texpr))
         InferResult {
           typed: let_texpr,
           diagnostics: val_diags
         }
       } else {
-        let extended = extend_scope(scope: scope, name: let_name, resolved: val_type, provenance: classify_binding_provenance(val: val_typed, scope: scope))
+        let extended = extend_scope(scope: scope, name: let_name, resolved: bound_type, provenance: classify_binding_provenance(val: val_typed, scope: scope))
         let body_result = infer_expr(texpr: body_expr.value, scope: extended, expected: expected)
         let body_typed = body_result.typed
         let body_diags = body_result.diagnostics
