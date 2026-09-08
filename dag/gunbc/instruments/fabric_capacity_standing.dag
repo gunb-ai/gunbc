@@ -4,7 +4,7 @@ import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import v2.std.optional { Present, Absent }
 import std.nat { Nat }
 import std.algebra { trim }
-import std.measure { TokenCount, token_count, percent, AllocatorBlockCount, allocator_block_count, allocator_block_count_value }
+import std.measure { TokenCount, token_count, concurrent_request_hundredths, AllocatorBlockCount, allocator_block_count, allocator_block_count_value }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex, sha256_hex_digest, Fnv1a64, content_hash_atom }
 import extdeps.ssh.session
@@ -220,7 +220,7 @@ fn pool_from_fields(f: CapacityProbeFields) -> VllmObservedKvPool? {
 fn reported_from_fields(pool: VllmObservedKvPool, f: CapacityProbeFields) -> VllmReportedCapacity? {
   match vllm_reported_capacity(
     pool: pool,
-    max_concurrency: percent(count: f.concurrency_hundredths),
+    max_concurrency: concurrent_request_hundredths(count: f.concurrency_hundredths),
     reading: vllm_startup_reading(
       line: MaximumConcurrency,
       captured_text: join(["Maximum concurrency for tokens per request: ", to_string(f.concurrency_hundredths), " hundredths"], "") as NonEmptyStr,

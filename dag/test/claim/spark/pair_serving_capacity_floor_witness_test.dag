@@ -4,7 +4,7 @@ import std.types { Bool, String, Int, NonEmptyStr, List }
 import v2.std.optional { Present, Absent }
 import std.nat { Nat }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
-import std.measure { TokenCount, token_count, percent, AllocatorBlockCount, allocator_block_count, allocator_block_count_value, attention_layer_count }
+import std.measure { TokenCount, token_count, concurrent_request_hundredths, AllocatorBlockCount, allocator_block_count, allocator_block_count_value, attention_layer_count }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
@@ -84,7 +84,7 @@ fn w_concurrency_reading() -> VllmStartupReading {
 }
 
 fn w_reported(pool: VllmObservedKvPool, hundredths: Nat) -> VllmReportedCapacity? {
-  match vllm_reported_capacity(pool: pool, max_concurrency: percent(count: hundredths), reading: w_concurrency_reading()) {
+  match vllm_reported_capacity(pool: pool, max_concurrency: concurrent_request_hundredths(count: hundredths), reading: w_concurrency_reading()) {
     ReportedCapacityAdmitted { capacity: c } => Present { value: c }
     ReportedCapacityRefused { cause: _ } => none
   }
