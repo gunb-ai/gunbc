@@ -8,7 +8,7 @@ import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
 // workflow (falsifier.yml) was deleted at #8283 have no scheduled route. std.witness_admission
 // witness_cadence_has_scheduled_route returns false for all five. Admission rows on those cadences
 // must be refused by explicit_witness_admission_cadence_executes (DESIGN §3 single authority, §5
-// coverage-by-illusion). 22 admission rows on three cadences carry live admission data that
+// coverage-by-illusion). 21 admission rows on three cadences carry live admission data that
 // must transition to a scheduled-route cadence first. 2 more (self_host_body_producer,
 // self_host_use_site_verdict) are rostered in gunbc.rung_drop.deleted_cadence_reference_drop
 // and NOT duplicated here.
@@ -17,7 +17,6 @@ import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
 // authority for the gate exception (DESIGN §3).
 
 data transitional_admission_exception_identities: List<String> = [
-  "src/v2/test/claim/identity_captured_navigation/roster_gate_test.dag::green_control_sanctioned_reader_body_not_flagged",
   "dag/test/claim/method_arg_declared_contract_witness_test.dag::w_method_arg_infers_against_declared_contract_not_element_type_test",
   "src/v2/test/claim/manual/english_emit_add_test.dag::english_emit_add_ingest_round_trip_holds",
   "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag::legacy_test_behavior_unclassified_frontier_is_zero",
@@ -55,7 +54,6 @@ data transitional_admission_exception: RungDrop = RungDrop {
     temporary: OutsideTheLadder,
     reason: LostAsPassenger { carrier: ".github/workflows/falsifier.yml, deleted at 611fd02770 (#8283)" },
     population: [
-    "test.claim.identity_captured_navigation.roster_gate green_control_sanctioned_reader_body_not_flagged",
     "test.claim.method_arg_declared_contract_witness w_method_arg_infers_against_declared_contract_not_element_type_test",
     "test.claim.english_emit_add english_emit_add_ingest_round_trip_holds",
     "test.claim.legacy_test_behavior_disposition_acceptance legacy_test_behavior_unclassified_frontier_is_zero",
