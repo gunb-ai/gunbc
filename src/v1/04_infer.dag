@@ -47,7 +47,8 @@ import v1.std.core {
   map_children, arg_value, arg_name_at,
   has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required, CardOptional,
-  ErrorNode, make_error_node, is_error_diagnostic, diagnostic_to_span,
+  ErrorNode, make_error_node, is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_span,
+  AlgebraApplicationEvidenceUnavailable,
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
   InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse,
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
@@ -6405,7 +6406,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       } else { [] }
       let typed_arg_nodes = typed_args
       if sig != none {
-        if !formal_authority_available || declared_formal_authority_failed {
+        if declared_formal_authority_failed {
           InferResult {
             typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
               name: func_name, expr_data: ExprCall { call_semantics: none, descent_evidence: none },
@@ -6775,11 +6776,20 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                     if (call_ambiguity_cands |> count) > 0 {
                       [make_error_node(diagnostic: AmbiguousReference { name: func_name, candidates: call_ambiguity_cands, span: span }, module_name: scope.module_name)]
                     } else {
-                      [inference_error(
-                        message: concat("function '", func_name, "' not found in scope"),
-                        span: span,
-                        module_name: scope.module_name
-                      )]
+                      let method_blocking_diags = method_resolution.diagnostics |> filter(d => is_interpreter_blocking_diagnostic(d.diagnostic)) |> map(d => match d.diagnostic {
+                        AlgebraApplicationEvidenceUnavailable { receiver_type: rt, argument_index: ai, span: _ } =>
+                          make_error_node(diagnostic: AlgebraApplicationEvidenceUnavailable { receiver_type: rt, argument_index: ai, span: span }, module_name: scope.module_name)
+                        _ => d
+                      })
+                      if method_blocking_diags |> count > 0 {
+                        method_blocking_diags
+                      } else {
+                        [inference_error(
+                          message: concat("function '", func_name, "' not found in scope"),
+                          span: span,
+                          module_name: scope.module_name
+                        )]
+                      }
                     }
                 }
               }

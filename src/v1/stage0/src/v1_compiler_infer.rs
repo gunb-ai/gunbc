@@ -227,14 +227,15 @@ use crate::v1_std_core::CallTargetIdentity::{
 };
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    AmbiguousReference, BareNoneNotAdmittedByFieldType, CallArgumentDuplicate,
-    CallArgumentNameUnknown, CallNamedArgOnFunctionValue, CallPositionalDeficit,
-    CallPositionalSurplus, ConstructorCallAdmissionRefused, EqualityMemberUnjudgeable,
-    EqualityOnFunctionMember, FieldNotFound, FrontierOccurrenceBudgetExceeded, InternalError,
-    MethodExistenceFrontierAdmitted, MethodExistenceUndecided, MethodNotFound, MissingField,
-    OptionalCastNotEliminated, ReceiverTypeUnestablished, ServiceConfigReferenceJudgmentDeferred,
-    SoleConstructorViolation, TypeArgumentArityMismatch, TypeMismatch, UnlistedVariantValueUse,
-    UnresolvedType, VariantCollision,
+    AlgebraApplicationEvidenceUnavailable, AmbiguousReference, BareNoneNotAdmittedByFieldType,
+    CallArgumentDuplicate, CallArgumentNameUnknown, CallNamedArgOnFunctionValue,
+    CallPositionalDeficit, CallPositionalSurplus, ConstructorCallAdmissionRefused,
+    EqualityMemberUnjudgeable, EqualityOnFunctionMember, FieldNotFound,
+    FrontierOccurrenceBudgetExceeded, InternalError, MethodExistenceFrontierAdmitted,
+    MethodExistenceUndecided, MethodNotFound, MissingField, OptionalCastNotEliminated,
+    ReceiverTypeUnestablished, ServiceConfigReferenceJudgmentDeferred, SoleConstructorViolation,
+    TypeArgumentArityMismatch, TypeMismatch, UnlistedVariantValueUse, UnresolvedType,
+    VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -279,19 +280,19 @@ pub use crate::v1_std_core::{
     has_inferred, if_condition, if_else_branch, if_then_branch, import_is_all,
     import_specific_names_at, index_base, index_expr, int_type, intern, intern_str,
     is_child_accessor_in_model, is_compiler_error, is_container_type, is_error_diagnostic,
-    is_property_contraction, is_tree_size_reducing, lambda_body, lambda_param_names_at,
-    let_binding_name_at, let_body, let_value, local_transport_node, make_arg_node, make_arm_node,
-    make_error_node, make_expr_error_node, make_expr_node, make_field_binding_node,
-    make_field_init_node, make_interp_part_node, make_named_expr_node, make_param_node,
-    make_text_part_node, make_transport_node, map_children, match_arm_nodes, match_scrutinee,
-    method_arg_nodes, method_receiver, module_imports, module_items, module_node, no_span,
-    node_name_span, none_type, param_node_default_value, param_node_name_at, param_node_type_expr,
-    preserve_outer_optional_cardinality, qualified_last_segment, record_lit_expr_optional,
-    record_lit_named_field_value_optional, record_lit_type_name_at,
-    resolved_node_is_kernel_identity_for_name, resource_use_name_at, resource_use_resource,
-    return_value, service_config_field_for_property_name, slice_base, slice_end, slice_start,
-    string_type, type_name_compatible, type_reference_provenance, unaryop_operand, unit_type,
-    with_optional_cardinality, with_required_cardinality,
+    is_interpreter_blocking_diagnostic, is_property_contraction, is_tree_size_reducing,
+    lambda_body, lambda_param_names_at, let_binding_name_at, let_body, let_value,
+    local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
+    make_expr_node, make_field_binding_node, make_field_init_node, make_interp_part_node,
+    make_named_expr_node, make_param_node, make_text_part_node, make_transport_node, map_children,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
+    module_items, module_node, no_span, node_name_span, none_type, param_node_default_value,
+    param_node_name_at, param_node_type_expr, preserve_outer_optional_cardinality,
+    qualified_last_segment, record_lit_expr_optional, record_lit_named_field_value_optional,
+    record_lit_type_name_at, resolved_node_is_kernel_identity_for_name, resource_use_name_at,
+    resource_use_resource, return_value, service_config_field_for_property_name, slice_base,
+    slice_end, slice_start, string_type, type_name_compatible, type_reference_provenance,
+    unaryop_operand, unit_type, with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     divergent_type, expr_is_any_literal, expr_literal_symbol_optional, module_path_segments,
@@ -10119,9 +10120,7 @@ Rc::new(InferResult {
                             };
                             let typed_arg_nodes = typed_args.clone();
                             if (sig.clone() != std::option::Option::None) {
-                                if (!formal_authority_available.clone()
-                                    || declared_formal_authority_failed.clone())
-                                {
+                                if declared_formal_authority_failed.clone() {
                                     Rc::new(InferResult {
                                         typed: crate::v1_std_core::make_named_expr_node(
                                             texpr.occurrence_identity.clone(),
@@ -10703,7 +10702,21 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
     span: span.clone(),
 }), scope.module_name.clone())])
                                                     } else {
-                                                        Rc::new(vec![inference_error(v1_rt::concat(v1_rt::concat("function '".to_string(), func_name.clone()), "' not found in scope".to_string()), span.clone(), scope.module_name.clone())])
+                                                        {
+                                                            let method_blocking_diags = Rc::new({ let mut __result = Vec::new(); for d in Rc::new({ let mut __result = Vec::new(); for d in method_resolution.diagnostics.clone().iter().cloned() { if crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result }).iter().cloned() { __result.push(match (*d.diagnostic.clone()).clone() {
+    CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable { receiver_type: rt, argument_index: ai, .. } => crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable {
+    receiver_type: rt.clone(),
+    argument_index: ai.clone(),
+    span: span.clone(),
+}), scope.module_name.clone()),
+    _ => d.clone(),
+}); } __result });
+if ((method_blocking_diags.clone().len() as i64) > 0) {
+                                                                method_blocking_diags.clone()
+                                                            } else {
+                                                                Rc::new(vec![inference_error(v1_rt::concat(v1_rt::concat("function '".to_string(), func_name.clone()), "' not found in scope".to_string()), span.clone(), scope.module_name.clone())])
+                                                            }
+}
                                                     }
 },
 },
