@@ -42,24 +42,16 @@ import product.fabric.provider_admission {
 data fixture_provider: NonEmptyStr = "acme-cloud"
 data fixture_service: NonEmptyStr = "acme-cx-runners"
 data fixture_region_one: NonEmptyStr = "acme-region-one"
-data fixture_region_two: NonEmptyStr = "acme-region-two"
 
-// The route every ranking fixture sits on, and its SIBLING REGION. The two share a provider and a
-// service and differ only in region, which is what makes a claim about a route a claim about a
-// route rather than about a company.
+// The route every ranking fixture sits on. A sibling-region variant was declared here and consumed
+// by nothing - the two-region claim belongs to test.claim.fabric.provider_admission_witness, which
+// builds its own routes - so it is deleted rather than kept for a consumer that already exists
+// elsewhere. A declaration nothing reads is section 2's redundant work in its purest form.
 fn fixture_route() -> ProviderRoute {
   ProviderRoute {
     provider: fx_ref(name: "fixture_provider"),
     service: fx_ref(name: "fixture_service"),
     region: fx_ref(name: "fixture_region_one"),
-  }
-}
-
-fn fixture_route_sibling_region() -> ProviderRoute {
-  ProviderRoute {
-    provider: fx_ref(name: "fixture_provider"),
-    service: fx_ref(name: "fixture_service"),
-    region: fx_ref(name: "fixture_region_two"),
   }
 }
 
