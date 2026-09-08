@@ -235,7 +235,7 @@ fn collect_runs_in_window(
     }
     let state = page_fold_begin(
       subject: subject,
-      bound: PageBound { max_pages: 1000 },
+      bound: PageBound { max_pages: max_run_pages },
       first: github_first_page_cursor,
     )
     let observed = page_fold_observe(state: state, page: first_obs)
@@ -246,7 +246,7 @@ fn collect_runs_in_window(
         if page_fold_refusal_key(r) == "page_budget_exhausted" {
           PageLimitExceeded {
             collected: first.result.workflow_runs,
-            reached_page: data_pages + 1,
+            reached_page: max_run_pages + 1,
             max_pages: max_run_pages,
           }
         } else {
@@ -734,7 +734,7 @@ func superseded_run_starvation_census(
     PageLimitExceeded { collected: _, reached_page: p, max_pages: m } =>
       CensusPageLimitExceeded {
         window: CensusWindow { from: from, through: through, observed_at: observed_at },
-        collected_pages: p - 1,
+        collected_pages: 1,
         reached_page: p,
         max_pages: m,
       }
