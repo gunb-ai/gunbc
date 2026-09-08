@@ -97,17 +97,23 @@ type RunCollectionOutcome
   = CollectionComplete { runs: List<WorkflowRun> }
   | PageLimitExceeded { collected: List<WorkflowRun>, reached_page: Int, max_pages: Int }
 
-// The census result carries the outcome as a sum type so the consumer
-// can distinguish a full census from a truncated one.
-type CensusResult {
-  window: CensusWindow
-  collection_outcome: RunCollectionOutcome
-  left_boundary_obligations: List<CensusBoundaryObligation>
-  pair_count: Int
-  start_standings: List<StartStandingRow>
-  cancellation_rows: List<CancellationRow>
-  rows: List<RefreshedPair>
-}
+// The census result is either a full census or a typed refusal when the
+// page limit was exceeded.
+type CensusResult
+  = CensusComplete {
+      window: CensusWindow
+      left_boundary_obligations: List<CensusBoundaryObligation>
+      pair_count: Int
+      start_standings: List<StartStandingRow>
+      cancellation_rows: List<CancellationRow>
+      rows: List<RefreshedPair>
+    }
+  | CensusPageLimitExceeded {
+      window: CensusWindow
+      collected_pages: Int
+      reached_page: Int
+      max_pages: Int
+    }
 
 // ── PHASE 1: Paginated run discovery ──────────────────────────────────────
 fn collect_runs_in_window(
@@ -158,13 +164,6 @@ fn collect_runs_in_window(
         accumulated: all_runs,
       )
     }
-  }
-}
-
-fn runs_from_outcome(outcome: RunCollectionOutcome) -> List<WorkflowRun> {
-  match outcome {
-    CollectionComplete { runs: r } => r
-    PageLimitExceeded { collected: r, reached_page: _, max_pages: _ } => r
   }
 }
 
@@ -378,9 +377,9 @@ fn refresh_pair(
     live_job_count: count_jobs(jobs: live_jobs.result.jobs),
     dead_first_job_started_at: dead_started,
     live_first_job_created_at: live_created,
-    cancelled_jobs: count_jobs_with_conclusion(jobs: dead_jobs.result.jobs, conclusion: "cancelled"),
-    failed_jobs: count_jobs_with_conclusion(jobs: dead_jobs.result.jobs, conclusion: "failure"),
-    queued_jobs: count_jobs_with_status(jobs: dead_jobs.result.jobs, status: "queued"),
+    cancelled_jobs: count_jobs_with_conclusion(jobs: dead_jobs.result.jobs, conclusion: Cancelled),
+    failed_jobs: count_jobs_with_conclusion(jobs: dead_jobs.result.jobs, conclusion: Failure),
+    queued_jobs: count_jobs_with_status(jobs: dead_jobs.result.jobs, status: Queued),
     terminal_laggard_started_at: match last_job {
       Present { value: j } => j.started_at
       Absent => none
@@ -500,23 +499,47 @@ fn jobs_completed_before_excluding(jobs: List<WorkflowJobRun>, exclude_id: Int, 
   }
 }
 
-fn count_jobs_with_conclusion(jobs: List<WorkflowJobRun>, conclusion: String) -> Int {
+fn count_jobs_with_conclusion(jobs: List<WorkflowJobRun>, conclusion: WorkflowRunConclusion) -> Int {
   match jobs {
     Empty {} => 0
     Cons { head: j, tail: rest } =>
       (match j.conclusion {
-        Present { value: c } => if c == conclusion { 1 } else { 0 }
+        Present { value: c } => if conclusion_eq(c: c, target: conclusion) { 1 } else { 0 }
         Absent => 0
       }) + count_jobs_with_conclusion(jobs: rest, conclusion: conclusion)
   }
 }
 
-fn count_jobs_with_status(jobs: List<WorkflowJobRun>, status: String) -> Int {
+fn conclusion_eq(c: WorkflowRunConclusion, target: WorkflowRunConclusion) -> Bool {
+  match c {
+    Success => match target { Success => true; _ => false }
+    Failure => match target { Failure => true; _ => false }
+    Cancelled => match target { Cancelled => true; _ => false }
+    Neutral => match target { Neutral => true; _ => false }
+    Skipped => match target { Skipped => true; _ => false }
+    TimedOut => match target { TimedOut => true; _ => false }
+    ActionRequired => match target { ActionRequired => true; _ => false }
+    StartupFailure => match target { StartupFailure => true; _ => false }
+  }
+}
+
+fn count_jobs_with_status(jobs: List<WorkflowJobRun>, status: WorkflowRunStatus) -> Int {
   match jobs {
     Empty {} => 0
     Cons { head: j, tail: rest } =>
-      (if j.status == status { 1 } else { 0 })
+      (if status_eq(s: j.status, target: status) { 1 } else { 0 })
       + count_jobs_with_status(jobs: rest, status: status)
+  }
+}
+
+fn status_eq(s: WorkflowRunStatus, target: WorkflowRunStatus) -> Bool {
+  match s {
+    Queued => match target { Queued => true; _ => false }
+    InProgress => match target { InProgress => true; _ => false }
+    Completed => match target { Completed => true; _ => false }
+    Waiting => match target { Waiting => true; _ => false }
+    Requested => match target { Requested => true; _ => false }
+    Pending => match target { Pending => true; _ => false }
   }
 }
 
@@ -651,19 +674,33 @@ func superseded_run_starvation_census(
     max_pages: max_run_pages,
     accumulated: [],
   )
-  let all_runs = runs_from_outcome(outcome: outcome)
-  let pr_runs = filter_pr_runs(runs: all_runs)
-  let groups = group_pr_runs(pr_runs: pr_runs)
-  let pairs = extract_pairs_from_groups(groups: groups, from: from, through: through)
-  let boundary_obligations = extract_boundary_obligations(groups: groups, from: from)
-  let refreshed = refresh_pairs(auth_token: auth_token, owner: owner, repo: repo, pairs: pairs, observed_at: observed_at)
-  let start_standings = collect_start_standings(rows: refreshed)
-  let cancellation_rows = collect_cancellation_rows(pairs: pairs, refreshed: refreshed)
-  CensusResult {
-    window: CensusWindow { from: from, through: through, observed_at: observed_at },
-    collection_outcome: outcome,
-    left_boundary_obligations: boundary_obligations,
-    pair_count: count_pairs(pairs: pairs),
+  match outcome {
+    CollectionComplete { runs: all_runs } => {
+      let pr_runs = filter_pr_runs(runs: all_runs)
+      let groups = group_pr_runs(pr_runs: pr_runs)
+      let pairs = extract_pairs_from_groups(groups: groups, from: from, through: through)
+      let boundary_obligations = extract_boundary_obligations(groups: groups, from: from)
+      let refreshed = refresh_pairs(auth_token: auth_token, owner: owner, repo: repo, pairs: pairs, observed_at: observed_at)
+      let start_standings = collect_start_standings(rows: refreshed)
+      let cancellation_rows = collect_cancellation_rows(pairs: pairs, refreshed: refreshed)
+      CensusComplete {
+        window: CensusWindow { from: from, through: through, observed_at: observed_at },
+        left_boundary_obligations: boundary_obligations,
+        pair_count: count_pairs(pairs: pairs),
+        start_standings: start_standings,
+        cancellation_rows: cancellation_rows,
+        rows: refreshed,
+      }
+    }
+    PageLimitExceeded { collected: _, reached_page: p, max_pages: m } =>
+      CensusPageLimitExceeded {
+        window: CensusWindow { from: from, through: through, observed_at: observed_at },
+        collected_pages: p - 1,
+        reached_page: p,
+        max_pages: m,
+      }
+  }
+}
     start_standings: start_standings,
     cancellation_rows: cancellation_rows,
     rows: refreshed,

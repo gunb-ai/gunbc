@@ -205,8 +205,8 @@ data job_cancelled: WorkflowJobRun = WorkflowJobRun {
   id: 100,
   run_id: 1,
   name: "test-job",
-  status: "completed",
-  conclusion: Present { value: "cancelled" },
+  status: Completed,
+  conclusion: Present { value: Cancelled },
   created_at: Present { value: "2026-09-01T00:01:00Z" },
   started_at: Present { value: "2026-09-01T00:10:00Z" },
   completed_at: Present { value: "2026-09-01T00:20:00Z" },
@@ -216,8 +216,8 @@ data job_failed: WorkflowJobRun = WorkflowJobRun {
   id: 101,
   run_id: 1,
   name: "build-job",
-  status: "completed",
-  conclusion: Present { value: "failure" },
+  status: Completed,
+  conclusion: Present { value: Failure },
   created_at: Present { value: "2026-09-01T00:00:00Z" },
   started_at: Present { value: "2026-09-01T00:00:00Z" },
   completed_at: Present { value: "2026-09-01T00:15:00Z" },
@@ -227,8 +227,8 @@ data job_success: WorkflowJobRun = WorkflowJobRun {
   id: 102,
   run_id: 1,
   name: "lint-job",
-  status: "completed",
-  conclusion: Present { value: "success" },
+  status: Completed,
+  conclusion: Present { value: Success },
   created_at: Present { value: "2026-09-01T00:02:00Z" },
   started_at: Present { value: "2026-09-01T00:05:00Z" },
   completed_at: Present { value: "2026-09-01T00:10:00Z" },
@@ -238,7 +238,7 @@ data job_queued: WorkflowJobRun = WorkflowJobRun {
   id: 103,
   run_id: 1,
   name: "deploy-job",
-  status: "queued",
+  status: Queued,
   conclusion: none,
   created_at: Present { value: "2026-09-01T00:03:00Z" },
   started_at: none,
@@ -249,7 +249,7 @@ data job_in_progress: WorkflowJobRun = WorkflowJobRun {
   id: 104,
   run_id: 1,
   name: "test-in-progress",
-  status: "in_progress",
+  status: InProgress,
   conclusion: none,
   created_at: Present { value: "2026-09-01T00:04:00Z" },
   started_at: Present { value: "2026-09-01T00:30:00Z" },
@@ -265,15 +265,15 @@ test fn count_jobs_empty_returns_zero() -> Bool {
 }
 
 test fn count_jobs_with_conclusion_counts_exact_match() -> Bool {
-  count_jobs_with_conclusion(jobs: [job_cancelled, job_failed, job_success], conclusion: "cancelled") == 1
+  count_jobs_with_conclusion(jobs: [job_cancelled, job_failed, job_success], conclusion: Cancelled) == 1
 }
 
 test fn count_jobs_with_conclusion_counts_no_match_as_zero() -> Bool {
-  count_jobs_with_conclusion(jobs: [job_cancelled, job_failed, job_success], conclusion: "success") == 1
+  count_jobs_with_conclusion(jobs: [job_cancelled, job_failed, job_success], conclusion: Success) == 1
 }
 
 test fn count_jobs_with_status_count_queued() -> Bool {
-  count_jobs_with_status(jobs: [job_cancelled, job_queued, job_in_progress], status: "queued") == 1
+  count_jobs_with_status(jobs: [job_cancelled, job_queued, job_in_progress], status: Queued) == 1
 }
 
 test fn filter_completed_jobs_only_returns_completed_jobs() -> Bool {
@@ -321,7 +321,7 @@ test fn earliest_created_at_returns_none_when_no_created_at() -> Bool {
     id: 200,
     run_id: 1,
     name: "no-created",
-    status: "in_progress",
+    status: InProgress,
     conclusion: none,
     created_at: none,
     started_at: none,
