@@ -1,0 +1,7 @@
+module uab.cop_two
+
+type Boxtwo
+  = Sq { f_two: Int }
+  | Othertwo { z: Int }
+
+fn two_cop_marker() -> Int { 7 }

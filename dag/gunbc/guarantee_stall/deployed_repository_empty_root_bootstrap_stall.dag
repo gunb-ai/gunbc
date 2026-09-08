@@ -1,26 +1,34 @@
 module gunbc.guarantee_stall.deployed_repository_empty_root_bootstrap_stall
 
 import v2.std.algebra { Cons, Empty }
-import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
 
-// THIS IS A PRE-EXISTING CAPABILITY GAP, NOT A RUNG LOWERED BY THE CUT-OVER. The legacy transport
-// did put HEAD/objects/refs beside working bytes in an empty directory, but omitted the index and
-// therefore could not produce the consistent repository state this deployment claims. Calling that
-// a bootstrap would count mutation as success and repeat the exact conflation RLM-2c removes.
-// Git-native convergence now refuses the unobservable pre-state through
-// ConvergencePreStateUnobservable, and placement carries that located cause to the outer deploy in
-// its durable receipt. The refusal is evidence of the gap; it is not the missing capability.
+// THE CAPABILITY EXISTS NOW, AND THE CLIMB IS ONE RUNG, NOT TWO. #10722 built the Git-native
+// bootstrap and proved it wet: an empty root is initialized, the candidate imported, the base ref
+// created with an empty expected-old, the worktree moved by checkout -b, and the result read back
+// through repository_convergence_verdict -- the same authority the ordinary path uses. #10724 made
+// the publication member invoke that oneshot and nothing else, and the tree member now decides an
+// absent root as an ordinary Create rather than refusing it. So this class is no longer OUTSIDE the
+// ladder: the operation has a route, and it executes.
+//
+// IT IS MITIGATABLE AND NOT MECHANICALLY PREVENTABLE, and the distinction is the enrolment of the
+// evidence rather than the quality of the wall. Harm is genuinely contained at runtime: a non-empty
+// root still refuses with the original pre-state cause, checkout -b refuses an existing branch, an
+// empty expected-old refuses an existing ref, and the readback refuses a repository that is not at
+// the candidate. What does NOT exist is a mechanism that blocks a REGRESSION: the wet witnesses
+// perform host effects, so the hermetic floor refuses them at its boundary and counts them executed
+// while they assert nothing. Reporting this as MechanicallyPreventable would be the rung inflation
+// DESIGN 4b(1) names -- citing a wall that does not run.
+//
 // THE POPULATION IS ONE PRODUCTION SUBJECT, NOT A SNAPSHOT OF AN OPEN SET. There is one production
 // constructor, deployment_spec_srv1, and the realization binding is global rather than a field a
-// future spec can silently choose. Any later production spec therefore inherits GitNativeConvergence;
-// at a fresh root it reaches the same typed ConvergencePreStateUnobservable wall and cannot proceed.
-// The boundary is the refusal construction, not a hand-maintained roster count.
+// future spec can silently choose, so any later production spec inherits the same route.
 data deployed_repository_empty_root_bootstrap_stall: GuaranteeStall = GuaranteeStall {
-  subject: "an empty deployed repository root cannot be brought to one consistent candidate revision by live deploy",
-  current: OutsideTheLadder,
+  subject: "an empty deployed repository root is bootstrapped to the candidate, but nothing enrolled re-establishes that it still is",
+  current: Mitigatable,
   ceiling: StructurallyGuaranteed,
   blocker: ClimbableButUnbuilt,
   population: BoundedPopulation { members: Cons { head: "gunbc.live_deploy.spec deployment_spec_srv1 at a fresh repository root", tail: Empty {} } },
-  next_rung_trigger: climbs_when(capability: "a modeled Git-native bootstrap sufficient to initialize an empty deployed repository from the admitted runner checkout at the exact candidate, with HEAD, index and tracked worktree read back as that one revision before any later deployment member runs; copying any .git path as files, relaxing ConvergencePreStateUnobservable, or merely creating an empty git directory does not satisfy the capability")
+  next_rung_trigger: climbs_when(capability: "the bootstrap discriminating evidence enrolled in a lane that EXECUTES it. test.claim.repository_bootstrap_wet_witness_test proves both states by execution -- an empty root reads back as the candidate, a root holding content refuses untouched -- but it performs host effects, so the hermetic floor refuses it at the boundary and counts it executed while it asserts nothing. Until a wet lane runs those two rows, a regression in the bootstrap is caught by nothing at merge time")
 }
