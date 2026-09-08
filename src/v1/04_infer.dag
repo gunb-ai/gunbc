@@ -8580,12 +8580,18 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     }
   } else {
     let type_lookup = lookup_type_by_name(env: scope.type_env, name: type_name.value)
-    let local_variant_parent = match lookup_variant_parent_enum(scope: scope, name: type_name.value) {
-      Present { value: p } => Present { value: p }
+    let owner_from_locals = local_coproduct_owner_from_locals(scope: scope, name: type_name.value)
+    let local_variant_parent = match owner_from_locals {
+      Present { value: owner } =>
+        Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: owner) }
       Absent =>
-        match variant_owner_node(scope: scope, name: type_name.value) {
-          Present { value: owner } => Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: owner) }
-          Absent => record_lit_parent_enum_from_expected(type_name: type_name.value, expected: expected, scope: scope)
+        match lookup_variant_parent_enum(scope: scope, name: type_name.value) {
+          Present { value: p } => Present { value: p }
+          Absent =>
+            match variant_owner_node(scope: scope, name: type_name.value) {
+              Present { value: owner } => Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: owner) }
+              Absent => record_lit_parent_enum_from_expected(type_name: type_name.value, expected: expected, scope: scope)
+            }
         }
     }
     let effective_lookup = match type_lookup {
@@ -8611,22 +8617,19 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
         binding_declares_name(binding: name_binding, name: type_name.value, source_indices: scope.type_env.source_indices)
       Absent => false
     }
-    let raw_resolved = match local_variant_parent {
-      Present { value: parent_name } =>
-        if parent_name == "Optional" || type_name_declares_own_type { variant_lookup_resolved } else {
-          match local_coproduct_owner_from_locals(scope: scope, name: type_name.value) {
-            Present { value: owner } => owner
-            Absent =>
+    let raw_resolved = match owner_from_locals {
+      Present { value: owner } =>
+        let parent_name = authored_name_at(source_indices: scope.type_env.source_indices, node: owner)
+        if parent_name == "Optional" || type_name_declares_own_type { variant_lookup_resolved } else { owner }
+      Absent =>
+        match local_variant_parent {
+          Present { value: parent_name } =>
+            if parent_name == "Optional" || type_name_declares_own_type { variant_lookup_resolved } else {
               match lookup_type_by_name(env: scope.type_env, name: parent_name) {
                 Present { value: parent_decl } => parent_decl
                 Absent => variant_lookup_resolved
               }
-          }
-        }
-      Absent =>
-        match local_coproduct_owner_from_locals(scope: scope, name: type_name.value) {
-          Present { value: owner } =>
-            if type_name_declares_own_type { variant_lookup_resolved } else { owner }
+            }
           Absent => variant_lookup_resolved
         }
     }

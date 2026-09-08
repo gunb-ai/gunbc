@@ -13947,23 +13947,36 @@ Rc::new(FieldInferResult {
                     scope.type_env.clone(),
                     type_name.clone().unwrap(),
                 );
-                let local_variant_parent =
-                    match lookup_variant_parent_enum(scope.clone(), type_name.clone().unwrap()) {
-                        Some(p) => Some(p.clone()),
-                        std::option::Option::None => {
-                            match variant_owner_node(scope.clone(), type_name.clone().unwrap()) {
-                                Some(owner) => Some(crate::v1_std_core::authored_name_at(
-                                    scope.type_env.clone().source_indices.clone(),
-                                    owner.clone(),
-                                )),
-                                std::option::Option::None => record_lit_parent_enum_from_expected(
-                                    type_name.clone().unwrap(),
-                                    expected.clone(),
-                                    scope.clone(),
-                                ),
+                let owner_from_locals =
+                    local_coproduct_owner_from_locals(scope.clone(), type_name.clone().unwrap());
+                let local_variant_parent = match owner_from_locals.clone() {
+                    Some(owner) => Some(crate::v1_std_core::authored_name_at(
+                        scope.type_env.clone().source_indices.clone(),
+                        owner.clone(),
+                    )),
+                    std::option::Option::None => {
+                        match lookup_variant_parent_enum(scope.clone(), type_name.clone().unwrap())
+                        {
+                            Some(p) => Some(p.clone()),
+                            std::option::Option::None => {
+                                match variant_owner_node(scope.clone(), type_name.clone().unwrap())
+                                {
+                                    Some(owner) => Some(crate::v1_std_core::authored_name_at(
+                                        scope.type_env.clone().source_indices.clone(),
+                                        owner.clone(),
+                                    )),
+                                    std::option::Option::None => {
+                                        record_lit_parent_enum_from_expected(
+                                            type_name.clone().unwrap(),
+                                            expected.clone(),
+                                            scope.clone(),
+                                        )
+                                    }
+                                }
                             }
                         }
-                    };
+                    }
+                };
                 let effective_lookup = match type_lookup.clone() {
                     Some(_) => type_lookup.clone(),
                     std::option::Option::None => {
@@ -14005,47 +14018,38 @@ Rc::new(FieldInferResult {
                         ),
                         std::option::Option::None => false,
                     };
-                let raw_resolved = match local_variant_parent.clone() {
-                    Some(parent_name) => {
+                let raw_resolved = match owner_from_locals.clone() {
+                    Some(owner) => {
+                        let parent_name = crate::v1_std_core::authored_name_at(
+                            scope.type_env.clone().source_indices.clone(),
+                            owner.clone(),
+                        );
                         if ((parent_name.clone() == "Optional".to_string())
                             || type_name_declares_own_type.clone())
                         {
                             variant_lookup_resolved.clone()
                         } else {
-                            match local_coproduct_owner_from_locals(
-                                scope.clone(),
-                                type_name.clone().unwrap(),
-                            ) {
-                                Some(owner) => owner.clone(),
-                                std::option::Option::None => {
-                                    match crate::v1_compiler_infer_env::lookup_type_by_name(
-                                        scope.type_env.clone(),
-                                        parent_name.clone(),
-                                    ) {
-                                        Some(parent_decl) => parent_decl.clone(),
-                                        std::option::Option::None => {
-                                            variant_lookup_resolved.clone()
-                                        }
-                                    }
+                            owner.clone()
+                        }
+                    }
+                    std::option::Option::None => match local_variant_parent.clone() {
+                        Some(parent_name) => {
+                            if ((parent_name.clone() == "Optional".to_string())
+                                || type_name_declares_own_type.clone())
+                            {
+                                variant_lookup_resolved.clone()
+                            } else {
+                                match crate::v1_compiler_infer_env::lookup_type_by_name(
+                                    scope.type_env.clone(),
+                                    parent_name.clone(),
+                                ) {
+                                    Some(parent_decl) => parent_decl.clone(),
+                                    std::option::Option::None => variant_lookup_resolved.clone(),
                                 }
                             }
                         }
-                    }
-                    std::option::Option::None => {
-                        match local_coproduct_owner_from_locals(
-                            scope.clone(),
-                            type_name.clone().unwrap(),
-                        ) {
-                            Some(owner) => {
-                                if type_name_declares_own_type.clone() {
-                                    variant_lookup_resolved.clone()
-                                } else {
-                                    owner.clone()
-                                }
-                            }
-                            std::option::Option::None => variant_lookup_resolved.clone(),
-                        }
-                    }
+                        std::option::Option::None => variant_lookup_resolved.clone(),
+                    },
                 };
                 let expected_optional_parent = Some("Optional".to_string());
                 let is_present_ctor = ((type_name.clone().unwrap() == "Present".to_string())
