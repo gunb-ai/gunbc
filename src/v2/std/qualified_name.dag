@@ -14,7 +14,7 @@ import v2.std.diagnostic {
 import std.algebra { Cons, Empty, FreeMonoid }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import v2.std.algebra { HeadAbsent, HeadFound, fold_list_right, is_empty, list_head, list_init, list_snoc_item }
+import v2.std.algebra { HeadAbsent, HeadFound, fold_list_right, is_empty, is_prefix_of, list_head, list_init, list_snoc_item }
 import v2.std.collection {
   List
 }
@@ -209,6 +209,36 @@ fn qualified_name_last_segment(qn: QualifiedName) -> Optional<Symbol> {
         qualified_name_last_segment(qn: t)
       }
   }
+}
+
+// STRICT DESCENT UNDER A NAMESPACE CONTAINER, as a RELATION and deliberately not as an enumeration.
+//
+// A module is a containment subtree and the path-module binding is derived at parse, so whether one
+// qualified name lies beneath another is a fact about NAMES and is decided here, at the authority
+// that owns QualifiedName -- not at a storage index, which would couple a naming question to one
+// realization of where modules are kept.
+//
+// WHY A RELATION AND NOT A LIST OF MEMBERS. Every caller that could ask "which modules are under X"
+// already holds the finite population -- the index is supplied to it, not discovered by it -- so the
+// only fact missing at the namespace layer is the containment decision. Returning a sequence would
+// hand every consumer a realization order for free, and index order is exactly the positional
+// history a consumer must NOT reconstruct: ordering has to be grounded independently, by a
+// row-owned ordinal or equivalent. A comment asking consumers to ignore an exported order is the
+// defect restated, so no order is exported. The consumer folds its own population and applies its
+// own ordering, and this answers member-or-not.
+//
+// SEGMENT-WISE, NOT TEXTUAL: `gunbc.rowing` is not under `gunbc.row`, because containment is a
+// relation on SEGMENTS and a dotted string is a rendering of them.
+//
+// STRICT: a name is a prefix of itself, and a container is not beneath itself. The neighbouring
+// question -- whether a given module is present at all -- is exact-identity membership and is
+// answered elsewhere; this is descent, and the two are disjoint rather than one refining the other.
+fn qualified_name_is_strict_descendant(
+  container: QualifiedName,
+  candidate: QualifiedName
+) -> Bool {
+  is_prefix_of(prefix: container, xs: candidate, eq: fn(a, b) { a == b })
+    && candidate != container
 }
 
 fn qualified_name_snoc(qn: QualifiedName, segment: Symbol) -> QualifiedName {
