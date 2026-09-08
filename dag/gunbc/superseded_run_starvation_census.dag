@@ -51,8 +51,6 @@ import std.page_fold {
   PagesRefused,
 }
 
-// One census identity is an ordered pair, never a run selected because it hurt. The observing
-// instrument discovers every pair in a declared time window by PR identity and head transition.
 type SupersededRunPair {
   pull_request: Int
   superseded_run: Int
@@ -61,9 +59,6 @@ type SupersededRunPair {
   live_head: String
 }
 
-// Absence of either job roster is coverage debt, not the reassuring `false` arm. `ReachedFirst`
-// also covers a live-head run that still has zero registered jobs at the observation boundary:
-// once a dead-head job has started, it necessarily started before an event that has not happened.
 type DeadHeadStartStanding
   = DeadHeadReachedInProgressFirst
   | LiveHeadRegisteredJobFirst
@@ -126,9 +121,6 @@ type StartStandingRow {
   count: Int
 }
 
-// Cancellation is priced at job grain. A run listing can lag the individual run resource during
-// settlement, so the instrument refreshes that resource and never derives a status transition
-// from successive listing reads. Cancelled work and a queued laggard can coexist in one aggregate.
 type CancellationRow {
   pr: Int
   dead_run: Int
@@ -212,7 +204,7 @@ fn collect_runs_in_window(
     let fetch = fn(c: PageCursor) -> PageObservation<WorkflowRun> {
       let page_num: Int = match c {
         OffsetPage { page: n } => n as Int
-        _ => 1  // unreachable: fetch is only called with OffsetPage cursors we create
+        _ => 1
       }
       let response = github.WorkflowRuns.ListWorkflowRuns(
         auth_token: auth_token,
@@ -382,8 +374,6 @@ type DurationResult
   | DurationInconsistentTimestamps { end: Timestamp, start: Timestamp }
 
 fn timestamp_diff_seconds(end: Timestamp, start: Timestamp) -> DurationResult {
-  // Timestamp = String, ISO-8601 timestamps are lexicographically ordered,
-  // so '<' works for detecting out-of-order pairs.
   if end < start { DurationInconsistentTimestamps { end: end, start: start } }
   else { DurationComputed { end: end, start: start } }
 }
