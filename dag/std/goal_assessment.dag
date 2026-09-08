@@ -181,17 +181,14 @@ fn assess_by_deviations_and_unknowns<Evidence, Deviation, UnknownFact, AssessRef
   }
 }
 
-// A satisfied goal is a FIXED POINT: nothing to plan, nothing to actuate. This predicate exists so
-// a caller can say so without re-deciding it, and it deliberately answers false for
-// GoalIndeterminate -- an unestablished fact is not evidence of agreement, and the one-bit
-// summary is the exact place that conflation gets made.
-fn goal_is_satisfied<Evidence, Deviation, UnknownFact, AssessRefusal>(
-  assessment: GoalAssessment<Evidence, Deviation, UnknownFact, AssessRefusal>,
-) -> Bool {
-  match assessment {
-    GoalSatisfied { evidence: _ } => true
-    GoalDiverged { deviations: _ } => false
-    GoalIndeterminate { known_deviations: _, unknowns: _ } => false
-    GoalAssessmentRefused { cause: _ } => false
-  }
-}
+// THERE IS DELIBERATELY NO `is_satisfied` PREDICATE HERE, and the absence is the design rather than
+// an omission. A `Bool` over this coproduct is a one-bit summary of four arms whose whole point is
+// that they are not orderable into two -- and the summary's false side would silently merge
+// "proved to differ", "not fully established" and "could not be compared", which have three
+// different owners and three different remedies. That merge is exactly the conflation this module
+// exists to prevent, so offering it as a convenience would hand every consumer the defect back.
+//
+// Every real consumer matches instead, and it must: the non-satisfied arms carry payloads it needs
+// to report -- the deviations, the unknowns, the cause. A consumer that genuinely wants only the
+// fixed-point question is one `match` arm away from it, and writing that arm is where it decides
+// what the other three mean to it. Nothing is saved by deciding that for it here.

@@ -1,15 +1,13 @@
 module test.claim.goal_assessment_witness
 
 import std.types { String, Bool, List }
-import std.algebra { FreeSemigroup }
 import std.goal_assessment {
   ObservationAttempt, ObservationEstablished, ObservationRefused,
-  GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
+  GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate,
   GoalInspection, GoalInspected, GoalObservationRefused,
   inspect_goal,
   assess_by_deviations,
   assess_by_deviations_and_unknowns,
-  goal_is_satisfied,
 }
 
 type FixtureSubject { key: String }
@@ -111,30 +109,4 @@ fn an_unknown_outranks_deviations_and_still_carries_them() -> Bool {
       length(ds) == 2 && us.head.field == "bypass_roster"
     _ => false
   }
-}
-
-// LAW: a fixed point is a fixed point, and nothing else is. The one-bit summary is exactly where
-// indeterminacy gets quietly folded into agreement, so the predicate is held to answering false
-// for it -- and false for a refusal too, which is the arm a summary is most tempted to skip.
-type FixtureAssessment = GoalAssessment<FixtureEvidence, FixtureDeviation, FixtureUnknownFact, FixtureAssessRefusal>
-
-fn fixture_satisfied() -> FixtureAssessment {
-  GoalSatisfied { evidence: FixtureEvidence { field: "agreed" } }
-}
-
-fn fixture_indeterminate() -> FixtureAssessment {
-  GoalIndeterminate {
-    known_deviations: [],
-    unknowns: FreeSemigroup { head: FixtureUnknownFact { field: "bypass_roster" }, tail: [] },
-  }
-}
-
-fn fixture_assessment_refused() -> FixtureAssessment {
-  GoalAssessmentRefused { cause: FixtureAssessorShouldNotRun { detail: "unreached" } }
-}
-
-fn only_a_satisfied_goal_reads_as_a_fixed_point() -> Bool {
-  goal_is_satisfied(assessment: fixture_satisfied())
-    && !goal_is_satisfied(assessment: fixture_indeterminate())
-    && !goal_is_satisfied(assessment: fixture_assessment_refused())
 }
