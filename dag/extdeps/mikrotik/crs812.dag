@@ -4,6 +4,10 @@ import std.types { String, Bool, List, NonEmptyStr, Int }
 import std.nat { Nat }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.ethernet.link_mode {
+  LinkMode, link_mode_eq,
+  ieee_50gbase_cr2, ieee_100gbase_cr2, ieee_100gbase_cr4, ieee_200gbase_cr4,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -63,6 +67,27 @@ fn crs812_lane_speed_wire(s: Crs812LaneSpeed) -> NonEmptyStr {
     Lane200GCr4 => "200G-baseCR4" as NonEmptyStr
     Lane400GCr8 => "400G-baseCR8" as NonEmptyStr
   }
+}
+
+// WHICH IEEE MODE EACH WIRE VALUE IS. RouterOS names its lane speeds after the IEEE clause they
+// implement, so this is a citation of what the vendor's string MEANS, not a preference: "100G-baseCR2"
+// IS ieee_100gbase_cr2. Modelling it here rather than at the consumer is what lets a desired lane
+// speed be DERIVED from a required link mode instead of an author picking a constant that agrees
+// with the mode by coincidence and stops agreeing when the mode changes.
+//
+// It is partial on purpose. 400G-baseCR8 has no LinkMode row yet, and inventing one to make this
+// total would be a fact about IEEE authored inside a vendor module to satisfy a fold. An unmapped
+// mode returns Absent and the caller refuses.
+type Crs812LaneSpeedForMode
+  = LaneSpeedForMode { speed: Crs812LaneSpeed }
+  | NoLaneSpeedForMode { mode: LinkMode }
+
+fn crs812_lane_speed_for_link_mode(m: LinkMode) -> Crs812LaneSpeedForMode {
+  if link_mode_eq(a: m, b: ieee_50gbase_cr2) { LaneSpeedForMode { speed: Lane50GCr2 } }
+  else if link_mode_eq(a: m, b: ieee_100gbase_cr2) { LaneSpeedForMode { speed: Lane100GCr2 } }
+  else if link_mode_eq(a: m, b: ieee_100gbase_cr4) { LaneSpeedForMode { speed: Lane100GCr4 } }
+  else if link_mode_eq(a: m, b: ieee_200gbase_cr4) { LaneSpeedForMode { speed: Lane200GCr4 } }
+  else { NoLaneSpeedForMode { mode: m } }
 }
 
 type Crs812FecMode = FecAuto | FecOff | Fec74 | Fec91
