@@ -1,6 +1,9 @@
 module test.claim.fabric_grant_issuance_witness
 
-import test.claim.fabric.provider_use_fixture { fixture_admitted_use, fixture_unadmitted_use, fixture_route }
+import product.fabric.provider_route { ProviderRoute }
+import test.claim.fabric.provider_use_fixture {
+  fixture_admitted_use, fixture_unadmitted_use, fixture_route, fixture_route_sibling_region,
+}
 import product.fabric.provider_admission { ProviderUsePermit, ProviderUseAdmitted, ProviderUseDenied }
 import std.types { NonEmptyStr, Bool, Int, List }
 import std.measure { Count, One, MoneyRate, money_amount_micro, money_amount_micro_count, hardware_thread_count, second }
@@ -735,6 +738,55 @@ test fn w_a_permit_for_another_offer_refuses_at_issuance() -> Bool {
     f: fn(acc, p) {
       outcome_label(o: issue_with_permit(
         offer: admitted_offer, permit: p, account: funded_account)) == "permit-names-another-offer"
+    },
+  )
+}
+
+// The permit-minting helper with the ROUTE left open, so a caller can present a permit that is
+// genuine in every respect except where it is about. The offer keeps its own route; only the route
+// the admission was evaluated against moves.
+fn permit_on_route(
+  offer: SupplierOffer<NonEmptyStr>,
+  route: ProviderRoute,
+) -> List<ProviderUsePermit<NonEmptyStr>> {
+  match fixture_admitted_use(
+    route: route, offer: offer.id, demand: subject_demand(), work: subject_work.id) {
+    ProviderUseAdmitted { permit: p } => [p]
+    ProviderUseDenied { decision: _, cause: _ } => []
+  }
+}
+
+// RED - A PERMIT FOR A SIBLING REGION REFUSES AT ISSUANCE. The permit names the right offer, the
+// right work and the right demand; it was admitted for the same provider and the same service in
+// the region next door. Nothing but the route check can see the difference, which is why this row
+// is the one that makes SupplierOffer.route load-bearing rather than recorded: product.fabric.supply
+// justifies that field on the ground that it "buys the cross-check that is otherwise unwritable",
+// and until this row existed the cross-check was written and never executed.
+//
+// A sanction never inherits across regions (product.fabric.provider_route states that a route is
+// the same route or a different one, with no prefix relation), so the near-miss is the dangerous
+// case: an operator reading "acme-cloud, acme-cx-runners, admitted" would call this the same thing.
+test fn w_a_permit_for_a_sibling_region_refuses_at_issuance() -> Bool {
+  fold(
+    permit_on_route(offer: admitted_offer, route: fixture_route_sibling_region()),
+    init: false,
+    f: fn(acc, p) {
+      outcome_label(o: issue_with_permit(
+        offer: admitted_offer, permit: p, account: funded_account)) == "permit-names-another-route"
+    },
+  )
+}
+
+// POSITIVE CONTROL FOR THE ROW ABOVE, and it is what stops that red from being satisfied by a
+// helper that simply fails to mint anything: the SAME helper, handed the offer's own route,
+// produces a permit that commits.
+test fn w_the_same_helper_on_the_offers_own_route_commits() -> Bool {
+  fold(
+    permit_on_route(offer: admitted_offer, route: admitted_offer.route),
+    init: false,
+    f: fn(acc, p) {
+      outcome_label(o: issue_with_permit(
+        offer: admitted_offer, permit: p, account: funded_account)) == "committed"
     },
   )
 }

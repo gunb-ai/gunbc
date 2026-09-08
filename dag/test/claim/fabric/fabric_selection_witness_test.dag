@@ -1,6 +1,9 @@
 module test.claim.fabric_selection_witness
 
-import test.claim.fabric.provider_use_fixture { fixture_admitted_for_offer, fixture_unadmitted_for_offer, fixture_route }
+import test.claim.fabric.provider_use_fixture {
+  fixture_admitted_for_offer, fixture_unadmitted_for_offer, fixture_route,
+  fixture_route_sibling_region,
+}
 import std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.nat { Nat }
@@ -486,6 +489,65 @@ test fn dispatch_inputs_naming_another_offer_refuse_to_bind() -> Bool {
   ) {
     DispatchInputsNameAnotherOffer { offer: _, inputs_name: n } => (n.key as NonEmptyStr) == "offer-rented-hourly"
     CandidateBound { candidate: _ } => false
+    OfferNotAdmittedForUse { offer: _, cause: _ } => false
+    PermitNamesAnotherOffer { offer: _, permit_names: _ } => false
+    PermitNamesAnotherRoute { offer: _ } => false
+  }
+}
+
+// RED - A REAL PERMIT FOR ANOTHER OFFER DOES NOT BIND. The dispatch inputs name the owned offer,
+// so the earlier guard is satisfied and this row can only be answered by the permit check: the
+// admission is genuine and current and is about the rented offer. Binding it would put a candidate
+// into the ranking whose permit authorises somewhere else entirely - and CandidateOffer is sealed,
+// so bind_candidate is the only place that pairing can be formed or refused.
+test fn w_a_permit_for_another_offer_does_not_bind() -> Bool {
+  match bind_candidate(
+    offer: t_owned_offer(),
+    dispatch: t_owned_inputs(),
+    admission: fixture_admitted_for_offer(
+      route: t_owned_offer().route, offer: t_rented_offer().id),
+  ) {
+    PermitNamesAnotherOffer { offer: _, permit_names: n } => (n.key as NonEmptyStr) == "offer-rented-hourly"
+    CandidateBound { candidate: _ } => false
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => false
+    OfferNotAdmittedForUse { offer: _, cause: _ } => false
+    PermitNamesAnotherRoute { offer: _ } => false
+  }
+}
+
+// RED - A PERMIT FOR A SIBLING REGION DOES NOT BIND. Everything the two preceding guards look at
+// agrees: the same offer identity throughout, and inputs that name it. The permit was admitted for
+// the same provider and the same service in the region next door, and product.fabric.provider_route
+// rules that a sanction for a sibling region inherits nothing. This is the entrance the ranking
+// path uses, so without this row the route field would be checked only at issuance and selection
+// would rank an offer whose permit is about somewhere else.
+test fn w_a_permit_for_a_sibling_region_does_not_bind() -> Bool {
+  match bind_candidate(
+    offer: t_owned_offer(),
+    dispatch: t_owned_inputs(),
+    admission: fixture_admitted_for_offer(
+      route: fixture_route_sibling_region(), offer: t_owned_offer().id),
+  ) {
+    PermitNamesAnotherRoute { offer: o } => (o.key as NonEmptyStr) == "offer-owned-srv1"
+    CandidateBound { candidate: _ } => false
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => false
+    OfferNotAdmittedForUse { offer: _, cause: _ } => false
+    PermitNamesAnotherOffer { offer: _, permit_names: _ } => false
+  }
+}
+
+// POSITIVE CONTROL FOR BOTH ROWS ABOVE. Identical offer and identical inputs; the only thing that
+// moves is which offer and which route the admission was evaluated for. Without it, each red would
+// be equally satisfied by a bind_candidate that refused everything.
+test fn w_the_same_offer_and_inputs_bind_on_their_own_route_and_offer() -> Bool {
+  match bind_candidate(
+    offer: t_owned_offer(),
+    dispatch: t_owned_inputs(),
+    admission: fixture_admitted_for_offer(
+      route: t_owned_offer().route, offer: t_owned_offer().id),
+  ) {
+    CandidateBound { candidate: c } => (c.offer.id.key as NonEmptyStr) == "offer-owned-srv1"
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => false
     OfferNotAdmittedForUse { offer: _, cause: _ } => false
     PermitNamesAnotherOffer { offer: _, permit_names: _ } => false
     PermitNamesAnotherRoute { offer: _ } => false

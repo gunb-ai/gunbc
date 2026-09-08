@@ -42,16 +42,35 @@ import product.fabric.provider_admission {
 data fixture_provider: NonEmptyStr = "acme-cloud"
 data fixture_service: NonEmptyStr = "acme-cx-runners"
 data fixture_region_one: NonEmptyStr = "acme-region-one"
+data fixture_region_two: NonEmptyStr = "acme-region-two"
 
-// The route every ranking fixture sits on. A sibling-region variant was declared here and consumed
-// by nothing - the two-region claim belongs to test.claim.fabric.provider_admission_witness, which
-// builds its own routes - so it is deleted rather than kept for a consumer that already exists
-// elsewhere. A declaration nothing reads is section 2's redundant work in its purest form.
+// The route every ranking fixture sits on.
 fn fixture_route() -> ProviderRoute {
   ProviderRoute {
     provider: fx_ref(name: "fixture_provider"),
     service: fx_ref(name: "fixture_service"),
     region: fx_ref(name: "fixture_region_one"),
+  }
+}
+
+// A SECOND ROUTE DIFFERING IN EXACTLY ONE COMPONENT, and the one-component difference is the
+// whole design of it: same provider, same service, a sibling region. A permit minted against this
+// route and carried onto an offer on fixture_route is a genuine, currently-valid permit that is
+// simply about somewhere else, which is the only shape that can tell a real route check apart from
+// one that merely notices a permit exists.
+//
+// An earlier revision of this file DELETED this declaration for having no consumer, and recorded
+// that deletion in an annotation as a section 2 win. That was correct about the corpus at the time
+// and wrong about what it implied: the reason nothing consumed it was that the route-mismatch reds
+// had never been written, so the missing consumer was evidence of a coverage hole rather than of
+// redundant work. It is restored here BY its consumers - the two reds in
+// test.claim.fabric.fabric_selection_witness and test.claim.fabric.fabric_grant_issuance_witness
+// that drive PermitNamesAnotherRoute at each of the two entrances.
+fn fixture_route_sibling_region() -> ProviderRoute {
+  ProviderRoute {
+    provider: fx_ref(name: "fixture_provider"),
+    service: fx_ref(name: "fixture_service"),
+    region: fx_ref(name: "fixture_region_two"),
   }
 }
 
