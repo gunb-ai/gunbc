@@ -43,19 +43,21 @@ test fn witness_unlisted_subject_has_no_row() -> Bool {
 }
 
 test fn witness_split_matches_expected() -> Bool {
-  (length(xs: self_emitted_native_rows()) == 4)
-    && (length(xs: interpreter_retained_rows()) == 11)
+  (length(xs: self_emitted_native_rows()) == 7)
+    && (length(xs: interpreter_retained_rows()) == 8)
 }
 
 // Identity-grain census of the native rows (DESIGN section 5: completeness is an identity join,
 // not a count equality — the count leg above is the budget cross-check, this leg names the
 // members). 2026-09-07: the add family joined classical_not when its native-only verdict arm
 // landed, and the complement family followed on the same arm shape run through the logic family
-// crate. 2026-09-08: the field_access family followed on the same arm shape against its own
-// family one-build cache (octet 9 pinned); the four decl names are the closed membership.
-test fn witness_native_rows_are_exactly_classical_not_add_complement_and_field_access() -> Bool {
+// crate. 2026-09-08: the field_access family followed against its own family one-build cache
+// (octet 9 pinned), and the three match_loop_fold family rows (match, loop, fold_closure)
+// followed on the same arm shape run through the three-member family crate; the seven decl names
+// are the closed membership.
+test fn witness_native_rows_closed_membership_holds() -> Bool {
   let natives = self_emitted_native_rows()
-  (length(xs: natives) == 4)
+  (length(xs: natives) == 7)
     && fold(
       natives,
       init: true,
@@ -65,6 +67,9 @@ test fn witness_native_rows_are_exactly_classical_not_add_complement_and_field_a
             || (row.subject.decl_name == "rust_add_inferred_tree")
             || (row.subject.decl_name == "emit_complement_eval_subject")
             || (row.subject.decl_name == "emit_field_eval_subgraph_node")
+            || (row.subject.decl_name == "fold_fixture_param_call_body")
+            || (row.subject.decl_name == "table_fixture_loop_arrow_with_body")
+            || (row.subject.decl_name == "table_fixture_match_arrow_with_body")
         )
       }
     )

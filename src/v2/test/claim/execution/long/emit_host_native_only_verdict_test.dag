@@ -11,6 +11,7 @@ import v2.extdeps.languages.rust_test {
   rust_family_member_run_args,
   rust_field_access_target_model_staging,
   rust_logic_family_target_model_staging,
+  rust_match_loop_fold_family_target_model_staging,
 }
 import extdeps.realization.emit_on_demand_host { native_cache_workspace_root }
 import v2.test.long.emit_host_classical_not_ingested_equals_eval {
@@ -44,6 +45,22 @@ import v2.test.execution.emit_on_demand_field_access_family_witness {
   field_access_family_fixture_inputs,
   field_access_family_native_key_for,
 }
+import v2.test.execution.emit_on_demand_match_loop_fold_family_witness {
+  family_cache_root_for,
+  fold_alt_expected_octets,
+  fold_expected_octets,
+  fold_primary_tree,
+  loop_alt_expected_octets,
+  loop_expected_octets,
+  loop_primary_tree,
+  match_alt_expected_octets,
+  match_expected_octets,
+  match_fixture_inputs,
+  match_primary_tree,
+  mlf_family_members,
+  mlf_family_native_key,
+}
+import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Rejected, Outcome, None }
 import v2.std.host_run { HostLogicalRun, HostRunStdout }
 import v2.std.logic { Bool }
@@ -281,5 +298,85 @@ test fn emit_host_native_only_field_access_holds() -> Bool {
 
 test fn emit_host_native_only_field_access_wrong_octet_mismatch_detected_holds() -> Bool {
   field_access_native_only_matches_expected(expected_octet: 1) == false
+}
+
+// MATCH/LOOP/FOLD-FAMILY ARMS: the same native-only verdict shape for the three match_loop_fold
+// family roster rows — the fifth, sixth, and seventh constructs promoted off InterpreterRetained.
+// The family difference is the build grain, not the verdict shape, exactly as complement: the
+// family's native execution is FAMILY-grain by the operator-directed witness_family_build_grain_ruling,
+// so each arm emits the three-member family crate (match + loop + fold under the argv-dispatched
+// family main) and runs its own member through the family dispatcher, sharing the family witness's
+// one-build cache key (family_cache_root_for + mlf_family_native_key over the same primary member
+// list emit_on_demand_match_loop_fold_family_one_build_holds colds) — an uncached leg here would
+// duplicate the family cargo build (DESIGN S2). The expected octet lists are the bytes the family
+// witness's warm legs pin on this same build (match [0,1,0,0,0], loop [0,1,0,0,0], fold
+// [0,7,0,0,0]). Program-side discrimination stays where the family already carries it: each
+// member's equals_eval pair and the family witness's alt legs prove the native run's actual bytes
+// participate in verdicts (the alt trees flip match 1 -> 2, loop 1 -> 2, fold 7 -> 255...). A
+// no-eval verdict has no oracle leg to break, so each arm's broken control breaks the EXPECTATION
+// side with the member's own alt octets, and the comparator mocks above pin the comparator itself.
+fn mlf_native_only_member_matches_expected(member_id: String, expected_octets: List<Int>) -> Bool {
+  match match_primary_tree() {
+    Accepted { value: match_tree, diagnostics: _ } =>
+      match loop_primary_tree() {
+        Accepted { value: loop_tree, diagnostics: _ } =>
+          let members = mlf_family_members(
+            match_tree: match_tree,
+            loop_tree: loop_tree,
+            fold_tree: fold_primary_tree()
+          )
+          match emit_family(
+            members: members,
+            transport_target: rust_match_loop_fold_family_target_model_staging()
+          ) {
+            Accepted { value: source, diagnostics: _ } =>
+              match run_emit_host_cached_with_run_args(
+                workspace_dir: native_cache_workspace_root(
+                  cache_root: family_cache_root_for(test_id: "family_one_build"),
+                  key: mlf_family_native_key(members: members)
+                ),
+                target: rust_match_loop_fold_family_target_model_staging(),
+                source: source,
+                fixture_inputs: match_fixture_inputs(),
+                run_args: rust_family_member_run_args(member_id: member_id)
+              ) {
+                Accepted { value: receipt, diagnostics: _ } =>
+                  match receipt.logical_run {
+                    Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
+                      stdout.bytes == emit_host_octets_byte_string(octets: expected_octets)
+                    _ => false
+                  }
+                Rejected { diagnostics: _ } => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_host_native_only_match_holds() -> Bool {
+  mlf_native_only_member_matches_expected(member_id: "match", expected_octets: match_expected_octets)
+}
+
+test fn emit_host_native_only_match_wrong_octet_mismatch_detected_holds() -> Bool {
+  mlf_native_only_member_matches_expected(member_id: "match", expected_octets: match_alt_expected_octets) == false
+}
+
+test fn emit_host_native_only_loop_holds() -> Bool {
+  mlf_native_only_member_matches_expected(member_id: "loop", expected_octets: loop_expected_octets)
+}
+
+test fn emit_host_native_only_loop_wrong_octet_mismatch_detected_holds() -> Bool {
+  mlf_native_only_member_matches_expected(member_id: "loop", expected_octets: loop_alt_expected_octets) == false
+}
+
+test fn emit_host_native_only_fold_closure_holds() -> Bool {
+  mlf_native_only_member_matches_expected(member_id: "fold", expected_octets: fold_expected_octets)
+}
+
+test fn emit_host_native_only_fold_closure_wrong_octet_mismatch_detected_holds() -> Bool {
+  mlf_native_only_member_matches_expected(member_id: "fold", expected_octets: fold_alt_expected_octets) == false
 }
 
