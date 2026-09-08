@@ -1,7 +1,7 @@
 module gunbc.spark.prefill_batch_sweep
 
 import std.types { Bool, String, NonEmptyStr, List }
-import std.nat { Nat }
+import std.nat { Nat, nat_min }
 import v2.std.optional { Present, Absent }
 import std.measure { TokenCount, token_count, token_count_value }
 import extdeps.vllm.batch_defaults { UpstreamBatchDefaultResolution, spark_gb10_batch_default_resolution }
@@ -153,61 +153,249 @@ data spark_group_a_predicted_arms: List<PredictedBatchArm> = [
   },
 ]
 
-// ── THE EXECUTION LAW, AS A FITTED PROJECTION OF THE MEASURED PROBES ──────────────────────────
+// ── THE SAMPLES ARE THE AUTHORITY AND THE LAW IS DERIVED FROM THEM ────────────────────────────
 //
 // wall = request_fixed + per_step * steps + per_token * computed_tokens
 //
-// Fitted by ordinary least squares over 20 probes spanning 511..20,194 computed tokens and 1..10
-// steps across the three measured arms. THE COEFFICIENTS ARE ESTIMATES, not observed primitives:
-// they carry their residuals and their producer, and adding a probe that disagrees moves them.
+// WHAT CHANGED AND WHY IT MATTERED. This block used to carry three transcribed coefficients with a
+// prose note naming the Python script that produced them, and an annotation admitting the rung:
+// "editing them here would not be caught by anything". That is exactly what happened. A reader
+// asked how the reported ratios were calculated and the answer could not be read off the carrier
+// at all -- it required reopening the script, where it turned out the percentages beside the
+// measured walls were MODEL PREDICTIONS at a normalised token count and not measurements. A
+// transcribed number does not carry its own derivation, so nobody -- including its author -- can
+// tell it apart from an observation.
 //
-// THE PRODUCER IS NAMED RATHER THAN THE NUMBERS RE-DERIVED HERE (DESIGN section 6). The fit is a
-// three-parameter normal-equations solve, which this module does not implement; it names the entry
-// point that computed it and the receipt population it consumed. THE RUNG IS HONEST: these three
-// numbers are TRANSCRIBED from that producer, so editing them here would not be caught by anything.
-// NEXT-RUNG TRIGGER, named as a capability: a least-squares fold over a declared design matrix in
-// std, sufficient to derive an n-parameter fit from a sample list inside the substrate, at which
-// point these fields become derived and a hand-edited coefficient stops being writable.
-type FittedExecutionLaw sole_constructor {
-  request_fixed_micros: Nat
-  per_step_micros: Nat
-  micros_per_thousand_tokens: Nat
-  sample_count: Nat
-  worst_residual_micros: Nat
-  rms_residual_micros: Nat
-  producer: NonEmptyStr
+// So the probes below are the sole authority and every coefficient, prediction and ratio is a fold
+// over them. Adding a probe moves the law. Editing a coefficient is not possible, because there is
+// no coefficient to edit.
+//
+// THE ARITHMETIC IS INTEGER AND THE SCALING IS DECLARED, not hidden. Wall time is carried in
+// MILLIseconds and the per-token rate is emitted in MICROseconds per token, because a rate near
+// 1 ms/token rounds to the useless integer 1 in milliseconds. The cross-products use the
+// no-division form n*Sxy - Sx*Sy so no intermediate mean is rounded away. Largest intermediate
+// on this population is 1000 * num_token ~ 3.1e16 against a 9.2e18 ceiling, roughly 300x headroom;
+// a population an order of magnitude larger in wall time would need the scaling revisited, which
+// is why the scale is a stated property of this block rather than an accident of the literals.
+type PrefillProbe {
+  budget: Nat
+  computed_tokens: TokenCount
+  wall_millis: Nat
+  steps: Nat
 }
 
-// THE UNITS ARE MICROS PER THOUSAND TOKENS AND THE FIELD ONCE CARRIED 966, WHICH IS 0.966
-// MICROSECONDS PER TOKEN AND WOULD BE A MILLION TOKENS PER SECOND. The corrected 966100 is
-// 0.9661 MILLIseconds per token. The error survived authoring because both spellings look like
-// a plausible small integer beside a field name that does not say which, and it is caught here
-// by a derivation rather than by care: predicted_step_micros at budget 2048 comes out at
-// 2,168,472 against the independently MEASURED co-tenant stall of 2,168,200 micros, which is
-// agreement to 0.013%. A wrong-by-1000 value misses that by three orders of magnitude.
-data spark_group_a_execution_law: FittedExecutionLaw = FittedExecutionLaw {
-  request_fixed_micros: 105800,
-  per_step_micros: 189900,
-  micros_per_thousand_tokens: 966100,
-  sample_count: 20,
-  worst_residual_micros: 201800,
-  rms_residual_micros: 82200,
-  producer: "docs/receipts/prefill-batch-sweep/analyse.py over the arm-2048, arm-8192 and arm-16384 receipts beside it; step counts from vllm:estimated_flops_per_gpu_total, one contaminated probe (a foreign request raised computed tokens to 81,697) excluded and named" as NonEmptyStr,
+// ONE CONTAMINATED PROBE IS EXCLUDED AND NAMED. At budget 8192 the 20,082-token window booked
+// 81,697 computed tokens against a 20,262-token request, so a foreign request shared it. It is
+// dropped rather than silently averaged in, and dropping it is recorded here rather than in the
+// producer, because the exclusion is a fact about the population and not about the tool.
+data spark_group_a_prefill_probes: List<PrefillProbe> = [
+  PrefillProbe { budget: 2048, computed_tokens: token_count(count: 511), wall_millis: 855, steps: 1 },
+  PrefillProbe { budget: 2048, computed_tokens: token_count(count: 2048), wall_millis: 2223, steps: 1 },
+  PrefillProbe { budget: 2048, computed_tokens: token_count(count: 4098), wall_millis: 4433, steps: 3 },
+  PrefillProbe { budget: 2048, computed_tokens: token_count(count: 8186), wall_millis: 8706, steps: 4 },
+  PrefillProbe { budget: 2048, computed_tokens: token_count(count: 12372), wall_millis: 13353, steps: 7 },
+  PrefillProbe { budget: 2048, computed_tokens: token_count(count: 16510), wall_millis: 17759, steps: 9 },
+  PrefillProbe { budget: 2048, computed_tokens: token_count(count: 20072), wall_millis: 21475, steps: 10 },
+  PrefillProbe { budget: 8192, computed_tokens: token_count(count: 515), wall_millis: 887, steps: 1 },
+  PrefillProbe { budget: 8192, computed_tokens: token_count(count: 2047), wall_millis: 2232, steps: 1 },
+  PrefillProbe { budget: 8192, computed_tokens: token_count(count: 4093), wall_millis: 4344, steps: 1 },
+  PrefillProbe { budget: 8192, computed_tokens: token_count(count: 8188), wall_millis: 8223, steps: 1 },
+  PrefillProbe { budget: 8192, computed_tokens: token_count(count: 12282), wall_millis: 12468, steps: 2 },
+  PrefillProbe { budget: 8192, computed_tokens: token_count(count: 16463), wall_millis: 16652, steps: 3 },
+  PrefillProbe { budget: 16384, computed_tokens: token_count(count: 512), wall_millis: 855, steps: 1 },
+  PrefillProbe { budget: 16384, computed_tokens: token_count(count: 2046), wall_millis: 2226, steps: 1 },
+  PrefillProbe { budget: 16384, computed_tokens: token_count(count: 4093), wall_millis: 4305, steps: 1 },
+  PrefillProbe { budget: 16384, computed_tokens: token_count(count: 8192), wall_millis: 8218, steps: 1 },
+  PrefillProbe { budget: 16384, computed_tokens: token_count(count: 12287), wall_millis: 12041, steps: 1 },
+  PrefillProbe { budget: 16384, computed_tokens: token_count(count: 16508), wall_millis: 16327, steps: 2 },
+  PrefillProbe { budget: 16384, computed_tokens: token_count(count: 20194), wall_millis: 20018, steps: 2 },
+]
+
+fn probe_tokens(p: PrefillProbe) -> Int { token_count_value(t: p.computed_tokens) }
+
+fn sum_t(ps: List<PrefillProbe>) -> Int { fold(ps, init: 0, f: (a, p) => a + probe_tokens(p: p)) }
+fn sum_w(ps: List<PrefillProbe>) -> Int { fold(ps, init: 0, f: (a, p) => a + p.wall_millis) }
+fn sum_s(ps: List<PrefillProbe>) -> Int { fold(ps, init: 0, f: (a, p) => a + p.steps) }
+fn sum_tt(ps: List<PrefillProbe>) -> Int { fold(ps, init: 0, f: (a, p) => a + (probe_tokens(p: p) * probe_tokens(p: p))) }
+fn sum_ss(ps: List<PrefillProbe>) -> Int { fold(ps, init: 0, f: (a, p) => a + (p.steps * p.steps)) }
+fn sum_st(ps: List<PrefillProbe>) -> Int { fold(ps, init: 0, f: (a, p) => a + (p.steps * probe_tokens(p: p))) }
+fn sum_tw(ps: List<PrefillProbe>) -> Int { fold(ps, init: 0, f: (a, p) => a + (probe_tokens(p: p) * p.wall_millis)) }
+fn sum_sw(ps: List<PrefillProbe>) -> Int { fold(ps, init: 0, f: (a, p) => a + (p.steps * p.wall_millis)) }
+
+// THE NO-DIVISION CROSS-PRODUCTS. n*Sxy - Sx*Sy is algebraically the centred sum of products and
+// needs no mean, so nothing is rounded before the solve.
+fn cross_tt(ps: List<PrefillProbe>) -> Int { (length(ps) * sum_tt(ps: ps)) - (sum_t(ps: ps) * sum_t(ps: ps)) }
+fn cross_ss(ps: List<PrefillProbe>) -> Int { (length(ps) * sum_ss(ps: ps)) - (sum_s(ps: ps) * sum_s(ps: ps)) }
+fn cross_st(ps: List<PrefillProbe>) -> Int { (length(ps) * sum_st(ps: ps)) - (sum_s(ps: ps) * sum_t(ps: ps)) }
+fn cross_tw(ps: List<PrefillProbe>) -> Int { (length(ps) * sum_tw(ps: ps)) - (sum_t(ps: ps) * sum_w(ps: ps)) }
+fn cross_sw(ps: List<PrefillProbe>) -> Int { (length(ps) * sum_sw(ps: ps)) - (sum_s(ps: ps) * sum_w(ps: ps)) }
+
+fn fit_determinant(ps: List<PrefillProbe>) -> Int {
+  (cross_ss(ps: ps) * cross_tt(ps: ps)) - (cross_st(ps: ps) * cross_st(ps: ps))
 }
 
-fn predicted_wall_micros(law: FittedExecutionLaw, steps: Nat, tokens: Nat) -> Nat {
-  law.request_fixed_micros + (law.per_step_micros * steps) + ((law.micros_per_thousand_tokens * tokens) / 1000)
+// THE WALL IS STRUCTURAL, NOT NUMERICAL, AND AN EARLIER VERSION OF THIS BLOCK GOT THAT WRONG.
+//
+// It claimed the determinant VANISHES when every probe is taken at one budget, because steps is
+// then ceil(tokens/budget) and carries no independent information. Executing the derivation against
+// a planted single-budget population refuted that: ceil is NOT linear, so the design is merely
+// ill-conditioned and the determinant came out at 236,236,900 rather than zero -- against
+// 32,424,810,042,480 for the real population, some 137,000x larger. A `det == 0` guard therefore
+// catches nothing, and the planted population produced entirely plausible coefficients
+// (S = 305 ms/step, b = 906 us/token) that are an artifact of near-collinearity.
+//
+// So the refusal tests the PROPERTY THAT MAKES THE SPLIT POSSIBLE rather than a symptom of its
+// absence: the population must contain at least two distinct budgets, because that is what gives
+// step count information about the wall time that token count does not already carry. That is
+// decidable from the population, needs no threshold, and is not a smuggled heuristic about how
+// small a determinant is too small.
+//
+// It is also not hypothetical. The four tensor-parallel repeat launches all held the budget at
+// 2048; a fit over them split the per-step and per-token terms arbitrarily, and that split was
+// withdrawn rather than published. This arm is what makes withdrawing it unnecessary next time.
+type ThreeTermFit
+  = FitDerived {
+      request_millis: Int,
+      per_step_millis: Int,
+      micros_per_token: Int,
+      sample_count: Nat,
+      determinant: Int,
+    }
+  | FitUnderdetermined { because: NonEmptyStr }
+
+// THE THREE COEFFICIENTS, EACH ITS OWN FOLD. Split out rather than inlined into one expression so
+// each is separately readable and separately wrong-able: a reviewer can check the per-step solve
+// without holding the whole normal-equations block in their head.
+fn law_per_step_millis_of(ps: List<PrefillProbe>) -> Int {
+  ((cross_sw(ps: ps) * cross_tt(ps: ps)) - (cross_tw(ps: ps) * cross_st(ps: ps))) / fit_determinant(ps: ps)
 }
 
-// A STEP'S DURATION IS THE QUANTITY A CO-TENANT FEELS, so it gets its own name rather than being
-// re-derived at each call site. It is also the law's most strongly validated consequence.
-fn predicted_step_micros(law: FittedExecutionLaw, budget: Nat) -> Nat {
-  law.per_step_micros + ((law.micros_per_thousand_tokens * budget) / 1000)
+fn law_micros_per_token_of(ps: List<PrefillProbe>) -> Int {
+  (1000 * ((cross_ss(ps: ps) * cross_tw(ps: ps)) - (cross_st(ps: ps) * cross_sw(ps: ps)))) / fit_determinant(ps: ps)
+}
+
+// The intercept is what the two rates leave unexplained, averaged over the population, so it is
+// derived from them rather than solved for independently.
+fn law_request_millis_of(ps: List<PrefillProbe>) -> Int {
+  (sum_w(ps: ps) - (law_per_step_millis_of(ps: ps) * sum_s(ps: ps)) - ((law_micros_per_token_of(ps: ps) * sum_t(ps: ps)) / 1000)) / length(ps)
+}
+
+// AT LEAST TWO DISTINCT BUDGETS. This is the whole conditioning test, expressed as the structural
+// fact it stands for rather than as a tolerance on the determinant.
+fn population_spans_two_budgets(ps: List<PrefillProbe>) -> Bool {
+  match first(ps) {
+    Absent => false
+    Present { value: head } =>
+      match first(filter(ps, p => p.budget != head.budget)) {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
+}
+
+fn derive_execution_law(ps: List<PrefillProbe>) -> ThreeTermFit {
+  if length(ps) < 4 {
+    FitUnderdetermined { because: "fewer than four probes cannot separate three terms" as NonEmptyStr }
+  } else {
+    if !population_spans_two_budgets(ps: ps) || fit_determinant(ps: ps) == 0 {
+      FitUnderdetermined {
+        because: "every probe in this population shares one batch budget, so step count is ceil(tokens/budget) and carries almost no information the token count does not. The design is ill-conditioned rather than exactly singular -- it will still produce coefficients -- so the refusal is on the structural property and not on the size of the determinant" as NonEmptyStr,
+      }
+    } else {
+      FitDerived {
+        request_millis: law_request_millis_of(ps: ps),
+        per_step_millis: law_per_step_millis_of(ps: ps),
+        micros_per_token: law_micros_per_token_of(ps: ps),
+        sample_count: length(ps),
+        determinant: fit_determinant(ps: ps),
+      }
+    }
+  }
+}
+
+data spark_group_a_execution_law: ThreeTermFit = derive_execution_law(ps: spark_group_a_prefill_probes)
+
+// ── EVERY READING SAYS WHICH KIND OF READING IT IS ────────────────────────────────────────────
+//
+// The three are INCOMPATIBLE by construction, because the defect they exist to prevent was a table
+// that rendered a measured wall time and a model-normalised percentage in adjacent columns with
+// nothing distinguishing them. A consumer must eliminate the basis to use the number, so "measured
+// at 16,510 tokens", "derived at a common 16,400 tokens" and "predicted at a budget never run" can
+// no longer be read as one kind of fact.
+type ReadingBasis
+  = DirectMeasurement { at_tokens: TokenCount }
+  | DerivedAtCommonWorkload { normalised_tokens: TokenCount, from_samples: Nat }
+  | PredictedOutsideMeasuredArm { requested_budget: Nat, measured_budgets: NonEmptyStr }
+
+fn reading_is_measured(b: ReadingBasis) -> Bool {
+  match b {
+    DirectMeasurement { at_tokens: _ } => true
+    DerivedAtCommonWorkload { normalised_tokens: _, from_samples: _ } => false
+    PredictedOutsideMeasuredArm { requested_budget: _, measured_budgets: _ } => false
+  }
+}
+
+type BudgetReading {
+  budget: Nat
+  wall_millis: Int
+  basis: ReadingBasis
+}
+
+fn law_predicted_wall_millis(fit: ThreeTermFit, steps: Nat, tokens: Nat) -> Int? {
+  match fit {
+    FitUnderdetermined { because: _ } => none
+    FitDerived { request_millis: r, per_step_millis: s, micros_per_token: b, sample_count: _, determinant: _ } =>
+      Present { value: r + (s * steps) + ((b * tokens) / 1000) }
+  }
+}
+
+// THE STEP DURATION IS WHAT A CO-TENANT FEELS, so it is named rather than re-derived per call site.
+fn law_predicted_step_millis(fit: ThreeTermFit, budget: Nat) -> Int? {
+  match fit {
+    FitUnderdetermined { because: _ } => none
+    FitDerived { request_millis: _, per_step_millis: s, micros_per_token: b, sample_count: _, determinant: _ } =>
+      Present { value: s + ((b * budget) / 1000) }
+  }
+}
+
+// THE MEASURED BUDGETS, so a reading at any other budget can say so rather than looking measured.
+data spark_group_a_measured_budgets: NonEmptyStr = "2048, 8192, 16384" as NonEmptyStr
+
+fn budget_was_measured(ps: List<PrefillProbe>, budget: Nat) -> Bool {
+  match first(filter(ps, p => p.budget == budget)) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn budget_reading_at(ps: List<PrefillProbe>, fit: ThreeTermFit, budget: Nat, tokens: Nat) -> BudgetReading? {
+  match law_predicted_wall_millis(fit: fit, steps: ceil_div(a: tokens, b: budget), tokens: tokens) {
+    Absent => none
+    Present { value: w } =>
+      Present {
+        value: BudgetReading {
+          budget: budget,
+          wall_millis: w,
+          basis: if budget_was_measured(ps: ps, budget: budget) {
+            DerivedAtCommonWorkload { normalised_tokens: token_count(count: tokens), from_samples: length(ps) }
+          } else {
+            PredictedOutsideMeasuredArm { requested_budget: budget, measured_budgets: spark_group_a_measured_budgets }
+          },
+        },
+      }
+  }
+}
+
+// A ZERO BUDGET HAS NO STEP COUNT. The zero is spelled through nat_min rather than as a literal
+// because a bare 0 here is an Int and this returns a Nat: the two are not the same zero, and the
+// mismatch is a type error rather than a silent widening, which is the behaviour we want.
+fn ceil_div(a: Nat, b: Nat) -> Nat {
+  if b == 0 { nat_min(a: a, b: 0) } else { (a + b - 1) / b }
 }
 
 // ── THE AFFINE LAW IS A SHALLOW-CONTEXT APPROXIMATION, AND HERE IS ITS RANGE ──────────────────
 //
-// FittedExecutionLaw carries a CONSTANT per-token term. Over the population it was fitted on --
+// The derived law carries a CONSTANT per-token term. Over the population it was fitted on --
 // every probe at or below 20,192 computed tokens -- that holds to 82 microseconds rms. It does not
 // hold at depth, and the fleet's own traffic averages around 149,000 prompt tokens, which is
 // outside the fitted range by an order of magnitude.
