@@ -145,11 +145,19 @@ fn milliseconds_per_second() -> Nat {
   milli_per_unit()
 }
 
+fn microseconds_per_second() -> Nat {
+  micro_per_unit()
+}
+
 // The decimal scale factors, declared once beside kibi_factor for the same
 // reason: a consumer writing * 1000000 to turn megatransfers into transfers is
 // re-stating the Mega scale the Scale coproduct above already carries.
 fn milli_per_unit() -> Nat {
   1000
+}
+
+fn micro_per_unit() -> Nat {
+  1000 * 1000
 }
 
 fn mega_factor() -> Nat {

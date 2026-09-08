@@ -22,7 +22,6 @@ import extdeps.systemd {
   parse_systemd_cpu_quota_per_sec_show,
   systemd_cpu_quota_per_sec_identity,
   systemd_cpu_quota_per_sec_of_threads,
-  microseconds_per_second,
 }
 import std.measure { byte_size, byte_size_count, microsecond_count, hardware_thread_count, HardwareThreadCount }
 import gunbc.ci_floor_measurement { gunbc_ci_runner_cgroup_memory_cap }

@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.types { list_length }
 import std.algebra { trim }
 import std.types { List }
-import std.measure { ByteSize, byte_size, byte_size_count, Microsecond, microsecond, microsecond_count, HardwareThreadCount, hardware_thread_count_value }
+import std.measure { ByteSize, byte_size, byte_size_count, Microsecond, microsecond, microsecond_count, HardwareThreadCount, hardware_thread_count_value, microseconds_per_second }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatReady, CheckedNatOverflow }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -200,11 +200,6 @@ fn systemd_duration_usec(text: String) -> Microsecond? {
 // value against a property systemd does not report, and would read every cell as drifted or as
 // unreadable. Both spellings are modeled so neither side can pick the wrong one silently.
 //
-// 100% IS ONE CPU-SECOND PER WALL SECOND, BY DEFINITION, which is what makes the two commensurable
-// at all: a thread count is a multiple of one whole CPU, and one whole CPU is one second of CPU
-// time per second of wall time. The conversion below is that sentence and carries no tuning.
-data microseconds_per_second: Nat = 1000000
-
 // THREE DIFFERENT FACTS, AND THE CENSUS IS WHAT SEPARATES THEM -- READ THE ARMS IN ITS TERMS.
 //
 // An UNSET quota does not read back empty. systemd reports `infinity` for a cell with no ceiling,
@@ -227,12 +222,19 @@ type SystemdCpuQuotaPerSec
 
 // A CELL THAT DECLARES NO QUOTA IS UNBOUNDED AND NOT ZERO, and mapping absence onto a magnitude is
 // how a slice with no ceiling would come to read as a slice ceilinged at nothing.
+//
+// 100% IS ONE CPU-SECOND PER WALL SECOND, BY DEFINITION, which is what makes the two commensurable
+// at all: a thread count is a multiple of one whole CPU, and one whole CPU is one second of CPU
+// time per second of wall time. That sentence is what this conversion is, and it carries no tuning
+// -- which is also why the seconds-to-microseconds factor is READ from std.measure rather than
+// written here: the scale is a fact about the units, not about systemd, and a `* 1000000` spelled
+// in this module would be a second home for the Micro scale the Scale coproduct already carries.
 fn systemd_cpu_quota_per_sec_of_threads(threads: HardwareThreadCount?) -> SystemdCpuQuotaPerSec {
   match threads {
     Absent => CpuQuotaUnbounded
     Present { value: t } =>
       CpuQuotaPerSec {
-        usec: microsecond(count: hardware_thread_count_value(t: t) * microseconds_per_second),
+        usec: microsecond(count: hardware_thread_count_value(t: t) * microseconds_per_second()),
       }
   }
 }
