@@ -58,6 +58,7 @@ import gunbc.guarantee_stall.unit_modeling_carrier_totality_stall { unit_modelin
 import gunbc.guarantee_stall.testgen_anchor_generator_totality_stall { testgen_anchor_generator_totality_stall }
 import gunbc.guarantee_stall.synthesis_established_bound_patch_stall { synthesis_established_bound_patch_stall }
 import gunbc.guarantee_stall.fn_index_depth_agreement_floor_enrollment_stall { fn_index_depth_agreement_floor_enrollment_stall }
+import gunbc.guarantee_stall.wet_route_model_lags_seed_stall { wet_route_model_lags_seed_stall }
 import gunbc.guarantee_stall.eval_steps_outside_the_reading_coproduct_stall { eval_steps_outside_the_reading_coproduct_stall }
 
 // THE COHORT PROVENANCE NOTES BELOW WERE AUTHORED WHEN EVERY ROW SAT IN ONE FILE, and they are
@@ -212,6 +213,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   testgen_anchor_generator_totality_stall,
   synthesis_established_bound_patch_stall,
   fn_index_depth_agreement_floor_enrollment_stall,
+  wet_route_model_lags_seed_stall,
   eval_steps_outside_the_reading_coproduct_stall,
 ]
 
