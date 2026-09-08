@@ -1,8 +1,7 @@
 module gunbc.runner.runner_jit_admission
 
-import std.types { NonEmptyStr, Bool, HttpStatus }
+import std.types { NonEmptyStr, Bool }
 import std.disposition { Disposition, SingleAuthority }
-import extdeps.github.actions_jit_runner { jit_config_conflict_status }
 
 data runner_jit_admission_disposition: Disposition = SingleAuthority
 
@@ -38,16 +37,12 @@ type JitAdmissionAxisStanding
   = AxisRequired { checker: JitAdmissionChecker }
   | AxisDeferred { trigger: NonEmptyStr }
   | AxisDissolvedInto { into: JitAdmissionAxis }
-  | AxisDissolvedIntoUpstreamMint {
-      conflict_status: HttpStatus
-      reason: NonEmptyStr
-    }
 
 fn jit_admission_axis_standing(axis: JitAdmissionAxis) -> JitAdmissionAxisStanding {
   match axis {
     SignatureAxis => AxisRequired { checker: HostEnvelopeNonemptyAndFresh }
     ExpiryAxis => AxisRequired { checker: HostEnvelopeNonemptyAndFresh }
-    ReplayAxis => AxisDissolvedIntoUpstreamMint { conflict_status: jit_config_conflict_status, reason: "generate-jitconfig creates one runner identity; a second mint of the same name conflicts, and the blob is not a reusable secret" }
+    ReplayAxis => AxisDeferred { trigger: "host cannot detect a second consumer of a minted encoded_jit_config; a generate-jitconfig 409 on a duplicate name is a different question" as NonEmptyStr }
     UnitBindingAxis => AxisDissolvedInto { into: AttemptBindingAxis }
     BootBindingAxis => AxisDissolvedInto { into: AttemptBindingAxis }
     AttemptBindingAxis => AxisRequired { checker: GitHubMintRequestName }
@@ -60,7 +55,6 @@ fn attempt_binding_admits_mint_name(standing: JitAdmissionAxisStanding) -> Bool 
     AxisRequired { checker: _ } => false
     AxisDeferred { trigger: _ } => false
     AxisDissolvedInto { into: _ } => false
-    AxisDissolvedIntoUpstreamMint { conflict_status: _, reason: _ } => false
   }
 }
 
@@ -68,6 +62,8 @@ fn attempt_binding_admits_mint_name(standing: JitAdmissionAxisStanding) -> Bool 
 // not an unmet observation. The mint does not expose the blob's interior; no token will. Filing
 // that opacity as coverage is what would talk a later lane into decoding the blob. Signature,
 // unit, boot and attempt already route around it (host envelope; dissolve into attempt; mint name).
+// Replay stays AxisDeferred: the host-printed axis is a second consumer of a minted blob, which
+// a 409 on a second mint of the same name does not answer.
 
 type AxisMintObservability
   = MintObservableCoverage { question: MintSurfaceCoverageQuestion }
@@ -80,7 +76,7 @@ type MintSurfaceCoverageQuestion
 fn axis_mint_observability(axis: JitAdmissionAxis) -> AxisMintObservability {
   match axis {
     ExpiryAxis => MintObservableCoverage { question: GenerateJitconfig201ExpiresAtPresence }
-    ReplayAxis => MintObservableCoverage { question: ReplayRunnerIdAndDuplicateName409 }
+    ReplayAxis => MintUnobservableDeclaredBoundary
     SignatureAxis => MintUnobservableDeclaredBoundary
     UnitBindingAxis => MintUnobservableDeclaredBoundary
     BootBindingAxis => MintUnobservableDeclaredBoundary

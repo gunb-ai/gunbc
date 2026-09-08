@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import gunbc.runner.runner_jit_admission {
   JitAdmissionAxis, SignatureAxis, ExpiryAxis, ReplayAxis, UnitBindingAxis, BootBindingAxis,
   AttemptBindingAxis, jit_admission_axis_standing, AxisRequired, AxisDeferred, AxisDissolvedInto,
-  AxisDissolvedIntoUpstreamMint, HostEnvelopeNonemptyAndFresh, GitHubMintRequestName,
+  HostEnvelopeNonemptyAndFresh, GitHubMintRequestName,
 }
 
 // TWO GITHUB ACTIONS JOBS RAN IN TWO SEPARATE MICROVMS ON ONE BOOT OF THE PHYSICAL MACHINE.
@@ -143,7 +143,6 @@ fn still_open_from_axis_standing(axis: JitAdmissionAxis) -> List<NonEmptyStr> {
       ["attempt binding still required on the mint name"]
     AxisDeferred { trigger: t } => [t]
     AxisDissolvedInto { into: _ } => []
-    AxisDissolvedIntoUpstreamMint { conflict_status: _, reason: _ } => []
   }
 }
 

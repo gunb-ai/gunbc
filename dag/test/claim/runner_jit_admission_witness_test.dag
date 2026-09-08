@@ -2,13 +2,11 @@ module gunbc.test.claim.runner_jit_admission_witness_test
 
 import std.types { String, Bool, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.github.actions_jit_runner {
-  jit_config_conflict_status, org_generate_jitconfig_path,
-}
+import extdeps.github.actions_jit_runner { org_generate_jitconfig_path }
 import gunbc.auth.github_apps { gunbai_ci_declared }
 import gunbc.runner.runner_jit_admission {
   SignatureAxis, ExpiryAxis, ReplayAxis, UnitBindingAxis, BootBindingAxis, AttemptBindingAxis,
-  AxisRequired, AxisDeferred, AxisDissolvedInto, AxisDissolvedIntoUpstreamMint,
+  AxisRequired, AxisDeferred, AxisDissolvedInto,
   HostEnvelopeNonemptyAndFresh, GitHubMintRequestName,
   jit_admission_axis_standing, attempt_binding_admits_mint_name,
 }
@@ -26,11 +24,12 @@ test fn signature_and_expiry_are_required_host_envelope_checks() -> Bool {
   }
 }
 
-test fn replay_dissolves_into_the_upstream_one_shot_mint() -> Bool {
+test fn replay_stays_deferred_until_a_second_consumer_is_detectable() -> Bool {
   match jit_admission_axis_standing(axis: ReplayAxis) {
-    AxisDissolvedIntoUpstreamMint { conflict_status: s, reason: _ } =>
-      s == jit_config_conflict_status
-    _ => false
+    AxisDeferred { trigger: _ } =>
+      !attempt_binding_admits_mint_name(standing: jit_admission_axis_standing(axis: ReplayAxis))
+    AxisRequired { checker: _ } => false
+    AxisDissolvedInto { into: _ } => false
   }
 }
 

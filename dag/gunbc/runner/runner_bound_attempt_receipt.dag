@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.dissolution { dissolution_description }
 import gunbc.runner_jit_mint { plan_jit_mint_consumer_frontier }
 import gunbc.runner.runner_jit_admission {
-  ExpiryAxis, ReplayAxis, JitAdmissionAxis,
+  ExpiryAxis, JitAdmissionAxis,
   axis_mint_observability, MintObservableCoverage, MintUnobservableDeclaredBoundary,
   GenerateJitconfig201ExpiresAtPresence, ReplayRunnerIdAndDuplicateName409,
   generate_jitconfig_201_expires_at_coverage, replay_runner_id_and_duplicate_name_coverage,
@@ -143,7 +143,7 @@ fn still_open_from_live_census(census: MintSurfaceLiveCensus) -> List<NonEmptySt
     LiveCensusUnmet { question: GenerateJitconfig201ExpiresAtPresence } =>
       ["generate-jitconfig 201 expires_at presence is unmet live census"]
     LiveCensusUnmet { question: ReplayRunnerIdAndDuplicateName409 } =>
-      ["duplicate-name 409 replay observation is unmet live census"]
+      ["duplicate-name 409 mint observation is unmet live census"]
     LiveCensusDischarged { question: _, receipt: _ } => []
   }
 }
@@ -161,7 +161,7 @@ fn still_open_from_mint_axis(axis: JitAdmissionAxis) -> List<NonEmptyStr> {
 data still_open: List<NonEmptyStr> = concat(
   still_open_from_mint_axis(axis: ExpiryAxis),
   concat(
-    still_open_from_mint_axis(axis: ReplayAxis),
+    still_open_from_live_census(census: replay_runner_id_and_duplicate_name_coverage),
     [
       dissolution_description(condition: plan_jit_mint_consumer_frontier) as NonEmptyStr,
       dissolution_description(condition: host_image_placeability_wet_probe_frontier) as NonEmptyStr,
