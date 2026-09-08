@@ -10,7 +10,7 @@ import product.fabric.envelope { cpu_memory_envelope }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.supply { SupplierOffer, OfferQuote, QuotedPerMinute, OfferEvidence, QuotedSupply }
 import product.fabric.provider_route { ProviderRoute }
-import std.decl_ref { decl_ref }
+import std.decl_ref { decl_ref, DeclarationRef }
 import extdeps.pricing.ubicloud {
   UbicloudRunnerPriceRow, ubicloud_runner_price_catalog,
 }
@@ -63,7 +63,6 @@ data ubicloud_billing_quantum: Second = second(count: 60)
 type UnexpressedSupplyFact
   = DiskNotExpressibleInShape { provided: ByteSize }
   | IsolationNotObserved
-  | RegionNotObserved
 
 // A PROJECTION BESIDE THE OFFER, NOT A SECOND KIND OF OFFER. The name matters more than it
 // looks: this type was briefly called SupplierOffer, which is also what the fabric carrier is
@@ -105,23 +104,56 @@ fn ubicloud_unobserved_isolation() -> IsolationProfile {
   IsolationProfile { guarantees: [] }
 }
 
-// THE ROUTE THIS VENDOR'S OFFERS SIT ON, AND THE HONEST GAP IN IT. provider and service cite
-// declarations that exist in the upstream module - the external authority anchor and the runner
-// types authority - so both are checkable by the namespace tree rather than agreed by spelling.
+// THE ROUTE THIS VENDOR'S OFFERS SIT ON, AND WHY AN UNOBSERVED REGION CANNOT PRODUCE ONE.
+// provider and service cite declarations that exist in the upstream module - the external
+// authority anchor and the runner types authority - so both are checkable by the namespace tree
+// rather than agreed by spelling.
 //
-// THE REGION IS NOT OBSERVED, AND IT IS SPELLED AS THAT RATHER THAN GUESSED. Nothing in this
-// vendor's catalog names a location, so any region we wrote here would be invented. Citing
-// RegionNotObserved is the same move this module already makes for isolation: an explicit,
-// resolvable statement that nobody looked, carried as a row in ubicloud_unexpressed so it is a
-// counted coverage obligation rather than a silent blank. It is also fail-closed by construction -
-// no sanction roster cites RegionNotObserved, so every offer on this route refuses as
-// ProviderRouteUnclassified until the region is actually read. That refusal is the correct
-// current answer, not a defect.
-fn ubicloud_route() -> ProviderRoute {
-  ProviderRoute {
-    provider: decl_ref(module_path: "extdeps.cloud.ubicloud", decl_name: "extdeps_external_authority_anchor"),
-    service: decl_ref(module_path: "extdeps.cloud.ubicloud", decl_name: "ubicloud_runner_types_authority"),
-    region: decl_ref(module_path: "product.supplier.ubicloud", decl_name: "RegionNotObserved"),
+// AN EARLIER REVISION PUT A SENTINEL IN THE REGION SLOT, and that was the exact fail-open shape
+// product.fabric.provider_route rules out one file over: "THE ABSENT AND UNREAD ARMS ARE SEPARATE
+// AND THAT SEPARATION IS THE WHOLE POINT ... the first is a fact that can support an admission and
+// the second is an obligation that must refuse." It cited a RegionNotObserved declaration as if it
+// named a region, and defended that with a roster argument - no sanction cites it, so every offer
+// refuses. But nothing in RouteScopeSanction or admit_provider_use forbids a roster row from
+// citing it, and provider_route_eq compares declaration references and would match happily. One
+// added row and every Ubicloud offer is admitted under a sanction for "unobserved", whatever
+// region it actually runs in, with a fully populated evidence record. Safety contingent on a
+// roster nobody has written yet is not safety; DESIGN section 5 asks for the state to be
+// UNWRITABLE, not for the currently-empty set of writers to be pointed at.
+//
+// So the observation is its own coproduct and a ProviderRoute is minted ONLY in the read arm.
+// There is no value of UbicloudRegionObservation that yields a route with an unobserved region,
+// which is what makes this construction rather than validation.
+type UbicloudRegionObservation
+  = UbicloudRegionRead { region: DeclarationRef }
+  | UbicloudRegionUnread { obligation: NonEmptyStr }
+
+type UbicloudRouteStanding
+  = UbicloudRouteObserved { route: ProviderRoute }
+  | UbicloudRouteRegionUnobserved { obligation: NonEmptyStr }
+
+// NOBODY HAS READ THIS VENDOR'S REGIONS, stated as the standing production observation. Nothing
+// in the cited catalog names a location, so any region written here would be invented. This is
+// what the binding is handed today; it is a row rather than a literal at the call site so the
+// obligation is one named thing rather than a sentence repeated per caller.
+data ubicloud_region_unread_obligation: NonEmptyStr = "No cited Ubicloud row names a region for a runner. Until one is read and cited, this vendor's offers cannot be placed on a route, and binding refuses rather than inventing a location."
+
+fn ubicloud_region_unread() -> UbicloudRegionObservation {
+  UbicloudRegionUnread { obligation: ubicloud_region_unread_obligation }
+}
+
+fn ubicloud_route(region: UbicloudRegionObservation) -> UbicloudRouteStanding {
+  match region {
+    UbicloudRegionUnread { obligation } =>
+      UbicloudRouteRegionUnobserved { obligation: obligation },
+    UbicloudRegionRead { region: observed } =>
+      UbicloudRouteObserved {
+        route: ProviderRoute {
+          provider: decl_ref(module_path: "extdeps.cloud.ubicloud", decl_name: "extdeps_external_authority_anchor"),
+          service: decl_ref(module_path: "extdeps.cloud.ubicloud", decl_name: "ubicloud_runner_types_authority"),
+          region: observed,
+        },
+      },
   }
 }
 
@@ -129,7 +161,6 @@ fn ubicloud_unexpressed(catalog: UbicloudRunnerCatalogRow) -> List<UnexpressedSu
   [
     DiskNotExpressibleInShape { provided: catalog.disk_bytes },
     IsolationNotObserved,
-    RegionNotObserved,
   ]
 }
 
@@ -176,36 +207,42 @@ fn bind_ubicloud_offer<P>(
   capabilities: CapabilityManifestRef,
   trust_domain: TrustDomainRef,
   readiness: ReadinessObservation,
+  region: UbicloudRegionObservation,
   quoted_at: Timestamp,
   valid_until: Timestamp,
   receipt: ObservationReceiptRef,
 ) -> OfferBinding<P> {
-  match readiness {
-    ReadinessUnmeasured { obligation } =>
+  match ubicloud_route(region: region) {
+    UbicloudRouteRegionUnobserved { obligation } =>
       OfferBindingRefused { runs_on_label: row.catalog.runs_on_label, cause: obligation },
-    ReadinessMeasured { ready_at, receipt: readiness_receipt } =>
-      OfferBound {
-        bound: SupplierOfferProjection {
-          offer: SupplierOffer {
-            id: FabricIdentity { principal: principal, key: row.catalog.runs_on_label },
-            executor: executor,
-            route: ubicloud_route(),
-            shape: ubicloud_shape(catalog: row.catalog),
-            capabilities: capabilities,
-            trust_domain: trust_domain,
-            isolation: ubicloud_unobserved_isolation(),
-            quantity_bound: placement_concurrency_bound,
-            ready_at: ready_at,
-            quote: ubicloud_quote(row: row),
-            billing_quantum: ubicloud_billing_quantum,
-            evidence: QuotedSupply {
-              quoted_at: quoted_at,
-              valid_until: valid_until,
-              receipt: receipt,
+    UbicloudRouteObserved { route: bound_route } =>
+    match readiness {
+      ReadinessUnmeasured { obligation } =>
+        OfferBindingRefused { runs_on_label: row.catalog.runs_on_label, cause: obligation },
+      ReadinessMeasured { ready_at, receipt: readiness_receipt } =>
+        OfferBound {
+          bound: SupplierOfferProjection {
+            offer: SupplierOffer {
+              id: FabricIdentity { principal: principal, key: row.catalog.runs_on_label },
+              executor: executor,
+              route: bound_route,
+              shape: ubicloud_shape(catalog: row.catalog),
+              capabilities: capabilities,
+              trust_domain: trust_domain,
+              isolation: ubicloud_unobserved_isolation(),
+              quantity_bound: placement_concurrency_bound,
+              ready_at: ready_at,
+              quote: ubicloud_quote(row: row),
+              billing_quantum: ubicloud_billing_quantum,
+              evidence: QuotedSupply {
+                quoted_at: quoted_at,
+                valid_until: valid_until,
+                receipt: receipt,
+              },
             },
+            unexpressed: ubicloud_unexpressed(catalog: row.catalog),
           },
-          unexpressed: ubicloud_unexpressed(catalog: row.catalog),
         },
-      },
+    },
   }
 }
