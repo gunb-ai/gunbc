@@ -87,11 +87,11 @@ data artifact_glm_53_flash_native: ModelArtifact = ModelArtifact {
 data artifact_glm_53_flash_2bit: ModelArtifact = ModelArtifact {
   identity: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_glm_53_flash_2bit", field: WholeDeclaration },
   label: "GLM 5.3 Flash, 2.05 bits per weight" as NonEmptyStr,
-  footprint: FootprintReportedExternally {
-    bytes: 85230000000,
-    source: "a third-party single-host deployment report; not read on this fleet, so it cannot support a feasibility verdict here" as NonEmptyStr,
+  footprint: FootprintObservedOnFleet {
+    bytes: 85233493037,
+    how: "du -sb /home/briansrls/models/glm53-flash-exl3-2.05 on spark-0c75, 2026-09-08, the directory the canary engine on port 30001 serves from. A previous revision of this row carried 85,230,000,000 from a third-party deployment write-up, which was 3,493,037 bytes low; the artifact is on this fleet and did not need citing to someone else" as NonEmptyStr,
   },
-  weight_treatment: "requantised to 2.05 bits per weight, a DIFFERENT SET OF WEIGHTS from the native checkpoint" as NonEmptyStr,
+  weight_treatment: "EXL3 v1.4.4 at 2.05 bits per weight, head_bits 5, calibrated on 250 rows by 2048 columns, requantised FROM the fp8 e4m3 checkpoint per its own config.json original_quantization_config. A DIFFERENT SET OF WEIGHTS from the native checkpoint, and the artifact a live consumer is being served from at this writing" as NonEmptyStr,
 }
 
 // ── THE FLEET AS A SNAPSHOT ───────────────────────────────────────────────────────────────────
@@ -180,6 +180,7 @@ type ServingDecisionParameters sole_constructor {
   executor: ExecutorProfile
   kv_layout: KvLayoutPolicy
   speculative: SpeculativePolicy
+  enable_prefix_caching: Bool
   runtime: RuntimeRevision
 }
 
@@ -191,6 +192,7 @@ fn serving_decision_parameters(
   executor: ExecutorProfile,
   kv_layout: KvLayoutPolicy,
   speculative: SpeculativePolicy,
+  enable_prefix_caching: Bool,
   runtime: RuntimeRevision,
 ) -> ServingDecisionParameters {
   ServingDecisionParameters {
@@ -201,6 +203,7 @@ fn serving_decision_parameters(
     executor: executor,
     kv_layout: kv_layout,
     speculative: speculative,
+    enable_prefix_caching: enable_prefix_caching,
     runtime: runtime,
   }
 }
@@ -214,6 +217,7 @@ fn parameters_key(p: ServingDecisionParameters) -> String {
     "|", executor_wire(e: p.executor) as String,
     "|", kv_layout_wire(k: p.kv_layout) as String,
     "|", speculative_policy_wire(s: p.speculative) as String,
+    "|prefix", if p.enable_prefix_caching { "on" } else { "off" },
     "|", runtime_revision_key(r: p.runtime),
   ], "")
 }
@@ -1248,13 +1252,14 @@ data spark_runtime: RuntimeRevision = runtime_revision(
 )
 
 data serving_parameters_current: ServingDecisionParameters = serving_decision_parameters(
-  max_model_len: token_count(count: 300000),
+  max_model_len: token_count(count: 262144),
   gpu_memory_utilisation_percent: 82,
   max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: 32,
   executor: ExecutorRayProfile,
   kv_layout: KvFp8DsMlaLayout,
   speculative: SpeculationOff,
+  enable_prefix_caching: true,
   runtime: spark_runtime,
 )
 
@@ -1265,13 +1270,14 @@ data eight_host_topologies: List<TopologyShape> = [
   topology_shape(tensor_parallel_degree: 1, replica_count: 8),
 ]
 
-// THE WORKLOAD IS A SCENARIO AND SAYS SO. 300,000 tokens was authored as a working window with no
-// derived population behind it, and the checkpoint's own 1,048,576-token ceiling is a LIMIT rather
-// than a requirement -- using a limit as a requirement is what makes an over-provisioned shape look
-// free. This standing puts the scenario value where it cannot be mistaken for the demand.
+// THE WORKLOAD IS A SCENARIO AND SAYS SO. The window is 262,144 tokens by operator decision
+// (2026-09-08) and matches what the GLM canary actually runs; an earlier revision of this row
+// carried 300,000, which I had authored with nothing behind it. The window being decided does NOT
+// make the DEMAND established: no per-turn context distribution exists, so this stays a scenario
+// value where it cannot be mistaken for a requirement.
 data serving_workload_standing: WorkloadDemandStanding = WorkloadDemandUnestablished {
   identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_workload_standing"),
-  scenario_value: token_count(count: 300000),
+  scenario_value: token_count(count: 262144),
   obligation: "no per-turn context distribution has been derived for this fleet's traffic: retained context, new input, reserved output and tool-growth reserve at a stated percentile. Until that exists this value is a scenario parameter and cannot settle a deployment" as NonEmptyStr,
 }
 

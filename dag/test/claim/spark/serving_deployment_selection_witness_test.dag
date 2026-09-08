@@ -6,7 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref, de
 import std.measure { token_count }
 import v2.std.optional { Present, Absent }
 import gunbc.spark.serving_deployment_selection {
-  ModelArtifact, DeploymentCandidate, deployment_candidate,
+  ModelArtifact, FootprintReportedExternally, DeploymentCandidate, deployment_candidate,
   ExecutorRayProfile, ExecutorMpProfile, KvFp8DsMlaLayout, SpeculationOff, SpeculationOn,
   RuntimeRevision, runtime_revision,
   ServingDecisionParameters, serving_decision_parameters,
@@ -130,13 +130,14 @@ test fn a_task_score_regression_is_also_a_failure() -> Bool {
 // KV layout, speculative policy and runtime revision. A receipt acquired at one is not transportable
 // to another, which is why quality and runtime feasibility share this exact subject.
 data other_runtime_parameters: ServingDecisionParameters = serving_decision_parameters(
-  max_model_len: token_count(count: 300000),
+  max_model_len: token_count(count: 262144),
   gpu_memory_utilisation_percent: 82,
   max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: 32,
   executor: ExecutorMpProfile,
   kv_layout: KvFp8DsMlaLayout,
   speculative: SpeculationOff,
+  enable_prefix_caching: true,
   runtime: runtime_revision(image: "a different image" as NonEmptyStr, vllm_revision: "a different revision" as NonEmptyStr),
 )
 
@@ -148,6 +149,7 @@ data wider_context_parameters: ServingDecisionParameters = serving_decision_para
   executor: ExecutorRayProfile,
   kv_layout: KvFp8DsMlaLayout,
   speculative: SpeculationOff,
+  enable_prefix_caching: true,
   runtime: spark_runtime,
 )
 
@@ -175,13 +177,14 @@ test fn a_quality_receipt_is_not_transportable_across_execution_profiles() -> Bo
 // Above 100 percent the lower-bound screen is handed more usable memory than the host has, turning an
 // impossible weight profile into a passing one -- generous in the one direction it must never be.
 data impossible_utilisation: ServingDecisionParameters = serving_decision_parameters(
-  max_model_len: token_count(count: 300000),
+  max_model_len: token_count(count: 262144),
   gpu_memory_utilisation_percent: 150,
   max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: 32,
   executor: ExecutorRayProfile,
   kv_layout: KvFp8DsMlaLayout,
   speculative: SpeculationOff,
+  enable_prefix_caching: true,
   runtime: spark_runtime,
 )
 
@@ -267,25 +270,27 @@ test fn a_candidate_outside_the_declared_domain_is_unestablished() -> Bool {
 // ── CONTROL 7: THE DECISION IDENTITY MOVES WITH EVERY LOAD-BEARING INPUT ───────────────────────
 //
 // The previous version passed identities BESIDE values and joined neither, so changing the demand
-// from 300K to 400K produced a different answer under a receipt whose named authorities were
-// byte-identical. This key is derived from the values themselves, so there is no second spelling.
+// produced a different answer under a receipt whose named authorities were byte-identical. This key
+// is derived from the values themselves, so there is no second spelling. Both demands below sit at
+// or under the 262,144-token window, so they exercise the identity without also tripping the
+// context-coverage constraint -- which would test a different thing.
 data established_demand: WorkloadDemandStanding = WorkloadDemandEstablished {
   identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "established_demand"),
-  required_context: token_count(count: 300000),
+  required_context: token_count(count: 200000),
   population: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
-  reserve: context_reserve_policy(retained_context: token_count(count: 200000), reserved_output: token_count(count: 64000), tool_growth_reserve: token_count(count: 36000)),
+  reserve: context_reserve_policy(retained_context: token_count(count: 120000), reserved_output: token_count(count: 48000), tool_growth_reserve: token_count(count: 32000)),
 }
 
 data wider_established_demand: WorkloadDemandStanding = WorkloadDemandEstablished {
   identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "wider_established_demand"),
-  required_context: token_count(count: 400000),
+  required_context: token_count(count: 262144),
   population: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
-  reserve: context_reserve_policy(retained_context: token_count(count: 300000), reserved_output: token_count(count: 64000), tool_growth_reserve: token_count(count: 36000)),
+  reserve: context_reserve_policy(retained_context: token_count(count: 180000), reserved_output: token_count(count: 48000), tool_growth_reserve: token_count(count: 34144)),
 }
 
 data unestablished_demand: WorkloadDemandStanding = WorkloadDemandUnestablished {
   identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "unestablished_demand"),
-  scenario_value: token_count(count: 300000),
+  scenario_value: token_count(count: 200000),
   obligation: "fixture: no derived context population" as NonEmptyStr,
 }
 
@@ -368,15 +373,39 @@ test fn the_weight_bound_refuses_a_rank_that_cannot_hold_its_share() -> Bool {
   }
 }
 
-// AN EXTERNALLY REPORTED FOOTPRINT CANNOT SUPPORT A FEASIBILITY VERDICT HERE. The 2.05-bpw figure
-// came from someone else's deployment write-up; the previous version typed it identically to a byte
-// count read on a Spark, so it looked exact.
+// AN EXTERNALLY REPORTED FOOTPRINT CANNOT SUPPORT A FEASIBILITY VERDICT HERE, and this control now
+// rides on a CONTROLLED FIXTURE rather than on a production row. It used to point at the 2.05-bpw
+// artifact while that row carried a third-party figure -- but that artifact is on this fleet and its
+// bytes have since been read, so the production row is now fleet-observed and cannot carry this
+// control. Keeping the control on it would have meant leaving a real artifact's provenance wrong in
+// order to keep a test green, which is the tail wagging the dog.
+data fixture_externally_reported_artifact: ModelArtifact = ModelArtifact {
+  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "fixture_externally_reported_artifact"),
+  label: "fixture artifact whose only footprint is someone else's report" as NonEmptyStr,
+  footprint: FootprintReportedExternally {
+    bytes: 85230000000,
+    source: "fixture: a third-party deployment write-up, not read on this fleet" as NonEmptyStr,
+  },
+  weight_treatment: "fixture" as NonEmptyStr,
+}
+
 test fn an_externally_reported_footprint_is_underivable_on_this_fleet() -> Bool {
-  match weight_fit_of(c: cand(name: "ext", art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8)), fleet: spark_fleet_snapshot, p: serving_parameters_current) {
+  match weight_fit_of(c: cand(name: "ext", art: fixture_externally_reported_artifact, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8)), fleet: spark_fleet_snapshot, p: serving_parameters_current) {
     WeightFitUnderivable { because: _ } => true
     _ => false
   } && match weight_fit_of(c: cand(name: "unread", art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2)), fleet: spark_fleet_snapshot, p: serving_parameters_current) {
     WeightFitUnderivable { because: _ } => true
+    _ => false
+  }
+}
+
+// AND THE MEASURED 2.05-BPW ARTIFACT IS NOW FEASIBLE AND STILL REFUSED, which is a stronger control
+// than the one it replaces. Its bytes fit one rank with room to spare -- it is the fastest, most
+// isolated shape the GLM field can express -- and the quality wall excludes it anyway, because it is
+// a different set of weights. Feasible-and-refused discriminates where unknown-and-refused could not.
+test fn the_measured_requantised_artifact_is_feasible_and_refused_anyway() -> Bool {
+  match weight_fit_of(c: cand(name: "twobit_fit", art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8)), fleet: spark_fleet_snapshot, p: serving_parameters_current) {
+    WeightsNotRuledOutByLowerBound { per_rank_bytes: _, usable_bytes: _, slack_bytes: _ } => true
     _ => false
   }
 }
