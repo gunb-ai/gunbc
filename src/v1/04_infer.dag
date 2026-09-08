@@ -5533,6 +5533,25 @@ fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
   }
 }
 
+// A let annotation is the same nominal application resolve_param already
+// keeps for a declared parameter. Binding the inferred value instead substitutes
+// an expansion whose children are members, not type arguments, so later algebra
+// instantiation cannot recover ReceiverElement.
+fn annotated_let_declared_type(texpr: Node) -> Node? {
+  if texpr.type_annotation != none && is_type_expr_annotation(n: texpr.type_annotation.value) {
+    Present { value: texpr.type_annotation.value }
+  } else {
+    none
+  }
+}
+
+fn annotated_let_bound_type(declared: Node?, val_type: Node) -> Node {
+  match declared {
+    Present { value: d } => d
+    Absent => val_type
+  }
+}
+
 fn extend_scope(scope: InferScope, name: String, resolved: Node, provenance: SubValueRelation) -> InferScope {
   InferScope {
     type_env: scope.type_env,
@@ -7358,32 +7377,32 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           }
         Absent => false
       }
-      let val_expected = if texpr.type_annotation != none && is_type_expr_annotation(n: texpr.type_annotation.value) {
-        Present { value: texpr.type_annotation.value }
-      } else if is_tail_return {
-        expected
-      } else {
-        none
+      let declared_let_type = annotated_let_declared_type(texpr: texpr)
+      let val_expected = match declared_let_type {
+        Present { value: declared } => Present { value: declared }
+        Absent => if is_tail_return { expected } else { none }
       }
       let val_result = infer_expr(texpr: val_expr, scope: scope, expected: val_expected)
       let val_typed = val_result.typed
       let val_type = resolved_type(n: val_typed)
-      let val_annotation_diags = if texpr.type_annotation != none && is_type_expr_annotation(n: texpr.type_annotation.value) {
-        declared_type_conformance_diags(
-          declared: texpr.type_annotation.value,
+      let val_annotation_diags = match declared_let_type {
+        Present { value: declared } => declared_type_conformance_diags(
+          declared: declared,
           produced: val_type,
           span: val_expr.span,
           scope: scope)
-      } else { [] }
+        Absent => []
+      }
       let val_diags = concat(val_result.diagnostics, val_annotation_diags)
+      let bound_type = annotated_let_bound_type(declared: declared_let_type, val_type: val_type)
       if body_expr == none {
-        let let_texpr = make_named_expr_node(occurrence_identity: texpr.occurrence_identity, name: let_name, expr_data: ExprLet, children: [val_typed], inferred: Present { value: Resolved { node: val_type } }, span: span, name_span: node_name_span(n: texpr))
+        let let_texpr = make_named_expr_node(occurrence_identity: texpr.occurrence_identity, name: let_name, expr_data: ExprLet, children: [val_typed], inferred: Present { value: Resolved { node: bound_type } }, span: span, name_span: node_name_span(n: texpr))
         InferResult {
           typed: let_texpr,
           diagnostics: val_diags
         }
       } else {
-        let extended = extend_scope(scope: scope, name: let_name, resolved: val_type, provenance: classify_binding_provenance(val: val_typed, scope: scope))
+        let extended = extend_scope(scope: scope, name: let_name, resolved: bound_type, provenance: classify_binding_provenance(val: val_typed, scope: scope))
         let body_result = infer_expr(texpr: body_expr.value, scope: extended, expected: expected)
         let body_typed = body_result.typed
         let body_diags = body_result.diagnostics
