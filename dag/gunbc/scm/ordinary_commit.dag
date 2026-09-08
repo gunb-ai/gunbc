@@ -35,6 +35,7 @@ import gunbc.scm.repository_envelope {
   OrdinaryCommitSubjectAllocatorInvalid, OrdinaryCommitSubjectParentMissing,
   OrdinaryAncestralSubjectAdmission, OrdinaryAncestralSubjectAdmitted,
   OrdinaryAncestralSubjectAllocatorInvalid,
+  AdmittedCommitAncestry,
   admit_ordinary_commit_subject, admit_ordinary_commit_subject_from_ancestry,
   mint_repository_commit_admitted,
 }
@@ -81,7 +82,12 @@ fn mint_ordinary_commit(
 }
 
 // THE NARROW MINT. Two arms rather than three, because its caller hands it an ancestry that was
-// established where the parent was found rather than a reference this function would have to look up.
+// ADMITTED where the parent was found rather than a reference this function would have to look up.
+//
+// IT TAKES `AdmittedCommitAncestry`, NOT `CommitAncestry`, AND THE FIRST VERSION TOOK THE LATTER. A
+// bare `CommitAncestry` states a relation and evidences nothing, so this public mint would accept
+// `DescendsFrom { parent: <absent> }` and answer with a commit whose ancestry dangles -- strictly
+// worse than the parent-missing arm its introduction deleted. Found by external review.
 type AncestralCommitMint
   = AncestralCommitMinted(MintedCommit)
   | AncestralCommitAllocatorInvalid { next_ordinal: Int }
@@ -89,9 +95,12 @@ type AncestralCommitMint
 fn mint_ancestral_commit(
   subject: RepositoryManifestRoot,
   message: String,
-  ancestry: CommitAncestry,
+  admitted_ancestry: AdmittedCommitAncestry,
 ) -> AncestralCommitMint {
-  match admit_ordinary_commit_subject_from_ancestry(subject: subject, ancestry: ancestry) {
+  match admit_ordinary_commit_subject_from_ancestry(
+    subject: subject,
+    admitted_ancestry: admitted_ancestry,
+  ) {
     OrdinaryAncestralSubjectAllocatorInvalid { next_ordinal: n } =>
       AncestralCommitAllocatorInvalid { next_ordinal: n }
     OrdinaryAncestralSubjectAdmitted(admitted) =>

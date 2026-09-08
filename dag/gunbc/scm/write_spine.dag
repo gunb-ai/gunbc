@@ -242,9 +242,8 @@ type StagedCommit
 // that mean there is a change to freeze. Everything downstream consumes it, and the selection-plus-
 // stage-consumption step is not reachable except through it.
 type CommittableStage sole_constructor {
-  repository: RepositoryEnvelope
-  root: CorpusManifestObjectRef
-  ancestry: CommitAncestry
+  root: RepositoryManifestRoot
+  ancestry: AdmittedCommitAncestry
 }
 
 fn commit_staged(repository: RepositoryEnvelope, message: String) -> StagedCommit {
@@ -254,71 +253,52 @@ fn commit_staged(repository: RepositoryEnvelope, message: String) -> StagedCommi
     StageMatchesBase { candidate: _ } => StagedCommitNothingToFreeze
     StageWithNoBase { candidate: root, ancestry: ancestry } =>
       freeze_committable(
-        committable: CommittableStage {
-          repository: repository, root: root, ancestry: ancestry,
-        },
+        committable: CommittableStage { root: root, ancestry: ancestry },
         message: message,
       )
     StageDiffersFromBase { candidate: root, committed: _, ancestry: ancestry } =>
       freeze_committable(
-        committable: CommittableStage {
-          repository: repository, root: root, ancestry: ancestry,
-        },
+        committable: CommittableStage { root: root, ancestry: ancestry },
         message: message,
       )
   }
 }
 
-// THE ROOT IS RE-RESOLVED AGAINST THIS REPOSITORY BEFORE IT IS FROZEN, and the cost is declared rather
-// than dodged. `stage_standing` already found the record, so this is a second O(n) store lookup per
-// commit -- exactly what `mint_repository_commit` has always cost, and the reason it is paid here is
-// that the SEAL is what makes the pairing unwritable. Threading the sealed pair out through staging
-// would avoid the lookup and is the right shape once staging's carriers move; carrying a bare
-// reference forward to save it would put the pairing back in the author's hands.
+// THE ROOT ARRIVES ALREADY RESOLVED, AND THE SECOND RESOLUTION IS GONE.
 //
-// THE THREE WRONG-KIND ARMS CANNOT FIRE FROM HERE -- the root came from a record `stage_standing` just
-// resolved out of this same store -- so they are NOT re-reported as fabricated causes. They collapse to
-// the candidate-refusal arm, which is what they are from this verb's point of view: the candidate this
-// repository names could not be read as a manifest.
+// An earlier revision re-resolved the candidate locator here and answered all three wrong-kind arms,
+// directly beneath an annotation saying they could not fire from this route. Both halves of that were
+// wrong to keep: the arms had no producer here, and the resolution was a second O(n) store lookup per
+// commit buying nothing. `stage_standing` now resolves ONCE, where those refusals do have a producer,
+// and hands back a sealed `RepositoryManifestRoot`; `CommittableStage` carries it. So this function
+// neither re-asks nor re-reports, and it no longer needs the repository as a separate field -- the
+// sealed root carries the repository the manifest was found in. Found by external review.
 //
-// THE MINT, THE SELECTION AND THE STAGE CONSUMPTION ARE ONE FUNCTION, and that is the repair rather
-// than an inlining preference. Splitting the advance out gave the corpus a public function that clears
-// `staged` for ANY minted commit; there is no carrier weaker than "this mint came from this
-// workspace's committable stage" that makes that clearing honest, and once the carrier is threaded
-// this far there is nothing left for a separate entry point to be. Neither half is optional: leaving
-// the checkout behind would make the next `add` inherit from the OLD snapshot, and leaving the stage
-// in place would make the next commit freeze the same manifest again under a new identity.
+// THE MINT, THE SELECTION AND THE STAGE CONSUMPTION REMAIN ONE FUNCTION. Splitting the advance out
+// gave the corpus a public function that clears `staged` for ANY minted commit; there is no carrier
+// weaker than "this mint came from this workspace's committable stage" that makes that clearing
+// honest. Neither half is optional: leaving the checkout behind would make the next `add` inherit from
+// the OLD snapshot, and leaving the stage in place would make the next commit freeze the same manifest
+// again under a new identity.
 fn freeze_committable(committable: CommittableStage, message: String) -> StagedCommit {
-  let repository = committable.repository
-  match repository_root_by_resolving(
-    repository: repository,
-    root: CorpusManifestTarget { locator: committable.root.locator },
+  match mint_ancestral_commit(
+    subject: committable.root,
+    message: message,
+    admitted_ancestry: committable.ancestry,
   ) {
-    RepositoryManifestRootMissing { root: r } =>
-      StagedCommitCandidateRefused { cause: StageManifestMissingFromStore { staged: r } }
-    RepositoryManifestRootIsAuthoredSource { root: r } =>
-      StagedCommitCandidateRefused { cause: StageManifestIsAuthoredSource { staged: r } }
-    RepositoryManifestRootIsSemanticNode { root: r } =>
-      StagedCommitCandidateRefused { cause: StageManifestIsSemanticNode { staged: r } }
-    RepositoryManifestRootResolved(subject) =>
-      match mint_ancestral_commit(
-        subject: subject,
-        message: message,
-        ancestry: committable.ancestry,
-      ) {
-        AncestralCommitAllocatorInvalid { next_ordinal: n } =>
-          StagedCommitAllocatorInvalid { next_ordinal: n }
-        AncestralCommitMinted(minted) =>
-          StagedCommitMinted {
-            repository: RepositoryEnvelope {
-              store: minted.repository.store,
-              commits: minted.repository.commits,
-              commit_allocator: minted.repository.commit_allocator,
-              checked_out: Present { value: minted.reference },
-              staged: none,
-            },
-            reference: minted.reference,
-          }
+    AncestralCommitAllocatorInvalid { next_ordinal: n } =>
+      StagedCommitAllocatorInvalid { next_ordinal: n }
+    AncestralCommitMinted(minted) =>
+      StagedCommitMinted {
+        repository: RepositoryEnvelope {
+          store: minted.repository.store,
+          commits: minted.repository.commits,
+          commit_allocator: minted.repository.commit_allocator,
+          checked_out: Present { value: minted.reference },
+          staged: none,
+        },
+        reference: minted.reference,
       }
   }
 }
+

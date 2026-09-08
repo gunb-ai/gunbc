@@ -23,7 +23,7 @@ import gunbc.scm.repository_envelope { RepositoryEnvelope, commit_at_reference }
 import gunbc.scm.staging { StagedEntries, StagedEntriesRefused, staged_entries }
 import gunbc.scm.merge_base {
   MergeBaseOutcome, MergeBaseDerived, MergeBaseSourceAlreadyConsumed,
-  MergeBaseHistoryUnwalkable, MergeBaseHistoriesDisjoint, MergeBaseSourceAlreadyIntegrated,
+  MergeBaseHistoryUnwalkable, MergeBaseHistoriesDisjoint, MergeBaseSourceIsAncestorOfTarget,
 }
 import gunbc.scm.manifest_merge { ManifestPathConflict, PathState, PathAbsent, PathPresent }
 import gunbc.scm.squash_merge {
@@ -38,8 +38,6 @@ import gunbc.scm.squash_merge {
   SquashMergeResultDuplicatePath,
   SquashMergeResultLocatorCollision,
   SquashMergeAllocatorInvalid,
-  SquashMergeMintParentMissing,
-  SquashMergeMintIntegrationSourceMissing,
   MergeSideName, MergeBaseCommit, MergeSourceCommit, MergeTargetCommit,
   squash_merge,
 }
@@ -182,8 +180,6 @@ test fn scm_sm_a_merge_carries_both_sides_paths() -> Bool {
             SquashMergeResultDuplicatePath { path: _ } => false
             SquashMergeResultLocatorCollision { identity: _ } => false
             SquashMergeAllocatorInvalid => false
-            SquashMergeMintParentMissing { parent: _ } => false
-            SquashMergeMintIntegrationSourceMissing { source: _ } => false
           }
       }
   }
@@ -231,8 +227,6 @@ test fn scm_sm_the_result_parents_the_target_and_records_the_source_consumed() -
             SquashMergeResultDuplicatePath { path: _ } => false
             SquashMergeResultLocatorCollision { identity: _ } => false
             SquashMergeAllocatorInvalid => false
-            SquashMergeMintParentMissing { parent: _ } => false
-            SquashMergeMintIntegrationSourceMissing { source: _ } => false
           }
       }
   }
@@ -270,7 +264,7 @@ test fn scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_rece
                     MergeBaseDerived { base: _ } => false
                     MergeBaseHistoryUnwalkable { side: _, walk: _ } => false
                     MergeBaseHistoriesDisjoint { target: _, source: _ } => false
-                    MergeBaseSourceAlreadyIntegrated { target: _, source: _ } => false
+                    MergeBaseSourceIsAncestorOfTarget { target: _, source: _ } => false
                   }
                 SquashMerged { repository: _, reference: _ } => false
                 SquashMergeConflicted { conflicts: _ } => false
@@ -281,8 +275,6 @@ test fn scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_rece
                 SquashMergeResultDuplicatePath { path: _ } => false
                 SquashMergeResultLocatorCollision { identity: _ } => false
                 SquashMergeAllocatorInvalid => false
-                SquashMergeMintParentMissing { parent: _ } => false
-                SquashMergeMintIntegrationSourceMissing { source: _ } => false
               }
             SquashMergeConflicted { conflicts: _ } => false
             SquashMergeBaseRefused { refusal: _ } => false
@@ -293,8 +285,6 @@ test fn scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_rece
             SquashMergeResultDuplicatePath { path: _ } => false
             SquashMergeResultLocatorCollision { identity: _ } => false
             SquashMergeAllocatorInvalid => false
-            SquashMergeMintParentMissing { parent: _ } => false
-            SquashMergeMintIntegrationSourceMissing { source: _ } => false
           }
       }
   }
@@ -355,8 +345,6 @@ test fn scm_sm_a_conflicting_path_mints_no_commit() -> Bool {
                     SquashMergeResultDuplicatePath { path: _ } => false
                     SquashMergeResultLocatorCollision { identity: _ } => false
                     SquashMergeAllocatorInvalid => false
-                    SquashMergeMintParentMissing { parent: _ } => false
-                    SquashMergeMintIntegrationSourceMissing { source: _ } => false
                   }
               }
           }

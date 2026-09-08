@@ -2,7 +2,7 @@ module gunbc.durable_cas_file_store
 
 import std.types { NonEmptyStr, String, Int, Bool }
 import std.content_hash { ContentHash, content_hash_of_value, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
-import std.durable_compare_and_set { CasAttempt, cas_attempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, CasUnreadableBeyondProbeBound, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_generation_first, cas_generation_next, cas_generation_count }
+import std.durable_compare_and_set { CasAttempt, cas_attempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, CasUnreadableObservationBoundExceeded, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_generation_first, cas_generation_next, cas_generation_count }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
 // The first production realization of std.durable_compare_and_set: one keyed
@@ -289,8 +289,8 @@ fn cas_head_as_readable(generation: CasGeneration, value: NonEmptyStr) -> CasRea
 
 // ONE AUTHORITY FOR WHAT BOUND EXHAUSTION IS. Three sites spelled it independently, twice as a
 // malformed head, and a fourth spelling would have arrived with the next caller.
-fn cas_slot_beyond_probe_bound(bound: Int) -> CasUnreadableSlot {
-  CasUnreadableBeyondProbeBound { bound: bound }
+fn cas_slot_observation_bound_exceeded(bound: Int) -> CasUnreadableSlot {
+  CasUnreadableObservationBoundExceeded { bound: bound }
 }
 
 // THE STORE'S OBSERVATION, FOR CALLERS THAT MUST DECIDE BEFORE THEY WRITE.
@@ -311,7 +311,7 @@ fn observe_cas_slot_state(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotObserva
   let probe = cas_observe_slot(root: root, key: key)
   match probe {
     ProbedBeyondBound { bound: b } =>
-      CasObservedUnreadable { cause: cas_slot_beyond_probe_bound(bound: b) }
+      CasObservedUnreadable { cause: cas_slot_observation_bound_exceeded(bound: b) }
     ProbedAbsent => CasObservedReadable { readable: CasReadableAbsent }
     ProbedHead { generation: h, value: v } =>
       CasObservedReadable { readable: cas_head_as_readable(generation: h, value: v) }
@@ -531,7 +531,7 @@ fn cas_failed_publication(
 // review, on this function's own repair.
 fn cas_publication_beyond_bound(bound: Int) -> CasOutcome<NonEmptyStr> {
   CasStoreRefused {
-    cause: CasSlotObservationRefused { cause: cas_slot_beyond_probe_bound(bound: bound) }
+    cause: CasSlotObservationRefused { cause: cas_slot_observation_bound_exceeded(bound: bound) }
   }
 }
 
@@ -560,7 +560,7 @@ fn file_compare_and_set(
   match probe {
     ProbedBeyondBound { bound: b } =>
       CasStoreRefused {
-        cause: CasSlotObservationRefused { cause: cas_slot_beyond_probe_bound(bound: b) }
+        cause: CasSlotObservationRefused { cause: cas_slot_observation_bound_exceeded(bound: b) }
       }
     ProbedAbsent =>
       match attempt.expected {

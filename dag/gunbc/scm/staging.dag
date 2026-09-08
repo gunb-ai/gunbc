@@ -69,6 +69,16 @@ import gunbc.scm.repository_envelope {
   commit_at_reference,
 }
 import gunbc.scm.ancestry { CommitAncestry, RootCommit, DescendsFrom }
+import gunbc.scm.repository_envelope {
+  AdmittedCommitAncestry,
+  BaseAdmission, BaseAdmitted, BaseAbsentInRepository,
+  admitted_root_ancestry, admit_base_in,
+  RepositoryManifestRoot, RepositoryManifestRootResolution,
+  RepositoryManifestRootResolved, RepositoryManifestRootMissing,
+  RepositoryManifestRootIsAuthoredSource, RepositoryManifestRootIsSemanticNode,
+  repository_root_by_resolving,
+}
+import gunbc.scm.object_store { CorpusManifestTarget }
 
 // EVERY REFUSAL NAMES WHAT IT REFUSED ON, and the wrong-kind arms stay separate from the missing one
 // for the reason every wrong-kind population in this stack does: a locator occupied by a source or a
@@ -197,7 +207,7 @@ fn staged_entries(repository: RepositoryEnvelope) -> StagedEntries {
 // which snapshot the candidate is being compared against, and both must distinguish "no base" from
 // "a base that cannot be resolved" -- so the resolution is named rather than performed twice.
 type BaseSnapshot
-  = BaseAtCommit { reference: RepositoryCommitRef, root: CorpusManifestObjectRef }
+  = BaseAtCommit { ancestry: AdmittedCommitAncestry, root: CorpusManifestObjectRef }
   | NoBaseSelected
   | BaseRefused { cause: StagingRefusal }
 
@@ -205,9 +215,11 @@ fn base_snapshot(repository: RepositoryEnvelope) -> BaseSnapshot {
   match repository.checked_out {
     Absent => NoBaseSelected
     Present { value: reference } =>
-      match commit_at_reference(commits: repository.commits, reference: reference) {
-        Absent => BaseRefused { cause: StageBaseUnresolved { reference: reference } }
-        Present { value: commit } => BaseAtCommit { reference: reference, root: commit.root }
+      match admit_base_in(repository: repository, reference: reference) {
+        BaseAbsentInRepository { reference: r } =>
+          BaseRefused { cause: StageBaseUnresolved { reference: r } }
+        BaseAdmitted { ancestry: a, root: committed } =>
+          BaseAtCommit { ancestry: a, root: committed }
       }
   }
 }
@@ -232,21 +244,23 @@ fn base_snapshot(repository: RepositoryEnvelope) -> BaseSnapshot {
 // and modified files.
 // THE TWO FREEZABLE ARMS CARRY THE ANCESTRY THEY ALREADY ESTABLISHED, rather than leaving a commit
 // verb to re-derive it from `repository.checked_out` and ask again whether that parent exists.
-// `base_snapshot` reaches `BaseAtCommit` only through `commit_at_reference`, so by the time
+// `base_snapshot` reaches `BaseAtCommit` only through `admit_base_in`, which resolves the selected
+// commit ONCE and hands back the admitted ancestry beside the root it committed, so by the time
 // `StageDiffersFromBase` is constructed the parent has been FOUND in this repository's commits;
 // `StageWithNoBase` is reached only from `NoBaseSelected`, where there is no parent to find. Carrying
-// the `CommitAncestry` hands that established fact forward, so the mint downstream consumes it instead
+// an `AdmittedCommitAncestry` -- sole-constructed by the repository envelope, never by a caller --
+// hands that established fact forward, so the mint downstream consumes it instead
 // of re-asking a question whose answer this type already knows -- and the parent-missing arm it used
 // to need disappears from `gunbc.scm.write_spine` rather than being carried as an unreachable cause.
 // Found by external review.
 type StageStanding
   = StageMatchesBase { candidate: CorpusManifestObjectRef }
   | StageDiffersFromBase {
-      candidate: CorpusManifestObjectRef,
+      candidate: RepositoryManifestRoot,
       committed: CorpusManifestObjectRef,
-      ancestry: CommitAncestry
+      ancestry: AdmittedCommitAncestry
     }
-  | StageWithNoBase { candidate: CorpusManifestObjectRef, ancestry: CommitAncestry }
+  | StageWithNoBase { candidate: RepositoryManifestRoot, ancestry: AdmittedCommitAncestry }
   | NoCandidateAndNoBase
   | StageStandingRefused { cause: StagingRefusal }
 
@@ -261,21 +275,50 @@ fn stage_standing(repository: RepositoryEnvelope) -> StageStanding {
   }
 }
 
+// THE CANDIDATE IS RESOLVED ONCE, HERE, AND THE SEALED ROOT IS WHAT TRAVELS.
+//
+// The three wrong-kind refusals have a real producer at THIS resolution: the stage is a locator an
+// envelope carries, and a decoded repository can name one its object table does not hold as a
+// manifest. What they do not have is a second producer downstream -- an earlier revision had
+// `gunbc.scm.write_spine` re-resolve the same locator at freeze time and answer all three again, above
+// an annotation saying they could not fire there. Carrying the `RepositoryManifestRoot` makes the
+// second question absent instead of unreachable-but-answered. Found by external review.
 fn stage_standing_against_base(
   repository: RepositoryEnvelope,
   candidate: CorpusManifestObjectRef,
 ) -> StageStanding {
+  match repository_root_by_resolving(
+    repository: repository,
+    root: CorpusManifestTarget { locator: candidate.locator },
+  ) {
+    RepositoryManifestRootMissing { root: r } =>
+      StageStandingRefused { cause: StageManifestMissingFromStore { staged: r } }
+    RepositoryManifestRootIsAuthoredSource { root: r } =>
+      StageStandingRefused { cause: StageManifestIsAuthoredSource { staged: r } }
+    RepositoryManifestRootIsSemanticNode { root: r } =>
+      StageStandingRefused { cause: StageManifestIsSemanticNode { staged: r } }
+    RepositoryManifestRootResolved(root) =>
+      stage_standing_with_root(repository: repository, candidate: candidate, root: root)
+  }
+}
+
+fn stage_standing_with_root(
+  repository: RepositoryEnvelope,
+  candidate: CorpusManifestObjectRef,
+  root: RepositoryManifestRoot,
+) -> StageStanding {
   match base_snapshot(repository: repository) {
     BaseRefused { cause: c } => StageStandingRefused { cause: c }
-    NoBaseSelected => StageWithNoBase { candidate: candidate, ancestry: RootCommit }
-    BaseAtCommit { reference: reference, root: root } =>
-      if root.locator == candidate.locator {
+    NoBaseSelected =>
+      StageWithNoBase { candidate: root, ancestry: admitted_root_ancestry() }
+    BaseAtCommit { ancestry: admitted, root: committed } =>
+      if committed.locator == candidate.locator {
         StageMatchesBase { candidate: candidate }
       } else {
         StageDiffersFromBase {
-          candidate: candidate,
-          committed: root,
-          ancestry: DescendsFrom { parent: reference },
+          candidate: root,
+          committed: committed,
+          ancestry: admitted,
         }
       }
   }

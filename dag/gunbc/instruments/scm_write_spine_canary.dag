@@ -24,7 +24,7 @@ module gunbc.instruments.scm_write_spine_canary
 
 import std.types { String, NonEmptyStr, Int, Bool }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.durable_compare_and_set { CasGeneration, cas_generation_count, CasUnreadableBeyondProbeBound }
+import std.durable_compare_and_set { CasGeneration, cas_generation_count, CasUnreadableObservationBoundExceeded }
 import gunbc.durable_cas_file_store { cas_max_generation_probe }
 import gunbc.scm.repository_slot {
   RepositorySlot, LoadedRepositoryGeneration,
@@ -61,13 +61,12 @@ import gunbc.scm.squash_merge {
   SquashMergeRootMissing, SquashMergeRootIsAuthoredSource, SquashMergeRootIsSemanticNode,
   SquashMergeCommitMissing,
   SquashMergeResultDuplicatePath, SquashMergeResultLocatorCollision,
-  SquashMergeAllocatorInvalid, SquashMergeMintParentMissing,
-  SquashMergeMintIntegrationSourceMissing,
+  SquashMergeAllocatorInvalid,
 }
 import gunbc.scm.merge_base {
   MergeBaseOutcome, MergeBaseDerived, MergeBaseSourceAlreadyConsumed,
   MergeBaseHistoryUnwalkable, MergeBaseHistoriesDisjoint,
-  MergeBaseSourceAlreadyIntegrated,
+  MergeBaseSourceIsAncestorOfTarget,
   MergeBaseSide, MergeBaseTargetSide, MergeBaseSourceSide,
 }
 import gunbc.scm.ancestry {
@@ -480,7 +479,7 @@ fn head_verdict(read: RepositorySlotRead, expect: String, at_generation: String)
     }
   } else if expect == "beyond-bound" {
     match read {
-      RepositorySlotStoreUnreadable { cause: CasUnreadableBeyondProbeBound { bound: b } } =>
+      RepositorySlotStoreUnreadable { cause: CasUnreadableObservationBoundExceeded { bound: b } } =>
         if b == cas_max_generation_probe { ExitSuccess } else {
           exit_failure(
             reason: join([
@@ -758,8 +757,6 @@ fn squash_outcome_wire(outcome: SquashMergeOutcome) -> String {
     SquashMergeResultDuplicatePath { path: _ } => "result-duplicate-path"
     SquashMergeResultLocatorCollision { identity: _ } => "result-locator-collision"
     SquashMergeAllocatorInvalid => "allocator-invalid"
-    SquashMergeMintParentMissing { parent: _ } => "mint-parent-missing"
-    SquashMergeMintIntegrationSourceMissing { source: _ } => "mint-integration-source-missing"
   }
 }
 
@@ -774,7 +771,7 @@ fn merge_base_refusal_wire(refusal: MergeBaseOutcome) -> String {
         "|walk=", ancestry_walk_wire(walk: walk),
       ], "")
     MergeBaseHistoriesDisjoint { target: _, source: _ } => "histories-disjoint"
-    MergeBaseSourceAlreadyIntegrated { target: _, source: _ } => "source-already-integrated"
+    MergeBaseSourceIsAncestorOfTarget { target: _, source: _ } => "source-is-ancestor-of-target"
   }
 }
 

@@ -155,7 +155,7 @@ test fn an_unreadable_slot_is_a_store_refusal_not_a_lost_race() -> Bool {
   )
   let beyond = cas_decide(
     attempt: proposal(expected: ExpectSlotAbsent),
-    observed: CasObservedUnreadable { cause: CasUnreadableBeyondProbeBound { bound: 4096 } },
+    observed: CasObservedUnreadable { cause: CasUnreadableObservationBoundExceeded { bound: 4096 } },
   )
   is_store_refusal(outcome: malformed)
     && is_store_refusal(outcome: missing)

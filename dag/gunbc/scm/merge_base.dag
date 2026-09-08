@@ -62,7 +62,17 @@ import gunbc.scm.repository_envelope {
 // tell whether they asked for a replay or a continuation. A reader given only "no base" would
 // reasonably conclude the histories are unrelated, which is the opposite of the truth -- they are
 // related by an integration that already happened.
-// A BASE THAT IS THE SOURCE MEANS THERE IS NOTHING TO INTEGRATE, AND IT IS ITS OWN REFUSAL.
+// A BASE THAT IS THE SOURCE MEANS THE SOURCE IS ALREADY IN THE TARGET'S HISTORY, AND IT IS ITS OWN
+// REFUSAL.
+//
+// THE FIRST SPELLING OF THIS ARM FORKED A WORD THIS SUBSYSTEM HAD ALREADY SPENT. It was
+// `MergeBaseSourceAlreadyIntegrated`, sitting directly beside `MergeBaseSourceAlreadyConsumed`, where
+// "integrated" already names ONE mechanism: the explicit `SquashIntegrated` receipt a squash writes.
+// This arm fires for an ordinary ancestor/descendant chain carrying no receipt at all, so the name
+// gave one word two mechanisms in adjacent arms of one type -- the meaning fork section 3 forbids,
+// and the more dangerous direction of it, because a reader who trusts the name looks for a receipt
+// that does not exist. The name now states the structural fact: the source is an ancestor of the
+// target. Found by external review, on this arm's first appearance.
 //
 // Two degenerate topologies reach it: merging a commit into ITSELF, where the nearest common ancestor
 // of one chain with itself is that commit; and squashing an ANCESTOR into its own descendant, where
@@ -80,7 +90,7 @@ import gunbc.scm.repository_envelope {
 // Found by probing degenerate topology after external review asked whether the seals held there.
 type MergeBaseOutcome
   = MergeBaseDerived { base: RepositoryCommitRef }
-  | MergeBaseSourceAlreadyIntegrated {
+  | MergeBaseSourceIsAncestorOfTarget {
       target: RepositoryCommitRef,
       source: RepositoryCommitRef,
     }
@@ -208,7 +218,7 @@ fn merge_base(
               match nearest_common_ancestor(target_chain: target_chain, source_chain: source_chain) {
                 Present { value: base } =>
                   if repository_commit_ref_eq(left: base, right: source) {
-                    MergeBaseSourceAlreadyIntegrated { target: target, source: source }
+                    MergeBaseSourceIsAncestorOfTarget { target: target, source: source }
                   } else {
                     MergeBaseDerived { base: base }
                   }

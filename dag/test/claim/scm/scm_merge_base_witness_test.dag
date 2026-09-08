@@ -69,7 +69,7 @@ import gunbc.scm.merge_base {
   MergeBaseSourceAlreadyConsumed,
   MergeBaseHistoryUnwalkable,
   MergeBaseHistoriesDisjoint,
-  MergeBaseSourceAlreadyIntegrated,
+  MergeBaseSourceIsAncestorOfTarget,
   MergeBaseTargetSide,
   MergeBaseSourceSide,
   merge_base,
@@ -204,7 +204,7 @@ test fn scm_mb_a_source_descending_from_a_consumed_source_has_no_valid_base() ->
         MergeBaseDerived { base: _ } => false
         MergeBaseHistoryUnwalkable { side: _, walk: _ } => false
         MergeBaseHistoriesDisjoint { target: _, source: _ } => false
-        MergeBaseSourceAlreadyIntegrated { target: _, source: _ } => false
+        MergeBaseSourceIsAncestorOfTarget { target: _, source: _ } => false
       }
   }
 }
@@ -222,7 +222,7 @@ test fn scm_mb_an_independent_lineage_sharing_content_still_derives_its_base() -
         MergeBaseSourceAlreadyConsumed { recorded_at: _, consumed: _, source: _ } => false
         MergeBaseHistoryUnwalkable { side: _, walk: _ } => false
         MergeBaseHistoriesDisjoint { target: _, source: _ } => false
-        MergeBaseSourceAlreadyIntegrated { target: _, source: _ } => false
+        MergeBaseSourceIsAncestorOfTarget { target: _, source: _ } => false
       }
   }
 }
@@ -242,7 +242,7 @@ test fn scm_mb_replaying_the_consumed_source_itself_has_no_valid_base() -> Bool 
         MergeBaseDerived { base: _ } => false
         MergeBaseHistoryUnwalkable { side: _, walk: _ } => false
         MergeBaseHistoriesDisjoint { target: _, source: _ } => false
-        MergeBaseSourceAlreadyIntegrated { target: _, source: _ } => false
+        MergeBaseSourceIsAncestorOfTarget { target: _, source: _ } => false
       }
   }
 }
@@ -305,7 +305,7 @@ test fn scm_mb_the_integration_record_survives_a_document_round_trip() -> Bool {
                 MergeBaseDerived { base: _ } => false
                 MergeBaseHistoryUnwalkable { side: _, walk: _ } => false
                 MergeBaseHistoriesDisjoint { target: _, source: _ } => false
-                MergeBaseSourceAlreadyIntegrated { target: _, source: _ } => false
+                MergeBaseSourceIsAncestorOfTarget { target: _, source: _ } => false
               }
           }
       }
@@ -457,7 +457,7 @@ test fn scm_mb_merging_a_commit_into_itself_has_nothing_to_integrate() -> Bool {
     MbSceneUnavailable => false
     MbScene { repository: r, c0: _, s1: _, m1: _, t1: t1, s2: _, i1: _ } =>
       match merge_base(commits: r.commits, target: t1, source: t1) {
-        MergeBaseSourceAlreadyIntegrated { target: t, source: s } =>
+        MergeBaseSourceIsAncestorOfTarget { target: t, source: s } =>
           repository_commit_ref_eq(left: t, right: t1)
             && repository_commit_ref_eq(left: s, right: t1)
         MergeBaseDerived { base: _ } => false
@@ -475,7 +475,7 @@ test fn scm_mb_squashing_an_ancestor_into_its_descendant_has_nothing_to_integrat
     MbSceneUnavailable => false
     MbScene { repository: r, c0: c0, s1: _, m1: _, t1: t1, s2: _, i1: _ } =>
       match merge_base(commits: r.commits, target: t1, source: c0) {
-        MergeBaseSourceAlreadyIntegrated { target: t, source: s } =>
+        MergeBaseSourceIsAncestorOfTarget { target: t, source: s } =>
           repository_commit_ref_eq(left: t, right: t1)
             && repository_commit_ref_eq(left: s, right: c0)
         MergeBaseDerived { base: _ } => false

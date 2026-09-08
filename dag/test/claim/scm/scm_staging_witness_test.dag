@@ -404,7 +404,7 @@ test fn scm_stg_an_edit_after_a_commit_differs_from_its_base() -> Bool {
     StgBuilt { repository: edited } =>
       match stage_standing(repository: edited) {
         StageDiffersFromBase { candidate: candidate, committed: committed } =>
-          !object_id_eq(left: candidate.locator, right: committed.locator)
+          !object_id_eq(left: candidate.root.locator, right: committed.locator)
         _ => false
       }
   }

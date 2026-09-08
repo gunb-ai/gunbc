@@ -17,7 +17,7 @@ import std.durable_compare_and_set {
   CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
   CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent,
   CasUnreadableSlot, CasUnreadableMalformed, CasUnreadableContentMissing, CasUnreadableReadRefused,
-  CasUnreadableBeyondProbeBound,
+  CasUnreadableObservationBoundExceeded,
   CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused,
 }
 import product.fabric.identity { FabricIdentity, OfferKey, DemandKey, WorkKey }
@@ -530,8 +530,8 @@ fn fci1_cas_unreadable_wire(cause: CasUnreadableSlot) -> NonEmptyStr {
     CasUnreadableContentMissing { referenced: hash } =>
       join(["cas-content-missing|hash=", serialize_content_hash(hash: hash) as String], "") as NonEmptyStr
     CasUnreadableReadRefused { detail: _ } => "cas-read-refused"
-    CasUnreadableBeyondProbeBound { bound: b } =>
-      join(["cas-beyond-probe-bound|bound=", b as String], "") as NonEmptyStr
+    CasUnreadableObservationBoundExceeded { bound: b } =>
+      join(["cas-observation-bound-exceeded|bound=", b as String], "") as NonEmptyStr
   }
 }
 
