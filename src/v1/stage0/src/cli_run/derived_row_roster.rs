@@ -32,6 +32,9 @@ use std::path::Path;
 pub const ROSTER_BASENAME: &str = "roster.dag";
 /// Module path of the row files; `ROW_DIR_REL` is this spelling with `/` for `.`.
 pub const ROW_MODULE: &str = "gunbc.recurring_failure_mode";
+/// Module path of the DERIVED roster itself. One spelling, consumed by the row join and by the
+/// namespace wave's base reconstruction, so neither carries its own copy (DESIGN 3).
+pub const ROSTER_MODULE: &str = "gunbc.recurring_failure_mode.roster";
 pub const ROW_DIR_REL: &str = "gunbc/recurring_failure_mode";
 
 pub fn is_recurring_failure_mode_row_dir(dir: &Path) -> bool {
@@ -115,7 +118,7 @@ fn row_stems(dir: &Path) -> io::Result<Vec<String>> {
     Ok(names)
 }
 
-fn render_roster(names: &[String]) -> String {
+pub fn render_roster(names: &[String]) -> String {
     let mut out = String::from(
         "module gunbc.recurring_failure_mode.roster\n\
          \n\

@@ -328,6 +328,11 @@ data namespace_wave_admission_seed_growth_justification: SeedGrowthJustification
     },
     DeclarationRef {
       module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "base_derived_roster_body",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
       decl_name: "base_records",
       field: WholeDeclaration
     },

@@ -14,9 +14,10 @@
 use std::path::{Path, PathBuf};
 
 use v1_compiler::cli_run::namespace_wave_admission::{
-    adjudicate, base_records, diff_sides, disposition_label, in_sweep_scope, report_unadjudicated,
-    wave_admission_refusal, AdmissionSubject, DeltaSubject, NamespaceDeltaDisposition,
-    TransitionAdmission, WaveAdmissionOutcome, WaveAdmissionReport, ADMISSION_ROSTER_REL_PATH,
+    adjudicate, base_derived_roster_body, base_records, diff_sides, disposition_label,
+    in_sweep_scope, report_unadjudicated, wave_admission_refusal, AdmissionSubject, DeltaSubject,
+    NamespaceDeltaDisposition, TransitionAdmission, WaveAdmissionOutcome, WaveAdmissionReport,
+    ADMISSION_ROSTER_REL_PATH,
 };
 use v1_compiler::cli_run::run_dag_parse_sweep;
 
@@ -1965,5 +1966,66 @@ fn an_ambiguous_base_binding_is_not_consumption() {
             .any(|s| s.contains("authored-in-a-const")),
         "the unprovable row must still refuse: {:?}",
         report.stale_admissions
+    );
+}
+
+// ── THE DERIVED ROSTER'S BASE SIDE ──
+//
+// #10822 made RecurringFailureMode membership the row DIRECTORY and left the roster module a
+// GENERATED, GITIGNORED artifact. That created the first namespace participant that exists in
+// NEITHER commit, and the base-side reconstruction had no arm for one: a path in neither commit is
+// in neither side of `git diff --name-status base..head`, so it was never excluded from the
+// inherited head records and never reconstructed. The base therefore SPELLED every row the change
+// added while lacking the modules that resolve them.
+//
+// THE CLASS IS BROADER THAN THIS ROSTER. Any gitignored derived artifact that participates in the
+// namespace has the same shape; this roster is only the first one the corpus grew.
+
+#[test]
+fn the_base_roster_names_the_base_rows_and_not_a_row_the_change_adds() {
+    // THE DISCRIMINATING RED FOR THE DEFECT ITSELF. Before the repair the base side carried the
+    // HEAD derivation, so the added row's name was present at base -- which is precisely what made
+    // `authored_here` false and turned an authored reference into a pool coincidence. Asserting
+    // the ABSENCE is the whole check: a body that names `added_row` is the bug, restated.
+    let base_paths: std::collections::BTreeSet<String> = [
+        "dag/gunbc/recurring_failure_mode/alpha_row.dag",
+        "dag/gunbc/recurring_failure_mode/beta_row.dag",
+        "dag/gunbc/recurring_failure_mode/nested/deep_row.dag",
+        "dag/gunbc/other/unrelated.dag",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+
+    let body = base_derived_roster_body(&base_paths, "dag/gunbc/recurring_failure_mode/roster.dag");
+
+    assert!(
+        body.contains("alpha_row") && body.contains("beta_row"),
+        "the base roster must name the rows the BASE tree carries, got:\n{body}"
+    );
+    assert!(
+        !body.contains("added_row"),
+        "the base roster must NOT name a row the change adds -- naming it is the defect that \
+         made an authored reference read as a pool coincidence, got:\n{body}"
+    );
+    assert!(
+        !body.contains("deep_row"),
+        "only direct children of the roster's directory are rows, got:\n{body}"
+    );
+    assert!(
+        !body.contains("unrelated"),
+        "an entry outside the roster's directory is not a row, got:\n{body}"
+    );
+}
+
+#[test]
+fn an_empty_base_row_set_renders_a_present_empty_roster_not_an_absent_one() {
+    let body = base_derived_roster_body(
+        &std::collections::BTreeSet::new(),
+        "dag/gunbc/recurring_failure_mode/roster.dag",
+    );
+    assert!(
+        body.contains("module gunbc.recurring_failure_mode.roster"),
+        "an empty base row set must still render the module, got:\n{body}"
     );
 }
