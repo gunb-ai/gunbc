@@ -26450,7 +26450,10 @@ new file mode 100644
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].0, rel);
         assert!(
-            rows[0].1.contains(&"compile_dag_diagnostic_census"),
+            rows[0]
+                .1
+                .iter()
+                .any(|n| n == "compile_dag_diagnostic_census"),
             "reaching call missing: {:?}",
             rows[0].1
         );
@@ -26476,7 +26479,9 @@ new file mode 100644
             "{rel} must still be SubstrateInputsOnly for this check"
         );
         assert!(
-            detector_unquoted_live_callees(&content).contains(&"compile_dag_diagnostic_census"),
+            detector_unquoted_live_callees(&content)
+                .iter()
+                .any(|n| n == "compile_dag_diagnostic_census"),
             "specimen lost its census call"
         );
         assert!(
