@@ -4,9 +4,9 @@ import extdeps.languages.rust.string_literal { escape_rust_cooked_string_literal
 import v2.compiler.self_host.seed_retention_frontier {
   seed_retention_frontier_top_level_src_basenames
 }
-import v2.std.algebra { list_map }
+import v2.std.algebra { fold_list }
 import v2.std.collection { List }
-import v2.std.text { String, string_join }
+import v2.std.text { String }
 
 // THE BRIDGE, AND WHY THERE HAS TO BE ONE. v2.compiler.self_host.seed_retention_frontier is
 // the authority for which stage0 files are seed-retained. required_regen_host is inside the
@@ -15,13 +15,18 @@ import v2.std.text { String, string_join }
 // PathIncluded Rust const, the same route bootstrap_stage0_crate_layout_generated already uses.
 // Nested crate-relative paths stay in the v2 roster; they have no consumer in the seed host.
 
+// Same concat fold as gunbc.stage0_crate_layout_emit render_rust_str_slice_items.
+// v2.std.text string_join is a FreeMonoid<Char> join; the wet artifact writer prints
+// that Cons spine, which is what CI heal committed here and which does not parse as Rust.
 fn render_rust_str_slice_items(xs: List<String>) -> String {
-  string_join(
-    fields: list_map(xs: xs, f: fn(item) {
-      concat("    \"", escape_rust_cooked_string_literal_body(s: item), "\"")
-    }),
-    separator: ",\n"
-  )
+  fold_list(xs, empty: "", cons: fn(acc, item) {
+    let line = concat("    \"", escape_rust_cooked_string_literal_body(s: item), "\"")
+    if acc == "" {
+      line
+    } else {
+      concat(acc, concat(",\n", line))
+    }
+  })
 }
 
 fn expected_seed_retention_frontier_generated_rs() -> String {
