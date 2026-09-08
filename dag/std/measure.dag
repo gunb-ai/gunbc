@@ -1308,6 +1308,20 @@ fn percent_count(p: Percent) -> Nat {
   measure_count(p)
 }
 
+// Concurrent max-length requests the engine prints as Nx (vLLM "Maximum concurrency for … tokens
+// per request: 11.22x"). Stored as hundredths (11.22x = 1122) on the same Dimensionless axis as
+// Percent, which this repository already uses for GPU utilization. A block is not a token; 11.22
+// concurrent requests is not 1122% utilization.
+type ConcurrentRequestHundredths = Measure<Dimensionless, One, Nat>
+
+fn concurrent_request_hundredths(count: Nat) -> ConcurrentRequestHundredths {
+  Measure { count: count }
+}
+
+fn concurrent_request_hundredths_count(c: ConcurrentRequestHundredths) -> Nat {
+  measure_count(c)
+}
+
 // RgbScaled and sRGB<->HSL integer kernels use a permyriad (parts per 10000) channel scale —
 // grounded on extdeps.units.dimensionless.parts_per_ten_thousand_unity_count (same authority as
 // basis_point_unity_count).
