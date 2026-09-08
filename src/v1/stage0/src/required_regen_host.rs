@@ -36,7 +36,8 @@ use crate::gunbc_stage0_emitted_population_manifest::{
 };
 use crate::v1_compiler_artifact::{RenderTarget, RustModuleRenderSelection};
 use crate::v1_compiler_compile::{
-    compile_sources_selected, stage0_self_compile_refusal_message, SourceFile,
+    compile_sources_selected, compile_to_resolved, emittable_graph,
+    stage0_self_compile_refusal_message, SourceFile,
 };
 use crate::v1_compiler_emit_rust::rust_module_emit_path;
 use crate::v1_rt;
@@ -2639,7 +2640,7 @@ mod tests {
         );
     }
 
-    /// THE PRECONDITION `import_refusals` EXACTNESS RESTS ON, PUT ON THE EXECUTED PATH.
+    /// THE PRECONDITION `module_refusals` EXACTNESS RESTS ON, PUT ON THE EXECUTED PATH.
     ///
     /// A scoped emission observes refusals only for the modules it rendered. That is exact rather
     /// than partial because an emit carrying an error diagnostic returns NO FILES -- so a
@@ -2697,6 +2698,111 @@ mod tests {
         assert!(
             files_empty,
             "an emit carrying an error diagnostic must hand back no files at all"
+        );
+    }
+
+    #[test]
+    fn filter_in_branch_condition_refuses_and_does_not_publish_the_module() {
+        let (named, module_published, positive_published, positive_named, free_named, free_published, free_has_fn) =
+            std::thread::Builder::new()
+                .stack_size(16 * 1024 * 1024)
+                .spawn(|| {
+                    let emit_one = |content: &str| {
+                        let module_index =
+                            crate::cli_run::build_module_path_index_from_witness_roots();
+                        let sources = crate::cli_run::resolve_virtual_source_with_imports(
+                            "probe.dag",
+                            content,
+                            &module_index,
+                        );
+                        let resolved = compile_to_resolved(Rc::new(sources.into()));
+                        let typed = emittable_graph(resolved)
+                            .expect("front-end must accept the specimen so emission is the wall")
+                            .graph();
+                        crate::v1_compiler_emit_rust::emit_rust(typed)
+                    };
+                    let negative = emit_one(
+                        "module fx.filter_guard\nimport std.types { List, Bool, Int }\nfn f(xs: List<Int>) -> Int {\n  if (xs |> filter(x => x > 0) |> count) > 0 {\n    1\n  } else {\n    0\n  }\n}\n",
+                    );
+                    let named = negative.diagnostics.iter().any(|d| {
+                        matches!(
+                            &*d.diagnostic,
+                            crate::v1_std_core::CompilerDiagnostic::EmissionConstructUnprojectable {
+                                construct,
+                                ..
+                            } if matches!(
+                                construct,
+                                crate::v1_std_core::UnprojectableConstruct::FilterInBranchCondition
+                            )
+                        ) && crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())
+                    });
+                    let module_published = negative.files.iter().any(|f| {
+                        f.path.contains("fx_filter_guard")
+                    });
+                    let positive = emit_one(
+                        "module fx.any_guard\nimport std.types { List, Bool, Int }\nfn f(xs: List<Int>) -> Int {\n  if xs |> any(x => x > 0) {\n    1\n  } else {\n    0\n  }\n}\n",
+                    );
+                    let positive_named = positive.diagnostics.iter().any(|d| {
+                        matches!(
+                            &*d.diagnostic,
+                            crate::v1_std_core::CompilerDiagnostic::EmissionConstructUnprojectable { .. }
+                        )
+                    });
+                    let positive_published = positive.files.iter().any(|f| f.path.contains("fx_any_guard"));
+                    let free_call = emit_one(
+                        "module fx.filter_call_guard\nimport std.types { List, Bool, Int }\nfn f(xs: List<Int>) -> Int {\n  if (filter(xs, x => x > 0) |> count) > 0 {\n    1\n  } else {\n    0\n  }\n}\n",
+                    );
+                    let free_named = free_call.diagnostics.iter().any(|d| {
+                        matches!(
+                            &*d.diagnostic,
+                            crate::v1_std_core::CompilerDiagnostic::EmissionConstructUnprojectable {
+                                construct,
+                                ..
+                            } if matches!(
+                                construct,
+                                crate::v1_std_core::UnprojectableConstruct::FilterInBranchCondition
+                            )
+                        ) && crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())
+                    });
+                    let free_published = free_call
+                        .files
+                        .iter()
+                        .any(|f| f.path.contains("fx_filter_call_guard"));
+                    let free_has_fn = free_call.files.iter().any(|f| {
+                        f.path.contains("fx_filter_call_guard") && f.content.contains("fn f")
+                    });
+                    (
+                        named,
+                        module_published,
+                        positive_published,
+                        positive_named,
+                        free_named,
+                        free_published,
+                        free_has_fn,
+                    )
+                })
+                .expect("spawn projection-refusal thread")
+                .join()
+                .expect("projection-refusal thread panicked");
+        assert!(
+            named,
+            "filter in a branch condition must refuse at emission with EmissionConstructUnprojectable naming the construct"
+        );
+        assert!(
+            !module_published,
+            "the refused module must be absent from EmitResult.files — output-plus-diagnostic is not a fix"
+        );
+        assert!(
+            positive_published && !positive_named,
+            "an already-supported guarded any-lambda must still emit its module"
+        );
+        assert!(
+            free_named,
+            "written-as-free-call filter in a guard must refuse via the method arm after infer rewrite"
+        );
+        assert!(
+            !free_published && !free_has_fn,
+            "the rewritten free-call spelling must still withhold the module from EmitResult.files"
         );
     }
 

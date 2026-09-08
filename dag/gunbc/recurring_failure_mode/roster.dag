@@ -186,6 +186,8 @@ import gunbc.recurring_failure_mode.lookup_miss_read_as_positive_classification 
 import gunbc.recurring_failure_mode.capability_arrives_outside_the_converged_path { capability_arrives_outside_the_converged_path }
 import gunbc.recurring_failure_mode.declared_refusal_unreachable_from_its_own_constructor { declared_refusal_unreachable_from_its_own_constructor }
 import gunbc.recurring_failure_mode.enforcement_gate_positioned_after_the_effect_it_guards { enforcement_gate_positioned_after_the_effect_it_guards }
+import gunbc.recurring_failure_mode.guarded_filter_branch_dropped_by_emitter { guarded_filter_branch_dropped_by_emitter }
+import gunbc.recurring_failure_mode.match_variant_lookup_does_not_peel_type_alias { match_variant_lookup_does_not_peel_type_alias }
 import gunbc.recurring_failure_mode.decision_surface_truncation { decision_surface_truncation }
 import gunbc.recurring_failure_mode.one_value_two_renderings_compared_for_equality { one_value_two_renderings_compared_for_equality }
 
@@ -363,6 +365,8 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   match_bound_element_type_mask,
   declared_refusal_unreachable_from_its_own_constructor,
   enforcement_gate_positioned_after_the_effect_it_guards,
+  guarded_filter_branch_dropped_by_emitter,
+  match_variant_lookup_does_not_peel_type_alias,
   constant_verdict_gate_stops_discriminating,
   decision_surface_truncation,
   one_value_two_renderings_compared_for_equality,
