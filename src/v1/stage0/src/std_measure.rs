@@ -392,6 +392,10 @@ pub type CharacterCount = Rc<Measure<Count, One, i64>>;
 
 pub type TokenCount = Rc<Measure<Count, One, i64>>;
 
+pub type AllocatorBlockCount = Rc<Measure<Count, One, i64>>;
+
+pub type AttentionLayerCount = Rc<Measure<Count, One, i64>>;
+
 pub type CpuCoreCount = Rc<Measure<Count, One, i64>>;
 
 pub type MergeQueueEntryCount = Rc<Measure<Count, One, i64>>;
@@ -1102,6 +1106,28 @@ pub fn token_count(count: Nat) -> TokenCount {
 
 pub fn token_count_value(t: TokenCount) -> Nat {
     measure_count(t.clone())
+}
+
+pub fn allocator_block_count(count: Nat) -> AllocatorBlockCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn allocator_block_count_value(c: AllocatorBlockCount) -> Nat {
+    measure_count(c.clone())
+}
+
+pub fn attention_layer_count(count: Nat) -> AttentionLayerCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn attention_layer_count_value(c: AttentionLayerCount) -> Nat {
+    measure_count(c.clone())
 }
 
 pub fn cpu_core_count(count: Nat) -> CpuCoreCount {
