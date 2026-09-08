@@ -1612,13 +1612,66 @@ pub struct TransitionAdmission {
 /// no run can produce either `TargetChanged` delta, and CONSUMED is the correct reading rather
 /// than an author error.
 ///
-/// CALL_SEMANTICS_TARGET_REHOME_LABEL WENT WITH THEM, for the reason the roster's hand-Rust
-/// justification already records of `EXIT_OK_REHOME_LABEL` and `SCM_REPOSITORY_BUILDER_REHOME_LABEL`
-/// before it: a label constant is text shared by the rows that cite it, carrying no compiler
-/// function, type, or host capability, and it dissolves with the last row carrying it. The roster
-/// is left as an EMPTY enumeration rather than deleted: its population is an enumeration and never
-/// a predicate, and an empty one is the honest reading that no transition currently stands
-/// admitted.
+/// TRIGGER: they go when this re-home is on main, at which point base and head both resolve the
+/// spelling to `v1.std.core`, both rows report CONSUMED, and they come due on the roster's next
+/// touch. Adjudicate that deletion by joining each row against main on its own
+/// (module, in_declaration, spelling, target) tuple, not by trusting this sentence.
+/// THE gunbc#10688 CALL-TARGET ROWS DISSOLVED HERE (2026-09-08), BY THEIR OWN TRIGGER AND ON THE
+/// ROSTER TOUCH THEY NAMED. Their entry said they came due on this roster's next touch, and adding
+/// the row below is it. ADJUDICATED BY THE JOIN THEY DEMANDED RATHER THAN BY THEIR OWN SENTENCE:
+/// the required run reported both as `already satisfied at the base -- consumed by its own merge`,
+/// which IS that (module, in_declaration, spelling, target) join executed against main rather than
+/// a reading of the trigger paragraph. Their label constant goes with them, since a label is text
+/// shared by the rows citing it and dissolves with the last one.
+///
+/// SEVENTH TRANSITION (2026-09-08, gunbc#10813). A new recurring-failure-mode class,
+/// `cumulative_metric_read_as_per_event`, is added as its own file under
+/// `dag/gunbc/recurring_failure_mode/`, and the roster's `recurring_failure_mode_roster` names it.
+/// The spelling is authored on BOTH sides of the diff -- the roster declaration is not new -- and on
+/// the head side that name newly resolves into the class's own module, which is
+/// `NewPoolCoincidenceResolution` rather than an authored reference: the roster gains a member by
+/// the membership rule the directory IS, not by anyone rebinding an existing name.
+///
+/// THIS IS THE ROSTER GROWING THE WAY DESIGN SAYS IT MUST. The failure-mode ledger is a directory of
+/// one file per class precisely so that two lanes appending different classes never rewrite one
+/// file, so every new class produces exactly this delta shape. That it needs an admission row at all
+/// is the honest cost of the pool being adjudicated rather than assumed: a name appearing in a pool
+/// is the same motion whether it was intended or accidental, and only the author can say which.
+///
+/// ONE ROW, because one class was added. TRIGGER: it goes when this class is on main, at which point
+/// base and head both resolve the spelling into the class's module, the row reports CONSUMED, and it
+/// comes due on the roster's next touch -- adjudicated by joining the tuple against main, not by
+/// trusting this sentence.
+/// THE gunbc#10813 ROW DISSOLVES HERE (2026-09-08), BY ITS OWN TRIGGER AND ON THE ROSTER TOUCH IT
+/// NAMED, AND THE DEFECT IT WAS ADMITTING IS REPAIRED IN THE SAME CHANGE. Two separate facts, and
+/// the row would go on either one alone.
+///
+/// FIRST, THE TRIGGER FIRED. gunbc#10813 is on main, so the class file
+/// `dag/gunbc/recurring_failure_mode/cumulative_metric_read_as_per_event.dag` and the roster naming
+/// it are present on BOTH sides. Adjudicated by the join the row demanded rather than by its
+/// sentence: on main that file opens
+/// `module gunbc.recurring_failure_mode.cumulative_metric_read_as_per_event` and the roster names
+/// the spelling, so base and head resolve it into the same module, no run can produce the delta,
+/// and CONSUMED is the correct reading. Its label goes with it, leaving the roster an EMPTY
+/// enumeration.
+///
+/// SECOND, AND THIS IS WHY NO SUCCESSOR ROW REPLACES IT: the delta that row admitted was not the
+/// ledger's growth shape. It was an artifact of the BASELINE, repaired by this same change.
+/// `run_required_wave_admission` rebuilt the base index by carrying forward every head record the
+/// diff did not touch; `dag/gunbc/recurring_failure_mode/roster.dag` is gitignored and written on
+/// the read path, so it can never appear in `git diff --name-status`, and the HEAD's generated
+/// roster was therefore carried in as the BASE's. Both symptoms follow: the binding key existed on
+/// both sides so it read `base {} -> head {row}`, and the authorship discriminator compared the
+/// roster's base and head source, which were THE SAME BYTES, so an ordinary append read as not
+/// locally authored and classified `NewPoolCoincidenceResolution`. With the roster's base side
+/// DERIVED from the base tree's row membership, the roster module's source genuinely differs across
+/// the sides and an append classifies `AuthoredReferenceResolution`, which is auto-admitted.
+///
+/// THE EVIDENCE IS EXECUTED, NOT ARGUED: the required run on this change's own previous head
+/// (34271585163) added a failure-mode class with NO admission row for it and reported
+/// `0 unadjudicated delta(s)`. So the per-append admission row is not the honest cost of the pool
+/// being adjudicated — it was the cost of the baseline being wrong, and a row per class from here
+/// on would be a standing mitigation over a repaired defect (DESIGN §4b: construction subsumes it).
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an

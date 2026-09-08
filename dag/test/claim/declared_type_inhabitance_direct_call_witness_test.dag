@@ -8,16 +8,13 @@ import gunbc.compile_diagnostic_census {
   census_total_count
 }
 import std.types { String, NonEmptyStr, List, Bool, Int }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
-// SUBSTRATE-ONLY BY DELIBERATE CHOICE, AND THE SIBLING FILE EXPLAINS WHY IN ITS OWN VOICE.
-// test.claim.direct_call_argument_type_witness records that an assertion authored in a
-// ReadsLiveTree module is "enrolled and inert -- the specification-without-execution state
-// DESIGN 5 names, wearing the costume of a populated probe corpus", because a ReadsLiveTree
-// witness is discovered, counted in declined_live, and never folded. These arms are the
-// regression control for a discrimination that must not decay, so they are authored where the
-// floor actually folds them.
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+// ReadsLiveTree: compile_dag_diagnostic_census walks the live checkout via
+// build_module_path_index_from_witness_roots. SubstrateInputsOnly was stamped so the
+// deleted DeclinedLiveTree arm would still fold these; that arm is gone and this module
+// already matches required_gate_prefixes. The stamp is the fact the body already is.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 fn violation_count(source: String, wanted: String) -> Int {
   match compile_dag_diagnostic_census(source) {

@@ -10,7 +10,7 @@ import std.decl_ref {
   citation_is_outside_index,
 }
 import gunbc.ci_layer_roots { compile_clean_source_roots }
-import gunbc.plan { Plan, plan_path, plan_doc_path, PlanRetirement, PlanRetiresWhen }
+import gunbc.plan { Plan, plan_path, plan_doc_path, PlanRetirement, PlanRetiresWhen, plan_projects_committed_markdown }
 import gunbc.plan_registry { all_plans }
 import v2.lens.doc_reachability { doc_graph_clean_holds, doc_graph_orphan_clean_holds }
 import v2.std.algebra { filter, list_flat_map }
@@ -54,7 +54,7 @@ import std.keyed_roster {
 // outlived its migration).
 
 fn plan_doc_graph_roots() -> List<String> {
-  map(all_plans, p => plan_path(p: p))
+  map(filter(all_plans, p => plan_projects_committed_markdown(p: p)), p => plan_path(p: p))
 }
 
 type DocHome
@@ -723,16 +723,6 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "std.rational", decl_name: "Rational", field: WholeDeclaration },
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject FieldOfFractions describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
-    slug: "host-converge-inventory",
-    primary_work: DeclarationRef { module_path: "gunbc.host_converge", decl_name: "HostConverge", field: WholeDeclaration },
-    additional_works: [
-      DeclarationRef { module_path: "gunbc.host_converge", decl_name: "ConvergeKnob", field: WholeDeclaration },
-      DeclarationRef { module_path: "gunbc.host_converge", decl_name: "ConvergeTarget", field: WholeDeclaration },
-    ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject HostConverge describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
