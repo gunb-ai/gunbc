@@ -27,6 +27,8 @@ use std::process::{Command, Stdio};
 use std::rc::Rc;
 use std::time::Instant;
 
+#[path = "bootstrap_seed_retention_frontier_generated.rs"]
+mod bootstrap_seed_retention_frontier_generated;
 #[path = "bootstrap_stage0_crate_layout_generated.rs"]
 mod bootstrap_stage0_crate_layout_generated;
 use super::workspace_root;
@@ -41,6 +43,7 @@ use crate::v1_compiler_compile::{
 };
 use crate::v1_compiler_emit_rust::rust_module_emit_path;
 use crate::v1_rt;
+use bootstrap_seed_retention_frontier_generated::SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES;
 use bootstrap_stage0_crate_layout_generated::{
     EMITTER_PRODUCED_DIVERGENT_STAGE0_FILES, HAND_MAINTAINED_STAGE0_DIRS,
     HAND_MAINTAINED_STAGE0_FILES,
@@ -730,9 +733,12 @@ pub fn run_required_regen_fixed_point(
     }
     let emitted_basenames = generated_basenames_from_emit(&emitted)?;
     let hand_dir_shadows = hand_maintained_dir_shadows(&workspace.join("src/v1/stage0/src"))?;
-    if let Some(reason) =
-        validate_compared_populations(&committed_basenames, &emitted_basenames, &hand_dir_shadows)
-    {
+    if let Some(reason) = validate_compared_populations(
+        &committed_basenames,
+        &emitted_basenames,
+        &hand_dir_shadows,
+        SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES,
+    ) {
         return Err(reason);
     }
     let pass2 = tree_digest_from_map(&formatter, &emitted, &committed_basenames)?;
@@ -940,9 +946,12 @@ fn adjudicate_generated_surface(
     // join that finds a surface the emitter produces and the tree does not carry, and a mirror
     // the tree carries and the emitter no longer produces. It reads no bytes, so there is
     // nothing here for a selection to save and everything for one to hide.
-    if let Some(reason) =
-        validate_compared_populations(&committed, emitted_basenames, &hand_dir_shadows)
-    {
+    if let Some(reason) = validate_compared_populations(
+        &committed,
+        emitted_basenames,
+        &hand_dir_shadows,
+        SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES,
+    ) {
         return Ok(GeneratedSurfaceAdjudicated::Refused { reason });
     }
     // BYTE ADJUDICATION IS SCOPED. This is the expensive half — a read, a normalization and a
@@ -1415,6 +1424,7 @@ fn validate_compared_populations(
     committed: &[String],
     emitted: &[String],
     hand_dir_shadows: &BTreeMap<String, Vec<String>>,
+    seed_retained_top_level_src: &[&str],
 ) -> Option<String> {
     if committed.is_empty() {
         return Some("refusal: committed generated population is empty".to_string());
@@ -1438,9 +1448,20 @@ fn validate_compared_populations(
             None => emitted_not_committed.push(name.clone()),
         }
     }
+    // A committed basename the emitter no longer produces is CommittedMirrorNoLongerEmitted
+    // unless the seed-retention frontier already names it: then it is retained, not lost.
+    //
+    // RUNG, HONESTLY: this skip excludes a presented retained basename. HAND_MAINTAINED_STAGE0_FILES
+    // currently agrees with it for std_logic.rs by coincidence (#10712 listed the file as
+    // hand-maintained), so committed_generated_basenames never presents std_logic.rs to this loop
+    // on main or at 0a811fc -- the class is not reachable on the merge path. Discrimination is
+    // the off-path #[test] pair below (rust_unit_tests_off_the_merge_path). Do not author a
+    // reaching fixture to make the live walk present a retained file; that would manufacture a
+    // subject. The nonempty frontier witness is not evidence for this join.
+    let seed_retained: BTreeSet<&str> = seed_retained_top_level_src.iter().copied().collect();
     let mut committed_not_emitted = Vec::new();
     for name in committed {
-        if !emitted_set.contains(name.as_str()) {
+        if !emitted_set.contains(name.as_str()) && !seed_retained.contains(name.as_str()) {
             committed_not_emitted.push(name.clone());
         }
     }
@@ -2857,16 +2878,110 @@ mod tests {
 
     #[test]
     fn empty_emit_population_refuses_before_agreement() {
-        let reason = validate_compared_populations(&["foo.rs".to_string()], &[], &BTreeMap::new())
-            .expect("expected refusal");
+        let reason =
+            validate_compared_populations(&["foo.rs".to_string()], &[], &BTreeMap::new(), &[])
+                .expect("expected refusal");
         assert!(reason.contains("zero generated surfaces"));
     }
 
     #[test]
     fn empty_committed_population_refuses_before_agreement() {
-        let reason = validate_compared_populations(&[], &["foo.rs".to_string()], &BTreeMap::new())
-            .expect("expected refusal");
+        let reason =
+            validate_compared_populations(&[], &["foo.rs".to_string()], &BTreeMap::new(), &[])
+                .expect("expected refusal");
         assert!(reason.contains("committed generated population is empty"));
+    }
+
+    #[test]
+    fn seed_retained_committed_not_emitted_is_not_that_refusal() {
+        let reason = validate_compared_populations(
+            &["retained.rs".to_string(), "still.rs".to_string()],
+            &["still.rs".to_string()],
+            &BTreeMap::new(),
+            &["retained.rs"],
+        );
+        assert!(
+            reason.is_none(),
+            "a frontier-rostered basename that left emit is retained, not CommittedMirrorNoLongerEmitted: {reason:?}"
+        );
+    }
+
+    #[test]
+    fn unrostered_committed_not_emitted_still_refuses() {
+        let reason = validate_compared_populations(
+            &["lost.rs".to_string(), "still.rs".to_string()],
+            &["still.rs".to_string()],
+            &BTreeMap::new(),
+            &["retained.rs"],
+        )
+        .expect("expected refusal");
+        assert!(
+            reason.contains("committed mirror is no longer emitted") && reason.contains("lost.rs"),
+            "an unrostered drop must still refuse: {reason}"
+        );
+        assert!(
+            !reason.contains("retained.rs"),
+            "the planted retained name must not appear: {reason}"
+        );
+    }
+
+    // OFF-PATH DISCRIMINATION, not merge-path reachability. These plant `std_logic.rs` in the
+    // committed-not-emitted slot of `validate_compared_populations` itself because the live walk
+    // never does: HAND_MAINTAINED_STAGE0_FILES already subtracts it (and layout-only hosts). A
+    // no-drift round never enters the arm anyway (#10795). The tests sit under
+    // rust_unit_tests_off_the_merge_path. The live projected roster is the join surface;
+    // `generated_stage0_filenames` is not consulted (it would also drop required_regen_host.rs).
+    #[test]
+    fn live_frontier_projection_is_not_the_crate_layout_filename_union() {
+        assert!(
+            SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES.contains(&"std_logic.rs"),
+            "the generated join surface must carry the deliberately retained oracle"
+        );
+        assert!(
+            HAND_MAINTAINED_STAGE0_FILES.contains(&"target_invocation_host.rs"),
+            "the cheap list includes layout-only hosts"
+        );
+        assert!(
+            !SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES.contains(&"target_invocation_host.rs"),
+            "joining the cheap list would over-exclude this class; the frontier must not"
+        );
+    }
+
+    #[test]
+    fn std_logic_committed_not_emitted_is_retained_by_live_frontier_join() {
+        let reason = validate_compared_populations(
+            &["std_logic.rs".to_string(), "still.rs".to_string()],
+            &["still.rs".to_string()],
+            &BTreeMap::new(),
+            SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES,
+        );
+        assert!(
+            reason.is_none(),
+            "std_logic.rs is SeedRetainedIntrinsic on the frontier; committed-not-emitted must not fire: {reason:?}"
+        );
+    }
+
+    #[test]
+    fn unrostered_drop_still_refuses_beside_std_logic() {
+        let reason = validate_compared_populations(
+            &[
+                "std_logic.rs".to_string(),
+                "lost.rs".to_string(),
+                "still.rs".to_string(),
+            ],
+            &["still.rs".to_string()],
+            &BTreeMap::new(),
+            SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES,
+        )
+        .expect("expected refusal");
+        assert!(
+            reason.contains("committed mirror is no longer emitted") && reason.contains("lost.rs"),
+            "the unrostered drop must still reach the refusal: {reason}"
+        );
+        assert!(
+            !reason.contains("std_logic.rs"),
+            "the retained oracle must not be named in the refusal: {reason}"
+        );
     }
 
     #[test]
