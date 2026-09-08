@@ -13,7 +13,11 @@ import gunbc.runner.runner_jit_admission {
   HostEnvelopeNonemptyAndFresh, GitHubMintRequestField,
   jit_admission_axis_standing, jit_admission_axis_is_deferred, axis_standing_is_deferred,
   gunbai_ci_installation_token_url, gunbai_org_generate_jitconfig_path,
-  mint_field_can_carry_attempt_binding, mint_surface_live_app_read,
+  mint_field_can_carry_attempt_binding, mint_surface_live_app_read, mint_fact_needed,
+  EncodedBlobIsOpaque, InstallationHoldsRunnersWrite, JitconfigResponseHasExpiresAtField,
+  DuplicateNameConflicts, JitconfigResponseCarriesRunnerId,
+  RequestNameIsPersistedRunnerIdentity, RequestAdmitsLabels,
+  RequestHasNoHostField, RequestHasNoBootField,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -90,4 +94,23 @@ test fn live_app_grant_read_refuses_non_200() -> Bool {
   !mint_surface_live_app_read(status: 403)
     && !mint_surface_live_app_read(status: 401)
     && mint_surface_live_app_read(status: 200)
+}
+
+// EACH AXIS NAMES THE MINT FIELDS IT NEEDS, so a live read is a field grant. Discriminating:
+// expiry needs expires_at-present-or-absent and does not need 409; replay is the reverse.
+test fn mint_facts_needed_are_per_axis_not_the_whole_mint() -> Bool {
+  mint_fact_needed(axis: SignatureAxis, fact: EncodedBlobIsOpaque)
+    && mint_fact_needed(axis: SignatureAxis, fact: InstallationHoldsRunnersWrite)
+    && !mint_fact_needed(axis: SignatureAxis, fact: JitconfigResponseHasExpiresAtField)
+    && mint_fact_needed(axis: ExpiryAxis, fact: JitconfigResponseHasExpiresAtField)
+    && !mint_fact_needed(axis: ExpiryAxis, fact: DuplicateNameConflicts)
+    && mint_fact_needed(axis: ReplayAxis, fact: DuplicateNameConflicts)
+    && mint_fact_needed(axis: ReplayAxis, fact: JitconfigResponseCarriesRunnerId)
+    && !mint_fact_needed(axis: ReplayAxis, fact: JitconfigResponseHasExpiresAtField)
+    && mint_fact_needed(axis: UnitBindingAxis, fact: RequestHasNoHostField)
+    && mint_fact_needed(axis: UnitBindingAxis, fact: EncodedBlobIsOpaque)
+    && mint_fact_needed(axis: BootBindingAxis, fact: RequestHasNoBootField)
+    && !mint_fact_needed(axis: BootBindingAxis, fact: RequestHasNoHostField)
+    && mint_fact_needed(axis: AttemptBindingAxis, fact: RequestNameIsPersistedRunnerIdentity)
+    && mint_fact_needed(axis: AttemptBindingAxis, fact: RequestAdmitsLabels)
 }

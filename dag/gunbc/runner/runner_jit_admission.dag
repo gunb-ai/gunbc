@@ -85,7 +85,91 @@ fn jit_admission_axis_is_deferred(axis: JitAdmissionAxis) -> Bool {
   axis_standing_is_deferred(standing: jit_admission_axis_standing(axis: axis))
 }
 
-fn mint_field_can_carry_attempt_binding(field: JitMintAdmittedRequestField) -> Bool {
+// WHAT EACH AXIS NEEDS FROM THE MINT SURFACE, so a live read is a field grant, not "read the mint".
+// Cited from the six-axis table in the displacement analysis (gunbc#10823): binding axes cannot be
+// checked by parsing the opaque blob; they are mint-side obligations if they are obligations at all.
+// A host can only compare against what the minter recorded.
+type MintSurfaceFact
+  = InstallationHoldsRunnersWrite
+  | JitconfigResponseHasExpiresAtField
+  | JitconfigResponseCarriesRunnerId
+  | DuplicateNameConflicts
+  | EncodedBlobIsOpaque
+  | RequestNameIsPersistedRunnerIdentity
+  | RequestAdmitsLabels
+  | RequestHasNoHostField
+  | RequestHasNoBootField
+
+fn mint_fact_needed(axis: JitAdmissionAxis, fact: MintSurfaceFact) -> Bool {
+  match axis {
+    SignatureAxis => match fact {
+      EncodedBlobIsOpaque => true
+      InstallationHoldsRunnersWrite => true
+      JitconfigResponseHasExpiresAtField => false
+      JitconfigResponseCarriesRunnerId => false
+      DuplicateNameConflicts => false
+      RequestNameIsPersistedRunnerIdentity => false
+      RequestAdmitsLabels => false
+      RequestHasNoHostField => false
+      RequestHasNoBootField => false
+    }
+    ExpiryAxis => match fact {
+      JitconfigResponseHasExpiresAtField => true
+      EncodedBlobIsOpaque => false
+      InstallationHoldsRunnersWrite => false
+      JitconfigResponseCarriesRunnerId => false
+      DuplicateNameConflicts => false
+      RequestNameIsPersistedRunnerIdentity => false
+      RequestAdmitsLabels => false
+      RequestHasNoHostField => false
+      RequestHasNoBootField => false
+    }
+    ReplayAxis => match fact {
+      DuplicateNameConflicts => true
+      JitconfigResponseCarriesRunnerId => true
+      EncodedBlobIsOpaque => false
+      InstallationHoldsRunnersWrite => false
+      JitconfigResponseHasExpiresAtField => false
+      RequestNameIsPersistedRunnerIdentity => false
+      RequestAdmitsLabels => false
+      RequestHasNoHostField => false
+      RequestHasNoBootField => false
+    }
+    UnitBindingAxis => match fact {
+      RequestHasNoHostField => true
+      RequestNameIsPersistedRunnerIdentity => true
+      EncodedBlobIsOpaque => true
+      InstallationHoldsRunnersWrite => false
+      JitconfigResponseHasExpiresAtField => false
+      JitconfigResponseCarriesRunnerId => false
+      DuplicateNameConflicts => false
+      RequestAdmitsLabels => false
+      RequestHasNoBootField => false
+    }
+    BootBindingAxis => match fact {
+      RequestHasNoBootField => true
+      EncodedBlobIsOpaque => true
+      InstallationHoldsRunnersWrite => false
+      JitconfigResponseHasExpiresAtField => false
+      JitconfigResponseCarriesRunnerId => false
+      DuplicateNameConflicts => false
+      RequestNameIsPersistedRunnerIdentity => false
+      RequestAdmitsLabels => false
+      RequestHasNoHostField => false
+    }
+    AttemptBindingAxis => match fact {
+      RequestNameIsPersistedRunnerIdentity => true
+      RequestAdmitsLabels => true
+      EncodedBlobIsOpaque => true
+      InstallationHoldsRunnersWrite => false
+      JitconfigResponseHasExpiresAtField => false
+      JitconfigResponseCarriesRunnerId => false
+      DuplicateNameConflicts => false
+      RequestHasNoHostField => false
+      RequestHasNoBootField => false
+    }
+  }
+}
   match field {
     JitMintName => true
     JitMintLabels => true
