@@ -24637,68 +24637,6 @@ fn parse_entry_live_tree_disposition(entry: &str, content: &str) -> Result<bool,
     Ok(declared.unwrap_or(true))
 }
 
-/// Unquoted callees in an entry body that walk the live checkout (builtin nested
-/// compile, filesystem list/read, or a `*_facts_live` producer). The disposition
-/// row is parsed textually and never joined to these; this roster is the other
-/// side of that missing join, at DIRECT-CALL grain, not import adjacency.
-const DIRECT_LIVE_TREE_SINK_CALLEES: &[&str] = &[
-    "compile_dag_diagnostic_census",
-    "compile_dag_rust_emit_check",
-    "compile_dag_multi_module_fixture",
-    "compile_dag_reference_occurrence_binding_census",
-    "compile_dag_source_to_target_text",
-    "filesystem_read",
-    "filesystem_list",
-    "Filesystem.Read",
-    "Filesystem.List",
-    "decl_facts",
-    "module_declaration_facts",
-    "module_declaration_facts_live",
-    "layer_import_facts",
-    "layer_import_facts_live",
-    "fn_arrow_decl_facts_live",
-];
-
-fn line_has_unquoted_callee(line: &str, callee: &str) -> bool {
-    let stripped = strip_line_comment(line);
-    let paren = format!("{callee}(");
-    let spaced = format!("{callee} (");
-    stripped.contains(&paren) || stripped.contains(&spaced)
-}
-
-fn entry_direct_live_tree_sinks(content: &str) -> Vec<&'static str> {
-    DIRECT_LIVE_TREE_SINK_CALLEES
-        .iter()
-        .copied()
-        .filter(|callee| {
-            content
-                .lines()
-                .any(|line| line_has_unquoted_callee(line, callee))
-        })
-        .collect()
-}
-
-/// Entry-grain disagreement: stamped SubstrateInputsOnly, body unquoted-calls a
-/// live-checkout sink. Identity is the entry path. Import-adjacency is a
-/// different, over-approximate grain and is not folded in here.
-fn substrate_stamp_direct_live_disagreements(
-    files: &[(String, String)],
-) -> Result<Vec<(String, Vec<&'static str>)>, String> {
-    let mut out = Vec::new();
-    for (rel, content) in files {
-        let reads_live = parse_entry_live_tree_disposition(rel, content)?;
-        if reads_live {
-            continue;
-        }
-        let sinks = entry_direct_live_tree_sinks(content);
-        if !sinks.is_empty() {
-            out.push((rel.clone(), sinks));
-        }
-    }
-    out.sort_by(|a, b| a.0.cmp(&b.0));
-    Ok(out)
-}
-
 fn read_entry_live_tree_disposition(entry: &str) -> Result<bool, String> {
     let content = std::fs::read_to_string(entry).map_err(|e| {
         format!(
@@ -26009,6 +25947,68 @@ mod floor_skip_frontier_tests {
             .to_path_buf()
     }
 
+    // TEST DETECTOR ONLY — not a seed classifier, not a fourth authority, not the
+    // stamp-to-body join. `v1.compiler.method` `builtin_function_registry` owns
+    // signatures; `v2.std.effect_reach` `effect_reach_host_sink_callee_symbols_v0`
+    // owns the skip-upgrade markers; `v2.std.live_tree` owns disposition. This
+    // spelling list is an instrument that can miss (fail-open) and can false-hit.
+    // Production skip does not consult it. v1 PURPOSE: evidence for the failure-mode
+    // row, not seed growth (`gunbc.v1_maintenance_standing` `v1_seed_standing`).
+    const DETECTOR_LIVE_CALLEE_SPELLINGS: &[&str] = &[
+        "compile_dag_diagnostic_census",
+        "compile_dag_rust_emit_check",
+        "compile_dag_multi_module_fixture",
+        "compile_dag_reference_occurrence_binding_census",
+        "compile_dag_source_to_target_text",
+        "filesystem_read",
+        "filesystem_list",
+        "Filesystem.Read",
+        "Filesystem.List",
+        "decl_facts",
+        "module_declaration_facts",
+        "module_declaration_facts_live",
+        "layer_import_facts",
+        "layer_import_facts_live",
+        "fn_arrow_decl_facts_live",
+    ];
+
+    fn detector_line_has_unquoted_callee(line: &str, callee: &str) -> bool {
+        let stripped = super::strip_line_comment(line);
+        let paren = format!("{callee}(");
+        let spaced = format!("{callee} (");
+        stripped.contains(&paren) || stripped.contains(&spaced)
+    }
+
+    fn detector_unquoted_live_callees(content: &str) -> Vec<&'static str> {
+        DETECTOR_LIVE_CALLEE_SPELLINGS
+            .iter()
+            .copied()
+            .filter(|callee| {
+                content
+                    .lines()
+                    .any(|line| detector_line_has_unquoted_callee(line, callee))
+            })
+            .collect()
+    }
+
+    fn detector_sio_unquoted_live_hits(
+        files: &[(String, String)],
+    ) -> Result<Vec<(String, Vec<&'static str>)>, String> {
+        let mut out = Vec::new();
+        for (rel, content) in files {
+            let reads_live = super::parse_entry_live_tree_disposition(rel, content)?;
+            if reads_live {
+                continue;
+            }
+            let sinks = detector_unquoted_live_callees(content);
+            if !sinks.is_empty() {
+                out.push((rel.clone(), sinks));
+            }
+        }
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        Ok(out)
+    }
+
     fn fixture_path() -> String {
         "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag".to_string()
     }
@@ -26329,20 +26329,20 @@ new file mode 100644
     #[test]
     fn quoted_census_callee_is_not_a_direct_live_sink() {
         let source = "module m\n\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\ndata note: String = \"compile_dag_diagnostic_census(source)\"\n";
-        assert!(super::entry_direct_live_tree_sinks(source).is_empty());
+        assert!(detector_unquoted_live_callees(source).is_empty());
     }
 
     #[test]
     fn unquoted_census_callee_is_a_direct_live_sink() {
         let source = "module m\n\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\nfn f(source: String) -> Int { compile_dag_diagnostic_census(source) }\n";
         assert_eq!(
-            super::entry_direct_live_tree_sinks(source),
+            detector_unquoted_live_callees(source),
             vec!["compile_dag_diagnostic_census"]
         );
     }
 
     #[test]
-    fn substrate_stamp_direct_live_disagreements_is_an_identity_join() {
+    fn detector_hits_planted_triple_is_an_identity_join() {
         let files = vec![
             (
                 "lying.dag".to_string(),
@@ -26360,7 +26360,7 @@ new file mode 100644
                     .to_string(),
             ),
         ];
-        let rows = super::substrate_stamp_direct_live_disagreements(&files).unwrap();
+        let rows = detector_sio_unquoted_live_hits(&files).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].0, "lying.dag");
         assert_eq!(rows[0].1, vec!["compile_dag_diagnostic_census"]);
@@ -26368,7 +26368,7 @@ new file mode 100644
             !rows
                 .iter()
                 .any(|(p, _)| p == "honest_sio.dag" || p == "honest_live.dag"),
-            "agreement is not disagreement: {rows:?}"
+            "honest stamps must not be detector hits: {rows:?}"
         );
     }
 
@@ -26390,10 +26390,10 @@ new file mode 100644
                 std::fs::read_to_string(ws.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
             files.push((rel.to_string(), content));
         }
-        let disagreements = super::substrate_stamp_direct_live_disagreements(&files).unwrap();
+        let hits = detector_sio_unquoted_live_hits(&files).unwrap();
         assert!(
-            disagreements.is_empty(),
-            "corrected specimens must leave the SIO disagreement set: {disagreements:?}"
+            hits.is_empty(),
+            "corrected specimens must leave the detector-hit set: {hits:?}"
         );
         for (rel, content) in &files {
             assert!(
@@ -26401,7 +26401,7 @@ new file mode 100644
                 "{rel} stamp was not corrected to ReadsLiveTree"
             );
             assert!(
-                !super::entry_direct_live_tree_sinks(content).is_empty(),
+                !detector_unquoted_live_callees(content).is_empty(),
                 "{rel} lost its live sink"
             );
         }
@@ -26414,7 +26414,7 @@ new file mode 100644
         let content =
             std::fs::read_to_string(ws.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
         let files = vec![(rel.to_string(), content)];
-        let rows = super::substrate_stamp_direct_live_disagreements(&files).unwrap();
+        let rows = detector_sio_unquoted_live_hits(&files).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].0, rel);
         assert!(
@@ -26444,8 +26444,7 @@ new file mode 100644
             "{rel} must still be SubstrateInputsOnly for this check"
         );
         assert!(
-            super::entry_direct_live_tree_sinks(&content)
-                .contains(&"compile_dag_diagnostic_census"),
+            detector_unquoted_live_callees(&content).contains(&"compile_dag_diagnostic_census"),
             "specimen lost its census call"
         );
         assert!(
@@ -26530,15 +26529,14 @@ new file mode 100644
     }
 
     #[test]
-    #[ignore = "live-corpus: walks every stamped .dag; the receipts lane runs these with --ignored"]
-    fn substrate_stamp_direct_live_disagreement_census() {
+    #[ignore = "receipts-lane re-derivation of the TEST detector; not a wall. Required tests identity-join named specimens. Do not cite this print as a count oracle or as the stamp-to-body join."]
+    fn detector_sio_unquoted_live_hits_corpus_walk() {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir workspace");
         let files = super::corpus_dag_files();
-        let rows =
-            super::substrate_stamp_direct_live_disagreements(&files).expect("disposition parse");
+        let rows = detector_sio_unquoted_live_hits(&files).expect("disposition parse");
         eprintln!(
-            "SubstrateInputsOnly entries whose body unquoted-calls a live-checkout sink: {}",
+            "detector hits (SIO + unquoted spelling; fail-open; not a disagreement set): {}",
             rows.len()
         );
         for (rel, sinks) in &rows {
@@ -26547,7 +26545,7 @@ new file mode 100644
         for rel in ["dag/test/claim/citation_cause_subject_disjointness_witness_test.dag"] {
             assert!(
                 rows.iter().any(|(p, _)| p == rel),
-                "{rel} dropped out of the derived disagreement set"
+                "{rel} dropped out of the detector-hit set"
             );
         }
     }
