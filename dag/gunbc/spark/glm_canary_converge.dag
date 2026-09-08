@@ -1,0 +1,183 @@
+module gunbc.spark.glm_canary_converge
+
+import std.types { String, Bool, List, NonEmptyStr, Secret }
+import std.nat { Nat }
+import std.measure { TokenCount, token_count, token_count_value }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv9 }
+import gunbc.spark.serving_arm {
+  ServingCheckpoint, ServingRuntime, ServingTopology,
+  Glm53Exl3_205, Gitcommit90Sm121Exl3, SingleSparkTp1,
+  ServingCheckpointRow, ServingRuntimeRow, ReasoningResponseProjection, ParsedReasoningField,
+  ServingArmVerdict, ServingArmAdmitted, ServingArmRefused,
+  serving_arm_admits, serving_checkpoint_row, serving_runtime_row,
+}
+import gunbc.spark.model_snapshot_acquisition {
+  ModelSnapshotDesired, ModelSnapshotPinned, ModelSnapshotRole, SnapshotSeed,
+}
+import gunbc.spark.model_snapshot_materialize {
+  SparkMaterializeContext, SparkMaterializeOutcome, SparkMaterialized, SparkMaterializeUnpinned,
+  spark_materialize_member,
+}
+import gunbc.artifact_acquisition {
+  AcquisitionOutcome, AcquisitionAlreadyPresent, AcquisitionFetched, AcquisitionRefused,
+  acquisition_refusal_text, acquisition_succeeded,
+}
+import extdeps.huggingface.hub { HubRepoId, HubModelRepo }
+
+// THE CONVERGENCE ROOT FOR THE GLM CANARY -- THE PIECE THAT DID NOT EXIST.
+//
+// WHAT WAS MISSING AND WHY IT WAS INVISIBLE. gunbc.spark.model_snapshot_materialize landed as a
+// typed, compiling, witnessed materialiser with ZERO CALLERS. Its intended consumer,
+// gunbc.spark.pair_serving_apply, carried an annotation saying "the acquisition is sequenced ahead
+// of it by the caller" -- and no caller was ever written. A grep for the module or its entry
+// function across the whole corpus returned exactly one hit: that comment. So the corpus asserted a
+// composition in prose that nothing performed, which is the invented-entailment failure applied to
+// an annotation: both halves checked out (the materialiser is real; the apply is real) and only the
+// arrow between them was missing.
+//
+// IT SURVIVED REVIEW BECAUSE COMPONENT QUALITY WAS READ AS INTEGRATION COMPLETENESS. The parts
+// compiled clean, carried witnesses, and were individually well shaped -- and that green signal was
+// taken for a route. The structural witness nobody had produced is the one this module exists to
+// make possible: ONE OPERATOR-REACHABLE ROOT that consumes an exact realization arm, runs the typed
+// materialiser, and reports a read-back receipt.
+//
+// THE CANARY ARM IS EXACT AND IS NOT THE PRODUCTION TARGET. Native FP8 at TP4 stays a separate arm;
+// this one must never silently answer for it. They differ in every axis that matters -- checkpoint
+// bytes, loader, quantisation, footprint, runtime registry, parser availability, response schema and
+// rank count -- which is precisely why gunbc.spark.serving_arm exists.
+
+type GlmCanaryArm {
+  checkpoint: ServingCheckpoint
+  runtime: ServingRuntime
+  topology: ServingTopology
+  host: HostIdentity
+  served_model_alias: NonEmptyStr
+  max_model_len: TokenCount
+  max_num_seqs: SeqBound
+  max_num_batched_tokens: BatchedTokenPolicy
+  speculation: SpeculationPolicy
+  port: Nat
+}
+
+// THE SEQUENCE BOUND IS DECLARED AS WHAT IT IS. The engine reported 9.71x maximum concurrency at
+// full context for this arm, and that figure is KV CAPACITY FOR FULL-WINDOW REQUESTS -- not a safe
+// scheduler population, which also depends on activation peaks, mixed workloads and unified-memory
+// behaviour. Reading it as a measured max-num-seqs would repeat the exact error this migration
+// removed when it stopped carrying DeepSeek's 32.
+type SeqBound
+  = ExperimentalOperatorBound { count: Nat, basis: NonEmptyStr }
+  | MeasuredFromLaunchLine { count: Nat, basis: NonEmptyStr }
+
+// SPELLING A DEFAULT IS NOT A NO-OP. An operator ruling on 2026-09-08 set the canary's batched-token
+// limit explicitly. Even where the value equals what the engine would have chosen, authoring it
+// converts an ambient runtime outcome into a decision somebody made and can be held to.
+type BatchedTokenPolicy
+  = EngineDefault
+  | ExplicitBatchedTokenLimit { tokens: TokenCount, basis: NonEmptyStr }
+
+type SpeculationPolicy
+  = SpeculationDisabled { basis: NonEmptyStr }
+  | SpeculationMtp { draft_tokens: Nat, basis: NonEmptyStr }
+
+data glm_canary_arm: GlmCanaryArm = GlmCanaryArm {
+  checkpoint: Glm53Exl3_205,
+  runtime: Gitcommit90Sm121Exl3,
+  topology: SingleSparkTp1,
+  host: operator_host_srv9,
+  served_model_alias: "glm-5.3-flash-exl3-canary" as NonEmptyStr,
+  max_model_len: token_count(count: 262144),
+  max_num_seqs: ExperimentalOperatorBound {
+    count: 1,
+    basis: "operator experimental bound for first boot, 2026-09-08: nothing derives it. The engine's reported 9.71x concurrency at 262,144 tokens is KV capacity for full-window requests, NOT a safe scheduler population, and is deliberately not used as this figure's basis" as NonEmptyStr,
+  },
+  max_num_batched_tokens: ExplicitBatchedTokenLimit {
+    tokens: token_count(count: 2048),
+    basis: "operator ruling 2026-09-08: spelled explicitly so an ambient engine default becomes an authored choice. Operationally equal to the prior behaviour; the point is attribution, not effect" as NonEmptyStr,
+  },
+  speculation: SpeculationDisabled {
+    basis: "first boot removes a second execution variable: the goal is model/runtime/harness compatibility, not headline throughput. The runtime registers Glm5NextMTPModel, so MTP speculation is available once the base arm is established" as NonEmptyStr,
+  },
+  port: 30001,
+}
+
+// THE SNAPSHOT THE CANARY ARM ACQUIRES, derived from the arm's checkpoint row rather than spelled
+// again here -- so the revision the materialiser fetches and the revision the launch line names
+// cannot drift apart.
+fn glm_canary_snapshot(arm: GlmCanaryArm) -> ModelSnapshotDesired? {
+  match serving_checkpoint_row(c: arm.checkpoint) {
+    Absent => none
+    Present { value: row } => Present { value: ModelSnapshotPinned {
+      identity: arm.served_model_alias,
+      repo: row.repo,
+      revision: row.revision,
+      revision_provenance: row.provenance,
+    } }
+  }
+}
+
+// ── THE ROOT ───────────────────────────────────────────────────────────────────────────────────
+
+type GlmCanaryConvergence
+  = CanaryArmRefused { cause: NonEmptyStr }
+  | CanaryMaterializeRefused { cause: NonEmptyStr }
+  | CanaryMaterialized { outcome: AcquisitionOutcome, already_present: Bool }
+
+// ADOPTING ALREADY-PRESENT STATE IS THE POINT OF THE FIRST RERUN, NOT AN OPTIMISATION. The canary's
+// 85 GB were fetched by hand before this root existed. A convergence that could only reach the
+// desired state by re-transferring them would be asserting ownership it does not have; the
+// materialiser's first observation must find the verified snapshot and return AlreadyPresent with no
+// mutation. If it cannot adopt state a human put there, THAT is the next real defect, and this root
+// is what makes the question askable.
+fn glm_canary_converge(ctx: SparkMaterializeContext) -> GlmCanaryConvergence {
+  let arm = glm_canary_arm
+  match serving_arm_admits(checkpoint: arm.checkpoint, runtime: arm.runtime, topology: arm.topology) {
+    ServingArmRefused { cause: c } => CanaryArmRefused { cause: c }
+    ServingArmAdmitted =>
+      match glm_canary_snapshot(arm: arm) {
+        Absent => CanaryMaterializeRefused { cause: "the canary arm's checkpoint has no modelled row, so no snapshot subject exists to acquire" as NonEmptyStr }
+        Present { value: snapshot } =>
+          match spark_materialize_member(ctx: ctx, role: SnapshotSeed, snapshot: snapshot) {
+            SparkMaterializeUnpinned { host: _ } =>
+              CanaryMaterializeRefused { cause: "the canary snapshot carries no pinned revision" as NonEmptyStr }
+            SparkMaterialized { host: _, outcome: o } =>
+              CanaryMaterialized { outcome: o, already_present: glm_canary_outcome_already_present(o: o) }
+          }
+      }
+  }
+}
+
+fn glm_canary_outcome_already_present(o: AcquisitionOutcome) -> Bool {
+  match o {
+    AcquisitionAlreadyPresent { identity: _, install_path: _ } => true
+    AcquisitionFetched { identity: _, install_path: _, source: _ } => false
+    AcquisitionRefused { cause: _ } => false
+  }
+}
+
+fn glm_canary_convergence_text(v: GlmCanaryConvergence) -> String {
+  match v {
+    CanaryArmRefused { cause: c } => join(["canary arm refused: ", c as String], "")
+    CanaryMaterializeRefused { cause: c } => join(["canary materialize refused: ", c as String], "")
+    CanaryMaterialized { outcome: o, already_present: p } =>
+      match o {
+        AcquisitionAlreadyPresent { identity: i, install_path: path } =>
+          join(["adopted already-present snapshot for ", i as String, " at ", path as String, " with no mutation"], "")
+        AcquisitionFetched { identity: i, install_path: path, source: s } =>
+          join(["materialized ", i as String, " at ", path as String, " from ", s.identity as String], "")
+        AcquisitionRefused { cause: cause } =>
+          join(["acquisition refused: ", acquisition_refusal_text(cause: cause)], "")
+      }
+  }
+}
+
+// THE ARM'S SERVING-UNIT PROJECTION, so a harness asking "what is this unit's reasoning wire" gets
+// the RUNTIME's answer rather than the model family's. This is the join the harness seam was
+// missing: its GLM arm answered from the model authority and was therefore wrong about the member
+// name for every runtime but the one it was written against.
+fn glm_canary_reasoning_projection(arm: GlmCanaryArm) -> ReasoningResponseProjection? {
+  match serving_runtime_row(r: arm.runtime) {
+    Absent => none
+    Present { value: row } => Present { value: row.reasoning_projection }
+  }
+}
