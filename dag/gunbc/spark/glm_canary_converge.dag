@@ -461,6 +461,241 @@ fn serve_agreement_text(a: ServeAgreement) -> String {
   }
 }
 
+// ── THE CUTOVER ────────────────────────────────────────────────────────────────────────────────
+//
+// THE ENGINE ARGV IS NOT THE CONTAINER SPEC, AND ONLY THE FIRST WAS MODELLED. glm_canary_serve_argv
+// renders what vLLM is asked to do; it says nothing about GPU access, mounts, network or IPC namespace,
+// and a cutover needs all of it. Measured off the running container 2026-09-08, the whole of what the
+// spec adds is four flags and one mount -- every one of its twenty-five environment variables comes
+// from the image, so there is nothing to carry.
+//
+// THE ENTRYPOINT ALREADY SUPPLIES `serve`, AND THIS IS THE TRAP THE MEASUREMENT CAUGHT. The container's
+// Path is `vllm` and its Args are twenty-six words beginning `serve`, while Config.Cmd is the
+// twenty-five that follow. So the rendered line matches `.Args` -- which is what the agreement check
+// compares against, correctly -- but handing it to `docker run` as the command would produce
+// `vllm serve serve /model ...` and fail on the first word. The command drops the head; the comparison
+// keeps it. Two different questions about one line.
+fn glm_canary_run_argv(arm: GlmCanaryArm) -> List<String>? {
+  match serving_runtime_row(r: arm.runtime) {
+    Absent => none
+    Present { value: rrow } =>
+      match glm_canary_serve_argv(arm: arm) {
+        Absent => none
+        Present { value: serve } => Present { value: concat([
+          "docker", "run", "-d",
+          "--name", arm.container_name as String,
+          "--gpus", "all",
+          "--network", "host",
+          "--ipc", "host",
+          "-v", join([glm_canary_host_path(arm: arm) as String, ":/model:ro"], ""),
+          rrow.image_reference as String,
+        ], serve.skip(n: 1)) }
+      }
+  }
+}
+
+// THE ROLLBACK IS RECORDED BEFORE ANYTHING IS DESTROYED, which is the whole reason this is a fold and
+// not a script. What is recorded is the argv the CURRENT container is running -- read from the host,
+// not derived from the model -- because the model is exactly what is being put on trial here. If the
+// replacement will not start, an operator needs the line that was working, from the thing that was
+// working, and a model-derived rollback would be worthless in precisely the case where the model is
+// wrong.
+type CanaryCutover
+  = CutoverNotAttempted { cause: String }
+  | CutoverRefusedBeforeActing { cause: String }
+  | CutoverServing { rollback: String }
+  | CutoverStartedButNotServing { rollback: String, detail: String }
+
+fn cutover_text(c: CanaryCutover) -> String {
+  match c {
+    CutoverNotAttempted { cause: x } => join(["no cutover attempted: ", x], "")
+    CutoverRefusedBeforeActing { cause: x } => join(["REFUSED BEFORE ACTING, the running engine was not touched: ", x], "")
+    CutoverServing { rollback: r } => join(["the modelled container is serving; the line it replaced was: ", r], "")
+    CutoverStartedButNotServing { rollback: r, detail: d } =>
+      join(["STARTED BUT NOT SERVING -- ", d, " -- restore with: docker run ... ", r], "")
+  }
+}
+
+// A CUTOVER IS ONLY ATTEMPTED WHEN THE MODEL ALREADY REPRODUCES THE RUNNING LINE. That is not caution,
+// it is the only condition under which the operation is honest: replacing a healthy engine with one
+// built from a DIFFERENT line is not a cutover, it is an unreviewed change to a live service. Where the
+// two disagree the refusal names the difference and the running engine is left alone -- the operator
+// decides, with the diff in front of them.
+//
+// SO WHAT THIS BUYS IS PROVENANCE, NOT CAPABILITY, and the receipt should not pretend otherwise. The
+// image digest, the weights and every flag are identical on both sides; what changes is that the
+// container becomes one this model started and can restart, instead of one a person started by hand and
+// nothing owns.
+func glm_canary_cutover(ctx: SparkMaterializeContext, arm: GlmCanaryArm, agreement: ServeAgreement) -> CanaryCutover
+  uses net: Network
+{
+  match agreement {
+    ServeUnreadable { cause: c } => CutoverRefusedBeforeActing { cause: join(["the running launch line could not be read, so there is nothing to compare and no rollback to record: ", c], "") }
+    ServeDiffers { running: r } => CutoverRefusedBeforeActing { cause: join(["the running container was launched with a DIFFERENT line; replacing it would be an unreviewed change to a live service, not a cutover. running: ", r], "") }
+    ServeNotRunning { detail: d } => CutoverRefusedBeforeActing { cause: join(["nothing is serving this arm, so this would be a first launch rather than a cutover, and no rollback line exists: ", d], "") }
+    ServeAgreed =>
+      match glm_canary_run_argv(arm: arm) {
+        Absent => CutoverRefusedBeforeActing { cause: "this arm renders no container line" }
+        Present { value: run } => glm_canary_replace_container(ctx: ctx, arm: arm, run: run)
+      }
+  }
+}
+
+fn glm_canary_replace_container(ctx: SparkMaterializeContext, arm: GlmCanaryArm, run: List<String>) -> CanaryCutover {
+  match spark_remote_run(ctx: ctx, argv: glm_canary_inspect_argv(arm: arm)) {
+    RemoteUnreachable { cause: c } => CutoverRefusedBeforeActing { cause: join(["the rollback line could not be read, so nothing was touched: ", c], "") }
+    RemoteRan { exit_code: e, stdout: rollback, stderr: err } =>
+      if e != 0 {
+        CutoverRefusedBeforeActing { cause: join(["the rollback line could not be read, so nothing was touched: ", err], "") }
+      } else {
+        glm_canary_stop_and_start(ctx: ctx, arm: arm, run: run, rollback: trim(s: rollback))
+      }
+  }
+}
+
+fn glm_canary_stop_and_start(ctx: SparkMaterializeContext, arm: GlmCanaryArm, run: List<String>, rollback: String) -> CanaryCutover {
+  let removed = spark_remote_run(ctx: ctx, argv: ["docker", "rm", "-f", arm.container_name as String])
+  match spark_remote_run(ctx: ctx, argv: run) {
+    RemoteUnreachable { cause: c } => CutoverStartedButNotServing { rollback: rollback, detail: join(["the replacement could not be started: ", c], "") }
+    RemoteRan { exit_code: e, stdout: _, stderr: err } =>
+      if e != 0 {
+        CutoverStartedButNotServing { rollback: rollback, detail: join(["docker run exited ", to_string(e), ": ", err], "") }
+      } else {
+        glm_canary_await_serving(ctx: ctx, arm: arm, rollback: rollback, remaining: glm_canary_health_poll_budget)
+      }
+  }
+}
+
+// THE ENGINE IS NOT UP WHEN THE CONTAINER IS UP. Measured on this arm: the container returns
+// immediately and the engine took about twelve minutes to answer -- weights load, then a hundred and ten
+// seconds of profiling and graph capture. So "docker run exited zero" is not the success condition and
+// treating it as one would report a cutover complete while nothing served. The condition is the model's
+// own alias answering on its own port.
+data glm_canary_health_poll_budget: Nat = 60
+data glm_canary_health_poll_interval_seconds: Nat = 20
+
+fn glm_canary_health_argv(arm: GlmCanaryArm) -> List<String> {
+  ["curl", "-s", "-m", "5", join(["http://127.0.0.1:", to_string(arm.port), "/v1/models"], "")]
+}
+
+fn glm_canary_await_serving(ctx: SparkMaterializeContext, arm: GlmCanaryArm, rollback: String, remaining: Nat) -> CanaryCutover {
+  match spark_remote_run(ctx: ctx, argv: glm_canary_health_argv(arm: arm)) {
+    RemoteUnreachable { cause: c } =>
+      if remaining == 0 {
+        CutoverStartedButNotServing { rollback: rollback, detail: join(["the health probe never reached the host: ", c], "") }
+      } else {
+        glm_canary_health_wait(ctx: ctx, arm: arm, rollback: rollback, remaining: remaining)
+      }
+    RemoteRan { exit_code: _, stdout: body, stderr: _ } =>
+      if body.contains(arm.served_model_alias as String) {
+        CutoverServing { rollback: rollback }
+      } else if remaining == 0 {
+        CutoverStartedButNotServing {
+          rollback: rollback,
+          detail: join(["the engine did not serve ", arm.served_model_alias as String, " within ", to_string(glm_canary_health_poll_budget), " polls"], ""),
+        }
+      } else {
+        glm_canary_health_wait(ctx: ctx, arm: arm, rollback: rollback, remaining: remaining)
+      }
+  }
+}
+
+fn glm_canary_health_wait(ctx: SparkMaterializeContext, arm: GlmCanaryArm, rollback: String, remaining: Nat) -> CanaryCutover {
+  let slept = spark_remote_run(ctx: ctx, argv: ["sleep", to_string(glm_canary_health_poll_interval_seconds)])
+  glm_canary_await_serving(ctx: ctx, arm: arm, rollback: rollback, remaining: remaining - 1)
+}
+
+// ── THE CUTOVER'S OWN ENTRY, SEPARATE FROM CONVERGENCE ─────────────────────────────────────────
+//
+// THE CUTOVER IS NOT REACHABLE FROM THE CONVERGE WALK, and that separation is the safety property this
+// whole design rests on. glm_canary_converge_wet observes and never acts; it can be run on a schedule,
+// by anyone, at any time, and the worst it does is write a receipt. Replacing a live engine is a
+// different act with a different blast radius -- roughly twelve minutes of this arm serving nothing --
+// so it is a different entry point that an operator names deliberately. Folding it into convergence
+// would mean every future scheduled run carried the authority to restart a server.
+func glm_canary_cutover_wet() -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  match observe_executor_reach() {
+    ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["glm_canary_cutover: ", c], ""))
+    ExecutorReachKnown { short_hostname: executor, path: path } =>
+      match read_bootstrap_credential() {
+        BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
+        BootstrapCredentialReady { secret: administrator } =>
+          match fleet_ssh_attempt_identity(raw: glm_canary_attempt_raw) {
+            Absent => exit_failure(reason: "attempt identity is not a safe path segment")
+            Present { value: attempt } => {
+              let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+              match fleet_openssh_trust_policy_of(outcome: materialization) {
+                Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
+                Present { value: trust } =>
+                  match with_materialized_ssh_key_file(
+                    identity_file_name: "gunbc-glm-canary-admin-password" as NonEmptyStr,
+                    secret_bytes: administrator as Secret,
+                    use: fn(file) {
+                      glm_canary_cutover_with(ctx: SparkMaterializeContext {
+                        host: glm_canary_arm.host,
+                        trust: trust,
+                        path: path,
+                        admin_credential: administrator as Secret,
+                        admin_credential_file: file,
+                        executor: glm_canary_acquisition_executor(arm: glm_canary_arm),
+                      })
+                    },
+                  ) {
+                    MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
+                    MaterializedSshKeyFileBracketCompleted { value: outcome } => {
+                      let body = glm_canary_cutover_receipt_body(at: probed_at_word(reading: now) as String, executor: executor, outcome: outcome)
+                      let wr = Filesystem.Write(path: glm_canary_cutover_receipt_path, content: body)
+                      if !wr.success {
+                        exit_failure(reason: join(["glm canary cutover receipt write failed: ", wr.error], ""))
+                      } else if cutover_succeeded(c: outcome) {
+                        ExitSuccess
+                      } else {
+                        exit_failure(reason: join(["glm canary cutover did not complete:
+", body], ""))
+                      }
+                    }
+                  }
+              }
+            }
+          }
+      }
+  }
+}
+
+data glm_canary_cutover_receipt_path: NonEmptyStr = "target/glm-canary-cutover-receipt.txt" as NonEmptyStr
+
+// THE OBSERVATION IS TAKEN FRESH INSIDE THE CUTOVER, not passed in from an earlier run. A convergence
+// receipt from minutes ago is evidence about the past, and the gate this opens is about the present.
+fn glm_canary_cutover_with(ctx: SparkMaterializeContext) -> CanaryCutover {
+  let arm = glm_canary_arm
+  glm_canary_cutover(ctx: ctx, arm: arm, agreement: glm_canary_observe_serve(ctx: ctx, arm: arm))
+}
+
+fn cutover_succeeded(c: CanaryCutover) -> Bool {
+  match c {
+    CutoverNotAttempted { cause: _ } => false
+    CutoverRefusedBeforeActing { cause: _ } => false
+    CutoverStartedButNotServing { rollback: _, detail: _ } => false
+    CutoverServing { rollback: _ } => true
+  }
+}
+
+fn glm_canary_cutover_receipt_body(at: String, executor: String, outcome: CanaryCutover) -> String {
+  join([
+    "glm canary cutover at=", at, " executor=", executor, "
+",
+    "  arm: ", glm_canary_checkpoint_wire(arm: glm_canary_arm),
+    " host=", glm_canary_arm.host as String,
+    " container=", glm_canary_arm.container_name as String, "
+",
+    "  outcome: ", cutover_text(c: outcome), "
+",
+  ], "")
+}
+
 // ── THE OPERATOR-REACHABLE ENTRY ───────────────────────────────────────────────────────────────
 //
 // THIS IS THE PIECE WHOSE ABSENCE MADE EVERYTHING ABOVE UNREACHABLE. `glm_canary_converge` is an
