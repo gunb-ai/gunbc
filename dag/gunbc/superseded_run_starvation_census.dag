@@ -76,18 +76,6 @@ fn dead_head_start_standing(
   }
 }
 
-// Cancellation is priced at job grain. A run listing can lag the individual run resource during
-// settlement, so the instrument refreshes that resource and never derives a status transition
-// from successive listing reads. Cancelled work and a queued laggard can coexist in one aggregate.
-type CancelledRunJobStanding {
-  pair: SupersededRunPair
-  cancelled_jobs: Int
-  failed_jobs: Int
-  queued_jobs: Int
-  dead_time_under_hold: DurationResult
-  group_hold_after_jobs: DurationResult
-}
-
 type RefreshedPair {
   pair: SupersededRunPair
   dead_status: WorkflowRunStatus
@@ -118,6 +106,9 @@ type StartStandingRow {
   count: Int
 }
 
+// Cancellation is priced at job grain. A run listing can lag the individual run resource during
+// settlement, so the instrument refreshes that resource and never derives a status transition
+// from successive listing reads. Cancelled work and a queued laggard can coexist in one aggregate.
 type CancellationRow {
   pr: Int
   dead_run: Int
@@ -205,6 +196,10 @@ fn collect_runs_in_window(
   }
 }
 
+// Declared frontier: the recursive page-fetch loop in collect_window_pages (and its wrapper
+// collect_runs_in_window) dissolves into std.page_fold.page_fold_live when a production consumer
+// becomes a page_fold_run over a WorkflowRuns page transport — that is, when any other module
+// fetches paginated workflow runs and the common pagination driver has more than zero consumers.
 fn collect_window_pages(
   auth_token: String,
   owner: String,
@@ -255,11 +250,6 @@ fn collect_window_pages(
 }
 
 }
-
-// Declared frontier: the recursive page-fetch loop in collect_window_pages (and its wrapper
-// collect_runs_in_window) dissolves into std.page_fold.page_fold_live when a production consumer
-// becomes a page_fold_run over a WorkflowRuns page transport — that is, when any other module
-// fetches paginated workflow runs and the common pagination driver has more than zero consumers.
 
 fn pr_number_for_run(run: WorkflowRun) -> Int? {
   match run.pull_requests {

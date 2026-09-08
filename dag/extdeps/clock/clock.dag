@@ -21,7 +21,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // Meanwhile the operation accepts offset: Nat — still a bare scalar, but at
 // least the Nat refinement (Int where non_negative) encodes the sign constraint
 // that Int lacked, and the parameter name names the unit as a second-best signal.
-data clock_timestamp_offset_note: String = "🟡 offset: Nat (unit-modeling debt). See feature:offset-nat-carrier above."
 
 // Declared residue: TimestampToUnixSecs output is String (the shell transport does not
 // support Int from "stdout"), and the consumer owns the decode. The annotation on
