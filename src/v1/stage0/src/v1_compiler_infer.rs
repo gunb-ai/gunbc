@@ -14118,11 +14118,11 @@ Rc::new(FieldInferResult {
                         ),
                         std::option::Option::None => false,
                     };
-                let skip_owner_widen = type_name_declares_own_type.clone()
+                let skip_owner_widen = (type_name_declares_own_type.clone()
                     || match local_variant_parent.clone() {
-                        Some(parent_name) => parent_name.clone() == "Optional".to_string(),
+                        Some(parent_name) => (parent_name.clone() == "Optional".to_string()),
                         std::option::Option::None => false,
-                    };
+                    });
                 let interned_owner = match local_variant_parent.clone() {
                     Some(parent_name) => {
                         if skip_owner_widen.clone() {
@@ -14133,8 +14133,7 @@ Rc::new(FieldInferResult {
                                 parent_name.clone(),
                             ) {
                                 Some(parent_decl) => {
-                                    if ((parent_decl.clone().connective.clone()
-                                        == Connective::Disj)
+                                    if ((parent_decl.connective.clone() == Connective::Disj)
                                         && crate::v1_std_core::has_child_named(
                                             parent_decl.clone(),
                                             type_name.clone().unwrap(),
