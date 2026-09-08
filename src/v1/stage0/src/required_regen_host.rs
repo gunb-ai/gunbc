@@ -3746,10 +3746,16 @@ fn seed_cargo_build(workspace: &Path, label: &str) -> Result<CargoBuildObservati
 /// that file, Linux reports the running image as `<path> (deleted)`; digesting the path itself
 /// compares "installed there now" against "installed there before the build" -- the refusal's
 /// question.
-fn current_exe_digest() -> Result<String, String> {
+fn current_exe_on_disk() -> Result<PathBuf, String> {
     let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
     let shown = exe.to_string_lossy().into_owned();
-    let on_disk = PathBuf::from(shown.strip_suffix(" (deleted)").unwrap_or(&shown));
+    Ok(PathBuf::from(
+        shown.strip_suffix(" (deleted)").unwrap_or(&shown),
+    ))
+}
+
+fn current_exe_digest() -> Result<String, String> {
+    let on_disk = current_exe_on_disk()?;
     let bytes = fs::read(&on_disk).map_err(|e| format!("read {}: {e}", on_disk.display()))?;
     Ok(v1_rt::bytes_identity_hash(&bytes))
 }
@@ -4163,10 +4169,11 @@ fn run_built_seed_regen(
             )
         })?;
     }
-    let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
-    let shown = exe.to_string_lossy().into_owned();
-    let on_disk = PathBuf::from(shown.strip_suffix(" (deleted)").unwrap_or(&shown));
-    let observed_executable_digest = path_digest(&on_disk)?;
+    let on_disk = current_exe_on_disk()?;
+    // The admitted side carries the executable-digest spelling (`current_exe_digest`,
+    // `next_pass_executable_digest`); the tagged file digest (`path_digest`) spells the same
+    // bytes differently, and this gate compared them verbatim -- unpassable since #9771.
+    let observed_executable_digest = current_exe_digest()?;
     if observed_executable_digest != admitted_executable_digest {
         return Err(format!(
             "CandidateGeneratedByDifferentSeed: stage admitted executable {} but next generation would run {} at {}",
