@@ -9,7 +9,7 @@ import std.interval { degenerate_interval, OrderedClosedInterval }
 import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
 import std.decision {
   HardConstraint, SelectionPolicy, UniqueSurvivorRequired, SelectionReceipt,
-  SelectionEvidenceNeed, DecisionAssessment, DecisionSubject, DecisionVariable,
+  SelectionEvidenceNeed, CandidateFieldEstablished, CandidateFieldUnestablishedStanding, DecisionAssessment, DecisionSubject, DecisionVariable,
   DecisionConstraint, DecisionRegion, ContextParameter, ObjectiveTerm, ObjectiveMeasure,
   ChoiceDomain, VariesAlong, MonotoneIncreasing, ConstraintSatisfied, ParameterBound,
   PhysicalModelEstablished, CausalModelEstablished, VendorDocumentedCoupling,
@@ -434,13 +434,70 @@ data id_evidence_snapshot: DeclarationRef = decl_ref(module_path: "gunbc.spark.s
 // launch profile is constructible from the selected arm and from nothing else, so an
 // under-evidenced or refused decision cannot reach an engine by any route -- the obligations come
 // back instead, naming what would change the answer.
+// A LAUNCH PROFILE HAS EXACTLY ONE CONSTRUCTOR AND IT TAKES A RECEIPT.
+//
+// THIS IS THE POINT OF THE MODULE, AND IT IS CONSTRUCTION RATHER THAN VALIDATION. A lens asking
+// "did a selection happen?" is a check standing where a constructor was available: it can be
+// satisfied by editing the declaration while the launch still carries whatever literals someone
+// typed, and it is bypassed by any path that does not run it. Instead the profile that a launch
+// consumes CANNOT BE BUILT without a SelectionReceipt, so a deployment that never made a decision
+// is not caught -- it is unwritable.
+//
+// HARDCODING STAYS LEGAL AND STOPS BEING INVISIBLE. Nothing here forbids deciding in advance; a
+// settled choice is a candidate field of ONE, which passes the spine and yields a receipt whose
+// CandidateFieldEstablished identities list has a single member. So "nothing was compared" becomes
+// a COUNTABLE property of a receipt rather than the silent default it is when a launch profile is
+// assembled from literals. That is the whole difference: the decision still has to be made, and
+// making it trivially is a visible position rather than an absent one.
+//
+// AND A STALE CHOICE IS MECHANICALLY DETECTABLE, because std.decision keys the receipt on the
+// decision subject, the candidate field, the constraint authority, the funded axes, the evidence
+// snapshot and the policy. A different artifact, fleet reading or policy is a DIFFERENT DECISION,
+// so a profile built against last month's evidence does not silently answer for today's.
+//
+// WHAT THIS DOES NOT REACH, stated so the rung is not inflated: it binds every launch that goes
+// through modelled code. Someone with a shell on a serving host can still start an engine by hand,
+// and that is outside the modelled guarantee (DESIGN 4b) -- observed or refused at a boundary,
+// never fabricated into a claim that no unselected engine can exist.
+type ServingLaunchProfile sole_constructor {
+  candidate: DeclarationRef
+  replica: ReplicaProfile
+  receipt: SelectionReceipt
+}
+
 type LaunchAdmission
-  = LaunchAdmitted { candidate: DeclarationRef }
+  = LaunchAdmitted { profile: ServingLaunchProfile }
   | LaunchRefused { because: NonEmptyStr }
 
-fn admit_launch(s: ServingDeploymentSelection) -> LaunchAdmission {
+// THE FIELD SIZE THE RECEIPT ACTUALLY RECORDS. A caller can count what was compared without
+// trusting a sentence: one identity means the decision was settled in advance and said so.
+fn compared_candidate_count(r: SelectionReceipt) -> Nat {
+  match r.candidate_field_standing {
+    CandidateFieldEstablished { identities: ids } => count(ids)
+    CandidateFieldUnestablishedStanding { causes: _ } => 0
+  }
+}
+
+// The selected identity is resolved back to the candidate that carries it, and a name matching
+// nothing REFUSES rather than substituting a default replica -- a launch profile assembled from a
+// shape the selection did not choose is the exact fabrication this module exists to prevent.
+fn replica_of(candidates: List<DeploymentCandidate>, identity: DeclarationRef) -> ReplicaProfile? {
+  fold(candidates, init: none, f: (acc, k) =>
+    match acc {
+      Present { value: found } => Present { value: found }
+      Absent => if declaration_ref_eq(a: k.identity, b: identity) { Present { value: k.replica } } else { none }
+    })
+}
+
+fn admit_launch(s: ServingDeploymentSelection, candidates: List<DeploymentCandidate>) -> LaunchAdmission {
   match s {
-    ServingDeploymentSelected { candidate: c, receipt: _ } => LaunchAdmitted { candidate: c }
+    ServingDeploymentSelected { candidate: c, receipt: r } =>
+      match replica_of(candidates: candidates, identity: c) {
+        Absent => LaunchRefused { because: "the selected identity names no candidate in the field handed to this admission" as NonEmptyStr }
+        Present { value: chosen } => LaunchAdmitted {
+          profile: ServingLaunchProfile { candidate: c, replica: chosen, receipt: r },
+        }
+      }
     ServingDeploymentNeedsEvidence { needs: n } =>
       LaunchRefused { because: join(["the decision is under-evidenced: ", to_string(count(n)), " obligation(s) outstanding"], "") as NonEmptyStr }
     ServingDeploymentNeedsPolicy { survivors: s2 } =>
@@ -452,6 +509,20 @@ fn admit_launch(s: ServingDeploymentSelection) -> LaunchAdmission {
   }
 }
 
+// ── THE SUBJECT CLOSURE'S IDENTITIES ──────────────────────────────────────────────────────────
+//
+// std.decision refuses to select against an incomplete subject, so the assessment below states the
+// one varying variable, the funded term it moves, and the parameters held fixed. These are the
+// identities those rows cite; the rows themselves follow the candidate field.
+data id_subject: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_deployment_subject")
+data id_var_topology: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "var_fleet_topology")
+data id_term_isolation: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "term_failure_isolation")
+data id_param_context: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "param_context_ceiling")
+data id_constraint_cell: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_selection_constraints")
+data id_physical_authority: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "spark_fleet_snapshot")
+data id_coupling_receipt: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "weight_fit_of")
+data id_candidate_field: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "glm_candidate_field")
+
 // ── THE CANDIDATE FIELD IS COMPLETE OVER A DECLARED DOMAIN, AND THE DOMAIN IS NARROW ON PURPOSE
 //
 // Completeness is what stops an author obtaining a preferred winner by never adding the candidate
@@ -460,7 +531,7 @@ fn admit_launch(s: ServingDeploymentSelection) -> LaunchAdmission {
 // combination that was never listed is not.
 //
 // THE DOMAIN IS DELIBERATELY SMALL FOR THIS FIRST SUBJECT. Context, memory fraction and speculative
-// policy are held at one value each and carried as CONTEXT PARAMETERS below; widening any of them
+// policy are held at one value each and carried as CONTEXT PARAMETERS above; widening any of them
 // is a domain change that adds rows here and, by std.decision's completeness law, obliges a
 // sensitivity relation to every funded term. That is the growth path, and it is deliberately not
 // taken in the same change that introduces the machinery.
@@ -500,21 +571,6 @@ data glm_candidate_field: List<DeploymentCandidate> = [
   candidate(name: "glm_2bit_tp1_x8", label: "GLM 2.05-bpw, eight single-rank replicas" as NonEmptyStr, art: artifact_glm_53_flash_2bit, tp: 1, replicas: 8),
 ]
 
-// ── THE SUBJECT CLOSURE ───────────────────────────────────────────────────────────────────────
-//
-// std.decision refuses to select against an incomplete subject, so the assessment states the one
-// varying variable, the funded term it moves, and the parameters held fixed. This is the smallest
-// honest closure for the domain above; widening the domain widens this.
-data id_subject: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_deployment_subject")
-data id_var_topology: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "var_fleet_topology")
-data id_term_isolation: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "term_failure_isolation")
-data id_param_context: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "param_context_ceiling")
-data id_constraint_cell: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_selection_constraints")
-data id_physical_authority: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "spark_fleet_snapshot")
-data id_coupling_receipt: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "weight_fit_of")
-
-data id_candidate_field: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "glm_candidate_field")
-
 // THE COUPLING IS A VENDOR FACT, NOT AN ARITHMETIC ONE. Blast radius moves with topology only
 // because a tensor-parallel replica FAILS AS A UNIT across its ranks -- one rank lost takes the
 // replica, which is upstream's documented behaviour and not something this repository decided. The
@@ -535,6 +591,21 @@ data term_failure_isolation: ObjectiveTerm = ObjectiveTerm {
 }
 
 data param_context_ceiling: ContextParameter = ContextParameter { identity: id_param_context }
+
+// THE ENGINE-SHAPE LITERALS ARE NAMED HERE RATHER THAN OMITTED, because a parameter this subject
+// does not mention is indistinguishable from one nobody thought of. gunbc.spark.serving_deployment_
+// decision_pending rosters eight literals authored across the serving path with no derivation behind
+// them; the four that are properties of a REPLICA belong to this subject. Three of them are held at
+// one value each and carried as context parameters, with the roster's own basis restated as the
+// binding evidence -- held fixed is a position, and it is a different position from unconsidered.
+// The fourth, topology, is this subject's one decision variable.
+data id_param_memory_fraction: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "param_memory_fraction")
+data id_param_scheduler_population: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "param_scheduler_population")
+data id_param_batch_budget: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "param_batch_budget")
+
+data param_memory_fraction: ContextParameter = ContextParameter { identity: id_param_memory_fraction }
+data param_scheduler_population: ContextParameter = ContextParameter { identity: id_param_scheduler_population }
+data param_batch_budget: ContextParameter = ContextParameter { identity: id_param_batch_budget }
 data constraint_cell: DecisionConstraint = DecisionConstraint { identity: id_constraint_cell }
 
 data serving_topology_region: DecisionRegion = DecisionRegion {
@@ -555,7 +626,7 @@ data serving_choice_domain: ChoiceDomain = ChoiceDomain {
 data serving_deployment_subject: DecisionSubject = DecisionSubject {
   identity: id_subject,
   question: "which whole-fleet deployment shape serves this exact artifact at the declared context" as NonEmptyStr,
-  parameters: [param_context_ceiling],
+  parameters: [param_context_ceiling, param_memory_fraction, param_scheduler_population, param_batch_budget],
   constraints: [constraint_cell],
   objective: serving_objective,
   choice_domain: serving_choice_domain,
@@ -584,7 +655,19 @@ data serving_deployment_assessment: DecisionAssessment = DecisionAssessment {
   parameters: [
     ParameterBound {
       parameter: id_param_context,
-      evidence: "every candidate is built at one declared context ceiling; widening it is a domain change" as NonEmptyStr,
+      evidence: "every candidate is built at one declared context ceiling, and value saturates at the declared demand rather than at the model's limit; widening it is a domain change" as NonEmptyStr,
+    },
+    ParameterBound {
+      parameter: id_param_memory_fraction,
+      evidence: "the operator's observed-safe fraction for the outgoing model, carried unchanged; nothing derives it and no headroom law is modelled, so it is held rather than chosen" as NonEmptyStr,
+    },
+    ParameterBound {
+      parameter: id_param_scheduler_population,
+      evidence: "the concurrent-sequence bound is measured in one launch scenario and explicitly barred from travelling to another model, quantisation or KV layout, so this subject holds it fixed rather than ranking against it" as NonEmptyStr,
+    },
+    ParameterBound {
+      parameter: id_param_batch_budget,
+      evidence: "the prefill batch budget is an operator ruling spelled explicitly so an ambient engine default becomes an authored choice; on this unified-memory host a larger budget only costs KV pool, so it is held constant until evidence gives a reason to vary it" as NonEmptyStr,
     },
   ],
   selected_candidate: Absent,
@@ -617,5 +700,67 @@ fn glm_first_serving_selection() -> ServingDeploymentSelection {
 }
 
 fn glm_first_launch_admission() -> LaunchAdmission {
-  admit_launch(s: glm_first_serving_selection())
+  admit_launch(s: glm_first_serving_selection(), candidates: glm_candidate_field)
+}
+
+// ── THE DEEPSEEK ARM, ROUTED THROUGH THE SAME SPINE ───────────────────────────────────────────
+//
+// The convergence serving today authors its replica shape as literals: 82 percent, a context
+// ceiling equal to the model's own limit, and a tensor-parallel degree taken from `length(hosts)`
+// -- which is not a choice at all but an accident of how many hosts landed in a group. Nothing
+// records why that shape rather than another, so nothing can say when it should change.
+//
+// THE POINT OF STATING IT AS A FIELD IS NOT TO OVERRULE THE RUNNING FLEET. It is that the shape
+// serving right now becomes one candidate among the shapes the same eight hosts could express, and
+// its standing becomes a readable answer rather than an inherited default. If it wins, it has a
+// receipt. If it does not, that is a finding to bring to an operator, never a reason for this fold
+// to reshape a live deployment on its own.
+data deepseek_deployed_demand: WorkloadDemand = WorkloadDemand {
+  identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_deployed_demand"),
+  required_context: token_count(count: 300000),
+  basis: "the working window this fleet actually serves; the checkpoint's 1,048,576-token ceiling is a LIMIT and using it as the requirement is what makes an over-provisioned shape look free" as NonEmptyStr,
+}
+
+data deepseek_native_only: QualityPolicy = QualityPolicy {
+  identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_native_only"),
+  required_artifact: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_deepseek_v4_flash_native"),
+  rationale: "the deployed checkpoint is the subject; a requantisation is a different artifact and is not a cheaper way to serve this one" as NonEmptyStr,
+}
+
+fn deepseek_candidate(name: String, label: NonEmptyStr, tp: Nat, replicas: Nat) -> DeploymentCandidate {
+  DeploymentCandidate {
+    identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: name),
+    label: label,
+    artifact: artifact_deepseek_v4_flash_native,
+    replica: ReplicaProfile {
+      tensor_parallel_degree: tp,
+      max_model_len: token_count(count: 300000),
+      gpu_memory_utilisation_percent: glm_util,
+      speculative: SpeculationOff,
+    },
+    replica_count: replicas,
+  }
+}
+
+// Every shape eight hosts can express, INCLUDING the one deployed and the ones that cannot hold the
+// weights -- a refusal that is visible is evidence; a combination never listed is not.
+data deepseek_candidate_field: List<DeploymentCandidate> = [
+  deepseek_candidate(name: "deepseek_tp8_x1", label: "DeepSeek, one eight-rank replica" as NonEmptyStr, tp: 8, replicas: 1),
+  deepseek_candidate(name: "deepseek_tp4_x2", label: "DeepSeek, two four-rank replicas (DEPLOYED TODAY)" as NonEmptyStr, tp: 4, replicas: 2),
+  deepseek_candidate(name: "deepseek_tp2_x4", label: "DeepSeek, four two-rank replicas" as NonEmptyStr, tp: 2, replicas: 4),
+  deepseek_candidate(name: "deepseek_tp1_x8", label: "DeepSeek, eight single-rank replicas" as NonEmptyStr, tp: 1, replicas: 8),
+]
+
+fn deepseek_serving_selection() -> ServingDeploymentSelection {
+  select_serving_deployment(
+    candidates: deepseek_candidate_field,
+    fleet: spark_fleet_snapshot,
+    policy: deepseek_native_only,
+    demand: deepseek_deployed_demand,
+    assessment: serving_deployment_assessment,
+  )
+}
+
+fn deepseek_launch_admission() -> LaunchAdmission {
+  admit_launch(s: deepseek_serving_selection(), candidates: deepseek_candidate_field)
 }

@@ -3,6 +3,7 @@ module test.claim.spark.serving_deployment_selection_witness_test
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.decision { SelectionReceipt }
 import std.measure { TokenCount, token_count, token_count_value }
 import v2.std.optional { Present, Absent }
 import std.pareto { SelectionAxis }
@@ -23,7 +24,8 @@ import gunbc.spark.serving_deployment_selection {
   ServingDeploymentSelection, ServingDeploymentSelected, ServingDeploymentNeedsEvidence, ServingDeploymentNeedsPolicy,
   NoFeasibleServingDeployment, ServingDeploymentSelectionRefused,
   select_serving_deployment,
-  LaunchAdmitted, LaunchRefused, admit_launch,
+  LaunchAdmitted, LaunchRefused, admit_launch, compared_candidate_count,
+  deepseek_launch_admission,
   ax_quality, ax_weight_fit, ax_context_covered,
   serving_deployment_assessment,
 }
@@ -63,12 +65,15 @@ fn cand(name: String, art: ModelArtifact, tp: Nat, replicas: Nat) -> DeploymentC
 // The requantised row FITS ON ONE HOST and therefore reaches eight independent replicas with the
 // smallest blast radius in the field. On every funded axis it is the best candidate. Only the
 // quality constraint keeps it out, which is exactly what makes it the right control.
-data mixed_field: List<DeploymentCandidate> = [
-  cand(name: "native_tp2_x4", art: artifact_deepseek_v4_flash_native, tp: 2, replicas: 4),
-  cand(name: "native_tp4_x2", art: artifact_deepseek_v4_flash_native, tp: 4, replicas: 2),
-  cand(name: "native_tp8_x1", art: artifact_deepseek_v4_flash_native, tp: 8, replicas: 1),
-  cand(name: "fast_2bit_tp1_x8", art: artifact_glm_53_flash_2bit, tp: 1, replicas: 8),
-]
+// EACH CANDIDATE IS ITS OWN DECLARATION, because its identity CITES one. A row whose identity names
+// a declaration that does not exist is a positional citation wearing a symbol's clothes -- the
+// corpus's citation wall catches it, and it caught this file.
+data native_tp2_x4: DeploymentCandidate = cand(name: "native_tp2_x4", art: artifact_deepseek_v4_flash_native, tp: 2, replicas: 4)
+data native_tp4_x2: DeploymentCandidate = cand(name: "native_tp4_x2", art: artifact_deepseek_v4_flash_native, tp: 4, replicas: 2)
+data native_tp8_x1: DeploymentCandidate = cand(name: "native_tp8_x1", art: artifact_deepseek_v4_flash_native, tp: 8, replicas: 1)
+data fast_2bit_tp1_x8: DeploymentCandidate = cand(name: "fast_2bit_tp1_x8", art: artifact_glm_53_flash_2bit, tp: 1, replicas: 8)
+
+data mixed_field: List<DeploymentCandidate> = [native_tp2_x4, native_tp4_x2, native_tp8_x1, fast_2bit_tp1_x8]
 
 fn selected_of(s: ServingDeploymentSelection) -> DeclarationRef? {
   match s {
@@ -182,16 +187,16 @@ test fn exceeding_the_declared_demand_earns_no_further_context_value() -> Bool {
 //
 // It is widely described as lossless because draft tokens are verified against the full model, but
 // no output-equivalence receipt exists for this profile. Unread is not admitted.
+data spec_on: DeploymentCandidate = DeploymentCandidate {
+  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "spec_on"),
+  label: "the deployed shape with speculative decoding turned on" as NonEmptyStr,
+  artifact: artifact_deepseek_v4_flash_native,
+  replica: ReplicaProfile { tensor_parallel_degree: 4, max_model_len: token_count(count: 300000), gpu_memory_utilisation_percent: 82, speculative: SpeculationOn },
+  replica_count: 2,
+}
+
 test fn speculative_decoding_is_unestablished_rather_than_free() -> Bool {
-  match quality_standing_of(
-    c: DeploymentCandidate {
-      identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "spec_on"),
-      label: "spec on" as NonEmptyStr,
-      artifact: artifact_deepseek_v4_flash_native,
-      replica: ReplicaProfile { tensor_parallel_degree: 4, max_model_len: token_count(count: 300000), gpu_memory_utilisation_percent: 82, speculative: SpeculationOn },
-      replica_count: 2,
-    },
-    policy: native_only) {
+  match quality_standing_of(c: spec_on, policy: native_only) {
     QualityUnestablished { obligation: _ } => true
     _ => false
   }
@@ -201,8 +206,51 @@ test fn speculative_decoding_is_unestablished_rather_than_free() -> Bool {
 test fn an_under_evidenced_decision_cannot_reach_an_engine() -> Bool {
   match admit_launch(s: select_serving_deployment(
     candidates: glm_candidate_field, fleet: spark_fleet_snapshot,
-    policy: native_only, demand: demand_300k, assessment: serving_deployment_assessment)) {
+    policy: native_only, demand: demand_300k, assessment: serving_deployment_assessment),
+    candidates: glm_candidate_field) {
     LaunchRefused { because: _ } => true
-    LaunchAdmitted { candidate: _ } => false
+    LaunchAdmitted { profile: _ } => false
+  }
+}
+
+// ── A SETTLED CHOICE IS A FIELD OF ONE, AND THE RECEIPT SAYS SO ───────────────────────────────
+//
+// Deciding in advance stays legal. What stops being possible is deciding in advance INVISIBLY: a
+// one-candidate field passes the spine and yields a receipt whose compared-candidate count is one,
+// so "nothing was compared" is a number a reader can find rather than the silent default it is when
+// a launch profile is assembled from literals.
+data settled_field: List<DeploymentCandidate> = [native_tp4_x2]
+
+test fn a_settled_choice_still_produces_a_receipt_that_reports_a_field_of_one() -> Bool {
+  match admit_launch(
+    s: select_serving_deployment(candidates: settled_field, fleet: spark_fleet_snapshot,
+       policy: native_only, demand: demand_300k, assessment: serving_deployment_assessment),
+    candidates: settled_field) {
+    LaunchAdmitted { profile: p } => compared_candidate_count(r: p.receipt) == 1
+    LaunchRefused { because: _ } => false
+  }
+}
+
+// And a real comparison reports what it actually compared, so the two are distinguishable.
+test fn a_compared_field_reports_more_than_one_candidate() -> Bool {
+  match admit_launch(
+    s: select_serving_deployment(candidates: mixed_field, fleet: spark_fleet_snapshot,
+       policy: native_only, demand: demand_300k, assessment: serving_deployment_assessment),
+    candidates: mixed_field) {
+    LaunchAdmitted { profile: p } => compared_candidate_count(r: p.receipt) > 1
+    LaunchRefused { because: _ } => false
+  }
+}
+
+// ── THE DEPLOYED DEEPSEEK SHAPE, ANSWERED RATHER THAN ASSUMED ─────────────────────────────────
+//
+// This row asserts nothing about WHICH shape wins. It asserts that the question now has an answer
+// carrying a receipt -- which is the property the convergence lacked when its topology came from
+// `length(hosts)`. What the answer IS belongs in the PR body and to an operator, not in a claim
+// that would have to be edited every time the fleet changed size.
+test fn the_deployed_deepseek_shape_is_a_decided_question_with_a_receipt() -> Bool {
+  match deepseek_launch_admission() {
+    LaunchAdmitted { profile: p } => compared_candidate_count(r: p.receipt) == 4
+    LaunchRefused { because: _ } => false
   }
 }
