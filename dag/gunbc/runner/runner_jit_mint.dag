@@ -7,7 +7,9 @@ import extdeps.github.actions_jit_runner {
   JitRunnerConfigRequest, JitRunnerName, JitRunnerGroupId, JitRunnerLabel, JitWorkFolder,
   org_generate_jitconfig_path,
 }
-import gunbc.runner.runner_jit_admission { attempt_binding_is_required_on_mint_name }
+import gunbc.runner.runner_jit_admission {
+  attempt_binding_admits_mint_name, JitAdmissionAxisStanding,
+}
 import gunbc.auth.github_apps { GitHubAppControlPlaneState }
 import gunbc.auth.github_credential {
   GitHubCredentialAuthority, CredentialCapability, credential_authorizes, unsatisfied_capabilities,
@@ -76,7 +78,8 @@ fn plan_jit_mint(
   control_plane: GitHubAppControlPlaneState,
   organization: GitHubOrganizationRef,
   runner_group_id: JitRunnerGroupId,
-  labels: List<JitRunnerLabel>
+  labels: List<JitRunnerLabel>,
+  attempt_binding: JitAdmissionAxisStanding
 ) -> JitMintPlan {
   match binding {
     VmUnboundCellNotOwned { cause: c } => JitMintRefusedCellNotOwned { cause: c }
@@ -93,7 +96,7 @@ fn plan_jit_mint(
            control_plane: control_plane,
            effect: GenerateOrganizationJitConfig { organization: organization }
          ) {
-        if attempt_binding_is_required_on_mint_name() {
+        if attempt_binding_admits_mint_name(standing: attempt_binding) {
           JitMintAuthorized {
             attempt: attempt,
             endpoint_path: org_generate_jitconfig_path(org_login: organization.login),

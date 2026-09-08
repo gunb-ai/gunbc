@@ -63,6 +63,9 @@ type EncodedJitConfig sole_constructor {
 type JitConfigMintOutcome
   = JitConfigMinted { config: EncodedJitConfig, runner_id: Int }
   | JitConfigMintRefused { status: Int, reason: String }
+  | JitConfigMintNotFound { reason: String }
+  | JitConfigMintConflict { reason: String }
+  | JitConfigMintValidationFailed { reason: String }
 
 // THE ENDPOINT PATH IS DERIVED FROM THE ORG, never concatenated at a call site, so a caller cannot
 // address a different organization's runners by assembling the path itself.
@@ -112,13 +115,13 @@ fn jit_config_mint_outcome(status: Int, encoded: String, runner_id: Int, error_b
     }
   } else {
     if status == jit_config_not_found_status {
-      JitConfigMintRefused { status: status, reason: error_body }
+      JitConfigMintNotFound { reason: error_body }
     } else {
       if status == jit_config_conflict_status {
-        JitConfigMintRefused { status: status, reason: error_body }
+        JitConfigMintConflict { reason: error_body }
       } else {
         if status == jit_config_validation_failed_status {
-          JitConfigMintRefused { status: status, reason: error_body }
+          JitConfigMintValidationFailed { reason: error_body }
         } else {
           JitConfigMintRefused { status: status, reason: error_body }
         }

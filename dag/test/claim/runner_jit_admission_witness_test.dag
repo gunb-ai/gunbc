@@ -3,26 +3,22 @@ module gunbc.test.claim.runner_jit_admission_witness_test
 import std.types { String, Bool, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions_jit_runner {
-  JitMintName, JitMintLabels, JitMintRunnerGroupId, JitMintWorkFolder,
-  jit_config_conflict_status,
+  JitMintName, jit_config_conflict_status, jit_config_mint_outcome,
 }
+import gunbc.auth.github_apps { gunbai_ci_declared }
 import gunbc.runner.runner_bound_attempt_receipt { host_printed_axis_standing }
 import gunbc.runner.runner_jit_admission {
   SignatureAxis, ExpiryAxis, ReplayAxis, UnitBindingAxis, BootBindingAxis, AttemptBindingAxis,
   AxisRequired, AxisDeferred, AxisDissolvedInto, AxisDissolvedIntoUpstreamMint,
   HostEnvelopeNonemptyAndFresh, GitHubMintRequestField,
-  jit_admission_axis_standing, jit_admission_axis_is_deferred, axis_standing_is_deferred,
+  jit_admission_axis_standing, attempt_binding_admits_mint_name,
   gunbai_ci_installation_token_url, gunbai_org_generate_jitconfig_path,
-  mint_field_can_carry_attempt_binding, mint_fact_needed,
-  mint_surface_live_census_is_unmet,
   generate_jitconfig_201_expires_at_coverage, replay_runner_id_and_duplicate_name_coverage,
-  axis_awaits_live_census, encoded_jit_config_interior,
-  attempt_binding_is_required_on_mint_name,
+  encoded_jit_config_interior, axis_mint_observability, replay_signal_from_mint,
   OutsideTheModeledGuaranteeDeclaredBoundary,
-  EncodedBlobIsOpaque, InstallationHoldsRunnersWrite, JitconfigResponseHasExpiresAtField,
-  DuplicateNameConflicts, JitconfigResponseCarriesRunnerId,
-  RequestNameIsPersistedRunnerIdentity, RequestAdmitsLabels,
-  RequestHasNoHostField, RequestHasNoBootField,
+  MintObservableCoverage, MintUnobservableDeclaredBoundary,
+  GenerateJitconfig201ExpiresAtPresence, ReplayRunnerIdAndDuplicateName409,
+  LiveCensusUnmet, LiveCensusDischarged,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -57,32 +53,18 @@ test fn unit_and_boot_binding_dissolve_into_attempt_binding() -> Bool {
   }
 }
 
-test fn attempt_binding_is_required_on_the_mint_name_field() -> Bool {
+test fn attempt_binding_admits_only_required_mint_name_standing() -> Bool {
   match jit_admission_axis_standing(axis: AttemptBindingAxis) {
     AxisRequired { checker: GitHubMintRequestField { field: JitMintName } } =>
-      mint_field_can_carry_attempt_binding(field: JitMintName)
-        && mint_field_can_carry_attempt_binding(field: JitMintLabels)
-        && !mint_field_can_carry_attempt_binding(field: JitMintRunnerGroupId)
-        && !mint_field_can_carry_attempt_binding(field: JitMintWorkFolder)
-        && attempt_binding_is_required_on_mint_name()
+      attempt_binding_admits_mint_name(
+        standing: jit_admission_axis_standing(axis: AttemptBindingAxis)
+      )
+        && !attempt_binding_admits_mint_name(standing: AxisDeferred {
+          trigger: "fixture standing that must not admit a mint" as NonEmptyStr,
+        })
+        && !attempt_binding_admits_mint_name(standing: AxisDissolvedInto { into: ReplayAxis })
     _ => false
   }
-}
-
-test fn a_deferred_standing_is_the_only_deferred_arm() -> Bool {
-  axis_standing_is_deferred(standing: AxisDeferred {
-    trigger: "an authority defining the axis and naming which side can check it" as NonEmptyStr,
-  })
-    && !axis_standing_is_deferred(standing: AxisRequired { checker: HostEnvelopeNonemptyAndFresh })
-}
-
-test fn no_axis_is_deferred() -> Bool {
-  !jit_admission_axis_is_deferred(axis: SignatureAxis)
-    && !jit_admission_axis_is_deferred(axis: ExpiryAxis)
-    && !jit_admission_axis_is_deferred(axis: ReplayAxis)
-    && !jit_admission_axis_is_deferred(axis: UnitBindingAxis)
-    && !jit_admission_axis_is_deferred(axis: BootBindingAxis)
-    && !jit_admission_axis_is_deferred(axis: AttemptBindingAxis)
 }
 
 test fn the_mint_surface_is_the_gunbai_ci_installation_token_then_generate_jitconfig() -> Bool {
@@ -93,34 +75,23 @@ test fn the_mint_surface_is_the_gunbai_ci_installation_token_then_generate_jitco
     && (gunbai_ci_declared.slug as String) == "gunbai-ci"
 }
 
-// EACH AXIS NAMES THE MINT FIELDS IT NEEDS, so a live read is a field grant. Discriminating:
-// expiry needs expires_at-present-or-absent and does not need 409; replay is the reverse.
-test fn mint_facts_needed_are_per_axis_not_the_whole_mint() -> Bool {
-  mint_fact_needed(axis: SignatureAxis, fact: EncodedBlobIsOpaque)
-    && mint_fact_needed(axis: SignatureAxis, fact: InstallationHoldsRunnersWrite)
-    && !mint_fact_needed(axis: SignatureAxis, fact: JitconfigResponseHasExpiresAtField)
-    && mint_fact_needed(axis: ExpiryAxis, fact: JitconfigResponseHasExpiresAtField)
-    && !mint_fact_needed(axis: ExpiryAxis, fact: DuplicateNameConflicts)
-    && mint_fact_needed(axis: ReplayAxis, fact: DuplicateNameConflicts)
-    && mint_fact_needed(axis: ReplayAxis, fact: JitconfigResponseCarriesRunnerId)
-    && !mint_fact_needed(axis: ReplayAxis, fact: JitconfigResponseHasExpiresAtField)
-    && mint_fact_needed(axis: UnitBindingAxis, fact: RequestHasNoHostField)
-    && mint_fact_needed(axis: UnitBindingAxis, fact: EncodedBlobIsOpaque)
-    && mint_fact_needed(axis: BootBindingAxis, fact: RequestHasNoBootField)
-    && !mint_fact_needed(axis: BootBindingAxis, fact: RequestHasNoHostField)
-    && mint_fact_needed(axis: AttemptBindingAxis, fact: RequestNameIsPersistedRunnerIdentity)
-    && mint_fact_needed(axis: AttemptBindingAxis, fact: RequestAdmitsLabels)
-}
-
-// ONLY EXPIRY AND REPLAY AWAIT A LIVE CENSUS. Signature, unit, boot and attempt hit blob opacity,
-// which is a declared §4b boundary, not a probe someone should later decode to close.
-test fn only_expiry_and_replay_await_a_live_census() -> Bool {
-  axis_awaits_live_census(axis: ExpiryAxis)
-    && axis_awaits_live_census(axis: ReplayAxis)
-    && !axis_awaits_live_census(axis: SignatureAxis)
-    && !axis_awaits_live_census(axis: UnitBindingAxis)
-    && !axis_awaits_live_census(axis: BootBindingAxis)
-    && !axis_awaits_live_census(axis: AttemptBindingAxis)
+test fn only_expiry_and_replay_are_observable_coverage() -> Bool {
+  match axis_mint_observability(axis: ExpiryAxis) {
+    MintObservableCoverage { question: GenerateJitconfig201ExpiresAtPresence } =>
+      match axis_mint_observability(axis: ReplayAxis) {
+        MintObservableCoverage { question: ReplayRunnerIdAndDuplicateName409 } =>
+          match axis_mint_observability(axis: SignatureAxis) {
+            MintUnobservableDeclaredBoundary =>
+              match axis_mint_observability(axis: AttemptBindingAxis) {
+                MintUnobservableDeclaredBoundary => true
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
 }
 
 test fn encoded_jit_config_interior_is_a_declared_boundary() -> Bool {
@@ -141,6 +112,24 @@ test fn bound_attempt_receipt_reads_axis_standing_from_the_authority() -> Bool {
 }
 
 test fn expiry_and_replay_live_census_rows_are_unmet() -> Bool {
-  mint_surface_live_census_is_unmet(census: generate_jitconfig_201_expires_at_coverage)
-    && mint_surface_live_census_is_unmet(census: replay_runner_id_and_duplicate_name_coverage)
+  match generate_jitconfig_201_expires_at_coverage {
+    LiveCensusUnmet { question: GenerateJitconfig201ExpiresAtPresence } =>
+      match replay_runner_id_and_duplicate_name_coverage {
+        LiveCensusUnmet { question: ReplayRunnerIdAndDuplicateName409 } => true
+        LiveCensusDischarged { question: _, receipt: _ } => false
+      }
+    LiveCensusDischarged { question: _, receipt: _ } => false
+  }
+}
+
+test fn duplicate_name_409_is_the_replay_signal_and_422_is_not() -> Bool {
+  replay_signal_from_mint(outcome: jit_config_mint_outcome(
+    status: jit_config_conflict_status, encoded: "", runner_id: 0, error_body: "already exists"
+  ))
+    && !replay_signal_from_mint(outcome: jit_config_mint_outcome(
+         status: 422, encoded: "", runner_id: 0, error_body: "validation failed"
+       ))
+    && !replay_signal_from_mint(outcome: jit_config_mint_outcome(
+         status: 201, encoded: "eyJib2R5Ijoib3BhcXVlIn0=", runner_id: 1, error_body: ""
+       ))
 }
