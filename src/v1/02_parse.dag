@@ -3256,7 +3256,13 @@ fn parse_fn_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -
   )
 
   let all_params = concat(type_params, params)
-  let named_dummy = Node { occurrence_identity: OccurrenceSynthetic, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: all_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
+  let named_dummy = Node { occurrence_identity: OccurrenceSynthetic, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: all_params, inferred: none, return_cardinality: Required, uses: prefix.uses, body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
+
+  if (type_params |> count) > 0 && (prefix.uses |> count) > 0 {
+    return ItemResult { item: named_dummy, tokens: prefix.tokens, ctx: prefix.ctx, err: Present { value: parse_error(
+      msg: concat("generic effectful declaration is not realized: `", concat(name, "` carries both type parameters and a `uses` row. No emitter plumbs type parameters through the effectful path -- the Rust, Python and Go effectful emitters each construct the resource-aware body directly and none routes through the generic-fn split. Declare it with type parameters and no `uses`, or with a `uses` row and no type parameters.")),
+      span: name_span) } }
+  }
 
   let tokens = skip_newlines(tokens: prefix.tokens)
   let admit_r = parse_optional_admit_callers(tokens: tokens, ctx: ctx)
@@ -3283,7 +3289,7 @@ fn parse_fn_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -
   )
   let minted = mint_parsed_node_identity(ctx: parent_ctx)
   let item = Node { occurrence_identity: minted.identity, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: all_params,
-    inferred: inferred, return_cardinality: Required, uses: [],
+    inferred: inferred, return_cardinality: Required, uses: prefix.uses,
     body: Present { value: body }, connective: NoConnective, transport: none,
     properties: admit_props, type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: ModuleItemFunction, expr_data: NoExprData }

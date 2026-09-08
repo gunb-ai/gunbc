@@ -30,7 +30,7 @@ data dag_item_forms: List<ItemForm> = [
     has_uses: false, body_kind: TypeBody },
   ItemForm { kind: FuncForm, keyword: "fn", has_type_params: true, has_params: true,
     has_return_type: true, return_required: true,
-    has_uses: false, body_kind: ExprBody },
+    has_uses: true, body_kind: ExprBody },
   ItemForm { kind: FuncForm, keyword: "func", has_type_params: false, has_params: true,
     has_return_type: true, return_required: false,
     has_uses: true, body_kind: BlockBody },
