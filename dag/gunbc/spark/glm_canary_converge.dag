@@ -389,13 +389,19 @@ type ServeAgreement
   | ServeNotRunning { detail: String }
   | ServeUnreadable { cause: String }
 
+// THE FORMAT STRING CARRIES NO ESCAPED QUOTES, and that is a syntax constraint rather than a style
+// choice. `{{join .Args " "}}` needs an escaped quote inside a string that also contains braces, and the
+// `range` form expresses the same projection with neither -- each argument, then a space, trimmed at the
+// end. The two produce identical text for this container.
+fn glm_canary_inspect_argv(arm: GlmCanaryArm) -> List<String> {
+  ["docker", "inspect", arm.container_name as String, "--format", "{{range .Args}}{{.}} {{end}}"]
+}
+
 fn glm_canary_observe_serve(ctx: SparkMaterializeContext, arm: GlmCanaryArm) -> ServeAgreement {
   match glm_canary_serve_argv(arm: arm) {
     Absent => ServeUnreadable { cause: "this arm renders no launch line, so there is nothing to compare the running container against" }
     Present { value: argv } =>
-      match spark_remote_run(ctx: ctx, argv: [
-        "docker", "inspect", arm.container_name as String, "--format", "{{join .Args \" \"}}",
-      ]) {
+      match spark_remote_run(ctx: ctx, argv: glm_canary_inspect_argv(arm: arm)) {
         RemoteUnreachable { cause: c } => ServeUnreadable { cause: c }
         RemoteRan { exit_code: e, stdout: out, stderr: err } =>
           if e != 0 {
