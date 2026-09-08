@@ -933,31 +933,82 @@ type PathUniqueManifestEntries sole_constructor {
   entries: List<CorpusManifestEntry>
 }
 
-fn manifest_entries_with_path_replaced(
-  base: CorpusManifestRecord,
+// DROPPING ONE PATH IS THE MOVE BOTH INVARIANT-PRESERVING OPERATIONS ARE BUILT FROM, so it is named
+// once. Removing entries can never introduce a duplicate, so every constructor below preserves the
+// carrier's invariant by construction rather than by re-checking it.
+fn manifest_entries_without_path(
+  entries: List<CorpusManifestEntry>,
+  path: NonEmptyStr,
+) -> List<CorpusManifestEntry> {
+  reverse(
+    fold(entries, init: [], f: fn(acc, entry) {
+      if entry.path == path { acc } else { concat([entry], acc) }
+    })
+  )
+}
+
+// THE EMPTY CORPUS IS ITS OWN CONSTRUCTOR RATHER THAN AN EMPTY RECORD, because there is no record to
+// take one from: a repository with no history and no stage has never stored a manifest. No entries is
+// trivially path-unique.
+fn empty_path_unique_entries() -> PathUniqueManifestEntries {
+  PathUniqueManifestEntries { entries: [] }
+}
+
+// BINDING A PATH DROPS ANY ENTRY THAT PATH ALREADY HAD, so the result holds exactly one entry for it
+// whether or not the caller knew it was there. This is the operation that lets a PRODUCER build the
+// carrier incrementally -- the merge fold does -- without a raw list ever crossing a boundary and
+// without a second uniqueness type existing beside this one. Ruled by external review.
+fn path_unique_with_path_bound(
+  unique: PathUniqueManifestEntries,
   path: NonEmptyStr,
   source: AuthoredSourceTarget,
 ) -> PathUniqueManifestEntries {
   PathUniqueManifestEntries {
     entries: concat(
-      reverse(
-        fold(base.entries, init: [], f: fn(acc, entry) {
-          if entry.path == path { acc } else { concat([entry], acc) }
-        })
-      ),
+      manifest_entries_without_path(entries: unique.entries, path: path),
       [CorpusManifestEntry { path: path, source: source }],
     ),
   }
 }
 
-// THE EMPTY CORPUS IS ITS OWN CONSTRUCTOR RATHER THAN AN EMPTY RECORD, because there is no record to
-// take one from: a repository with no history and no stage has never stored a manifest. One entry is
-// trivially path-unique.
+fn path_unique_with_path_removed(
+  unique: PathUniqueManifestEntries,
+  path: NonEmptyStr,
+) -> PathUniqueManifestEntries {
+  PathUniqueManifestEntries {
+    entries: manifest_entries_without_path(entries: unique.entries, path: path),
+  }
+}
+
+// A STORED RECORD'S ENTRIES ARE ALREADY PATH-UNIQUE, as a fact about how the record was obtained --
+// `CorpusManifestRecord` is minted only through `insert_canonical_manifest`, which cannot be reached
+// without an `AdmittedManifestEntries`. So reading them back into the carrier asserts nothing the
+// record's own provenance did not already establish.
+fn path_unique_of_record(base: CorpusManifestRecord) -> PathUniqueManifestEntries {
+  PathUniqueManifestEntries { entries: base.entries }
+}
+
+fn manifest_entries_with_path_replaced(
+  base: CorpusManifestRecord,
+  path: NonEmptyStr,
+  source: AuthoredSourceTarget,
+) -> PathUniqueManifestEntries {
+  path_unique_with_path_bound(
+    unique: path_unique_of_record(base: base),
+    path: path,
+    source: source,
+  )
+}
+
 fn manifest_entries_of_single(
   path: NonEmptyStr,
   source: AuthoredSourceTarget,
 ) -> PathUniqueManifestEntries {
-  PathUniqueManifestEntries { entries: [CorpusManifestEntry { path: path, source: source }] }
+  path_unique_with_path_bound(
+    unique: empty_path_unique_entries(),
+    path: path,
+    source: source,
+  )
 }
 
 // THE NARROW STORE ROUTE. It is not a second authority: the identity is `corpus_manifest_identity`,

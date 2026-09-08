@@ -101,6 +101,8 @@ import gunbc.scm.object_store {
   CorpusManifestEntry,
   CorpusManifestStored, CorpusManifestDuplicatePath, CorpusManifestLocatorCollision,
   store_corpus_manifest,
+  PathUniqueManifestEntries, store_path_unique_manifest,
+  UniqueManifestStored, UniqueManifestLocatorCollision,
 }
 import gunbc.scm.commit_closure {
   ClosureCensus,
@@ -664,21 +666,34 @@ fn repository_root_by_resolving(
 // hand-assembled a new envelope around the advanced store, then passed the reference beside it -- three
 // steps in which the pairing was the author's responsibility. Now the advanced repository and the root
 // leave together and cannot be separated.
-type RepositoryManifestRootStore
-  = RepositoryManifestRootStored(RepositoryManifestRoot)
-  | RepositoryManifestRootDuplicatePath { path: NonEmptyStr }
-  | RepositoryManifestRootLocatorCollision { identity: ObjectId }
+//
+// THE RAW-LIST ROUTE THAT USED TO STAND HERE IS DELETED RATHER THAN KEPT BESIDE THIS ONE. Once the
+// merge fold produced `PathUniqueManifestEntries` directly, its last consumer was gone, and a public
+// store route taking a bare list is exactly the forge this stack has removed twice: nothing about the
+// parameter establishes that the entries are path-unique, so keeping it would leave a second authority
+// for storing a manifest whose only distinguishing feature is that it can be lied to.
+// THE PATH-UNIQUE STORE ROUTE HAS TWO ARMS BECAUSE ITS ARGUMENT CANNOT CARRY A DUPLICATE.
+//
+// A producer that built its entries through the invariant-preserving constructions on
+// `PathUniqueManifestEntries` has already settled the duplicate question, so asking it again here
+// would be validation where construction was available, and its answer would be an arm no caller on
+// this route could reach. It is not a second authority: the insertion, the identity and the
+// canonicalization are `store_path_unique_manifest`'s, shared with the checking route. What differs is
+// the one thing that should -- whether the duplicate question is asked at all. Ruled by external
+// review, alongside the merge fold that produces the carrier.
+type RepositoryManifestRootUniqueStore
+  = RepositoryManifestRootUniqueStored(RepositoryManifestRoot)
+  | RepositoryManifestRootUniqueLocatorCollision { identity: ObjectId }
 
-fn repository_root_by_storing(
+fn repository_root_by_storing_unique(
   repository: RepositoryEnvelope,
-  entries: List<CorpusManifestEntry>,
-) -> RepositoryManifestRootStore {
-  match store_corpus_manifest(store: repository.store, entries: entries) {
-    CorpusManifestDuplicatePath { path: p } => RepositoryManifestRootDuplicatePath { path: p }
-    CorpusManifestLocatorCollision { identity: i, existing: _, incoming: _ } =>
-      RepositoryManifestRootLocatorCollision { identity: i }
-    CorpusManifestStored { store: stored, manifest: reference } =>
-      RepositoryManifestRootStored(
+  unique: PathUniqueManifestEntries,
+) -> RepositoryManifestRootUniqueStore {
+  match store_path_unique_manifest(store: repository.store, unique: unique) {
+    UniqueManifestLocatorCollision { identity: i, existing: _, incoming: _ } =>
+      RepositoryManifestRootUniqueLocatorCollision { identity: i }
+    UniqueManifestStored { store: stored, manifest: reference } =>
+      RepositoryManifestRootUniqueStored(
         RepositoryManifestRoot {
           repository: RepositoryEnvelope {
             store: stored,

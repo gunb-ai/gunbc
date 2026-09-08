@@ -40,6 +40,8 @@ import gunbc.scm.object_store {
   AuthoredSourceTarget,
   CorpusManifestEntry,
   CorpusManifestRecord,
+  PathUniqueManifestEntries,
+  empty_path_unique_entries, path_unique_with_path_bound, path_unique_with_path_removed,
   object_id_eq,
 }
 
@@ -86,12 +88,20 @@ type ManifestPathConflict {
 // size of the job: a user fixes, re-runs, discovers another, and cannot tell after any single round
 // whether they are near the end. That is the absorbing shape in slow motion -- each round is
 // individually honest and the sequence is not.
+// THE SUCCESS ARM CARRIES THE SEALED PATH-UNIQUE CARRIER, NOT A RAW LIST, AND THE ACCUMULATOR BUILDS
+// IT DIRECTLY. A raw list crossing into `object_store` has only three possible meanings and all three
+// are wrong here: skip the duplicate check and recreate the forge a previous round removed; run it and
+// re-ask a question this fold already settled, preserving an arm no caller can reach; or deduplicate
+// silently, which invents merge policy the decision law never stated. A merge-specific uniqueness type
+// would instead give one invariant two names and two constructor families. So the merge produces the
+// SAME carrier `add` produces, through operations that preserve its invariant by construction, and
+// there is no assembly step after the fold. Ruled by external review.
 type ManifestMergeOutcome
-  = ManifestMerged { entries: List<CorpusManifestEntry> }
+  = ManifestMerged { entries: PathUniqueManifestEntries }
   | ManifestConflicted { conflicts: List<ManifestPathConflict> }
 
 type MergeAcc {
-  entries: List<CorpusManifestEntry>
+  entries: PathUniqueManifestEntries
   conflicts: List<ManifestPathConflict>
 }
 
@@ -126,10 +136,14 @@ fn merge_path(
 // absence beside the one the manifest already has.
 fn admit_state(acc: MergeAcc, path: NonEmptyStr, state: PathState) -> MergeAcc {
   match state {
-    PathAbsent => acc
+    PathAbsent =>
+      MergeAcc {
+        entries: path_unique_with_path_removed(unique: acc.entries, path: path),
+        conflicts: acc.conflicts,
+      }
     PathPresent { source: s } =>
       MergeAcc {
-        entries: concat([CorpusManifestEntry { path: path, source: s }], acc.entries),
+        entries: path_unique_with_path_bound(unique: acc.entries, path: path, source: s),
         conflicts: acc.conflicts,
       }
   }
@@ -289,13 +303,16 @@ fn merge_manifests(
   let decided = close_groups(
     acc: fold(
       joined,
-      init: GroupAcc { open: none, decided: MergeAcc { entries: [], conflicts: [] } },
+      init: GroupAcc {
+        open: none,
+        decided: MergeAcc { entries: empty_path_unique_entries(), conflicts: [] },
+      },
       f: fn(acc, e) { group_step(acc: acc, entry: e) },
     )
   )
   if count(decided.conflicts) > 0 {
     ManifestConflicted { conflicts: reverse(decided.conflicts) }
   } else {
-    ManifestMerged { entries: reverse(decided.entries) }
+    ManifestMerged { entries: decided.entries }
   }
 }

@@ -138,7 +138,7 @@ test fn scm_mm_the_presence_cases_fall_out_of_the_one_law() -> Bool {
          MergeUnavailable => false
          Merged(outcome) =>
            match outcome {
-            ManifestMerged { entries: e } => count(e) == 0
+            ManifestMerged { entries: e } => count(e.entries) == 0
             ManifestConflicted { conflicts: _ } => false
       }
        })
@@ -146,7 +146,7 @@ test fn scm_mm_the_presence_cases_fall_out_of_the_one_law() -> Bool {
             MergeUnavailable => false
             Merged(outcome) =>
               match outcome {
-            ManifestMerged { entries: e } => count(e) == 0
+            ManifestMerged { entries: e } => count(e.entries) == 0
             ManifestConflicted { conflicts: _ } => false
       }
           })
@@ -154,7 +154,7 @@ test fn scm_mm_the_presence_cases_fall_out_of_the_one_law() -> Bool {
             MergeUnavailable => false
             Merged(outcome) =>
               match outcome {
-            ManifestMerged { entries: e } => entries_hold(entries: e, path: "a", source: y)
+            ManifestMerged { entries: e } => entries_hold(entries: e.entries, path: "a", source: y)
             ManifestConflicted { conflicts: _ } => false
       }
           })
@@ -162,7 +162,7 @@ test fn scm_mm_the_presence_cases_fall_out_of_the_one_law() -> Bool {
             MergeUnavailable => false
             Merged(outcome) =>
               match outcome {
-            ManifestMerged { entries: e } => entries_hold(entries: e, path: "a", source: y)
+            ManifestMerged { entries: e } => entries_hold(entries: e.entries, path: "a", source: y)
             ManifestConflicted { conflicts: _ } => false
       }
           })
@@ -170,7 +170,7 @@ test fn scm_mm_the_presence_cases_fall_out_of_the_one_law() -> Bool {
             MergeUnavailable => false
             Merged(outcome) =>
               match outcome {
-            ManifestMerged { entries: e } => count(e) == 0
+            ManifestMerged { entries: e } => count(e.entries) == 0
             ManifestConflicted { conflicts: _ } => false
       }
           })
@@ -319,7 +319,7 @@ fn outcomes_agree(left: ManifestMergeOutcome, right: ManifestMergeOutcome) -> Bo
     ManifestMerged { entries: le } =>
       match right {
         ManifestConflicted { conflicts: _ } => false
-        ManifestMerged { entries: re } => entry_keys(entries: le) == entry_keys(entries: re)
+        ManifestMerged { entries: re } => entry_keys(entries: le.entries) == entry_keys(entries: re.entries)
       }
   }
 }
@@ -335,7 +335,7 @@ fn resolves_to(
     Merged(outcome) =>
       match outcome {
         ManifestConflicted { conflicts: _ } => false
-        ManifestMerged { entries: e } => entries_hold(entries: e, path: "a", source: expect)
+        ManifestMerged { entries: e } => entries_hold(entries: e.entries, path: "a", source: expect)
       }
   }
 }
@@ -408,9 +408,9 @@ test fn scm_mm_a_path_only_one_side_has_is_still_decided() -> Bool {
           match outcome {
             ManifestConflicted { conflicts: _ } => false
             ManifestMerged { entries: e } =>
-              count(e) == 2
-                && fold(e, init: false, f: fn(f2, k) { f2 || (k.path as String) == "new" })
-                && fold(e, init: false, f: fn(f2, k) { f2 || (k.path as String) == "kept" })
+              count(e.entries) == 2
+                && fold(e.entries, init: false, f: fn(f2, k) { f2 || (k.path as String) == "new" })
+                && fold(e.entries, init: false, f: fn(f2, k) { f2 || (k.path as String) == "kept" })
       }
       }
   }

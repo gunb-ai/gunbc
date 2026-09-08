@@ -60,7 +60,7 @@ import gunbc.scm.squash_merge {
   SquashMergeBaseRefused,
   SquashMergeRootMissing, SquashMergeRootIsAuthoredSource, SquashMergeRootIsSemanticNode,
   SquashMergeCommitMissing,
-  SquashMergeResultDuplicatePath, SquashMergeResultLocatorCollision,
+  SquashMergeResultLocatorCollision,
   SquashMergeAllocatorInvalid,
 }
 import gunbc.scm.merge_base {
@@ -754,7 +754,6 @@ fn squash_outcome_wire(outcome: SquashMergeOutcome) -> String {
     SquashMergeRootIsAuthoredSource { side: _, root: _ } => "root-is-authored-source"
     SquashMergeRootIsSemanticNode { side: _, root: _ } => "root-is-semantic-node"
     SquashMergeCommitMissing { side: _, reference: _ } => "commit-missing"
-    SquashMergeResultDuplicatePath { path: _ } => "result-duplicate-path"
     SquashMergeResultLocatorCollision { identity: _ } => "result-locator-collision"
     SquashMergeAllocatorInvalid => "allocator-invalid"
   }

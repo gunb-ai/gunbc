@@ -27,7 +27,7 @@ import gunbc.scm.object_store {
   ObjectId,
   CorpusManifestRecord,
   CorpusManifestEntry,
-
+  PathUniqueManifestEntries,
   CorpusManifestObjectRef,
   store_corpus_manifest,
   CorpusManifestStored,
@@ -66,8 +66,8 @@ import gunbc.scm.repository_envelope {
   admit_commit_subject_from_basis, mint_repository_commit_admitted,
   AdmittedCommitBasis, BasisAdmitted, BasisParentAbsent, BasisIntegrationSourceAbsent,
   admit_merge_basis,
-  RepositoryManifestRootStored, RepositoryManifestRootDuplicatePath,
-  RepositoryManifestRootLocatorCollision, repository_root_by_storing,
+  RepositoryManifestRootUniqueStored,
+  RepositoryManifestRootUniqueLocatorCollision, repository_root_by_storing_unique,
 }
 
 // WHICH SIDE'S ROOT FAILED TO RESOLVE IS PART OF THE FACT, NOT CONTEXT FOR A LOG LINE. Three commits
@@ -132,7 +132,6 @@ type SquashMergeOutcome
 
   | SquashMergeCommitMissing { side: MergeSideName, reference: RepositoryCommitRef }
 
-  | SquashMergeResultDuplicatePath { path: String }
   | SquashMergeResultLocatorCollision { identity: ObjectId }
 
   | SquashMergeAllocatorInvalid
@@ -243,11 +242,12 @@ fn carry_ancestral_mint(
 // entries are stored, so the basis cannot be admitted before the store -- an earlier revision admitted
 // the ancestry first, against the repository, precisely because it had no subject to bind to yet.
 //
-// WHAT IS NOT DELETED, AND WHY IT IS NAMED RATHER THAN QUIETLY KEPT: `SquashMergeResultDuplicatePath`
-// survives. It needs a carrier attesting that the merge algebra's grouped output is path-unique, and
-// minting one across the manifest_merge/object_store boundary would be another public constructor over
-// a raw list -- the exact forge a previous round removed. That is a real modelling question, put to
-// review rather than answered by relocating the lookup and calling the question absent.
+// `SquashMergeResultDuplicatePath` IS DELETED, AND THE UNIQUENESS NOW ORIGINATES WHERE IT IS DECIDED.
+// The merge fold builds `PathUniqueManifestEntries` directly through invariant-preserving operations,
+// so the entries reaching the store cannot carry a duplicate and the store route that accepts them has
+// no such arm to report. The alternative -- handing a raw list across the boundary -- has only three
+// possible meanings, and all three are wrong: skip the check and recreate the forge, run it and re-ask
+// a settled question, or deduplicate silently and invent merge policy. Ruled by external review.
 //
 // `SquashMergeCommitMissing` now HAS a producer on this route -- two, one per side -- rather than
 // being an unreachable arm carried for shape. Whether it should instead be absent, via a
@@ -256,22 +256,20 @@ type AdmittedMergeSubject sole_constructor {
   repository: RepositoryEnvelope
   target: RepositoryCommitRef
   source: RepositoryCommitRef
-  entries: List<CorpusManifestEntry>
+  entries: PathUniqueManifestEntries
 }
 
 fn commit_merged_manifest(
   admitted: AdmittedMergeSubject,
   message: String,
 ) -> SquashMergeOutcome {
-  match repository_root_by_storing(
+  match repository_root_by_storing_unique(
     repository: admitted.repository,
-    entries: admitted.entries,
+    unique: admitted.entries,
   ) {
-    RepositoryManifestRootDuplicatePath { path: p } =>
-      SquashMergeResultDuplicatePath { path: p as String }
-    RepositoryManifestRootLocatorCollision { identity: i } =>
+    RepositoryManifestRootUniqueLocatorCollision { identity: i } =>
       SquashMergeResultLocatorCollision { identity: i }
-    RepositoryManifestRootStored(subject) =>
+    RepositoryManifestRootUniqueStored(subject) =>
       match admit_merge_basis(
         subject: subject,
         parent: admitted.target,
