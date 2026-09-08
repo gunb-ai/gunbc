@@ -1598,6 +1598,97 @@ pub struct TransitionAdmission {
 /// produce `TargetChanged` for `CeilingTranscribedUncited`. That row is deleted rather than
 /// rewritten to the new spelling (see encode_repository_v3: a rewritten spelling matches nothing).
 ///
+/// THIRTY-FIFTH DISSOLUTION (2026-09-08, gunbc#10814), PAID BECAUSE THIS CHANGE TOUCHES THE
+/// ROSTER. Both `gunbc#10688` rows admitting the `call_semantics_target` re-home are deleted, and
+/// `CALL_SEMANTICS_TARGET_REHOME_LABEL` goes with them: a label is text shared by the rows citing
+/// it, so it dissolves with the last row that does. The roster is empty again.
+///
+/// ADJUDICATED BY THE JOIN THOSE ROWS DEMANDED, NOT BY THEIR TRIGGER SENTENCE, which said so
+/// itself. On main `v1.std.core` DECLARES `call_semantics_target` while `v1.compiler.emit_rust`
+/// references it four times and declares it none, so base and head both resolve the spelling to
+/// `v1.std.core`, the `TargetChanged` delta is no longer producible, and the wall reports both rows
+/// CONSUMED. A consumed row left standing is a permission over nothing that reads as coverage.
+///
+/// THE ROSTER-TOUCHING CHANGE THAT PAID IT WAS NOT ABOUT THESE ROWS. This change repairs baseline
+/// reconstruction for a source derived before compile; it touches this file, which is what makes
+/// the deletion due. That is the rule working as designed rather than a coincidence: the rows come
+/// due on the next touch WHOEVER makes it, so no lane can leave them for a later one.
+/// THE gunbc#10602 ROW DISSOLVED HERE (2026-09-06), BY ITS OWN TRIGGER AND ON THE ROSTER TOUCH IT
+/// NAMED. gunbc#10602 merged as 136d1c0f716, which is an ancestor of this change's base. Adjudicated
+/// by the join the entry above asked for rather than by its sentence: on main, `gunbc.scm.render`
+/// declares no `repository_status_lines` and imports that spelling from `gunbc.scm.status` inside
+/// `scm_status_document`, so base and head bind it identically, no run can produce the delta, and
+/// the row is CONSUMED -- due on this touch, which is this change. The gunbc#10514 dissolution the
+/// entry above records happened once and is not re-recorded here: this branch had deleted the same
+/// eight rows independently, the two deletions agree, and main's entry is the one authority.
+///
+/// THE gunbc#10639 ROWS DISSOLVED HERE (2026-09-06), BY THEIR OWN TRIGGER AND ON THE ROSTER TOUCH
+/// THEY NAMED. gunbc#10639 merged as 8769167dd05, which is an ancestor of this change's base.
+/// Adjudicated by the join those rows asked for rather than by their sentence: on main,
+/// `gunbc.spark.training_ready` declares `SparkServingProbeCapture` itself, so base and head bind
+/// every one of the thirty spellings to the same declaration, no run can produce the delta, and
+/// all thirty report CONSUMED -- due on this touch, which is this change.
+///
+/// THE OBSERVATION CARRIER MOVES OUT OF THE SPEC MODULE (2026-09-06, gunbc#10671). No ordinal is
+/// claimed, for the reason the entries above give. `extdeps.transceiver.sff_8636` models what
+/// SFF-8636 bytes MEAN. It had also come to declare what THIS REPOSITORY READ off a delivered
+/// cable, which DESIGN section 3 refuses in terms: "Observations produced by this repository are
+/// receipts in the observing product or workflow layer, not facts owned by the observed upstream."
+/// The observation carrier and its unread/observed distinction are rehomed to
+/// `product.cable_leg_observation`, whose subject is a leg this repository holds.
+///
+/// FOUR BINDINGS ACROSS TWO TEST MODULES resolve to the new declarer, which is `TargetChanged` and
+/// is not auto-admitted: the four fixture constructors that spell `SecondaryNotObserved`. The
+/// spelling is identical on both sides; only the declaring module differs, which is the membership
+/// motion this roster exists to adjudicate. The three membership additions the same run reported
+/// are `ExplicitlyEvaluatedZeroDelta` and the one removal is `SameDeclarationIdentityRebind`, so
+/// they are auto-admitted and are deliberately not rostered here.
+///
+/// ONE CHANGE CLASS. Nothing is requalified; every spelling is imported under the leaf it always
+/// had, and the declaration behind it moved.
+///
+/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10671 merges. Main then declares
+/// the carrier in `product.cable_leg_observation`, base and head bind each spelling identically,
+/// and all four report CONSUMED, coming due on this roster's next touch. Adjudicate that deletion
+/// by joining each row against main's tree on its own tuple, not by trusting this sentence.
+
+/// THE gunbc#10671 ROWS DISSOLVED HERE (2026-09-06), BY THEIR OWN TRIGGER AND ON THE ROSTER TOUCH
+/// THEY NAMED. gunbc#10671 merged, so the four cable-leg rows reported CONSUMED and came due on the
+/// next roster-touching change, which is this one.
+///
+/// ADJUDICATED BY THE JOIN THOSE ROWS DEMANDED RATHER THAN BY THEIR OWN SENTENCE, in all three
+/// directions the join has. On main, `product.cable_leg_observation` DECLARES `SecondaryNotObserved`
+/// as an arm of its compliance coproduct; `extdeps.transceiver.sff_8636` does NOT declare it -- its
+/// only remaining occurrence of the spelling is prose recording that an earlier head authored it,
+/// which is exactly the trap a grep-count would have fallen into and a declaration check does not;
+/// and both consumers, `test.claim.cable_leg_coding_witness` and
+/// `test.claim.cable_order_admission_witness`, import the spelling from the new declarer. So base and
+/// head bind it identically, no run can produce those four deltas, and CONSUMED is the correct
+/// reading rather than an author error.
+///
+/// THE gunbc#10676 ROWS DISSOLVE HERE (2026-09-07), BY THEIR OWN TRIGGER AND ON THIS ROSTER TOUCH.
+/// gunbc#10676 merged; the nine builder-rehome rows reported CONSUMED. Joined on origin/main against
+/// each row's (module, in_declaration, spelling, target), not the trigger sentence:
+///
+///   `test.fixture.scm_repository_builder` DECLARES `MbBuild` with arms `MbBuilt` and
+///   `MbSetupFailed`, and `fn mb_start`, `mb_stage`, `mb_commit`, `mb_at`, `mb_head`, `mb_root_of`.
+///   `test.claim.scm_merge_base_witness` DECLARES none of those nine spellings -- they appear only
+///   as an import from the fixture (and as uses inside `mb_scene` and
+///   `scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on`). Both consumers --
+///   `test.claim.scm_merge_base_witness` and `test.claim.scm_squash_merge_witness` -- import every
+///   one of those spellings from the new declarer. So base and head bind identically; CONSUMED is
+///   the correct reading for all nine.
+///
+/// EXIT_OK RELOCATES TO std.process. Seven rows reported CONSUMED on required run 34117629718
+/// (PR #10712): base already binds `exit_ok` in each `tools.floor_effect_gate_witness` `*_passes`
+/// declaration to `std.process`. This roster touch deletes them rather than carrying them as
+/// permissions standing over nothing.
+///
+/// `CitedFigureStanding` constructors were renamed with the rehome (`CitedToAuthority` /
+/// `TranscribedUncited`): a renamed declaration is a new declaration, so the wall does not
+/// produce `TargetChanged` for `CeilingTranscribedUncited`. That row is deleted rather than
+/// rewritten to the new spelling (see encode_repository_v3: a rewritten spelling matches nothing).
+///
 /// SIXTH TRANSITION (2026-09-07, gunbc#10688). `call_semantics_target` moved from
 /// `v1.compiler.emit_rust` to `v1.std.core`, so the two emit-side bindings of that spelling report
 /// `TargetChanged`. It is a re-home and not a re-spelling: the function reads a `CallSemantics` and
@@ -1618,34 +1709,8 @@ pub struct TransitionAdmission {
 /// spelling to `v1.std.core`, both rows report CONSUMED, and they come due on the roster's next
 /// touch. Adjudicate that deletion by joining each row against main on its own
 /// (module, in_declaration, spelling, target) tuple, not by trusting this sentence.
-const CALL_SEMANTICS_TARGET_REHOME_LABEL: &str =
-    "gunbc#10688 call-target identity re-home: `call_semantics_target` moves from \
-     v1.compiler.emit_rust to v1.std.core beside the `CallSemantics` it reads and the \
-     `CallTargetIdentity` it answers, so inference and the effect pass read one reduction \
-     instead of importing the emitter";
 
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: CALL_SEMANTICS_TARGET_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "emit_rust_expr_call",
-            spelling: "call_semantics_target",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_SEMANTICS_TARGET_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "emit_rust_tco_non_self_call",
-            spelling: "call_semantics_target",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-];
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
@@ -2673,12 +2738,82 @@ pub fn run_required_wave_admission(
             // base source through the SAME renderer the writer uses and handing it to `base_records`
             // keeps one derivation authority and one parser.
             //
-            // THE DERIVER IS REVISIONED TOO, and this reuses the head's renderer over base inputs.
-            // That is sound here because gunbc#10822's renderer is on both sides and only the row
-            // population moved. A change to the RENDERER may not do this: running the head renderer
-            // over both sides and calling it a comparison would report the renderer's own change as
-            // zero. Such a change needs the tracked base blob, a versioned base derivation, or
-            // `NotEvaluated`.
+            // THE DERIVER IS REVISIONED TOO, AND THAT IS CHECKED RATHER THAN PROMISED.
+            //
+            // This renders base inputs with the HEAD renderer, which is sound only while both
+            // revisions carry the SAME renderer. If `render_roster` changed, the wall would render
+            // the base with head logic, compare it against a head rendered the same way, and report
+            // the renderer's own change as zero -- the very class this branch repairs one revision
+            // earlier, re-admitted as a promise an author has to keep. A comment cannot hold that:
+            // DESIGN section 5 asks for the wrong state to be unwritable, not described. Review
+            // 62579 found the promise standing where this check belongs.
+            //
+            // THE SUBJECT IS THE RENDERER, NOT ITS FILE. Comparing whole-file bytes was measured
+            // and refuses too much: it would refuse this very change, and every later one that
+            // adds a doc comment or a helper beside the renderer, for a reason unrelated to the
+            // hazard -- a line stopped where nothing is wrong, which teaches authors to route
+            // around the wall. `render_roster` is the declaration whose text DECIDES the rendered
+            // bytes, so its text is what must agree.
+            //
+            // RESIDUAL, STATED RATHER THAN PAPERED OVER: the membership rule that selects which
+            // files are rows is not covered here, because this change moves it into a declaration
+            // the base does not have, so no text comparison spans both sides. A change to
+            // membership alone could still self-compare. Closing it needs the row-set contract
+            // named as one declaration present on both sides -- which is the shape the next change
+            // to this area should land, and it is why this check names what it covers.
+            let renderer_text = |source: &str| -> Option<String> {
+                let start = source.find("fn render_roster(")?;
+                let rest = &source[start..];
+                let end = rest.find("\n}\n")?;
+                Some(rest[..end].to_string())
+            };
+            let head_carrier = std::fs::read_to_string(
+                workspace.join(crate::cli_run::derived_row_roster::DERIVATION_CARRIER_REL_PATH),
+            );
+            let base_carrier = git_stdout(
+                &workspace,
+                &[
+                    "show",
+                    &format!(
+                        "{base}:{}",
+                        crate::cli_run::derived_row_roster::DERIVATION_CARRIER_REL_PATH
+                    ),
+                ],
+            );
+            let (head_carrier, base_carrier) = match (head_carrier, base_carrier) {
+                (Ok(h), Ok(b)) => (h, b),
+                _ => {
+                    return Ok(WaveAdmissionOutcome::NotEvaluated {
+                        reason: format!(
+                            "{} could not be read at this head or at the base revision {base}, so \
+                             whether the two share one derivation is unobservable",
+                            crate::cli_run::derived_row_roster::DERIVATION_CARRIER_REL_PATH
+                        ),
+                    });
+                }
+            };
+            match (renderer_text(&head_carrier), renderer_text(&base_carrier)) {
+                (Some(h), Some(b)) if h == b => {}
+                (Some(_), Some(_)) => {
+                    return Ok(WaveAdmissionOutcome::NotEvaluated {
+                        reason: format!(
+                            "render_roster differs between the base revision {base} and this head, \
+                             so rendering the base roster with the head renderer would report that \
+                             renderer's own change as zero. A revision-crossing renderer change \
+                             needs the tracked base blob or a versioned base derivation"
+                        ),
+                    });
+                }
+                _ => {
+                    return Ok(WaveAdmissionOutcome::NotEvaluated {
+                        reason: format!(
+                            "render_roster could not be located in {} at this head or at the base \
+                             revision {base}, so the two derivations cannot be compared",
+                            crate::cli_run::derived_row_roster::DERIVATION_CARRIER_REL_PATH
+                        ),
+                    });
+                }
+            }
             let source =
                 crate::cli_run::derived_row_roster::roster_source_from_repo_paths(&base_paths);
             match base_records(&record.rel_path, &source) {
