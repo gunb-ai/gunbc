@@ -1,8 +1,8 @@
 module gunbc.superseded_run_starvation_census
 
-import std.types { Bool, Int, String, Timestamp }
+import std.types { Bool, Int, String, Timestamp, Seconds }
 import std.nat { Nat }
-import std.measure { Second, second }
+import std.measure { seconds_per_day }
 import std.algebra { trim }
 import extdeps.github.workflow_runs {
   github.WorkflowRuns,
@@ -29,6 +29,11 @@ import extdeps.github.workflow_runs {
   StartupFailure,
 }
 import extdeps.clock { Clock }
+
+// The page size for list operations — bound from the single authority
+// (github.WorkflowRuns.ListWorkflowRuns's per_page: Int = 100 default)
+// and consumed by the page-count arithmetic below.
+data census_page_size: Int = 100
 
 // One census identity is an ordered pair, never a run selected because it hurt. The observing
 // instrument discovers every pair in a declared time window by PR identity and head transition.
@@ -161,10 +166,11 @@ fn collect_runs_in_window(
     workflow_name: workflow_name,
     event: event,
     created_range: created_range,
+    per_page: census_page_size,
     page: 1,
   )
   let total = first.result.total_count
-  let data_pages = (total + 99) / 100
+  let data_pages = (total + census_page_size - 1) / census_page_size
   if data_pages == 0 {
     CollectionComplete { runs: first.result.workflow_runs }
   } else if data_pages > max_run_pages {
@@ -215,6 +221,7 @@ fn collect_window_pages(
       workflow_name: workflow_name,
       event: event,
       created_range: created_range,
+      per_page: census_page_size,
       page: next_page,
     )
     match response.result.workflow_runs {
@@ -796,7 +803,7 @@ func superseded_run_starvation_census(
   observed_at: Timestamp,
   max_run_pages: Int,
 ) -> CensusResult {
-  let discovery_lookback = Clock.TimestampOffset(timestamp: from, offset: second(count: 86400))
+  let discovery_lookback = Clock.TimestampOffset(timestamp: from, offset: seconds_per_day())
   let discovery_range = concat(trim(discovery_lookback.result), "..", through)
   let outcome = collect_runs_in_window(
     auth_token: auth_token,

@@ -3,8 +3,7 @@ module extdeps.clock
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.types { EpochMs, Timestamp }
-import std.measure { Second }
+import std.types { EpochMs, Timestamp, Seconds }
 import v2.std.optional { Present }
 
 
@@ -50,7 +49,7 @@ service Clock {
   }
 
   operation TimestampOffset {
-    input { timestamp: Timestamp, offset: Second }
+    input { timestamp: Timestamp, offset: Seconds }
     output { result: Timestamp from "stdout" }
     readonly
     transport shell { argv: ["date", "-u", "-d", "{timestamp} -{offset} seconds", "+%Y-%m-%dT%H:%M:%SZ"] }
