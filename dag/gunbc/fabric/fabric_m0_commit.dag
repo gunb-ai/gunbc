@@ -5,18 +5,12 @@ import std.content_hash { Sha256Digest }
 import std.scoped_authorization { AttemptIdentity }
 import product.fabric.identity { WorkKey }
 import product.fabric.work { OutputObligationsResolution }
-import std.durable_compare_and_set {
-  CasOutcome,
-  CasCommitted,
-  CasPreconditionFailed,
-  CasStoreRefused,
-}
+import std.durable_compare_and_set { CasOutcome }
 import gunbc.fabric_m0_completion {
   ComputationOutcome,
   CommittedOutput,
   CommitManifest,
   OriginObservation,
-  ObservationSubject,
   CommitManifestSubject,
   ManifestMember,
   OriginReadback,
