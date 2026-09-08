@@ -1618,34 +1618,28 @@ pub struct TransitionAdmission {
 /// spelling to `v1.std.core`, both rows report CONSUMED, and they come due on the roster's next
 /// touch. Adjudicate that deletion by joining each row against main on its own
 /// (module, in_declaration, spelling, target) tuple, not by trusting this sentence.
-const CALL_SEMANTICS_TARGET_REHOME_LABEL: &str =
-    "gunbc#10688 call-target identity re-home: `call_semantics_target` moves from \
-     v1.compiler.emit_rust to v1.std.core beside the `CallSemantics` it reads and the \
-     `CallTargetIdentity` it answers, so inference and the effect pass read one reduction \
-     instead of importing the emitter";
-
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: CALL_SEMANTICS_TARGET_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "emit_rust_expr_call",
-            spelling: "call_semantics_target",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_SEMANTICS_TARGET_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "emit_rust_tco_non_self_call",
-            spelling: "call_semantics_target",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-];
+/// DISSOLUTION PAID BY THIS CHANGE (2026-09-08, gunbc#10688). Both `call_semantics_target` rows
+/// dissolved by their own trigger, on the first run that could charge them. The re-home is on main,
+/// so base and head bind the spelling identically, no run can produce those deltas, and the required
+/// phase on this head reported them CONSUMED, 2 of 2 -- `0 unadjudicated delta(s), 0 stale
+/// admission(s), 2 consumed admission(s) due for deletion on this roster-touching change`, run
+/// 34248160414, job 102167326054.
+///
+/// ADJUDICATED BY THE JOIN THE ROWS DEMANDED, NOT BY THEIR TRIGGER SENTENCE, because a trigger
+/// sentence is not evidence that the trigger fired. On main `call_semantics_target` is declared in
+/// `src/v1/00_core.dag` (module `v1.std.core`); `v1.compiler.emit_rust` imports it, and its two call
+/// sites sit inside `emit_rust_expr_call` and `emit_rust_tco_non_self_call` -- the exact
+/// `in_declaration` halves of the two rows. All four tuple components hold for both.
+///
+/// THE OBLIGATION IS CHARGED TO THE TOUCHER AND THIS CHANGE IS THE TOUCHER, which is the whole
+/// reason it comes due here: this change edits `ADMISSION_ROSTER_REL_PATH` itself, so
+/// `roster_touched` is true. That predicate was false on every production run until it was repaired
+/// to read the unfiltered head side, so this is among the first times the consumed-row obligation
+/// could come due at all rather than accumulating unseen.
+///
+/// THE LABEL CONST WENT WITH THEM. With both rows deleted its only remaining use was gone, and the
+/// required build runs `-D warnings`, so a dead const would turn this lane red at the far end.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
