@@ -9970,44 +9970,45 @@ pub fn qualified_type_reference_rows(
 })])
                                     }
                                     ItemLookup::ItemLeafAmbiguous { leaf: _, .. } => {
-                                        Rc::new(vec![Rc::new(ReferenceDerivedCandidateRow {
-    module_name: this_module_name.clone(),
-    name: name.clone(),
-    disposition: Rc::new(ReferenceDerivedCandidateDisposition::CandidateLeafAmbiguous),
-})])
-                                    }
-                                    ItemLookup::ItemFound { info: info, .. } => {
-                                        if !registry_row_is_type_declared_in(
-                                            info.clone(),
-                                            qualifier.clone(),
+                                        match crate::v1_compiler_emit::lookup_item_by_identity(
+                                            registry.clone(),
+                                            Rc::new(DeclaredCallableIdentity {
+                                                owner_module_path: qualifier.clone(),
+                                                decl_name: leaf.clone(),
+                                            }),
                                         ) {
-                                            Rc::new(vec![])
-                                        } else {
-                                            if provider_proven_exports_symbol(
+                                            Some(info) => qualified_type_reference_row_for_info(
+                                                name.clone(),
                                                 leaf.clone(),
                                                 qualifier.clone(),
+                                                this_module_name.clone(),
+                                                info.clone(),
                                                 export_sets.clone(),
                                                 typed_modules.clone(),
                                                 source_indices.clone(),
                                                 module_index.clone(),
-                                            ) {
+                                            ),
+                                            std::option::Option::None => {
                                                 Rc::new(vec![Rc::new(ReferenceDerivedCandidateRow {
     module_name: this_module_name.clone(),
     name: name.clone(),
-    disposition: Rc::new(ReferenceDerivedCandidateDisposition::CandidateSurvived {
-    provider_module: qualifier.clone(),
-}),
-})])
-                                            } else {
-                                                Rc::new(vec![Rc::new(ReferenceDerivedCandidateRow {
-    module_name: this_module_name.clone(),
-    name: name.clone(),
-    disposition: Rc::new(ReferenceDerivedCandidateDisposition::CandidateExportProofFailed {
-    provider_module: qualifier.clone(),
-}),
+    disposition: Rc::new(ReferenceDerivedCandidateDisposition::CandidateLeafAmbiguous),
 })])
                                             }
                                         }
+                                    }
+                                    ItemLookup::ItemFound { info: info, .. } => {
+                                        qualified_type_reference_row_for_info(
+                                            name.clone(),
+                                            leaf.clone(),
+                                            qualifier.clone(),
+                                            this_module_name.clone(),
+                                            info.clone(),
+                                            export_sets.clone(),
+                                            typed_modules.clone(),
+                                            source_indices.clone(),
+                                            module_index.clone(),
+                                        )
                                     }
                                 }
                             }
@@ -10019,6 +10020,49 @@ pub fn qualified_type_reference_rows(
             }
             __result
         })
+    }
+}
+
+pub fn qualified_type_reference_row_for_info(
+    name: String,
+    leaf: String,
+    qualifier: String,
+    this_module_name: String,
+    info: Rc<ItemInfo>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_index: Rc<ModuleIndex>,
+) -> Rc<Vec<Rc<ReferenceDerivedCandidateRow>>> {
+    if !registry_row_is_type_declared_in(info.clone(), qualifier.clone()) {
+        Rc::new(vec![])
+    } else {
+        if provider_proven_exports_symbol(
+            leaf.clone(),
+            qualifier.clone(),
+            export_sets.clone(),
+            typed_modules.clone(),
+            source_indices.clone(),
+            module_index.clone(),
+        ) {
+            Rc::new(vec![Rc::new(ReferenceDerivedCandidateRow {
+                module_name: this_module_name.clone(),
+                name: name.clone(),
+                disposition: Rc::new(ReferenceDerivedCandidateDisposition::CandidateSurvived {
+                    provider_module: qualifier.clone(),
+                }),
+            })])
+        } else {
+            Rc::new(vec![Rc::new(ReferenceDerivedCandidateRow {
+                module_name: this_module_name.clone(),
+                name: name.clone(),
+                disposition: Rc::new(
+                    ReferenceDerivedCandidateDisposition::CandidateExportProofFailed {
+                        provider_module: qualifier.clone(),
+                    },
+                ),
+            })])
+        }
     }
 }
 
@@ -12146,16 +12190,28 @@ pub fn alias_rhs_base_module_filename(
                     )
                 }
             }
-            std::option::Option::None => alias_rhs_base_module_from_import_or_registry(
-                name.clone(),
-                imports.clone(),
-                source_indices.clone(),
-                registry.clone(),
-                local_mod.clone(),
-                export_sets.clone(),
-                typed_modules.clone(),
-                module_index.clone(),
-            ),
+            std::option::Option::None => {
+                if has_physical_type_def_in_module_filename(
+                    name.clone(),
+                    local_mod.clone(),
+                    typed_modules.clone(),
+                    source_indices.clone(),
+                    module_index.clone(),
+                ) {
+                    local_mod.clone()
+                } else {
+                    alias_rhs_base_module_from_import_or_registry(
+                        name.clone(),
+                        imports.clone(),
+                        source_indices.clone(),
+                        registry.clone(),
+                        local_mod.clone(),
+                        export_sets.clone(),
+                        typed_modules.clone(),
+                        module_index.clone(),
+                    )
+                }
+            }
         }
     }
 }
@@ -18158,6 +18214,7 @@ pub fn v1_call_forwarding_clone_bound_param_names(
     emit_info: Rc<EmitGraphInfo>,
     shared_types: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    visited: Rc<Vec<String>>,
 ) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if ((generic_param_names.clone().len() as i64) == 0) {
@@ -18171,6 +18228,7 @@ pub fn v1_call_forwarding_clone_bound_param_names(
                 emit_info.clone(),
                 shared_types.clone(),
                 source_indices.clone(),
+                visited.clone(),
             ),
             _ => Rc::new(vec![]),
         };
@@ -18186,6 +18244,7 @@ pub fn v1_call_forwarding_clone_bound_param_names(
                         emit_info.clone(),
                         shared_types.clone(),
                         source_indices.clone(),
+                        visited.clone(),
                     ),
                 )
             },
@@ -18200,10 +18259,23 @@ pub fn v1_call_site_clone_forwarded_param_names(
     emit_info: Rc<EmitGraphInfo>,
     shared_types: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    visited: Rc<Vec<String>>,
 ) -> Rc<Vec<String>> {
     {
         let si = source_indices.clone();
         let callee_name = crate::v1_std_core::expr_call_func_at(call.clone(), si.clone());
+        if {
+            let mut __found = false;
+            for v in visited.iter().cloned() {
+                if (v.clone() == callee_name.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        } {
+            return Rc::new(vec![]);
+        }
         match v1_rt::map_get(&fn_decl_items, callee_name.clone()) {
             std::option::Option::None => Rc::new(vec![]),
             Some(callee_item) => match callee_item.body.clone() {
@@ -18221,14 +18293,26 @@ pub fn v1_call_site_clone_forwarded_param_names(
                         }
                         __result
                     });
-                    let callee_clone_param_names = v1_fn_body_derived_clone_param_names(
-                        callee_params.clone(),
-                        crate::v1_compiler_infer_types::resolved_type(callee_item.clone()),
-                        callee_body.clone(),
-                        emit_info.clone(),
-                        shared_types.clone(),
-                        si.clone(),
-                    );
+                    let callee_clone_param_names =
+                        crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
+                            v1_fn_body_derived_clone_param_names(
+                                callee_params.clone(),
+                                crate::v1_compiler_infer_types::resolved_type(callee_item.clone()),
+                                callee_body.clone(),
+                                emit_info.clone(),
+                                shared_types.clone(),
+                                si.clone(),
+                            ),
+                            v1_call_forwarding_clone_bound_param_names(
+                                callee_generic_param_names.clone(),
+                                callee_body.clone(),
+                                fn_decl_items.clone(),
+                                emit_info.clone(),
+                                shared_types.clone(),
+                                si.clone(),
+                                v1_rt::concat(visited.clone(), Rc::new(vec![callee_name.clone()])),
+                            ),
+                        );
                     v1_call_forwarding_forwarded_param_names(
                         call.clone(),
                         function_value_params(callee_params.clone()),
@@ -18451,6 +18535,7 @@ pub fn emit_fn_def(
             emit_info.clone(),
             shared_types.clone(),
             si.clone(),
+            Rc::new(vec![name.clone()]),
         );
         let derived_clone_param_names_with_rc_match =
             crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(

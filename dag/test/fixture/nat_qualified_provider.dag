@@ -1,0 +1,17 @@
+module test.fixture.nat_qualified_provider
+
+import v2.std.nat { Nat, nat_add }
+
+// Pool-edge fixture for
+// test.claim.self_host_emitted_call_target_realization_witness_test's
+// w_qualified_type_reference_qualifier_disambiguates_the_leaf. The mechanism under test is the
+// emitter's qualified-type use-line route, which only sees a reference when the resolver leaves it
+// AUTHORED -- and the resolver leaves v2.std.nat.Nat authored only in a module that does NOT import
+// v2.std.nat (the v2.lens.fact_density shape measured on the 00_compile closure). The witness pool
+// admits a module to the closure only through an import edge, so this fixture holds the edge: the
+// probe imports this module, v2.std.nat enters the closure transitively, and the probe's own
+// qualified reference stays authored. The bare import-and-reference below keeps the fixture's own
+// emission clean through the authored-import route rather than the route under test.
+fn nat_qualified_provider_touch(a: Nat) -> Nat {
+  nat_add(a: a, b: a)
+}
