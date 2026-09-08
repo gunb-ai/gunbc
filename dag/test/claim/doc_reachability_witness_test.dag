@@ -58,6 +58,14 @@ test fn doc_graph_registered_plan_roots_all_admitted() -> Bool {
   return doc_graph_admitted_root_count(doc_graph_roots_all()) == doc_graph_roots_all().count()
 }
 
+// Discriminating RED for a doc bind (or extra root) naming a slug with no file: the host
+// admits an extra root only when it is present in the doc universe. The specimen is the
+// host-converge-inventory markdown deleted in #9635 while ROADMAP and a HandAuthoredDocBind
+// still named it.
+test fn doc_graph_missing_plan_slug_is_not_admitted() -> Bool {
+  return doc_graph_admitted_root_count(["docs/plans/host-converge-inventory.md"]) == 0
+}
+
 test fn doc_graph_hand_authored_slugs_not_registered() -> Bool {
   return hand_authored_slugs_all_unregistered()
 }
