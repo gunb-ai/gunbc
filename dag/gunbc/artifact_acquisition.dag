@@ -64,9 +64,33 @@ fn acquisition_key_is_locally_verifiable(key: AcquisitionKey) -> Bool {
 // (DESIGN section 3). The identity is carried beside the locator so a receipt names WHICH source
 // answered -- "the second mirror" and "the CDN" are different facts about a run, and a bare URL
 // makes a reader reconstruct which was which.
+// A LOCATOR HAS TWO KINDS AND ONE FIELD WAS CARRYING BOTH. This was a bare NonEmptyStr, and the two
+// bindings meant different things by it: the install-media handler passed it to an HTTP client AS A
+// URL, while the snapshot handler space-JOINED an argv into it and the far side SPLIT it apart again.
+//
+// THE JOIN/SPLIT ROUND TRIP IS THE SAME DEFECT THIS MODULE'S CALLERS HAVE ALREADY BEEN BITTEN BY
+// TWICE, in both cases with the boundaries silently lost: once when `join(argv, " ")` turned
+// `--description=gunbc model snapshot materialize` into four shell words, and once when an argv
+// element containing a space became several. A path with a space in it -- which nothing forbids -- is
+// all it takes here, and the failure is not a refusal but a command that runs with the wrong
+// arguments.
+//
+// SO THE KIND IS MODELLED RATHER THAN THE STRING REPARSED. A URL is genuinely one string and stays
+// one; an argv is genuinely a list and stays a list, all the way to exec. The combinator still never
+// interprets either -- it carries the locator to the handler that understands it, which is what keeps
+// this module transport-agnostic (DESIGN section 3) -- but the handler now MATCHES on what it was
+// given instead of assuming, so a source built for one transport and handed to the other refuses at
+// the match rather than being re-parsed into nonsense.
+type SourceLocator
+  = SourceUrl { url: NonEmptyStr }
+  | SourceArgv { argv: List<String> }
+
+// THE IDENTITY IS CARRIED BESIDE THE LOCATOR so a receipt names WHICH source answered -- "the second
+// mirror" and "the CDN" are different facts about a run, and a bare URL makes a reader reconstruct
+// which was which.
 type AcquisitionSource {
   identity: NonEmptyStr
-  locator: NonEmptyStr
+  locator: SourceLocator
 }
 
 type AcquisitionSubject {

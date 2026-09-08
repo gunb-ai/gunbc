@@ -245,10 +245,10 @@ fn model_snapshot_rail_source(peer: Ipv4Address, snapshot: ModelSnapshotDesired,
     ModelSnapshotPinned { identity: _, repo: r, revision: rev, placement: pl, revision_provenance: _ } =>
       Present { value: AcquisitionSource {
         identity: join(["fabric-rail-peer ", render_ipv4_address(addr: peer) as String], "") as NonEmptyStr,
-        locator: join(model_snapshot_rail_replicate_argv(
+        locator: SourceArgv { argv: model_snapshot_rail_replicate_argv(
           peer: peer,
           path: snapshot_install_path(placement: pl, repo: r, revision: rev),
-        ), " ") as NonEmptyStr,
+        ) },
       } }
   }
 }
@@ -281,7 +281,7 @@ fn model_snapshot_sources_for(role: ModelSnapshotRole, snapshot: ModelSnapshotDe
     ModelSnapshotPinned { identity: _, repo: r, revision: rev, placement: pl, revision_provenance: _ } =>
       [AcquisitionSource {
         identity: model_snapshot_hub_source_identity,
-        locator: join(snapshot_download_argv_for(placement: pl, repo: r, revision: rev), " ") as NonEmptyStr,
+        locator: SourceArgv { argv: snapshot_download_argv_for(placement: pl, repo: r, revision: rev) },
       }]
   }
   match role {
@@ -320,7 +320,7 @@ fn model_snapshot_subject(snapshot: ModelSnapshotDesired, cache_root: NonEmptySt
         parent_directory: snapshot_parent_directory(placement: pl, repo: r),
         sources: [AcquisitionSource {
           identity: model_snapshot_hub_source_identity,
-          locator: join(snapshot_download_argv_for(placement: pl, repo: r, revision: rev), " ") as NonEmptyStr,
+          locator: SourceArgv { argv: snapshot_download_argv_for(placement: pl, repo: r, revision: rev) },
         }],
       } }
   }

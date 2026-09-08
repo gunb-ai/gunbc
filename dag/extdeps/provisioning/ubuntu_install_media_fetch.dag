@@ -121,7 +121,15 @@ fn install_media_staging_path(subject: AcquisitionSubject) -> NonEmptyStr {
 
 fn attempt_install_media_mirror(subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
   let part_path = install_media_staging_path(subject: subject)
-  let downloaded = http.Client.DownloadToFile(url: origin.locator, destination: part_path)
+  match origin.locator {
+    SourceArgv { argv: _ } =>
+      AttemptRejected { detail: "this mirror was built with a command-line locator, which the install-media transport cannot fetch; it downloads a URL" as NonEmptyStr }
+    SourceUrl { url: u } => attempt_install_media_download(subject: subject, origin: origin, url: u, part_path: part_path)
+  }
+}
+
+fn attempt_install_media_download(subject: AcquisitionSubject, origin: AcquisitionSource, url: NonEmptyStr, part_path: NonEmptyStr) -> AcquisitionAttempt {
+  let downloaded = http.Client.DownloadToFile(url: url, destination: part_path)
   if downloaded.success == false {
     AttemptUnreachable
   } else {
@@ -163,7 +171,7 @@ fn install_media_discard_infra_failure(part_path: NonEmptyStr, subject: Acquisit
 fn install_media_sources(artifact: UbuntuInstallMediaArtifactRow) -> List<AcquisitionSource> {
   map(ubuntu_install_media_mirror_rows, m => AcquisitionSource {
     identity: m.locator,
-    locator: ubuntu_install_media_mirror_url(artifact: artifact, mirror: m),
+    locator: SourceUrl { url: ubuntu_install_media_mirror_url(artifact: artifact, mirror: m) },
   })
 }
 
