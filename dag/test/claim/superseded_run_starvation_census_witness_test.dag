@@ -6,7 +6,6 @@ import gunbc.superseded_run_starvation_census {
   DeadHeadReachedInProgressFirst,
   LiveHeadRegisteredJobFirst,
   NeitherRunRegisteredAJob,
-  PrGroup,
   pr_number_for_run,
   first_run_with_different_head,
   count_jobs,
@@ -15,7 +14,6 @@ import gunbc.superseded_run_starvation_census {
   filter_completed_jobs,
   earliest_started_at,
   earliest_created_at,
-  latest_completed_before,
 }
 import extdeps.github.workflow_runs {
   WorkflowRun,
@@ -183,11 +181,6 @@ test fn first_run_with_different_head_returns_none_when_empty() -> Bool {
   }
 }
 
-data group_pr_42: PrGroup = PrGroup { pr: 42, runs: [run_sha_abc] }
-data group_pr_99: PrGroup = PrGroup { pr: 99, runs: [run_sha_def] }
-
-}
-
 data job_cancelled: WorkflowJobRun = WorkflowJobRun {
   id: 100,
   run_id: 1,
@@ -256,7 +249,7 @@ test fn count_jobs_with_conclusion_counts_exact_match() -> Bool {
 }
 
 test fn count_jobs_with_conclusion_counts_no_match_as_zero() -> Bool {
-  count_jobs_with_conclusion(jobs: [job_cancelled, job_failed, job_success], conclusion: Success) == 1
+  count_jobs_with_conclusion(jobs: [job_cancelled, job_failed, job_success], conclusion: TimedOut) == 0
 }
 
 test fn count_jobs_with_status_count_queued() -> Bool {
