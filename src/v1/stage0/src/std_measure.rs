@@ -169,8 +169,16 @@ pub fn milliseconds_per_second() -> Nat {
     milli_per_unit()
 }
 
+pub fn microseconds_per_second() -> Nat {
+    micro_per_unit()
+}
+
 pub fn milli_per_unit() -> Nat {
     1000
+}
+
+pub fn micro_per_unit() -> Nat {
+    (milli_per_unit() * milli_per_unit())
 }
 
 pub fn mega_factor() -> Nat {
