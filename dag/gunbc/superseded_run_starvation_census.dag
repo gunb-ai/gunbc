@@ -27,6 +27,7 @@ import extdeps.github.workflow_runs {
   TimedOut,
   ActionRequired,
   StartupFailure,
+  default_workflow_runs_page_size,
 }
 import extdeps.clock { Clock }
 
@@ -161,11 +162,11 @@ fn collect_runs_in_window(
     workflow_name: workflow_name,
     event: event,
     created_range: created_range,
+    per_page: default_workflow_runs_page_size,
     page: 1,
   )
   let total = first.result.total_count
-  // Page count: ListWorkflowRuns defaults to per_page=100. This literal must match that default.
-  let data_pages = (total + 99) / 100
+  let data_pages = (total + default_workflow_runs_page_size - 1) / default_workflow_runs_page_size
   if data_pages == 0 {
     CollectionComplete { runs: first.result.workflow_runs }
   } else if data_pages > max_run_pages {
@@ -216,6 +217,7 @@ fn collect_window_pages(
       workflow_name: workflow_name,
       event: event,
       created_range: created_range,
+      per_page: default_workflow_runs_page_size,
       page: next_page,
     )
     match response.result.workflow_runs {
@@ -313,15 +315,6 @@ fn first_run_with_different_head(head_sha: String, runs: List<WorkflowRun>) -> W
 type PrGroup {
   pr: Int
   runs: List<WorkflowRun>
-}
-
-fn find_group(groups: List<PrGroup>, pr: Int) -> PrGroup? {
-  match groups {
-    Empty {} => none
-    Cons { head: g, tail: rest } =>
-      if g.pr == pr { Present { value: g } }
-      else { find_group(groups: rest, pr: pr) }
-  }
 }
 
 fn update_group(groups: List<PrGroup>, pr: Int, run: WorkflowRun) -> List<PrGroup> {
@@ -426,7 +419,6 @@ fn refresh_pair(
   owner: String,
   repo: String,
   pair: SupersededRunPair,
-  observed_at: Timestamp,
 ) -> RefreshedPair {
   let dead_run_detail = github.WorkflowRuns.GetRun(
     auth_token: auth_token,
@@ -814,7 +806,7 @@ func superseded_run_starvation_census(
       let groups = group_pr_runs(pr_runs: pr_runs)
       let pairs = extract_pairs_from_groups(groups: groups, from: from, through: through)
       let boundary_obligations = extract_boundary_obligations(groups: groups, from: from)
-      let refreshed = refresh_pairs(auth_token: auth_token, owner: owner, repo: repo, pairs: pairs, observed_at: observed_at)
+      let refreshed = refresh_pairs(auth_token: auth_token, owner: owner, repo: repo, pairs: pairs)
       let start_standings = collect_start_standings(rows: refreshed)
       let cancellation_rows = collect_cancellation_rows(pairs: pairs, refreshed: refreshed)
       CensusComplete {
@@ -850,7 +842,6 @@ fn refresh_pairs(
   owner: String,
   repo: String,
   pairs: List<SupersededRunPair>,
-  observed_at: Timestamp,
 ) -> List<RefreshedPair> {
   match pairs {
     Empty {} => []
@@ -860,8 +851,7 @@ fn refresh_pairs(
         owner: owner,
         repo: repo,
         pair: pair,
-        observed_at: observed_at,
-      )] |> concat(refresh_pairs(auth_token: auth_token, owner: owner, repo: repo, pairs: rest, observed_at: observed_at))
+      )] |> concat(refresh_pairs(auth_token: auth_token, owner: owner, repo: repo, pairs: rest))
   }
 }
 

@@ -9,7 +9,6 @@ import gunbc.superseded_run_starvation_census {
   PrGroup,
   pr_number_for_run,
   first_run_with_different_head,
-  find_group,
   count_jobs,
   count_jobs_with_conclusion,
   count_jobs_with_status,
@@ -187,18 +186,6 @@ test fn first_run_with_different_head_returns_none_when_empty() -> Bool {
 data group_pr_42: PrGroup = PrGroup { pr: 42, runs: [run_sha_abc] }
 data group_pr_99: PrGroup = PrGroup { pr: 99, runs: [run_sha_def] }
 
-test fn find_group_matches_existing_pr() -> Bool {
-  match find_group(groups: [group_pr_42, group_pr_99], pr: 42) {
-    Present { value: g } => g.pr == 42
-    Absent => false
-  }
-}
-
-test fn find_group_returns_none_for_absent_pr() -> Bool {
-  match find_group(groups: [group_pr_42, group_pr_99], pr: 100) {
-    Present { value: _ } => false
-    Absent => true
-  }
 }
 
 data job_cancelled: WorkflowJobRun = WorkflowJobRun {
