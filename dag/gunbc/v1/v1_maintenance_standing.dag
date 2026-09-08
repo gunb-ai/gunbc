@@ -1,6 +1,7 @@
 module gunbc.v1_maintenance_standing
 
-import std.types { String }
+import std.types { String, NonEmptyStr }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // Why this carrier exists rather than a sentence in DESIGN.md: a status with a
 // closed allow/refuse vocabulary is exactly the machine-consumed fact DESIGN 4c
@@ -62,6 +63,76 @@ type MaintenanceRefusal =
   | NewEscapeHatchOrAdmissionRow
   | SeedFeatureCompletion
   | PublicSurfaceGrowth
+
+// A REFUSED PROPOSAL, RECORDED BECAUSE A REFUSAL IS THE EVIDENCE THIS VOCABULARY STILL
+// DISCRIMINATES -- the same ground the realization-memo row above states for its own refusal, and
+// the standing danger this carrier names by name: if every proposal classifies as admissible, the
+// freeze has been repealed by drift rather than by ruling.
+//
+// WHAT WAS PROPOSED, concretely enough to be re-adjudicated rather than re-derived. Partition
+// v1.compiler.cli_run run_dag_parse_sweep's return so that INSTRUMENT-CANNOT-COMPLETE is separable
+// from SUBJECT-REFUSED. Today both arrive as one Vec<String>: an empty root roster, a read_dir
+// failure, an empty walk under a root, and a per-file read failure are instrument failures, while
+// genuine parse refusals accumulate into that same vector and return through the same Err. On the
+// Ok path, declaration-index corpus findings then reach the SAME process exit. So exit 1 is a
+// three-way union of subject refused, instrument could not complete, and index finding. The
+// partition cannot be made in the binary's main -- v1.compiler.bin.v1_src_dag_parse only chooses an
+// ExitCode from what it is handed -- so it has to be made in the sweep's own return type.
+//
+// WHY IT IS REFUSED, and BOTH legs are stated because either alone is the weaker argument.
+//
+// THE PURPOSE TEST FAILS, which is the governing question under the 2026-08-20 ruling and is
+// decided before any question of shape. The partition had exactly one demanded consumer: a
+// DID-NOT-RUN arm for a pre-push hook gate, which is forbidden by the 2026-07-25 fmt-only operator
+// ruling recorded at gunbc.githooks_pre_push_emit pre_push_fmt_only_note. With that surface closed,
+// nothing branches on the distinction -- no required phase reads it, no caller consumes it -- so
+// what remains is a typed partition with no consumer, which is the dangling declaration DESIGN
+// section 3c refuses. No v2 self-host frontier moves.
+//
+// DefectRepairDiagnosticsMayMove DOES NOT COVER IT, and this is the leg that was expected to admit.
+// That class turns on one line: the seed doing something INCORRECT is admitted and diagnostics may
+// move, while the seed FAILING TO DO something it never did is SeedFeatureCompletion. NOTHING THE
+// SWEEP EMITS IS UNTRUE. Every string is accurate about its own cause -- the empty-walk refusal
+// names the root, the read_dir failure names the directory, a parse refusal names its file -- so a
+// reader can already discriminate by reading. What is absent is a MACHINE-READABLE partition the
+// seed never had. AND THERE IS NO FAIL-OPEN, checked specifically because a floor hole would have
+// admitted under this class: every arm of the union exits non-zero, the empty walk refuses PER ROOT
+// with its own comment naming the empty-observation narrow, and the parse-clean count prints only
+// on the Ok path, so no run reports a clean population while carrying refusals. The conflation
+// costs ATTRIBUTION, not safety.
+//
+// THE WEAKNESS IS REAL AND STAYS UNREPAIRED, so this is a recorded stall and not a dismissal. The
+// class itself is not new here and is deliberately not restated: gunbc.local_tidy_spec already owns
+// could-not-run-collapsed-into-a-finding as a class, with the operator receipt showing it bit three
+// times in one session and the construction wall built in response.
+//
+// WHAT WOULD MAKE IT ADMIT LATER IS A CONSUMER, NAMED AS A CAPABILITY AND NOT AS A WISH. No local
+// surface can promise that a parse defect is stopped before a push: every .githooks surface is
+// opt-in per clone through the core.hooksPath seed, bypassable with --no-verify, and absent in
+// container worktrees, and the one non-hook local surface that passes those three tests --
+// src/v1/stage0/build.rs -- cannot host the check because a build script runs BEFORE the crate
+// whose binary it would need, which is a cycle rather than a policy objection. So the trigger is
+// deliberately NOT a local-enforcement promise.
+//
+// THE HONESTY OF THIS ROW'S OWN CLASSIFICATION, since this carrier requires it elsewhere: the
+// classification is AUTHORED, at the mitigatable rung this carrier already declares for itself.
+// Nothing mechanically refuses a v1 change belonging to a refused class, and no lens reads this
+// row. It is written to be easy to overturn: the counter-argument is that a three-way union on one
+// exit status is itself an incorrect report about which state obtained, which would make it
+// DefectRepairDiagnosticsMayMove after all. It was refused because a reader can distinguish the
+// states from the emitted text today, and because no consumer needs the machine-readable form.
+type RefusedV1Proposal {
+  proposal: NonEmptyStr
+  refused_as: MaintenanceRefusal
+  admits_when: DissolutionCondition
+}
+
+data v1_maintenance_parse_sweep_partition_refusal: RefusedV1Proposal = RefusedV1Proposal {
+    proposal: "partition v1.compiler.cli_run run_dag_parse_sweep's return so instrument-cannot-complete is separable from subject-refused, the union today being an empty root roster, a read_dir failure, an empty walk, a per-file read failure and genuine parse refusals in one Vec<String>, with declaration-index findings reaching the same exit on the Ok path" as NonEmptyStr,
+    refused_as: SeedFeatureCompletion,
+    admits_when: unbound_dissolution(description: "a consumer exists that MUST BRANCH on instrument-cannot-complete versus subject-refused -- not merely report it differently, but take a different action -- and that consumer serves the v2 self-host program. Naming a surface that would display the distinction does not satisfy this; the distinction must change what something does. Explicitly NOT satisfied by any local pre-push or pre-commit surface, for the reason recorded above." as NonEmptyStr),
+  }
+
 
 data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: MaintenanceActive }
 
