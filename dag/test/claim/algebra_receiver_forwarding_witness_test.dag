@@ -1,0 +1,28 @@
+module test.claim.algebra_receiver_forwarding_witness_test
+
+import std.types { Bool, Int }
+import test.claim.algebra_receiver_application_witness_test { ApplicationRows, RowsPresent, declared_application_rows }
+
+type ApplicationBox<T> = ApplicationBoxed { value: T } | ApplicationUnboxed
+
+fn declared_box_rows() -> ApplicationBox<ApplicationRows> {
+  ApplicationBoxed { value: declared_application_rows() }
+}
+
+test fn nested_generic_pattern_still_expands_for_lookup() -> Bool {
+  let subject = declared_box_rows()
+  match subject {
+    ApplicationBoxed { value: RowsPresent { rows } } => rows |> any(row => row.label == "kept")
+    _ => false
+  }
+}
+
+test fn whole_value_pattern_retains_application_for_later_destructuring() -> Bool {
+  let subject = declared_box_rows()
+  match subject {
+    bound => match bound {
+      ApplicationBoxed { value: RowsPresent { rows } } => rows |> any(row => row.label == "kept")
+      _ => false
+    }
+  }
+}
