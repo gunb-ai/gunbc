@@ -4246,11 +4246,34 @@ fn belt_workflow_progress_for_attempt_ref(
 // decision in gunbc.roadmap.roadmap_belt_commit, and only on CommitNeeded stages everything and
 // commits with the decided message. Every refusal is typed and carried into the tick receipt as
 // commit_pass; verify is made data-dependent on these outcomes so it observes the committed head.
+// AN ATTEMPT WITH NO KEY NAMES NO WORKTREE, AND THAT IS NOT A COMMIT THAT FAILED.
+//
+// dispatch_worktree_path_for_instance joins node_id, "-a" and the attempt key unconditionally, so an
+// EMPTY key addresses `<root>/<node>-a` -- a path that cannot exist, because a keyed attempt's
+// directory ends in the key and a keyless one (this host still carries seven from July, before the
+// key convention) is just `<root>/<node>`. `git status` in a directory that is not there exits
+// nonzero, that became CommitFailed, and one CommitFailed fails the whole pass. Measured on srv1:
+// commit_pass failed on EVERY tick, verify then deferred for "no attempt is ready", and the roadmap
+// moved nothing for eighteen hours while every stage reported honestly about a subject none of them
+// could reach.
+//
+// THE FAILURE WAS NEVER IN THE COMMIT. Nothing was wrong with those worktrees and no git operation
+// was refused; the pass computed an address for an attempt that has none. Reporting that as
+// CommitFailed is the not-applicable-rendered-as-malformed conflation DESIGN names: one symbol over
+// "this commit was refused" and "this attempt could not be addressed", which have different owners
+// and different repairs.
+//
+// IT IS COUNTED AND IT DOES NOT HALT ITS SIBLINGS. A keyless attempt is a real defect in whatever
+// wrote it, so it is not silently skipped -- it gets its own arm and its own count. But it must not
+// fail the pass, because that is the absorbing arm: one unaddressable legacy row blocking every
+// other attempt forever is strictly worse than the row itself, and it is what kept the pipeline
+// severed. Typed, located, counted, siblings continue.
 type BeltCommitOutcome
   = CommitRecorded { node_id: String, message: String }
   | CommitSkipped { node_id: String, reason: String }
   | CommitFailed { node_id: String, detail: String }
   | CommitDeferred { node_id: String, reason: String }
+  | CommitSubjectUnaddressable { node_id: String, reason: String }
 
 fn belt_commit_git(instance: HostDashboardInstance, worktree: String, args: List<String>) -> BeltExecOutcome {
   belt_exec(
@@ -4279,6 +4302,12 @@ fn belt_commit_attempt_for_instance(
   progress: WorkflowAttemptProgress,
 ) -> BeltCommitOutcome {
   let node_id = progress.node_id
+  if trim(s: progress.attempt_key) == "" {
+    CommitSubjectUnaddressable {
+      node_id: node_id,
+      reason: "the attempt carries no key, so no dispatch worktree path names it: the path is built as <root>/<node>-a<key> and an empty key addresses <root>/<node>-a, which cannot exist",
+    }
+  } else {
   let worktree = dispatch_worktree_path_for_instance(
     instance: instance,
     node_id: node_id,
@@ -4309,6 +4338,7 @@ fn belt_commit_attempt_for_instance(
           }
       }
   }
+  }
 }
 
 fn belt_commit_outcome_json_value(o: BeltCommitOutcome) -> JsonValue {
@@ -4321,6 +4351,8 @@ fn belt_commit_outcome_json_value(o: BeltCommitOutcome) -> JsonValue {
       json_object(members: [json_kv(key: "outcome", value: json_string(s: "failed")), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "detail", value: json_string(s: detail))])
     CommitDeferred { node_id, reason } =>
       json_object(members: [json_kv(key: "outcome", value: json_string(s: "deferred")), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "reason", value: json_string(s: reason))])
+    CommitSubjectUnaddressable { node_id, reason } =>
+      json_object(members: [json_kv(key: "outcome", value: json_string(s: "subject-unaddressable")), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "reason", value: json_string(s: reason))])
   }
 }
 
@@ -4349,6 +4381,7 @@ fn belt_commit_outcome_is_failure(o: BeltCommitOutcome) -> Bool {
     CommitSkipped { node_id: _, reason: _ } => false
     CommitFailed { node_id: _, detail: _ } => true
     CommitDeferred { node_id: _, reason: _ } => false
+    CommitSubjectUnaddressable { node_id: _, reason: _ } => false
   }
 }
 
@@ -4358,6 +4391,7 @@ fn belt_commit_outcome_is_recorded(o: BeltCommitOutcome) -> Bool {
     CommitSkipped { node_id: _, reason: _ } => false
     CommitFailed { node_id: _, detail: _ } => false
     CommitDeferred { node_id: _, reason: _ } => false
+    CommitSubjectUnaddressable { node_id: _, reason: _ } => false
   }
 }
 
@@ -4367,6 +4401,7 @@ fn belt_commit_pass_outcome_from(outcomes: List<BeltCommitOutcome>) -> BeltPassO
     CommitRecorded { node_id: _, message: _ } => false
     CommitSkipped { node_id: _, reason: _ } => false
     CommitFailed { node_id: _, detail: _ } => false
+    CommitSubjectUnaddressable { node_id: _, reason: _ } => false
   })
   if count(ledger_refusals) > 0 {
     match ledger_refusals.first() {
