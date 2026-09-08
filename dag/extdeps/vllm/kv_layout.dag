@@ -16,7 +16,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
 import extdeps.vllm.kv_cache { VllmObservedKvPool }
 import extdeps.vllm.log_lines {
-  VllmStartupReading, VllmStartupLine, GpuKvCacheSize, MaximumConcurrency, ResolvedKvCacheFormat,
+  VllmStartupReading, GpuKvCacheSize, MaximumConcurrency, ResolvedKvCacheFormat,
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -120,6 +120,7 @@ type ResolvedKvLayout sole_constructor {
   max_model_len: TokenCount
   max_num_batched_tokens: TokenCount
   groups: List<KvGroupLayout>
+  established_at_revision: VllmSourceRevision
 }
 
 fn resolved_kv_layout(
@@ -129,6 +130,7 @@ fn resolved_kv_layout(
   max_model_len: TokenCount,
   max_num_batched_tokens: TokenCount,
   groups: List<KvGroupLayout>,
+  established_at_revision: VllmSourceRevision,
 ) -> ResolvedKvLayout {
   ResolvedKvLayout {
     allocator_blocks: allocator_blocks,
@@ -137,6 +139,7 @@ fn resolved_kv_layout(
     max_model_len: max_model_len,
     max_num_batched_tokens: max_num_batched_tokens,
     groups: groups,
+    established_at_revision: established_at_revision,
   }
 }
 
@@ -353,6 +356,74 @@ fn ceil_div(numerator: Nat, denominator: TokenCount) -> Nat? {
     none
   } else {
     Present { value: (numerator + d - 1) / d }
+  }
+}
+
+// ── THE ONE NON-CIRCULAR CHECK: THE GROUPS MUST REPRODUCE THE PRINTED CONCURRENCY ─────────────
+//
+// printed_lines_agree cannot see the inventory, because the inventory cancels out of it. THIS check
+// can, and it is the reason the group layout is worth instrumenting at all: the per-group sum knows
+// nothing about the printed lines, and the printed concurrency knows nothing about the groups, so
+// agreement between them is evidence and disagreement is located -- either the layout was read from
+// a different launch than the lines, or the group metadata is wrong, or the engine's arithmetic is
+// not what this module models.
+//
+// IT IS UNAVAILABLE TODAY, and says so rather than passing. With `groups` empty there is nothing to
+// push forward, so the check refuses; it does not read an absent second opinion as agreement.
+type LayoutReproduction
+  = LayoutReproducesReported { blocks_per_max_request: AllocatorBlockCount }
+  | LayoutContradictsReported { predicted: ConcurrentRequestHundredths, reported: ConcurrentRequestHundredths }
+  | LayoutReproductionUnavailable { cause: NonEmptyStr }
+
+fn revision_is_modelled(r: VllmSourceRevision) -> Bool {
+  (r.repository as String) == (vllm_source_revision_read.repository as String)
+    && (r.full_revision as String) == (vllm_source_revision_read.full_revision as String)
+}
+
+// THE CHECK RUNS FORWARD, NOT AS AN EQUALITY BETWEEN TWO INVERSIONS.
+//
+// Truncating integer division compared with == against a figure vLLM prints rounded is a knife
+// edge: a layout that is exactly right can predict 1121 against a printed 1122. The published
+// figure's precision is one hundredth, so the band is ±1 hundredth, not invented.
+//
+// BOTH SIDES CARRY A REVISION. The reported capacity carries the revision of its reading; the
+// layout carries the revision its group arithmetic was established against. A foreign layout
+// joined to a modelled reading is the same class as a foreign reading: a law about code nobody
+// read.
+fn layout_reproduces_reported(layout: ResolvedKvLayout, reported: VllmReportedCapacity) -> LayoutReproduction {
+  if !revision_is_modelled(r: reported.observed_at_revision) {
+    LayoutReproductionUnavailable {
+      cause: join([
+        "the reading was taken at ", reported.observed_at_revision.repository as String, "@", reported.observed_at_revision.full_revision as String,
+        " but the capacity arithmetic modelled here was established against ", vllm_source_revision_read.repository as String, "@", vllm_source_revision_read.full_revision as String,
+        "; the reproduction is not valid across revisions",
+      ], "") as NonEmptyStr,
+    }
+  } else if !revision_is_modelled(r: layout.established_at_revision) {
+    LayoutReproductionUnavailable {
+      cause: join([
+        "the layout's group arithmetic was established at ", layout.established_at_revision.repository as String, "@", layout.established_at_revision.full_revision as String,
+        " but the capacity arithmetic modelled here was established against ", vllm_source_revision_read.repository as String, "@", vllm_source_revision_read.full_revision as String,
+        "; the reproduction is not valid across revisions",
+      ], "") as NonEmptyStr,
+    }
+  } else {
+    match cold_admission_blocks(layout: layout, sequence_budget: layout.max_model_len) {
+      AdmissionCostUnestablished { cause: c } => LayoutReproductionUnavailable { cause: c }
+      AdmissionCostBlocks { blocks: derived } => {
+        let cost = allocator_block_count_value(c: derived)
+        if cost == 0 {
+          LayoutReproductionUnavailable { cause: "the groups sum to no blocks for a full-context request, so no concurrency can be predicted from them" as NonEmptyStr }
+        } else {
+          let predicted = concurrent_request_hundredths(count: (allocator_block_count_value(c: layout.allocator_blocks) * 100) / cost)
+          if hundredths_within_printed_precision(predicted: predicted, reported: reported.max_concurrency) {
+            LayoutReproducesReported { blocks_per_max_request: derived }
+          } else {
+            LayoutContradictsReported { predicted: predicted, reported: reported.max_concurrency }
+          }
+        }
+      }
+    }
   }
 }
 
