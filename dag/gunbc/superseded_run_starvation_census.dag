@@ -168,6 +168,8 @@ type CensusResult
       cause: NonEmptyStr
     }
 
+data census_subject: NonEmptyStr = "gunbc.superseded_run_starvation_census"
+
 fn collect_runs_in_window(
   auth_token: String,
   owner: String,
@@ -199,11 +201,11 @@ fn collect_runs_in_window(
     }
   } else {
     let subject = github_listing_subject(
-      operation: "gunbc.superseded_run_starvation_census" as NonEmptyStr
+      operation: census_subject
     )
     let fetch = fn(c: PageCursor) -> PageObservation<WorkflowRun> {
-      let page_num: Int = match c {
-        OffsetPage { page: n } => n as Int
+      let page_num = match c {
+        OffsetPage { page: n } => n
         _ => 1
       }
       let response = github.WorkflowRuns.ListWorkflowRuns(
