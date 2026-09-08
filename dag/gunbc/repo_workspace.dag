@@ -39,6 +39,12 @@ fn own_tool_footprints() -> List<WorkspaceFootprint> {
       ]
     },
     WorkspaceFootprint {
+      provenance: RepoTool { display: "Derived failure-mode roster", owner_module: "gunbc.recurring_failure_mode" },
+      artifacts: [
+        WorkspaceArtifact { pattern: "/dag/gunbc/recurring_failure_mode/roster.dag", meaning: "membership list derived from sibling row files before compile; not a second authored authority", reason: RegenerableFromSource }
+      ]
+    },
+    WorkspaceFootprint {
       provenance: RepoTool { display: "Generator stamp files", owner_module: "gunbc.generated_artifact" },
       artifacts: [
         WorkspaceArtifact { pattern: ".*-stamp", meaning: "producer-centric generator stamps", reason: RegenerableFromSource }

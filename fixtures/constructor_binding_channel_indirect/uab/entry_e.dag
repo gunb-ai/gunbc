@@ -1,0 +1,7 @@
+module uab.entry_e
+
+import uab.declaring { Shape, pick }
+import uab.ccar_one { ccarry_one }
+
+fn use_e(c: Bool) -> Shape { pick(c: c) }
+fn touch_e() -> Int { ccarry_one() }

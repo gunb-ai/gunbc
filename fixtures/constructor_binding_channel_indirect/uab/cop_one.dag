@@ -1,0 +1,7 @@
+module uab.cop_one
+
+type Boxone
+  = Sq { f_one: Int }
+  | Otherone { z: Int }
+
+fn one_cop_marker() -> Int { 7 }

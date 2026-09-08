@@ -1,0 +1,167 @@
+module gunbc.runner.runner_filtered_egress_receipt
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+
+// WHAT THE MT. COLLINS HOST DID ON BUILD filtered-egress-4, and only that.
+// gunbc.runner.runner_host_filtered_egress states the stance and its acceptance form; this is the
+// run that answered it. The two are separate files because a requirement that edits itself to match
+// whatever the run produced is not a requirement.
+
+data receipt_subject_build: NonEmptyStr = "filtered-egress-4"
+data receipt_subject_kernel_digest: NonEmptyStr = "afbe96b0ce68b2364a5fee0b5a61582ed4fbd8f73b2d3c9c62f0e807a8519fd2"
+data receipt_subject_guest_digest: NonEmptyStr = "6b7ed14546d881164f8cc933d44234a87a9dcb00ec3a7f7148ff2a7b0d37700e"
+
+// ── the shape of the evidence, which is a PAIR ─────────────────────────────────────────────────
+
+// NEITHER HALF ESTABLISHES A POLICY ALONE. A guest that failed to connect proves nothing: routing
+// failure, DNS failure, an absent listener and a firewall drop are identical from inside the guest.
+// A counter that advanced proves the rule was reached but not what the guest experienced. Only the
+// pair says a specific rule produced a specific outcome, which is why every row below carries both.
+type PathEvidence
+  = PathAdmitted { destination: NonEmptyStr, guest_result: NonEmptyStr, rule: NonEmptyStr, rule_packets: Int }
+  | PathDenied { destination: NonEmptyStr, guest_result: NonEmptyStr, rule: NonEmptyStr, rule_packets: Int }
+  | PathUnexercised { rule: NonEmptyStr, why_no_verdict: NonEmptyStr }
+
+// ── what the run admitted ──────────────────────────────────────────────────────────────────────
+
+// THREE SEPARATE TCP CONNECTIONS COMPLETED, not one repeated. Two destinations and two points in
+// the probe sequence, so the grant is not an artifact of a single address or a single moment.
+data admitted_paths: List<PathEvidence> = [
+  PathAdmitted {
+    destination: "1.1.1.1:443, first probe in the sequence",
+    guest_result: "CONNECTED -- the guest completed a TCP handshake, so the return path through NAT works and not merely the outbound leg",
+    rule: "guest-tls",
+    rule_packets: 5,
+  },
+  PathAdmitted {
+    destination: "1.1.1.1:443, last probe in the sequence",
+    guest_result: "CONNECTED",
+    rule: "guest-tls",
+    rule_packets: 5,
+  },
+  PathAdmitted {
+    destination: "8.8.8.8:443, a second operator",
+    guest_result: "CONNECTED",
+    rule: "guest-tls",
+    rule_packets: 5,
+  },
+  PathAdmitted {
+    destination: "1.1.1.1:53 UDP, a real RFC 1035 query for example.com A",
+    guest_result: "ANSWERED with the query's own transaction id echoed back, which is what distinguishes a reply from a stray datagram",
+    rule: "guest-dns",
+    rule_packets: 1,
+  },
+]
+
+data masquerade_evidence: NonEmptyStr = "the guest-snat rule counted 4 packets -- masquerade is applied to the first packet of each connection and conntrack carries the rest, so 4 is the number of admitted FLOWS and not of packets forwarded"
+
+// ── what the run denied ────────────────────────────────────────────────────────────────────────
+
+// THE LAN DENIAL IS THE ONE THAT PROVES THE ORDERING. guest-tls admits port 443 to any destination,
+// so 192.168.1.188:443 matches it -- and was still dropped, because guest-to-lan sits above it. The
+// rule order is load-bearing rather than cosmetic, and this row is what shows it holding.
+data denied_paths: List<PathEvidence> = [
+  PathDenied {
+    destination: "192.168.1.228:443, the BMC that controls this very host",
+    guest_result: "refused",
+    rule: "guest-to-bmc",
+    rule_packets: 3,
+  },
+  PathDenied {
+    destination: "172.30.2.2:443, the address slot 2's guest would hold",
+    guest_result: "refused",
+    rule: "guest-to-peer-attempt",
+    rule_packets: 3,
+  },
+  PathDenied {
+    destination: "192.168.1.188:443, a host on the management LAN",
+    guest_result: "refused",
+    rule: "guest-to-lan",
+    rule_packets: 3,
+  },
+  PathDenied {
+    destination: "169.254.169.254:80, the cloud metadata address",
+    guest_result: "refused",
+    rule: "guest-to-link-local",
+    rule_packets: 3,
+  },
+]
+
+// ── what the run did NOT establish ─────────────────────────────────────────────────────────────
+
+// THREE DENY RULES SIT AT ZERO AND ARE THEREFORE UNEVIDENCED. They are written, installed and read
+// back, and nothing in this run shows them stopping anything. Counting them among the proven
+// denials because they are siblings of proven ones is precisely the inflation the ladder forbids --
+// a rule's presence is not its execution.
+data unexercised_paths: List<PathEvidence> = [
+  PathUnexercised { rule: "guest-to-private-10", why_no_verdict: "no probe targeted 10.0.0.0/8" },
+  PathUnexercised { rule: "guest-to-private-172", why_no_verdict: "no probe targeted 172.16.0.0/12 outside the attempt supernet" },
+  PathUnexercised { rule: "guest-to-multicast", why_no_verdict: "no probe targeted 224.0.0.0/4" },
+  PathUnexercised { rule: "input chain: iif lo and established,related", why_no_verdict: "both at zero -- nothing on this host originated loopback or inbound-reply traffic during the attempt, so the host's own input policy is installed but unexercised" },
+]
+
+// THE DEFAULT DROP NEVER FIRED, AND THAT IS THE READING THAT MATTERS. forward-default-drop counted
+// zero packets, which means every packet the guest sent matched a rule written for it. A nonzero
+// count would have meant traffic existed that no author had considered -- the interesting failure,
+// and it did not occur.
+data forward_default_drop_packets: Int = 0
+
+data host_input_default_drop_packets: Int = 34
+
+// ── IPv6 ───────────────────────────────────────────────────────────────────────────────────────
+
+// THE GUEST COULD NOT REACH OVER v6 WHAT v4 DENIED. Disabling v6 on the data path is what makes the
+// v4 ruleset the whole policy rather than half of it; without this the default-deny claim would be
+// false no matter how the v4 counters read.
+data ipv6_evidence: NonEmptyStr = "disable_ipv6 read back as 1 on the host data path, and the guest's probe to 2606:4700:4700::1111:443 did not connect"
+
+// ── retirement ─────────────────────────────────────────────────────────────────────────────────
+
+// THE PREVIOUS RUN LEFT THE TABLE BEHIND. Rules naming a dead attempt's guest address outlived the
+// attempt, so the next attempt in that slot would have inherited a filter written for someone else.
+// The acceptance list had named that as a leak before the run produced it, which is the only reason
+// it was looked for.
+data retirement_evidence: List<NonEmptyStr> = [
+  "the table is deleted at retirement and a read-back afterwards finds no table",
+  "no nft process survives the attempt -- the installer ran once and exited",
+  "the tap, the per-attempt cgroup and the guest process are all gone, as in the previous receipts",
+]
+
+// ── two things this run did not resolve ────────────────────────────────────────────────────────
+
+// THE PREVIOUS BUILD'S TLS FAILURE DID NOT REPRODUCE, AND THE PROBE ADDED TO EXPLAIN IT THEREFORE
+// EXPLAINED NOTHING. On filtered-egress-3 the guest-tls rule accepted three packets and the
+// connection never completed, while DNS to the same host succeeded seconds later. A late repeat was
+// added to separate warm-up ordering from a policy cause -- and on this build the EARLY probe
+// connected too, so the discriminator had nothing to discriminate.
+//
+// A DIVERGENCE BETWEEN TWO RUNS OF NEARLY THE SAME IMAGE IS ITSELF THE FINDING. Naming it
+// "intermittent" and moving on would be the absorbing arm: the reason one run's first TCP
+// connection failed is unknown, and calling it warm-up because that was the hypothesis on hand
+// would be inventing a cause to fit a symptom.
+data unresolved_tls_divergence: NonEmptyStr = "on filtered-egress-3 the first TLS probe failed with its grant rule counting 3 packets; on filtered-egress-4, same policy, it connected. The cause is unknown and the added late probe did not isolate it"
+
+// AND ONE INSTRUMENT IS STILL MISSING. /proc/net/nf_conntrack reads empty because
+// CONFIG_NF_CONNTRACK_PROCFS is not set; nf_conntrack_count read 3, so conntrack itself is working
+// and only the per-connection listing is unavailable. That is a gap in what can be OBSERVED, not in
+// what is enforced, and it is recorded rather than papered over.
+data conntrack_observation_gap: NonEmptyStr = "nf_conntrack_count read 3 and the established,related rule accepted 16 packets, so conntrack works; /proc/net/nf_conntrack is empty because CONFIG_NF_CONNTRACK_PROCFS is unset, so per-connection detail cannot be read"
+
+// ── what this permits the offer to claim ───────────────────────────────────────────────────────
+
+// DefaultDenyEgress IS NOW EARNED FOR THIS TOPOLOGY AND THIS RULESET, and that scope is the whole
+// claim. gunbc.runner.runner_isolation_admission may move it from `withheld` to `evidenced` on the
+// Mt. Collins offer, citing this receipt.
+//
+// PrivateNetworkNamespace STAYS WITHHELD AND IS A DIFFERENT FACT. The VMM still shares the host
+// network namespace -- --netns was never passed -- and a filtered forward path does not supply an
+// unshared namespace. Letting one receipt discharge both guarantees is exactly the bundling the
+// offer/class split was introduced to stop.
+data guarantee_now_evidenced: NonEmptyStr = "DefaultDenyEgress, for a routed point-to-point guest under this ruleset, with the three unexercised deny rules named above as the residue"
+data guarantee_still_withheld: NonEmptyStr = "PrivateNetworkNamespace -- the VMM still shares the host network namespace, which no amount of forward filtering supplies"
+
+// AND THE CLAIM IS ABOUT A PROBE GUEST, NOT ABOUT A JOB. This guest ran one script as PID 1 and
+// contributed exactly the traffic the experiment intended. Arbitrary job code will reach for
+// destinations no probe listed, and the first of those to fall through will land on
+// forward-default-drop -- which is the correct outcome and will be visible as a nonzero counter.
+data population_this_receipt_covers: NonEmptyStr = "one probe guest under RunnerHostQualificationProbe; a real job's traffic is broader and its first unlisted destination will be refused, by design, and countable"

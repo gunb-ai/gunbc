@@ -2,6 +2,7 @@ module v2.workflow.floor_changed_witness
 
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
+  required_floor_disposition_name,
   Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember, DeclinedCostDebt,
   DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
   ChangedWitnessCostPolicy, OrdinaryChangedWitnessCostPolicy, ChangedCostDebtVerdictOnly,
@@ -320,13 +321,64 @@ type ChangedWitnessRow {
   standing: ChangedWitnessExecutionStanding
 }
 
-// THE ONE FOLD OVER THE CHANGED SET: the identities whose standing blocks, in input order.
-// Zero changed identities is the positive control — an empty list in, an empty list out, and
-// the required context stays green with zero projection lines.
-fn changed_witness_blocking_identities(rows: List<ChangedWitnessRow>) -> List<String> {
+// ONE BLOCKING ROW AS ITS CONSUMER RECEIVES IT: the identity, and the CAUSE that made it block.
+//
+// THE DEFECT THIS SHAPE CLOSES (`gunbc.recurring_failure_mode`
+// `non_verdict_disposition_surfaces_as_refusal`, second receipt, gunbc#10781). The fold below
+// used to return `List<String>`, so every standing this module distinguishes — a declined
+// witness that NEVER RAN, a planned witness that ran and reached no verdict, an identity the
+// disposition receipt has no row for — arrived at the merge gate as one undifferentiated
+// identity list under one constant cause. Measured on gunbc#10757: fifteen identities counted
+// `declined_changed_witness_outside_discovery=15` in the run's own disposition artifact and
+// `cause=changed_witness_blocking` in its measurement receipt, with zero claims failed. The
+// distinction was COMPUTED here and thrown away one line later, which is the worse shape of the
+// two — the information existed.
+//
+// THE CAUSE IS NOT A NEW FACT. It is the standing this module already derived, projected at the
+// grain the receipt prints, so nothing downstream has to re-derive or guess it. A decline is
+// discharged by making the identity reachable or by declaring it unreachable; a rerun discharges
+// neither, and a cause that says `changed_witness_blocking` offers only the rerun.
+type ChangedWitnessBlocker {
+  identity: String
+  cause: String
+}
+
+// THE CAUSE OF ONE BLOCKING STANDING. Total over the same coproduct `changed_witness_standing_blocks`
+// matches, so an eighth standing must be given a cause here and cannot be absorbed into a
+// neighbour's. The green arms are spelled and answer with the empty string: they are never read
+// (only blocking rows become blockers) and returning a plausible cause for a row that does not
+// block would be a fabricated diagnostic waiting to be printed.
+//
+// The `Declined` cause IS the disposition's own wire name from `v2.workflow.required_floor`
+// `required_floor_disposition_name`, verbatim and unprefixed. That is what separates "outside
+// discovery" from "outside the gate closure" at the consumer, and the spelling is shared rather
+// than decorated on purpose: the measurement receipt and the disposition artifact then name the
+// same fact with the same string, which is the join gunbc#10757 required a human to make by
+// reading two files side by side.
+fn changed_witness_blocking_cause(standing: ChangedWitnessExecutionStanding) -> String {
+  match standing {
+    PlannedAndPassed => ""
+    PlannedAndKnownRedHeld => ""
+    PlannedAndPassedWithCostDebtObserved { observation: _ } => ""
+    CostObservationMissingUnderVerdictOnly => "changed_witness_cost_observation_missing_under_verdict_only"
+    PlannedWithoutTerminalVerdict => "changed_witness_planned_without_terminal_verdict"
+    HermeticRouteGapHeldAndWetPassed { evidence: _, identity: _, candidate: _ } =>
+      "changed_witness_hermetic_route_gap_wet_join_incomplete"
+    Declined { disposition: d } => required_floor_disposition_name(d: d)
+    MissingDisposition => "changed_witness_missing_disposition"
+  }
+}
+
+// THE ONE FOLD OVER THE CHANGED SET: the rows whose standing blocks, each carrying its cause, in
+// input order. Zero changed identities is the positive control — an empty list in, an empty list
+// out, and the required context stays green with zero projection lines.
+fn changed_witness_blockers(rows: List<ChangedWitnessRow>) -> List<ChangedWitnessBlocker> {
   reverse(fold(rows, init: [], f: fn(acc, row) {
     if changed_witness_standing_blocks(standing: row.standing) {
-      concat([row.identity], acc)
+      concat(
+        [ChangedWitnessBlocker { identity: row.identity, cause: changed_witness_blocking_cause(standing: row.standing) }],
+        acc
+      )
     } else {
       acc
     }
