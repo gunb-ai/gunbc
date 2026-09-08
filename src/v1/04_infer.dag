@@ -7031,7 +7031,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                     if (call_ambiguity_cands |> count) > 0 {
                       [make_error_node(diagnostic: AmbiguousReference { name: func_name, candidates: call_ambiguity_cands, span: span }, module_name: scope.module_name)]
                     } else {
-                      let method_blocking_diags = relocated_algebra_evidence_diags(diags: method_resolution.diagnostics |> filter(d => is_interpreter_blocking_diagnostic(d.diagnostic)), span: span, module_name: scope.module_name)
+                      let method_blocking_diags = method_resolution.diagnostics |> filter(d => is_interpreter_blocking_diagnostic(d.diagnostic))
                       if method_blocking_diags |> count > 0 {
                         method_blocking_diags
                       } else {
