@@ -1,0 +1,38 @@
+module test.claim.spark.fabric_capacity_standing_witness
+
+import std.types { Bool, String }
+import gunbc.instruments.fabric_capacity_standing {
+  CapacityProbeRead, ProbeFields, ProbeUnreadable, decode_probe,
+}
+
+fn w_lines(running: String, waiting: String) -> String {
+  join([
+    "inv-a",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "deadbeef",
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "1788000000",
+    "1500000",
+    "1122",
+    "54475",
+    "16",
+    "1048576",
+    running,
+    waiting,
+  ], "\n")
+}
+
+test fn a_metrics_dash_for_running_or_waiting_refuses_rather_than_reading_as_idle() -> Bool {
+  (match decode_probe(stdout: w_lines(running: "-", waiting: "0")) {
+     ProbeUnreadable { detail: d } => string_contains(s: d, pattern: "num_requests_running")
+     ProbeFields { fields: _ } => false
+   })
+    && (match decode_probe(stdout: w_lines(running: "0", waiting: "-")) {
+          ProbeUnreadable { detail: d } => string_contains(s: d, pattern: "num_requests_waiting")
+          ProbeFields { fields: _ } => false
+        })
+    && (match decode_probe(stdout: w_lines(running: "0", waiting: "0")) {
+          ProbeFields { fields: f } => f.running == 0 && f.waiting == 0
+          ProbeUnreadable { detail: _ } => false
+        })
+}

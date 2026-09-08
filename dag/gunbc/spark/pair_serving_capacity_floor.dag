@@ -3,7 +3,7 @@ module gunbc.spark.pair_serving_capacity_floor
 import std.types { Bool, String, Int, NonEmptyStr, List }
 import v2.std.optional { Present, Absent }
 import std.nat { Nat }
-import std.measure { TokenCount, token_count, token_count_value, AllocatorBlockCount, allocator_block_count_value }
+import std.measure { TokenCount, token_count, AllocatorBlockCount, allocator_block_count, allocator_block_count_value }
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, launch_wire }
 import gunbc.spark.vllm_kv_layout_observe {
   VllmKvLayoutReceipt, KvLayoutObserved, KvLayoutUnreadable, KvLayoutInconsistent,
@@ -50,8 +50,8 @@ data spark_pair_serving_minimum_cold_sessions: MinimumColdSessions = MinimumCold
 // session count. Both come from the receipt's own layout, so a floor assessment is a statement about
 // THE ENGINE THE RECEIPT DESCRIBES and nothing else.
 type CapacityFloorStanding
-  = MeetsFloor { required_blocks: Nat, available_blocks: Nat }
-  | BelowFloor { required_blocks: Nat, available_blocks: Nat }
+  = MeetsFloor { required_blocks: AllocatorBlockCount, available_blocks: AllocatorBlockCount }
+  | BelowFloor { required_blocks: AllocatorBlockCount, available_blocks: AllocatorBlockCount }
   | FloorUnestablished { cause: NonEmptyStr }
 
 fn capacity_floor_standing(receipt: VllmKvLayoutReceipt, floor: MinimumColdSessions) -> CapacityFloorStanding {
@@ -64,9 +64,9 @@ fn capacity_floor_standing(receipt: VllmKvLayoutReceipt, floor: MinimumColdSessi
       match cold_admission_blocks(layout: layout, sequence_budget: floor.maximum_sequence_tokens) {
         AdmissionCostUnestablished { cause: c } => FloorUnestablished { cause: c }
         AdmissionCostBlocks { blocks: per_request } => {
-          let required = allocator_block_count_value(c: per_request) * floor.sessions
-          let available = allocator_block_count_value(c: layout.allocator_blocks)
-          if required > available {
+          let required = allocator_block_count(count: allocator_block_count_value(c: per_request) * floor.sessions)
+          let available = layout.allocator_blocks
+          if allocator_block_count_value(c: required) > allocator_block_count_value(c: available) {
             BelowFloor { required_blocks: required, available_blocks: available }
           } else {
             MeetsFloor { required_blocks: required, available_blocks: available }
@@ -88,14 +88,14 @@ fn capacity_floor_standing(receipt: VllmKvLayoutReceipt, floor: MinimumColdSessi
 // where the capacity is merely unknown. Whether to then restart is a separate question with its own
 // preconditions, asked below.
 type AdmissionPosture
-  = Admitting { available_blocks: Nat }
+  = Admitting { available_blocks: AllocatorBlockCount }
   | Withdrawn { cause: NonEmptyStr }
 
 fn admission_posture(standing: CapacityFloorStanding) -> AdmissionPosture {
   match standing {
     MeetsFloor { required_blocks: _, available_blocks: a } => Admitting { available_blocks: a }
     BelowFloor { required_blocks: r, available_blocks: a } =>
-      Withdrawn { cause: join(["the engine is below the declared floor: ", to_string(r), " blocks required, ", to_string(a), " available"], "") as NonEmptyStr }
+      Withdrawn { cause: join(["the engine is below the declared floor: ", to_string(allocator_block_count_value(c: r)), " blocks required, ", to_string(allocator_block_count_value(c: a)), " available"], "") as NonEmptyStr }
     FloorUnestablished { cause: c } =>
       Withdrawn { cause: join(["the engine's capacity is unestablished, so it is withdrawn rather than assumed adequate: ", c as String], "") as NonEmptyStr }
   }
@@ -185,7 +185,7 @@ fn restart_admission(
 // and a receipt describing the incarnation that was just replaced does not count, which is why the
 // fresh receipt is joined rather than assumed.
 type ReAdmission
-  = ReAdmitted { incarnation: VllmServingLaunch, available_blocks: Nat }
+  = ReAdmitted { incarnation: VllmServingLaunch, available_blocks: AllocatorBlockCount }
   | ReAdmissionRefused { cause: NonEmptyStr }
 
 fn re_admit(fresh: VllmKvLayoutReceipt, floor: MinimumColdSessions) -> ReAdmission {
@@ -199,7 +199,7 @@ fn re_admit(fresh: VllmKvLayoutReceipt, floor: MinimumColdSessions) -> ReAdmissi
       }
     BelowFloor { required_blocks: r, available_blocks: a } =>
       ReAdmissionRefused {
-        cause: join(["the restarted engine is still below the floor: ", to_string(r), " blocks required, ", to_string(a), " available"], "") as NonEmptyStr,
+        cause: join(["the restarted engine is still below the floor: ", to_string(allocator_block_count_value(c: r)), " blocks required, ", to_string(allocator_block_count_value(c: a)), " available"], "") as NonEmptyStr,
       }
     FloorUnestablished { cause: c } =>
       ReAdmissionRefused { cause: join(["the restarted engine's capacity is unestablished, so it is not re-admitted: ", c as String], "") as NonEmptyStr }

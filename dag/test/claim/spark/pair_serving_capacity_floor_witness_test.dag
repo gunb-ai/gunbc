@@ -4,7 +4,7 @@ import std.types { Bool, String, Int, NonEmptyStr, List }
 import v2.std.optional { Present, Absent }
 import std.nat { Nat }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
-import std.measure { TokenCount, token_count, percent, AllocatorBlockCount, allocator_block_count }
+import std.measure { TokenCount, token_count, percent, AllocatorBlockCount, allocator_block_count, allocator_block_count_value }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
@@ -89,12 +89,14 @@ test fn the_block_requirement_is_derived_from_the_declared_session_floor() -> Bo
   spark_pair_serving_minimum_cold_sessions.sessions == harness_seat_operator_policy_seats
     && with_pool(tokens: 93750 * 16, f: (p) =>
          match capacity_floor_standing(receipt: w_receipt_from(invocation: "inv-a", blocks: 93750, pool: p), floor: spark_pair_serving_minimum_cold_sessions) {
-           MeetsFloor { required_blocks: r, available_blocks: a } => r == 93750 && a == 93750
+           MeetsFloor { required_blocks: r, available_blocks: a } =>
+             allocator_block_count_value(c: r) == 93750 && allocator_block_count_value(c: a) == 93750
            _ => false
          })
     && with_pool(tokens: 93749 * 16, f: (p) =>
          match capacity_floor_standing(receipt: w_receipt_from(invocation: "inv-a", blocks: 93749, pool: p), floor: spark_pair_serving_minimum_cold_sessions) {
-           BelowFloor { required_blocks: r, available_blocks: a } => r == 93750 && a == 93749
+           BelowFloor { required_blocks: r, available_blocks: a } =>
+             allocator_block_count_value(c: r) == 93750 && allocator_block_count_value(c: a) == 93749
            _ => false
          })
 }
@@ -103,7 +105,7 @@ test fn halving_the_declared_budget_halves_the_requirement() -> Bool {
   let half = MinimumColdSessions { maximum_sequence_tokens: token_count(count: 250000), sessions: 3 }
   with_pool(tokens: 93749 * 16, f: (p) =>
     match capacity_floor_standing(receipt: w_receipt_from(invocation: "inv-a", blocks: 93749, pool: p), floor: half) {
-      MeetsFloor { required_blocks: r, available_blocks: _ } => r == 46875
+      MeetsFloor { required_blocks: r, available_blocks: _ } => allocator_block_count_value(c: r) == 46875
       _ => false
     })
 }
@@ -178,7 +180,7 @@ test fn re_admission_is_decided_by_the_new_receipt_not_by_the_restart_having_hap
          ReAdmitted { incarnation: _, available_blocks: _ } => false
        })
         && (match re_admit(fresh: w_receipt_from(invocation: "inv-b", blocks: 93750, pool: ok_pool), floor: spark_pair_serving_minimum_cold_sessions) {
-              ReAdmitted { incarnation: _, available_blocks: a } => a == 93750
+              ReAdmitted { incarnation: _, available_blocks: a } => allocator_block_count_value(c: a) == 93750
               ReAdmissionRefused { cause: _ } => false
             })
     )
