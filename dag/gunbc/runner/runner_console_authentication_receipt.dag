@@ -1,0 +1,117 @@
+module gunbc.runner.runner_console_authentication_receipt
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+
+// REQUESTER AUTHENTICATION, CLOSED OVER A CHANNEL THE DATA SEGMENT CANNOT REACH.
+//
+// The envelope's signature already stopped a peer ANSWERING: a forged reply fails against the
+// control-plane key baked into the image. What it could not stop was a peer ASKING -- the unit id in
+// a request is self-asserted and a MAC is spoofable, so whoever asked first received a genuine
+// credential. That was the oldest open item in this lane.
+
+data receipt_subject_build: NonEmptyStr = "sol-auth-1"
+data receipt_subject_iso_digest: NonEmptyStr = "4a8f976526e5b05a24d046f77620953338398b84d78fc51cd4b8d4b5be66d7fb"
+
+// ── why the console is the right channel ───────────────────────────────────────────────────────
+
+// TPM WAS THE FIRST CANDIDATE AND THE UNIT DOES NOT HAVE ONE.
+// gunbc.runner.runner_host_tpm_observation records the probe: no ACPI TPM2 table, no /sys/class/tpm
+// entry, nothing in dmesg -- taken with CONFIG_TCG_CRB present, so a null result is about the
+// hardware rather than the driver.
+//
+// SERIAL-OVER-LAN IS NOT ON THE DATA SEGMENT. It rides an authenticated RMCP+ session to the
+// controller, so a secret delivered there binds "this host" to "whoever controls this host's BMC" --
+// which is the relationship the control plane already has and a peer on the data segment does not.
+//
+// AND THE BMC ALLOWS ONE SOL SESSION, which is not a limitation to work around but the reason the
+// injection is trustworthy: whoever holds the console holds the only path to it. One process
+// therefore owns the secret, the injection and the capture, because two derivations of "the same"
+// secret is how they stop being the same.
+data channel_rationale: NonEmptyStr = "IPMI SOL reaches the host over an authenticated session to its controller and is not on the data segment; the single-session constraint is what makes holding it meaningful"
+
+// ── the exchange ───────────────────────────────────────────────────────────────────────────────
+
+// THE SECRET NEVER TRAVELS ON THE WIRE. The host proves possession with a digest over the secret
+// bound to this attempt, boot, nonce and unit, so an observer on the data segment learns nothing
+// reusable -- the proof is valid for one request and no other.
+data exchange: List<NonEmptyStr> = [
+  "the host prints AWAITING-BOOT-SECRET and reads one line from its console with echo disabled",
+  "the control plane, watching the same session, writes the secret it will verify against",
+  "each attempt sends sha256(secret:boot:attempt:nonce:unit) as auth; the secret itself is never sent",
+  "the server recomputes and compares with a constant-time equality before minting anything",
+]
+
+// ECHO IS OFF BEFORE THE READ AND THAT IS NOT COSMETIC. The host's console is captured into receipts
+// that get committed; a secret echoed by the tty would land in the repository. The run asserts the
+// absence rather than assuming it -- the capture was searched for the injected value and did not
+// contain it.
+data secret_absent_from_capture: NonEmptyStr = "the capture was searched for the injected secret on both runs and did not contain it; the host reports the byte count instead, which says the delivery worked without saying what was delivered"
+
+// ── both arms, on real hardware ────────────────────────────────────────────────────────────────
+
+// A CHECK THAT HAS ONLY SEEN THE RIGHT SECRET IS NOT KNOWN TO REJECT A WRONG ONE, so the injector
+// takes a mode and the same code path was run twice with different inputs.
+type AuthArm {
+  injected: NonEmptyStr
+  server: NonEmptyStr
+  host: NonEmptyStr
+  launches: Int
+}
+
+data accepted_arm: AuthArm = AuthArm {
+  injected: "the secret the server holds",
+  server: "signed envelopes for both attempts",
+  host: "request-auth-bytes=64, envelope-signature=verified, jit-admission=yes",
+  launches: 2,
+}
+
+data refused_arm: AuthArm = AuthArm {
+  injected: "a different 48-character secret, deliberately",
+  server: "REFUSED attempt 1: bad auth from 192.168.1.230, and the same for attempt 2 -- refused BEFORE minting, so no registration was created",
+  host: "envelope-bytes=0, jit-admission=no, ATTEMPT REFUSED on both attempts",
+  launches: 0,
+}
+
+data accepted_run_job: NonEmptyStr = "actions run 34161285783 completed successfully on the accepted arm"
+
+// THE REFUSAL COSTS NOTHING AT GITHUB, which matters as much as the host refusing. The server checks
+// auth before generate-jitconfig, so a bad requester does not leave an unredeemed registration
+// behind for someone to clean up -- the runner population was empty after the refused run.
+data refusal_mints_nothing: NonEmptyStr = "auth is verified before the credential is minted, so a refused request creates no registration; the runner population read empty afterwards"
+
+// ── what this establishes, and what it does not ────────────────────────────────────────────────
+
+// A PEER ON THE DATA SEGMENT CANNOT NOW OBTAIN A CREDENTIAL. It cannot forge the answer, and it
+// cannot produce the proof the request requires, because the secret reached the real host over a
+// channel that peer has no access to.
+//
+// IT DOES NOT ATTEST THE HARDWARE. An attacker holding BMC credentials is indistinguishable from the
+// operator here -- and that is the correct bar rather than a gap, because such an attacker can
+// already attach media and boot whatever they like. The authentication is exactly as strong as the
+// BMC credential, and saying so is the honest ceiling.
+data what_is_closed: NonEmptyStr = "a peer on the data segment can neither forge an envelope nor obtain one; both directions of the credential path are now authenticated"
+
+data what_is_not_closed: NonEmptyStr = "this is not hardware attestation: a holder of BMC credentials is indistinguishable from the operator, which is the correct bar because such a holder can already boot arbitrary media"
+
+// ── one weakness in the host's refusal ─────────────────────────────────────────────────────────
+
+// THE HOST CANNOT TELL A REJECTION FROM A NETWORK FAILURE. busybox wget discards the HTTP status, so
+// a 403 and an unreachable server both arrive as an empty file and the host reports "no envelope was
+// fetched". The arm is still fail-closed -- it refuses either way -- but an operator reading the host
+// log alone cannot tell a bad secret from a down control plane.
+//
+// THE SERVER'S LOG CARRIES THE DISTINCTION and the two together are unambiguous, which is how it was
+// read here. Making the host's own refusal name the cause needs a client that surfaces the status.
+data host_refusal_weakness: NonEmptyStr = "the host reports 'no envelope was fetched' for both a 403 and an unreachable server, because busybox wget discards the status; the server log carries the distinction and only the pair is unambiguous"
+
+// ── an operational defect this run surfaced ────────────────────────────────────────────────────
+
+// THE PUBLISH SCRIPT WROTE TO A DIRECTORY NOTHING SERVES. The presentation cache had been flattened
+// to the share root because the controller cannot mount a nested export, and the publisher was left
+// pointing at the subdirectory it was written for -- so it staged, renamed and verified the bytes
+// perfectly, in a location the BMC does not enumerate.
+//
+// THE READ-BACK PASSED, WHICH IS THE POINT. Verifying content at the destination says nothing about
+// whether the destination is the one a consumer reads. That is a placement fact, and nothing checked
+// it.
+data publish_placement_defect: NonEmptyStr = "the publisher wrote digest-named bytes to /srv/bmc/by-digest after the cache was flattened to /srv/bmc; the read-back verified the content and could not notice the location was unserved"

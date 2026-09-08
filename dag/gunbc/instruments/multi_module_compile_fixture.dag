@@ -66,6 +66,19 @@ import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
 // modules the RESOLVE stage produced, read from the resolved graph - not the length of the supplied
 // list. A control comparing it against the manifest is therefore a join between two different
 // producers rather than measure() == measure().
+//
+// SIGNATURE SHAPE IS OBSERVABLE AS A STRUCTURED RUST PROJECTION OVER THE RESOLVED
+// REGISTRY, not as contents-by-path and not as a read of emitted bytes. On
+// FixtureCompileCompleted the field resolved_rust_functions carries List<ResolvedRustFnSignature>
+// — per FnItem/FuncItem in item_registry: source owner_module + declaration_name and the
+// ordered parameter name list derived from that registry row (emit_ident / service_var_name
+// transforms applied). Witnesses assert over that list; raw text is not offered as an assertion
+// surface. Discriminating RED: test.claim.resolved_rust_fn_projection_witness.
+//
+// THIS IS NOT AN EMITTED-ARTIFACT OBSERVATION. The projection runs on the resolved graph before
+// emit_resolved_for_target; a defect solely inside emit_func_params / emit_func_def can leave
+// witnesses green. The subject grain is the registry binding the emitter *will read*, not the
+// bytes it writes. Next-rung trigger below covers climbing to a true emit join.
 
 type FixtureSource {
   path: NonEmptyStr
@@ -76,6 +89,83 @@ type MultiModuleCompileFixture {
   sources: List<FixtureSource>
   entry: NonEmptyStr
 }
+
+// THE STRUCTURED PROJECTION WITNESSES ASSERT OVER. Per resolved FnItem/FuncItem on each
+// TypedModule.item_registry (NOT the bare-name-merged ResolvedGraph.item_registry): source
+// identity (owning module + declaration name) and the PARAMETER NAME LIST taken from ItemInfo
+// with the same per-arm name transforms emit_func_params applies today (emit_ident for authored
+// and resource arms; service_var_name for services), concatenated authored → resource → service.
+// The merged graph registry is bare-name keyed across the closure; publishing from it alone would
+// drop colliding names and make lookup report Absent for a function that resolved — fail-open on
+// every negative control if we only published the survivor. So the walk is per TypedModule and
+// rows are keyed (owner_module, declaration_name). When the same bare Fn/Func name appears in two
+// or more modules, those rows are OMITTED (lookup → ResolvedRustFnAbsent) — never
+// FixtureInstrumentRefused, and never a fallback to the un-expanded per-module ItemInfo.
+// expand_transitive_services writes only the merged registry, and emit_func_def looks up services
+// by bare name on that same map; publishing the loser's un-expanded row would omit service_names
+// while the emitter still binds the survivor's — a silent wrong answer. Present/absent consumers
+// already treat Absent as false on both polarities, so omission is fail-closed. Non-colliding
+// names overlay the expanded graph row when it still names this module under that bare name.
+
+// The type name says Rust because compile_fixture is Rust-target only; a target-agnostic name
+// over that reader would be the DESIGN section 3 meaning fork. The field name
+// resolved_rust_functions / ResolvedRustFnSignature names the registry grain (and the Rust
+// target); it does not claim a read of emitted file bytes — an `emitted_*` spelling over this
+// pre-emit reader would be the meaning fork DESIGN §3 forbids.
+//
+// NAMES ONLY — PERMANENT CEILING, NO NEXT-RUNG TRIGGER. Parameter TYPES and return types are
+// absent on purpose: asserting over emitted type spellings turns a control into a change detector
+// for Rc<Vec<T>> renderings. Consequence: this projection cannot distinguish two parameters that
+// differ only in type, and cannot see a type-only change that matters. That is a deliberate
+// boundary of this carrier's contract, not a stall below a higher rung — there is no capability
+// this instrument is waiting on that would lift it; a type-sensitive claim needs a different
+// projection. Do not assert type-sensitivity over it.
+//
+// REGISTRY MIRROR, NOT EMIT JOIN — BELOW CEILING (ORDER AND MEMBERSHIP). DESIGN §3b middle
+// value: deliberate divergence from single-authority emit binding, WITH A STATED REASON — not
+// an unstated fork. The projection is a second walk over ItemInfo, not a consumption of
+// emit_func_params' value. WHAT REFUSES IF emit_func_params (or emit_func_def's use of it) AND
+// THIS PROJECTION DISAGREE — on order OR on who is present? Nothing. Concrete drift surface
+// already visible: emit_func_params' resource arm folds `uses` nodes via resource_use_name_at;
+// this walk reads ItemInfo.resource_names. A reorder, a dropped service_names arm inside emit,
+// or resource-name divergence leaves every witness green while the artifact binds differently
+// (gunbc.recurring_failure_mode subject_and_its_digest_as_independent_parameters).
+//
+// WHY THE DIVERGENCE IS THE RIGHT SHAPE FOR THIS INSTRUMENT (the §3b reason, not a manager
+// citation). Consumers of compile_fixture need a membership surface over resolved fn bindings
+// without coupling every fixture witness to emit_rust regeneration. The durable contract here is
+// registry-grain lookup + resolved_rust_fn_has_parameter; that API is what must survive. The
+// second walk is the temporary producer — §6's "will this artifact survive" test applies to the
+// throwaway walk, which the next-rung trigger deletes, not to the carrier or its consumers.
+// Joining emit on this same PR would turn an instrument lane into an emit_rust regen lane and
+// couple it to #10688's live surface on the same files — two held PRs each waiting on the other.
+// DESIGN §5: an in-diff row claiming approval does not authorize the debt; the reason above is
+// what admits the middle value.
+//
+// NEXT-RUNG TRIGGER (DESIGN 4b(2) — the CAPABILITY, not an artifact): the projection is DERIVED
+// from the same source emit_func_params reads (or from the emit result that source produces),
+// rather than mirroring ItemInfo by a second walk, so neither order nor membership can
+// desynchronise from what the Rust emitter binds into the artifact. WHY UNBUILT (reason, not
+// trigger): that derivation lives in the emit_rust / emit_core_support seed surface; landing it
+// here means regenerating those modules and crossing #10688's open edit surface on the same
+// files. Until the trigger capability holds, this remains a registry projection. The honest rung
+// (§4b(1) minimum across paths) is this order/membership stall, not the names-only permanent
+// ceiling above it.
+//
+// THIS IS NOT A CONTENTS GREP SURFACE. Emitted file paths still travel on FixtureCompileCompleted
+// for provenance; the projection is the only population a witness may ask about signature shape
+// at this grain. A consumer that wants raw text is outside this instrument's contract — handing
+// String would re-author the permanently-green substring trap this projection exists to make
+// unwritable.
+type ResolvedRustFnSignature {
+  owner_module: String
+  declaration_name: String
+  ordered_parameter_names: List<String>
+}
+
+type ResolvedRustFnLookup
+  = ResolvedRustFnFound { signature: ResolvedRustFnSignature }
+  | ResolvedRustFnAbsent
 
 type MultiModuleCompileFixtureOutcome
   = FixtureInstrumentRefused { cause: NonEmptyStr }
@@ -88,6 +178,7 @@ type MultiModuleCompileFixtureOutcome
   | FixtureCompileCompleted {
       module_count: Int
       emitted_files: List<String>
+      resolved_rust_functions: List<ResolvedRustFnSignature>
       diagnostics: List<CompileDiagnosticCensusRow>
       source_digest: NonEmptyStr
       compiler_digest: NonEmptyStr
@@ -119,4 +210,29 @@ fn fixture_rows_of_class(rows: List<CompileDiagnosticCensusRow>, wanted: String)
 
 fn fixture_has_class(rows: List<CompileDiagnosticCensusRow>, wanted: String) -> Bool {
   count(fixture_rows_of_class(rows, wanted)) > 0
+}
+
+// PURE READS OVER THE PROJECTION LIST, never over the outcome. Looking up a function by source
+// identity returns ResolvedRustFnAbsent when no row matches — never an empty parameter list wearing
+// a found answer (DESIGN section 5: blank is not evidence of a nullary function). Consumers that
+// assert a parameter is ABSENT must require ResolvedRustFnFound and then negate membership —
+// mapping Absent to "lacks parameter" greens when the row was dropped entirely.
+fn resolved_rust_fn_lookup(
+  functions: List<ResolvedRustFnSignature>,
+  owner_module: String,
+  declaration_name: String
+) -> ResolvedRustFnLookup {
+  let matches = functions |> filter(f =>
+    f.owner_module == owner_module && f.declaration_name == declaration_name
+  )
+  match matches |> first {
+    Present { value: sig } => ResolvedRustFnFound { signature: sig }
+    Absent => ResolvedRustFnAbsent
+  }
+}
+
+// MEMBERSHIP, not position. Prefer this over indexing ordered_parameter_names unless the
+// subject's claim is specifically about emit_func_params layout.
+fn resolved_rust_fn_has_parameter(signature: ResolvedRustFnSignature, parameter_name: String) -> Bool {
+  signature.ordered_parameter_names |> any(n => n == parameter_name)
 }

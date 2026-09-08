@@ -1,0 +1,131 @@
+module gunbc.host_reset_subject_roster
+
+import std.types { Bool, List, NonEmptyStr, String }
+import product.placement_supply { HostIdentity }
+import extdeps.bmc.access_profile { BmcAccessObservation }
+import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
+import gunbc.machine_intake_oob_boot_handoff {
+  OobBootHandoffAdmission,
+  oob_boot_handoff_admission,
+  oob_handoff_is_admitted,
+}
+import gunbc.machine_intake_mtcollins1_access_observation {
+  mtcollins1_access_observation,
+  mtcollins1_capability_row,
+}
+import gunbc.machine_intake_mtcollins1_actuate {
+  mtcollins1_bmc_username,
+  mtcollins1_cdrom_device,
+  mtcollins1_cdrom_readback_rendering,
+  mtcollins1_power_action,
+}
+import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.fleet_runner_connectivity { fleet_hosts }
+
+// WHICH HOSTS THIS FLEET MAY DRIVE BACK TO A KNOWN STATE THROUGH THEIR CONTROLLERS, and it is a
+// DERIVED SUBSET rather than a list anyone maintains.
+//
+// "MAY HAVE ITS POWER DRIVEN OUT OF BAND" IS NOT "IS AN EXECUTOR FLEET HOST", and conflating the two
+// is the §3 meaning fork this module exists to avoid. gunbc.fleet_runner_connectivity fleet_hosts()
+// means "commits runner slots" -- its consumers fold it as an eligible host set and to gather
+// committed slot identities -- so a host reachable only through its BMC does not belong in it, and a
+// host with runner slots is not thereby drivable out of band. Two predicates, two rosters, one
+// naming authority underneath both: every identity here comes from gunbc.fleet_intent_network.
+//
+// MEMBERSHIP IS AN IDENTITY JOIN AGAINST THE ADMISSION THE ACTUATION ARM ALREADY PERFORMS. A host is
+// a reset subject exactly when oob_boot_handoff_admission -- the same fold
+// gunbc.machine_intake_oob_boot_handoff runs before it writes anything to a controller -- admits its
+// observation against its capability row. So the roster cannot drift from the capability it claims
+// to describe: the evidence that authorizes the act is the evidence that produces the membership,
+// and there is no second place to edit.
+// THE PER-HOST RESET POLICY TRAVELS WITH THE ROSTER ROW, and that is the layer it belongs to rather
+// than an accident of convenience. gunbc.machine_intake_oob_boot_handoff takes the boot device, the
+// expected read-back rendering and the power action as PARAMETERS precisely because which of them a
+// workflow picks is business policy, and its own note says so; this roster is the workflow-layer
+// authority that picks them for a reset.
+//
+// THE VALUES ARE IMPORTED, NEVER RE-SPELLED. gunbc.machine_intake_mtcollins1_actuate already carries
+// them as measured rows -- the device word, the exact text ipmitool renders for it, the cycle verb
+// the unit's own SEL confirmed takes effect, and the administrator account measured as the only
+// enabled one on the channel. Copying any of them here would be a §3 fork of a MEASUREMENT, which is
+// the worst kind: the copy keeps reading correct long after the unit stops agreeing with it.
+type ResetSubjectCandidate {
+  host: HostIdentity
+  observation: BmcAccessObservation
+  capability_row: BmcFirmwareReleaseCapabilityRow
+  username: NonEmptyStr
+  boot_device: NonEmptyStr
+  boot_readback_rendering: NonEmptyStr
+  power_action: NonEmptyStr
+}
+
+// THE CANDIDATE SET IS EVERY HOST THAT HAS LANDED THE EVIDENCE, ADMITTED OR NOT. It is stated as
+// candidates rather than as members so that the admission fold below has something to refuse: a
+// roster assembled from already-admitted hosts would make its own filter unreachable.
+//
+// THERE IS EXACTLY ONE TODAY AND THAT IS A MEASUREMENT, NOT A CHOICE. Outside test fixtures the
+// corpus carries exactly one landed BmcAccessObserved standing, mtcollins1_access_standing, and
+// gunbc.machine_intake_mtcollins1_access_observation says so about itself -- it is the first landed
+// BmcAccessObservation in the repository and no host, srv3 included, has ever authored one. A second
+// host joins this list the day it authors an observation, and nobody edits a roster to let it.
+fn reset_subject_candidates() -> List<ResetSubjectCandidate> {
+  [
+    ResetSubjectCandidate {
+      host: operator_host_mtcollins1,
+      observation: mtcollins1_access_observation,
+      capability_row: mtcollins1_capability_row,
+      username: mtcollins1_bmc_username,
+      boot_device: mtcollins1_cdrom_device,
+      boot_readback_rendering: mtcollins1_cdrom_readback_rendering,
+      power_action: mtcollins1_power_action,
+    },
+  ]
+}
+
+fn reset_subject_admission(candidate: ResetSubjectCandidate) -> OobBootHandoffAdmission {
+  oob_boot_handoff_admission(
+    observation: candidate.observation,
+    capability_row: candidate.capability_row,
+  )
+}
+
+// THE FILTER IS A PREDICATE, NOT A FAILURE ARM, AND THE DIFFERENCE MATTERS HERE. Dropping a
+// candidate whose controller does not admit power control is not an absorbing fallback swallowing a
+// diagnostic -- it is the membership condition doing its job, and the dropped host is not a loss but
+// a non-member. The refusal that DOES have to be loud is one level up, in
+// gunbc.host_reset_return reset_dispatch_options, where an unmintable observer pairing refuses the
+// whole option list rather than quietly shrinking it.
+fn reset_subject_roster() -> List<NonEmptyStr> {
+  fold(
+    reset_subject_candidates(),
+    init: [],
+    f: (acc, c) =>
+      if oob_handoff_is_admitted(admission: reset_subject_admission(candidate: c)) {
+        concat(acc, [c.host as NonEmptyStr])
+      } else {
+        acc
+      },
+  )
+}
+
+// THE PEERS THAT MAY OBSERVE A RESET are the executor fleet hosts, and this is the one place the two
+// rosters legitimately meet: an observer needs a runner to run on, which is exactly what fleet_hosts()
+// means. Derived from that authority rather than spelled, so enrolling or retiring an executor host
+// moves the observer set with it.
+fn reset_observer_peer_roster() -> List<NonEmptyStr> {
+  map(fleet_hosts(), h => h as NonEmptyStr)
+}
+
+// THE ROW FOR ONE SUBJECT, so a caller that resolved a subject label can reach the evidence and the
+// policy for it without re-walking the roster in its own vocabulary. Absent means the label names no
+// candidate, which a caller must treat as a refusal and never as a host it may drive with defaults.
+fn reset_subject_candidate_for(host: NonEmptyStr) -> ResetSubjectCandidate? {
+  fold(
+    reset_subject_candidates(),
+    init: none,
+    f: (acc, c) => match acc {
+      Present { value: _ } => acc
+      Absent => if (c.host as String) == (host as String) { Present { value: c } } else { acc }
+    },
+  )
+}
