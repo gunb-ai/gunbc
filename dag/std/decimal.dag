@@ -38,6 +38,49 @@ fn fixed_point_wire(value: Int, decimals: Int) -> String {
   }
 }
 
+// THE SAME PROJECTION WITH THE FRACTION ALWAYS PRESENT. fixed_point_wire drops the fraction
+// entirely when it is zero, which is right for its two originating consumers - CSS `scale(1)` and
+// a JS gain of `1` are exactly the values `scale(1.000)` and `1.000000`, so the zeros are
+// cosmetics there. It is WRONG for a money column: a table reading 432.89, 450.69, 579 has lost
+// the alignment that makes a column of figures readable, and a reader cannot tell a whole-dollar
+// amount from a truncation. So the padded arm exists beside the trimming one rather than instead
+// of it - two consumers with genuinely different requirements on the same numeral, which is one
+// concept with two projections and not two concepts.
+//
+// The domain note above applies here unchanged: value must be non-negative, or the sign renders
+// inside the whole part and the fraction reads positive.
+fn fixed_point_wire_padded(value: Int, decimals: Int) -> String {
+  let unit = decimal_pow10(exponent: decimals)
+  let whole = value / unit
+  let frac = value - (whole * unit)
+  join([to_string(whole), ".", zero_pad_left(digits: to_string(frac), width: decimals)], "")
+}
+
+// RENDERING A CARRIER AT A COARSER SCALE THAN IT IS KEPT AT, which is the shape every
+// micro-denominated money figure in this corpus needs. The carrier is right at 10^-6 - integer
+// arithmetic throughout, and a fractional literal in a .dag row would be a second representation
+// of the same number - but six digits past the point puts four digits of precision in front of a
+// reader that the inputs do not have, most of them being planning figures. So the value is
+// rescaled once, here, rather than each consumer dividing by its own literal.
+//
+// THIS IS DELIBERATELY NOT NAMED FOR MONEY. std.measure owns the money vocabulary and cannot be
+// imported here - std.decimal reaches std.bytes, which reaches std.integer, which reaches
+// std.measure, so a money wrapper in the measure module would close a cycle, and DESIGN section 4
+// makes acyclicity the import graph's only structural law. A money-named function in this module
+// would be that cycle avoided by nicknaming instead of by layering, so the operation is stated in
+// the vocabulary this module actually owns: scale, not currency.
+//
+// IT TRUNCATES, in the same direction as every other division here: a remainder below the target
+// scale is dropped rather than rounded, so a rendered figure never exceeds the carried one.
+fn fixed_point_wire_rescaled(value: Int, from_decimals: Int, to_decimals: Int) -> String {
+  let shed = from_decimals - to_decimals
+  if shed <= 0 {
+    fixed_point_wire_padded(value: value, decimals: from_decimals)
+  } else {
+    fixed_point_wire_padded(value: value / decimal_pow10(exponent: shed), decimals: to_decimals)
+  }
+}
+
 fn fixed_point_domain_ok(value: Int, decimals: Int) -> Bool {
   value >= 0 && decimals >= 0
 }
