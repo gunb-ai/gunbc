@@ -635,17 +635,20 @@ fn str_bindings_from_bindings(bindings: Map<Int, TypeBinding>) -> Map<String, Ty
   )
 }
 
-fn lookup_binding_by_name_local(env: TypeEnv, name: String) -> TypeBinding? {
+fn lookup_binding_on_chain(env: TypeEnv, name: String) -> TypeBinding? {
   match map_get(env.str_bindings, name) {
     Present { value: binding } => Present { value: binding }
+    Absent => map_get(env.ancestry_str_bindings, name)
+  }
+}
+
+fn lookup_binding_by_name_local(env: TypeEnv, name: String) -> TypeBinding? {
+  match lookup_binding_on_chain(env: env, name: name) {
+    Present { value: binding } => Present { value: binding }
     Absent =>
-      match map_get(env.ancestry_str_bindings, name) {
-        Present { value: binding } => Present { value: binding }
-        Absent =>
-          match intern_find(table: env.intern_table, s: name) {
-            Present { value: id } => map_get(env.bindings, id)
-            Absent => Absent
-          }
+      match intern_find(table: env.intern_table, s: name) {
+        Present { value: id } => map_get(env.bindings, id)
+        Absent => Absent
       }
   }
 }
@@ -1129,20 +1132,22 @@ fn type_ref_module_path_is_containment_prefix(ancestor: String, descendant: Stri
 }
 
 fn type_ref_measure_binding_authority(env: TypeEnv, name: String) -> Bool {
-  if map_has(m: env.str_bindings, key: name) || map_has(m: env.ancestry_str_bindings, key: name) {
-    true
-  } else if contains(name, ".") {
-    let prefix = qualified_all_but_last(name: name)
-    if type_ref_module_path_is_containment_prefix(ancestor: prefix, descendant: env.module_path) {
-      match symbol_index_lookup(index: env.symbol_index, qualified_name: name) {
-        Present { value: _ } => true
-        Absent => false
+  match lookup_binding_on_chain(env: env, name: name) {
+    Present { value: _ } => true
+    Absent =>
+      if contains(name, ".") {
+        let prefix = qualified_all_but_last(name: name)
+        if type_ref_module_path_is_containment_prefix(ancestor: prefix, descendant: env.module_path) {
+          match symbol_index_lookup(index: env.symbol_index, qualified_name: name) {
+            Present { value: _ } => true
+            Absent => false
+          }
+        } else {
+          false
+        }
+      } else {
+        false
       }
-    } else {
-      false
-    }
-  } else {
-    false
   }
 }
 
