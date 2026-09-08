@@ -64,10 +64,10 @@ fn w_pool_admission(tokens: Int, revision: VllmSourceRevision) -> VllmKvPoolAdmi
   )
 }
 
-fn with_admitted_pool(tokens: Int, revision: VllmSourceRevision, f: fn (VllmObservedKvPool) -> Bool) -> Bool {
+fn w_admitted_pool(tokens: Int, revision: VllmSourceRevision) -> VllmObservedKvPool? {
   match w_pool_admission(tokens: tokens, revision: revision) {
-    KvPoolAdmitted { pool: p } => f(p)
-    KvPoolRefused { cause: _ } => false
+    KvPoolAdmitted { pool: p } => Present { value: p }
+    KvPoolRefused { cause: _ } => none
   }
 }
 
@@ -100,37 +100,43 @@ fn w_full(layers: Nat, block: Nat) -> KvGroupLayout {
 // observed -- because the engine emits no group metadata, so the one non-circular check has no
 // second opinion to compare against. An absent second opinion is not agreement.
 test fn a_real_capture_with_no_group_metadata_is_inconsistent_not_observed() -> Bool {
-  with_admitted_pool(tokens: 11767856, revision: vllm_source_revision_read, f: (p) => {
-    let r = admit_kv_layout(
-      incarnation: w_launch_id(invocation: "inv-20-43"),
-      layout: w_layout(groups: []),
-      reported: w_reported(pool: p, hundredths: 1122),
-      source_capture_digest: w_digest(hex: w_capture),
-    )
-    match r {
-      KvLayoutInconsistent { incarnation: _, cause: c } =>
-        string_contains(s: c as String, pattern: "cannot be checked")
-          && string_contains(s: c as String, pattern: "unobserved")
-      _ => false
+  match w_admitted_pool(tokens: 11767856, revision: vllm_source_revision_read) {
+    Absent => false
+    Present { value: p } => {
+      let r = admit_kv_layout(
+        incarnation: w_launch_id(invocation: "inv-20-43"),
+        layout: w_layout(groups: []),
+        reported: w_reported(pool: p, hundredths: 1122),
+        source_capture_digest: w_digest(hex: w_capture),
+      )
+      match r {
+        KvLayoutInconsistent { incarnation: _, cause: c } =>
+          string_contains(s: c as String, pattern: "cannot be checked")
+            && string_contains(s: c as String, pattern: "unobserved")
+        _ => false
+      }
     }
-  })
+  }
 }
 
 // AND IT AUTHORIZES NOTHING. The refusal is not cosmetic: a receipt that is not observed cannot seat
 // a request even against the very engine it describes.
 test fn an_inconsistent_receipt_seats_nothing() -> Bool {
-  with_admitted_pool(tokens: 11767856, revision: vllm_source_revision_read, f: (p) => {
-    let r = admit_kv_layout(
-      incarnation: w_launch_id(invocation: "inv-20-43"),
-      layout: w_layout(groups: []),
-      reported: w_reported(pool: p, hundredths: 1122),
-      source_capture_digest: w_digest(hex: w_capture),
-    )
-    match seating_authority_for(receipt: r, serving: w_launch_id(invocation: "inv-20-43"), sequence_budget: token_count(count: 500000)) {
-      SeatingRefused { cause: c } => string_contains(s: c as String, pattern: "no capacity is established")
-      SeatingAuthorized { blocks_available: _, blocks_per_request: _ } => false
+  match w_admitted_pool(tokens: 11767856, revision: vllm_source_revision_read) {
+    Absent => false
+    Present { value: p } => {
+      let r = admit_kv_layout(
+        incarnation: w_launch_id(invocation: "inv-20-43"),
+        layout: w_layout(groups: []),
+        reported: w_reported(pool: p, hundredths: 1122),
+        source_capture_digest: w_digest(hex: w_capture),
+      )
+      match seating_authority_for(receipt: r, serving: w_launch_id(invocation: "inv-20-43"), sequence_budget: token_count(count: 500000)) {
+        SeatingRefused { cause: c } => string_contains(s: c as String, pattern: "no capacity is established")
+        SeatingAuthorized { blocks_available: _, blocks_per_request: _ } => false
+      }
     }
-  })
+  }
 }
 
 fn w_reproducing_receipt(invocation: String, pool: VllmObservedKvPool) -> VllmKvLayoutReceipt {
@@ -143,85 +149,102 @@ fn w_reproducing_receipt(invocation: String, pool: VllmObservedKvPool) -> VllmKv
 }
 
 test fn a_layout_whose_groups_reproduce_the_printed_cost_is_observed() -> Bool {
-  with_admitted_pool(tokens: 1048576, revision: vllm_source_revision_read, f: (p) => {
-    let r = w_reproducing_receipt(invocation: "inv-20-43", pool: p)
-    match r {
-      KvLayoutObserved { incarnation: _, layout: _, reported: _, blocks_per_max_request: b, source_capture_digest: _ } =>
-        allocator_block_count_value(c: b) == 65536
-          && string_contains(s: receipt_wire(r: r), pattern: "observed")
-      _ => false
+  match w_admitted_pool(tokens: 1048576, revision: vllm_source_revision_read) {
+    Absent => false
+    Present { value: p } => {
+      let r = w_reproducing_receipt(invocation: "inv-20-43", pool: p)
+      match r {
+        KvLayoutObserved { incarnation: _, layout: _, reported: _, blocks_per_max_request: b, source_capture_digest: _ } =>
+          allocator_block_count_value(c: b) == 65536
+            && string_contains(s: receipt_wire(r: r), pattern: "observed")
+        _ => false
+      }
     }
-  })
+  }
 }
 
 test fn an_observed_receipt_refuses_to_seat_a_request_a_later_launch_will_serve() -> Bool {
-  with_admitted_pool(tokens: 1048576, revision: vllm_source_revision_read, f: (p) => {
-    let r = w_reproducing_receipt(invocation: "inv-20-43", pool: p)
-    let budget = token_count(count: 500000)
-    (match seating_authority_for(receipt: r, serving: w_launch_id(invocation: "inv-22-11"), sequence_budget: budget) {
-       SeatingRefused { cause: c } => string_contains(s: c as String, pattern: "different-incarnation")
-       SeatingAuthorized { blocks_available: _, blocks_per_request: _ } => false
-     })
-      && (match seating_authority_for(receipt: r, serving: w_launch_id(invocation: "inv-20-43"), sequence_budget: budget) {
-            SeatingAuthorized { blocks_available: a, blocks_per_request: p } =>
-              allocator_block_count_value(c: a) == 65536 && allocator_block_count_value(c: p) == 31250
-            SeatingRefused { cause: _ } => false
-          })
-  })
+  match w_admitted_pool(tokens: 1048576, revision: vllm_source_revision_read) {
+    Absent => false
+    Present { value: p } => {
+      let r = w_reproducing_receipt(invocation: "inv-20-43", pool: p)
+      let budget = token_count(count: 500000)
+      (match seating_authority_for(receipt: r, serving: w_launch_id(invocation: "inv-22-11"), sequence_budget: budget) {
+         SeatingRefused { cause: c } => string_contains(s: c as String, pattern: "different-incarnation")
+         SeatingAuthorized { blocks_available: _, blocks_per_request: _ } => false
+       })
+        && (match seating_authority_for(receipt: r, serving: w_launch_id(invocation: "inv-20-43"), sequence_budget: budget) {
+              SeatingAuthorized { blocks_available: a, blocks_per_request: per } =>
+                allocator_block_count_value(c: a) == 65536 && allocator_block_count_value(c: per) == 31250
+              SeatingRefused { cause: _ } => false
+            })
+    }
+  }
 }
 
 test fn garbled_lines_and_a_contradicting_layout_are_different_refusals() -> Bool {
-  with_admitted_pool(tokens: 11767856, revision: vllm_source_revision_read, f: (garbled_pool) =>
-    with_admitted_pool(tokens: 1048576, revision: vllm_source_revision_read, f: (ok_pool) => {
-      let garbled = admit_kv_layout(
-        incarnation: w_launch_id(invocation: "inv-20-43"),
-        layout: w_layout(groups: []),
-        reported: w_reported(pool: garbled_pool, hundredths: 440),
-        source_capture_digest: w_digest(hex: w_capture),
-      )
-      let contradicting = admit_kv_layout(
-        incarnation: w_launch_id(invocation: "inv-20-43"),
-        layout: w_layout_with(blocks: 65536, groups: [w_full(layers: 2, block: 16)], revision: vllm_source_revision_read),
-        reported: w_reported(pool: ok_pool, hundredths: 100),
-        source_capture_digest: w_digest(hex: w_capture),
-      )
-      (match garbled { KvLayoutInconsistent { incarnation: _, cause: c } => string_contains(s: c as String, pattern: "disagree with each other")  _ => false })
-        && (match contradicting { KvLayoutInconsistent { incarnation: _, cause: c } => string_contains(s: c as String, pattern: "different engines")  _ => false })
-    })
-  )
+  match w_admitted_pool(tokens: 11767856, revision: vllm_source_revision_read) {
+    Absent => false
+    Present { value: garbled_pool } =>
+      match w_admitted_pool(tokens: 1048576, revision: vllm_source_revision_read) {
+        Absent => false
+        Present { value: ok_pool } => {
+          let garbled = admit_kv_layout(
+            incarnation: w_launch_id(invocation: "inv-20-43"),
+            layout: w_layout(groups: []),
+            reported: w_reported(pool: garbled_pool, hundredths: 440),
+            source_capture_digest: w_digest(hex: w_capture),
+          )
+          let contradicting = admit_kv_layout(
+            incarnation: w_launch_id(invocation: "inv-20-43"),
+            layout: w_layout_with(blocks: 65536, groups: [w_full(layers: 2, block: 16)], revision: vllm_source_revision_read),
+            reported: w_reported(pool: ok_pool, hundredths: 100),
+            source_capture_digest: w_digest(hex: w_capture),
+          )
+          (match garbled { KvLayoutInconsistent { incarnation: _, cause: c } => string_contains(s: c as String, pattern: "disagree with each other")  _ => false })
+            && (match contradicting { KvLayoutInconsistent { incarnation: _, cause: c } => string_contains(s: c as String, pattern: "different engines")  _ => false })
+        }
+      }
+  }
 }
 
 test fn a_reading_from_another_revision_refuses_instead_of_being_compared() -> Bool {
-  with_admitted_pool(tokens: 1048576, revision: w_foreign_revision(), f: (p) => {
-    let r = admit_kv_layout(
-      incarnation: w_launch_id(invocation: "inv-20-43"),
-      layout: w_layout_with(blocks: 65536, groups: [w_full(layers: 1, block: 16)], revision: vllm_source_revision_read),
-      reported: w_reported(pool: p, hundredths: 100),
-      source_capture_digest: w_digest(hex: w_capture),
-    )
-    match r {
-      KvLayoutInconsistent { incarnation: _, cause: c } =>
-        string_contains(s: c as String, pattern: "not valid across revisions")
-      _ => false
+  match w_admitted_pool(tokens: 1048576, revision: w_foreign_revision()) {
+    Absent => false
+    Present { value: p } => {
+      let r = admit_kv_layout(
+        incarnation: w_launch_id(invocation: "inv-20-43"),
+        layout: w_layout_with(blocks: 65536, groups: [w_full(layers: 1, block: 16)], revision: vllm_source_revision_read),
+        reported: w_reported(pool: p, hundredths: 100),
+        source_capture_digest: w_digest(hex: w_capture),
+      )
+      match r {
+        KvLayoutInconsistent { incarnation: _, cause: c } =>
+          string_contains(s: c as String, pattern: "not valid across revisions")
+        _ => false
+      }
     }
-  })
+  }
 }
 
 // THE CONTROL FOR THE LAYOUT-SIDE REVISION GUARD: same numbers as the reproducing receipt, only
 // the layout's established revision varies. A duplicate of the observed positive control
 // discriminates nothing.
 test fn a_layout_from_another_revision_refuses_instead_of_being_compared() -> Bool {
-  with_admitted_pool(tokens: 1048576, revision: vllm_source_revision_read, f: (p) => {
-    let r = admit_kv_layout(
-      incarnation: w_launch_id(invocation: "inv-20-43"),
-      layout: w_layout_with(blocks: 65536, groups: [w_full(layers: 1, block: 16)], revision: w_foreign_revision()),
-      reported: w_reported(pool: p, hundredths: 100),
-      source_capture_digest: w_digest(hex: w_capture),
-    )
-    match r {
-      KvLayoutInconsistent { incarnation: _, cause: c } =>
-        string_contains(s: c as String, pattern: "not valid across revisions")
-      _ => false
+  match w_admitted_pool(tokens: 1048576, revision: vllm_source_revision_read) {
+    Absent => false
+    Present { value: p } => {
+      let r = admit_kv_layout(
+        incarnation: w_launch_id(invocation: "inv-20-43"),
+        layout: w_layout_with(blocks: 65536, groups: [w_full(layers: 1, block: 16)], revision: w_foreign_revision()),
+        reported: w_reported(pool: p, hundredths: 100),
+        source_capture_digest: w_digest(hex: w_capture),
+      )
+      match r {
+        KvLayoutInconsistent { incarnation: _, cause: c } =>
+          string_contains(s: c as String, pattern: "not valid across revisions")
+        _ => false
+      }
     }
-  })
+  }
 }
