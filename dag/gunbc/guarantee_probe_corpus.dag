@@ -904,6 +904,14 @@ fn census_blocking_count_for_class(census: CompileDiagnosticCensus, wanted: Stri
   }
 }
 
+fn census_blocking_count_for_subject(census: CompileDiagnosticCensus, wanted_class: String, wanted_subject: String) -> Int? {
+  match census {
+    CensusObserved { rows: rows } =>
+      Present { value: census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: wanted_class) |> filter(r => r.subject_name == wanted_subject)) }
+    CensusNotRunnable { cause: _ } => none
+  }
+}
+
 fn census_any_count_for_class(census: CompileDiagnosticCensus, wanted: String) -> Int? {
   match census {
     CensusObserved { rows: rows } =>
