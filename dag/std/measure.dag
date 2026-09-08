@@ -339,6 +339,10 @@ type TokenCount = Measure<Count, One, Nat>
 // thing counted: a block is not a token, and multiplying them used to typecheck as an inventory.
 type AllocatorBlockCount = Measure<Count, One, Nat>
 
+// A count of attention (or mamba) layers in one KV cache group. Same Count axis as TokenCount,
+// different thing counted: a layer is not a token, and a layer is not an allocator block.
+type AttentionLayerCount = Measure<Count, One, Nat>
+
 type CpuCoreCount = Measure<Count, One, Nat>
 
 // A count of entries in a merge queue. It sits with its Count siblings rather than in the module
@@ -1077,6 +1081,14 @@ fn allocator_block_count(count: Nat) -> AllocatorBlockCount {
 }
 
 fn allocator_block_count_value(c: AllocatorBlockCount) -> Nat {
+  measure_count(c)
+}
+
+fn attention_layer_count(count: Nat) -> AttentionLayerCount {
+  Measure { count: count }
+}
+
+fn attention_layer_count_value(c: AttentionLayerCount) -> Nat {
   measure_count(c)
 }
 
