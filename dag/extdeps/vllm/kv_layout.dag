@@ -4,7 +4,7 @@ import std.types { Bool, String, NonEmptyStr, List }
 import v2.std.optional { Present, Absent }
 import std.measure {
   TokenCount, token_count, token_count_value,
-  Percent, percent, percent_count,
+  ConcurrentRequestHundredths, concurrent_request_hundredths, concurrent_request_hundredths_count,
   AllocatorBlockCount, allocator_block_count, allocator_block_count_value,
   AttentionLayerCount, attention_layer_count_value,
 }
@@ -150,7 +150,7 @@ fn resolved_kv_layout(
 // together here because the recovery below needs both and neither is meaningful alone.
 type VllmReportedCapacity sole_constructor {
   pool: VllmObservedKvPool
-  max_concurrency: Percent
+  max_concurrency: ConcurrentRequestHundredths
   observed_at_revision: VllmSourceRevision
 }
 
@@ -160,7 +160,7 @@ type VllmReportedCapacityAdmission
 
 fn vllm_reported_capacity(
   pool: VllmObservedKvPool,
-  max_concurrency: Percent,
+  max_concurrency: ConcurrentRequestHundredths,
   reading: VllmStartupReading,
 ) -> VllmReportedCapacityAdmission {
   match reading.line {
@@ -245,13 +245,21 @@ fn recovered_blocks_per_max_length_request(
 // caught it.
 //
 // So it is named for what it actually decides. The two lines are mutually consistent when the
-// reported pool equals the reported concurrency times the context cap, and that is a real -- if
-// narrow -- check: a transcription error in either line breaks it. THE INVENTORY REMAINS UNCHECKED
-// BY TODAY'S EVIDENCE, and closing that gap is exactly what the per-group layout is needed for.
+// implied concurrency from the pool (integer hundredths) is within one hundredth of the printed
+// Nx, which the engine rounds. Exact equality of truncated integer hundredths against a rounded print
+// is the wrong check. THE INVENTORY REMAINS UNCHECKED BY TODAY'S EVIDENCE, and closing that gap is
+// exactly what the per-group layout is needed for.
 type PrintedLinesAgreement
   = PrintedLinesAgree
-  | PrintedLinesDisagree { implied: Percent, reported: Percent }
+  | PrintedLinesDisagree { implied: ConcurrentRequestHundredths, reported: ConcurrentRequestHundredths }
   | PrintedLinesUncheckable { cause: NonEmptyStr }
+
+fn hundredths_within_printed_precision(predicted: ConcurrentRequestHundredths, reported: ConcurrentRequestHundredths) -> Bool {
+  let p = concurrent_request_hundredths_count(c: predicted)
+  let r = concurrent_request_hundredths_count(c: reported)
+  let delta = if p > r { p - r } else { r - p }
+  delta <= 1
+}
 
 fn printed_lines_agree(layout: ResolvedKvLayout, reported: VllmReportedCapacity) -> PrintedLinesAgreement {
   let context = token_count_value(t: layout.max_model_len)
@@ -259,8 +267,8 @@ fn printed_lines_agree(layout: ResolvedKvLayout, reported: VllmReportedCapacity)
   if context == 0 {
     PrintedLinesUncheckable { cause: "the context cap is zero, so the concurrency the pool line encodes cannot be recovered" as NonEmptyStr }
   } else {
-    let implied = percent(count: (pool_tokens * 100) / context)
-    if percent_count(p: implied) == percent_count(p: reported.max_concurrency) {
+    let implied = concurrent_request_hundredths(count: (pool_tokens * 100) / context)
+    if hundredths_within_printed_precision(predicted: implied, reported: reported.max_concurrency) {
       PrintedLinesAgree
     } else {
       PrintedLinesDisagree { implied: implied, reported: reported.max_concurrency }
