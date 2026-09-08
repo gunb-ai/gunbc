@@ -142,13 +142,15 @@ fn w_reproducing_receipt(invocation: String, pool: VllmObservedKvPool) -> VllmKv
 }
 
 test fn a_layout_whose_groups_reproduce_the_printed_cost_is_observed() -> Bool {
-  with_admitted_pool(tokens: 1048576, revision: vllm_source_revision_read, f: (p) =>
-    match w_reproducing_receipt(invocation: "inv-20-43", pool: p) {
+  with_admitted_pool(tokens: 1048576, revision: vllm_source_revision_read, f: (p) => {
+    let r = w_reproducing_receipt(invocation: "inv-20-43", pool: p)
+    match r {
       KvLayoutObserved { incarnation: _, layout: _, reported: _, blocks_per_max_request: b, source_capture_digest: _ } =>
         allocator_block_count_value(c: b) == 65536
+          && string_contains(s: receipt_wire(r: r), pattern: "observed")
       _ => false
     }
-  )
+  })
 }
 
 test fn an_observed_receipt_refuses_to_seat_a_request_a_later_launch_will_serve() -> Bool {

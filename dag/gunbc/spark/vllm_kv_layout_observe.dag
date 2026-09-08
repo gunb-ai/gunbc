@@ -2,6 +2,7 @@ module gunbc.spark.vllm_kv_layout_observe
 
 import std.types { Bool, String, NonEmptyStr, List }
 import std.content_hash { ContentHash }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.measure {
   TokenCount, token_count_value, Percent, percent_count,
   AllocatorBlockCount, allocator_block_count_value,
@@ -121,6 +122,8 @@ type SeatingAuthority
   = SeatingAuthorized { blocks_available: AllocatorBlockCount, blocks_per_request: AllocatorBlockCount }
   | SeatingRefused { cause: NonEmptyStr }
 
+data seating_authority_harness_lease_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the harness seat-bind (gunbc.harness.harness_seat harness_bind_seat, or the lease fold that replaces it) calls seating_authority_for with the live receipt and the serving launch before granting a seat. SUFFICIENT FOR: a seat cannot be granted against a receipt whose incarnation is not the engine that will serve the request." as NonEmptyStr)
+
 fn seating_authority_for(
   receipt: VllmKvLayoutReceipt,
   serving: VllmServingLaunch,
@@ -148,14 +151,6 @@ fn seating_authority_for(
         }
       }
     }
-  }
-}
-
-fn receipt_incarnation(r: VllmKvLayoutReceipt) -> VllmServingLaunch {
-  match r {
-    KvLayoutObserved { incarnation: i, layout: _, reported: _, blocks_per_max_request: _, source_capture_digest: _ } => i
-    KvLayoutUnreadable { incarnation: i, cause: _ } => i
-    KvLayoutInconsistent { incarnation: i, cause: _ } => i
   }
 }
 
