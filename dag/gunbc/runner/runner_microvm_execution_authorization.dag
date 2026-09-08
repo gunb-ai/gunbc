@@ -2,8 +2,6 @@ module gunbc.runner_microvm_execution_authorization
 
 import std.types { String, NonEmptyStr }
 import std.disposition { Disposition, SingleAuthority }
-import gunbc.fabric_required_build_cell { RequiredBuildCellSnapshot }
-import gunbc.runner_microvm_attempt { MicroVmCellBinding, bind_microvm_to_cell }
 import product.fabric.execution { ExecutionGrant, grant_lease_generation }
 import product.fabric.identity { fabric_identity_eq, FabricIdentity, WorkKey, DemandKey, OfferKey }
 import product.fabric.budget { MoneyAccount, fence_admits }
@@ -24,18 +22,26 @@ data runner_microvm_execution_authorization_disposition: Disposition = SingleAut
 // to product.fabric.identity -- because collapsing them is the state-space conflation DESIGN
 // names, and it sends an operator to the wrong module.
 
-// THE AUTHORIZATION RULE, FACTORED OUT OF THE SEAL SO IT HAS AN AUTHORABLE RED.
+// THE AUTHORIZATION RULE, OVER THE COORDINATES THEMSELVES SO ITS RED IS AUTHORABLE.
 //
-// RequiredBuildCellSnapshot is sole_constructor precisely so a caller cannot manufacture a
-// reservation, which also means no witness outside its module can build one -- so a control aimed
-// at seal_execution_binding could never construct the disagreeing input it exists to catch. Its RED
-// would be unauthorable and the check would be a DESIGN 4b decoration: permanently green, cited as
-// coverage. Exposing a snapshot builder for tests would instead punch the hole the seal exists to
-// close, which is the tradeoff runner_microvm_attempt's own witness records.
+// A grant that fences money proves the money; it proves nothing about WHICH execution was
+// authorized. Presented against another cell's reservation it would pass whenever the supplied
+// account fenced -- and that is worse than no grant, because the grant's presence reads as
+// authorization while authorizing nothing about the subject. The grant carries work, demand and
+// offer, and a reserved snapshot carries its own, so the join is available and is made here.
 //
-// So the rule lives here, over the coordinates themselves, where a witness CAN construct a
-// disagreeing pair; the seal reads those coordinates off the snapshot and delegates. One authority,
-// and the discriminating input is writable.
+// IT TAKES THE COORDINATES RATHER THAN A SNAPSHOT, AND THAT IS WHAT MAKES IT TESTABLE.
+// RequiredBuildCellSnapshot is sole_constructor, so no witness outside its module can build a
+// DISAGREEING one; a rule reading the snapshot directly would have an unauthorable RED and be a
+// DESIGN 4b decoration -- permanently green and cited as coverage. FabricIdentity is an ordinary
+// record, so over coordinates the disagreement is writable, and four claims write it.
+//
+// WHAT THIS DOES NOT ESTABLISH, stated because the name would otherwise read as more than it is:
+// ExecutionGrant is an ordinary constructible record, so a caller can author one. This proves
+// AGREEMENT between a presented grant and a presented reservation, not that fabric issuance
+// durably committed either. The unforgeable form re-reads the committed grant from durable storage
+// after the submitter terminates -- FCI-3's own exit predicate, and not something a pure rule can
+// assert about itself.
 type AuthorizationAgreement
   = AuthorizationAgrees
   | AuthorizationDisagrees { cause: String }
@@ -69,69 +75,5 @@ fn grant_authorizes_reservation(
     }
   } else {
     AuthorizationAgrees
-  }
-}
-
-// THE SEALED AUTHORIZATION, AND WHY A GRANT PARAMETER ALONE WAS NOT FABRIC INTEGRATION.
-//
-// Requiring an ExecutionGrant closed the absent-grant case and nothing else. The grant and the cell
-// binding arrived as INDEPENDENT arguments, and the only thing read off the grant was its money
-// reservation, so a grant issued for execution A composed with the reserved cell for execution B
-// passed whenever the supplied account fenced A. That is worse than no grant: the grant's presence
-// reads as authorization while authorizing nothing about the subject.
-//
-// The grant already carries the coordinates that close it -- work, demand, offer, lease, executor,
-// attempt -- and the reserved snapshot carries work, demand and offer of its own. So the join is
-// available, and the honest form is CONSTRUCTION rather than a check inside the planner: the
-// mismatched pair must have no constructor at all. MicroVmExecutionBinding is sole_constructor and
-// reachable only through seal_execution_binding, which refuses unless every coordinate agrees.
-//
-// WHAT THIS STILL DOES NOT ESTABLISH, stated because the type name would otherwise read as more
-// than it is. ExecutionGrant is an ordinary constructible record, so a caller can author one; this
-// seal proves AGREEMENT between a presented grant and a presented reservation, not that fabric
-// issuance durably committed either. The unforgeable form is a persistent executor that re-reads
-// the committed grant from durable storage after the submitter terminates, which is FCI-3's own
-// exit predicate and the next slice -- not something a pure planner can assert about itself.
-// DECLARED FRONTIER, STATED RATHER THAN LEFT IMPLICIT (DESIGN 3c). NOTHING CONSUMES THIS SEAL
-// TODAY -- not production, and not a witness: its input is a sole_constructor
-// RequiredBuildCellSnapshot, so no fixture outside that module can call it. Its named consumer is
-// the FCI-3 executor, which re-reads a committed grant before starting a VMM; the seal exists so
-// that executor cannot hold a binding whose grant disagrees with the cell.
-//
-// THE TRIGGER IS THAT EXECUTOR EXISTING, AND IT IS NOT NEAR: docs/plans/microvm-launch-displacement-analysis.md
-// establishes that the production actuation it would displace is authored in no repository, so a
-// prerequisite stands before FCI-3 is even priceable. If that trigger is judged too distant to
-// carry an unconsumed declaration, the honest disposition is to delete this seal and let it return
-// with its consumer -- the authorization rule below it stands alone and is consumed by three claims.
-
-type MicroVmExecutionBinding sole_constructor {
-  grant: ExecutionGrant<NonEmptyStr>
-  binding: MicroVmCellBinding
-}
-
-type MicroVmExecutionSeal
-  = ExecutionBindingSealed { sealed: MicroVmExecutionBinding }
-  | ExecutionBindingRefusedSubject { cause: String }
-
-fn seal_execution_binding(
-  grant: ExecutionGrant<NonEmptyStr>,
-  account: MoneyAccount,
-  snapshot: RequiredBuildCellSnapshot,
-) -> MicroVmExecutionSeal {
-  match grant_authorizes_reservation(
-    grant: grant,
-    account: account,
-    work: snapshot.work,
-    demand: snapshot.demand,
-    offer: snapshot.offer,
-  ) {
-    AuthorizationDisagrees { cause: c } => ExecutionBindingRefusedSubject { cause: c }
-    AuthorizationAgrees =>
-      ExecutionBindingSealed {
-        sealed: MicroVmExecutionBinding {
-          grant: grant,
-          binding: bind_microvm_to_cell(snapshot: snapshot),
-        },
-      }
   }
 }
