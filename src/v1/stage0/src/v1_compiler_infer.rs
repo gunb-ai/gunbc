@@ -8191,9 +8191,9 @@ pub fn annotated_let_declared_type(texpr: Rc<Node>) -> Option<Rc<Node>> {
     }
 }
 
-pub fn annotated_let_bound_type(texpr: Rc<Node>, val_type: Rc<Node>) -> Rc<Node> {
-    match annotated_let_declared_type(texpr.clone()) {
-        Some(declared) => declared.clone(),
+pub fn annotated_let_bound_type(declared: Option<Rc<Node>>, val_type: Rc<Node>) -> Rc<Node> {
+    match declared.clone() {
+        Some(d) => d.clone(),
         std::option::Option::None => val_type,
     }
 }
@@ -11602,7 +11602,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
             };
             let val_diags =
                 v1_rt::concat(val_result.diagnostics.clone(), val_annotation_diags.clone());
-            let bound_type = annotated_let_bound_type(texpr.clone(), val_type.clone());
+            let bound_type = annotated_let_bound_type(declared_let_type.clone(), val_type.clone());
             if (body_expr.clone() == std::option::Option::None) {
                 {
                     let let_texpr = crate::v1_std_core::make_named_expr_node(

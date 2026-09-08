@@ -5523,9 +5523,9 @@ fn annotated_let_declared_type(texpr: Node) -> Node? {
   }
 }
 
-fn annotated_let_bound_type(texpr: Node, val_type: Node) -> Node {
-  match annotated_let_declared_type(texpr: texpr) {
-    Present { value: declared } => declared
+fn annotated_let_bound_type(declared: Node?, val_type: Node) -> Node {
+  match declared {
+    Present { value: d } => d
     Absent => val_type
   }
 }
@@ -7347,7 +7347,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Absent => []
       }
       let val_diags = concat(val_result.diagnostics, val_annotation_diags)
-      let bound_type = annotated_let_bound_type(texpr: texpr, val_type: val_type)
+      let bound_type = annotated_let_bound_type(declared: declared_let_type, val_type: val_type)
       if body_expr == none {
         let let_texpr = make_named_expr_node(occurrence_identity: texpr.occurrence_identity, name: let_name, expr_data: ExprLet, children: [val_typed], inferred: Present { value: Resolved { node: bound_type } }, span: span, name_span: node_name_span(n: texpr))
         InferResult {
