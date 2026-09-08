@@ -215,7 +215,7 @@ test fn emit_host_native_only_add_wrong_octet_mismatch_detected_holds() -> Bool 
 // actual byte participates in a verdict (the all-alt family flips complement 0 -> 1). A no-eval
 // verdict has no oracle leg to break, so this arm's broken control breaks the EXPECTATION side:
 // octet 1 can never match this run, and the comparator mocks above pin the comparator itself.
-fn complement_native_only_matches_expected(expected_octet: Int) -> Bool {
+fn logic_family_native_only_matches_expected(member_id: String, expected_octet: Int) -> Bool {
   let members = family_crate_members()
   match emit_family(members: members, transport_target: rust_logic_family_target_model_staging()) {
     Accepted { value: source, diagnostics: _ } =>
@@ -227,7 +227,7 @@ fn complement_native_only_matches_expected(expected_octet: Int) -> Bool {
         target: rust_logic_family_target_model_staging(),
         source: source,
         fixture_inputs: family_crate_fixture_inputs(),
-        run_args: rust_family_member_run_args(member_id: "complement")
+        run_args: rust_family_member_run_args(member_id: member_id)
       ) {
         Accepted { value: receipt, diagnostics: _ } =>
           match receipt.logical_run {
@@ -241,12 +241,38 @@ fn complement_native_only_matches_expected(expected_octet: Int) -> Bool {
   }
 }
 
+fn complement_native_only_matches_expected(expected_octet: Int) -> Bool {
+  logic_family_native_only_matches_expected(member_id: "complement", expected_octet: expected_octet)
+}
+
 test fn emit_host_native_only_complement_holds() -> Bool {
   complement_native_only_matches_expected(expected_octet: 0)
 }
 
 test fn emit_host_native_only_complement_wrong_octet_mismatch_detected_holds() -> Bool {
   complement_native_only_matches_expected(expected_octet: 1) == false
+}
+
+// MEET-JOIN-FAMILY ARM: the same native-only verdict shape for the emit_host_meet_join family —
+// the eighth construct promoted off InterpreterRetained. The family shares the logic family crate
+// with complement (meet + join + complement under the argv-dispatched family main, per the
+// witness_family_build_grain_ruling), so this arm reuses the complement arm's member-
+// parameterized helper — same one-build cache key, same dispatcher, eval() never called. The
+// expected octets are the bytes the family witness's warm legs pin on this same build (meet 1,
+// join 1). Program-side discrimination stays where the family already carries it: the equals_eval
+// pairs and the family witness's all-alt leg prove the native runs' actual bytes participate in
+// verdicts (the alt trees flip meet 1 -> 0 and join 1 -> 0). A no-eval verdict has no oracle leg
+// to break, so this arm's broken control breaks the EXPECTATION side: octet 0 is each member's
+// alt byte and can never match the primary runs, and the comparator mocks above pin the
+// comparator itself.
+test fn emit_host_native_only_meet_join_holds() -> Bool {
+  logic_family_native_only_matches_expected(member_id: "meet", expected_octet: 1)
+    && logic_family_native_only_matches_expected(member_id: "join", expected_octet: 1)
+}
+
+test fn emit_host_native_only_meet_join_wrong_octet_mismatch_detected_holds() -> Bool {
+  logic_family_native_only_matches_expected(member_id: "meet", expected_octet: 0) == false
+    && logic_family_native_only_matches_expected(member_id: "join", expected_octet: 0) == false
 }
 
 // FIELD-ACCESS-FAMILY ARM: the same native-only verdict shape for the emit_host_field_access
