@@ -830,7 +830,13 @@ fn is_transitional_admission_row(entry: String, function: String) -> Bool {
 fn explicit_witness_admission_well_formed(row: ExplicitWitnessAdmission) -> Bool {
   !(row.witness.entry == "")
     && (explicit_witness_admission_cadence_executes(cadence: row.cadence)
-        || is_transitional_admission_row(entry: row.witness.entry, function: row.witness.function))
+        || (is_transitional_admission_row(entry: row.witness.entry, function: row.witness.function)
+            && match row.cadence {
+              QuarantineProbeExpectRed => true
+              FalsifierSubstrateLongLane => true
+              BinWitnessWet => true
+              _ => false
+            }))
 }
 
 fn explicit_witness_admissions_well_formed_in(rows: List<ExplicitWitnessAdmission>) -> Bool {
