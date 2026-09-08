@@ -388,6 +388,12 @@ test fn w_RED_an_undeclared_live_merge_queue_is_reported_with_its_grouping() -> 
     && !string_contains(s: allgreen, pattern: "HEADGREEN")
 }
 
+// A merge_queue RULE WHOSE PARAMETERS DID NOT ARRIVE COMPLETE REFUSES AND NAMES WHAT IS MISSING,
+// rather than reading a default. The rule TAG says which fields to expect and the OPTIONALS say
+// whether they came, so the two together are what keeps a truncated response from presenting as a
+// configured queue with zeroes in it -- absent and zero are different observations, and only the
+// optional carries that difference. Naming the missing fields is the point: a bare refusal would
+// stop the read without telling the reader which part of the response never arrived.
 test fn w_RED_an_incomplete_merge_queue_rule_refuses_and_names_the_missing_fields() -> Bool {
   let standing = merge_queue_standing(rules: [
     RulesetRuleWire {
@@ -550,6 +556,11 @@ test fn w_RED_two_merge_queue_rules_refuse_rather_than_merging() -> Bool {
 
 data witness_live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+// verify REPORTS THE ACTOR IT WOULD HAVE DELETED. A refusal on its own stops nothing useful here:
+// it declines to answer and tells nobody the grant is there, so the operator learns that something
+// is wrong without learning WHAT. This is the reporting half of the pair whose other half is the
+// unobserved-roster arm below -- an observed actor is named, an unobservable roster is an unknown --
+// and it is a divergence rather than an unknown precisely because the actor WAS seen.
 test fn w_RED_verify_reports_an_undeclared_bypass_actor() -> Bool {
   string_contains(
     s: render_divergences(ds: bypass_actor_unexpected_divergences(roster: BypassRosterObserved {
