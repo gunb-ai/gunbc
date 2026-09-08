@@ -1,0 +1,166 @@
+module test.claim.repo_ruleset_goal_assessment_witness
+
+import std.types { String, Bool, NonEmptyStr }
+import std.goal_assessment {
+  ObservationRefused,
+  ObservationEstablished,
+  GoalSatisfied,
+  GoalDiverged,
+  GoalIndeterminate,
+}
+import v2.std.algebra { non_empty_to_list }
+import gunbc.repository { gunbc_repository }
+import extdeps.github.rulesets {
+  BypassRosterObserved,
+  BypassRosterUnavailable,
+  RulesetBypassActor,
+  RulesetActive,
+  BranchTarget,
+  MergeQueueRule,
+  ThisReaderCannotBypass,
+  NoRequiredStatusChecksRule,
+  NoMergeQueueRule,
+  BypassActorRosterObservation,
+}
+import gunbc.repo_ruleset {
+  RulesetObservation,
+  RulesetObserved,
+  RulesetUnreadable,
+  RulesetReadTransportRefused,
+  RepositoryRulesetConvergenceSubject,
+  RulesetBypassRosterUnobservable,
+  default_branch_ref_alias,
+  desired_ruleset_rule_types,
+  desired_ruleset_rules,
+  gunbc_passing_ci_ruleset_name,
+  required_status_check_standing,
+  observation_unknowns,
+  render_divergences,
+  render_unknowns,
+  ruleset_assess,
+}
+
+fn fixture_subject() -> RepositoryRulesetConvergenceSubject {
+  RepositoryRulesetConvergenceSubject { repository: gunbc_repository, ruleset_id: 4242 }
+}
+
+// The observation is fixed on every field the claims below do not vary, so a verdict can never be
+// borrowed from another arm. `name` is the desired one and rule_types are the declared list, so
+// neither the name-drift nor the undeclared-rule deviation fires unless a claim asks for it.
+fn fixture_observed(
+  name: String,
+  rule_types_extra: Bool,
+  roster: BypassActorRosterObservation,
+) -> RulesetObservation {
+  RulesetObserved {
+    name: name,
+    enforcement: RulesetActive,
+    target: BranchTarget,
+    bypass: ThisReaderCannotBypass,
+    include: [default_branch_ref_alias],
+    exclude: [],
+    rule_types: if rule_types_extra {
+      append(desired_ruleset_rule_types(), items: [MergeQueueRule])
+    } else {
+      desired_ruleset_rule_types()
+    },
+    standing: required_status_check_standing(rules: desired_ruleset_rules()),
+    merge_queue: NoMergeQueueRule,
+    bypass_roster: roster,
+  }
+}
+
+fn observed_clean(roster: BypassActorRosterObservation) -> RulesetObservation {
+  fixture_observed(name: gunbc_passing_ci_ruleset_name, rule_types_extra: false, roster: roster)
+}
+
+// DISCRIMINATING RED FOR THE INVERSION THIS MIGRATION EXISTS TO FIX, and it is the LIVE path: under
+// the credential this repository has, a ruleset GET omits bypass_actors on every read, so this is
+// the arm that fires every time.
+//
+// TWO THINGS ARE ASSERTED TOGETHER because either alone is satisfiable by the shape that was
+// wrong. The assessment must be INDETERMINATE rather than diverged -- an unread fact is not a
+// proved mismatch -- AND it must still carry the drift that WAS proved. The shape this replaces
+// ordered the roster hold above the divergence step and returned the hold alone, so an operator
+// was told the roster could not be read and never told the enforcement had also changed. A model
+// that answers GoalDiverged here has lost the first distinction; one that answers
+// GoalIndeterminate with an empty known_deviations has reproduced the original defect exactly.
+fn an_unreadable_roster_is_indeterminate_and_still_carries_the_proved_drift() -> Bool {
+  match ruleset_assess(
+    observed: fixture_observed(
+      name: "drifted-name",
+      rule_types_extra: false,
+      roster: BypassRosterUnavailable {
+        reader: "fixture-credential" as NonEmptyStr,
+        cause: "bypass_actors omitted by the live read" as NonEmptyStr,
+      },
+    ),
+  ) {
+    GoalIndeterminate { known_deviations: ds, unknowns: us } =>
+      string_contains(
+        s: render_unknowns(us: non_empty_to_list(xs: us)),
+        pattern: "fixture-credential",
+      )
+      && string_contains(s: render_divergences(ds: ds), pattern: "ruleset name is drifted-name")
+    _ => false
+  }
+}
+
+// THE OTHER SIDE OF THAT DISCRIMINATION: an actually observed grant is a PROVED mismatch, not an
+// unknown. Ignorance and observation must not reach the same arm -- which is the whole reason the
+// unknown left the divergence coproduct rather than staying in it as one more variant.
+fn an_observed_live_bypass_actor_is_a_deviation_and_not_an_unknown() -> Bool {
+  match ruleset_assess(
+    observed: observed_clean(roster: BypassRosterObserved {
+      actors: [RulesetBypassActor { actor_type: "Team", actor_id: 7, bypass_mode: "always" }],
+    }),
+  ) {
+    GoalDiverged { deviations: ds } =>
+      string_contains(s: render_divergences(ds: non_empty_to_list(xs: ds)), pattern: "Team/7")
+    _ => false
+  }
+}
+
+// An undeclared live rule is a deviation too, and it must NAME the rule: an operator reading
+// "undeclared rule" without knowing which one cannot tell a destructive change from a typo. Under
+// the shape this replaces the same fact was represented twice -- once as the reported divergence
+// RulesetRuleUnexpected and once as an actuation cause -- and only the second was reachable when a
+// write was held. With no writer there is one representation.
+fn an_undeclared_live_rule_is_a_deviation_that_names_the_rule() -> Bool {
+  match ruleset_assess(
+    observed: fixture_observed(
+      name: gunbc_passing_ci_ruleset_name,
+      rule_types_extra: true,
+      roster: BypassRosterObserved { actors: [] },
+    ),
+  ) {
+    GoalDiverged { deviations: ds } =>
+      string_contains(s: render_divergences(ds: non_empty_to_list(xs: ds)), pattern: "merge_queue")
+    _ => false
+  }
+}
+
+// THE POSITIVE CONTROL, and it is the arm the shape this replaces could not reach at all. With an
+// observed empty roster, the declared rules and the desired name, the live ruleset satisfies the
+// goal -- and the assessment says so. The former binding answered
+// RepositoryRulesetActuationRealizationUnbound for this exact input, because it was asking whether
+// it could WRITE rather than whether the world was as declared, so agreement and no-writer were
+// the same value. Without this claim every claim above is satisfied by an assessor that refuses
+// everything identically.
+fn a_clean_observed_ruleset_satisfies_the_goal() -> Bool {
+  match ruleset_assess(observed: observed_clean(roster: BypassRosterObserved { actors: [] })) {
+    GoalSatisfied { evidence: e } => e.writes_applied == 0 && e.removals_applied == 0
+    _ => false
+  }
+}
+
+// The two layers stay two layers. An unreadable RULESET produces no snapshot at all, so there is
+// nothing to assess -- it must not arrive as an assessment about a fabricated one, and it must not
+// arrive as the same unknown an unreadable ROSTER produces. The second half is asserted here
+// because collapsing the layers is what licenses reading an unobservable subject as an absent one.
+fn an_unreadable_ruleset_refuses_at_the_observation_layer_and_mints_no_unknown() -> Bool {
+  let unreadable = RulesetUnreadable {
+    cause: RulesetReadTransportRefused { cause: "fixture transport refusal" as NonEmptyStr },
+  }
+  length(observation_unknowns(observation: unreadable)) == 0
+}
