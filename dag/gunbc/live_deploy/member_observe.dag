@@ -498,12 +498,28 @@ fn deployment_member_roster(spec: DeploymentSpec) -> List<ConvergedMember> {
 // A ROOT'S OWNER IS READ, NOT ASSUMED. Presence alone would call a root:root-owned directory
 // converged, and the service user still could not write it -- which is the state a hand-repaired
 // host leaves and the state a fresh host reaches if install ran under the wrong principal.
+// THE LOCAL ARM CALLS THE MODELLED OPERATION; ONLY THE REMOTE ARM GOES THROUGH THE TRANSPORT.
+//
+// The first version of this routed BOTH arms through run_typed_argv_transport, handing it LocalShell
+// for the host-itself case. That refuses by construction -- "LocalShell has no remote target" -- so
+// root ownership could not be read on the host the deploy actually runs on, and the whole member
+// plan refused. It failed closed and mutated nothing, but it meant the roots could never be
+// observed in production.
+//
+// IT SURVIVED ITS WITNESSES BECAUSE THEY NEVER EXECUTED A HOST EFFECT. The member-identity witnesses
+// are hermetic and supply observations directly, so nothing exercised this leg until the first wet
+// operator deploy. Every other local arm in this module calls its modelled operation directly
+// (Filesystem.List, git.Inspect.HeadCommitIn, shell.Mktemp.FileInDirectory); this one now does too.
 fn root_owner_leg(arm: ObservationArm, path: String) -> Leg {
-  let argv = ["stat", "-c", "%U", "--", path]
   let leg = join(["reading the owner of ", path], "")
   match arm {
-    OnTheHostItself => remote_leg(transport: LocalShell, argv: argv, leg: leg)
-    OverTransport { transport } => remote_leg(transport: transport, argv: argv, leg: leg)
+    OnTheHostItself => {
+      let r = shell.Stat.OwnerOf(path: path as FilePath)
+      if r.success { LegOut { stdout: r.stdout } }
+      else { LegRefused { cause: join([leg, " failed: ", r.stderr], "") } }
+    }
+    OverTransport { transport } =>
+      remote_leg(transport: transport, argv: ["stat", "-c", "%U", "--", path], leg: leg)
   }
 }
 

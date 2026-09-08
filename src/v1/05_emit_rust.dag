@@ -8297,6 +8297,21 @@ fn v1_call_forwarding_forwarded_param_names(
   }
 }
 
+// THE CLONE HALF'S WALK IS NOW RECURSIVE, AND THE SPECIMEN THAT WIDENED IT IS NAMED.
+// The direct-shape lookup below used to accept only a body that IS a call or a lambda whose body is
+// a call, declared as BoundedToDirectSingleCallLambdaBody in v1.trait_bound_witness with the
+// next-rung trigger "a recursive body walker ... once a real specimen needs either boundary
+// widened". std.realization_schedule cost_account_time_count<S> is that specimen: its body is
+// `match cost_time_axis_established(axis: account.time) { .. }`, so the requirement-earning call
+// sits in MATCH SCRUTINEE position and the direct lookup could not see it. The callee earns
+// `S: Clone` by cloning a CostTimeAxis<S> through derive(Clone); the wrapper instantiates that same
+// S and emitted bare, so regen produced a seed that does not typecheck (rustc E0277).
+//
+// The walk mirrors v1_call_forwarding_equality_bound_param_names exactly rather than adding a
+// scrutinee special case, and for the reason that half already states: descending every child can
+// only find more call sites, while precision stays where it belongs, in the exact type-resolving
+// predicate v1_call_forwarding_bound_wrapper_param_names applies per (callee param, argument) pair.
+// A shape-by-shape widening would have to be re-opened for the next body shape; this one cannot.
 fn v1_call_forwarding_clone_bound_param_names(
   generic_param_names: List<String>,
   body: Node,
@@ -8305,47 +8320,73 @@ fn v1_call_forwarding_clone_bound_param_names(
   shared_types: Set<String>,
   source_indices: Map<String, NewlineIndex>
 ) -> List<String> {
-  let si = source_indices
-  let call_node = match body.expr_data {
-    ExprCall => Present { value: body }
-    ExprLambda =>
-      let lb = lambda_body(texpr: body)
-      match lb.expr_data {
-        ExprCall => Present { value: lb }
-        _ => none
-      }
-    _ => none
+  if (generic_param_names |> count) == 0 {
+    return []
   }
-  match call_node {
+  let here = match body.expr_data {
+    ExprCall => v1_call_site_clone_forwarded_param_names(
+      call: body,
+      generic_param_names: generic_param_names,
+      fn_decl_items: fn_decl_items,
+      emit_info: emit_info,
+      shared_types: shared_types,
+      source_indices: source_indices
+    )
+    _ => []
+  }
+  body.children |> fold(init: here, f: (acc, child) =>
+    v1_union_bound_param_names(
+      base: acc,
+      extra: v1_call_forwarding_clone_bound_param_names(
+        generic_param_names: generic_param_names,
+        body: child,
+        fn_decl_items: fn_decl_items,
+        emit_info: emit_info,
+        shared_types: shared_types,
+        source_indices: source_indices
+      )
+    )
+  )
+}
+
+// One call site: resolve the callee's declaration, re-derive the callee's OWN clone bound with the
+// same derivation emit_fn_def runs on itself (DESIGN.md S2 -- one derivation, two call sites, never
+// a re-implementation), then forward it onto the wrapper's params.
+fn v1_call_site_clone_forwarded_param_names(
+  call: Node,
+  generic_param_names: List<String>,
+  fn_decl_items: Map<String, Node>,
+  emit_info: EmitGraphInfo,
+  shared_types: Set<String>,
+  source_indices: Map<String, NewlineIndex>
+) -> List<String> {
+  let si = source_indices
+  let callee_name = expr_call_func_at(texpr: call, source_indices: si)
+  match map_get(fn_decl_items, callee_name) {
     Absent => []
-    Present { value: call } =>
-      let callee_name = expr_call_func_at(texpr: call, source_indices: si)
-      match map_get(fn_decl_items, callee_name) {
+    Present { value: callee_item } =>
+      match callee_item.body {
         Absent => []
-        Present { value: callee_item } =>
-          match callee_item.body {
-            Absent => []
-            Present { value: callee_body } =>
-              let callee_params = callee_item.params
-              let callee_type_params = function_type_params(params: callee_params)
-              let callee_generic_param_names = callee_type_params |> map(p => generic_param_name_at(n: p, source_indices: si))
-              let callee_clone_param_names = v1_fn_body_derived_clone_param_names(
-                params: callee_params,
-                inferred: resolved_type(n: callee_item),
-                body: callee_body,
-                emit_info: emit_info,
-                shared_types: shared_types,
-                source_indices: si
-              )
-              v1_call_forwarding_forwarded_param_names(
-                call: call,
-                callee_value_params: function_value_params(params: callee_params),
-                callee_generic_param_names: callee_generic_param_names,
-                callee_bound_param_names: callee_clone_param_names,
-                wrapper_generic_param_names: generic_param_names,
-                source_indices: si
-              )
-          }
+        Present { value: callee_body } =>
+          let callee_params = callee_item.params
+          let callee_type_params = function_type_params(params: callee_params)
+          let callee_generic_param_names = callee_type_params |> map(p => generic_param_name_at(n: p, source_indices: si))
+          let callee_clone_param_names = v1_fn_body_derived_clone_param_names(
+            params: callee_params,
+            inferred: resolved_type(n: callee_item),
+            body: callee_body,
+            emit_info: emit_info,
+            shared_types: shared_types,
+            source_indices: si
+          )
+          v1_call_forwarding_forwarded_param_names(
+            call: call,
+            callee_value_params: function_value_params(params: callee_params),
+            callee_generic_param_names: callee_generic_param_names,
+            callee_bound_param_names: callee_clone_param_names,
+            wrapper_generic_param_names: generic_param_names,
+            source_indices: si
+          )
       }
   }
 }
