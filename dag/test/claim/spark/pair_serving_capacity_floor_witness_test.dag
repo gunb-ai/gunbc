@@ -70,7 +70,6 @@ fn w_layout(blocks: Nat, groups: List<KvGroupLayout>) -> ResolvedKvLayout {
     scheduler_block_size: token_count(count: 16),
     hash_block_size: token_count(count: 16),
     max_model_len: token_count(count: 1048576),
-    max_num_batched_tokens: token_count(count: 8192),
     groups: groups,
     established_at_revision: vllm_source_revision_read,
   )
