@@ -158,6 +158,11 @@ type VllmReportedCapacityAdmission
   = ReportedCapacityAdmitted { capacity: VllmReportedCapacity }
   | ReportedCapacityRefused { cause: NonEmptyStr }
 
+fn observed_revisions_agree(a: VllmSourceRevision, b: VllmSourceRevision) -> Bool {
+  (a.repository as String) == (b.repository as String)
+    && (a.full_revision as String) == (b.full_revision as String)
+}
+
 fn vllm_reported_capacity(
   pool: VllmObservedKvPool,
   max_concurrency: ConcurrentRequestHundredths,
@@ -165,12 +170,22 @@ fn vllm_reported_capacity(
 ) -> VllmReportedCapacityAdmission {
   match reading.line {
     MaximumConcurrency =>
-      ReportedCapacityAdmitted {
-        capacity: VllmReportedCapacity {
-          pool: pool,
-          max_concurrency: max_concurrency,
-          observed_at_revision: pool.observed_at_revision,
-        },
+      if !observed_revisions_agree(a: reading.observed_at_revision, b: pool.observed_at_revision) {
+        ReportedCapacityRefused {
+          cause: join([
+            "the concurrency reading was taken at ", reading.observed_at_revision.repository as String, "@", reading.observed_at_revision.full_revision as String,
+            " but the pool line was taken at ", pool.observed_at_revision.repository as String, "@", pool.observed_at_revision.full_revision as String,
+            ", so they do not describe one engine",
+          ], "") as NonEmptyStr,
+        }
+      } else {
+        ReportedCapacityAdmitted {
+          capacity: VllmReportedCapacity {
+            pool: pool,
+            max_concurrency: max_concurrency,
+            observed_at_revision: pool.observed_at_revision,
+          },
+        }
       }
     GpuKvCacheSize =>
       ReportedCapacityRefused {
