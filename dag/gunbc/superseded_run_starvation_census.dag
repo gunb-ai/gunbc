@@ -26,6 +26,7 @@ import extdeps.github.workflow_runs {
   TimedOut,
   ActionRequired,
   StartupFailure,
+}
 import extdeps.clock { Clock }
 
 type SupersededRunPair {
@@ -73,8 +74,8 @@ type CancelledRunJobStanding {
   cancelled_jobs: Int
   failed_jobs: Int
   queued_jobs: Int
-  dead_time_under_hold: DurationResult?
-  group_hold_after_jobs: DurationResult?
+  dead_time_under_hold: DurationResult
+  group_hold_after_jobs: DurationResult
 }
 
 type RefreshedPair {
@@ -105,8 +106,8 @@ type CancellationRow {
   cancelled_jobs: Int
   failed_jobs: Int
   queued_jobs: Int
-  dead_time_under_hold: DurationResult?
-  group_hold_after_jobs: DurationResult?
+  dead_time_under_hold: DurationResult
+  group_hold_after_jobs: DurationResult
 }
 
 type CensusWindow {
@@ -643,15 +644,15 @@ fn pair_to_cancellation_row(pair: SupersededRunPair, rp: RefreshedPair) -> Cance
     cancelled_jobs: rp.cancelled_jobs,
     failed_jobs: rp.failed_jobs,
     queued_jobs: rp.queued_jobs,
-    dead_time_under_hold: Present { value: dead_time_under_hold_seconds(
+    dead_time_under_hold: dead_time_under_hold_seconds(
       prior_jobs_completed_at: rp.prior_jobs_completed_at,
       terminal_laggard_started_at: rp.terminal_laggard_started_at,
-    ) },
-    group_hold_after_jobs: Present { value: group_hold_after_jobs_seconds(
+    ),
+    group_hold_after_jobs: group_hold_after_jobs_seconds(
       last_job_completed_at: rp.terminal_laggard_completed_at,
       dead_updated_at: rp.dead_updated_at,
       dead_status: rp.dead_status,
-    ) },
+    ),
   }
 }
 
