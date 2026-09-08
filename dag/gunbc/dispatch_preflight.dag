@@ -17,6 +17,8 @@ import gunbc.roadmap_execution_contract {
 }
 import gunbc.roadmap_dispatch_environment {
   CapabilityEnsureReceipt,
+  CapabilityGrounded,
+  CapabilityNotGrounded,
   capability_ensure_observe,
   capability_ensure_receipt_json,
 }
@@ -127,16 +129,24 @@ data dispatch_preflight_revision_axis_label: String = "deployed-revision"
 // The capability axis is derived from the receipt the shared observer already produced,
 // so this module mints no second notion of what grounded means.
 fn capability_axis_verdict(receipt: CapabilityEnsureReceipt) -> PreflightAxisVerdict {
-  if receipt.grounded {
-    AxisGrounded {
-      axis_label: join([dispatch_preflight_capability_axis_label, ":", receipt.capability_label], ""),
-      evidence: receipt.evidence,
-    }
-  } else {
-    AxisRefused {
-      axis_label: join([dispatch_preflight_capability_axis_label, ":", receipt.capability_label], ""),
-      reason: receipt.reason,
-    }
+  match receipt {
+    CapabilityGrounded { grounded: g } =>
+      AxisGrounded {
+        axis_label: join([dispatch_preflight_capability_axis_label, ":", g.capability_label], ""),
+        evidence: g.evidence,
+      }
+    CapabilityNotGrounded {
+      capability: _,
+      capability_label: label,
+      executable: _,
+      decision: _,
+      evidence: _,
+      reason: why,
+    } =>
+      AxisRefused {
+        axis_label: join([dispatch_preflight_capability_axis_label, ":", label], ""),
+        reason: why,
+      }
   }
 }
 

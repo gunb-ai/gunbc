@@ -1,0 +1,34 @@
+module gunbc.guarantee_stall.generic_lambda_parameter_receiver_evidence_stall
+
+import v2.std.algebra { Cons, Empty }
+import gunbc.guarantee_rung { OutsideTheLadder, StructurallyImpossible }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+
+// TWO FACTS MAKE THIS A STALL RATHER THAN AN AUTHORING MISTAKE, and neither alone would.
+// A record field declared fn(R) -> R, constructed at a site where R is concretely
+// FreeMonoid<String>, hands its lambda parameter a receiver typed Coproduct(FreeMonoid): the
+// carrier arrives, the type argument does not. That refusal is CORRECT -- an expansion cannot
+// carry argument positions. What makes it a stall is the second fact: there is no annotation the
+// author can write at that position to supply them, because an inline lambda-parameter
+// annotation is unwritable (fn(x: T) is a parse error; the parser builds lambda parameters as
+// bare name leaves with no type slot). With both facts true, the only author-side route is to
+// move the body into a declared function whose parameter carries the type, which is a
+// restructuring the language forces rather than a shape the author chose.
+data generic_lambda_parameter_receiver_evidence_stall: GuaranteeStall = GuaranteeStall {
+  subject: "a record field's declared type argument reaching an UNANNOTATED lambda parameter as receiver evidence",
+  current: OutsideTheLadder,
+  ceiling: StructurallyImpossible,
+  blocker: AwaitsOneGrounding {
+    grounding: "the substituted type argument of a callable field's declared type reaches the lambda parameter bound under it, so the receiver carries its application positions"
+  },
+  population: BoundedPopulation {
+    members: Cons {
+      head: "std.emission_provenance emission_source_fragment -- MEASURED. The direct form refuses with algebra receiver application evidence unavailable for 'FreeMonoid' at argument 0 plus method 'append' not found on receiver type 'Coproduct(FreeMonoid)'; the delegating form through emission_source_appended compiles with zero blocking diagnostics. Both arms run, so this member is a discriminator and not an assertion.",
+      tail: Cons {
+        head: "the inline-annotation route is not merely unused but UNWRITABLE: fn(fragments: FreeMonoid<String>) refuses at parse with expected RParen, found Colon. This is what separates the class from an ordinary annotate-your-code remedy.",
+        tail: Empty {}
+      }
+    }
+  },
+  next_rung_trigger: climbs_when(capability: "a callable field's substituted type argument reaches an unannotated lambda parameter, so a receiver bound there carries its application positions and the delegating restructure is no longer required")
+}

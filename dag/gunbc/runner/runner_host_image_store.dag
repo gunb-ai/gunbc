@@ -1,0 +1,117 @@
+module gunbc.runner.runner_host_image_store
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+
+// WHERE HOST IMAGES LIVE, HOW LONG THEY LIVE, AND WHAT DECIDES.
+//
+// NINETEEN IMAGES ACCUMULATED ON ONE NFS EXPORT DURING ONE SESSION OF QUALIFICATION WORK, 6.6 GB,
+// with names an author invented as he went -- slice6b, slice7c, runner4, signed2. Nothing deleted
+// them because nothing owned them: each was published by hand at the moment it was needed, and the
+// question of when it stopped being needed had no answer anywhere.
+
+// ── identity ───────────────────────────────────────────────────────────────────────────────────
+
+// AN IMAGE IS ITS DIGEST. The filenames above are NICKNAMES for content, and they have every defect
+// a nickname has: "runner4" tells a reader nothing about what is in the file, two builds could be
+// given one name, and one build published twice gets two. The receipts already got this right --
+// they cite ISO digests -- which is the only reason the retention rule below is decidable at all.
+//
+// THE NAME IS A CONVENIENCE FOR THE BMC, WHICH ADDRESSES MEDIA BY FILENAME. That is an external
+// constraint and it is fine; what is not fine is letting the filename be the identity anywhere else.
+// A store that names files by digest and keeps the human label as an attribute has one authority
+// for what an image IS and a separate, disposable one for what to call it.
+type ImageIdentity
+  = ImageByDigest { sha256: NonEmptyStr }
+  | ImageByAuthorChosenName { name: NonEmptyStr, defect: NonEmptyStr }
+
+data image_naming_defect: ImageIdentity = ImageByAuthorChosenName {
+  name: "gunbc-host-slice6b.iso, gunbc-host-runner4.iso, gunbc-host-signed2.iso and sixteen others",
+  defect: "the name is a nickname for content: it does not say what the image contains, it can be reused across builds, and it multiplies when one build is published twice",
+}
+
+// ── retention: what makes an image worth keeping ───────────────────────────────────────────────
+
+// TWO REASONS TO KEEP AN IMAGE AND NO OTHERS. Either a committed receipt cites its digest -- in which
+// case deleting it would make a published claim uncheckable -- or the BMC is currently redirecting
+// it, in which case deleting it pulls the medium out from under a host that may be booting.
+//
+// EVERYTHING ELSE IS GARBAGE BY CONSTRUCTION rather than by an author's judgement about whether he
+// might want it later. "I might need this" is what produced nineteen images.
+type ImageRetention
+  = RetainedCitedByReceipt { receipt: NonEmptyStr }
+  | RetainedAttachedAtBmc
+  | Unreferenced
+
+data retention_rule: NonEmptyStr = "an image is retained if and only if a committed receipt cites its digest, or the BMC is currently redirecting it; the reap deletes the rest"
+
+// THE ATTACHMENT STATE IS READ FROM THE REDIRECTION CONFIGURATION, AND THE FIRST VERSION OF THE
+// REAP READ THE WRONG FIELD. It asked media/general for cd_image_name and got an empty string while
+// the BMC was actively redirecting an image; the authority is remote/configurations, whose rows
+// carry image_name alongside a redirection_status.
+//
+// THAT MISTAKE WAS HARMLESS ONLY BY LUCK -- the attached image happened to also be cited by a
+// receipt, so the wrong answer and the right answer agreed. A check that is wrong and looks right is
+// the failure this lane keeps finding, and it found it again inside its own cleanup.
+data attachment_authority: NonEmptyStr = "remote/configurations image_name, not media/general cd_image_name; the latter read empty while an image was redirected"
+
+// AND AN UNREADABLE ATTACHMENT STATE REFUSES RATHER THAN DEFAULTING TO "nothing is attached".
+// "I could not ask the BMC" and "the BMC says nothing is attached" are different facts, and only one
+// of them makes a deletion safe. Treating them alike is the absorbing arm: the reap would proceed
+// on ignorance in the direction that destroys data.
+data unreadable_attachment_arm: NonEmptyStr = "if the BMC's redirection state cannot be read the reap deletes nothing and says so; absence of an answer is not an answer"
+
+// ── what the first reap did ────────────────────────────────────────────────────────────────────
+
+data first_reap: List<NonEmptyStr> = [
+  "20 host images examined, 6.9 GB",
+  "3 retained: their digests are cited by runner_two_attempt_receipt, runner_bound_attempt_receipt and runner_signed_envelope_receipt",
+  "1 of those 3 was also the image the BMC was redirecting",
+  "17 deleted, 5.8 GB reclaimed",
+  "images this lane did not create -- an Alpine ISO, memtest, an Ubuntu installer -- were not considered and not touched",
+]
+
+// ── the store itself, and the part of the ask that is NOT yet answered ─────────────────────────
+
+// THE EXPORT IS KNOWN AND IT IS NOT RESILIENT, and those are separate properties that a single
+// phrase would blur. /srv/bmc on srv1 is a known location: the BMC's redirection configuration
+// names that host and that path, so anyone can find an image. It is one machine's local filesystem
+// with no replication and no backup, so a disk failure loses every image a receipt cites -- and with
+// them the ability to check any claim those receipts make about what booted.
+//
+// THE RECEIPTS SURVIVE THAT LOSS AND THE VERIFIABILITY DOES NOT. A digest in a committed .dag file
+// is durable; the bytes it identifies are not. That asymmetry is the actual gap, and calling the
+// export "known/resilient" as one property would hide it.
+type StoreStanding {
+  location: NonEmptyStr
+  known: Bool
+  resilient: Bool
+  what_loss_costs: NonEmptyStr
+}
+
+data host_image_store: StoreStanding = StoreStanding {
+  location: "/srv/bmc on srv1, exported over NFS and named by the BMC's own redirection configuration",
+  known: true,
+  resilient: false,
+  what_loss_costs: "every receipt that cites an ISO digest becomes uncheckable: the claim survives in git and the bytes it names do not",
+}
+
+// ── the deeper defect the reap does not fix ────────────────────────────────────────────────────
+
+// THE IMAGES WERE PUBLISHED BY HAND, one at a time, by an author running a copy command. The reap
+// gives that a garbage collector; it does not give it a producer. A store whose writes are
+// out-of-band and whose deletes are modeled is still half unmanaged, and the half that is unmanaged
+// is the one that decides what exists.
+//
+// THE TERMINAL FORM IS THE BUILD PUBLISHING ITS OWN OUTPUT under a digest-derived name, with the
+// human label carried as an attribute and the retention rule evaluated on every publish rather than
+// when someone remembers. That is the same shape the rest of this lane keeps arriving at: the
+// hand-built image tree under /var/tmp is parallel authority to gunbc.runner_guest_image, and this
+// store is parallel authority to whatever will eventually own artifact publication.
+data publication_standing: NonEmptyStr = "publication is still an out-of-band copy performed by an author; the reap manages deletion only, and a store with modeled deletes and unmodeled writes is half unmanaged"
+
+data next_steps: List<NonEmptyStr> = [
+  "name stored images by digest and carry the human label as an attribute, so the BMC's filename requirement stops being the identity",
+  "run the retention rule on every publish rather than when someone notices, so an unreferenced image never accumulates in the first place",
+  "decide what resilience the store owes: replication, or an accepted standing that receipts older than the store's retention are uncheckable and say so",
+  "drive publication from the model, which also removes the hand-built image tree that produced these names",
+]

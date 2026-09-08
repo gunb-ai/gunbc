@@ -1,0 +1,224 @@
+module gunbc.runner.runner_host_filtered_egress
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
+import gunbc.runner_microvm_network {
+  RunnerSlotNetwork, runner_slot_host_cidr, runner_slot_guest_ip_boot_arg,
+  runner_microvm_network_supernet,
+}
+
+// THE EGRESS PATH A RAW RUNNER HOST OWES, and why it is not the one the shared hosts run.
+// gunbc.runner.runner_microvm_network already derives a slot's tap name, host and guest addresses,
+// guest MAC and prefix from one slot identity, and renders the guest's kernel ip= argument. This
+// module does not re-derive any of that: the Mt. Collins probes used one-off 172.16.0.x values and a
+// hand-written ip= string, which was a second network authority by accident, and consuming the
+// existing one removes it.
+//
+// WHAT THIS MODULE ADDS IS THE STANCE AND ITS PREREQUISITES. The shared-host ruleset runs
+// `policy accept` on its forward chain, and that module says exactly why: several tables hook the
+// same point, all of them run, and a drop policy would have dropped everything Docker forwards. That
+// is a coexistence concession on a machine we do not solely own.
+//
+// THE RAW HOST OWNS ITS WHOLE FORWARDING POLICY, so it inherits the concession's REASON and not its
+// value. Copying `policy accept` here would carry a compromise made for a constraint this host does
+// not have -- which is how a workaround becomes an architecture.
+
+// ── the topology, named to exclude the one that was tried ───────────────────────────────────────
+
+// A BRIDGE WAS TRIED AND IS REJECTED, not merely superseded. gunbc.runner.runner_guest_egress_attempt
+// records it: bridging the tap and the host NIC gives the guest adjacency to the entire physical
+// segment -- DHCP, ARP, router advertisements, multicast, the BMC's own addresses, every other host.
+// Filtering that safely needs bridge-family policy and a second packet-processing boundary.
+//
+// A ROUTED /30 GIVES THE GUEST NO PHYSICAL ADJACENCY AT ALL. Its only neighbour is the host, so the
+// question stops being "what can we filter out of everything the guest can see" and becomes "what
+// do we route for it" -- a default-deny by construction rather than by ruleset.
+type GuestAttachment
+  = RoutedPointToPointTap { rationale: NonEmptyStr }
+  | BridgedToPhysicalSegment { rejected_because: NonEmptyStr }
+
+data runner_host_guest_attachment: GuestAttachment = RoutedPointToPointTap {
+  rationale: "the guest's only neighbour is the host, so it has no segment adjacency to filter and default-deny is a property of the topology rather than of a rule",
+}
+
+data bridged_attachment_rejected: GuestAttachment = BridgedToPhysicalSegment {
+  rejected_because: "segment adjacency hands the guest DHCP, ARP, RAs, multicast, the BMC addresses and every other host, and filtering it needs bridge-family policy and a second processing boundary",
+}
+
+// ── the host uplink is static, on purpose ───────────────────────────────────────────────────────
+
+// DHCP LEAVES A LONG-LIVED CLIENT, A CALLBACK SCRIPT, A LEASE LIFECYCLE AND NETWORK-SUPPLIED ROUTE
+// MUTATION ON A HOST WHOSE WHOLE POINT IS A DECLARED RUNTIME SURFACE. Every one of those is a
+// process or a mutation the surface would have to name.
+//
+// AND IT IS ALSO WHAT FAILED. The bridged attempt never obtained an address: the callback applied
+// nothing and the reason is still unresolved. Taking the address statically removes the client from
+// the critical path AND from the runtime surface, and turns an unresolved instrument defect into
+// something that can be investigated on its own rather than blocking egress.
+//
+// THE ADDRESS IS A CANDIDATE, NOT A FLEET FACT. A DHCP offer previously captured for this host's NIC
+// is an OBSERVATION of what the segment once offered; promoting it to permanent intent needs the
+// reservation checked and a conflict check first. The eventual authority is the fleet's own address
+// assignment joined to the physical unit, not a dated capture.
+type HostUplinkConfiguration
+  = StaticFromAdmittedAssignment { note: NonEmptyStr }
+  | StaticFromObservedOfferCandidate { note: NonEmptyStr }
+  | DhcpAtRuntime { note: NonEmptyStr }
+
+data runner_host_uplink: HostUplinkConfiguration = StaticFromObservedOfferCandidate {
+  note: "the previously captured offer for this host NIC is a candidate to be confirmed against the reservation and checked for conflict; it is not yet fleet intent, and a dated capture must not become permanent configuration by being used once",
+}
+
+// ── the policy, default-drop in every direction ─────────────────────────────────────────────────
+
+// EVERY CHAIN STARTS CLOSED AND OPENS BY NAME. The grants are the whole of what a guest may reach,
+// and the denials that matter most are the ones a permissive default would have allowed silently:
+// the BMC, the rest of the LAN, and any other attempt's tap.
+type ChainStance = DefaultDrop | DefaultAccept
+
+type EgressPolicyShape {
+  host_input: ChainStance
+  forward: ChainStance
+  explicit_grants: List<NonEmptyStr>
+  explicit_denials: List<NonEmptyStr>
+  nat: NonEmptyStr
+}
+
+data runner_host_egress_policy: EgressPolicyShape = EgressPolicyShape {
+  host_input: DefaultDrop,
+  forward: DefaultDrop,
+  explicit_grants: [
+    "loopback on the host",
+    "established and related, both directions",
+    "guest to the selected resolver, for name resolution only",
+    "guest to the qualification destination class on TCP 443",
+  ],
+  explicit_denials: [
+    "guest to the BMC and any management address",
+    "guest to the LAN, private, link-local and multicast ranges",
+    "tap to tap -- no attempt may reach another attempt",
+    "everything not named above",
+  ],
+  nat: "masquerade the admitted guest prefix on the host uplink, and nothing else",
+}
+
+// TCP 443 TO A DESTINATION CLASS IS NOT "GITHUB ONLY", and calling it that would be the kind of
+// precision this lane keeps having to walk back. A static address list for a CDN-fronted service is
+// stale the moment it is written, so the honest description is a default-deny policy with one broad
+// allowance. Narrowing it properly means an authenticated egress proxy as the single permitted
+// destination, which is its own design.
+data egress_grant_precision: NonEmptyStr = "the TCP 443 grant is a destination CLASS, not a GitHub-only rule; a static address list cannot honestly express a CDN-fronted service and the narrow form is an egress proxy"
+
+// IPv6 IS AN EXPLICIT STANDING RATHER THAN AN OVERSIGHT. An IPv4-only ruleset on a dual-stack host
+// is a default-allow wearing a default-deny's name, because everything the v4 policy denies remains
+// reachable over v6.
+type IpV6Standing
+  = IpV6DisabledOnDataPath
+  | IpV6DefaultDenyRuleset
+  | IpV6Unaddressed { risk: NonEmptyStr }
+
+data runner_host_ipv6: IpV6Standing = IpV6DisabledOnDataPath
+
+// ── what the kernel must carry, since nothing is modular ────────────────────────────────────────
+
+// CONFIG_MODULES=n MAKES EVERY REQUIREMENT A BUILD-TIME ONE. Anything the distro defconfig marks
+// modular is simply absent from this kernel, which is why the bridged attempt had no netfilter at
+// all. These are derived from the policy above rather than copied from a distro config, and the
+// image build consumes them.
+//
+// COUNTERS ARE NOT ON THIS LIST, AND AN EARLIER DRAFT PUT THEM THERE. It required
+// CONFIG_NFT_COUNTER, which does not exist in this kernel: net/netfilter/Makefile links nft_counter.o
+// unconditionally into nf_tables, so counters arrive with CONFIG_NF_TABLES and there is nothing to
+// enable. A requirement naming an option the kernel does not have would have been satisfiable by
+// nobody and noticed by no one -- it was found by reading the built .config back rather than by
+// trusting the list that produced it.
+//
+// CFS BANDWIDTH RIDES ALONG BECAUSE ONE REBUILD SERVES BOTH, and it is listed here so the
+// requirement is visible -- but it earns its OWN receipt. gunbc.runner.runner_guest_egress_attempt
+// diagnosed cpu.max's absence to this option being unset; a filtered-egress receipt must not be
+// read as having established a CPU bound.
+type KernelFeatureRequirement {
+  option: NonEmptyStr
+  required_for: NonEmptyStr
+}
+
+data runner_host_kernel_requirements: List<KernelFeatureRequirement> = [
+  KernelFeatureRequirement { option: "CONFIG_NETFILTER", required_for: "any packet filtering at all" },
+  KernelFeatureRequirement { option: "CONFIG_NF_TABLES", required_for: "the ruleset family this fleet already models" },
+  KernelFeatureRequirement { option: "CONFIG_NF_CONNTRACK", required_for: "established and related, without which return traffic needs a permanent hole" },
+  KernelFeatureRequirement { option: "CONFIG_NF_NAT", required_for: "source NAT of the guest prefix onto the uplink" },
+  KernelFeatureRequirement { option: "CONFIG_NFT_CT", required_for: "matching connection state from an nftables rule" },
+  KernelFeatureRequirement { option: "CONFIG_NFT_NAT", required_for: "expressing NAT in the nftables family" },
+  KernelFeatureRequirement { option: "CONFIG_NFT_MASQ", required_for: "masquerade specifically, since the uplink address is not fixed in the ruleset" },
+  KernelFeatureRequirement { option: "CONFIG_CFS_BANDWIDTH", required_for: "cpu.max to exist at all -- rides this rebuild and owes its own receipt" },
+]
+
+// ── the installer is a declared, transient process ──────────────────────────────────────────────
+
+// AN nft BINARY IS A GENERAL-PURPOSE EXECUTABLE IN A HOST WHOSE WHOLE CLAIM IS A CLOSED SURFACE, so
+// it is declared rather than smuggled: exactly one invocation during network convergence, exited
+// before any work is admitted. The terminal form is the supervisor programming netfilter over
+// netlink itself, which removes the binary; that is not required for a first canary and is named so
+// the interim does not become the design.
+type PolicyInstaller
+  = NetworkPolicyInstallerProcess { cardinality: NonEmptyStr, terminal_state: NonEmptyStr }
+  | SupervisorProgramsNetlinkDirectly
+
+data runner_host_policy_installer: PolicyInstaller = NetworkPolicyInstallerProcess {
+  cardinality: "exactly once during network convergence",
+  terminal_state: "exited before work admission; it is not part of the steady-state population",
+}
+
+// ── acceptance: a failed connection is not a denial ─────────────────────────────────────────────
+
+// A REFUSED CONNECTION PROVES NOTHING ON ITS OWN. Routing failure, DNS failure, an absent service and
+// a firewall drop all present identically to a client, so a deny path evidenced by "it did not
+// connect" is evidence of nothing. The counters attached to the deny rules are what distinguish
+// them, and they come free with CONFIG_NF_TABLES rather than being a separate option.
+data egress_acceptance_form: List<NonEmptyStr> = [
+  "each allowed path succeeds AND its allow rule's counter advances",
+  "each denied path fails AND its deny rule's counter advances -- a failure with a still-zero counter means something else stopped it",
+  "the installed ruleset is read back and compared against the rendered one, not assumed from a successful install",
+  "the BMC, the LAN and another attempt's tap are each denied by name",
+  "IPv6 cannot reach what IPv4 denies",
+  "at retirement: no tap, no per-attempt rules, no route, and no installer process",
+]
+
+data filtered_egress_not_yet_held: NonEmptyStr = "nothing in this module is a receipt; it is the requirement and the stance. product.fabric.isolation DefaultDenyEgress stays WITHHELD from the Mt. Collins offer until a run produces the acceptance above"
+
+// ── the addressing is CONSUMED, not restated ────────────────────────────────────────────────────
+
+// THE PROBES USED LITERAL 172.16.0.1 AND .2 AND A HAND-WRITTEN ip= STRING. Both already existed as
+// derivations from one slot identity, so the literals were a second network authority created by
+// accident -- exactly the fork DESIGN section 3 forbids, and the reason these functions take a
+// RunnerSlotNetwork rather than any address of their own.
+//
+// NOTHING BELOW MINTS A SLOT. Taking the network as a parameter is what keeps this module a policy
+// over the existing authority instead of a second producer of addresses.
+
+// THE ONLY SOURCE THE FORWARD CHAIN ADMITS, as a /32 rather than the slot's /30. The /30 also
+// contains the host's own address, and admitting the whole prefix as a SOURCE would accept packets
+// claiming to come from the host itself on a guest-facing interface.
+fn runner_host_admitted_guest_source(net: RunnerSlotNetwork) -> String {
+  join([render_ipv4_address(addr: net.guest_address) as String, "/32"], "")
+}
+
+// THE HOST SIDE OF THE POINT-TO-POINT LINK, which is the guest's only next hop and therefore the
+// only address it may reach on the host at all.
+fn runner_host_tap_cidr(net: RunnerSlotNetwork) -> String {
+  runner_slot_host_cidr(net: net)
+}
+
+// THE GUEST IS TOLD ITS ADDRESS AT BOOT, WHICH IS WHY NO DHCP CLIENT IS NEEDED ON EITHER SIDE. The
+// same rendering the fleet already uses; the raw host does not get a second spelling of it.
+fn runner_host_guest_boot_ip_arg(net: RunnerSlotNetwork) -> String {
+  runner_slot_guest_ip_boot_arg(net: net)
+}
+
+// TAP-TO-TAP IS DENIED BY THE SUPERNET, not by enumerating peers. Every slot's /30 sits inside the
+// one supernet, so a single rule denying guest -> supernet forbids reaching EVERY other attempt --
+// including attempts that do not exist yet. An enumeration would have to be rebuilt each time the
+// slot count changed, and would silently permit whatever it failed to list.
+fn runner_host_peer_attempt_denial() -> NonEmptyStr {
+  runner_microvm_network_supernet()
+}
