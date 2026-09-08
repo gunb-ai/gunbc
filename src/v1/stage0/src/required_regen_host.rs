@@ -2921,6 +2921,63 @@ mod tests {
         );
     }
 
+    // REACHABILITY: these plant `std_logic.rs` in the committed-not-emitted slot of
+    // `validate_compared_populations` itself. A no-drift round never enters that arm
+    // (#10795). The live projected roster is the join surface; `generated_stage0_filenames`
+    // is not consulted (it would also drop required_regen_host.rs and hide this class).
+    #[test]
+    fn live_frontier_projection_is_not_the_crate_layout_filename_union() {
+        assert!(
+            SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES.contains(&"std_logic.rs"),
+            "the generated join surface must carry the deliberately retained oracle"
+        );
+        assert!(
+            HAND_MAINTAINED_STAGE0_FILES.contains(&"target_invocation_host.rs"),
+            "the cheap list includes layout-only hosts"
+        );
+        assert!(
+            !SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES.contains(&"target_invocation_host.rs"),
+            "joining the cheap list would over-exclude this class; the frontier must not"
+        );
+    }
+
+    #[test]
+    fn std_logic_committed_not_emitted_is_retained_by_live_frontier_join() {
+        let reason = validate_compared_populations(
+            &["std_logic.rs".to_string(), "still.rs".to_string()],
+            &["still.rs".to_string()],
+            &BTreeMap::new(),
+            SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES,
+        );
+        assert!(
+            reason.is_none(),
+            "std_logic.rs is SeedRetainedIntrinsic on the frontier; committed-not-emitted must not fire: {reason:?}"
+        );
+    }
+
+    #[test]
+    fn unrostered_drop_still_refuses_beside_std_logic() {
+        let reason = validate_compared_populations(
+            &[
+                "std_logic.rs".to_string(),
+                "lost.rs".to_string(),
+                "still.rs".to_string(),
+            ],
+            &["still.rs".to_string()],
+            &BTreeMap::new(),
+            SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES,
+        )
+        .expect("expected refusal");
+        assert!(
+            reason.contains("committed mirror is no longer emitted") && reason.contains("lost.rs"),
+            "the unrostered drop must still reach the refusal: {reason}"
+        );
+        assert!(
+            !reason.contains("std_logic.rs"),
+            "the retained oracle must not be named in the refusal: {reason}"
+        );
+    }
+
     #[test]
     fn absent_candidate_tree_refuses() {
         let tmp = temp_dir("required-regen-absent");
