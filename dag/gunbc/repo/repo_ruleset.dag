@@ -1437,7 +1437,7 @@ data repo_ruleset_world_convergence_handler: RepoRulesetWorldConvergenceHandler 
 // RepositoryRulesetConvergenceRefusal, terminating at RepositoryRulesetDriftUnrepaired -- which
 // RENDERS THE DIVERGENCES -- when no earlier hold fires; there is no mutating entry point beside
 // the world-convergence root.
-func verify() -> ProcessExit {
+fn verify() -> ProcessExit {
   match world_converge(
     subject: RepositoryRulesetConvergenceSubject {
       repository: gunbc_repository,

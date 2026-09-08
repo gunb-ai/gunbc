@@ -50,7 +50,7 @@ fn provision_compile_pool_routes_through_host_effect_apply() -> Bool {
   }
 }
 
-func provision_compile_pool(host: HostIdentity) -> ProcessExit
+fn provision_compile_pool(host: HostIdentity) -> ProcessExit
   uses net: Network
 {
   host_toolchain_ensure(host: host, kind: CompilePool)

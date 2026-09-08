@@ -30,7 +30,7 @@ data mtcollins1_capability_row_unexercised: BmcFirmwareReleaseCapabilityRow = Bm
 // It answers one question that reading the fold cannot: which arm does live data actually reach.
 // The pair is asserted in ONE func so the two cannot drift apart — a green case whose control lives
 // somewhere else is a green case whose control can be deleted without anything noticing.
-func mtcollins1_admission_probe() -> ProcessExit {
+fn mtcollins1_admission_probe() -> ProcessExit {
   let admitted = match oob_boot_handoff_admission(
     observation: mtcollins1_access_observation,
     capability_row: mtcollins1_capability_row,

@@ -33,13 +33,13 @@ service DoorProbeRest {
 }
 
 // Case 1 (positive control): server body is {"id":"valid-value"}.
-func witness_rest_id_equals_valid() -> Bool {
+fn witness_rest_id_equals_valid() -> Bool {
   DoorProbeRest.Fetch().id == "valid-value"
 }
 
 // Case 2 (predicate bypass, no tampering at all): server body is
 // {"id":""}, returned over a real socket by a real HTTP server — nothing on
 // disk is edited for this case.
-func witness_rest_id_equals_empty() -> Bool {
+fn witness_rest_id_equals_empty() -> Bool {
   DoorProbeRest.Fetch().id == ""
 }

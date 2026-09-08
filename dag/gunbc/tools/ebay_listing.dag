@@ -69,7 +69,7 @@ fn build_offer(draft: EbayListingDraft) -> EbayOfferDetailsWithKeys {
   }
 }
 
-func mint_seller_token(
+fn mint_seller_token(
   client_id: String,
   client_secret: Secret,
   refresh_token: Secret
@@ -85,7 +85,7 @@ func mint_seller_token(
   return { access_token: token.access_token }
 }
 
-func list_item(
+fn list_item(
   draft: EbayListingDraft,
   client_id: String,
   client_secret: Secret,
@@ -119,7 +119,7 @@ func list_item(
   return { offer_id: offer.offer_id, listing_id: published.listing_id }
 }
 
-func show_inventory(
+fn show_inventory(
   client_id: String,
   client_secret: Secret,
   refresh_token: Secret,

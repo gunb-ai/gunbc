@@ -172,13 +172,13 @@ fn fci1_checkpoints() -> List<Fci1Checkpoint> {
   ]
 }
 
-func fci1_assert_checkpoint_token(token: NonEmptyStr) -> ProcessExit {
+fn fci1_assert_checkpoint_token(token: NonEmptyStr) -> ProcessExit {
   if list_length(items: filter(fci1_checkpoints(), c => fci1_checkpoint_token(checkpoint: c) == token)) == 1 {
     ExitSuccess
   } else { exit_failure(reason: join(["unknown or duplicate FCI-1 checkpoint token: ", token as String], "")) }
 }
 
-func fci1_checkpoint_reached(token: NonEmptyStr, phase: NonEmptyStr, path: String) -> ProcessExit {
+fn fci1_checkpoint_reached(token: NonEmptyStr, phase: NonEmptyStr, path: String) -> ProcessExit {
   if token == phase && list_length(items: filter(fci1_checkpoints(), c => fci1_checkpoint_token(checkpoint: c) == token)) == 1 {
     let write = Filesystem.Write(path: path, content: join([
       "CheckpointReached|checkpoint=", token as String, "|phase=", phase as String, "|status=86",
@@ -187,7 +187,7 @@ func fci1_checkpoint_reached(token: NonEmptyStr, phase: NonEmptyStr, path: Strin
   } else { exit_failure(reason: join(["phase-inapplicable FCI-1 checkpoint: token=", token as String, " phase=", phase as String], "")) }
 }
 
-func fci1_write_checkpoint_terminal_receipt(token: NonEmptyStr, path: String) -> ProcessExit {
+fn fci1_write_checkpoint_terminal_receipt(token: NonEmptyStr, path: String) -> ProcessExit {
   if list_length(items: filter(fci1_checkpoints(), c => fci1_checkpoint_token(checkpoint: c) == token)) == 1 {
     let write = Filesystem.Write(path: path, content: join(["CheckpointNotReached|selected=", token as String], ""))
     if write.success { ExitSuccess } else { exit_failure(reason: "checkpoint terminal receipt write refused") }
@@ -329,7 +329,7 @@ fn fci1_path_owner_matches(path: NonEmptyStr, expected: PosixOwnerSpec) -> Bool 
 // No reservation or allocation-store effect is reachable before this entry succeeds. The attempts
 // owner is derived from a separate exact-path observation of the ghrunner home rather than a UID/GID
 // literal. Mode is consumed only as the explicit unobserved boundary; it is not promoted to evidence.
-func fci1_assert_host_preconditions() -> ProcessExit {
+fn fci1_assert_host_preconditions() -> ProcessExit {
   let slot = cp_probe_slot()
   let cell_root = fabric_cell_root_path(slot: slot) as NonEmptyStr
   let attempts = fabric_cell_attempt_root_path(slot: slot) as NonEmptyStr
@@ -395,7 +395,7 @@ fn fci1_required_build_work() -> RequiredBuildWorkBinding {
 }
 
 // The frozen FCI-0 handoff is an assertion over the producer's result, never an input replacing it.
-func fci1_assert_frozen_work_key() -> ProcessExit {
+fn fci1_assert_frozen_work_key() -> ProcessExit {
   match fci1_required_build_work() {
     RequiredBuildWorkRefused { cause: _ } => exit_failure(reason: "FCI-0 Work producer refused")
     RequiredBuildWorkBound { work: work } =>
@@ -443,18 +443,18 @@ fn fci1_live_reserve(root: NonEmptyStr, expected: CasExpectation) -> CellReserva
   }
 }
 
-func fci1_live_reserve_absent(root: NonEmptyStr) -> CellReservation {
+fn fci1_live_reserve_absent(root: NonEmptyStr) -> CellReservation {
   fci1_live_reserve(root: root, expected: ExpectSlotAbsent)
 }
 
-func fci1_live_reserve_generation(root: NonEmptyStr, generation: Int) -> CellReservation {
+fn fci1_live_reserve_generation(root: NonEmptyStr, generation: Int) -> CellReservation {
   fci1_live_reserve(root: root, expected: ExpectSlotGeneration { generation: generation })
 }
 
 // Reuse the generation produced by the canonical store. An absent slot creates generation one; a
 // released slot advances from the generation it actually carries; a held or unreadable slot
 // refuses. The caller never authors the fence.
-func fci1_live_reserve_available(root: NonEmptyStr) -> CellReservation {
+fn fci1_live_reserve_available(root: NonEmptyStr) -> CellReservation {
   match observe_cas_slot_state(root: root, key: fabric_cell_allocation_key(slot: cp_probe_slot())) {
     CasObservedUnreadable { cause: cause } => StoreUnavailable { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()), cause: cause }
     CasObservedReadable { readable: CasReadableAbsent } => fci1_live_reserve(root: root, expected: ExpectSlotAbsent)
@@ -468,7 +468,7 @@ func fci1_live_reserve_available(root: NonEmptyStr) -> CellReservation {
   }
 }
 
-func fci1_live_replace_held(root: NonEmptyStr) -> CellReservation {
+fn fci1_live_replace_held(root: NonEmptyStr) -> CellReservation {
   match observe_cas_slot_state(root: root, key: fabric_cell_allocation_key(slot: cp_probe_slot())) {
     CasObservedUnreadable { cause: cause } => StoreUnavailable { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()), cause: cause }
     CasObservedReadable { readable: CasReadableAbsent } => ReservationLost { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()) }
@@ -561,11 +561,11 @@ fn fci1_modeled_ownership_wire(member: FabricCellMember) -> NonEmptyStr {
   }
 }
 
-func fci1_live_replace_held_wire(root: NonEmptyStr) -> String {
+fn fci1_live_replace_held_wire(root: NonEmptyStr) -> String {
   fci1_cell_reservation_wire(reservation: fci1_live_replace_held(root: root))
 }
 
-func fci1_assert_replace_held(
+fn fci1_assert_replace_held(
   root: NonEmptyStr,
   cleanup_path: String,
   checkpoint: NonEmptyStr,
@@ -599,7 +599,7 @@ func fci1_assert_replace_held(
   } } }
 }
 
-func fci1_live_binding_observation(root: NonEmptyStr) -> RequiredBuildCellObservation {
+fn fci1_live_binding_observation(root: NonEmptyStr) -> RequiredBuildCellObservation {
   match fci1_probe_demand() {
     Fci1DemandRefused => ReservationPayloadWorkMismatch { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()) }
     Fci1DemandBound { demand: demand } => observe_required_build_cell_wet(
@@ -690,7 +690,7 @@ fn fci1_decode_reservation_cleanup_authority(wire: String) -> Fci1ReservationCle
   } }
 }
 
-func fci1_live_reserve_and_observe_available(
+fn fci1_live_reserve_and_observe_available(
   root: NonEmptyStr,
   path: String,
   cleanup_path: String,
@@ -737,7 +737,7 @@ func fci1_live_reserve_and_observe_available(
   } }
 }
 
-func fci1_live_binding_sample_wire(root: NonEmptyStr, path: String) -> ProcessExit {
+fn fci1_live_binding_sample_wire(root: NonEmptyStr, path: String) -> ProcessExit {
   match required_build_cell_lifetime_sample(observation: fci1_live_binding_observation(root: root)) {
     RequiredBuildCellLifetimeSampleUndecodable => exit_failure(reason: "RequiredBuildCellObservationRefused")
     RequiredBuildCellLifetimeSampleDecoded { sample: sample } => fabric_ci_write_wire(
@@ -848,14 +848,14 @@ fn fci1_decode_allocation_prestate(wire: String) -> AllocationSlotPrestate {
   }
 }
 
-func fci1_live_allocation_prestate(root: NonEmptyStr, path: String) -> ProcessExit {
+fn fci1_live_allocation_prestate(root: NonEmptyStr, path: String) -> ProcessExit {
   fabric_ci_write_wire(
     path: path,
     wire: fabric_ci_evidence_wire(value: fci1_allocation_prestate_wire(prestate: fci1_allocation_prestate(root: root))),
   )
 }
 
-func fci1_assert_allocation_available(root: NonEmptyStr) -> ProcessExit {
+fn fci1_assert_allocation_available(root: NonEmptyStr) -> ProcessExit {
   match fci1_allocation_slot_admission(prestate: fci1_allocation_prestate(root: root)) {
     AllocationSlotAdmitted { path: _ } => ExitSuccess
     AllocationSlotRefusedHeld { path: _, generation: _ } => exit_failure(reason: "FCI-1 allocation slot remains held")
@@ -882,7 +882,7 @@ fn fci1_allocation_restoration(root: NonEmptyStr, before_wire: String, held_wire
   }
 }
 
-func fci1_assert_allocation_restored(root: NonEmptyStr, before_wire: String, held_wire: String) -> ProcessExit {
+fn fci1_assert_allocation_restored(root: NonEmptyStr, before_wire: String, held_wire: String) -> ProcessExit {
   match fci1_allocation_restoration(root: root, before_wire: before_wire, held_wire: held_wire) {
     AllocationSlotAbsentReturnedFree { path: _, held_generation: _, post_generation: _ } => ExitSuccess
     AllocationSlotFreeReturnedFree { path: _, pre_generation: _, held_generation: _, post_generation: _ } => ExitSuccess
@@ -1003,7 +1003,7 @@ fn fci1_authority_matches_exact_free(
   }
 }
 
-func fci1_canonical_cleanup_disposition(
+fn fci1_canonical_cleanup_disposition(
   root: NonEmptyStr,
   before_wire: String,
   authority_path: String,
@@ -1077,7 +1077,7 @@ func fci1_canonical_cleanup_disposition(
     }
   }
 }
-func fci1_write_canonical_cleanup_receipt(root: NonEmptyStr, before_wire: String, authority_path: String, path: String) -> ProcessExit {
+fn fci1_write_canonical_cleanup_receipt(root: NonEmptyStr, before_wire: String, authority_path: String, path: String) -> ProcessExit {
   let disposition = fci1_canonical_cleanup_disposition(root: root, before_wire: before_wire, authority_path: authority_path)
   let write = Filesystem.Write(path: path, content: to_string(disposition))
   if !write.success { exit_failure(reason: join(["canonical cleanup receipt write refused: ", write.error], "")) }
@@ -1091,7 +1091,7 @@ func fci1_write_canonical_cleanup_receipt(root: NonEmptyStr, before_wire: String
   } }
 }
 
-func fci1_write_disposable_cleanup_receipt(root: NonEmptyStr, authority_path: String, path: String) -> ProcessExit {
+fn fci1_write_disposable_cleanup_receipt(root: NonEmptyStr, authority_path: String, path: String) -> ProcessExit {
   let observed = fci1_allocation_slot_observation(root: root)
   match observed {
     Fci1SlotAbsent { path: _ } => {
@@ -1139,7 +1139,7 @@ func fci1_write_disposable_cleanup_receipt(root: NonEmptyStr, authority_path: St
   }
 }
 
-func fci1_grade_and_write_allocation_receipt(
+fn fci1_grade_and_write_allocation_receipt(
   root: NonEmptyStr,
   before_wire: String,
   held_wire: String,
@@ -1183,7 +1183,7 @@ func fci1_grade_and_write_allocation_receipt(
 
 // Pure controls run before host effects. Their rejecting counterparts are enrolled in the witness
 // corpus; the disposable-store mutation in the live driver exercises the production CAS mechanism.
-func fci1_assert_slot_absent_admitted() -> ProcessExit {
+fn fci1_assert_slot_absent_admitted() -> ProcessExit {
   match fci1_allocation_slot_admission(prestate: AllocationSlotAbsent { path: "/run/fci1-control" }) {
     AllocationSlotAdmitted { path: _ } => ExitSuccess
     _ => exit_failure(reason: "FCI-1 absent slot was not admitted")
@@ -1192,14 +1192,14 @@ func fci1_assert_slot_absent_admitted() -> ProcessExit {
 
 // This now asserts the exact refusal CAUSE rather than mere inadmissibility: an unreadable slot that
 // began refusing for some other reason would previously have passed this control.
-func fci1_assert_unreadable_slot_refused() -> ProcessExit {
+fn fci1_assert_unreadable_slot_refused() -> ProcessExit {
   match fci1_allocation_slot_admission(prestate: AllocationSlotUnreadable { path: "/run/fci1-control" }) {
     AllocationSlotRefusedUnreadable { path: _ } => ExitSuccess
     _ => exit_failure(reason: "FCI-1 unreadable slot was admitted")
   }
 }
 
-func fci1_assert_exact_absent_to_free_control() -> ProcessExit {
+fn fci1_assert_exact_absent_to_free_control() -> ProcessExit {
   match fci1_exact_allocation_restoration(
     prestate: AllocationSlotAbsent { path: "/run/fci1-control" },
     held_generation: 1,
@@ -1210,7 +1210,7 @@ func fci1_assert_exact_absent_to_free_control() -> ProcessExit {
   }
 }
 
-func fci1_assert_exact_free_to_free_control() -> ProcessExit {
+fn fci1_assert_exact_free_to_free_control() -> ProcessExit {
   match fci1_exact_allocation_restoration(
     prestate: AllocationSlotFree { path: "/run/fci1-control", generation: 7 },
     held_generation: 8,
@@ -1221,7 +1221,7 @@ func fci1_assert_exact_free_to_free_control() -> ProcessExit {
   }
 }
 
-func fci1_assert_extra_generation_refused_control() -> ProcessExit {
+fn fci1_assert_extra_generation_refused_control() -> ProcessExit {
   match fci1_exact_allocation_restoration(
     prestate: AllocationSlotFree { path: "/run/fci1-control", generation: 7 },
     held_generation: 8,
@@ -1253,7 +1253,7 @@ fn fci1_live_lifetime_verdict(root: NonEmptyStr, before_wire: String) -> Require
 // Discriminating decoder control. The malformed wire is truncated before every required field;
 // lazy evaluation means the live observer is unreachable when decode refuses, so this control can
 // run anywhere while still exercising the exact production entry used by the wet transaction.
-func fci1_invalid_before_wire_refuses() -> ProcessExit {
+fn fci1_invalid_before_wire_refuses() -> ProcessExit {
   let verdict = fci1_live_lifetime_verdict(root: "/fci1-invalid-wire-must-not-be-read", before_wire: "srv3-06\n1")
   match verdict {
     RequiredBuildCellObservationRefused => ExitSuccess
@@ -1261,7 +1261,7 @@ func fci1_invalid_before_wire_refuses() -> ProcessExit {
   }
 }
 
-func fci1_assert_lifetime_held(root: NonEmptyStr, before_wire: String) -> ProcessExit {
+fn fci1_assert_lifetime_held(root: NonEmptyStr, before_wire: String) -> ProcessExit {
   let verdict = fci1_live_lifetime_verdict(root: root, before_wire: before_wire)
   match verdict {
     RequiredBuildCellLifetimeHeld { snapshot: snapshot } =>
@@ -1272,7 +1272,7 @@ func fci1_assert_lifetime_held(root: NonEmptyStr, before_wire: String) -> Proces
   }
 }
 
-func fci1_assert_generation_changed(root: NonEmptyStr, before_wire: String) -> ProcessExit {
+fn fci1_assert_generation_changed(root: NonEmptyStr, before_wire: String) -> ProcessExit {
   let verdict = fci1_live_lifetime_verdict(root: root, before_wire: before_wire)
   match verdict {
     ReservationGenerationChanged { expected_generation: expected, observed_generation: observed } =>
@@ -1283,7 +1283,7 @@ func fci1_assert_generation_changed(root: NonEmptyStr, before_wire: String) -> P
   }
 }
 
-func fci1_write_generation_changed_receipt(root: NonEmptyStr, before_wire: String, path: String) -> ProcessExit {
+fn fci1_write_generation_changed_receipt(root: NonEmptyStr, before_wire: String, path: String) -> ProcessExit {
   let verdict = fci1_live_lifetime_verdict(root: root, before_wire: before_wire)
   let write = Filesystem.Write(path: path, content: join([
     "before_wire=", before_wire, "\nverdict=", to_string(verdict),
@@ -1298,7 +1298,7 @@ func fci1_write_generation_changed_receipt(root: NonEmptyStr, before_wire: Strin
   } }
 }
 
-func fci1_assert_lifetime_dependent(root: NonEmptyStr, before_wire: String) -> ProcessExit {
+fn fci1_assert_lifetime_dependent(root: NonEmptyStr, before_wire: String) -> ProcessExit {
   let verdict = fci1_live_lifetime_verdict(root: root, before_wire: before_wire)
   match verdict {
     ReservationLifetimeDependentOnSubmitter { slot_key: slot } =>
@@ -1309,7 +1309,7 @@ func fci1_assert_lifetime_dependent(root: NonEmptyStr, before_wire: String) -> P
   }
 }
 
-func fci1_write_lifetime_dependent_receipt(root: NonEmptyStr, before_wire: String, path: String) -> ProcessExit {
+fn fci1_write_lifetime_dependent_receipt(root: NonEmptyStr, before_wire: String, path: String) -> ProcessExit {
   let verdict = fci1_live_lifetime_verdict(root: root, before_wire: before_wire)
   let write = Filesystem.Write(path: path, content: join([
     "before_wire=", before_wire, "\nverdict=", to_string(verdict),
@@ -1440,7 +1440,7 @@ fn fci1_cell_receipt_observation() -> Fci1CellReceiptObservation {
   }
 }
 
-func fci1_live_cell_observation(path: String) -> ProcessExit {
+fn fci1_live_cell_observation(path: String) -> ProcessExit {
   match fci1_cell_receipt_observation() {
     Fci1CellReceiptRefused { detail: why } => exit_failure(reason: join(["cell observation refused: ", why], ""))
     Fci1CellReceiptAdmitted {
@@ -1450,7 +1450,7 @@ func fci1_live_cell_observation(path: String) -> ProcessExit {
   }
 }
 
-func fci1_assert_cell_admitted() -> ProcessExit {
+fn fci1_assert_cell_admitted() -> ProcessExit {
   let decision = admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: "srv3"))
   match fabric_cell_observation_outcome(decision: decision) {
     FabricCellObservationAdmitted { population: population } =>
@@ -1482,7 +1482,7 @@ fn fci1_cell_pre_reservation_standing() -> FabricCellPreReservationStanding {
   }
 }
 
-func fci1_assert_clean_cell_prestate() -> ProcessExit {
+fn fci1_assert_clean_cell_prestate() -> ProcessExit {
   match fci1_cell_pre_reservation_standing() {
     FabricCellPreReservationClean { cell: _, members_content: _ } => ExitSuccess
     FabricCellPreReservationAbsent { cell: _ } => exit_failure(reason: "FCI-1 already-converged cell is absent")
@@ -1490,7 +1490,7 @@ func fci1_assert_clean_cell_prestate() -> ProcessExit {
   }
 }
 
-func fci1_assert_cell_unchanged(before_wire: String) -> ProcessExit {
+fn fci1_assert_cell_unchanged(before_wire: String) -> ProcessExit {
   match fci1_cell_receipt_observation() {
     Fci1CellReceiptRefused { detail: why } => exit_failure(reason: join(["persistent cell substrate observation refused: ", why], ""))
     Fci1CellReceiptAdmitted {
@@ -1504,7 +1504,7 @@ func fci1_assert_cell_unchanged(before_wire: String) -> ProcessExit {
   } }
 }
 
-func fci1_grade_and_write_cell_receipt(before_wire: String, phase: NonEmptyStr, path: String) -> ProcessExit {
+fn fci1_grade_and_write_cell_receipt(before_wire: String, phase: NonEmptyStr, path: String) -> ProcessExit {
   match fci1_cell_receipt_observation() {
     Fci1CellReceiptRefused { detail: why } => exit_failure(reason: join(["cell receipt observation refused: ", why], ""))
     Fci1CellReceiptAdmitted {
@@ -1595,7 +1595,7 @@ fn fci1_zero_work_observation() -> Fci1ZeroWorkObservation {
   }
 }
 
-func fci1_write_zero_work_receipt(phase: NonEmptyStr, path: String) -> ProcessExit {
+fn fci1_write_zero_work_receipt(phase: NonEmptyStr, path: String) -> ProcessExit {
   let observation = fci1_zero_work_observation()
   let write = Filesystem.Write(path: path, content: join(["phase=", phase as String, "\n", to_string(observation)], ""))
   if !write.success { exit_failure(reason: join(["zero-Work receipt write refused: ", write.error], "")) }
@@ -1828,7 +1828,7 @@ fn fci1_live_release_outcome(root: NonEmptyStr) -> CellHoldEnd {
   }
 }
 
-func fci1_live_release(root: NonEmptyStr) -> ProcessExit {
+fn fci1_live_release(root: NonEmptyStr) -> ProcessExit {
   let outcome = fci1_live_release_outcome(root: root)
   match outcome {
     CellHoldEnded { slot_key: slot, generation: _, account: _ } =>
@@ -1839,7 +1839,7 @@ func fci1_live_release(root: NonEmptyStr) -> ProcessExit {
   }
 }
 
-func fci1_live_release_with_receipt(root: NonEmptyStr, path: String) -> ProcessExit {
+fn fci1_live_release_with_receipt(root: NonEmptyStr, path: String) -> ProcessExit {
   let outcome = fci1_live_release_outcome(root: root)
   let poststate = fci1_allocation_prestate(root: root)
   let write = Filesystem.Write(

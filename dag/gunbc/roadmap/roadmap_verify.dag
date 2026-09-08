@@ -650,7 +650,7 @@ fn verification_process_exit(outcome: VerificationOutcome) -> ProcessExit {
   }
 }
 
-func verify_srv2_lab_base_wet(node_id: String) -> ProcessExit {
+fn verify_srv2_lab_base_wet(node_id: String) -> ProcessExit {
   verification_process_exit(
     outcome: verify_base_node_id(
       instance: srv2_lab_dashboard_instance(),
@@ -659,7 +659,7 @@ func verify_srv2_lab_base_wet(node_id: String) -> ProcessExit {
   )
 }
 
-func verify_srv1_lab_base_wet(node_id: String) -> ProcessExit {
+fn verify_srv1_lab_base_wet(node_id: String) -> ProcessExit {
   verification_process_exit(
     outcome: verify_base_node_id(
       instance: srv1_lab_dashboard_instance(),

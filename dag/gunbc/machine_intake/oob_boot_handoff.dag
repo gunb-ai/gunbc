@@ -171,7 +171,7 @@ fn boot_readback_verdict(readback: String, expected_rendering: NonEmptyStr) -> B
 // body of the one verdict that permits it, so a future edit cannot reorder a refusal past it or fall
 // through to it. The previous form eliminated the verdict for its refusals and then continued to the
 // cycle, which is the same ordering held by convention instead of by shape.
-func oob_power_cycle_after_confirmed_selection(
+fn oob_power_cycle_after_confirmed_selection(
   bmc_host: NonEmptyStr,
   username: NonEmptyStr,
   password_file: NonEmptyStr,
@@ -204,7 +204,7 @@ func oob_power_cycle_after_confirmed_selection(
 // and a func that both resolved a secret and drove a controller would fuse two facts that rotate on
 // different clocks — which matters here because the operator's ruling is that the factory credential
 // is rotated DURING converge, so the value behind this path changes mid-program while the path does not.
-func oob_boot_handoff(
+fn oob_boot_handoff(
   observation: BmcAccessObservation,
   capability_row: BmcFirmwareReleaseCapabilityRow,
   username: NonEmptyStr,

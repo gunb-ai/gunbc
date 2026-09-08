@@ -127,7 +127,7 @@ fn prose_row_receipt_content(observation: ProseRowDiffObservation) -> String {
 // so in a worktree with no `target/` the write silently did nothing and the gate still reported a
 // verdict. Creating the directory was rejected: it turns a missing scratch dir into a silent success.
 // In CI `target/` always exists because the release build precedes the floor.
-func run_prose_row_introduction_gate_body() -> ProcessExit {
+fn run_prose_row_introduction_gate_body() -> ProcessExit {
   let observation = prose_row_gate_observation()
   let written = Filesystem.Write(
     path: prose_row_receipt_path,
@@ -162,14 +162,14 @@ fn prose_row_failure_reason(exit: ProcessExit) -> String {
   }
 }
 
-func prose_row_gate_failure_receipt() -> String {
+fn prose_row_gate_failure_receipt() -> String {
   prose_row_failure_reason(exit: run_prose_row_introduction_gate_body())
 }
 
-func main() -> ProcessExit {
+fn main() -> ProcessExit {
   run_prose_row_introduction_gate_body()
 }
 
-func run_prose_row_introduction_gate() -> ProcessExit {
+fn run_prose_row_introduction_gate() -> ProcessExit {
   run_prose_row_introduction_gate_body()
 }

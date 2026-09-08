@@ -175,7 +175,7 @@ type CaBundleAcquisition
 // back to: the alternatives are the printer's own chain, which is circular, and skipping
 // verification, which is the absorbing fallback DESIGN section 5 forbids -- a failure arm that
 // widens instead of stopping. The bytes either match what was recorded or the leg ends.
-func acquire_pinned_ca_bundle() -> CaBundleAcquisition
+fn acquire_pinned_ca_bundle() -> CaBundleAcquisition
   uses net: Network
 {
   let created = shell.Mktemp.Dir()
@@ -201,7 +201,7 @@ func acquire_pinned_ca_bundle() -> CaBundleAcquisition
   }
 }
 
-func verify_pinned_ca_bundle(workspace: FilePath, destination: String) -> CaBundleAcquisition
+fn verify_pinned_ca_bundle(workspace: FilePath, destination: String) -> CaBundleAcquisition
 {
   match sha256sum_file_digest_via_shell(path: destination as NonEmptyStr) {
     Sha256FileDigestUnavailable { path: _, reason: reason } =>
@@ -222,7 +222,7 @@ func verify_pinned_ca_bundle(workspace: FilePath, destination: String) -> CaBund
   }
 }
 
-func ca_bundle_fetch_refusal(workspace: FilePath, what_failed: String) -> CaBundleAcquisition {
+fn ca_bundle_fetch_refusal(workspace: FilePath, what_failed: String) -> CaBundleAcquisition {
   if shell.Remove.RecursiveForce(path: workspace).success {
     CaBundleRefused { cause: what_failed as NonEmptyStr }
   } else {
@@ -330,7 +330,7 @@ fn start_may_be_replayed(o: PrintStart) -> Bool {
 // print; publishing costs the ability to attribute the report -- and reconciliation by reading that
 // report is the ONLY defence this leg has against the duplicate-actuation risk the protocol module
 // states is unresolved. A start nobody can attribute is the one that must not be sent.
-func start_print_on_printer(
+fn start_print_on_printer(
   printer: PhysicalAssetIdentity,
   remote_name: NonEmptyStr,
   token_source: AccessTokenSource,
@@ -412,7 +412,7 @@ func start_print_on_printer(
 // the least on disk. Fetching it first means every credential refusal above also has to clean up a
 // downloaded bundle; placing the binding first means every CA refusal has to shred an access code.
 // The two brackets are therefore nested rather than parallel, innermost being the secret.
-func publish_start_with_credential(
+fn publish_start_with_credential(
   printer: PhysicalAssetIdentity,
   serial: NonEmptyStr,
   lan_address: NonEmptyStr,

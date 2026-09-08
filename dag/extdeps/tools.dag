@@ -81,7 +81,7 @@ fn install_hint(sources: List<InstallSource>) -> String {
 // document -- this function has no current live caller in the tree (verified by grep, PR #8590), so
 // the straddle is undischarged debt rather than an observed WET failure.
 
-func resolve(tool: CliTool) -> ResolveResult {
+fn resolve(tool: CliTool) -> ResolveResult {
   let check = shell.PosixCommandV.Check(command: tool.name)
   match check.path {
     Present { value: p } => Resolved { resolved: { tool: tool, path: p } }

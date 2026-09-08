@@ -208,7 +208,7 @@ fn spark_pair_privileged_leg(trust: FleetOpenSshTrustPolicy, path: SparkReachPat
   }
 }
 
-func spark_pair_serving_apply_wet() -> ProcessExit
+fn spark_pair_serving_apply_wet() -> ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()

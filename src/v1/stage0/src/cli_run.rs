@@ -37432,7 +37432,7 @@ mod import_closure_equivalence_tests {
             std::env::temp_dir().join(format!("gunbc-out-of-pool-entry-{}", std::process::id()));
         std::fs::create_dir_all(&scratch).expect("scratch dir");
         let entry_path = scratch.join("out_of_pool_entry.dag");
-        let content = "module test.claim.out_of_pool_entry\n\nimport extdeps.filesystem.filesystem_io\n\nfunc out_of_pool_probe() -> Bool {\n  true\n}\n";
+        let content = "module test.claim.out_of_pool_entry\n\nimport extdeps.filesystem.filesystem_io\n\nfn out_of_pool_probe() -> Bool {\n  true\n}\n";
         std::fs::write(&entry_path, content).expect("write entry");
         let entry = Rc::new(crate::v1_compiler_compile::SourceFile {
             path: entry_path.to_string_lossy().into_owned(),

@@ -59,7 +59,7 @@ fn executor_privileged_operation_commands(ops: List<ExecutorPrivilegedOperation>
 //
 // There is deliberately NO arm that treats a failed operation as tolerable. An operation that is
 // safe to skip is not an operation this list should carry.
-func apply_executor_privileged_operations_wet(ops: List<ExecutorPrivilegedOperation>) -> ProcessExit {
+fn apply_executor_privileged_operations_wet(ops: List<ExecutorPrivilegedOperation>) -> ProcessExit {
   run_shell_commands(
     commands: executor_privileged_operation_commands(ops: ops),
     transport: LocalExec,

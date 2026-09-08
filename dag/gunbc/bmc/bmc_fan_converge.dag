@@ -1670,7 +1670,7 @@ fn bmc_fan_converge_with_credential(
 // hold and this gate supplies only the first. BmcFanRollbackPrevious is deliberately NOT gated:
 // restoring a previously admitted configuration is a recovery path, and a catalog gap must never
 // strand a host on a policy it cannot roll back off.
-func bmc_fan_run(
+fn bmc_fan_run(
   target: BmcFanConvergeTarget,
   action: BmcFanRequestedAction,
 ) -> ProcessExit
@@ -1749,7 +1749,7 @@ func bmc_fan_run(
 // host agree with the intent", and an unrepresentable program is a legitimate no. A caller that
 // wants raw fan state regardless of intent wants a different operation, and it does not exist
 // here; naming that is the point of this block, because the two contracts share a verb.
-func srv3_bmc_fan_observe() -> ProcessExit
+fn srv3_bmc_fan_observe() -> ProcessExit
   uses net: Network
 {
   bmc_fan_run(
@@ -1758,7 +1758,7 @@ func srv3_bmc_fan_observe() -> ProcessExit
   )
 }
 
-func srv3_bmc_fan_converge() -> ProcessExit
+fn srv3_bmc_fan_converge() -> ProcessExit
   uses net: Network
 {
   bmc_fan_run(
@@ -1767,7 +1767,7 @@ func srv3_bmc_fan_converge() -> ProcessExit
   )
 }
 
-func srv4_bmc_fan_observe() -> ProcessExit
+fn srv4_bmc_fan_observe() -> ProcessExit
   uses net: Network
 {
   bmc_fan_run(
@@ -1776,7 +1776,7 @@ func srv4_bmc_fan_observe() -> ProcessExit
   )
 }
 
-func srv4_bmc_fan_converge() -> ProcessExit
+fn srv4_bmc_fan_converge() -> ProcessExit
   uses net: Network
 {
   bmc_fan_run(
@@ -1795,7 +1795,7 @@ func srv4_bmc_fan_converge() -> ProcessExit
 // remains demand-derived, and password SSH pins the target-specific known-hosts file with the
 // password on inherited fd 0.
 
-func srv4_bmc_fan_rollback_previous() -> ProcessExit
+fn srv4_bmc_fan_rollback_previous() -> ProcessExit
   uses net: Network
 {
   bmc_fan_run(

@@ -37,7 +37,7 @@ fn required_env(name: NonEmptyStr) -> String? {
   }
 }
 
-func main() -> ProcessExit {
+fn main() -> ProcessExit {
   let branch = match required_env(name: "GUNBC_HEAL_BRANCH_REF") {
     Present { value: value } => value
     Absent => return exit_failure(reason: "HealDispatchRefused: GUNBC_HEAL_BRANCH_REF is absent")

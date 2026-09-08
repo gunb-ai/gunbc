@@ -76,7 +76,7 @@ fn denied_exit(verdict: MergeAdmissionVerdict) -> ProcessExit {
 // ref. Both are read rather than one being derived from the other, because neither determines the
 // other: a tree does not name its commit, and a commit's identity is what carries the ancestry the
 // merge base is computed from -- which is exactly the fact tested_base_commit_sha exists to pin.
-func main() -> ProcessExit {
+fn main() -> ProcessExit {
   let attempt = match merge_admission_context_walk_attempt_id() {
     Present { value: value } => value
     Absent => return exit_failure(reason: "merge_admission_current_context: walk attempt identity absent or invalid")

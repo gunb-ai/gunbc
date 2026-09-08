@@ -380,7 +380,7 @@ fn classify_credential_read(
   }
 }
 
-func read_bootstrap_credential() -> BootstrapCredentialMaterialization {
+fn read_bootstrap_credential() -> BootstrapCredentialMaterialization {
   match shell.Env.Get(name: spark_grant_credential_path_env).value {
     Absent =>
       BootstrapCredentialNotMaterialized {
@@ -412,7 +412,7 @@ func read_bootstrap_credential() -> BootstrapCredentialMaterialization {
 // sudo consumes the first line of stdin as the password. The trailing newline is what terminates its
 // read; without it sudo waits for one and the step hangs rather than failing, which is the failure
 // mode with no diagnostic at all.
-func run_privileged_step(
+fn run_privileged_step(
   context: FleetSshExecutionContext,
   host: HostIdentity,
   lease: AuthorizationRequest<SparkBootstrapSubject>,

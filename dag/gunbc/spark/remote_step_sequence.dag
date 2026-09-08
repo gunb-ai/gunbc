@@ -36,7 +36,7 @@ import gunbc.typed_remote_file_write {
 // argv transport; a file write needs an anchored FleetSsh session and refuses, typed, on any other
 // transport rather than landing bytes through an unverified channel. Rehomed here from the retired
 // Ollama-era serving tree because the grant installer is its consumer and the sequence is generic.
-func run_remote_operation(
+fn run_remote_operation(
   operation: RemoteOperation,
   transport: HostEffectTransport,
 ) -> RemoteOperationExecution
@@ -96,7 +96,7 @@ type RemoteStepSequenceAcc {
   halted: Bool
 }
 
-func remote_step_sequence_step(
+fn remote_step_sequence_step(
   acc: RemoteStepSequenceAcc,
   step: PlannedRemoteStep,
   transport: HostEffectTransport,
@@ -128,7 +128,7 @@ func remote_step_sequence_step(
   }
 }
 
-func run_remote_step_sequence(
+fn run_remote_step_sequence(
   steps: List<PlannedRemoteStep>,
   transport: HostEffectTransport,
 ) -> List<RemoteStepStanding>

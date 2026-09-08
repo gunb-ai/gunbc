@@ -2263,7 +2263,7 @@ fn srv1_lab_dashboard_preflight_json() -> String {
   ))
 }
 
-func srv1_lab_dashboard_preflight_wet() -> ProcessExit {
+fn srv1_lab_dashboard_preflight_wet() -> ProcessExit {
   let result = srv1_lab_dashboard_preflight()
   match result {
     DashboardApplyPreflightReady {
@@ -2290,7 +2290,7 @@ fn srv1_lab_dashboard_apply_json() -> String {
   serialize_json(v: dashboard_apply_result_json_value(result: srv1_lab_dashboard_apply()))
 }
 
-func srv1_lab_dashboard_apply_wet() -> ProcessExit {
+fn srv1_lab_dashboard_apply_wet() -> ProcessExit {
   let result = srv1_lab_dashboard_apply()
   match result {
     DashboardApplyConverged { instance_id: _, receipts: _, observed: _ } => ExitSuccess
@@ -2337,7 +2337,7 @@ fn srv2_lab_dashboard_preflight_json() -> String {
   ))
 }
 
-func srv2_lab_dashboard_preflight_wet() -> ProcessExit {
+fn srv2_lab_dashboard_preflight_wet() -> ProcessExit {
   let result = srv2_lab_dashboard_preflight()
   match result {
     DashboardApplyPreflightReady {
@@ -2364,7 +2364,7 @@ fn srv2_lab_dashboard_apply_json() -> String {
   serialize_json(v: dashboard_apply_result_json_value(result: srv2_lab_dashboard_apply()))
 }
 
-func srv2_lab_dashboard_apply_wet() -> ProcessExit {
+fn srv2_lab_dashboard_apply_wet() -> ProcessExit {
   let result = srv2_lab_dashboard_apply()
   match result {
     DashboardApplyConverged { instance_id: _, receipts: _, observed: _ } => ExitSuccess

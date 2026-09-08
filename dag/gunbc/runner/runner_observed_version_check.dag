@@ -57,7 +57,7 @@ data runner_version_check_standing: VersionCheckStanding = CheckedAtReceiptTime 
 // A CAPTURE THAT CANNOT BE READ IS NOT A PASS. boot_probe_verdict already refuses an empty console,
 // and feeding it a failed read would produce BootVmmFailed -- which names the VMM rather than the
 // reader. The exit code is taken from cat so the two causes stay distinguishable.
-func observe_captured_console(path: String) -> ProcessObservation
+fn observe_captured_console(path: String) -> ProcessObservation
   uses net: Network
 {
   let obs = run_shell_command_observe(command: cat_command(path: path), transport: LocalExec)
@@ -67,7 +67,7 @@ func observe_captured_console(path: String) -> ProcessObservation
 // THE MODELED RELEASE COMES FROM THE GUEST IMAGE ROW, not from a literal here. A version string in
 // this module would be a third place saying which runner this fleet installs, which is the fork the
 // check exists to detect -- committed one layer up.
-func check_captured_console(path: String) -> BootProbeVerdict
+fn check_captured_console(path: String) -> BootProbeVerdict
   uses net: Network
 {
   boot_probe_verdict(
@@ -78,7 +78,7 @@ func check_captured_console(path: String) -> BootProbeVerdict
 
 // THE VERDICT BECOMES AN EXIT CODE, because a check that reports a mismatch and exits 0 is the
 // fabricated-plausible-output arm applied to a conformance check.
-func verify_captured_console(path: String) -> ProcessExit
+fn verify_captured_console(path: String) -> ProcessExit
   uses net: Network
 {
   let verdict = check_captured_console(path: path)
@@ -94,7 +94,7 @@ func verify_captured_console(path: String) -> ProcessExit
 // attempt rather than between the model and itself.
 data runner_bound_attempt_capture: NonEmptyStr = "docs/probes/mtcollins_bound_attempt_host_capture_2026-09-07.txt"
 
-func verify_bound_attempt_runner_version() -> ProcessExit
+fn verify_bound_attempt_runner_version() -> ProcessExit
   uses net: Network
 {
   verify_captured_console(path: runner_bound_attempt_capture as String)
@@ -108,7 +108,7 @@ data runner_two_attempt_capture: NonEmptyStr = "docs/probes/mtcollins_two_attemp
 
 data two_attempt_check_weakness: NonEmptyStr = "the two-attempt capture holds two guest consoles in one file, so a contains-check proves at least one guest printed the expected version and not that both did; separating the consoles per attempt is what would close it"
 
-func verify_two_attempt_runner_version() -> ProcessExit
+fn verify_two_attempt_runner_version() -> ProcessExit
   uses net: Network
 {
   verify_captured_console(path: runner_two_attempt_capture as String)
@@ -129,7 +129,7 @@ func verify_two_attempt_runner_version() -> ProcessExit
 // leaves the positive arms unable to fail, which is the state this check was in before it existed.
 data runner_jit_absent_capture: NonEmptyStr = "docs/probes/mtcollins_jit_absent_launch_defect_2026-09-07.txt"
 
-func verify_jit_absent_capture_lacks_runner_version() -> ProcessExit
+fn verify_jit_absent_capture_lacks_runner_version() -> ProcessExit
   uses net: Network
 {
   verify_captured_console(path: runner_jit_absent_capture as String)

@@ -27,7 +27,7 @@ fn write_docs_projection(path: String, content: String) -> ProcessExit {
 // authority — not generated_artifact_emit. claim_executor --required-regen never owns these
 // files: is_compared_generated_basename is ends_with .rs. That ownership gap is the motive;
 // this entry returns ProcessExit over the two ledger paths.
-func regen() -> ProcessExit {
+fn regen() -> ProcessExit {
   let first = write_docs_projection(
     path: artifact_path(a: DesignFailureModesArtifact),
     content: expected_design_failure_modes_md()
@@ -52,7 +52,7 @@ fn agree_one(path: String, expected: String) -> ProcessExit {
   }
 }
 
-func main() -> ProcessExit {
+fn main() -> ProcessExit {
   let first = agree_one(
     path: artifact_path(a: DesignFailureModesArtifact),
     expected: expected_design_failure_modes_md()
