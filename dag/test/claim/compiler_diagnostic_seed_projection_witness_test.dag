@@ -7,7 +7,7 @@ import gunbc.compiler_diagnostic_seed_projection_disposition {
   SeedProjectionReceiptWellFormed,
   compiler_diagnostic_seed_projection_dispositions,
   compiler_diagnostic_seed_projection_verdict,
-  disposition_item_key,
+  projected_item_keys,
   seed_projection_receipt_verdict_of
 }
 import gunbc.seed_growth_admission { ExistingSeedItemModified, HandRustDeleted, SeedGrowthChangeDisposition }
@@ -142,7 +142,7 @@ test fn a_non_modification_disposition_is_refused() -> Bool {
 // rows it claims to project, and the drift gate cannot see an omission it never rendered. This is
 // an identity join over item keys rather than a substring pin on authored prose.
 test fn every_disposition_reaches_the_projected_paragraphs() -> Bool {
-  let keys = list_map(xs: compiler_diagnostic_seed_projection_dispositions, f: disposition_item_key)
+  let keys = projected_item_keys(rows: compiler_diagnostic_seed_projection_dispositions)
   let rendered = fold_list(xs: compiler_diagnostic_seed_projection_paragraphs(), empty: "", cons: fn(acc, s) { concat(acc, s) })
   fold_list(
     xs: keys,
