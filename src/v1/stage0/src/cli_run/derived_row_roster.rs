@@ -34,6 +34,64 @@ pub const ROSTER_BASENAME: &str = "roster.dag";
 pub const ROW_MODULE: &str = "gunbc.recurring_failure_mode";
 pub const ROW_DIR_REL: &str = "gunbc/recurring_failure_mode";
 
+/// Is `rel` the DERIVED roster itself, under any sweep root?
+///
+/// THE ROSTER HAS NO BASE SIDE IN A DIFF, WHICH IS THE WHOLE REASON THIS PREDICATE EXISTS.
+/// The file is gitignored and written on the read path, so it never appears in
+/// `git diff --name-status` — and a baseline reconstructed by dropping only the paths the diff
+/// TOUCHED therefore inherits the HEAD's roster bytes as the BASE's. That inheritance made a
+/// row append report a binding the base already spelled (`base {} -> head {row}` on a key
+/// present both sides) and, worse, made the module's own source read as UNCHANGED, so the
+/// authorship discriminator answered false and an ordinary append classified
+/// `NewPoolCoincidenceResolution` — a pool coincidence, caused elsewhere, for a name the roster
+/// itself imports. Every future append would have blocked identically.
+pub fn is_derived_roster_path(rel: &str) -> bool {
+    rel.ends_with(&format!("/{ROW_DIR_REL}/{ROSTER_BASENAME}"))
+}
+
+/// The sweep-root prefix of a derived roster path: `dag/gunbc/recurring_failure_mode/roster.dag`
+/// -> `dag`. `None` when `rel` is not a roster path.
+pub fn roster_root_prefix(rel: &str) -> Option<&str> {
+    let suffix = format!("/{ROW_DIR_REL}/{ROSTER_BASENAME}");
+    rel.strip_suffix(&suffix)
+}
+
+/// The roster this row directory would derive from an ARBITRARY path listing rather than from
+/// the filesystem — the base tree's answer, rendered by the SAME function the writer uses, so
+/// there is one authority for the roster's bytes and not a second reconstruction beside it.
+///
+/// `paths` is a repo-relative listing (`git ls-tree -r --name-only <base>`); `root` is the sweep
+/// root the roster lives under. Returns `None` when the base tree carries NO row files there:
+/// that is the roster module being genuinely absent at the base, which is a different state from
+/// a present empty list and must not be fabricated as one.
+pub fn roster_from_path_listing<'a>(
+    paths: impl IntoIterator<Item = &'a str>,
+    root: &str,
+) -> Option<String> {
+    let dir = format!("{root}/{ROW_DIR_REL}/");
+    let mut names: Vec<String> = Vec::new();
+    for rel in paths {
+        let Some(rest) = rel.strip_prefix(&dir) else {
+            continue;
+        };
+        if rest.contains('/') {
+            continue;
+        }
+        let Some(stem) = rest.strip_suffix(".dag") else {
+            continue;
+        };
+        if stem == "roster" {
+            continue;
+        }
+        names.push(stem.to_string());
+    }
+    if names.is_empty() {
+        return None;
+    }
+    names.sort();
+    Some(render_roster(&names))
+}
+
 pub fn is_recurring_failure_mode_row_dir(dir: &Path) -> bool {
     dir.ends_with(Path::new(ROW_DIR_REL))
 }
@@ -153,6 +211,56 @@ mod tests {
             "absence of members is a present module with an empty list, not a missing module"
         );
         assert!(body.contains("= [\n]\n"));
+    }
+
+    #[test]
+    fn a_base_tree_with_no_row_files_has_no_roster_module_rather_than_an_empty_one() {
+        // The two absences are different states with different remedies: a base that never
+        // carried the row directory has NO roster module, while a present `= []` asserts the
+        // directory exists and is empty. Fabricating the second from the first would give every
+        // name in the head roster a base side to be compared against.
+        assert_eq!(
+            super::roster_from_path_listing(["dag/gunbc/other/thing.dag"], "dag"),
+            None
+        );
+    }
+
+    #[test]
+    fn the_base_side_is_the_base_listing_not_the_head_directory() {
+        let body = super::roster_from_path_listing(
+            [
+                "dag/gunbc/recurring_failure_mode/beta.dag",
+                "dag/gunbc/recurring_failure_mode/alpha.dag",
+                "dag/gunbc/recurring_failure_mode/roster.dag",
+                "dag/gunbc/recurring_failure_mode/nested/deep.dag",
+                "dag/gunbc/recurring_failure_mode/notes.md",
+            ],
+            "dag",
+        )
+        .expect("two row files at the base are a present roster");
+        assert!(body.contains("import gunbc.recurring_failure_mode.alpha { alpha }"));
+        assert!(body.contains("= [\n  alpha,\n  beta,\n]\n"));
+        // The roster never rosters itself, and membership is the directory, not its subtrees.
+        assert!(!body.contains("roster,"));
+        assert!(!body.contains("deep"));
+    }
+
+    #[test]
+    fn a_derived_roster_path_is_recognised_under_any_sweep_root() {
+        assert!(super::is_derived_roster_path(
+            "dag/gunbc/recurring_failure_mode/roster.dag"
+        ));
+        assert_eq!(
+            super::roster_root_prefix("dag/gunbc/recurring_failure_mode/roster.dag"),
+            Some("dag")
+        );
+        assert!(!super::is_derived_roster_path(
+            "dag/gunbc/recurring_failure_mode/some_row.dag"
+        ));
+        assert_eq!(
+            super::roster_root_prefix("dag/gunbc/recurring_failure_mode/some_row.dag"),
+            None
+        );
     }
 
     #[test]
