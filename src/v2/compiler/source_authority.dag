@@ -22,7 +22,7 @@ import v2.extdeps.languages.dag {
 import v2.std.compilers.lexing { TokenStream }
 import v2.std.provenance { span_index_empty }
 import std.algebra { Empty, FreeMonoid }
-import v2.std.algebra { fold_list, length, list_snoc_item }
+import v2.std.algebra { fold_list, is_prefix_of, length, list_snoc_item }
 import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
 import v2.std.diagnostic {
   Accepted,
@@ -857,6 +857,38 @@ fn module_storage_index_contains_module(
         true
       } else {
         module_storage_binding_module(binding: binding) == module
+      }
+    }
+  )
+}
+
+// Membership beneath a namespace container, derived from the binding this module already owns
+// rather than from an authored list. A module IS a containment subtree and the path-module binding
+// is derived at parse, so "which modules inhabit this prefix" is a PROJECTION of that authority,
+// not a second one; the index is the raw population and this is the capability over it.
+//
+// STRICT DESCENT, and the strictness is the reason there is no overlap with the neighbouring
+// relation: a container is a prefix of itself, so a reflexive reading would answer a question
+// module_storage_index_contains_module already answers, giving one fact two homes.
+//
+// ORDER IS NOT A CONTAINMENT FACT AND IS DELIBERATELY NOT SUPPLIED HERE. What comes back is a
+// SET realized in index order; a consumer that needs stable bytes must ground its ordering
+// independently -- a row-owned ordinal or equivalent -- never a sort smuggled in here, which
+// would make presentation policy a namespace semantic.
+fn modules_under_container(
+  index: ModuleStorageIndex,
+  container: QualifiedName
+) -> FreeMonoid<QualifiedName> {
+  fold_list(
+    xs: index,
+    empty: Empty,
+    cons: fn(acc, binding) {
+      let member = module_storage_binding_module(binding: binding)
+      if is_prefix_of(prefix: container, xs: member, eq: fn(a, b) { a == b })
+        && member != container {
+        list_snoc_item(xs: acc, item: member)
+      } else {
+        acc
       }
     }
   )
