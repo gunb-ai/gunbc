@@ -2,7 +2,11 @@ module extdeps.colo.equinix
 
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
+  CabinetDensityClaim, DensityUnread,
+  RetailGrainStanding, SingleCabinetOffered,
+}
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -63,6 +67,27 @@ data equinix_ny6: ColoFacilityRow = ColoFacilityRow {
 }
 
 data equinix_secaucus_campus: List<ColoFacilityRow> = [equinix_ny2, equinix_ny4, equinix_ny5, equinix_ny6]
+
+data equinix_ny9: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Equinix",
+  facility_label: "Equinix NY9",
+  address: AddressListed {
+    street: "111 8th Avenue, New York, NY 10011",
+    citation: "equinix.com NY9 page, read 2026-09-08",
+  },
+  municipality: "New York",
+  region_code: "NY",
+  facility_note: "The operator's only live Manhattan IBX on the New York campus listing read 2026-09-08: 35,898 square feet of colocation, N+1 UPS and generators, N+2 cooling, 120/208 V distribution. Adjacent IBX NY8 is named on a 2021 spec sheet as also at a Manhattan carrier hotel but is absent from the live campus listing; it is not modelled as a current facility.",
+}
+
+data equinix_ny9_density: CabinetDensityClaim = DensityUnread {
+  obligation: "The NY9 spec table read 2026-09-08 states a Minimum Cabinet Density of 2 kVA, which is a floor not a marketed maximum, and states no air-cooled or liquid-cooled cabinet ceiling. Do not read 2 kVA as density. A quote or a later spec that names a maximum is required.",
+}
+
+data equinix_ny9_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "Secure Cabinet Express",
+  citation: "equinix.com NY9 products table, read 2026-09-08",
+}
 
 data equinix_retail_rates: RetailRateStanding = RatesQuoteOnly {
   contact_route: "equinix.com sales",
