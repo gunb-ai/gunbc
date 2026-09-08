@@ -42,8 +42,23 @@ pub const ROW_DIR_REL: &str = "gunbc/recurring_failure_mode";
 /// fires, and the silently HEAD-inherited base that the exclusion exists to remove comes back WITH
 /// NO DIAGNOSTIC -- the repair defeated by a copy of its own name, and no run goes red to say so.
 /// It cannot be `concat!` of the parts because `ROW_MODULE` is a `const` and not a literal token,
-/// so the composition is asserted by `the_roster_module_is_the_row_module_plus_the_roster_stem`
-/// rather than constructed; that test is the wall, and it is why the literal is admissible here.
+/// so the composition is ASSERTED by `the_roster_module_is_the_row_module_plus_the_roster_stem`
+/// rather than constructed.
+///
+/// THAT ASSERTION IS NOT A WALL, AND THE RUNG HERE IS 1 -- MITIGATION. The test is `#[cfg(test)]`
+/// under `repo_self_test_command`, which no CI step runs: the 2026-09-04 runner-capacity ruling
+/// deleted the `rust-unit-tests` job, and its loss stands as `gunbc.rung_drop`
+/// `rust_unit_tests_off_the_merge_path`. The required clippy lane COMPILES this test and executes
+/// it never -- DESIGN "Building & checks": "the test targets are compiled by the clippy step and
+/// run by nobody" -- and a rename of either part still typechecks, so nothing on the acceptance
+/// path goes red for it. The evidence is local diligence, and calling it a wall would be rung
+/// inflation on the very class this constant exists to prevent.
+///
+/// Next-rung trigger: the parts composable in a const context (a `const`-evaluable concatenation,
+/// or `ROW_MODULE` and `ROSTER_BASENAME` as literal tokens `concat!` can join), which makes a
+/// second spelling unconstructible rather than merely assert-checked -- rung 4, not 2, because it
+/// removes the constructor instead of adding an executing check. Restoring an executing unit-test
+/// lane would reach rung 2 and is the weaker of the two.
 pub const ROSTER_MODULE: &str = "gunbc.recurring_failure_mode.roster";
 
 /// Is `rel` the DERIVED roster itself, under any sweep root?
