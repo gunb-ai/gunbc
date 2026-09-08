@@ -6,6 +6,26 @@ import v2.std.optional { Present, Absent }
 import std.measure { TokenCount, token_count, token_count_value }
 import extdeps.vllm.batch_defaults { UpstreamBatchDefaultResolution, spark_gb10_batch_default_resolution }
 
+// ── THE SUBJECT OF EVERY ROW BELOW IS A RETIRING PROFILE ──────────────────────────────────────
+//
+// Every measurement in this module was taken against ONE model artifact --
+// deepseek-ai/DeepSeek-V4-Flash at snapshot 60d8d70770c6776ff598c94bb586a859a38244f1, served by
+// the vLLM revision extdeps.vllm.server names -- and that artifact is being replaced.
+//
+// SO EVERY COEFFICIENT HERE EXPIRES WITH IT. Not one of them may be read for another checkpoint:
+// not the per-token or per-step terms, not the depth law, not the KV pool sizes, not the decode or
+// stall figures, not the per-step FLOPs divisor. What survives a model change is the MECHANISM the
+// numbers established, which is stated in prose beside each one; the numbers themselves are facts
+// about a profile, not about the fleet.
+//
+// THESE ROWS DO NOT YET CARRY THAT SUBJECT STRUCTURALLY, and that is a known gap rather than an
+// oversight. A measurement should name its model artifact, tokenizer, runtime, KV policy, topology
+// and speculative policy in a type, so a row from one profile cannot be joined to a decision about
+// another -- the same defect gunbc.spark.vllm_serving_launch exists to prevent for process
+// incarnations, one level up. The type belongs with the serving-observation substrate rather than
+// beside these measurements, so it is named here as an obligation and deliberately not coined: a
+// second profile authority is exactly the fork this lane has already made once.
+
 // ── WHAT THE PREFILL BATCH BUDGET BUYS AND COSTS, MEASURED ACROSS FOUR LAUNCHES ───────────────
 //
 // THE EXPERIMENT. On 2026-09-07 the group A head was restarted four times behind a temporary
