@@ -53,10 +53,17 @@ fn issued_authorizations() -> List<IssuedAuthorization> {
   }
 }
 
-// THE GRANT CONTROLS, DRIVING THE FACTORED RULE rather than the seal above it. The seal's input is
-// a sole_constructor RequiredBuildCellSnapshot, so a disagreeing snapshot cannot be constructed
-// here at all -- a control aimed there would have an unauthorable RED and be a 4b decoration.
-// The rule takes the coordinates, so the disagreement is writable, and the seal delegates to it.
+// THE GRANT CONTROLS, DRIVING THE RULE DIRECTLY. An earlier revision of this comment said the rule
+// was "factored out of the seal above it" and that "the seal delegates to it". BOTH SENTENCES ARE
+// NOW FALSE: the seal was deleted as unconsumed, and `bind_microvm_to_cell` takes only a snapshot
+// and never sees an ExecutionGrant. They are recorded as false rather than quietly removed, because
+// a 4c annotation is read by no Accepted program -- so a false one never reds, and this one asserted
+// a relationship between two declarations that does not exist in the corpus.
+//
+// What remains true is why the rule takes COORDINATES rather than a snapshot: RequiredBuildCellSnapshot
+// is sole_constructor, so no fixture outside its module can build a DISAGREEING one, and a control
+// aimed at a snapshot-taking rule would have an unauthorable RED -- a 4b decoration. FabricIdentity
+// is an ordinary record, so over coordinates the disagreement is writable, and four claims write it.
 //
 // The absent-grant case has no claim BECAUSE IT HAS NO CONSTRUCTOR: the grant is a required
 // parameter, so "no grant" cannot be written at a call site.

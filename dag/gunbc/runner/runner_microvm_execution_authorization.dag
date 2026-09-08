@@ -17,6 +17,26 @@ data runner_microvm_execution_authorization_disposition: Disposition = SingleAut
 // is NOT re-stated as an invariant of this module, because no mint or launch remains for it to
 // range over. It belongs with the FCI-3 executor when that exists.
 //
+// DECLARED FRONTIER FOR THE RULE THIS MODULE KEEPS -- NOT ONLY FOR WHAT IT DELETED (DESIGN 3c).
+// An earlier revision stated a frontier for the deleted launch composition and said nothing about
+// grant_authorizes_reservation itself, which left the rule DANGLING rather than declared: the
+// difference between the two honest states is whether the consumer and trigger are stated beside
+// the declaration, and for the rule they were not.
+//
+// NAMED CONSUMER: the FCI-3 executor, whose exit predicate in gunbc.fabric_ci_program is that a
+// persistent executor re-reads the committed Grant before starting, so an absent, corrupt or
+// expired Grant yields ZERO target processes. This rule is the agreement half of that predicate.
+// TRIGGER: that executor existing. Nothing in the runner path calls this today -- not
+// bind_microvm_to_cell, which takes a snapshot and never sees an ExecutionGrant -- and the honest
+// route is that it stays uncalled until FCI-3 lands.
+//
+// STATED WITH ITS COST RATHER THAN AS A REASSURANCE: that trigger is NOT near. The displacement
+// analysis establishes that the production actuation FCI-3 must displace is authored in no
+// repository, so a prerequisite stands before FCI-3 is even priceable. A reader deciding whether
+// this module has earned its place should weigh that against what it does carry: four typed refusal
+// arms, each with its own discriminating RED, mutation-proven to red ALONE. Its correctness is
+// established by execution; only its production consumption is deferred.
+
 // THE REFUSAL ARMS ARE NOT COLLAPSED INTO ONE `cause` STRING. Each names the authority that owns
 // the remedy -- the money fence belongs to product.fabric.budget, the Work/Demand/Offer agreement
 // to product.fabric.identity -- because collapsing them is the state-space conflation DESIGN
