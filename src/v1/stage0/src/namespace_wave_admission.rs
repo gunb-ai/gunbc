@@ -2570,12 +2570,6 @@ pub fn run_required_wave_admission(
     let head_parsed: Vec<&String> = head_touched.iter().filter(|p| in_sweep_scope(p)).collect();
     let base_parsed: Vec<&String> = base_side.iter().filter(|p| in_sweep_scope(p)).collect();
 
-    let mut base_index = DeclarationIndex::default();
-    for record in index_records(head_index) {
-        if !head_parsed.iter().any(|c| *c == &record.rel_path) {
-            crate::cli_run::declaration_index::index_insert(&mut base_index, record.clone());
-        }
-    }
     // ABSENCE AT THE BASE IS ESTABLISHED FROM AN AUTHORITATIVE LISTING, NEVER INFERRED FROM A
     // FAILURE. An earlier revision treated ANY `git show <base>:<path>` error as proof the path
     // was ADDED — a read fault, corrupt object or permission problem all read as "new file", and
@@ -2584,9 +2578,87 @@ pub fn run_required_wave_admission(
     //
     // `ls-tree` answers what the base tree CONTAINS: a path missing from its output is absent,
     // and a failure to obtain the listing is a refusal, not an empty answer.
+    //
+    // IT IS READ BEFORE THE INHERIT LOOP, NOT AFTER, because that loop now needs it: deciding
+    // whether a head record may be inherited unchanged is a question about the BASE TREE.
     let base_paths = git_stdout(&workspace, &["ls-tree", "-r", "--name-only", &base])?;
     let base_paths: std::collections::BTreeSet<String> =
         base_paths.lines().map(|l| l.trim().to_string()).collect();
+
+    let mut base_index = DeclarationIndex::default();
+    for record in index_records(head_index) {
+        if head_parsed.iter().any(|c| *c == &record.rel_path) {
+            // Replaced from the base blob below.
+            continue;
+        }
+        if base_paths.contains(&record.rel_path) {
+            // Tracked at the base and untouched by the diff: unchangedness IS the proof that the
+            // head record equals the base record, which is the whole warrant for carrying it.
+            crate::cli_run::declaration_index::index_insert(&mut base_index, record.clone());
+            continue;
+        }
+        // ABSENT FROM THE BASE TREE AND ABSENT FROM THE DIFF, WHICH IS NOT A CONTRADICTION AND WAS
+        // THE DEFECT. Anything this change ADDED is in the diff and was skipped above, so what
+        // reaches here is a file git never reports: generated before compile and gitignored. The
+        // carry above assumed the diff's silence meant the bytes did not move; for a derived source
+        // the diff is silent no matter how far they moved, so its head record was carried into the
+        // BASE index and the wall compared the head against itself.
+        //
+        // The observable was gunbc#10814: gunbc#10822 made the failure-mode roster derived and
+        // gitignored, and the next change to add a row had its own authored addition reported as
+        // `NewPoolCoincidenceResolution` -- a name resolving from a pool with NOBODY authoring a
+        // reference -- when the reference was authored by that very change. The binding delta was
+        // right; the authorship evidence under it was poisoned. That disposition is not
+        // auto-admitted, so a required lane blocked, and it would have blocked for EVERY later row.
+        //
+        // A REVISION EITHER CARRIES THE DERIVATION OR IT DOES NOT. A base predating gunbc#10822
+        // tracked this path as ordinary source, so it is in `base_paths` and was carried above; a
+        // base carrying the deriver has the same membership fact in its row files; a base with
+        // neither never had the module at all. Only the middle case may be reconstructed, and the
+        // last is NOT the empty roster -- rendering one would invent a module that did not exist.
+        if record.rel_path == crate::cli_run::derived_row_roster::ROSTER_REL_PATH
+            && base_paths.contains(crate::cli_run::derived_row_roster::DERIVATION_CARRIER_REL_PATH)
+        {
+            // THE SOURCE IS REBUILT AND RE-PARSED, NOT THE RECORD FILTERED. A `ModuleDeclarationRecord`
+            // is defined as the facts derived from one module's source; editing selected collections
+            // of a cloned record would produce facts no source ever produced, and the next field
+            // added to that struct would silently keep its head value on the base side. Rendering
+            // base source through the SAME renderer the writer uses and handing it to `base_records`
+            // keeps one derivation authority and one parser.
+            //
+            // THE DERIVER IS REVISIONED TOO, and this reuses the head's renderer over base inputs.
+            // That is sound here because gunbc#10822's renderer is on both sides and only the row
+            // population moved. A change to the RENDERER may not do this: running the head renderer
+            // over both sides and calling it a comparison would report the renderer's own change as
+            // zero. Such a change needs the tracked base blob, a versioned base derivation, or
+            // `NotEvaluated`.
+            let source =
+                crate::cli_run::derived_row_roster::roster_source_from_repo_paths(&base_paths);
+            match base_records(&record.rel_path, &source) {
+                Ok(records) => {
+                    for record in records {
+                        crate::cli_run::declaration_index::index_insert(&mut base_index, record);
+                    }
+                }
+                Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
+            }
+            continue;
+        }
+        // NEITHER CARRIED NOR RECONSTRUCTED, SO NEITHER INHERITED NOR DROPPED. An untracked path
+        // may be a deterministic projection of tracked files, local runtime state, a scratch
+        // fixture, a network-derived artifact, or a dirty worktree file unrelated to the base. A
+        // path LISTING supplies existence, never content, so treating all of them as functions of
+        // the base tree would fabricate four of those five. Omitting the record silently is the
+        // same fabrication wearing the other face: the module's base side would simply vanish.
+        return Ok(WaveAdmissionOutcome::NotEvaluated {
+            reason: format!(
+                "the head index carries {} , which the base revision {} does not contain and no \
+                 registered base-revision derivation reconstructs, so the baseline for that module \
+                 is unobservable and no verdict is available",
+                record.rel_path, base
+            ),
+        });
+    }
     for rel in &base_parsed {
         if !base_paths.contains(*rel) {
             // Genuinely added by this change: no base side to read, established by the listing.
