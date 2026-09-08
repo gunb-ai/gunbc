@@ -610,12 +610,11 @@ fn internal_expr_error_node(message: String, span: SourceSpan) -> Node {
 // Locals fill every other arm: name-lookup miss, parent-enum miss (lookup_type_for
 // on the locals node fails under composed intern while the Disj node is still in
 // locals), expected coproduct that owns the arm, and a HIT that is not that owner
-// (unit-arm projection). The enrolled consumer is
-// test.claim.record_lit_owner_route_witness: two compile_fixture manifests over the
-// same subject bytes, differing only by an unimported extra module in the pool —
-// own-entry vs larger resolve, the same two-route geometry as
-// gunbc.roadmap_belt_actuate belt_sessions_observe_for_instance versus
-// tools.generated_artifact_gate.
+// (unit-arm projection). A four-file compile_fixture over that geometry is not a
+// discriminating RED for the intern-miss that
+// gunbc.roadmap_belt_actuate belt_sessions_observe_for_instance hits under
+// tools.generated_artifact_gate; that producer is the required generated-artifact
+// resolve, not a second always-green floor witness.
 fn local_coproduct_owner_from_locals(scope: InferScope, name: String) -> Node? {
   match map_get(scope.locals, name) {
     Present { value: binding } =>

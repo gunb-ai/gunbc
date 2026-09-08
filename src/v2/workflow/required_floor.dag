@@ -554,9 +554,6 @@ fn fixture_home_prefixes() -> List<String> {
 // the admitted `test.claim.namespace_` and `test.claim.match_exhaustiveness_coproduct_witness`
 // rows already carry, plus `extdeps.filesystem.filesystem_io` and `v2.std.live_tree`.
 //
-// test.claim.record_lit_owner_route_witness is the same instrument over the record-literal owner
-// channel: payload Observed if-join, own-entry vs larger pool, no corpus roots.
-//
 // IT DECLARES ReadsLiveTree TRUTHFULLY -- it reads the four fixture files from the checkout -- and
 // that is no longer a decline: `DeclinedLiveTree` is deleted at the root above.
 fn required_gate_prefixes() -> List<String> {
@@ -592,7 +589,6 @@ fn required_gate_prefixes() -> List<String> {
     "test.claim.memory_stall_refusal_witness",
     "test.claim.docs_projection_gate_test",
     "test.claim.if_join_pool_binding_witness_test",
-    "test.claim.record_lit_owner_route_witness",
   ]
 }
 

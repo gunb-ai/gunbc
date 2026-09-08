@@ -1,7 +1,0 @@
-module fixtures.record_lit_owner_route.closure_own
-
-import fixtures.record_lit_owner_route.subject { RouteObserve, pick_observe }
-
-fn own_use(c: Bool) -> RouteObserve {
-  pick_observe(c: c)
-}
