@@ -115,12 +115,12 @@ test fn the_quality_ceiling_is_one_and_is_not_a_capacity_claim() -> Bool {
 // re-observes a head the winner wrote. The last pair below is the discriminating one: everything else
 // held equal, two different heads must give two different references.
 test fn an_acquisition_reference_separates_rounds_offers_and_processes() -> Bool {
-  let a1 = harness_seat_reference(actor: "worker:/w/one" as NonEmptyStr, offer_key: "group-a@100.5" as NonEmptyStr, now: 1757200000, round: 1, head: "aaa111" as NonEmptyStr) as String
-  let a2 = harness_seat_reference(actor: "worker:/w/one" as NonEmptyStr, offer_key: "group-a@100.5" as NonEmptyStr, now: 1757200000, round: 2, head: "aaa111" as NonEmptyStr) as String
-  let b1 = harness_seat_reference(actor: "worker:/w/one" as NonEmptyStr, offer_key: "group-b@200.5" as NonEmptyStr, now: 1757200000, round: 1, head: "aaa111" as NonEmptyStr) as String
-  let c1 = harness_seat_reference(actor: "worker:/w/two" as NonEmptyStr, offer_key: "group-a@100.5" as NonEmptyStr, now: 1757200000, round: 1, head: "aaa111" as NonEmptyStr) as String
-  let moved = harness_seat_reference(actor: "worker:/w/one" as NonEmptyStr, offer_key: "group-a@100.5" as NonEmptyStr, now: 1757200000, round: 1, head: "bbb222" as NonEmptyStr) as String
-  let empty = harness_seat_reference(actor: "worker:/w/one" as NonEmptyStr, offer_key: "group-a@100.5" as NonEmptyStr, now: 1757200000, round: 1, head: "empty" as NonEmptyStr) as String
+  let a1 = harness_seat_reference(attempt: "worker:/w/one" as NonEmptyStr, offer_key: "group-a@100.5" as NonEmptyStr, now: 1757200000, round: 1, head: "aaa111" as NonEmptyStr) as String
+  let a2 = harness_seat_reference(attempt: "worker:/w/one" as NonEmptyStr, offer_key: "group-a@100.5" as NonEmptyStr, now: 1757200000, round: 2, head: "aaa111" as NonEmptyStr) as String
+  let b1 = harness_seat_reference(attempt: "worker:/w/one" as NonEmptyStr, offer_key: "group-b@200.5" as NonEmptyStr, now: 1757200000, round: 1, head: "aaa111" as NonEmptyStr) as String
+  let c1 = harness_seat_reference(attempt: "worker:/w/two" as NonEmptyStr, offer_key: "group-a@100.5" as NonEmptyStr, now: 1757200000, round: 1, head: "aaa111" as NonEmptyStr) as String
+  let moved = harness_seat_reference(attempt: "worker:/w/one" as NonEmptyStr, offer_key: "group-a@100.5" as NonEmptyStr, now: 1757200000, round: 1, head: "bbb222" as NonEmptyStr) as String
+  let empty = harness_seat_reference(attempt: "worker:/w/one" as NonEmptyStr, offer_key: "group-a@100.5" as NonEmptyStr, now: 1757200000, round: 1, head: "empty" as NonEmptyStr) as String
   a1 != a2 && a1 != b1 && a1 != c1 && a2 != b1 && a2 != c1 && b1 != c1
     && a1 != moved && a1 != empty && moved != empty
 }
