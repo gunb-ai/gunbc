@@ -81,7 +81,11 @@ fn edge_is_identity_projection(e: Edge) -> Bool {
   }
 }
 
-fn collect_value_identifiers_into(n: Node, acc: List<Symbol>) -> List<Symbol> {
+fn mention_walk_skips_production(emitted: Symbol) -> Bool {
+  emitted == ^dag_surface_pattern
+}
+
+fn collect_value_identifiers_from_node(n: Node, acc: List<Symbol>) -> List<Symbol> {
   let here = match node_atom_identity_optional(node: n) {
     Present { value: id } =>
       if dag_lex_token_symbol(sym: id) { acc } else { symbol_list_prepend(item: id, xs: acc) }
@@ -96,13 +100,28 @@ fn collect_value_identifiers_into(n: Node, acc: List<Symbol>) -> List<Symbol> {
   })
 }
 
+fn collect_value_identifiers_into(n: Node, acc: List<Symbol>) -> List<Symbol> {
+  match parse_production_emitted_identity_optional(node: n) {
+    Present { value: emitted } =>
+      if mention_walk_skips_production(emitted: emitted) {
+        acc
+      } else {
+        collect_value_identifiers_from_node(n: n, acc: acc)
+      }
+    Absent => collect_value_identifiers_from_node(n: n, acc: acc)
+  }
+}
+
 // collect_value_identifiers_into skips ^grammar_production_identity_node_projection edges the same
 // way v2.lens.complexity_accumulator_copy.analyze's edge_skips_identifier_count does (a wrapper's
 // own identity tag is never a value mention). Binding-position idents (arg labels, field-pattern
-// labels) are NOT lexeme-stamped in the dag surface grammar (dag_grammar_terminal, not
-// dag_grammar_terminal_lexeme) so they never surface as atom-identity content here - only real
-// value-reference identifiers (call heads, arguments, bare names) are collected, which is exactly
-// the mention set this lens needs.
+// labels) are StampClass (dag_grammar_terminal), so they never surface as lexeme identities here.
+// Constructor names and pattern binders ARE lexeme-stamped (qualified_name on
+// ^dag_surface_pattern). Counting them as value mentions is why the sanctioned-reader positive
+// control — Accepted { value: id_node } => node_atom_identity_optional(node: id_node) — was
+// classified Suspect: remaining included Accepted/Rejected/the pattern binder on top of the one
+// body mention the shape check is allowed. A ^dag_surface_pattern subtree is therefore skipped
+// whole: only the arm body is a value-mention region.
 
 data node_source_symbol_note: String = "The dag surface grammar stamps a caret-literal's referenced identifier (dag_grammar_caret_symbol_expr's right-hand terminal) with StampClass, not StampLexeme (src/v2/extdeps/languages/dag.dag), so node_atom_identity_optional on that terminal returns only the generic ^dag_token_ident token-CLASS symbol for every caret literal, never the specific text - a real grammar limitation this lens does not touch (out of scope: dag.dag's parse/identity machinery). node_source_symbol recovers the actual referenced identifier out-of-band via the same span/provenance machinery std.diagnostic's Locus and std.provenance's SpanIndex already provide for diagnostics: look up the node's minted occurrence in the SpanIndex, resolve it to a Textual\{file, extent: ByteRange\} locus, slice the original source text, and intern the slice as a Symbol. A synthetic (unminted) node or a non-textual/non-byte-range locus fail-closed to Absent - never a fabricated symbol."
 
