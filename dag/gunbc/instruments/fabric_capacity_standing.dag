@@ -56,6 +56,8 @@ data capacity_probe_script_brace_workaround_dissolution: DissolutionCondition = 
 
 data capacity_probe_script_shell_emit_dissolution: DissolutionCondition = unbound_dissolution(description: "TRIGGER: bash-emit (#5828 / shell-to-intent) realizes this remote inventory probe as typed orchestration intent (or typed host-effect argv) and group_report ships that realization rather than stdin_payload: capacity_probe_script(). SUFFICIENT FOR: emit_field and capacity_probe_script delete together; ExecPortableWordsWithStdin no longer carries a hand-assembled 12-field bash program. Until then this is the marked shell-as-string fact." as NonEmptyStr)
 
+data observed_engine_revision_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the live probe observes the engine's vLLM source revision as VllmSourceRevision (repository plus full git object), not /version and not the container image digest (extdeps.vllm.server), and group_report passes that Present value into readings_from_fields instead of none. SUFFICIENT FOR: ProbeReadingsReady is reachable from fabric_capacity_standing, so admit_kv_layout, capacity_floor_standing and admission_posture run on the live path and ExitSuccess is authorable. Until then none is the honest observation, not a stamp of vllm_source_revision_read." as NonEmptyStr)
+
 // TWELVE LINES, FIXED ORDER, "-" FOR ANYTHING THIS HOST CANNOT ANSWER.
 //
 // The two launch figures are taken from the LAST matching line rather than the first: the log
