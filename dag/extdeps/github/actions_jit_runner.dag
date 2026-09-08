@@ -190,6 +190,22 @@ service github.CliActionsJitRunner {
 // credential is absent from stdout, from any captured output, and from every receipt derived from
 // one. `encoded_jit_config` is GitHub's field spelling, which is why this extraction lives in the
 // module that cites the endpoint rather than at a call site.
+//
+// THIS IS A DELIBERATE DIVERGENCE FROM THE MODELED JSON PARSER, AND THE REASON IS THE WHOLE POINT
+// OF THE OPERATION. `extdeps.languages.json.parse` owns JSON reading, and routing this extraction
+// through `parse_json_value_at` / `json_object_unique_member` is what the corpus would otherwise
+// ask for. It is refused HERE, and only here, because doing so would read the response document
+// into the program: the credential would become a value in this process, which is precisely the
+// property this operation exists to deny. A value that exists can be logged, captured into a
+// receipt, or carried into a diagnostic by code written later that does not know what it holds.
+// The extraction therefore stays outside, moving the field file-to-file, and the substrate's
+// inability to see inside that step is the price paid for the credential never being addressable.
+//
+// WHAT IS NOT EXCUSED BY THAT REASON, and is a real remaining defect: the interpreter is named
+// inline as `python3` in this argv rather than enrolled through `extdeps.python`, which already
+// exists as its authority, so the dependency is undeclared and absent from the `argv_command`
+// roster. The divergence above licenses keeping the extraction OUT OF PROCESS; it does not
+// license naming an undeclared interpreter to do it.
 service github.CliJitConfigDrive {
   operation WriteEncodedJitConfigToDrive {
     input {
