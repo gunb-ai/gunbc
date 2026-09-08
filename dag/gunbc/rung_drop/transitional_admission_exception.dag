@@ -8,10 +8,10 @@ import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
 // workflow (falsifier.yml) was deleted at #8283 have no scheduled route. std.witness_admission
 // witness_cadence_has_scheduled_route returns false for all five. Admission rows on those cadences
 // must be refused by explicit_witness_admission_cadence_executes (DESIGN §3 single authority, §5
-// coverage-by-illusion). 21 admission rows on three cadences carry live admission data that
-// must transition to a scheduled-route cadence first. 2 more (self_host_body_producer,
-// self_host_use_site_verdict) are rostered in gunbc.rung_drop.deleted_cadence_reference_drop
-// and NOT duplicated here.
+// coverage-by-illusion). 23 admission rows on three cadences carry live admission data that
+// must transition to a scheduled-route cadence first. 2 of the 23 (self_host_body_producer,
+// self_host_use_site_verdict) are ALSO rostered in gunbc.rung_drop.deleted_cadence_reference_drop
+// — the enforcement gate consumes this list as the single authority, so both appear here.
 // transitional_admission_exception_identities below is the SAME population in
 // path::function format, consumed by explicit_witness_admission.dag as the single
 // authority for the gate exception (DESIGN §3).
@@ -27,6 +27,8 @@ data transitional_admission_exception_identities: List<String> = [
   "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag::witness_namespace_reference_derived_closure_closing_contract_holds",
   "src/v2/test/claim/long/direct_rust_door_production_group_test.dag::direct_rust_door_production_group_closing_expectation_holds",
   "dag/test/claim/self_host_parse_engine_hooks_behavioral_witness_test.dag::self_host_parse_engine_hooks_behavioral_receipt_holds",
+  "dag/test/claim/self_host_use_site_verdict_behavioral_witness_test.dag::self_host_use_site_verdict_behavioral_receipt_holds",
+  "dag/test/claim/self_host_body_producer_behavioral_witness_test.dag::self_host_body_producer_behavioral_receipt_holds",
   "dag/test/claim/self_host_discovery_enumeration_behavioral_witness_test.dag::self_host_discovery_enumeration_behavioral_receipt_holds",
   "dag/test/claim/self_host_target_carriers_behavioral_witness_test.dag::self_host_target_carriers_behavioral_receipt_holds",
   "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag::self_host_03_normalize_behavioral_receipt_holds",
@@ -64,6 +66,8 @@ data transitional_admission_exception: RungDrop = RungDrop {
     "test.claim.namespace_reference_derived_closure_acceptance witness_namespace_reference_derived_closure_closing_contract_holds",
     "test.claim.direct_rust_door_production_group direct_rust_door_production_group_closing_expectation_holds",
     "test.claim.self_host_parse_engine_hooks_behavioral_witness self_host_parse_engine_hooks_behavioral_receipt_holds",
+    "test.claim.self_host_use_site_verdict_behavioral_witness self_host_use_site_verdict_behavioral_receipt_holds",
+    "test.claim.self_host_body_producer_behavioral_witness self_host_body_producer_behavioral_receipt_holds",
     "test.claim.self_host_discovery_enumeration_behavioral_witness self_host_discovery_enumeration_behavioral_receipt_holds",
     "test.claim.self_host_target_carriers_behavioral_witness self_host_target_carriers_behavioral_receipt_holds",
     "test.claim.self_host_03_normalize_behavioral_witness self_host_03_normalize_behavioral_receipt_holds",

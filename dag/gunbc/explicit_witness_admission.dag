@@ -780,7 +780,7 @@ fn known_red_probe_execution_roster() -> List<ScheduleWitnessEntry> {
 // explicit_witness_admission_cadence_executes. The execution question itself is delegated to
 // std.witness_admission witness_cadence_has_scheduled_route (DESIGN §3 single authority), so all
 // five falsifier-family cadences whose workflow was deleted at #8283 are refused correctly
-// — no hand-edit can drift. Twenty-one ROW IDENTITIES on three cadences
+// — no hand-edit can drift. Twenty-three ROW IDENTITIES on three cadences
 // (QuarantineProbeExpectRed, FalsifierSubstrateLongLane, BinWitnessWet) are rostered in
 // gunbc.rung_drop.transitional_admission_exception and consumed here as the single authority
 // (DESIGN §3) — the exception is bounded by identity, not cadence (§4b(3)).
@@ -795,16 +795,22 @@ fn explicit_witness_admission_cadence_executes(cadence: WitnessConsumerCadence) 
       DiscoverySelection => false
       OfflineLocalRecipe => false
       FixtureExplicitRoster => false
-      _ => true
+      NoConsumer => false
+      LocalRepoWetLane => true
+      FalsifierSelfHostWet => true
+      FalsifierRehomedBinWet => true
+      FalsifierSubstrateLongLane => true
+      BinWitnessWet => true
+      QuarantineProbeExpectRed => true
     }
 }
 
 // BOUNDED TRANSITIONAL EXCEPTIONS for admission rows on cadences whose scheduled route was
 // deleted at #8283. Each row identity is named explicitly — a fourth row on those cadences is
 // refused (DESIGN §4b(3): the exception is bounded by identity, not cadence).
-// 21 identities rostered here (reduced from 24: self_host_body_producer and
-// self_host_use_site_verdict are covered by gunbc.rung_drop.deleted_cadence_reference_drop;
-// green_control_sanctioned_reader_body_not_flagged dissolved when #10831 fixed its defect)
+// 23 identities rostered here (reduced from 24: 1 dissolved when #10831 fixed its defect).
+// self_host_body_producer and self_host_use_site_verdict are also rostered in
+// gunbc.rung_drop.deleted_cadence_reference_drop — the enforcement gate reads this list only.
 // See docs/design-rung-drops.md gunbc.rung_drop.transitional_admission_exception.
 // TRIGGER: each named identity carries a cadence with a live scheduled route.
 // Remove an identity from this list when its row migrates to a scheduled-route cadence.
