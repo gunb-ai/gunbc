@@ -120,7 +120,7 @@ fn d_considered_count(selection: SupplySelection<NonEmptyStr>) -> Int {
   match selection {
     OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: c, tie_policy: _ } => list_length(items: c)
     NoAdmissibleOffer { considered: c } => list_length(items: c)
-    EqualCostTieUnresolved { digest: _, considered: c } => list_length(items: c)
+    EqualCostTieUnresolved { digest: _, cause: _, considered: c } => list_length(items: c)
   }
 }
 

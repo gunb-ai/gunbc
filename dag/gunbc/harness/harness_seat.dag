@@ -37,7 +37,7 @@ import product.fabric.work { ExecutionRequirements, ControlPlaneCapacity }
 import product.fabric.supply { EstimatedGrantDuration, AffinityKeyedRendezvous, PlacementAffinityKey }
 import product.fabric.selection {
   CandidateOffer, CandidateBound, DispatchInputsNameAnotherOffer, bind_candidate, PayAsYouGo,
-  OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, select_supply,
+  OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, select_supply, affinity_collision_wire,
 }
 import product.fabric.demand { ObservationReceiptRef }
 import extdeps.currency.currency { Usd }
@@ -545,9 +545,9 @@ fn harness_placement_round(acc: PlacementRound, layout: EventLogLayout, shape: H
             notes: notes,
             retryable: retryable,
           }
-        EqualCostTieUnresolved { digest: d, considered: _ } =>
+        EqualCostTieUnresolved { digest: d, cause: c, considered: _ } =>
           PlacementRound {
-            done: Present { value: HarnessSeatRefused { detail: join(["two serving offers produced the same rendezvous digest ", d as String, ", so the tie policy could not choose between them"], "") } },
+            done: Present { value: HarnessSeatRefused { detail: join(["two serving offers produced the same rendezvous digest ", d as String, ": ", affinity_collision_wire(c: c), ", so the tie policy could not choose between them"], "") } },
             excluded: acc.excluded,
             notes: notes,
             retryable: retryable,

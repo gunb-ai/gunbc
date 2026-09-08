@@ -33,6 +33,7 @@ import product.fabric.selection {
   OfferCandidacy, OfferPriced, OfferNotPriceable, OfferUnavailableForGrant,
   OfferCannotHoldAnUnboundedGrant,
   SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved,
+  AffinityCollision, DuplicateOfferIdentity, AffinityProjectionAmbiguous, DigestCollisionOnDistinctKeys,
   SelectionCost, selection_total, selection_liability,
   CostBasis, ExactCost, ProjectedCost, CommitmentFloorCost,
   CommitmentHorizon, CoveredByCommitment, BilledBeyondCommitment,
@@ -247,7 +248,7 @@ fn selected_key(s: SupplySelection<NonEmptyStr>) -> NonEmptyStr {
   match s {
     OfferSelected { offer: o, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => (o.id.key as NonEmptyStr)
     NoAdmissibleOffer { considered: _ } => "none"
-    EqualCostTieUnresolved { digest: _, considered: _ } => "tie-unresolved"
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => "tie-unresolved"
   }
 }
 
@@ -256,7 +257,7 @@ fn selected_total(s: SupplySelection<NonEmptyStr>) -> Nat {
     OfferSelected { offer: _, cost: c, basis: _, horizon: _, considered: _, tie_policy: _ } =>
       money_amount_micro_count(m: selection_total(c: c))
     NoAdmissibleOffer { considered: _ } => 0
-    EqualCostTieUnresolved { digest: _, considered: _ } => 0
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => 0
   }
 }
 
@@ -264,7 +265,7 @@ fn considered_of(s: SupplySelection<NonEmptyStr>) -> List<OfferCandidacy<NonEmpt
   match s {
     OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: cs, tie_policy: _ } => cs
     NoAdmissibleOffer { considered: cs } => cs
-    EqualCostTieUnresolved { digest: _, considered: cs } => cs
+    EqualCostTieUnresolved { digest: _, cause: _, considered: cs } => cs
   }
 }
 
@@ -459,7 +460,7 @@ test fn nothing_admissible_returns_every_typed_cause_and_selects_nothing() -> Bo
     ))
   match selection {
     NoAdmissibleOffer { considered: cs } => cs.length() == 1
-    EqualCostTieUnresolved { digest: _, considered: _ } => false
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => false
     OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => false
   }
 }
@@ -513,7 +514,7 @@ test fn valued_delay_enters_the_ranking_and_not_the_reservation() -> Bool {
       money_amount_micro_count(m: selection_liability(c: c)) == 9000
         && money_amount_micro_count(m: selection_total(c: c)) == 9300
     NoAdmissibleOffer { considered: _ } => false
-    EqualCostTieUnresolved { digest: _, considered: _ } => false
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => false
   }
 }
 
@@ -550,7 +551,7 @@ fn horizon_of(s: SupplySelection<NonEmptyStr>) -> List<CommitmentHorizon> {
   match s {
     OfferSelected { offer: _, cost: _, basis: _, horizon: h, considered: _, tie_policy: _ } => [h]
     NoAdmissibleOffer { considered: _ } => []
-    EqualCostTieUnresolved { digest: _, considered: _ } => []
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => []
   }
 }
 
@@ -585,7 +586,7 @@ fn basis_of(s: SupplySelection<NonEmptyStr>) -> List<CostBasis> {
   match s {
     OfferSelected { offer: _, cost: _, basis: b, horizon: _, considered: _, tie_policy: _ } => [b]
     NoAdmissibleOffer { considered: _ } => []
-    EqualCostTieUnresolved { digest: _, considered: _ } => []
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => []
   }
 }
 
@@ -730,7 +731,7 @@ test fn a_finite_window_refuses_an_unbounded_job_rather_than_comparing() -> Bool
   )
   match selection {
     NoAdmissibleOffer { considered: cs } => unbounded_refusals(cs: cs) == 1
-    EqualCostTieUnresolved { digest: _, considered: _ } => false
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => false
     OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => false
   }
 }
@@ -916,7 +917,7 @@ test fn the_digest_keys_on_the_exact_offer_identity() -> Bool {
 test fn an_unresolvable_tie_refuses_instead_of_taking_the_first() -> Bool {
   let twinned = concat(t_twin_candidate(key: "offer-group-a"), t_twin_candidate(key: "offer-group-a"))
   match t_select_tie(candidates: twinned, tie: AffinityKeyedRendezvous, affinity: "d" as PlacementAffinityKey) {
-    EqualCostTieUnresolved { digest: _, considered: cs } => length(cs) == 2
+    EqualCostTieUnresolved { digest: _, cause: _, considered: cs } => length(cs) == 2
     OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => false
     NoAdmissibleOffer { considered: _ } => false
   }
@@ -927,7 +928,7 @@ test fn an_unresolvable_tie_refuses_instead_of_taking_the_first() -> Bool {
 test fn a_collision_survives_a_later_candidate() -> Bool {
   let twinned = concat(concat(t_twin_candidate(key: "offer-group-a"), t_twin_candidate(key: "offer-group-a")), t_twin_candidate(key: "offer-group-b"))
   match t_select_tie(candidates: twinned, tie: AffinityKeyedRendezvous, affinity: "d" as PlacementAffinityKey) {
-    EqualCostTieUnresolved { digest: _, considered: cs } => length(cs) == 3
+    EqualCostTieUnresolved { digest: _, cause: _, considered: cs } => length(cs) == 3
     OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => false
     NoAdmissibleOffer { considered: _ } => false
   }
@@ -1001,7 +1002,7 @@ test fn a_cheaper_candidate_after_a_collision_still_wins_in_either_order() -> Bo
 // the minimum total -- so every permutation of the same population answers the same way.
 fn t_tie_refuses(candidates: List<CandidateOffer<NonEmptyStr>>) -> Bool {
   match t_select_tie(candidates: candidates, tie: AffinityKeyedRendezvous, affinity: "d" as PlacementAffinityKey) {
-    EqualCostTieUnresolved { digest: _, considered: cs } => length(cs) == 3
+    EqualCostTieUnresolved { digest: _, cause: _, considered: cs } => length(cs) == 3
     OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => false
     NoAdmissibleOffer { considered: _ } => false
   }
@@ -1072,10 +1073,42 @@ test fn the_cross_principal_fixture_actually_produces_two_candidates() -> Bool {
     && length(t_candidate_under(principal: "tenant-b", key: "offer-shared")) == 1
 }
 
+// AND THE REFUSAL SAYS WHICH OF THE THREE COLLISIONS IT MET, because they have different repairs: a
+// duplicate identity is an authoring defect, a shared key under two principals is this policy's
+// projection being lossy, and two distinct keys hashing alike is a real 64-bit collision that is
+// nobody's fault. One unexplained digest for all three tells the reader nothing.
+test fn the_refusal_names_the_projection_ambiguity_rather_than_a_bare_digest() -> Bool {
+  let shared = concat(t_candidate_under(principal: "tenant-a", key: "offer-shared"), t_candidate_under(principal: "tenant-b", key: "offer-shared"))
+  match t_select_tie(candidates: shared, tie: AffinityKeyedRendezvous, affinity: "d" as PlacementAffinityKey) {
+    EqualCostTieUnresolved { digest: _, cause: c, considered: _ } =>
+      match c {
+        AffinityProjectionAmbiguous { conflicting: xs } => length(xs) == 2
+        DuplicateOfferIdentity { offer: _ } => false
+        DigestCollisionOnDistinctKeys { conflicting: _ } => false
+      }
+    _ => false
+  }
+}
+
+// AND A GENUINE DUPLICATE IS CLASSIFIED AS ONE, which is what keeps the arm above from being satisfied
+// by any collision at all: the same offer twice is one identity, not two principals.
+test fn a_repeated_offer_is_classified_as_a_duplicate_identity() -> Bool {
+  let twinned = concat(t_twin_candidate(key: "offer-group-a"), t_twin_candidate(key: "offer-group-a"))
+  match t_select_tie(candidates: twinned, tie: AffinityKeyedRendezvous, affinity: "d" as PlacementAffinityKey) {
+    EqualCostTieUnresolved { digest: _, cause: c, considered: _ } =>
+      match c {
+        DuplicateOfferIdentity { offer: o } => (o.key as String) == "offer-group-a"
+        AffinityProjectionAmbiguous { conflicting: _ } => false
+        DigestCollisionOnDistinctKeys { conflicting: _ } => false
+      }
+    _ => false
+  }
+}
+
 test fn one_key_under_two_principals_refuses_rather_than_merging() -> Bool {
   let shared = concat(t_candidate_under(principal: "tenant-a", key: "offer-shared"), t_candidate_under(principal: "tenant-b", key: "offer-shared"))
   match t_select_tie(candidates: shared, tie: AffinityKeyedRendezvous, affinity: "d" as PlacementAffinityKey) {
-    EqualCostTieUnresolved { digest: _, considered: cs } => length(cs) == 2
+    EqualCostTieUnresolved { digest: _, cause: _, considered: cs } => length(cs) == 2
     OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => false
     NoAdmissibleOffer { considered: _ } => false
   }

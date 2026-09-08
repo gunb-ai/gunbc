@@ -972,7 +972,7 @@ type SupplySelection<P>
       tie_policy: EqualCostOfferTieBreak,
     }
   | NoAdmissibleOffer { considered: List<OfferCandidacy<P>> }
-  | EqualCostTieUnresolved { digest: Fnv1a64StructuralDigestHex, considered: List<OfferCandidacy<P>> }
+  | EqualCostTieUnresolved { digest: Fnv1a64StructuralDigestHex, cause: AffinityCollision<P>, considered: List<OfferCandidacy<P>> }
 
 // The incumbent travels as ONE value rather than as four parallel optionals that could
 // disagree about which offer they describe. Four fields each separately absent has states in
@@ -1094,12 +1094,57 @@ fn key_cohort<P>(cohort: List<PricedCandidate<P>>, affinity: PlacementAffinityKe
 // policy cannot tell apart are unresolvable whether or not a third would have beaten them: answering
 // with the third would make the outcome depend on which offers happened to sit beside an ambiguity
 // the policy never resolved.
-type DigestScan<P> {
-  latest: KeyedCandidate<P>?
-  duplicate: Fnv1a64StructuralDigestHex?
+// THE THREE WAYS A DIGEST CAN REPEAT ARE THREE DIFFERENT DEFECTS, and fusing them into one
+// unexplained digest event told the reader nothing about which repair applies. They are decidable
+// from the pair that collided, so the refusal names which one it met: two rows for one offer (an
+// authoring or roster defect), one key under two principals (the projection this policy performs is
+// lossy -- identity.dag is explicit that identity is the PAIR), or two genuinely different keys whose
+// digests agree (a real 64-bit collision, the only one that is nobody's fault). The first two are
+// repaired upstream of this policy; the third is repaired by a wider digest.
+type AffinityCollision<P>
+  = DuplicateOfferIdentity { offer: FabricIdentity<P, OfferKey> }
+  | AffinityProjectionAmbiguous { conflicting: List<FabricIdentity<P, OfferKey>> }
+  | DigestCollisionOnDistinctKeys { conflicting: List<FabricIdentity<P, OfferKey>> }
+
+fn classify_collision<P>(left: FabricIdentity<P, OfferKey>, right: FabricIdentity<P, OfferKey>) -> AffinityCollision<P> {
+  if (left.key as String) != (right.key as String) {
+    DigestCollisionOnDistinctKeys { conflicting: [left, right] }
+  } else {
+    if fabric_identity_eq(left: left, right: right) {
+      DuplicateOfferIdentity { offer: left }
+    } else {
+      AffinityProjectionAmbiguous { conflicting: [left, right] }
+    }
+  }
 }
 
-fn adjacent_repeat<P>(previous: KeyedCandidate<P>?, k: KeyedCandidate<P>) -> Fnv1a64StructuralDigestHex? {
+fn affinity_collision_wire<P>(c: AffinityCollision<P>) -> String {
+  match c {
+    DuplicateOfferIdentity { offer: o } => join(["two candidates carry one offer identity ", o.key as String], "")
+    AffinityProjectionAmbiguous { conflicting: xs } =>
+      join(["one offer key under ", to_string(length(xs)), " principals projects onto one affinity digest"], "")
+    DigestCollisionOnDistinctKeys { conflicting: xs } =>
+      join([to_string(length(xs)), " distinct offer keys hash to one affinity digest"], "")
+  }
+}
+
+type DigestScan<P> {
+  latest: KeyedCandidate<P>?
+  duplicate: AffinityCollision<P>?
+  duplicate_digest: Fnv1a64StructuralDigestHex?
+}
+
+fn adjacent_repeat<P>(previous: KeyedCandidate<P>?, k: KeyedCandidate<P>) -> AffinityCollision<P>? {
+  match previous {
+    Absent => none
+    Present { value: p } =>
+      if p.digest == k.digest {
+        Present { value: classify_collision(left: p.candidate.candidate.offer.id, right: k.candidate.candidate.offer.id) }
+      } else { none }
+  }
+}
+
+fn adjacent_repeat_digest<P>(previous: KeyedCandidate<P>?, k: KeyedCandidate<P>) -> Fnv1a64StructuralDigestHex? {
   match previous {
     Absent => none
     Present { value: p } => if p.digest == k.digest { Present { value: k.digest } } else { none }
@@ -1107,12 +1152,16 @@ fn adjacent_repeat<P>(previous: KeyedCandidate<P>?, k: KeyedCandidate<P>) -> Fnv
 }
 
 fn scan_sorted<P>(sorted: List<KeyedCandidate<P>>) -> DigestScan<P> {
-  fold(sorted, init: DigestScan { latest: none, duplicate: none }, f: (acc, k) => {
+  fold(sorted, init: DigestScan { latest: none, duplicate: none, duplicate_digest: none }, f: (acc, k) => {
     let repeat = match acc.duplicate {
       Present { value: d } => Present { value: d }
       Absent => adjacent_repeat(previous: acc.latest, k: k)
     }
-    DigestScan { latest: Present { value: k }, duplicate: repeat }
+    let repeat_digest = match acc.duplicate_digest {
+      Present { value: d } => Present { value: d }
+      Absent => adjacent_repeat_digest(previous: acc.latest, k: k)
+    }
+    DigestScan { latest: Present { value: k }, duplicate: repeat, duplicate_digest: repeat_digest }
   })
 }
 
@@ -1121,7 +1170,7 @@ fn scan_sorted<P>(sorted: List<KeyedCandidate<P>>) -> DigestScan<P> {
 // one case nobody would notice.
 type EqualCostOutcome<P>
   = TieResolved { winner: PricedCandidate<P> }
-  | TieUnresolvedCollision { digest: Fnv1a64StructuralDigestHex }
+  | TieUnresolvedCollision { digest: Fnv1a64StructuralDigestHex, cause: AffinityCollision<P> }
 
 fn resolve_cohort<P>(
   cohort: List<PricedCandidate<P>>,
@@ -1137,7 +1186,11 @@ fn resolve_cohort<P>(
     AffinityKeyedRendezvous => {
       let scanned = scan_sorted(sorted: sort_by(key_cohort(cohort: cohort, affinity: affinity), k => k.digest as String))
       match scanned.duplicate {
-        Present { value: d } => Present { value: TieUnresolvedCollision { digest: d } }
+        Present { value: c } =>
+          match scanned.duplicate_digest {
+            Absent => none
+            Present { value: d } => Present { value: TieUnresolvedCollision { digest: d, cause: c } }
+          }
         Absent =>
           match scanned.latest {
             Absent => none
@@ -1182,8 +1235,8 @@ fn select_supply<P>(
         Absent => NoAdmissibleOffer { considered: ranked.considered }
         Present { value: outcome } =>
           match outcome {
-            TieUnresolvedCollision { digest: d } =>
-              EqualCostTieUnresolved { digest: d, considered: ranked.considered }
+            TieUnresolvedCollision { digest: d, cause: c } =>
+              EqualCostTieUnresolved { digest: d, cause: c, considered: ranked.considered }
             TieResolved { winner: winner } =>
               OfferSelected {
                 offer: winner.candidate.offer,

@@ -424,7 +424,7 @@ fn broker_reserve_for_demand(
   ) {
     NoAdmissibleOffer { considered: c } =>
       NoCellAdmissible { considered: c, refused: partition.refused }
-    EqualCostTieUnresolved { digest: d, considered: c } =>
+    EqualCostTieUnresolved { digest: d, cause: _, considered: c } =>
       CellSelectionTieUnresolved { digest: d, considered: c }
     OfferSelected { offer: o, cost: k, basis: _, horizon: _, considered: _, tie_policy: _ } =>
       reserve_priced_cell(

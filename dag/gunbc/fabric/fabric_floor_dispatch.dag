@@ -108,6 +108,6 @@ fn floor_selection_selected_offer_count(selection: SupplySelection<NonEmptyStr>)
   match selection {
     OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => 1
     NoAdmissibleOffer { considered: _ } => 0
-    EqualCostTieUnresolved { digest: _, considered: _ } => 0
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => 0
   }
 }
