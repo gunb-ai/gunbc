@@ -106,23 +106,6 @@ import gunbc.roadmap_site_surface_types { HealthzBodyRead, HealthzProbeRefused }
 import gunbc.running_release_identity {
   observe_running_release_identity, RunningReleaseIdentified, RunningReleaseUnidentified,
 }
-import gunbc.world_converge {
-  WorldObservation, WorldObserved, WorldUnobservable,
-  WorldDifference, WorldInAgreement, WorldDiverged,
-  WorldActuation, WorldApplied, WorldActuationRefused,
-  WorldConvergenceHandler,
-  WorldConverged, WorldNotConverged,
-  world_converge,
-}
-import gunbc.live_deploy.deployed_tree_observation {
-  DeployedTreeObservation,
-  DeployedTreeObserved,
-  DeployedTreeUnobservable,
-  observe_deployed_tree,
-  deployed_root_tree_standing,
-  DeployedRootTreeMatches,
-  DeployedRootTreeMismatch,
-}
 
 fn live_deploy_preflight_intent(access: DeployAccess) -> HostEffectIntent {
   HostEffectIntent {
