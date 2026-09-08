@@ -97,6 +97,18 @@ fn plan_path(p: Plan) -> String {
   plan_doc_path(slug: p.slug)
 }
 
+// A PlanIsAuthorityOnly row is still a plan; it is not a document-graph root. Extra roots
+// naming a path that is not in the docs universe are counted, not silently dropped
+// (cli_run build_doc_graph_report). Including authority-only slugs as roots made
+// doc_graph_registered_plan_roots_all_admitted permanently red after #9635 deleted those
+// markdown projections — the same class as a HandAuthoredDocBind whose slug has no file.
+fn plan_projects_committed_markdown(p: Plan) -> Bool {
+  match p.projection {
+    PlanProjectsCommittedMarkdown => true
+    PlanIsAuthorityOnly { ruling: _ } => false
+  }
+}
+
 fn expected_plan_md(p: Plan) -> String {
   serialize_markdown_source(doc: plan_to_document(p: p))
 }
